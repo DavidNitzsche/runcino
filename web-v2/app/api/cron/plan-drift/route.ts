@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { detectDrift, hasPendingProposal } from '@/lib/plan/drift-monitor';
+import { computeGoalGap } from '@/lib/plan/goal-gap';
 
 export const maxDuration = 60;
 
@@ -57,6 +58,43 @@ export async function POST(req: NextRequest) {
       signals_skipped: 0,
     };
     try {
+      // 2026-06-01 · Phase 1.1 · goal-gap engine. Continuous projection-
+      // vs-goal check · fires a rebuild when the gap is WIDENING for 3+
+      // consecutive days. This is the closed-loop signal the architecture
+      // doc calls the keystone · see docs/PLAN_ENGINE_ARCHITECTURE.md
+      // §Phase 1.1. We check it BEFORE per-axis drift because a widening
+      // goal-gap is the higher-order signal · drift detection is the
+      // input-side anomaly check, goal-gap is the output-side check.
+      const goalGap = await computeGoalGap(u);
+      if (goalGap && goalGap.status === 'widening' && goalGap.consecutiveWideningDays >= 3) {
+        // Auto-rebuild if no recent goal-gap rebuild
+        const recentGapRebuild = await hasPendingProposal(u, '', 'goal_gap_widening').catch(() => false);
+        if (!recentGapRebuild) {
+          try {
+            const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
+            await fireAutoRebuild({
+              userUuid: u,
+              raceSlug: goalGap.raceSlug,
+              kind: 'goal_time_changed',  // synthetic · recalibrate
+              reasons: {
+                drift_kind: 'goal_gap_widening',
+                message: `Projection drifting away from goal for ${goalGap.consecutiveWideningDays} days · rebuilding to close the gap.`,
+                trajectory_sec: goalGap.trajectorySec,
+                goal_sec: goalGap.goalSec,
+                gap_sec: goalGap.gapSec,
+                weeks_remaining: goalGap.weeksRemaining,
+                what_closes_it: goalGap.whatClosesIt,
+                citation: goalGap.citation,
+              },
+              source: 'goal_gap_cron_auto',
+            });
+            r.proposals_written++;
+          } catch (e) {
+            console.error('[plan-drift] goal-gap rebuild failed:', e);
+          }
+        }
+      }
+
       const report = await detectDrift(u);
       if (!report) {
         results.push(r);

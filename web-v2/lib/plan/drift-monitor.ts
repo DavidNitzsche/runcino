@@ -39,7 +39,17 @@
 import { pool } from '@/lib/db/pool';
 import { bestRecentVdot } from '@/lib/training/vdot';
 
-export type DriftKind = 'volume_drift' | 'vdot_drift' | 'staleness';
+export type DriftKind =
+  | 'volume_drift'
+  | 'vdot_drift'
+  | 'staleness'
+  // 2026-06-01 · Phase 1.1 · goal-gap engine.
+  | 'goal_gap_widening'
+  // 2026-06-01 · Phase 1.2 · per-day-type drift detection (replaces
+  // volume_drift's blunt 40% threshold with targeted axes).
+  | 'easy_drift'
+  | 'long_drift'
+  | 'quality_drift';
 
 export interface DriftSignal {
   /** What triggered the signal. */
@@ -65,8 +75,20 @@ export interface DriftReport {
 
 /** Volume drift threshold · % delta vs authored 4-week avg.
  *  Research/04 §progression notes >40% sustained shift = different
- *  fitness · the plan's volume curve is no longer right. */
+ *  fitness · the plan's volume curve is no longer right.
+ *
+ *  2026-06-01 · Phase 1.2 · this stays at 40% as the BLUNT system-
+ *  wide check · but per-axis drift below now catches the silent
+ *  20-30% gaps that volume_drift misses. */
 const VOLUME_DRIFT_PCT_THRESHOLD = 40;
+
+/** Per-day-type drift thresholds · Phase 1.2.
+ *  These catch the gap David called out ("my easy runs are 5-6 mi ·
+ *  why does the plan say 4.5?"). 20% is the noise-floor where a
+ *  deviation stops being "normal variation" and becomes "the plan
+ *  doesn't match reality."
+ *  Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2 */
+const PER_TYPE_DRIFT_PCT_THRESHOLD = 20;
 
 /** VDOT drift threshold · drift > 2 = paces materially wrong.
  *  Daniels VDOT tables show each +1 VDOT shifts T/I paces ~5-7 s/mi ·
@@ -98,7 +120,7 @@ export async function detectDrift(userUuid: string): Promise<DriftReport | null>
 
   const signals: DriftSignal[] = [];
 
-  // 1. Volume drift
+  // 1. Volume drift (system-wide blunt check)
   const vol = await checkVolumeDrift(userUuid, plan);
   if (vol) signals.push(vol);
 
@@ -109,6 +131,16 @@ export async function detectDrift(userUuid: string): Promise<DriftReport | null>
   // 3. Staleness
   const stale = checkStaleness(plan);
   if (stale) signals.push(stale);
+
+  // 4-6. Per-day-type drift (Phase 1.2 · catches what volume_drift
+  // misses at sub-40% deviation). These trigger TARGETED rebuilds
+  // rather than full plan refreshes.
+  const easy = await checkEasyDrift(userUuid, plan);
+  if (easy) signals.push(easy);
+  const long = await checkLongDrift(userUuid, plan);
+  if (long) signals.push(long);
+  const quality = await checkQualityDrift(userUuid, plan);
+  if (quality) signals.push(quality);
 
   const primary = signals.length > 0
     ? signals.slice().sort((a, b) => b.severity - a.severity)[0]
@@ -448,6 +480,250 @@ async function loadCurrentVdot(userUuid: string): Promise<number | null> {
  *
  * Returns false → cron can write a fresh proposal.
  */
+// ─── per-day-type drift detectors (Phase 1.2) ──────────────────────────
+
+/**
+ * Easy-day drift · runner's actual 14-day easy-day median deviates
+ * >20% from the plan's authored easy-day distance for the current week.
+ *
+ * Catches the silent gap (David's case): plan asks for 4.5 mi easy
+ * days, runner is comfortably running 6+ mi. The volume_drift check
+ * misses this because total weekly volume stays close to the budget.
+ *
+ * Trigger: targeted easy-day rebuild (floors `perEasy` at the median
+ * in generate.ts · which we already shipped in commit 89fc6eec).
+ *
+ * Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2
+ */
+async function checkEasyDrift(
+  userUuid: string,
+  plan: ActivePlan,
+): Promise<DriftSignal | null> {
+  // Runner's actual easy-day median (last 14d)
+  const actualMed = await loadEasyDayMedian(userUuid);
+  if (actualMed == null || actualMed <= 0) return null;
+
+  // Plan's current-week easy-day median (authored)
+  const planMed = await loadPlanEasyDayMedian(plan.id);
+  if (planMed == null || planMed <= 0) return null;
+
+  const pctDrift = ((actualMed - planMed) / planMed) * 100;
+  const absPct = Math.abs(pctDrift);
+  if (absPct < PER_TYPE_DRIFT_PCT_THRESHOLD) return null;
+
+  const severity = Math.min(1, (absPct - PER_TYPE_DRIFT_PCT_THRESHOLD) /
+                                PER_TYPE_DRIFT_PCT_THRESHOLD);
+  const direction = pctDrift > 0 ? 'UP' : 'DOWN';
+  const message = direction === 'UP'
+    ? `Your easy days are running ${actualMed} mi (median, last 14d) but ` +
+      `the plan is asking for ${planMed} mi · refloor easy-day distance ` +
+      `to your real baseline.`
+    : `Your easy days are running ${actualMed} mi but the plan is asking ` +
+      `for ${planMed} mi · either reduce the easy-day target or check why ` +
+      `you're cutting them short.`;
+
+  return {
+    kind: 'easy_drift',
+    severity,
+    message,
+    details: {
+      actual_median_mi: actualMed,
+      authored_median_mi: planMed,
+      pct_drift: Number(pctDrift.toFixed(1)),
+      direction,
+      threshold_pct: PER_TYPE_DRIFT_PCT_THRESHOLD,
+      citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2',
+    },
+  };
+}
+
+/**
+ * Long-run drift · runner's last 3 long runs deviate >20% from the
+ * plan's authored long-run progression.
+ */
+async function checkLongDrift(
+  userUuid: string,
+  plan: ActivePlan,
+): Promise<DriftSignal | null> {
+  const actualLong = await loadRecentLongRunMedian(userUuid);
+  if (actualLong == null || actualLong <= 0) return null;
+
+  const planLong = await loadPlanLongRunMedian(plan.id);
+  if (planLong == null || planLong <= 0) return null;
+
+  const pctDrift = ((actualLong - planLong) / planLong) * 100;
+  const absPct = Math.abs(pctDrift);
+  if (absPct < PER_TYPE_DRIFT_PCT_THRESHOLD) return null;
+
+  const severity = Math.min(1, (absPct - PER_TYPE_DRIFT_PCT_THRESHOLD) /
+                                PER_TYPE_DRIFT_PCT_THRESHOLD);
+  const direction = pctDrift > 0 ? 'UP' : 'DOWN';
+  const message = direction === 'UP'
+    ? `Your long runs are landing at ${actualLong} mi (median, last 3) ` +
+      `but the plan is asking for ${planLong} mi · long-run progression ` +
+      `is ahead of plan · adjust upward.`
+    : `Your long runs are landing at ${actualLong} mi but the plan is ` +
+      `asking for ${planLong} mi · long-run progression is behind plan · ` +
+      `verify the long-day calendar.`;
+
+  return {
+    kind: 'long_drift',
+    severity,
+    message,
+    details: {
+      actual_median_mi: actualLong,
+      authored_median_mi: planLong,
+      pct_drift: Number(pctDrift.toFixed(1)),
+      direction,
+      threshold_pct: PER_TYPE_DRIFT_PCT_THRESHOLD,
+      citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2',
+    },
+  };
+}
+
+/**
+ * Quality drift · runner's actual quality-workout pace deviates >5%
+ * from the plan's prescribed pace targets.
+ *
+ * Quality drift is more sensitive than easy/long because pace targets
+ * are calibrated to current VDOT. >5% means the runner has either
+ * leveled up (running faster than prescribed) or is fatigued (slower
+ * than prescribed).
+ */
+async function checkQualityDrift(
+  userUuid: string,
+  plan: ActivePlan,
+): Promise<DriftSignal | null> {
+  const PACE_DRIFT_PCT = 5;
+  const r = (await pool.query<{ actual_med: string | null; planned_med: string | null }>(
+    `WITH recent_quality AS (
+       SELECT pw.pace_target_s_per_mi AS planned,
+              CASE
+                WHEN (r.data->>'avgPaceMinPerMi') ~ '^[0-9]+:[0-9]+$'
+                THEN EXTRACT(EPOCH FROM (r.data->>'avgPaceMinPerMi')::interval)
+                ELSE NULL
+              END AS actual
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+         LEFT JOIN runs r ON r.user_uuid = $1::uuid
+              AND (r.data->>'date')::date = pw.date_iso
+         WHERE tp.id = $2
+           AND pw.is_quality = true
+           AND pw.date_iso >= CURRENT_DATE - INTERVAL '21 days'
+           AND pw.date_iso <  CURRENT_DATE
+           AND pw.pace_target_s_per_mi IS NOT NULL
+     )
+     SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY actual)::text  AS actual_med,
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY planned)::text AS planned_med
+       FROM recent_quality
+      WHERE actual IS NOT NULL`,
+    [userUuid, plan.id],
+  ).catch(() => ({ rows: [{ actual_med: null, planned_med: null }] }))).rows[0];
+
+  const actualMed = Number(r?.actual_med);
+  const plannedMed = Number(r?.planned_med);
+  if (!Number.isFinite(actualMed) || !Number.isFinite(plannedMed) || plannedMed <= 0) return null;
+
+  const pctDrift = ((actualMed - plannedMed) / plannedMed) * 100;
+  const absPct = Math.abs(pctDrift);
+  if (absPct < PACE_DRIFT_PCT) return null;
+
+  const severity = Math.min(1, (absPct - PACE_DRIFT_PCT) / PACE_DRIFT_PCT);
+  // Note · negative pace_drift means runner is FASTER than prescribed
+  const fasterThanPlan = pctDrift < 0;
+  const message = fasterThanPlan
+    ? `Your quality workouts are landing ${Math.abs(Math.round(pctDrift))}% ` +
+      `FASTER than prescribed · pace targets are too soft · refit VDOT and ` +
+      `tighten the threshold/interval paces.`
+    : `Your quality workouts are landing ${Math.round(pctDrift)}% SLOWER ` +
+      `than prescribed · pace targets may be too aggressive · check ` +
+      `accumulated fatigue or refit to a lower VDOT.`;
+
+  return {
+    kind: 'quality_drift',
+    severity,
+    message,
+    details: {
+      actual_pace_s_per_mi: Math.round(actualMed),
+      planned_pace_s_per_mi: Math.round(plannedMed),
+      pct_drift: Number(pctDrift.toFixed(1)),
+      direction: fasterThanPlan ? 'FASTER' : 'SLOWER',
+      threshold_pct: PACE_DRIFT_PCT,
+      citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2 + Daniels Running Formula §VDOT pace tables',
+    },
+  };
+}
+
+async function loadEasyDayMedian(userUuid: string): Promise<number | null> {
+  const r = (await pool.query<{ med: string | null }>(
+    `WITH easy_runs AS (
+       SELECT (data->>'distanceMi')::numeric AS mi
+         FROM runs
+        WHERE user_uuid = $1::uuid
+          AND NOT (data ? 'mergedIntoId')
+          AND (data->>'distanceMi')::numeric BETWEEN 3 AND 9
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text
+              >= (NOW() - interval '14 days')::date::text
+     )
+     SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med
+       FROM easy_runs`,
+    [userUuid],
+  ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
+  const m = Number(r?.med);
+  if (!Number.isFinite(m) || m <= 0) return null;
+  return Math.round(m * 2) / 2;
+}
+
+async function loadPlanEasyDayMedian(planId: string): Promise<number | null> {
+  const r = (await pool.query<{ med: string | null }>(
+    `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY distance_mi)::text AS med
+       FROM plan_workouts
+      WHERE plan_id = $1
+        AND type = 'easy'
+        AND date_iso >= CURRENT_DATE
+        AND date_iso <  CURRENT_DATE + INTERVAL '21 days'`,
+    [planId],
+  ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
+  const m = Number(r?.med);
+  return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
+}
+
+async function loadRecentLongRunMedian(userUuid: string): Promise<number | null> {
+  const r = (await pool.query<{ med: string | null }>(
+    `WITH long_runs AS (
+       SELECT (data->>'distanceMi')::numeric AS mi
+         FROM runs
+        WHERE user_uuid = $1::uuid
+          AND NOT (data ? 'mergedIntoId')
+          AND (data->>'distanceMi')::numeric >= 10
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text
+              >= (NOW() - interval '21 days')::date::text
+        ORDER BY (data->>'distanceMi')::numeric DESC
+        LIMIT 5
+     )
+     SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med
+       FROM long_runs`,
+    [userUuid],
+  ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
+  const m = Number(r?.med);
+  if (!Number.isFinite(m) || m <= 0) return null;
+  return Math.round(m * 2) / 2;
+}
+
+async function loadPlanLongRunMedian(planId: string): Promise<number | null> {
+  const r = (await pool.query<{ med: string | null }>(
+    `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY distance_mi)::text AS med
+       FROM plan_workouts
+      WHERE plan_id = $1
+        AND type = 'long'
+        AND date_iso >= CURRENT_DATE - INTERVAL '14 days'
+        AND date_iso <  CURRENT_DATE + INTERVAL '14 days'`,
+    [planId],
+  ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
+  const m = Number(r?.med);
+  return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
+}
+
 export async function hasPendingProposal(
   userUuid: string,
   planId: string,
