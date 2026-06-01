@@ -73,6 +73,9 @@ export type PlannedDay = {
   /** ISO YYYY-MM-DD for the day. Optional during FALLBACK rendering when
    *  the seed loader hasn't resolved real dates yet. */
   iso?: string;
+  /** plan_workouts.id · required for POST /api/plan/restore (override
+   *  the auto-adapter on this row). Null on off-plan days. */
+  planWorkoutId?: string | null;
   type: EffortKey; name: string;
   /** Raw plan_workouts.sub_label · the canonical workout name from
    *  the plan generator ("Cruise Intervals", "HM Threshold Blocks",

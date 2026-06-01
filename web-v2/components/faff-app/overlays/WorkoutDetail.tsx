@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, PLAN_CUES, ZC, hexA } from '../constants';
 import { decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
@@ -307,6 +308,11 @@ function RouteMap({ dist, gain, activityId }: { dist: string; gain: number; acti
    ============================================================ */
 function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
   const a = d.adaptation;
+  // Hooks must run unconditionally · early return AFTER hook declarations.
+  const router = useRouter();
+  const [restoring, setRestoring] = useState(false);
+  const [restoreErr, setRestoreErr] = useState<string | null>(null);
+  const [restored, setRestored] = useState(false);
   if (!a?.wasAdapted) return null;
   const wasLabel = a.originalSubLabel || a.originalType;
   const kindCopy: Record<string, string> = {
@@ -375,6 +381,74 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
           color: 'var(--ink, #fff)', opacity: 0.92,
         }}>
           {a.reason}
+        </div>
+      ) : null}
+
+      {/* Restore button · POST /api/plan/restore (backend commit
+          d8a4082d). Surfaces only when planWorkoutId is known and the
+          day isn't already restored. After a successful restore the
+          chip's "was X" subline clears on next refresh. */}
+      {d.planWorkoutId && !restored ? (
+        <div style={{
+          marginTop: 12,
+          display: 'flex',
+          justifyContent: 'flex-end',
+        }}>
+          <button
+            type="button"
+            disabled={restoring}
+            onClick={async () => {
+              if (!d.planWorkoutId) return;
+              setRestoring(true);
+              setRestoreErr(null);
+              try {
+                const r = await fetch('/api/plan/restore', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ workoutId: d.planWorkoutId }),
+                });
+                const j = await r.json().catch(() => ({}));
+                if (!r.ok || !(j as { ok?: boolean }).ok) {
+                  throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+                }
+                setRestored(true);
+                router.refresh();
+              } catch (e) {
+                setRestoreErr(e instanceof Error ? e.message : String(e));
+              } finally {
+                setRestoring(false);
+              }
+            }}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'transparent',
+              border: '1px solid rgba(255,206,138,0.42)',
+              color: '#FFCE8A',
+              borderRadius: 8,
+              padding: '8px 14px',
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.8px',
+              textTransform: 'uppercase',
+              cursor: restoring ? 'wait' : 'pointer',
+              opacity: restoring ? 0.6 : 1,
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 4v6h6"/><path d="M20 20a8 8 0 0 0-13.6-5.6L4 17"/>
+            </svg>
+            {restoring ? 'Restoring…' : 'Restore original'}
+          </button>
+        </div>
+      ) : null}
+
+      {restored ? (
+        <div style={{ marginTop: 10, fontSize: 12, color: '#FFCE8A' }}>
+          Restored to original. Refreshing…
+        </div>
+      ) : null}
+
+      {restoreErr ? (
+        <div style={{ marginTop: 10, fontSize: 12, color: '#FC4D64' }}>
+          Could not restore · {restoreErr}
         </div>
       ) : null}
     </div>

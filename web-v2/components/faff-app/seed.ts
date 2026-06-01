@@ -308,6 +308,7 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: Planne
       // generic "Easy" while FULL PLAN rendered it correctly. The two
       // surfaces now read from one source. If the hero title wraps with
       // a longer name, fix it in CSS, not by destroying data.
+      planWorkoutId: (d as { plannedId?: string | null }).plannedId ?? null,
       name: d.plannedLabel || humanName(eff, d.plannedMi),
       subLabel: d.plannedLabel ?? null,
       adaptation: (d as { adaptation?: PlannedDay['adaptation'] }).adaptation ?? null,

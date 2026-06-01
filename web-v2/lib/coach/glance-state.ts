@@ -20,6 +20,12 @@ export interface GlanceWeekDay {
   date: string;            // ISO YYYY-MM-DD
   dow: number;             // 0 Sun … 6 Sat
   // Plan side
+  /** 2026-06-01 · plan_workouts.id for this row · null on off-plan days.
+   *  Required for POST /api/plan/restore (commit d8a4082d) so the
+   *  frontend's "Restore original" button can identify the row.
+   *  Optional on the type so legacy fixtures (personas, WeekAhead
+   *  tests) compile without backfill. */
+  plannedId?: string | null;
   plannedMi: number;
   plannedType: string;     // 'easy' | 'rest' | 'long' | 'threshold' | etc.
   plannedLabel: string | null;
@@ -281,6 +287,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       : null;
     return {
       date, dow,
+      plannedId: planRow?.id ?? null,
       plannedMi: planRow ? Number(planRow.distance_mi) || 0 : 0,
       // When no plan, default to a neutral "—" type (NOT "rest") so the
       // TodayPlannedCard doesn't mislabel a run-day as a rest day.
