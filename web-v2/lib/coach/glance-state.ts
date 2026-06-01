@@ -90,6 +90,20 @@ export interface GlanceState {
     logged_at: string;
     days_active: number;
   } | null;
+  /** 2026-06-01 · per-runner strength day picker output. ISO YYYY-MM-DD
+   *  dates for this week (Mon-Sun), 0-2 entries. Empty array = no
+   *  strength surfaced (race week, plan dormant, no acceptable slot).
+   *  Frontend renders as "+ STRENGTH" annotation on week-strip chips. */
+  recommendedStrengthDays: string[];
+  /** Full strength recommendation envelope · reason + habit +
+   *  coachIntent. Null when the recommender failed (frontend falls back
+   *  to its local heuristic). */
+  strengthRecommendation: {
+    recommendedDays: string[];
+    reason: string;
+    habit: 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
+    coachIntent: { severity: 'soft' | 'firm' | 'urgent'; body: string } | null;
+  } | null;
 }
 
 export async function loadGlanceState(userId: string): Promise<GlanceState> {
@@ -419,6 +433,26 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     }
   }
 
+  // 2026-06-01 · strength-day recommender (web agent brief
+  // strength-recommender-backend-brief.md). Replaces the frontend's
+  // pure-week-shape pickStrengthDays() heuristic. Computed off the
+  // Mon-Sun week (weekDays[0].date is the Monday). Best-effort · null
+  // when plan or signals aren't available, frontend falls back to its
+  // local heuristic.
+  let strengthRecommendation: import('./strength-recommender').StrengthRecommendation | null = null;
+  try {
+    const { recommendStrengthDays, emitStrengthCoachIntent } = await import('./strength-recommender');
+    const weekStartISO = weekDays[0]?.date;
+    if (weekStartISO) {
+      strengthRecommendation = await recommendStrengthDays(userId, weekStartISO);
+      // Fire-and-forget · idempotent coach intent emission. Doesn't
+      // block the response.
+      void emitStrengthCoachIntent(userId, strengthRecommendation);
+    }
+  } catch (e) {
+    console.warn('[glance-state] strength-recommender failed:', e instanceof Error ? e.message : String(e));
+  }
+
   return {
     today,
     greetingName: prof?.full_name?.split(/\s+/)[0] ?? 'David',
@@ -434,5 +468,11 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     todaySkipped,
     activeNiggle,
     activeSick,
+    /** 2026-06-01 · strength-recommender output. recommendedStrengthDays
+     *  is the chip-annotation array (web agent's primary consumer);
+     *  strengthRecommendation carries the full envelope (reason, habit,
+     *  coachIntent) for the briefing surface. */
+    recommendedStrengthDays: strengthRecommendation?.recommendedDays ?? [],
+    strengthRecommendation,
   };
 }

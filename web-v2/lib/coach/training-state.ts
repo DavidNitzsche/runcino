@@ -41,6 +41,12 @@ export interface PlanWeek {
     doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
   }>;
   isCurrent: boolean;
+  /** 2026-06-01 · per-week strength-day picks · ISO YYYY-MM-DD dates
+   *  for this Mon-Sun. Populated only for the CURRENT week (computing
+   *  forward is fine, computing 25 weeks of recommendations is wasted
+   *  work · they re-derive when the runner reaches them). Empty array
+   *  for non-current weeks. */
+  recommendedStrengthDays: string[];
 }
 
 export interface PlanPhase { label: string; startWeekIdx: number; endWeekIdx: number; }
@@ -180,8 +186,25 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       plannedMi,
       days,
       isCurrent,
+      // Filled in for the current week only · see below.
+      recommendedStrengthDays: [] as string[],
     };
   });
+
+  // 2026-06-01 · annotate current week with strength recommendations.
+  // Only the current week · re-derives forward as the runner walks
+  // into each new Monday. Per the recommender's stability rule, same
+  // (user, weekStart) always returns the same set.
+  try {
+    const cur = weeks.find(w => w.isCurrent);
+    if (cur) {
+      const { recommendStrengthDays } = await import('./strength-recommender');
+      const rec = await recommendStrengthDays(userId, cur.startDate);
+      cur.recommendedStrengthDays = rec.recommendedDays;
+    }
+  } catch (e) {
+    console.warn('[training-state] strength-recommender failed:', e instanceof Error ? e.message : String(e));
+  }
 
   const current = weeks.find((w) => w.isCurrent);
   const currentPhase = current?.phase ?? null;

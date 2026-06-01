@@ -237,6 +237,8 @@ function david(): GlanceState {
     todaySkipped: false,
     activeNiggle: null,
     activeSick: null,
+    recommendedStrengthDays: [],
+    strengthRecommendation: null,
   };
 }
 
@@ -280,6 +282,8 @@ function lilian(): GlanceState {
     todaySkipped: false,
     activeNiggle: null,
     activeSick: null,
+    recommendedStrengthDays: [],
+    strengthRecommendation: null,
   };
 }
 
@@ -321,6 +325,8 @@ function tyler(): GlanceState {
     todaySkipped: false,
     activeNiggle: null,
     activeSick: null,
+    recommendedStrengthDays: [],
+    strengthRecommendation: null,
   };
 }
 
@@ -373,6 +379,8 @@ function sarah(): GlanceState {
       logged_at: new Date(Date.now() - 2 * 86400000).toISOString(),
       days_active: 2,
     },
+    recommendedStrengthDays: [],
+    strengthRecommendation: null,
   };
 }
 
@@ -423,6 +431,8 @@ function marcus(): GlanceState {
       days_active: 2,
     },
     activeSick: null,
+    recommendedStrengthDays: [],
+    strengthRecommendation: null,
   };
 }
 
@@ -465,6 +475,8 @@ function helen(): GlanceState {
     todaySkipped: false,
     activeNiggle: null,
     activeSick: null,
+    recommendedStrengthDays: [],
+    strengthRecommendation: null,
   };
 }
 
@@ -507,6 +519,8 @@ function alex(): GlanceState {
     todaySkipped: false,
     activeNiggle: null,
     activeSick: null,
+    recommendedStrengthDays: [],
+    strengthRecommendation: null,
   };
 }
 
@@ -549,5 +563,7 @@ function maya(): GlanceState {
     todaySkipped: true,
     activeNiggle: null,
     activeSick: null,
+    recommendedStrengthDays: [],
+    strengthRecommendation: null,
   };
 }
