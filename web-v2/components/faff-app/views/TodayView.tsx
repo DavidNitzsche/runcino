@@ -696,76 +696,106 @@ function PlannedHeroV2({
   // chrome on the runner's screen. The engine still reads research-
   // grounded rules · just doesn't put the footnotes in the UI.
 
+  // 2026-06-01 · adaptation provenance line under the title when the
+  // auto-adapter mutated this row. Surfaces WHY at the hero level so
+  // the runner doesn't have to open the modal to learn the change.
+  const adapted = d.adaptation?.wasAdapted;
+  const adaptVerb: Record<string, string> = {
+    downgrade: 'Downgraded',
+    reschedule: 'Rescheduled',
+    shave: 'Shortened',
+    mark_dirty: 'Paces refreshed',
+    other: 'Adjusted',
+  };
+  const adaptedFromLabel = adapted
+    ? (d.adaptation!.originalSubLabel || d.adaptation!.originalType)
+    : null;
+  const adaptVerbCopy = adapted ? (adaptVerb[d.adaptation!.kind ?? 'other'] ?? 'Adjusted') : '';
+
   return (
     <div className={`hero-v2${skipped ? ' skipped' : ''}`}>
+      {/* hmain now hosts title + leftstack only · session moved out to
+          be a sibling so it can top-align with wcard. Layout becomes a
+          3-column flex row (hmain | session | wcard) instead of a
+          2-column with session nested inside hmain. */}
       <div className="hmain">
         <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · ' + eyebrowState}</div>
         <div className="titlerow">
           <h1 className="htitle">{d.name}</h1>
         </div>
 
-        <div className="hbody">
-          <div className="leftstack">
-            <div className="stats">
-              <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
-              <div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div><div className="k">TARGET PACE</div></div>
-              <div><div className="v">{d.est.replace(/^~/, '~')}</div><div className="k">EST TIME</div></div>
-            </div>
+        {adapted && adaptedFromLabel ? (
+          <div className="adaptline">
+            <span className="adapt-glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"><path d="M4 4v6h6"/><path d="M20 20a8 8 0 0 0-13.6-5.6L4 17"/></svg>
+            </span>
+            <span className="adapt-body">
+              <b>{adaptVerbCopy} from {adaptedFromLabel.toUpperCase()}.</b>
+              {d.adaptation?.reason ? <> {d.adaptation.reason}</> : null}
+            </span>
+          </div>
+        ) : null}
 
-            <div className="effort-band">
-              <div className="ehead">
-                <span>EFFORT TARGET</span>
-                <span className="em">{effortLbl.copy}</span>
-              </div>
-              <div className="etrack">
-                <div className="emark" style={{ left: `${eff.mark}%` }}>
-                  <span className="elbl">{eff.lbl}</span>
-                  <span className="ecaret" />
-                </div>
-              </div>
-              <div className="ezones">
-                <span>Z1</span><span>Z2</span><span>Z3</span><span>Z4</span><span>Z5</span>
+        <div className="leftstack">
+          <div className="stats">
+            <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
+            <div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div><div className="k">TARGET PACE</div></div>
+            <div><div className="v">{d.est.replace(/^~/, '~')}</div><div className="k">EST TIME</div></div>
+          </div>
+
+          <div className="effort-band">
+            <div className="ehead">
+              <span>EFFORT TARGET</span>
+              <span className="em">{effortLbl.copy}</span>
+            </div>
+            <div className="etrack">
+              <div className="emark" style={{ left: `${eff.mark}%` }}>
+                <span className="elbl">{eff.lbl}</span>
+                <span className="ecaret" />
               </div>
             </div>
-
-            <div className="cond">
-              <div>
-                <div className="kcl">FORECAST</div>
-                <div className="kcv">{weatherLabel}</div>
-              </div>
-              <div>
-                <div className="kcl">SHOE</div>
-                <ShoePicker shoes={shoes} initial={seedShoe} persist={persistShoe} />
-              </div>
-              <div>
-                <div className="kcl">FUEL</div>
-                <div className="kcv">{kit.fuel?.trim() && kit.fuel !== ' · ' ? kit.fuel : 'Water'}</div>
-              </div>
-              <div>
-                <div className="kcl">BEST WINDOW</div>
-                <div className="kcv">{bestWindow(forecast)}</div>
-              </div>
+            <div className="ezones">
+              <span>Z1</span><span>Z2</span><span>Z3</span><span>Z4</span><span>Z5</span>
             </div>
           </div>
 
-          <div className="session">
-            <div className="sh">SESSION</div>
-            <div className="shape">
-              {segs.map((x, i) => <i key={i} style={{ width: `${x.w}%`, background: x.c }} />)}
+          <div className="cond">
+            <div>
+              <div className="kcl">FORECAST</div>
+              <div className="kcv">{weatherLabel}</div>
             </div>
-            <div className="segs">
-              {segs.map((x, i) => (
-                <div className="seg" key={i}>
-                  <span className="sd" style={{ background: x.c }} />
-                  <span className="sl">{x.l}</span>
-                  <span className="ss">{x.sub}</span>
-                </div>
-              ))}
+            <div>
+              <div className="kcl">SHOE</div>
+              <ShoePicker shoes={shoes} initial={seedShoe} persist={persistShoe} />
             </div>
-            <div className="scue">
-              <span className="ct">CUE</span>{kit.coach}
+            <div>
+              <div className="kcl">FUEL</div>
+              <div className="kcv">{kit.fuel?.trim() && kit.fuel !== ' · ' ? kit.fuel : 'Water'}</div>
+            </div>
+            <div>
+              <div className="kcl">BEST WINDOW</div>
+              <div className="kcv">{bestWindow(forecast)}</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="session">
+        <div className="sh">SESSION</div>
+        <div className="shape">
+          {segs.map((x, i) => <i key={i} style={{ width: `${x.w}%`, background: x.c }} />)}
+        </div>
+        <div className="segs">
+          {segs.map((x, i) => (
+            <div className="seg" key={i}>
+              <span className="sd" style={{ background: x.c }} />
+              <span className="sl">{x.l}</span>
+              <span className="ss">{x.sub}</span>
+            </div>
+          ))}
+        </div>
+        <div className="scue">
+          <span className="ct">CUE</span>{kit.coach}
         </div>
       </div>
 

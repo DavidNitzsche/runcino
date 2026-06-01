@@ -176,15 +176,24 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .heroExtra .hx-recap .ct{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:1px;color:#FFCE8A;border:1px solid rgba(255,206,138,.4);border-radius:5px;padding:2px 6px;margin-right:7px;vertical-align:middle;}
 
 /* ── Post-run detail hero (v2 · 2026-05-31, see docs/design Post-Run Detail (Easy)) ── */
+/* 2026-06-01 · 3-column flex (hmain | session | wcard). Session was
+   previously nested inside hmain.hbody, which pushed it below the
+   title bar; now it's a sibling so it top-aligns with wcard. hmain
+   shrinks to leftstack width. */
 .hero-v2{display:flex;gap:24px;align-items:stretch;margin-top:26px;min-height:480px;}
-.hero-v2 .hmain{flex:1;min-width:0;display:flex;flex-direction:column;}
+.hero-v2 .hmain{flex:0 0 296px;min-width:0;display:flex;flex-direction:column;}
 .hero-v2 .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
 .hero-v2 .titlerow{display:flex;align-items:center;gap:16px;margin-top:8px;}
 .hero-v2 .htitle{font-family:'Oswald',sans-serif;font-size:62px;font-weight:600;line-height:.92;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-shadow:0 2px 20px rgba(0,0,0,.14);}
 .hero-v2 .check{width:30px;height:30px;border-radius:50%;background:#3EBD41;color:#06210a;display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 4px 14px -4px rgba(62,189,65,.7);}
 .hero-v2 .check svg{width:17px;height:17px;}
-.hero-v2 .hbody{flex:1;display:flex;gap:28px;margin-top:24px;min-height:0;}
-.hero-v2 .leftstack{flex:0 0 296px;display:flex;flex-direction:column;}
+/* Adaptation provenance line · sits between title and leftstack. Only
+   renders when d.adaptation.wasAdapted is true (added 2026-06-01). */
+.hero-v2 .adaptline{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:10px 12px;border-radius:10px;background:rgba(255,206,138,0.08);border:1px solid rgba(255,206,138,0.28);}
+.hero-v2 .adaptline .adapt-glyph{flex:0 0 auto;color:#FFCE8A;display:flex;align-items:center;justify-content:center;margin-top:1px;}
+.hero-v2 .adaptline .adapt-body{font-size:12px;line-height:1.45;color:var(--txt);}
+.hero-v2 .adaptline .adapt-body b{font-weight:700;color:#FFCE8A;}
+.hero-v2 .leftstack{margin-top:24px;display:flex;flex-direction:column;}
 .hero-v2 .stats{display:flex;gap:30px;margin-top:0;}
 .hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;line-height:.9;}
 .hero-v2 .stats .v small{font-size:14px;opacity:.85;font-weight:400;}
@@ -301,7 +310,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    Same hero-v2 frame, swaps zones → effort target, route map → SESSION panel,
    right card recap+splits → THE PLAN verdict+recap+TARGETS. */
 .hero-v2 .effort-band{margin-top:30px;}
-.hero-v2 .effort-band .ehead{font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:22px;opacity:.9;display:flex;justify-content:space-between;gap:10px;}
+/* 2026-06-01 · margin-bottom increased from 22px to 42px to clear
+   the absolutely-positioned .emark label (the "EASY" bubble) which
+   sits ~34px above the track baseline · was overlapping the header
+   row at the prior spacing. */
+.hero-v2 .effort-band .ehead{font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:42px;opacity:.9;display:flex;justify-content:space-between;gap:10px;}
 .hero-v2 .effort-band .ehead .em{opacity:.8;font-weight:600;white-space:nowrap;}
 .hero-v2 .effort-band .etrack{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#5B7CB8,#48B3B5,#8FC04A,#E89B3A,#D63E4E);}
 .hero-v2 .effort-band .emark{position:absolute;bottom:14px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;}
