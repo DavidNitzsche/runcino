@@ -6,6 +6,7 @@ import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
+import { PlanProposalCard } from '../cards/PlanProposalCard';
 import { RouteMap } from '../RouteMap';
 import {
   AdaptationCard,
@@ -198,11 +199,30 @@ export function TodayView({
         </div>
       ) : null}
 
+      {/* Card stack · order locked 2026-06-01 (David default):
+          runner-actionable first, then auto-applied notifications.
+            1. seed.pendingProposals · coach_proposals (illness/injury)
+            2. seed.planProposals where status='pending' · drift cards
+            3. seed.planProposals where status='auto_applied' · race-edit
+               rebuild notifications
+          The loader (lib/plan/proposals-state.ts) returns 0-5 items
+          total and filters accepted/dismissed/superseded. */}
       {seed.pendingProposals.length > 0 ? (
         <div style={{ marginTop: 8 }}>
           {seed.pendingProposals.map((p) => (
             <CoachProposalCard key={p.id} proposal={p} />
           ))}
+        </div>
+      ) : null}
+
+      {seed.planProposals && seed.planProposals.length > 0 ? (
+        <div style={{ marginTop: 8 }}>
+          {seed.planProposals
+            .filter((p) => p.status === 'pending')
+            .map((p) => <PlanProposalCard key={`pp-${p.id}`} proposal={p} />)}
+          {seed.planProposals
+            .filter((p) => p.status === 'auto_applied')
+            .map((p) => <PlanProposalCard key={`pp-${p.id}`} proposal={p} />)}
         </div>
       ) : null}
 
