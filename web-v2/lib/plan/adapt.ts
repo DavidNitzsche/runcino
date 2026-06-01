@@ -167,10 +167,39 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         }
       } else if (a.kind === 'downgrade' && a.newType && a.workoutIds) {
         for (const wid of a.workoutIds) {
-          await client.query(
-            `UPDATE plan_workouts SET type = $1 WHERE id = $2`,
-            [a.newType, wid]
-          );
+          // 2026-06-01 · type is source of truth (web agent brief
+          // plan-type-column-alignment-brief.md · Option A). When we
+          // downgrade a quality workout to easy/recovery/rest, we MUST
+          // clear the trailing fields too · otherwise the row reads
+          // "type=easy but sub_label='Cruise Intervals' + pace=T-pace
+          // + is_quality=true" and every downstream consumer (chip
+          // color, hero gradient, strength placement, coach mode
+          // resolver) gets contradictory signals.
+          //
+          // Coherent downgrade · clear sub_label · clear pace target ·
+          // set is_quality=false (easy/recovery/rest are never quality)
+          // · clear is_long if downgrading FROM long.
+          const newType = a.newType;
+          const clearsQuality = ['easy', 'recovery', 'rest'].includes(newType);
+          if (clearsQuality) {
+            await client.query(
+              `UPDATE plan_workouts
+                  SET type = $1,
+                      sub_label = NULL,
+                      pace_target_s_per_mi = NULL,
+                      is_quality = false,
+                      is_long = (CASE WHEN $1 = 'long' THEN is_long ELSE false END)
+                WHERE id = $2`,
+              [newType, wid]
+            );
+          } else {
+            // Lateral move between quality kinds (rare · e.g. threshold
+            // → tempo) · just update type, leave the rest.
+            await client.query(
+              `UPDATE plan_workouts SET type = $1 WHERE id = $2`,
+              [newType, wid]
+            );
+          }
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, newType: a.newType, why: a.why,
           });
