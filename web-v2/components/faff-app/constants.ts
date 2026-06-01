@@ -129,6 +129,22 @@ export type PlannedDay = {
     high: number;
     copy: string;
   };
+  /** 2026-06-01 · web agent brief · live engine re-evaluation. Populated
+   *  when the engine, given today's readiness signals, would currently
+   *  recommend a different prescription than the active row.
+   *  Forward counsel · not a replay of prior adaptation history.
+   *  Null when the engine agrees with the active row OR has no opinion.
+   *  See lib/coach/standing-recommendation.ts. */
+  standingRecommendation?: {
+    kind: 'ease_down' | 'shave' | 'reschedule' | 'maintain' | 'push_back';
+    copy: string;
+    suggestion: {
+      proposedType?: string;
+      proposedDistanceMi?: number;
+      proposedDateIso?: string;
+    } | null;
+    severity: 'advisory' | 'firm';
+  } | null;
 };
 
 export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: string[] }> = {

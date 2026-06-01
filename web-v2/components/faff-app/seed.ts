@@ -458,6 +458,66 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>, cadenceBaseline
  * Doctrine · Reality-anchored, not template-derived. The card shows
  * what actually happened, not "·" placeholders.
  */
+/**
+ * 2026-06-01 · web agent brief · enrich the week with live standing
+ * recommendations. Re-evaluates today's readiness signals against
+ * each planned quality workout, emits a recommendation envelope when
+ * the engine would currently disagree with the active row.
+ *
+ * Best-effort · failures degrade to no recommendation rather than
+ * blocking the page render. Lazy imports the composer + brief loader
+ * to keep the seed module tree small.
+ */
+async function enrichWeekWithStandingRecommendations(
+  userId: string,
+  week: PlannedDay[],
+): Promise<void> {
+  // Pick the future quality workouts · these are the ones the engine
+  // can recommend against. Past + non-quality days return null fast
+  // inside the composer anyway, but skipping them upfront saves a
+  // brief load when there's nothing to recommend.
+  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const QUALITY = new Set(['intervals', 'tempo', 'threshold', 'long']);
+  const candidates = week.filter((d) =>
+    d.planWorkoutId && d.iso && d.iso >= today && QUALITY.has(d.type),
+  );
+  if (candidates.length === 0) return;
+
+  // Load brief + composer lazily.
+  const [{ loadReadinessBrief }, { loadCoachState }, { composeStandingRecommendation }] =
+    await Promise.all([
+      import('@/lib/coach/readiness-brief'),
+      import('@/lib/coach/state-loader'),
+      import('@/lib/coach/standing-recommendation'),
+    ]);
+  const state = await loadCoachState(userId).catch(() => null);
+  if (!state) return;
+  const brief = await loadReadinessBrief(userId, state).catch(() => null);
+  if (!brief) return;
+
+  // Compose per candidate · cap parallelism implicit (≤ 7 candidates
+  // per week typically). Each compose is a single DB read so this
+  // is cheap.
+  await Promise.all(candidates.map(async (d) => {
+    const rec = await composeStandingRecommendation({
+      workoutId: d.planWorkoutId!,
+      userUuid: userId,
+      workout: {
+        type: d.type,
+        distance_mi: Number(d.dist) || 0,
+        date_iso: d.iso!,
+        is_quality: true,
+      },
+      brief,
+    }).catch(() => null);
+    if (rec) {
+      // Mutate the week-day shape in place · matches the cadenceTarget
+      // pattern used elsewhere.
+      (d as { standingRecommendation?: typeof rec | null }).standingRecommendation = rec;
+    }
+  }));
+}
+
 async function enrichResultsWithRunData(
   userId: string,
   week: PlannedDay[],
@@ -1530,6 +1590,12 @@ export async function buildSeed(): Promise<FaffSeed> {
   const weekSkips: Set<string> = skRes.value;
 
   const { week, todayIdx, results } = adaptWeek(glance, weekSkips, health?.cadence.baseline ?? null);
+
+  // 2026-06-01 · web agent brief · enrich week with live standing
+  // recommendations. Re-evaluates today's signals against each planned
+  // quality workout and emits a recommendation envelope when the engine
+  // would currently disagree with the active row. Best-effort.
+  await enrichWeekWithStandingRecommendations(userId, week).catch(() => {});
 
   // 2026-06-01 · enrich `results` with real per-run data so the Today
   // EASY/DONE card and week-strip render real weather, calories,
