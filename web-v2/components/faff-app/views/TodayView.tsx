@@ -124,22 +124,45 @@ export function TodayView({
           <div className="date">{d.full}</div>
           <div className="wk">{seed.weekOf}</div>
         </div>
-        <div className="rbtn" onClick={onOpenDrawer} role="button" tabIndex={0}>
-          <div className="rt">
-            <div className="rl">
-              READINESS{' '}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        {(() => {
+          // 2026-06-01 · Today header reads from seed.readinessBrief
+          // first · same source as the drawer. Previously the chip
+          // showed seed.readiness.score (legacy adaptReadiness output)
+          // while the drawer showed seed.readinessBrief.score, so the
+          // two surfaces could disagree. Brief is the source of truth;
+          // legacy readiness is the fallback only when brief is null
+          // (no-data band, fresh runner, composer error). Ring stroke
+          // is also band-aware now · was hardcoded green so a pull-
+          // back day showed a green ring with "PULL BACK" copy.
+          const score = seed.readinessBrief?.score ?? seed.readiness.score;
+          const label = seed.readinessBrief?.label ?? seed.readiness.label;
+          const band = seed.readinessBrief?.band ?? null;
+          const ringColor =
+            band === 'sharp' ? '#34D058' :
+            band === 'ready' ? '#3EBD41' :
+            band === 'moderate' ? '#F3AD38' :
+            band === 'pull-back' ? '#FC4D64' :
+            band === 'no-data' ? '#8A90A0' :
+            '#3EBD41';
+          return (
+            <div className="rbtn" onClick={onOpenDrawer} role="button" tabIndex={0}>
+              <div className="rt">
+                <div className="rl">
+                  READINESS{' '}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </div>
+                <div className="rs" style={band ? { color: ringColor } : undefined}>{label}</div>
+              </div>
+              <div className="ringwrap">
+                <svg width="56" height="56" viewBox="0 0 56 56">
+                  <circle cx="28" cy="28" r="23" fill="none" stroke="rgba(255,255,255,.18)" strokeWidth="5"/>
+                  <circle cx="28" cy="28" r="23" fill="none" stroke={ringColor} strokeWidth="5" strokeLinecap="round" strokeDasharray="144.5" strokeDashoffset={144.5 - (score / 100) * 144.5} transform="rotate(-90 28 28)"/>
+                </svg>
+                <div className="rv">{score}</div>
+              </div>
             </div>
-            <div className="rs">{seed.readiness.label}</div>
-          </div>
-          <div className="ringwrap">
-            <svg width="56" height="56" viewBox="0 0 56 56">
-              <circle cx="28" cy="28" r="23" fill="none" stroke="rgba(255,255,255,.18)" strokeWidth="5"/>
-              <circle cx="28" cy="28" r="23" fill="none" stroke="#3EBD41" strokeWidth="5" strokeLinecap="round" strokeDasharray="144.5" strokeDashoffset={144.5 - (seed.readiness.score / 100) * 144.5} transform="rotate(-90 28 28)"/>
-            </svg>
-            <div className="rv">{seed.readiness.score}</div>
-          </div>
-        </div>
+          );
+        })()}
       </div>
 
       {/* Adaptation card row. The ACWR load chip used to ride here; it was
