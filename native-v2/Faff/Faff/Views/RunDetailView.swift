@@ -23,6 +23,9 @@ struct RunDetailView: View {
     /// loaded (this view doesn't hydrate from AppCache · always cold
     /// fetched, so `.idle` is the only valid initial state).
     @State private var loadState: LoadState = .idle
+    /// HR zone method · %MHR (default) or LTHR (Friel-anchored). Local
+    /// toggle; the ZoneBar palette stays the same. Toolkit · Family I.
+    @State private var zoneMethod: ZoneMethod = .pctMhr
 
     @Environment(\.dismiss) private var dismiss
 
@@ -156,7 +159,20 @@ struct RunDetailView: View {
 
                     if let zones = zonePcts {
                         section(title: "TIME IN ZONE", right: timeInZoneLabel) {
-                            ZoneBar(zones: zones, height: 14, legend: true)
+                            VStack(alignment: .leading, spacing: 12) {
+                                // ZoneMethodToggle · %MHR / LTHR switch.
+                                // When the backend ships hr_zones_from_lthr,
+                                // the toggle is meaningful (the two methods
+                                // can differ 5-10 bpm). Otherwise it stays
+                                // visible but locked to %MHR. Toolkit · Family I.
+                                if run?.hr_zones_from_lthr != nil {
+                                    HStack {
+                                        Spacer()
+                                        ZoneMethodToggle(method: $zoneMethod)
+                                    }
+                                }
+                                ZoneBar(zones: zones, height: 14, legend: true)
+                            }
                         }
                         .padding(.top, 26)
                     }

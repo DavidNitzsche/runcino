@@ -593,11 +593,8 @@
       ("3×8 min @ T-pace · Daniels Table 4 · Research/04 §threshold").
       Stored on plan_workouts.workout_spec and surfaced through the
       briefing's workout_breakdown rows.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A "WHY"
-      collapsible at the bottom of Day Detail showing the citation +
-      a deep link to the matching Learn article. Reuses the
-      LearnArticleSheet that already exists on iPhone.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit WorkoutWhyCard.</strong> PlannedView ships WorkoutWhyCard under FUEL & HYDRATION · resolves the relevant Learn slug from the workout's paceLabel + name (threshold / vo2-max / the-long-run / why-easy-is-easy), renders a 1-line summary + citation source, and deep-links into LearnArticleSheet on tap.</td>
   <td><code>plan_workouts.workout_spec</code> ·
       <code>lib/plan/workout-library.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -805,11 +802,8 @@
       using Friel LTHR zones (Z1-Z5) instead of %MHR. Separate from
       hrZonePcts which uses %MHR. The two answers can differ by 5-10
       bpm · iPhone shows only the %MHR breakdown.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A
-      toggle pill above the time-in-zones bar · "%MHR · LTHR" lets the
-      runner switch the math without leaving the page. Honest about
-      the method per zones.ts doctrine.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ZoneMethodToggle.</strong> RunDetailView TIME IN ZONE section ships ZoneMethodToggle (%MHR / LTHR) above the ZoneBar when run.hr_zones_from_lthr is set on the wire. Switches the band math; the runner sees which method drove their zone counts.</td>
   <td><code>Models/Runs.swift:HRZonesFromLTHR</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1066,11 +1060,8 @@
       temperature / wind / dew point for race day when the race is
       within Open-Meteo's 16-day horizon. Currently the iPhone race
       page shows a placeholder "RACE MORNING" tile with hardcoded copy.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. Once
-      days_to_race &lt;= 14, hit the forecast endpoint and replace
-      the placeholder copy with the real expected conditions. Beyond
-      14d show a "forecast available in N days" stub.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ConditionsLine.</strong> RaceDayView reuses the prescription weather block · the consolidated ConditionsLine atom is built and ready to drop the moment a per-race forecast endpoint ships. Today the race detail's `proximity` band drives the topbar label (RACE WEEK / SHARPENING / BUILDING).</td>
   <td><code>app/api/forecast/[date]/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1790,12 +1781,8 @@
       has title / one-liner / what-it-is / why-it-matters / bands /
       drills. Mirrors lib/training/form-tips.ts. iPhone Models/Tips.swift
       already decodes the wire shape; no view consumes it.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A FORM
-      section on Health (or its own Form tab on the run-detail screen)
-      showing the runner's current cadence / GCT / VO numbers against
-      band thresholds with a "tap for drills" reveal. Reuses the
-      LearnArticleSheet-style reader.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit FormMetricsGrid.</strong> RunDetailView FORM section already renders the 8 metrics; the toolkit's FormMetricsGrid carries the band-tinted swatch + tap-into-tips deep-link pattern · use the toolkit atom for the re-skin when tips wiring lands.</td>
   <td><code>app/api/tips/route.ts</code> ·
       <code>lib/training/form-tips.ts</code></td>
   <td class="client-ios">IOS</td>

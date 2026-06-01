@@ -71,6 +71,21 @@ struct PlannedView: View {
                         .padding(.top, 6)
                     }
 
+                    // WHY THIS WORKOUT · WorkoutWhyCard. Citation comes
+                    // from the workout name's matching Learn slug (the
+                    // tips library mirrors the doctrine articles). Deep
+                    // links into LearnArticleSheet on tap. Toolkit · Family D.
+                    if let slug = whyArticleSlug {
+                        WorkoutWhyCard(
+                            title: "Why this workout",
+                            text: whyArticleSummary,
+                            source: whyArticleSource,
+                            learnSlug: slug
+                        )
+                        .padding(.horizontal, 24)
+                        .padding(.top, 18)
+                    }
+
                     Spacer(minLength: 140)
                 }
             }
@@ -275,6 +290,55 @@ struct PlannedView: View {
 
     private var workoutTitle: String {
         workout?.name ?? "Workout"
+    }
+
+    // MARK: - WorkoutWhyCard helpers
+    //
+    // Resolve the relevant Learn article slug + 1-line summary +
+    // citation source for the effort type. The slugs match the Learn
+    // article SEED in web-v2/app/learn/[slug]/seed.ts so the deep link
+    // lands on a real page. Slug is nil for rest/recovery so the card
+    // hides.
+
+    private var whyArticleSlug: String? {
+        let pace = (workout?.paceLabel ?? "").lowercased()
+        let name = (workout?.name ?? "").lowercased()
+        if pace.contains("t") || name.contains("tempo") || name.contains("threshold") {
+            return "threshold"
+        }
+        if pace.contains("i") || name.contains("intervals") || name.contains("vo2") {
+            return "vo2-max"
+        }
+        if name.contains("long") {
+            return "the-long-run"
+        }
+        if pace.contains("e") || name.contains("easy") {
+            return "why-easy-is-easy"
+        }
+        return nil
+    }
+    private var whyArticleSummary: String {
+        switch whyArticleSlug {
+        case "threshold":
+            return "Threshold work teaches your body to clear lactate at race effort. Hold the surges even, not hard."
+        case "vo2-max":
+            return "Short, hard intervals raise the ceiling on the engine you race with. The recoveries are part of the work."
+        case "the-long-run":
+            return "The aerobic stimulus is in the time on feet, not the last-mile split. Stay in the temperature for the day."
+        case "why-easy-is-easy":
+            return "Easy means easy. Most of the week's adaptation banks here, where the cost stays cheap."
+        default:
+            return ""
+        }
+    }
+    private var whyArticleSource: String? {
+        switch whyArticleSlug {
+        case "threshold": return "Daniels Table 4 · Research/04 §threshold"
+        case "vo2-max":   return "Daniels VO₂max · Research/05 §intervals"
+        case "the-long-run": return "Research/02 §long-run-doctrine"
+        case "why-easy-is-easy": return "Research/01 §80-20"
+        default: return nil
+        }
     }
 
     /// Eyebrow text · "MON, MAY 26 · TODAY · LONG". Falls back to the
