@@ -276,7 +276,12 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       pace: s.pace ?? s.pace_min_per_mi ?? fmtPace(sPerMi) ?? null,
       hr: Number(s.hr ?? s.avgHr) || null,
       cadence: Number(s.cadence ?? s.avgCadence) || null,
-      elev_change_ft: Number(s.elev_change_ft ?? s.elevChangeFt) || null,
+      // 2026-05-31: also accept `elev_ft` · iPhone HK importer + Faff
+      // watch app post per-mile splits keyed `elev_ft` (semantically the
+      // mile-end minus mile-start altitude delta, NOT an absolute). Without
+      // this fallback the read-time elev sanity check below saw all-zero
+      // splits and bailed back to the raw 4684 ft on watch-source rows.
+      elev_change_ft: Number(s.elev_change_ft ?? s.elevChangeFt ?? s.elev_ft) || null,
       phase: null,
     };
   }) : [];

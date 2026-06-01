@@ -40,6 +40,7 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { fetchRunWeather } from '@/lib/weather/openmeteo';
 import { requireUserId } from '@/lib/auth/session';
+import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -81,7 +82,25 @@ export async function POST(req: NextRequest) {
     avgVertOscCm: body.avg_vert_osc_cm ?? null,
     avgStrideLengthM: body.avg_stride_length_m ?? null,
     avgGctMs: body.avg_gct_ms ?? null,
-    elevGainFt: body.elev_gain_ft ?? null,
+    // 2026-05-31: barometric-drift sanity at ingest. iPhone HK importer
+    // sums every sample-to-sample altitude delta — on a 12mi run with
+    // 5000+ GPS points at ±2m jitter, that compounds to thousands of
+    // fictional feet (David's 12mi long: 4684 ft, 379 ft/mi). When the
+    // raw ratio busts 250 ft/mi AND per-mile splits agree on a smaller
+    // value, persist the splits-derived sum and stamp elevGainSource =
+    // 'recomputed' so the read path knows the provenance.
+    ...(() => {
+      const splitsArr = Array.isArray(body.splits) ? body.splits : [];
+      const sanity = sanitizeElevGain({
+        elevGainFt: body.elev_gain_ft ?? null,
+        distanceMi: Number(body.distance_mi),
+        splits: splitsArr,
+      });
+      return {
+        elevGainFt: sanity.value,
+        elevGainSource: sanity.source,
+      };
+    })(),
     tempF: body.temp_f ?? null,
     splits: Array.isArray(body.splits) ? body.splits : [],
     // 2026-05-31: was defaulting to {z1:0,...,z5:0} — a falsey-looking value

@@ -403,13 +403,8 @@ final class HealthKitImporter: ObservableObject {
         var mileStartTime = locs[0].timestamp
         var mileStartElev = locs[0].altitude
         var mileNo = 1
-        var elevGainM = 0.0
-        var prevElev = locs[0].altitude
         for i in 1..<locs.count {
             distSoFar += locs[i].distance(from: locs[i - 1])
-            let dElev = locs[i].altitude - prevElev
-            if dElev > 0 { elevGainM += dElev }
-            prevElev = locs[i].altitude
             while distSoFar >= lastMileMark + mileMeters {
                 lastMileMark += mileMeters
                 let secs = Int(locs[i].timestamp.timeIntervalSince(mileStartTime).rounded())
@@ -430,6 +425,20 @@ final class HealthKitImporter: ObservableObject {
             }
         }
 
+        // 2026-05-31 · derive elevGainFt from the per-mile split deltas,
+        // NOT by summing every sample-to-sample altitude tick. The old
+        // approach (`if dElev > 0 { elevGainM += dElev }` over every GPS
+        // point) compounded ±2m altitude jitter across 5000+ samples
+        // into thousands of fictional feet — David's 12.36mi suburban
+        // long run came back at 4684 ft (379 ft/mi) when the per-mile
+        // splits sum to 587 ft (a believable 48 ft/mi). Summing per-mile
+        // deltas takes mile_end_altitude − mile_start_altitude, which
+        // naturally smooths sample noise: across a mile (~5 minutes,
+        // hundreds of samples) the noise averages out.
+        let elevGainFtFromSplits = splits.reduce(0) { acc, s in
+            acc + max(0, s.elevDeltaFt)
+        }
+
         // Downsample polyline to ~600 points for the map.
         var coords: [(Double, Double)] = []
         let step = max(1, locs.count / 600)
@@ -442,7 +451,7 @@ final class HealthKitImporter: ObservableObject {
 
         return SplitsResult(
             splits: splits,
-            elevGainFt: Int((elevGainM * 3.28084).rounded()),
+            elevGainFt: elevGainFtFromSplits,
             polyline: encodePolyline(coords)
         )
     }

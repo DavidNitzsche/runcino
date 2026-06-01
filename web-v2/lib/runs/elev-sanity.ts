@@ -33,9 +33,25 @@
 export interface ElevSanityInput {
   elevGainFt: number | null | undefined;
   distanceMi: number | null | undefined;
-  /** Per-mile splits with `elev_change_ft` per row · accepts either
-   *  this canonical name or `elevation_difference` (Strava splits). */
-  splits?: Array<{ elev_change_ft?: number | null; elevation_difference?: number | null }>;
+  /** Per-mile splits with the per-split elevation DELTA in feet.
+   *  Accepts any of the three field names callers use in the wild:
+   *   · elev_change_ft         · canonical (Strava-pulled rows after pullSync rename)
+   *   · elevation_difference   · raw Strava split shape
+   *   · elev_ft                · iPhone HealthKitImporter + Faff watch app
+   *     (semantically the per-mile end-start altitude delta, NOT an
+   *      absolute altitude · see HealthKitImporter.swift:
+   *      `elevDeltaFt = (mileEndAlt - mileStartAlt) * 3.28084`)
+   *
+   *  Three names exist because of history: HK + watch landed with
+   *  elev_ft, pullSync normalized Strava's elevation_difference →
+   *  elev_change_ft, and this sanity helper didn't know about elev_ft
+   *  so it never fired on HK/watch rows · which is exactly the bug
+   *  that let 4684 ft show up on a 12mi suburban long run (2026-05-31). */
+  splits?: Array<{
+    elev_change_ft?: number | null;
+    elevation_difference?: number | null;
+    elev_ft?: number | null;
+  }>;
 }
 
 export interface ElevSanityResult {
@@ -65,9 +81,10 @@ export function sanitizeElevGain(input: ElevSanityInput): ElevSanityResult {
   if (splits.length < minSplits) {
     return { value: Math.round(raw), source: 'raw' };
   }
-  // Sum positive elev changes. Accept either field name.
+  // Sum positive elev changes. Accept all three known field names ·
+  // see ElevSanityInput.splits doc for why we tolerate three names.
   const splitsPositive = splits.reduce((s, sp) => {
-    const c = Number(sp.elev_change_ft ?? sp.elevation_difference ?? 0);
+    const c = Number(sp.elev_change_ft ?? sp.elevation_difference ?? sp.elev_ft ?? 0);
     return s + (c > 0 ? c : 0);
   }, 0);
   if (splitsPositive <= 0) {
