@@ -184,7 +184,17 @@ function formatHMS(sec: number): string {
 /**
  * ProjectionTrend — sparkline of the runner's projected finish time at the
  * goal race's distance, from projection_snapshots (90 days). Goal line
- * drawn across when goalSec is known. Older snapshots fade out at the left.
+ * drawn across when goalSec is known.
+ *
+ * Rendering notes:
+ *   · X axis is calendar-aware: points are positioned by their date span,
+ *     not by index. 8 snapshots over 60 days now show real spacing instead
+ *     of a uniform stripe.
+ *   · When projection is steady (delta < 5s), the area fill is dropped and
+ *     a clean horizontal line + endpoint dot render instead. Avoids the
+ *     "solid green block" look when the trend is flat.
+ *   · Y domain expands to include the goal line, so the line + goal sit
+ *     in the same visual space regardless of distance between them.
  */
 function ProjectionTrend({
   series, goalSec, projectedLabel, daysAway,
@@ -200,29 +210,59 @@ function ProjectionTrend({
   const W = 720;
   const H = 160;
   const PAD_X = 16;
-  const PAD_Y = 18;
+  const PAD_Y = 22;
   const innerW = W - PAD_X * 2;
   const innerH = H - PAD_Y * 2;
 
   const secs = pts.map(p => p.projectionSec);
-  const minSec = Math.min(...secs, goalSec ?? Infinity);
-  const maxSec = Math.max(...secs, goalSec ?? -Infinity);
-  // Pad domain so the line never sits on the edge.
-  const span = Math.max(30, maxSec - minSec);
-  const lo = minSec - span * 0.1;
-  const hi = maxSec + span * 0.1;
+  const projMin = Math.min(...secs);
+  const projMax = Math.max(...secs);
+  const projSpan = projMax - projMin;
+  const isFlat = projSpan < 5; // <5s drift over the series · render clean line
+
+  // Y domain: extend to fit the goal line + give the projection room to
+  // breathe even when it's identical to the goal. Floor at 60s so a
+  // perfectly flat steady-state never collapses to a 1px-tall chart.
+  const candidates = [...secs];
+  if (goalSec != null) candidates.push(goalSec);
+  const rawMin = Math.min(...candidates);
+  const rawMax = Math.max(...candidates);
+  const rawSpan = Math.max(60, rawMax - rawMin);
+  const lo = rawMin - rawSpan * 0.18;
+  const hi = rawMax + rawSpan * 0.18;
   const yFor = (sec: number) => PAD_Y + innerH - ((sec - lo) / (hi - lo)) * innerH;
-  const xFor = (i: number) => PAD_X + (innerW * i) / (pts.length - 1);
+
+  // Calendar-aware X positioning · snapshots spaced by their date offset,
+  // not by index. Falls back to even spacing if dates can't be parsed.
+  const ts = pts.map(p => {
+    const d = new Date(p.date);
+    return Number.isFinite(d.getTime()) ? d.getTime() : null;
+  });
+  const usesCalendar = ts.every(v => v !== null);
+  const t0 = usesCalendar ? (ts[0] as number) : 0;
+  const tLast = usesCalendar ? (ts[ts.length - 1] as number) : pts.length - 1;
+  const tSpan = Math.max(1, tLast - t0);
+  const xFor = (i: number) =>
+    PAD_X + innerW * (usesCalendar ? ((ts[i] as number) - t0) / tSpan : i / (pts.length - 1));
 
   const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(i).toFixed(1)},${yFor(p.projectionSec).toFixed(1)}`).join(' ');
-  const area = `${path} L${xFor(pts.length - 1).toFixed(1)},${(H - PAD_Y).toFixed(1)} L${xFor(0).toFixed(1)},${(H - PAD_Y).toFixed(1)} Z`;
   const goalY = goalSec != null ? yFor(goalSec) : null;
-
   const last = pts[pts.length - 1];
   const first = pts[0];
   const deltaSec = first.projectionSec - last.projectionSec; // positive = faster (lower sec)
-  const trendLabel = Math.abs(deltaSec) < 5 ? 'steady' : deltaSec > 0 ? `${formatHMS(deltaSec)} faster over ${pts.length} days` : `${formatHMS(-deltaSec)} slower over ${pts.length} days`;
-  const trendColor = Math.abs(deltaSec) < 5 ? 'var(--text-mid)' : deltaSec > 0 ? '#3EBD41' : '#FC4D64';
+  const trendLabel = isFlat
+    ? 'steady'
+    : deltaSec > 0
+      ? `${formatHMS(deltaSec)} faster over ${pts.length} snapshots`
+      : `${formatHMS(-deltaSec)} slower over ${pts.length} snapshots`;
+  const trendColor = isFlat ? 'var(--text-mid)' : deltaSec > 0 ? '#3EBD41' : '#FC4D64';
+
+  // Spanning label · "8 snapshots over N days" rather than just "8 days".
+  let spanLabel = `${pts.length} snapshots`;
+  if (usesCalendar) {
+    const daySpan = Math.round((tLast - t0) / 86400000);
+    if (daySpan > 0) spanLabel = `${pts.length} snapshots over ${daySpan} days`;
+  }
 
   return (
     <div style={{ marginTop: 30 }}>
@@ -247,27 +287,56 @@ function ProjectionTrend({
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ height: 'auto', display: 'block' }}>
           <defs>
             <linearGradient id="ptArea" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#3EBD41" stopOpacity="0.32" />
+              <stop offset="0" stopColor="#3EBD41" stopOpacity="0.22" />
               <stop offset="1" stopColor="#3EBD41" stopOpacity="0" />
             </linearGradient>
             <linearGradient id="ptLine" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#3EBD41" stopOpacity="0.4" />
+              <stop offset="0" stopColor="#3EBD41" stopOpacity="0.35" />
               <stop offset="1" stopColor="#3EBD41" stopOpacity="1" />
             </linearGradient>
           </defs>
+          {/* Goal line first so the projection sits on top */}
           {goalY != null ? (
             <>
               <line x1={PAD_X} x2={W - PAD_X} y1={goalY} y2={goalY} stroke="#F3AD38" strokeDasharray="4 4" strokeWidth="1.5" />
               <text x={W - PAD_X} y={goalY - 4} fill="#F3AD38" fontSize="10" fontWeight="700" textAnchor="end" fontFamily="Inter">GOAL</text>
             </>
           ) : null}
-          <path d={area} fill="url(#ptArea)" />
+          {/* Area fill ONLY when there's real movement · steady-state runs
+              read as a clean line, not a solid block. */}
+          {!isFlat ? (
+            <path
+              d={`${path} L${xFor(pts.length - 1).toFixed(1)},${(H - PAD_Y).toFixed(1)} L${xFor(0).toFixed(1)},${(H - PAD_Y).toFixed(1)} Z`}
+              fill="url(#ptArea)"
+            />
+          ) : null}
           <path d={path} fill="none" stroke="url(#ptLine)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-          <circle cx={xFor(pts.length - 1)} cy={yFor(last.projectionSec)} r="4" fill="#3EBD41" />
+          {/* Render every snapshot as a small dot so the runner can see
+              the underlying data density. Latest snapshot gets a bigger ring. */}
+          {pts.map((p, i) => (
+            <circle
+              key={i}
+              cx={xFor(i)}
+              cy={yFor(p.projectionSec)}
+              r={i === pts.length - 1 ? 4.5 : 2}
+              fill="#3EBD41"
+              fillOpacity={i === pts.length - 1 ? 1 : 0.55}
+            />
+          ))}
+          {pts.length > 0 ? (
+            <circle
+              cx={xFor(pts.length - 1)}
+              cy={yFor(last.projectionSec)}
+              r="8"
+              fill="none"
+              stroke="#3EBD41"
+              strokeOpacity="0.35"
+            />
+          ) : null}
         </svg>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-dim, #5E6776)', marginTop: 6, letterSpacing: '0.06em' }}>
           <span>{formatShort(first.date)}</span>
-          <span>{pts.length} days · {daysAway} until race</span>
+          <span>{spanLabel} · {daysAway} until race</span>
           <span>{formatShort(last.date)}</span>
         </div>
       </div>
