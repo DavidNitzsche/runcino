@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { FaffSeed, HeatCell } from '../types';
+import { StreakPill } from '../toolkit';
 
 const EC: Record<string,string> = {
   recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38',
@@ -45,6 +46,10 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
         <div>
           <div className="date">Activity</div>
           <div className="wk">Your training log</div>
+        </div>
+        <div style={{ marginTop: 6 }}>
+          {/* Live streak counter · /api/streak. Closes coverage line 1281. */}
+          <StreakPill />
         </div>
       </div>
 

@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { ZC } from '../constants';
 import { decodePolyline, polylineToSvgPath, polylineEndpoints, elevPathFromSplits } from '@/lib/route/polyline';
-import { RPEEntryCard } from '../toolkit';
+import { PostRunCheckinChips, RPEEntryCard } from '../toolkit';
 
 /**
  * Run-detail overlay. Opens off Activity / Recent Runs / Heatmap clicks
@@ -246,6 +246,13 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
               <div className="fll" style={{ marginTop: 22 }}>HOW IT FELT</div>
               <div style={{ marginTop: 6 }}>
                 <RPEEntryCard runId={data.id} />
+              </div>
+              {/* Post-run check-in · execution + body chips, canned
+                  coach reply from /api/checkin. Closes coverage row 453
+                  ("Post-run check-in canned coach reply"). */}
+              <div className="fll" style={{ marginTop: 22 }}>CHECK IN</div>
+              <div style={{ marginTop: 6 }}>
+                <PostRunCheckinChips runId={data.id} />
               </div>
             </>
           )}

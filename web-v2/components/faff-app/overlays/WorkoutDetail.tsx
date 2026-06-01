@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, PLAN_CUES, ZC, hexA } from '../constants';
 import { decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
+import { WatchPreviewTimeline } from '../toolkit';
 
 const Check = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -179,6 +180,16 @@ function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
       <div className="coach" style={{ marginTop: 20 }}>
         <span className="ct">COACH</span><span className="cx">{k.coach}</span>
       </div>
+      {/* Watch preview · what the watch will buzz you through. Live
+          fetch from /api/watch/today?date=. Closes coverage line 689. */}
+      {d.iso ? (
+        <>
+          <div className="fll" style={{ marginTop: 22 }}>WATCH PREVIEW</div>
+          <div style={{ marginTop: 6 }}>
+            <WatchPreviewTimeline date={d.iso} />
+          </div>
+        </>
+      ) : null}
     </>
   );
 }

@@ -1,18 +1,31 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FaffSeed } from '../types';
-import { CountdownLadder, MARATHON_COUNTDOWN } from '../toolkit';
+import { CountdownLadder, MARATHON_COUNTDOWN, StateChangeToast } from '../toolkit';
 
-async function patchRace(slug: string, payload: Record<string, unknown>): Promise<boolean> {
+interface RecalcResult {
+  vdotBefore?: number | null;
+  vdotAfter?: number | null;
+  lthrBefore?: number | null;
+  lthrAfter?: number | null;
+  lthrMethod?: string;
+}
+
+async function patchRace(
+  slug: string,
+  payload: Record<string, unknown>
+): Promise<{ ok: boolean; recalc: RecalcResult | null }> {
   try {
     const res = await fetch('/api/race', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slug, ...payload }),
     });
-    return res.ok;
-  } catch { return false; }
+    if (!res.ok) return { ok: false, recalc: null };
+    const j = await res.json().catch(() => ({}));
+    return { ok: true, recalc: (j?.recalc ?? null) as RecalcResult | null };
+  } catch { return { ok: false, recalc: null }; }
 }
 
 export type RaceDetailSeed = {
@@ -123,21 +136,34 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
     setBib(next);
     void patchRace(r.slug, { bib: next });
   }
+  // Recalc deltas returned by the race PATCH (when finishTime + avgHrBpm
+  // were both set, the backend auto-recalcs VDOT + LTHR). Surfaced via
+  // StateChangeToast for ~5s after a save lands. Closes line 1228.
+  const [recalcToast, setRecalcToast] = useState<RecalcResult | null>(null);
+  useEffect(() => {
+    if (!recalcToast) return;
+    const t = setTimeout(() => setRecalcToast(null), 5500);
+    return () => clearTimeout(t);
+  }, [recalcToast]);
+
   async function commitFinish(text: string) {
     const trimmed = (text || '').trim();
     // Normalize anything HMS-shaped to canonical H:MM:SS. Empty clears it.
     const normalized = trimmed === '' ? null : (parseHMS(trimmed) > 0 ? fmtHMS(parseHMS(trimmed)) : trimmed);
     setFinishTime(normalized ?? '');
     setSavingFinish(true);
-    const ok = await patchRace(r.slug, { finishTime: normalized });
+    const { ok, recalc } = await patchRace(r.slug, { finishTime: normalized });
     setSavingFinish(false);
     setFinishAck(ok ? 'saved' : 'error');
     setTimeout(() => setFinishAck(null), 1800);
+    if (recalc && (recalc.vdotAfter != null || recalc.lthrAfter != null)) {
+      setRecalcToast(recalc);
+    }
   }
   async function commitPb(next: boolean) {
     setPb(next);
     setSavingFinish(true);
-    const ok = await patchRace(r.slug, { pb: next });
+    const { ok } = await patchRace(r.slug, { pb: next });
     setSavingFinish(false);
     setFinishAck(ok ? 'saved' : 'error');
     setTimeout(() => setFinishAck(null), 1800);
@@ -402,6 +428,35 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
           Past results &amp; weather history
         </div>
       </div>
+
+      {/* Race retro recalc toast · auto-dismisses after ~5s. Closes
+          coverage line 1228. */}
+      {recalcToast ? (
+        <div
+          style={{
+            position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 70, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center',
+          }}
+          role="status"
+        >
+          {recalcToast.vdotAfter != null ? (
+            <StateChangeToast
+              label="VDOT"
+              before={recalcToast.vdotBefore ?? '·'}
+              after={recalcToast.vdotAfter}
+              message="VDOT updated from this race"
+            />
+          ) : null}
+          {recalcToast.lthrAfter != null ? (
+            <StateChangeToast
+              label="LTHR"
+              before={recalcToast.lthrBefore ?? '·'}
+              after={recalcToast.lthrAfter}
+              message={`LTHR re-calibrated${recalcToast.lthrMethod ? ` · ${recalcToast.lthrMethod}` : ''}`}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </>
   );
 }

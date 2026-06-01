@@ -6,7 +6,9 @@ import type { FaffSeed, ShoeRec } from '../types';
 import { ROLECOL } from '../constants';
 import {
   CoachActivityTimeline,
+  ConnectionRow as ToolkitConnectionRow,
   NotificationPrefsList,
+  ToggleRow,
 } from '../toolkit';
 
 const ROLES = ['RACE','TEMPO','LONG','EASY','RECOVERY'];
@@ -137,11 +139,6 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           <span className="setk">UNITS</span><span className="setv">{units}</span><span className="sgo">›</span>
         </div>
         <div className="setr">
-          <span className="setk">CONNECTED</span>
-          <span className="setv">{seed.connections.filter(c => c.on).map(c => c.nm).join(' · ') || 'None'}</span>
-          <span className="sgo">›</span>
-        </div>
-        <div className="setr">
           <span className="setk">EXPERIENCE</span><span className="setv">{prettyExperience(seed.user.experienceLevel)}</span><span className="sgo">›</span>
         </div>
         <div className="setr" onClick={onOpenPaywall}>
@@ -150,6 +147,47 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         <div className="setr danger">
           <span className="setk">SIGN OUT</span><span className="setv"></span>
         </div>
+      </div>
+
+      {/* Connection rows · per-source connection state with sync timestamp.
+          Closes coverage line 1816 (connected sources management). */}
+      <div className="fll" style={{ marginTop: 30 }}>CONNECTIONS</div>
+      <div className="fa-rows" style={{ marginTop: 6 }}>
+        {seed.connections.map(c => (
+          <ToolkitConnectionRow
+            key={c.id}
+            name={c.nm}
+            connected={c.on}
+            lastSyncIso={c.lastSyncIso}
+            logo={
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 9,
+                  background: c.bg,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 700,
+                  fontSize: 14,
+                }}
+              >
+                {c.gl}
+              </div>
+            }
+          />
+        ))}
+      </div>
+
+      {/* Pro toggles · phone_hr_alerts + strava_auto_push. Closes
+          coverage line 2034 (per-user phone HR alerts toggle) + line 1546
+          (strava_auto_push). Lazy-fetched/patched via /api/profile. */}
+      <div className="fll" style={{ marginTop: 30 }}>PRO TOGGLES</div>
+      <div className="fa-rows" style={{ marginTop: 6 }}>
+        <ProfileToggleRows />
       </div>
 
       {/* Notification preferences · live GET + PATCH against
@@ -193,6 +231,68 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           setEditing(null);
         }}
       />
+    </>
+  );
+}
+
+/* ============================================================
+   ProfileToggleRows · phone_hr_alerts + strava_auto_push toggles
+   Lazy GET /api/profile, PATCH back on change.
+   ============================================================ */
+function ProfileToggleRows() {
+  const [phoneHrAlerts, setPhoneHrAlerts] = useState<boolean | null>(null);
+  const [autoPush, setAutoPush] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/profile')
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (!alive || !j) return;
+        setPhoneHrAlerts(Boolean(j.phone_hr_alerts));
+        setAutoPush(Boolean(j.strava_auto_push));
+      })
+      .catch(() => { /* fail soft */ });
+    return () => { alive = false; };
+  }, []);
+
+  async function patch(field: 'phone_hr_alerts' | 'strava_auto_push', next: boolean) {
+    setBusy(field); setErr(null);
+    try {
+      const r = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ [field]: next }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (field === 'phone_hr_alerts') setPhoneHrAlerts(next);
+      else setAutoPush(next);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <ToggleRow
+        label="Phone HR alerts"
+        sub="Buzz when watch HR drifts beyond zone during a run"
+        checked={phoneHrAlerts ?? false}
+        busy={busy === 'phone_hr_alerts'}
+        onChange={(n) => void patch('phone_hr_alerts', n)}
+      />
+      <ToggleRow
+        label="Auto-push to Strava"
+        sub="Push completed watch runs to Strava without a manual tap"
+        checked={autoPush ?? false}
+        busy={busy === 'strava_auto_push'}
+        onChange={(n) => void patch('strava_auto_push', n)}
+      />
+      {err ? <p className="fa-prov" style={{ color: 'var(--over)', padding: '8px 16px' }}>{err}</p> : null}
     </>
   );
 }

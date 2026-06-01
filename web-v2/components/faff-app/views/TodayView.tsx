@@ -9,6 +9,7 @@ import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { RouteMap } from '../RouteMap';
 import {
   AdaptationCard,
+  DayStatePill,
   LoadBandChip,
   ReconnectBanner,
   type LoadBand,
@@ -73,6 +74,19 @@ export function TodayView({
     return 'spike';
   })();
 
+  // "Yesterday missed" detection. When the previous day was planned,
+  // not a rest, not done, and not explicitly skipped → surface a
+  // DayStatePill with three actions: log a different effort,
+  // mark skipped retroactively, or carry forward. Closes coverage
+  // line 441.
+  const missedYesterday: typeof seed.week[number] | null = (() => {
+    if (seed.todayIdx <= 0) return null;
+    const y = seed.week[seed.todayIdx - 1];
+    if (!y) return null;
+    if (y.done || y.skipped || y.type === 'rest') return null;
+    return y;
+  })();
+
   return (
     <>
       {/* Reconnect banner · auto-hides when Strava is connected. Closes
@@ -113,6 +127,34 @@ export function TodayView({
           <div style={{ flex: 1, minWidth: 240 }}>
             <AdaptationCard />
           </div>
+        </div>
+      ) : null}
+
+      {/* Missed yesterday pill · three options when last planned day
+          went unrun + unskipped. Closes coverage line 441. */}
+      {missedYesterday ? (
+        <div style={{ marginTop: 12 }}>
+          <DayStatePill
+            kind="missed"
+            label={`Yesterday's ${missedYesterday.name.toLowerCase()} · ${missedYesterday.dist} mi`}
+            actions={[
+              {
+                label: 'LOG IT',
+                onClick: () => { onPickDay(seed.todayIdx - 1); },
+              },
+              {
+                label: 'SKIP',
+                onClick: () => {
+                  if (!missedYesterday.iso) return;
+                  void fetch('/api/today/skip', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ date: missedYesterday.iso, skip: true }),
+                  }).then(() => { setSkippedFor(missedYesterday.iso, true); });
+                },
+              },
+            ]}
+          />
         </div>
       ) : null}
 

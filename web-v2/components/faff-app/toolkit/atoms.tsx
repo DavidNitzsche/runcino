@@ -1,9 +1,10 @@
+'use client';
+
 /**
  * Faff Toolkit · atoms (Family A · B · D · J primitives)
  *
- * Drop-in atoms that compose into the larger toolkit views. Every atom
- * here is presentational; data fetching lives in the composite that uses
- * it (RPEEntryCard, ReconnectBanner, AdaptationCard, etc.).
+ * Drop-in atoms that compose into the larger toolkit views. Most atoms
+ * here are presentational; a few (StreakPill) lazy-fetch their own data.
  *
  * Source of truth · designs/from Design agent/design_handoff_faff_toolkit
  *   tokens.css     · the .fa-* class system
@@ -393,6 +394,55 @@ export function ProjectionSparkline({
       </div>
     </div>
   );
+}
+
+/* ============================================================
+   I · StreakPill — current consecutive-day streak counter with
+   milestone target. Closes coverage row 1281 (now unblocked by
+   GET /api/streak landing on main).
+   ============================================================ */
+export function StreakPill({ initial }: { initial?: StreakPayload | null } = {}) {
+  const [data, setData] = React.useState<StreakPayload | null>(initial ?? null);
+  const [state, setState] = React.useState<'idle' | 'loading' | 'error'>(initial ? 'idle' : 'loading');
+
+  React.useEffect(() => {
+    if (initial) return;
+    let alive = true;
+    fetch('/api/streak')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((j: StreakPayload) => {
+        if (alive) { setData(j); setState('idle'); }
+      })
+      .catch(() => { if (alive) setState('error'); });
+    return () => { alive = false; };
+  }, [initial]);
+
+  if (state !== 'idle' || !data || data.current < 1) return null;
+
+  const ms = data.isMilestoneToday;
+  return (
+    <span
+      className={`fa-chip ${ms ? 'fa-chip--good' : 'fa-chip--info'}`}
+      title={
+        data.nextMilestone
+          ? `Next milestone: ${data.nextMilestone} days (${data.daysToMilestone} to go)`
+          : undefined
+      }
+    >
+      <span className="dot" />
+      {data.current}-DAY STREAK
+      {ms ? ' · MILESTONE' : ''}
+    </span>
+  );
+}
+
+interface StreakPayload {
+  ok: boolean;
+  current: number;
+  longestPrior: number;
+  nextMilestone: number | null;
+  daysToMilestone: number | null;
+  isMilestoneToday: boolean;
 }
 
 /* ============================================================

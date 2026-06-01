@@ -429,13 +429,15 @@
       <code>missed</code>. faff-app TodayView doesn't currently distinguish
       "missed" from "rest" so the runner who silently no-shows their
       Tuesday tempo gets no surface acknowledging the gap.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: small "Yesterday's tempo · missed" chip
-      on TodayView when state=missed, with three options: log a
-      different effort, mark it skipped retroactively, or carry it
-      forward. <strong>Design tweak needed</strong>.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit DayStatePill.</strong> TodayView surfaces
+      a "Yesterday's tempo · missed" pill with two inline actions: LOG IT
+      (jumps to yesterday's slot) and SKIP (POST /api/today/skip
+      retroactively). Computes the missed state inline from the seed week
+      (prev day was planned + not done + not skipped + not rest).</td>
   <td><code>lib/faff/types.ts:DayState</code> ·
-      <code>lib/faff/personas.ts:helen</code></td>
+      <code>lib/faff/personas.ts:helen</code> ·
+      <code>app/api/today/skip/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -448,14 +450,15 @@
       and never surfaces the reply. The carefully-tuned canned-reply
       matrix (post 2026-05-28 LLM rip) is invisible to the live web
       user.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: bring the PostRunCheckinChips pattern
-      into faff-app's post-run flow. Tap execution + body chips, see
-      the coach reply inline. The pattern + the matrix are done; just
-      needs to be lifted out of the legacy /today layout.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit PostRunCheckinChips.</strong> RunDetailModal
+      renders execution + body chip groups under a CHECK IN eyebrow. On
+      Submit, POSTs to /api/checkin and inline-renders the canned
+      coach_reply matrix output. Lifts the legacy /today pattern into
+      the live faff-app run-detail flow.</td>
   <td><code>app/api/checkin/route.ts</code> ·
-      <code>components/cards/PostRunCheckinChips.tsx</code> ·
-      <code>lib/coach/checkin-reply-canned.ts</code></td>
+      <code>lib/coach/checkin-reply-canned.ts</code> ·
+      <code>components/faff-app/toolkit/CoachVerdict.tsx</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
@@ -675,13 +678,13 @@
       nor iOS surfaces a "preview" of the same payload on day detail,
       so a runner curious what their watch will buzz them through has
       to start the workout to find out.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: a "Watch preview" expandable block on
-      day detail rendering the phase list as a vertical timeline ·
-      one row per phase with the haptic icon + target pace + duration.
-      Single fetch to /api/watch/today?date=YYYY-MM-DD. <strong>Can add
-      inline</strong>. Builds confidence that what shows on the watch
-      matches the plan.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit WatchPreviewTimeline.</strong>
+      WorkoutDetail drawer renders a WATCH PREVIEW section under
+      EXECUTE that lazy-fetches /api/watch/today?date=YYYY-MM-DD and
+      shows one row per phase with haptic icon + target pace +
+      duration. Builds confidence that what shows on the watch matches
+      the plan.</td>
   <td><code>app/api/watch/today/route.ts</code> ·
       <code>lib/watch/build-workout.ts</code></td>
   <td class="client-web">WEB</td>
@@ -1068,16 +1071,13 @@
       doing the same race see the now-real course on their detail page.
       course_library.source = 'editorial' / 'crowd-sourced' / 'stub' +
       contributor_count int.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: on race detail show "crowd-sourced by N
-      runners" when source='crowd-sourced', "curated by Faff" when
-      source='editorial', "course preview unavailable · upload GPX to
-      contribute" when source='stub'. Subtle credit text under the map.
-      <strong>Can add inline</strong>.
-      <strong>Also found by IOS on 2026-05-31</strong>: iPhone RaceDayView
-      now shows "CROWD-SOURCED · N RUNNERS" under the route map when
-      course_library row has contributor_count &gt; 0 (build 118). Web
-      surface still missing.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · RaceView native.</strong> Race detail surfaces a
+      "Crowd-sourced · N runners" pill in the COURSE header when
+      <code>r.courseSource === 'promoted'</code> and
+      <code>contributorCount &gt; 1</code> (RaceView.tsx lines 270-276).
+      Toolkit's CrowdSourcedNote is also available for surfaces that
+      need the longer caption (editorial / crowd-sourced / stub variants).</td>
   <td><code>course_library.source</code> + <code>contributor_count</code> ·
       <code>lib/courses/promote-from-race.ts</code></td>
   <td class="client-web">WEB</td>
@@ -1087,11 +1087,13 @@
   <td>Daily snapshot of the runner's projected finish for their A race,
       written by /api/cron/snapshot-projections. Used to show trend over
       time (improving / stalling / regressing).</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. Worth a small sparkline on the
-      race header showing the last 4 weeks of projected times. The data is
-      there (projection_snapshots table, source='cron-daily' after first
-      cron tick).</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · TargetsView native.</strong> ProjectionTrend
+      sparkline renders on Targets when
+      <code>seed.projectionTrend.length &gt;= 2</code>, with the goal line
+      drawn across when goalSec is known and older snapshots fading to
+      the left. Toolkit's ProjectionSparkline is also available as a
+      smaller drop-in (e.g. inline on a race-header).</td>
   <td><code>projection_snapshots</code> table ·
       <code>lib/training/projection-snapshots.ts</code></td>
   <td class="client-web">WEB</td>
@@ -1218,13 +1220,12 @@
       with method + lthr_set_at provenance. The runner sees no
       acknowledgement that "logging your half-marathon updated your
       fitness baseline." Pure silent state change.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: post-save toast on race retro form:
-      "VDOT updated 49 → 51 from this race · paces will adjust." With
-      a small pill on the race detail card "VDOT bumped" the next time
-      the page loads. <strong>Can add inline</strong> · both writes
-      are already structured (coach_intents reason filter +
-      profile.lthr_set_at timestamp).</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit StateChangeToast.</strong> Race PATCH
+      route now returns a <code>recalc</code> object with VDOT/LTHR
+      before+after deltas; RaceView pops a StateChangeToast for ~5s
+      ("VDOT updated 49 → 51 from this race") whenever finishTime save
+      lands with a non-null recalc payload.</td>
   <td><code>app/api/race/route.ts:135-170</code> ·
       <code>lib/training/vdot.ts:vdotFromRace</code> ·
       <code>lib/training/lthr.ts:calibrateLthr</code></td>
@@ -1270,10 +1271,16 @@
       is computed but never returned in any GET response · the runner
       only knows when a milestone notification fires.</td>
   <td class="cov-full">FULL</td>
-  <td><strong>SHIPPED · toolkit StreakPill.</strong> ActivityView FEED renders StreakPill above the first week header when /api/streak returns current > 0. Milestone styling at 7 / 14 / 30 / 100. New backend endpoint GET /api/streak ships in this commit.</td>
+  <td><strong>SHIPPED · toolkit StreakPill (iOS + WEB).</strong> iOS:
+      ActivityView FEED renders StreakPill above the first week header
+      when /api/streak returns current &gt; 0. Web: ActivityView mounts
+      StreakPill in the top header. Both lazy-fetch /api/streak. Milestone
+      styling at 7 / 14 / 30 / 100. Backend GET /api/streak landed
+      2026-05-31.</td>
   <td><code>lib/notifications/streak-check.ts</code> ·
-      <code>strava_activities</code> (computed)</td>
-  <td class="client-ios">IOS</td>
+      <code>strava_activities</code> (computed) ·
+      <code>app/api/streak/route.ts</code></td>
+  <td class="client-both">BOTH</td>
 </tr>
 <tr>
   <td><strong>Per-source ingestion mix</strong></td>
@@ -1601,18 +1608,15 @@
   <td>Queryable at GET /api/learn/[slug]. Each has body_md content
       (373-1874 chars), eyebrow category, related_slugs array, citations_json.
       Currently no /learn page lists or links to them.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: build a /learn index page grouping articles
-      by eyebrow (SYSTEM DOCTRINE, FOUNDATIONAL INPUT LAYER, PRACTICAL
-      COACHING LOGIC, etc.). Each article = a card with title + first
-      line of body_md. Tap → /learn/[slug] reader. Articles are
-      self-contained, simple Markdown render. <strong>Design tweak needed</strong>
-      for the index layout.
-      <strong>Also found by IOS on 2026-05-31</strong>: iPhone now ships
-      LearnArticleSheet reader (build 118) with 5 hardcoded entry tiles
-      on the Health tab. The index page gap remains · there's no way
-      to browse the other 40 articles.</td>
-  <td><code>app/api/learn/[slug]/route.ts</code> · <code>learn_articles</code></td>
+  <td class="cov-full">FULL · WEB</td>
+  <td><strong>SHIPPED · /learn page.</strong> web-v2/app/learn/page.tsx
+      lists all doctrine articles grouped by eyebrow with title +
+      first-line excerpt. Tap routes to /learn/[slug] reader. Toolkit's
+      ArticleIndexCard is also available as a drop-in card shape for
+      surfaces that want to embed Learn articles (e.g. an "explainer
+      card" on Today or Health).</td>
+  <td><code>app/api/learn/[slug]/route.ts</code> · <code>learn_articles</code> ·
+      <code>web-v2/app/learn/page.tsx</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -1727,20 +1731,17 @@
       "Your hamstring niggle suggests a 4-week walk-run scaffold · Accept
       / Decline." Accept = buildInjuryPlan fires + archives the race-prep
       plan. Decline = noted, plan unchanged.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: a modal that surfaces when
-      coach_proposals.status = 'pending' for the user. Two buttons:
-      Accept → POST /api/coach/proposal/[id]/accept · Decline → POST
-      /api/coach/proposal/[id]/decline. Shows the proposal's reasoning
-      (from payload) + the planned change. <strong>Design tweak needed</strong>
-      for the modal layout.
-      <strong>Also found by IOS on 2026-05-31</strong>: iPhone has the
-      POST helper (API.postCoachProposal) wired through NudgeSheet
-      already, but no list-pending surface that reads
-      proposals-state.ts · pending proposals don't auto-surface, the
-      user only sees them if a nudge happens to land. The /api endpoints
-      to LIST pending proposals are still missing on both clients.</td>
-  <td><code>coach_proposals</code> table · <code>/api/coach/proposal/[id]/{accept,decline}</code></td>
+  <td class="cov-full">FULL · WEB</td>
+  <td><strong>SHIPPED · CoachProposalCard.</strong> TodayView renders
+      every pending proposal as a CoachProposalCard (injury_adjust +
+      illness_adjust gradient). Accept POSTs /api/coach/proposal/[id]/accept,
+      Decline POSTs /api/coach/proposal/[id]/decline, then router.refresh
+      so the card disappears. Backend list endpoint
+      (<code>GET /api/coach/proposals</code> plural) is still missing
+      so pending proposals only auto-surface via the seed's
+      pendingProposals path.</td>
+  <td><code>coach_proposals</code> table · <code>/api/coach/proposal/[id]/{accept,decline}</code> ·
+      <code>components/faff-app/cards/CoachProposalCard.tsx</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -1796,12 +1797,14 @@
       Polar + Whoop + Oura tokens. Backend supports all 7 providers (one
       already pre-allowlisted). Onboarding shows Apple Health + Strava +
       Garmin + FinalSurge per the design.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: Settings → Connections should let the runner
-      manage all currently-connected sources, see last sync time, and
-      disconnect. Currently the design shows them only at onboarding.
-      <strong>Design tweak needed</strong> for the management surface.</td>
-  <td><code>connector_tokens</code> table</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ConnectionRow.</strong> ProfileView renders
+      a CONNECTIONS section with per-source rows (Apple Health, Strava,
+      Apple Watch, FinalSurge) showing connected state + last sync
+      timestamp (stale flag amber if &gt; 24h). Disconnect / manage CTAs
+      can be added per-row when the disconnect endpoint lands.</td>
+  <td><code>connector_tokens</code> table ·
+      <code>profile.connections.{strava,appleHealth,appleWatch}.lastSync</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -2005,13 +2008,15 @@
       drift beyond zone during a run). Backend column exists, no toggle
       UI on Profile. Sister flag <code>strava_auto_push</code> (already
       surfaced via StravaConnectionCard) gives the pattern.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Can add inline · Profile → Settings toggle row</strong>
-      using the existing toggle component. One line of UI, one PATCH
-      target on <code>/api/settings</code>. Whether the watch actually
-      delivers the alert is a separate iOS workstream.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ToggleRow.</strong> ProfileView's PRO
+      TOGGLES section renders both phone_hr_alerts + strava_auto_push as
+      switch rows, lazy-fetched from GET /api/profile, PATCHed back to
+      /api/profile on change. Whether the watch actually delivers the
+      alert is a separate iOS workstream.</td>
   <td><code>profile.phone_hr_alerts</code> ·
-      <code>profile.strava_auto_push</code> (migration 110)</td>
+      <code>profile.strava_auto_push</code> (migration 110) ·
+      <code>app/api/profile/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>

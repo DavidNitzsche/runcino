@@ -131,6 +131,10 @@ export async function PATCH(req: NextRequest) {
 
     // P33 — auto-calibrate LTHR + VDOT from race retro when both finish
     // time and avg HR are set. Best-effort: failures don't block save.
+    // The recalc deltas are surfaced back on the response so the client
+    // can render a StateChangeToast (closes coverage line 1228 · race
+    // retro auto-recalc surfacing).
+    let recalc: { vdotBefore?: number | null; vdotAfter?: number | null; lthrBefore?: number | null; lthrAfter?: number | null; lthrMethod?: string } | null = null;
     if (meta.finishTime && meta.avgHrBpm && distanceMiFromLabel(meta.distanceLabel) != null) {
       try {
         const distanceMi = distanceMiFromLabel(meta.distanceLabel)!;
@@ -138,6 +142,24 @@ export async function PATCH(req: NextRequest) {
         const { calibrateLthr } = await import('@/lib/training/lthr');
         const secs = parseRaceTime(String(meta.finishTime));
         const hr = Number(meta.avgHrBpm);
+        recalc = {};
+        // Read the prior VDOT + LTHR off the most recent coach_intents +
+        // profile so the response can carry the before/after diff. No
+        // explicit before column for VDOT — best estimate is the most
+        // recent vdot_auto_recalc intent.
+        const priorVdot = await pool.query<{ value: string }>(
+          `SELECT value FROM coach_intents
+            WHERE COALESCE(user_uuid::text, user_id) = $1
+              AND reason = 'vdot_auto_recalc'
+            ORDER BY ts DESC LIMIT 1`,
+          [userId]
+        ).catch(() => ({ rows: [] }));
+        const priorLthr = await pool.query<{ lthr: number | null }>(
+          `SELECT lthr FROM profile WHERE user_uuid = $1`,
+          [userId]
+        ).catch(() => ({ rows: [] }));
+        recalc.vdotBefore = priorVdot.rows[0]?.value ? Number(priorVdot.rows[0].value) : null;
+        recalc.lthrBefore = priorLthr.rows[0]?.lthr ?? null;
         // VDOT
         if (secs && meta.priority !== 'C') {
           const v = vdotFromRace(secs, distanceMi);
@@ -149,6 +171,7 @@ export async function PATCH(req: NextRequest) {
                VALUES ($1, $1, 'vdot_auto_recalc', 'vdot', $2)`,
               [userId, String(v)]
             );
+            recalc.vdotAfter = v;
           }
         }
         // LTHR
@@ -165,6 +188,8 @@ export async function PATCH(req: NextRequest) {
              VALUES ($1, $1, 'lthr_auto_calibrated', 'lthr', $2)`,
             [userId, `${cal.lthr} (${cal.method})`]
           );
+          recalc.lthrAfter = cal.lthr;
+          recalc.lthrMethod = cal.method;
         }
       } catch (e: any) {
         console.error('[race PATCH] auto-calibrate warn:', e?.message);
@@ -172,7 +197,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     await bustBriefingCacheForEvent(userId, 'race_crud');
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, recalc });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
