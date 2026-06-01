@@ -113,9 +113,20 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
          '1 day'::interval
        )::date AS d
      ),
+     -- 2026-06-01 - MAX-per-day dedupe instead of SUM.
+     -- The canonical absorber is not firing reliably; most runs land
+     -- with both watch AND apple_watch source rows surviving as
+     -- non-merged siblings of the same physical run. SUMming
+     -- double-counted miles by 2x and inflated TSB by 2x, which
+     -- produced false OVERREACH labels (David hit this 2026-06-01:
+     -- real 45 mi/wk getting summed to 76 mi/wk, inflating TSB to -39
+     -- when reality was closer to PRODUCTIVE territory).
+     -- MAX-per-day works because duplicate source rows record the same
+     -- distance; taking the max is honest. Real fix is making the
+     -- absorber fire reliably at ingest, tracked separately.
      daily_runs AS (
        SELECT (data->>'date')::date AS d,
-              SUM((data->>'distanceMi')::numeric)::numeric AS mi
+              MAX((data->>'distanceMi')::numeric)::numeric AS mi
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
@@ -190,15 +201,23 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
 
 /**
  * Map TSB value to label per the canonical Coggan ranges.
- * Special case · runners with very low CTL (< 10) get the "BUILDING"
- * label regardless of TSB · the numbers don't have enough signal yet
- * to call meaningful overreach or detraining.
+ *
+ * 2026-06-01 · recalibrated. Original bands were too tight · TSB -19
+ * shouldn't be OVERREACH, it should be LOADED (productive training).
+ * Coggan's published interpretation:
+ *   > +25  Fresh (race-ready) or detraining at the very high end
+ *   -10..+25 Productive · maintaining
+ *   -30..-10 Productive overload · most progress happens here
+ *   < -30  Risk zone · sustained overreach
+ *
+ * Special case · CTL < 10 → BUILDING (not enough chronic load to
+ * call meaningful overreach vs detraining).
  */
 function labelForTsb(tsb: number, ctl: number): TrainingFormLabel {
   if (ctl < 10) return 'BUILDING';
   if (tsb > 25)  return 'DETRAINING';
   if (tsb > 10)  return 'RACE-READY';
   if (tsb > -10) return 'PRODUCTIVE';
-  if (tsb > -20) return 'LOADED';
+  if (tsb > -30) return 'LOADED';
   return 'OVERREACH';
 }
