@@ -12,20 +12,36 @@ interface RecalcResult {
   lthrMethod?: string;
 }
 
+/** 2026-06-01 · auto-rebuild result from PATCH /api/race. Backend fires
+ *  fireAutoRebuild when race date, goal time, or A-race priority changes,
+ *  rewriting plan_workouts atomically. See
+ *  designs/briefs/backend-state-2026-06-01-landed.md §"Hooks that fire". */
+interface AutoRebuildResult {
+  kind: 'race_date_changed' | 'goal_time_changed' | 'a_race_added' | 'a_race_removed' | string;
+  oldPlanId: string | null;
+  newPlanId: string | null;
+  ok: boolean;
+  reason: string;
+}
+
 async function patchRace(
   slug: string,
   payload: Record<string, unknown>
-): Promise<{ ok: boolean; recalc: RecalcResult | null }> {
+): Promise<{ ok: boolean; recalc: RecalcResult | null; autoRebuild: AutoRebuildResult | null }> {
   try {
     const res = await fetch('/api/race', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slug, ...payload }),
     });
-    if (!res.ok) return { ok: false, recalc: null };
+    if (!res.ok) return { ok: false, recalc: null, autoRebuild: null };
     const j = await res.json().catch(() => ({}));
-    return { ok: true, recalc: (j?.recalc ?? null) as RecalcResult | null };
-  } catch { return { ok: false, recalc: null }; }
+    return {
+      ok: true,
+      recalc: (j?.recalc ?? null) as RecalcResult | null,
+      autoRebuild: (j?.autoRebuild ?? null) as AutoRebuildResult | null,
+    };
+  } catch { return { ok: false, recalc: null, autoRebuild: null }; }
 }
 
 export type RaceDetailSeed = {
@@ -123,20 +139,22 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
   const [savingFinish, setSavingFinish] = useState(false);
   const [finishAck, setFinishAck] = useState<'saved' | 'error' | null>(null);
 
-  function commitA(text: string) {
+  async function commitA(text: string) {
     const sec = parseHMS(text);
     if (sec <= 0) { setAGoal(r.aGoal); return; }
     const next = fmtHMS(sec);
     setAGoal(next);
     setGoalPace(sec2pace(sec));
-    void patchRace(r.slug, { goal: next });
+    const { autoRebuild } = await patchRace(r.slug, { goal: next });
+    if (autoRebuild?.ok) setAutoRebuildToast(autoRebuild);
   }
-  function commitB(text: string) {
+  async function commitB(text: string) {
     const sec = parseHMS(text);
     if (sec <= 0) { setBGoal(r.bGoal); return; }
     const next = fmtHMS(sec);
     setBGoal(next);
-    void patchRace(r.slug, { goal_safe: next });
+    const { autoRebuild } = await patchRace(r.slug, { goal_safe: next });
+    if (autoRebuild?.ok) setAutoRebuildToast(autoRebuild);
   }
   function commitBib(text: string) {
     const next = (text || '').trim() || r.bib;
@@ -152,6 +170,19 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
     const t = setTimeout(() => setRecalcToast(null), 5500);
     return () => clearTimeout(t);
   }, [recalcToast]);
+  // 2026-06-01 · plan auto-rebuild notification. Fires when PATCH /api/race
+  // returns autoRebuild in the response · goal time, race date, or A-race
+  // priority change rewrites plan_workouts atomically on the backend. Same
+  // information also lands in seed.planProposals on next refresh, but this
+  // surfaces immediately so the runner doesn't wonder why their plan
+  // changed between two views. 7s auto-dismiss matches recalcToast
+  // pattern. Closes brief §"Hooks that fire on user actions".
+  const [autoRebuildToast, setAutoRebuildToast] = useState<AutoRebuildResult | null>(null);
+  useEffect(() => {
+    if (!autoRebuildToast) return;
+    const t = setTimeout(() => setAutoRebuildToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [autoRebuildToast]);
 
   async function commitFinish(text: string) {
     const trimmed = (text || '').trim();
@@ -474,6 +505,55 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
               message={`LTHR re-calibrated${recalcToast.lthrMethod ? ` · ${recalcToast.lthrMethod}` : ''}`}
             />
           ) : null}
+        </div>
+      ) : null}
+
+      {/* 2026-06-01 · auto-rebuild toast · fires when goal time, race
+          date, or A-race priority change rewrites the plan atomically.
+          Teal palette (recovery/passive · the system did the work),
+          7s auto-dismiss. Includes a CLOSE button so the runner can
+          dismiss before the timer. */}
+      {autoRebuildToast ? (
+        <div
+          style={{
+            position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 70, maxWidth: 460, width: 'calc(100vw - 32px)',
+            background: 'linear-gradient(135deg, rgba(72,179,181,0.14), rgba(72,179,181,0.04))',
+            border: '1px solid rgba(72,179,181,0.42)',
+            borderRadius: 14,
+            padding: '14px 16px',
+            boxShadow: '0 24px 50px -20px rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(14px)',
+            color: 'var(--ink, #fff)',
+          }}
+          role="status"
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12,
+          }}>
+            <div style={{
+              fontSize: 10, letterSpacing: '1.6px', fontWeight: 700,
+              color: '#48B3B5',
+            }}>
+              PLAN · REBUILT
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoRebuildToast(null)}
+              aria-label="Dismiss"
+              style={{
+                background: 'transparent', border: 'none', color: 'var(--ink, #fff)',
+                opacity: 0.6, cursor: 'pointer', padding: 0, fontSize: 18, lineHeight: 1,
+              }}
+            >×</button>
+          </div>
+          <div style={{
+            marginTop: 6,
+            fontSize: 13, lineHeight: 1.5, color: 'var(--ink, #fff)',
+          }}>
+            {autoRebuildToast.reason || 'Plan rebuilt from your update.'}
+          </div>
         </div>
       ) : null}
     </>
