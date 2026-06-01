@@ -98,9 +98,11 @@ function clusterDuplicates(rows: Row[]): Row[][] {
 
       // Original rule: tight start-time window + looser distance.
       if (dt > 30 * 60 * 1000) continue;
-      // If either is 0 (e.g. a hollow watch shell), treat distance as
-      // matching — start time + same date is enough signal.
-      if (distA === 0 || distB === 0) {
+      // Hollow shell rule (2026-06-01 · loosened from === 0 to < 0.5 mi).
+      // Watch sometimes records 0.01 mi or 0.1 mi when a workout gets
+      // started by accident or interrupted. These shells should
+      // absorb into the real run that happened around the same time.
+      if (distA < 0.5 || distB < 0.5) {
         cluster.push(row);
         added = true;
         break;
