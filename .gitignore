@@ -33,3 +33,6 @@ native/.asc.env
 
 # Cross-agent ship lock (atomic mkdir; ship-testflight*.sh)
 .asc.shipping.lock/
+
+# App Store Connect API key · MUST never be committed
+legacy/native/.asc-keys/

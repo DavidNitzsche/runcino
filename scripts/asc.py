@@ -31,7 +31,16 @@ def load_env():
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        env[k.strip()] = v.strip()
+        v = v.strip()
+        # Strip a matching surrounding quote pair · bash needs the quotes
+        # when the value has spaces (e.g. the in-worktree .p8 path under
+        # /Volumes/WP/06 Claude Code/...) but Python should see the raw
+        # path. Without this, build 131's ship log filled with
+        # FileNotFoundError on '"/Volumes/.../AuthKey.p8"' (literal
+        # quotes). Doctrine 2026-05-31.
+        if len(v) >= 2 and ((v[0] == v[-1] == '"') or (v[0] == v[-1] == "'")):
+            v = v[1:-1]
+        env[k.strip()] = v
     return env
 
 
