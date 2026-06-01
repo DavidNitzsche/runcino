@@ -9,14 +9,17 @@ import Foundation
 
 // MARK: - /api/log
 
-// 2026-05-31 audit round 2: extend the lenient-decoder doctrine to the
-// whole LogState tree. LogWeek + LogRun got it earlier this round, but
-// LogState/LogFilterAxes/LogShoeAxis/LogFilters were still auto-synthesized
-// strict Decodable. A single null `slug` inside `axes.shoes` would have
-// thrown all the way up and dropped the entire LogState — the runner would
-// see "0 SO FAR" even though the server returned 97 runs. Doctrine says
-// every server-shaped struct gets a custom init with safe defaults; this
-// finishes that sweep for /api/log.
+// 2026-05-31 audit round 3 — ROOT CAUSE for "no runs on iPhone":
+// `try c.decodeIfPresent(Int.self, ...)` tolerates missing key + null
+// value but THROWS on a type mismatch. Apple Watch and HK averaging
+// emit fractional HR (`avg_hr: 142.5`) which is JSON-valid but trips
+// the Int decoder. One throw inside a LogRun fails the parent
+// [LogRun] decode; the outer try? at LogWeek/LogState swallows it;
+// that whole week's runs collapse to []. Backend agent confirmed 100
+// runs returned for David's user_uuid; phone rendered zero. Fix is to
+// (a) use try? on every scalar so a type mismatch becomes nil, and
+// (b) introduce flexInt() for the Int fields that decodes Int OR
+// Double-rounded so fractional wire values survive.
 struct LogState: Decodable {
     let today: String
     let totalRuns: Int
@@ -33,14 +36,26 @@ struct LogState: Decodable {
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.today = try c.decodeIfPresent(String.self, forKey: .today) ?? ""
-        self.totalRuns = try c.decodeIfPresent(Int.self, forKey: .totalRuns) ?? 0
-        self.totalMi = try c.decodeIfPresent(Double.self, forKey: .totalMi) ?? 0
+        self.today = (try? c.decode(String.self, forKey: .today)) ?? ""
+        self.totalRuns = LogState.flexInt(c, .totalRuns) ?? 0
+        self.totalMi = (try? c.decode(Double.self, forKey: .totalMi)) ?? 0
         self.weeks = (try? c.decode([LogWeek].self, forKey: .weeks)) ?? []
-        self.totalRunsUnfiltered = try c.decodeIfPresent(Int.self, forKey: .totalRunsUnfiltered)
-        self.totalMiUnfiltered = try c.decodeIfPresent(Double.self, forKey: .totalMiUnfiltered)
+        self.totalRunsUnfiltered = LogState.flexInt(c, .totalRunsUnfiltered)
+        self.totalMiUnfiltered = try? c.decode(Double.self, forKey: .totalMiUnfiltered)
         self.axes = try? c.decode(LogFilterAxes.self, forKey: .axes)
         self.filters = try? c.decode(LogFilters.self, forKey: .filters)
+    }
+
+    /// Decode-as-Int-or-Double-rounded-or-nil. Mirrors the server's
+    /// `Number(x) || null` coercion so fractional values from JS don't
+    /// throw and collapse the parent decode.
+    private static func flexInt(
+        _ c: KeyedDecodingContainer<CodingKeys>,
+        _ key: CodingKeys
+    ) -> Int? {
+        if let i = try? c.decode(Int.self, forKey: key) { return i }
+        if let d = try? c.decode(Double.self, forKey: key), d.isFinite { return Int(d.rounded()) }
+        return nil
     }
 }
 
@@ -95,11 +110,9 @@ struct LogFilters: Decodable {
 }
 
 struct LogWeek: Decodable, Identifiable {
-    // 2026-05-31 audit: lenient decode. Server occasionally emits a null
-    // `label` or `totalMi` on legacy migration weeks, and the strict
-    // decoder was dropping the WHOLE LogState · Activity tab read as
-    // "no runs" even though /api/log returned 200 with rows. Now any
-    // missing/null field defaults to a safe value so the surface renders.
+    // 2026-05-31 audit round 3: every scalar uses try? so a wire type
+    // mismatch falls to the default instead of throwing and dropping
+    // the whole week. See LogState comment for the original failure mode.
     var id: String { monday }
     let monday: String
     let label: String
@@ -111,21 +124,20 @@ struct LogWeek: Decodable, Identifiable {
     enum CodingKeys: String, CodingKey { case monday, label, totalMi, totalDuration, runs, isCurrent }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.monday = try c.decodeIfPresent(String.self, forKey: .monday) ?? ""
-        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
-        self.totalMi = try c.decodeIfPresent(Double.self, forKey: .totalMi) ?? 0
-        self.totalDuration = try c.decodeIfPresent(String.self, forKey: .totalDuration)
+        self.monday = (try? c.decode(String.self, forKey: .monday)) ?? ""
+        self.label = (try? c.decode(String.self, forKey: .label)) ?? ""
+        self.totalMi = (try? c.decode(Double.self, forKey: .totalMi)) ?? 0
+        self.totalDuration = try? c.decode(String.self, forKey: .totalDuration)
         self.runs = (try? c.decode([LogRun].self, forKey: .runs)) ?? []
-        self.isCurrent = try c.decodeIfPresent(Bool.self, forKey: .isCurrent)
+        self.isCurrent = try? c.decode(Bool.self, forKey: .isCurrent)
     }
 }
 
 struct LogRun: Decodable, Identifiable {
-    // 2026-05-31 audit: lenient decode. Was strict Decodable; any null
-    // `distance_mi` / `date` / `name` / `source` from a partial-source
-    // row dropped the whole LogState. View code reads these as non-
-    // optional, so we default missing fields here instead of forcing
-    // every callsite to ?? 0 / ?? "Run".
+    // 2026-05-31 audit round 3: flexInt for every Int field so a
+    // fractional HR/cadence/elev from Apple Watch averaging doesn't
+    // throw and collapse the parent [LogRun] array. See LogState
+    // comment for the failure mode.
     let id: String
     let date: String
     let dow: Int
@@ -152,24 +164,37 @@ struct LogRun: Decodable, Identifiable {
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
-        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
-        self.dow = try c.decodeIfPresent(Int.self, forKey: .dow) ?? 0
-        self.start_local = try c.decodeIfPresent(String.self, forKey: .start_local)
-        self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Run"
-        self.source = try c.decodeIfPresent(String.self, forKey: .source) ?? "unknown"
-        self.type = try c.decodeIfPresent(String.self, forKey: .type)
-        self.distance_mi = try c.decodeIfPresent(Double.self, forKey: .distance_mi) ?? 0
-        self.pace = try c.decodeIfPresent(String.self, forKey: .pace)
-        self.time_moving = try c.decodeIfPresent(String.self, forKey: .time_moving)
-        self.avg_hr = try c.decodeIfPresent(Int.self, forKey: .avg_hr)
-        self.max_hr = try c.decodeIfPresent(Int.self, forKey: .max_hr)
-        self.cadence = try c.decodeIfPresent(Int.self, forKey: .cadence)
-        self.elev_gain_ft = try c.decodeIfPresent(Int.self, forKey: .elev_gain_ft)
-        self.workoutType = try c.decodeIfPresent(String.self, forKey: .workoutType)
-        self.phaseLabel = try c.decodeIfPresent(String.self, forKey: .phaseLabel)
-        self.shoeName = try c.decodeIfPresent(String.self, forKey: .shoeName)
-        self.shoeSlug = try c.decodeIfPresent(String.self, forKey: .shoeSlug)
+        self.id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        self.date = (try? c.decode(String.self, forKey: .date)) ?? ""
+        self.dow = LogRun.flexInt(c, .dow) ?? 0
+        self.start_local = try? c.decode(String.self, forKey: .start_local)
+        self.name = (try? c.decode(String.self, forKey: .name)) ?? "Run"
+        self.source = (try? c.decode(String.self, forKey: .source)) ?? "unknown"
+        self.type = try? c.decode(String.self, forKey: .type)
+        self.distance_mi = (try? c.decode(Double.self, forKey: .distance_mi)) ?? 0
+        self.pace = try? c.decode(String.self, forKey: .pace)
+        self.time_moving = try? c.decode(String.self, forKey: .time_moving)
+        self.avg_hr = LogRun.flexInt(c, .avg_hr)
+        self.max_hr = LogRun.flexInt(c, .max_hr)
+        self.cadence = LogRun.flexInt(c, .cadence)
+        self.elev_gain_ft = LogRun.flexInt(c, .elev_gain_ft)
+        self.workoutType = try? c.decode(String.self, forKey: .workoutType)
+        self.phaseLabel = try? c.decode(String.self, forKey: .phaseLabel)
+        self.shoeName = try? c.decode(String.self, forKey: .shoeName)
+        self.shoeSlug = try? c.decode(String.self, forKey: .shoeSlug)
+    }
+
+    /// Decode-as-Int-or-Double-rounded-or-nil. Apple Watch and HK
+    /// averaging emit fractional HR/cadence which is JSON-valid but
+    /// throws against `Int.self` — the trigger for the whole [LogRun]
+    /// decode to fail. This accepts both shapes.
+    private static func flexInt(
+        _ c: KeyedDecodingContainer<CodingKeys>,
+        _ key: CodingKeys
+    ) -> Int? {
+        if let i = try? c.decode(Int.self, forKey: key) { return i }
+        if let d = try? c.decode(Double.self, forKey: key), d.isFinite { return Int(d.rounded()) }
+        return nil
     }
 }
 
