@@ -63,6 +63,28 @@ const PILLAR_BAND_COLOR: Record<Band, string> = {
   'no-data':   '#8A90A0',
 };
 
+/** Strip research citations from backend-authored coach-voice strings.
+ *  2026-06-01 David call · "should never surface things like the
+ *  'Research/00b says' ever." Defensive frontend sanitizer that runs
+ *  on every visible string from the readiness brief. Pair brief queued
+ *  to backend asking them to author copy without citations at the
+ *  source; this is the backstop until that lands. Handles four shapes:
+ *    "... · Research/15 says ..." (middot-prefixed clause)
+ *    "... per Research/15 §HRV" (per-prefixed inline reference)
+ *    "Research/15 notes ..." (sentence-leading)
+ *    "Research/15" (bare reference) */
+function stripCitations(s: string | null | undefined): string {
+  if (!s) return '';
+  return s
+    .replace(/\s*·\s*Research\/[A-Za-z0-9]+[^·.]*\./g, '.')
+    .replace(/\s+per\s+Research\/[A-Za-z0-9]+(\s+§[^.,]*)?/gi, '')
+    .replace(/Research\/[A-Za-z0-9]+\s+(says|notes|reports?|finds?|shows?)[^.]*\.?/gi, '')
+    .replace(/\bResearch\/[A-Za-z0-9]+\b\s*§?\s*[A-Za-z0-9 ]*/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+\./g, '.')
+    .trim();
+}
+
 function contributionColor(c: number): string {
   if (c <= -8) return '#FC4D64';
   if (c < 0)   return '#FFB24D';
@@ -150,12 +172,23 @@ export function Drawer({
             {/* 2 · Hero · score ring + band eyebrow + headline + mover. */}
             <Hero brief={brief} />
 
-            {/* 3 · 14-day score trend. */}
+            {/* 3 · 14-day score trend. When the runner has fewer than
+                4 days of history the bar chart is misleading (one bar
+                stretched full-width, axis labels collapse to the same
+                day) · show an honest building-trend message instead. */}
             <Section label="14-DAY TREND">
-              <ScoreTrend trend={brief.scoreTrend} />
-              {trendNoteText ? (
-                <div className="rb-trendnote">{trendNoteText}</div>
-              ) : null}
+              {brief.scoreTrend.length >= 4 ? (
+                <>
+                  <ScoreTrend trend={brief.scoreTrend} />
+                  {trendNoteText ? (
+                    <div className="rb-trendnote">{stripCitations(trendNoteText)}</div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="rb-trendnote">
+                  Building trend · {brief.scoreTrend.length} day{brief.scoreTrend.length === 1 ? '' : 's'} logged. A few more snapshots and the chart will fill in.
+                </div>
+              )}
             </Section>
 
             {/* 4 · Streak banners. */}
@@ -204,7 +237,7 @@ export function Drawer({
                 <div className="rb-watch">
                   {brief.watchTomorrow.map((line, i) => (
                     <div className="rb-wrow" key={i}>
-                      <span className="rb-wdot" /> <span>{line}</span>
+                      <span className="rb-wdot" /> <span>{stripCitations(line)}</span>
                     </div>
                   ))}
                 </div>
@@ -276,7 +309,8 @@ function Hero({ brief }: { brief: ReadinessBriefSeed }) {
           transform="rotate(-90 42 42)"
         />
         <text
-          x="42" y="48" textAnchor="middle"
+          x="42" y="42"
+          textAnchor="middle" dominantBaseline="central"
           fontFamily="Oswald, sans-serif" fontSize="34" fontWeight="600"
           fill="var(--txt)"
         >
@@ -285,9 +319,9 @@ function Hero({ brief }: { brief: ReadinessBriefSeed }) {
       </svg>
       <div className="rb-hwords">
         <div className="rb-eyebrow" style={{ color: ring }}>{brief.label}</div>
-        <div className="rb-headline">{brief.headline}</div>
+        <div className="rb-headline">{stripCitations(brief.headline)}</div>
         {brief.oneLineMover ? (
-          <div className="rb-mover">{brief.oneLineMover}</div>
+          <div className="rb-mover">{stripCitations(brief.oneLineMover)}</div>
         ) : null}
       </div>
     </div>
@@ -315,7 +349,7 @@ function OverrideCallout({ ov }: { ov: NonNullable<ReadinessBriefSeed['subjectiv
           <div className="rb-ov-l">THE NUMBERS</div>
         </div>
       </div>
-      <div className="rb-ov-advice">{ov.advice}</div>
+      <div className="rb-ov-advice">{stripCitations(ov.advice)}</div>
     </div>
   );
 }
@@ -395,9 +429,9 @@ function StreakRow({ streak, open, onToggle }: {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
         </span>
       </button>
-      <div className="rb-streak-short">{streak.short}</div>
+      <div className="rb-streak-short">{stripCitations(streak.short)}</div>
       {open ? (
-        <div className="rb-streak-body">{streak.meaning}</div>
+        <div className="rb-streak-body">{stripCitations(streak.meaning)}</div>
       ) : null}
     </div>
   );
@@ -417,9 +451,11 @@ function PillarRow({ pillar, band: _band, open, onToggle }: {
   const isNoData = pillar.band === 'no-data';
   const barWidth = Math.min(46, Math.abs(pillar.weightContribution) * 3.2 + 4);
   const positive = pillar.weightContribution > 0;
-  // Confounder split · likely vs not-likely.
+  // Confounder split · only likely. "ALSO WORTH CHECKING" block was
+  // dropped 2026-06-01 (David call · "just noise"). We surface only
+  // the confounders the engine marks as likely behind this signal,
+  // not every alternative the model could think of.
   const likely = pillar.confounders.filter(c => c.likely);
-  const others = pillar.confounders.filter(c => !c.likely);
   return (
     <div className={`rb-pil${open ? ' open' : ''}${isNoData ? ' nodata' : ''}`}>
       <button
@@ -462,32 +498,17 @@ function PillarRow({ pillar, band: _band, open, onToggle }: {
             {pillar.observedSub ? <> · {pillar.observedSub}</> : null}
             {pillar.baseline ? <> · {pillar.baseline}</> : null}
           </div>
-          <div className="rb-pil-meaning">{pillar.meaning}</div>
+          <div className="rb-pil-meaning">{stripCitations(pillar.meaning)}</div>
           <PillarHistory trend={pillar.trend} observedValue={pillar.observedValue} accent={dot} />
-          {(likely.length > 0 || others.length > 0) ? (
+          {likely.length > 0 ? (
             <div className="rb-pil-conf">
-              {likely.length > 0 ? (
-                <>
-                  <div className="rb-conf-h">MOST LIKELY BEHIND IT</div>
-                  {likely.map((c, i) => (
-                    <div className="rb-conf-row" key={`l-${i}`}>
-                      <span className="rb-conf-k rb-conf-likely">{c.pillar.toUpperCase()}</span>
-                      <span className="rb-conf-x">{c.explanation}</span>
-                    </div>
-                  ))}
-                </>
-              ) : null}
-              {others.length > 0 ? (
-                <>
-                  <div className="rb-conf-h">ALSO WORTH CHECKING</div>
-                  {others.map((c, i) => (
-                    <div className="rb-conf-row" key={`o-${i}`}>
-                      <span className="rb-conf-k">{c.pillar.toUpperCase()}</span>
-                      <span className="rb-conf-x">{c.explanation}</span>
-                    </div>
-                  ))}
-                </>
-              ) : null}
+              <div className="rb-conf-h">MOST LIKELY BEHIND IT</div>
+              {likely.map((c, i) => (
+                <div className="rb-conf-row" key={`l-${i}`}>
+                  <span className="rb-conf-k rb-conf-likely">{c.pillar.toUpperCase()}</span>
+                  <span className="rb-conf-x">{stripCitations(c.explanation)}</span>
+                </div>
+              ))}
             </div>
           ) : null}
         </div>
@@ -593,7 +614,7 @@ function ColdStart({ coldStart, onConnect }: {
         </div>
       </div>
       <h2 className="rb-cold-h">Building your baseline.</h2>
-      <p className="rb-cold-p">{note}</p>
+      <p className="rb-cold-p">{stripCitations(note)}</p>
       {remaining > 0 ? (
         <div className="rb-cold-rem">
           {remaining} MORE NIGHT{remaining === 1 ? '' : 'S'} TO YOUR FIRST READINESS SCORE
