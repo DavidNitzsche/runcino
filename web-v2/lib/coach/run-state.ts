@@ -495,7 +495,13 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       if (splitsPositive >= raw * 0.6) return raw;
       return Math.round(splitsPositive);
     })(),
-    temp_f: Number(r.tempF) || null,
+    // 2026-06-01 · fall back to data.weather.temp_f when data.tempF
+    // is absent. Watch-tier rows store enriched weather as the nested
+    // `weather` object (from lib/weather/openmeteo.ts span enrichment) ·
+    // the legacy `tempF` top-level key is only set on older ingest
+    // paths. Without this fallback the Today card's WEATHER chip
+    // renders "·" even when full weather is present in data.weather.
+    temp_f: Number(r.tempF) || Number((r.weather as Record<string, unknown> | null | undefined)?.temp_f) || null,
     temp_range_f: (() => {
       const w = (r.weather ?? {}) as Record<string, unknown>;
       const start = typeof w.temp_f_start === 'number' ? w.temp_f_start : null;
