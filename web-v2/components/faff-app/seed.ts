@@ -296,11 +296,17 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: Planne
       full: fullLabel,
       iso: d.date,
       type: eff,
-      // 2026-05-31: hero title is the short one-line effort tag (EASY,
-      // LONG, INTERVALS, etc.). plan_workouts.sub_label like "Cruise
-      // Intervals" was wrapping in the title row, so we always use the
-      // short version and surface sub_label elsewhere if needed.
-      name: humanName(eff, d.plannedMi),
+      // 2026-06-01: name now mirrors adaptSeason (line 506) · the rich
+      // plan_workouts.sub_label ("Cruise Intervals", "HM Threshold
+      // Blocks", "Long Run · HM Finish") wins, falling back to the
+      // short humanName tag only when the plan-builder didn't author
+      // one. Previous "always-humanName" path discarded the rich label
+      // and caused the week strip to render a Cruise Intervals day as
+      // generic "Easy" while FULL PLAN rendered it correctly. The two
+      // surfaces now read from one source. If the hero title wraps with
+      // a longer name, fix it in CSS, not by destroying data.
+      name: d.plannedLabel || humanName(eff, d.plannedMi),
+      subLabel: d.plannedLabel ?? null,
       dist,
       pace: paceStr,
       est,
@@ -1060,9 +1066,21 @@ function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['
  */
 function pickStrengthDays(week: PlannedDay[]): number[] {
   const QUALITY = new Set(['tempo', 'intervals', 'long', 'race']);
+  // 2026-06-01: sub_label fallback for misbucketed quality. The
+  // plan_workouts.type column is coarse (some Cruise Intervals days
+  // are stored as type='easy'). When that happens, the rich sub_label
+  // is the only signal that the day is actually a quality session.
+  // Treat a day as quality if EITHER its type is in QUALITY or its
+  // sub_label matches one of these keywords. Pair brief on
+  // designs/briefs/plan-type-column-alignment-brief.md tracks the
+  // backend cleanup; this client-side guard is the bridge until it
+  // lands.
+  const QUALITY_NAME = /tempo|threshold|cruise|interval|vo2|repeats?|ladder|hill repeats?|track|fartlek/i;
+  const isQuality = (d: PlannedDay): boolean =>
+    QUALITY.has(d.type) || (!!d.subLabel && QUALITY_NAME.test(d.subLabel));
   // Score each day; lower is better (better fit for strength)
   const scored = week.map((d, idx) => {
-    if (d.type === 'rest' || QUALITY.has(d.type)) return { idx, score: Infinity };
+    if (d.type === 'rest' || isQuality(d)) return { idx, score: Infinity };
     let score = 0;
     // Prefer easy/recovery days
     if (d.type === 'recovery') score -= 3;
@@ -1070,8 +1088,8 @@ function pickStrengthDays(week: PlannedDay[]): number[] {
     // Penalty for being adjacent to a long run or quality day
     const prev = idx > 0 ? week[idx - 1] : null;
     const next = idx < week.length - 1 ? week[idx + 1] : null;
-    if (prev && QUALITY.has(prev.type)) score += 2;
-    if (next && QUALITY.has(next.type)) score += 4; // worse to strength the day before quality
+    if (prev && isQuality(prev)) score += 2;
+    if (next && isQuality(next)) score += 4; // worse to strength the day before quality
     if (next && next.type === 'long') score += 6; // never before a long run
     // Done days are too late (already logged) — only score un-done days
     if (d.done) score = Infinity;
