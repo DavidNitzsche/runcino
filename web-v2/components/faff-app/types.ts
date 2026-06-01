@@ -50,6 +50,34 @@ export type FaffSeed = {
     habit: 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
     coachIntent: { severity: 'soft' | 'firm' | 'urgent'; body: string } | null;
   } | null;
+  /** 2026-06-01 · weekly reconciliation of recommendedDays against
+   *  what was actually logged in strength_sessions (manual + HK +
+   *  watch + strava). Backend ships at glance.strengthWeekStatus
+   *  (see designs/briefs/strength-hk-web-consumer-brief.md). The
+   *  `summary` field is render-ready · the arrays are there if a
+   *  tap-to-expand surface is added later. Null when no recommendation
+   *  has been produced yet. */
+  strengthWeekStatus: {
+    weekStartISO: string;
+    weekEndISO: string;
+    recommended: string[];
+    confirmed: Array<{
+      date: string;
+      sessionId: number | null;
+      source: 'manual' | 'apple_health' | 'watch' | 'strava' | null;
+      durationMin: number | null;
+      sessionType: string | null;
+    }>;
+    skipped: string[];
+    bonus: Array<{
+      date: string;
+      sessionId: number | null;
+      source: 'manual' | 'apple_health' | 'watch' | 'strava' | null;
+      durationMin: number | null;
+      sessionType: string | null;
+    }>;
+    summary: string;
+  } | null;
   goalRace: GoalRace | null;
   volumeBars: VolumeBar[];         // 8-week strip
   thisWeekMiles: number;

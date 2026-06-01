@@ -455,6 +455,16 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .wc.skipped{filter:grayscale(.85);opacity:.5;}
 .wc.skipped .wc-name .wc-nm{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.4);}
 
+/* Strength weekly status chip · 2026-06-01 · per
+   designs/briefs/strength-hk-web-consumer-brief.md. Sits directly
+   below the week strip · single line, no card chrome. Mirrors the
+   density of the wc-meta row so it reads as week-level context, not
+   as a banner. Silent when summary is empty or no recommendation. */
+.strstatus{display:inline-flex;align-items:center;gap:8px;margin:14px 0 0;padding:0;color:rgba(255,255,255,.62);font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;}
+.strstatus-icn{width:13px;height:13px;display:inline-flex;align-items:center;justify-content:center;color:rgba(255,255,255,.55);}
+.strstatus-icn svg{width:13px;height:13px;display:block;}
+.strstatus-tx{line-height:1;}
+
 /* ── Train view v2 (Train Options · Direction A · 2026-05-31) ──
    Hero + interactive 13-week ramp + lower dashboard grid (phase
    breakdown, this-week list, projection, key workouts). Coexists

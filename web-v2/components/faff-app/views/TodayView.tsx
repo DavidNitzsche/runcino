@@ -356,6 +356,24 @@ export function TodayView({
           available to other consumers · just no longer surfaces as
           standalone chrome on Today. */}
 
+      {/* 2026-06-01 · weekly strength status chip · backend brief
+          `strength-hk-web-consumer-brief.md`. Renders
+          `glance.strengthWeekStatus.summary` directly · zero chrome,
+          single line below the week strip. Silent when summary is
+          empty or no days were recommended (race weeks). This is a
+          reconciliation read-out, not a marketing nudge · "2/2 this
+          week + 1 bonus" / "1/2 · 1 skipped" — pure status. */}
+      {seed.strengthWeekStatus?.summary && seed.strengthWeekStatus.recommended.length > 0 ? (
+        <div className="strstatus">
+          <span className="strstatus-icn" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/>
+            </svg>
+          </span>
+          <span className="strstatus-tx">{seed.strengthWeekStatus.summary}</span>
+        </div>
+      ) : null}
+
       {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
           Detail (Easy)), planned-and-not-rest days use PlannedHeroV2
           (Run Detail Planned (Easy)). Rest days keep the simple Recovery
