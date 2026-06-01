@@ -19,7 +19,6 @@ import { WeeklyCheckIn } from './overlays/WeeklyCheckIn';
 import { Paywall } from './overlays/Paywall';
 import { Reach } from './overlays/Reach';
 import { Pro } from './overlays/Pro';
-import { Toast } from './Toast';
 import { TweaksPanel } from './TweaksPanel';
 import { RunDetailModal } from './overlays/RunDetailModal';
 
@@ -52,7 +51,6 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
   const [sbCollapsed, setSbCollapsed] = useState(false);
   const [openOverlay, setOpenOverlay] = useState<null | 'drawer' | 'paywall' | 'reach' | 'pro' | 'weekci' | { type: 'wk'; i: number } | { type: 'run'; id: string }>(null);
   const mainRef = useRef<HTMLDivElement>(null);
-  const [toastVisible, setToastVisible] = useState(false);
 
   // Reflect URL to view (for back/forward navigation).
   useEffect(() => {
@@ -67,12 +65,12 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     } catch { /* SSR safety */ }
   }, []);
 
-  // Show the nudge toast once on first paint, hide after a few seconds.
-  useEffect(() => {
-    const a = setTimeout(() => setToastVisible(true), 1200);
-    const b = setTimeout(() => setToastVisible(false), 6500);
-    return () => { clearTimeout(a); clearTimeout(b); };
-  }, []);
+  // Toast nudge ("Easy today · 4.9 mi @ 8:12") removed 2026-06-01 (David
+  // call · "I dont want this little thing popping up for anything at all
+  // anymore"). The same info already lives on TodayView; auto-popping it
+  // as a toast read as noise. If a future surface wants a transient nudge,
+  // it should be its own component with an opt-in pref, not a Shell-level
+  // auto-shower.
 
   // /runs/[id] entry: auto-open the run detail modal on mount.
   useEffect(() => {
@@ -217,23 +215,6 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         open={typeof openOverlay === 'object' && openOverlay?.type === 'run'}
         runId={typeof openOverlay === 'object' && openOverlay?.type === 'run' ? openOverlay.id : null}
         onClose={() => setOpenOverlay(null)}
-      />
-      <Toast
-        visible={toastVisible}
-        onClose={() => setToastVisible(false)}
-        title={(() => {
-          const today = seed.week[seed.todayIdx];
-          if (!today) return "Today's session";
-          if (today.type === 'rest') return 'Rest day';
-          return `${today.name} today`;
-        })()}
-        subtitle={(() => {
-          const today = seed.week[seed.todayIdx];
-          if (!today || today.type === 'rest') return 'Sleep, hydrate, mobilize.';
-          const distance = today.dist === ' · ' ? '' : `${today.dist} mi`;
-          const pace = today.pace && today.pace !== 'Rest' && today.pace !== '·' ? ` @ ${today.pace}` : '';
-          return `${distance}${pace}`.trim() || 'Open Today to see the session.';
-        })()}
       />
       <TweaksPanel />
     </div>

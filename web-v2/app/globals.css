@@ -836,16 +836,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .proprice{font-family:'Oswald',sans-serif;font-size:44px;font-weight:600;margin-top:24px;}
 .proprice span{font-size:16px;opacity:.7;font-weight:400;}
 .probtn{margin-top:16px;background:rgba(62,189,65,.16);border:1px solid rgba(62,189,65,.45);color:#86efa0;font-weight:700;letter-spacing:.5px;border-radius:12px;padding:14px;font-size:14px;}
-/* nudge toast */
-.toast{position:absolute;bottom:22px;right:22px;z-index:50;display:flex;align-items:center;gap:13px;color:#F6F7F8;background:rgba(20,21,28,.94);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:14px 16px;box-shadow:0 24px 50px -20px rgba(0,0,0,.7);transform:translateY(140%);opacity:0;transition:transform .5s cubic-bezier(.2,.9,.3,1),opacity .5s;max-width:330px;}
-.toast.show{transform:translateY(0);opacity:1;}
-.tkdot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;}
-.tktx{display:flex;flex-direction:column;gap:3px;}
-.tktx b{font-size:14px;font-weight:600;color:#fff;}
-.tktx span{font-size:12px;font-weight:500;color:#fff;opacity:.78;}
-.tkx{margin-left:6px;cursor:pointer;opacity:.6;}
-.tkx svg{width:14px;height:14px;}
-.tkx:hover{opacity:1;}
+/* nudge toast styles removed 2026-06-01 alongside Shell-level Toast */
 
 /* race day */
 .race{width:480px;padding:32px 34px 30px;}

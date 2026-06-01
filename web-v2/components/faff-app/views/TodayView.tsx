@@ -10,10 +10,8 @@ import { RouteMap } from '../RouteMap';
 import {
   AdaptationCard,
   DayStatePill,
-  LoadBandChip,
   ProfileGapCard,
   ReconnectBanner,
-  type LoadBand,
 } from '../toolkit';
 
 export function TodayView({
@@ -61,19 +59,9 @@ export function TodayView({
     return result?.shoe;
   })();
 
-  // Toolkit-derived load band from the seed's ACWR. Closes the
-  // "ACWR sweet-spot band signal" gap (coverage line 405). Surfaced
-  // as a small chip in the readiness row so the runner can see whether
-  // load is detraining / building / sweet spot / elevated / spike.
-  const loadBand: LoadBand | null = (() => {
-    const a = seed.form.acwr;
-    if (a == null) return null;
-    if (a < 0.8) return 'detraining';
-    if (a < 1.0) return 'building';
-    if (a <= 1.3) return 'sweet_spot';
-    if (a <= 1.5) return 'elevated';
-    return 'spike';
-  })();
+  // ACWR load-band chip removed 2026-06-01 (David call). Will resurface
+  // inside readiness once that backend lands; the standalone chip on
+  // Today had no in-app explanation and read as noise.
 
   // "Yesterday missed" detection. When the previous day was planned,
   // not a rest, not done, and not explicitly skipped → surface a
@@ -153,16 +141,12 @@ export function TodayView({
         </div>
       </div>
 
-      {/* Load band chip + adaptation card row. Renders nothing when there's
-          no signal — keeps the surface clean on quiet days. */}
-      {(loadBand || true) ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, alignItems: 'flex-start' }}>
-          {loadBand ? <LoadBandChip band={loadBand} /> : null}
-          <div style={{ flex: 1, minWidth: 240 }}>
-            <AdaptationCard />
-          </div>
-        </div>
-      ) : null}
+      {/* Adaptation card row. The ACWR load chip used to ride here; it was
+          removed 2026-06-01 and will live inside readiness once that
+          backend lands. */}
+      <div style={{ marginTop: 10 }}>
+        <AdaptationCard />
+      </div>
 
       {/* Physiology auto-nudge · only after 3+ days post-onboarding
           with no physiology data + no AppleHealth. Closes coverage row
