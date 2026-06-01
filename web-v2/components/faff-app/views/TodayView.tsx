@@ -321,38 +321,14 @@ export function TodayView({
         })}
       </div>
 
-      {/* Strength-recommender reason · only when the backend actually
-          surfaced strength days for this week. Reads from
-          seed.strengthRecommendation (backend-shipped 2026-06-01,
-          commit 34bff2a0). Skipped silently when null, empty, or when
-          the recommender returned 0 days (race week, taper, no slot). */}
-      {seed.strengthRecommendation
-        && seed.strengthRecommendation.recommendedDays.length > 0
-        && seed.strengthRecommendation.reason
-        ? (
-        <div style={{
-          marginTop: 10,
-          padding: '8px 12px',
-          borderRadius: 10,
-          background: 'rgba(255,206,138,.06)',
-          border: '1px solid rgba(255,206,138,.18)',
-          color: 'var(--txt)',
-          fontSize: 12,
-          lineHeight: 1.45,
-          display: 'flex',
-          gap: 10,
-          alignItems: 'flex-start',
-        }}>
-          <span style={{
-            fontSize: 8.5, fontWeight: 800, letterSpacing: '1.4px',
-            textTransform: 'uppercase',
-            color: '#FFCE8A',
-            marginTop: 2,
-            flexShrink: 0,
-          }}>STRENGTH</span>
-          <span>{seed.strengthRecommendation.reason}</span>
-        </div>
-      ) : null}
+      {/* Strength-recommender reason banner removed 2026-06-01 (David
+          call · "why are we making a banner for strength at all"). The
+          chip-level "+ STRENGTH" annotation is the single surface;
+          the dormant-runner coach intent flows through the existing
+          /api/coach/intents stream (CoachActivityTimeline). The full
+          recommendation envelope still rides on the seed and is
+          available to other consumers · just no longer surfaces as
+          standalone chrome on Today. */}
 
       {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
           Detail (Easy)), planned-and-not-rest days use PlannedHeroV2
