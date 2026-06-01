@@ -714,17 +714,14 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
             // a54c7069). Glyph is a 6px amber dot inline with the day
             // number; subline is uppercase plain text (was strikethrough
             // pre 2026-06-01 · David call: removed visual noise).
-            // No-op suppression · when the original collapses to the
-            // current name/type, don't render the dot or subline.
-            const adaptedRaw = w.adaptation?.wasAdapted;
-            const wasLabelRaw = adaptedRaw
+            // Label-equality no-op suppression was tried then reverted ·
+            // the adapter may have changed distance / pace without
+            // changing the type, and hiding "was EASY" on those rows
+            // lost a real "this was changed" signal.
+            const adapted = w.adaptation?.wasAdapted;
+            const wasLabel = adapted
               ? (w.adaptation!.originalSubLabel || w.adaptation!.originalType)
               : null;
-            const cellCurForCompare = (w.name || w.type || '').toString().toUpperCase().trim();
-            const cellFromForCompare = (wasLabelRaw ?? '').toString().toUpperCase().trim();
-            const cellIsNoOp = !!adaptedRaw && !!cellFromForCompare && cellFromForCompare === cellCurForCompare;
-            const adapted = adaptedRaw && !cellIsNoOp;
-            const wasLabel = adapted ? wasLabelRaw : null;
             body = (
               <div className="cwk">
                 <span className="ctag" style={tint(c)}>
