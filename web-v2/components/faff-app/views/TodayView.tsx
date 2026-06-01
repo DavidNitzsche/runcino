@@ -654,14 +654,19 @@ function planCadenceTarget(
   baseline: number | null | undefined,
   seedTarget?: { low: number; high: number; copy: string } | undefined,
 ): string {
-  if (seedTarget?.copy) return seedTarget.copy;
+  // 2026-06-01 · David call: just the range, no descriptor cue.
+  // Backend still ships `copy` with the cue · we ignore it on this
+  // chip and render the numbers directly.
+  if (seedTarget && seedTarget.low > 0 && seedTarget.high > 0) {
+    return `${seedTarget.low}-${seedTarget.high} spm`;
+  }
   // Fallback canonical range when seed is empty (mirrors backend)
-  const CANONICAL: Record<string, { lo: number; hi: number; cue: string }> = {
-    easy:      { lo: 165, hi: 175, cue: 'relaxed turnover' },
-    long:      { lo: 168, hi: 178, cue: 'sustainable rhythm' },
-    tempo:     { lo: 172, hi: 182, cue: 'drive turnover' },
-    intervals: { lo: 180, hi: 190, cue: 'crisp + quick' },
-    recovery:  { lo: 162, hi: 172, cue: 'easy turnover' },
+  const CANONICAL: Record<string, { lo: number; hi: number }> = {
+    easy:      { lo: 165, hi: 175 },
+    long:      { lo: 168, hi: 178 },
+    tempo:     { lo: 172, hi: 182 },
+    intervals: { lo: 180, hi: 190 },
+    recovery:  { lo: 162, hi: 172 },
   };
   const c = CANONICAL[t] ?? CANONICAL.easy;
   let lo = c.lo, hi = c.hi;
@@ -670,7 +675,7 @@ function planCadenceTarget(
     lo = Math.max(150, Math.min(200, lo + shift));
     hi = Math.max(155, Math.min(205, hi + shift));
   }
-  return `${lo}-${hi} spm · ${c.cue}`;
+  return `${lo}-${hi} spm`;
 }
 function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: string } {
   if (d.hrCap != null) {
