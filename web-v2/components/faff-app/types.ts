@@ -92,6 +92,20 @@ export type FaffSeed = {
        *  workouts (intervals / tempo / threshold) so the influence
        *  comparison isn't burying the rep pace under warmup/recovery miles. */
       doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
+      /** 2026-06-01 · per-day adapter provenance (commit a54c7069).
+       *  Populated from training.weeks[].days[].adaptation. Drives the
+       *  small downgrade glyph + "was X" strikethrough subline on
+       *  FULL PLAN month cells. Same shape as PlannedDay.adaptation. */
+      adaptation?: {
+        wasAdapted: boolean;
+        originalType: string | null;
+        originalSubLabel: string | null;
+        originalDistanceMi: number | null;
+        originalDateIso: string | null;
+        reason: string | null;
+        adaptedAt: string | null;
+        kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+      } | null;
     }>>;
     /** Closed-loop plan adaptations from coach_intents (P1 #8 — written by
      *  applyAdaptations whenever a readiness/volume signal forced a plan

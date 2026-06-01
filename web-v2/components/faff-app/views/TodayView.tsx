@@ -262,13 +262,46 @@ export function TodayView({
                   ) : null}
                 </span>
               </div>
-              <div className="dname">{day.name}</div>
+              <div className="dname">
+                {day.name}
+                {day.adaptation?.wasAdapted ? (
+                  <span
+                    title={day.adaptation.kind ?? 'adapted'}
+                    aria-label="Workout was adapted"
+                    style={{
+                      display: 'inline-block',
+                      marginLeft: 6,
+                      width: 8, height: 8,
+                      borderRadius: '50%',
+                      background: '#FFCE8A',
+                      verticalAlign: 'middle',
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : null}
+              </div>
               <div className="dmeta">
                 <span className="ddot" style={{ background: EFF[day.type].dot }} />
                 <span className="ddist">
                   {day.dist === ' · ' ? 'rest' : `${day.dist} mi · ${day.pace}`}
                 </span>
               </div>
+              {/* "was X" strikethrough subline · only renders when adapter
+                  changed the workout. Uses originalSubLabel when present
+                  (more specific), falls back to originalType (e.g.
+                  "THRESHOLD") on historical backfilled rows. */}
+              {day.adaptation?.wasAdapted && (day.adaptation.originalSubLabel || day.adaptation.originalType) ? (
+                <div style={{
+                  marginTop: 4,
+                  fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,206,138,0.72)',
+                  textDecoration: 'line-through',
+                  textDecorationColor: 'rgba(255,206,138,0.45)',
+                }}>
+                  was {day.adaptation.originalSubLabel || day.adaptation.originalType}
+                </div>
+              ) : null}
               {/* Strength-day suggestion · backend-owned as of
                   2026-06-01 (strength-recommender, commit 34bff2a0).
                   PlannedDay.strengthSuggested is set in seed.ts by

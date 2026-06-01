@@ -607,14 +607,29 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
     }
   }, []);
   // Build all plan days into a Map<YYYY-MM-DD, day>
-  const planMap = new Map<string, { type: string; name: string; mi: number; paceSec: number | null }>();
+  type PlanCell = {
+    type: string;
+    name: string;
+    mi: number;
+    paceSec: number | null;
+    adaptation: NonNullable<typeof seed.season.weekDays>[number][number]['adaptation'] | null;
+  };
+  const planMap = new Map<string, PlanCell>();
   // weekDays now carry `date` directly (fixed 2026-05-31 · the seed
   // builder was dropping training.weeks[i].days[j].date on the floor so
   // the calendar rendered every cell empty even though the plan had
   // workouts). Calendar now anchors each workout to its real slot.
+  // 2026-06-01: planMap also carries adaptation so the cell can render
+  // the small downgrade glyph + "was X" subline.
   seed.season.weekDays.forEach((wkDays) => {
     wkDays.forEach((d) => {
-      if (d.date) planMap.set(d.date, { type: d.type, name: d.name, mi: d.mi, paceSec: d.paceSec });
+      if (d.date) planMap.set(d.date, {
+        type: d.type,
+        name: d.name,
+        mi: d.mi,
+        paceSec: d.paceSec,
+        adaptation: d.adaptation ?? null,
+      });
     });
   });
 
@@ -683,10 +698,44 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
           } else if (w) {
             const c = PHASE_TYPE_COLOR[w.type] ?? '#8A90A0';
             const pace = w.paceSec ? ` · ${Math.floor(w.paceSec / 60)}:${String(Math.round(w.paceSec % 60)).padStart(2, '0')}` : '';
+            // 2026-06-01: small adaptation glyph + "was X" subline when
+            // the row was mutated by the auto-adapter (backend commit
+            // a54c7069). Glyph is a 6px amber dot inline with the day
+            // number; subline is uppercase strikethrough underneath.
+            const adapted = w.adaptation?.wasAdapted;
+            const wasLabel = adapted
+              ? (w.adaptation!.originalSubLabel || w.adaptation!.originalType)
+              : null;
             body = (
               <div className="cwk">
-                <span className="ctag" style={tint(c)}>{w.name}</span>
+                <span className="ctag" style={tint(c)}>
+                  {w.name}
+                  {adapted ? (
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        marginLeft: 5,
+                        width: 6, height: 6,
+                        borderRadius: '50%',
+                        background: '#FFCE8A',
+                        verticalAlign: 'middle',
+                      }}
+                    />
+                  ) : null}
+                </span>
                 <div className="cmeta">{w.mi.toFixed(1)}<small> mi{pace}</small></div>
+                {adapted && wasLabel ? (
+                  <div style={{
+                    marginTop: 2,
+                    fontSize: 8, fontWeight: 700, letterSpacing: '1px',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,206,138,0.72)',
+                    textDecoration: 'line-through',
+                    textDecorationColor: 'rgba(255,206,138,0.45)',
+                  }}>
+                    was {wasLabel}
+                  </div>
+                ) : null}
               </div>
             );
           }

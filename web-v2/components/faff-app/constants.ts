@@ -100,6 +100,22 @@ export type PlannedDay = {
    *  long-run quality). Surfaces as a "STRENGTH" annotation on the
    *  week strip + a coach hint on TodayView when today matches. */
   strengthSuggested?: boolean;
+  /** 2026-06-01 · plan-adapter provenance per day (backend commit
+   *  a54c7069). Populated from glance.weekDays[].adaptation. Null on
+   *  off-plan days or before backfill landed. When wasAdapted is true
+   *  the week-strip chip renders a small downgrade glyph + a "was X"
+   *  strikethrough subline; the WorkoutDetail modal renders the full
+   *  "How it changed" block with kind + reason + timing. */
+  adaptation?: {
+    wasAdapted: boolean;
+    originalType: string | null;
+    originalSubLabel: string | null;
+    originalDistanceMi: number | null;
+    originalDateIso: string | null;
+    reason: string | null;
+    adaptedAt: string | null;
+    kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+  } | null;
 };
 
 export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: string[] }> = {

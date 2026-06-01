@@ -142,6 +142,7 @@ function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
   const pl = PLAN_CUES[d.type] ?? PLAN_CUES.easy;
   return (
     <>
+      <AdaptationBlock d={d} />
       <div className="wk-keyrow">
         <div><div className="k">DISTANCE</div><div className="v">{d.dist}<small> mi</small></div></div>
         <div><div className="k">TARGET PACE</div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div></div>
@@ -291,5 +292,91 @@ function RouteMap({ dist, gain, activityId }: { dist: string; gain: number; acti
         </div>
       </div>
     </>
+  );
+}
+
+/* ============================================================
+   AdaptationBlock · "How it changed" section for adapted workouts.
+   Renders only when d.adaptation.wasAdapted is true (backend's
+   AdaptationInfo envelope · commit a54c7069). Honors the doctrine
+   constraints from designs/briefs/readiness-drawer-redesign-data-
+   brief.md · descriptive only (no prescription), surfaces the raw
+   reason from coach_intents. The reason text style varies across
+   historical vs new adaptations (backend honest about not falsifying
+   audit history) · this component tolerates both voices.
+   ============================================================ */
+function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
+  const a = d.adaptation;
+  if (!a?.wasAdapted) return null;
+  const wasLabel = a.originalSubLabel || a.originalType;
+  const kindCopy: Record<string, string> = {
+    downgrade:   'Downgraded',
+    reschedule:  'Rescheduled',
+    shave:       'Shortened',
+    mark_dirty:  'Paces refreshed',
+    other:       'Adjusted',
+  };
+  const verb = kindCopy[a.kind ?? 'other'] ?? 'Adjusted';
+  const adaptedAtLabel = (() => {
+    if (!a.adaptedAt) return null;
+    const t = new Date(a.adaptedAt);
+    if (!Number.isFinite(t.getTime())) return null;
+    const today = new Date();
+    const sameDay = t.toDateString() === today.toDateString();
+    if (sameDay) return 'Earlier today';
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    if (t.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return t.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  })();
+  // Distance change subline · only meaningful for shave kind (or any
+  // adapt where original_distance differs from current). Avoids saying
+  // "shortened" without a number.
+  const shavedFrom = (a.originalDistanceMi != null && a.kind === 'shave')
+    ? `${a.originalDistanceMi.toFixed(1)} mi → ${d.dist} mi`
+    : null;
+  return (
+    <div
+      style={{
+        background: 'linear-gradient(135deg, rgba(255,206,138,0.10), rgba(255,206,138,0.02))',
+        border: '1px solid rgba(255,206,138,0.35)',
+        borderRadius: 12,
+        padding: '12px 14px',
+        marginBottom: 14,
+      }}
+      role="region"
+      aria-label="How this workout changed"
+    >
+      <div style={{
+        fontSize: 10, letterSpacing: '1.6px', fontWeight: 700,
+        color: '#FFCE8A', marginBottom: 6,
+      }}>
+        HOW IT CHANGED
+      </div>
+      <div style={{
+        fontSize: 14, fontWeight: 600, lineHeight: 1.35,
+        color: 'var(--ink, #fff)',
+        marginBottom: a.reason || adaptedAtLabel ? 6 : 0,
+      }}>
+        {verb}{wasLabel ? <> from <b>{wasLabel}</b></> : null}
+        {a.kind === 'downgrade' && d.name ? <> to <b>{d.name}</b></> : null}
+        {shavedFrom ? <> · {shavedFrom}</> : null}
+      </div>
+      {adaptedAtLabel ? (
+        <div style={{
+          fontSize: 11, color: 'var(--mute, #8B95A7)',
+          marginBottom: a.reason ? 6 : 0,
+        }}>
+          {adaptedAtLabel}
+        </div>
+      ) : null}
+      {a.reason ? (
+        <div style={{
+          fontSize: 13, lineHeight: 1.5,
+          color: 'var(--ink, #fff)', opacity: 0.92,
+        }}>
+          {a.reason}
+        </div>
+      ) : null}
+    </div>
   );
 }
