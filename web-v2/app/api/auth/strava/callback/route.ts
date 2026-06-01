@@ -121,15 +121,23 @@ export async function GET(req: NextRequest) {
         )
         VALUES ($1, $1, 'strava', $2, $3, $4, $5, $6::timestamptz, NOW(), NULL, NOW())
         ON CONFLICT (user_id, provider) DO UPDATE
-          SET provider_user_id = EXCLUDED.provider_user_id,
-              scope            = EXCLUDED.scope,
-              access_token     = EXCLUDED.access_token,
-              refresh_token    = EXCLUDED.refresh_token,
-              expires_at       = EXCLUDED.expires_at,
-              user_uuid        = COALESCE(connector_tokens.user_uuid, EXCLUDED.user_uuid),
-              connected_at     = NOW(),
-              disconnected_at  = NULL,
-              updated_at       = NOW()`,
+          SET provider_user_id  = EXCLUDED.provider_user_id,
+              scope             = EXCLUDED.scope,
+              access_token      = EXCLUDED.access_token,
+              refresh_token     = EXCLUDED.refresh_token,
+              expires_at        = EXCLUDED.expires_at,
+              user_uuid         = COALESCE(connector_tokens.user_uuid, EXCLUDED.user_uuid),
+              connected_at      = NOW(),
+              disconnected_at   = NULL,
+              -- 2026-06-01: clear stale sync-error markers from before
+              -- the reconnect. The status detector reads these to flip
+              -- the "needs_reauth" banner; without clearing them the
+              -- banner stays up even after a clean re-auth because
+              -- 'STRAVA_DEAUTHORIZED_VIA_WEBHOOK' / 'PUSH_401_...' from
+              -- before still match the detector's /401|REAUTH/i regex.
+              last_sync_status  = NULL,
+              last_sync_error   = NULL,
+              updated_at        = NOW()`,
       [state, athleteId, grantedScope, accessToken, refreshToken, expiresAt],
     );
   } catch (e: any) {
