@@ -12,6 +12,7 @@ import {
   StatTile,
   ToggleRow,
 } from '../toolkit';
+import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 
 const ROLES = ['RACE','TEMPO','LONG','EASY','RECOVERY'];
 
@@ -162,7 +163,17 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       {/* Connection rows · per-source connection state with sync timestamp.
           Closes coverage line 1816 (connected sources management). */}
       <div className="fll" style={{ marginTop: 30 }}>CONNECTIONS</div>
-      <div className="fa-rows" style={{ marginTop: 6 }}>
+
+      {/* StravaConnectionCard · live state from /api/strava/status with
+          the full connect / reconnect / disconnect CTA. Lives at the top
+          of CONNECTIONS so the runner sees what's wrong AND the fix in
+          one place. Auto-focuses the Reconnect button when the page is
+          loaded with the /me#strava-card hash. */}
+      <div id="strava-card" style={{ marginTop: 6 }}>
+        <StravaConnectionCard initial={{ connected: false }} />
+      </div>
+
+      <div className="fa-rows" style={{ marginTop: 12 }}>
         {seed.connections.map(c => (
           <ToolkitConnectionRow
             key={c.id}

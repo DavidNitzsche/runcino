@@ -40,6 +40,17 @@
 		<string>Inter-Bold.ttf</string>
 		<string>Inter-ExtraBold.ttf</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>run.faff.strava-oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>faff</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

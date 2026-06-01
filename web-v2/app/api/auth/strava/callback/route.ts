@@ -40,29 +40,66 @@ function publicOrigin(req: NextRequest): string {
   return `${proto}://${host}`;
 }
 
-function appRedirect(req: NextRequest, params: Record<string, string>): NextResponse {
+/**
+ * Strip the platform suffix off the `state` value · returns
+ * `{ userId, platform }`. Web flow encoded `state = <uuid>`, iPhone
+ * flow encoded `state = <uuid>:ios`.
+ */
+function decodeState(state: string): { userId: string; platform: 'web' | 'ios' } {
+  if (state.endsWith(':ios')) {
+    return { userId: state.slice(0, -':ios'.length), platform: 'ios' };
+  }
+  return { userId: state, platform: 'web' };
+}
+
+/**
+ * Build the post-OAuth redirect.
+ *   · web · /today?strava=connected|failed&...
+ *   · ios · faff://strava/callback?status=connected|failed&...
+ *     ASWebAuthenticationSession on the iPhone catches the faff://
+ *     URL and hands control back to the SwiftUI caller.
+ */
+function appRedirect(
+  req: NextRequest,
+  platform: 'web' | 'ios',
+  status: 'connected' | 'failed',
+  extra: Record<string, string> = {},
+): NextResponse {
+  if (platform === 'ios') {
+    const url = new URL('faff://strava/callback');
+    url.searchParams.set('status', status);
+    for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
+    return NextResponse.redirect(url.toString());
+  }
   const url = new URL('/today', publicOrigin(req));
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  url.searchParams.set('strava', status);
+  for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
   return NextResponse.redirect(url.toString());
 }
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
-  const state = req.nextUrl.searchParams.get('state');
+  const stateRaw = req.nextUrl.searchParams.get('state');
   const stravaErr = req.nextUrl.searchParams.get('error');
+
+  // Decode state early so we know whether to bounce to web or iOS even
+  // on the failure paths.
+  const { userId: state, platform } = stateRaw
+    ? decodeState(stateRaw)
+    : { userId: '', platform: 'web' as const };
 
   // User canceled the consent screen, or Strava returned an error.
   if (stravaErr) {
-    return appRedirect(req, { strava: 'failed', msg: stravaErr.slice(0, 200) });
+    return appRedirect(req, platform, 'failed', { msg: stravaErr.slice(0, 200) });
   }
   if (!code || !state) {
-    return appRedirect(req, { strava: 'failed', msg: 'missing code or state' });
+    return appRedirect(req, platform, 'failed', { msg: 'missing code or state' });
   }
 
   const clientId = process.env.STRAVA_CLIENT_ID;
   const clientSecret = process.env.STRAVA_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return appRedirect(req, { strava: 'failed', msg: 'server not configured' });
+    return appRedirect(req, platform, 'failed', { msg: 'server not configured' });
   }
 
   let tokens: any;
@@ -80,14 +117,13 @@ export async function GET(req: NextRequest) {
     });
     if (!tokenResp.ok) {
       const txt = await tokenResp.text().catch(() => '');
-      return appRedirect(req, {
-        strava: 'failed',
+      return appRedirect(req, platform, 'failed', {
         msg: `token exchange ${tokenResp.status}: ${txt.slice(0, 160)}`,
       });
     }
     tokens = await tokenResp.json();
   } catch (err: any) {
-    return appRedirect(req, { strava: 'failed', msg: `network: ${err?.message ?? 'unknown'}` });
+    return appRedirect(req, platform, 'failed', { msg: `network: ${err?.message ?? 'unknown'}` });
   }
 
   const accessToken = tokens.access_token;
@@ -141,8 +177,8 @@ export async function GET(req: NextRequest) {
       [state, athleteId, grantedScope, accessToken, refreshToken, expiresAt],
     );
   } catch (e: any) {
-    return appRedirect(req, { strava: 'failed', msg: `db: ${e?.message?.slice(0, 160)}` });
+    return appRedirect(req, platform, 'failed', { msg: `db: ${e?.message?.slice(0, 160)}` });
   }
 
-  return appRedirect(req, { strava: 'connected', scope: grantedScope });
+  return appRedirect(req, platform, 'connected', { scope: grantedScope });
 }

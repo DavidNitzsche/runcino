@@ -100,13 +100,21 @@ async function connectURL(req: NextRequest) {
   // approval_prompt=auto silently re-granted the same read-only scope
   // and the banner came right back. Force the dialog every time so the
   // scope expansion actually lands.
+  // Encode the originating platform in `state` so the callback knows
+  // where to send the user back to after the token exchange:
+  //   · `<uuid>` · web · callback 302s to /today
+  //   · `<uuid>:ios` · iPhone · callback 302s to faff://strava/callback
+  //     which the app catches via ASWebAuthenticationSession
+  const platform = req.nextUrl.searchParams.get('platform') === 'ios' ? 'ios' : 'web';
+  const stateValue = platform === 'ios' ? `${userId}:ios` : userId;
+
   const url = new URL('https://www.strava.com/oauth/authorize');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirect);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('approval_prompt', 'force');
   url.searchParams.set('scope', 'read,activity:read_all,activity:write');
-  url.searchParams.set('state', userId);
+  url.searchParams.set('state', stateValue);
 
   // Two callers, two response shapes:
   //   · `?redirect=1` · the toolkit banner uses <a href> for direct

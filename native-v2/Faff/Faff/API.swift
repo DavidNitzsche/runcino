@@ -246,11 +246,17 @@ enum API {
     }
 
     static func fetchStravaConnectURL() async throws -> URL? {
+        // platform=ios tells the server to encode state with `:ios` so the
+        // callback knows to 302 to faff://strava/callback (which
+        // ASWebAuthenticationSession catches) instead of /today.
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("api/auth/strava"),
             resolvingAgainstBaseURL: false
         )!
-        comps.queryItems = [URLQueryItem(name: "action", value: "connect")]
+        comps.queryItems = [
+            URLQueryItem(name: "action", value: "connect"),
+            URLQueryItem(name: "platform", value: "ios"),
+        ]
         let (data, _): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
         let r = try? JSONDecoder().decode(StravaConnectURLResponse.self, from: data)
         guard let urlStr = r?.url else { return nil }

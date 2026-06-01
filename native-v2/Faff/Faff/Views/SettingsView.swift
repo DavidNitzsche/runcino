@@ -18,6 +18,13 @@ struct SettingsView: View {
     @State private var notifNudge: Bool = true
     @State private var notifWeekly: Bool = false
 
+    /// Strava reconnect in-flight · disables the row to prevent double-taps
+    /// while the OAuth browser is open. Reset when the session returns.
+    @State private var stravaReconnecting: Bool = false
+    /// Last-action banner under the Connections section. Cleared after
+    /// 6 seconds so it doesn't linger.
+    @State private var stravaToast: String? = nil
+
     private let mesh = FaffMesh(
         c1: 0x3FB6B0, c2: 0x62E08A, c3: 0x0E4F4C,
         c4: 0x155A4A, c5: 0x155A4A, base: 0x072A28
@@ -82,11 +89,30 @@ struct SettingsView: View {
                                 value: profile?.connections.appleHealth.connected == true ? "Synced" : "Connect",
                                 good: profile?.connections.appleHealth.connected == true
                             )
-                            navRow(
-                                title: "Strava",
-                                value: profile?.connections.strava.connected == true ? "Synced" : "Connect",
-                                good: profile?.connections.strava.connected == true
-                            )
+                            // Tappable Strava row · launches the OAuth flow
+                            // via ASWebAuthenticationSession when tapped.
+                            // Disabled while reconnecting so a double-tap
+                            // doesn't spawn two sessions.
+                            Button {
+                                Task { await startStravaConnect() }
+                            } label: {
+                                navRow(
+                                    title: "Strava",
+                                    value: stravaReconnecting ? "Opening…"
+                                        : (profile?.connections.strava.connected == true ? "Synced" : "Connect"),
+                                    good: profile?.connections.strava.connected == true
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(stravaReconnecting)
+                            if let toast = stravaToast {
+                                Text(toast)
+                                    .font(.body(12, weight: .medium))
+                                    .foregroundStyle(Theme.txt.opacity(0.7))
+                                    .padding(.horizontal, 17)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                             navRow(
                                 title: "Apple Watch",
                                 value: profile?.connections.appleWatch.connected == true ? "Paired" : "Not paired",
@@ -130,6 +156,40 @@ struct SettingsView: View {
             BackChip { dismiss() }
             SpecLabel(text: "SETTINGS", size: 13, tracking: 2.5, color: Theme.txt)
             Spacer()
+        }
+    }
+
+    /// Launch the Strava OAuth flow. Opens an in-app browser (shared
+    /// cookies with Safari), waits for the runner to grant consent,
+    /// catches the faff:// callback, then re-pulls profile state so
+    /// the row flips to "Synced." Toast surfaces the outcome.
+    @MainActor
+    private func startStravaConnect() async {
+        guard !stravaReconnecting else { return }
+        stravaReconnecting = true
+        stravaToast = nil
+        let outcome = await StravaOAuthSession.shared.start()
+        switch outcome {
+        case .connected:
+            stravaToast = "Strava connected · refreshing…"
+            // Re-pull profile so the row flips. Settings prefetches via
+            // .task on appear, but a manual refresh is cheap.
+            if let p = try? await API.fetchProfileState() {
+                self.profile = p
+            }
+            stravaToast = "Strava connected"
+        case .failed(let reason):
+            stravaToast = "Couldn't connect Strava: \(reason)"
+        case .canceled:
+            stravaToast = nil
+        }
+        stravaReconnecting = false
+        // Auto-clear the toast after a moment so it doesn't linger.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            if stravaToast?.contains("Strava connected") == true || stravaToast?.contains("Couldn't") == true {
+                stravaToast = nil
+            }
         }
     }
 
