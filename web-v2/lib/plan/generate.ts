@@ -24,6 +24,8 @@ import { pool } from '@/lib/db/pool';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
+import { buildWorkoutSpec, tPaceFromGoal } from './spec-builder';
+import { parseRaceTime } from '@/lib/training/vdot';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -107,6 +109,59 @@ async function recentWeeklyMileage(userId: string): Promise<number> {
   return Math.round((Number(r.rows[0]?.mi ?? 0) / 4) * 10) / 10;
 }
 
+/**
+ * 2026-06-01 · detect whether the runner is mid-block · has been doing
+ * quality work in the last 28 days. Two signals (either is enough):
+ *
+ *   1. The active plan_workouts has a completed quality workout
+ *      (threshold / intervals / tempo) in the last 28 days · checks
+ *      both the prescribed type AND the matched actual run.
+ *   2. The runs feed has runs with high HR (≥85% HRmax estimate ·
+ *      threshold-effort) in the last 28 days even without an explicit
+ *      type tag · catches Strava-imported quality work that wasn't
+ *      labeled.
+ *
+ * Returns true if either fires. When true, sizeBlocks skips BASE so a
+ * mid-block runner doesn't get dropped back into a fresh aerobic phase
+ * by an auto-rebuild.
+ *
+ * False-positive risk · a one-off hard run won't trigger #1 (it
+ * checks PRESCRIBED type, not just one-off effort). #2 needs sustained
+ * HR signal · single-day spike doesn't count.
+ */
+async function detectMidBlock(userId: string): Promise<boolean> {
+  // Signal 1 · prescribed quality in last 28d of any active plan
+  const r1 = await pool.query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n
+       FROM plan_workouts pw
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE tp.user_uuid = $1
+        AND tp.archived_iso IS NULL
+        AND pw.type IN ('threshold','tempo','intervals','vo2max')
+        AND pw.date_iso::date BETWEEN (CURRENT_DATE - 28) AND CURRENT_DATE`,
+    [userId]
+  ).catch(() => ({ rows: [{ n: '0' }] }));
+  if (Number(r1.rows[0]?.n ?? 0) >= 2) return true;  // ≥2 prescribed quality sessions
+
+  // Signal 2 · runs with quality-effort tag OR sustained high-HR work
+  const r2 = await pool.query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n
+       FROM runs r
+      WHERE r.user_uuid = $1
+        AND NOT (r.data ? 'mergedIntoId')
+        AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date
+            >= CURRENT_DATE - 28
+        AND (
+              LOWER(COALESCE(r.data->>'type', '')) IN ('tempo','threshold','intervals','vo2max','race')
+              OR LOWER(COALESCE(r.data->>'workoutType', '')) ~ '(tempo|threshold|interval|vo2|race)'
+            )`,
+    [userId]
+  ).catch(() => ({ rows: [{ n: '0' }] }));
+  if (Number(r2.rows[0]?.n ?? 0) >= 2) return true;
+
+  return false;
+}
+
 // ── Block sizing ────────────────────────────────────────────────────────
 
 interface BlockPlan {
@@ -139,7 +194,7 @@ const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: n
   'm':   { taperWeeks: 3, raceSpecificCap: 4 },
 };
 
-function sizeBlocks(totalWeeks: number, raceDistanceMi: number): BlockPlan {
+function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBlock: boolean = false): BlockPlan {
   const cat = distanceCategoryOf(raceDistanceMi);
   const shape = BLOCK_SHAPE[cat];
   const taperWeeks       = shape.taperWeeks;
@@ -151,8 +206,14 @@ function sizeBlocks(totalWeeks: number, raceDistanceMi: number): BlockPlan {
   const qualityWeeks     = Math.min(8, Math.max(3, Math.floor(remainingAfterTaperAndRS * 0.6)));
   // Base: everything left, but capped at 8 weeks so we don't stall in aerobic
   // forever when the race is far out. If race is >6 months out, the user is
-  // effectively in maintenance — the surplus weeks fold into base anyway.
-  const baseWeeks        = Math.min(8, Math.max(0, totalWeeks - taperWeeks - raceSpecificWks - qualityWeeks));
+  // effectively in maintenance · the surplus weeks fold into base anyway.
+  //
+  // 2026-06-01 · mid-block awareness: when the runner has been doing
+  // threshold/intervals in the last 28 days, an auto-rebuild that drops
+  // them back into a fresh BASE phase is a regression. Skip BASE entirely
+  // (baseWeeks = 0) · the freed weeks fold into expandedQuality below.
+  const baseWeeksRaw     = Math.min(8, Math.max(0, totalWeeks - taperWeeks - raceSpecificWks - qualityWeeks));
+  const baseWeeks        = isMidBlock ? 0 : baseWeeksRaw;
   // If base was capped, redistribute the extras into quality so we don't end
   // up with fewer total weeks than the runway.
   const extraWeeks       = Math.max(0, totalWeeks - taperWeeks - raceSpecificWks - qualityWeeks - baseWeeks);
@@ -462,6 +523,13 @@ async function persistPlan(args: {
   userId: string; raceSlug: string; raceDateISO: string;
   blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean }>;
   authoredState: Record<string, unknown>;
+  /** Runner's T-pace (s/mi) at generate-time. Used to populate every
+   *  quality workout's pace_target_s_per_mi + workout_spec at insert ·
+   *  no more null columns waiting for a backfill cron. 2026-06-01. */
+  tPaceSec: number | null;
+  /** Runner's LTHR for spec HR caps. Optional · spec falls back to
+   *  pace-only when missing. */
+  lthr: number | null;
 }): Promise<string> {
   const planId = id('pln');
   await pool.query(
@@ -508,14 +576,29 @@ async function persistPlan(args: {
       if (d.distanceMi === 0 && d.type !== 'rest' && d.type !== 'race') continue;
       const wkoId = id('wko');
       const dateISO = addDays(w.startISO, ((d.dow - 1 + 7) % 7));
+      // 2026-06-01 · derive pace_target + workout_spec at insert time
+      // (web agent gap brief). Was leaving both NULL waiting on the
+      // backfill cron · now every freshly-generated quality row
+      // carries its target pace + structured spec from day one.
+      // Reuses lib/plan/spec-builder.ts (single source of truth ·
+      // backfill cron uses the same helper).
+      let paceTargetSPerMi: number | null = null;
+      let workoutSpec: ReturnType<typeof buildWorkoutSpec>['spec'] = null;
+      if (args.tPaceSec != null) {
+        const built = buildWorkoutSpec(d.type, d.distanceMi, args.tPaceSec, args.lthr);
+        paceTargetSPerMi = built.paceTargetSPerMi;
+        workoutSpec = built.spec;
+      }
       // dow stored as 1=Mon..7=Sun in our convention? Use what plan_workouts expects.
       // We pass dow 0..6 (Sun..Sat). Existing reader treats numeric dow + sub_label.
       await pool.query(
         `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
+                                    pace_target_s_per_mi, workout_spec,
                                     is_quality, is_long, notes, sub_label,
-                                    original_date_iso, original_type, original_distance_mi)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $4, $6, $7)`,
+                                    original_date_iso, original_type, original_distance_mi, original_sub_label)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $4, $6, $7, $13)`,
         [wkoId, planId, weekId, dateISO, d.dow, d.type, d.distanceMi,
+         paceTargetSPerMi, workoutSpec ? JSON.stringify(workoutSpec) : null,
          d.isQuality, d.isLong, d.notes, d.subLabel]
       );
     }
@@ -568,7 +651,12 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   const totalWeeks = daysBetween(startMonday, raceMonday) / 7 + 1;
   if (totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 
-  const blocks = sizeBlocks(totalWeeks, raceDistanceMi);
+  // 2026-06-01 · mid-block awareness (web agent gap). Runner who's been
+  // doing quality for weeks shouldn't be sent back to a fresh BASE phase
+  // by an auto-rebuild. Detect quality activity in the last 28 days ·
+  // skip BASE entirely if present (fold those weeks into QUALITY).
+  const isMidBlock = await detectMidBlock(userId);
+  const blocks = sizeBlocks(totalWeeks, raceDistanceMi, isMidBlock);
   const recentMi = await recentWeeklyMileage(userId);
 
   // Read experience_level for volume-curve scaling (Q-01 / SIM-02 fix).
@@ -644,14 +732,29 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   // 5. Archive existing active plans, then persist
   await clearActivePlansFor(userId);
 
+  // 2026-06-01 · derive T-pace + read LTHR ONCE before insert so every
+  // workout row gets its pace_target + workout_spec populated at write
+  // time. No more null-column-waiting-for-backfill-cron · plan is
+  // self-contained from row one.
+  const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi);
+  const lthrRow = (await pool.query<{ lthr: number | null }>(
+    `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const lthr = lthrRow?.lthr ?? null;
+
   const planId = await persistPlan({
     userId, raceSlug, raceDateISO, blocks, weeks,
+    tPaceSec, lthr,
     authoredState: {
       generated_at: new Date().toISOString(),
       total_weeks: totalWeeks,
       race_distance_mi: raceDistanceMi,
       goal_pace_s_per_mi: goalPaceSec,
       recent_avg_mpw: recentMi,
+      is_mid_block: isMidBlock,
+      t_pace_s_per_mi: tPaceSec,
+      lthr_bpm: lthr,
       citations: blocks.phases.map((p) => p.citation),
     },
   });

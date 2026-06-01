@@ -1,0 +1,226 @@
+/**
+ * lib/plan/spec-builder.ts · single source of truth for workout_spec +
+ * pace_target_s_per_mi derivation from runner VDOT + LTHR.
+ *
+ * Extracted from app/api/admin/backfill-workout-spec/route.ts so the
+ * generator + backfill cron + adapter all derive the same way.
+ *
+ * Inputs: workout type + distance + T-pace (from VDOT) + LTHR (optional).
+ * Outputs: workout_spec jsonb + a primary pace_target_s_per_mi scalar
+ * for the column (the "headline" pace for the type · used by chip render).
+ *
+ * Doctrine:
+ *   · Daniels' Running Formula · T/I/M/E pace offsets
+ *   · Research/01 §pace-zones
+ *   · Friel zones for HR caps (Z2 ≤ 80% LTHR for easy · ≤ 85% for long)
+ */
+
+export type WorkoutSpec = Record<string, unknown> | null;
+
+export interface SpecBuildResult {
+  /** workout_spec column value · null for types where it's intentionally absent. */
+  spec: WorkoutSpec;
+  /** Primary pace target in seconds per mile for the pace_target_s_per_mi
+   *  column · null for easy/recovery/rest (no specific target). */
+  paceTargetSPerMi: number | null;
+}
+
+// ── HR helpers ──────────────────────────────────────────────────────────
+
+function hrCapEasy(lthr: number | null): number | null {
+  return lthr ? Math.round(lthr * 0.80) : null;
+}
+function hrCapLong(lthr: number | null): number | null {
+  return lthr ? Math.round(lthr * 0.85) : null;
+}
+function hrLthrBpm(lthr: number | null): number | null {
+  return lthr ?? null;
+}
+
+// ── Fuel timing ──────────────────────────────────────────────────────────
+
+function fuelMi(dist: number | null): number[] {
+  if (!dist || dist < 8) return [];
+  const out: number[] = [];
+  // First fuel at mi 5, then every 4 mi
+  for (let m = 5; m < dist; m += 4) out.push(m);
+  return out;
+}
+
+/**
+ * Build a workout_spec + pace_target for a single workout row.
+ *
+ * Returns `{ spec: null, paceTargetSPerMi: null }` for types whose spec
+ * is intentionally absent (rest / cross / strength). For easy / recovery,
+ * spec is populated but paceTargetSPerMi stays null (no single headline
+ * pace · the spec carries a lo/hi range).
+ */
+export function buildWorkoutSpec(
+  type: string,
+  distance_mi: number | null,
+  tPaceSec: number,
+  lthr: number | null,
+): SpecBuildResult {
+  const easyLo = tPaceSec + 60, easyHi = tPaceSec + 110;
+  const longLo = tPaceSec + 55, longHi = tPaceSec + 90;
+  const tempo  = tPaceSec + 12;         // mid of T+5 to T+18
+  const interval = tPaceSec - 18;       // ~10K pace
+  const recovery = tPaceSec + 100;      // very easy
+  const mp = tPaceSec + 18;             // marathon pace
+
+  switch (type) {
+    case 'easy':
+      return {
+        spec: {
+          kind: 'easy',
+          pace_target_s_per_mi_lo: easyLo,
+          pace_target_s_per_mi_hi: easyHi,
+          hr_cap_bpm: hrCapEasy(lthr),
+          fuel_mi: [],
+        },
+        // Easy days don't have a single "headline" pace · the chip
+        // shows a lo-hi range from the spec, not pace_target_s_per_mi.
+        paceTargetSPerMi: null,
+      };
+    case 'recovery':
+      return {
+        spec: {
+          kind: 'recovery',
+          pace_target_s_per_mi_lo: recovery,
+          pace_target_s_per_mi_hi: recovery + 30,
+          hr_cap_bpm: hrCapEasy(lthr),
+        },
+        paceTargetSPerMi: null,
+      };
+    case 'long': {
+      // Long runs in race-specific phase carry an MP segment ·
+      // pace_target reflects that mid-effort prescription.
+      return {
+        spec: {
+          kind: 'long',
+          pace_target_s_per_mi_lo: longLo,
+          pace_target_s_per_mi_hi: longHi,
+          hr_cap_bpm: hrCapLong(lthr),
+          fuel_mi: fuelMi(distance_mi),
+        },
+        // Long-run "headline" pace is the easy long pace · take the
+        // middle of the range.
+        paceTargetSPerMi: Math.round((longLo + longHi) / 2),
+      };
+    }
+    case 'tempo': {
+      const tempoDist = Math.max(2, Math.min(7, (distance_mi ?? 8) - 3));
+      const wu = ((distance_mi ?? 8) - tempoDist) / 2;
+      return {
+        spec: {
+          kind: 'tempo',
+          warmup_mi: Number(wu.toFixed(1)),
+          tempo_distance_mi: Number(tempoDist.toFixed(1)),
+          tempo_pace_s_per_mi: tempo,
+          cooldown_mi: Number(wu.toFixed(1)),
+          hr_target_bpm: lthr ? Math.round(lthr * 0.92) : null,
+        },
+        paceTargetSPerMi: tempo,
+      };
+    }
+    case 'threshold': {
+      const repCount = 4;
+      const repMi = 1.0;
+      const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
+      return {
+        spec: {
+          kind: 'threshold',
+          warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
+          rep_count: repCount,
+          rep_distance_mi: repMi,
+          rep_pace_s_per_mi: tPaceSec,
+          rep_rest_s: 60,
+          cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
+          lthr_bpm: hrLthrBpm(lthr),
+        },
+        paceTargetSPerMi: tPaceSec,
+      };
+    }
+    case 'intervals':
+    case 'vo2max': {
+      const repCount = 5;
+      const repMi = 0.62;
+      const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
+      return {
+        spec: {
+          kind: 'intervals',
+          warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
+          rep_count: repCount,
+          rep_distance_mi: repMi,
+          rep_pace_s_per_mi: interval,
+          rep_rest_s: 90,
+          cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
+          lthr_bpm: hrLthrBpm(lthr),
+        },
+        paceTargetSPerMi: interval,
+      };
+    }
+    case 'race':
+      return {
+        spec: {
+          kind: 'long',  // no 'race' kind in WorkoutSpec union · stash as long
+          pace_target_s_per_mi_lo: tPaceSec - 10,
+          pace_target_s_per_mi_hi: tPaceSec + 5,
+          hr_cap_bpm: lthr ? Math.round(lthr * 0.95) : null,
+          fuel_mi: fuelMi(distance_mi),
+        },
+        paceTargetSPerMi: tPaceSec,  // race pace ≈ T-pace for HM, slightly slower for M
+      };
+    case 'shakeout':
+      return {
+        spec: {
+          kind: 'easy',
+          pace_target_s_per_mi_lo: easyHi,
+          pace_target_s_per_mi_hi: easyHi + 30,
+          hr_cap_bpm: hrCapEasy(lthr),
+          fuel_mi: [],
+        },
+        paceTargetSPerMi: null,
+      };
+    case 'race_week_tuneup':
+      return {
+        spec: {
+          kind: 'threshold',
+          warmup_mi: 1.5,
+          rep_count: 2,
+          rep_distance_mi: 0.5,
+          rep_pace_s_per_mi: tPaceSec - 5,  // slightly faster than T · primes the system
+          rep_rest_s: 60,
+          cooldown_mi: 1.0,
+          lthr_bpm: hrLthrBpm(lthr),
+        },
+        paceTargetSPerMi: tPaceSec - 5,
+      };
+    case 'rest':
+    case 'cross':
+    case 'strength':
+      return { spec: null, paceTargetSPerMi: null };
+    default:
+      return { spec: null, paceTargetSPerMi: null };
+  }
+}
+
+/**
+ * Derive T-pace (s/mi) from the runner's goal race + distance.
+ * Same formula as lib/training/prescriptions.ts § tPaceSecPerMi.
+ *
+ * Returns null when the runner has no goal · callers should fall back
+ * to a default (e.g. 480s/mi = 8:00/mi) and leave specs null until
+ * goal lands.
+ */
+export function tPaceFromGoal(
+  goalSeconds: number | null | undefined,
+  goalDistanceMi: number | null | undefined,
+): number | null {
+  if (!goalSeconds || !goalDistanceMi) return null;
+  const goalSPerMi = Math.round(goalSeconds / goalDistanceMi);
+  if (goalDistanceMi >= 25) return goalSPerMi - 18;   // marathon
+  if (goalDistanceMi >= 12) return goalSPerMi - 5;    // half
+  if (goalDistanceMi >= 5)  return goalSPerMi + 8;    // 10K
+  return goalSPerMi + 15;                              // 5K
+}

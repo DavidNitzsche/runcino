@@ -65,29 +65,72 @@ export async function POST(req: NextRequest) {
       r.plan_id = report.planId;
       r.signals_found = report.signals.length;
 
-      // Write each fresh signal as a pending proposal.
-      for (const signal of report.signals) {
-        const exists = await hasPendingProposal(u, report.planId, signal.kind);
-        if (exists) {
-          r.signals_skipped++;
-          continue;
+      // 2026-06-01 · soft drift now AUTO-APPLIES (David's zero-gaps
+      // directive · "no opening the app required"). Generator gaps
+      // that previously made auto-rebuild risky for mid-block runners
+      // are fixed (spec-builder.ts + detectMidBlock) so the rebuilt
+      // plan preserves quality + carries pace targets + workout specs
+      // from row one.
+      //
+      // To avoid thrashing on borderline drift, take ONLY THE HIGHEST-
+      // SEVERITY signal per run · multiple signals (e.g. volume_drift
+      // + staleness simultaneously) collapse into one rebuild.
+      // Idempotency · skip if a rebuild already fired in last 24h via
+      // any drift signal kind.
+      const recent = await hasPendingProposal(u, report.planId, 'volume_drift')
+        || await hasPendingProposal(u, report.planId, 'vdot_drift')
+        || await hasPendingProposal(u, report.planId, 'staleness');
+      if (recent) {
+        r.signals_skipped = report.signals.length;
+      } else if (report.primary) {
+        const signal = report.primary;
+        // Run the rebuild via fireAutoRebuild · same path the hard-drift
+        // hooks use · same audit shape · same dedupe window.
+        try {
+          const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
+          // Look up the goal race slug for the plan
+          const plan = (await pool.query<{ race_id: string | null }>(
+            `SELECT race_id FROM training_plans WHERE id = $1`,
+            [report.planId],
+          ).catch(() => ({ rows: [] }))).rows[0];
+          if (plan?.race_id) {
+            await fireAutoRebuild({
+              userUuid: u,
+              raceSlug: plan.race_id,
+              // Map drift kind → AutoRebuildKind · we reuse the existing
+              // hard-drift kinds since drift IS a recalibration trigger.
+              // The proposal row's `reasons.drift_kind` carries the soft
+              // signal that fired so the runner sees why.
+              kind: 'goal_time_changed',  // synthetic · "recalibrate"
+              reasons: {
+                drift_kind: signal.kind,
+                message: signal.message,
+                severity: signal.severity,
+                ...signal.details,
+              },
+              source: 'drift_cron_auto',
+            });
+            r.proposals_written++;
+          }
+        } catch (e: unknown) {
+          // If auto-rebuild fails, fall back to writing a pending proposal
+          // (the old behavior · runner sees a card to manually accept)
+          await pool.query(
+            `INSERT INTO plan_proposals
+               (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+             VALUES ($1, $2, $3, $4::jsonb, 'pending', 'drift_cron_fallback', NOW())`,
+            [
+              u, report.planId, signal.kind,
+              JSON.stringify({
+                message: signal.message,
+                severity: signal.severity,
+                auto_rebuild_error: e instanceof Error ? e.message : String(e),
+                ...signal.details,
+              }),
+            ],
+          );
+          r.proposals_written++;
         }
-        await pool.query(
-          `INSERT INTO plan_proposals
-             (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'pending', 'drift_cron', NOW())`,
-          [
-            u,
-            report.planId,
-            signal.kind,
-            JSON.stringify({
-              message: signal.message,
-              severity: signal.severity,
-              ...signal.details,
-            }),
-          ],
-        );
-        r.proposals_written++;
       }
     } catch (e: unknown) {
       r.error = e instanceof Error ? e.message : String(e);
