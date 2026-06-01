@@ -97,16 +97,14 @@ export function AdaptationCard({
 }) {
   const { rows, state } = useIntents({ limit: 5, initial });
 
-  if (state === 'loading') {
-    return (
-      <div className="fa-adapt" aria-busy="true">
-        <span className="badge">COACH</span>
-        <div className="adapt-body" style={{ flex: 1 }}>
-          <FaSkeleton lines={2} />
-        </div>
-      </div>
-    );
-  }
+  // 2026-06-01: return null while loading. Previously this rendered
+  // a full COACH-badged skeleton card for the duration of
+  // /api/coach/intents (100-500ms), then collapsed to null when
+  // there was no recent intent (the common case) · caused a visible
+  // banner flash + layout jump at the top of Today. The card is
+  // intent-driven and self-suppressing on uneventful days; the
+  // loading state has no useful information for the runner to see.
+  if (state === 'loading') return null;
   if (state === 'error' || !rows) return null;
 
   const cutoff = Date.now() - recencyHours * 3600 * 1000;
