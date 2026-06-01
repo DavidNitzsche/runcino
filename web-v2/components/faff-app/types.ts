@@ -277,6 +277,9 @@ export type ReadinessBriefSeed = {
     direction: 'above' | 'below';
     days: number;
     startDate: string;
+    /** 5-10 word collapsed banner copy · default state. */
+    short: string;
+    /** Full coach-voice paragraph · revealed on tap. */
     meaning: string;
   }>;
   movers: Array<{ pillar: string; deltaPts: number; label: string }>;
@@ -285,6 +288,27 @@ export type ReadinessBriefSeed = {
     objectiveScore: number;
     deltaAbs: number;
     advice: string;
+  } | null;
+  /** 2026-06-01 · today's subjective check-in state · drives Section 8. */
+  subjectiveCheckin: {
+    answeredAt: string | null;
+    rating: number | null;
+    answered: boolean;
+  };
+  /** 2026-06-01 · cold-start envelope · only populated when band='no-data'. */
+  coldStart: {
+    nightsLogged: number;
+    nightsNeeded: number;
+    note: string;
+    healthConnected: boolean;
+  } | null;
+  /** 2026-06-01 · authored 14-day trend paragraph · null when < 4 days. */
+  trendNote: string | null;
+  /** 2026-06-01 · BASELINE / NET / TODAY · single source of truth. */
+  composition: {
+    baseline: number;
+    net: number;
+    today: number;
   } | null;
   watchTomorrow: string[];
 };

@@ -38,7 +38,9 @@ export interface ReadinessStreak {
   direction: StreakDirection;
   days: number;             // ≥3 to be surfaced
   startDate: string;        // YYYY-MM-DD
-  /** Plain-language doctrine for what an n-day streak means. */
+  /** 5-10 word collapsed banner copy · default state. */
+  short: string;
+  /** Plain-language doctrine for what an n-day streak means · revealed on tap. */
   meaning: string;
 }
 
@@ -94,6 +96,35 @@ export interface ReadinessBrief {
     deltaAbs: number;
     advice: string;
   } | null;
+  /** 2026-06-01 · today's morning subjective check-in state. Drives the
+   *  Section-8 "How do you feel" prompt. answered=false → prompt renders ·
+   *  answered=true → answer surfaces inline. Source: subjective_checkins. */
+  subjectiveCheckin: {
+    answeredAt: string | null;  // ISO timestamp of last answer
+    rating: number | null;       // 0-10 scale
+    answered: boolean;           // true when today's row exists
+  };
+  /** 2026-06-01 · cold-start envelope · only populated when band='no-data'
+   *  (otherwise null). Drives the "Building your baseline · 5 more nights"
+   *  empty-state UI per the redesigned drawer §"Special state: cold start". */
+  coldStart: {
+    nightsLogged: number;
+    nightsNeeded: number;
+    note: string;
+    healthConnected: boolean;
+  } | null;
+  /** 2026-06-01 · authored coach-voice paragraph framing the 14-day score
+   *  trend. References active streaks + biggest mover + trajectory · NOT a
+   *  template. Null when scoreTrend has < 4 days (not enough to call a trend). */
+  trendNote: string | null;
+  /** 2026-06-01 · explicit BASELINE / NET / TODAY shape for the math row.
+   *  Composer's source-of-truth baseline (mean of past 14d excluding today
+   *  via snapshot rows). Null only on true cold start. */
+  composition: {
+    baseline: number;
+    net: number;
+    today: number;
+  } | null;
   /** "Watching" callouts for tomorrow · the brief points the runner at
    *  what to verify if it persists. */
   watchTomorrow: string[];
@@ -142,7 +173,30 @@ export async function loadReadinessBrief(
   const stateForScore: CoachState = { ...state };
   const breakdown = computeReadiness(stateForScore);
 
-  if (breakdownIsEmpty(breakdown)) return null;
+  // 2026-06-01 · cold-start no longer short-circuits to null · the
+  // drawer needs the coldStart envelope to render the "Building your
+  // baseline · 5 more nights" state per the redesigned drawer spec.
+  if (breakdownIsEmpty(breakdown)) {
+    const coldStart = await loadColdStart(userId, 'no-data');
+    return {
+      date,
+      score: 0,
+      band: 'no-data',
+      label: 'BUILDING',
+      headline: coldStart?.note ?? 'Connect Apple Health to start your baseline.',
+      oneLineMover: null,
+      scoreTrend: [],
+      pillars: [],
+      streaks: [],
+      movers: [],
+      subjectiveOverride: null,
+      subjectiveCheckin: { answeredAt: null, rating: null, answered: false },
+      coldStart,
+      trendNote: null,
+      composition: null,
+      watchTomorrow: [],
+    };
+  }
 
   // Pull yesterday's snapshot (for mover detection) · best-effort.
   const yesterdaySnap = await loadYesterdaySnapshot(userId, date);
@@ -167,8 +221,24 @@ export async function loadReadinessBrief(
     ? `${movers[0].label}`
     : null;
 
-  // Subjective override · null until we wire the 1-10 wellness check-in.
-  const subjectiveOverride = null;
+  // 2026-06-01 · subjective check-in + override (web agent brief §1).
+  // Reads today's subjective_checkins row. When the runner's 0-10
+  // rating disagrees with the objective composite by ≥15 pts (after
+  // ×10 normalization), populate subjectiveOverride per Saw et al.
+  const subjectiveCheckin = await loadSubjectiveCheckin(userId, date);
+  const subjectiveOverride = computeSubjectiveOverride(breakdown, subjectiveCheckin);
+
+  // 2026-06-01 · cold-start envelope (web agent brief §2). Null when
+  // we have a score · only populated for band='no-data' runners.
+  const coldStart = await loadColdStart(userId, breakdown.band);
+
+  // 2026-06-01 · trendNote (web agent brief §4). Authored coach copy
+  // for the 14-day chart · references streaks + movers + trajectory.
+  const trendNote = buildTrendNote(scoreTrend, breakdown.score, streaks, movers);
+
+  // 2026-06-01 · composition (web agent brief §5). Single source of
+  // truth for BASELINE / NET / TODAY math row.
+  const composition = buildComposition(scoreTrend, breakdown.score);
 
   // Watch tomorrow · forward-looking guidance.
   const watchTomorrow = buildWatchTomorrow(breakdown, streaks, history);
@@ -185,6 +255,10 @@ export async function loadReadinessBrief(
     streaks,
     movers,
     subjectiveOverride,
+    subjectiveCheckin,
+    coldStart,
+    trendNote,
+    composition,
     watchTomorrow,
   };
 }
@@ -287,6 +361,7 @@ function detectStreaks(
       direction: 'below',
       days: sleepStreak.length,
       startDate: history.sleep.at(-sleepStreak.length)?.date ?? '',
+      short: `Sleep below target ${sleepStreak.length} nights running.`,
       meaning: `Sleep below the 7.5h target ${sleepStreak.length} nights running. ` +
         `Cumulative debt compounds · Research/00b says single short nights don't ` +
         `matter, sustained dips do.`,
@@ -302,6 +377,7 @@ function detectStreaks(
         direction: 'below',
         days: drops,
         startDate: history.hrv.at(-drops)?.date ?? '',
+        short: `HRV below baseline ${drops} days running.`,
         meaning: `HRV rolling-7 below SWC ${drops} days in a row. Per Plews, ` +
           `this is the early-functional-overreach flag · reduce intensity ` +
           `24-72h and re-check.`,
@@ -320,6 +396,7 @@ function detectStreaks(
         direction: 'below',
         days: streakLen,
         startDate: history.hrv.at(-streakLen)?.date ?? '',
+        short: `HRV below 60-day average ${streakLen} days running.`,
         meaning: `HRV below your 60-day average ${streakLen} days in a row. ` +
           `Could be stress, sleep, or accumulating load · single days are noise, ` +
           `streaks are signal.`,
@@ -343,6 +420,7 @@ function detectStreaks(
         direction: 'above',
         days: above,
         startDate: history.rhr.at(-above)?.date ?? '',
+        short: `RHR up ${above} days running.`,
         meaning: `Resting HR ≥3 bpm above your 60-day baseline ${above} days ` +
           `in a row. Common culprits: brewing illness, dehydration, alcohol, ` +
           `or accumulating load. Worth checking subjective state.`,
@@ -583,4 +661,201 @@ function buildWatchTomorrow(
       `destabilization band per Plews. Worth reducing one hard session if it persists.`);
   }
   return out;
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 2026-06-01 · Field additions per readiness-brief-field-additions.md
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Load today's subjective check-in row · the 0-10 morning rating per
+ * Saw et al. 2016 doctrine. Returns the envelope expected by the
+ * Section-8 prompt: answered=false → drawer renders the prompt;
+ * answered=true → drawer surfaces the answer inline.
+ */
+async function loadSubjectiveCheckin(
+  userId: string,
+  todayISO: string,
+): Promise<{ answeredAt: string | null; rating: number | null; answered: boolean }> {
+  const row = (await pool.query<{ rating: number; updated_at: Date }>(
+    `SELECT rating, updated_at
+       FROM subjective_checkins
+      WHERE user_uuid = $1::uuid AND date = $2::date
+      LIMIT 1`,
+    [userId, todayISO],
+  ).catch(() => ({ rows: [] }))).rows[0];
+
+  if (!row) return { answeredAt: null, rating: null, answered: false };
+  return {
+    answeredAt: row.updated_at?.toISOString() ?? null,
+    rating: row.rating,
+    answered: true,
+  };
+}
+
+/**
+ * Compute the subjective override block per Saw et al. doctrine ·
+ * when the runner's 0-10 rating (×10 normalized) disagrees with the
+ * objective composite by ≥15 pts, subjective wins.
+ *
+ * Returns null when the runner hasn't answered today (no signal) or
+ * when objective + subjective agree closely (no override needed).
+ */
+function computeSubjectiveOverride(
+  breakdown: ReadinessBreakdown,
+  checkin: { rating: number | null; answered: boolean },
+): {
+  subjectiveScore: number;
+  objectiveScore: number;
+  deltaAbs: number;
+  advice: string;
+} | null {
+  if (!checkin.answered || checkin.rating == null) return null;
+  const subjective100 = Math.round(checkin.rating * 10);
+  const objective = breakdown.score;
+  const deltaAbs = Math.abs(objective - subjective100);
+  if (deltaAbs < SUBJECTIVE_DISAGREE_THRESHOLD) return null;
+
+  // Direction · subjective lower or higher than objective changes the
+  // framing. Both directions are valid per the doctrine.
+  const subjectiveLower = subjective100 < objective;
+  const advice = subjectiveLower
+    ? `Your read is lower than the numbers (${subjective100} vs ${objective}). ` +
+      `Per Saw et al., your subjective state wins · ease the day.`
+    : `Your read is higher than the numbers (${subjective100} vs ${objective}). ` +
+      `Per Saw et al., your subjective state wins · proceed as planned.`;
+
+  return {
+    subjectiveScore: subjective100,
+    objectiveScore: objective,
+    deltaAbs,
+    advice,
+  };
+}
+
+/**
+ * Load the cold-start envelope · only populated when band='no-data'.
+ * Counts distinct sleep nights synced in the last 14 days + checks
+ * whether HealthKit is already connected (so the CTA can be tailored).
+ *
+ * Returns null when band != 'no-data' (rest of the brief is the source
+ * of truth at that point).
+ */
+async function loadColdStart(
+  userId: string,
+  band: string,
+): Promise<{
+  nightsLogged: number;
+  nightsNeeded: number;
+  note: string;
+  healthConnected: boolean;
+} | null> {
+  if (band !== 'no-data') return null;
+
+  const NIGHTS_NEEDED = 7;
+
+  // Count distinct sleep nights in the last 14 days · same source as
+  // readiness-history.ts (health_samples + sample_type='sleep_hours').
+  const sleepCount = (await pool.query<{ n: string }>(
+    `SELECT COUNT(DISTINCT sample_date::date)::text AS n
+       FROM health_samples
+      WHERE COALESCE(user_uuid, user_id) = $1
+        AND sample_type = 'sleep_hours'
+        AND sample_date >= CURRENT_DATE - INTERVAL '14 days'`,
+    [userId],
+  ).catch(() => ({ rows: [{ n: '0' }] }))).rows[0];
+  const nightsLogged = Math.min(NIGHTS_NEEDED, Number(sleepCount?.n ?? 0));
+
+  // Health connected · check user_profiles for a non-null connection
+  // marker. We use sleep_hours presence in the last 14d as a proxy
+  // when explicit columns aren't present · either it's flowing or it
+  // isn't.
+  const healthConnected = nightsLogged > 0;
+
+  const remaining = Math.max(0, NIGHTS_NEEDED - nightsLogged);
+  const note = nightsLogged === 0
+    ? `No nights logged yet. Connect Apple Health to sync the last few ` +
+      `nights · or wear your watch tonight and the brief fills in by morning.`
+    : remaining === 0
+      ? `Enough data · your first real score lands tomorrow morning.`
+      : `${nightsLogged} of ${NIGHTS_NEEDED} nights logged. ${remaining} more ` +
+        `${remaining === 1 ? 'night' : 'nights'} until your first real score.`;
+
+  return { nightsLogged, nightsNeeded: NIGHTS_NEEDED, note, healthConnected };
+}
+
+/**
+ * Authored coach-voice paragraph framing the 14-day score trend.
+ * Pulls active streaks + biggest mover + trajectory direction so the
+ * note names the actual cause · not template prose.
+ *
+ * Returns null when scoreTrend has < 4 days (not enough to call a trend).
+ */
+function buildTrendNote(
+  scoreTrend: { date: string; score: number }[],
+  todayScore: number,
+  streaks: ReadinessStreak[],
+  movers: ReadinessMover[],
+): string | null {
+  if (scoreTrend.length < 4) return null;
+
+  // Baseline · mean of past 14d EXCLUDING today.
+  const past = scoreTrend.slice(0, -1);
+  if (past.length === 0) return null;
+  const priorAvg = Math.round(past.reduce((s, p) => s + p.score, 0) / past.length);
+  const delta = todayScore - priorAvg;
+  const direction = delta <= -5 ? 'down' : delta >= 5 ? 'up' : 'holding';
+
+  // Lead with trajectory · then graft cause from streaks or biggest mover.
+  let cause = '';
+  if (streaks.length > 0) {
+    const s = streaks[0];
+    cause = ` · ${s.days}-day ${PILLAR_LABEL[s.pillar]} ` +
+      `${s.direction === 'below' ? 'dip' : 'rise'} is dragging the composite`;
+  } else if (movers.length > 0 && Math.abs(movers[0].deltaPts) >= 4) {
+    const m = movers[0];
+    cause = ` · ${PILLAR_LABEL[m.pillar]} is the mover ` +
+      `(${m.deltaPts > 0 ? '+' : ''}${m.deltaPts} pts)`;
+  }
+
+  // Closing prescription · what to do next.
+  let resolve = '';
+  if (direction === 'down') {
+    resolve = streaks.find((s) => s.pillar === 'sleep')
+      ? '. One full night resets the trend.'
+      : streaks.find((s) => s.pillar === 'hrv')
+        ? '. 24-72h easier work, then re-check.'
+        : '. Watch tomorrow · single-day noise resolves quickly.';
+  } else if (direction === 'up') {
+    resolve = '. Trend is healthy · proceed as planned.';
+  } else {
+    resolve = '. Within normal day-to-day range.';
+  }
+
+  const lead = direction === 'down'
+    ? `Down from a ${priorAvg} average`
+    : direction === 'up'
+      ? `Up from a ${priorAvg} average`
+      : `Holding near your ${priorAvg} average`;
+
+  return `${lead}${cause}${resolve}`;
+}
+
+/**
+ * Composition · BASELINE / NET / TODAY. Single source of truth for
+ * the math row. Baseline = mean of past 14 days excluding today.
+ * Null only when scoreTrend has 0 prior days (true cold start).
+ */
+function buildComposition(
+  scoreTrend: { date: string; score: number }[],
+  todayScore: number,
+): { baseline: number; net: number; today: number } | null {
+  const past = scoreTrend.slice(0, -1);
+  if (past.length === 0) return null;
+  const baseline = Math.round(past.reduce((s, p) => s + p.score, 0) / past.length);
+  return {
+    baseline,
+    net: todayScore - baseline,
+    today: todayScore,
+  };
 }
