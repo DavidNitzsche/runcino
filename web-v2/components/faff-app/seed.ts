@@ -1314,7 +1314,7 @@ function emptySeed(): FaffSeed {
     volumeBars: [],
     thisWeekMiles: 0,
     weeklyAvg: 0,
-    form: { fitness: 0, fatigue: 0, delta: 0, label: 'STEADY', acwr: null },
+    form: { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr: null },
     season: { nowIdx: 0, raceIdx: 0, miles: [], maxMi: 1, phases: [], weekDays: [], adaptations: [] },
     health: { readiness, body: [], form: [] },
     prs: [],

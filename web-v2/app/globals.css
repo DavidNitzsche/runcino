@@ -596,6 +596,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .rgc b{font-family:'Oswald',sans-serif;font-weight:600;line-height:.9;}
 .rgc span{font-size:9px;font-weight:700;letter-spacing:1px;opacity:.85;margin-top:3px;}
 .formsub{font-size:11.5px;font-weight:600;opacity:.85;}
+/* 2026-06-01 · per-label helper one-liner under the TRAINING FORM
+   card's Fitness · Fatigue subline. One sentence, plain English,
+   explains what the band means without needing a doctrine deep-dive. */
+.formhelper{font-size:11px;font-weight:500;line-height:1.4;opacity:.72;margin-top:6px;max-width:200px;text-align:center;}
 .tbody.cd{gap:5px;justify-content:center;}
 .cdbig{font-family:'Oswald',sans-serif;font-size:64px;font-weight:600;line-height:.82;color:#FF8847;}
 .cdlab{font-size:11px;font-weight:700;letter-spacing:2px;margin-top:6px;}

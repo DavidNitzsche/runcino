@@ -1629,22 +1629,55 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
         </div>
       </div>
 
-      <div className="tile">
-        <div className="fll">TRAINING FORM</div>
-        <div className="tbody">
-          <div className="rg" style={{ width: 124, height: 124 }}>
-            <svg width="124" height="124" viewBox="0 0 124 124">
-              <circle cx="62" cy="62" r="54" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="7"/>
-              <circle cx="62" cy="62" r="54" fill="none" stroke="#B084FF" strokeWidth="7" strokeLinecap="round" strokeDasharray="339.3" strokeDashoffset="169.6" transform="rotate(-90 62 62)"/>
-            </svg>
-            <div className="rgc">
-              <b style={{ fontSize: 32, color: '#B084FF' }}>{seed.form.delta >= 0 ? '+' : '−'}{Math.abs(Math.round(seed.form.delta))}</b>
-              <span>{seed.form.label}</span>
+      {(() => {
+        // 2026-06-01 · Training Form card · Banister TSB labels live
+        // (backend commit 39a42b4b). Label-aware color + helper copy
+        // per designs/briefs/training-form-banister-frontend-brief.md.
+        // Ring fill now proportional to |delta| (clamped 0-50, the
+        // typical band a year-round runner traverses) · was previously
+        // a hardcoded 50% offset and ignored seed.form.delta entirely.
+        const FORM_COLOR: Record<string, string> = {
+          OVERREACH:    '#FC4D64',  // critical red · sustained negative load
+          LOADED:       '#F3AD38',  // amber · high stress but productive
+          PRODUCTIVE:   '#48B3B5',  // neutral teal · balanced
+          'RACE-READY': '#3EBD41',  // green · post-taper primed
+          DETRAINING:   '#F3AD38',  // amber · too fresh too long
+          BUILDING:     '#8A90A0',  // neutral grey · cold-start
+        };
+        const FORM_HELPER: Record<string, string> = {
+          OVERREACH:    'Acute load above your baseline. Pull back this week.',
+          LOADED:       'Running hot · productive but watch sleep + recovery.',
+          PRODUCTIVE:   'Productive training · fatigue and fitness balanced.',
+          'RACE-READY': "Primed for a race. Don't add new load this week.",
+          DETRAINING:   'Too fresh for too long · fitness eroding. Build back up.',
+          BUILDING:     'Building your baseline · more data coming.',
+        };
+        const formColor = FORM_COLOR[seed.form.label] ?? '#8A90A0';
+        const formHelper = FORM_HELPER[seed.form.label] ?? null;
+        const dashLen = 339.3;
+        const absDelta = Math.min(50, Math.abs(seed.form.delta));
+        const fillPct = absDelta / 50;
+        const dashOffset = dashLen - dashLen * fillPct;
+        return (
+          <div className="tile">
+            <div className="fll">TRAINING FORM</div>
+            <div className="tbody">
+              <div className="rg" style={{ width: 124, height: 124 }}>
+                <svg width="124" height="124" viewBox="0 0 124 124">
+                  <circle cx="62" cy="62" r="54" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="7"/>
+                  <circle cx="62" cy="62" r="54" fill="none" stroke={formColor} strokeWidth="7" strokeLinecap="round" strokeDasharray={dashLen} strokeDashoffset={dashOffset} transform="rotate(-90 62 62)"/>
+                </svg>
+                <div className="rgc">
+                  <b style={{ fontSize: 32, color: formColor }}>{seed.form.delta >= 0 ? '+' : '−'}{Math.abs(Math.round(seed.form.delta))}</b>
+                  <span style={{ color: formColor }}>{seed.form.label}</span>
+                </div>
+              </div>
+              <div className="formsub">Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}</div>
+              {formHelper ? <div className="formhelper">{formHelper}</div> : null}
             </div>
           </div>
-          <div className="formsub">Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}</div>
-        </div>
-      </div>
+        );
+      })()}
     </div>
   );
 }
