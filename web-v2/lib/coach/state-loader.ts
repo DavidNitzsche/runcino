@@ -54,11 +54,14 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
 
   // RECENT RUNS (last 7 days, deduped, all sources) — fed into coach
   // prompt to prevent hallucination about runs that didn't happen.
+  // Threshold lowered from 0.5 to 0: the coach should see every real run,
+  // including short walks/jogs — same rationale as log-state.ts. Zero-distance
+  // ghost entries are still excluded.
   const recentRows = (await pool.query(
     `SELECT data FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
-        AND (data->>'distanceMi')::numeric > 0.5
+        AND (data->>'distanceMi')::numeric > 0
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text >= ($2::date - interval '7 days')::date::text
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text <= $2::text
       ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC,

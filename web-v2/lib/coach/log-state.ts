@@ -140,6 +140,10 @@ export async function loadLogState(
   // Pull runs + their shoe assignment in one query (LEFT JOIN to shoes).
   // We still keep the json blob in `data` so all downstream formatting (pace,
   // hr, etc.) keeps working identically.
+  // Distance floor was `> 0.5` — silently hid every walk, recovery jog, and
+  // sub-half-mile shakeout from the runner's own log. If the ingest path
+  // accepted it, the log should show it. Only filter zero-distance ghost
+  // entries (GPS errors, abandoned starts) where the run never happened.
   const rows = (await pool.query(
     `SELECT sa.data,
             sa.shoe_id,
@@ -149,7 +153,7 @@ export async function loadLogState(
        LEFT JOIN shoes s ON s.id = sa.shoe_id
       WHERE sa.user_uuid = $1
         AND NOT (sa.data ? 'mergedIntoId')
-        AND (sa.data->>'distanceMi')::numeric > 0.5
+        AND (sa.data->>'distanceMi')::numeric > 0
       ORDER BY COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) DESC,
                COALESCE(sa.data->>'startLocal','') DESC
       LIMIT $2`,
