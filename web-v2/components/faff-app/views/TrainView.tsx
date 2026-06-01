@@ -22,6 +22,7 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { WhatChangedExpander } from '../toolkit';
+import { GapReportCard } from '../overlays/Drawer';
 
 interface PhaseMeta {
   k: PhaseKey;
@@ -459,7 +460,16 @@ export function TrainView({
             </div>
           </div>
 
-          {/* PROJECTION card */}
+          {/* PROJECTION card · 2026-06-01 · now hosts the full
+              gap-report (status-tinted headline · confidence band ·
+              what closes it · realistic outcomes with renegotiation
+              · plan risks) when seed.readinessBrief.gapReport is
+              non-null. The big-number-and-bar visuals stay above
+              the rich gap-report content so the runner sees the
+              headline answer at a glance + the actionable layers
+              underneath. Falls back to the legacy projection note
+              when no gap-report is on the seed (cold start, no
+              goal race). */}
           <div className="card proj">
             <div className="ch">
               <span className="ct">PROJECTION</span>
@@ -477,11 +487,18 @@ export function TrainView({
                   <span>Goal {goal.goal}</span>
                   <span><b>{goal.delta}</b></span>
                 </div>
-                <div className="pjnote">
-                  {goal.onTrack
-                    ? 'On track. The threshold work in Build is what closes the last 100 seconds. Hold the easy days easy.'
-                    : 'Behind goal. The next threshold blocks close the gap — protect them.'}
-                </div>
+                {seed.readinessBrief?.gapReport ? (
+                  <GapReportCard
+                    report={seed.readinessBrief.gapReport}
+                    goalSlug={goal ? (seed.goalRace?.slug ?? null) : null}
+                  />
+                ) : (
+                  <div className="pjnote">
+                    {goal.onTrack
+                      ? 'On track. The threshold work in Build is what closes the last 100 seconds. Hold the easy days easy.'
+                      : 'Behind goal. The next threshold blocks close the gap. Protect them.'}
+                  </div>
+                )}
               </>
             ) : (
               <>

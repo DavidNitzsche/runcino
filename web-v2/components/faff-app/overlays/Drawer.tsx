@@ -198,14 +198,13 @@ export function Drawer({
             {/* 2 · Hero · score ring + band eyebrow + headline + mover. */}
             <Hero brief={brief} />
 
-            {/* 2.5 · Gap report · the headline answer to "am I on
-                track for my goal?" Backend ships the full envelope
-                (commit 237be875). Renders nothing when null (no plan
-                + race + goal). Sits hero-adjacent · above the trend
-                + pillars · because it's the runner's first question. */}
-            {brief.gapReport ? (
-              <GapReportCard report={brief.gapReport} goalSlug={goalSlug ?? null} />
-            ) : null}
+            {/* Gap report moved 2026-06-01 · David call · "this info
+                should not be in this today panel. it can fill out
+                this middle panel in training better." The component
+                still lives in this file (exported below) so the
+                Train view can render it inside its PROJECTION card.
+                Drawer-level mount removed · the readiness drawer is
+                for body-state context, not goal-tracking. */}
 
             {/* 3 · 14-day score trend. When the runner has fewer than
                 4 days of history the bar chart is misleading (one bar
@@ -761,7 +760,7 @@ const GAP_STATUS_COLOR: Record<GapReport['status'], string> = {
   unclosable: '#FC4D64',
 };
 
-function GapReportCard({ report, goalSlug }: {
+export function GapReportCard({ report, goalSlug }: {
   report: GapReport;
   goalSlug: string | null;
 }) {
