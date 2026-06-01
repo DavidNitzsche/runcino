@@ -31,7 +31,7 @@ type StravaStatus =
 export function ReconnectBanner({
   initialStatus,
   kind = 'strava',
-  connectHref = '/api/strava/connect',
+  connectHref = '/api/auth/strava?action=connect&redirect=1',
   onDismiss,
 }: {
   initialStatus?: StravaStatus | null;

@@ -107,6 +107,19 @@ async function connectURL(req: NextRequest) {
   url.searchParams.set('approval_prompt', 'force');
   url.searchParams.set('scope', 'read,activity:read_all,activity:write');
   url.searchParams.set('state', userId);
+
+  // Two callers, two response shapes:
+  //   · `?redirect=1` · the toolkit banner uses <a href> for direct
+  //     browser navigation · we 302 straight to Strava so the runner
+  //     never sees JSON in their address bar (which is what was
+  //     causing the 404 · banners.tsx used to point at the bogus
+  //     /api/strava/connect path and got a real 404 instead).
+  //   · default · the legacy components/strava/ReconnectBanner.tsx
+  //     fetches this via XHR and reads {url}, then sets
+  //     window.location.href itself.
+  if (req.nextUrl.searchParams.get('redirect') === '1') {
+    return NextResponse.redirect(url.toString());
+  }
   return NextResponse.json({ url: url.toString() });
 }
 
