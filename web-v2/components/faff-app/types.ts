@@ -52,6 +52,11 @@ export type FaffSeed = {
     weekDays: Array<Array<{
       /** plan_workouts.id — joins to coach_intents.field for adaptations. */
       id?: string;
+      /** ISO YYYY-MM-DD for this planned day. Sourced from
+       *  plan_workouts.date_iso. Drives the FULL PLAN MonthCalendar so
+       *  every workout lands on its real calendar slot instead of
+       *  leaving every cell empty. */
+      date?: string;
       dow: string;          // MON / TUE / ...
       type: import('./constants').EffortKey;
       name: string;

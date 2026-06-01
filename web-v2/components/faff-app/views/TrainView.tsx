@@ -596,13 +596,13 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
   const today = new Date();
   // Build all plan days into a Map<YYYY-MM-DD, day>
   const planMap = new Map<string, { type: string; name: string; mi: number; paceSec: number | null }>();
-  seed.season.weekDays.forEach((wkDays, wkIdx) => {
+  // weekDays now carry `date` directly (fixed 2026-05-31 · the seed
+  // builder was dropping training.weeks[i].days[j].date on the floor so
+  // the calendar rendered every cell empty even though the plan had
+  // workouts). Calendar now anchors each workout to its real slot.
+  seed.season.weekDays.forEach((wkDays) => {
     wkDays.forEach((d) => {
-      // weekDays don't carry ISO date directly — derive from week's start? For now,
-      // skip month rendering when we can't anchor a date. Most weeks have it via training-state.
-      // Fall back to omitting unmatched cells.
-      const anyD = d as unknown as { date?: string };
-      if (anyD.date) planMap.set(anyD.date, { type: d.type, name: d.name, mi: d.mi, paceSec: d.paceSec });
+      if (d.date) planMap.set(d.date, { type: d.type, name: d.name, mi: d.mi, paceSec: d.paceSec });
     });
   });
 

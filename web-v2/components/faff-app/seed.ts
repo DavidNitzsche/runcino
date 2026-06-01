@@ -497,6 +497,10 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
     };
     return {
       id: anyD.id,
+      // ISO date_iso threaded through so the FULL PLAN MonthCalendar
+      // can anchor each workout to its real calendar slot. Without
+      // this every cell rendered empty.
+      date: d.date,
       dow: DOW[(d.dow + 6) % 7],
       type: t as import('./constants').EffortKey,
       name: d.label || humanName(t, d.mi),
