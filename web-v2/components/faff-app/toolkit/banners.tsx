@@ -11,7 +11,9 @@
  * the other two are presentational and let the caller wire their POST.
  */
 import { useEffect, useState } from 'react';
-import { FaError, FaSkeleton } from './atoms';
+// FaError + FaSkeleton imports removed 2026-06-01 · the loading-state
+// skeleton was the cause of the flash banner; we now return null while
+// loading and fail-soft on error. No skeleton, no error UI in this file.
 
 type StravaStatus =
   | { state: 'connected'; last_push_at: string | null }
@@ -92,16 +94,15 @@ export function ReconnectBanner({
     );
   }
 
-  if (loading) {
-    return (
-      <div className="fa-banner fa-banner--info" aria-busy="true">
-        <span className="ic"><PlugIcon /></span>
-        <span className="tx" style={{ flex: 1 }}>
-          <FaSkeleton lines={1} />
-        </span>
-      </div>
-    );
-  }
+  // 2026-06-01: render nothing while loading. Previously this returned a
+  // skeleton-banner placeholder that took full banner height for the
+  // duration of /api/strava/status (100-500ms), then collapsed to null
+  // when status === 'connected' (the common case for active users) ·
+  // causing a visible flash at the top of Today + a layout jump.
+  // The banner is documented as "nice-to-have, never alarm" · returning
+  // null during load is consistent with that. The banner only takes
+  // page space once we KNOW the runner needs to reconnect.
+  if (loading) return null;
 
   if (err) {
     // Fail soft, the banner is itself a nice-to-have, never alarm
