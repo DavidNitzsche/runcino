@@ -1754,13 +1754,17 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           DETRAINING:   '#F3AD38',  // amber · too fresh too long
           BUILDING:     '#8A90A0',  // neutral grey · cold-start
         };
+        // Sentence-case after the middot separator per
+        // designs/briefs/sentence-case-after-middot-brief.md. The
+        // middot acts like a period · the clause after it starts
+        // a new sentence and capitalizes.
         const FORM_HELPER: Record<string, string> = {
           OVERREACH:    'Acute load above your baseline. Pull back this week.',
-          LOADED:       'Running hot · productive but watch sleep + recovery.',
-          PRODUCTIVE:   'Productive training · fatigue and fitness balanced.',
+          LOADED:       'Running hot · Productive but watch sleep + recovery.',
+          PRODUCTIVE:   'Productive training · Fatigue and fitness balanced.',
           'RACE-READY': "Primed for a race. Don't add new load this week.",
-          DETRAINING:   'Too fresh for too long · fitness eroding. Build back up.',
-          BUILDING:     'Building your baseline · more data coming.',
+          DETRAINING:   'Too fresh for too long · Fitness eroding. Build back up.',
+          BUILDING:     'Building your baseline · More data coming.',
         };
         const formColor = FORM_COLOR[seed.form.label] ?? '#8A90A0';
         const formHelper = FORM_HELPER[seed.form.label] ?? null;
@@ -1772,14 +1776,20 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           <div className="tile">
             <div className="fll">TRAINING FORM</div>
             <div className="tbody">
-              <div className="rg" style={{ width: 124, height: 124 }}>
+              {/* 2026-06-01 · LOADED text label dropped per
+                  designs/briefs/training-form-drop-label-brief.md.
+                  The ring color encodes the band visually + the
+                  helper line below carries the meaning in plain
+                  English. State name still ships via aria-label so
+                  screen readers get it · backend keeps the label
+                  for other surfaces (Health view, drill-down). */}
+              <div className="rg" style={{ width: 124, height: 124 }} role="img" aria-label={`Training form: ${seed.form.label}, ${seed.form.delta >= 0 ? 'plus' : 'minus'} ${Math.abs(Math.round(seed.form.delta))}`}>
                 <svg width="124" height="124" viewBox="0 0 124 124">
                   <circle cx="62" cy="62" r="54" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="7"/>
                   <circle cx="62" cy="62" r="54" fill="none" stroke={formColor} strokeWidth="7" strokeLinecap="round" strokeDasharray={dashLen} strokeDashoffset={dashOffset} transform="rotate(-90 62 62)"/>
                 </svg>
                 <div className="rgc">
                   <b style={{ fontSize: 32, color: formColor }}>{seed.form.delta >= 0 ? '+' : '−'}{Math.abs(Math.round(seed.form.delta))}</b>
-                  <span style={{ color: formColor }}>{seed.form.label}</span>
                 </div>
               </div>
               <div className="formsub">Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}</div>
