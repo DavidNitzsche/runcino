@@ -123,9 +123,14 @@ extension API {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/sick"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Field names match web-v2/app/api/sick/route.ts:
+        //   symptoms (string[]) · has_fever (bool) · started (ISO date).
+        // iPhone provides `fever` argument-side for ergonomic call sites;
+        // wire mapping is below.
         let body: [String: Any] = [
             "symptoms": symptoms,
-            "fever": fever
+            "has_fever": fever,
+            "started": Self.isoTodayUTC()
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, http) = try await API.authedSend(req)
@@ -149,10 +154,12 @@ extension API {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/strength"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Field names match web-v2/app/api/strength/route.ts:
+        //   date · session_type · duration_min · notes.
         var body: [String: Any] = [
-            "date": isoToday(),
-            "type": type.lowercased(),
-            "duration": durationMin
+            "date": Self.isoTodayUTC(),
+            "session_type": type.lowercased(),
+            "duration_min": durationMin
         ]
         if let n = notes { body["notes"] = n }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -168,13 +175,15 @@ extension API {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/cross-training"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Field names match web-v2/app/api/cross-training/route.ts:
+        //   date · modality · duration_min · intensity (easy|moderate|hard) · avg_hr.
         var body: [String: Any] = [
-            "date": isoToday(),
+            "date": Self.isoTodayUTC(),
             "modality": modality.lowercased(),
-            "duration": durationMin,
+            "duration_min": durationMin,
             "intensity": intensity.lowercased()
         ]
-        if let h = hr { body["hr"] = h }
+        if let h = hr { body["avg_hr"] = h }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, http) = try await API.authedSend(req)
         return (200..<300).contains(http.statusCode)
@@ -187,8 +196,11 @@ extension API {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/goals"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Field names match web-v2/app/api/goals/route.ts:
+        //   goal_type ('volume' | 'speed' | 'distance' | 'habit' | 'strength' | 'health') ·
+        //   target (string) · deadline (ISO date · optional).
         let body: [String: Any] = [
-            "type": type,
+            "goal_type": type.lowercased(),
             "target": target,
             "deadline": deadline
         ]
@@ -264,7 +276,10 @@ extension API {
 
     // MARK: - Internal helpers
 
-    private static func isoToday() -> String {
+    /// Today's date in UTC as yyyy-MM-dd. Used for niggle/sick/strength/
+    /// cross-training/goal POST bodies where the server validates a strict
+    /// ISO date string. Backed callers below.
+    static func isoTodayUTC() -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
