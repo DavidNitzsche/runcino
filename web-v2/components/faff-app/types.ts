@@ -34,6 +34,10 @@ export type FaffSeed = {
    *  tiles + streaks + movers + confounders. Null when the runner has no
    *  recoverable health-data signal yet (brand-new user before any HK sync). */
   readinessBrief: ReadinessBriefSeed | null;
+  /** 2026-06-01 · plan-drift + auto-rebuild proposals. Empty array means
+   *  no drift detected + no recent auto-rebuilds. Today view renders 0-5
+   *  cards per the source array. */
+  planProposals: PlanProposalSeed[];
   goalRace: GoalRace | null;
   volumeBars: VolumeBar[];         // 8-week strip
   thisWeekMiles: number;
@@ -194,6 +198,26 @@ export type GoalRace = {
     lvtag: string;
   }>;
 };
+/** 2026-06-01 · plan-drift + auto-rebuild proposals · the autonomous
+ *  plan-adaptation surface. Today view renders these as accept-or-
+ *  dismiss cards (status='pending') or as "we just rebuilt your plan
+ *  because X" notifications (status='auto_applied'). */
+export type PlanProposalSeed = {
+  id: number;
+  planId: string | null;
+  newPlanId: string | null;
+  kind: 'volume_drift' | 'vdot_drift' | 'staleness'
+      | 'race_date_changed' | 'goal_time_changed'
+      | 'a_race_added' | 'a_race_removed';
+  status: 'pending' | 'auto_applied' | 'accepted' | 'dismissed' | 'superseded';
+  source: string;
+  reasons: Record<string, unknown>;
+  message: string;
+  severity: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+};
+
 export type VolumeBar = { mi: number; label: string; current: boolean };
 export type PR = { k: string; v: string; date: string };
 

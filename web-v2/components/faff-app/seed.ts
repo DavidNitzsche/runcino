@@ -1129,6 +1129,7 @@ function emptySeed(): FaffSeed {
     week, todayIdx, results,
     readiness,
     readinessBrief: null,
+    planProposals: [],
     goalRace: null,
     volumeBars: [],
     thisWeekMiles: 0,
@@ -1369,6 +1370,17 @@ export async function buildSeed(): Promise<FaffSeed> {
     } catch { return null; }
   })();
 
+  // 2026-06-01 · autonomous plan-adaptation surface. Pending drift
+  // proposals + recently auto-applied rebuilds. Today view renders
+  // these as accept-or-dismiss cards or "we rebuilt your plan because
+  // X" notifications. See lib/plan/drift-monitor.ts + auto-rebuild.ts.
+  const planProposals = await (async () => {
+    try {
+      const { loadPlanProposals } = await import('@/lib/plan/proposals-state');
+      return await loadPlanProposals(userId);
+    } catch { return []; }
+  })();
+
   const fullName = profile?.identity.full_name ?? glance?.greetingName ?? null;
   const user = {
     name: fullName ? fullName.split(' ')[0] : 'You',
@@ -1392,6 +1404,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     week, todayIdx, results,
     readiness,
     readinessBrief,
+    planProposals,
     goalRace,
     volumeBars,
     thisWeekMiles,

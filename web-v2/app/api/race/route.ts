@@ -129,6 +129,53 @@ export async function PATCH(req: NextRequest) {
       [meta, body.slug, userId],
     );
 
+    // 2026-06-01 · auto-rebuild plan when the runner edits a field
+    // that materially invalidates the existing plan timeline / pacing.
+    // No accept gate · the runner made the underlying change, the plan
+    // follows automatically. Audit-logged to plan_proposals.
+    let autoRebuild: { kind: string; oldPlanId?: string; newPlanId?: string; ok: boolean; reason?: string } | null = null;
+    try {
+      const prior = existing.meta ?? {};
+      let rebuildKind: 'race_date_changed' | 'goal_time_changed' | 'a_race_added' | 'a_race_removed' | null = null;
+      const rebuildReasons: Record<string, unknown> = {};
+      if (body.date !== undefined && prior.date !== meta.date) {
+        rebuildKind = 'race_date_changed';
+        rebuildReasons.from_iso = prior.date ?? null;
+        rebuildReasons.to_iso = meta.date;
+      } else if (body.goal !== undefined && prior.goalDisplay !== meta.goalDisplay) {
+        rebuildKind = 'goal_time_changed';
+        rebuildReasons.from = prior.goalDisplay ?? null;
+        rebuildReasons.to = meta.goalDisplay;
+      } else if (body.priority !== undefined && prior.priority !== meta.priority) {
+        if (meta.priority === 'A' && prior.priority !== 'A') {
+          rebuildKind = 'a_race_added';
+          rebuildReasons.from_priority = prior.priority ?? null;
+        } else if (prior.priority === 'A' && meta.priority !== 'A') {
+          rebuildKind = 'a_race_removed';
+          rebuildReasons.to_priority = meta.priority ?? null;
+        }
+      }
+      if (rebuildKind) {
+        const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
+        const result = await fireAutoRebuild({
+          userUuid: userId,
+          raceSlug: body.slug,
+          kind: rebuildKind,
+          reasons: rebuildReasons,
+          source: 'race_patch_hook',
+        });
+        autoRebuild = {
+          kind: rebuildKind,
+          oldPlanId: result.oldPlanId,
+          newPlanId: result.newPlanId,
+          ok: result.ok,
+          reason: result.reason,
+        };
+      }
+    } catch (e: unknown) {
+      console.error('[race PATCH] auto-rebuild warn:', e instanceof Error ? e.message : String(e));
+    }
+
     // P33 — auto-calibrate LTHR + VDOT from race retro when both finish
     // time and avg HR are set. Best-effort: failures don't block save.
     // The recalc deltas are surfaced back on the response so the client
@@ -197,7 +244,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     await bustBriefingCacheForEvent(userId, 'race_crud');
-    return NextResponse.json({ ok: true, recalc });
+    return NextResponse.json({ ok: true, recalc, autoRebuild });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -210,13 +257,52 @@ export async function DELETE(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body?.slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
   try {
+    // 2026-06-01 · BEFORE delete · check if this race is the current
+    // plan's goal. If so we'll auto-rebuild after the delete (the plan
+    // is now orphaned · runner needs guidance toward what to do next).
+    // The auto-rebuild itself will FAIL gracefully (race not found),
+    // and the proposal row will record the orphan state.
+    const planRow = (await pool.query<{ race_id: string | null }>(
+      `SELECT race_id FROM training_plans
+        WHERE user_uuid = $1 AND archived_iso IS NULL
+        ORDER BY authored_iso DESC LIMIT 1`,
+      [userId],
+    ).catch(() => ({ rows: [] }))).rows[0];
+    const wasGoalRace = planRow?.race_id === body.slug;
+
     // Scope to the caller's races so a runner can't DELETE someone else's race by slug.
     await pool.query(
       `DELETE FROM races WHERE slug = $1 AND user_uuid = $2`,
       [body.slug, userId],
     );
+
+    // Audit-only · if this was the goal race, log to plan_proposals so
+    // the Today view can surface "your goal race was removed · pick a
+    // new race to keep training meaningful." We don't auto-rebuild
+    // because there's no race to point at · the runner has to act.
+    if (wasGoalRace) {
+      try {
+        await pool.query(
+          `INSERT INTO plan_proposals
+             (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+           VALUES ($1, $2, 'a_race_removed', $3::jsonb, 'pending', 'race_delete_hook', NOW())`,
+          [
+            userId,
+            planRow?.race_id ?? null,
+            JSON.stringify({
+              removed_slug: body.slug,
+              orphan: true,
+              message: 'Your goal race was removed · pick a new A-race or your plan continues running blind.',
+            }),
+          ],
+        );
+      } catch (e: unknown) {
+        console.error('[race DELETE] proposal write warn:', e instanceof Error ? e.message : String(e));
+      }
+    }
+
     await bustBriefingCacheForEvent(userId, 'race_crud');
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, wasGoalRace });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

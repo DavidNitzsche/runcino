@@ -1,0 +1,62 @@
+# Nightly plan-drift detector.
+#
+# Why: training plans get authored once with a snapshot of the runner's
+# volume / VDOT / race target. Over weeks those inputs drift. Without
+# autonomous detection a runner would have to manually click
+# "Regenerate plan" · this build has no chat to surface the gap.
+#
+# What this runs (per web-v2/app/api/cron/plan-drift/route.ts):
+#   For each active user:
+#     1. Compute DriftReport (volume drift, VDOT drift, staleness)
+#     2. For each fresh signal · INSERT plan_proposals row (pending)
+#     3. Skip when a pending row of the same kind already exists
+#
+# Today view reads plan_proposals to render accept-or-dismiss cards.
+#
+# Schedule: 09:00 UTC daily = 02:00 PT. Runs after readiness-snapshot
+# (08:15) so plans drift-check against the latest readiness pillar.
+#
+# Manual trigger: Actions tab > "Plan drift detector" > Run workflow.
+
+name: Plan drift detector
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Hit /api/cron/plan-drift
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 120 \
+            https://www.faff.run/api/cron/plan-drift)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Drift detection failed with HTTP $status"
+            exit 1
+          fi
+
+          errors=$(echo "$body" | python3 -c 'import sys,json; d=json.loads(sys.stdin.read()); print(d.get("errors", 0))' 2>/dev/null || echo "0")
+          if [ "$errors" != "0" ]; then
+            echo "::warning::$errors user(s) errored — see body above"
+          fi
