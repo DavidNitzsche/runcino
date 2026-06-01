@@ -74,6 +74,70 @@ const FALLBACK_WEEK: PlannedDay[] = [
   { dw: 'SUN', dn: 7,  full: 'Sunday',    type: 'recovery', name: 'Recovery Jog',  dist: '4.0', pace: '9:30', est: '~36 min' },
 ];
 
+/* ────────────────  trainingInfluence composer (Phase web brief) ──────── */
+
+import {
+  composeTrainingInfluence,
+  type TrainingInfluence,
+} from '@/lib/coach/training-influence';
+
+type DayLikeForInfluence = {
+  id?: string;
+  activityId?: string | null;
+  paceSec?: number | null;
+  donePaceSec?: number | null;
+  doneAvgHr?: number | null;
+  doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
+  adaptation?: { wasAdapted?: boolean } | null;
+};
+
+/**
+ * Per-day wrapper · pulls fields off the training day shape, computes
+ * work-pace for quality, hands off to composeTrainingInfluence.
+ *
+ * Returns null when the day isn't done OR isn't a quality/long row.
+ */
+function composeTrainingInfluenceForDay(
+  d: DayLikeForInfluence,
+  t: string,
+  lastOverrideTs: Map<string, number>,
+  sameTypeStreakById: Map<string, number>,
+  raceDistanceMi: number | null,
+): TrainingInfluence | null {
+  if (!d.activityId) return null;
+  // Work-pace for quality (fastest N splits avg); avg pace otherwise.
+  const QUALITY = new Set(['intervals', 'tempo', 'threshold']);
+  let donePaceSec: number | null = null;
+  if (QUALITY.has(t) && (d.doneSplits?.length ?? 0) >= 2) {
+    const splits = (d.doneSplits ?? [])
+      .map((s) => s.paceSec)
+      .filter((p): p is number => p != null && p > 0);
+    if (splits.length >= 2) {
+      const repCount = Math.max(2, Math.min(splits.length - 1, 5));
+      const sorted = [...splits].sort((a, b) => a - b);
+      const fastest = sorted.slice(0, repCount);
+      donePaceSec = Math.round(fastest.reduce((s, x) => s + x, 0) / fastest.length);
+    }
+  } else {
+    donePaceSec = d.donePaceSec ?? null;
+  }
+  const wasAdapted = !!d.adaptation?.wasAdapted;
+  const wasRestored = !!d.id && lastOverrideTs.has(d.id);
+  const sameTypeStreak = d.id ? (sameTypeStreakById.get(d.id) ?? 1) : 1;
+  return composeTrainingInfluence({
+    type: t,
+    plannedPaceSec: d.paceSec ?? null,
+    donePaceSec,
+    doneAvgHr: d.doneAvgHr ?? null,
+    sameTypeStreak,
+    wasAdapted,
+    wasRestored,
+    phaseLabel: null,    // could thread from plan_phases later
+    raceDistanceMi,
+    hrOnPaceDelta: null, // wired in a follow-up · needs hr-on-pace-delta loader
+  });
+}
+
 /* ─────────────────────────  Loader wrappers  ───────────────────────── */
 
 type LoadResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -693,7 +757,7 @@ function adaptVolumeBars(log: LogT | null, training: Training | null): { bars: V
   return { bars, thisWeek, avg };
 }
 
-function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeof loadPlanAdapts>>['value']) {
+function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeof loadPlanAdapts>>['value'], raceDistanceMi: number | null = null) {
   if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, phases: [], weekDays: [], adaptations: [] };
   const miles = training.weeks.map(w => Math.round(w.plannedMi || 0));
   const nowIdx = Math.max(0, Math.min(miles.length - 1, training.currentWeekIdx ?? 0));
@@ -705,6 +769,43 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
   const PACE_DEFAULT: Record<string, number | null> = {
     easy: 525, recovery: 570, long: 460, tempo: 398, intervals: 365, rest: null,
   };
+  // 2026-06-01 · adaptation dedup precompute. For every workoutId that
+  // has a `plan_adapt_overridden` row, find the ts of the most recent
+  // override. Any earlier adaptation on the same workoutId is marked
+  // supersededByOverride. Web agent brief Option B · the field on the
+  // wire, frontend filters as needed.
+  const lastOverrideTs = new Map<string, number>();
+  for (const a of adapts) {
+    if (a.kind !== 'overridden') continue;
+    const tms = Date.parse(a.ts);
+    if (!Number.isFinite(tms)) continue;
+    const cur = lastOverrideTs.get(a.workoutId) ?? 0;
+    if (tms > cur) lastOverrideTs.set(a.workoutId, tms);
+  }
+  // 2026-06-01 · trainingInfluence pre-pass per workoutId. Count
+  // consecutive same-type completed quality workouts ENDING at each
+  // done row · feeds the consistent kind. Walk all done quality rows
+  // in chronological order, build a streak map.
+  const sameTypeStreakById = new Map<string, number>();
+  {
+    const QUALITY = new Set(['intervals', 'tempo', 'threshold', 'long']);
+    type Doneish = { id?: string; date?: string; type: string; activityId?: string };
+    const allDone: Doneish[] = [];
+    for (const w of training.weeks) for (const d of (w.days ?? [])) {
+      const t = mapType(d.type);
+      if (QUALITY.has(t) && d.activityId) {
+        allDone.push({ id: (d as { id?: string }).id, date: d.date, type: t, activityId: d.activityId });
+      }
+    }
+    allDone.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+    let streak = 0; let lastType = '';
+    for (const row of allDone) {
+      streak = (row.type === lastType) ? streak + 1 : 1;
+      lastType = row.type;
+      if (row.id) sameTypeStreakById.set(row.id, streak);
+    }
+  }
+
   const weekDays = training.weeks.map(w => (w.days ?? []).map(d => {
     const t = mapType(d.type);
     // 2026-05-30: prefer real Daniels-VDOT pace from workout_spec (P0 #4
@@ -738,6 +839,12 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
       // each plan_workouts row. Null on as-authored rows; populated
       // when the auto-adapter mutated the row.
       adaptation: (d as { adaptation?: import('@/lib/coach/adaptation-info').AdaptationInfo | null }).adaptation ?? null,
+      // 2026-06-01 · trainingInfluence per done quality workout.
+      // Trajectory signal · "did this workout move my fitness toward
+      // the race?" · NOT execution mechanics. Null on undone or
+      // non-quality days. Composer reads pace deltas + HR-on-pace +
+      // same-type streak + adapter state to pick a kind.
+      trainingInfluence: composeTrainingInfluenceForDay(d, t, lastOverrideTs, sameTypeStreakById, raceDistanceMi),
     };
   }));
   // Real plan_phases rows so TrainView can render the actual phase shape
@@ -758,8 +865,19 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
       const dayInWeek = training!.weeks[i]?.days.find((d) => d.date === a.dateIso);
       if (dayInWeek) { weekIdx = i; break; }
     }
-    const allowed = ['reschedule', 'downgrade', 'shave', 'mark_dirty'];
-    const kind = (allowed.includes(a.kind) ? a.kind : 'other') as 'reschedule' | 'downgrade' | 'shave' | 'mark_dirty' | 'other';
+    const allowed = ['reschedule', 'downgrade', 'shave', 'mark_dirty', 'overridden'];
+    const kind = (allowed.includes(a.kind) ? a.kind : 'other') as 'reschedule' | 'downgrade' | 'shave' | 'mark_dirty' | 'overridden' | 'other';
+    // 2026-06-01 · supersededByOverride · web agent brief Option B.
+    // True when there's a later `plan_adapt_overridden` row for the
+    // same workoutId · "most-recent intent wins per workoutId" so the
+    // frontend can filter stale "Adapted: ..." lines from rows the
+    // runner has since restored.
+    const overrideTs = lastOverrideTs.get(a.workoutId);
+    const myTs = Date.parse(a.ts);
+    const supersededByOverride = a.kind !== 'overridden'
+      && overrideTs != null
+      && Number.isFinite(myTs)
+      && overrideTs > myTs;
     return {
       workoutId: a.workoutId,
       weekIdx,
@@ -769,6 +887,7 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
       shaveFraction: a.shaveFraction,
       why: a.why,
       ts: a.ts,
+      supersededByOverride,
     };
   }).filter((a) => a.weekIdx >= 0);
 
@@ -1553,7 +1672,7 @@ export async function buildSeed(): Promise<FaffSeed> {
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);
   // Load plan adapts AFTER training so we have plan_id to scope the query.
   const planAdapts = await loadPlanAdapts(userId, training?.plan_id ?? null);
-  const season = adaptSeason(training, planAdapts.value);
+  const season = adaptSeason(training, planAdapts.value, goalRace?.distanceMi ?? null);
   // 2026-05-31: projection trend series from projection_snapshots
   // (cron-daily rows). Pull 90 days of (vdot, projection_sec) for the
   // goal race's distance so TargetsView can render a sparkline.

@@ -106,6 +106,15 @@ export type FaffSeed = {
         adaptedAt: string | null;
         kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
       } | null;
+      /** 2026-06-01 · web agent brief · training-trajectory signal per
+       *  done quality/long workout. "Did this workout move my fitness
+       *  toward the race?" · kind + authored coach-voice copy. Null on
+       *  undone days, non-quality types, or insufficient data.
+       *  See lib/coach/training-influence.ts. */
+      trainingInfluence?: {
+        kind: 'on_track' | 'consistent' | 'working' | 'slipping' | 'compromised';
+        copy: string;
+      } | null;
     }>>;
     /** Closed-loop plan adaptations from coach_intents (P1 #8 — written by
      *  applyAdaptations whenever a readiness/volume signal forced a plan
@@ -114,12 +123,19 @@ export type FaffSeed = {
     adaptations: Array<{
       workoutId: string;        // plan_workouts.id that was modified
       weekIdx: number;          // resolved from the workout's date
-      kind: 'reschedule' | 'downgrade' | 'shave' | 'mark_dirty' | 'other';
+      kind: 'reschedule' | 'downgrade' | 'shave' | 'mark_dirty' | 'overridden' | 'other';
       newType?: string;
       newDate?: string;
       shaveFraction?: number;
       why: string;              // the trigger reason (from value.why)
       ts: string;               // when the adapt was applied (ISO)
+      /** 2026-06-01 · web agent brief Option B. True when a later
+       *  `plan_adapt_overridden` row exists for the same workoutId ·
+       *  the runner has since restored the original. Frontend should
+       *  filter out (or annotate) these entries when rendering the
+       *  KEY WORKOUTS "← Adapted: ..." line. Override rows themselves
+       *  have kind='overridden' and supersededByOverride=false. */
+      supersededByOverride: boolean;
     }>;
   };
 
