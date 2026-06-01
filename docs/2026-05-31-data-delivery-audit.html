@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPhone Data Delivery Audit · 2026-05-31 · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.04);
+    --card: #11141a; --card2: #1a1d24;
+    --green: #3EBD41; --goal: #F3AD38; --over: #FC4D64;
+    --dist: #27B4E0; --learn: #B084FF; --race: #FF7028;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 56px; letter-spacing: -0.5px; margin: 0; line-height: 0.92; text-transform: uppercase; }
+  .sub { color: var(--mute); margin-top: 12px; font-size: 14.5px; max-width: 760px; line-height: 1.55; }
+  h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 30px; letter-spacing: 0.3px; margin: 52px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; text-transform: uppercase; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 28px 0 10px; }
+  h4 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 22px; margin: 22px 0 8px; letter-spacing: 0.3px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.65; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; } ol { padding-left: 22px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; color: #e6e8ec; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.55; margin: 8px 0 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .card h4 { margin-top: 0; }
+  .tag { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 3px 8px; border-radius: 4px; letter-spacing: 0.5px; }
+  .tag-ship { background: rgba(62,189,65,0.18); color: var(--green); }
+  .tag-fix { background: rgba(252,77,100,0.18); color: var(--over); }
+  .tag-feat { background: rgba(39,180,224,0.18); color: var(--dist); }
+  .tag-pending { background: rgba(243,173,56,0.18); color: var(--goal); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .meta { color: var(--mute); font-size: 13px; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; color: var(--mute); font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+  td code { font-size: 12px; }
+  .ok { color: var(--green); font-weight: 600; }
+  .warn { color: var(--goal); font-weight: 600; }
+  .err { color: var(--over); font-weight: 600; }
+  .callout { background: linear-gradient(135deg, rgba(252,77,100,0.10), rgba(255,112,40,0.06)); border: 1px solid rgba(252,77,100,0.30); border-radius: 14px; padding: 18px 22px; margin: 16px 0 24px; }
+  .callout h4 { margin: 0 0 8px; color: var(--over); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="row">
+  <span class="tag tag-ship">SHIPPED · 5 COMMITS · NEEDS NEW TESTFLIGHT BUILD</span>
+  <span class="meta">2026-05-31 · iPhone data-delivery audit</span>
+</div>
+
+<h1>iPhone data delivery audit · why no runs were showing</h1>
+<p class="sub">
+  Started with David reporting "<em>ton of issues with the iPhone app · activity logs that aren't showing up · connections that aren't working</em>"
+  on TestFlight build 131. Ended with the root cause identified, fixed, and swept across every Codable layer in the app. Backend was correct
+  the whole time — 100 runs ready to serve. The phone was throwing them away during decode.
+</p>
+
+<div class="callout">
+  <h4>Root cause · one line</h4>
+  <p style="margin:0">
+    The "lenient" decoder used <code>try c.decodeIfPresent(Int.self, ...)</code> for
+    <code>avg_hr</code> / <code>cadence</code> / <code>elev_gain_ft</code> / <code>dow</code>.
+    That tolerates missing key + null value but <strong>throws on a type mismatch</strong>.
+    Apple Watch and HealthKit averaging emit fractional HR (<code>"avg_hr": 142.5</code>),
+    which is JSON-valid but trips <code>Int.self</code>. One throw inside a <code>LogRun</code>
+    fails the parent <code>[LogRun]</code> decode; the outer <code>try?</code> at
+    <code>LogWeek</code> swallows it; the whole week's runs collapse to <code>[]</code>.
+    Every multi-source week rendered as a header with no rows beneath. David saw "<em>0 SO FAR</em>" while the server returned 100.
+  </p>
+</div>
+
+<h2>The investigation arc</h2>
+
+<table>
+  <tr><th>Step</th><th>What we ruled out</th></tr>
+  <tr>
+    <td><strong>Hypothesis 1 · Identity split</strong></td>
+    <td>Worried Apple Sign In had created a phantom user. <span class="ok">Eliminated</span> · David uses email auth (<code>dnitch85@me.com</code>). Backend confirmed one user record, one Bearer, all queries resolve to <code>0645f40c-951d-4ccc-b86e-9979cd26c795</code>.</td>
+  </tr>
+  <tr>
+    <td><strong>Hypothesis 2 · DEFAULT_USER_ID legacy</strong></td>
+    <td>Worried pre-audit ingests landed under <code>DEFAULT_USER_ID</code> with the email account holding a different uuid. <span class="ok">Eliminated</span> · email-resolved uuid IS the default uuid. No drift.</td>
+  </tr>
+  <tr>
+    <td><strong>Hypothesis 3 · Server-side filter</strong></td>
+    <td>Worried <code>distanceMi &gt; 0.5</code> filter was hiding all the runs. <span class="warn">Tightened anyway</span> · 1 run does sit ≤0.5mi (a 0.01mi apple_health ghost), but most pass. Not the root cause. Threshold dropped to <code>&gt; 0</code> as collateral cleanup.</td>
+  </tr>
+  <tr>
+    <td><strong>Hypothesis 4 · Wrong key name</strong></td>
+    <td>Worried <code>distanceMi</code> vs <code>distance_mi</code> case-drift between ingest paths. <span class="ok">Eliminated</span> · all 5 ingest paths use camelCase consistently; backend confirmed <code>jsonb_typeof = 'number'</code> on every row.</td>
+  </tr>
+  <tr>
+    <td><strong>Hypothesis 5 · Decoder type-mismatch</strong></td>
+    <td><span class="err">CONFIRMED</span> · the "lenient" decoder was lenient for missing/null but strict on type. Apple Watch averaging produces fractional HR. One throw collapses the parent array.</td>
+  </tr>
+</table>
+
+<h2>Why the "lenient" decoder wasn't lenient</h2>
+
+<p>The previous round (commit <code>d68be4bb</code> "bulletproof LogState decoder") used the pattern:</p>
+
+<pre>self.avg_hr = try c.decodeIfPresent(Int.self, forKey: .avg_hr)</pre>
+
+<p>Three failure modes for that line:</p>
+
+<ul>
+  <li><strong>Key missing</strong> · <code>decodeIfPresent</code> returns nil. ✓ Tolerated.</li>
+  <li><strong>Value is <code>null</code></strong> · <code>decodeIfPresent</code> returns nil. ✓ Tolerated.</li>
+  <li><strong>Value is <code>142.5</code> (Double instead of Int)</strong> · <code>decodeIfPresent</code> THROWS <code>.typeMismatch</code>. ✗ <strong>Not tolerated.</strong></li>
+</ul>
+
+<p>
+  Apple Watch averaging windows and HealthKit conversions (e.g. meters → feet, <code>* 3.28084</code>) routinely emit fractional values.
+  The JS server builds <code>avg_hr: Number(a.avgHr) || null</code> — JS <code>Number()</code> doesn't distinguish Int from Float,
+  so a 142.7 averaged HR sails through to the JSON as <code>142.7</code>. The iPhone sees a JSON number, reads <code>Int.self</code>,
+  and throws.
+</p>
+
+<p>
+  The fix is a sibling to the existing <code>FlexibleDouble</code> wrapper that handles Postgres NUMERIC-as-string drift.
+  An extension on <code>KeyedDecodingContainer</code>:
+</p>
+
+<pre>extension KeyedDecodingContainer {
+    func decodeFlexInt(forKey key: Key) -> Int? {
+        if let i = try? decode(Int.self, forKey: key) { return i }
+        if let d = try? decode(Double.self, forKey: key), d.isFinite { return Int(d.rounded()) }
+        return nil
+    }
+}</pre>
+
+<p>Mirrors the server's <code>Number(x) || null</code> JS coercion exactly. Every JS-number shape on the wire survives.</p>
+
+<h2>Commits shipped this session</h2>
+
+<table>
+  <tr><th>SHA</th><th>Subject</th><th>Why</th></tr>
+  <tr>
+    <td><code>affbf63d</code></td>
+    <td>fix(log): drop 0.5mi floor on activity log + coach recent-runs context</td>
+    <td>Walks, recovery jogs, short shakeouts were silently dropped. Collateral — not the root cause, but fixes a real data-loss bug.</td>
+  </tr>
+  <tr>
+    <td><code>74b9bea7</code></td>
+    <td>fix(ios): refresh surfaces on foreground · close Strava OAuth callback gap</td>
+    <td>StravaReconnectBanner stayed visible after a successful OAuth round-trip because the phone never re-polled status. New <code>.faffForegroundRefresh</code> notification on scenePhase change; ActivityView + TodayView subscribe and reload.</td>
+  </tr>
+  <tr>
+    <td><code>5f1c0445</code></td>
+    <td><strong>fix(ios): truly bulletproof LogState decoder · flexInt for fractional values</strong></td>
+    <td><strong>THE root-cause fix.</strong> LogState/LogWeek/LogRun decoders now route every Int field through flexInt and every scalar through <code>try?</code>. Single bad field becomes default, not throw.</td>
+  </tr>
+  <tr>
+    <td><code>d03ad54a</code></td>
+    <td>fix(ios): sweep · decodeFlexInt across every Codable that reads server ints</td>
+    <td>Same float-where-int trap existed in 52 more sites · RunDetail, ReadinessSnapshot, ProfileState, TrainingState, HealthState, RaceDetail. Promoted flexInt to a KeyedDecodingContainer extension; replaced all sites with the helper. Removed redundant per-struct inline helpers.</td>
+  </tr>
+  <tr>
+    <td><code>89b51189</code></td>
+    <td>fix(activity): range picker actually filters stats · stop showing all-time</td>
+    <td>The MONTH/YEAR/ALL picker was entirely cosmetic — only the label below the hero changed. Every readout summed all-time runs. Now rangeRuns/rangeWeeks back every stats computation.</td>
+  </tr>
+</table>
+
+<h2>Files touched</h2>
+
+<table>
+  <tr><th>File</th><th>Sites changed</th><th>What</th></tr>
+  <tr><td><code>web-v2/lib/coach/log-state.ts</code></td><td>1</td><td>Distance floor 0.5 → 0</td></tr>
+  <tr><td><code>web-v2/lib/coach/state-loader.ts</code></td><td>1</td><td>Distance floor 0.5 → 0 for coach recent-runs context</td></tr>
+  <tr><td><code>native-v2/Faff/Faff/FaffApp.swift</code></td><td>2</td><td>Post .faffForegroundRefresh on scenePhase active; add Notification.Name extension</td></tr>
+  <tr><td><code>native-v2/Faff/Faff/Views/TodayView.swift</code></td><td>1</td><td>Subscribe to .faffForegroundRefresh, call loadAll()</td></tr>
+  <tr><td><code>native-v2/Faff/Faff/Views/ActivityView.swift</code></td><td>~6</td><td>Subscribe to foreground refresh + range picker fix (rangeCutoff/rangeRuns/rangeWeeks + 5 readouts)</td></tr>
+  <tr><td><code>native-v2/Faff/Faff/API.swift</code></td><td>26</td><td>Add decodeFlexInt extension; replace 26 strict Int decodes</td></tr>
+  <tr><td><code>native-v2/Faff/Faff/Models/Runs.swift</code></td><td>20</td><td>Use try? + decodeFlexInt across LogRun/LogWeek/LogState/RunDetail/PhaseBreakdown</td></tr>
+  <tr><td><code>native-v2/Faff/Faff/Models/Races.swift</code></td><td>5</td><td>RaceActual avg_hr/cadence/elev_gain_ft via decodeFlexInt</td></tr>
+  <tr><td><code>native-v2/Faff/Faff/Models/CoachPayloads.swift</code></td><td>1</td><td>weeksToRace via decodeFlexInt</td></tr>
+  <tr><td><code>native-v2/Faff/Faff/Models/Tips.swift</code></td><td>1</td><td>year via decodeFlexInt</td></tr>
+</table>
+
+<h2>What needs to happen next</h2>
+
+<ol>
+  <li><strong>Ship a new TestFlight build.</strong> Current build is 131; these fixes need 132 to reach David's phone. Backend changes (the 0.5mi filter drops) deploy via web-v2 auto-deploy.</li>
+  <li><strong>Verify the fix.</strong> Open the Activity tab on the new build. FEED should show 100 runs (or however many pass the now-relaxed filter). STATS hero should track the range picker.</li>
+  <li><strong>Verify Strava reconnect loop.</strong> Disconnect Strava in Settings, tap Reconnect, complete OAuth in Safari, return to app. The banner should clear automatically (web-side commit <code>810b37ca</code> from the other agent + my <code>74b9bea7</code> foreground refresh wire together close this loop).</li>
+</ol>
+
+<h2>What I deliberately did NOT change</h2>
+
+<ul>
+  <li><strong>LogShoeAxis.runs decoder</strong> · stays strict. Server-side <code>cur.runs += 1</code> is always int from a counter — no fractional risk.</li>
+  <li><strong>FlexibleDouble call sites</strong> · already correctly handle string-or-number drift. No coverage gap.</li>
+  <li><strong>The decoder for Double fields without an existing FlexibleDouble wrapper</strong> · the same theoretical risk exists (a Double that decodes as String would throw), but no observed instances in the response shapes. Adding a parallel <code>decodeFlexDouble</code> would be defensive but scope-creep.</li>
+  <li><strong>HealthKit ingest path</strong> · already routed through <code>authedSend</code> after a prior audit. Verified clean.</li>
+  <li><strong>Apple Sign In</strong> · David's on email auth, not Apple Sign In. The credential-revocation hole flagged earlier in the audit is real but doesn't affect this user.</li>
+</ul>
+
+<h2>What the audit also surfaced (lower-priority follow-ups)</h2>
+
+<table>
+  <tr><th>Finding</th><th>Where</th><th>Status</th></tr>
+  <tr>
+    <td>TopicKind enum is closed · server adding a new kind would throw</td>
+    <td><code>Models/Briefing.swift</code></td>
+    <td><span class="warn">Defer</span> · low-probability, but worth a custom init with <code>case unknown</code> fallback.</td>
+  </tr>
+  <tr>
+    <td><code>RunSplit</code> + <code>PhaseBreakdown</code> not lenient individually</td>
+    <td><code>Models/Runs.swift</code></td>
+    <td><span class="warn">Mitigated by outer try?</span> · one bad split drops all splits in that run but doesn't take the run with it. Acceptable for now.</td>
+  </tr>
+  <tr>
+    <td>Push notification registration silent-fail</td>
+    <td><code>NotificationsAppDelegate.swift</code></td>
+    <td><span class="warn">Defer</span> · POST to <code>/api/notifications/register</code> swallows errors; no retry on next foreground.</td>
+  </tr>
+  <tr>
+    <td>HealthKit connection state never recomputed post-failure</td>
+    <td><code>SettingsView.swift</code></td>
+    <td><span class="warn">Defer</span> · settings always shows "Synced" if the HK permission was once granted, even if every subsequent ingest 401s.</td>
+  </tr>
+</table>
+
+<h2>Test plan for the runner</h2>
+
+<ol>
+  <li>Open the new TestFlight build (132+).</li>
+  <li>Tap Activity tab. <strong>Expected:</strong> FEED populated with recent runs grouped by week. The "LOAD EARLIER RUNS · N SO FAR" button shows a real count.</li>
+  <li>Tap STATS. Tap MONTH. <strong>Expected:</strong> hero number drops to this month's mileage, not the all-time total. PRs reflect this month only.</li>
+  <li>Tap a run row. <strong>Expected:</strong> RunDetail opens with HR / cadence / elevation populated. Previously these fields could silently come back nil even when the data exists.</li>
+  <li>Disconnect Strava in Settings → tap RECONNECT on the banner → complete OAuth in Safari → return to the app. <strong>Expected:</strong> banner clears within seconds. Web-side now redirects back to <code>/today?strava=connected</code>.</li>
+</ol>
+
+<hr>
+
+<p class="meta">Generated 2026-05-31 · session run in worktree <code>eager-davinci-feefd0</code> · 5 commits pushed to <code>main</code> · backend collaboration via in-channel data dumps.</p>
+
+</div>
+</body>
+</html>
