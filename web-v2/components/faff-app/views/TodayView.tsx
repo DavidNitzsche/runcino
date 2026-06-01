@@ -11,6 +11,7 @@ import {
   AdaptationCard,
   DayStatePill,
   LoadBandChip,
+  ProfileGapCard,
   ReconnectBanner,
   type LoadBand,
 } from '../toolkit';
@@ -87,6 +88,39 @@ export function TodayView({
     return y;
   })();
 
+  // T2 physiology auto-nudge · David decision 2026-05-31. Skip the
+  // dedicated onboarding Step 1c entirely; instead, after 3 days of
+  // use, if the runner has no LTHR / HRmax / weight + no AppleHealth
+  // connected, fire a ProfileGapCard on Today pointing at Health.
+  // Closes coverage row 1647 (T2 physiology signals step).
+  const [showPhysiologyNudge, setShowPhysiologyNudge] = useState(false);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  useEffect(() => {
+    if (nudgeDismissed) return;
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('physiologyNudgeDismissed') === '1') {
+      setNudgeDismissed(true);
+      return;
+    }
+    let alive = true;
+    fetch('/api/profile')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!alive || !j) return;
+        const hasPhysiology = (j.lthr != null) || (j.hrmax_observed != null) || (j.hrmax != null) || (j.height_cm != null);
+        const healthConnected = !!j.health_connected_at;
+        const onboardedAt = j.onboarded_at ? new Date(j.onboarded_at) : null;
+        const daysSinceOnboard = onboardedAt && Number.isFinite(onboardedAt.getTime())
+          ? (Date.now() - onboardedAt.getTime()) / 86400000
+          : Infinity;
+        // Fire only when: no physiology AND no AppleHealth AND ≥3 days post-onboard
+        if (!hasPhysiology && !healthConnected && daysSinceOnboard >= 3) {
+          setShowPhysiologyNudge(true);
+        }
+      })
+      .catch(() => { /* silent */ });
+    return () => { alive = false; };
+  }, [nudgeDismissed]);
+
   return (
     <>
       {/* Reconnect banner · auto-hides when Strava is connected. Closes
@@ -127,6 +161,28 @@ export function TodayView({
           <div style={{ flex: 1, minWidth: 240 }}>
             <AdaptationCard />
           </div>
+        </div>
+      ) : null}
+
+      {/* Physiology auto-nudge · only after 3+ days post-onboarding
+          with no physiology data + no AppleHealth. Closes coverage row
+          1647 (T2 physiology onboarding signals step) via the
+          "auto-surface a Today nudge" branch (David decision 2026-05-31). */}
+      {showPhysiologyNudge ? (
+        <div style={{ marginTop: 12 }}>
+          <ProfileGapCard
+            highlight="Tell Faff your LTHR + HRmax"
+            fragment="so the coach can dial in your zones. Takes ~30 seconds."
+            ctaLabel="ADD"
+            ctaHref="/health"
+            onCta={() => {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('physiologyNudgeDismissed', '1');
+              }
+              setNudgeDismissed(true);
+              setShowPhysiologyNudge(false);
+            }}
+          />
         </div>
       ) : null}
 

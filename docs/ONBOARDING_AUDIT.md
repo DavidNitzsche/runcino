@@ -1,14 +1,22 @@
 # Onboarding + Settings Audit · Inputs the Coach Needs
 
-**Locked 2026-05-30.** This audit maps every piece of information the
-coaching engine needs against where it currently comes from, when it's
-asked, and what the fallback is when the canonical source isn't
-available.
+**Locked 2026-05-30 · refreshed 2026-05-31.** This audit maps every
+piece of information the coaching engine needs against where it
+currently comes from, when it's asked, and what the fallback is when
+the canonical source isn't available.
 
 The contract: **every user — David, the next runner, the 1000th —
 should arrive at first coaching with the SAME inputs filled.** The path
 to fill them differs (Apple Health auto-fills some; manual entry fills
 others), but the set of fields the coach reads is fixed.
+
+> **Refresh note · 2026-05-31.** Several T3 manual-fallback gaps the
+> original audit flagged are now closed by toolkit components (see the
+> "Status as of 2026-05-31" annotations below). The onboarding page
+> itself (`web-v2/app/onboarding/page.tsx`) is still a redirect stub —
+> the no-race goal path is gated on the design brief at
+> `designs/briefs/onboarding-no-race-path-brief.md`. Once that
+> mockup lands, this audit becomes the build spec.
 
 ---
 
@@ -74,6 +82,16 @@ When Apple Health is connected, these auto-flow into `health_samples` via the iO
 **Gap surface:** the only fields with a real manual fallback today are Max HR, Resting HR, and LTHR. The other 8+ HealthKit sample types **only flow when Apple Health is connected.** A web-only user (no iOS app) cannot enter sleep / HRV / weight manually — those readiness pillars degrade silently.
 
 **Recommendation:** add a "manual daily check-in" path with optional fields for sleep duration + felt-recovery rating so the readiness chain has SOMETHING when Apple Health isn't connected. (The check_ins table can carry sleep/energy/soreness on the v2 reply-chip surface.)
+
+> **Status as of 2026-05-31 · MOSTLY CLOSED.** The toolkit's
+> `ManualHealthSheet` (live on `HealthView` behind a "+ Log measurement"
+> pill, POST `/api/health/manual`) now provides manual fallbacks for:
+> sleep_hours, hrv, resting_hr, body_mass (weight), hr_recovery,
+> vo2_max. The 7 fields the original audit flagged as "GAP: no manual
+> entry path" are reduced to the run-form bio metrics (cadence, run
+> power, ground contact, vertical oscillation, stride length, vertical
+> ratio) — which are watch-only signals by their nature and don't have
+> a meaningful manual surrogate.
 
 ---
 
@@ -234,15 +252,23 @@ Compact, 4-step web flow (5-step iOS flow with HealthKit grant). Time budget: **
 
 ## What's missing today vs target
 
-| Gap | Today | Recommendation |
-|---|---|---|
-| Onboarding doesn't ask birthday/sex/height | Done via profile edit weeks later | Add Step 3 "Physiology" |
-| Onboarding doesn't ask schedule | Defaults Sun/Tue+Thu/Sat | Add Step 5 "Week shape" |
-| Onboarding skips history chips on race path | Plan-builder relies on Strava history (fails without Strava) | Always ask history chips (lightweight, low-friction) |
-| No manual fallback for sleep / HRV / weight | Apple-Health-disconnected user has degraded readiness | Add lightweight daily check-in fields for sleep + felt recovery |
-| No fueling UI | `users.fuel_*` columns unused | Build Settings → Fueling section (race-mode pre-fill) |
-| No cross-training UI | `profile.cross_training_modes` unused | Build profile edit · cross-training preferences picker |
-| Profile gaps surface late | "no height → no cadence card" only after a few briefings | Profile gap cards should ALSO appear in onboarding Step 3 with explainer |
+> **Status refreshed 2026-05-31.** The "Status" column reflects what's
+> shipped since the original 2026-05-30 audit.
+
+| Gap | Today | Recommendation | Status 2026-05-31 |
+|---|---|---|---|
+| Onboarding doesn't ask birthday/sex/height | Done via profile edit weeks later | Add Step 3 "Physiology" | **REPLACED** · David locked the auto-nudge approach: skip the dedicated Step 1c, instead fire a `ProfileGapCard` on Today after 3 days post-onboard with no physiology data + no AppleHealth. Now wired in `TodayView`. |
+| Onboarding doesn't ask schedule | Defaults Sun/Tue+Thu/Sat | Add Step 5 "Week shape" | **OPEN** · Defaults persist. Schedule-aware onboarding step needs design. Lower priority than the no-race goal path. |
+| Onboarding skips history chips on race path | Plan-builder relies on Strava history (fails without Strava) | Always ask history chips (lightweight, low-friction) | **GATED** · Onboarding page is a redirect stub. Surfaces only when the race-anchored onboarding mockup lands. |
+| No manual fallback for sleep / HRV / weight | Apple-Health-disconnected user has degraded readiness | Add lightweight daily check-in fields for sleep + felt recovery | **CLOSED** · `ManualHealthSheet` on `HealthView` covers sleep_hours, hrv, resting_hr, body_mass, hr_recovery, vo2_max via POST `/api/health/manual`. The 6 watch-only run-form metrics (cadence, power, GCT, etc.) remain manual-fallback-impossible by their nature. |
+| No fueling UI | `users.fuel_*` columns unused | Build Settings → Fueling section (race-mode pre-fill) | **OPEN** · Out of scope this cycle. |
+| No cross-training UI | `profile.cross_training_modes` unused | Build profile edit · cross-training preferences picker | **PARTIAL** · `LogNonRunSheet` on `TargetsView` lets the runner log strength + cross sessions ad-hoc (per David's "say what days, runner logs" decision). The persistent preferences picker (which modalities the runner does at all) is still open — small follow-up. |
+| Profile gaps surface late | "no height → no cadence card" only after a few briefings | Profile gap cards should ALSO appear in onboarding Step 3 with explainer | **CLOSED** · `ProfileGapCard` is a live toolkit component, and the physiology auto-nudge on TodayView is the primary surface. Once the new onboarding flow ships, gap cards can also live mid-flow. |
+| 7 inputs for the no-race goal path | Schema + state machine exist; design doesn't | Design Step 1b (TT distance + time, weekly volume + frequency, 3 history fields) | **BRIEF FILED** · `designs/briefs/onboarding-no-race-path-brief.md` (this cycle). |
+| Goals (non-race) capture | `personal_goals` table never written from web | Capture via profile or Targets | **CLOSED** · `NewGoalSheet` lives on `TargetsView` behind "+ New goal" pill. POSTs to `/api/goals`. |
+| Notification taxonomy management | `profile.notification_prefs` jsonb never edited from web | Settings → Notifications with 7-category list | **CLOSED** · `NotificationPrefsList` on `ProfileView` covers all 8 prefs keys (master + 7 categories) with optimistic PATCH `/api/profile/notifications`. |
+| Connection management | One-time onboarding only, no post-onboard manage surface | Settings → Connections with per-source last sync | **CLOSED** · `ConnectionRow` per source on `ProfileView` shows connected + last sync + stale flag (amber when > 24h). |
+| Per-user toggles (phone_hr_alerts, strava_auto_push) | Schema exists, no UI | Profile → Toggle rows | **CLOSED** · `ProfileToggleRows` on `ProfileView` lazy-fetches from `/api/profile` and PATCHes back. |
 
 ---
 
@@ -259,3 +285,39 @@ The contract: **the coaching engine never crashes for missing inputs.**
 Every code path either has a fallback, defers gracefully, or surfaces a
 profile_gap card asking for the input. Today's gaps are documented above
 as pending work — not as blockers.
+
+---
+
+## Net state · 2026-05-31
+
+**The audit has shifted from "where are the gaps" to "where do we
+build."** Of the 7 gaps the original 2026-05-30 audit identified:
+
+- **4 are CLOSED** by toolkit components shipped 2026-05-31:
+  manual fallbacks for HRV/sleep/weight, late profile-gap surfacing,
+  goals capture, notifications taxonomy management.
+- **2 are GATED on the onboarding flow itself** (which is a redirect
+  stub today): "always ask history chips on race path" and "Week shape
+  step." These wait for the race-anchored onboarding design.
+- **1 is REPLACED** by an explicit David decision: T2 physiology is
+  now an auto-nudge on Today after 3 days, not a dedicated onboarding
+  step.
+
+**Plus 4 new closures** the original audit didn't flag (because the
+toolkit + decisions hadn't shipped): cross-training logging,
+connection-management surface, per-user toggles, no-race goal path
+design brief.
+
+**Plus 2 still-open items** the original audit underweighted:
+- **Strength-day suggestion** is shipped via `pickStrengthDays` +
+  the week-strip "+ STRENGTH" annotation. Settled.
+- **Schedule-aware onboarding (Week shape step)** remains the lone
+  open onboarding-flow gap that doesn't have a brief filed. Low
+  priority — defaults work well — but is the next item if onboarding
+  polish picks up.
+
+The shape of "what onboarding needs to ask" is now well-defined by the
+two design briefs:
+- `designs/briefs/onboarding-no-race-path-brief.md` (locked, this cycle)
+- (future) a race-anchored onboarding design — only when the existing
+  redirect-to-Today behavior stops being correct.
