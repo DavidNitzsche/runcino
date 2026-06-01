@@ -133,7 +133,14 @@ function deriveSegs(goalSec: number, projSec: number, goal: GoalRace): GapSeg[] 
     ? Math.max(0, Math.round(goal.courseImpactSec))
     : 24;
   const courseHasReal = goal.courseImpactSec != null;
-  const PARTLY_COND = Math.min(90, Math.round(goalSec * 0.018)); // ~1.8% heat penalty (placeholder)
+  // 2026-05-31 · Conditions chunk now reads goal.conditionsImpactSec
+  // (Maughan model · forecast or climate normals). Falls back to a
+  // 1.8% goalSec placeholder when null (no forecast + no climate
+  // match · e.g. race in a country we haven't editorialized).
+  const PARTLY_COND = goal.conditionsImpactSec != null
+    ? Math.max(0, Math.round(goal.conditionsImpactSec))
+    : Math.min(90, Math.round(goalSec * 0.018));
+  const conditionsHasReal = goal.conditionsImpactSec != null;
   const TRAIN_EXEC = 30;
   const baseline = FIXED_COURSE + PARTLY_COND + TRAIN_EXEC;
   const fitness = Math.max(0, totalGap - baseline);
@@ -154,8 +161,12 @@ function deriveSegs(goalSec: number, projSec: number, goal: GoalRace): GapSeg[] 
       nm: 'Conditions',
       sec: PARTLY_COND,
       tag: 'Partly',
-      doctrine: `Heat above ~60°F costs 1–2% on pace. About ${fmtDelta(PARTLY_COND)} here against goal conditions. An earlier corral or a cooler race claws some back.`,
-      src: 'Research/03 · heat-and-pace model',
+      doctrine: conditionsHasReal
+        ? conditionsDoctrineCopy(PARTLY_COND, goal)
+        : `Heat above ~60°F costs 1–2% on pace. About ${fmtDelta(PARTLY_COND)} here against goal conditions. An earlier corral or a cooler race claws some back.`,
+      src: conditionsHasReal
+        ? `Research/06 · Maughan model · ${goal.conditionsSource ?? 'editorial'}`
+        : 'Research/03 · heat-and-pace model',
     },
     {
       key: 'course',
@@ -178,6 +189,24 @@ function deriveSegs(goalSec: number, projSec: number, goal: GoalRace): GapSeg[] 
       src: 'Research/04 · pacing discipline',
     },
   ];
+}
+
+/** Doctrine copy when conditionsImpactSec is real (per-race). */
+function conditionsDoctrineCopy(sec: number, goal: GoalRace): string {
+  const src = goal.conditionsSource === 'forecast'
+    ? "the actual race-day forecast"
+    : "typical race-morning climate for this location";
+  if (sec === 0) {
+    return `Based on ${src}, ${goal.name} sits in a neutral heat band · ` +
+      `Conditions add no time at this distance. The day is not the bottleneck.`;
+  }
+  if (sec <= 60) {
+    return `Based on ${src}, expect Maughan to add about ${fmtDelta(sec)} · ` +
+      `workable. Execute the day, don't fight it.`;
+  }
+  return `Based on ${src}, Maughan adds about ${fmtDelta(sec)} at ` +
+    `${goal.name}'s expected temp. An earlier corral or cooler shoulder ` +
+    `race claws some of that back.`;
 }
 
 /** Doctrine copy when courseImpactSec is real (per-race). */

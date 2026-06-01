@@ -1189,14 +1189,32 @@ export async function buildSeed(): Promise<FaffSeed> {
   if (goalRace && goalRace.slug && goalRace.distanceMi) {
     try {
       const goalSecLocal = parseRaceTime(goalRace.goal) ?? 0;
-      // §2.2 · Course chunk · per-race elevation impact
       const { pool: _pool } = await import('@/lib/db/pool');
-      const courseLibRow = (await _pool.query(
-        `SELECT source, elevation_gain_ft, net_elevation_ft
-           FROM course_library WHERE slug = $1`,
-        [goalRace.slug],
-      ).catch(() => ({ rows: [] as Array<{ source: string | null; elevation_gain_ft: number | null; net_elevation_ft: number | null }> }))).rows[0];
+
+      // Pull course_library (elevation) + races (course_geometry bbox
+      // for lat/lng) once · both chunks need the same join.
+      const [courseLibRes, raceRowRes] = await Promise.all([
+        _pool.query(
+          `SELECT source, elevation_gain_ft, net_elevation_ft
+             FROM course_library WHERE slug = $1`,
+          [goalRace.slug],
+        ).catch(() => ({ rows: [] as Array<{ source: string | null; elevation_gain_ft: number | null; net_elevation_ft: number | null }> })),
+        _pool.query(
+          `SELECT course_geometry
+             FROM races
+            WHERE slug = $1 AND user_uuid = $2 LIMIT 1`,
+          [goalRace.slug, userId],
+        ).catch(() => ({ rows: [] as Array<{ course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null }> })),
+      ]);
+      const courseLibRow = courseLibRes.rows[0];
+      const bbox = raceRowRes.rows[0]?.course_geometry?.bbox ?? null;
+      const raceLat = bbox?.minLat != null && bbox?.maxLat != null
+        ? (Number(bbox.minLat) + Number(bbox.maxLat)) / 2 : null;
+      const raceLng = bbox?.minLon != null && bbox?.maxLon != null
+        ? (Number(bbox.minLon) + Number(bbox.maxLon)) / 2 : null;
+
       if (goalSecLocal > 0) {
+        // §2.2 · Course chunk · per-race elevation impact
         const { computeCourseImpact } = await import('@/lib/training/course-impact');
         const courseImpact = computeCourseImpact(
           {
@@ -1210,6 +1228,24 @@ export async function buildSeed(): Promise<FaffSeed> {
         goalRace.courseImpactSec = courseImpact.seconds;
         goalRace.courseSource = courseImpact.source;
         goalRace.courseElevGainFtPerMi = courseImpact.elevGainFtPerMi;
+
+        // §2.1 · Conditions chunk · race-day weather impact.
+        // Async (forecast call) · best-effort, never blocks the seed.
+        if (goalRace.date) {
+          const { computeRaceConditions } = await import('@/lib/training/race-conditions');
+          const conditions = await computeRaceConditions({
+            raceSlug: goalRace.slug,
+            raceDateISO: goalRace.date,
+            location: goalRace.location,
+            raceLat,
+            raceLng,
+            distanceMi: goalRace.distanceMi,
+            goalSec: goalSecLocal,
+            vdot: profile?.physiology.vdot ?? null,
+          });
+          goalRace.conditionsImpactSec = conditions.seconds;
+          goalRace.conditionsSource = conditions.source;
+        }
       }
     } catch {
       // Enrichment is best-effort · the panel falls back to doctrine
