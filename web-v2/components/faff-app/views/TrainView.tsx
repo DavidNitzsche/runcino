@@ -511,17 +511,29 @@ export function TrainView({
               const projSec = seed.readinessBrief?.gapReport?.trajectorySec
                 ?? parseClockTime(goal.projected) ?? 0;
               const gapSec = (projSec && goalSec) ? projSec - goalSec : 0;
-              // Cap offset at 28% from center so the dot stays in the
-              // visible zone for big deltas. Floor at 4% so a tiny
-              // delta is still readably offset from the goal tick.
-              const mag = goalSec > 0
-                ? Math.min(28, Math.max(gapSec === 0 ? 0 : 4, Math.abs(gapSec) / goalSec * 100))
-                : 0;
+              // Bar offset · cap at 28% from center so the dot stays
+              // visible at big deltas. Floor at 10% so a small gap is
+              // still readably offset from the goal tick. Linear slope
+              // of 2 amplifies small gaps for visibility · a 5% raw
+              // gap maps to 10% offset, 14% raw saturates.
+              const rawPct = goalSec > 0 ? Math.abs(gapSec) / goalSec * 100 : 0;
+              const mag = rawPct === 0
+                ? 0
+                : Math.min(28, Math.max(10, rawPct * 2));
               const behind = gapSec > 0;
               const projLeftPct = mag === 0 ? 50 : (behind ? 50 - mag : 50 + mag);
               const segLeft = Math.min(50, projLeftPct);
               const segWidth = Math.abs(50 - projLeftPct);
               const chipLeft = (50 + projLeftPct) / 2;
+              // Hide the TODAY label when proj sits close enough to
+              // the goal tick that the "1:30:00" / "1:34:54" times
+              // would visually intersect. The projected time is
+              // already shown in the big pjbig number above + the
+              // delta is in the chip · no information loss. The dot
+              // still offsets, just without the redundant label.
+              // David call 2026-06-01: "5 min behind · causing the
+              // type to intersect."
+              const hideProjLabel = mag > 0 && mag < 18;
               const levers = (goal.levers ?? []).slice(0, 3);
               const fallbackLines = !levers.length
                 ? (seed.readinessBrief?.gapReport?.whatClosesIt ?? []).slice(0, 3)
@@ -551,7 +563,9 @@ export function TrainView({
                     <span className="pjtick goal" style={{ left: '50%' }} />
                     <span className="pjtick proj" style={{ left: `${projLeftPct}%` }} />
                     <span className="pjlbl" style={{ left: '50%' }}>GOAL<b>{goal.goal}</b></span>
-                    <span className="pjlbl proj" style={{ left: `${projLeftPct}%` }}>TODAY<b>{goal.projected}</b></span>
+                    {hideProjLabel ? null : (
+                      <span className="pjlbl proj" style={{ left: `${projLeftPct}%` }}>TODAY<b>{goal.projected}</b></span>
+                    )}
                   </div>
                   {(levers.length > 0 || fallbackLines.length > 0) ? (
                     <div className="gap">
