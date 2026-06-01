@@ -137,14 +137,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
  */
 async function recomputeShoeMileage(userId: string): Promise<void> {
   await pool.query(
+    // 2026-06-01 - MAX-per-day-per-shoe dedupe defends against absorber
+    // gaps (see lib/plan/generate.ts comment). Pick the max-distance
+    // row per (day, shoe) so duplicate source rows for the same run
+    // dont double-count shoe mileage.
     `UPDATE shoes s
         SET mileage = COALESCE(t.total_mi, 0)
        FROM (
-         SELECT shoe_id, SUM((data->>'distanceMi')::numeric) AS total_mi
-           FROM runs
-          WHERE user_uuid = $1
-            AND shoe_id IS NOT NULL
-            AND NOT (data ? 'mergedIntoId')
+         WITH per_day_shoe AS (
+           SELECT shoe_id,
+                  COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date AS d,
+                  MAX((data->>'distanceMi')::numeric) AS mi
+             FROM runs
+            WHERE user_uuid = $1
+              AND shoe_id IS NOT NULL
+              AND NOT (data ? 'mergedIntoId')
+            GROUP BY shoe_id, 2
+         )
+         SELECT shoe_id, SUM(mi) AS total_mi
+           FROM per_day_shoe
           GROUP BY shoe_id
        ) t
       WHERE s.id = t.shoe_id

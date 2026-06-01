@@ -261,9 +261,10 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     const shift = dow === 0 ? -6 : 1 - dow;
     return new Date(d.getTime() + shift * 86400000).toISOString().slice(0, 10);
   })();
+  // 2026-06-01 - MAX-per-day dedupe (see lib/plan/generate.ts comment).
   const weekRuns = await pool.query(
     `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
-            SUM((data->>'distanceMi')::numeric) AS mi
+            MAX((data->>'distanceMi')::numeric) AS mi
        FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')

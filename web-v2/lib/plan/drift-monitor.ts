@@ -320,13 +320,19 @@ function checkStaleness(plan: ActivePlan): DriftSignal | null {
 // ─── data helpers ───────────────────────────────────────────────────────
 
 async function loadCurrentWeeklyMileage(userUuid: string): Promise<number | null> {
+  // 2026-06-01 - MAX-per-day dedupe defense (see lib/plan/generate.ts).
   const r = (await pool.query<{ mi: string }>(
-    `SELECT COALESCE(SUM((data->>'distanceMi')::numeric), 0)::text AS mi
-       FROM runs
-      WHERE user_uuid = $1
-        AND NOT (data ? 'mergedIntoId')
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
-            >= CURRENT_DATE - $2::int`,
+    `WITH per_day AS (
+       SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date AS d,
+              MAX((data->>'distanceMi')::numeric) AS mi
+         FROM runs
+        WHERE user_uuid = $1
+          AND NOT (data ? 'mergedIntoId')
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
+              >= CURRENT_DATE - $2::int
+        GROUP BY 1
+     )
+     SELECT COALESCE(SUM(mi), 0)::text AS mi FROM per_day`,
     [userUuid, VOLUME_WINDOW_DAYS],
   ).catch(() => ({ rows: [{ mi: '0' }] }))).rows[0];
   const total = Number(r?.mi ?? 0);

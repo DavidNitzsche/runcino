@@ -390,21 +390,23 @@ async function loadReadinessGate(userUuid: string): Promise<ReadinessGate> {
 }
 
 async function loadLoadContext(userUuid: string): Promise<LoadContext> {
-  // Quick ACWR derivation · acute (7d) / chronic (28d). Same query
-  // shape readiness uses.
+  // Quick ACWR derivation · acute (7d) / chronic (28d).
+  // 2026-06-01 - MAX-per-day dedupe (see lib/plan/generate.ts).
   const r = (await pool.query<{ acute: string; chronic: string }>(
-    `SELECT
-        COALESCE(SUM((data->>'distanceMi')::numeric) FILTER (
-          WHERE COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
-                >= CURRENT_DATE - 7
-        ), 0)::text AS acute,
-        COALESCE(SUM((data->>'distanceMi')::numeric) FILTER (
-          WHERE COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
-                >= CURRENT_DATE - 28
-        ), 0)::text AS chronic
-      FROM runs
-     WHERE user_uuid = $1
-       AND NOT (data ? 'mergedIntoId')`,
+    `WITH per_day AS (
+       SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date AS d,
+              MAX((data->>'distanceMi')::numeric) AS mi
+         FROM runs
+        WHERE user_uuid = $1
+          AND NOT (data ? 'mergedIntoId')
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
+              >= CURRENT_DATE - 28
+        GROUP BY 1
+     )
+     SELECT
+        COALESCE(SUM(mi) FILTER (WHERE d >= CURRENT_DATE - 7), 0)::text AS acute,
+        COALESCE(SUM(mi), 0)::text AS chronic
+      FROM per_day`,
     [userUuid],
   ).catch(() => ({ rows: [{ acute: '0', chronic: '0' }] }))).rows[0];
   const acute = Number(r?.acute ?? 0) / 7;

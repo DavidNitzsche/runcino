@@ -281,14 +281,19 @@ async function medianDailyMi(
 
 async function peakWeekMi(userUuid: string, daysBack: number): Promise<number | null> {
   const r = (await pool.query<{ peak: string | null }>(
-    `WITH weekly AS (
-       SELECT DATE_TRUNC('week', (data->>'date')::date) AS wk,
-              SUM((data->>'distanceMi')::numeric) AS mi
+    // 2026-06-01 - MAX-per-day dedupe before weekly SUM. See
+    // lib/plan/generate.ts for context.
+    `WITH per_day AS (
+       SELECT (data->>'date')::date AS d,
+              MAX((data->>'distanceMi')::numeric) AS mi
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'date')::date >= CURRENT_DATE - $2
-        GROUP BY wk
+        GROUP BY 1
+     ), weekly AS (
+       SELECT DATE_TRUNC('week', d) AS wk, SUM(mi) AS mi
+         FROM per_day GROUP BY wk
      )
      SELECT MAX(mi)::text AS peak FROM weekly`,
     [userUuid, daysBack],

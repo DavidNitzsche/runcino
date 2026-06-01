@@ -703,13 +703,18 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
 
 async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger | null> {
   // Last 7d running volume vs experience cap.
+  // 2026-06-01 - MAX-per-day dedupe (see lib/plan/generate.ts).
   const r = (await pool.query(
-    `WITH vol AS (
-       SELECT COALESCE(SUM((data->>'distanceMi')::numeric), 0) AS mi
+    `WITH per_day AS (
+       SELECT (data->>'date')::date AS d,
+              MAX((data->>'distanceMi')::numeric) AS mi
          FROM runs
         WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'date')::date >= CURRENT_DATE - 7
+        GROUP BY 1
+     ), vol AS (
+       SELECT COALESCE(SUM(mi), 0) AS mi FROM per_day
      ), p AS (
        SELECT experience_level FROM profile WHERE user_uuid = $1
      )
