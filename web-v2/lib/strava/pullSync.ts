@@ -21,6 +21,7 @@
 import { pool } from '@/lib/db/pool';
 import { getStravaToken } from '@/lib/strava/auth';
 import { SOURCE_TIER } from '@/lib/runs/canonical';
+import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 
 const STRAVA_API = 'https://www.strava.com/api/v3';
 const M_PER_MILE = 1609.344;
@@ -59,6 +60,8 @@ interface StravaActivity {
   suffer_score?: number;
   achievement_count?: number;
   kudos_count?: number;
+  /** Strava ships kcal for runs that carry HR or power. Detail-only field. */
+  calories?: number;
   start_latlng?: [number, number] | null;
   end_latlng?: [number, number] | null;
   map?: { summary_polyline?: string | null };
@@ -107,6 +110,19 @@ function stravaToFaffPayload(
     ? M_PER_MILE / act.average_speed
     : null;
 
+  // Sanity-check elev_gain at ingest time. Strava receives whatever the
+  // watch sent · barometric drift produces 5-10x overshoots on long runs.
+  // sanitizeElevGain demands splits corroboration above 250 ft/mi before
+  // accepting a wild number; otherwise it swaps in a credible
+  // splits-derived value AND stamps `elevGainSource = 'recomputed'` so
+  // the read path knows the provenance.
+  const rawElevFt = Math.round(act.total_elevation_gain * 3.28084);
+  const elevSanity = sanitizeElevGain({
+    elevGainFt: rawElevFt,
+    distanceMi,
+    splits: detail?.splits_standard,
+  });
+
   const payload: Record<string, unknown> = {
     id: String(act.id),
     name: act.name,
@@ -118,7 +134,8 @@ function stravaToFaffPayload(
     distanceMi: Number(distanceMi.toFixed(4)),
     movingTimeS: act.moving_time,
     elapsedTimeS: act.elapsed_time,
-    elevGainFt: Math.round(act.total_elevation_gain * 3.28084),
+    elevGainFt: elevSanity.value,
+    elevGainSource: elevSanity.source,
     avgSpeedMph: avgSpeedMph != null ? Number(avgSpeedMph.toFixed(3)) : null,
     paceSPerMi: paceSPerMi != null ? Math.round(paceSPerMi) : null,
     avgHr: act.average_heartrate ?? null,
@@ -141,6 +158,13 @@ function stravaToFaffPayload(
     if (detail.gear_id)                 payload.gear_id = detail.gear_id;
     if (typeof detail.perceived_exertion === 'number') {
       payload.perceived_exertion = detail.perceived_exertion;
+    }
+    // Strava only exposes calories on the detail endpoint, not the list.
+    // Persist as `calories` (matches Strava's name); the read path in
+    // lib/coach/run-state.ts falls back to active_energy samples when this
+    // is null (Apple-Watch-only runs).
+    if (typeof detail.calories === 'number' && detail.calories > 0) {
+      payload.calories = Math.round(detail.calories);
     }
   }
   return payload;

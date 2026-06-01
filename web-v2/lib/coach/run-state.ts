@@ -17,6 +17,14 @@ export interface RunSplit {
   hr: number | null;
   cadence: number | null;
   elev_change_ft: number | null;
+  /**
+   * Phase classification for this mile · derived from the run's
+   * structured phaseBreakdown when present. Null for runs without
+   * phase data (free-form easy runs, manual entries, Strava-only
+   * imports). When set, the UI can color-code MP-finish miles
+   * distinctly from the warmup build.
+   */
+  phase: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown' | null;
 }
 
 /**
@@ -93,6 +101,29 @@ export interface RunDetail {
   elev_gain_ft: number | null;
   temp_f: number | null;
   /**
+   * Thermal arc for the run · the chip wants to show "65°F → 77°F" when
+   * a long run rolled through real climb. Populated from data.weather
+   * by the span-aware enrichment (lib/weather/openmeteo.ts). Null on
+   * runs that landed before span enrichment shipped (legacy single-point
+   * fetch) or runs without GPS · the chip falls back to temp_f.
+   */
+  temp_range_f: {
+    start: number | null;
+    end: number | null;
+    peak: number | null;
+    mean: number | null;
+  } | null;
+  /**
+   * Total calories burned for the run. Two source-tier paths:
+   *   1. Strava ships `data.calories` on detail-pulled activities · this
+   *      is the strongest signal (Strava blends HR + power + weight).
+   *   2. Fallback: sum of `active_energy` health samples whose
+   *      sample_date falls within [start_local, start_local + moving_time].
+   *      Works for Apple-Watch-only runs that never hit Strava.
+   * Null when neither source has a value.
+   */
+  calories_kcal: number | null;
+  /**
    * Post-run weather context. When the run was meaningfully hotter or
    * cooler than the runner's recent baseline, surfaces a one-line
    * explainer ("Temp 78°F vs your typical 60°F. HR ~8 bpm elevated
@@ -109,6 +140,23 @@ export interface RunDetail {
   // already ingested. Watts; null when the user doesn't ship a power
   // signal (no Stryd, no Apple Watch running power, etc.).
   power_avg_w: number | null;
+  /**
+   * "How was today's HR vs your usual?" · the headline signal for the
+   * "how it went" verdict. Compares today's avg HR against the runner's
+   * last 4 same-effort runs at a similar pace (±10s/mi bucket). Positive
+   * = HR ran hotter than typical (heat, dehydration, fatigue, illness).
+   * Negative = HR ran cooler than typical (well-rested, cool day).
+   * Null when we don't have enough comparable runs to draw a baseline.
+   *
+   * Rules:
+   *   · Need this run to carry both pace + HR.
+   *   · Comparison pool: last 4 canonical runs with same `type` AND pace
+   *     within ±10 s/mi of today's pace (the "pace bucket").
+   *   · Threshold: returns the bpm delta as an integer; consumers decide
+   *     when to surface (e.g. |delta| ≥ 5 bpm is meaningful for steady
+   *     efforts; intervals are too variable).
+   */
+  hr_on_pace_delta_bpm: number | null;
 
   // P32 — shoe assignment surfaced for the modal picker.
   shoe_id: number | null;
@@ -217,7 +265,10 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const movingSec  = Number(r.movingTimeS) || Number(r.duration_sec) || null;
   const elapsedSec = Number(r.elapsedTimeS) || Number(r.duration_sec) || null;
 
-  // Splits — normalize various source shapes.
+  // Splits — normalize various source shapes. Per-split `phase` tag is
+  // filled in after phaseBreakdown loads (a few lines down) · null here
+  // because we don't know yet, and a later pass walks the splits + phase
+  // cumulative-distance map to attach the right tag per mile.
   const splits: RunSplit[] = Array.isArray(r.splits) ? r.splits.map((s: any, i: number) => {
     const sPerMi = Number(s.paceSPerMi) || (s.pace_s_per_mi ?? null);
     return {
@@ -226,6 +277,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       hr: Number(s.hr ?? s.avgHr) || null,
       cadence: Number(s.cadence ?? s.avgCadence) || null,
       elev_change_ft: Number(s.elev_change_ft ?? s.elevChangeFt) || null,
+      phase: null,
     };
   }) : [];
 
@@ -270,6 +322,28 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const day = r.date || (r.startLocal ?? '').slice(0, 10);
   const form = await loadFormMetrics(userId, day);
 
+  // Calories. Strava ships `data.calories` on detail-pulled runs · trust
+  // that first. Otherwise, sum active_energy samples in the run's window.
+  const caloriesKcal = await resolveCalories({
+    userId,
+    stravaCalories: Number(r.calories) || null,
+    startLocal: r.startLocal as string | null,
+    movingTimeS: Number(r.movingTimeS) || Number(r.durationSec) || Number(r.elapsedTimeS) || 0,
+  });
+
+  // "How was today's HR vs your usual?" · compare today's avg HR at this
+  // pace bucket against the runner's last 4 same-effort runs. The
+  // headline signal for the "how it went" verdict, and the one that
+  // separates a heat day ("HR up 9, conditions explain it") from a
+  // training-load problem.
+  const hrOnPaceDelta = await computeHrOnPaceDelta({
+    userId,
+    runIdToExclude: String(r.id ?? activityId),
+    type: (r.type as string | null) ?? null,
+    paceSPerMi: Number(r.paceSPerMi) || null,
+    avgHr: Number(r.avgHr) || null,
+  });
+
   // Post-run weather context. When the run's tempF is known and the
   // runner has a 14-day baseline at this lat/lon, surface a one-line
   // "hotter than normal" / "cooler than normal" explainer + HR bump.
@@ -289,6 +363,15 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // empty array for non-watch runs (Apple Watch Workouts, Strava, manual)
   // where we don't have the planned phase structure.
   const phaseBreakdown = await loadPhaseBreakdown(userId, day);
+
+  // Per-split phase tagging · walks the phaseBreakdown's cumulative
+  // distance map and assigns each mile's phase. The renderer uses this
+  // to color-code MP-finish miles distinctly from the warmup build
+  // (e.g. David's long: miles 1-8 = work, mile 9-11 = work@MP, mile 12 =
+  // cooldown). When phaseBreakdown is empty (Strava-only / apple_watch
+  // runs), every split keeps `phase: null` and the renderer falls back
+  // to the run's overall effort color.
+  tagSplitsWithPhases(splits, phaseBreakdown);
 
   // P42 + P45 — work-only averages (excluding planned recovery/rest phases).
   // Tries phase data first (best signal from the WatchCompletion payload),
@@ -384,14 +467,15 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // lower bound (it misses in-mile climbs that net to zero) but a
     // credible one · always better than a fictional number.
     elev_gain_ft: (() => {
+      // 2026-05-31: barometric-drift sanity check (read-time fallback for
+      // rows ingested before the sanity check landed on the ingest path).
+      // New rows get `data.elevGainSource = 'recomputed'` stamped by the
+      // ingest writer when this same check fires there.
       const raw = Number(r.elevGainFt) || null;
       const distMi = Number(r.distanceMi) || 0;
       if (raw == null || raw <= 0 || distMi <= 0) return raw;
       const ftPerMi = raw / distMi;
-      // Below the suspicion threshold · trust the source.
       if (ftPerMi <= 250) return raw;
-      // Above threshold · only recompute when splits coverage is real
-      // (at least 75% of the miles have splits AND positive sum > 0).
       const minSplits = Math.max(3, Math.floor(distMi * 0.75));
       if (splits.length < minSplits) return raw;
       const splitsPositive = splits.reduce((s, sp) => {
@@ -399,14 +483,21 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
         return s + (c > 0 ? c : 0);
       }, 0);
       if (splitsPositive <= 0) return raw;
-      // Only swap when the splits-summed positive is meaningfully
-      // smaller · otherwise we'd be substituting one inflated number
-      // for another. 0.6x is the cutoff · if splits agree within
-      // 60% of raw, the raw is probably honest after all.
       if (splitsPositive >= raw * 0.6) return raw;
       return Math.round(splitsPositive);
     })(),
     temp_f: Number(r.tempF) || null,
+    temp_range_f: (() => {
+      const w = (r.weather ?? {}) as Record<string, unknown>;
+      const start = typeof w.temp_f_start === 'number' ? w.temp_f_start : null;
+      const end = typeof w.temp_f_end === 'number' ? w.temp_f_end : null;
+      const peak = typeof w.temp_f_peak === 'number' ? w.temp_f_peak : null;
+      const mean = typeof w.temp_f_mean === 'number' ? w.temp_f_mean : null;
+      // Only emit the arc when at least one bound has a value · otherwise
+      // the chip should fall through to temp_f.
+      if (start == null && end == null && peak == null && mean == null) return null;
+      return { start, end, peak, mean };
+    })(),
     weather_context: weatherCtx,
     suffer_score: Number(r.sufferScore) || null,
     kudos: Number(r.kudosCount) || null,
@@ -415,6 +506,8 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // health_samples; mirror it at the top level so RunDetailModal
     // doesn't need to dig into the form nest.
     power_avg_w: form.run_power_w,
+    calories_kcal: caloriesKcal,
+    hr_on_pace_delta_bpm: hrOnPaceDelta,
 
     shoe_id: shoeId,
     shoes,
@@ -552,6 +645,44 @@ function defaultLabel(type: PhaseBreakdown['type'], i: number): string {
  * Phases counted as "work": warmup/cooldown/recovery/rest are filtered
  * out; everything else (work/rep/tempo/threshold/intervals/race) counts.
  */
+/**
+ * Walk `splits` and assign each mile's `phase` based on cumulative
+ * distance against the `phaseBreakdown` boundaries. Mutates splits in
+ * place; safe no-op when phases is empty.
+ *
+ * Heuristic: build a sorted list of phase boundaries by cumulative
+ * distance, then for each split find the phase whose distance range
+ * contains the mile's midpoint (mile N covers [N-1, N] miles). When
+ * splits span more than one phase (rare · usually only happens on a
+ * mid-mile recovery jog), the phase with the most overlap wins.
+ *
+ * Edge cases:
+ *   · phases empty → splits stay phase: null
+ *   · phases have no actual_distance_mi → splits stay phase: null
+ *   · split mile beyond last phase boundary → tagged as last phase's type
+ */
+function tagSplitsWithPhases(splits: RunSplit[], phases: PhaseBreakdown[]): void {
+  if (splits.length === 0 || phases.length === 0) return;
+
+  // Build cumulative boundary list: [{ endMi, type }] sorted by index.
+  const boundaries: Array<{ endMi: number; type: PhaseBreakdown['type'] }> = [];
+  let cumMi = 0;
+  for (const p of phases.slice().sort((a, b) => a.index - b.index)) {
+    const mi = Number(p.actual_distance_mi);
+    if (!isFinite(mi) || mi <= 0) continue;
+    cumMi += mi;
+    boundaries.push({ endMi: cumMi, type: p.type });
+  }
+  if (boundaries.length === 0) return;
+
+  for (const s of splits) {
+    // Midpoint of mile N is at (N - 0.5) miles of cumulative distance.
+    const midpoint = Math.max(0, s.mile - 0.5);
+    const match = boundaries.find((b) => midpoint <= b.endMi);
+    s.phase = match?.type ?? boundaries[boundaries.length - 1].type;
+  }
+}
+
 async function computeWorkAverages(
   userId: string,
   date: string | null,
@@ -656,6 +787,124 @@ async function computeWorkAverages(
     cadenceAvg: cads.length > 0 ? Math.round(cads.reduce((a, b) => a + b, 0) / cads.length) : null,
     workSeconds,
   };
+}
+
+/**
+ * Resolve total calories burned for a run. Two-tier resolution:
+ *
+ *   1. Strava `data.calories` · trusted when present. Strava blends HR +
+ *      power + weight + duration into a calibrated value · best signal.
+ *   2. Sum of `active_energy` health samples in the run's window.
+ *      HealthKit ships these per ~15-second bucket. We sum any sample
+ *      whose timestamp falls inside [start, start + movingTimeS].
+ *
+ * Returns null when neither path has data. Wrapped defensively so a
+ * malformed start time or DB error degrades the field to null instead
+ * of throwing.
+ */
+async function resolveCalories(args: {
+  userId: string;
+  stravaCalories: number | null;
+  startLocal: string | null;
+  movingTimeS: number;
+}): Promise<number | null> {
+  if (args.stravaCalories != null && args.stravaCalories > 0) {
+    return Math.round(args.stravaCalories);
+  }
+  if (!args.startLocal || args.movingTimeS <= 0) return null;
+  try {
+    const startMs = Date.parse(args.startLocal);
+    if (!isFinite(startMs)) return null;
+    const endMs = startMs + args.movingTimeS * 1000;
+    const startIso = new Date(startMs).toISOString();
+    const endIso = new Date(endMs).toISOString();
+    // The table doesn't carry per-sample timestamps · `sample_date` is
+    // day-granular and `recorded_at` is the insert time, which for HK
+    // ingest is roughly when the watch handed the bucket to the iPhone.
+    // Best-effort: prefer recorded_at when present, fall back to date.
+    // Over-counts slightly when the watch lazy-uploads after the run
+    // ends · but it's a fallback path, only fires when Strava has no
+    // calories number, and the alternative is reporting 0 kcal forever.
+    const r = await pool.query(
+      `SELECT COALESCE(SUM(value), 0)::numeric AS total
+         FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type = 'active_energy'
+          AND COALESCE(recorded_at, sample_date::timestamptz) >= $2::timestamptz
+          AND COALESCE(recorded_at, sample_date::timestamptz) <  $3::timestamptz`,
+      [args.userId, startIso, endIso],
+    );
+    const total = Number(r.rows[0]?.total ?? 0);
+    return total > 0 ? Math.round(total) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compute "HR on pace delta" · how today's avg HR compares to the
+ * runner's last 4 same-effort runs at the same pace.
+ *
+ * Why this exists (David, 2026-05-31 web-agent punch list #4):
+ *   The "how it went" verdict can't honestly say "you worked harder
+ *   than usual today" without knowing what "usual" is. This gives
+ *   the verdict a calibrated comparison · today's HR minus the median
+ *   of recent same-effort, same-pace runs.
+ *
+ * Comparable run definition:
+ *   · Same `type` (easy/long/tempo/intervals/etc.) · matches the
+ *     stimulus the runner thinks they're doing.
+ *   · Pace within ±10 s/mi of today's pace · "same-effort" by pace
+ *     bucket. Cardiac drift across paces is real, so we hold pace
+ *     roughly constant before comparing HR.
+ *   · Not today's run.
+ *   · Has both pace AND avg HR. Filters out manual entries.
+ *   · Most recent 4 matching runs. If fewer than 2 match, returns null
+ *     (no honest baseline).
+ *
+ * Doctrine (Research/03 · Heart Rate Zones · cardiac drift across days):
+ *   ±5 bpm at the same pace is the meaningful threshold for steady
+ *   efforts · noise floor for HR baseline. Consumers gate display
+ *   accordingly.
+ */
+async function computeHrOnPaceDelta(args: {
+  userId: string;
+  runIdToExclude: string;
+  type: string | null;
+  paceSPerMi: number | null;
+  avgHr: number | null;
+}): Promise<number | null> {
+  if (!args.type || !args.paceSPerMi || !args.avgHr) return null;
+  if (args.paceSPerMi <= 0 || args.avgHr <= 0) return null;
+  try {
+    const PACE_BUCKET = 10; // ±10 s/mi
+    const recent = (await pool.query<{ avg_hr: string }>(
+      `SELECT (data->>'avgHr')::numeric AS avg_hr
+         FROM runs
+        WHERE user_uuid = $1
+          AND absorbed_into_canonical_at IS NULL
+          AND NOT (data ? 'mergedIntoId')
+          AND id::text <> $2
+          AND data->>'type' = $3
+          AND (data->>'paceSPerMi')::numeric BETWEEN ($4::numeric - $5) AND ($4::numeric + $5)
+          AND (data->>'avgHr')::numeric > 0
+        ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC
+        LIMIT 4`,
+      [args.userId, args.runIdToExclude, args.type, args.paceSPerMi, PACE_BUCKET],
+    ).catch(() => ({ rows: [] as Array<{ avg_hr: string }> }))).rows;
+
+    if (recent.length < 2) return null;
+
+    // Median is more robust than mean against a single weird-day outlier.
+    const hrs = recent.map(r => Number(r.avg_hr)).filter(Number.isFinite).sort((a, b) => a - b);
+    if (hrs.length === 0) return null;
+    const mid = Math.floor(hrs.length / 2);
+    const baseline = hrs.length % 2 === 0 ? (hrs[mid - 1] + hrs[mid]) / 2 : hrs[mid];
+
+    return Math.round(args.avgHr - baseline);
+  } catch {
+    return null;
+  }
 }
 
 async function loadFormMetrics(userId: string, date: string | null): Promise<RunForm> {
