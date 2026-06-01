@@ -128,6 +128,33 @@ export interface ReadinessBrief {
   /** "Watching" callouts for tomorrow · the brief points the runner at
    *  what to verify if it persists. */
   watchTomorrow: string[];
+  /** 2026-06-01 · Phase 2.3 · daily projection-vs-goal card. Composed
+   *  from goal-gap engine (Phase 1.1) + simulator (Phase 2.1). The
+   *  honest-projection surface · status-aware headline, confidence
+   *  band, what-closes-it actions, A/B/C alternatives when not closing.
+   *  Null when the runner has no active plan + goal (cold start). */
+  gapReport: {
+    headline: string;
+    trajectorySec: number;
+    goalSec: number;
+    gapSec: number;
+    status: 'closing' | 'static' | 'widening' | 'unclosable';
+    confidenceBand: {
+      p25Sec: number;
+      medianSec: number;
+      p75Sec: number;
+    } | null;
+    whatClosesIt: string[];
+    alternativeRanges: {
+      a: { sec: number; label: string };
+      b: { sec: number; label: string };
+      c: { sec: number; label: string };
+    } | null;
+    weeksRemaining: number;
+    daysToRenegotiate: number | null;
+    riskFlags: string[];
+    citation: string;
+  } | null;
 }
 
 const PILLAR_LABEL: Record<PillarKey, string> = {
@@ -195,6 +222,7 @@ export async function loadReadinessBrief(
       trendNote: null,
       composition: null,
       watchTomorrow: [],
+      gapReport: null,
     };
   }
 
@@ -243,6 +271,11 @@ export async function loadReadinessBrief(
   // Watch tomorrow · forward-looking guidance.
   const watchTomorrow = buildWatchTomorrow(breakdown, streaks, history);
 
+  // 2026-06-01 · Phase 2.3 · gap report. The honest-projection card ·
+  // status-aware headline + confidence band + A/B/C alternatives. Best-
+  // effort (returns null when runner has no active plan + goal).
+  const gapReport = await loadGapReport(userId);
+
   return {
     date,
     score: breakdown.score,
@@ -260,6 +293,7 @@ export async function loadReadinessBrief(
     trendNote,
     composition,
     watchTomorrow,
+    gapReport,
   };
 }
 
@@ -858,4 +892,40 @@ function buildComposition(
     net: todayScore - baseline,
     today: todayScore,
   };
+}
+
+/**
+ * 2026-06-01 · Phase 2.3 · load the daily gap report.
+ *
+ * Composes the projection-vs-goal card from goal-gap (Phase 1.1) +
+ * simulator (Phase 2.1). Best-effort · returns null when the runner
+ * has no active plan + goal time (cold start) or any of the upstream
+ * loads fail.
+ *
+ * The card is the honest-projection surface that closes the loop ·
+ * the runner sees their trajectory + what closes the gap + A/B/C
+ * alternatives every morning.
+ */
+async function loadGapReport(userId: string): Promise<ReadinessBrief['gapReport']> {
+  try {
+    const { composeGapReport } = await import('@/lib/plan/gap-report');
+    const r = await composeGapReport(userId);
+    if (!r) return null;
+    return {
+      headline: r.headline,
+      trajectorySec: r.trajectorySec,
+      goalSec: r.goalSec,
+      gapSec: r.gapSec,
+      status: r.status,
+      confidenceBand: r.confidenceBand,
+      whatClosesIt: r.whatClosesIt,
+      alternativeRanges: r.alternativeRanges,
+      weeksRemaining: r.weeksRemaining,
+      daysToRenegotiate: r.daysToRenegotiate,
+      riskFlags: r.riskFlags,
+      citation: r.citation,
+    };
+  } catch {
+    return null;
+  }
 }

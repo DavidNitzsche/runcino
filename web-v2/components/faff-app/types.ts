@@ -311,6 +311,49 @@ export type ReadinessBriefSeed = {
     today: number;
   } | null;
   watchTomorrow: string[];
+  /** 2026-06-01 · Phase 2.3 · daily projection-vs-goal card.
+   *  Composed from goal-gap engine + simulator. Status-aware headline,
+   *  confidence band, what-closes-it actions, A/B/C alternatives when
+   *  the gap isn't closing. Null when no active plan + goal (cold start).
+   *  See docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 2.3.
+   *
+   *  status:
+   *    · closing    · trajectory moving toward goal · encouragement
+   *    · static     · trajectory stable · "what we need to see next week"
+   *    · widening   · trajectory moving away · adapter shifts emphasis
+   *    · unclosable · gap too wide for remaining weeks · renegotiation
+   *
+   *  alternativeRanges:
+   *    Populated when status != 'closing' · A=stretch, B=current, C=safe.
+   *
+   *  daysToRenegotiate:
+   *    null  · no renegotiation needed (status='closing' or has time)
+   *    >0    · countdown until the renegotiation card surfaces
+   *    0     · renegotiation card should render NOW. POST new goal to
+   *            PATCH /api/race/[slug] { goalSec, source: 'renegotiate' }.
+   */
+  gapReport: {
+    headline: string;
+    trajectorySec: number;
+    goalSec: number;
+    gapSec: number;
+    status: 'closing' | 'static' | 'widening' | 'unclosable';
+    confidenceBand: {
+      p25Sec: number;
+      medianSec: number;
+      p75Sec: number;
+    } | null;
+    whatClosesIt: string[];
+    alternativeRanges: {
+      a: { sec: number; label: string };
+      b: { sec: number; label: string };
+      c: { sec: number; label: string };
+    } | null;
+    weeksRemaining: number;
+    daysToRenegotiate: number | null;
+    riskFlags: string[];
+    citation: string;
+  } | null;
 };
 export type RaceLite = { slug: string; name: string; meta: string; tag: 'GOAL'|'TUNE-UP'|'PAST'; days: string };
 
