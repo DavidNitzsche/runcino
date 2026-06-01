@@ -349,6 +349,24 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   )).rows[0];
   const cadenceBaseline = cad?.avg ? Math.round(Number(cad.avg)) : null;
 
+  // 2026-06-01 · HR recovery now wired here too. Previously hardcoded
+  // to null (the "fast path" excuse) which made the Health page show
+  // "no data" while the slide-out brief (which uses loadCoachState)
+  // showed the real value. Two surfaces, same metric, different
+  // numbers · the kind of split-brain inconsistency the dedup
+  // doctrine bans. Same query shape as state-loader.ts:237.
+  const hrRecRows = (await pool.query(
+    `SELECT value FROM health_samples
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hr_recovery'
+        AND recorded_at >= NOW() - interval '30 days'
+      ORDER BY recorded_at DESC LIMIT 30`,
+    [userId]
+  )).rows.map((r: { value: number | string }) => Number(r.value)).filter((v: number) => v > 0);
+  const hrRecoveryCurrent = hrRecRows[0] ?? null;
+  const hrRecoveryBaseline = hrRecRows.length
+    ? Math.round(hrRecRows.reduce((s: number, x: number) => s + x, 0) / hrRecRows.length)
+    : null;
+
   // Recent check-ins
   const checkIns = await pool.query(
     `SELECT ts, rating FROM check_ins WHERE COALESCE(user_uuid, user_id) = $1 AND ts >= NOW() - interval '7 days'
@@ -466,11 +484,11 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       : null,
     sleep7Avg, sleep7Deficit, hrvCurrent, hrvBaseline,
     rhrCurrent, rhrBaseline, cadenceBaseline,
-    // 2026-05-30 P2 #9: glance-state is the briefing-fast-path loader
-    // and doesn't pull HR recovery from health_samples. Pass null so the
-    // pillar renders "no data" — full HR Recovery wiring lives in
-    // state-loader for the /api/readiness endpoint + watch payload.
-    hrRecoveryCurrent: null, hrRecoveryBaseline: null,
+    // 2026-06-01 · was hardcoded null (fast-path excuse) · split-brain
+    // with state-loader (loadReadinessBrief) which loaded the real
+    // values. Now wired the same query as state-loader.ts so both
+    // surfaces show the same number for the same metric.
+    hrRecoveryCurrent, hrRecoveryBaseline,
     loadAcute7, loadChronic28, loadAcwr,
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
     activeNiggle: null,  // glance state doesn't pull niggle extras
