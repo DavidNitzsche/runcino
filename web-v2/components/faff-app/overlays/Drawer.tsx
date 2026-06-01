@@ -38,7 +38,7 @@
  * remains on the Shell's win container; we tint the drawer surface).
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FaffSeed, ReadinessBriefSeed } from '../types';
 
@@ -135,19 +135,34 @@ export function Drawer({
   goalSlug?: string | null;
   onViewFullHealth: () => void;
 }) {
-  const [expandedPillars, setExpandedPillars] = useState<Set<string>>(new Set());
+  // Auto-expand pull-back-band pillars per README `confounders=auto`
+  // rule · seed the expanded set once per brief date, then let the
+  // user's clicks be authoritative. Prior implementation recomputed
+  // autoExpandedKeys on every render and OR'd it into isPillarOpen
+  // (bug · sticky open · the runner couldn't collapse SLEEP/HRV when
+  // the day's band was pull-back). David call 2026-06-01:
+  // "i cant collapse these 2"
+  //
+  // Re-seed when brief.date changes (new day, or a fresh fetch for the
+  // same day produces the same date and is silently skipped, preserving
+  // any toggles the user made in this session).
+  const seedExpanded = (b: ReadinessBriefSeed | null): Set<string> => {
+    if (!b) return new Set();
+    const lowBand = b.band === 'pull-back' || b.band === 'moderate';
+    if (!lowBand) return new Set();
+    return new Set(b.pillars.filter(p => p.band === 'pull-back').map(p => p.key));
+  };
+  const [expandedPillars, setExpandedPillars] = useState<Set<string>>(() => seedExpanded(brief));
   const [expandedStreaks, setExpandedStreaks] = useState<Set<string>>(new Set());
+  const seededDateRef = useRef<string | null>(brief?.date ?? null);
+  useEffect(() => {
+    if (!brief) return;
+    if (seededDateRef.current === brief.date) return;
+    seededDateRef.current = brief.date;
+    setExpandedPillars(seedExpanded(brief));
+  }, [brief]);
 
-  // Auto-expand pull-back-band pillars when the day's band is pull-back
-  // or moderate (per README `confounders=auto` rule). README phrases this
-  // as "low-band pillars" using the visual semantic name; the actual
-  // type uses pull-back for the worst band. Computed once per render
-  // against the current brief; merged with user-toggled expansions.
-  const autoExpandedKeys = brief && (brief.band === 'pull-back' || brief.band === 'moderate')
-    ? new Set(brief.pillars.filter(p => p.band === 'pull-back').map(p => p.key))
-    : new Set<string>();
-
-  const isPillarOpen = (key: string) => expandedPillars.has(key) || autoExpandedKeys.has(key);
+  const isPillarOpen = (key: string) => expandedPillars.has(key);
   const togglePillar = (key: string) => {
     const next = new Set(expandedPillars);
     if (next.has(key)) next.delete(key); else next.add(key);

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Train (Directions)</title>
+<!--
+  ============================================================================
+  FAFF · TRAIN page redesign — 3 directions to compare (top switcher)
+  ----------------------------------------------------------------------------
+  Goal: fill the empty space and make Train carry the whole block.
+  Shared in every direction:
+    • App shell (sidebar + green training-block mesh)
+    • Hero: phase title + focus + WK pill + days-to-race
+    • INTERACTIVE phase ramp — hover a week for mileage, click a week (or a
+      week row) to drill the whole hero into that week; click RACE bar opens
+      the full plan
+    • "Full plan" → modal that toggles MONTH calendar  <->  WEEKS-to-race list
+  Directions differ only in the lower region:
+    A · Dashboard   — phase breakdown + this week + projection + key workouts
+    B · Week focus  — expanded this-week, rail with projection + key workouts
+    C · Plan inline — expanded this-week + the full 13-week plan on the page
+  Data is sample; wire to the athlete's block. No em dashes per project rules.
+  ============================================================================
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="train/train.css">
+</head>
+<body>
+  <div class="switch">
+    <button data-v="A" data-sub="Modular dashboard" class="on">A · Dashboard</button>
+    <button data-v="B" data-sub="This week + rail">B · Week focus</button>
+    <button data-v="C" data-sub="Plan on the page">C · Plan inline</button>
+    <span class="sw-sub" id="swSub">Modular dashboard</span>
+  </div>
+
+  <div id="fit">
+    <div class="app" data-screen-label="Train">
+      <!-- sidebar -->
+      <aside class="side">
+        <div class="brandrow">
+          <div class="brandmark">Faff<span style="-webkit-text-fill-color:#F5C518">.</span>Run</div>
+          <div class="collapse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+        </div>
+        <nav class="nav">
+          <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Today</a>
+          <a class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16l5-6 4 4 5-8 4 5"/></svg>Train</a>
+          <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg>Health</a>
+          <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>Targets</a>
+          <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V7M10 19V4M16 19v-9M22 19H2"/></svg>Activity</a>
+        </nav>
+        <div class="grow"></div>
+        <div class="upsell">
+          <span style="display:flex;align-items:center;gap:8px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16l5-6 4 4 5-8 4 5"/></svg>Upgrade to Pro</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="me">
+          <div class="av">D</div>
+          <div class="nm">David<small>Los Angeles</small></div>
+          <div class="gear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14.1V14a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 4.6 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 3.6V3a2 2 0 0 1 4 0v.1A1.6 1.6 0 0 0 17 4.6l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V10a2 2 0 0 1 0 4h-.1z"/></svg></div>
+        </div>
+      </aside>
+
+      <!-- main -->
+      <main class="main">
+        <div class="mesh"><div class="blobs"><div class="blob bl1"></div><div class="blob bl2"></div><div class="blob bl3"></div><div class="blob bl4"></div><div class="blob bl5"></div></div></div>
+        <div class="grain"></div>
+
+        <div class="scroll">
+          <div class="h-top">
+            <div>
+              <div class="eyebrow" id="eyebrow">AMERICAS FINEST CITY HALF · <b>SUB 1:30:00</b></div>
+              <div class="ptitle" id="ptitle">BASE</div>
+              <div class="focus"><span class="ftag">FOCUS</span><span class="ftx" id="focusTx">Build the aerobic engine with easy volume and durability.</span></div>
+            </div>
+            <div class="status">
+              <span class="wkpill" id="wkpill"><span class="dot"></span>WK 5 · 46 MI</span>
+              <span class="cd" id="countdown"><b>56</b> days to Aug 15</span>
+            </div>
+          </div>
+
+          <div class="ramp-wrap">
+            <div class="ramp-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <span style="font-size:11px;font-weight:700;letter-spacing:2px;opacity:.6">13-WEEK BLOCK · WEEKLY VOLUME</span>
+              <button class="ghostbtn" id="openPlanTop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Full plan</button>
+            </div>
+            <div class="ramp" id="ramp"></div>
+            <div class="ramp-nums" id="rampNums"></div>
+            <div class="ramp-phases" id="rampPhases"></div>
+          </div>
+
+          <div class="lower" id="lower"></div>
+        </div>
+
+        <!-- full-plan modal -->
+        <div class="ov" id="planOv">
+          <div class="sheet">
+            <div class="sheet-top">
+              <div><div class="stt">Full plan</div><div class="sts">Americas Finest City Half · 13 weeks · Sub 1:30:00</div></div>
+              <div class="seg"><button id="segMonth" class="on">Month</button><button id="segWeeks">Weeks</button></div>
+              <button class="sheet-x" id="sheetX"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+            <div class="sheet-body" id="modalBody"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="train/train.js"></script>
+</body>
+</html>
