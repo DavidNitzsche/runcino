@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
+import { buildAdaptText } from '../adapt-text';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { PlanProposalCard } from '../cards/PlanProposalCard';
@@ -270,15 +271,22 @@ export function TodayView({
         {seed.week.map((day, i) => {
           const skipped = isSkipped(day);
           const isRest = day.type === 'rest';
-          // No-op suppression locked per design README: only render
-          // the WAS line when the original label actually differs
-          // from the current one (normalized uppercase compare).
-          const fromLabel = day.adaptation?.wasAdapted
-            ? (day.adaptation.originalSubLabel || day.adaptation.originalType)
-            : null;
-          const curCmp = (day.subLabel || day.name || day.type || '').toString().toUpperCase().trim();
-          const fromCmp = (fromLabel ?? '').toString().toUpperCase().trim();
-          const wasAdapted = !!fromLabel && fromCmp !== curCmp && !skipped;
+
+          // Adaptation detection · shared with TrainView's FULL PLAN
+          // grid via lib/adapt-text. David call 2026-06-01: surface
+          // ALL changes including distance ("an easy run can change
+          // to a shorter or longer easy run"), not just label flips.
+          // The helper applies a 0.25 mi tolerance to absorb rounding
+          // noise + case-normalizes labels so no-op rewrites stay
+          // silent.
+          const wasText = skipped ? null : buildAdaptText(day.adaptation, {
+            type: day.type,
+            name: day.name,
+            subLabel: day.subLabel,
+            dist: day.dist,
+            iso: (day as { iso?: string; date?: string }).iso ?? (day as { iso?: string; date?: string }).date ?? null,
+          });
+          const wasAdapted = !!wasText;
           const showStrength = !!day.strengthSuggested && !day.done && !skipped;
           const showDone = !!day.done && !skipped;
           return (
@@ -336,12 +344,12 @@ export function TodayView({
               <div className="wc-meta">
                 {skipped ? (
                   <span className="wc-skipped">SKIPPED</span>
-                ) : wasAdapted ? (
+                ) : wasAdapted && wasText ? (
                   <>
                     <svg viewBox="0 0 24 24" fill="none" stroke="#ffce8a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="wc-was-icn">
                       <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>
                     </svg>
-                    <span className="wc-was-tx">was {fromLabel}</span>
+                    <span className="wc-was-tx">{wasText}</span>
                   </>
                 ) : null}
               </div>

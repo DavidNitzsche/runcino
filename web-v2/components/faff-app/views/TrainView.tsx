@@ -23,6 +23,7 @@ import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { WhatChangedExpander } from '../toolkit';
 import { GapReportCard } from '../overlays/Drawer';
+import { buildAdaptText } from '../adapt-text';
 
 interface PhaseMeta {
   k: PhaseKey;
@@ -764,19 +765,18 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
           } else if (w) {
             const c = PHASE_TYPE_COLOR[w.type] ?? '#8A90A0';
             const pace = w.paceSec ? ` · ${Math.floor(w.paceSec / 60)}:${String(Math.round(w.paceSec % 60)).padStart(2, '0')}` : '';
-            // 2026-06-01: small adaptation glyph + "was X" subline when
-            // the row was mutated by the auto-adapter (backend commit
-            // a54c7069). Glyph is a 6px amber dot inline with the day
-            // number; subline is uppercase plain text (was strikethrough
-            // pre 2026-06-01 · David call: removed visual noise).
-            // Label-equality no-op suppression was tried then reverted ·
-            // the adapter may have changed distance / pace without
-            // changing the type, and hiding "was EASY" on those rows
-            // lost a real "this was changed" signal.
-            const adapted = w.adaptation?.wasAdapted;
-            const wasLabel = adapted
-              ? (w.adaptation!.originalSubLabel || w.adaptation!.originalType)
-              : null;
+            // Adaptation glyph + "was X" subline via shared
+            // lib/adapt-text helper (David call 2026-06-01 · surface
+            // all changes including distance, not just label flips).
+            // Same detection used by TodayView's week strip so the
+            // two surfaces stay consistent on what counts as adapted.
+            const wasText = buildAdaptText(w.adaptation, {
+              type: w.type,
+              name: w.name,
+              dist: w.mi,
+              iso,
+            });
+            const adapted = !!wasText;
             body = (
               <div className="cwk">
                 <span className="ctag" style={tint(c)}>
@@ -795,14 +795,14 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
                   ) : null}
                 </span>
                 <div className="cmeta">{w.mi.toFixed(1)}<small> mi{pace}</small></div>
-                {adapted && wasLabel ? (
+                {wasText ? (
                   <div style={{
                     marginTop: 2,
                     fontSize: 8, fontWeight: 700, letterSpacing: '1px',
                     textTransform: 'uppercase',
                     color: 'rgba(255,206,138,0.72)',
                   }}>
-                    was {wasLabel}
+                    {wasText}
                   </div>
                 ) : null}
               </div>
