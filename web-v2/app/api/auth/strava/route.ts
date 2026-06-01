@@ -44,19 +44,35 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ error: 'unknown action' }, { status: 400 });
 }
 
+/**
+ * Public origin of the request, computed from the proxy headers Railway
+ * sets. `req.nextUrl.origin` resolves to Railway's INTERNAL binding
+ * (https://0.0.0.0:8080) which is what was breaking Strava OAuth · the
+ * redirect_uri sent to Strava was literally `https://0.0.0.0:8080/...`,
+ * Strava obediently redirected the browser there, the browser couldn't
+ * resolve 0.0.0.0, and the runner saw a 404. This reads x-forwarded-host
+ * / host headers so the URL is the real public faff.run domain.
+ */
+function publicOrigin(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
+  const host = req.headers.get('x-forwarded-host')
+    ?? req.headers.get('host')
+    ?? 'www.faff.run';
+  return `${proto}://${host}`;
+}
+
 async function connectURL(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const clientId = process.env.STRAVA_CLIENT_ID;
-  // 2026-06-01 fix: callback now lives on a dedicated PATH, not as
-  // a query param on this route. Strava's OAuth handler doesn't
-  // reliably preserve query params in the redirect_uri · the legacy
-  // `?action=callback` URL landed users on a 404 after consent
-  // because the appended &code=...&state=... mangled the path
-  // resolution. Clean path · no query string on redirect_uri itself.
+  // 2026-06-01 fix #2: build redirect_uri from the PUBLIC origin (via
+  // x-forwarded-host), not req.nextUrl.origin which Railway sets to
+  // the internal 0.0.0.0:8080 binding. Strava was being told to
+  // redirect users to https://0.0.0.0:8080/... and the browser
+  // (correctly) couldn't reach that · that's the 404 David saw.
   const redirect = process.env.STRAVA_OAUTH_REDIRECT
-    ?? `${req.nextUrl.origin}/api/auth/strava/callback`;
+    ?? `${publicOrigin(req)}/api/auth/strava/callback`;
   if (!clientId) {
     return NextResponse.json({ error: 'STRAVA_CLIENT_ID not set' }, { status: 503 });
   }

@@ -17,8 +17,22 @@ import { pool } from '@/lib/db/pool';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Build a redirect back to the public app URL. `req.nextUrl.origin`
+ * resolves to Railway's internal 0.0.0.0:8080 binding · using it
+ * would tell the browser to navigate to 0.0.0.0 which can't be
+ * reached. Read the proxy headers instead.
+ */
+function publicOrigin(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
+  const host = req.headers.get('x-forwarded-host')
+    ?? req.headers.get('host')
+    ?? 'www.faff.run';
+  return `${proto}://${host}`;
+}
+
 function appRedirect(req: NextRequest, params: Record<string, string>): NextResponse {
-  const url = new URL('/today', req.nextUrl.origin);
+  const url = new URL('/today', publicOrigin(req));
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return NextResponse.redirect(url.toString());
 }
