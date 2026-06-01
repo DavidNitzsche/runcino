@@ -324,7 +324,7 @@ export function TrainView({
     if (goal) {
       out.push({
         wkLabel: 'RACE', dot: '#FFCE8A',
-        title: goal.name, sub: `${goal.goal ? 'Sub ' + goal.goal + ' · ' : ''}${formatDate(goal.date)}`,
+        title: goal.name, sub: `${goal.goal ? goal.goal + ' · ' : ''}${formatDate(goal.date)}`,
         state: 'RACE', raceRow: true,
       });
     }
@@ -357,7 +357,7 @@ export function TrainView({
       <div className="t-htop">
         <div>
           <div className="t-eyebrow">
-            {goal ? <>{goal.name.toUpperCase()} · <b>SUB {goal.goal}</b></> : 'NO GOAL RACE SET'}
+            {goal ? <>{goal.name.toUpperCase()} · <b>{goal.goal}</b></> : 'NO GOAL RACE SET'}
           </div>
           <div className="t-ptitle">{isRace ? 'RACE DAY' : (curPhaseMeta?.name ?? '—')}</div>
           <div className="t-focus">
@@ -500,7 +500,7 @@ export function TrainView({
           <div className="card proj">
             <div className="ch">
               <span className="ct">PROJECTION</span>
-              <span className="cx">{goal ? `vs Sub ${goal.goal}` : '—'}</span>
+              <span className="cx">{goal ? `vs ${goal.goal}` : '—'}</span>
             </div>
             {goal?.projected ? (() => {
               // Bar positions · prefer numeric seconds from the
@@ -697,7 +697,7 @@ function PlanModal({
         <div className="sheet-top">
           <div>
             <div className="stt">Full plan</div>
-            <div className="sts">{goal ? `${goal.name} · ${seed.season.raceIdx} weeks · Sub ${goal.goal}` : 'No goal race set'}</div>
+            <div className="sts">{goal ? `${goal.name} · ${seed.season.raceIdx} weeks · ${goal.goal}` : 'No goal race set'}</div>
           </div>
           <div className="seg">
             <button className={tab === 'month' ? 'on' : ''} onClick={() => onSetTab('month')}>Month</button>
@@ -930,7 +930,7 @@ function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: numbe
           </div>
           <div className="wkrow race">
             <span className="wn">★</span>
-            <span className="wkey">{goal.name} · Sub {goal.goal}</span>
+            <span className="wkey">{goal.name} · {goal.goal}</span>
             <span className="wmi">{formatDate(goal.date)}</span>
           </div>
         </>

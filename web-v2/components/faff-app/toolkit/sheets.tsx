@@ -234,7 +234,7 @@ export function NewGoalSheet({ onSaved, onClose }: { onSaved?: () => void; onClo
           type="text"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          placeholder={goalType === 'volume' ? '40 mi/wk by Aug 31' : goalType === 'speed' ? 'Sub-19 5K' : 'Describe the goal'}
+          placeholder={goalType === 'volume' ? '40 mi/wk by Aug 31' : goalType === 'speed' ? '19:00 5K' : 'Describe the goal'}
           style={inputStyle}
         />
       </div>
