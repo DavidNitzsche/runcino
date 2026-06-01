@@ -49,7 +49,7 @@ export async function loadStravaConnectionStatus(
   // 1. Is there a token on file at all? Mirror getStravaToken's read order:
   //    connector_tokens (source of truth) first, then legacy profile.*.
   const connector = (await pool.query(
-    `SELECT access_token, disconnected_at,
+    `SELECT access_token, disconnected_at, connected_at,
             last_sync_status, last_sync_error
        FROM connector_tokens
       WHERE COALESCE(user_uuid, user_id) = $1 AND provider = 'strava'
@@ -95,12 +95,20 @@ export async function loadStravaConnectionStatus(
 
   let pushSaysReauth = false;
   if (!connectorSaysReauth) {
+    // 2026-06-01 fix · only consider push failures AFTER the most recent
+    // connected_at. A failed push from BEFORE the last reconnect tells
+    // us nothing about the current token's scope · the runner already
+    // re-authorized to fix that. Without this guard, David's banner
+    // kept showing "needs reauth" because his 5/28 failed pushes
+    // (predating the activity:write reconnect) sat as the most recent
+    // strava_pushes row and matched the /401/ regex forever.
     const recent = (await pool.query(
       `SELECT status, error_message
          FROM strava_pushes
         WHERE user_uuid = $1
+          AND ($2::timestamptz IS NULL OR pushed_at > $2::timestamptz)
         ORDER BY pushed_at DESC LIMIT 1`,
-      [userId]
+      [userId, connector?.connected_at ?? null]
     ).catch(() => ({ rows: [] as any[] }))).rows[0] ?? null;
     if (recent?.status === 'failed') {
       const msg = String(recent.error_message ?? '');
