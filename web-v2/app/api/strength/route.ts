@@ -5,17 +5,19 @@
  * This route lets the runner log when they did one (manually) AND
  * accepts HK-imported sessions (idempotent on hk_uuid).
  *
- * GET    /api/strength?days=14    → list recent (includes source field)
- * POST   /api/strength {
+ * GET    /api/strength?days=14         → list recent (includes source field)
+ * POST   /api/strength {                 → log a session (manual or HK upsert)
  *          date, session_type?, duration_min?, notes?,
  *          source?,           // 'manual' (default) | 'apple_health' | 'watch' | 'strava'
  *          hk_uuid?,          // HKWorkout.uuid · required when source='apple_health'
  *        }
+ * DELETE /api/strength?hk_uuid=<uuid>   → remove an HK-imported row by stable uuid
  *
  * Manual logging (LogNonRunSheet) · sends no source · defaults to 'manual'.
  * HK ingest (HealthKitImporter) · sends source='apple_health' + hk_uuid.
  *   Idempotent on hk_uuid · re-syncing the same HKWorkout upserts
  *   instead of creating duplicates. Constraint catches dupes at write time.
+ * HK delete · scoped to (user_uuid, hk_uuid) · idempotent · always 200.
  *
  * Cite: Research/07-strength-programming.md §frequency-recommendations.
  */
@@ -100,4 +102,54 @@ export async function POST(req: NextRequest) {
       );
   await bustBriefingCacheForEvent(userId, 'run_ingest').catch(() => {});
   return NextResponse.json({ ok: true, session: r.rows[0] });
+}
+
+/**
+ * DELETE /api/strength?hk_uuid=<uuid>
+ *
+ * Removes an HK-imported strength_sessions row. Used by the iPhone HK
+ * importer when a runner deletes the corresponding HKWorkout in Apple
+ * Fitness · without this, deletions in Apple Fitness leave stale rows
+ * that inflate the recommender's habit signal + the ACWR fold.
+ *
+ * Owner-scoped: `DELETE WHERE hk_uuid = $1 AND user_uuid = $2`. The
+ * partial unique index on hk_uuid is global · we MUST filter by owner
+ * to prevent a spoofed hk_uuid from nuking another runner's row.
+ *
+ * Idempotent: re-deleting a missing row returns `{ ok: true, deleted: 0 }`.
+ * iPhone may re-POST the entire 28-day delete sweep on every sync if
+ * simpler than tracking what got removed · 404 would force needless
+ * retry logic.
+ *
+ * Manual-log rows (hk_uuid IS NULL) are NEVER eligible · they use a
+ * separate by-id DELETE route (not yet built · file a brief if needed).
+ *
+ * Per designs/briefs/strength-hk-delete-backend-brief.md.
+ */
+export async function DELETE(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+
+  const hkUuid = req.nextUrl.searchParams.get('hk_uuid');
+  if (!hkUuid) {
+    return NextResponse.json(
+      { ok: false, error: 'hk_uuid required' },
+      { status: 400 }
+    );
+  }
+
+  const r = await pool.query(
+    `DELETE FROM strength_sessions
+      WHERE hk_uuid = $1 AND user_uuid = $2`,
+    [hkUuid, userId],
+  ).catch(() => ({ rowCount: 0 }));
+
+  // Bust briefing cache only when something actually moved · saves a
+  // round-trip when the iPhone re-sends a no-op delete.
+  if (r.rowCount && r.rowCount > 0) {
+    await bustBriefingCacheForEvent(userId, 'run_ingest').catch(() => {});
+  }
+
+  return NextResponse.json({ ok: true, deleted: r.rowCount ?? 0 });
 }
