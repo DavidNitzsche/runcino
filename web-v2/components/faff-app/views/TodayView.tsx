@@ -7,7 +7,6 @@ import { EFF, SEGS, KIT, ROLECOL } from '../constants';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { PlanProposalCard } from '../cards/PlanProposalCard';
-import { ReadinessBriefPanel } from '../cards/ReadinessBriefPanel';
 import { RouteMap } from '../RouteMap';
 import {
   AdaptationCard,
@@ -227,15 +226,11 @@ export function TodayView({
         </div>
       ) : null}
 
-      {/* Morning readiness brief · the 5-pillar context layer behind
-          today's readiness score. Self-renders null when seed has no
-          brief (no-data band or fresh user with no HK sync). Surfaced
-          beneath the actionable card stack so the runner sees actions
-          first, then the why-context. See
-          designs/briefs/readiness-brief-backend-landed.md for the full
-          contract + UI rules (no prescription, state both numbers, no
-          derived deltas). */}
-      <ReadinessBriefPanel brief={seed.readinessBrief} />
+      {/* Morning brief content moved 2026-06-01 into the redesigned
+          Readiness drawer (overlays/Drawer.tsx). The inline panel that
+          rendered the same data on Today is removed · same data now
+          surfaces in one place when the runner taps the readiness ring.
+          See designs/from Design agent/readiness-drawer/. */}
 
       <div className="weeklab">THIS WEEK</div>
       <div className="week">
