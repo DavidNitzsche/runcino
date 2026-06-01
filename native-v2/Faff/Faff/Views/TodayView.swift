@@ -258,6 +258,14 @@ struct TodayView: View {
                 content: { sheetContent }
             )
 
+            // 2026-06-01 · Start Run button. Per the Today redesign
+            // brief: "start run is above the menu." Previously this
+            // VStack was `.ignoresSafeArea(edges: .bottom)` which
+            // pushed the button BEHIND the tab bar pill · runners
+            // couldn't tap it. Now the VStack respects the tab-bar
+            // safe area, so the button sits just above the pill. The
+            // sheet's cream background still extends behind the bar
+            // (handled in DragSheet.body).
             VStack {
                 Spacer()
                 StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
@@ -278,9 +286,8 @@ struct TodayView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .frame(height: 130)
+                .frame(height: 100)   // 30pt shorter · no safe-area pad to absorb anymore
             }
-            .ignoresSafeArea(edges: .bottom)
             .opacity(1 - sheetProgress)  // hide when sheet is up; sheet has its own CTA below
         }
         .task {

@@ -71,7 +71,12 @@ struct DragSheet<Header: View, Body: View>: View {
                 Divider().background(Color(hex: 0xEEE7DA))
                 ScrollView(showsIndicators: false) {
                     content()
-                        .padding(.bottom, 130)
+                        // 2026-06-01 · was 130. Now 170 so the in-sheet
+                        // CTA clears the floating tab bar (~83pt incl.
+                        // safe area) plus the Start-button height
+                        // (~55pt). Without this, expanding the sheet
+                        // hid its own bottom CTA behind the tab bar.
+                        .padding(.bottom, 170)
                 }
                 // When peeked, body scrolls would fight the sheet pan ·
                 // disable so vertical drags bubble up to our gesture.
@@ -85,6 +90,14 @@ struct DragSheet<Header: View, Body: View>: View {
             // Whole-sheet pan · start-position-aware (see panGesture).
             .simultaneousGesture(panGesture(collapsedY: collapsedY))
         }
+        // 2026-06-01 · Today redesign brief: "panel goes all the way to
+        // the bottom and fully extends behind the menu." GeometryReader
+        // honors safe area by default · the cream sheet was clipping
+        // at the top of the tab bar pill, breaking visual continuity.
+        // Ignoring the bottom container safe area extends `screenH` to
+        // include the tab-bar inset · cream fills behind, peek + body
+        // sit above (their y is computed from the top, not the bottom).
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     /// Grab strip · handle + caller-provided peek header. Also accepts
