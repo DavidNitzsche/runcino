@@ -345,6 +345,178 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: Planne
   return { week, todayIdx, results };
 }
 
+/**
+ * 2026-06-01 · enrich the placeholder `results` map with real per-run
+ * data. Reads the runs whose activityIds match the completed days,
+ * pulls weather + calories + elevation + shoe + time + pace + HR,
+ * and overwrites the placeholders.
+ *
+ * Batches a single query for all completed days · O(1) round-trip.
+ * Skips runs that don't resolve (deleted, network error, etc).
+ *
+ * Doctrine · Reality-anchored, not template-derived. The card shows
+ * what actually happened, not "·" placeholders.
+ */
+async function enrichResultsWithRunData(
+  userId: string,
+  week: PlannedDay[],
+  results: Record<number, CompletedRun | undefined>,
+): Promise<void> {
+  const completedIdx = Object.keys(results).map((k) => Number(k)).filter((i) => results[i]);
+  if (completedIdx.length === 0) return;
+
+  // Gather (iso, activityId) pairs from the week
+  const targets: Array<{ idx: number; date: string; activityId: string | null }> = completedIdx.map((i) => ({
+    idx: i,
+    date: week[i]?.iso ?? '',
+    activityId: week[i]?.activityId ?? null,
+  })).filter((t) => t.date);
+
+  if (targets.length === 0) return;
+
+  const { pool } = await import('@/lib/db/pool');
+  const dates = targets.map((t) => t.date);
+
+  // Pull canonical (non-merged) runs for these dates · take the highest-
+  // tier source per date. Includes weather field-merged from absorbed
+  // siblings via JOIN trick (LATERAL aggregating weather over the
+  // cluster).
+  const r = await pool.query<{
+    date: string;
+    distance_mi: string | null;
+    duration_sec: string | null;
+    avg_hr: string | null;
+    max_hr: string | null;
+    avg_pace: string | null;
+    elev_gain_ft: string | null;
+    temp_f: string | null;
+    weather: any;
+    kcal: string | null;
+    shoe_id: string | null;
+  }>(
+    `WITH canonical AS (
+       SELECT DISTINCT ON ((data->>'date')::date) data, shoe_id
+         FROM runs
+        WHERE user_uuid = $1::uuid
+          AND (data->>'date')::date = ANY($2::date[])
+          AND NOT (data ? 'mergedIntoId')
+        ORDER BY (data->>'date')::date,
+                 CASE data->>'source'
+                   WHEN 'watch' THEN 5
+                   WHEN 'manual' THEN 4
+                   WHEN 'apple_watch' THEN 3
+                   WHEN 'apple_health' THEN 2
+                   ELSE 1
+                 END DESC,
+                 (data->>'distanceMi')::numeric DESC
+     ),
+     absorbed_weather AS (
+       SELECT (data->>'date')::date AS d, data->'weather' AS w
+         FROM runs
+        WHERE user_uuid = $1::uuid
+          AND (data->>'date')::date = ANY($2::date[])
+          AND data->'weather' IS NOT NULL
+     )
+     SELECT
+       c.data->>'date'                 AS date,
+       c.data->>'distanceMi'           AS distance_mi,
+       c.data->>'durationSec'          AS duration_sec,
+       c.data->>'avgHr'                AS avg_hr,
+       c.data->>'maxHr'                AS max_hr,
+       c.data->>'avgPaceMinPerMi'      AS avg_pace,
+       c.data->>'elevGainFt'           AS elev_gain_ft,
+       c.data->>'tempF'                AS temp_f,
+       COALESCE(c.data->'weather', (SELECT w FROM absorbed_weather aw WHERE aw.d = (c.data->>'date')::date LIMIT 1)) AS weather,
+       COALESCE(c.data->>'calories', c.data->>'kcal') AS kcal,
+       c.shoe_id::text AS shoe_id
+       FROM canonical c`,
+    [userId, dates],
+  ).catch(() => ({ rows: [] }));
+
+  // Index by date
+  const byDate = new Map<string, typeof r.rows[number]>();
+  for (const row of r.rows) byDate.set(row.date, row);
+
+  // Load shoe names in one shot
+  const shoeIds = Array.from(new Set(r.rows.map((x) => x.shoe_id).filter(Boolean)));
+  const shoeNames = new Map<string, string>();
+  if (shoeIds.length) {
+    const sr = await pool.query<{ id: string; brand: string | null; model: string | null }>(
+      `SELECT id::text, brand, model FROM shoes WHERE id = ANY($1::bigint[])`,
+      [shoeIds.map((s) => Number(s))],
+    ).catch(() => ({ rows: [] }));
+    for (const s of sr.rows) shoeNames.set(s.id, [s.brand, s.model].filter(Boolean).join(' ') || 'Shoe');
+  }
+
+  // Weight for calorie estimator fallback (when neither Strava nor HK
+  // populated kcal · we estimate from distance × weight × hr).
+  let weightKg: number | null = null;
+  try {
+    const w = await pool.query<{ value: string }>(
+      `SELECT value::text FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type = 'body_mass'
+        ORDER BY sample_date DESC LIMIT 1`,
+      [userId],
+    );
+    weightKg = w.rows[0]?.value ? Number(w.rows[0].value) : null;
+  } catch {/* leave null */}
+
+  for (const t of targets) {
+    const row = byDate.get(t.date);
+    if (!row) continue;
+    const result = results[t.idx];
+    if (!result) continue;
+
+    const durationSec = Number(row.duration_sec ?? 0);
+    const distMi = Number(row.distance_mi ?? 0);
+    const avgHr = Number(row.avg_hr ?? 0);
+    const maxHr = Number(row.max_hr ?? 0);
+    const elev = Number(row.elev_gain_ft ?? 0);
+    const tempF = row.temp_f ?? row.weather?.temp_f ?? null;
+    const weatherCond = row.weather?.conditions ?? null;
+
+    // Format time as M:SS or H:MM:SS
+    const fmtTime = (sec: number) => {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+    };
+
+    // Resolve calories · prefer captured kcal, fall back to estimator
+    let kcal = Number(row.kcal ?? 0);
+    if ((!Number.isFinite(kcal) || kcal <= 0) && weightKg && distMi > 0) {
+      const hrMult = avgHr > 130 ? 1 + Math.min(0.20, (avgHr - 130) / 200) : 1.0;
+      kcal = Math.round(distMi * weightKg * 1.04 * hrMult);
+    }
+
+    const weatherStr = (() => {
+      if (tempF != null) {
+        const t = Math.round(Number(tempF));
+        return weatherCond ? `${t}°F · ${weatherCond}` : `${t}°F`;
+      }
+      return ' · ';
+    })();
+
+    const shoeStr = row.shoe_id && shoeNames.has(row.shoe_id)
+      ? shoeNames.get(row.shoe_id)!
+      : ' · ';
+
+    results[t.idx] = {
+      ...result,
+      time: durationSec > 0 ? fmtTime(durationSec) : '·',
+      apace: row.avg_pace || '·',
+      hr: avgHr || 0,
+      peak: maxHr || 0,
+      weather: weatherStr,
+      shoe: shoeStr,
+      cal: kcal > 0 ? Math.round(kcal) : 0,
+      gain: elev > 0 ? Math.round(elev) : 0,
+    };
+  }
+}
+
 function adaptReadiness(glance: Glance | null, health: Health | null): Readiness {
   const r = glance?.readiness;
   if (!r) {
@@ -1174,6 +1346,17 @@ export async function buildSeed(): Promise<FaffSeed> {
   const weekSkips: Set<string> = skRes.value;
 
   const { week, todayIdx, results } = adaptWeek(glance, weekSkips);
+
+  // 2026-06-01 · enrich `results` with real per-run data so the Today
+  // EASY/DONE card and week-strip render real weather, calories,
+  // elevation, shoe, time, pace, HR. Previously these were hardcoded
+  // placeholders ('·' / 0) because adaptWeek only had doneMi +
+  // activityId in scope · the runs themselves weren't loaded.
+  //
+  // Best-effort · failures degrade to the placeholders rather than
+  // blocking the page render.
+  await enrichResultsWithRunData(userId, week, results).catch(() => {});
+
   // 2026-06-01 · annotate strength days from the backend recommender
   // (commit 34bff2a0). glance.recommendedStrengthDays is an array of
   // ISO YYYY-MM-DD dates; match each PlannedDay.iso to set the flag.
