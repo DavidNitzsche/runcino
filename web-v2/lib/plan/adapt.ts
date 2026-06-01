@@ -38,8 +38,9 @@ import type { ExperienceLevel } from '@/lib/coach/profile-state';
 
 export type AdaptationTriggerKind =
   | 'missed_key_workout'
-  | 'rhr_spike'
-  | 'sleep_crater'
+  | 'rhr_spike'           // retained for back-compat · NOT fired anymore (see readiness_pullback)
+  | 'sleep_crater'        // retained for back-compat · NOT fired anymore (see readiness_pullback)
+  | 'readiness_pullback'  // 2026-06-01 · multi-signal · supersedes the two above
   | 'volume_overshoot'
   | 'pr_bank'
   | 'niggle_reported'     // Q-04 · active niggle severity threshold
@@ -88,13 +89,20 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   const missed = await detectMissedKeyWorkout(userId);
   if (missed) triggers.push(missed);
 
-  // 2. RHR spike
-  const rhr = await detectRhrSpike(userId);
-  if (rhr) triggers.push(rhr);
+  // 2. Readiness pullback · multi-signal composite (Research/15 + /00b).
+  //    Replaces the single-signal RHR + sleep detectors below as of
+  //    2026-06-01 · David's feedback: "I want it to read all the
+  //    information it needs. I don't know about a number Sunday at
+  //    5:50 AM making a call for Tuesday." Now reads the readiness
+  //    brief (5 pillars · Plews HRV · 3-day streak persistence ·
+  //    composite score) AND acts only on TODAY's workout.
+  const readinessPullback = await detectReadinessPullback(userId);
+  if (readinessPullback) triggers.push(readinessPullback);
 
-  // 3. Sleep crater
-  const sleep = await detectSleepCrater(userId);
-  if (sleep) triggers.push(sleep);
+  // OLD detectors retained as dead code (function bodies kept for
+  // reference) but NOT pushed to triggers. Removing entirely would
+  // break test fixtures + tracked-issue analytics; the union type
+  // still includes the kinds so prior coach_intents rows resolve.
 
   // 4. Volume overshoot
   const overshoot = await detectVolumeOvershoot(userId);
@@ -312,6 +320,77 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
     };
   }
   return null;
+}
+
+/**
+ * Multi-signal readiness check via the readiness brief (2026-06-01).
+ *
+ * Replaces detectRhrSpike + detectSleepCrater + any other single-pillar
+ * heuristic. Reads the full brief (5 pillars + Plews HRV + 3-day streak
+ * persistence) and fires ONLY when:
+ *
+ *   · band === 'pull-back' (composite score < 50 · multiple pillars
+ *     simultaneously degraded · per Research/15 §interpretation)
+ *
+ *   OR
+ *
+ *   · ≥1 active streak (per Research/15 Plews approach · 3-day
+ *     persistence is the actionable signal · single-day swings are
+ *     noise)
+ *
+ * Severity ladder:
+ *   · 'override' when band='pull-back' OR ≥2 active streaks
+ *   · 'warn'      when ≥1 streak only
+ *
+ * The action handler (see actionsForTrigger) targets only TODAY's
+ * workout · never reaches forward 2+ days to decide a future quality
+ * day from yesterday's data.
+ */
+async function detectReadinessPullback(userId: string): Promise<AdaptationTrigger | null> {
+  try {
+    const { loadCoachState } = await import('@/lib/coach/state-loader');
+    const { loadReadinessBrief } = await import('@/lib/coach/readiness-brief');
+    const state = await loadCoachState(userId);
+    if (!state) return null;
+    const brief = await loadReadinessBrief(userId, state);
+    if (!brief) return null;
+
+    const isPullback = brief.band === 'pull-back';
+    const streaks = brief.streaks ?? [];
+    const hasStreak = streaks.length > 0;
+
+    if (!isPullback && !hasStreak) return null;
+
+    // Build a human-readable reason from the actual signals · no more
+    // "Resting HR averaging 57 bpm, 9 above 14-day baseline" with no
+    // mention that HRV / sleep / load all looked fine. Now the reason
+    // reflects what TRULY tripped: a multi-day streak, a composite-bad
+    // morning, or both.
+    const reasonParts: string[] = [];
+    if (streaks.length > 0) {
+      const s = streaks[0];
+      reasonParts.push(`${s.pillar.toUpperCase()} ${s.direction} ${s.days} days running`);
+    }
+    if (isPullback) {
+      reasonParts.push(`composite readiness ${brief.score}/100 (pull-back band)`);
+    }
+    const severity: 'warn' | 'override' = (isPullback || streaks.length >= 2) ? 'override' : 'warn';
+
+    return {
+      kind: 'readiness_pullback',
+      severity,
+      reason: `Readiness pullback · ${reasonParts.join(' + ')}.`,
+      evidence: {
+        score: brief.score,
+        band: brief.band,
+        streaks: streaks.map(s => ({ pillar: s.pillar, direction: s.direction, days: s.days })),
+        headline: brief.headline,
+      },
+    };
+  } catch (e) {
+    console.warn('[adapt] detectReadinessPullback failed:', e instanceof Error ? e.message : String(e));
+    return null;
+  }
 }
 
 async function detectRhrSpike(userId: string): Promise<AdaptationTrigger | null> {
@@ -664,21 +743,54 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       }
       return out;
     }
-    case 'rhr_spike':
-    case 'sleep_crater': {
-      const nextKey = (await pool.query(
+    case 'readiness_pullback': {
+      // 2026-06-01 · just-in-time window. Only act on TODAY's workout.
+      // The runner has another 24-72h to recover before any future
+      // quality day · don't pre-emptively flatten Tuesday from Sunday's
+      // data. If today's signals are still bad tomorrow, tomorrow's
+      // adapter run sees that and acts on tomorrow.
+      //
+      // Doctrine · David, 2026-06-01: "I don't know about a number
+      // Sunday at 5:50 AM making a call for Tuesday. That doesn't
+      // seem right." Right · just-in-time decisions only, and only
+      // when the multi-signal brief says so (not a single RHR spike).
+      const todayKey = (await pool.query(
         `SELECT pw.id FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
              AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
-             AND pw.date_iso::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 2
-           ORDER BY pw.date_iso::date ASC LIMIT 1`,
+             AND pw.date_iso = CURRENT_DATE::text
+           LIMIT 1`,
         [userId]
       )).rows[0];
-      if (!nextKey) return [];
+      if (!todayKey) return [];
       return [{
         kind: 'downgrade',
-        workoutIds: [nextKey.id],
+        workoutIds: [todayKey.id],
+        newType: 'easy',
+        why: t.reason,
+      }];
+    }
+    case 'rhr_spike':
+    case 'sleep_crater': {
+      // DEPRECATED · these trigger kinds are no longer emitted by
+      // detectAdaptations (2026-06-01 · superseded by readiness_pullback).
+      // Case retained so any in-flight coach_intents rows from the old
+      // path still resolve cleanly. If somehow re-emitted, applies the
+      // SAME just-in-time window as readiness_pullback.
+      const todayKey = (await pool.query(
+        `SELECT pw.id FROM plan_workouts pw
+            JOIN training_plans tp ON tp.id = pw.plan_id
+           WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+             AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
+             AND pw.date_iso = CURRENT_DATE::text
+           LIMIT 1`,
+        [userId]
+      )).rows[0];
+      if (!todayKey) return [];
+      return [{
+        kind: 'downgrade',
+        workoutIds: [todayKey.id],
         newType: 'easy',
         why: t.reason,
       }];
