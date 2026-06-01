@@ -174,6 +174,13 @@ struct TodayView: View {
         .task {
             await loadAll()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
+            // Runner returned from Safari (Strava OAuth) or just brought
+            // the app forward · refresh plan/workout/readiness/strava
+            // status so stale surfaces don't linger past the foreground
+            // transition.
+            Task { await loadAll() }
+        }
         .onChange(of: selectedDayID) { _, newID in
             // Tapped a day in the week strip · fetch that day's planned
             // workout so the drag sheet + hero reflect Sunday's long run

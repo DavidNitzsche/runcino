@@ -96,6 +96,13 @@ struct FaffApp: App {
         // around 6am) never reached the server unless David force-quit and
         // re-launched. Now bringing the app forward triggers a fresh pull,
         // throttled to once per 30s.
+        //
+        // 2026-05-31: also post .faffForegroundRefresh so view-level data
+        // (Strava status, plan week, log) refreshes when the runner returns
+        // from Safari OAuth or just brings the app forward. Without this,
+        // the StravaReconnectBanner stays visible after a successful OAuth
+        // round-trip because the iPhone never re-polls /api/strava/status
+        // until the next pull-to-refresh.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             let now = Date()
@@ -104,6 +111,7 @@ struct FaffApp: App {
             Task {
                 await HealthKitImporter.shared.importIfConnected(daysBack: 2)
             }
+            NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
         }
     }
 }
@@ -114,6 +122,12 @@ extension Notification.Name {
     /// Posted by Settings → Sign out. RootContainer resets back to the
     /// SignIn gate when it fires.
     static let faffGateReset = Notification.Name("faff.gate.reset")
+    /// Posted by FaffApp on every background→foreground transition (same
+    /// throttle as the HK re-import). Surfaces subscribe to refresh their
+    /// data so a returning runner sees current state, especially after
+    /// completing Strava OAuth in Safari (which has no callback hook back
+    /// into the app · this is the iPhone equivalent of a callback).
+    static let faffForegroundRefresh = Notification.Name("faff.foreground.refresh")
 }
 
 /// Routes the user between the auth/onboarding gate and the main app.

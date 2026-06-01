@@ -68,6 +68,12 @@ struct ActivityView: View {
         }
         .task { await reload() }
         .refreshable { await reload() }
+        .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
+            // Runner returned from Safari (Strava OAuth) or just brought
+            // the app forward · refresh so /api/strava/status flips back
+            // to "connected" and the reconnect banner clears.
+            Task { await reload() }
+        }
     }
 
     private func reload() async {
