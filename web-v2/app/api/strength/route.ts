@@ -2,12 +2,20 @@
  * /api/strength — strength_sessions CRUD.
  *
  * Research/07 prescribes 2 strength sessions/wk for distance runners.
- * This route lets the runner log when they did one. The coach reads
- * recent rows to credit the runner's strength habit + flags 3-week
- * gaps as a CHALLENGE per Research/07.
+ * This route lets the runner log when they did one (manually) AND
+ * accepts HK-imported sessions (idempotent on hk_uuid).
  *
- * GET    /api/strength?days=14    → list recent
- * POST   /api/strength { date, session_type?, duration_min?, notes? }
+ * GET    /api/strength?days=14    → list recent (includes source field)
+ * POST   /api/strength {
+ *          date, session_type?, duration_min?, notes?,
+ *          source?,           // 'manual' (default) | 'apple_health' | 'watch' | 'strava'
+ *          hk_uuid?,          // HKWorkout.uuid · required when source='apple_health'
+ *        }
+ *
+ * Manual logging (LogNonRunSheet) · sends no source · defaults to 'manual'.
+ * HK ingest (HealthKitImporter) · sends source='apple_health' + hk_uuid.
+ *   Idempotent on hk_uuid · re-syncing the same HKWorkout upserts
+ *   instead of creating duplicates. Constraint catches dupes at write time.
  *
  * Cite: Research/07-strength-programming.md §frequency-recommendations.
  */
@@ -23,7 +31,7 @@ export async function GET(req: NextRequest) {
   const days = Math.max(1, Math.min(90, Number(req.nextUrl.searchParams.get('days') ?? 14)));
   const r = await pool.query(
     `SELECT id, date::text AS date, session_type, duration_min, notes,
-            created_at::text AS created_at
+            source, hk_uuid, created_at::text AS created_at
        FROM strength_sessions
       WHERE user_uuid = $1
         AND date >= CURRENT_DATE - $2::int
@@ -48,13 +56,48 @@ export async function POST(req: NextRequest) {
   const durationMin = Number.isFinite(Number(body.duration_min)) ? Number(body.duration_min) : null;
   const notes = typeof body.notes === 'string' ? body.notes : null;
 
-  const r = await pool.query(
-    `INSERT INTO strength_sessions (user_uuid, date, session_type, duration_min, notes)
-     VALUES ($1, $2::date, $3, $4, $5)
-     RETURNING id, date::text AS date, session_type, duration_min, notes,
-               created_at::text AS created_at`,
-    [userId, date, sessionType, durationMin, notes],
-  );
+  // 2026-06-01 · provenance + HK idempotency.
+  // source defaults to 'manual'. When source='apple_health', hk_uuid
+  // is required + the row UPSERTs on hk_uuid so a re-sync of the same
+  // HKWorkout doesn't create duplicate rows.
+  const sourceRaw = typeof body.source === 'string' ? body.source : 'manual';
+  const allowedSources = ['manual', 'apple_health', 'watch', 'strava'];
+  const source = allowedSources.includes(sourceRaw) ? sourceRaw : 'manual';
+  const hkUuid = typeof body.hk_uuid === 'string' && body.hk_uuid.length > 0 ? body.hk_uuid : null;
+
+  if (source === 'apple_health' && !hkUuid) {
+    return NextResponse.json(
+      { ok: false, error: 'hk_uuid required when source=apple_health' },
+      { status: 400 }
+    );
+  }
+
+  // UPSERT on hk_uuid when provided · INSERT when null.
+  // The unique partial index strength_sessions_hk_uuid_uniq makes the
+  // ON CONFLICT clause safe to use even though hk_uuid is nullable.
+  const r = hkUuid
+    ? await pool.query(
+        `INSERT INTO strength_sessions
+           (user_uuid, date, session_type, duration_min, notes, source, hk_uuid)
+         VALUES ($1, $2::date, $3, $4, $5, $6, $7)
+         ON CONFLICT (hk_uuid) WHERE hk_uuid IS NOT NULL
+         DO UPDATE SET
+           date = EXCLUDED.date,
+           session_type = EXCLUDED.session_type,
+           duration_min = EXCLUDED.duration_min,
+           notes = COALESCE(EXCLUDED.notes, strength_sessions.notes),
+           source = EXCLUDED.source
+         RETURNING id, date::text AS date, session_type, duration_min, notes,
+                   source, hk_uuid, created_at::text AS created_at`,
+        [userId, date, sessionType, durationMin, notes, source, hkUuid],
+      )
+    : await pool.query(
+        `INSERT INTO strength_sessions (user_uuid, date, session_type, duration_min, notes, source)
+         VALUES ($1, $2::date, $3, $4, $5, $6)
+         RETURNING id, date::text AS date, session_type, duration_min, notes,
+                   source, hk_uuid, created_at::text AS created_at`,
+        [userId, date, sessionType, durationMin, notes, source],
+      );
   await bustBriefingCacheForEvent(userId, 'run_ingest').catch(() => {});
   return NextResponse.json({ ok: true, session: r.rows[0] });
 }

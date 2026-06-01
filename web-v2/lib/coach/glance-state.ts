@@ -104,6 +104,26 @@ export interface GlanceState {
     habit: 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
     coachIntent: { severity: 'soft' | 'firm' | 'urgent'; body: string } | null;
   } | null;
+  /** 2026-06-01 · this-week reconcile of recommendedDays vs logged
+   *  strength_sessions (manual + HK). Drives chip summary + per-bucket
+   *  arrays for any surface. Null when no recommender output. */
+  strengthWeekStatus: {
+    weekStartISO: string;
+    weekEndISO: string;
+    recommended: string[];
+    confirmed: Array<{
+      date: string; sessionId: number | null;
+      source: 'manual' | 'apple_health' | 'watch' | 'strava' | null;
+      durationMin: number | null; sessionType: string | null;
+    }>;
+    skipped: string[];
+    bonus: Array<{
+      date: string; sessionId: number | null;
+      source: 'manual' | 'apple_health' | 'watch' | 'strava' | null;
+      durationMin: number | null; sessionType: string | null;
+    }>;
+    summary: string;
+  } | null;
 }
 
 export async function loadGlanceState(userId: string): Promise<GlanceState> {
@@ -454,6 +474,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // when plan or signals aren't available, frontend falls back to its
   // local heuristic.
   let strengthRecommendation: import('./strength-recommender').StrengthRecommendation | null = null;
+  let strengthWeekStatus: import('./strength-status').StrengthWeekStatus | null = null;
   try {
     const {
       recommendStrengthDays,
@@ -461,17 +482,23 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       emitStrengthSkipIntent,
       emitStrengthResumeIntent,
     } = await import('./strength-recommender');
+    const { loadStrengthWeekStatus } = await import('./strength-status');
     const weekStartISO = weekDays[0]?.date;
     if (weekStartISO) {
       strengthRecommendation = await recommendStrengthDays(userId, weekStartISO);
-      // Fire-and-forget · all three are idempotent. Don't block the
-      // response on coach_intents writes.
+      // Fire-and-forget · all three are idempotent.
       //   · dormant habit → "you haven't lifted in 24 days" intent
       //   · readiness suppress/cap → "we skipped strength today" intent
       //   · signals normalized after a skip → "strength resumes today" intent
       void emitStrengthCoachIntent(userId, strengthRecommendation);
       void emitStrengthSkipIntent(userId, strengthRecommendation);
       void emitStrengthResumeIntent(userId, strengthRecommendation);
+      // 2026-06-01 · scheduled-vs-actual reconcile · diff recommendedDays
+      // against logged strength_sessions (manual + HK-imported). Drives
+      // the "2/2 this week + 1 bonus" chip + the briefing summary.
+      strengthWeekStatus = await loadStrengthWeekStatus(
+        userId, weekStartISO, strengthRecommendation.recommendedDays,
+      );
     }
   } catch (e) {
     console.warn('[glance-state] strength-recommender failed:', e instanceof Error ? e.message : String(e));
@@ -498,5 +525,11 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
      *  coachIntent) for the briefing surface. */
     recommendedStrengthDays: strengthRecommendation?.recommendedDays ?? [],
     strengthRecommendation,
+    /** 2026-06-01 · this-week reconcile of recommendedDays vs actual
+     *  logged sessions (manual + HK-imported). Drives the "2/2 this
+     *  week" summary chip + confirmed/skipped/bonus arrays for any
+     *  surface that wants to render them. Null when the recommender
+     *  hasn't produced a week start (cold path). */
+    strengthWeekStatus,
   };
 }

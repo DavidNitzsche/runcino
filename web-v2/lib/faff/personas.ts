@@ -239,6 +239,7 @@ function david(): GlanceState {
     activeSick: null,
     recommendedStrengthDays: [],
     strengthRecommendation: null,
+    strengthWeekStatus: null,
   };
 }
 
@@ -284,6 +285,7 @@ function lilian(): GlanceState {
     activeSick: null,
     recommendedStrengthDays: [],
     strengthRecommendation: null,
+    strengthWeekStatus: null,
   };
 }
 
@@ -327,6 +329,7 @@ function tyler(): GlanceState {
     activeSick: null,
     recommendedStrengthDays: [],
     strengthRecommendation: null,
+    strengthWeekStatus: null,
   };
 }
 
@@ -381,6 +384,7 @@ function sarah(): GlanceState {
     },
     recommendedStrengthDays: [],
     strengthRecommendation: null,
+    strengthWeekStatus: null,
   };
 }
 
@@ -433,6 +437,7 @@ function marcus(): GlanceState {
     activeSick: null,
     recommendedStrengthDays: [],
     strengthRecommendation: null,
+    strengthWeekStatus: null,
   };
 }
 
@@ -477,6 +482,7 @@ function helen(): GlanceState {
     activeSick: null,
     recommendedStrengthDays: [],
     strengthRecommendation: null,
+    strengthWeekStatus: null,
   };
 }
 
@@ -521,6 +527,7 @@ function alex(): GlanceState {
     activeSick: null,
     recommendedStrengthDays: [],
     strengthRecommendation: null,
+    strengthWeekStatus: null,
   };
 }
 
@@ -565,5 +572,6 @@ function maya(): GlanceState {
     activeSick: null,
     recommendedStrengthDays: [],
     strengthRecommendation: null,
+    strengthWeekStatus: null,
   };
 }
