@@ -268,10 +268,14 @@ struct TodayView: View {
 
             // 2026-06-01 · Start Run / Share Run button.
             //
-            // Pre-run: "Start <Run>" (or "Log Recovery" on rest) → routes
-            // to ctaRoute (watch mirror / planned / etc.).
-            // Post-run: "Share run" → routes to .runDetail(id:) so the
-            // runner can hit the existing "Push to Strava" affordance.
+            // Pre-run (today, not rest): tap surfaces a SwiftUI Menu with
+            //   Outdoor → WatchMirrorView (Apple-Watch-paired GPS run)
+            //   Treadmill → TreadmillView (guided indoor console)
+            // Each option is its own NavigationLink so tapping either
+            // pushes directly · no path-state plumbing.
+            // Rest day: "Log Recovery" → planned/today recovery surface.
+            // Post-run: "Share run" → RunDetail (Strava push lives there).
+            //
             // Today v2 brief: "the start run or share run so its not
             // hidden" · the StickyCTABar respects the tab-bar safe area
             // (no .ignoresSafeArea(.bottom)) so the button sits just
@@ -279,28 +283,7 @@ struct TodayView: View {
             VStack {
                 Spacer()
                 StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
-                    NavigationLink(value: ctaTargetRoute) {
-                        HStack(spacing: 10) {
-                            if isDone {
-                                Image(systemName: "square.and.arrow.up.fill")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(.white)
-                            } else {
-                                Circle()
-                                    .fill(selectedEffort.dot)
-                                    .frame(width: 11, height: 11)
-                                    .shadow(color: selectedEffort.dot, radius: 4)
-                            }
-                            Text(ctaTitle)
-                                .font(.body(16.5, weight: .extraBold))
-                                .foregroundStyle(.white)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 17)
-                        .background(Color(hex: 0x1B1814), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
-                    }
-                    .buttonStyle(.plain)
+                    startCTAButton
                 }
                 .frame(height: 100)   // 30pt shorter · no safe-area pad to absorb anymore
             }
@@ -1128,6 +1111,85 @@ struct TodayView: View {
                 print("[today v2] skip failed: \(error)")
             }
         }
+    }
+
+    // MARK: - Start CTA · Outdoor / Treadmill picker (2026-06-01)
+    //
+    // The pre-run CTA shows a Menu with two options · "Outdoor" pushes
+    // WatchMirrorView (live Apple Watch mirror), "Treadmill" pushes
+    // TreadmillView (guided indoor console). Post-run and rest cases
+    // skip the Menu and push directly.
+    //
+    // Menu is a native SwiftUI affordance · taps land cleanly without
+    // any NavigationStack path plumbing, the picker dismisses on a
+    // tap-outside, and accessibility maps for free.
+
+    /// True when the Start button should expand into the Outdoor/Treadmill
+    /// menu (active workout today, not done, not rest). Other states
+    /// (post-run share, rest day "Log Recovery", future planned) push
+    /// directly via the existing single-route NavigationLink.
+    private var showsRunModePicker: Bool {
+        !isDone
+            && selectedEffort != .rest
+            && selectedDayID == todayISO
+            && !skipped
+    }
+
+    /// The bottom CTA · branches between Menu (active pre-run today) and
+    /// a single-tap NavigationLink (post-run / rest / non-today).
+    @ViewBuilder
+    private var startCTAButton: some View {
+        if showsRunModePicker {
+            Menu {
+                NavigationLink(value: FaffRoute.watchMirror) {
+                    Label("Outdoor · Apple Watch", systemImage: "figure.outdoor.cycle")
+                }
+                NavigationLink(value: FaffRoute.treadmill) {
+                    Label("Treadmill", systemImage: "figure.indoor.run")
+                }
+            } label: {
+                startButtonShell
+            }
+            .buttonStyle(.plain)
+        } else {
+            NavigationLink(value: ctaTargetRoute) {
+                startButtonShell
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Shared visual shell · accent dot (pre-run) or share glyph (post-
+    /// run) + title text in the dark capsule. Same look in both Menu
+    /// and NavigationLink paths so the runner sees one button no matter
+    /// the state.
+    private var startButtonShell: some View {
+        HStack(spacing: 10) {
+            if isDone {
+                Image(systemName: "square.and.arrow.up.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+            } else {
+                Circle()
+                    .fill(selectedEffort.dot)
+                    .frame(width: 11, height: 11)
+                    .shadow(color: selectedEffort.dot, radius: 4)
+            }
+            Text(ctaTitle)
+                .font(.body(16.5, weight: .extraBold))
+                .foregroundStyle(.white)
+            if showsRunModePicker {
+                // Chevron-up hint so the runner knows tapping pops a
+                // picker rather than launching the watch run straight.
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.66))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 17)
+        .background(Color(hex: 0x1B1814), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
     }
 
     /// Restore an adapted plan day · taps from the in-sheet adaptation
