@@ -167,6 +167,58 @@ extension API {
         return (200..<300).contains(http.statusCode)
     }
 
+    /// HK-import path · POST `/api/strength` with `source='apple_health'`
+    /// + `hk_uuid`. Idempotent server-side via the unique partial index on
+    /// `strength_sessions(hk_uuid) WHERE hk_uuid IS NOT NULL` — re-syncing
+    /// the same HKWorkout upserts duration_min/session_type/date and
+    /// preserves any runner-added notes.
+    ///
+    /// Contract: designs/briefs/strength-hk-ingest-brief.md (2026-06-01).
+    @discardableResult
+    static func postStrengthFromHK(date: String,
+                                   sessionType: String,
+                                   durationMin: Int,
+                                   hkUUID: String) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/strength"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "date": date,
+            "session_type": sessionType,
+            "duration_min": durationMin,
+            "source": "apple_health",
+            "hk_uuid": hkUUID,
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, http) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
+    /// DELETE `/api/strength?hk_uuid=...` · owner-scoped delete by HK uuid.
+    /// Used by the HK strength importer when a runner removes a workout
+    /// from Apple Fitness · the iPhone's delete-diff sweep on each sync
+    /// resolves the missing uuids and calls this.
+    ///
+    /// Idempotent: backend returns 200 `{ ok, deleted: 0 }` when no row
+    /// matches, so re-sweeps on every sync are safe.
+    ///
+    /// Contract: designs/briefs/strength-hk-delete-backend-brief.md
+    /// (2026-06-01). Endpoint is iPhone-blocking until shipped — the
+    /// caller (HealthKitImporter.syncStrengthDeletes) catches non-2xx and
+    /// keeps the uuid in the local cache so the next sync retries.
+    @discardableResult
+    static func deleteStrengthByHKUUID(_ hkUUID: String) async throws -> Bool {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/strength"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "hk_uuid", value: hkUUID)]
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "DELETE"
+        let (_, http) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
     @discardableResult
     static func postCrossTraining(modality: String,
                                   durationMin: Int,

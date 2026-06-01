@@ -144,10 +144,24 @@ final class HealthKitImporter: ObservableObject {
             }
         }
 
-        let anyFail = workoutFail + sampleFail
+        // 3) Strength sessions → /api/strength (2026-06-01)
+        // HK workouts of strength / functional / core / cross / yoga /
+        // pilates / mobility / mixed-cardio activity types over a 28-day
+        // window. Idempotent on HKWorkout.uuid via the unique partial
+        // index. Sweeps deletions against a UserDefaults uuid-cache so
+        // workouts the runner removes from Apple Fitness eventually
+        // clear from strength_sessions too (brief:
+        // strength-hk-delete-backend-brief.md).
+        let strengthResult = await syncStrengthFromHK()
+
+        let anyFail = workoutFail + sampleFail + strengthResult.failed
         status = anyFail == 0 ? .done : .error
-        lastMessage = "\(workoutOk) runs · \(sampleOk) vitals" +
-            (anyFail > 0 ? " · \(anyFail) failed" : "")
+        var summary = "\(workoutOk) runs · \(sampleOk) vitals"
+        if strengthResult.posted > 0 || strengthResult.deleted > 0 {
+            summary += " · \(strengthResult.posted)↑/\(strengthResult.deleted)↓ strength"
+        }
+        if anyFail > 0 { summary += " · \(anyFail) failed" }
+        lastMessage = summary
         lastImportedAt = Date()
     }
 
@@ -672,6 +686,167 @@ final class HealthKitImporter: ObservableObject {
             print("[HKImporter] POST /api/ingest/health \(http.statusCode): \(bodyStr)")
             throw API.APIError.badStatus(http.statusCode)
         }
+    }
+
+    // MARK: - HK strength ingest (2026-06-01)
+    //
+    // Brief: designs/briefs/strength-hk-ingest-brief.md
+    //
+    // Pattern matches the run importer: query HKWorkout for the 8 allowed
+    // activity types over a 28-day window, map to the strength session
+    // type the backend expects, POST one per workout. Server is idempotent
+    // on HKWorkout.uuid via the unique partial index from migration 133.
+    //
+    // Delete diffing: each successful POST is added to a UserDefaults
+    // uuid-cache. On every sync, any cached uuid that's no longer present
+    // in HK is DELETE'd via the hk_uuid query-param route. The DELETE
+    // endpoint is owned by the backend agent (brief:
+    // strength-hk-delete-backend-brief.md); when it lands, no iPhone
+    // change is needed — re-syncs will simply succeed instead of swallow-
+    // erroring.
+
+    /// HKWorkoutActivityType raw values for the 8 strength-flavored types
+    /// we ingest. Cited inline because Swift's enum cases vary by SDK and
+    /// the raw values are the stable identifier across versions.
+    /// (`.mixedCardio` added on iPhone agent's read · catches "strength
+    /// + cardio circuit" sessions the watch labels as mixed.)
+    nonisolated private static let strengthActivityRaws: [UInt: String] = [
+        HKWorkoutActivityType.traditionalStrengthTraining.rawValue: "strength",
+        HKWorkoutActivityType.functionalStrengthTraining.rawValue:  "functional_strength",
+        HKWorkoutActivityType.coreTraining.rawValue:                "core",
+        HKWorkoutActivityType.crossTraining.rawValue:               "cross_training",
+        HKWorkoutActivityType.yoga.rawValue:                        "yoga",
+        HKWorkoutActivityType.pilates.rawValue:                     "pilates",
+        HKWorkoutActivityType.flexibility.rawValue:                 "mobility",
+        HKWorkoutActivityType.mixedCardio.rawValue:                 "cross_training",
+    ]
+
+    /// UserDefaults key holding the set of HKWorkout.uuid strings we've
+    /// successfully POSTed in the most recent 28-day window. Compared
+    /// against the fresh HK set each sync to detect deletions.
+    private let strengthUUIDCacheKey = "faff.health.strength.uuids.v1"
+
+    /// Per-sync rollup returned to the parent importRecent so it can
+    /// shape the user-facing status string.
+    private struct StrengthSyncResult {
+        var posted: Int = 0
+        var deleted: Int = 0
+        var failed: Int = 0
+    }
+
+    private func syncStrengthFromHK() async -> StrengthSyncResult {
+        var result = StrengthSyncResult()
+        let workouts = await fetchStrengthWorkouts(daysBack: 28)
+
+        var freshUUIDs = Set<String>()
+        for w in workouts {
+            let uuid = w.uuid.uuidString
+            freshUUIDs.insert(uuid)
+            guard let payload = buildStrengthPayload(for: w) else { continue }
+            do {
+                try await API.postStrengthFromHK(
+                    date: payload.date,
+                    sessionType: payload.session_type,
+                    durationMin: payload.duration_min,
+                    hkUUID: payload.hk_uuid
+                )
+                result.posted += 1
+            } catch {
+                result.failed += 1
+                print("[HKImporter] strength ingest failed \(uuid): \(error)")
+            }
+        }
+
+        // Delete diffing · cached uuids no longer in HK → DELETE.
+        let cached = Set(UserDefaults.standard.stringArray(forKey: strengthUUIDCacheKey) ?? [])
+        let toDelete = cached.subtracting(freshUUIDs)
+        var stillStale: [String] = []
+        for uuid in toDelete {
+            do {
+                let ok = try await API.deleteStrengthByHKUUID(uuid)
+                if ok {
+                    result.deleted += 1
+                } else {
+                    // Non-2xx · keep in cache so next sync retries. This
+                    // covers the window where the DELETE endpoint isn't
+                    // shipped yet (returns 404/405) and the case where
+                    // a transient 5xx happens. Either way, no data loss.
+                    stillStale.append(uuid)
+                }
+            } catch {
+                stillStale.append(uuid)
+                print("[HKImporter] strength delete failed \(uuid): \(error)")
+            }
+        }
+
+        // Update the cache: fresh uuids that POSTed cleanly + any deletes
+        // that didn't go through yet (so we retry next sync).
+        let nextCache = freshUUIDs.union(stillStale)
+        UserDefaults.standard.set(Array(nextCache), forKey: strengthUUIDCacheKey)
+
+        return result
+    }
+
+    /// Query HKWorkout for the 8 strength-flavored activity types in the
+    /// last `daysBack` days. Loops the activityType predicate per type
+    /// (HealthKit doesn't accept an OR of activityType predicates in a
+    /// single query the way it does for sample types).
+    private nonisolated func fetchStrengthWorkouts(daysBack: Int) async -> [HKWorkout] {
+        let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
+        let datePred = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        var collected: [HKWorkout] = []
+        for raw in Self.strengthActivityRaws.keys {
+            guard let activity = HKWorkoutActivityType(rawValue: raw) else { continue }
+            let activityPred = HKQuery.predicateForWorkouts(with: activity)
+            let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [datePred, activityPred])
+            let batch: [HKWorkout] = await withCheckedContinuation { (cont: CheckedContinuation<[HKWorkout], Never>) in
+                let q = HKSampleQuery(
+                    sampleType: .workoutType(),
+                    predicate: pred,
+                    limit: HKObjectQueryNoLimit,
+                    sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]
+                ) { _, samples, _ in
+                    cont.resume(returning: (samples as? [HKWorkout]) ?? [])
+                }
+                store.execute(q)
+            }
+            collected.append(contentsOf: batch)
+        }
+        return collected
+    }
+
+    /// /api/strength HK-path payload. Plain struct so we can inspect it
+    /// before POSTing.
+    private struct HKStrengthPayload {
+        let date: String          // yyyy-MM-dd (PT)
+        let session_type: String  // strength | functional_strength | core | cross_training | yoga | pilates | mobility
+        let duration_min: Int     // HKWorkout.duration ÷ 60, rounded
+        let hk_uuid: String       // HKWorkout.uuid.uuidString
+    }
+
+    /// Map one HKWorkout into the strength payload. Returns nil if the
+    /// activity type isn't in our allowed set (defensive · the query
+    /// already filters, but a future SDK adding new mapping cases
+    /// shouldn't fall through to a 400 from the backend).
+    private nonisolated func buildStrengthPayload(for w: HKWorkout) -> HKStrengthPayload? {
+        guard let sessionType = Self.strengthActivityRaws[w.workoutActivityType.rawValue] else {
+            return nil
+        }
+        let pt = TimeZone(identifier: "America/Los_Angeles") ?? .current
+        let dateStr: String = {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = pt
+            f.dateFormat = "yyyy-MM-dd"
+            return f.string(from: w.startDate)
+        }()
+        let minutes = Int((w.duration / 60.0).rounded())
+        return HKStrengthPayload(
+            date: dateStr,
+            session_type: sessionType,
+            duration_min: max(0, minutes),
+            hk_uuid: w.uuid.uuidString
+        )
     }
 
     // MARK: - POST workout
