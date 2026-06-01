@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Today (redesign)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  @property --c1{syntax:'<color>';inherits:true;initial-value:#62e3d4;}
+  @property --c2{syntax:'<color>';inherits:true;initial-value:#2faf7c;}
+  @property --c3{syntax:'<color>';inherits:true;initial-value:#e0a84a;}
+  @property --c4{syntax:'<color>';inherits:true;initial-value:#1f8a68;}
+  @property --c5{syntax:'<color>';inherits:true;initial-value:#0f6a5a;}
+  @property --cbg{syntax:'<color>';inherits:true;initial-value:#0a3a2e;}
+
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{font-family:'Inter',sans-serif;background:#cdc8be;min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;gap:18px;padding:30px 16px 40px;color:#211d18;}
+  .mono{font-family:'Oswald',sans-serif;}
+
+  .phone{width:100%;max-width:392px;height:792px;position:relative;overflow:hidden;border-radius:44px;background:#06222b;
+    box-shadow:0 34px 70px -22px rgba(30,20,15,.55), 0 0 0 9px #15120e, 0 0 0 10px #2a2620;}
+
+  /* ---------- time-of-day mesh ---------- */
+  .mesh{position:absolute;inset:0;z-index:0;background:var(--cbg);
+    transition:--c1 1.1s ease,--c2 1.1s ease,--c3 1.1s ease,--c4 1.1s ease,--c5 1.1s ease,--cbg 1.1s ease;}
+  .blob{position:absolute;border-radius:50%;filter:blur(34px);will-change:transform,opacity;}
+  .b1{width:80%;height:66%;left:-12%;top:-12%;background:radial-gradient(circle,var(--c3) 0%,transparent 66%);animation:f1 19s ease-in-out infinite;}
+  .b2{width:74%;height:64%;right:-16%;top:-8%;background:radial-gradient(circle,var(--c2) 0%,transparent 66%);animation:f2 23s ease-in-out infinite;}
+  .b3{width:98%;height:82%;left:6%;top:22%;background:radial-gradient(circle,var(--c5) 0%,transparent 70%);animation:f3 27s ease-in-out infinite;}
+  .b4{width:82%;height:70%;left:-16%;bottom:-16%;background:radial-gradient(circle,var(--c4) 0%,transparent 66%);animation:f4 21s ease-in-out infinite;}
+  .b5{width:84%;height:72%;right:-12%;bottom:-12%;background:radial-gradient(circle,var(--c1) 0%,transparent 66%);animation:f5 25s ease-in-out infinite;}
+  @keyframes f1{0%,100%{transform:translate(0,0) scale(1);opacity:.85}50%{transform:translate(14%,12%) scale(1.18);opacity:1}}
+  @keyframes f2{0%,100%{transform:translate(0,0) scale(1.05);opacity:.9}50%{transform:translate(-12%,16%) scale(.9);opacity:.7}}
+  @keyframes f3{0%,100%{transform:translate(0,0) scale(1);opacity:.8}50%{transform:translate(10%,-12%) scale(1.15);opacity:1}}
+  @keyframes f4{0%,100%{transform:translate(0,0) scale(1.08);opacity:1}50%{transform:translate(16%,-10%) scale(.92);opacity:.78}}
+  @keyframes f5{0%,100%{transform:translate(0,0) scale(.95);opacity:.85}50%{transform:translate(-14%,-14%) scale(1.16);opacity:1}}
+
+  .grain{position:absolute;inset:0;z-index:1;opacity:.05;mix-blend-mode:overlay;pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .scrim{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(6,16,22,.34) 0%,transparent 22%,transparent 60%,rgba(6,16,22,.28) 100%);}
+
+  .status{position:absolute;top:0;left:0;right:0;z-index:6;display:flex;justify-content:space-between;
+    padding:16px 26px 0;color:#fff;font-size:13px;font-weight:700;pointer-events:none;}
+
+  .hero{position:absolute;inset:0;z-index:2;color:#fff;padding:54px 22px 0;}
+  .topbar{display:flex;justify-content:space-between;align-items:flex-start;}
+  .topbar .greet{font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;opacity:.78;display:flex;align-items:center;gap:8px;white-space:nowrap;}
+  .topbar .greet .gdot{width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 10px rgba(255,255,255,.7);}
+  .topbar .dl{font-size:22px;font-weight:800;letter-spacing:-.4px;margin-top:5px;}
+  .topbar .wk{font-size:11px;font-weight:700;opacity:.66;letter-spacing:1px;margin-top:3px;}
+
+  .week{display:flex;gap:5px;margin-top:16px;}
+  .day{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;padding:9px 0;border-radius:15px;
+    cursor:pointer;border:1px solid transparent;transition:.2s;}
+  .day .dow{font-size:10px;font-weight:800;letter-spacing:.5px;opacity:.62;}
+  .day .dt{font-size:15px;font-weight:800;letter-spacing:-.3px;opacity:.8;}
+  .day .dot{width:6px;height:6px;border-radius:50%;}
+  .day .dot.rest{width:9px;height:2px;border-radius:2px;background:rgba(255,255,255,.5)!important;}
+  .day.today .dow,.day.today .dt{opacity:1;}
+  .day.sel{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.5);backdrop-filter:blur(8px);}
+  .day.sel .dow,.day.sel .dt{opacity:1;}
+
+  /* ---------- graphic readiness panel ---------- */
+  .ready{margin-top:30px;cursor:pointer;}
+  .rtop{display:flex;align-items:center;gap:20px;}
+  .ring{position:relative;width:108px;height:108px;flex:0 0 auto;}
+  .ring .rv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .ring .rv b{font-family:'Oswald',sans-serif;font-size:42px;font-weight:600;line-height:.78;}
+  .ring .rv span{font-size:9px;font-weight:800;letter-spacing:2px;margin-top:7px;}
+  .rwords{flex:1;min-width:0;}
+  .rwords .eyebrow{font-size:11px;font-weight:800;letter-spacing:2px;opacity:.6;}
+  .rwords .eyebrow .bandtag{margin-left:8px;opacity:1;}
+  .rwords .rhead{font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1.08;margin-top:7px;text-shadow:0 2px 20px rgba(0,0,0,.28);text-wrap:balance;}
+
+  .why{margin-top:22px;display:flex;flex-direction:column;gap:9px;}
+  .wrow{display:flex;align-items:center;gap:12px;}
+  .wrow .wk{width:42px;font-size:9.5px;font-weight:800;letter-spacing:.6px;opacity:.7;flex:0 0 auto;}
+  .wbar{flex:1;height:7px;border-radius:5px;background:rgba(255,255,255,.14);position:relative;}
+  .wbar .ax{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:rgba(255,255,255,.3);}
+  .wbar i{position:absolute;top:0;bottom:0;border-radius:5px;}
+  .wrow .wv{font-size:11px;font-weight:700;width:118px;text-align:right;flex:0 0 auto;opacity:.92;letter-spacing:.1px;}
+  .stats{margin-top:22px;display:flex;gap:8px;}
+  .stat{flex:1;min-width:0;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);
+    border-radius:16px;padding:11px 13px;backdrop-filter:blur(6px);}
+  .stat .sk{font-size:9px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;opacity:.62;white-space:nowrap;}
+  .stat .sv{font-family:'Oswald',sans-serif;font-size:21px;font-weight:600;letter-spacing:-.3px;margin-top:4px;white-space:nowrap;}
+  .stat .sv small{font-size:11px;font-weight:600;opacity:.72;letter-spacing:0;}
+
+  /* ---------- run-info slide-up sheet ---------- */
+  .sheet{position:absolute;left:0;right:0;top:96px;bottom:0;z-index:4;display:flex;flex-direction:column;
+    background:#faf7f1;border-radius:30px 30px 0 0;box-shadow:0 -18px 44px -10px rgba(0,0,0,.4);
+    transform:translateY(498px);transition:transform .42s cubic-bezier(.32,.72,0,1);will-change:transform;}
+  .grab{flex:0 0 auto;cursor:grab;touch-action:none;}
+  .grab:active{cursor:grabbing;}
+  .handle{width:42px;height:5px;border-radius:5px;background:#dcd6ca;margin:11px auto 4px;}
+  .peek{padding:6px 24px 16px;display:flex;justify-content:space-between;align-items:center;}
+  .peek .pl{display:flex;align-items:center;gap:11px;}
+  .peek .pacc{width:10px;height:10px;border-radius:50%;background:var(--accent,#dd5530);flex:0 0 auto;box-shadow:0 0 10px var(--accent,#dd5530);}
+  .peek .pt{font-size:18px;font-weight:800;letter-spacing:-.3px;}
+  .peek .pt small{display:block;font-size:11px;font-weight:700;color:#9a9286;letter-spacing:.3px;margin-top:1px;}
+  .peek .pr{text-align:right;}
+  .peek .pr .pp{font-family:'Oswald',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.3px;}
+  .peek .pr .pe{font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a39a8c;margin-top:1px;}
+  .body{flex:1;overflow-y:auto;-ms-overflow-style:none;scrollbar-width:none;padding-bottom:120px;border-top:1px solid #eee7da;}
+  .body::-webkit-scrollbar{display:none;}
+  .pblock{padding:18px 24px;border-bottom:1px solid #eee7da;}
+  .pblock h4{font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#a39a8c;margin-bottom:13px;}
+  .seg{display:flex;align-items:flex-start;gap:13px;margin-bottom:14px;}
+  .seg:last-child{margin-bottom:0;}
+  .seg .tick{width:3px;align-self:stretch;border-radius:3px;background:var(--accent,#dd5530);min-height:34px;}
+  .seg .sl{font-size:15px;font-weight:800;letter-spacing:-.2px;}
+  .seg .sd{font-size:13px;color:#736c61;margin-top:2px;}
+  .seg .sd .mono{font-weight:700;color:#4f483f;}
+  .infogrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#eee7da;border-radius:16px;overflow:hidden;}
+  .infogrid .i{background:#fff;padding:14px 15px;}
+  .infogrid .i .k{font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a39a8c;}
+  .infogrid .i .v{font-size:15px;font-weight:700;margin-top:4px;letter-spacing:-.2px;}
+  .shoe-cell{cursor:pointer;transition:background .15s;}
+  .shoe-cell:active{background:#f4efe5;}
+  .shoe-v{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+  .shoe-v svg{width:16px;height:16px;color:#a39a8c;flex:0 0 auto;}
+  .shoeov{position:absolute;inset:0;z-index:9;display:none;}
+  .shoeov.show{display:block;}
+  .shoeov-bg{position:absolute;inset:0;background:rgba(20,16,12,.42);}
+  .shoeov-card{position:absolute;left:0;right:0;bottom:0;background:#faf7f1;border-radius:26px 26px 0 0;
+    padding:14px 16px 30px;box-shadow:0 -18px 44px -10px rgba(0,0,0,.4);animation:shoeup .28s cubic-bezier(.32,.72,0,1);}
+  @keyframes shoeup{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .shoeov-h{font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#a39a8c;padding:8px 8px 12px;}
+  .shoeov-list{display:flex;flex-direction:column;}
+  .shoe-opt{display:flex;align-items:center;justify-content:space-between;padding:15px 12px;border-radius:14px;cursor:pointer;}
+  .shoe-opt:active{background:#f1ebdf;}
+  .shoe-opt .so-l{display:flex;flex-direction:column;gap:2px;}
+  .shoe-opt .so-n{font-size:16px;font-weight:800;letter-spacing:-.2px;color:#211d18;}
+  .shoe-opt .so-m{font-size:12px;font-weight:700;color:#9a9286;}
+  .shoe-opt .so-ck{width:22px;height:22px;color:var(--accent,#dd5530);opacity:0;}
+  .shoe-opt.on .so-ck{opacity:1;}
+  .shoe-opt.on .so-n{color:var(--accent,#dd5530);}
+  .note{padding:18px 24px;}
+  .note .badge{font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent,#dd5530);}
+  .note p{font-size:14.5px;line-height:1.55;font-weight:500;color:#3c362f;margin-top:8px;}
+
+  .rdhead{padding:20px 24px 4px;}
+  .rdeyebrow{font-size:11px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:#a39a8c;}
+  .rdtitle{font-family:'Oswald',sans-serif;font-size:40px;font-weight:700;letter-spacing:-1px;text-transform:uppercase;line-height:.95;margin-top:4px;color:#1b1814;}
+  .rdadj{display:flex;align-items:flex-start;gap:8px;margin-top:13px;font-size:12px;font-weight:600;color:#8a7c52;
+    background:rgba(243,173,56,.13);border:1px solid rgba(216,150,40,.32);border-radius:11px;padding:9px 12px;line-height:1.35;}
+  .rdadj svg{width:14px;height:14px;flex:0 0 auto;color:#c08a2a;margin-top:1px;}
+  .rdadj b{font-weight:800;color:#7a6a3e;}
+  .rdadj u{cursor:pointer;color:#b9802a;text-underline-offset:2px;font-weight:700;}
+  .rdstats{display:flex;gap:24px;padding:18px 24px;border-bottom:1px solid #eee7da;}
+  .rdstats .sv{font-family:'Oswald',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.5px;color:#1b1814;line-height:1;}
+  .rdstats .sv small{font-size:12px;font-weight:600;color:#9a9286;}
+  .rdstats .sk{font-size:9.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a39a8c;margin-top:6px;}
+  .brow{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;}
+  .brow h4{margin-bottom:0;}
+  .bz{font-size:12px;font-weight:700;color:#7d756a;}
+  .uptag{font-size:9px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#9a9286;border:1px solid #ddd5c6;border-radius:20px;padding:4px 10px;}
+  .meter .track{position:relative;height:6px;margin-top:30px;}
+  .meter .bar{height:6px;border-radius:6px;background:linear-gradient(90deg,#54ddd0,#8ef0b0,#ffe0a0,#ff9560,#FC4D64);}
+  .meter .ticks{position:absolute;inset:0;display:flex;justify-content:space-between;align-items:center;padding:0 2px;}
+  .meter .ticks i{width:1px;height:10px;background:rgba(0,0,0,.14);}
+  .meter .marker{position:absolute;bottom:10px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;transition:left .5s cubic-bezier(.6,.1,.2,1);}
+  .meter .mlabel{font-size:9.5px;font-weight:800;letter-spacing:.8px;background:#1b1814;color:#fff;padding:3px 9px;border-radius:30px;white-space:nowrap;}
+  .meter .caret{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #1b1814;margin-top:-1px;}
+  .meter .zones{display:flex;justify-content:space-between;margin-top:12px;font-size:8px;font-weight:800;letter-spacing:1px;color:#b3aa9c;}
+  .cue{display:flex;gap:10px;align-items:flex-start;margin-top:16px;padding-top:15px;border-top:1px solid #eee7da;}
+  .cuetag{flex:0 0 auto;font-size:9px;font-weight:800;letter-spacing:1px;color:#7d756a;border:1px solid #d9d2c4;border-radius:6px;padding:3px 7px;margin-top:1px;}
+  .cue span:last-child{font-size:13.5px;font-weight:600;color:#4f483f;line-height:1.45;}
+  .planh{font-family:'Oswald',sans-serif;font-size:23px;font-weight:700;color:#1b1814;letter-spacing:-.3px;}
+  .pland{font-size:14px;line-height:1.55;font-weight:500;color:#3c362f;margin-top:8px;}
+  .targets{margin-top:16px;border-top:1px solid #eee7da;}
+  .trow{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid #f1ebdf;}
+  .trow:last-child{border-bottom:none;}
+  .tk{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a39a8c;}
+  .tv{font-size:15px;font-weight:700;color:#1b1814;}
+  .skipbtn{margin-top:16px;width:100%;background:#fff;border:1px solid #e2dccd;border-radius:14px;padding:14px;font-family:inherit;font-size:14px;font-weight:800;color:#6b6358;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;}
+  .skipbtn svg{width:15px;height:15px;}
+  .skipbtn:active{background:#f4efe5;}
+  .body.post{display:none;}
+  .winline{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:800;color:#2f8f6a;margin-top:11px;}
+  .winline svg{width:15px;height:15px;flex:0 0 auto;}
+  .secstats{display:flex;gap:20px;padding:14px 24px 16px;border-bottom:1px solid #eee7da;}
+  .secstats .ssv{font-size:16px;font-weight:800;color:#1b1814;letter-spacing:-.2px;}
+  .secstats .ssv small{font-size:11px;font-weight:600;color:#9a9286;}
+  .secstats .sk{font-size:9.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a39a8c;margin-top:5px;}
+  .map{margin:16px 24px 4px;height:140px;border-radius:16px;background:#0c272d;position:relative;overflow:hidden;}
+  .map svg{position:absolute;inset:0;width:100%;height:100%;}
+  .mapstat{position:absolute;left:13px;bottom:11px;display:flex;gap:13px;font-size:10px;font-weight:800;letter-spacing:.6px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.5);}
+  .splits{margin-top:2px;}
+  .spr{display:flex;align-items:center;gap:11px;padding:6px 0;}
+  .spm{width:16px;font-size:12px;font-weight:800;color:#a39a8c;flex:0 0 auto;}
+  .sptrk{flex:1;height:7px;border-radius:5px;background:#eee7da;position:relative;}
+  .spf{position:absolute;left:0;top:0;bottom:0;border-radius:5px;}
+  .spp{width:78px;text-align:right;font-family:'Oswald',sans-serif;font-size:14px;font-weight:700;color:#1b1814;flex:0 0 auto;}
+  .spp small{font-size:10px;color:#9a9286;}
+  .sphr{width:54px;text-align:right;font-size:11px;font-weight:700;color:#9a9286;flex:0 0 auto;}
+  .sphr small{font-size:9px;}
+  .formgrid{display:grid;gap:1px;background:#eee7da;border-radius:14px;overflow:hidden;}
+  .formgrid .f{background:#fff;padding:13px 8px;text-align:center;}
+  .formgrid .fv{font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;color:#1b1814;}
+  .formgrid .fv small{font-size:9px;font-weight:600;color:#9a9286;}
+  .formgrid .fk{font-size:8.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#a39a8c;margin-top:5px;}
+  .rpe{display:flex;gap:5px;}
+  .rpe button{flex:1;padding:10px 0;border-radius:9px;background:#fff;border:1px solid #e8e1d2;font-family:'Oswald',sans-serif;font-size:14px;font-weight:700;color:#6b6358;cursor:pointer;}
+  .rpe button.on{background:var(--accent,#1b1814);color:#fff;border-color:transparent;}
+  .rpehint{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#a39a8c;margin-top:8px;}
+  .chips2{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+  .chip2{font-size:12.5px;font-weight:700;color:#6b6358;background:#fff;border:1px solid #e8e1d2;border-radius:30px;padding:9px 14px;cursor:pointer;}
+  .chip2.on{background:#1b1814;color:#fff;border-color:transparent;}
+  .pacc{display:flex;align-items:center;justify-content:center;}
+  .pcheck{display:none;}
+  .sheet:not(.post-mode) .grab,.sheet:not(.post-mode) .peek{background:var(--accent,#dd5530);}
+  .sheet:not(.post-mode) .grab{border-radius:30px 30px 0 0;}
+  .sheet:not(.post-mode) .peek{box-shadow:0 10px 20px -16px rgba(0,0,0,.38);}
+  .sheet:not(.post-mode) .handle{background:rgba(255,255,255,.5);}
+  .sheet:not(.post-mode) .pacc{background:#fff;box-shadow:none;}
+  .sheet:not(.post-mode) .pl .pt{color:#fff;}
+  .sheet:not(.post-mode) .pt small{color:rgba(255,255,255,.85);}
+  .sheet:not(.post-mode) .pr .pp{color:#fff;}
+  .sheet:not(.post-mode) .pr .pe{color:rgba(255,255,255,.85);}
+  .sheet.post-mode .grab,.sheet.post-mode .peek{background:#1f9a6f;}
+  .sheet.post-mode .grab{border-radius:30px 30px 0 0;}
+  .sheet.post-mode .peek{box-shadow:0 10px 20px -16px rgba(12,80,52,.5);}
+  .sheet.post-mode .handle{background:rgba(255,255,255,.5);}
+  .sheet.post-mode .pacc{width:24px;height:24px;background:#fff;box-shadow:none;}
+  .sheet.post-mode .pcheck{display:block;width:14px;height:14px;color:#1a8a50;}
+  .sheet.post-mode .pl .pt{color:#fff;}
+  .sheet.post-mode .pt small{color:rgba(255,255,255,.82);}
+  .sheet.post-mode .pr .pp{color:#fff;}
+  .sheet.post-mode .pr .pe{color:#0f6a3c;background:#fff;border-radius:20px;padding:3px 9px;}
+  .startbar{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:14px 22px 30px;
+    background:linear-gradient(to top,rgba(250,247,241,.96) 60%,transparent);pointer-events:none;}
+  .startbtn{pointer-events:auto;width:100%;background:#1b1814;color:#fff;border:none;border-radius:18px;padding:17px;
+    font-family:inherit;font-size:16.5px;font-weight:800;letter-spacing:-.2px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:10px;transition:transform .12s;box-shadow:0 12px 28px -8px rgba(0,0,0,.45);}
+  .startbtn:active{transform:scale(.98);}
+  .startbtn .dot{width:11px;height:11px;border-radius:50%;background:var(--accent,#dd5530);box-shadow:0 0 12px var(--accent,#dd5530);}
+
+  .dragging .sheet{transition:none!important;}
+
+  /* ---------- time-of-day switcher (prototype chrome) ---------- */
+  .tod{display:flex;align-items:center;gap:7px;background:rgba(17,20,26,.9);border:1px solid rgba(255,255,255,.1);
+    border-radius:13px;padding:7px 9px;backdrop-filter:blur(10px);box-shadow:0 12px 30px -16px rgba(0,0,0,.5);}
+  .tod .tl{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#8A90A0;padding:0 4px;}
+  .tod button{font-family:inherit;font-size:12.5px;font-weight:700;color:rgba(255,255,255,.6);background:transparent;
+    border:none;border-radius:9px;padding:7px 12px;cursor:pointer;transition:.15s;}
+  .tod button:hover{color:#fff;background:rgba(255,255,255,.07);}
+  .tod button.on{color:#11141a;background:#fff;}
+  .cap{font-family:'Oswald',sans-serif;font-size:10px;color:#5c574e;text-align:center;max-width:392px;line-height:1.6;}
+</style>
+</head>
+<body>
+  <div class="phone" id="phone">
+    <div class="mesh" id="mesh">
+      <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+      <div class="blob b4"></div><div class="blob b5"></div>
+    </div>
+    <div class="grain"></div><div class="scrim"></div>
+
+    <div class="status"><span id="clock">9:41</span><span class="mono">5G ▮▮▮ 84%</span></div>
+
+    <div class="hero">
+      <div class="topbar">
+        <div class="l">
+          <div class="greet"><span class="gdot"></span><span id="greet">Good morning</span></div>
+          <div class="dl" id="dowLabel">Monday 1</div>
+          <div class="wk">Week 14 of 26</div>
+        </div>
+      </div>
+      <div class="week" id="week"></div>
+
+      <div class="ready" id="readyPanel">
+        <div class="rtop">
+          <div class="ring">
+            <svg width="108" height="108" viewBox="0 0 108 108">
+              <circle cx="54" cy="54" r="46" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="6.5"/>
+              <circle id="ringArc" cx="54" cy="54" r="46" fill="none" stroke="#ffb24d" stroke-width="6.5" stroke-linecap="round"
+                stroke-dasharray="289" stroke-dashoffset="130" transform="rotate(-90 54 54)"/>
+            </svg>
+            <div class="rv"><b id="rScore">55</b></div>
+          </div>
+          <div class="rwords">
+            <div class="eyebrow">READINESS <span id="rBand" class="bandtag" style="color:#ffce8a">MODERATE</span></div>
+            <div class="rhead" id="rHead">Sleep and HRV<br>are dragging.</div>
+          </div>
+        </div>
+        <div class="why" id="why"></div>
+        <div class="stats" id="stats">
+          <div class="stat"><div class="sk">Last night</div><div class="sv">6<small>h</small> 12<small>m</small></div></div>
+          <div class="stat"><div class="sk">This week</div><div class="sv">42<small> mi</small></div></div>
+          <div class="stat"><div class="sk">VO₂ max</div><div class="sv">52</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet" id="sheet">
+      <div class="grab" id="grab">
+        <div class="handle"></div>
+        <div class="peek">
+          <div class="pl"><span class="pacc"><svg class="pcheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div class="pt" id="pTitle">Tempo Run<small id="pWhen">Today's session</small></div></div>
+          <div class="pr"><div class="pp" id="pPace">6:38<small>/mi</small></div><div class="pe" id="pEffort">Hard</div></div>
+        </div>
+      </div>
+      <div class="body pre" id="bodyPre">
+        <div class="rdhead">
+          <div class="rdeyebrow" id="rdEyebrow">WED · EASY · PLANNED</div>
+          <div class="rdtitle" id="rdTitle">Easy</div>
+          <div class="rdadj" id="rdAdj">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>
+            <span>Adjusted from <b id="rdAdjFrom">Threshold</b> for today's readiness · <u>Restore</u></span>
+          </div>
+        </div>
+        <div class="rdstats">
+          <div><div class="sv" id="sDist">6.0<small> mi</small></div><div class="sk">Distance</div></div>
+          <div><div class="sv" id="sPace">8:45<small>/mi</small></div><div class="sk">Target pace</div></div>
+          <div><div class="sv" id="sEst">~49<small> min</small></div><div class="sk">Est time</div></div>
+        </div>
+        <div class="pblock">
+          <div class="brow"><h4>Effort target</h4><span class="bz" id="rdZone">Conversational · Z2</span></div>
+          <div class="meter">
+            <div class="track"><div class="bar"></div><div class="ticks"><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="marker" id="marker"><span class="mlabel" id="mLabel">EASY</span><span class="caret"></span></div></div>
+            <div class="zones"><span>Z1</span><span>Z2</span><span>Z3</span><span>Z4</span><span>Z5</span></div>
+          </div>
+        </div>
+        <div class="pblock">
+          <h4>Conditions &amp; kit</h4>
+          <div class="infogrid">
+            <div class="i"><div class="k">Forecast</div><div class="v" id="pWx"></div></div>
+            <div class="i"><div class="k">Best window</div><div class="v" id="pWindow"></div></div>
+            <div class="i shoe-cell" id="shoeCell"><div class="k">Shoe</div><div class="v shoe-v"><span id="pShoe"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l4 4 4-4"/></svg></div></div>
+            <div class="i"><div class="k">Fuel</div><div class="v" id="pFuel"></div></div>
+          </div>
+        </div>
+        <div class="pblock">
+          <h4>Session</h4><div id="segs"></div>
+          <div class="cue"><span class="cuetag">CUE</span><span id="pCue"></span></div>
+        </div>
+        <div class="pblock">
+          <div class="brow"><h4>The plan</h4><span class="uptag" id="planTag">Upcoming</span></div>
+          <div class="planh" id="planH">Keep it easy.</div>
+          <p class="pland" id="planD"></p>
+          <div class="targets">
+            <div class="trow"><span class="tk">Heart rate</span><span class="tv" id="tHr"></span></div>
+            <div class="trow"><span class="tk">Effort</span><span class="tv" id="tEff"></span></div>
+            <div class="trow"><span class="tk">Cadence</span><span class="tv" id="tCad"></span></div>
+          </div>
+          <button class="skipbtn" id="skipBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l10 8-10 8z"/><path d="M19 5v14"/></svg> Skip this run</button>
+        </div>
+      </div>
+      <div class="body post" id="bodyPost"></div>
+    </div>
+
+    <div class="shoeov" id="shoeov">
+      <div class="shoeov-bg" id="shoeBg"></div>
+      <div class="shoeov-card">
+        <div class="shoeov-h">Shoe for this run</div>
+        <div class="shoeov-list" id="shoeList"></div>
+      </div>
+    </div>
+
+    <div class="startbar">
+      <button class="startbtn" id="startBtn"><span class="dot"></span> <span id="startTxt">Start Tempo Run</span></button>
+    </div>
+  </div>
+
+  <div class="tod" id="runRow">
+    <span class="tl">VIEW</span>
+    <button data-m="pre" class="on">Pre-run</button>
+    <button data-m="post">Post-run</button>
+  </div>
+  <p class="cap">Pre-run plan vs post-run results · tap a day to swap · drag the sheet up for detail. Background tracks time of day.</p>
+
+<script>
+  const $=id=>document.getElementById(id);
+
+  /* time-of-day mesh palettes [c1,c2,c3,c4,c5,cbg] */
+  const TOD={
+    morning:  {greet:'Good morning',  clock:'7:24',  mesh:['#62e3d4','#2faf7c','#ffd98a','#1f8a68','#0f6a5a','#0a3a2e']},
+    afternoon:{greet:'Good afternoon',clock:'1:38',  mesh:['#8fd0ff','#34b6d6','#5fd0c4','#2a86b8','#1c6f9a','#0a2f44']},
+    evening:  {greet:'Good evening',  clock:'7:12',  mesh:['#ffcf8a','#ff8e6a','#f2673a','#c0457a','#7a3a86','#2a142e']},
+    night:    {greet:'Late night',    clock:'11:48', mesh:['#7e8ad8','#5360b4','#3a4a8e','#2a2f6e','#181f54','#0b0e26']}
+  };
+  function periodFromHour(h){ return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night'; }
+  function applyTOD(p){
+    const t=TOD[p]; const m=$('mesh');
+    t.mesh.forEach((c,i)=>m.style.setProperty(i<5?'--c'+(i+1):'--cbg',c));
+    $('greet').textContent=t.greet; $('clock').textContent=t.clock;
+  }
+  $('runRow').addEventListener('click',e=>{const b=e.target.closest('button');if(b)applyMode(b.dataset.m);});
+
+  /* ---------- readiness (today, constant) ---------- */
+  const READY={
+    score:55, band:'MODERATE', bandColor:'#ffce8a', arc:'#ffb24d',
+    head:'Sleep and HRV<br>are dragging.',
+    pillars:[
+      {k:'SLEEP', v:'5.9h · 7-night', dir:-1, mag:34, c:'#ffb24d'},
+      {k:'HRV',   v:'44 ms',          dir:-1, mag:28, c:'#ffb24d'},
+      {k:'RHR',   v:'47 bpm',         dir:1,  mag:14, c:'#62e08a'},
+      {k:'LOAD',  v:'1.25 ACWR',      dir:-1, mag:12, c:'#ffb24d'},
+      {k:'HR REC',v:'45 bpm drop',    dir:0,  mag:0,  c:'#8aa0a8'}
+    ]
+  };
+  function renderReady(){
+    $('rScore').textContent=READY.score;
+    $('rBand').textContent=READY.band; $('rBand').style.color=READY.bandColor;
+    $('rHead').innerHTML=READY.head;
+    const arc=$('ringArc'); arc.setAttribute('stroke',READY.arc);
+    arc.setAttribute('stroke-dashoffset', (289-289*(READY.score/100)).toFixed(0));
+    $('why').innerHTML=READY.pillars.map(p=>{
+      const w=Math.max(6,p.mag);
+      const fill=p.dir===0?'':`<i style="${p.dir>0?'left:50%':'right:50%'};width:${w}%;background:${p.c}"></i>`;
+      return `<div class="wrow"><span class="wk">${p.k}</span><div class="wbar"><span class="ax"></span>${fill}</div><span class="wv">${p.v}</span></div>`;
+    }).join('');
+  }
+
+  /* ---------- week + run info (sheet) ---------- */
+  const RUNS={
+    recovery:{accent:'#22b8c4',name:'Recovery',tag:'EASY',title:'Recovery Jog',effort:'Very easy',pin:9,zone:'Very easy · Z1',
+      dist:'4.0 mi',pace:'9:30',est:'~40 min',wx:'58-72° · Calm',window:'Anytime',shoe:'Novablast 5',fuel:'Water only',
+      segs:[['4 mi steady','@ <span class="mono">9:30</span> · nasal-breathing easy']],
+      cue:'Keep it embarrassingly slow. Fresh legs tomorrow are the goal.',
+      planH:'Flush it out.',planD:'Pure aerobic recovery, slower than easy. The point is blood flow, not training.',
+      targets:{hr:'<125 bpm · Z1',eff:'2 / 10 · very easy',cad:'relaxed'}},
+    easy:{accent:'#2faf7c',name:'Easy',tag:'EASY',title:'Easy Aerobic',effort:'Conversational',pin:30,zone:'Conversational · Z2',
+      dist:'6.0 mi',pace:'8:45',est:'~49 min',wx:'56-86° · Cloudy',window:'Before 7 AM',shoe:'Superblast 3',fuel:'Water',adjusted:'Threshold',
+      segs:[['6 mi steady','@ <span class="mono">8:30</span> · hold Zone 2'],['Strides','4 × 20s relaxed at the end']],
+      cue:'Keep it truly easy. Nose-breathing pace the whole way.',
+      planH:'Keep it easy.',planD:'Base-building, not a workout. Keep it boring and bank the aerobic volume. If the legs feel flat, slow down · the point is time on feet, not pace.',
+      targets:{hr:'<130 bpm · Z2',eff:'3 / 10 · easy',cad:'relaxed'}},
+    long:{accent:'#e08b2c',name:'Long',tag:'MODERATE',title:'Long Run',effort:'Finish strong',pin:55,zone:'Steady · Z2 to MP',
+      dist:'16.0 mi',pace:'7:40',est:'~2:05',wx:'52-70° · Clear',window:'Before 8 AM',shoe:'SC Trainer v3',fuel:'PF 30 / 5 mi',
+      segs:[['Miles 1 to 12','@ <span class="mono">7:50</span> easy aerobic'],['Miles 13 to 16','@ <span class="mono">6:50</span> marathon pace'],['Fuel','500ml PF carb mix + gels']],
+      cue:'Negative-split the back third. Practice race fueling on the clock.',
+      planH:'Time on feet.',planD:'Your CIM rehearsal. Easy aerobic into marathon pace · finish strong, not fried.',
+      targets:{hr:'140-155 · Z2 to MP',eff:'6 / 10 · steady',cad:'strong'}},
+    tempo:{accent:'#ee6038',name:'Tempo',tag:'HARD',title:'Tempo Run',effort:'Comfortably hard',pin:76,zone:'Threshold · Z4',
+      dist:'8.0 mi',pace:'6:38',est:'~54 min',wx:'60-78° · Calm',window:'Before 7 AM',shoe:'Zoom Fly 6',fuel:'PF 30 @ mi 5',
+      segs:[['2 mi','warmup @ <span class="mono">8:30</span>'],['4 mi','@ <span class="mono">6:38</span> threshold'],['2 mi','cooldown @ <span class="mono">8:45</span>']],
+      cue:'Settle in by mile 3 and hold form when it bites.',
+      planH:'Hold the line.',planD:'A controlled threshold effort. Lock onto 6:38 and keep it even · the back half is the test, so do not bank time early.',
+      targets:{hr:'160-168 · Z4',eff:'7 / 10 · hard',cad:'quick'}},
+    intervals:{accent:'#ec3a54',name:'Intervals',tag:'MAX',title:'Track Intervals',effort:'Near max',pin:93,zone:'VO\u2082 · Z5',
+      dist:'6.0 mi',pace:'6:05',est:'~45 min',wx:'58-74° · Track',window:'Evening OK',shoe:'SC Trainer v3',fuel:'Caffeine gel',
+      segs:[['2 mi','warmup + drills'],['6 \u00d7 800m','@ <span class="mono">6:05</span> · 2:58 / rep'],['1.5 mi','cooldown']],
+      cue:'Even effort across all six · win the last two reps.',
+      planH:'Sharpen up.',planD:'VO\u2082 work, short and sharp. Start controlled · the reps should feel repeatable until the very end.',
+      targets:{hr:'175+ · Z5',eff:'9 / 10 · max',cad:'fast'}},
+    rest:{accent:'#9fb0ad',name:'Rest',tag:'OFF',title:'Rest Day',effort:'Full recovery',isRest:true,pin:4,zone:'Recovery · off',
+      dist:'—',pace:'Rest',est:'—',wx:'—',window:'All day',shoe:'—',fuel:'Protein + hydrate',
+      segs:[['Optional','20 to 30 min easy walk or mobility'],['Focus','Sleep, hydration, soft-tissue work']],
+      cue:'Adaptation happens now, not in the workout. Protect the rest.',
+      planH:'Let it adapt.',planD:'Full recovery. Sleep, hydration, soft-tissue work · light mobility at most.',
+      targets:{hr:'—',eff:'0 / 10 · off',cad:'—'}}
+  };
+  const WEEK=[
+    {dow:'M',dt:1,full:'Monday',run:'tempo',today:true},
+    {dow:'T',dt:2,full:'Tuesday',run:'easy'},
+    {dow:'W',dt:3,full:'Wednesday',run:'intervals'},
+    {dow:'T',dt:4,full:'Thursday',run:'recovery'},
+    {dow:'F',dt:5,full:'Friday',run:'rest'},
+    {dow:'S',dt:6,full:'Saturday',run:'long'},
+    {dow:'S',dt:7,full:'Sunday',run:'recovery'}
+  ];
+  const weekEl=$('week');
+  WEEK.forEach((d,i)=>{
+    const r=RUNS[d.run];
+    const el=document.createElement('div');
+    el.className='day'+(d.today?' today':'');
+    el.innerHTML=`<span class="dow">${d.dow}</span><span class="dt">${d.dt}</span>
+      <span class="dot ${r.isRest?'rest':''}" style="background:${r.accent}"></span>`;
+    el.addEventListener('click',()=>selectDay(i));
+    weekEl.appendChild(el);
+  });
+  const dayEls=[...weekEl.children];
+
+  /* ---------- post-run results ---------- */
+  let mode='pre', curRun=null, curDay=null;
+  const RESULTS={
+    recovery:{win:'Easy and honest · legs stayed fresh',time:'38:42',paceA:'9:41',hr:128,elev:95,cond:'59° → 66°',cad:168,gct:268,vo:8.1,pwr:null,
+      verdict:'On plan.',recap:'Kept it genuinely easy. Exactly the flush the legs needed before tomorrow.',cmp:[['Heart rate','<125 · Z1','128 avg'],['Pace','9:30 target','9:41 avg'],['Cadence','relaxed','168 spm']]},
+    easy:{win:'Steady the whole way',time:'52:46',paceA:'8:48',hr:139,elev:120,cond:'56° → 71°',cad:174,gct:255,vo:7.8,pwr:null,
+      verdict:'On plan.',recap:'Boring in the best way. Zone 2 held and the aerobic volume is banked.',cmp:[['Heart rate','<130 · Z2','139 avg'],['Pace','8:45 target','8:48 avg'],['Cadence','relaxed','174 spm']]},
+    long:{win:'Negative-split · strong finish',time:'2:03:18',paceA:'7:42',hr:151,elev:410,cond:'52° → 70°',cad:178,gct:242,vo:7.4,pwr:312,
+      verdict:'On plan.',recap:'Back third quicker than the front and race fueling rehearsed clean. Textbook long run.',cmp:[['Heart rate','140-155 · Z2 to MP','151 avg'],['Pace','7:40 target','7:42 avg'],['Cadence','strong','178 spm']]},
+    tempo:{win:'Held the line · 6:38 dead even',time:'53:54',paceA:'6:37',hr:165,elev:140,cond:'60° → 74°',cad:182,gct:228,vo:6.9,pwr:341,
+      verdict:'On plan.',recap:'Threshold block dead even and the back half did not fade. Exactly the execution sub-3 needs.',cmp:[['Heart rate','160-168 · Z4','165 avg'],['Pace','6:38 target','6:37 avg'],['Cadence','quick','182 spm']]},
+    intervals:{win:'Won the last two reps',time:'44:30',paceA:'6:06',hr:178,elev:60,cond:'58° → 72°',cad:188,gct:215,vo:6.4,pwr:368,
+      verdict:'On plan.',recap:'Even effort across all six. A controlled start paid off when it bit at the end.',cmp:[['Heart rate','175+ · Z5','178 avg'],['Pace','6:05 target','6:06 avg'],['Cadence','fast','188 spm']]}
+  };
+  const FEEL=['Strong','Smooth','Controlled','Tired','Heavy legs','Easy day'];
+  const ROUTE='M20,120 C60,40 120,150 175,90 S250,30 300,110 S360,150 372,70';
+  const p2s=p=>{const a=p.split(':').map(Number);return a[0]*60+a[1];};
+  const s2p=x=>{x=Math.round(x);return Math.floor(x/60)+':'+String(x%60).padStart(2,'0');};
+  function genSplits(type,paceA,miles,accent){
+    const base=p2s(paceA),out=[];
+    const hrBase={recovery:128,easy:139,long:151,tempo:165,intervals:178}[type]||140;
+    for(let i=0;i<miles;i++){
+      let phase,delta;
+      if(type==='tempo'){phase=(i<2||i>=miles-2)?'ease':'work';delta=phase==='work'?(i%2?-2:2):95;}
+      else if(type==='long'){phase=i<miles-4?'ease':'work';delta=phase==='work'?-46:(10+(i%2?4:-4));}
+      else if(type==='intervals'){phase=(i<1||i>=miles-1)?'ease':'work';delta=phase==='work'?(i%2?-4:4):120;}
+      else{phase='ease';delta=(i%3-1)*6;}
+      const sec=base+delta,hr=hrBase+(phase==='work'?7:-12)+(i%2?2:-1);
+      out.push({mi:i+1,sec,pace:s2p(sec),hr,phase});
+    }
+    const mn=Math.min(...out.map(o=>o.sec)),mx=Math.max(...out.map(o=>o.sec));
+    out.forEach(o=>{o.w=42+(mx-o.sec)/((mx-mn)||1)*54;o.c=o.phase==='work'?accent:'#5bbfb0';});
+    return out;
+  }
+  function renderPost(r,d){
+    const c=$('bodyPost');
+    if(r.isRest){c.innerHTML=`<div class="rdhead"><div class="rdeyebrow">${d.full.slice(0,3).toUpperCase()} · REST · DONE</div><div class="rdtitle">Rest</div></div><div class="pblock"><p class="pland">No run to log today. Rest is the work · the adaptation is happening now.</p></div>`;return;}
+    const res=RESULTS[d.run],miles=Math.max(1,Math.round(parseFloat(r.dist)));
+    const sp=genSplits(d.run,res.paceA,miles,r.accent);
+    const splits=sp.map(o=>`<div class="spr"><span class="spm">${o.mi}</span><div class="sptrk"><div class="spf" style="width:${o.w}%;background:${o.c}"></div></div><span class="spp">${o.pace}<small>/mi</small></span><span class="sphr">${o.hr}<small> bpm</small></span></div>`).join('');
+    const form=[['Cadence',res.cad+' spm'],['Ground',res.gct+' ms'],['Vert osc',res.vo+' cm'],res.pwr?['Power',res.pwr+' w']:null].filter(Boolean);
+    c.innerHTML=`
+      <div class="rdhead">
+        <div class="rdeyebrow">${d.today?'TODAY':d.full.slice(0,3).toUpperCase()} · ${r.tag} · DONE</div>
+        <div class="rdtitle">${r.name}</div>
+        <div class="winline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> ${res.win}</div>
+      </div>
+      <div class="rdstats">
+        <div><div class="sv">${r.dist.replace(/ (\w+)$/,'<small> $1</small>')}</div><div class="sk">Distance</div></div>
+        <div><div class="sv">${res.paceA}<small>/mi</small></div><div class="sk">Avg pace</div></div>
+        <div><div class="sv">${res.time}</div><div class="sk">Moving</div></div>
+      </div>
+      <div class="secstats">
+        <div><div class="ssv">${res.hr}<small> bpm</small></div><div class="sk">Avg HR</div></div>
+        <div><div class="ssv">${res.elev}<small> ft</small></div><div class="sk">Elev gain</div></div>
+        <div><div class="ssv">${res.cond}</div><div class="sk">Conditions</div></div>
+      </div>
+      <div class="map"><svg viewBox="0 0 392 168" preserveAspectRatio="none"><path d="${ROUTE}" fill="none" stroke="${r.accent}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="120" r="5" fill="#0c272d" stroke="#5bbfb0" stroke-width="2.5"/><circle cx="372" cy="70" r="5" fill="${r.accent}" stroke="#fff" stroke-width="2"/></svg><div class="mapstat"><span>${r.dist.toUpperCase()}</span><span>↗ ${res.elev} FT</span></div></div>
+      <div class="pblock"><h4>Mile splits</h4><div class="splits">${splits}</div></div>
+      <div class="pblock"><h4>Form</h4><div class="formgrid" style="grid-template-columns:repeat(${form.length},1fr)">${form.map(f=>`<div class="f"><div class="fv">${String(f[1]).split(' ')[0]}<small> ${String(f[1]).split(' ').slice(1).join(' ')}</small></div><div class="fk">${f[0]}</div></div>`).join('')}</div></div>
+      <div class="pblock">
+        <div class="brow"><h4>How it went</h4><span class="uptag" style="color:#2f8f6a;border-color:rgba(47,143,106,.4)">On plan</span></div>
+        <div class="planh">${res.verdict}</div>
+        <p class="pland">${res.recap}</p>
+        <div class="targets">${res.cmp.map(t=>`<div class="trow"><span class="tk">${t[0]}</span><span class="tv">${t[2]} <small style="color:#a39a8c;font-weight:600">vs ${t[1]}</small></span></div>`).join('')}</div>
+      </div>`;
+  }
+  function updatePeek(){
+    const r=curRun,d=curDay;if(!r)return;
+    $('pTitle').firstChild.textContent=r.title;
+    if(mode==='post'&&!r.isRest){const res=RESULTS[d.run];$('pWhen').textContent='Completed';$('pPace').innerHTML=`${res.paceA}<small>/mi</small>`;$('pEffort').textContent='DONE';}
+    else if(mode==='post'){$('pWhen').textContent='Rest day';$('pPace').innerHTML='Rest';$('pEffort').textContent='—';}
+    else{$('pWhen').textContent=d.today?"Today's session":`${d.full}'s session`;$('pPace').innerHTML=r.isRest?'Rest':`${r.pace}<small>/mi</small>`;$('pEffort').textContent=r.effort;}
+  }
+  function updateStartbar(){
+    const r=curRun,sb=document.querySelector('.startbar');if(!r)return;
+    if(mode==='post'){if(r.isRest){sb.style.display='none';}else{sb.style.display='';$('startTxt').textContent='Share run';}}
+    else{sb.style.display='';$('startTxt').textContent=r.isRest?'Log Recovery':'Start '+r.name;}
+  }
+  function applyMode(m){
+    mode=m;
+    $('bodyPre').style.display=m==='pre'?'':'none';
+    $('bodyPost').style.display=m==='post'?'block':'none';
+    $('sheet').classList.toggle('post-mode',m==='post');
+    [...$('runRow').querySelectorAll('button')].forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+    updatePeek(); updateStartbar();
+  }
+  $('sheet').addEventListener('click',e=>{
+    const rp=e.target.closest('#rpe button'); if(rp){[...rp.parentElement.children].forEach(b=>b.classList.remove('on'));rp.classList.add('on');return;}
+    const ch=e.target.closest('#chips2 button'); if(ch){ch.classList.toggle('on');}
+  });
+
+  function selectDay(i){
+    const d=WEEK[i], r=RUNS[d.run];
+    dayEls.forEach((el,j)=>el.classList.toggle('sel',j===i));
+    $('dowLabel').textContent=`${d.full} ${d.dt}`;
+    curRun=r; curDay=d;
+    $('rdEyebrow').textContent=`${d.full.slice(0,3).toUpperCase()} · ${r.tag} · ${d.today?'TODAY':'PLANNED'}`;
+    $('rdTitle').textContent=r.name;
+    if(r.adjusted){$('rdAdj').style.display='flex';$('rdAdjFrom').textContent=r.adjusted;}else{$('rdAdj').style.display='none';}
+    $('sDist').innerHTML=r.dist.replace(/ (\w+)$/,'<small> $1</small>');
+    $('sPace').innerHTML=r.isRest?'Rest':`${r.pace}<small>/mi</small>`;
+    $('sEst').innerHTML=r.est.replace(/ (\w+)$/,'<small> $1</small>');
+    $('rdZone').textContent=r.zone;
+    $('marker').style.left=Math.max(8,Math.min(92,r.pin))+'%';
+    $('mLabel').textContent=r.tag;
+    document.querySelector('.meter').style.opacity=r.isRest?'.4':'1';
+    $('pWx').textContent=r.wx; $('pWindow').textContent=r.window;
+    $('pShoe').textContent=r.shoe; $('pFuel').textContent=r.fuel;
+    $('segs').innerHTML=r.segs.map(s=>`<div class="seg"><div class="tick"></div><div><div class="sl">${s[0]}</div><div class="sd">${s[1]}</div></div></div>`).join('');
+    $('pCue').textContent=r.cue;
+    $('planTag').textContent=d.today?'Today':'Upcoming';
+    $('planH').textContent=r.planH; $('planD').textContent=r.planD;
+    $('tHr').textContent=r.targets.hr; $('tEff').textContent=r.targets.eff; $('tCad').textContent=r.targets.cad;
+    document.documentElement.style.setProperty('--accent',r.accent);
+    $('sheet').style.setProperty('--accent',r.accent);
+    $('startBtn').style.setProperty('--accent',r.accent);
+    $('phone').style.setProperty('--accent',r.accent);
+    renderPost(r,d); updatePeek(); updateStartbar();
+  }
+
+  /* ---------- sheet drag ---------- */
+  const phone=$('phone'), sheet=$('sheet'), grab=$('grab');
+  const COLLAPSED=498, EXPANDED=0;
+  let sheetT=COLLAPSED, dragging=false, startY=0, startT=0, moved=0;
+  function render(){ sheet.style.transform=`translateY(${sheetT}px)`; }
+  function snap(t){ sheetT=t; render(); }
+  grab.addEventListener('pointerdown',e=>{dragging=true;startY=e.clientY;startT=sheetT;moved=0;phone.classList.add('dragging');grab.setPointerCapture(e.pointerId);});
+  grab.addEventListener('pointermove',e=>{if(!dragging)return;const d=e.clientY-startY;moved=Math.max(moved,Math.abs(d));sheetT=Math.max(EXPANDED,Math.min(COLLAPSED,startT+d));render();});
+  function end(){if(!dragging)return;dragging=false;phone.classList.remove('dragging');if(moved<6){snap(sheetT>COLLAPSED/2?EXPANDED:COLLAPSED);}else{snap(sheetT<COLLAPSED*0.55?EXPANDED:COLLAPSED);}}
+  grab.addEventListener('pointerup',end); grab.addEventListener('pointercancel',end);
+  $('readyPanel').addEventListener('click',()=>{ /* full read would open here */ });
+
+  /* ---------- shoe picker ---------- */
+  const GARAGE=[
+    {n:'Zoom Fly 6',   m:'182 mi · tempo'},
+    {n:'Superblast 3', m:'240 mi · easy'},
+    {n:'SC Trainer v3',m:'95 mi · long'},
+    {n:'Novablast 5',  m:'410 mi · daily'},
+    {n:'Vaporfly 3',   m:'48 mi · race'}
+  ];
+  const shoeov=$('shoeov'), shoeList=$('shoeList');
+  $('shoeCell').addEventListener('click',()=>{
+    const cur=$('pShoe').textContent;
+    shoeList.innerHTML=GARAGE.map(s=>`<div class="shoe-opt${s.n===cur?' on':''}" data-n="${s.n}"><div class="so-l"><div class="so-n">${s.n}</div><div class="so-m">${s.m}</div></div><svg class="so-ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>`).join('');
+    shoeov.classList.add('show');
+  });
+  $('shoeBg').addEventListener('click',()=>shoeov.classList.remove('show'));
+  shoeList.addEventListener('click',e=>{const o=e.target.closest('.shoe-opt');if(!o)return;$('pShoe').textContent=o.dataset.n;shoeov.classList.remove('show');});
+
+  /* init */
+  renderReady();
+  selectDay(0);
+  applyMode('pre');
+  applyTOD(periodFromHour(new Date().getHours()));
+  render();
+</script>
+</body>
+</html>

@@ -39,6 +39,17 @@ struct DragSheet<Header: View, Body: View>: View {
     let collapsedFromTop: CGFloat
     /// 0 = fully expanded (rests at top), 1 = fully collapsed (rests at peek).
     @Binding var progress: Double
+    /// 2026-06-01 · Today v2 brief: "the whole peek (grab + peek) is filled
+    /// with the run's effort color." Defaults to .clear so existing callers
+    /// (CompletedView) keep the original cream-on-cream peek look until
+    /// they opt in. When non-clear, the grab + handle + caller header all
+    /// render on this color, the divider hides, and the body still uses
+    /// the standard cream background.
+    var peekBackground: Color = .clear
+    /// Color of the grab capsule. Stays at the cream-on-cream charcoal by
+    /// default; switch to white-with-opacity when peekBackground is
+    /// non-clear so the handle stays visible against the accent fill.
+    var grabTint: Color = Color(hex: 0xDCD6CA)
     @ViewBuilder var header: () -> Header
     @ViewBuilder var content: () -> Body
 
@@ -68,7 +79,13 @@ struct DragSheet<Header: View, Body: View>: View {
 
             VStack(spacing: 0) {
                 grabRegion
-                Divider().background(Color(hex: 0xEEE7DA))
+                    .background(peekBackground)
+                // Divider hides when the peek is accent-filled · the
+                // color change itself reads as the boundary, and an
+                // extra cream stripe would break the visual continuity.
+                if peekBackground == .clear {
+                    Divider().background(Color(hex: 0xEEE7DA))
+                }
                 ScrollView(showsIndicators: false) {
                     content()
                         // 2026-06-01 · was 130. Now 170 so the in-sheet
@@ -106,7 +123,7 @@ struct DragSheet<Header: View, Body: View>: View {
     private var grabRegion: some View {
         VStack(spacing: 0) {
             Capsule()
-                .fill(Color(hex: 0xDCD6CA))
+                .fill(grabTint)
                 .frame(width: 52, height: 6)
                 .padding(.top, 12)
                 .padding(.bottom, 8)

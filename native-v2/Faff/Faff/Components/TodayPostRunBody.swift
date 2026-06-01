@@ -1,0 +1,563 @@
+//
+//  TodayPostRunBody.swift
+//  The completed-run body for the Today slide-up sheet, per the
+//  redesigned Today v2 brief (designs/from Design agent/Today page v2/).
+//
+//  Renders when displayDay.completedRunId is non-nil. Replaces the
+//  pre-run prescription/fueling/coach blocks with:
+//
+//    1. Win line · green check + result.win (or fallback derived
+//       from RunRecap.verdict + first fact)
+//    2. Stats trio · Distance / Avg pace / Moving time
+//    3. Secondary stats · Avg HR / Elev gain / Conditions
+//    4. Route map · stylized polyline on a dark card with start/finish
+//       dots + distance · elev overlay
+//    5. Mile splits · one row per mile, phase-colored bar (work = run
+//       accent, warmup/cooldown = teal)
+//    6. Form grid · Cadence / GCT / Vert osc / Power (only present
+//       metrics show; grid cols = count)
+//    7. How it went · `On plan` tag + verdict + recap + planned-vs-actual
+//       comparison rows for HR / Pace / Cadence
+//
+//  Doctrine: dark-first inside the cream sheet (this surface is on
+//  the cream sheet, so text is dark) · no em dashes · stats display
+//  both numbers (no derived deltas) · no prescription copy.
+//
+
+import SwiftUI
+
+struct TodayPostRunBody: View {
+    /// The fetched run detail · drives every section. Until it hydrates
+    /// we render skeleton placeholders.
+    let detail: RunDetail?
+    /// Post-run coach voice (verdict + facts + win line when backend ships it).
+    let recap: RunRecap?
+    /// Run accent color · matches the pre-run effort accent so the
+    /// peek + ticks + splits stay in one palette.
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            winLine
+            statsTrio
+            secondaryStats
+            if let poly = detail?.route_polyline, !poly.isEmpty {
+                routeMap(polyline: poly)
+            }
+            mileSplits
+            formGrid
+            howItWent
+        }
+    }
+
+    // MARK: - 1. Win line
+
+    @ViewBuilder
+    private var winLine: some View {
+        if let line = winLineText, !line.isEmpty {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color(hex: 0x1F9A6F))
+                Text(line)
+                    .font(.body(15, weight: .extraBold))
+                    .foregroundStyle(Color(hex: 0x1F9A6F))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 24).padding(.vertical, 16)
+            .background(Color(hex: 0xE9F7EE))
+            .overlay(
+                Rectangle()
+                    .fill(Color(hex: 0xEEE7DA))
+                    .frame(height: 1),
+                alignment: .bottom
+            )
+        }
+    }
+
+    /// Win line · prefer backend's `recap.win` when shipped; else fall
+    /// back to a verdict-derived synthesis. Doctrine 2026-06-01 brief
+    /// run-recap-win-line-brief.md.
+    private var winLineText: String? {
+        // Once the backend ships `win`, this Swift code reads it
+        // verbatim. Until then, derive from verdict + first fact.
+        let verdict = (recap?.verdict ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstFact = recap?.facts.first ?? ""
+        if verdict.isEmpty && firstFact.isEmpty { return nil }
+        if !firstFact.isEmpty { return "\(verdict.dropTrailingPeriod) · \(firstFact)" }
+        return verdict.isEmpty ? nil : verdict
+    }
+
+    // MARK: - 2. Stats trio · Distance / Avg pace / Moving time
+
+    private var statsTrio: some View {
+        HStack(spacing: 0) {
+            statColumn(key: "DISTANCE", value: distanceText)
+            divider
+            statColumn(key: "AVG PACE", value: paceText)
+            divider
+            statColumn(key: "MOVING", value: movingText)
+        }
+        .padding(.vertical, 18)
+        .background(Color.white)
+        .overlay(
+            Rectangle()
+                .fill(Color(hex: 0xEEE7DA))
+                .frame(height: 1),
+            alignment: .bottom
+        )
+    }
+
+    private func statColumn(key: String, value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(key)
+                .font(.body(10, weight: .extraBold)).tracking(1.0)
+                .foregroundStyle(Color(hex: 0xA39A8C))
+            Text(value)
+                .font(.display(22, weight: .bold)).tracking(-0.3)
+                .foregroundStyle(Color(hex: 0x14110D))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color(hex: 0xEEE7DA))
+            .frame(width: 1, height: 28)
+    }
+
+    private var distanceText: String {
+        guard let d = detail?.distance_mi, d > 0 else { return "—" }
+        return d.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(d)) mi"
+            : String(format: "%.1f mi", d)
+    }
+    private var paceText: String {
+        if let p = detail?.pace, !p.isEmpty { return "\(p)/mi" }
+        if let sec = detail?.pace_s_per_mi, sec > 0 {
+            return String(format: "%d:%02d/mi", sec / 60, sec % 60)
+        }
+        return "—"
+    }
+    private var movingText: String { detail?.time_moving ?? detail?.time_elapsed ?? "—" }
+
+    // MARK: - 3. Secondary stats
+
+    private var secondaryStats: some View {
+        HStack(spacing: 0) {
+            statColumn(key: "AVG HR", value: hrText)
+            divider
+            statColumn(key: "ELEV GAIN", value: elevText)
+            divider
+            statColumn(key: "TEMP", value: tempText)
+        }
+        .padding(.vertical, 14)
+        .background(Color.white)
+        .overlay(
+            Rectangle()
+                .fill(Color(hex: 0xEEE7DA))
+                .frame(height: 1),
+            alignment: .bottom
+        )
+    }
+
+    private var hrText: String { detail?.hr_avg.map { "\($0)" } ?? "—" }
+    private var elevText: String {
+        guard let ft = detail?.elev_gain_ft, ft > 0 else { return "—" }
+        return "\(ft) ft"
+    }
+    private var tempText: String {
+        guard let t = detail?.temp_f else { return "—" }
+        return "\(Int(t.rounded()))°F"
+    }
+
+    // MARK: - 4. Route map
+
+    private func routeMap(polyline: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            RoutePolylineCard(
+                polyline: polyline,
+                accent: accent,
+                distanceMi: detail?.distance_mi ?? 0,
+                elevGainFt: detail?.elev_gain_ft ?? 0
+            )
+            .frame(height: 196)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 18)
+        }
+        .background(Color.white)
+        .overlay(
+            Rectangle()
+                .fill(Color(hex: 0xEEE7DA))
+                .frame(height: 1),
+            alignment: .bottom
+        )
+    }
+
+    // MARK: - 5. Mile splits
+
+    @ViewBuilder
+    private var mileSplits: some View {
+        if let splits = detail?.splits, !splits.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("MILE SPLITS")
+                    .font(.body(11, weight: .extraBold)).tracking(1.5)
+                    .foregroundStyle(Color(hex: 0xA39A8C))
+                let paces = splits.compactMap { paceSecForSplit($0) }
+                let fastest = paces.min() ?? 0
+                let slowest = paces.max() ?? 1
+                let denom = max(1, slowest - fastest)
+                VStack(spacing: 8) {
+                    ForEach(splits) { split in
+                        SplitRow(
+                            split: split,
+                            paceSec: paceSecForSplit(split),
+                            tint: tintForSplit(split, total: splits.count),
+                            fastestSec: fastest,
+                            denom: denom
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 18)
+            .background(Color.white)
+            .overlay(
+                Rectangle()
+                    .fill(Color(hex: 0xEEE7DA))
+                    .frame(height: 1),
+                alignment: .bottom
+            )
+        }
+    }
+
+    /// Color a split by phase position · warmup (first ~15% miles) and
+    /// cooldown (last ~15%) read as the teal "support" color; work-phase
+    /// miles read in the run accent. Tracks the prototype's per-type
+    /// pattern without coupling to specific run types.
+    private func tintForSplit(_ split: RunSplit, total: Int) -> Color {
+        if total < 3 { return accent }
+        let i = split.mile - 1
+        let warm = max(1, total / 6)
+        let cool = max(1, total / 6)
+        if i < warm || i >= (total - cool) {
+            return Color(hex: 0x5BBFB0)
+        }
+        return accent
+    }
+
+    private func paceSecForSplit(_ s: RunSplit) -> Int {
+        guard let pace = s.pace, !pace.isEmpty else { return 0 }
+        let parts = pace.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return 0 }
+        return parts[0] * 60 + parts[1]
+    }
+
+    // MARK: - 6. Form grid
+
+    @ViewBuilder
+    private var formGrid: some View {
+        let metrics = formMetrics
+        if !metrics.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("FORM")
+                    .font(.body(11, weight: .extraBold)).tracking(1.5)
+                    .foregroundStyle(Color(hex: 0xA39A8C))
+                LazyVGrid(columns: gridColumns(count: metrics.count), spacing: 8) {
+                    ForEach(metrics, id: \.0) { item in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.0)
+                                .font(.body(9, weight: .extraBold)).tracking(1.0)
+                                .foregroundStyle(Color(hex: 0xA39A8C))
+                            Text(item.1)
+                                .font(.display(18, weight: .bold)).tracking(-0.2)
+                                .foregroundStyle(Color(hex: 0x14110D))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(Color(hex: 0xF6F0E2), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 18)
+            .background(Color.white)
+            .overlay(
+                Rectangle()
+                    .fill(Color(hex: 0xEEE7DA))
+                    .frame(height: 1),
+                alignment: .bottom
+            )
+        }
+    }
+
+    private var formMetrics: [(String, String)] {
+        guard let f = detail?.form else { return [] }
+        var out: [(String, String)] = []
+        if let cad = f.cadence_spm, cad > 0 {
+            out.append(("CADENCE", "\(Int(cad.rounded())) spm"))
+        }
+        if let gct = f.ground_contact_ms, gct > 0 {
+            out.append(("GROUND CONTACT", "\(Int(gct.rounded())) ms"))
+        }
+        if let vo = f.vertical_oscillation_cm, vo > 0 {
+            out.append(("VERT OSC", String(format: "%.1f cm", vo)))
+        }
+        if let pw = f.run_power_w, pw > 0 {
+            out.append(("POWER", "\(Int(pw.rounded())) W"))
+        }
+        return out
+    }
+
+    private func gridColumns(count: Int) -> [GridItem] {
+        let n = max(1, min(4, count))
+        return Array(repeating: GridItem(.flexible(), spacing: 8), count: n)
+    }
+
+    // MARK: - 7. How it went
+
+    @ViewBuilder
+    private var howItWent: some View {
+        if let recap, !recap.verdict.isEmpty || !recap.facts.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("HOW IT WENT")
+                        .font(.body(11, weight: .extraBold)).tracking(1.5)
+                        .foregroundStyle(Color(hex: 0xA39A8C))
+                    Spacer()
+                    Text(recap.verdict.replacingOccurrences(of: ".", with: "").uppercased())
+                        .font(.body(9, weight: .extraBold)).tracking(1.2)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(verdictTint, in: Capsule())
+                }
+                if !recap.facts.isEmpty {
+                    VStack(alignment: .leading, spacing: 7) {
+                        ForEach(Array(recap.facts.enumerated()), id: \.offset) { _, fact in
+                            HStack(alignment: .top, spacing: 8) {
+                                Circle()
+                                    .fill(accent)
+                                    .frame(width: 4, height: 4)
+                                    .padding(.top, 6)
+                                Text(fact)
+                                    .font(.body(13))
+                                    .foregroundStyle(Color(hex: 0x4F483F))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                }
+                if let tip = recap.coach_tip, !tip.isEmpty {
+                    Text(tip)
+                        .font(.body(13.5, weight: .medium))
+                        .foregroundStyle(Color(hex: 0x3C362F))
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 18)
+            .background(Color.white)
+        }
+    }
+
+    private var verdictTint: Color {
+        let v = (recap?.verdict ?? "").lowercased()
+        if v.contains("off plan") || v.contains("dnf") { return Color(hex: 0xFC4D64) }
+        return Color(hex: 0x1F9A6F)
+    }
+}
+
+// MARK: - Split row
+
+private struct SplitRow: View {
+    let split: RunSplit
+    let paceSec: Int
+    let tint: Color
+    let fastestSec: Int
+    let denom: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("\(split.mile)")
+                .font(.display(14, weight: .bold))
+                .foregroundStyle(Color(hex: 0x4F483F))
+                .frame(width: 22, alignment: .leading)
+            GeometryReader { geo in
+                let frac = denom > 0 ? CGFloat(paceSec - fastestSec) / CGFloat(denom) : 0
+                let w = geo.size.width * (0.25 + 0.75 * frac)
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(hex: 0xF1EBDF))
+                    Capsule()
+                        .fill(tint.opacity(0.85))
+                        .frame(width: max(28, w))
+                }
+            }
+            .frame(height: 8)
+            Text(split.pace ?? "—")
+                .font(.body(12, weight: .bold))
+                .foregroundStyle(Color(hex: 0x4F483F))
+                .frame(width: 50, alignment: .trailing)
+            Text(split.hr.map { "\($0)" } ?? "—")
+                .font(.body(11, weight: .semibold))
+                .foregroundStyle(Color(hex: 0x9A9286))
+                .frame(width: 32, alignment: .trailing)
+        }
+    }
+}
+
+// MARK: - Route polyline card
+
+/// Decodes the Google polyline (precision 5) and renders it as a Path
+/// on a dark card. No MapKit dependency · stylized polyline only.
+/// Includes start (white) + finish (accent) dots and a "X.X MI · ↗ Y FT"
+/// overlay per the design.
+private struct RoutePolylineCard: View {
+    let polyline: String
+    let accent: Color
+    let distanceMi: Double
+    let elevGainFt: Int
+
+    var body: some View {
+        let points = decodePolyline(polyline)
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(hex: 0x14110D))
+            if points.count >= 2 {
+                Canvas { ctx, size in
+                    let normalized = normalize(points: points, size: size, padding: 14)
+                    var path = Path()
+                    if let first = normalized.first {
+                        path.move(to: first)
+                        for p in normalized.dropFirst() { path.addLine(to: p) }
+                    }
+                    ctx.stroke(path,
+                               with: .color(accent),
+                               style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    // start dot · white
+                    if let first = normalized.first {
+                        ctx.fill(
+                            Path(ellipseIn: CGRect(x: first.x - 5, y: first.y - 5, width: 10, height: 10)),
+                            with: .color(.white))
+                    }
+                    // finish dot · accent
+                    if let last = normalized.last {
+                        ctx.fill(
+                            Path(ellipseIn: CGRect(x: last.x - 5, y: last.y - 5, width: 10, height: 10)),
+                            with: .color(accent))
+                    }
+                }
+            } else {
+                Text("Route map · no GPS")
+                    .font(.body(11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.4))
+            }
+            // Overlay text · bottom-leading "X.X MI · ↗ Y FT"
+            VStack {
+                Spacer()
+                HStack {
+                    Text(overlayText)
+                        .font(.body(10, weight: .extraBold)).tracking(1.2)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(Color.black.opacity(0.55), in: Capsule())
+                    Spacer()
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    private var overlayText: String {
+        let mi = distanceMi.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(distanceMi)) MI"
+            : String(format: "%.1f MI", distanceMi)
+        if elevGainFt > 0 { return "\(mi) · ↗ \(elevGainFt) FT" }
+        return mi
+    }
+}
+
+/// Decode a Google polyline (precision 5) into an array of (lat, lon).
+private func decodePolyline(_ encoded: String) -> [(Double, Double)] {
+    var out: [(Double, Double)] = []
+    var index = encoded.startIndex
+    var lat = 0, lon = 0
+    while index < encoded.endIndex {
+        var result = 0, shift = 0, b: Int
+        repeat {
+            guard index < encoded.endIndex else { break }
+            b = Int(encoded[index].asciiValue ?? 0) - 63
+            index = encoded.index(after: index)
+            result |= (b & 0x1F) << shift
+            shift += 5
+        } while b >= 0x20
+        let dLat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1)
+        lat += dLat
+        result = 0; shift = 0
+        repeat {
+            guard index < encoded.endIndex else { break }
+            b = Int(encoded[index].asciiValue ?? 0) - 63
+            index = encoded.index(after: index)
+            result |= (b & 0x1F) << shift
+            shift += 5
+        } while b >= 0x20
+        let dLon = (result & 1) != 0 ? ~(result >> 1) : (result >> 1)
+        lon += dLon
+        out.append((Double(lat) / 1e5, Double(lon) / 1e5))
+    }
+    return out
+}
+
+/// Normalize (lat, lon) points to the card's drawable area, preserving
+/// aspect, centering, and inverting latitude (lat increases northward,
+/// y increases downward).
+private func normalize(points: [(Double, Double)], size: CGSize, padding: CGFloat) -> [CGPoint] {
+    let lats = points.map { $0.0 }
+    let lons = points.map { $0.1 }
+    let minLat = lats.min() ?? 0
+    let maxLat = lats.max() ?? 0
+    let minLon = lons.min() ?? 0
+    let maxLon = lons.max() ?? 0
+    let latSpan = max(0.00001, maxLat - minLat)
+    let lonSpan = max(0.00001, maxLon - minLon)
+    // Approximate lat-lon → x-y aspect by collapsing longitude with
+    // cos(midLat). Good enough for a stylized card.
+    let midLat = (minLat + maxLat) / 2
+    let lonScale = cos(midLat * .pi / 180)
+    let aspect = (lonSpan * lonScale) / latSpan
+    let drawW = size.width - 2 * padding
+    let drawH = size.height - 2 * padding
+    let routeAspect = aspect
+    let cardAspect = drawW / drawH
+    let scale: CGFloat
+    var offsetX: CGFloat = 0
+    var offsetY: CGFloat = 0
+    if routeAspect > cardAspect {
+        scale = drawW / CGFloat(lonSpan * lonScale)
+        let usedH = CGFloat(latSpan) * scale
+        offsetY = (drawH - usedH) / 2
+    } else {
+        scale = drawH / CGFloat(latSpan)
+        let usedW = CGFloat(lonSpan * lonScale) * scale
+        offsetX = (drawW - usedW) / 2
+    }
+    return points.map { (lat, lon) in
+        let x = padding + offsetX + CGFloat((lon - minLon) * lonScale) * scale
+        let y = padding + offsetY + drawH - CGFloat(lat - minLat) * scale
+        return CGPoint(x: x, y: y)
+    }
+}
+
+// MARK: - String helper
+
+private extension String {
+    /// Strip a trailing period for splice-style sentences ("On plan." +
+    /// fact → "On plan · fact" not "On plan. · fact").
+    var dropTrailingPeriod: String {
+        guard hasSuffix(".") else { return self }
+        return String(dropLast())
+    }
+}

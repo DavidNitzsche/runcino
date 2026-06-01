@@ -84,6 +84,12 @@ struct TodayView: View {
     /// readiness panel hero presents this. Sheet hydrates from
     /// /api/readiness/brief inside its own .task.
     @State private var showReadinessBrief: Bool = false
+    /// Post-run RunDetail · hydrated when the selected day has a
+    /// completedRunId. Drives the Today v2 post-run sheet body
+    /// (designs/from Design agent/Today page v2/).
+    @State private var completedDetail: RunDetail?
+    /// Post-run RunRecap · verdict + facts + (future) `win` line.
+    @State private var completedRecap: RunRecap?
 
     var body: some View {
         // Time-of-day mesh (2026-06-01) · no longer recolors by run.
@@ -254,28 +260,38 @@ struct TodayView: View {
             DragSheet(
                 collapsedFromTop: 540,
                 progress: $sheetProgress,
+                peekBackground: peekFill,
+                grabTint: Color.white.opacity(0.6),
                 header: { peekHeader },
                 content: { sheetContent }
             )
 
-            // 2026-06-01 · Start Run button. Per the Today redesign
-            // brief: "start run is above the menu." Previously this
-            // VStack was `.ignoresSafeArea(edges: .bottom)` which
-            // pushed the button BEHIND the tab bar pill · runners
-            // couldn't tap it. Now the VStack respects the tab-bar
-            // safe area, so the button sits just above the pill. The
-            // sheet's cream background still extends behind the bar
-            // (handled in DragSheet.body).
+            // 2026-06-01 · Start Run / Share Run button.
+            //
+            // Pre-run: "Start <Run>" (or "Log Recovery" on rest) → routes
+            // to ctaRoute (watch mirror / planned / etc.).
+            // Post-run: "Share run" → routes to .runDetail(id:) so the
+            // runner can hit the existing "Push to Strava" affordance.
+            // Today v2 brief: "the start run or share run so its not
+            // hidden" · the StickyCTABar respects the tab-bar safe area
+            // (no .ignoresSafeArea(.bottom)) so the button sits just
+            // above the floating tab bar pill.
             VStack {
                 Spacer()
                 StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
-                    NavigationLink(value: ctaRoute) {
+                    NavigationLink(value: ctaTargetRoute) {
                         HStack(spacing: 10) {
-                            Circle()
-                                .fill(selectedEffort.dot)
-                                .frame(width: 11, height: 11)
-                                .shadow(color: selectedEffort.dot, radius: 4)
-                            Text(startButtonTitle)
+                            if isDone {
+                                Image(systemName: "square.and.arrow.up.fill")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                            } else {
+                                Circle()
+                                    .fill(selectedEffort.dot)
+                                    .frame(width: 11, height: 11)
+                                    .shadow(color: selectedEffort.dot, radius: 4)
+                            }
+                            Text(ctaTitle)
                                 .font(.body(16.5, weight: .extraBold))
                                 .foregroundStyle(.white)
                         }
@@ -314,6 +330,24 @@ struct TodayView: View {
                 } else {
                     let w = try? await API.fetchWatchWorkout(date: newID)
                     await MainActor.run { dayWorkout = w }
+                }
+                // Today v2 · also refetch RunDetail + RunRecap for the
+                // new selected day's completion (or null them out when
+                // the new day isn't completed).
+                let runId = await MainActor.run { completedRunId }
+                if let id = runId {
+                    async let d = (try? await API.fetchRunDetail(id: id))
+                    async let rc = (try? await API.fetchRunRecap(runId: id))
+                    let (det, rec) = await (d, rc)
+                    await MainActor.run {
+                        self.completedDetail = det
+                        self.completedRecap = rec
+                    }
+                } else {
+                    await MainActor.run {
+                        self.completedDetail = nil
+                        self.completedRecap = nil
+                    }
                 }
             }
         }
@@ -504,23 +538,140 @@ struct TodayView: View {
         }
     }
 
+    /// Peek header · the row inside the accent-filled grab band. White
+    /// text in all states; on done, swaps the small dot for a green
+    /// check-in-circle and the effort label for a DONE pill. (Today
+    /// v2 brief 2026-06-01.)
     private var peekHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        HStack(spacing: 12) {
+            if isDone {
+                ZStack {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 22, height: 22)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(Color(hex: 0x1F9A6F))
+                }
+            } else if selectedEffort != .rest {
+                Circle()
+                    .fill(.white)
+                    .frame(width: 10, height: 10)
+                    .shadow(color: .white.opacity(0.5), radius: 6)
+            }
+            VStack(alignment: .leading, spacing: 1) {
                 Text(workoutName.replacingOccurrences(of: "\n", with: " "))
-                    .font(.body(18, weight: .extraBold))
+                    .font(.body(17, weight: .extraBold))
                     .tracking(-0.3)
-                    .foregroundStyle(Color(hex: 0x14110D))
-                Spacer()
-                Text(selectedEffort.effortLabel)
-                    .font(.body(12, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x9A9286))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(isDone ? "Today's run" : "Today's session")
+                    .font(.body(11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.78))
+            }
+            Spacer(minLength: 4)
+            if isDone {
+                Text("DONE")
+                    .font(.body(10, weight: .extraBold)).tracking(1.4)
+                    .foregroundStyle(Color(hex: 0x1F9A6F))
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(.white, in: Capsule())
+            } else {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(paceStr.replacingOccurrences(of: "/mi", with: ""))
+                        .font(.display(18, weight: .bold)).tracking(-0.3)
+                        .foregroundStyle(.white)
+                    Text(selectedEffort.effortLabel.uppercased())
+                        .font(.body(9, weight: .extraBold)).tracking(1.2)
+                        .foregroundStyle(.white.opacity(0.82))
+                }
             }
         }
-        .padding(.top, 6)
+        .padding(.top, 2)
     }
 
     private var sheetContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Today v2 (2026-06-01) · branch: completed days render the
+            // post-run results body; pre-run days fall through to the
+            // existing prescription/fueling/conditions/coach stack.
+            if isDone {
+                TodayPostRunBody(
+                    detail: completedDetail,
+                    recap: completedRecap,
+                    accent: selectedEffort.dot
+                )
+            } else {
+                preRunSheetContent
+            }
+        }
+    }
+
+    /// Pre-run sheet body · the existing prescription + fueling +
+    /// conditions + coach stack, plus the v2 additions (adaptation
+    /// banner + Skip this run). Extracted for the isDone branch.
+    private var preRunSheetContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Adaptation banner · in-sheet variant of the AdaptationCard
+            // above the hero (2026-06-01 Today v2 brief). Reads from the
+            // same coach_intents plan_adapt_* signal. "Restore" decodes
+            // via the existing coach proposal flow.
+            if let intent = adaptationIntent, isWithinLast24h(intent.when_iso) {
+                inSheetAdaptationBanner(intent)
+            }
+            existingPrescriptionAndConditions
+            if !isDone && selectedEffort != .rest {
+                skipThisRunButton
+            }
+        }
+    }
+
+    private func inSheetAdaptationBanner(_ intent: CoachIntent) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color(hex: 0xC47812))
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(intent.summary)
+                    .font(.body(13, weight: .extraBold))
+                    .foregroundStyle(Color(hex: 0x14110D))
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Restore", action: restoreAdaptationAction)
+                    .font(.body(11, weight: .extraBold)).tracking(0.4)
+                    .foregroundStyle(Color(hex: 0xC47812))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 24).padding(.vertical, 14)
+        .background(Color(hex: 0xFFF4DC))
+        .overlay(
+            Rectangle().fill(Color(hex: 0xEEE7DA)).frame(height: 1),
+            alignment: .bottom
+        )
+    }
+
+    private var skipThisRunButton: some View {
+        Button(action: skipTodayAction) {
+            HStack(spacing: 8) {
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Skip this run")
+                    .font(.body(13, weight: .extraBold))
+            }
+            .foregroundStyle(Color(hex: 0x9A9286))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Existing pre-run content (prescription/segments + fueling +
+    /// conditions + coach + start-button-inside-sheet) hoisted out so
+    /// the post-run branch can substitute cleanly. The body below is
+    /// unchanged from the v1 implementation · only its enclosing
+    /// container changed.
+    private var existingPrescriptionAndConditions: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Prefer the server-emitted prescription rows when present
             // (briefing.workout_breakdown · PACE / HR CAP / DURATION / FUEL).
@@ -926,6 +1077,75 @@ struct TodayView: View {
         showReadinessBrief = true
     }
 
+    // MARK: - Today v2 (2026-06-01) · post-run state helpers
+
+    /// True when the currently-selected day has a completed run · drives
+    /// the sheet body branch (post-run vs pre-run), peek color, CTA
+    /// text/action ("Start <Run>" vs "Share run"), and whether Skip is
+    /// surfaced. Reads PlanDay.completedRunId straight from plan/week.
+    private var isDone: Bool {
+        todaySelectedDay?.completedRunId != nil
+    }
+
+    /// Run ID of the completed run for the selected day, if any. Used to
+    /// fetch RunDetail + RunRecap for the post-run sheet body.
+    private var completedRunId: String? {
+        todaySelectedDay?.completedRunId
+    }
+
+    /// Peek background color · accent for pre-run, emerald for post-run,
+    /// neutral grey for rest. Matches the Today v2 brief.
+    private var peekFill: Color {
+        if isDone { return Color(hex: 0x1F9A6F) }
+        if selectedEffort == .rest { return Color(hex: 0x9FB0AD) }
+        return selectedEffort.dot
+    }
+
+    /// CTA text · swaps to "Share run" on completed days, "Log Recovery"
+    /// on rest, "Start <Run>" otherwise.
+    private var ctaTitle: String {
+        if isDone { return "Share run" }
+        if selectedEffort == .rest { return "Log Recovery" }
+        return startButtonTitle
+    }
+
+    /// CTA tap target · post-run routes to the existing RunDetail surface
+    /// (push) where the runner can hit "Push to Strava" already. Pre-run
+    /// stays on the existing ctaRoute (watch mirror / planned / etc.).
+    private var ctaTargetRoute: FaffRoute {
+        if isDone, let id = completedRunId { return .runDetail(id: id) }
+        return ctaRoute
+    }
+
+    /// Skip-this-run action · POSTs to /api/today/skip via the existing
+    /// API helper. Pre-run only (hidden when isDone or rest).
+    private func skipTodayAction() {
+        Task {
+            do {
+                try await API.postSkipToday()
+                await MainActor.run { self.skipped = true }
+            } catch {
+                print("[today v2] skip failed: \(error)")
+            }
+        }
+    }
+
+    /// Restore an adapted plan day · taps from the in-sheet adaptation
+    /// banner. Wires to the existing /api/coach/proposal flow with
+    /// action="decline" on the adapt intent, so the backend can revert
+    /// to the original session. If the backend rejects the action shape,
+    /// the banner stays read-only and the next refresh resolves state.
+    private func restoreAdaptationAction() {
+        guard let intent = adaptationIntent else { return }
+        Task {
+            _ = try? await API.postCoachProposal(
+                action: "decline",
+                proposal: ["intent_id": intent.id]
+            )
+            await loadAll()
+        }
+    }
+
     /// Phase breakdown rendered in the drag-sheet. Empty when no real
     /// phases on the workout · TodayView's drag sheet gates the section on
     /// `segments.isEmpty` so this drops out cleanly. Was a type-derived
@@ -1091,6 +1311,27 @@ struct TodayView: View {
             // Re-pick the time-of-day in case the runner has been in the
             // app across an hour boundary (5am / noon / 5pm / 9pm). Cheap.
             self.timeOfDay = TimeOfDay.current()
+        }
+
+        // Today v2 (2026-06-01) · post-run hydration. When the selected
+        // day has a completedRunId, fetch its RunDetail + RunRecap so
+        // the sheet body can render the v2 post-run content. Both
+        // fetches are best-effort · nil leaves the sheet in skeleton
+        // until the next refresh.
+        let runId = await MainActor.run { completedRunId }
+        if let id = runId {
+            async let d = (try? await API.fetchRunDetail(id: id))
+            async let rc = (try? await API.fetchRunRecap(runId: id))
+            let (detail, recap) = await (d, rc)
+            await MainActor.run {
+                if let detail { self.completedDetail = detail }
+                if let recap { self.completedRecap = recap }
+            }
+        } else {
+            await MainActor.run {
+                self.completedDetail = nil
+                self.completedRecap = nil
+            }
         }
     }
 
