@@ -766,10 +766,14 @@ function PlannedHeroV2({
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !(j as { ok?: boolean }).ok) {
         const raw = (j as { error?: string }).error ?? `HTTP ${r.status}`;
-        // Friendly mapping · never leak raw SQL / Postgres errors to
-        // the runner. Known cases get a clear message; unknown cases
-        // fall through to a generic try-again. Pair brief queued at
-        // designs/briefs/no-citations-and-restore-error-sweep.md.
+        // 2026-06-01: log raw error to console so devtools can debug
+        // while the UI message stays clean. Friendly mapping below
+        // never leaks raw SQL. If you're David seeing "Cannot restore
+        // right now" and not sure why, open browser devtools console
+        // and look for [restore] entries · the raw backend response
+        // is there.
+        // eslint-disable-next-line no-console
+        console.error('[restore] backend error', { raw, status: r.status, body: j, workoutId: d.planWorkoutId });
         const friendly = /operator does not exist|relation|column.*does not exist/i.test(raw)
             ? 'Cannot restore right now. Try again in a moment.'
           : raw === 'not_adapted'        ? 'This run has no original to restore.'

@@ -410,8 +410,8 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
                 const j = await r.json().catch(() => ({}));
                 if (!r.ok || !(j as { ok?: boolean }).ok) {
                   const raw = (j as { error?: string }).error ?? `HTTP ${r.status}`;
-                  // Same friendly mapping as the hero-inline button ·
-                  // never leak raw SQL / Postgres to the runner.
+                  // eslint-disable-next-line no-console
+                  console.error('[restore] backend error', { raw, status: r.status, body: j, workoutId: d.planWorkoutId });
                   const friendly = /operator does not exist|relation|column.*does not exist/i.test(raw)
                       ? 'Cannot restore right now. Try again in a moment.'
                     : raw === 'not_adapted'         ? 'This run has no original to restore.'
