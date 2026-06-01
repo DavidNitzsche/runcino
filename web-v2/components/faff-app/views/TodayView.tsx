@@ -723,7 +723,11 @@ function PlannedHeroV2({
   // 2026-06-01 · adaptation provenance line under the title when the
   // auto-adapter mutated this row. Surfaces WHY at the hero level so
   // the runner doesn't have to open the modal to learn the change.
-  const adapted = d.adaptation?.wasAdapted;
+  // 2026-06-01 update · suppress no-op adaptations · when originalType
+  // collapses to the current type/subLabel, the banner read "Adjusted
+  // from EASY" with nothing actually different. Skip rendering when
+  // labels are equal.
+  const adaptedRaw = d.adaptation?.wasAdapted;
   const adaptVerb: Record<string, string> = {
     downgrade: 'Downgraded',
     reschedule: 'Rescheduled',
@@ -731,9 +735,13 @@ function PlannedHeroV2({
     mark_dirty: 'Paces refreshed',
     other: 'Adjusted',
   };
-  const adaptedFromLabel = adapted
+  const adaptedFromLabel = adaptedRaw
     ? (d.adaptation!.originalSubLabel || d.adaptation!.originalType)
     : null;
+  const currentForCompare = (d.subLabel || d.name || d.type || '').toString().toUpperCase().trim();
+  const fromForCompare = (adaptedFromLabel ?? '').toString().toUpperCase().trim();
+  const isNoOpAdaptation = !!adaptedRaw && !!fromForCompare && fromForCompare === currentForCompare;
+  const adapted = adaptedRaw && !isNoOpAdaptation;
   const adaptVerbCopy = adapted ? (adaptVerb[d.adaptation!.kind ?? 'other'] ?? 'Adjusted') : '';
 
   // 2026-06-01 · Restore original. Same POST /api/plan/restore endpoint
@@ -757,12 +765,28 @@ function PlannedHeroV2({
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !(j as { ok?: boolean }).ok) {
-        throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+        const raw = (j as { error?: string }).error ?? `HTTP ${r.status}`;
+        // Friendly mapping · never leak raw SQL / Postgres errors to
+        // the runner. Known cases get a clear message; unknown cases
+        // fall through to a generic try-again. Pair brief queued at
+        // designs/briefs/no-citations-and-restore-error-sweep.md.
+        const friendly = /operator does not exist|relation|column.*does not exist/i.test(raw)
+            ? 'Cannot restore right now. Try again in a moment.'
+          : raw === 'not_adapted'        ? 'This run has no original to restore.'
+          : raw === 'missing_originals'  ? 'No original on record for this run.'
+          : raw === 'cannot_restore_past' ? "Can't restore a completed run."
+          : raw === 'workout_not_found'  ? "Couldn't find this run."
+          : raw === 'workoutId_required' || raw === 'invalid_json' ? 'Restore request was malformed.'
+          : 'Cannot restore right now. Try again in a moment.';
+        setRestoreErr(friendly);
+        return;
       }
       setRestoreDone(true);
       router.refresh();
     } catch (e) {
-      setRestoreErr(e instanceof Error ? e.message : String(e));
+      // Network / fetch threw before getting a JSON response.
+      setRestoreErr('Could not reach the server. Check your connection and try again.');
+      void e;
     } finally {
       setRestoring(false);
     }
@@ -805,7 +829,7 @@ function PlannedHeroV2({
                 <span className="adapt-restored"> · Restored. Refreshing…</span>
               ) : null}
               {restoreErr ? (
-                <span className="adapt-restore-err"> · Could not restore: {restoreErr}</span>
+                <span className="adapt-restore-err"> · {restoreErr}</span>
               ) : null}
             </span>
           </div>

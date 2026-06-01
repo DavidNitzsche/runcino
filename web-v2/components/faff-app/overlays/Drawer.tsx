@@ -64,25 +64,36 @@ const PILLAR_BAND_COLOR: Record<Band, string> = {
   'no-data':   '#8A90A0',
 };
 
-/** Strip research citations from backend-authored coach-voice strings.
- *  2026-06-01 David call · "should never surface things like the
- *  'Research/00b says' ever." Defensive frontend sanitizer that runs
- *  on every visible string from the readiness brief. Pair brief queued
- *  to backend asking them to author copy without citations at the
- *  source; this is the backstop until that lands. Handles four shapes:
- *    "... · Research/15 says ..." (middot-prefixed clause)
- *    "... per Research/15 §HRV" (per-prefixed inline reference)
- *    "Research/15 notes ..." (sentence-leading)
- *    "Research/15" (bare reference) */
+/** Strip any internal-doctrine citation from backend-authored coach-voice
+ *  strings. 2026-06-01 David lock · "No citations, every anywhere for
+ *  any reason." Broader than the original Research/XX rule · also
+ *  covers docs/X.md, §section refs, and "per X" doctrine pointers.
+ *  Defensive frontend sanitizer runs on every visible string from the
+ *  readiness brief. Pair brief asks backend to author copy without
+ *  citations at the source; this is the backstop until that lands.
+ *  Patterns handled:
+ *    " · Research/15 says ..." / " · docs/X.md §..." (middot clauses)
+ *    " per Research/15" / " per docs/PLAN_ENGINE..." (inline refs)
+ *    "Research/15 notes ..." / "docs/X.md notes ..." (sentence-leading)
+ *    bare "Research/15", "docs/X.md", "§HRV approach" */
 function stripCitations(s: string | null | undefined): string {
   if (!s) return '';
   return s
-    .replace(/\s*·\s*Research\/[A-Za-z0-9]+[^·.]*\./g, '.')
-    .replace(/\s+per\s+Research\/[A-Za-z0-9]+(\s+§[^.,]*)?/gi, '')
-    .replace(/Research\/[A-Za-z0-9]+\s+(says|notes|reports?|finds?|shows?)[^.]*\.?/gi, '')
-    .replace(/\bResearch\/[A-Za-z0-9]+\b\s*§?\s*[A-Za-z0-9 ]*/g, '')
+    // middot-prefixed citation clause through next period or middot
+    .replace(/\s*·\s*(Research\/|docs\/)[^·.]*\./g, '.')
+    .replace(/\s*·\s*(Research\/|docs\/)[^·.]*$/g, '')
+    // "per <ref>" inline
+    .replace(/\s+per\s+(Research\/|docs\/)[A-Za-z0-9_./-]+(\s+§[^.,]*)?/gi, '')
+    // sentence-leading "<ref> says/notes/..."
+    .replace(/(Research\/|docs\/)[A-Za-z0-9_./-]+\s+(says|notes|reports?|finds?|shows?|locks?|tracks?)[^.]*\.?/gi, '')
+    // any bare reference + optional section
+    .replace(/\b(Research\/|docs\/)[A-Za-z0-9_./-]+\b(\s*§[A-Za-z0-9 .]+)?/g, '')
+    // any bare " §..." section reference left dangling
+    .replace(/\s+§[A-Za-z0-9][A-Za-z0-9 .]*\b/g, '')
+    // cleanup leftover whitespace + orphan punctuation
     .replace(/\s{2,}/g, ' ')
-    .replace(/\s+\./g, '.')
+    .replace(/\s+([.,])/g, '$1')
+    .replace(/\(\s*\)/g, '')
     .trim();
 }
 
@@ -876,14 +887,13 @@ function GapReportCard({ report, goalSlug }: {
         </div>
       ) : null}
 
-      {/* Section 6 · Citation footer · small. Note · this is the
-          PLAN_ENGINE_ARCHITECTURE citation, not a Research/XX
-          citation · those are stripped from rendered prose. This
-          one stays because the brief explicitly asks for it as a
-          "trust contract" footer. */}
-      {report.citation ? (
-        <div className="rb-gap-cite">{report.citation}</div>
-      ) : null}
+      {/* Section 6 · Citation footer removed 2026-06-01 (David lock ·
+          "No citations, every anywhere for any reason"). The backend
+          gap-report brief asked for the docs/PLAN_ENGINE_ARCHITECTURE
+          reference as a "trust contract" footer but the locked rule
+          overrides · no doctrine references on the runner's screen,
+          ever. Field stays on the seed payload for diagnostics but
+          never renders. */}
     </div>
   );
 }

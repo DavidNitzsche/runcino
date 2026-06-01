@@ -409,12 +409,24 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
                 });
                 const j = await r.json().catch(() => ({}));
                 if (!r.ok || !(j as { ok?: boolean }).ok) {
-                  throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+                  const raw = (j as { error?: string }).error ?? `HTTP ${r.status}`;
+                  // Same friendly mapping as the hero-inline button ·
+                  // never leak raw SQL / Postgres to the runner.
+                  const friendly = /operator does not exist|relation|column.*does not exist/i.test(raw)
+                      ? 'Cannot restore right now. Try again in a moment.'
+                    : raw === 'not_adapted'         ? 'This run has no original to restore.'
+                    : raw === 'missing_originals'   ? 'No original on record for this run.'
+                    : raw === 'cannot_restore_past' ? "Can't restore a completed run."
+                    : raw === 'workout_not_found'   ? "Couldn't find this run."
+                    : raw === 'workoutId_required' || raw === 'invalid_json' ? 'Restore request was malformed.'
+                    : 'Cannot restore right now. Try again in a moment.';
+                  setRestoreErr(friendly);
+                  return;
                 }
                 setRestored(true);
                 router.refresh();
-              } catch (e) {
-                setRestoreErr(e instanceof Error ? e.message : String(e));
+              } catch {
+                setRestoreErr('Could not reach the server. Check your connection and try again.');
               } finally {
                 setRestoring(false);
               }
@@ -448,7 +460,7 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
 
       {restoreErr ? (
         <div style={{ marginTop: 10, fontSize: 12, color: '#FC4D64' }}>
-          Could not restore · {restoreErr}
+          {restoreErr}
         </div>
       ) : null}
     </div>
