@@ -39,7 +39,17 @@ type RunDetail = {
    *  for steady efforts. Null when no comparable baseline. */
   hr_on_pace_delta_bpm?: number | null;
   power_avg_w: number | null;
-  splits: Array<{ mile: number; pace: string | null; hr: number | null; elev_change_ft: number | null; phase?: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown' | null }>;
+  splits: Array<{
+    mile: number;
+    pace: string | null;
+    hr: number | null;
+    /** Per-mile cadence (steps per minute). Surfaced under the split
+     *  pace row when present so the runner can see cadence drift through
+     *  the run (drops during fatigue, spikes during MP pickups). */
+    cadence?: number | null;
+    elev_change_ft: number | null;
+    phase?: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown' | null;
+  }>;
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
   has_route: boolean;
   route_polyline: string | null;
@@ -403,7 +413,12 @@ function currentShoeName(d: RunDetail): string {
 }
 /**
  * Render the temp range as "65°F → 77°F" when the span shifted ≥3°F,
- * otherwise fall back to the single start temp.
+ * otherwise fall back to peak (or start, or single temp_f).
+ *
+ * Per the backend agent's contract (2026-05-31 confirmation):
+ *   · start + end differ ≥3°F → "65°F → 77°F"
+ *   · otherwise → peak (most representative for the runner)
+ *   · legacy single-point rows have temp_range_f=null → temp_f
  *
  * Closes coverage row 945 (single-point temp) and row 904 (PARTIAL
  * temp_f_peak surfacing) on the WEB Run Detail surface.
@@ -413,6 +428,10 @@ function renderTempRange(d: RunDetail): string {
   if (tr && tr.start != null && tr.end != null && Math.abs(tr.end - tr.start) >= 3) {
     return `${Math.round(tr.start)}°F → ${Math.round(tr.end)}°F`;
   }
+  // Span enrichment present but didn't shift much · prefer peak as the
+  // honest "what you ran in" snapshot.
+  if (tr && tr.peak != null) return `${Math.round(tr.peak)}°F`;
+  // Legacy single-point fallback.
   if (d.temp_f != null) return `${Math.round(d.temp_f)}°F`;
   return '';
 }
