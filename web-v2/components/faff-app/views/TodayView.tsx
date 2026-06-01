@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
@@ -735,6 +736,38 @@ function PlannedHeroV2({
     : null;
   const adaptVerbCopy = adapted ? (adaptVerb[d.adaptation!.kind ?? 'other'] ?? 'Adjusted') : '';
 
+  // 2026-06-01 · Restore original. Same POST /api/plan/restore endpoint
+  // the modal version uses (backend commit d8a4082d). Surfaced inline
+  // on the hero adaptation banner so the runner sees it where they're
+  // already looking · the modal version on Train tab still exists for
+  // when the runner arrives via FULL PLAN / KEY WORKOUTS chip click.
+  const router = useRouter();
+  const [restoring, setRestoring] = useState(false);
+  const [restoreErr, setRestoreErr] = useState<string | null>(null);
+  const [restoreDone, setRestoreDone] = useState(false);
+  async function handleRestore() {
+    if (!d.planWorkoutId || restoring) return;
+    setRestoring(true);
+    setRestoreErr(null);
+    try {
+      const r = await fetch('/api/plan/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workoutId: d.planWorkoutId }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !(j as { ok?: boolean }).ok) {
+        throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+      }
+      setRestoreDone(true);
+      router.refresh();
+    } catch (e) {
+      setRestoreErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   return (
     <div className={`hero-v2${skipped ? ' skipped' : ''}`}>
       {/* hmain now hosts title + leftstack only · session moved out to
@@ -755,6 +788,25 @@ function PlannedHeroV2({
             <span className="adapt-body">
               <b>{adaptVerbCopy} from {adaptedFromLabel.toUpperCase()}.</b>
               {d.adaptation?.reason ? <> {d.adaptation.reason}</> : null}
+              {d.planWorkoutId && !restoreDone ? (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="adapt-restore"
+                    disabled={restoring}
+                    onClick={handleRestore}
+                  >
+                    {restoring ? 'Restoring…' : 'Restore original →'}
+                  </button>
+                </>
+              ) : null}
+              {restoreDone ? (
+                <span className="adapt-restored"> · Restored. Refreshing…</span>
+              ) : null}
+              {restoreErr ? (
+                <span className="adapt-restore-err"> · Could not restore: {restoreErr}</span>
+              ) : null}
             </span>
           </div>
         ) : null}

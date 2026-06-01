@@ -193,6 +193,17 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .adaptline .adapt-glyph{flex:0 0 auto;color:#FFCE8A;display:flex;align-items:center;justify-content:center;margin-top:1px;}
 .hero-v2 .adaptline .adapt-body{font-size:12px;line-height:1.45;color:var(--txt);}
 .hero-v2 .adaptline .adapt-body b{font-weight:700;color:#FFCE8A;}
+/* 2026-06-01 · inline Restore-original CTA on the hero adaptation
+   banner. Same POST /api/plan/restore handler as the modal version;
+   exists here for discoverability on TodayView where the modal isn't
+   the natural entry point. Styled as an inline text link inside the
+   same sentence as the adaptation provenance · keeps the banner
+   compact and the action discoverable in one read. */
+.hero-v2 .adaptline .adapt-restore{display:inline;background:transparent;border:none;padding:0;margin:0;color:#FFCE8A;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;}
+.hero-v2 .adaptline .adapt-restore:hover:not(:disabled){opacity:.78;}
+.hero-v2 .adaptline .adapt-restore:disabled{opacity:.55;cursor:wait;text-decoration:none;}
+.hero-v2 .adaptline .adapt-restored{color:#FFCE8A;font-weight:600;}
+.hero-v2 .adaptline .adapt-restore-err{color:#FC4D64;font-weight:600;}
 .hero-v2 .leftstack{margin-top:24px;display:flex;flex-direction:column;}
 .hero-v2 .stats{display:flex;gap:30px;margin-top:0;}
 .hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;line-height:.9;}
