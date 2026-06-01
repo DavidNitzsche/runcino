@@ -95,20 +95,24 @@
 .fa-verdict .eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 700 9.5px/1 var(--font-body); letter-spacing: 1.6px; text-transform: uppercase; color: var(--amber-bright); }
 .fa-verdict .vd { font: 600 25px/1.05 var(--font-display); letter-spacing: -.4px; color: var(--txt); margin-top: 11px; text-wrap: balance; }
 .fa-verdict .facts { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
-.fa-verdict .facts .f { position: relative; padding-left: 16px; font: 500 13.5px/1.5 var(--font-body); color: rgba(246,247,248,.84); }
+.fa-verdict .facts .f { position: relative; padding-left: 16px; font: 500 13.5px/1.5 var(--font-body); color: var(--txt); }
 .fa-verdict .facts .f::before { content: ""; position: absolute; left: 0; top: 9px; width: 5px; height: 5px; border-radius: 50%; background: var(--amber-bright); }
 .fa-verdict .facts .f b { color: var(--txt); font-weight: 700; }
 .fa-verdict .cites { margin-top: 15px; }
 
-.fa-callout { display: flex; gap: 11px; padding: 12px 14px; border-radius: var(--r-card); margin-top: 10px; }
+/* Dark-glass scrim · the colored variant tint is applied to the
+   BORDER + ICON + LABEL only. Body text stays full-opacity #fff so
+   nothing fades into a luminous warm mesh. Honors all four
+   legibility laws from the README. */
+.fa-callout { display: flex; gap: 11px; padding: 12px 14px; border-radius: var(--r-card); margin-top: 10px; background: rgba(10,12,16,.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .fa-callout .ic { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 7px; display: flex; align-items: center; justify-content: center; }
 .fa-callout .ic svg { width: 14px; height: 14px; }
-.fa-callout .tx { font: 500 12.5px/1.5 var(--font-body); color: rgba(246,247,248,.86); }
-.fa-callout .tx .lbl { display: block; font: 700 9px/1 var(--font-body); letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 5px; }
-.fa-callout--cond { background: rgba(252,82,0,.08); border: 1px solid rgba(252,82,0,.26); }
-.fa-callout--cond .ic { background: rgba(252,82,0,.16); } .fa-callout--cond .ic svg { stroke: var(--race); } .fa-callout--cond .lbl { color: var(--race); }
-.fa-callout--tip { background: rgba(39,180,224,.07); border: 1px solid rgba(39,180,224,.24); }
-.fa-callout--tip .ic { background: rgba(39,180,224,.16); } .fa-callout--tip .ic svg { stroke: var(--dist); } .fa-callout--tip .lbl { color: var(--dist); }
+.fa-callout .tx { font: 500 13px/1.55 var(--font-body); color: #FFFFFF; }
+.fa-callout .tx .lbl { display: block; font: 700 10px/1 var(--font-body); letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 5px; }
+.fa-callout--cond { border: 1px solid rgba(255,136,71,.55); }
+.fa-callout--cond .ic { background: rgba(255,136,71,.24); } .fa-callout--cond .ic svg { stroke: #FFB07A; } .fa-callout--cond .lbl { color: #FFB07A; }
+.fa-callout--tip { border: 1px solid rgba(85,221,208,.55); }
+.fa-callout--tip .ic { background: rgba(85,221,208,.24); } .fa-callout--tip .ic svg { stroke: #7BE8DC; } .fa-callout--tip .lbl { color: #7BE8DC; }
 
 .fa-checkchips .q { font: 700 10px/1 var(--font-body); letter-spacing: 1.4px; text-transform: uppercase; color: var(--fa-mute); }
 .fa-checkchips .grp { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 16px; }
@@ -249,7 +253,7 @@
 .fa-why > summary .car { margin-left: auto; width: 15px; height: 15px; stroke: var(--fa-mute); transition: transform .2s var(--ease-smooth); }
 .fa-why[open] > summary .car { transform: rotate(180deg); }
 .fa-why .cite { padding: 0 0 14px; }
-.fa-why .cite p { font: 500 13px/1.55 var(--font-body); color: rgba(246,247,248,.82); margin: 0 0 9px; }
+.fa-why .cite p { font: 500 13px/1.55 var(--font-body); color: var(--txt); margin: 0 0 9px; }
 .fa-why .cite a { display: inline-flex; align-items: center; gap: 5px; font: 700 11px/1 var(--font-body); letter-spacing: .4px; color: var(--dist); text-decoration: none; }
 .fa-why .cite .src { font: 600 10.5px/1 var(--font-display); color: var(--dim); letter-spacing: .5px; }
 
@@ -406,7 +410,7 @@
 .fa-course .ends .e.finish .pin { background: var(--race); }
 .fa-course .ends .e .x { font: 700 11px/1.2 var(--font-body); color: var(--txt); }
 .fa-course .ends .e .x small { display: block; font: 700 8.5px/1 var(--font-body); letter-spacing: 1px; text-transform: uppercase; color: var(--fa-mute); margin-bottom: 3px; }
-.fa-course .notes { font: 500 12.5px/1.55 var(--font-body); color: rgba(246,247,248,.8); margin-top: 13px; }
+.fa-course .notes { font: 500 12.5px/1.55 var(--font-body); color: var(--txt); margin-top: 13px; }
 .fa-course .notes .lbl { display: block; font: 700 9px/1 var(--font-body); letter-spacing: 1.4px; text-transform: uppercase; color: var(--amber-bright); margin-bottom: 6px; }
 
 /* ============================================================

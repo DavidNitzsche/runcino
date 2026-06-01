@@ -161,29 +161,41 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                     </p>
                   ))}
                   {recap.conditions_note && (
+                    // Dark glass scrim with colored accent on the label
+                    // and border ONLY. Body text stays full-opacity #fff
+                    // so it never fades into a warm mesh. Per the four
+                    // legibility laws — guarantee contrast on the mesh,
+                    // secondary text is solid, color the accent not the
+                    // sentence.
                     <div style={{
-                      marginTop: 10, padding: '10px 12px', borderRadius: 8,
-                      background: 'rgba(255,136,71,0.12)',
-                      border: '1px solid rgba(255,136,71,0.32)',
-                      fontSize: 12.5, lineHeight: 1.5, color: '#FFE7C2',
+                      marginTop: 10, padding: '11px 13px', borderRadius: 10,
+                      background: 'rgba(10,12,16,0.62)',
+                      border: '1px solid rgba(255,136,71,0.55)',
+                      backdropFilter: 'blur(10px)',
+                      WebkitBackdropFilter: 'blur(10px)',
+                      fontSize: 13, lineHeight: 1.55, color: '#FFFFFF',
+                      fontWeight: 500,
                     }}>
                       <div style={{
-                        fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
-                        textTransform: 'uppercase', color: '#FF8847', marginBottom: 4,
+                        fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
+                        textTransform: 'uppercase', color: '#FFB07A', marginBottom: 5,
                       }}>CONDITIONS</div>
                       {recap.conditions_note}
                     </div>
                   )}
                   {recap.coach_tip && (
                     <div style={{
-                      marginTop: 8, padding: '10px 12px', borderRadius: 8,
-                      background: 'rgba(85,221,208,0.10)',
-                      border: '1px solid rgba(85,221,208,0.32)',
-                      fontSize: 12.5, lineHeight: 1.5, color: '#cfeeec',
+                      marginTop: 8, padding: '11px 13px', borderRadius: 10,
+                      background: 'rgba(10,12,16,0.62)',
+                      border: '1px solid rgba(85,221,208,0.55)',
+                      backdropFilter: 'blur(10px)',
+                      WebkitBackdropFilter: 'blur(10px)',
+                      fontSize: 13, lineHeight: 1.55, color: '#FFFFFF',
+                      fontWeight: 500,
                     }}>
                       <div style={{
-                        fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
-                        textTransform: 'uppercase', color: '#54ddd0', marginBottom: 4,
+                        fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
+                        textTransform: 'uppercase', color: '#7BE8DC', marginBottom: 5,
                       }}>COACH TIP</div>
                       {recap.coach_tip}
                     </div>
