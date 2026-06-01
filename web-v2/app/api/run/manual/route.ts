@@ -71,6 +71,16 @@ export async function POST(req: NextRequest) {
     // the manual row to lose to the richer source.
     try { await autoMergeForDate(userId, body.date); } catch {}
     await bustBriefingCacheForEvent(userId, 'run_ingest');
+
+    // Auto-push to Strava when the runner opted in. Manual entries are
+    // valid candidates · runners often hand-log a treadmill / track
+    // session that didn't fire any of the watch paths, and Strava
+    // tolerates an upload with no GPS as long as the TCX carries a
+    // duration + sport. The helper checks profile.strava_auto_push
+    // and fires in the background · idempotent on run_id.
+    const { maybeAutoPush } = await import('@/lib/strava/auto-push');
+    maybeAutoPush(userId, slug);
+
     return NextResponse.json({ ok: true, id: slug });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

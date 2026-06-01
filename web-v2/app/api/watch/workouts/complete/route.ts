@@ -127,6 +127,13 @@ export async function POST(req: NextRequest) {
   // don't need fresh voice for a single run. See lib/coach/regen-policy.ts.
   await bustBriefingCacheForEvent(userId, 'run_ingest');
 
+  // Auto-push to Strava when the runner opted in. Fire-and-forget · the
+  // helper checks profile.strava_auto_push internally, pushes in the
+  // background, and never blocks this response. Idempotent on run_id ·
+  // a re-POST of the same watch completion won't double-upload.
+  const { maybeAutoPush } = await import('@/lib/strava/auto-push');
+  maybeAutoPush(userId, String(stableId));
+
   return NextResponse.json({
     ok: true,
     workoutId: body.workoutId,
