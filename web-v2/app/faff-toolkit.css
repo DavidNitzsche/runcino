@@ -477,3 +477,130 @@
 .fa-err svg { width: 18px; height: 18px; stroke: var(--over); flex: 0 0 auto; }
 .fa-err .t { font: 500 12.5px/1.4 var(--font-body); color: var(--txt); }
 .fa-err .retry { margin-left: auto; font: 700 12px/1 var(--font-body); color: var(--over); cursor: pointer; white-space: nowrap; background: transparent; border: 0; padding: 0; }
+
+/* ============================================================
+   K · TARGETS GAP PANEL · "Closing the gap"
+   Replaces the flat projection sparkline with a teaching panel:
+   truth headline + VDOT pills + gap decomposition bar + hit list.
+   Source: designs/from Design agent/Targets page/ (2026-05-31).
+   Honors the 4 legibility laws · dark glass scrim, solid body
+   text, color accents only on dots/swatches/chips.
+   ============================================================ */
+.fa-gappanel { position: relative; border-radius: var(--r-tile); background: rgba(11,13,18,.62); border: 1px solid rgba(255,255,255,.13); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); box-shadow: 0 20px 60px -28px rgba(0,0,0,.6); overflow: hidden; }
+.fa-gappanel .pad { padding: 22px 24px; }
+.fa-gappanel .div { height: 1px; background: rgba(255,255,255,.09); }
+
+/* Header row · eyebrow + status chip */
+.fa-gappanel .phead { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px 20px; flex-wrap: wrap; }
+.fa-gappanel .phead .eyebrow { font: 800 11px/1 var(--font-body); letter-spacing: 2.4px; text-transform: uppercase; color: var(--fa-mute); white-space: nowrap; }
+
+/* Status chip · sized for Targets, four kinds */
+.fa-gappanel .statuschip { display: inline-flex; align-items: center; gap: 9px; font: 700 11px/1 var(--font-body); letter-spacing: 1.2px; text-transform: uppercase; padding: 9px 14px; border-radius: var(--r-pill); background: rgba(255,255,255,.06); border: 1px solid var(--glass-line); color: var(--txt); white-space: nowrap; }
+.fa-gappanel .statuschip .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 10px -1px currentColor; }
+.fa-gappanel .statuschip.good { border-color: var(--status-good-border); color: var(--status-good-text); }
+.fa-gappanel .statuschip.good .dot { background: var(--green); color: var(--green); }
+.fa-gappanel .statuschip.watch { border-color: rgba(243,173,56,.5); color: var(--goal); }
+.fa-gappanel .statuschip.watch .dot { background: var(--goal); color: var(--goal); }
+.fa-gappanel .statuschip.off { border-color: rgba(252,77,100,.5); color: var(--over); }
+.fa-gappanel .statuschip.off .dot { background: var(--over); color: var(--over); }
+.fa-gappanel .statuschip.info { border-color: rgba(39,180,224,.45); color: var(--dist); }
+.fa-gappanel .statuschip.info .dot { background: var(--dist); color: var(--dist); }
+
+/* Truth headline · first-class display copy */
+.fa-gappanel .truth { margin-top: 18px; }
+.fa-gappanel .truth .hl { font: 600 30px/1.05 var(--font-display); letter-spacing: -.5px; color: var(--txt); text-wrap: balance; }
+.fa-gappanel .truth .hl em { font-style: normal; color: var(--amber-bright); }
+.fa-gappanel .truth .sub { font: 500 14px/1.55 var(--font-body); color: var(--fa-mute); margin-top: 11px; max-width: 62ch; }
+.fa-gappanel .truth .sub b { color: var(--txt); font-weight: 700; }
+
+/* VDOT meta strip */
+.fa-gappanel .vmeta { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 14px; margin-top: 16px; }
+.fa-gappanel .vmeta .pill { display: inline-flex; align-items: baseline; gap: 7px; font: 500 12px/1 var(--font-body); color: var(--fa-mute); white-space: nowrap; background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: var(--r-chip); padding: 8px 12px; }
+.fa-gappanel .vmeta .pill b { font: 600 14px/1 var(--font-display); color: var(--txt); letter-spacing: -.3px; }
+.fa-gappanel .vmeta .pill .up { color: var(--mint-readiness); font-weight: 700; }
+.fa-gappanel .vmeta .next { font: 600 12px/1.3 var(--font-body); color: var(--amber-bright); display: inline-flex; align-items: center; gap: 7px; }
+
+/* Gap decomposition · header */
+.fa-gappanel .gaphd { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.fa-gappanel .gaphd .l { font: 800 11px/1 var(--font-body); letter-spacing: 2.2px; text-transform: uppercase; color: var(--fa-mute); white-space: nowrap; }
+.fa-gappanel .gaphd .r { font: 600 14px/1 var(--font-display); color: var(--amber-bright); letter-spacing: -.2px; white-space: nowrap; }
+.fa-gappanel .gaphd .r b { font-size: 20px; }
+
+/* Gap bar · proportional segments */
+.fa-gappanel .gapbar { display: flex; height: 30px; border-radius: 9px; overflow: hidden; margin-top: 15px; gap: 2px; background: rgba(0,0,0,.25); }
+.fa-gappanel .gapbar .seg { position: relative; min-width: 3px; cursor: pointer; transition: filter .15s, transform .15s; display: flex; align-items: center; justify-content: center; border: 0; padding: 0; }
+.fa-gappanel .gapbar .seg:hover { filter: brightness(1.12); }
+.fa-gappanel .gapbar .seg .pct { font: 700 10px/1 var(--font-body); color: rgba(0,0,0,.62); letter-spacing: .3px; }
+.fa-gappanel .gapbar .seg.is-active { box-shadow: inset 0 0 0 2px rgba(255,255,255,.85); }
+
+.fa-gappanel .gapends { display: flex; justify-content: space-between; margin-top: 9px; font: 700 10px/1 var(--font-body); letter-spacing: 1.2px; text-transform: uppercase; }
+.fa-gappanel .gapends .goal { color: var(--goal); }
+.fa-gappanel .gapends .proj { color: var(--fa-mute); }
+
+/* Legend · 4 tappable cells */
+.fa-gappanel .legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 16px; }
+.fa-gappanel .legcell { text-align: left; padding: 13px 13px 12px; border-radius: var(--r-chip); background: rgba(255,255,255,.035); border: 1px solid var(--line); cursor: pointer; transition: background .15s, border-color .15s; }
+.fa-gappanel .legcell:hover { background: rgba(255,255,255,.075); }
+.fa-gappanel .legcell.is-active { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.28); }
+.fa-gappanel .legcell .top { display: flex; align-items: center; gap: 8px; }
+.fa-gappanel .legcell .swatch { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+.fa-gappanel .legcell .nm { font: 700 10px/1 var(--font-body); letter-spacing: .8px; text-transform: uppercase; color: var(--fa-mute); }
+.fa-gappanel .legcell .v { font: 600 24px/.92 var(--font-display); letter-spacing: -.4px; color: var(--txt); margin-top: 9px; }
+.fa-gappanel .legcell .tag { display: inline-block; font: 700 8px/1 var(--font-body); letter-spacing: 1px; text-transform: uppercase; margin-top: 9px; padding: 4px 6px; border-radius: 5px; }
+.fa-gappanel .tag-train { color: var(--mint-readiness); background: rgba(134,239,160,.12); }
+.fa-gappanel .tag-partly { color: var(--goal); background: rgba(243,173,56,.13); }
+.fa-gappanel .tag-fixed { color: var(--fa-mute); background: rgba(255,255,255,.07); }
+
+/* Doctrine drawer · expands under the legend */
+.fa-gappanel .drawer { margin-top: 12px; border-radius: var(--r-card); background: rgba(0,0,0,.22); border: 1px solid var(--line); overflow: hidden; max-height: 0; transition: max-height .3s var(--ease-smooth); }
+.fa-gappanel .drawer.open { max-height: 280px; }
+.fa-gappanel .drawer .di { padding: 15px 16px; }
+.fa-gappanel .drawer .di p { font: 500 13.5px/1.6 var(--font-body); color: var(--txt); margin: 0; }
+.fa-gappanel .drawer .di p b { color: var(--amber-bright); font-weight: 700; }
+.fa-gappanel .drawer .di .src { font: 600 10.5px/1 var(--font-display); color: var(--dim); letter-spacing: .5px; margin-top: 11px; }
+
+/* Hit list · "what would move it" */
+.fa-gappanel .hitrow { display: flex; align-items: center; gap: 15px; padding: 14px 4px; border-bottom: 1px solid var(--line); }
+.fa-gappanel .hitrow:last-child { border-bottom: 0; }
+.fa-gappanel .hitrow .ic { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.06); border: 1px solid var(--glass-line); }
+.fa-gappanel .hitrow .ic svg { width: 17px; height: 17px; stroke: var(--amber-bright); }
+.fa-gappanel .hitrow .bd { flex: 1; min-width: 0; }
+.fa-gappanel .hitrow .bd .t { font: 600 14px/1.3 var(--font-body); color: var(--txt); }
+.fa-gappanel .hitrow .bd .t b { color: var(--amber-bright); font-weight: 700; }
+.fa-gappanel .hitrow .bd .w { font: 500 12.5px/1.45 var(--font-body); color: var(--fa-mute); margin-top: 4px; }
+.fa-gappanel .hitrow .delta { flex: 0 0 auto; text-align: right; }
+.fa-gappanel .hitrow .delta .to { font: 600 18px/.9 var(--font-display); color: var(--txt); letter-spacing: -.4px; }
+.fa-gappanel .hitrow .delta .d { font: 700 10px/1 var(--font-body); letter-spacing: .6px; margin-top: 5px; }
+.fa-gappanel .hitrow .delta .d.cut { color: var(--mint-readiness); }
+.fa-gappanel .hitrow .delta .d.fixed { color: var(--fa-mute); }
+.fa-gappanel .hitrow .lvtag { display: inline-block; font: 700 8px/1 var(--font-body); letter-spacing: 1px; text-transform: uppercase; padding: 4px 6px; border-radius: 5px; margin-left: 9px; vertical-align: middle; }
+
+/* Race-week mode · A/B targets + cues */
+.fa-gappanel .abtarget { display: flex; gap: 34px; margin-top: 6px; flex-wrap: wrap; }
+.fa-gappanel .abtarget .t { display: flex; flex-direction: column; gap: 5px; }
+.fa-gappanel .abtarget .t .lbl { font: 700 9.5px/1 var(--font-body); letter-spacing: 1.4px; text-transform: uppercase; }
+.fa-gappanel .abtarget .t.a .lbl { color: var(--goal); }
+.fa-gappanel .abtarget .t.b .lbl { color: var(--fa-mute); }
+.fa-gappanel .abtarget .t .v { font: 600 34px/.9 var(--font-display); letter-spacing: -1px; color: var(--txt); }
+.fa-gappanel .abtarget .t .p { font: 500 11.5px/1 var(--font-body); color: var(--fa-mute); }
+.fa-gappanel .cue { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.fa-gappanel .cue:last-child { border-bottom: 0; }
+.fa-gappanel .cue .n { flex: 0 0 auto; font: 600 13px/1 var(--font-display); color: var(--race); width: 22px; }
+.fa-gappanel .cue .x { font: 500 14px/1.45 var(--font-body); color: var(--txt); }
+.fa-gappanel .cue .x b { color: var(--amber-bright); font-weight: 700; }
+
+/* Cold-start empty */
+.fa-gappanel .coldempty { display: flex; flex-direction: column; align-items: flex-start; gap: 13px; padding: 22px; border-radius: var(--r-card); background: rgba(255,255,255,.025); border: 1px dashed var(--glass-line); margin-top: 18px; }
+.fa-gappanel .coldempty .ic { width: 38px; height: 38px; border-radius: 11px; background: rgba(255,255,255,.05); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; }
+.fa-gappanel .coldempty .ic svg { width: 19px; height: 19px; stroke: var(--fa-mute); }
+.fa-gappanel .coldempty .t { font: 500 14px/1.55 var(--font-body); color: var(--fa-mute); max-width: 54ch; }
+.fa-gappanel .coldempty .t b { color: var(--txt); font-weight: 700; }
+.fa-gappanel .coldempty .cta { display: inline-flex; align-items: center; gap: 8px; font: 700 12.5px/1 var(--font-body); color: var(--bg); background: var(--txt); border: 0; border-radius: var(--r-chip); padding: 12px 16px; cursor: pointer; }
+.fa-gappanel .coldempty .cta svg { width: 14px; height: 14px; stroke: currentColor; }
+
+/* Mobile · stack legend to 2 cols */
+@media (max-width: 760px) {
+  .fa-gappanel .legend { grid-template-columns: repeat(2, 1fr); }
+  .fa-gappanel .hitrow .delta .to { font-size: 15px; }
+}
+
