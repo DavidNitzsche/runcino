@@ -54,10 +54,22 @@ export async function POST(req: NextRequest) {
  * / host headers so the URL is the real public faff.run domain.
  */
 function publicOrigin(req: NextRequest): string {
+  // Env-var override wins · most reliable on Railway where the proxy
+  // doesn't reliably set x-forwarded-host.
+  const env = process.env.NEXT_PUBLIC_APP_ORIGIN
+    || process.env.APP_ORIGIN
+    || process.env.PUBLIC_URL;
+  if (env) return env.replace(/\/+$/, '');
+
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
   const host = req.headers.get('x-forwarded-host')
     ?? req.headers.get('host')
     ?? 'www.faff.run';
+  // Defensively skip the container-internal binding · if Host came
+  // through as the bind address we'd loop right back into the bug.
+  if (/^(0\.0\.0\.0|127\.0\.0\.1|localhost)(:\d+)?$/.test(host)) {
+    return 'https://www.faff.run';
+  }
   return `${proto}://${host}`;
 }
 

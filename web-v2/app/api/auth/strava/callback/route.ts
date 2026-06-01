@@ -24,10 +24,19 @@ export const dynamic = 'force-dynamic';
  * reached. Read the proxy headers instead.
  */
 function publicOrigin(req: NextRequest): string {
+  const env = process.env.NEXT_PUBLIC_APP_ORIGIN
+    || process.env.APP_ORIGIN
+    || process.env.PUBLIC_URL;
+  if (env) return env.replace(/\/+$/, '');
+
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
   const host = req.headers.get('x-forwarded-host')
     ?? req.headers.get('host')
     ?? 'www.faff.run';
+  // Defensively skip the container-internal binding.
+  if (/^(0\.0\.0\.0|127\.0\.0\.1|localhost)(:\d+)?$/.test(host)) {
+    return 'https://www.faff.run';
+  }
   return `${proto}://${host}`;
 }
 
