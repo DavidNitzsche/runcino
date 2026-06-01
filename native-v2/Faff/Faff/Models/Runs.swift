@@ -37,26 +37,15 @@ struct LogState: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.today = (try? c.decode(String.self, forKey: .today)) ?? ""
-        self.totalRuns = LogState.flexInt(c, .totalRuns) ?? 0
+        self.totalRuns = c.decodeFlexInt(forKey: .totalRuns) ?? 0
         self.totalMi = (try? c.decode(Double.self, forKey: .totalMi)) ?? 0
         self.weeks = (try? c.decode([LogWeek].self, forKey: .weeks)) ?? []
-        self.totalRunsUnfiltered = LogState.flexInt(c, .totalRunsUnfiltered)
+        self.totalRunsUnfiltered = c.decodeFlexInt(forKey: .totalRunsUnfiltered)
         self.totalMiUnfiltered = try? c.decode(Double.self, forKey: .totalMiUnfiltered)
         self.axes = try? c.decode(LogFilterAxes.self, forKey: .axes)
         self.filters = try? c.decode(LogFilters.self, forKey: .filters)
     }
 
-    /// Decode-as-Int-or-Double-rounded-or-nil. Mirrors the server's
-    /// `Number(x) || null` coercion so fractional values from JS don't
-    /// throw and collapse the parent decode.
-    private static func flexInt(
-        _ c: KeyedDecodingContainer<CodingKeys>,
-        _ key: CodingKeys
-    ) -> Int? {
-        if let i = try? c.decode(Int.self, forKey: key) { return i }
-        if let d = try? c.decode(Double.self, forKey: key), d.isFinite { return Int(d.rounded()) }
-        return nil
-    }
 }
 
 // Per-axis available values for the /log filter chip strip — render a chip
@@ -88,7 +77,7 @@ struct LogShoeAxis: Decodable, Identifiable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.slug = try c.decodeIfPresent(String.self, forKey: .slug) ?? ""
         self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
-        self.runs = try c.decodeIfPresent(Int.self, forKey: .runs) ?? 0
+        self.runs = c.decodeFlexInt(forKey: .runs) ?? 0
     }
 }
 
@@ -166,7 +155,7 @@ struct LogRun: Decodable, Identifiable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
         self.date = (try? c.decode(String.self, forKey: .date)) ?? ""
-        self.dow = LogRun.flexInt(c, .dow) ?? 0
+        self.dow = c.decodeFlexInt(forKey: .dow) ?? 0
         self.start_local = try? c.decode(String.self, forKey: .start_local)
         self.name = (try? c.decode(String.self, forKey: .name)) ?? "Run"
         self.source = (try? c.decode(String.self, forKey: .source)) ?? "unknown"
@@ -174,28 +163,16 @@ struct LogRun: Decodable, Identifiable {
         self.distance_mi = (try? c.decode(Double.self, forKey: .distance_mi)) ?? 0
         self.pace = try? c.decode(String.self, forKey: .pace)
         self.time_moving = try? c.decode(String.self, forKey: .time_moving)
-        self.avg_hr = LogRun.flexInt(c, .avg_hr)
-        self.max_hr = LogRun.flexInt(c, .max_hr)
-        self.cadence = LogRun.flexInt(c, .cadence)
-        self.elev_gain_ft = LogRun.flexInt(c, .elev_gain_ft)
+        self.avg_hr = c.decodeFlexInt(forKey: .avg_hr)
+        self.max_hr = c.decodeFlexInt(forKey: .max_hr)
+        self.cadence = c.decodeFlexInt(forKey: .cadence)
+        self.elev_gain_ft = c.decodeFlexInt(forKey: .elev_gain_ft)
         self.workoutType = try? c.decode(String.self, forKey: .workoutType)
         self.phaseLabel = try? c.decode(String.self, forKey: .phaseLabel)
         self.shoeName = try? c.decode(String.self, forKey: .shoeName)
         self.shoeSlug = try? c.decode(String.self, forKey: .shoeSlug)
     }
 
-    /// Decode-as-Int-or-Double-rounded-or-nil. Apple Watch and HK
-    /// averaging emit fractional HR/cadence which is JSON-valid but
-    /// throws against `Int.self` — the trigger for the whole [LogRun]
-    /// decode to fail. This accepts both shapes.
-    private static func flexInt(
-        _ c: KeyedDecodingContainer<CodingKeys>,
-        _ key: CodingKeys
-    ) -> Int? {
-        if let i = try? c.decode(Int.self, forKey: key) { return i }
-        if let d = try? c.decode(Double.self, forKey: key), d.isFinite { return Int(d.rounded()) }
-        return nil
-    }
 }
 
 // MARK: - /api/runs/[id]
@@ -279,14 +256,14 @@ struct RunDetail: Decodable, Identifiable {
         self.type = try c.decodeIfPresent(String.self, forKey: .type)
         self.distance_mi = try c.decodeIfPresent(Double.self, forKey: .distance_mi) ?? 0
         self.pace = try c.decodeIfPresent(String.self, forKey: .pace)
-        self.pace_s_per_mi = try c.decodeIfPresent(Int.self, forKey: .pace_s_per_mi)
+        self.pace_s_per_mi = c.decodeFlexInt(forKey: .pace_s_per_mi)
         self.time_moving = try c.decodeIfPresent(String.self, forKey: .time_moving)
         self.time_elapsed = try c.decodeIfPresent(String.self, forKey: .time_elapsed)
         self.avg_speed_mph = try c.decodeIfPresent(Double.self, forKey: .avg_speed_mph)
-        self.hr_avg = try c.decodeIfPresent(Int.self, forKey: .hr_avg)
-        self.hr_max = try c.decodeIfPresent(Int.self, forKey: .hr_max)
-        self.cadence_avg = try c.decodeIfPresent(Int.self, forKey: .cadence_avg)
-        self.elev_gain_ft = try c.decodeIfPresent(Int.self, forKey: .elev_gain_ft)
+        self.hr_avg = c.decodeFlexInt(forKey: .hr_avg)
+        self.hr_max = c.decodeFlexInt(forKey: .hr_max)
+        self.cadence_avg = c.decodeFlexInt(forKey: .cadence_avg)
+        self.elev_gain_ft = c.decodeFlexInt(forKey: .elev_gain_ft)
         self.temp_f = try c.decodeIfPresent(Double.self, forKey: .temp_f)
         self.has_route = try c.decodeIfPresent(Bool.self, forKey: .has_route) ?? false
         self.route_polyline = try c.decodeIfPresent(String.self, forKey: .route_polyline)
@@ -295,14 +272,14 @@ struct RunDetail: Decodable, Identifiable {
             ?? HRZonePcts(z1: 0, z2: 0, z3: 0, z4: 0, z5: 0)
         self.form = try? c.decode(RunForm.self, forKey: .form)
         self.pace_work = try c.decodeIfPresent(String.self, forKey: .pace_work)
-        self.pace_work_s_per_mi = try c.decodeIfPresent(Int.self, forKey: .pace_work_s_per_mi)
-        self.hr_avg_work = try c.decodeIfPresent(Int.self, forKey: .hr_avg_work)
-        self.cadence_avg_work = try c.decodeIfPresent(Int.self, forKey: .cadence_avg_work)
-        self.work_seconds = try c.decodeIfPresent(Int.self, forKey: .work_seconds)
+        self.pace_work_s_per_mi = c.decodeFlexInt(forKey: .pace_work_s_per_mi)
+        self.hr_avg_work = c.decodeFlexInt(forKey: .hr_avg_work)
+        self.cadence_avg_work = c.decodeFlexInt(forKey: .cadence_avg_work)
+        self.work_seconds = c.decodeFlexInt(forKey: .work_seconds)
         self.phase_breakdown = try c.decodeIfPresent([PhaseBreakdown].self, forKey: .phase_breakdown)
-        self.suffer_score = try c.decodeIfPresent(Int.self, forKey: .suffer_score)
-        self.kudos = try c.decodeIfPresent(Int.self, forKey: .kudos)
-        self.shoe_id = try c.decodeIfPresent(Int.self, forKey: .shoe_id)
+        self.suffer_score = c.decodeFlexInt(forKey: .suffer_score)
+        self.kudos = c.decodeFlexInt(forKey: .kudos)
+        self.shoe_id = c.decodeFlexInt(forKey: .shoe_id)
         self.shoes = try c.decodeIfPresent([RunDetailShoe].self, forKey: .shoes)
         self.hr_zones_from_lthr = try c.decodeIfPresent(HRZonesFromLTHR.self, forKey: .hr_zones_from_lthr)
         self.planned_spec = try c.decodeIfPresent(WorkoutSpec.self, forKey: .planned_spec)

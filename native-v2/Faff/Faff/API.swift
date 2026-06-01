@@ -32,6 +32,22 @@ struct FlexibleDouble: Decodable {
     }
 }
 
+/// Sibling to FlexibleDouble for Int fields. The server emits HR / cadence /
+/// elevation as JS numbers — Apple Watch and HK averaging produce fractional
+/// values which are JSON-valid but throw `Int.self`. One throw inside a
+/// nested Codable failed the whole parent array (the "no runs on iPhone"
+/// failure mode). Every Int decode site that reads server data should use
+/// this helper instead of `try c.decodeIfPresent(Int.self, ...)`.
+extension KeyedDecodingContainer {
+    /// Decode as Int, falling back to Double-rounded, returning nil for
+    /// null/missing/type-mismatch. Mirrors the server's `Number(x) || null`.
+    func decodeFlexInt(forKey key: Key) -> Int? {
+        if let i = try? decode(Int.self, forKey: key) { return i }
+        if let d = try? decode(Double.self, forKey: key), d.isFinite { return Int(d.rounded()) }
+        return nil
+    }
+}
+
 enum APIAuthError: Error { case unauthorized }
 
 enum API {
@@ -789,7 +805,7 @@ struct PlanDay: Decodable, Identifiable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.date_iso = try c.decodeIfPresent(String.self, forKey: .date_iso) ?? ""
-        self.dow = try c.decodeIfPresent(Int.self, forKey: .dow) ?? 0
+        self.dow = c.decodeFlexInt(forKey: .dow) ?? 0
         self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"
         self.distance_mi = try c.decodeIfPresent(Double.self, forKey: .distance_mi) ?? 0
         self.sub_label = try c.decodeIfPresent(String.self, forKey: .sub_label)
@@ -860,7 +876,7 @@ struct ReadinessInput: Decodable, Identifiable, Hashable {
         self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
         self.observedV = try c.decodeIfPresent(String.self, forKey: .observedV)
         self.observedSub = try c.decodeIfPresent(String.self, forKey: .observedSub)
-        self.weight = try c.decodeIfPresent(Int.self, forKey: .weight) ?? 0
+        self.weight = c.decodeFlexInt(forKey: .weight) ?? 0
         self.meaning = try c.decodeIfPresent(String.self, forKey: .meaning) ?? ""
     }
 }
@@ -977,7 +993,7 @@ struct ProfileIdentity: Decodable {
         self.full_name = try c.decodeIfPresent(String.self, forKey: .full_name)
         self.sex = try c.decodeIfPresent(String.self, forKey: .sex)
         self.birthday = try c.decodeIfPresent(String.self, forKey: .birthday)
-        self.age = try c.decodeIfPresent(Int.self, forKey: .age)
+        self.age = c.decodeFlexInt(forKey: .age)
         self.city = try c.decodeIfPresent(String.self, forKey: .city)
         self.height_cm = try c.decodeIfPresent(FlexibleDouble.self, forKey: .height_cm)
         self.experience_level = try c.decodeIfPresent(String.self, forKey: .experience_level)
@@ -1051,13 +1067,13 @@ struct ProfilePhysiology: Decodable {
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.max_hr = try c.decodeIfPresent(Int.self, forKey: .max_hr)
+        self.max_hr = c.decodeFlexInt(forKey: .max_hr)
         self.max_hr_source = try c.decodeIfPresent(String.self, forKey: .max_hr_source)
-        self.rhr = try c.decodeIfPresent(Int.self, forKey: .rhr)
+        self.rhr = c.decodeFlexInt(forKey: .rhr)
         self._vo2 = try c.decodeIfPresent(FlexibleDouble.self, forKey: ._vo2)
         self._weight_lb = try c.decodeIfPresent(FlexibleDouble.self, forKey: ._weight_lb)
         self._vdot = try c.decodeIfPresent(FlexibleDouble.self, forKey: ._vdot)
-        self.lthr = try c.decodeIfPresent(Int.self, forKey: .lthr)
+        self.lthr = c.decodeFlexInt(forKey: .lthr)
         self.lthr_method = try c.decodeIfPresent(String.self, forKey: .lthr_method)
         self.zones = try? c.decode(ProfileZoneTable.self, forKey: .zones)
     }
@@ -1094,7 +1110,7 @@ struct ProfileZoneAnchor: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
-        self.bpm = try c.decodeIfPresent(Int.self, forKey: .bpm) ?? 0
+        self.bpm = c.decodeFlexInt(forKey: .bpm) ?? 0
     }
 }
 
@@ -1110,11 +1126,11 @@ struct ProfileHRZone: Decodable, Identifiable {
     enum CodingKeys: String, CodingKey { case idx, label, shortLabel, lower, upper, purpose }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.idx = try c.decodeIfPresent(Int.self, forKey: .idx) ?? 0
+        self.idx = c.decodeFlexInt(forKey: .idx) ?? 0
         self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
         self.shortLabel = try c.decodeIfPresent(String.self, forKey: .shortLabel) ?? ""
-        self.lower = try c.decodeIfPresent(Int.self, forKey: .lower) ?? 0
-        self.upper = try c.decodeIfPresent(Int.self, forKey: .upper) ?? 0
+        self.lower = c.decodeFlexInt(forKey: .lower) ?? 0
+        self.upper = c.decodeFlexInt(forKey: .upper) ?? 0
         self.purpose = try c.decodeIfPresent(String.self, forKey: .purpose) ?? ""
     }
 }
@@ -1170,7 +1186,7 @@ struct ProfileNextRace: Decodable {
         self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
         self.goal = try c.decodeIfPresent(String.self, forKey: .goal)
-        self.days_to_race = try c.decodeIfPresent(Int.self, forKey: .days_to_race) ?? 0
+        self.days_to_race = c.decodeFlexInt(forKey: .days_to_race) ?? 0
     }
 }
 
@@ -1258,7 +1274,7 @@ struct TrainingState: Decodable {
         self.phases = (try? c.decode([TrainingPlanPhase].self, forKey: .phases)) ?? []
         self.weeks = (try? c.decode([TrainingPlanWeek].self, forKey: .weeks)) ?? []
         self.currentPhase = try c.decodeIfPresent(String.self, forKey: .currentPhase)
-        self.currentWeekIdx = try c.decodeIfPresent(Int.self, forKey: .currentWeekIdx)
+        self.currentWeekIdx = c.decodeFlexInt(forKey: .currentWeekIdx)
         self.nextQuality = try? c.decode(TrainingNextQuality.self, forKey: .nextQuality)
         self.weekDone = try c.decodeIfPresent(Double.self, forKey: .weekDone) ?? 0
         self.weekPlanned = try c.decodeIfPresent(Double.self, forKey: .weekPlanned)
@@ -1280,7 +1296,7 @@ struct TrainingRace: Decodable {
         self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
         self.goal = try c.decodeIfPresent(String.self, forKey: .goal)
-        self.days_to_race = try c.decodeIfPresent(Int.self, forKey: .days_to_race) ?? 0
+        self.days_to_race = c.decodeFlexInt(forKey: .days_to_race) ?? 0
     }
 }
 
@@ -1294,8 +1310,8 @@ struct TrainingPlanPhase: Decodable, Identifiable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
-        self.startWeekIdx = try c.decodeIfPresent(Int.self, forKey: .startWeekIdx) ?? 0
-        self.endWeekIdx = try c.decodeIfPresent(Int.self, forKey: .endWeekIdx) ?? 0
+        self.startWeekIdx = c.decodeFlexInt(forKey: .startWeekIdx) ?? 0
+        self.endWeekIdx = c.decodeFlexInt(forKey: .endWeekIdx) ?? 0
     }
 }
 
@@ -1311,7 +1327,7 @@ struct TrainingPlanWeek: Decodable, Identifiable {
     enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.idx = try c.decodeIfPresent(Int.self, forKey: .idx) ?? 0
+        self.idx = c.decodeFlexInt(forKey: .idx) ?? 0
         self.phase = try c.decodeIfPresent(String.self, forKey: .phase) ?? ""
         self.startDate = try c.decodeIfPresent(String.self, forKey: .startDate) ?? ""
         self.plannedMi = try c.decodeIfPresent(Double.self, forKey: .plannedMi) ?? 0
@@ -1334,7 +1350,7 @@ struct TrainingPlanDay: Decodable, Identifiable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
-        self.dow = try c.decodeIfPresent(Int.self, forKey: .dow) ?? 0
+        self.dow = c.decodeFlexInt(forKey: .dow) ?? 0
         self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"
         self.mi = try c.decodeIfPresent(Double.self, forKey: .mi) ?? 0
         self.label = try c.decodeIfPresent(String.self, forKey: .label)
@@ -1354,7 +1370,7 @@ struct TrainingNextQuality: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
-        self.dow = try c.decodeIfPresent(Int.self, forKey: .dow) ?? 0
+        self.dow = c.decodeFlexInt(forKey: .dow) ?? 0
         self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"
         self.label = try c.decodeIfPresent(String.self, forKey: .label)
         self.mi = try c.decodeIfPresent(Double.self, forKey: .mi) ?? 0
@@ -1430,7 +1446,7 @@ struct HealthDayBpm: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
-        self.bpm = try c.decodeIfPresent(Int.self, forKey: .bpm) ?? 0
+        self.bpm = c.decodeFlexInt(forKey: .bpm) ?? 0
     }
 }
 struct HealthDayMs: Decodable {
@@ -1439,7 +1455,7 @@ struct HealthDayMs: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
-        self.ms = try c.decodeIfPresent(Int.self, forKey: .ms) ?? 0
+        self.ms = c.decodeFlexInt(forKey: .ms) ?? 0
     }
 }
 struct HealthDayLb: Decodable {
@@ -1473,9 +1489,9 @@ struct RhrSummary: Decodable {
     enum CodingKeys: String, CodingKey { case current, baseline, delta }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.current = try c.decodeIfPresent(Int.self, forKey: .current)
-        self.baseline = try c.decodeIfPresent(Int.self, forKey: .baseline)
-        self.delta = try c.decodeIfPresent(Int.self, forKey: .delta)
+        self.current = c.decodeFlexInt(forKey: .current)
+        self.baseline = c.decodeFlexInt(forKey: .baseline)
+        self.delta = c.decodeFlexInt(forKey: .delta)
     }
 }
 struct HrvSummary: Decodable {
@@ -1486,8 +1502,8 @@ struct HrvSummary: Decodable {
     enum CodingKeys: String, CodingKey { case current, baseline, pctAboveBaseline }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.current = try c.decodeIfPresent(Int.self, forKey: .current)
-        self.baseline = try c.decodeIfPresent(Int.self, forKey: .baseline)
+        self.current = c.decodeFlexInt(forKey: .current)
+        self.baseline = c.decodeFlexInt(forKey: .baseline)
         self.pctAboveBaseline = try c.decodeIfPresent(Double.self, forKey: .pctAboveBaseline)
     }
 }
@@ -1507,7 +1523,7 @@ struct CadenceSummary: Decodable {
     enum CodingKeys: String, CodingKey { case baseline }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.baseline = try c.decodeIfPresent(Int.self, forKey: .baseline)
+        self.baseline = c.decodeFlexInt(forKey: .baseline)
     }
 }
 struct Vo2Summary: Decodable {

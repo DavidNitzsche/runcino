@@ -51,7 +51,7 @@ struct RunPurpose: Decodable {
         self.phase = try c.decodeIfPresent(String.self, forKey: .phase)
         self.plannedMi = try c.decodeIfPresent(Double.self, forKey: .plannedMi) ?? 0
         self.raceDistanceMi = try c.decodeIfPresent(Double.self, forKey: .raceDistanceMi)
-        self.weeksToRace = try c.decodeIfPresent(Int.self, forKey: .weeksToRace)
+        self.weeksToRace = c.decodeFlexInt(forKey: .weeksToRace)
         self.verdict = try c.decodeIfPresent(String.self, forKey: .verdict) ?? ""
         self.facts = (try? c.decode([String].self, forKey: .facts)) ?? []
     }

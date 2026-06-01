@@ -70,7 +70,7 @@ struct LearnCitation: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.author = try c.decodeIfPresent(String.self, forKey: .author) ?? ""
-        self.year = try c.decodeIfPresent(Int.self, forKey: .year) ?? 0
+        self.year = c.decodeFlexInt(forKey: .year) ?? 0
         self.title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
         self.journal = try c.decodeIfPresent(String.self, forKey: .journal)
         self.doi = try c.decodeIfPresent(String.self, forKey: .doi)

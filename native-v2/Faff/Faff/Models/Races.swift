@@ -38,7 +38,7 @@ struct CourseLibraryProvenance: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.source = try c.decodeIfPresent(String.self, forKey: .source)
-        self.contributor_count = try c.decodeIfPresent(Int.self, forKey: .contributor_count) ?? 0
+        self.contributor_count = c.decodeFlexInt(forKey: .contributor_count) ?? 0
     }
 }
 
@@ -92,7 +92,7 @@ struct RaceDetail: Decodable {
         self.distance_mi = try c.decodeIfPresent(Double.self, forKey: .distance_mi)
         self.location = try c.decodeIfPresent(String.self, forKey: .location)
         self.is_past = try c.decodeIfPresent(Bool.self, forKey: .is_past)
-        self.days = try c.decodeIfPresent(Int.self, forKey: .days)
+        self.days = c.decodeFlexInt(forKey: .days)
         self.finishTime = try c.decodeIfPresent(String.self, forKey: .finishTime)
         self.pb = try c.decodeIfPresent(Bool.self, forKey: .pb)
         self.matchedRun = try c.decodeIfPresent(RaceMatchedRun.self, forKey: .matchedRun)
@@ -111,9 +111,9 @@ struct RaceMatchedRun: Decodable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.activity_id = try c.decodeIfPresent(String.self, forKey: .activity_id)
         self.pace = try c.decodeIfPresent(String.self, forKey: .pace)
-        self.avg_hr = try c.decodeIfPresent(Int.self, forKey: .avg_hr)
-        self.cadence = try c.decodeIfPresent(Int.self, forKey: .cadence)
-        self.elev_gain_ft = try c.decodeIfPresent(Int.self, forKey: .elev_gain_ft)
+        self.avg_hr = c.decodeFlexInt(forKey: .avg_hr)
+        self.cadence = c.decodeFlexInt(forKey: .cadence)
+        self.elev_gain_ft = c.decodeFlexInt(forKey: .elev_gain_ft)
     }
 }
 
