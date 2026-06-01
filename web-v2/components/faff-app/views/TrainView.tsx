@@ -171,13 +171,24 @@ export function TrainView({
   // triggered a plan change AND future workouts that were modified both
   // surface a follow-on "→ Adapted" line.
   const milestones = useMemo(() => {
+    /** 2026-06-01 · Mile.influence shape extended to carry the backend's
+     *  trainingInfluence kinds (on_track / consistent / working /
+     *  slipping / compromised) in addition to the legacy execution-
+     *  derived kinds (hit / close / off). When pick.trainingInfluence
+     *  is present we prefer it · backend's authored copy reads the
+     *  workout's effect on race trajectory, not just execution
+     *  mechanics. Backend brief: training-trajectory-and-adapt-dedup-
+     *  landed.md · commit 2b7b4889. */
+    type InfluenceKind =
+      | 'hit' | 'close' | 'off'                  // legacy execution
+      | 'on_track' | 'consistent' | 'working' | 'slipping' | 'compromised';
     type Mile = {
       wkLabel: string; dot: string; title: string; sub: string;
       state: 'DONE' | 'NOW' | 'KEY' | '' | 'RACE';
       raceRow?: boolean;
       date?: string;
       done?: boolean;
-      influence?: { kind: 'hit' | 'close' | 'off'; copy: string } | null;
+      influence?: { kind: InfluenceKind; copy: string } | null;
       adapt?: { kind: 'incoming' | 'outgoing'; copy: string } | null;
     };
     const out: Mile[] = [];
@@ -188,6 +199,10 @@ export function TrainView({
       donePaceSec?: number | null; doneAvgHr?: number | null;
       doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
       date?: string;
+      trainingInfluence?: {
+        kind: 'on_track' | 'consistent' | 'working' | 'slipping' | 'compromised';
+        copy: string;
+      } | null;
     };
     // Quality workouts have a work segment + warmup/recovery/cooldown.
     // The whole-run avg pace buries the rep pace under all the slow miles,
@@ -205,7 +220,14 @@ export function TrainView({
       const fastest = sorted.slice(0, repCount);
       return Math.round(fastest.reduce((s, x) => s + x, 0) / fastest.length);
     }
-    const adapts = seed.season.adaptations ?? [];
+    // 2026-06-01 · drop superseded + override-marker rows per backend
+    // dedup landed at 2b7b4889. supersededByOverride === true means a
+    // later plan_adapt_overridden landed for the same workoutId; kind
+    // === 'overridden' is the override-marker row itself (useful for a
+    // future Overrides history view, not for the KEY WORKOUTS panel).
+    const adapts = (seed.season.adaptations ?? []).filter(
+      (a) => !a.supersededByOverride && a.kind !== 'overridden'
+    );
     const verbForKind = (k: string) => k === 'reschedule' ? 'rescheduled' : k === 'downgrade' ? 'eased' : k === 'shave' ? 'shaved' : 'adjusted';
     seed.season.weekDays.forEach((days, i) => {
       if (i >= raceIdx) return;
@@ -223,14 +245,21 @@ export function TrainView({
       const title = pick.name || ttype;
       const sub = `${pick.mi.toFixed(1)} mi${pick.paceSec ? ` @ ${Math.floor(pick.paceSec / 60)}:${String(Math.round(pick.paceSec % 60)).padStart(2, '0')}` : ''}`;
       const state: Mile['state'] = isPast ? 'DONE' : isNow ? 'NOW' : isMid && i >= raceIdx - 3 ? 'KEY' : '';
-      // Influence: hit/miss vs planned target.
-      //   Easy / long  — compare whole-run avg pace (steady aerobic effort).
-      //   Quality      — extract WORK pace from the fastest N splits, since
-      //                  the avg buries the rep pace under warmup + recovery
-      //                  + cooldown miles ("8:36 avg" on a 6:47 rep day).
-      // Tolerance is type-aware: intervals/tempo demand tighter execution.
+      // Training trajectory: prefer backend-authored trainingInfluence
+      // (commit 2b7b4889 · names the workout's effect on race trajectory,
+      // not execution mechanics · 5 kinds: on_track / consistent /
+      // working / slipping / compromised). Falls back to the legacy
+      // client-side execution derivation only when backend hasn't
+      // landed a trajectory signal for this row (e.g. composer set
+      // null because data was incomplete, or non-quality type the
+      // composer doesn't grade).
       let influence: Mile['influence'] = null;
-      if (state === 'DONE' && pick.paceSec) {
+      if (state === 'DONE' && pick.trainingInfluence) {
+        influence = { kind: pick.trainingInfluence.kind, copy: pick.trainingInfluence.copy };
+      } else if (state === 'DONE' && pick.paceSec) {
+        // Legacy fallback · execution-mechanics signal when backend
+        // didn't ship a trajectory call for this row. Same logic as
+        // before · hit/close/off based on pace delta.
         let comparePace: number | null = null;
         let label = 'actual';
         if (QUALITY_TYPES.has(pick.type)) {
@@ -251,12 +280,10 @@ export function TrainView({
           } else {
             influence = { kind: 'hit', copy: `Faster · ${fmtPace(comparePace)} ${label}` };
           }
-        } else if (pick.donePaceSec) {
-          // Quality workout with no usable splits — fall back to a neutral
-          // "Logged" tag instead of falsely claiming "off pace" from the
-          // whole-run avg (the bug David caught: 8:36 avg on a 6:47 rep day).
-          influence = { kind: 'hit', copy: 'Logged' };
         }
+        // Quality workout with no usable splits and no backend
+        // trajectory · render nothing rather than the meaningless
+        // "Logged" placeholder David called out.
       }
       // Adaptation cross-reference. Two angles:
       // 1. INCOMING — this week's quality day was itself modified by an
@@ -522,9 +549,20 @@ export function TrainView({
                     <div className="mss">{m.sub}</div>
                     {m.influence && (
                       <div className="minf" style={{
-                        color: m.influence.kind === 'hit'   ? '#86efa0'
-                              : m.influence.kind === 'close' ? '#FFCE8A'
-                              :                                 '#FF9560',
+                        // Color encodes the trajectory signal:
+                        //   green       · on_track / consistent / working / legacy hit
+                        //   amber       · slipping / legacy close
+                        //   orange-red  · legacy off
+                        //   muted grey  · compromised (downgraded · not the runner's fault)
+                        color:
+                          m.influence.kind === 'on_track'   ? '#86efa0' :
+                          m.influence.kind === 'consistent' ? '#86efa0' :
+                          m.influence.kind === 'working'    ? '#48B3B5' :  // teal · sharper signal
+                          m.influence.kind === 'slipping'   ? '#FFCE8A' :
+                          m.influence.kind === 'compromised'? '#8A90A0' :
+                          m.influence.kind === 'hit'        ? '#86efa0' :
+                          m.influence.kind === 'close'      ? '#FFCE8A' :
+                          /* off */                           '#FF9560',
                       }}>
                         → {m.influence.copy}
                       </div>
