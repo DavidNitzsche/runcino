@@ -539,7 +539,14 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* month calendar */
 .train2-sheet .cal{display:flex;flex-direction:column;gap:26px;}
 .train2-sheet .calmonth .cm-h{font-family:'Oswald',sans-serif;font-size:20px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;}
-.train2-sheet .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;}
+/* 2026-06-01 · grid-auto-rows fixed so every row is the same height
+   regardless of which day has the most content. Without this, a row
+   with a multi-line Race cell (Aug 16: RACE / Race · 1:30:00 /
+   Americas Finest City) stretched all 7 cells in that row, while a
+   row with only Easy + Rest cells stayed compact. Result was August
+   visually different from June/July. 110px fits all content variants
+   including the race cell. */
+.train2-sheet .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:110px;gap:7px;}
 .train2-sheet .cal-dow{font-size:9.5px;font-weight:800;letter-spacing:1px;opacity:.45;text-align:center;padding-bottom:2px;}
 .train2-sheet .cell{min-height:98px;border-radius:11px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.028);padding:8px 9px;display:flex;flex-direction:column;gap:5px;position:relative;}
 .train2-sheet .cell.empty{background:transparent;border:none;}

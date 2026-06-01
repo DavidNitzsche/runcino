@@ -18,6 +18,7 @@
  *   - full-plan modal (Month ↔ Weeks toggle)
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { WhatChangedExpander } from '../toolkit';
@@ -565,7 +566,16 @@ function PlanModal({
   setFocusIdx: (i: number) => void;
 }) {
   const goal = seed.goalRace;
-  return (
+  // 2026-06-01 · portal the modal to document.body so position:fixed
+  // is anchored to the viewport rather than to .train2 inside the
+  // sidebar-flanked .main column. Without the portal the scrim only
+  // covered the post-sidebar area and the sheet centered in that
+  // narrower box. createPortal is a no-op during SSR (returns null)
+  // until mount completes.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return null;
+  const modal = (
     <div className="train2-ov" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="train2-sheet">
         <div className="sheet-top">
@@ -589,6 +599,7 @@ function PlanModal({
       </div>
     </div>
   );
+  return createPortal(modal, document.body);
 }
 
 function MonthCalendar({ seed }: { seed: FaffSeed }) {
