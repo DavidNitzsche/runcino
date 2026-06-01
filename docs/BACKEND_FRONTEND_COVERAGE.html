@@ -541,7 +541,7 @@
       types" entry below) · same backend, two complementary
       recommendations.</td>
   <td class="cov-full">FULL</td>
-  <td><strong>SHIPPED · toolkit AdaptationCard.</strong> TodayView fetches /api/coach/intents?reason_prefix=plan_adapt_ and renders AdaptationCard above the hero when an adaptation fired in the last 24h. Severity colors the border.</td>
+  <td><strong>SHIPPED · toolkit WhatChangedExpander.</strong> TrainView ships WhatChangedExpander below the THIS WEEK panel · counts and lists recent plan_adapt_* intents from /api/coach/intents?reason_prefix=plan_adapt_. Collapsed by default; opens to a CoachActivityTimeline scoped to plan changes.</td>
   <td><code>lib/plan/adapt.ts</code> · <code>coach_intents.reason</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -551,11 +551,8 @@
       action is a soft hint (info) · noteworthy (warn) · or a hard
       override the runner should see (override · e.g. fever-trigger
       forces rest). The frontend gets no signal about severity today.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong> alongside
-      the visibility entry above · color the changelog row by severity
-      (mute / amber / red). Override events also deserve a dismissible
-      banner on Today instead of silently shifting the workout.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit WhatChangedExpander.</strong> Severity classifier in /api/coach/intents emits info/warn/override per row; TrainView WhatChangedExpander tints the left-bar accordingly (mint · goal · over).</td>
   <td><code>lib/plan/adapt.ts:AdaptationTrigger.severity</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -597,11 +594,8 @@
   <td>The prescription endpoint returns a full hrTargets block
       (Z1-Z5 lower/upper in bpm, derived from LTHR or %MHR). The iPhone
       currently only renders the pace target row · the HR row is dropped.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A second
-      pill under the PACE chip showing "HR: 152-162 bpm (Z4)" sourced
-      from prescription.hrTargets. Keeps the existing card layout · just
-      adds a sibling row.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit HRTargetPill.</strong> Atom built (HRTargetPill.zone variant) ready to drop below the pace chip whenever prescription.hrTargets emits zN_lower / zN_upper. The HR-cap variant is now wired on Today; the zone variant ships next when WeekAheadView surfaces individual phase targets.</td>
   <td><code>app/api/prescription/route.ts</code> ·
       <code>lib/training/prescriptions.ts:hrTargets</code></td>
   <td class="client-ios">IOS</td>
@@ -629,12 +623,8 @@
       HR exceeds the ceiling. The iPhone WatchWorkout decoder pulls the
       field but no Day Detail surface explains "Cap your HR at 152 bpm
       today · drift means you went too hard."</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. When
-      hrCeilingBpm is set, show a "HR CAP · 152 bpm" pill in the meta
-      strip on Day Detail. Tap reveals "this is your easy-day ceiling ·
-      letting HR climb above it converts the recovery stimulus into a
-      tempo stimulus" with a Research/03 citation.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit HRTargetPill.</strong> TodayView hero ships an HR-cap chip (HRTargetPill.cap variant) when displayWorkout.hrCeilingBpm is set on easy / heat-flag days. Pill sits under the pace stat; lets the runner know easy turns into tempo if they let HR drift.</td>
   <td><code>Models/Watch.swift:WatchWorkout.hrCeilingBpm</code> ·
       <code>lib/watch/build-workout.ts:64</code></td>
   <td class="client-ios">IOS</td>
@@ -1119,12 +1109,8 @@
       / 10K / HM / M off one number. Backend computes it for the
       projection field on the race header but never exposes the full
       table.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
-      "WHAT YOUR VDOT SAYS" section on Race Detail listing 4 rows ·
-      5K · 10K · HM · M with the predicted time next to each. Honest
-      framing ("Daniels predicts · adjust expectations for course +
-      weather"). Same compute that powers the existing projection field.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit VDOTPredictionTable.</strong> RaceDayView ships VDOTPredictionTable in the upcoming-race surface when profile.physiology.vdot is set · 5K / 10K / Half / Marathon predictions derived inline from the Daniels intensity-fraction formula. Section hidden when no VDOT (we don't guess fitness).</td>
   <td><code>lib/training/vdot.ts:predictRaceTime</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1815,11 +1801,8 @@
       The coach reads them to surface "1 min from your 5K PR · want to
       take a shot?" prompts. No client lets the runner create or browse
       goals today.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. Targets / Goals deserves a
-      list view + "+ New goal" sheet collecting type + target + deadline.
-      Pairs with the existing Targets tab (which today is race-only).
-      Goal progress chip on Today when one is &lt; 90% complete.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit NewGoalSheet.</strong> TargetsView ships a PERSONAL GOALS section with a 'Set a non-race goal' button that presents NewGoalSheet · POSTs goal_type / target / deadline to /api/goals. Six goal types: volume, speed, distance, habit, strength, health.</td>
   <td><code>app/api/goals/route.ts</code> ·
       <code>app/api/goals/[id]/route.ts</code></td>
   <td class="client-ios">IOS</td>

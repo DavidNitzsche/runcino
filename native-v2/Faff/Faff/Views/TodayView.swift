@@ -286,6 +286,16 @@ struct TodayView: View {
             }
             .padding(.top, 2)
 
+            // HR cap chip · only on easy / heat-flag days where the
+            // watch carries an explicit hrCeilingBpm. Toolkit · Family B.
+            // The pace shows what to run; the cap shows when easy would
+            // turn into tempo if you let it.
+            if let cap = displayWorkout?.hrCeilingBpm, cap > 0 {
+                HRTargetPill(variant: .cap(bpm: cap,
+                                            note: "let it climb and easy becomes tempo"))
+                    .padding(.top, 4)
+            }
+
             EffortMeter(
                 position: selectedEffort.meterPosition,
                 label: selectedEffort.effortLabel.uppercased(),

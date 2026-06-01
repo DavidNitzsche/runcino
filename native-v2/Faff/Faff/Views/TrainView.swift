@@ -18,6 +18,9 @@ struct TrainView: View {
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
     @State private var focusedIndex: Int = 0
+    /// Recent plan_adapt_* intents · drives WhatChangedExpander below
+    /// the detail block. nil while loading; empty array hides the row.
+    @State private var planAdaptIntents: [CoachIntent]?
 
     /// Linear interpolation across phases for the mesh.
     private var currentMesh: FaffMesh {
@@ -43,6 +46,14 @@ struct TrainView: View {
                     detail(for: s)
                         .padding(.horizontal, 24)
                         .padding(.top, 14)
+                    // WhatChangedExpander · counts + lists recent
+                    // plan_adapt_* intents. Collapsed by default so the
+                    // arc + this-week panel stay the lead.
+                    if let rows = planAdaptIntents, !rows.isEmpty {
+                        WhatChangedExpander(intents: rows)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 18)
+                    }
                 } else {
                     Spacer()
                 }
@@ -55,16 +66,18 @@ struct TrainView: View {
     }
 
     private func reload() async {
-        async let s = (try? await API.fetchTrainingState())
-        async let f = (try? await API.fetchCoachFacts(surface: "plan"))
-        async let p = (try? await API.fetchProfileState())
-        let (st, fc, pf) = await (s, f, p)
+        async let s  = (try? await API.fetchTrainingState())
+        async let f  = (try? await API.fetchCoachFacts(surface: "plan"))
+        async let p  = (try? await API.fetchProfileState())
+        async let ai = (try? await API.fetchCoachIntents(limit: 10, reasonLike: "plan_adapt_"))
+        let (st, fc, pf, ints) = await (s, f, p, ai)
         await MainActor.run {
             // Don't wipe cached state on a transient failure · the
             // 26-week arc + bars + phase headlines should stay on screen.
             if let st { self.state = st }
             if let fc { self.planFacts = fc }
             if let pf { self.profile = pf }
+            self.planAdaptIntents = ints ?? []
         }
     }
 

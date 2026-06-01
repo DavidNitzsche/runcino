@@ -15,6 +15,9 @@ struct TargetsView: View {
         AppCache.read(.profileState, as: ProfileState.self)
     @State private var raceFacts: CoachFactsBlock?
     @State private var standingGoals: [StandingGoal] = []
+    /// New-goal sheet (Volume / Speed / Distance / Habit / Strength / Health).
+    /// Toolkit · Family F · POSTs to /api/goals.
+    @State private var showNewGoalSheet: Bool = false
 
     var body: some View {
         ZStack {
@@ -45,12 +48,40 @@ struct TargetsView: View {
                             }
                         }
                     }
+                    // NewGoalSheet entry · non-race goals (volume / speed /
+                    // distance / habit / strength / health). Toolkit · F.
+                    // The Targets tab was race-only until now.
+                    section("PERSONAL GOALS") {
+                        Button { showNewGoalSheet = true } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Theme.Accent.mintReady)
+                                Text("Set a non-race goal")
+                                    .font(.body(13, weight: .extraBold))
+                                    .tracking(0.4)
+                                    .foregroundStyle(Theme.txt)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Theme.mute)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.bottom, 130)
             }
         }
         .task { await reload() }
         .refreshable { await reload() }
+        .sheet(isPresented: $showNewGoalSheet) {
+            NewGoalSheet(onSubmitted: { Task { await reload() } })
+                .presentationDetents([.medium])
+        }
     }
 
     /// Avatar initials · delegates to ProfileIdentity.avatarInitials.
