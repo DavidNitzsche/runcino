@@ -80,6 +80,13 @@ export async function POST(req: NextRequest) {
     avgHr: body.avgHr ?? null,
     maxHr: body.maxHr ?? null,
     avgCadence: body.avgCadence ?? null,
+    // Active calories from HKLiveWorkoutBuilder (2026-06-01) ·
+    // resolveCalories() tier 1 reads this and skips the estimator
+    // fallback when it's present. Optional · the watch may omit it
+    // on very short runs or sensor glitches, and the field is also
+    // omitted by older watch builds. Doctrine:
+    // designs/briefs/iphone-calories-and-absorption-brief.md.
+    kcal: body.kcal ?? null,
     splits: deriveSplitsFromPhases(body.phases),
     ingestedAt: new Date().toISOString(),
     // Reference to the full per-phase blob for any downstream consumer

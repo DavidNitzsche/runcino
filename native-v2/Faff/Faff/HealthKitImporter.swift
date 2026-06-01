@@ -591,7 +591,53 @@ final class HealthKitImporter: ObservableObject {
             out.append(VitalSample(sample_type: "sleep_hours", value: (hours * 10).rounded() / 10,
                                    sample_date: isoDay(d), recorded_at: isoUTC(d)))
         }
+        // active_energy — TIME-SERIES, not a daily scalar. HK ships ~15-second
+        // buckets during workouts and sparser passive samples between. The
+        // backend's resolveCalories tier 2 sums these in the run's time window
+        // when the watch payload's `kcal` field is absent · the iPhone needs
+        // to upload buckets, not daily totals, for that path to work.
+        // Brief: designs/briefs/iphone-calories-and-absorption-brief.md
+        // (2026-06-01). Use HKSampleQuery (discrete samples) instead of
+        // HKStatisticsCollectionQuery (which would sum to a daily scalar).
+        for sample in await activeEnergySamples(daysBack: daysBack) {
+            out.append(sample)
+        }
         return out
+    }
+
+    /// Per-bucket active-energy samples from HK · maps each HKQuantitySample
+    /// to a VitalSample row. Bucket start = sample.startDate.
+    /// recorded_at carries millisecond precision so the server's dedupe
+    /// key `(user, type, date, recorded_at)` can distinguish ~15-second
+    /// buckets that fall in the same calendar second.
+    private nonisolated func activeEnergySamples(daysBack: Int) async -> [VitalSample] {
+        let kcal = HKUnit.kilocalorie()
+        let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
+        let pred = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        let samples: [HKQuantitySample] = await withCheckedContinuation { (cont: CheckedContinuation<[HKQuantitySample], Never>) in
+            let q = HKSampleQuery(
+                sampleType: HKQuantityType(.activeEnergyBurned),
+                predicate: pred,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
+            ) { _, samples, _ in
+                cont.resume(returning: (samples as? [HKQuantitySample]) ?? [])
+            }
+            store.execute(q)
+        }
+        // Drop sub-bucket zeros (HK emits placeholders during idle). The
+        // server's per-run sum is robust to missing slices but useless
+        // rows still bloat the payload.
+        return samples.compactMap { s in
+            let v = s.quantity.doubleValue(for: kcal)
+            guard v > 0.05 else { return nil }
+            return VitalSample(
+                sample_type: "active_energy",
+                value: (v * 100).rounded() / 100,
+                sample_date: isoDay(s.startDate),
+                recorded_at: isoUTCMillis(s.startDate)
+            )
+        }
     }
 
     /// HKStatisticsCollectionQuery wrapper — daily stat for one type, last N days.
@@ -659,6 +705,17 @@ final class HealthKitImporter: ObservableObject {
     private nonisolated func isoUTC(_ d: Date) -> String {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
+        return f.string(from: d)
+    }
+
+    /// Millisecond-precision UTC ISO · used by per-bucket active_energy
+    /// samples so two buckets that share a calendar second (rare but it
+    /// happens) don't dedupe on the server's `(user,type,date,recorded_at)`
+    /// key. ISO8601DateFormatter doesn't emit sub-second by default; the
+    /// `.withFractionalSeconds` option turns it on (".SSS" suffix).
+    private nonisolated func isoUTCMillis(_ d: Date) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f.string(from: d)
     }
 
