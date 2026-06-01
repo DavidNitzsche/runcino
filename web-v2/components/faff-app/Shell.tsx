@@ -79,25 +79,13 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     if (autoOpenRunId) setOpenOverlay({ type: 'run', id: autoOpenRunId });
   }, [autoOpenRunId]);
 
-  // Auto-open Weekly Check-in on Monday once per week. The recap surfaces
-  // the PREVIOUS week's training, so Monday is the right beat. We stash a
-  // dismissal key per ISO week-of-year so it only fires once per Monday.
-  useEffect(() => {
-    if (autoOpenRunId) return;            // skip if we're deep-linking a run
-    const now = new Date();
-    if (now.getDay() !== 1) return;       // 1 = Monday
-    const weekKey = `faffWeekRecap-${now.getFullYear()}-W${isoWeekNumber(now)}`;
-    try {
-      if (localStorage.getItem(weekKey)) return;
-      const t = setTimeout(() => {
-        setOpenOverlay('weekci');
-        try { localStorage.setItem(weekKey, '1'); } catch { /* swallow */ }
-      }, 1500);
-      return () => clearTimeout(t);
-    } catch {
-      /* SSR / private mode safe */
-    }
-  }, [autoOpenRunId]);
+  // 2026-05-31 (David call · "this is popping up automatically · disable"):
+  // the Monday auto-open of the Weekly Check-in is removed. The recap is
+  // still accessible manually via the WEEK N RECAP chip in the sidebar,
+  // which mounts the same WeeklyCheckIn overlay. If a future product call
+  // wants the auto-prompt back, it goes here · gate it on a real "weekly
+  // recap notification" pref (profile.notification_prefs.weekly_checkin_enabled)
+  // so the runner can opt in instead of getting the modal unconditionally.
 
   const navigate = useCallback((v: ViewKey) => {
     setView(v);
