@@ -520,8 +520,12 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2 .arow{display:grid;grid-template-columns:1.15fr 1fr 1.1fr;gap:16px;min-height:0;}
 
 /* full-plan modal */
-.train2-ov{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(4,8,6,.6);backdrop-filter:blur(6px);}
-.train2-sheet{width:min(1080px,92%);max-height:88vh;background:#0e1512;border:1px solid rgba(255,255,255,.14);border-radius:20px;box-shadow:0 50px 120px -30px rgba(0,0,0,.9);display:flex;flex-direction:column;overflow:hidden;}
+.train2-ov{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(4,8,6,.6);backdrop-filter:blur(6px);color:var(--txt);}
+/* 2026-06-01 · explicit color:var(--txt) so the modal renders with
+   white text even when portaled to document.body (body inherits its
+   own dark color #211d18 from the guest/sign-in page styling). Without
+   this, all text inside the sheet faded after the portal fix. */
+.train2-sheet{width:min(1080px,92%);max-height:88vh;background:#0e1512;border:1px solid rgba(255,255,255,.14);border-radius:20px;box-shadow:0 50px 120px -30px rgba(0,0,0,.9);display:flex;flex-direction:column;overflow:hidden;color:var(--txt);}
 .train2-sheet .sheet-top{display:flex;align-items:center;gap:16px;padding:22px 24px;border-bottom:1px solid rgba(255,255,255,.09);}
 .train2-sheet .stt{font-family:'Oswald',sans-serif;font-size:24px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
 .train2-sheet .sts{font-size:12px;font-weight:600;opacity:.6;}
