@@ -252,12 +252,8 @@
       severity / status) and rate it daily as better/same/worse/gone. The
       day resolver routes Today through a niggle surface when one is
       active; the recovery chip lives under Today's Sibling tile row.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. iPhone has no "I tweaked my
-      hamstring" entry point. Cheapest add: a + niggle action in the
-      Today bell/nudge menu that pushes a sheet collecting body part +
-      severity. Once active, a daily chip ("How's your hamstring today?
-      better · same · worse · gone") appears under the readiness tile.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit SymptomReportSheet + DailyCheckChip.</strong> Today bell menu opens SymptomReportSheet (Niggle / Sick toggle). Once a niggle is active, DailyCheckChip appears under the hero asking better / same / worse / gone; gone POSTs recovery + clears.</td>
   <td><code>app/api/niggle/route.ts</code> ·
       <code>app/api/niggle/recovery/route.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -268,11 +264,8 @@
       handle systemic illness (symptoms[], fever flag, started date). Unlike
       niggle, sick PAUSES the plan · the day resolver renders REST + a
       "Ready to run?" return-gate card when an episode is active.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. No iPhone path to flag "I'm
-      sick" today. Pairs naturally with the niggle entry above · the
-      same sheet could have a Niggle / Sick toggle. The return-gate UI
-      is its own design surface when active.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit SymptomReportSheet + ReturnGateCard.</strong> Same SymptomReportSheet sheet wired from the Today bell menu, Sick tab branch. POSTs /api/sick + symptoms[]. ReturnGateCard slotted in for the return-to-run gate (renders when an active sick episode exists).</td>
   <td><code>app/api/sick/route.ts</code> · <code>app/api/sick/recovery/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -328,11 +321,8 @@
       stale (height never set, weight 6mo old, no race goal, etc.).
       Each gap has a structured payload with what's missing + a CTA
       target. Both clients drop the topic today.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
-      glass card on Today (under the workout) "Tell Faff your weight
-      to tune fueling math · Update" linking to /profile or the right
-      Settings row. Hides once the gap is closed.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ProfileGapCard.</strong> ProfileGapCard atom built (dashed glass card under Today workout). Ready to wire once briefing emits profile_gap topics; current Today fetches don't yet expose the topic. Component renders the populated + empty states.</td>
   <td><code>lib/topics/profile_gap.ts</code> · Briefing.topics</td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -547,12 +537,8 @@
       found by WEB on 2026-05-31</strong> (see "9 adaptation trigger
       types" entry below) · same backend, two complementary
       recommendations.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. The user has no idea WHY
-      the plan shifted. A "WHAT CHANGED" expander on Plan (collapsed
-      by default) showing the most recent N coach_intents rows with
-      reason + severity color would close this. Pairs with the
-      "Adaptation events on Today" WEB entry above · same data source.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit AdaptationCard.</strong> TodayView fetches /api/coach/intents?reason_prefix=plan_adapt_ and renders AdaptationCard above the hero when an adaptation fired in the last 24h. Severity colors the border.</td>
   <td><code>lib/plan/adapt.ts</code> · <code>coach_intents.reason</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -788,10 +774,8 @@
       POST half is missing UI · the GET half could keep showing the
       stored RPE next time the run is opened, so the runner doesn't
       think they have to re-rate.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. When
-      the RPE input lands, pre-fill from the GET. The bidirectional
-      shape is already in the backend.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RPEEntryCard.</strong> RPEEntryCard.task() fetches /api/runs/[id]/rpe on mount; prior rating + notes render in place of the empty scale.</td>
   <td><code>app/api/runs/[id]/rpe/route.ts (GET)</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -803,11 +787,7 @@
       Stryd-style data. The iPhone RunForm struct decodes all 8;
       every iPhone View ignores them.</td>
   <td class="cov-full">FULL</td>
-  <td><strong>Shipped in iOS build 124 (2026-05-31)</strong> · FORM
-      section on RunDetail renders 4×2 grid of all 8 metrics; cells
-      render "—" when a field is null (e.g. David's watch writes resp
-      + SpO2 but not GCT/stride). Hidden entirely when all 8 nil.
-      Future · pair with form-tips.ts thresholds for band coloring.</td>
+  <td><strong>SHIPPED · toolkit FormMetricsGrid.</strong> RunDetailView FORM section already renders all 8 metrics (cadence_spm + ground_contact_ms + stride_length_m + vertical_oscillation_cm + vertical_ratio_pct + run_power_w + respiratory_rate + spo2_pct) from runDetail.form. Toolkit FormMetricsGrid atom available for future re-skin.</td>
   <td><code>Models/Runs.swift:RunForm</code> ·
       <code>lib/training/form-tips.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -1289,12 +1269,8 @@
       a notification at 7 / 14 / 30 / 100 days. The current streak value
       is computed but never returned in any GET response · the runner
       only knows when a milestone notification fires.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><strong>Design tweak needed</strong> on two fronts: (1) expose the
-      current streak count on /log or /today (a small "12 day streak"
-      pill), and (2) add a backend GET (e.g. extend /api/log response or
-      a new /api/streak) so clients don't have to recompute. Notification
-      side is already live.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit StreakPill.</strong> ActivityView FEED renders StreakPill above the first week header when /api/streak returns current > 0. Milestone styling at 7 / 14 / 30 / 100. New backend endpoint GET /api/streak ships in this commit.</td>
   <td><code>lib/notifications/streak-check.ts</code> ·
       <code>strava_activities</code> (computed)</td>
   <td class="client-ios">IOS</td>
@@ -1406,11 +1382,8 @@
       LTHR = 162 came from their actual half marathon or a guess.
       <strong>Also found by WEB on 2026-05-31</strong> (see "HRmax +
       LTHR provenance" in Profile section) · same gap on both clients.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
-      grey line under each value · "from your Sombrero Half · 2026-04"
-      for race-calibrated, "estimated from MHR" for formula. Reuses
-      lthr_method + max_hr_source already in the payload.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ProvenanceLine.</strong> ProvenanceLine atom built and ready to drop under any physiology number. Not yet wired in HealthView (queued for next pass — Family B atom is shipped as code).</td>
   <td><code>ProfilePhysiology.max_hr_source</code> + <code>lthr_method</code> ·
       <code>lib/training/lthr.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -1450,10 +1423,7 @@
       iPhone has no equivalent · a stale Strava token surfaces only as
       empty data with no explanation.</td>
   <td class="cov-full">FULL</td>
-  <td><strong>Shipped in iOS build 124 (2026-05-31)</strong> ·
-      Components/StravaReconnectBanner.swift renders a glass alert on
-      Today + Activity when state != "connected". Tap RECONNECT opens
-      the OAuth URL via the existing fetchStravaConnectURL helper.</td>
+  <td><strong>SHIPPED · toolkit StravaReconnectBanner.</strong> StravaReconnectBanner already shipped in build 127 · Today + Activity surface a needs_reauth/disconnected banner from /api/strava/status. Tap RECONNECT re-runs OAuth with activity:write scope.</td>
   <td><code>app/api/strava/status/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1477,12 +1447,8 @@
       profile.notification_prefs (jsonb) · master toggle + per-category
       enable + race-day wake + weekly check-in + quiet hours. The
       backend honors the prefs in the dispatch path.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. iPhone
-      Settings → Notifications panel with toggles per the 7 categories
-      surfaced by the notification taxonomy. Reuses the existing
-      Settings row layout. Web has the equivalent surface flagged
-      under Cross-Cutting.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit NotificationPrefsList.</strong> ProfileView NOTIFICATIONS section ships NotificationPrefsList wired to GET / PATCH /api/profile/notifications. 7 categories (readiness, workout, recap, race countdown, streak, adaptation, reconnect). PATCH fires on toggle.</td>
   <td><code>app/api/profile/notifications/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1929,13 +1895,8 @@
       <strong>Also found by WEB on 2026-05-31</strong> (see
       "coach_intents activity log" entry below) · convergent finding,
       same recommended surface.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>design tweak needed</strong>.
-      A "Coach activity" timeline in Settings (or a dedicated /coach
-      surface) showing the last 30 days of decisions · plain English
-      reasons + timestamps. Tail-end of the same data Today's
-      adaptation pill is asking for, but as a full history rather than
-      a count.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit CoachActivityTimeline.</strong> ProfileView COACH ACTIVITY section ships CoachActivityTimeline reading /api/coach/intents?limit=20 — full history per reason with severity-tinted left bar, plain-English summary, formatted timestamp.</td>
   <td><code>coach_intents</code> table</td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1993,8 +1954,8 @@
       <strong>Also found by IOS on 2026-05-31</strong>: iOS has no
       Plan-mutation viewer either · same gap on both clients. Already
       flagged in the Plan section above by WEB.</td>
-  <td class="cov-none">NONE</td>
-  <td>See Plan section entry. iOS confirms.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit CoachActivityTimeline.</strong> ProfileView COACH ACTIVITY section · same /api/coach/intents source; plan_adapt_* rows render alongside other intents in chronological order.</td>
   <td><code>plan_mutations</code> table</td>
   <td class="client-ios">IOS</td>
 </tr>

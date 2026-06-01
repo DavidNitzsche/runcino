@@ -44,6 +44,18 @@ struct TodayView: View {
     /// the day..."). The whole Faff Coach block hides when this is nil ·
     /// no hardcoded fallback. The empty state IS the honest signal.
     @State private var purpose: RunPurpose?
+    /// Most-recent plan_adapt_* intent · drives AdaptationCard. Hidden
+    /// when nil or older than 24h.
+    @State private var adaptationIntent: CoachIntent?
+    /// Active niggle row · drives DailyCheckChip + niggle-aware copy.
+    @State private var activeNiggle: NiggleRow?
+    /// Daily check selection (better/same/worse/gone). Local · POSTs
+    /// to /api/niggle/recovery on tap.
+    @State private var niggleCheck: NiggleStatus? = nil
+    /// Symptom report sheet toggle (Niggle | Sick).
+    @State private var showSymptomSheet: Bool = false
+    /// Log non-run sheet toggle (Strength | Cross-train).
+    @State private var showLogNonRunSheet: Bool = false
     /// Async-fetch lifecycle for /api/plan/week (the primary signal for
     /// this tab · drives hero + week strip + drag sheet). Banner shows
     /// only when fetch errors AND no cached PlanWeek exists.
@@ -78,7 +90,16 @@ struct TodayView: View {
                     .buttonStyle(.plain)
                     .disabled(refreshing)
 
-                    Button { showNudge = true } label: {
+                    Menu {
+                        // Tap-equivalent · keep the existing nudge sheet
+                        // as the primary action so the bell behaves the
+                        // way runners expect.
+                        Button("View nudges") { showNudge = true }
+                        Divider()
+                        // Toolkit entry points (David's spec: bell/nudge menu).
+                        Button("Log a niggle or sick day") { showSymptomSheet = true }
+                        Button("Log a non-run session")     { showLogNonRunSheet = true }
+                    } label: {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: "bell.fill")
                                 .font(.system(size: 14, weight: .bold))
@@ -125,6 +146,22 @@ struct TodayView: View {
 
                 if let msg = loadState.failureMessage, plan == nil {
                     FailedLoadBanner(message: msg, retry: { Task { await loadAll() } })
+                        .padding(.horizontal, 22)
+                        .padding(.top, 10)
+                }
+
+                // AdaptationCard · only when an adaptation fired in the last 24h.
+                if let intent = adaptationIntent, isWithinLast24h(intent.when_iso) {
+                    AdaptationCard(intent: intent, onTapDetail: nil)
+                        .padding(.horizontal, 22)
+                        .padding(.top, 10)
+                }
+
+                // DailyCheckChip · once a niggle is active, ask daily.
+                if let n = activeNiggle {
+                    DailyCheckChip(bodyPart: n.body_part,
+                                   selection: $niggleCheck,
+                                   onSelect: { handleNiggleCheck($0) })
                         .padding(.horizontal, 22)
                         .padding(.top, 10)
                 }
@@ -202,6 +239,14 @@ struct TodayView: View {
                 onKeep: { showNudge = false },
                 readiness: readiness
             )
+        }
+        .sheet(isPresented: $showSymptomSheet) {
+            SymptomReportSheet(onSubmitted: { Task { await loadAll() } })
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showLogNonRunSheet) {
+            LogNonRunSheet(onSubmitted: { Task { await loadAll() } })
+                .presentationDetents([.medium])
         }
     }
 
@@ -701,6 +746,9 @@ struct TodayView: View {
         async let pr = (try? await API.fetchProfileState())
         async let ss = (try? await API.fetchStravaStatus())
         async let pp = (try? await API.fetchTodayPurpose())
+        // Toolkit additions · adaptation intent + active niggle.
+        async let ai = (try? await API.fetchCoachIntents(limit: 1, reasonLike: "plan_adapt_%"))
+        async let an = (try? await API.fetchActiveNiggle())
 
         // Primary fetch · plan drives the hero + week strip + drag sheet.
         // Throws on network failure so we can flip loadState into the
@@ -718,6 +766,8 @@ struct TodayView: View {
         let (watch, ready, brief, skip, prof) = await (w, r, b, s, pr)
         let stravaStat = await ss
         let pur = await pp
+        let adaptList = (await ai) ?? []
+        let activeN   = await an
         // Weather baseline runs second-pass — it needs the workout type
         // and weekly mileage from the plan/workout. Fire-and-forget; the
         // HOTTER THAN USUAL tag silently hides if the lookup fails.
@@ -754,8 +804,35 @@ struct TodayView: View {
             // is honest; empty-after-a-fail looks identical and isn't.
             if let pur, !pur.verdict.isEmpty { self.purpose = pur }
             self.skipped = skip
+            self.adaptationIntent = adaptList.first
+            self.activeNiggle = activeN
             let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
             if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }
+        }
+    }
+
+    // MARK: - Toolkit helpers
+
+    /// True when an ISO timestamp falls within the last 24 hours · drives
+    /// AdaptationCard visibility on Today.
+    private func isWithinLast24h(_ iso: String) -> Bool {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let cleaned = iso.replacingOccurrences(of: " ", with: "T")
+        guard let d = fmt.date(from: cleaned) ?? fmt.date(from: cleaned + "Z") else { return false }
+        return Date().timeIntervalSince(d) <= 24 * 3600
+    }
+
+    /// Daily niggle check · POSTs the runner's "better/same/worse/gone"
+    /// reply to /api/niggle/recovery. "Gone" also clears the niggle so
+    /// the chip stops appearing tomorrow.
+    private func handleNiggleCheck(_ status: NiggleStatus) {
+        Task {
+            _ = try? await API.postNiggleRecovery(status: status)
+            if status == .gone {
+                _ = try? await API.clearNiggle()
+                await MainActor.run { self.activeNiggle = nil }
+            }
         }
     }
 }

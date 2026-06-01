@@ -31,6 +31,8 @@ struct ActivityView: View {
     /// Initial state mirrors the AppCache hydration result so first paint
     /// doesn't show a "loading" pill when we've got prior data on disk.
     @State private var loadState: LoadState = AppCache.read(.logState, as: LogState.self) == nil ? .idle : .loaded
+    /// Consecutive-days streak · drives StreakPill at the top of FEED.
+    @State private var streak: StreakResponse?
 
     enum Range: String, CaseIterable { case month, year, all
         var label: String { rawValue.uppercased() == "ALL" ? "ALL TIME" : rawValue.uppercased() }
@@ -66,7 +68,7 @@ struct ActivityView: View {
                 .padding(.bottom, 120)
             }
         }
-        .task { await reload() }
+        .task { await reload(); await loadStreak() }
         .refreshable { await reload() }
         .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
             // Runner returned from Safari (Strava OAuth) or just brought
@@ -74,6 +76,11 @@ struct ActivityView: View {
             // to "connected" and the reconnect banner clears.
             Task { await reload() }
         }
+    }
+
+    private func loadStreak() async {
+        let s = try? await API.fetchStreak()
+        if let s { await MainActor.run { self.streak = s } }
     }
 
     private func reload() async {
@@ -396,6 +403,17 @@ struct ActivityView: View {
 
     private var feedBody: some View {
         VStack(spacing: 0) {
+            // StreakPill · current run streak from /api/streak. Hidden
+            // when count is 0 (no streak to celebrate).
+            if let s = streak, s.current > 0 {
+                HStack {
+                    StreakPill(current: s.current, isMilestone: s.isMilestoneToday)
+                    Spacer()
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 14)
+                .padding(.bottom, 4)
+            }
             if let log = log {
                 ForEach(log.weeks) { week in
                     weekHeader(week: week)

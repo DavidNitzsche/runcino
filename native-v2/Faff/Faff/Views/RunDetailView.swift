@@ -186,6 +186,14 @@ struct RunDetailView: View {
                         .padding(.top, 26)
                     }
 
+                    // RPE entry · post-run subjective effort. Loads any
+                    // prior rating from /api/runs/[id]/rpe so re-opening
+                    // doesn't show a blank slate. Toolkit · Family I.
+                    section(title: "HOW HARD WAS IT?", right: nil) {
+                        RPEEntryCard(runId: runId)
+                    }
+                    .padding(.top, 26)
+
                     if let planSpec = vsPlanLabel {
                         section(title: "VS PLAN", right: nil) {
                             HStack(alignment: .top, spacing: 13) {

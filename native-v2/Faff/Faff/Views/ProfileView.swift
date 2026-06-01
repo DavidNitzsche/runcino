@@ -10,6 +10,12 @@ struct ProfileView: View {
 
     @State private var profile: ProfileState?
     @State private var meFacts: CoachFactsBlock?
+    /// Full coach activity log (all reasons, last ~20). Toolkit · Family C.
+    /// nil while loading; empty array renders the empty-state copy.
+    @State private var coachIntents: [CoachIntent]?
+    /// Notification prefs · drives NotificationPrefsList in the Settings
+    /// section. Two-way binding · changes PATCH immediately.
+    @State private var notifPrefs: NotificationPrefs?
 
     var body: some View {
         ZStack {
@@ -42,6 +48,23 @@ struct ProfileView: View {
                     connectionsCard
                         .padding(.horizontal, 22).padding(.top, 13)
 
+                    // COACH ACTIVITY · full history from /api/coach/intents.
+                    // Toolkit · CoachActivityTimeline (Family C).
+                    SectionLabel(title: "COACH ACTIVITY")
+                        .padding(.horizontal, 22).padding(.top, 30)
+                    CoachActivityTimeline(intents: coachIntents)
+                        .padding(.horizontal, 22).padding(.top, 13)
+
+                    // NOTIFICATIONS · 7-category panel from
+                    // /api/profile/notifications. Toolkit · NotificationPrefsList.
+                    SectionLabel(title: "NOTIFICATIONS")
+                        .padding(.horizontal, 22).padding(.top, 30)
+                    NotificationPrefsList(prefs: $notifPrefs,
+                                          onPrefChange: { p in
+                                              Task { _ = try? await API.patchNotificationPrefs(p) }
+                                          })
+                        .padding(.horizontal, 22).padding(.top, 13)
+
                     SectionLabel(title: "SETTINGS")
                         .padding(.horizontal, 22).padding(.top, 28)
                     settingsCard
@@ -55,10 +78,17 @@ struct ProfileView: View {
     }
 
     private func reload() async {
-        async let p = (try? await API.fetchProfileState())
-        async let f = (try? await API.fetchCoachFacts(surface: "me"))
-        let (pr, fc) = await (p, f)
-        await MainActor.run { self.profile = pr; self.meFacts = fc }
+        async let p  = (try? await API.fetchProfileState())
+        async let f  = (try? await API.fetchCoachFacts(surface: "me"))
+        async let ci = (try? await API.fetchCoachIntents(limit: 20))
+        async let np = (try? await API.fetchNotificationPrefs())
+        let (pr, fc, intents, prefs) = await (p, f, ci, np)
+        await MainActor.run {
+            self.profile = pr
+            self.meFacts = fc
+            self.coachIntents = intents ?? []
+            self.notifPrefs = prefs ?? NotificationPrefs.defaults
+        }
     }
 
     private var coachStats: [CoachFact] {
