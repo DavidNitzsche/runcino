@@ -39,6 +39,22 @@ export interface PlanWeek {
      *  threshold) instead of using the whole-run avg, which buries the
      *  rep pace under warmup + recovery + cooldown miles. */
     doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
+    /** 2026-06-01 · adaptation envelope · web agent brief
+     *  adaptation-visibility-backend-brief.md. wasAdapted=true means
+     *  this row was mutated by the auto-adapter (downgrade/reschedule/
+     *  shave). Frontend renders "was CRUISE INTERVALS" sublines + the
+     *  "How it changed" modal section from these fields. Null when no
+     *  matching adaptation entry was found. */
+    adaptation: {
+      wasAdapted: boolean;
+      originalType: string | null;
+      originalSubLabel: string | null;
+      originalDistanceMi: number | null;
+      originalDateIso: string | null;
+      reason: string | null;
+      adaptedAt: string | null;
+      kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+    } | null;
   }>;
   isCurrent: boolean;
   /** 2026-06-01 · per-week strength-day picks · ISO YYYY-MM-DD dates
@@ -156,12 +172,29 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     actualByDate.set(r.day, cur);
   }
 
+  // 2026-06-01 · adaptation envelope · web agent brief
+  // adaptation-visibility-backend-brief.md. Loaded once for ALL
+  // workouts in this plan (single LATERAL join query) so each day's
+  // map() lookup is O(1).
+  const { loadAdaptationInfoByPlanIds } = await import('./adaptation-info');
+  type AInfo = import('./adaptation-info').AdaptationInfo;
+  const adaptationByWorkoutId = await loadAdaptationInfoByPlanIds([plan.id])
+    .catch(() => new Map<string, AInfo>());
+
   const weeks: PlanWeek[] = weekRows.map((w: any) => {
     const days = workouts
       .filter((x: any) => x.week_id === w.id)
       .sort((a: any, b: any) => a.date_iso.localeCompare(b.date_iso))
       .map((d: any) => {
         const actual = actualByDate.get(d.date_iso);
+        // 2026-06-01 · adaptation envelope · attached via the
+        // adaptationByWorkoutId map loaded below this map. Each day
+        // gets its own AdaptationInfo with wasAdapted boolean +
+        // original_* fields + reason/kind/adaptedAt from the most
+        // recent matching plan_adapt coach_intent. Null when no
+        // plan_workouts.id (shouldn't happen given this map iterates
+        // workouts) · keeps the field shape stable for the renderer.
+        const adaptation = adaptationByWorkoutId.get(String(d.id)) ?? null;
         return {
           id: String(d.id),
           date: d.date_iso, dow: d.dow, type: d.type,
@@ -172,6 +205,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
           donePaceSec: actual?.paceSec ?? null,
           doneAvgHr: actual?.avgHr ?? null,
           doneSplits: actual?.splits ?? [],
+          adaptation,
         };
       });
     const plannedMi = Math.round(days.reduce((s, d) => s + d.mi, 0) * 10) / 10;

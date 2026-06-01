@@ -195,6 +195,7 @@ function buildWeek(
       activityId: s.activityId ?? null,
       isToday: isoDate === todayIso,
       isPast: isoDate < todayIso,
+        adaptation: null,
     };
   });
 }

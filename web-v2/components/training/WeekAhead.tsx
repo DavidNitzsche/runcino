@@ -44,6 +44,7 @@ function toGlanceDay(day: PlanWeek['days'][number], today: string): GlanceWeekDa
     activityId: day.activityId,
     isToday: day.date === today,
     isPast: day.date < today,
+        adaptation: null,
   };
 }
 

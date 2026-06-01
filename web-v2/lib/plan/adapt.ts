@@ -190,13 +190,22 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           const newType = a.newType;
           const clearsQuality = ['easy', 'recovery', 'rest'].includes(newType);
           if (clearsQuality) {
+            // 2026-06-01 · also clear workout_spec (web agent brief
+            // workout-spec-clear-on-downgrade-brief.md · Option A) +
+            // PRESERVE sub_label into original_sub_label so the
+            // adaptation-visibility brief can render "was CRUISE
+            // INTERVALS" sublines (designs/briefs/adaptation-
+            // visibility-backend-brief.md). Both in one UPDATE so
+            // we don't race the clear.
             await client.query(
               `UPDATE plan_workouts
                   SET type = $1,
+                      original_sub_label = COALESCE(original_sub_label, sub_label),
                       sub_label = NULL,
                       pace_target_s_per_mi = NULL,
                       is_quality = false,
-                      is_long = (CASE WHEN $1 = 'long' THEN is_long ELSE false END)
+                      is_long = (CASE WHEN $1 = 'long' THEN is_long ELSE false END),
+                      workout_spec = NULL
                 WHERE id = $2`,
               [newType, wid]
             );

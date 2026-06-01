@@ -34,6 +34,22 @@ export interface GlanceWeekDay {
   // Flags
   isToday: boolean;
   isPast: boolean;
+  /** 2026-06-01 · adaptation envelope · web agent brief
+   *  adaptation-visibility-backend-brief.md. wasAdapted=true means
+   *  THIS specific row was mutated by the auto-adapter (downgrade /
+   *  reschedule / shave). Frontend renders "was CRUISE INTERVALS"
+   *  sublines + "How it changed" modal section from these fields.
+   *  Null on off-plan days (no plan_workouts row). */
+  adaptation: {
+    wasAdapted: boolean;
+    originalType: string | null;
+    originalSubLabel: string | null;
+    originalDistanceMi: number | null;
+    originalDateIso: string | null;
+    reason: string | null;
+    adaptedAt: string | null;
+    kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+  } | null;
 }
 
 export interface GlanceState {
@@ -192,12 +208,24 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     // pull it here (small per-day payload) so glance-adapter can prefer
     // real Daniels-VDOT numbers over its placeholder strings.
     const planRows = (await pool.query(
-      `SELECT date_iso, dow, type, distance_mi, sub_label, workout_spec FROM plan_workouts
+      `SELECT id::text AS id, date_iso, dow, type, distance_mi, sub_label, workout_spec FROM plan_workouts
         WHERE plan_id = $1 AND date_iso BETWEEN $2::text AND $3::text`,
       [plan.id, weekDates[0].date, weekDates[6].date]
     )).rows;
     planByDate = new Map<string, any>(planRows.map((r: any) => [r.date_iso, r]));
   }
+
+  // 2026-06-01 · adaptation envelope per workout · web agent brief
+  // adaptation-visibility-backend-brief.md. Loaded once per request
+  // (single LATERAL join query) · attached to each GlanceWeekDay below.
+  const adaptationByWorkoutId = plan
+    ? await (async () => {
+        try {
+          const { loadAdaptationInfoByPlanIds } = await import('./adaptation-info');
+          return await loadAdaptationInfoByPlanIds([plan.id]);
+        } catch { return new Map(); }
+      })()
+    : new Map();
 
   // Strava actuals — ALWAYS loaded, with or without an active plan, so the
   // week strip + TodayPlannedCard always show real runs.
@@ -245,6 +273,12 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     // the day-state before using it (guards against a stale spec left by
     // an updateWorkout that didn't refresh the column).
     const plannedSpec: WorkoutSpec | null = planRow?.workout_spec ?? null;
+    // 2026-06-01 · attach the adaptation envelope. Lookup by the
+    // plan_workouts.id stamped onto each row · null when no plan
+    // row exists for this date (off-plan days).
+    const adaptation = planRow?.id
+      ? (adaptationByWorkoutId.get(planRow.id) ?? null)
+      : null;
     return {
       date, dow,
       plannedMi: planRow ? Number(planRow.distance_mi) || 0 : 0,
@@ -257,6 +291,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       activityId: actual?.id ?? null,
       isToday: date === today,
       isPast: date < today,
+      adaptation,
     };
   });
 
