@@ -81,12 +81,13 @@ export async function recommendStrengthDays(
   // 1. Load the week's plan workouts
   const weekDays = await loadWeekWorkouts(userUuid, weekStartISO);
 
-  // 2. Load runner habit + preferences
-  const [habit, prefs, raceContext, loadContext] = await Promise.all([
+  // 2. Load runner habit + preferences + readiness gate
+  const [habit, prefs, raceContext, loadContext, readinessGate] = await Promise.all([
     loadHabit(userUuid),
     loadPreferences(userUuid),
     loadRaceContext(userUuid, weekStartISO),
     loadLoadContext(userUuid),
+    loadReadinessGate(userUuid),
   ]);
 
   const coachIntent = habit === 'dormant' ? buildDormantIntent() : null;
@@ -96,6 +97,20 @@ export async function recommendStrengthDays(
     return {
       recommendedDays: [],
       reason: 'Race week · zero strength. Save the legs.',
+      habit, coachIntent,
+    };
+  }
+
+  // 3.5 · Readiness pullback override (2026-06-01 · David's gap fix).
+  // Per Research/07 · heavy lifting under high fatigue increases
+  // injury risk. When the readiness brief signals pull-back or has
+  // active streaks, the strength recommender now matches what the
+  // run-adapter is doing · same source of truth, no contradictory
+  // signals to the runner.
+  if (readinessGate.suppressAll) {
+    return {
+      recommendedDays: [],
+      reason: readinessGate.reason,
       habit, coachIntent,
     };
   }
@@ -117,7 +132,11 @@ export async function recommendStrengthDays(
   const maxFromRunner = prefs.daysPerWeek;
   const maxFromPhase = raceContext.kind === 'taper_week' ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
   const maxFromLoad = (loadContext.acwr != null && loadContext.acwr > ACWR_HIGH_SPIKE_THRESHOLD) ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
-  const target = Math.min(maxFromRunner, maxFromPhase, maxFromLoad, candidates.length);
+  // Readiness streak (without full pull-back) drops to 1 maintenance ·
+  // Research/07 same doctrine as ACWR-spike rule. Maintenance is fine
+  // under recoverable fatigue; piling on a second heavy day is not.
+  const maxFromReadiness = readinessGate.capAtOne ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
+  const target = Math.min(maxFromRunner, maxFromPhase, maxFromLoad, maxFromReadiness, candidates.length);
 
   // 6. Pick the best `target` candidates. Stable selection: rank by
   //    isolation score (distance from nearest quality/long) so the runner
@@ -150,7 +169,7 @@ export async function recommendStrengthDays(
 
   return {
     recommendedDays: picked,
-    reason: buildReason(picked, weekDays, raceContext, loadContext),
+    reason: buildReason(picked, weekDays, raceContext, loadContext, readinessGate),
     habit, coachIntent,
   };
 }
@@ -297,6 +316,65 @@ interface LoadContext {
   acwr: number | null;
 }
 
+interface ReadinessGate {
+  /** True when the readiness brief signals composite pull-back ·
+   *  recommender returns empty days. Per Research/07 · heavy lifting
+   *  under multi-pillar fatigue is injury risk. */
+  suppressAll: boolean;
+  /** True when ≥1 active 3+ day streak (sleep, HRV, RHR). Drops the
+   *  weekly cap to 1 maintenance session. Same severity-band as the
+   *  ACWR > 1.5 rule. */
+  capAtOne: boolean;
+  /** Plain-language reason for the recommendation copy. Empty when
+   *  no gate fires (the recommender uses its normal copy). */
+  reason: string;
+}
+
+/**
+ * Read the readiness brief and decide whether strength should suppress
+ * or cap. Best-effort · returns "no gate" on failure so the recommender
+ * degrades to its prior behavior (ACWR-only fatigue gate).
+ *
+ * Same source of truth the run-adapter reads (lib/plan/adapt.ts ·
+ * detectReadinessPullback). Two systems, one signal · no more
+ * contradictory readouts to the runner.
+ */
+async function loadReadinessGate(userUuid: string): Promise<ReadinessGate> {
+  try {
+    const { loadCoachState } = await import('@/lib/coach/state-loader');
+    const { loadReadinessBrief } = await import('@/lib/coach/readiness-brief');
+    const state = await loadCoachState(userUuid);
+    if (!state) return { suppressAll: false, capAtOne: false, reason: '' };
+    const brief = await loadReadinessBrief(userUuid, state);
+    if (!brief) return { suppressAll: false, capAtOne: false, reason: '' };
+
+    const isPullback = brief.band === 'pull-back';
+    const streaks = brief.streaks ?? [];
+
+    if (isPullback) {
+      const streakDesc = streaks.length > 0
+        ? ` (${streaks[0].pillar.toUpperCase()} ${streaks[0].direction} ${streaks[0].days}d)`
+        : '';
+      return {
+        suppressAll: true,
+        capAtOne: false,
+        reason: `Strength suppressed this week · composite readiness in pull-back band${streakDesc}. Heavy lifting under multi-pillar fatigue is injury risk per Research/07.`,
+      };
+    }
+    if (streaks.length >= 1) {
+      const s = streaks[0];
+      return {
+        suppressAll: false,
+        capAtOne: true,
+        reason: `Strength capped at 1 maintenance session · ${s.pillar.toUpperCase()} ${s.direction} for ${s.days} days. Hold form, skip the second heavy day.`,
+      };
+    }
+    return { suppressAll: false, capAtOne: false, reason: '' };
+  } catch {
+    return { suppressAll: false, capAtOne: false, reason: '' };
+  }
+}
+
 async function loadLoadContext(userUuid: string): Promise<LoadContext> {
   // Quick ACWR derivation · acute (7d) / chronic (28d). Same query
   // shape readiness uses.
@@ -374,6 +452,7 @@ function buildReason(
   weekDays: WeekDay[],
   raceCtx: RaceContext,
   loadCtx: LoadContext,
+  readinessGate: ReadinessGate,
 ): string {
   if (picked.length === 0) {
     return 'No strength surfaced this week.';
@@ -385,17 +464,22 @@ function buildReason(
   const list = dayLabels.length === 1 ? dayLabels[0] : `${dayLabels.slice(0, -1).join(' + ')} + ${dayLabels.at(-1)}`;
 
   const reasons: string[] = [];
-  // Type characterization
+  // Type characterization · singular/plural aware
   const types = picked.map(iso => weekDays.find(d => d.date === iso)?.type ?? 'easy');
   const allEasy = types.every(t => t === 'easy');
   const anyRest = types.some(t => t === 'rest');
-  if (allEasy) reasons.push('both easy days');
-  else if (anyRest) reasons.push('rest day + easy day');
+  if (allEasy) reasons.push(picked.length === 1 ? 'easy day' : 'both easy days');
+  else if (anyRest) reasons.push(picked.length === 1 ? 'rest day' : 'rest day + easy day');
   // Adjacency to hard days
-  reasons.push('neither adjacent to a quality session');
+  reasons.push(picked.length === 1 ? 'not adjacent to a quality session' : 'neither adjacent to a quality session');
 
   let suffix = '';
-  if (raceCtx.kind === 'taper_week') {
+  // Readiness signal takes precedence over ACWR · it's the multi-pillar
+  // composite that includes ACWR as one of its inputs.
+  if (readinessGate.capAtOne && picked.length === 1) {
+    const s = readinessGate.reason.split('·')[1]?.trim() ?? 'readiness signal';
+    suffix = ` · dropped to 1 maintenance (${s})`;
+  } else if (raceCtx.kind === 'taper_week') {
     suffix = ' · maintenance only, race in 8-14 days';
   } else if (loadCtx.acwr != null && loadCtx.acwr > ACWR_HIGH_SPIKE_THRESHOLD) {
     suffix = ` · dropped to 1 session (ACWR ${loadCtx.acwr.toFixed(1)} · high)`;
