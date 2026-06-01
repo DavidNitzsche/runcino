@@ -97,11 +97,13 @@ export function Sidebar({
 
         <div className="spacer" />
 
-        <div className="upsell" onClick={onOpenUpsell} role="button" tabIndex={0}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="#FFCE8A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l5-6 4 3 5-8 4 5"/></svg>
-          <b>Upgrade to Pro</b>
-          <span className="arr">›</span>
-        </div>
+        {/* 2026-05-31 (David call): Upgrade-to-Pro upsell removed from the
+            sidebar. Billing isn't wired and the upsell modal didn't
+            actually upgrade anything, so it was honest-only chrome on
+            the sidebar of a single-user beta. If real billing ships, the
+            block goes back in here, gated on `!seed.user.pro`. The
+            onOpenUpsell prop is still threaded through the Shell so the
+            modal can be opened from elsewhere (e.g. Profile) if needed. */}
 
         <div className="me" style={{ cursor: 'pointer' }} onClick={() => onNav('profile')}>
           <div className="av">{seed.user.initial}</div>
