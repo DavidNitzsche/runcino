@@ -256,9 +256,9 @@ function composeWhatClosesIt(
   const out: string[] = [];
 
   if (status === 'closing') {
-    out.push('Hold the threshold consistency · trajectory is moving toward the goal.');
+    out.push('Hold the threshold consistency · Trajectory is moving toward the goal.');
     if (weeksRemaining <= 4) {
-      out.push('Keep the long-run progression honest · race-pace miles are doing the work.');
+      out.push('Keep the long-run progression honest · Race-pace miles are doing the work.');
     }
     return out;
   }
@@ -270,16 +270,16 @@ function composeWhatClosesIt(
         out.push('Marathon-pace integration in the long run shifts the projection by 0.5 VDOT/4wk.');
       }
     } else {
-      out.push('Running ahead of the goal · maintain rhythm, no need to push harder.');
+      out.push('Running ahead of the goal · Maintain rhythm, no need to push harder.');
     }
     return out;
   }
 
   if (status === 'widening') {
     out.push('Threshold density is the lever · 2 quality days/week vs current 1.');
-    out.push('Check the readiness brief · widening trajectory often tracks sleep + RHR drift.');
+    out.push('Check the readiness brief · Widening trajectory often tracks sleep + RHR drift.');
     if (weeksRemaining <= 6) {
-      out.push(`${weeksRemaining} weeks left · we'll surface goal options if it keeps widening.`);
+      out.push(`${weeksRemaining} weeks left · We'll surface goal options if it keeps widening.`);
     }
     return out;
   }
@@ -287,6 +287,6 @@ function composeWhatClosesIt(
   // unclosable
   out.push(`Gap is wider than what's typically closable in ${weeksRemaining} weeks.`);
   out.push('Goal renegotiation will surface in the brief when we have one more data week.');
-  out.push('Training stays honest · race-day execution still matters at any goal.');
+  out.push('Training stays honest · Race-day execution still matters at any goal.');
   return out;
 }

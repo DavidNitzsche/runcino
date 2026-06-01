@@ -401,7 +401,7 @@ function detectStreaks(
       startDate: history.sleep.at(-sleepStreak.length)?.date ?? '',
       short: `Sleep below target ${sleepStreak.length} nights running.`,
       meaning: `Sleep below the 7.5h target ${sleepStreak.length} nights running. ` +
-        `Cumulative debt compounds · single short nights don't matter, ` +
+        `Cumulative debt compounds · Single short nights don't matter, ` +
         `sustained dips do.`,
     });
   }
@@ -416,7 +416,7 @@ function detectStreaks(
         days: drops,
         startDate: history.hrv.at(-drops)?.date ?? '',
         short: `HRV below baseline ${drops} days running.`,
-        meaning: `HRV rolling-7 below baseline ${drops} days in a row · early ` +
+        meaning: `HRV rolling-7 below baseline ${drops} days in a row · Early ` +
           `functional-overreach signal. Reduce intensity 24-72h and re-check.`,
       });
     }
@@ -435,7 +435,7 @@ function detectStreaks(
         startDate: history.hrv.at(-streakLen)?.date ?? '',
         short: `HRV below 60-day average ${streakLen} days running.`,
         meaning: `HRV below your 60-day average ${streakLen} days in a row. ` +
-          `Could be stress, sleep, or accumulating load · single days are noise, ` +
+          `Could be stress, sleep, or accumulating load · Single days are noise, ` +
           `streaks are signal.`,
       });
     }
@@ -657,20 +657,20 @@ function buildHeadline(
   // Streak takes precedence · the brief leads with what most needs attention.
   if (streaks.length > 0) {
     const s = streaks[0];
-    return `${PILLAR_LABEL[s.pillar]} ${s.direction} for ${s.days} days · the trend matters more than today's number.`;
+    return `${PILLAR_LABEL[s.pillar]} ${s.direction} for ${s.days} days · The trend matters more than today's number.`;
   }
   if (b.band === 'sharp') {
     return movers.length && movers[0].deltaPts > 0
-      ? `Sharp · the system is firing. ${movers[0].label.toLowerCase()}.`
-      : `Sharp · the system is firing. Today is for hard work if the plan calls for it.`;
+      ? `Sharp · The system is firing. ${movers[0].label.toLowerCase()}.`
+      : `Sharp · The system is firing. Today is for hard work if the plan calls for it.`;
   }
   if (b.band === 'ready') {
-    return `Ready · all systems in their normal band. Today is whatever the plan says.`;
+    return `Ready · All systems in their normal band. Today is whatever the plan says.`;
   }
   if (b.band === 'moderate') {
-    return `Moderate · one or two pillars dipped. Single-day dips are noise; check tomorrow.`;
+    return `Moderate · One or two pillars dipped. Single-day dips are noise; check tomorrow.`;
   }
-  return `Pull back · multiple pillars are flagging. Trade hard work for easy today.`;
+  return `Pull back · Multiple pillars are flagging. Trade hard work for easy today.`;
 }
 
 function buildWatchTomorrow(
@@ -682,7 +682,7 @@ function buildWatchTomorrow(
   if (streaks.length > 0) {
     const s = streaks[0];
     out.push(`If ${PILLAR_LABEL[s.pillar]} stays ${s.direction} another day, ` +
-      `treat it as signal, not noise · ease the load and check subjective state.`);
+      `treat it as signal, not noise · Ease the load and check subjective state.`);
   }
   // Sleep debt heading up
   if (history.sleep.length >= 3) {
@@ -694,7 +694,7 @@ function buildWatchTomorrow(
   }
   // CV rising · Plews early-overreach
   if (history.hrvPlews?.cv != null && history.hrvPlews.cv > 5) {
-    out.push(`HRV rolling-CV is at ${history.hrvPlews.cv.toFixed(1)}% · early ` +
+    out.push(`HRV rolling-CV is at ${history.hrvPlews.cv.toFixed(1)}% · Early ` +
       `destabilization signal. Worth reducing one hard session if it persists.`);
   }
   return out;
@@ -758,9 +758,9 @@ function computeSubjectiveOverride(
   const subjectiveLower = subjective100 < objective;
   const advice = subjectiveLower
     ? `Your read is lower than the numbers (${subjective100} vs ${objective}). ` +
-      `When subjective and objective disagree, your read wins · ease the day.`
+      `When subjective and objective disagree, your read wins · Ease the day.`
     : `Your read is higher than the numbers (${subjective100} vs ${objective}). ` +
-      `When subjective and objective disagree, your read wins · proceed as planned.`;
+      `When subjective and objective disagree, your read wins · Proceed as planned.`;
 
   return {
     subjectiveScore: subjective100,
@@ -812,9 +812,9 @@ async function loadColdStart(
   const remaining = Math.max(0, NIGHTS_NEEDED - nightsLogged);
   const note = nightsLogged === 0
     ? `No nights logged yet. Connect Apple Health to sync the last few ` +
-      `nights · or wear your watch tonight and the brief fills in by morning.`
+      `nights · Or wear your watch tonight and the brief fills in by morning.`
     : remaining === 0
-      ? `Enough data · your first real score lands tomorrow morning.`
+      ? `Enough data · Your first real score lands tomorrow morning.`
       : `${nightsLogged} of ${NIGHTS_NEEDED} nights logged. ${remaining} more ` +
         `${remaining === 1 ? 'night' : 'nights'} until your first real score.`;
 
@@ -862,9 +862,9 @@ function buildTrendNote(
       ? '. One full night resets the trend.'
       : streaks.find((s) => s.pillar === 'hrv')
         ? '. 24-72h easier work, then re-check.'
-        : '. Watch tomorrow · single-day noise resolves quickly.';
+        : '. Watch tomorrow · Single-day noise resolves quickly.';
   } else if (direction === 'up') {
-    resolve = '. Trend is healthy · proceed as planned.';
+    resolve = '. Trend is healthy · Proceed as planned.';
   } else {
     resolve = '. Within normal day-to-day range.';
   }

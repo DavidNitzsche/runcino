@@ -106,7 +106,7 @@ export async function recommendStrengthDays(
   if (raceContext.kind === 'race_week') {
     return {
       recommendedDays: [],
-      reason: 'Race week · zero strength. Save the legs.',
+      reason: 'Race week · Zero strength. Save the legs.',
       habit, coachIntent,
     };
   }
@@ -372,7 +372,7 @@ async function loadReadinessGate(userUuid: string): Promise<ReadinessGate> {
       return {
         suppressAll: true,
         capAtOne: false,
-        reason: `Strength suppressed this week · composite readiness in pull-back band${streakDesc}. Heavy lifting under multi-pillar fatigue is injury risk.`,
+        reason: `Strength suppressed this week · Composite readiness in pull-back band${streakDesc}. Heavy lifting under multi-pillar fatigue is injury risk.`,
       };
     }
     if (streaks.length >= 1) {
@@ -648,9 +648,9 @@ export async function emitStrengthResumeIntent(
   const wasSuppress = lastSkip.field === 'suppress';
   const body = wasSuppress
     ? `Strength was suppressed earlier this week (readiness pull-back). ` +
-      `Signals are back in band · strength resumes today.`
+      `Signals are back in band · Strength resumes today.`
     : `Strength was capped to 1 session earlier this week (active streak). ` +
-      `The streak has cleared · full strength rotation resumes.`;
+      `The streak has cleared · Full strength rotation resumes.`;
 
   await pool.query(
     `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)

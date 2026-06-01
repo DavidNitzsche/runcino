@@ -132,7 +132,7 @@ function composeHeadline(gap: GoalGap): string {
   const absGap = Math.abs(gap.gapSec);
   const gapStr = formatGapShort(absGap);
   if (gap.status === 'closing') {
-    return `Tracking ${traj} · gap closing toward ${formatTime(gap.goalSec)}.`;
+    return `Tracking ${traj} · Gap closing toward ${formatTime(gap.goalSec)}.`;
   }
   if (gap.status === 'static') {
     if (gap.gapSec > 0) {
@@ -144,7 +144,7 @@ function composeHeadline(gap: GoalGap): string {
     return `Tracking ${traj} · ${gapStr} behind goal and trending wider.`;
   }
   // unclosable
-  return `Tracking ${traj} · gap to ${formatTime(gap.goalSec)} is wider than ` +
+  return `Tracking ${traj} · Gap to ${formatTime(gap.goalSec)} is wider than ` +
     `${gap.weeksRemaining} weeks can close.`;
 }
 

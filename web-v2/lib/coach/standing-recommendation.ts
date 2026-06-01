@@ -210,7 +210,9 @@ function composeCopy(
   workout: StandingRecommendationInput['workout'],
   signal: SignalFinding,
 ): string {
-  const phrase = signal.detail;
+  // Sentence case · capitalize the phrase after the · so each clause
+  // reads as its own sentence (Davids locked copy rule 2026-06-01).
+  const phrase = signal.detail.charAt(0).toUpperCase() + signal.detail.slice(1);
   if (workout.type === 'intervals') {
     return `Coach still recommends easing this run · ${phrase}.`;
   }
