@@ -81,12 +81,28 @@ export function ReconnectBanner({ initialState }: ReconnectBannerProps = {}) {
   async function reconnect() {
     if (reconnecting) return;
     setReconnecting(true);
+    // 2026-06-01 fix: surface real errors instead of resetting the
+    // spinner and pretending nothing happened. If the route 401's
+    // (session expired), 503's (STRAVA_CLIENT_ID not set in env), or
+    // returns a body without `url`, the runner needs to see WHY
+    // clicking the button does nothing.
     try {
       const r = await fetch('/api/auth/strava?action=connect', { credentials: 'same-origin' });
-      const j = await r.json().catch(() => ({}));
-      if (j?.url) window.location.href = j.url;
-      else setReconnecting(false);
-    } catch {
+      if (!r.ok) {
+        const txt = await r.text().catch(() => '');
+        alert(`Couldn't start the Strava reconnect (HTTP ${r.status}). ${txt.slice(0, 200)}`);
+        setReconnecting(false);
+        return;
+      }
+      const j = await r.json().catch(() => null);
+      if (j && typeof j.url === 'string') {
+        window.location.href = j.url;
+        return;
+      }
+      alert("Strava reconnect didn't return a redirect URL. The server may be misconfigured (missing STRAVA_CLIENT_ID).");
+      setReconnecting(false);
+    } catch (err: any) {
+      alert(`Couldn't reach the reconnect endpoint: ${err?.message ?? 'network error'}`);
       setReconnecting(false);
     }
   }

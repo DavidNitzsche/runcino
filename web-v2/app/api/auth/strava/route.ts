@@ -57,11 +57,20 @@ async function connectURL(req: NextRequest) {
   // We pass the user_uuid in `state` so the callback knows which profile
   // row to update. Server-side session cookies would be cleaner; this is
   // good enough for beta.
+  //
+  // 2026-06-01 fix: approval_prompt MUST be 'force'. With 'auto' Strava
+  // skips the consent screen for any already-authorized app and returns
+  // to the EXISTING token with the EXISTING scope · which is exactly
+  // what we're trying to expand on. David's account authorized in May
+  // before activity:write was on the request; clicking RECONNECT with
+  // approval_prompt=auto silently re-granted the same read-only scope
+  // and the banner came right back. Force the dialog every time so the
+  // scope expansion actually lands.
   const url = new URL('https://www.strava.com/oauth/authorize');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirect);
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('approval_prompt', 'auto');
+  url.searchParams.set('approval_prompt', 'force');
   url.searchParams.set('scope', 'read,activity:read_all,activity:write');
   url.searchParams.set('state', userId);
   return NextResponse.json({ url: url.toString() });
