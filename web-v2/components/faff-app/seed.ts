@@ -270,10 +270,22 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: Planne
     // 2026-05-30: prefer real Daniels-VDOT pace from the workout_spec
     // (P0 #4 backfill). Fall through to legacy paceTargetSPerMi field
     // (used by some non-spec plans) then PACE_DEFAULT placeholder.
+    // 2026-06-01: defensive guard for half-cleaned auto-adaptations.
+    // When the auto-adapter downgrades type to easy/recovery/rest, the
+    // brief promised atomic clearing of sub_label + pace_target +
+    // is_quality · but workout_spec was NOT included in that clearing,
+    // so the spec still carries the ORIGINAL quality-workout pace
+    // target (e.g. 6:47/mi threshold). For easy-bucket types the spec
+    // would render a self-contradictory chip ("EASY · 6:47") · trust
+    // type, distrust stale spec. Backend brief queued at
+    // designs/briefs/workout-spec-clear-on-downgrade-brief.md.
     const specPace = paceFromSpec(d.plannedSpec);
-    const paceSec = specPace
-      ?? (d as { paceTargetSPerMi?: number | null }).paceTargetSPerMi
-      ?? PACE_DEFAULT[eff];
+    const easyBucket = eff === 'easy' || eff === 'recovery' || eff === 'rest';
+    const paceSec = easyBucket
+      ? PACE_DEFAULT[eff]
+      : (specPace
+          ?? (d as { paceTargetSPerMi?: number | null }).paceTargetSPerMi
+          ?? PACE_DEFAULT[eff]);
     const paceStr = paceSec != null && paceSec > 0
       ? `${Math.floor(paceSec / 60)}:${String(Math.round(paceSec % 60)).padStart(2, '0')}`
       : (eff === 'rest' ? 'Rest' : '·');
@@ -496,7 +508,12 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
     // 2026-05-30: prefer real Daniels-VDOT pace from workout_spec (P0 #4
     // backfill) for the per-day pace cell. PACE_DEFAULT is only the fallback
     // for plan-builder rows that authored without a VDOT.
+    // 2026-06-01: defensive guard for half-cleaned auto-adaptations. See
+    // matching block in adaptWeek. type='easy'|'recovery'|'rest' must
+    // not render a stale quality-workout spec pace · backend brief
+    // tracks the workout_spec clear-on-downgrade ask.
     const specPace = paceFromSpec((d as { spec?: import('@/lib/faff/types').WorkoutSpec | null }).spec);
+    const easyBucketSeason = t === 'easy' || t === 'recovery' || t === 'rest';
     const anyD = d as unknown as {
       id?: string; donePaceSec?: number | null; doneAvgHr?: number | null;
       doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
@@ -511,7 +528,7 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
       type: t as import('./constants').EffortKey,
       name: d.label || humanName(t, d.mi),
       mi: d.mi || 0,
-      paceSec: specPace ?? PACE_DEFAULT[t] ?? null,
+      paceSec: easyBucketSeason ? (PACE_DEFAULT[t] ?? null) : (specPace ?? PACE_DEFAULT[t] ?? null),
       done: !!d.activityId,
       activityId: d.activityId,
       donePaceSec: anyD.donePaceSec ?? null,
