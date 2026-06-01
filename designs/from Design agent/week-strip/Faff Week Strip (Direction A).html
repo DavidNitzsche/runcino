@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Week Strip (Direction A)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{font-family:'Inter',sans-serif;color:#fff;min-height:100vh;position:relative;overflow-x:hidden;
+    background:#0a3a36;padding:46px 40px 80px;}
+  .mesh{position:fixed;inset:0;z-index:0;background:
+    radial-gradient(60% 50% at 12% 8%, #2faf9c55 0%, transparent 60%),
+    radial-gradient(55% 45% at 88% 4%, #f3ad3833 0%, transparent 55%),
+    radial-gradient(70% 60% at 70% 60%, #14808c66 0%, transparent 60%),
+    radial-gradient(80% 70% at 20% 95%, #0e6a6a88 0%, transparent 60%),
+    linear-gradient(160deg,#0e5450,#0a3a36 70%);}
+  .grain{position:fixed;inset:0;z-index:0;opacity:.04;mix-blend-mode:overlay;pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .wrap{position:relative;z-index:1;max-width:1480px;margin:0 auto;}
+  .h1{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;letter-spacing:-.5px;}
+  .sub{font-size:14px;opacity:.7;margin-top:8px;max-width:760px;line-height:1.5;}
+  .seclabel{display:flex;align-items:baseline;gap:12px;margin:42px 0 16px;}
+  .seclabel .n{font-size:11px;font-weight:800;letter-spacing:2px;color:#ffce8a;}
+  .seclabel .t{font-size:18px;font-weight:700;}
+  .stripeyebrow{font-size:11px;font-weight:800;letter-spacing:2px;opacity:.6;margin-bottom:12px;}
+  .week{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
+
+  /* ---------- THE CARD ---------- */
+  .wc{position:relative;background:rgba(6,26,28,.4);border:1px solid rgba(255,255,255,.1);border-radius:16px;
+    padding:15px 15px 14px;height:152px;display:flex;flex-direction:column;backdrop-filter:blur(8px);
+    transition:.2s;overflow:hidden;cursor:pointer;}
+  .wc:hover{border-color:rgba(255,255,255,.2);}
+  .wc.today{background:rgba(4,16,18,.66);border-color:rgba(255,255,255,.34);box-shadow:0 14px 30px -16px rgba(0,0,0,.5);}
+  .wc.rest{background:rgba(6,26,28,.28);}
+  .wc.skipped{filter:grayscale(.85);opacity:.5;}
+
+  .wc-top{display:flex;align-items:center;justify-content:space-between;min-height:18px;}
+  .wc-day{font-size:11px;font-weight:800;letter-spacing:.8px;display:flex;align-items:baseline;gap:6px;color:rgba(255,255,255,.5);}
+  .wc-day b{color:#fff;font-size:14px;}
+  .wc.today .wc-day{color:#FF8847;}
+  .wc.today .wc-day b{color:#fff;}
+  .wc-ic{display:flex;align-items:center;gap:6px;}
+  .wc-ic .gly{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .gly svg{width:13px;height:13px;}
+  .gly.done{background:rgba(62,189,65,.18);color:#62e08a;}
+  .gly.str{background:rgba(243,173,56,.16);color:#ffce8a;}
+
+  .wc-name{font-size:19px;font-weight:700;letter-spacing:-.3px;margin-top:13px;display:flex;align-items:center;gap:9px;line-height:1;}
+  .wc.skipped .wc-name{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.45);}
+  .effdot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+  .wc.rest .wc-name{opacity:.82;font-weight:600;}
+
+  .wc-mid{flex:1;}
+  .wc-metrics{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.78);margin-top:9px;}
+  .wc.rest .wc-metrics{opacity:.5;font-weight:500;}
+
+  /* meta zone · reserved height so every card matches */
+  .wc-meta{height:16px;margin-top:10px;display:flex;align-items:center;gap:8px;}
+  .was{font-size:10px;font-weight:800;letter-spacing:.6px;color:#ffce8a;display:flex;align-items:center;gap:5px;}
+  .was svg{width:11px;height:11px;opacity:.9;}
+  .skiptag{font-size:10px;font-weight:800;letter-spacing:1px;color:rgba(255,255,255,.7);}
+
+  .gallery{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;max-width:880px;}
+  .gcap{font-size:11px;font-weight:700;letter-spacing:.5px;opacity:.6;margin-top:9px;text-align:center;}
+  .legend{display:flex;flex-wrap:wrap;gap:22px;margin-top:18px;font-size:12.5px;opacity:.82;}
+  .legend span{display:flex;align-items:center;gap:8px;}
+  .legend i{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;}
+  .legend i svg{width:13px;height:13px;}
+  .legend i.done{background:rgba(62,189,65,.18);color:#62e08a;}
+  .legend i.str{background:rgba(243,173,56,.16);color:#ffce8a;}
+  .legend i.adp{background:rgba(243,173,56,.16);color:#ffce8a;}
+</style>
+</head>
+<body>
+  <div class="mesh"></div><div class="grain"></div>
+  <div class="wrap">
+    <div class="h1">This Week · approved card</div>
+    <div class="sub">Direction A. Fixed-height cards with a reserved meta row, so adaptation and strength annotations never make a card taller than its neighbors.</div>
+
+    <div class="seclabel"><span class="n">THE STRIP</span><span class="t">A full week, mixed states</span></div>
+    <div class="stripeyebrow">THIS WEEK</div>
+    <div class="week" id="week"></div>
+
+    <div class="legend">
+      <span><i class="done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></i> Done</span>
+      <span><i class="str"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/></svg></i> Strength add-on</span>
+      <span><i class="adp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg></i> Adapted (amber meta line)</span>
+    </div>
+
+    <div class="seclabel"><span class="n">REFERENCE</span><span class="t">Every state, isolated</span></div>
+    <div class="gallery" id="gallery"></div>
+  </div>
+
+<script>
+  const EFF={easy:'#14C08C',tempo:'#FF8847',threshold:'#FF8847',long:'#F3AD38',recovery:'#27B4E0',intervals:'#FC4D64',rest:'#8A90A0'};
+  const IC={
+    check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+    dumb:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/></svg>',
+    swap:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>'
+  };
+  function card(c){
+    const eff=EFF[c.type]||'#8A90A0';
+    const cls=['wc',c.today&&'today',c.rest&&'rest',c.skipped&&'skipped'].filter(Boolean).join(' ');
+    let ic='';
+    if(c.strength) ic+=`<span class="gly str" title="Strength add-on">${IC.dumb}</span>`;
+    if(c.done) ic+=`<span class="gly done" title="Done">${IC.check}</span>`;
+    const metrics = c.rest ? `<div class="wc-metrics" style="opacity:.5">rest</div>`
+      : `<div class="wc-metrics"${c.skipped?' style="opacity:.6"':''}>${c.dist} · ${c.pace}</div>`;
+    let meta='';
+    if(c.skipped) meta=`<div class="wc-meta"><span class="skiptag">SKIPPED</span></div>`;
+    else meta=`<div class="wc-meta">${c.adapted?`<span class="was">${IC.swap} WAS ${c.adapted.toUpperCase()}</span>`:''}</div>`;
+    const name = c.rest ? 'Rest' : `<span class="effdot" style="background:${eff}"></span>${c.name}`;
+    return `<div class="${cls}">
+      <div class="wc-top"><div class="wc-day">${c.today?'TODAY':c.dow} <b>${c.dt}</b></div><div class="wc-ic">${ic}</div></div>
+      <div class="wc-name">${name}</div>
+      <div class="wc-mid">${metrics}</div>
+      ${meta}
+    </div>`;
+  }
+
+  const WEEK=[
+    {dow:'MON',dt:1,today:true,done:true,name:'Easy',type:'easy',dist:'5.0 mi',pace:'8:12'},
+    {dow:'TUE',dt:2,name:'Threshold',type:'tempo',dist:'6.0 mi',pace:'6:47'},
+    {dow:'WED',dt:3,name:'Easy',type:'easy',dist:'6.0 mi',pace:'8:12',adapted:'Threshold'},
+    {dow:'THU',dt:4,name:'Easy',type:'easy',dist:'6.0 mi',pace:'8:12',adapted:'Threshold',strength:true},
+    {dow:'FRI',dt:5,name:'Easy',type:'easy',dist:'6.0 mi',pace:'8:12',strength:true},
+    {dow:'SAT',dt:6,rest:true,name:'Rest',type:'rest'},
+    {dow:'SUN',dt:7,name:'Long',type:'long',dist:'11.5 mi',pace:'8:00'}
+  ];
+  document.getElementById('week').innerHTML=WEEK.map(card).join('');
+
+  const STATES=[
+    {label:'Planned',c:{dow:'TUE',dt:2,name:'Threshold',type:'tempo',dist:'6.0 mi',pace:'6:47'}},
+    {label:'Today',c:{dow:'MON',dt:1,today:true,name:'Tempo',type:'tempo',dist:'8.0 mi',pace:'6:38'}},
+    {label:'Done',c:{dow:'MON',dt:1,done:true,name:'Easy',type:'easy',dist:'5.0 mi',pace:'8:12'}},
+    {label:'Adapted',c:{dow:'WED',dt:3,name:'Easy',type:'easy',dist:'6.0 mi',pace:'8:12',adapted:'Threshold'}},
+    {label:'+ Strength',c:{dow:'FRI',dt:5,name:'Easy',type:'easy',dist:'6.0 mi',pace:'8:12',strength:true}},
+    {label:'Adapted + strength',c:{dow:'THU',dt:4,name:'Easy',type:'easy',dist:'6.0 mi',pace:'8:12',adapted:'Threshold',strength:true}},
+    {label:'Rest',c:{dow:'SAT',dt:6,rest:true,name:'Rest',type:'rest'}},
+    {label:'Skipped',c:{dow:'THU',dt:4,skipped:true,name:'Intervals',type:'intervals',dist:'6.0 mi',pace:'6:05'}}
+  ];
+  document.getElementById('gallery').innerHTML=STATES.map(s=>`<div>${card(s.c)}<div class="gcap">${s.label}</div></div>`).join('');
+</script>
+</body>
+</html>

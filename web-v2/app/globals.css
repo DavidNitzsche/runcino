@@ -409,6 +409,52 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .day.skipped .dname,.day.skipped .ddist{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.35);}
 .day .dstate .skip{font-size:8px;font-weight:700;letter-spacing:1px;color:rgba(255,255,255,.7);background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:2px 5px;}
 
+/* ============================================================
+   This Week strip · Direction A redesign · 2026-06-01
+   designs/from Design agent/week-strip/README.md
+   Fixed-height (152px) cards with a reserved bottom meta row so
+   adapted "was X" + strength + done annotations never make a card
+   taller than its neighbors. Strength demoted from text row to
+   top-right glyph chip.
+   ============================================================ */
+.week.wkstrip-v2{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
+.wc{position:relative;height:152px;padding:15px 15px 14px;display:flex;flex-direction:column;text-align:left;cursor:pointer;border-radius:16px;background:rgba(6,26,28,.4);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--txt);transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;font:inherit;text-shadow:none;}
+.wc:hover{background:rgba(8,28,30,.52);}
+.wc.on{background:rgba(8,28,30,.66);border-color:rgba(255,255,255,.42);box-shadow:0 0 0 1px rgba(255,255,255,.12),0 14px 32px -16px rgba(0,0,0,.6);}
+.wc.today{background:rgba(4,16,18,.66);border-color:rgba(255,255,255,.32);box-shadow:0 0 0 1px rgba(255,136,71,.18),0 12px 30px -16px rgba(0,0,0,.55);}
+.wc.on.today{border-color:rgba(255,136,71,.55);}
+
+.wc-top{display:flex;align-items:center;justify-content:space-between;min-height:18px;}
+.wc-day{display:flex;align-items:baseline;gap:8px;}
+.wc-dw{font-size:11px;font-weight:800;letter-spacing:.8px;color:rgba(255,255,255,.5);}
+.wc.today .wc-dw{color:#FF8847;}
+.wc-dn{font-family:'Inter',sans-serif;font-size:14px;font-weight:700;color:var(--txt);letter-spacing:0;}
+
+.wc-ic{display:flex;align-items:center;gap:6px;}
+.wc-ic .gly{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.wc-ic .gly svg{width:13px;height:13px;}
+.wc-ic .gly.str{background:rgba(243,173,56,.16);color:#ffce8a;}
+.wc-ic .gly.done{background:rgba(62,189,65,.18);color:#62e08a;}
+
+.wc-name{font-size:19px;font-weight:700;letter-spacing:-.3px;line-height:1;margin-top:13px;display:flex;align-items:center;gap:9px;}
+.wc.rest .wc-name{font-weight:600;opacity:.78;}
+.wc-name .effdot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.wc-name .wc-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0;}
+
+.wc-met{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.78);margin-top:8px;}
+.wc-met .wc-met-rest{opacity:.55;font-weight:500;}
+
+.wc-grow{flex:1 1 auto;}
+
+.wc-meta{height:16px;margin-top:10px;display:flex;align-items:center;gap:8px;}
+.wc-meta .wc-was-icn{width:11px;height:11px;flex:0 0 auto;}
+.wc-meta .wc-was-tx{font-size:10px;font-weight:800;letter-spacing:.6px;color:#ffce8a;text-transform:uppercase;}
+.wc-meta .wc-skipped{font-size:10px;font-weight:800;letter-spacing:.8px;color:rgba(255,255,255,.55);text-transform:uppercase;}
+
+/* Skipped state · grayscale + opacity + strike on the name */
+.wc.skipped{filter:grayscale(.85);opacity:.5;}
+.wc.skipped .wc-name .wc-nm{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.4);}
+
 /* ── Train view v2 (Train Options · Direction A · 2026-05-31) ──
    Hero + interactive 13-week ramp + lower dashboard grid (phase
    breakdown, this-week list, projection, key workouts). Coexists

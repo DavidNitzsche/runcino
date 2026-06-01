@@ -257,93 +257,92 @@ export function TodayView({
           See designs/from Design agent/readiness-drawer/. */}
 
       <div className="weeklab">THIS WEEK</div>
-      <div className="week">
+      {/* 2026-06-01 · This Week strip · Direction A redesign per
+          designs/from Design agent/week-strip/README.md. Fixed-height
+          card (152px) with reserved 16px meta row at the bottom so
+          annotations (adapted "was X", strength glyph, done glyph)
+          never make a card taller than its neighbors. The strength
+          row is demoted from a separate text line to a top-right
+          dumbbell glyph in the icon cluster. Adaptation line lives
+          in the bottom meta row · only renders when original label
+          actually differs from current (no-op suppression per spec). */}
+      <div className="week wkstrip-v2">
         {seed.week.map((day, i) => {
           const skipped = isSkipped(day);
+          const isRest = day.type === 'rest';
+          // No-op suppression locked per design README: only render
+          // the WAS line when the original label actually differs
+          // from the current one (normalized uppercase compare).
+          const fromLabel = day.adaptation?.wasAdapted
+            ? (day.adaptation.originalSubLabel || day.adaptation.originalType)
+            : null;
+          const curCmp = (day.subLabel || day.name || day.type || '').toString().toUpperCase().trim();
+          const fromCmp = (fromLabel ?? '').toString().toUpperCase().trim();
+          const wasAdapted = !!fromLabel && fromCmp !== curCmp && !skipped;
+          const showStrength = !!day.strengthSuggested && !day.done && !skipped;
+          const showDone = !!day.done && !skipped;
           return (
-            <div
+            <button
               key={i}
-              className={`day${i === curDay ? ' on' : ''}${skipped ? ' skipped' : ''}`}
+              className={`wc${i === curDay ? ' on' : ''}${day.today ? ' today' : ''}${skipped ? ' skipped' : ''}${isRest ? ' rest' : ''}`}
               onClick={() => onPickDay(i)}
-              role="button"
-              tabIndex={0}
+              type="button"
             >
-              <div className="dtop">
-                <span className="dday">
-                  {day.today ? <span className="dw tw">TODAY</span> : <span className="dw">{day.dw}</span>}
-                  <span className="dn">{day.dn}</span>
+              {/* Top row · day label + date · icon cluster */}
+              <div className="wc-top">
+                <span className="wc-day">
+                  <span className="wc-dw">{day.today ? 'TODAY' : day.dw}</span>
+                  <b className="wc-dn">{day.dn}</b>
                 </span>
-                <span className="dstate">
-                  {skipped ? (
-                    <span className="skip">SKIPPED</span>
-                  ) : day.done ? (
-                    <svg className="ck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <span className="wc-ic">
+                  {showStrength ? (
+                    <span className="gly str" title="Strength add-on" aria-label="Strength add-on">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/>
+                      </svg>
+                    </span>
+                  ) : null}
+                  {showDone ? (
+                    <span className="gly done" title="Done" aria-label="Done">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 6L9 17l-5-5"/>
+                      </svg>
+                    </span>
                   ) : null}
                 </span>
               </div>
-              <div className="dname">
-                {day.name}
-                {day.adaptation?.wasAdapted ? (
-                  <span
-                    title={day.adaptation.kind ?? 'adapted'}
-                    aria-label="Workout was adapted"
-                    style={{
-                      display: 'inline-block',
-                      marginLeft: 6,
-                      width: 8, height: 8,
-                      borderRadius: '50%',
-                      background: '#FFCE8A',
-                      verticalAlign: 'middle',
-                      flexShrink: 0,
-                    }}
-                  />
+
+              {/* Run name · effort dot + name */}
+              <div className="wc-name">
+                {isRest ? null : (
+                  <span className="effdot" style={{ background: EFF[day.type].dot }} aria-hidden="true" />
+                )}
+                <span className="wc-nm">{isRest ? 'Rest' : day.name}</span>
+              </div>
+
+              {/* Metrics · "{dist} · {pace}" or "rest" */}
+              <div className="wc-met">
+                {isRest || day.dist === ' · ' ? <span className="wc-met-rest">rest</span> : `${day.dist} mi · ${day.pace}`}
+              </div>
+
+              {/* Spacer to push meta to bottom */}
+              <div className="wc-grow" />
+
+              {/* Meta row · always present (height reserved). Shows
+                  the adaptation line, or SKIPPED, or stays empty. */}
+              <div className="wc-meta">
+                {skipped ? (
+                  <span className="wc-skipped">SKIPPED</span>
+                ) : wasAdapted ? (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#ffce8a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="wc-was-icn">
+                      <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>
+                    </svg>
+                    <span className="wc-was-tx">was {fromLabel}</span>
+                  </>
                 ) : null}
               </div>
-              <div className="dmeta">
-                <span className="ddot" style={{ background: EFF[day.type].dot }} />
-                <span className="ddist">
-                  {day.dist === ' · ' ? 'rest' : `${day.dist} mi · ${day.pace}`}
-                </span>
-              </div>
-              {/* "was X" subline · renders whenever wasAdapted is true
-                  and an original label exists. Strikethrough removed
-                  2026-06-01 (David call) · was visual noise. Earlier
-                  label-equality no-op suppression was reverted on
-                  the chip · the adapter may have changed distance or
-                  pace without changing the type, and hiding "was
-                  EASY" on those rows lost a real "this was changed"
-                  signal. Hero keeps its stricter suppression because
-                  the runner expects full provenance there. */}
-              {day.adaptation?.wasAdapted && (day.adaptation.originalSubLabel || day.adaptation.originalType) ? (
-                <div style={{
-                  marginTop: 4,
-                  fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px',
-                  textTransform: 'uppercase',
-                  color: 'rgba(255,206,138,0.72)',
-                }}>
-                  was {day.adaptation.originalSubLabel || day.adaptation.originalType}
-                </div>
-              ) : null}
-              {/* Strength-day suggestion · backend-owned as of
-                  2026-06-01 (strength-recommender, commit 34bff2a0).
-                  PlannedDay.strengthSuggested is set in seed.ts by
-                  matching this day's iso against
-                  glance.recommendedStrengthDays. The recommender
-                  personalizes on logged history, plan phase, race
-                  proximity, ACWR, week shape · all things the prior
-                  client heuristic couldn't see. The reason for the
-                  picks renders as a caption beneath the strip. */}
-              {day.strengthSuggested && !day.done && !skipped ? (
-                <div style={{
-                  marginTop: 6,
-                  fontSize: 8.5, fontWeight: 800, letterSpacing: '1.4px',
-                  textTransform: 'uppercase',
-                  color: '#FFCE8A',
-                  borderTop: '1px solid rgba(255,206,138,.25)',
-                  paddingTop: 5,
-                }}>+ STRENGTH</div>
-              ) : null}
-            </div>
+            </button>
           );
         })}
       </div>
