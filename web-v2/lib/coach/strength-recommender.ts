@@ -49,6 +49,16 @@ export interface StrengthRecommendation {
    *  session). Frontend renders via the existing coach_intents pipeline.
    *  Null in every other habit state. */
   coachIntent: StrengthCoachIntent | null;
+  /** 2026-06-01 · readiness-gate result that drove this recommendation.
+   *  Used by emitStrengthSkipIntent to write the audit row. Null when
+   *  no readiness gate fired (race-week + ACWR-only paths surface via
+   *  the regular `reason` field). NOT rendered by the frontend ·
+   *  internal audit signal. */
+  _readinessGate?: {
+    suppressed: boolean;
+    capped: boolean;
+    reason: string;
+  };
 }
 
 // ─── Tuning constants · doctrine-derived ────────────────────────────────
@@ -112,6 +122,7 @@ export async function recommendStrengthDays(
       recommendedDays: [],
       reason: readinessGate.reason,
       habit, coachIntent,
+      _readinessGate: { suppressed: true, capped: false, reason: readinessGate.reason },
     };
   }
 
@@ -171,6 +182,9 @@ export async function recommendStrengthDays(
     recommendedDays: picked,
     reason: buildReason(picked, weekDays, raceContext, loadContext, readinessGate),
     habit, coachIntent,
+    _readinessGate: readinessGate.capAtOne
+      ? { suppressed: false, capped: true, reason: readinessGate.reason }
+      : { suppressed: false, capped: false, reason: '' },
   };
 }
 
@@ -518,16 +532,127 @@ export async function emitStrengthCoachIntent(
   if (!rec.coachIntent) return;
   const recent = (await pool.query<{ id: number }>(
     `SELECT id FROM coach_intents
-      WHERE (user_uuid = $1::uuid OR user_id = $1::text)
+      WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
         AND reason = 'strength_recommend'
         AND ts >= NOW() - interval '14 days'
       LIMIT 1`,
     [userUuid],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (recent) return;
+  // coach_intents.user_id is NOT NULL · always write both columns.
+  // No swallow · constraint violations should be loud, not silent.
   await pool.query(
-    `INSERT INTO coach_intents (user_uuid, ts, reason, field, value)
-     VALUES ($1::uuid, NOW(), 'strength_recommend', $2, $3)`,
+    `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
+     VALUES ($1::uuid, $1::uuid, NOW(), 'strength_recommend', $2, $3)`,
     [userUuid, rec.coachIntent.severity, rec.coachIntent.body],
-  ).catch(() => {});
+  ).catch((e) => { console.warn('[strength-recommender] emitStrengthCoachIntent failed:', e?.message ?? e); });
+}
+
+/**
+ * Emit a `strength_skip` audit intent when the recommender suppressed
+ * or capped strength because of readiness signals. Mirrors the
+ * run-adapter's coach_intents writes · gives the briefing surface a
+ * clean trail to explain what happened.
+ *
+ * Two distinct signal kinds, both written under reason='strength_skip':
+ *   · field='suppress' · band=pull-back → strength entirely off this week
+ *   · field='cap_one'  · ≥1 active streak → dropped to 1 maintenance
+ *
+ * Idempotent per (user, kind, day) · re-running the recommender same
+ * day doesn't double-write. Different kinds CAN coexist on the same
+ * day if the picture shifts mid-day (e.g. recommender ran morning with
+ * a streak, then evening readiness brief escalated to pull-back).
+ *
+ * Pre-condition · only fires when the recommender's returned
+ * `recommendedDays.length` decision was DRIVEN by readiness · not
+ * race-week or ACWR-only paths (those have their own surfacing).
+ */
+export async function emitStrengthSkipIntent(
+  userUuid: string,
+  rec: StrengthRecommendation,
+): Promise<void> {
+  // Only fire on readiness-driven suppression / cap. Race-week + ACWR-only
+  // paths surface via the recommender's own `reason` field on the seed ·
+  // they don't need a separate intent row.
+  const gate = rec._readinessGate;
+  if (!gate || (!gate.suppressed && !gate.capped)) return;
+  const kind = gate.suppressed ? 'suppress' : 'cap_one';
+
+  const recent = (await pool.query<{ id: number }>(
+    `SELECT id FROM coach_intents
+      WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
+        AND reason = 'strength_skip'
+        AND field = $2
+        AND ts::date = CURRENT_DATE
+      LIMIT 1`,
+    [userUuid, kind],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (recent) return;
+
+  await pool.query(
+    `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
+     VALUES ($1::uuid, $1::uuid, NOW(), 'strength_skip', $2, $3)`,
+    [userUuid, kind, gate.reason],
+  ).catch((e) => { console.warn('[strength-recommender] emitStrengthSkipIntent failed:', e?.message ?? e); });
+}
+
+/**
+ * Emit a `strength_resume` intent when signals have NORMALIZED after
+ * a recent strength_skip. Closes the loop · the runner sees "we
+ * skipped Tuesday because sleep streak · today is back in band ·
+ * strength resumes."
+ *
+ * Detection rules:
+ *   1. A strength_skip intent was written in the last 7 days
+ *   2. No strength_resume intent has been written since that skip
+ *      (idempotency · don't re-emit per recovery cycle)
+ *   3. Today the recommender returned a non-zero recommendation (i.e.
+ *      readiness has cleared and at least one day is back in scope)
+ *   4. The most recent skip was for a kind we can reverse: 'suppress'
+ *      or 'cap_one'
+ *
+ * Pre-condition · `rec.recommendedDays.length > 0` (no point announcing
+ * a resume if we STILL recommended nothing).
+ */
+export async function emitStrengthResumeIntent(
+  userUuid: string,
+  rec: StrengthRecommendation,
+): Promise<void> {
+  if (rec.recommendedDays.length === 0) return;
+
+  // Find the most recent strength_skip in last 7 days.
+  const lastSkip = (await pool.query<{ id: number; field: string; ts: Date }>(
+    `SELECT id, field, ts FROM coach_intents
+      WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
+        AND reason = 'strength_skip'
+        AND ts >= NOW() - interval '7 days'
+      ORDER BY ts DESC LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!lastSkip) return;
+
+  // Was a strength_resume already written SINCE that skip? If so we
+  // already announced the recovery · stay quiet.
+  const alreadyResumed = (await pool.query<{ id: number }>(
+    `SELECT id FROM coach_intents
+      WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
+        AND reason = 'strength_resume'
+        AND ts > $2`,
+    [userUuid, lastSkip.ts],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (alreadyResumed) return;
+
+  const skipDate = lastSkip.ts.toISOString().slice(0, 10);
+  const wasSuppress = lastSkip.field === 'suppress';
+  const body = wasSuppress
+    ? `Strength was suppressed earlier this week (readiness pull-back). ` +
+      `Signals are back in band · strength resumes today.`
+    : `Strength was capped to 1 session earlier this week (active streak). ` +
+      `The streak has cleared · full strength rotation resumes.`;
+
+  await pool.query(
+    `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
+     VALUES ($1::uuid, $1::uuid, NOW(), 'strength_resume', $2, $3)`,
+    [userUuid, skipDate, body],
+  ).catch((e) => { console.warn('[strength-recommender] emitStrengthResumeIntent failed:', e?.message ?? e); });
 }

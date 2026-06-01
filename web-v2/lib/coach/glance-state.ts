@@ -455,13 +455,23 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // local heuristic.
   let strengthRecommendation: import('./strength-recommender').StrengthRecommendation | null = null;
   try {
-    const { recommendStrengthDays, emitStrengthCoachIntent } = await import('./strength-recommender');
+    const {
+      recommendStrengthDays,
+      emitStrengthCoachIntent,
+      emitStrengthSkipIntent,
+      emitStrengthResumeIntent,
+    } = await import('./strength-recommender');
     const weekStartISO = weekDays[0]?.date;
     if (weekStartISO) {
       strengthRecommendation = await recommendStrengthDays(userId, weekStartISO);
-      // Fire-and-forget · idempotent coach intent emission. Doesn't
-      // block the response.
+      // Fire-and-forget · all three are idempotent. Don't block the
+      // response on coach_intents writes.
+      //   · dormant habit → "you haven't lifted in 24 days" intent
+      //   · readiness suppress/cap → "we skipped strength today" intent
+      //   · signals normalized after a skip → "strength resumes today" intent
       void emitStrengthCoachIntent(userId, strengthRecommendation);
+      void emitStrengthSkipIntent(userId, strengthRecommendation);
+      void emitStrengthResumeIntent(userId, strengthRecommendation);
     }
   } catch (e) {
     console.warn('[glance-state] strength-recommender failed:', e instanceof Error ? e.message : String(e));
