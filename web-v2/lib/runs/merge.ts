@@ -107,8 +107,14 @@ function clusterDuplicates(rows: Row[]): Row[][] {
         added = true;
         break;
       }
+      // 2026-06-01 · loosened from 15% to 20%. Strava and HK measure
+      // distance differently and can disagree by up to 18% on the same
+      // physical run (HR-watch overshoot, GPS recovery, treadmill drift).
+      // 20% catches these without over-clustering legitimate separate
+      // runs (which typically differ by > 30% or aren't within 30 min
+      // of each other anyway).
       const ratio = Math.abs(distA - distB) / Math.max(distA, distB);
-      if (ratio <= 0.15) {
+      if (ratio <= 0.20) {
         cluster.push(row);
         added = true;
         break;

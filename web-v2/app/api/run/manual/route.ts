@@ -69,7 +69,16 @@ export async function POST(req: NextRequest) {
     // P27.3 — auto-merge: a manual entry typically backfills something
     // that wasn't captured by watch/Strava, but if it overlaps we want
     // the manual row to lose to the richer source.
-    try { await autoMergeForDate(userId, body.date); } catch {}
+    // 2026-06-01 · was silently swallowing all autoMerge errors. Log
+    // them loudly so absorber failures surface in production logs.
+    // Failure here doesn't block the manual write (row already inserted).
+    try {
+      await autoMergeForDate(userId, body.date);
+    } catch (e: any) {
+      console.warn('[run/manual] autoMerge failed', {
+        userId, date: body.date, err: String(e?.message ?? e).slice(0, 200),
+      });
+    }
     await bustBriefingCacheForEvent(userId, 'run_ingest');
 
     // Auto-push to Strava when the runner opted in. Manual entries are
