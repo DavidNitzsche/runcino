@@ -370,6 +370,6 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     pendingIntents: intents.rows.map((r: any) => ({
       reason: r.reason, field: r.field, value: r.value,
     })),
-    shoes: [], // populated by P0.6b — out of scope for the engine skeleton
+    shoes: [], // populated by P0.6b · out of scope for the engine skeleton
   };
 }

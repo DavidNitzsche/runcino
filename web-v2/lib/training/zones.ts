@@ -53,15 +53,15 @@ export function lthrZones(lthr: number, _maxHrHint?: number): ZoneTable {
     citation: 'Research/03-heart-rate-zones.md §6 (Friel)',
     zones: [
       { idx: 1, label: 'Recovery',  shortLabel: 'Z1', ...r(0,    0.85),
-        purpose: 'Recovery, walking, true easy days — clear the legs, no stress' },
+        purpose: 'Recovery, walking, true easy days · clear the legs, no stress' },
       { idx: 2, label: 'Aerobic',   shortLabel: 'Z2', ...r(0.85, 0.89),
-        purpose: 'Aerobic base — long runs and the bulk of weekly mileage' },
+        purpose: 'Aerobic base · long runs and the bulk of weekly mileage' },
       { idx: 3, label: 'Tempo',     shortLabel: 'Z3', ...r(0.90, 0.94),
         purpose: 'Marathon pace, sub-threshold steady efforts' },
       { idx: 4, label: 'Threshold', shortLabel: 'Z4', ...r(0.95, 0.99),
-        purpose: 'Just below LT — cruise intervals, controlled hard' },
+        purpose: 'Just below LT · cruise intervals, controlled hard' },
       { idx: 5, label: 'VO2 / Max', shortLabel: 'Z5', ...r(1.00, 1.10),
-        purpose: 'At and above LT — short reps, hill repeats, race finishes' },
+        purpose: 'At and above LT · short reps, hill repeats, race finishes' },
     ],
   };
 }

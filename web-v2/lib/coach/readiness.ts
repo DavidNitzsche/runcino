@@ -134,7 +134,7 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     // telling me to back off but the coach isn't?").
     if (r < 0.8) {
       w = -3;
-      meaning = `Below 0.8. Recent 7-day volume sits well under the 28-day base — the detraining band.`;
+      meaning = `Below 0.8. Recent 7-day volume sits well under the 28-day base · the detraining band.`;
     } else if (r < 1.0) {
       w = 2;
       meaning = `Below 1.0. Building gradually, sustainable-progression band.`;
@@ -146,7 +146,7 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
       meaning = `Elevated ramp. Recent 7-day volume runs above the 28-day base.`;
     } else {
       w = -8;
-      meaning = `Above 1.5 — the elevated-injury-risk band per Gabbett. Coach factors this into today's prescription.`;
+      meaning = `Above 1.5 · the elevated-injury-risk band per Gabbett. Coach factors this into today's prescription.`;
     }
     score += w;
     inputs.push({
@@ -177,13 +177,13 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const w = Math.max(-5, Math.min(5, Math.round(delta / 2)));
     score += w;
     const meaning = delta >= 6
-      ? `Faster than your baseline. Strong cardio recovery signal — the engine is rebounding well.`
+      ? `Faster than your baseline. Strong cardio recovery signal · the engine is rebounding well.`
       : delta >= 2
         ? `Slightly above your baseline. Recovery system is on.`
         : delta >= -2
           ? `At your baseline. Steady cardio recovery.`
           : delta >= -6
-            ? `Below your baseline. Could be a hard recent session, sleep deficit, or heat — single-day dip is fine.`
+            ? `Below your baseline. Could be a hard recent session, sleep deficit, or heat · single-day dip is fine.`
             : `Well below your baseline. Cardiac recovery is sluggish. Watch tomorrow.`;
     inputs.push({
       key: 'hr_recovery', label: 'HR RECOVERY · 5%', weight: w,

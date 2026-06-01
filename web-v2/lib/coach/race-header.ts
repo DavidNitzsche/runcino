@@ -59,7 +59,7 @@ export interface RaceHeader {
   dateLabel: string | null;   // "SEP 21"
   phaseLabel: string | null;  // "BUILD"
   goalLabel: string | null;   // "1:45"
-  projLabel: string | null;   // "1:44:50" — only when computable
+  projLabel: string | null;   // "1:44:50" · only when computable
   projectionTrend: ProjectionTrend | null;
   status: RaceHeaderStatus | null;
   statusLabel: string | null; // "ON TRACK"

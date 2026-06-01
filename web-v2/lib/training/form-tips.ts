@@ -21,7 +21,7 @@ export interface FormTipBand {
 }
 
 export interface FormTip {
-  key: string;           // metric key — matches RunForm field
+  key: string;           // metric key · matches RunForm field
   title: string;         // human title
   unit: string;          // "spm", "ms", "m", "cm", "%", "w", "%", "/min"
   oneLiner: string;      // one-line summary for cards
@@ -55,9 +55,9 @@ export const FORM_TIPS: Record<string, FormTip> = {
     key: 'cadence_spm',
     title: 'Cadence',
     unit: 'spm',
-    oneLiner: 'Steps per minute — the rhythm of your run.',
-    whatItIs: 'How many times your feet hit the ground per minute. Counts both feet — a single foot strike is half a step.',
-    whyItMatters: 'Higher cadence (shorter, quicker steps) reduces ground contact time and bounce. Most efficient runners land 175-185 spm regardless of pace. Slow cadence usually means overstriding — landing with your foot ahead of your hips, braking each step.',
+    oneLiner: 'Steps per minute · the rhythm of your run.',
+    whatItIs: 'How many times your feet hit the ground per minute. Counts both feet · a single foot strike is half a step.',
+    whyItMatters: 'Higher cadence (shorter, quicker steps) reduces ground contact time and bounce. Most efficient runners land 175-185 spm regardless of pace. Slow cadence usually means overstriding · landing with your foot ahead of your hips, braking each step.',
     bands: [
       { band: 'elite', range: '180+ spm', label: 'Elite turnover', meaning: 'Efficient, low ground contact.' },
       { band: 'good',  range: '170-180 spm', label: 'Optimal range', meaning: 'Most efficient marathoners live here.' },
@@ -71,8 +71,8 @@ export const FORM_TIPS: Record<string, FormTip> = {
       [0,   159.9, 'flag', '< 160 spm',   'Overstriding flag', 'Likely landing ahead of your hips and braking.'],
     ]),
     drillsWhenFlagged: [
-      'Run with a metronome at 175 spm for the first 10 minutes of easy runs — let your stride shorten naturally.',
-      '4 × 30-second strides at the end of easy runs, focused on quick foot turnover. Don\'t reach with the foot — let it land under your hip.',
+      'Run with a metronome at 175 spm for the first 10 minutes of easy runs · let your stride shorten naturally.',
+      '4 × 30-second strides at the end of easy runs, focused on quick foot turnover. Don\'t reach with the foot · let it land under your hip.',
       'On treadmill: bump pace 5-10s/mi faster for short stretches. Faster pace forces higher cadence naturally; bring that turnover back to easy pace.',
       'Visualize "fast feet, short steps" rather than "long strides".',
     ],
@@ -84,7 +84,7 @@ export const FORM_TIPS: Record<string, FormTip> = {
     unit: 'ms',
     oneLiner: 'How long each foot stays on the ground.',
     whatItIs: 'The duration (in milliseconds) that each foot is in contact with the ground per stride. Apple Watch measures this from accelerometer + gyroscope data.',
-    whyItMatters: 'Shorter contact = faster running economy. Elite distance runners are 200-230ms. Long contact correlates with overstriding and a heavier landing — the energy spent pushing off lasts longer.',
+    whyItMatters: 'Shorter contact = faster running economy. Elite distance runners are 200-230ms. Long contact correlates with overstriding and a heavier landing · the energy spent pushing off lasts longer.',
     bands: [
       { band: 'elite', range: '< 220 ms', label: 'Elite range', meaning: 'Quick, light steps. Sub-elite distance runners live here.' },
       { band: 'good',  range: '220-260 ms', label: 'Efficient', meaning: 'Good ground contact for trained runners.' },
@@ -98,9 +98,9 @@ export const FORM_TIPS: Record<string, FormTip> = {
       [300, 9999, 'flag', '> 300 ms', 'Long contact', 'Suggests overstriding or weak push-off.'],
     ]),
     drillsWhenFlagged: [
-      'Hill repeats — 6 × 30s steep uphill at hard effort. Forces a quick, powerful push-off and naturally shortens ground contact.',
+      'Hill repeats · 6 × 30s steep uphill at hard effort. Forces a quick, powerful push-off and naturally shortens ground contact.',
       'Pop-up plyos: 3 × 10 quick low jumps off both feet, focusing on minimal floor time. Twice a week, after easy runs.',
-      'Drill the cadence fix (175+ spm) — they\'re linked. Shorter steps = shorter contact.',
+      'Drill the cadence fix (175+ spm) · they\'re linked. Shorter steps = shorter contact.',
       'Strength: single-leg calf raises, 3 × 12 each side, 2× per week. Stronger calves = faster push-off.',
     ],
   },
@@ -123,9 +123,9 @@ export const FORM_TIPS: Record<string, FormTip> = {
       [0, 1.0, 'flag', '< 1.00 m', 'Very short stride', 'Could be over-cautious or fatigue.'],
     ]),
     drillsWhenFlagged: [
-      'Strides — 4-6 × 20s at near-mile pace at the end of easy runs. Builds the muscular ability to stride longer without reaching.',
+      'Strides · 4-6 × 20s at near-mile pace at the end of easy runs. Builds the muscular ability to stride longer without reaching.',
       'Hill bounding: 4 × 30s uphill at hard effort with exaggerated push-off. Develops the power to lengthen stride from the ground up.',
-      'Don\'t fix this by reaching — that creates overstriding. Cadence + push-off does it.',
+      'Don\'t fix this by reaching · that creates overstriding. Cadence + push-off does it.',
     ],
   },
 
@@ -151,8 +151,8 @@ export const FORM_TIPS: Record<string, FormTip> = {
     drillsWhenFlagged: [
       'Lift cadence to 175+ spm. Shorter steps = less time airborne = less vertical motion. This is the #1 fix.',
       'Visualize horizontal motion: "head moving forward, not up." Try running in front of a mirror or window where you can see your head height.',
-      'Skip the heel strike — landing under your hips reduces the upward bounce of each stride.',
-      'Core strength — planks 3 × 30s, side planks 3 × 20s each side, 2× per week. A stiffer trunk damps oscillation.',
+      'Skip the heel strike · landing under your hips reduces the upward bounce of each stride.',
+      'Core strength · planks 3 × 30s, side planks 3 × 20s each side, 2× per week. A stiffer trunk damps oscillation.',
     ],
   },
 
@@ -160,7 +160,7 @@ export const FORM_TIPS: Record<string, FormTip> = {
     key: 'vertical_ratio_pct',
     title: 'Vertical Ratio',
     unit: '%',
-    oneLiner: 'Vertical bounce as a percentage of stride length — the efficiency ratio.',
+    oneLiner: 'Vertical bounce as a percentage of stride length · the efficiency ratio.',
     whatItIs: 'Vertical oscillation ÷ stride length, as a percentage. The cleanest single-number form indicator.',
     whyItMatters: 'A 10cm bounce in a 1.6m stride is more efficient than a 10cm bounce in a 1.0m stride. Vertical ratio normalizes for pace. Elite < 6%, good < 8%, recreational 8-10%.',
     bands: [
@@ -176,9 +176,9 @@ export const FORM_TIPS: Record<string, FormTip> = {
       [10, 99, 'flag', '> 10%', 'Inefficient bounce', 'Significant room to reduce bounce relative to stride.'],
     ]),
     drillsWhenFlagged: [
-      'Same fix list as vertical oscillation — primarily cadence work. Lifting cadence reduces both numerator (bounce) and grows denominator (stride length) over time.',
+      'Same fix list as vertical oscillation · primarily cadence work. Lifting cadence reduces both numerator (bounce) and grows denominator (stride length) over time.',
       'Mid-run cadence check: every 10 min, count steps for 15s and multiply by 4. Should hit 175+ at easy pace.',
-      'Plyometrics — 2 × per week. Box jumps + bounding teach the body to spring forward, not up.',
+      'Plyometrics · 2 × per week. Box jumps + bounding teach the body to spring forward, not up.',
     ],
   },
 
@@ -187,14 +187,14 @@ export const FORM_TIPS: Record<string, FormTip> = {
     title: 'Running Power',
     unit: 'w',
     oneLiner: 'The actual work output per stride, in watts.',
-    whatItIs: 'Estimated work in watts — derived from cadence, vertical motion, ground contact, pace, and your body weight. Apple Watch reports it from watchOS 10.',
+    whatItIs: 'Estimated work in watts · derived from cadence, vertical motion, ground contact, pace, and your body weight. Apple Watch reports it from watchOS 10.',
     whyItMatters: 'Power is the most consistent effort metric across terrain. HR drifts in heat, pace drifts on hills, but power reflects what you\'re actually doing. Useful for pacing hilly long runs, race-day effort, and tracking improvement at the same pace.',
     bands: [
       { band: 'good', range: 'depends on weight, pace, terrain', label: 'No universal target', meaning: 'Track YOUR baseline. A 270w long run is meaningful in context of YOUR 270w; absolute numbers vary by runner weight + form.' },
     ],
     classify: () => ({ band: 'good', range: 'depends', label: 'Track your baseline', meaning: 'Compare to your own past runs.' }),
     drillsWhenFlagged: [
-      'Run power isn\'t a flag-able metric on its own — use it as a pacing tool. Find your easy-effort wattage and your threshold wattage from past runs.',
+      'Run power isn\'t a flag-able metric on its own · use it as a pacing tool. Find your easy-effort wattage and your threshold wattage from past runs.',
       'On a hilly long run: hold steady power instead of steady pace. Pace will slow uphill and speed downhill; effort stays constant.',
       'Track week-over-week: if you can hit the same pace at lower power, you\'re getting more economical.',
     ],
@@ -219,7 +219,7 @@ export const FORM_TIPS: Record<string, FormTip> = {
     ]),
     drillsWhenFlagged: [
       'A single low reading is noise. Sustained low (multiple days) → medical consultation.',
-      'Not a training metric to act on — it\'s a health metric to monitor.',
+      'Not a training metric to act on · it\'s a health metric to monitor.',
     ],
   },
 
@@ -229,7 +229,7 @@ export const FORM_TIPS: Record<string, FormTip> = {
     unit: '/min',
     oneLiner: 'Breaths per minute, measured overnight.',
     whatItIs: 'How many times you breathe per minute (resting / overnight). Apple Watch tracks this from sleep data.',
-    whyItMatters: 'Resting respiratory rate is an autonomic-state indicator. A persistent jump of 2-3 breaths above your baseline can flag illness brewing, overtraining, or stress — often before HRV catches it.',
+    whyItMatters: 'Resting respiratory rate is an autonomic-state indicator. A persistent jump of 2-3 breaths above your baseline can flag illness brewing, overtraining, or stress · often before HRV catches it.',
     bands: [
       { band: 'good', range: '12-20 / min', label: 'Normal adult resting', meaning: 'No flag in isolation.' },
       { band: 'flag', range: 'sustained +2-3 above your baseline', label: 'Watch it', meaning: 'Persistent elevation flags illness or overtraining brewing.' },

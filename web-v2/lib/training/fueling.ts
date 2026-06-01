@@ -134,7 +134,7 @@ export function computeFueling(input: FuelingInput): FuelingPlan {
   const why = gels > 0
     ? `Aim ${effectiveRate} g/hr (${heatPen > 0 ? `heat-adjusted from ${targetRate}` : `${workoutType} baseline`}). ` +
       (workoutType === 'long' && daysToARace != null && daysToARace <= 56
-        ? `Race ${daysToARace}d out — long runs rehearse race-day intake (Costa gut-training ramp).`
+        ? `Race ${daysToARace}d out · long runs rehearse race-day intake (Costa gut-training ramp).`
         : 'Spread evenly so gut sees a steady carb stream.')
     : 'Short enough or easy enough that pre-run breakfast covers the work.';
 

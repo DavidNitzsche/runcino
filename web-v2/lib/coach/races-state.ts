@@ -30,7 +30,7 @@ export interface RaceRow {
 export interface RacesState {
   today: string;
   aRaces: RaceRow[];          // ALL upcoming A-races (CIM, LA Marathon, etc)
-  aRace: RaceRow | null;       // the next one — kept for backward compat
+  aRace: RaceRow | null;       // the next one · kept for backward compat
   upcomingBs: RaceRow[];
   upcomingCs: RaceRow[];
   past: RaceRow[];

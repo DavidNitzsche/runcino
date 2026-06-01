@@ -133,7 +133,7 @@ function distanceCategoryOf(raceDistanceMi: number): DistCategory {
 
 /** Per-category structural numbers per Research/22 + canonical Daniels. */
 const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: number }> = {
-  '5k':  { taperWeeks: 1, raceSpecificCap: 2 }, // short, fast races — minimal taper
+  '5k':  { taperWeeks: 1, raceSpecificCap: 2 }, // short, fast races · minimal taper
   '10k': { taperWeeks: 2, raceSpecificCap: 3 },
   'hm':  { taperWeeks: 2, raceSpecificCap: 3 },
   'm':   { taperWeeks: 3, raceSpecificCap: 4 },
@@ -163,7 +163,7 @@ function sizeBlocks(totalWeeks: number, raceDistanceMi: number): BlockPlan {
   if (baseWeeks > 0) phases.push({
     label: 'BASE',
     weeks: baseWeeks,
-    rationale: 'Aerobic foundation — easy volume + long progressions, no quality yet.',
+    rationale: 'Aerobic foundation · easy volume + long progressions, no quality yet.',
     citation: 'Research/00a-distance-running-training.md §periodization',
   });
   if (expandedQuality > 0) phases.push({
@@ -393,7 +393,7 @@ function layoutWeek({
     // toward race-specific quality regardless of distance.
     const cat = distanceCategoryOf(raceDistanceMi);
     const qualityTypes: Array<DayPlan['type']> =
-        phase === 'TAPER'         ? ['threshold']                                     // tune-up — same for all distances
+        phase === 'TAPER'         ? ['threshold']                                     // tune-up · same for all distances
       : phase === 'RACE-SPECIFIC'
           ? (cat === '5k'   ? ['intervals', 'intervals']
            : cat === '10k'  ? ['threshold', 'intervals']
@@ -409,7 +409,7 @@ function layoutWeek({
     // (Research/04 + 22) via resolvePrescriptions() — falls back to the
     // historical inline catalog if the library has no matching row.
     qualityDows.forEach((dow, i) => {
-      if (slots[dow] != null) return; // conflict — skip
+      if (slots[dow] != null) return; // conflict · skip
       const qt = qualityTypes[i % qualityTypes.length];
       const sub =
         qt === 'intervals'  ? rx.intervals
@@ -634,7 +634,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
           : mode === 'swim' ? 'SWIM 30-40 MIN'
           : 'CROSS-TRAIN';
         restDay.subLabel = subLabel;
-        restDay.notes = `Cross-training: ${mode}. Easy effort. Not a run replacement — keeps the engine humming on a non-impact day.`;
+        restDay.notes = `Cross-training: ${mode}. Easy effort. Not a run replacement · keeps the engine humming on a non-impact day.`;
       }
     }
     weeks.push({ startISO: weekStart, phase: phaseLabel, days, isRaceWeek });

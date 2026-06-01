@@ -39,7 +39,7 @@ export function pickCannedReply(
     if (e === 'controlled' && b === 'fresh')  return 'Controlled effort, body fresh. Solid execution.';
     if (e === 'controlled' && b === 'worked') return 'Held it in check. Legs absorbed the work.';
     if (e === 'controlled' && b === 'cooked') return "Held the lid on but body's spent. Worth watching.";
-    if (e === 'pushed' && b === 'fresh')  return "Easy that wasn't easy. Body says fresh — fitness keeps showing up.";
+    if (e === 'pushed' && b === 'fresh')  return "Easy that wasn't easy. Body says fresh · fitness keeps showing up.";
     if (e === 'pushed' && b === 'worked') return 'Pushed to hold easy pace. Fatigue is real today.';
     if (e === 'pushed' && b === 'cooked') return "Pushed and paid. Tomorrow's prescription will reflect this.";
   }
@@ -78,7 +78,7 @@ export function pickCannedReply(
     if (e === 'on_goal' && b === 'fresh')  return 'On goal, body fresh. Race execution dialed.';
     if (e === 'on_goal' && b === 'worked') return "Hit the goal honestly. Body worked. That's a quality day.";
     if (e === 'on_goal' && b === 'cooked') return "On goal but emptied the tank. That's what race day takes.";
-    if (e === 'missed_goal' && b === 'fresh')  return "Missed the time, body felt fine. Pacing or course noise — let's debrief.";
+    if (e === 'missed_goal' && b === 'fresh')  return "Missed the time, body felt fine. Pacing or course noise · let's debrief.";
     if (e === 'missed_goal' && b === 'worked') return "Missed it, body worked hard. Didn't go the way you wanted.";
     if (e === 'missed_goal' && b === 'cooked') return 'Missed and cooked. Tough one. Recovery first, postmortem later.';
   }

@@ -44,8 +44,8 @@ export type AdaptationTriggerKind =
   | 'volume_overshoot'
   | 'pr_bank'
   | 'niggle_reported'     // Q-04 · active niggle severity threshold
-  | 'sick_episode_active' // Q-03 · active illness — propose, never auto
-  | 'injury_active'       // Q-08 · active runner_injuries row — propose
+  | 'sick_episode_active' // Q-03 · active illness · propose, never auto
+  | 'injury_active'       // Q-08 · active runner_injuries row · propose
   | 'goal_changed';       // runner edited goal time → mark paces stale
 
 export interface AdaptationTrigger {
@@ -844,7 +844,7 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       )).rows;
       if (rows.length === 0) return [];
       const why = t.kind === 'pr_bank'
-        ? `New race fitness — VDOT +${Number(t.evidence.delta).toFixed(1)} pts. Paces need recompute.`
+        ? `New race fitness · VDOT +${Number(t.evidence.delta).toFixed(1)} pts. Paces need recompute.`
         : 'Goal or VDOT changed. Plan paces need recompute against new target.';
       return [{
         kind: 'mark_dirty',

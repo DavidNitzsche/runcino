@@ -542,7 +542,7 @@ function buildHeadline(
   // Streak takes precedence · the brief leads with what most needs attention.
   if (streaks.length > 0) {
     const s = streaks[0];
-    return `${PILLAR_LABEL[s.pillar]} ${s.direction} for ${s.days} days — the trend matters more than today's number.`;
+    return `${PILLAR_LABEL[s.pillar]} ${s.direction} for ${s.days} days · the trend matters more than today's number.`;
   }
   if (b.band === 'sharp') {
     return movers.length && movers[0].deltaPts > 0

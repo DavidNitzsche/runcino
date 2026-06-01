@@ -55,14 +55,14 @@ export interface CoachFactBlock {
   facts: CoachFact[];
 }
 
-const DASH = '—';
+const DASH = ' · ';
 
 // ── Tiny helpers ───────────────────────────────────────────────────────
 
 const DOW_LONG = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 function dowOf(iso: string): string {
-  return DOW_LONG[new Date(iso + 'T12:00:00Z').getUTCDay()] ?? '—';
+  return DOW_LONG[new Date(iso + 'T12:00:00Z').getUTCDay()] ?? ' · ';
 }
 
 function fmtMi(mi: number | null | undefined, digits = 1): string {

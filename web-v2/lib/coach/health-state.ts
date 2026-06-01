@@ -168,7 +168,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
       note: `${rhrCurrent} vs ${rhrBaseline} baseline (+${rhrDelta}). Not resolving with rest days.` });
   } else if (rhrElevated) {
     watchItems.push({ label: 'RHR · ELEVATED', status: 'amber',
-      note: `${rhrCurrent} vs ${rhrBaseline} baseline (+${rhrDelta}). Common during a volume step-up — watching whether it settles.` });
+      note: `${rhrCurrent} vs ${rhrBaseline} baseline (+${rhrDelta}). Common during a volume step-up · watching whether it settles.` });
   }
   if (sleepCrash) {
     watchItems.push({ label: 'SLEEP · DEFICIT GROWING', status: 'red',
