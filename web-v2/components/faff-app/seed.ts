@@ -1255,6 +1255,44 @@ export async function buildSeed(): Promise<FaffSeed> {
       const pacing = await computePacingDiscipline(userId, 90);
       goalRace.executionBufferSec = pacing.bufferSec;
       goalRace.executionSource = pacing.source;
+
+      // §2.4 · Hit list · cheapest 2-3 levers to move the projection.
+      // Composes per-runner tune-up race candidates, plan-adjacent
+      // threshold/sharpen calls, multi-wave cooler-corral options,
+      // and the off-track B-target safety lever. Needs the per-chunk
+      // gap to rank, so it runs AFTER course/conditions/execution
+      // have populated above.
+      if (goalSecLocal > 0 && goalRace.date) {
+        const projSec = parseRaceTime(goalRace.projected) ?? goalSecLocal;
+        const totalGap = Math.max(0, projSec - goalSecLocal);
+        const courseImp = goalRace.courseImpactSec ?? 0;
+        const condImp = goalRace.conditionsImpactSec ?? 0;
+        const execImp = goalRace.executionBufferSec ?? 30;
+        const fitnessGap = Math.max(0, totalGap - courseImp - condImp - execImp);
+
+        const { computeProjectionLevers } = await import('@/lib/coach/projection-levers');
+        const levers = await computeProjectionLevers({
+          userUuid: userId,
+          goalRace: {
+            slug: goalRace.slug,
+            name: goalRace.name,
+            date: goalRace.date,
+            daysAway: goalRace.daysAway,
+            distanceMi: goalRace.distanceMi,
+            location: goalRace.location,
+          },
+          projectionSec: projSec,
+          goalSec: goalSecLocal,
+          currentVdot: profile?.physiology.vdot ?? null,
+          gap: {
+            fitness: fitnessGap,
+            conditions: condImp,
+            course: courseImp,
+            execution: execImp,
+          },
+        });
+        goalRace.levers = levers;
+      }
     } catch {
       // Enrichment is best-effort · the panel falls back to doctrine
       // placeholders when these fields are absent.

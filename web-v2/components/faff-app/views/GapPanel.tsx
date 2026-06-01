@@ -254,11 +254,35 @@ function courseDoctrineCopy(sec: number, goal: GoalRace): string {
     `net drop, plus a small fatigue tax for the gross gain.`;
 }
 
-function deriveHits(segs: GapSeg[], goalSec: number, projSec: number): Hit[] {
+/**
+ * Hit list mapper · prefer the per-runner levers computed by
+ * lib/coach/projection-levers.ts (seeded onto goal.levers) when
+ * available. Falls back to the legacy doctrine-static composition
+ * when the seed enrichment didn't populate (cold start, error,
+ * missing distance, etc.).
+ */
+function deriveHits(segs: GapSeg[], goalSec: number, projSec: number, goal: GoalRace): Hit[] {
+  // 1. Per-runner levers from the seed (preferred).
+  if (Array.isArray(goal.levers) && goal.levers.length > 0) {
+    return goal.levers.slice(0, 3).map(lv => ({
+      icon: lv.icon,
+      t: `<b>${escapeHtml(lv.title)}</b>`,
+      lvtag: lv.controllability,
+      w: lv.detail,
+      to: lv.projectedTime,
+      d: lv.deltaSec < 0
+        ? `−${fmtDelta(Math.abs(lv.deltaSec))}`
+        : lv.deltaSec > 0
+          ? `+${fmtDelta(lv.deltaSec)}`
+          : 'at goal',
+      dKind: lv.deltaSec <= 0 ? 'cut' : 'fixed',
+    }));
+  }
+
+  // 2. Legacy doctrine fallback · kept for the cold path.
   const fitness = segs.find((s) => s.key === 'fitness')?.sec ?? 0;
   const cond = segs.find((s) => s.key === 'conditions')?.sec ?? 0;
   const out: Hit[] = [];
-  // If fitness is the dominant bucket, lead with a tune-up race
   if (fitness >= 60) {
     out.push({
       icon: 'flag',
@@ -289,7 +313,6 @@ function deriveHits(segs: GapSeg[], goalSec: number, projSec: number): Hit[] {
       dKind: 'cut',
     });
   }
-  // Conditions / logistics lever
   if (cond >= 30) {
     out.push({
       icon: 'clock',
@@ -302,6 +325,15 @@ function deriveHits(segs: GapSeg[], goalSec: number, projSec: number): Hit[] {
     });
   }
   return out.slice(0, 3);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    c === '&' ? '&amp;' :
+    c === '<' ? '&lt;' :
+    c === '>' ? '&gt;' :
+    c === '"' ? '&quot;' : '&#39;'
+  );
 }
 
 /* ─────── icons ─────── */
@@ -380,8 +412,8 @@ export function GapPanel({ goal, series }: GapPanelProps) {
   );
   const hits = useMemo(() => {
     if (goalSec == null || projSec == null) return [];
-    return deriveHits(segs, goalSec, projSec);
-  }, [segs, goalSec, projSec]);
+    return deriveHits(segs, goalSec, projSec, goal);
+  }, [segs, goalSec, projSec, goal]);
 
   const [openSeg, setOpenSeg] = useState<number | null>(null);
   const toggleSeg = (i: number) => setOpenSeg((cur) => (cur === i ? null : i));
