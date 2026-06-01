@@ -238,13 +238,15 @@ export function TodayView({
                   {day.dist === ' · ' ? 'rest' : `${day.dist} mi · ${day.pace}`}
                 </span>
               </div>
-              {/* Strength-day suggestion · Research/07 doctrine. The
-                  generator does NOT author "Tuesday: strength" rows;
-                  the runner logs it ad-hoc via LogNonRunSheet. This
-                  annotation tells them which 2 days each week make
-                  sense. Closes coverage line 2101 (cross/strength as
-                  scheduled workout types · David decision 2026-05-31:
-                  stay ad-hoc, hint days). */}
+              {/* Strength-day suggestion · backend-owned as of
+                  2026-06-01 (strength-recommender, commit 34bff2a0).
+                  PlannedDay.strengthSuggested is set in seed.ts by
+                  matching this day's iso against
+                  glance.recommendedStrengthDays. The recommender
+                  personalizes on logged history, plan phase, race
+                  proximity, ACWR, week shape · all things the prior
+                  client heuristic couldn't see. The reason for the
+                  picks renders as a caption beneath the strip. */}
               {day.strengthSuggested && !day.done && !skipped ? (
                 <div style={{
                   marginTop: 6,
@@ -259,6 +261,39 @@ export function TodayView({
           );
         })}
       </div>
+
+      {/* Strength-recommender reason · only when the backend actually
+          surfaced strength days for this week. Reads from
+          seed.strengthRecommendation (backend-shipped 2026-06-01,
+          commit 34bff2a0). Skipped silently when null, empty, or when
+          the recommender returned 0 days (race week, taper, no slot). */}
+      {seed.strengthRecommendation
+        && seed.strengthRecommendation.recommendedDays.length > 0
+        && seed.strengthRecommendation.reason
+        ? (
+        <div style={{
+          marginTop: 10,
+          padding: '8px 12px',
+          borderRadius: 10,
+          background: 'rgba(255,206,138,.06)',
+          border: '1px solid rgba(255,206,138,.18)',
+          color: 'var(--txt)',
+          fontSize: 12,
+          lineHeight: 1.45,
+          display: 'flex',
+          gap: 10,
+          alignItems: 'flex-start',
+        }}>
+          <span style={{
+            fontSize: 8.5, fontWeight: 800, letterSpacing: '1.4px',
+            textTransform: 'uppercase',
+            color: '#FFCE8A',
+            marginTop: 2,
+            flexShrink: 0,
+          }}>STRENGTH</span>
+          <span>{seed.strengthRecommendation.reason}</span>
+        </div>
+      ) : null}
 
       {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
           Detail (Easy)), planned-and-not-rest days use PlannedHeroV2

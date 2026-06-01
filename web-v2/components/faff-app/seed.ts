@@ -1047,61 +1047,28 @@ function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['
 }
 
 /**
- * Pick 2 strength days for the week per Research/07 doctrine.
+ * Strength-day picking is now backend-owned.
  *
- * Decision (locked 2026-05-31, David): cross + strength are NOT scheduled
- * by the plan generator. Runner logs them ad-hoc via LogNonRunSheet. To
- * keep the doctrine visible, the week strip annotates the 2 best days
- * for strength so the runner knows when to slot a session.
+ * 2026-06-01 · the client-side pickStrengthDays() heuristic was removed
+ * once the backend strength-recommender shipped (commit 34bff2a0). The
+ * recommendation now flows in via glance.recommendedStrengthDays · an
+ * array of ISO dates · which adaptWeek() matches against each day's iso
+ * to set PlannedDay.strengthSuggested. The full envelope (reason +
+ * habit + coachIntent) rides on FaffSeed.strengthRecommendation so the
+ * briefing surface can render the coach voice and the dormant-habit
+ * intent.
  *
- * Doctrine (Research/07):
- *   · 2 sessions per week for distance runners
- *   · Avoid hard-on-hard: don't put strength same day as quality
- *   · Best days are easy or recovery (low neuromuscular cost)
- *   · Not the day before long run (preserve long-run quality)
- *   · Not the day after long run (let endocrine recovery happen)
+ * The recommender personalizes on logged history, plan phase, race
+ * proximity, ACWR, and the week's run shape · all things the old
+ * client-side heuristic couldn't see. See:
+ *   · designs/briefs/strength-recommender-backend-brief.md (the ask)
+ *   · designs/briefs/strength-recommender-backend-landed.md (the reply)
+ *   · web-v2/lib/coach/strength-recommender.ts (the implementation)
  *
- * Returns up to 2 indices into the week array. Empty when the week has
- * no eligible days (race week, all-rest, injured).
+ * Doctrine (Research/07) still rules: 2 sessions / wk default, easy or
+ * recovery only, never day-before quality or long, race-week 0, taper
+ * ≤1, ACWR>1.5 drops to 1. All seven rules are encoded backend-side.
  */
-function pickStrengthDays(week: PlannedDay[]): number[] {
-  const QUALITY = new Set(['tempo', 'intervals', 'long', 'race']);
-  // 2026-06-01: sub_label fallback for misbucketed quality. The
-  // plan_workouts.type column is coarse (some Cruise Intervals days
-  // are stored as type='easy'). When that happens, the rich sub_label
-  // is the only signal that the day is actually a quality session.
-  // Treat a day as quality if EITHER its type is in QUALITY or its
-  // sub_label matches one of these keywords. Pair brief on
-  // designs/briefs/plan-type-column-alignment-brief.md tracks the
-  // backend cleanup; this client-side guard is the bridge until it
-  // lands.
-  const QUALITY_NAME = /tempo|threshold|cruise|interval|vo2|repeats?|ladder|hill repeats?|track|fartlek/i;
-  const isQuality = (d: PlannedDay): boolean =>
-    QUALITY.has(d.type) || (!!d.subLabel && QUALITY_NAME.test(d.subLabel));
-  // Score each day; lower is better (better fit for strength)
-  const scored = week.map((d, idx) => {
-    if (d.type === 'rest' || isQuality(d)) return { idx, score: Infinity };
-    let score = 0;
-    // Prefer easy/recovery days
-    if (d.type === 'recovery') score -= 3;
-    if (d.type === 'easy') score -= 2;
-    // Penalty for being adjacent to a long run or quality day
-    const prev = idx > 0 ? week[idx - 1] : null;
-    const next = idx < week.length - 1 ? week[idx + 1] : null;
-    if (prev && isQuality(prev)) score += 2;
-    if (next && isQuality(next)) score += 4; // worse to strength the day before quality
-    if (next && next.type === 'long') score += 6; // never before a long run
-    // Done days are too late (already logged) — only score un-done days
-    if (d.done) score = Infinity;
-    return { idx, score };
-  });
-  return scored
-    .filter((s) => Number.isFinite(s.score))
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 2)
-    .map((s) => s.idx)
-    .sort((a, b) => a - b);
-}
 
 /* ─────────────────────────  Public entry point  ───────────────────────── */
 
@@ -1130,6 +1097,7 @@ function emptySeed(): FaffSeed {
     readiness,
     readinessBrief: null,
     planProposals: [],
+    strengthRecommendation: null,
     goalRace: null,
     volumeBars: [],
     thisWeekMiles: 0,
@@ -1194,12 +1162,16 @@ export async function buildSeed(): Promise<FaffSeed> {
   const weekSkips: Set<string> = skRes.value;
 
   const { week, todayIdx, results } = adaptWeek(glance, weekSkips);
-  // Annotate the 2 best strength days per Research/07 doctrine. These
-  // are runner-logged ad-hoc (not generator-authored), but surfacing
-  // the picks keeps the doctrine visible. See pickStrengthDays() above.
-  const strengthIdx = new Set(pickStrengthDays(week));
+  // 2026-06-01 · annotate strength days from the backend recommender
+  // (commit 34bff2a0). glance.recommendedStrengthDays is an array of
+  // ISO YYYY-MM-DD dates; match each PlannedDay.iso to set the flag.
+  // When the backend returns an empty array (race week, dormant plan,
+  // no acceptable slot, recommender errored), no day gets the
+  // annotation · the week strip shows zero "+ STRENGTH" chips, which
+  // is the correct silent state.
+  const strengthDays = new Set(glance?.recommendedStrengthDays ?? []);
   for (let i = 0; i < week.length; i++) {
-    week[i].strengthSuggested = strengthIdx.has(i);
+    week[i].strengthSuggested = !!week[i].iso && strengthDays.has(week[i].iso!);
   }
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
@@ -1405,6 +1377,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     readiness,
     readinessBrief,
     planProposals,
+    strengthRecommendation: glance?.strengthRecommendation ?? null,
     goalRace,
     volumeBars,
     thisWeekMiles,

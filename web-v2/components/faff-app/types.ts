@@ -38,6 +38,18 @@ export type FaffSeed = {
    *  no drift detected + no recent auto-rebuilds. Today view renders 0-5
    *  cards per the source array. */
   planProposals: PlanProposalSeed[];
+  /** 2026-06-01 · backend-owned strength-day recommendation. Mirror of
+   *  glance.strengthRecommendation. `recommendedDays` is also threaded
+   *  to each PlannedDay.strengthSuggested so the week-strip annotation
+   *  is a pure render, not a client-side computation. Null when the
+   *  recommender failed to produce a value · TodayView falls back to a
+   *  silent "no strength surfaced" state (no annotation, no caption). */
+  strengthRecommendation: {
+    recommendedDays: string[];
+    reason: string;
+    habit: 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
+    coachIntent: { severity: 'soft' | 'firm' | 'urgent'; body: string } | null;
+  } | null;
   goalRace: GoalRace | null;
   volumeBars: VolumeBar[];         // 8-week strip
   thisWeekMiles: number;

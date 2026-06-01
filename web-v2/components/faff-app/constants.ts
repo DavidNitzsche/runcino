@@ -76,12 +76,12 @@ export type PlannedDay = {
   type: EffortKey; name: string;
   /** Raw plan_workouts.sub_label · the canonical workout name from
    *  the plan generator ("Cruise Intervals", "HM Threshold Blocks",
-   *  "Long Run · HM Finish"). When non-null, `name` reflects this
-   *  same value · this field exists separately so consumers like
-   *  pickStrengthDays() can detect quality sessions even when the
-   *  coarse `type` bucket says 'easy'. Null when the plan-builder
-   *  authored no rich name for the day (then `name` falls back to
-   *  humanName(type, mi) so the strip never renders empty). */
+   *  "Long Run · HM Finish"). `name` already mirrors this when
+   *  non-null · this field exists separately so other surfaces (e.g.
+   *  /today legacy route's StatLine "LABEL") can display the raw
+   *  label without re-deriving it. Null when the plan-builder didn't
+   *  author a rich name (then `name` falls back to humanName(type, mi)
+   *  so the strip never renders empty). */
   subLabel?: string | null;
   dist: string; pace: string; est: string;
   done?: boolean; today?: boolean;
