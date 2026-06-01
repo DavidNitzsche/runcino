@@ -584,6 +584,24 @@ enum API {
         return decoded
     }
 
+    /// /api/targets/projection — VDOT + projection_sec + held_days + gap
+    /// decomposition (Fitness / Conditions / Course / Execution) for the
+    /// redesigned Targets surface. Cold path (no VDOT yet / no goal race)
+    /// returns ok=true with nulls; the panel renders the cold state.
+    ///
+    /// distanceMi defaults to half-marathon (13.1) since that's the most
+    /// common active-goal distance · the panel can re-fetch when the
+    /// runner pivots to a different race.
+    static func fetchTargetsProjection(distanceMi: Double = 13.1, raceSlug: String? = nil) async throws -> ProjectionSummary? {
+        var comps = URLComponents(url: baseURL.appendingPathComponent("api/targets/projection"), resolvingAgainstBaseURL: false)!
+        var qi = [URLQueryItem(name: "distance_mi", value: String(distanceMi))]
+        if let s = raceSlug { qi.append(URLQueryItem(name: "race_slug", value: s)) }
+        comps.queryItems = qi
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(ProjectionSummary.self, from: data)
+    }
+
     /// /api/training/state — full plan state for the /training tab.
     /// Powers the iPhone PhaseStrip / mileage arc / week-ahead detail,
     /// using the same data web /training reads.

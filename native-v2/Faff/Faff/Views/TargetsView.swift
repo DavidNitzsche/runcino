@@ -15,6 +15,10 @@ struct TargetsView: View {
         AppCache.read(.profileState, as: ProfileState.self)
     @State private var raceFacts: CoachFactsBlock?
     @State private var standingGoals: [StandingGoal] = []
+    /// Targets projection panel state · 2026-05-31 redesign.
+    /// `nil` while loading; cold-state when ok but no VDOT yet.
+    @State private var projection: ProjectionSummary?
+    @State private var projectionLoaded: Bool = false
     /// New-goal sheet (Volume / Speed / Distance / Habit / Strength / Health).
     /// Toolkit · Family F · POSTs to /api/goals.
     @State private var showNewGoalSheet: Bool = false
@@ -108,6 +112,43 @@ struct TargetsView: View {
                     )
                 }
         }
+        // Projection panel · derive distance from the A-race or fall back
+        // to half. Run after races/profile so we can pick up the right
+        // distance from the same source the hero uses.
+        let dist = await MainActor.run { distanceForProjection() }
+        let proj = try? await API.fetchTargetsProjection(distanceMi: dist)
+        await MainActor.run {
+            self.projection = proj
+            self.projectionLoaded = true
+        }
+    }
+
+    /// Decide which race distance the projection should anchor on.
+    /// Reads in priority order:
+    ///   1. races list · matching profile.nextARace slug → distance_label
+    ///   2. raceFacts NEXT A label
+    ///   3. 13.1 default (most common active-goal distance)
+    private func distanceForProjection() -> Double {
+        // Direct hit: the races list carries distance_label alongside slug.
+        var label = ""
+        if let slug = profile?.nextARace?.slug,
+           let lab = races?.races.first(where: { $0.slug == slug })?.distance_label {
+            label = lab.lowercased()
+        }
+        // Fallback: parse the textual NEXT A fact ("NAME · 78 days · half marathon").
+        if label.isEmpty {
+            label = (raceFacts?.facts
+                        .first { $0.label.uppercased() == "NEXT A" }?
+                        .value
+                        .components(separatedBy: " · ")
+                        .last ?? "")
+                .lowercased()
+        }
+        if label.contains("marathon") && !label.contains("half") { return 26.2 }
+        if label.contains("half") { return 13.1 }
+        if label.contains("10k") { return 6.2 }
+        if label.contains("5k")  { return 3.1 }
+        return 13.1
     }
 
     private struct StandingGoal: Identifiable, Hashable {
@@ -223,23 +264,30 @@ struct TargetsView: View {
             }
             .padding(.top, 12)
 
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("PROJECTED · waiting for projection wire")
-                        .font(.display(11, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.6))
-                    Spacer()
-                }
-                GapBeam(progress: 0.55)
-
-                HStack {
-                    Text("START —")
-                        .font(.display(10, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.5))
-                    Spacer()
-                    Text("GOAL \(h.goal ?? "—")")
-                        .font(.display(10, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0xFFCE8A))
+            // Closing-the-gap projection panel · replaces the legacy
+            // GapBeam placeholder. Renders cold state until /api/targets/
+            // projection returns, then switches to the full panel once we
+            // have a VDOT + projection_sec.
+            Group {
+                if let p = projection, p.vdot != nil {
+                    TargetsProjectionPanel(summary: p)
+                } else if projectionLoaded {
+                    TargetsProjectionColdState()
+                } else {
+                    // First-load skeleton · keep the slot's vertical rhythm
+                    // so the layout doesn't pop when the panel hydrates.
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Theme.card)
+                        .frame(height: 240)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Theme.line, lineWidth: 1)
+                        )
+                        .overlay(
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(Theme.mute)
+                        )
                 }
             }
             .padding(.top, 18)

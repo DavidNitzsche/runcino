@@ -277,3 +277,158 @@ struct UsageResponse: Decodable {
         self.totalCostUsd = try c.decodeIfPresent(Double.self, forKey: .totalCostUsd) ?? 0
     }
 }
+
+// MARK: - Targets projection ("Closing the gap" panel)
+//
+// Backend: GET /api/targets/projection?distance_mi=...&race_slug=...
+//
+// Wires the redesigned Targets surface. Mirrors the GoalRace shape on
+// the web seed (web-v2/components/faff-app/types.ts:132) so iPhone and
+// web read identical numbers from identical helpers:
+//
+//   · courseImpactSec  → computeCourseImpact (course_library + Daniels)
+//   · conditionsImpactSec → computeRaceConditions (forecast → climate-normals)
+//   · executionBufferSec → computePacingDiscipline (CV across typed runs)
+//   · levers[]         → computeProjectionLevers (5-rule decision tree)
+//
+// Doctrine 2026-05-31 · designs/briefs/targets-gap-panel-backend-brief.md.
+
+/// One hit-list lever from computeProjectionLevers.
+/// Lives 1:1 with the web `Lever` interface (projection-levers.ts L37).
+struct ProjectionLever: Decodable, Identifiable {
+    let icon: String          // "flag" | "bolt" | "clock" | "shield" | "spark"
+    let kind: String          // tune_up_race | threshold_block | vo2_block | ...
+    let title: String         // "Drop a tune-up 10K"
+    let detail: String        // "Carlsbad 10K · Jun 22 re-rates VDOT 49+"
+    let projectedTime: String // "1:32:30"
+    let deltaSec: Int         // negative = faster than current projection
+    let controllability: String // "Trainable" | "Logistics" | "Smart"
+    let linkTo: String?       // "/races/carlsbad-10k" when applicable
+    let lvtag: String         // sub-label
+
+    /// Stable identity for SwiftUI ForEach · the kind is unique enough
+    /// per request since the decision tree returns at most 1 of each.
+    var id: String { "\(kind)·\(lvtag)" }
+
+    enum CodingKeys: String, CodingKey {
+        case icon, kind, title, detail, projectedTime, deltaSec,
+             controllability, linkTo, lvtag
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.icon = try c.decodeIfPresent(String.self, forKey: .icon) ?? "spark"
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        self.title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        self.detail = try c.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        self.projectedTime = try c.decodeIfPresent(String.self, forKey: .projectedTime) ?? ""
+        self.deltaSec = try c.decodeIfPresent(Int.self, forKey: .deltaSec) ?? 0
+        self.controllability = try c.decodeIfPresent(String.self, forKey: .controllability) ?? "Trainable"
+        self.linkTo = try c.decodeIfPresent(String.self, forKey: .linkTo)
+        self.lvtag = try c.decodeIfPresent(String.self, forKey: .lvtag) ?? ""
+    }
+}
+
+struct ProjectionLastMove: Decodable {
+    let iso: String
+    let prevVdot: Double
+    let newVdot: Double
+    let deltaVdot: Double
+    let source: String
+
+    enum CodingKeys: String, CodingKey { case iso, prevVdot, newVdot, deltaVdot, source }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.iso = try c.decodeIfPresent(String.self, forKey: .iso) ?? ""
+        self.prevVdot = try c.decodeIfPresent(Double.self, forKey: .prevVdot) ?? 0
+        self.newVdot = try c.decodeIfPresent(Double.self, forKey: .newVdot) ?? 0
+        self.deltaVdot = try c.decodeIfPresent(Double.self, forKey: .deltaVdot) ?? 0
+        self.source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
+    }
+}
+
+struct ProjectionSummary: Decodable {
+    let ok: Bool
+    let status: String     // "on_track" | "watch" | "off" | "race_week" | "cold"
+
+    // Race + projection identity
+    let vdot: Double?
+    let projectionSec: Int?
+    let goalSec: Int?
+    let raceSlug: String?
+    let raceName: String?
+    let raceDate: String?
+    let daysAway: Int?
+    let distanceMi: Double?
+    let location: String?
+
+    // Pre-composed gap totals (server does the math · iPhone renders)
+    let totalGapSec: Int
+    let fitnessSec: Int
+
+    // §2.2 Course chunk
+    let courseImpactSec: Int?
+    let courseSource: String?                 // "editorial" | "crowd" | "stub"
+    let courseElevGainFtPerMi: Double?
+
+    // §2.1 Conditions chunk
+    let conditionsImpactSec: Int?
+    let conditionsSource: String?             // "forecast" | "climate"
+
+    // §2.3 Execution chunk · always populated, default 30s
+    let executionBufferSec: Int
+    let executionSource: String               // "observed" | "default"
+    let executionCV: Double?
+    let executionN: Int
+
+    // §2.4 Hit list · 0-3 levers
+    let levers: [ProjectionLever]
+
+    // VDOT-move history (iPhone "held N days" + "last move" pills)
+    let heldDays: Int
+    let lastMove: ProjectionLastMove?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, status, vdot, projectionSec, goalSec,
+             raceSlug, raceName, raceDate, daysAway, distanceMi, location,
+             totalGapSec, fitnessSec,
+             courseImpactSec, courseSource, courseElevGainFtPerMi,
+             conditionsImpactSec, conditionsSource,
+             executionBufferSec, executionSource, executionCV, executionN,
+             levers, heldDays, lastMove
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.ok = try c.decodeIfPresent(Bool.self, forKey: .ok) ?? true
+        self.status = try c.decodeIfPresent(String.self, forKey: .status) ?? "cold"
+
+        self.vdot = try c.decodeIfPresent(Double.self, forKey: .vdot)
+        self.projectionSec = try c.decodeIfPresent(Int.self, forKey: .projectionSec)
+        self.goalSec = try c.decodeIfPresent(Int.self, forKey: .goalSec)
+        self.raceSlug = try c.decodeIfPresent(String.self, forKey: .raceSlug)
+        self.raceName = try c.decodeIfPresent(String.self, forKey: .raceName)
+        self.raceDate = try c.decodeIfPresent(String.self, forKey: .raceDate)
+        self.daysAway = try c.decodeIfPresent(Int.self, forKey: .daysAway)
+        self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
+        self.location = try c.decodeIfPresent(String.self, forKey: .location)
+
+        self.totalGapSec = try c.decodeIfPresent(Int.self, forKey: .totalGapSec) ?? 0
+        self.fitnessSec = try c.decodeIfPresent(Int.self, forKey: .fitnessSec) ?? 0
+
+        self.courseImpactSec = try c.decodeIfPresent(Int.self, forKey: .courseImpactSec)
+        self.courseSource = try c.decodeIfPresent(String.self, forKey: .courseSource)
+        self.courseElevGainFtPerMi = try c.decodeIfPresent(Double.self, forKey: .courseElevGainFtPerMi)
+
+        self.conditionsImpactSec = try c.decodeIfPresent(Int.self, forKey: .conditionsImpactSec)
+        self.conditionsSource = try c.decodeIfPresent(String.self, forKey: .conditionsSource)
+
+        self.executionBufferSec = try c.decodeIfPresent(Int.self, forKey: .executionBufferSec) ?? 30
+        self.executionSource = try c.decodeIfPresent(String.self, forKey: .executionSource) ?? "default"
+        self.executionCV = try c.decodeIfPresent(Double.self, forKey: .executionCV)
+        self.executionN = try c.decodeIfPresent(Int.self, forKey: .executionN) ?? 0
+
+        self.levers = (try? c.decode([ProjectionLever].self, forKey: .levers)) ?? []
+
+        self.heldDays = try c.decodeIfPresent(Int.self, forKey: .heldDays) ?? 0
+        self.lastMove = try c.decodeIfPresent(ProjectionLastMove.self, forKey: .lastMove)
+    }
+}

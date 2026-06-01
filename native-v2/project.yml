@@ -72,6 +72,14 @@ targets:
           - Inter-SemiBold.ttf
           - Inter-Bold.ttf
           - Inter-ExtraBold.ttf
+        # Strava OAuth callback scheme · the redirect URI on the auth
+        # server is `faff://strava-oauth/callback`. Was lost when an
+        # earlier xcodegen regen ran without this block · restored
+        # 2026-05-31 so any future regen preserves it.
+        CFBundleURLTypes:
+          - CFBundleURLName: run.faff.strava-oauth
+            CFBundleURLSchemes:
+              - faff
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: run.faff.app
