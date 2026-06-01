@@ -310,9 +310,23 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
         AND (data->>'distanceMi')::numeric > 0.3`,
     [today, userId]
   ).catch(() => ({ rows: [] as any[] }));
-  const acuteSum = Number(acwrRow.rows[0]?.acute_sum) || 0;
-  const chronicSum = Number(acwrRow.rows[0]?.chronic_sum) || 0;
+  let acuteSum = Number(acwrRow.rows[0]?.acute_sum) || 0;
+  let chronicSum = Number(acwrRow.rows[0]?.chronic_sum) || 0;
   const runs28 = Number(acwrRow.rows[0]?.runs28) || 0;
+  // 2026-06-01 · fold strength_sessions into ACWR. Same conversion +
+  // rationale as state-loader · see lib/coach/strength-load.ts.
+  try {
+    const { strengthLoadByDay } = await import('@/lib/coach/strength-load');
+    const fromISO = new Date(Date.parse(today + 'T00:00:00Z') - 28 * 86400000).toISOString().slice(0, 10);
+    const acuteFromISO = new Date(Date.parse(today + 'T00:00:00Z') - 7 * 86400000).toISOString().slice(0, 10);
+    const strengthByDay = await strengthLoadByDay(userId, fromISO, today);
+    for (const [day, miEquiv] of strengthByDay) {
+      chronicSum += miEquiv;
+      if (day >= acuteFromISO) acuteSum += miEquiv;
+    }
+  } catch (e) {
+    console.warn('[glance-state] strength-load fold failed:', e instanceof Error ? e.message : String(e));
+  }
   const loadAcute7 = acuteSum > 0 ? +(acuteSum / 7).toFixed(2) : 0;
   const loadChronic28 = chronicSum > 0 ? +(chronicSum / 28).toFixed(2) : 0;
   const loadAcwr = (loadChronic28 >= 0.1 && runs28 >= 3)
