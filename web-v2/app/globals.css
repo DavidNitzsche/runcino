@@ -558,10 +558,14 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    regardless of which day has the most content. Without this, a row
    with a multi-line Race cell (Aug 16: RACE / Race · 1:30:00 /
    Americas Finest City) stretched all 7 cells in that row, while a
-   row with only Easy + Rest cells stayed compact. Result was August
-   visually different from June/July. 110px fits all content variants
-   including the race cell. */
-.train2-sheet .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:110px;gap:7px;}
+   row with only Easy + Rest cells stayed compact. 110px fits all
+   content variants including the race cell.
+   2026-06-01 fix-of-fix · grid-template-rows: auto so the FIRST row
+   (the M T W T F S S day-of-week labels) sizes to its content
+   (~30px) instead of inheriting the 110px from grid-auto-rows.
+   Previously the label row was 110px tall, putting a big gap
+   between the labels and the first row of date cells. */
+.train2-sheet .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:auto;grid-auto-rows:110px;gap:7px;}
 .train2-sheet .cal-dow{font-size:9.5px;font-weight:800;letter-spacing:1px;opacity:.45;text-align:center;padding-bottom:2px;}
 .train2-sheet .cell{min-height:98px;border-radius:11px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.028);padding:8px 9px;display:flex;flex-direction:column;gap:5px;position:relative;}
 .train2-sheet .cell.empty{background:transparent;border:none;}
