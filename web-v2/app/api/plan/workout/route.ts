@@ -31,7 +31,14 @@ export async function PATCH(req: NextRequest) {
 
   const updates: Record<string, any> = {};
   if (body.type != null)         updates.type = body.type;
-  if (body.distance_mi != null)  updates.distance_mi = Number(body.distance_mi) || 0;
+  if (body.distance_mi != null) {
+    // 2026-06-01 · round all plan-row distance writes to nearest 0.5
+    // (David's locked rule · "annoying numbers like 5.8"). Race rows
+    // keep their exact distance (13.1 / 26.2 / 6.2 etc) · skip the
+    // round when type='race'.
+    const raw = Number(body.distance_mi) || 0;
+    updates.distance_mi = body.type === 'race' ? raw : Math.max(0, Math.round(raw * 2) / 2);
+  }
   if (body.sub_label !== undefined) updates.sub_label = body.sub_label;
 
   // Handling a move (date change)

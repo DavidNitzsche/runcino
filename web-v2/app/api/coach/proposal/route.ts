@@ -74,12 +74,19 @@ export async function POST(req: NextRequest) {
   // The row may already exist (most days do) — UPDATE in place.
   // P15.11 alt rule: distance 0 means a rest day, type comes from
   // proposal. sub_label uses the human label.
+  // 2026-06-01 · round to nearest 0.5 mi (David's locked rule ·
+  // "annoying numbers like 5.8"). Proposals never carry type='race'
+  // but the guard is cheap.
+  const proposedRaw = Number(p.alt_distance_mi) || 0;
+  const proposedRounded = p.alt_type === 'race'
+    ? proposedRaw
+    : Math.max(0, Math.round(proposedRaw * 2) / 2);
   const patched = await pool.query(
     `UPDATE plan_workouts
        SET type = $3, distance_mi = $4, sub_label = $5
      WHERE plan_id = $1 AND date_iso = $2::text
      RETURNING date_iso, dow, type, distance_mi, sub_label`,
-    [plan.id, today, p.alt_type, Number(p.alt_distance_mi) || 0, p.alt_label]
+    [plan.id, today, p.alt_type, proposedRounded, p.alt_label]
   );
   if (patched.rowCount === 0) {
     return NextResponse.json({ error: "today's plan row not found" }, { status: 404 });

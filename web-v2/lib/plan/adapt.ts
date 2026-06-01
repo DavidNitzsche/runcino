@@ -224,10 +224,20 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         }
       } else if (a.kind === 'shave' && a.workoutIds && a.shaveFraction) {
         for (const wid of a.workoutIds) {
+          // 2026-06-01 · round to nearest 0.5 mi instead of 1-decimal.
+          // ROUND(x, 1) produced 5.8 / 4.2 type values that read as
+          // arbitrary noise · runners think in half-mile increments.
+          // Multiply by 2, round to integer, divide by 2 = snap to
+          // 0.5. Skip the shave entirely if it would produce 0 (a
+          // 0.4mi shake-out becomes 0.0 after a 17% shave · keep it).
           await client.query(
             `UPDATE plan_workouts
-                SET distance_mi = ROUND((distance_mi * (1 - $1::numeric))::numeric, 1)
-              WHERE id = $2`,
+                SET distance_mi = GREATEST(
+                  0.5,
+                  ROUND((distance_mi * (1 - $1::numeric)) * 2)::numeric / 2
+                )
+              WHERE id = $2
+                AND distance_mi >= 1.0`,
             [a.shaveFraction, wid]
           );
           await writeIntent(client, userId, reason, wid, {
