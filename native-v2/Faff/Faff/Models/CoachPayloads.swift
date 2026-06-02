@@ -43,10 +43,17 @@ struct RunPurpose: Decodable {
     /// Rendered as the pre-run sheet CUE row. Null on rest / unplanned
     /// days · the row hides.
     let cue: String?
+    /// 2026-06-02 round 44 · one-word hero title from the locked
+    /// vocabulary in lib/coach/workout-title.ts (backend commit
+    /// 5bd61bac). "INTERVALS" / "TEMPO" / "LONG" / "EASY" / etc.
+    /// Single source of truth across web + iPhone + watch hero. The
+    /// pre-run sheet eyebrow + hero title read this · falls back to
+    /// the effort title when nil (cold start, unplanned days).
+    let typeTitle: String?
 
     enum CodingKeys: String, CodingKey {
         case ok, date, type, phase, plannedMi, raceDistanceMi, weeksToRace
-        case verdict, facts, cue
+        case verdict, facts, cue, typeTitle
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -60,6 +67,7 @@ struct RunPurpose: Decodable {
         self.verdict = try c.decodeIfPresent(String.self, forKey: .verdict) ?? ""
         self.facts = (try? c.decode([String].self, forKey: .facts)) ?? []
         self.cue = try c.decodeIfPresent(String.self, forKey: .cue)
+        self.typeTitle = try c.decodeIfPresent(String.self, forKey: .typeTitle)
     }
 }
 

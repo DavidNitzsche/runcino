@@ -57,20 +57,38 @@ struct TodayPreRunBodyV3: View {
     // MARK: 1 · Header eyebrow + Oswald title
 
     private var header: some View {
-        let typeTag = effort.effortLabel.uppercased()
+        // 2026-06-02 round 44 · eyebrow + hero now match the web:
+        //   eyebrow:  "TODAY · INTERVALS · PLANNED"  (type-word, not
+        //             "MAX" which was the effort-severity label)
+        //   hero:     "INTERVALS"  (one-word hero from the locked
+        //             vocabulary at lib/coach/workout-title.ts ·
+        //             backend commit 5bd61bac)
+        //   subtitle: "4×1 mi @ I · 3 min jog"  (the workout name ·
+        //             previously sat in the hero slot and read as
+        //             noise; now subordinate)
+        let typeTag = heroTypeWord
         let dayTag = isToday ? "TODAY" : dowLabel.uppercased()
+        let nameSubtitle = workoutNameSubtitle
         return VStack(alignment: .leading, spacing: 6) {
             SpecLabel(
                 text: "\(dayTag) · \(typeTag) · PLANNED",
                 size: 10, tracking: 1.8,
                 color: Color(hex: 0xA39A8C)
             )
-            Text(workoutTitle.uppercased())
+            Text(typeTag)
                 .font(.display(46, weight: .bold))
                 .tracking(-1.5)
                 .foregroundStyle(Color(hex: 0x14110D))
-                .lineLimit(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .padding(.top, 2)
+            if let n = nameSubtitle, !n.isEmpty {
+                Text(n)
+                    .font(.body(14, weight: .semibold))
+                    .foregroundStyle(Color(hex: 0x736C61))
+                    .lineLimit(2)
+                    .padding(.top, 1)
+            }
             // Optional adaptation banner · only when the plan was
             // adapted (intent exists). Reads "Adjusted from {original} ·
             // Restore" when backend ships the structured copy.
@@ -83,6 +101,34 @@ struct TodayPreRunBodyV3: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white)
         .overlay(separator, alignment: .bottom)
+    }
+
+    /// One-word hero title · prefers backend's canonical typeTitle
+    /// (locked vocabulary in lib/coach/workout-title.ts), falls back
+    /// to a derived effort-title when purpose hasn't loaded yet.
+    private var heroTypeWord: String {
+        if let t = purpose?.typeTitle?.uppercased(), !t.isEmpty { return t }
+        switch effort {
+        case .recovery:  return "RECOVERY"
+        case .easy:      return "EASY"
+        case .long:      return "LONG"
+        case .tempo:     return "TEMPO"
+        case .intervals: return "INTERVALS"
+        case .rest:      return "REST"
+        case .race:      return "RACE"
+        }
+    }
+
+    /// Workout name (the sub_label / WatchWorkout.name) rendered
+    /// subordinately to the type hero. Hides when the name duplicates
+    /// the hero word (e.g., "EASY" sub_label under "EASY" hero · no
+    /// reason to repeat).
+    private var workoutNameSubtitle: String? {
+        guard let raw = workout?.name else { return nil }
+        let name = raw.trimmingCharacters(in: .whitespaces)
+        if name.isEmpty { return nil }
+        if name.uppercased() == heroTypeWord { return nil }
+        return name
     }
 
     @ViewBuilder
