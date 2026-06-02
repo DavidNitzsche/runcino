@@ -169,20 +169,28 @@ async function easyDayMedianMi(userId: string): Promise<number> {
  * HR signal · single-day spike doesn't count.
  */
 async function detectMidBlock(userId: string): Promise<boolean> {
-  // Signal 1 · prescribed quality in last 28d of any active plan
+  // 2026-06-03 · David flagged · was only checking ACTIVE plan for
+  // prescribed quality · rebuilds ARCHIVE the active plan, so a runner
+  // who's been doing quality for weeks gets dropped back to BASE because
+  // the new active plan has no completed quality yet. Expand to include
+  // recently-archived plans + HR-based effort detection on runs.
+  //
+  // Signal 1 · prescribed quality in last 28d across all NON-ANCIENT
+  // plans (active OR archived within last 30 days · the plan that
+  // just got archived by today's rebuild still counts).
   const r1 = await pool.query<{ n: string }>(
     `SELECT COUNT(*)::text AS n
        FROM plan_workouts pw
        JOIN training_plans tp ON tp.id = pw.plan_id
       WHERE tp.user_uuid = $1
-        AND tp.archived_iso IS NULL
+        AND (tp.archived_iso IS NULL OR tp.archived_iso > NOW() - interval '30 days')
         AND pw.type IN ('threshold','tempo','intervals','vo2max')
         AND pw.date_iso::date BETWEEN (CURRENT_DATE - 28) AND CURRENT_DATE`,
     [userId]
   ).catch(() => ({ rows: [{ n: '0' }] }));
-  if (Number(r1.rows[0]?.n ?? 0) >= 2) return true;  // ≥2 prescribed quality sessions
+  if (Number(r1.rows[0]?.n ?? 0) >= 2) return true;
 
-  // Signal 2 · runs with quality-effort tag OR sustained high-HR work
+  // Signal 2 · runs with quality-effort tag.
   const r2 = await pool.query<{ n: string }>(
     `SELECT COUNT(*)::text AS n
        FROM runs r
@@ -197,6 +205,37 @@ async function detectMidBlock(userId: string): Promise<boolean> {
     [userId]
   ).catch(() => ({ rows: [{ n: '0' }] }));
   if (Number(r2.rows[0]?.n ?? 0) >= 2) return true;
+
+  // Signal 3 · HR-based effort detection · ≥2 runs in last 28d with
+  // avgHr ≥ 85% of effective max HR (Strava/Watch imports rarely tag
+  // type · this catches the runner who's been doing real quality work
+  // without the import tagging it). Threshold: 85% maxHR ≈ Z3+ effort.
+  const profileRow = await pool.query<{ max_hr: number | null; lthr: number | null }>(
+    `SELECT max_hr, lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userId]
+  ).then((r) => r.rows[0]).catch(() => undefined);
+  // Effective max from profile if available · else fall back to a
+  // generous default. Without one we can't compute the ratio.
+  const effectiveMax = profileRow?.max_hr
+    ?? (profileRow?.lthr ? Math.round(profileRow.lthr / 0.92) : null);
+  if (effectiveMax && effectiveMax > 100) {
+    const hrThreshold = Math.round(effectiveMax * 0.85);
+    const r3 = await pool.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n
+         FROM runs r
+        WHERE r.user_uuid = $1
+          AND NOT (r.data ? 'mergedIntoId')
+          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date
+              >= CURRENT_DATE - 28
+          AND COALESCE(
+                (r.data->>'avgHr')::numeric,
+                (r.data->>'avg_hr')::numeric,
+                0
+              ) >= $2`,
+      [userId, hrThreshold]
+    ).catch(() => ({ rows: [{ n: '0' }] }));
+    if (Number(r3.rows[0]?.n ?? 0) >= 2) return true;
+  }
 
   return false;
 }
