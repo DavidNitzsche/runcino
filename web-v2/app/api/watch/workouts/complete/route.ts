@@ -222,5 +222,18 @@ function deriveSplitsFromPhases(phases: any[] | undefined): any[] {
       // incline") and the treadmill-aware win-line composer.
       actualSpeedMph: p.actualSpeedMph ?? null,
       actualInclinePct: p.actualInclinePct ?? null,
+      // 2026-06-02 · `_raw` passthrough · watch agent confirmed GO.
+      // Every future watch field lands in runs.data with zero backend
+      // ingest change. Composers prefer typed fields (fast path) but
+      // can read _raw.xxx for fields not yet typed.
+      //
+      // Rule of thumb (agreed with watch agent):
+      //   · TYPE when a composer reads it within 1 sprint
+      //   · _raw for exploratory or pre-greenlight fields
+      //
+      // Doctrine:
+      //   designs/briefs/backend-response-recap-engine-not-llm-2026-06-02.md
+      //   designs/briefs/watch-agent-correction-llm-framing-2026-06-02.md
+      _raw: p,
     }));
 }

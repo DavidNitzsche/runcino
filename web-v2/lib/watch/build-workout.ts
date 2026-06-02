@@ -391,7 +391,16 @@ export async function buildWatchToday(
     totalEstimatedMinutes,
     phases,
     completionEndpoint: `${DEFAULT_BASE_URL}/api/watch/workouts/complete`,
-    expiresAt: new Date(Date.parse(today + 'T23:59:59Z')).toISOString(),
+    // 2026-06-02 · Flag 6 from watch audit · sliding 14h window from
+    // issue time. Replaces the end-of-day-UTC stamp that clipped
+    // runners starting workouts near midnight UTC even when they
+    // were inside the real "today" window. Watch agent enforces this
+    // on start (refuses + re-fetches when stale). Covers:
+    //   · early-AM (issued 6PM → valid until 8AM next-day)
+    //   · late-PM (issued 8AM → valid until 10PM same-day)
+    // 14h covers both extremes. Doctrine:
+    //   designs/briefs/backend-response-to-watch-2026-06-02.md
+    expiresAt: new Date(Date.now() + 14 * 3600 * 1000).toISOString(),
     distanceMi,
     paceLabel: paceLabelFor(wo.type),
     isRace: wo.type === 'race',

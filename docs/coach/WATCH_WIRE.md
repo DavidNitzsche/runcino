@@ -13,7 +13,17 @@ When this doc and the Swift struct disagree, the Swift struct wins ·
 this doc is informational + a backend reference. Watch agent reviews
 all changes here for accuracy.
 
-**Last sync with Swift:** 2026-06-02 (commit f9a17cd5).
+**Last sync with Swift:** 2026-06-02 (commit f9a17cd5 baseline).
+
+**Updates since baseline:**
+- `2026-06-02` · `expiresAt` is now a sliding 14h window from issue
+  time (`Date.now() + 14h`), not end-of-day-UTC. Watch agent
+  enforces on `WorkoutRootView.start()` per Flag 6.
+- `2026-06-02` · `runs.data.splits[i]._raw` passthrough on the
+  completion ingest path · every WatchCompletionPhase field lands
+  in DB regardless of whether it's typed at ingest. Composers prefer
+  typed fields; `_raw` is the escape hatch for pre-greenlight /
+  exploratory fields.
 
 ---
 
@@ -96,7 +106,7 @@ The structured workout payload. Swift struct at
 | `totalEstimatedMinutes` | `int` | yes | min | Sum of all `phases[].durationSec / 60`. Watch uses this for the home-screen glance. |
 | `phases` | `WatchPhase[]` | yes | — | Folded-out · repeat blocks become individual phases (warmup → work₁ → recovery₁ → work₂ → ... → workN → cooldown). |
 | `completionEndpoint` | `string` | yes | — | URL the watch POSTs back to. Typically `/api/watch/workouts/complete`. |
-| `expiresAt` | `ISO string` | yes | UTC | When the cached workout goes stale. **NOT currently enforced by watch** (Flag 6 · being fixed). |
+| `expiresAt` | `ISO string` | yes | UTC | Sliding 14h window from issue time (`Date.now() + 14h`). Covers early-AM (PM issue → next-morning) and late-PM (AM issue → same-evening) windows. Watch agent enforces on `WorkoutRootView.start()` · refuses + re-fetches when stale (Flag 6 · enforcement shipped `d935c0d2`). |
 | `readinessScore` | `int?` | no | 0-100 | Top-of-watch glance. Falls back to last-known when nil. |
 | `readinessLabel` | `string?` | no | — | "Primed" / "Hold easy" / "Back off". |
 | `distanceMi` | `double?` | no | mi | Total expected distance. |
@@ -202,6 +212,34 @@ per-phase actuals. Swift struct at `WatchWorkoutModels.swift:227-250`.
 | `maxHr` | `int?` | no | bpm | Peak HR observed during the phase. |
 | `avgCadence` | `int?` | no | spm | Average cadence across the phase. |
 | `completed` | `bool` | yes | — | True when auto-advance fired (target reached). False when runner long-pressed end / abandoned. Backend's `!== false` default treats missing as truthy · the watch ALWAYS supplies this field, so the default only applies to non-watch sources. |
+
+### `_raw` passthrough on `runs.data.splits[i]`
+
+`deriveSplitsFromPhases` writes a `_raw` field on every ingested
+split that carries the full original `WatchCompletionPhase` object
+from the watch payload, untouched.
+
+**Purpose:** every future watch field lands in DB with zero backend
+ingest change. Composers prefer typed fields (fast path) but can
+read `_raw.xxx` for fields not yet typed.
+
+**Rule of thumb (agreed with watch agent 2026-06-02):**
+
+- **TYPE** when a composer reads the field within 1 sprint (hot path
+  · typed access is faster + safer + clearer to read)
+- **`_raw`** for exploratory or pre-greenlight fields (escape hatch
+  · keeps the data available without committing to a typed contract)
+
+**Shape:** `runs.data.splits[i]._raw === phases[i]` from the
+incoming payload.
+
+**Composer doctrine:** When the watch ships Tier 1/2/3 fields, the
+sequence is:
+1. Backend ships nothing · `_raw` already preserves the field
+2. Backend writes the composer · reads from `_raw.xxx` initially
+3. Once the composer is stable + the field is hot-path, backend
+   adds a typed entry to `deriveSplitsFromPhases` and the composer
+   switches to the typed accessor
 
 ### Treadmill-only fields (NOT on watch payloads)
 
