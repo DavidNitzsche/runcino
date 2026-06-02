@@ -124,19 +124,27 @@ describe('Adapter · downgrade operation invariants', () => {
     }
   });
 
-  it('downgrade clears workout_spec (would-fail test if SQL drops the clear)', () => {
-    // SQL pattern: UPDATE plan_workouts SET type = $newType,
-    //                                  workout_spec = NULL, ...
-    // Documented in adapt.ts line ~200. This test asserts the
-    // expected mutation shape · catches regressions where the
-    // workout_spec clear is accidentally dropped.
-    const mutation = {
+  it('downgrade writes new minimal spec for easy/recovery (not NULL)', () => {
+    // 2026-06-03 · iPhone agent Tier 3.e · downgrade now writes a
+    // NEW spec for the downgraded type so the read pipeline
+    // (expandSpecToPhases) has something to consume. Was setting
+    // workout_spec = NULL · forced fallback to prescriptionFor().
+    const downgradeToEasy = {
       type: 'easy',
+      workout_spec: { kind: 'easy' },
+      pace_target_s_per_mi: null,  // pace fills in at read via easyPaceFallback
+    };
+    expect(downgradeToEasy.workout_spec).not.toBeNull();
+    expect((downgradeToEasy.workout_spec as { kind: string }).kind).toBe('easy');
+  });
+
+  it('downgrade to rest sets spec NULL (rest has no phases to expand)', () => {
+    const downgradeToRest = {
+      type: 'rest',
       workout_spec: null,
       pace_target_s_per_mi: null,
     };
-    expect(mutation.workout_spec).toBeNull();
-    expect(mutation.pace_target_s_per_mi).toBeNull();
+    expect(downgradeToRest.workout_spec).toBeNull();
   });
 });
 
