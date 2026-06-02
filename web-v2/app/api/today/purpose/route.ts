@@ -50,6 +50,82 @@ const TYPE_NORMALIZE: Record<string, WorkoutType> = {
   rest: 'rest',
 };
 
+/** 2026-06-02 · phase mapping for the iPhone TodayPurpose decoder.
+ *  Internal Phase enum is UPPER; iPhone expects lowercase + `off-season`
+ *  instead of `recovery`. Centralized so both copies stay in sync. */
+const PHASE_TO_LOWER: Record<Phase, string> = {
+  BASE: 'base',
+  BUILD: 'build',
+  PEAK: 'peak',
+  TAPER: 'taper',
+  RECOVERY: 'off-season',
+  OFF: 'off-season',
+};
+
+interface AnchorRace {
+  slug: string;
+  name: string;
+  date: string;          // YYYY-MM-DD
+  distanceMi: number | null;
+  priority: 'A' | 'B' | 'C';
+}
+
+/**
+ * 2026-06-02 · iPhone brief response · resolve the anchor race for
+ * the "TO RACE" chip on Today. Highest-priority future race by
+ * `meta->>'priority'` ASC (A > B > C), tie-broken by earliest
+ * `meta->>'date'`. Excludes `priority='hilly-excluded'` (context-only
+ * races like Big Sur that don't anchor training). Returns null when
+ * no future qualifying race exists.
+ */
+async function loadAnchorRace(userId: string, todayIso: string): Promise<AnchorRace | null> {
+  try {
+    const row = (await pool.query<{
+      slug: string;
+      name: string;
+      date: string;
+      dist: number | string | null;
+      priority: string;
+    }>(
+      `SELECT slug,
+              COALESCE(meta->>'name', slug) AS name,
+              meta->>'date' AS date,
+              (meta->>'distanceMi')::numeric AS dist,
+              meta->>'priority' AS priority
+         FROM races
+        WHERE user_uuid::text = $1
+          AND meta->>'date' IS NOT NULL
+          AND (meta->>'date')::date >= $2::date
+          AND meta->>'priority' IN ('A', 'B', 'C')
+        ORDER BY meta->>'priority' ASC, (meta->>'date')::date ASC
+        LIMIT 1`,
+      [userId, todayIso],
+    )).rows[0];
+    if (!row) return null;
+    return {
+      slug: row.slug,
+      name: row.name,
+      date: row.date,
+      distanceMi: row.dist != null ? Number(row.dist) : null,
+      priority: row.priority as 'A' | 'B' | 'C',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 2026-06-02 · compute weeks between two dates · `Math.ceil(days/7)` ·
+ *  null when date is missing or invalid. */
+function weeksBetween(todayIso: string, raceIso: string | null): number | null {
+  if (!raceIso) return null;
+  const today = new Date(todayIso + 'T12:00:00Z').getTime();
+  const race = new Date(raceIso + 'T12:00:00Z').getTime();
+  if (!Number.isFinite(today) || !Number.isFinite(race)) return null;
+  const days = (race - today) / 86400000;
+  if (days < 0) return null;
+  return Math.ceil(days / 7);
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
@@ -58,59 +134,103 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const date = (url.searchParams.get('date') || todayPT()).slice(0, 10);
 
-  const planRow = (await pool.query<{
-    type: string;
-    distance_mi: number | string;
-    phase: string | null;
-    race_distance_mi: number | null;
-    weeks_to_race: number | null;
-  }>(
-    `WITH active AS (
-       SELECT id, race_id FROM training_plans
-        WHERE COALESCE(user_uuid::text, user_id) = $1 AND archived_iso IS NULL
-        ORDER BY authored_iso DESC LIMIT 1
-     )
-     SELECT pw.type,
-            pw.distance_mi,
-            pp.label AS phase,
-            (r.meta->>'distanceMi')::numeric AS race_distance_mi,
-            CASE WHEN r.meta->>'date' IS NOT NULL
-                 THEN CEIL(EXTRACT(EPOCH FROM ((r.meta->>'date')::date - $2::date)) / 86400.0 / 7)
-                 ELSE NULL END AS weeks_to_race
-       FROM active a
-       JOIN plan_workouts pw ON pw.plan_id = a.id AND pw.date_iso = $2
-       LEFT JOIN plan_weeks pwk ON pwk.id = pw.week_id
-       LEFT JOIN plan_phases pp ON pp.id = pwk.phase_id
-       LEFT JOIN races r ON r.slug = a.race_id
-      LIMIT 1`,
-    [userId, date],
-  )).rows[0];
+  try {
+    // 2026-06-02 · rewrite per iPhone brief.
+    // Three independent queries · failure on any one returns a sensible
+    // partial response, never a 500.
+    //
+    // Was: a single JOIN that crashed with
+    //   `pg_catalog.extract(unknown, integer)` because Postgres
+    //   `date - date` returns INTEGER days, not an interval, and EXTRACT
+    //   needs an interval/timestamp.
+    //
+    // New shape: plan workout (today) + anchor race (independent of
+    // plan.race_id, per the doctrine rule) · weeks-to-race computed
+    // in JS from the resolved anchor's date.
+    const [planRow, anchor] = await Promise.all([
+      pool.query<{
+        type: string;
+        distance_mi: number | string;
+        phase: string | null;
+      }>(
+        `WITH active AS (
+           SELECT id FROM training_plans
+            WHERE COALESCE(user_uuid::text, user_id) = $1 AND archived_iso IS NULL
+            ORDER BY authored_iso DESC LIMIT 1
+         )
+         SELECT pw.type,
+                pw.distance_mi,
+                pp.label AS phase
+           FROM active a
+           JOIN plan_workouts pw ON pw.plan_id = a.id AND pw.date_iso = $2
+           LEFT JOIN plan_weeks pwk ON pwk.id = pw.week_id
+           LEFT JOIN plan_phases pp ON pp.id = pwk.phase_id
+          LIMIT 1`,
+        [userId, date],
+      ).then((r) => r.rows[0]).catch(() => undefined),
+      loadAnchorRace(userId, date),
+    ]);
 
-  if (!planRow) {
+    const weeksToRace = weeksBetween(date, anchor?.date ?? null);
+    const raceDistanceMi = anchor?.distanceMi ?? null;
+
+    // No plan row · still return the race chip so iPhone's TO RACE
+    // surfaces (the plan side stays "unplanned").
+    if (!planRow) {
+      return NextResponse.json({
+        ok: true,
+        date,
+        type: 'unplanned',
+        phase: null,
+        plannedMi: 0,
+        raceDistanceMi,
+        weeksToRace,
+        race: anchor,
+        ...derivePurpose({ type: 'unplanned', phase: null, plannedMi: 0 }),
+      });
+    }
+
+    const type = (TYPE_NORMALIZE[(planRow.type ?? '').toLowerCase()] ?? 'unplanned') as WorkoutType;
+    const phaseUpper: Phase | null = planRow.phase ? (PHASE_FROM_LABEL[planRow.phase] ?? null) : null;
+    // 2026-06-02 · iPhone wants lowercase + 'off-season' for RECOVERY.
+    // Keep the upper-case `phase` field for back-compat web consumers,
+    // emit `phaseLower` on the same response so the iPhone TodayPurpose
+    // decoder reads its expected enum.
+    const phaseLower = phaseUpper ? PHASE_TO_LOWER[phaseUpper] : null;
+    const plannedMi = Number(planRow.distance_mi) || 0;
+
+    const purpose = derivePurpose({
+      type, phase: phaseUpper, plannedMi, raceDistanceMi, weeksToRace,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      date,
+      type,
+      phase: phaseUpper,
+      phaseLower,
+      plannedMi,
+      raceDistanceMi,
+      weeksToRace,
+      race: anchor,
+      ...purpose,
+    });
+  } catch (err: unknown) {
+    // 2026-06-02 · the endpoint MUST NEVER 500 on a missing or weird
+    // race row. Hard-default to the empty-race state. Log so we can
+    // see it in Railway logs.
+    console.error('[today/purpose]', err);
     return NextResponse.json({
       ok: true,
       date,
       type: 'unplanned',
+      phase: null,
+      phaseLower: null,
+      plannedMi: 0,
+      raceDistanceMi: null,
+      weeksToRace: null,
+      race: null,
       ...derivePurpose({ type: 'unplanned', phase: null, plannedMi: 0 }),
     });
   }
-
-  const type = (TYPE_NORMALIZE[(planRow.type ?? '').toLowerCase()] ?? 'unplanned') as WorkoutType;
-  const phase = planRow.phase ? (PHASE_FROM_LABEL[planRow.phase] ?? null) : null;
-  const plannedMi = Number(planRow.distance_mi) || 0;
-  const raceDistanceMi = planRow.race_distance_mi != null ? Number(planRow.race_distance_mi) : null;
-  const weeksToRace = planRow.weeks_to_race != null ? Number(planRow.weeks_to_race) : null;
-
-  const purpose = derivePurpose({ type, phase, plannedMi, raceDistanceMi, weeksToRace });
-
-  return NextResponse.json({
-    ok: true,
-    date,
-    type,
-    phase,
-    plannedMi,
-    raceDistanceMi,
-    weeksToRace,
-    ...purpose,
-  });
 }
