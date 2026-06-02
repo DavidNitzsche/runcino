@@ -19,6 +19,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { prescriptionFor, type WorkoutType, type PrescriptionStep } from '@/lib/training/prescriptions';
+import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -280,7 +281,7 @@ export async function buildWatchToday(
   if (!plan) return { message: "No active plan." };
 
   const wo = (await pool.query(
-    `SELECT date_iso, dow, type, distance_mi, sub_label
+    `SELECT date_iso, dow, type, distance_mi, sub_label, workout_spec, pace_target_s_per_mi
        FROM plan_workouts
       WHERE plan_id = $1 AND date_iso = $2::text
       LIMIT 1`,
@@ -336,7 +337,9 @@ export async function buildWatchToday(
   // and matches reality when the real week is denser than 6×today.
   const weeklyMi = Math.max(realWeeklyMi, proxyWeeklyMi);
 
-  // 4. Generate the same prescription the iPhone modal uses
+  // 4. Generate the same prescription the iPhone modal uses · used as
+  //    a fallback (and to source the headline / pacing strings when
+  //    workout_spec is absent).
   const prescription = prescriptionFor(
     wo.type as WorkoutType,
     weeklyMi,
@@ -350,13 +353,50 @@ export async function buildWatchToday(
   : wo.type === 'tempo' || wo.type === 'race'          ? 12
   :                                                      20;
 
-  // 5. Expand prescription steps → flat phase list
+  // 5. Expand to phases · PREFER workout_spec (authored truth) over
+  //    prescriptionFor() (generic template). Per iPhone agent's
+  //    2026-06-02 brief · workout_spec is the single source of truth.
+  //    When the spec is absent (pre-migration rows, easy/rest days
+  //    without quality structure), fall back to the prescription
+  //    template so older plans + simple types still render.
   const phases: WatchPhase[] = [];
-  for (const step of prescription.steps) {
-    phases.push(...stepToPhases(step, defaultTolerance));
+  // Easy-pace fallback · derive from goal pace if available (goal +
+  // 60-90 s/mi is standard easy pace) · default to 9:00/mi.
+  const easyPaceFallback = goal_seconds && goal_distance_mi
+    ? Math.round(goal_seconds / goal_distance_mi) + 90
+    : 540;
+  const expanded = wo.workout_spec
+    ? expandSpecToPhases({
+        spec: wo.workout_spec,
+        totalMi: distanceMi,
+        easyPaceSec: easyPaceFallback,
+        recoveryPaceSec: 540,
+        toleranceSec: defaultTolerance,
+      })
+    : null;
+  if (expanded && expanded.length > 0) {
+    // workout_spec drove the phase list · convert ExpandedPhase →
+    // WatchPhase (same shape, just need to add haptic + repUnit).
+    for (const p of expanded) {
+      phases.push({
+        type: p.type,
+        label: p.label,
+        durationSec: p.durationSec ?? Math.round((p.distanceMi ?? 0) * (p.targetPaceSPerMi ?? 540)),
+        targetPaceSPerMi: p.targetPaceSPerMi ?? null,
+        tolerancePaceSPerMi: p.tolerancePaceSPerMi ?? null,
+        haptic: 'start',  // patched below
+        repUnit: p.distanceMi != null ? 'distance' : 'time',
+        distanceMi: p.distanceMi ?? null,
+      });
+    }
+  } else {
+    // Fallback · workout_spec absent or unrecognized kind.
+    for (const step of prescription.steps) {
+      phases.push(...stepToPhases(step, defaultTolerance));
+    }
   }
   if (phases.length === 0) {
-    // Fallback: single open work phase covering the planned distance
+    // Last-resort fallback: single open work phase covering the planned distance
     phases.push({
       type: 'work',
       label: prescription.headline,
