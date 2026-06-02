@@ -160,6 +160,14 @@ final class HealthKitImporter: ObservableObject {
         // server dedupes on (user, type, date, recorded_at).
         var sampleOk = 0, sampleFail = 0
         let samples = await collectVitalSamples(daysBack: daysBack)
+        // 2026-06-01 round 6 · break out active_energy specifically so
+        // the re-sync toast surfaces whether per-bucket samples are
+        // actually flowing. Backend smoke saw 1/day instead of the
+        // expected 100s/day; this lets a future re-sync confirm in one
+        // tap whether the iPhone is silently dropping the per-bucket
+        // payload or HK simply doesn't have the data.
+        let activeEnergyCount = samples.filter { $0.sample_type == "active_energy" }.count
+        let sleepStageCount = samples.filter { $0.sample_type.hasPrefix("sleep_") && $0.sample_type.hasSuffix("_minutes") }.count
         if !samples.isEmpty {
             do {
                 try await postHealthSamples(samples)
@@ -169,6 +177,7 @@ final class HealthKitImporter: ObservableObject {
                 print("[HKImporter] sample ingest failed: \(error)")
             }
         }
+        print("[HKImporter] sample breakdown · total=\(samples.count) active_energy=\(activeEnergyCount) sleep_stages=\(sleepStageCount)")
 
         // 3) Strength sessions → /api/strength (2026-06-01)
         // HK workouts of strength / functional / core / cross / yoga /
@@ -183,6 +192,15 @@ final class HealthKitImporter: ObservableObject {
         let anyFail = workoutFail + sampleFail + strengthResult.failed
         status = anyFail == 0 ? .done : .error
         var summary = "\(workoutOk) runs · \(sampleOk) vitals"
+        // Active-energy + sleep-stage callouts · these are the two
+        // payloads with known fragility (active_energy density was
+        // landing at 1/day; sleep stages were blocked by an upstream
+        // whitelist gap). Surfacing the per-type counts in the toast
+        // makes the next debug iteration immediate · if active_energy
+        // shows 0 here, we know HK is returning empty regardless of
+        // server-side state.
+        if activeEnergyCount > 0 { summary += " · \(activeEnergyCount) kcal samples" }
+        if sleepStageCount > 0 { summary += " · \(sleepStageCount) sleep" }
         if strengthResult.posted > 0 || strengthResult.deleted > 0 {
             summary += " · \(strengthResult.posted)↑/\(strengthResult.deleted)↓ strength"
         }
