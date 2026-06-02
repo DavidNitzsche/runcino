@@ -202,7 +202,7 @@ async function detectMidBlock(userId: string): Promise<boolean> {
 
 // ── Block sizing ────────────────────────────────────────────────────────
 
-interface BlockPlan {
+export interface BlockPlan {
   totalWeeks: number;
   phases: Array<{ label: string; weeks: number; rationale: string; citation: string }>;
 }
@@ -216,7 +216,10 @@ interface BlockPlan {
  * Cite: Research/22-plan-templates.md (per-distance template tables);
  *       Research/00a §race-specific-prep (taper length by distance).
  */
-type DistCategory = '5k' | '10k' | 'hm' | 'm';
+export type DistCategory = '5k' | '10k' | 'hm' | 'm';
+export function distanceCategoryOfPublic(raceDistanceMi: number): DistCategory {
+  return distanceCategoryOf(raceDistanceMi);
+}
 function distanceCategoryOf(raceDistanceMi: number): DistCategory {
   if (raceDistanceMi >= 20) return 'm';
   if (raceDistanceMi >= 11) return 'hm';
@@ -382,8 +385,11 @@ export interface ResolvedPrescriptions {
 }
 
 /** Inline last-resort prescriptions — match the historical doctrine in this
- *  file. Library reads supersede these. */
-function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
+ *  file. Library reads supersede these.
+ *
+ *  Exported 2026-06-02 so the generator-bench test can call composePlan
+ *  without going through the DB workout_library query. */
+export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
   return {
     intervals:
         cat === '5k'  ? '5×800m @ I pace · 90s jog'
