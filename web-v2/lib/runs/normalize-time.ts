@@ -56,15 +56,23 @@ function sourceStoresUtc(source: string | null | undefined): boolean {
   return s === 'strava'
     || s === 'strava_webhook'
     || s === 'apple_health'
-    || s === 'watch'           // Faff watch app stamps server-side UTC
     || s === 'manual';         // Faff manual entry stamps with `Z`
 }
 
-/** True for sources whose no-Z `startLocal` is the runner's local wall time. */
+/** True for sources whose no-Z `startLocal` is the runner's local wall time.
+ *  · 'apple_watch' · HealthKit emits the workout startDate in the runner's
+ *    local zone without an offset.
+ *  · 'watch' · 2026-06-02 audit (admin/audit-weather for David's interval
+ *    workout) showed Faff watch direct ingest stores startLocal as PDT
+ *    wall time (12:16:14, not 19:16:14 UTC). The original "stamps server-
+ *    side UTC" comment was wrong · weather enrichment was hitting Open-
+ *    Meteo 7 hours early as a result, returning predawn temps.
+ *  · 'treadmill' · same call path as 'watch' (TreadmillView posts to
+ *    /api/watch/workouts/complete), so it inherits the same shape. */
 function sourceStoresLocal(source: string | null | undefined): boolean {
   if (!source) return false;
   const s = source.toLowerCase();
-  return s === 'apple_watch';
+  return s === 'apple_watch' || s === 'watch' || s === 'treadmill';
 }
 
 /**

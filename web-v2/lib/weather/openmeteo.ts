@@ -42,7 +42,24 @@ export interface RunWeather {
    *  value the runner SAW on their watch); 'open-meteo' when fetched
    *  server-side as fallback. Consumers can use this for provenance. */
   source: 'open-meteo' | 'apple_hk';
+  /** Enrichment-logic version stamp. Bumped any time the lat/lng pick,
+   *  time-zone normalization, or host selection changes. The lazy auto-
+   *  correct in loadRunDetail re-enriches any row whose `version` is
+   *  below WEATHER_VERSION_CURRENT · catches David's pre-2026-06-02
+   *  rows where startLocal was parsed as UTC and the bucket was 7
+   *  hours off (audit/admin/audit-weather confirmed). */
+  version?: number;
 }
+
+/** Bump when the enrichment pipeline changes in a way that should
+ *  invalidate previously-stored rows.
+ *
+ *   v1 · pre-versioning (no stamp)
+ *   v2 · 2026-06-02 · adds toUtcIso normalization in /api/ingest/workout's
+ *        inline Tier 2 path, and moves source='watch' from sourceStoresUtc
+ *        to sourceStoresLocal in toUtcIso. Both fixes mean recent rows
+ *        previously enriched at the wrong hour bucket get auto-corrected. */
+export const WEATHER_VERSION_CURRENT = 2;
 
 /**
  * 2026-06-02 · Open-Meteo's archive-api (ERA5 reanalysis) lags ~5 days
@@ -136,6 +153,7 @@ export async function fetchRunWeather(
       conditions:     conditionFromCode(h.weathercode?.[bestIdx]),
       fetched_at:     new Date().toISOString(),
       source:         'open-meteo',
+      version:        WEATHER_VERSION_CURRENT,
     };
   } catch (err) {
     console.error('[weather] fetchRunWeather failed:', err);
@@ -280,6 +298,7 @@ export async function fetchRunWeatherSpan(
       conditions,
       fetched_at: new Date().toISOString(),
       source: 'open-meteo',
+      version: WEATHER_VERSION_CURRENT,
     };
   } catch (err) {
     console.error('[weather] fetchRunWeatherSpan failed:', err);

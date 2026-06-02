@@ -10,10 +10,9 @@ import { pool } from '@/lib/db/pool';
 import { computeZones } from '@/lib/training/zones';
 import { baselineTempF } from '@/lib/weather/lookup';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
-import { enrichOneActivity } from '@/lib/weather/openmeteo';
+import { enrichOneActivity, WEATHER_VERSION_CURRENT } from '@/lib/weather/openmeteo';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
-import { toUtcIso } from '@/lib/runs/normalize-time';
 
 export interface RunSplit {
   mile: number;
@@ -290,17 +289,14 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   //
   //   (a) MISSING · no data.weather and no weather_enriched_at · fresh
   //       run that hasn't been touched by the nightly cron yet.
-  //       enrichOneActivity fetches and persists.
   //
-  //   (b) STALE-ARCHIVE · data.weather present, source 'open-meteo',
-  //       and weather_enriched_at predates the forecast-host fix
-  //       (commit 9c960be8, 2026-06-02 ~20:00 UTC). The previous
-  //       enrichment hit archive-api during its ~5-day lag window and
-  //       returned interpolated garbage (David's 57°F in Burbank on
-  //       a June morning · should have been 65-70°F). Force-clear and
-  //       re-fetch via the forecast endpoint. One-time auto-correction;
-  //       the condition stops firing once weather_enriched_at advances
-  //       past the threshold.
+  //   (b) STALE-VERSION · data.weather present but version < CURRENT.
+  //       The enrichment pipeline changed in a way that should invalidate
+  //       the stored value · either lat/lng pick, time-zone normalization,
+  //       or host selection moved. Stored data is from an older logic
+  //       version, so clear + re-enrich. The version constant
+  //       (WEATHER_VERSION_CURRENT in lib/weather/openmeteo.ts) is the
+  //       single switch · bump it any time the pipeline changes.
   //
   // Guards on both paths:
   //   · row.id must be numeric · accepts NEGATIVE bigints from watch-
@@ -308,29 +304,20 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   //   · enrichOneActivity is idempotent on its own (short-circuits if
   //     data.weather already exists) so (a) is safe even on warm rows.
   // Failures swallowed silently; chip falls through to '·'.
-  const FORECAST_HOST_FIX_DEPLOYED_MS = Date.parse('2026-06-02T20:30:00Z');
   const isNumericId = row.id != null && /^-?\d+$/.test(String(row.id));
-  const isRecentRun = (() => {
-    const startISO: string | undefined = r?.startLocal ?? r?.start_local ?? r?.startISO;
-    if (!startISO) return false;
-    const utc = toUtcIso(startISO, r?.source as string | undefined) ?? startISO;
-    const ageDays = (Date.now() - Date.parse(utc)) / (1000 * 60 * 60 * 24);
-    return isFinite(ageDays) && ageDays <= 5;
-  })();
-  const isStaleArchiveWeather = (
-    isRecentRun &&
-    r?.weather?.source === 'open-meteo' &&
-    row.weather_enriched_at &&
-    Date.parse(row.weather_enriched_at) < FORECAST_HOST_FIX_DEPLOYED_MS
-  );
+  const storedVersion = typeof r?.weather?.version === 'number' ? r.weather.version : 0;
+  const isStaleVersion = Boolean(r?.weather) && storedVersion < WEATHER_VERSION_CURRENT;
 
   if (isNumericId && (
     (!r?.weather && !row.weather_enriched_at) ||
-    isStaleArchiveWeather
+    isStaleVersion
   )) {
     try {
-      if (isStaleArchiveWeather) {
-        // Clear the stale row so enrichOneActivity doesn't short-circuit.
+      if (isStaleVersion) {
+        // Clear the stale row so enrichOneActivity doesn't short-circuit
+        // on the existing data.weather. The fresh fetch will write back
+        // with the current version stamp · the condition stops firing
+        // for this row immediately after.
         await pool.query(
           `UPDATE runs
               SET data = (data - 'weather' - 'tempF'),
@@ -338,8 +325,6 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
             WHERE id = $1::BIGINT`,
           [String(row.id)],
         );
-        // Mirror the clear into the in-memory row so the re-enrich path
-        // below behaves like a fresh fetch.
         delete (r as any).weather;
         delete (r as any).tempF;
       }

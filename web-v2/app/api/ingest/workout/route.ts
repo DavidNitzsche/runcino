@@ -38,7 +38,8 @@ import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
-import { fetchRunWeather } from '@/lib/weather/openmeteo';
+import { fetchRunWeather, WEATHER_VERSION_CURRENT } from '@/lib/weather/openmeteo';
+import { toUtcIso } from '@/lib/runs/normalize-time';
 import { requireUserId } from '@/lib/auth/session';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
@@ -267,6 +268,7 @@ export async function POST(req: NextRequest) {
         conditions: null,
         fetched_at: new Date().toISOString(),
         source: 'apple_hk' as const,
+        version: WEATHER_VERSION_CURRENT,
       };
       (data as any).weather = w;
       (data as any).tempF = hkTempF;
@@ -280,10 +282,21 @@ export async function POST(req: NextRequest) {
     } else if (body.route_polyline) {
       // Tier 2 · Open-Meteo span fetch (forecast host for recent runs,
       // archive host for older · see lib/weather/openmeteo.ts weatherHost).
+      //
+      // 2026-06-02 · CRITICAL · normalize startLocal via toUtcIso before
+      // passing to fetchRunWeather. The previous direct pass of
+      // `data.startLocal` (a no-Z PDT string from HK importer) caused
+      // Date.parse to interpret it as UTC on Railway servers · the
+      // weather query hit Open-Meteo at the WRONG hour (5 AM PDT
+      // instead of noon PDT for David's audit case). Bucket at predawn
+      // → 57°F garbage. With normalization: HK importer's "apple_watch"
+      // source is in sourceStoresLocal, toUtcIso converts the wall time
+      // to the correct UTC, fetchRunWeather looks up the right hour.
       try {
         const firstPair = decodePolylineFirst(body.route_polyline);
         if (firstPair) {
-          const w = await fetchRunWeather(firstPair[0], firstPair[1], data.startLocal);
+          const utcStartISO = toUtcIso(data.startLocal, data.source) ?? data.startLocal;
+          const w = await fetchRunWeather(firstPair[0], firstPair[1], utcStartISO);
           if (w) {
             (data as any).weather = w;
             (data as any).tempF = w.temp_f ?? (data as any).tempF;

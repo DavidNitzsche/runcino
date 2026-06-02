@@ -81,7 +81,15 @@ export async function POST(req: NextRequest) {
   // Shape mirrors /api/ingest/workout — keeps a single canonical activity
   // shape across watch, Strava, HealthKit, and manual entry sources.
   const date = (body.startedAt ?? '').slice(0, 10) || todayPT();
-  const startLocal = (body.startedAt ?? '').replace('Z', '').replace(/\.\d+$/, '');
+  // 2026-06-02 · keep the timezone marker if the client sent one.
+  // toUtcIso uses hasTzMarker to short-circuit safely; stripping the Z
+  // collapsed UTC-tagged values into the no-marker bucket and forced
+  // toUtcIso to guess from `source` (which had source='watch' wrongly
+  // classed as UTC · audit/admin/audit-weather caught this). Today the
+  // watch app sends PDT wall time without a marker; future builds that
+  // send `2026-06-02T19:16:14Z` will Just Work via the hasTzMarker
+  // branch. Only the fractional-seconds strip is kept (Postgres-friendly).
+  const startLocal = (body.startedAt ?? '').replace(/\.\d+(?=Z?$)/, '');
   const totalSec = Number(body.totalDurationSec) || 0;
   const totalMi = Number(body.totalDistanceMi) || 0;
   const avgPace = totalSec > 0 && totalMi > 0
