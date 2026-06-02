@@ -84,20 +84,6 @@ struct ActiveWorkoutView: View {
                             : nil
                     )
             }
-
-            // Tier 2 RPE prompt — overlays the current face (typically
-            // RestFace during recovery) after a completed work rep. Tap
-            // a rating to record + dismiss; swipe down to dismiss without
-            // recording; auto-dismisses at 30 sec.
-            if engine.rpePromptVisible {
-                ResponsiveFace {
-                    RpeFace(
-                        onPick: { rating in engine.recordRpe(rating) },
-                        onDismiss: { engine.dismissRpePrompt() }
-                    )
-                }
-                .transition(.opacity)
-            }
         }
         // Long-press anywhere → manual pause. 0.6s is firm enough to never
         // mis-fire from a wrist nudge, fast enough to catch on at a stoplight.

@@ -326,6 +326,13 @@ struct WatchCompletionPhase: Encodable {
     /// a work rep. Backend `_raw` passthrough preserves these for
     /// composers gating on subjective effort vs. measured effort
     /// (e.g. "felt 5/5 but pace was hit" → red-flag fatigue signal).
+    ///
+    /// 2026-06-02 update · field SHAPE retained for backend composer
+    /// typing; the visual capture prompt was reverted (see
+    /// designs/briefs/watch-tier-2-rpe-rescinded-2026-06-02.md).
+    /// Engine plumbing (pendingRpeResultsIndex, recordRpe, etc.) stays
+    /// in WorkoutEngine ready to be re-hooked when the UI lands. Until
+    /// then this field is always nil on the wire.
     var repRpe: Int? = nil
 
     /// Optional one-tap tag the runner picked alongside the RPE rating.
@@ -334,7 +341,8 @@ struct WatchCompletionPhase: Encodable {
     ///   "lungs" · breathing/cardio was the limit
     ///   "mind" · mental fatigue / focus
     ///   "pace" · the target pace itself felt off (too aggressive)
-    /// `nil` when no tag was selected.
+    /// `nil` when no tag was selected. See `repRpe` doc re: 2026-06-02
+    /// visual rescission — field shape retained, capture UI pending.
     var repRpeTag: String? = nil
 }
 

@@ -175,6 +175,16 @@ final class WorkoutEngine: ObservableObject {
     private var phaseLastSampleSec: Int = -5
 
     // ─── Tier 2 RPE pending capture (2026-06-02) ────────────────────
+    // Data-path scaffolding for per-rep RPE. The capture UI (RpeFace)
+    // was reverted on 2026-06-02 — these vars + the API functions
+    // below stay dormant, ready to be re-hooked when a new UI lands.
+    // Until then, `pendingRpeResultsIndex` may briefly hold an index
+    // after a work rep completes, but no view ever flips
+    // `rpePromptVisible` true, so `recordRpe` is never called and the
+    // model field stays nil on the wire. Backend composers typed
+    // against `repRpe` / `repRpeTag` don't bitrot — they just don't
+    // fire until the visual returns. See:
+    //   designs/briefs/watch-tier-2-rpe-rescinded-2026-06-02.md
     /// When a `.work` phase ends, this is set to the index in the
     /// `results` array of that work phase. The next phase (typically
     /// `.recovery`) overlays an RPE prompt; on tap, `recordRpe(...)`
@@ -848,6 +858,8 @@ final class WorkoutEngine: ObservableObject {
         // work rep's recordCurrentPhase, and we're now landing in a
         // non-work phase (recovery / cooldown), surface the prompt.
         // 30-sec auto-dismiss starts inside `showRpePromptIfPending()`.
+        // 2026-06-02: visual was rescinded; this still fires but no
+        // view observes rpePromptVisible — see brief above.
         if pendingRpeResultsIndex != nil, currentPhase?.type != .work {
             showRpePromptIfPending()
         }

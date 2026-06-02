@@ -166,11 +166,6 @@ struct WatchFixtureView: View {
             TodayDoneFace(pace: "8:14", distance: "5.8", elapsed: "46:18")
         case "calibrate":
             CalibrateFace(mile: 13)
-        case "rpe":
-            // Tier 2 RPE prompt — post-rep subjective effort capture
-            // overlay. Renders the standalone face so the layout can be
-            // diffed without the engine state machine.
-            RpeFace(secondsRemaining: 28)
         case "stats":
             InRunStatsFace(elapsed: "24:18", distance: "3.2", avgPace: "6:42", calories: "412")
         case "splits":
