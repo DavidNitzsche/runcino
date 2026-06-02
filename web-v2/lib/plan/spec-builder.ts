@@ -206,6 +206,69 @@ export function buildWorkoutSpec(
 }
 
 /**
+ * 2026-06-02 · derive the TOTAL miles a workout actually covers from
+ * its spec · used to populate plan_workouts.distance_mi so the chip
+ * the runner reads matches the title.
+ *
+ * Was: distance_mi stored only the CORE workout (e.g. "4×1 mi @ T" →
+ * 4.0 mi), but the title also listed WU + CD. Runner saw "2 mi WU ·
+ * 4 mi @ T · 2 mi CD · 4.0 mi" which doesn't math (8 mi of running,
+ * card said 4 mi). David called this out 2026-06-02.
+ *
+ * Now: distance_mi = WU + core + floats + CD. Matches what the watch
+ * will record + the runner's actual mileage.
+ *
+ * Float distance · for threshold/intervals the rest is a jog (not
+ * standing still) so it counts toward total. Approximated at a 9:00/mi
+ * jog pace (540 s/mi) · float_mi = (rep_rest_s × (reps-1)) / 540.
+ * The actual float pace varies by runner but the approximation is
+ * within 5-10% of reality and beats the old "core-only" lie.
+ *
+ * Returns the fallback when:
+ *   · spec is null (rest / cross / strength / unrecognized type)
+ *   · spec.kind is a single-segment shape (easy / long / recovery /
+ *     shakeout / race) · those carry their full distance already
+ */
+export function totalDistanceMiFromSpec(
+  spec: WorkoutSpec,
+  fallbackDistanceMi: number,
+): number {
+  if (!spec || typeof spec !== 'object') return fallbackDistanceMi;
+  const s = spec as Record<string, unknown>;
+  const kind = String(s.kind ?? '');
+  const wu = Number(s.warmup_mi ?? 0) || 0;
+  const cd = Number(s.cooldown_mi ?? 0) || 0;
+  switch (kind) {
+    case 'tempo': {
+      const core = Number(s.tempo_distance_mi ?? 0) || 0;
+      return Number((wu + core + cd).toFixed(1));
+    }
+    case 'threshold':
+    case 'intervals': {
+      const reps = Number(s.rep_count ?? 0) || 0;
+      // 2026-06-02 · schema has two historical key variants:
+      //   · rep_distance_mi (newer, miles · what spec-builder emits today)
+      //   · rep_distance_m  (older, metres · legacy plan rows)
+      // Prefer miles when present; fall back to metres / 1609.34.
+      const repMi = Number(s.rep_distance_mi ?? 0) || 0;
+      const repM = Number(s.rep_distance_m ?? 0) || 0;
+      const effRepMi = repMi > 0 ? repMi : repM / 1609.34;
+      const restS = Number(s.rep_rest_s ?? 0) || 0;
+      const repTotal = reps * effRepMi;
+      const floatTotal = Math.max(0, reps - 1) * (restS / 540);
+      return Number((wu + repTotal + floatTotal + cd).toFixed(1));
+    }
+    case 'long':
+    case 'easy':
+    case 'recovery':
+      // Single-segment workouts · distance_mi as-passed IS the total.
+      return fallbackDistanceMi;
+    default:
+      return fallbackDistanceMi;
+  }
+}
+
+/**
  * Derive T-pace (s/mi) from the runner's goal race + distance.
  * Same formula as lib/training/prescriptions.ts § tPaceSecPerMi.
  *

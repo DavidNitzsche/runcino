@@ -24,7 +24,7 @@ import { pool } from '@/lib/db/pool';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
-import { buildWorkoutSpec, tPaceFromGoal } from './spec-builder';
+import { buildWorkoutSpec, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
 import { parseRaceTime } from '@/lib/training/vdot';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
@@ -668,6 +668,13 @@ async function persistPlan(args: {
         paceTargetSPerMi = built.paceTargetSPerMi;
         workoutSpec = built.spec;
       }
+      // 2026-06-02 · distance_mi now reflects the TOTAL run · WU + core +
+      // floats + CD · so the headline number matches the breakdown.
+      // Was: stored just the core (e.g. "4×1 mi @ T" → 4.0) while the
+      // sub_label said "2 mi WU · 4 mi @ T · 2 mi CD" (= 8 mi). The
+      // runner's math didn't tie. See spec-builder.totalDistanceMiFromSpec
+      // for the inclusion rules.
+      const totalDistanceMi = totalDistanceMiFromSpec(workoutSpec, d.distanceMi);
       // dow stored as 1=Mon..7=Sun in our convention? Use what plan_workouts expects.
       // We pass dow 0..6 (Sun..Sat). Existing reader treats numeric dow + sub_label.
       await pool.query(
@@ -676,7 +683,7 @@ async function persistPlan(args: {
                                     is_quality, is_long, notes, sub_label,
                                     original_date_iso, original_type, original_distance_mi, original_sub_label)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $4, $6, $7, $13)`,
-        [wkoId, planId, weekId, dateISO, d.dow, d.type, d.distanceMi,
+        [wkoId, planId, weekId, dateISO, d.dow, d.type, totalDistanceMi,
          paceTargetSPerMi, workoutSpec ? JSON.stringify(workoutSpec) : null,
          d.isQuality, d.isLong, d.notes, d.subLabel]
       );
