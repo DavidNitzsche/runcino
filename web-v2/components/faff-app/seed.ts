@@ -1063,6 +1063,35 @@ function adaptHealth(
     body.push(mk('max_hr', 'MAX HR', 'bpm', maxHrCurrent, undefined,
       [Math.max(150, maxHrCurrent - 30), maxHrCurrent + 10], [], 'good'));
   }
+  // 2026-06-01 · Sleep stages from iPhone b58abfc3 · deep / REM / light /
+  // awake minutes (7-night avg). Carriers ship even before iPhone data
+  // lands in the runner's account · they read as "no data" until then.
+  // Targets per Research/00b: deep 60-90 min (younger), REM 90-120 min,
+  // awake < 30 min ideal. Light is the residual · no fixed target.
+  const stages = health?.sleepStages;
+  if (stages) {
+    const deepSeriesMin = (stages.deepSeries ?? []).map((d) => d.min);
+    const remSeriesMin  = (stages.remSeries  ?? []).map((d) => d.min);
+    if (stages.deepMin != null) {
+      body.push(mk('sleep_deep', 'DEEP SLEEP', 'min', stages.deepMin, 75,
+        [0, 120], deepSeriesMin,
+        stages.deepMin >= 60 ? 'good' : 'warn'));
+    }
+    if (stages.remMin != null) {
+      body.push(mk('sleep_rem', 'REM SLEEP', 'min', stages.remMin, 100,
+        [0, 150], remSeriesMin,
+        stages.remMin >= 80 ? 'good' : 'warn'));
+    }
+    if (stages.lightMin != null) {
+      body.push(mk('sleep_light', 'LIGHT SLEEP', 'min', stages.lightMin, undefined,
+        [0, 400], [], 'neutral'));
+    }
+    if (stages.awakeMin != null) {
+      body.push(mk('sleep_awake', 'AWAKE', 'min', stages.awakeMin, undefined,
+        [0, 60], [],
+        stages.awakeMin <= 30 ? 'good' : 'warn'));
+    }
+  }
   // Real form metrics from health_samples (HealthKit ingest).
   const formRaw = (form?.ok ? form.value : null) ?? {};
   const formSeries = (k: string): { last: number; series: number[] } => {
@@ -1885,12 +1914,23 @@ export async function buildSeed(): Promise<FaffSeed> {
   })();
 
   const fullName = profile?.identity.full_name ?? glance?.greetingName ?? null;
+  // 2026-06-01 · canonical biological_sex for cycle-phase gating.
+  // Reads through loadBiologicalSex which normalizes across users / profile /
+  // runner_profile (three legacy storage sites). Design agent gates the
+  // cycle-phase tile on this · iPhone agent gates HK ingest on this.
+  const biologicalSex = await (async () => {
+    try {
+      const { loadBiologicalSex } = await import('@/lib/coach/biological-sex');
+      return await loadBiologicalSex(userId);
+    } catch { return 'not_specified' as const; }
+  })();
   const user = {
     name: fullName ? fullName.split(' ')[0] : 'You',
     city: profile?.identity.city ?? '',
     initial: (fullName?.[0] ?? 'F').toUpperCase(),
     pro: true,
     experienceLevel: profile?.identity.experience_level ?? null,
+    biologicalSex,
     // Honest beta label until a billing system is wired (single-user beta
     // per CLAUDE.md). Switch to a real renewal date when subscriptions ship.
     subscriptionLabel: 'Faff Pro · Beta',

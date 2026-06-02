@@ -38,6 +38,16 @@ export interface HealthState {
   maxHr:           { current: number | null };
   // 2026-06-01 · sleep consistency · bedtime variability over last 7 nights
   sleepConsistency: { variabilityMin: number | null; avgBedtimeISO: string | null };
+  // 2026-06-01 · sleep stages (iPhone b58abfc3 ships per-night minutes).
+  // Each is a 7-night avg. Null when no data yet (pre-build, no watch).
+  sleepStages: {
+    deepMin: number | null;
+    remMin: number | null;
+    lightMin: number | null;
+    awakeMin: number | null;
+    deepSeries: { date: string; min: number }[];
+    remSeries:  { date: string; min: number }[];
+  };
   // Watch-list signal
   watchMode: 'steady' | 'watch-amber' | 'watch-red' | 'green';
   watchItems: { label: string; status: 'amber' | 'red'; note: string }[];
@@ -69,6 +79,10 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     leanMassRows,
     maxHrRow,
     sleepBedtimeRows,
+    sleepDeepRows,
+    sleepRemRows,
+    sleepLightRows,
+    sleepAwakeRows,
     vo2SeriesRows,
   ] = await Promise.all([
     pool.query(
@@ -193,6 +207,37 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
+    // 2026-06-01 · sleep stages from iPhone b58abfc3. Per-stage minute
+    // counts per night. 14-night window gives a 7-night avg + a chart
+    // strip for deep/REM trends (the two stages the runner cares about).
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_deep_minutes'
+          AND sample_date >= ($2::date - interval '14 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_rem_minutes'
+          AND sample_date >= ($2::date - interval '14 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_light_minutes'
+          AND sample_date >= ($2::date - interval '14 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_awake_minutes'
+          AND sample_date >= ($2::date - interval '14 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
     pool.query(
       `SELECT sample_date::date AS d, value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'vo2_max'
@@ -312,6 +357,29 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   // Max HR · most recent.
   const maxHrCurrent = maxHrRow?.value != null ? Math.round(Number(maxHrRow.value)) : null;
 
+  // 2026-06-01 · Sleep stages · 7-night avg per stage + 14-night deep/REM
+  // series for the trend strip. Null when iPhone hasn't shipped data yet
+  // OR runner doesn't wear watch overnight.
+  const stageAvg = (rows: any[]): number | null => {
+    const xs = rows.map((r) => Number(r.value)).filter((v) => Number.isFinite(v) && v >= 0);
+    const last7 = xs.slice(-7);
+    if (last7.length === 0) return null;
+    return Math.round(last7.reduce((s, x) => s + x, 0) / last7.length);
+  };
+  const stageSeries = (rows: any[]): { date: string; min: number }[] =>
+    rows.map((r) => ({
+      date: r.d.toISOString ? r.d.toISOString().slice(0, 10) : String(r.d),
+      min: Math.round(Number(r.value)),
+    })).filter((p) => Number.isFinite(p.min) && p.min >= 0);
+  const sleepStagesOut = {
+    deepMin:  stageAvg(sleepDeepRows  as any[]),
+    remMin:   stageAvg(sleepRemRows   as any[]),
+    lightMin: stageAvg(sleepLightRows as any[]),
+    awakeMin: stageAvg(sleepAwakeRows as any[]),
+    deepSeries: stageSeries(sleepDeepRows as any[]),
+    remSeries:  stageSeries(sleepRemRows  as any[]),
+  };
+
   // Sleep consistency · bedtime variability. Use recorded_at as bedtime
   // proxy (when watch wrote the sleep sample) · compute stddev of the
   // local-time minute-of-day across the last 7 nights.
@@ -390,6 +458,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
       variabilityMin: sleepConsistencyVarMin,
       avgBedtimeISO: sleepConsistencyAvgBedtimeISO,
     },
+    sleepStages: sleepStagesOut,
     watchMode,
     watchItems,
   };
