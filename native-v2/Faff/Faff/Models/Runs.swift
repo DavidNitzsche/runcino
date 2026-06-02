@@ -145,11 +145,16 @@ struct LogRun: Decodable, Identifiable {
     let phaseLabel: String?
     let shoeName: String?
     let shoeSlug: String?
+    // 2026-06-01 · `indoor` written by /api/watch/workouts/complete when the
+    // iPhone POSTs a treadmill session (body.indoor=true). Null on outdoor
+    // sources. Activity feed + run detail use it to gate "no-GPS"
+    // affordances and pick the right glyph independently of `source`.
+    let indoor: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, date, dow, start_local, name, source, type, distance_mi
         case pace, time_moving, avg_hr, max_hr, cadence, elev_gain_ft
-        case workoutType, phaseLabel, shoeName, shoeSlug
+        case workoutType, phaseLabel, shoeName, shoeSlug, indoor
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -171,6 +176,7 @@ struct LogRun: Decodable, Identifiable {
         self.phaseLabel = try? c.decode(String.self, forKey: .phaseLabel)
         self.shoeName = try? c.decode(String.self, forKey: .shoeName)
         self.shoeSlug = try? c.decode(String.self, forKey: .shoeSlug)
+        self.indoor = try? c.decode(Bool.self, forKey: .indoor)
     }
 
 }

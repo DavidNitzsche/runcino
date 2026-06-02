@@ -26,15 +26,23 @@
 //    designs/briefs/treadmill-backend-wire-brief.md (must land
 //    alongside this for source to be respected).
 //
-//  HR-from-HK (live) is intentionally deferred · v1 ships without
-//  it, payload's avgHr/maxHr stay null. iPhone brief notes the
-//  follow-up.
+//  HR-from-HK (live): when the runner wears an Apple Watch on the
+//  treadmill, the watch streams HR samples into HealthKit. The view
+//  reads them via TreadmillHRStreamer (HKObserverQuery + HKAnchored
+//  ObjectQuery, anchored at session start) with ~5-30s latency.
+//  Per-phase avgHr/maxHr land in actualsBySegment[i] and flow into the
+//  POST payload. Non-watch users see no HR pill and the payload stays
+//  null for HR fields, which backend resolveCalories tier 3 handles.
 //
 
 import SwiftUI
+import HealthKit
 
 struct TreadmillView: View {
     @Environment(\.dismiss) private var dismiss
+
+    // ── Live HR feed (HK · build 136) ───────────────────────────────
+    @StateObject private var hrStreamer = TreadmillHRStreamer()
 
     // ── Plan source · fetched on .task ──────────────────────────────
     @State private var workout: WatchWorkout?
@@ -81,6 +89,10 @@ struct TreadmillView: View {
         var distanceMi: Double
         var durationSec: Int
         var completed: Bool
+        // Live HR from TreadmillHRStreamer · null when no watch is
+        // paired or HK hasn't surfaced any samples yet for this phase.
+        var avgHr: Int?
+        var maxHr: Int?
     }
 
     // ── Derived: segments from workout.phases ──────────────────────
@@ -233,12 +245,18 @@ struct TreadmillView: View {
     private func recordActual(forSegment i: Int, completed: Bool) {
         let seg = segments[i]
         let durActual = min(elapsedInSeg, seg.dur * 2)  // cap defensive
+        // Close the HR phase here · returns (avg, max) for everything
+        // streamed since the last phase boundary and clears the phase
+        // buffer for the next segment.
+        let hr = hrStreamer.closePhase()
         actualsBySegment[i] = PhaseActual(
             avgSpeedMph: speedMph,
             avgInclinePct: inclinePct,
             distanceMi: Double(durActual) / 3600.0 * speedMph,
             durationSec: durActual,
-            completed: completed
+            completed: completed,
+            avgHr: hr.avg,
+            maxHr: hr.max
         )
     }
 
@@ -320,7 +338,10 @@ struct TreadmillView: View {
                 value: String(format: "%.1f", speedMph),
                 unit: "mph",
                 valueFontSize: 74,
-                sub: "\(paceStr(speedMph)) /mi",
+                // When HK streams a live HR sample, append it to the
+                // sub line · "8:34 /mi · 162 bpm". Nil when no watch
+                // is paired, sub stays pace-only.
+                sub: hrSubLine(pace: "\(paceStr(speedMph)) /mi"),
                 onMinus: { speedMph = max(0.5, round((speedMph - 0.1) * 10) / 10) },
                 onPlus:  { speedMph = min(12, round((speedMph + 0.1) * 10) / 10) }
             )
@@ -441,7 +462,13 @@ struct TreadmillView: View {
                 label: playing ? "Pause" : (totalSec == 0 ? "Start" : "Resume"),
                 style: .secondary
             ) {
-                if !playing && startedAt == nil { startedAt = .now }
+                if !playing && startedAt == nil {
+                    startedAt = .now
+                    // Kick off the HR stream the first time the runner
+                    // starts the session · idempotent on re-calls.
+                    let anchor = startedAt ?? .now
+                    Task { await hrStreamer.start(from: anchor) }
+                }
                 lastTickAt = .now
                 playing.toggle()
             }
@@ -515,6 +542,13 @@ struct TreadmillView: View {
         return "\(m):\(s < 10 ? "0" : "")\(s)"
     }
 
+    /// Speed-tile sub line · pace plus live HR if a watch is streaming.
+    /// Nil HR keeps the line clean for non-watch users.
+    private func hrSubLine(pace: String) -> String {
+        if let bpm = hrStreamer.currentBpm { return "\(pace) · \(bpm) bpm" }
+        return pace
+    }
+
     private func meshFor(_ kind: TreadSegKind) -> FaffMesh {
         switch kind {
         case .warm: return FaffMesh(c1: 0x62E3D4, c2: 0x3AB0CF, c3: 0x1C6F9A, c4: 0x0F8F93, c5: 0x0F6A84, base: 0x07323F)
@@ -531,6 +565,9 @@ struct TreadmillView: View {
         if idx < segments.count {
             recordActual(forSegment: idx, completed: status == "completed" && elapsedInSeg >= segments[idx].dur)
         }
+        // Stop streaming new HR samples · session rollup happens inside
+        // buildPayload via closeSession().
+        hrStreamer.stop()
         posting = true
         postError = nil
         let payload = buildPayload(status: status)
@@ -565,22 +602,31 @@ struct TreadmillView: View {
                 // Approximate pace from speed for backend's split row.
                 let paceSec = Int(round(3600.0 / max(0.5, act.avgSpeedMph)))
                 phase["actualPaceSPerMi"] = paceSec
+                // Per-phase HR from live HK stream · null when no watch.
+                if let avgHr = act.avgHr { phase["avgHr"] = avgHr }
+                if let maxHr = act.maxHr { phase["maxHr"] = maxHr }
             }
             return phase
         }
-        let payload: [String: Any] = [
+        // Session-level HR rollup · separate from per-phase buffers so
+        // it captures samples that may have landed between phase
+        // boundaries. Null when no watch.
+        let sessionHr = hrStreamer.closeSession()
+        var payload: [String: Any] = [
             "workoutId": "trd_\(UUID().uuidString)",
             "startedAt": iso.string(from: started),
             "completedAt": iso.string(from: .now),
             "status": status,
             "totalDistanceMi": (dist * 100).rounded() / 100,
             "totalDurationSec": totalSec,
-            // Faff watch's kcal/HR fields stay null on iPhone-treadmill v1 ·
-            // backend resolveCalories tier 3 estimator picks up.
+            // kcal stays null on iPhone-treadmill v1 · backend
+            // resolveCalories tier 3 estimator picks up.
             "source": "treadmill",
             "indoor": true,
             "phases": phasePayloads,
         ]
+        if let avgHr = sessionHr.avg { payload["avgHr"] = avgHr }
+        if let maxHr = sessionHr.max { payload["maxHr"] = maxHr }
         return payload
     }
 

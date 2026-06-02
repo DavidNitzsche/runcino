@@ -114,7 +114,11 @@ struct PhaseBreakdownList: View {
 // Run Detail header.
 
 enum RunSource: String {
-    case watch, apple_health, strava, manual, unknown
+    // 2026-06-01 · `.treadmill` added when the iPhone TreadmillView began
+    // POSTing completions with body.source='treadmill' (build 136). Renders
+    // as an indoor-figure glyph in the activity feed + run detail header,
+    // distinct from outdoor watch runs.
+    case watch, apple_health, strava, manual, treadmill, unknown
 
     static func from(_ raw: String?) -> RunSource {
         switch (raw ?? "").lowercased() {
@@ -122,6 +126,7 @@ enum RunSource: String {
         case "apple_health":  return .apple_health
         case "strava":        return .strava
         case "manual":        return .manual
+        case "treadmill":     return .treadmill
         default:              return .unknown
         }
     }
@@ -131,6 +136,7 @@ enum RunSource: String {
         case .apple_health:  return "Health"
         case .strava:        return "Strava"
         case .manual:        return "Manual"
+        case .treadmill:     return "Treadmill"
         case .unknown:       return "—"
         }
     }
@@ -140,6 +146,7 @@ enum RunSource: String {
         case .apple_health:  return "heart.fill"
         case .strava:        return "bolt.fill"
         case .manual:        return "pencil.line"
+        case .treadmill:     return "figure.indoor.run"
         case .unknown:       return "circle.dashed"
         }
     }
@@ -149,6 +156,9 @@ enum RunSource: String {
         case .apple_health:  return Theme.race
         case .strava:        return Theme.over
         case .manual:        return Theme.Accent.amberBright
+        // Treadmill = indoor mechanical · use the amber/ember mid-tone to
+        // distinguish from the watch's outdoor green and Strava's red-orange.
+        case .treadmill:     return Theme.Accent.amberBright
         case .unknown:       return Theme.mute
         }
     }

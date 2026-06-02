@@ -117,6 +117,7 @@
 		E05B05674D1FD82CFD0AC965 /* RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E341D1073CB161F54628F683 /* RunDetailView.swift */; };
 		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
 		E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDE304E9C6471D398E2D102 /* Briefing.swift */; };
+		E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */; };
 		E54713F776795DC8AB4F468D /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DEABD97368BE1C69024791 /* ChimePlayer.swift */; };
 		EAF8355DE9CD72C8C10FFD51 /* A_Signals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */; };
 		EB4A118FB7E42C2751A6709D /* ReadinessBriefSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CF1EF57B25870ED0684678F /* ReadinessBriefSeed.swift */; };
@@ -277,6 +278,7 @@
 		C8A9245F66AE1A50C76E2FF3 /* NudgeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NudgeSheet.swift; sourceTree = "<group>"; };
 		CAC9DAF37D0E9B3DAE9FFDF1 /* StravaOAuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaOAuthSession.swift; sourceTree = "<group>"; };
 		CD71B88D7D0751ABFACD1479 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
+		CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRStreamer.swift; sourceTree = "<group>"; };
 		CE323D928DA355934197F38B /* G_Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = G_Settings.swift; sourceTree = "<group>"; };
 		D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStrip.swift; sourceTree = "<group>"; };
 		D731B92BA006865E34779D2A /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
@@ -504,6 +506,7 @@
 				B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */,
 				2600BF38DD79CB8A08592B03 /* Theme.swift */,
 				80D79010E6307A7B819FD164 /* TokenStore.swift */,
+				CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */,
 				5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */,
 				88951A9181D51E114B2B4F0F /* Components */,
 				573E715F6A22233F18DAF594 /* Models */,
@@ -784,6 +787,7 @@
 				E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */,
 				A2205010201940343C1796E2 /* ToolkitPayloads.swift in Sources */,
 				DDEC03C890DF05DF53ECDF7F /* TrainView.swift in Sources */,
+				E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */,
 				93719A4457B3D049C1A86D64 /* TreadmillView.swift in Sources */,
 				5A0D13F6D6761F2F12556838 /* UsageSheet.swift in Sources */,
 				BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */,

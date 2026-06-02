@@ -511,13 +511,17 @@ struct ActivityView: View {
 
     /// SF Symbol per LogRun.source · gives the runner a quick read on
     /// where each row came from (watch live vs HK import vs Strava
-    /// webhook vs manual entry).
+    /// webhook vs manual entry vs treadmill).
     private func sourceIcon(_ source: String) -> String {
         switch source.lowercased() {
         case "watch", "apple_watch":  return "applewatch"
         case "apple_health":          return "heart.fill"
         case "strava", "strava_webhook": return "arrow.up.right.square"
         case "manual":                return "pencil"
+        // 2026-06-01 · treadmill = indoor session POSTed by TreadmillView.
+        // figure.indoor.run is the canonical SF Symbol for "running on
+        // a treadmill" and reads distinctly from the outdoor watch glyph.
+        case "treadmill":             return "figure.indoor.run"
         default:                      return "circle.fill"
         }
     }
@@ -528,6 +532,9 @@ struct ActivityView: View {
         case "apple_health":          return Color(hex: 0xFC4D64)
         case "strava", "strava_webhook": return Color(hex: 0xFC4D24)
         case "manual":                return Color(hex: 0x9AF0BF)
+        // Amber/ember mid-tone matches the RunSourceBadge color for
+        // treadmill · indoor + mechanical feel, distinct from green watch.
+        case "treadmill":             return Color(hex: 0xF3AD38)
         default:                      return Theme.txt.opacity(0.5)
         }
     }
