@@ -495,7 +495,7 @@ type RunSummary = {
   power_avg_w: number | null;
   shoe_id: number | null;
   shoes?: Array<{ id: number; brand: string; model: string }>;
-  splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null }>;
+  splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
   route_polyline?: string | null;
   distance_mi?: number;
   hrZonePcts?: { z1: number; z2: number; z3: number; z4: number; z5: number } | null;
@@ -1820,6 +1820,12 @@ function CompletedHeroV2({
             didn't carry phase data). */}
         {d.type === 'intervals' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
           <RepsRail phases={runData.phase_breakdown} />
+        ) : (d.type === 'easy' || d.type === 'recovery') && splits.length >= 3 ? (
+          <EasyPanel
+            hrZonePcts={runData?.hrZonePcts ?? null}
+            splits={splits}
+            hrAvg={runData?.hr_avg ?? null}
+          />
         ) : (
           <>
             <div className="reshead">
@@ -2119,6 +2125,232 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+/**
+ * EASY · "AEROBIC STAMP" panel · per the post-run-panels handoff.
+ *
+ *   · KEPT IT EASY gauge · Z1+Z2 share of moving time
+ *   · HEART RATE DRIFT · first-half vs second-half avg HR
+ *   · MILE PACE footprint · per-mile pace bars + dashed avg line
+ *   · Summary · AVG HR
+ *
+ * Answers "was it actually easy, or did you drift?"
+ *
+ * Skip rules: no Z1+Z2 → no gauge; no HR per split → no drift; <3 splits →
+ * no footprint. Each block degrades independently · if all three are
+ * missing the panel renders just the section header.
+ */
+function EasyPanel({
+  hrZonePcts, splits, hrAvg,
+}: {
+  hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null | undefined;
+  splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
+  hrAvg: number | null;
+}) {
+  // KEPT IT EASY · Z1+Z2 share.
+  const easyPct = hrZonePcts
+    ? Math.round((hrZonePcts.z1 ?? 0) + (hrZonePcts.z2 ?? 0))
+    : null;
+  const easyTone: 'good' | 'warn' | 'bad' = easyPct == null
+    ? 'good' : easyPct >= 85 ? 'good' : easyPct >= 70 ? 'warn' : 'bad';
+  const easyColor = easyTone === 'good' ? '#3ED06a' : easyTone === 'warn' ? '#ffb24d' : '#ff6a6a';
+
+  // HR halves · only when splits carry HR per mile.
+  const splitsWithHr = splits.filter(s => typeof s.hr === 'number' && (s.hr ?? 0) > 0);
+  const mid = Math.floor(splitsWithHr.length / 2);
+  const firstHalfHr = splitsWithHr.slice(0, mid).length > 0
+    ? Math.round(splitsWithHr.slice(0, mid).reduce((a, b) => a + (b.hr ?? 0), 0) / splitsWithHr.slice(0, mid).length)
+    : null;
+  const secondHalfHr = splitsWithHr.slice(mid).length > 0
+    ? Math.round(splitsWithHr.slice(mid).reduce((a, b) => a + (b.hr ?? 0), 0) / splitsWithHr.slice(mid).length)
+    : null;
+  const hrDelta = firstHalfHr != null && secondHalfHr != null ? secondHalfHr - firstHalfHr : null;
+  const driftBand: { text: string; color: string } | null = hrDelta == null
+    ? null
+    : Math.abs(hrDelta) <= 4 ? { text: 'STAYED FLAT', color: '#3ED06a' }
+    : Math.abs(hrDelta) <= 8 ? { text: 'SOME DRIFT', color: '#ffb24d' }
+    : { text: 'LATE FADE', color: '#ff6a6a' };
+
+  // Mile pace footprint · per-mile pace in seconds.
+  const paceSecs = splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0);
+  const fastest = paceSecs.length ? Math.min(...paceSecs) : 0;
+  const slowest = paceSecs.length ? Math.max(...paceSecs) : 0;
+  const avgPaceSec = paceSecs.length
+    ? Math.round(paceSecs.reduce((a, b) => a + b, 0) / paceSecs.length) : 0;
+
+  // Footprint bar heights · taller = faster. Anchor on min/max with avg as
+  // a dashed reference line.
+  const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
+  const fpAll = [...paceSecs, avgPaceSec].filter(n => n > 0);
+  const fpMin = fpAll.length ? Math.min(...fpAll) : 0;
+  const fpMax = fpAll.length ? Math.max(...fpAll) : 1;
+  const fpRng = Math.max(1, fpMax - fpMin);
+  const fpH = (s: number) => 30 + ((fpMax - s) / fpRng) * 64;
+
+  return (
+    <>
+      {/* phead */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        margin: '16px 0 4px',
+      }}>
+        <span style={{
+          fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600, letterSpacing: 0.5,
+        }}>AEROBIC STAMP</span>
+      </div>
+
+      {/* KEPT IT EASY gauge */}
+      {easyPct != null ? (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>KEPT IT EASY</span>
+            <span style={{ fontFamily: FONT_DISP, fontSize: 18, fontWeight: 600 }}>{easyPct}%</span>
+          </div>
+          <div style={{
+            height: 12, borderRadius: 6, background: 'rgba(255,255,255,.1)',
+            overflow: 'hidden', marginTop: 9,
+          }}>
+            <div style={{
+              height: '100%', borderRadius: 6, background: easyColor,
+              width: `${Math.max(0, Math.min(100, easyPct))}%`,
+            }} />
+          </div>
+          <div style={{
+            fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,.5)', marginTop: 7,
+          }}>Z1–Z2 share of moving time</div>
+        </div>
+      ) : null}
+
+      {/* HEART RATE DRIFT */}
+      {driftBand && firstHalfHr != null && secondHalfHr != null ? (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>HEART RATE DRIFT</span>
+            <span style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: 1.2,
+              color: driftBand.color,
+            }}>{driftBand.text}</span>
+          </div>
+          <div style={{ marginTop: 11 }}>
+            {[
+              { label: 'FIRST HALF', bpm: firstHalfHr, hi: (hrDelta ?? 0) < 0 },
+              { label: 'SECOND HALF', bpm: secondHalfHr, hi: (hrDelta ?? 0) > 0 },
+            ].map((row, i) => {
+              const w = Math.max(6, Math.min(100, ((row.bpm - 120) / 50) * 100));
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, marginTop: 9,
+                }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: 0.7,
+                    color: 'rgba(255,255,255,.62)', width: 82, flex: '0 0 auto',
+                  }}>{row.label}</span>
+                  <div style={{
+                    flex: 1, height: 10, borderRadius: 5,
+                    background: 'rgba(255,255,255,.1)', overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%', borderRadius: 5,
+                      background: row.hi ? '#9ad9b0' : '#37c98f',
+                      width: `${w}%`,
+                    }} />
+                  </div>
+                  <span style={{
+                    fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600,
+                    width: 60, textAlign: 'right', flex: '0 0 auto',
+                  }}>
+                    {row.bpm}
+                    <small style={{
+                      fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 500, opacity: 0.6,
+                    }}> bpm</small>
+                  </span>
+                </div>
+              );
+            })}
+            <div style={{
+              fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,.62)',
+              marginTop: 12, lineHeight: 1.45,
+            }}>
+              Same pace throughout, but your heart{' '}
+              <b style={{
+                fontFamily: FONT_DISP, fontWeight: 600, fontSize: 13, color: driftBand.color,
+              }}>{(hrDelta ?? 0) >= 0 ? '+' : ''}{hrDelta} bpm</b>
+              {(hrDelta ?? 0) >= 0 ? ' faster in the back half. ' : ' lower in the back half. '}
+              {driftBand.text === 'STAYED FLAT' && 'The engine stayed flat · a genuinely easy run.'}
+              {driftBand.text === 'SOME DRIFT' && 'Some late drift · keep the back half honest next time.'}
+              {driftBand.text === 'LATE FADE' && 'The engine worked harder to hold the same pace by the back half.'}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* MILE PACE footprint */}
+      {paceSecs.length >= 3 && avgPaceSec > 0 ? (
+        <div style={{ marginTop: 18 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>MILE PACE</span>
+          <div style={{
+            position: 'relative', display: 'flex', alignItems: 'flex-end',
+            gap: 5, height: 46, marginTop: 11, paddingRight: 50,
+          }}>
+            <div style={{
+              position: 'absolute', left: 0, right: 50,
+              top: `${(100 - fpH(avgPaceSec)).toFixed(1)}%`,
+              borderTop: '1px dashed rgba(255,255,255,.4)', zIndex: 2,
+            }}>
+              <span style={{
+                position: 'absolute', left: 'calc(100% + 7px)', top: -7,
+                whiteSpace: 'nowrap', fontSize: 8.5, fontWeight: 700,
+                color: 'rgba(255,255,255,.8)',
+              }}>{fmtSecAsPace(avgPaceSec)} avg</span>
+            </div>
+            {paceSecs.map((s, i) => (
+              <div key={i} style={{
+                flex: 1, borderRadius: '3px 3px 1px 1px',
+                background: 'linear-gradient(180deg, #5fdba6, #37c98f)',
+                minHeight: 5, height: `${Math.round(fpH(s))}%`,
+              }} />
+            ))}
+          </div>
+          <div style={{
+            display: 'flex', gap: 5, marginTop: 6, paddingRight: 50,
+          }}>
+            {paceSecs.map((_, i) => (
+              <span key={i} style={{
+                flex: 1, textAlign: 'center', fontSize: 8.5, fontWeight: 600,
+                color: 'rgba(255,255,255,.42)',
+              }}>{i + 1}</span>
+            ))}
+          </div>
+          <div style={{
+            fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,.5)', marginTop: 8,
+          }}>
+            {paceSecs.length} miles · fastest {fmtSecAsPace(fastest)} · slowest {fmtSecAsPace(slowest)} · {slowest - fastest}s spread
+          </div>
+        </div>
+      ) : null}
+
+      {/* Summary · AVG HR */}
+      {hrAvg != null ? (
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          gap: 10, marginTop: 14, paddingTop: 14,
+          borderTop: '1px solid rgba(255,255,255,.1)',
+        }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,.55)',
+          }}>AVG HR</span>
+          <span style={{
+            fontFamily: FONT_DISP, fontSize: 16, fontWeight: 600, textAlign: 'right',
+          }}>
+            {hrAvg}<small style={{
+              fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, opacity: 0.6,
+            }}> bpm</small>
+          </span>
+        </div>
+      ) : null}
     </>
   );
 }
