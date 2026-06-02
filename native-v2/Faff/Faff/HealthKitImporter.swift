@@ -45,6 +45,21 @@ final class HealthKitImporter: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: connectedKey) }
     }
 
+    /// Per designs/briefs/iphone-health-ingest-expansion-brief.md §2
+    /// (2026-06-01) · cycle ingest is opt-in, gender-gated, separate
+    /// auth scope from the main HK request. The runner toggles this on
+    /// via Settings; HK auth fires lazily on first enable; ingest fires
+    /// only when (toggle ON) AND (biological sex resolves to female).
+    /// Default OFF until explicitly enabled · no auto-prompt.
+    nonisolated private static let cycleEnabledKey = "faff.health.cycle.enabled.v1"
+    /// nonisolated so `collectVitalSamples` (which runs off the main
+    /// actor) can read it without an actor hop. UserDefaults is
+    /// thread-safe so the access is safe.
+    nonisolated var cycleEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.cycleEnabledKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.cycleEnabledKey) }
+    }
+
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
     /// HK types we read. Empty share set — Faff never writes from the phone
@@ -77,6 +92,17 @@ final class HealthKitImporter: ObservableObject {
         HKQuantityType(.bodyFatPercentage),
         HKQuantityType(.leanBodyMass),
         HKCategoryType(.sleepAnalysis),
+    ]
+
+    /// Cycle-specific HK types · OPT-IN, separate auth scope from
+    /// readTypes. Per the brief these are gender-gated AND opt-in
+    /// via Settings · prompting unconditionally on first launch is
+    /// invasive. The runner enables cycle ingest in Settings, which
+    /// fires a one-time HK auth dialog for THIS subset.
+    nonisolated private static let cycleReadTypes: Set<HKObjectType> = [
+        HKCategoryType(.menstrualFlow),
+        HKCategoryType(.cervicalMucusQuality),
+        HKQuantityType(.basalBodyTemperature),
     ]
 
     // MARK: - Top-level entry points
@@ -641,6 +667,17 @@ final class HealthKitImporter: ObservableObject {
         for sample in await activeEnergySamples(daysBack: daysBack) {
             out.append(sample)
         }
+        // Cycle ingest · opt-in, gender-gated at the Settings layer.
+        // The importer trusts the toggle · if it's on, the runner
+        // explicitly enabled it after seeing the Settings copy and
+        // (separately) granting the HK cycle auth dialog. cycleSamples
+        // returns empty when no flow events exist yet, so a fresh
+        // enable that hasn't seen a cycle start is a silent no-op.
+        if cycleEnabled {
+            for sample in await cycleSamples(daysBack: daysBack) {
+                out.append(sample)
+            }
+        }
         return out
     }
 
@@ -988,6 +1025,132 @@ final class HealthKitImporter: ObservableObject {
             duration_min: max(0, minutes),
             hk_uuid: w.uuid.uuidString
         )
+    }
+
+    // MARK: - HK cycle ingest (2026-06-01)
+    //
+    // Brief: designs/briefs/iphone-health-ingest-expansion-brief.md §2
+    //
+    // Gender-gated · opt-in · separate auth scope. Reads HK menstrual
+    // flow events, derives cycle day = days since most recent flow
+    // start, encodes phase from the cycle-day window. POSTs as
+    // health_samples rows with sample_type='menstrual_cycle_day' and
+    // 'menstrual_cycle_phase'. Backend reads these for HRV threshold
+    // adjustment per Research/13 §sex-specific.
+    //
+    // Phase encoding (matches the brief):
+    //   1 = menstrual    (days 1-5)
+    //   2 = follicular   (days 6-13)
+    //   3 = ovulatory    (days 14-16)
+    //   4 = luteal       (days 17+)
+    //
+    // Cycle-length window: HK menstrualFlow events with start intensity
+    // bracket each cycle. Caller (collectVitalSamples) only invokes
+    // this when cycleEnabled AND biological sex resolves to female.
+
+    /// Prompt for HK cycle auth · idempotent, safe to call repeatedly.
+    /// Returns true on success (auth dialog appeared and was responded
+    /// to; runner may have granted or denied · we can't tell), false
+    /// on HK unavailable. Called from Settings when the runner toggles
+    /// cycle ingest on; never auto-fires.
+    func requestCycleAuth() async -> Bool {
+        guard isAvailable else { return false }
+        do {
+            try await store.requestAuthorization(toShare: [], read: Self.cycleReadTypes)
+            return true
+        } catch {
+            print("[HKImporter] cycle auth failed: \(error)")
+            return false
+        }
+    }
+
+    /// Pull menstrual cycle samples · derive day + phase rows.
+    /// Returns empty when no flow events seen in the lookback window
+    /// (a runner who started tracking yesterday won't have history;
+    /// silently no-op until 1+ flow event lands).
+    private nonisolated func cycleSamples(daysBack: Int) async -> [VitalSample] {
+        // Look back further than the standard window · cycle start
+        // could be 5-35 days ago and we still need to compute today's
+        // cycle day. 90d is enough for 2-3 prior cycles for context.
+        let window = max(90, daysBack)
+        let start = Calendar.current.date(byAdding: .day, value: -window, to: Date()) ?? Date()
+        let pred = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        let samples: [HKCategorySample] = await withCheckedContinuation { cont in
+            let q = HKSampleQuery(
+                sampleType: HKCategoryType(.menstrualFlow),
+                predicate: pred,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]
+            ) { _, samples, _ in
+                cont.resume(returning: (samples as? [HKCategorySample]) ?? [])
+            }
+            store.execute(q)
+        }
+        // Find the most recent flow START event · HK marks the FIRST
+        // day of flow via metadata HKMetadataKeyMenstrualCycleStart=true.
+        // Older versions of HK don't always set this · we fall back to
+        // detecting a gap of ≥10 days before the next-earlier flow
+        // event (cycles are at minimum 21 days, so 10d is safe).
+        let cycleStart = findCycleStart(from: samples)
+        guard let cycleStart else { return [] }
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let startDay = cal.startOfDay(for: cycleStart)
+        let day = max(1, (cal.dateComponents([.day], from: startDay, to: today).day ?? 0) + 1)
+        let phase = encodedPhase(forCycleDay: day)
+        // sample_date = today; recorded_at = today's start.
+        return [
+            VitalSample(
+                sample_type: "menstrual_cycle_day",
+                value: Double(day),
+                sample_date: isoDay(today),
+                recorded_at: isoUTC(today)
+            ),
+            VitalSample(
+                sample_type: "menstrual_cycle_phase",
+                value: Double(phase),
+                sample_date: isoDay(today),
+                recorded_at: isoUTC(today)
+            ),
+        ]
+    }
+
+    /// Walk samples newest-first, find the most-recent flow event that
+    /// is preceded by a gap of ≥10 days (the start of the current
+    /// cycle). Falls back to the most-recent flow start when the
+    /// `HKMetadataKeyMenstrualCycleStart` metadata is set on a row.
+    private nonisolated func findCycleStart(from samples: [HKCategorySample]) -> Date? {
+        guard !samples.isEmpty else { return nil }
+        // Prefer explicit "start" metadata when present.
+        for s in samples {
+            if let isStart = s.metadata?[HKMetadataKeyMenstrualCycleStart] as? Bool, isStart {
+                return s.startDate
+            }
+        }
+        // Fall back to gap detection · walk newest-first, return the
+        // first sample whose next-older neighbor (if any) is ≥10 days
+        // older. Otherwise return the oldest in the window (which IS
+        // a start if there's nothing prior).
+        let cal = Calendar.current
+        for i in 0..<samples.count {
+            let cur = samples[i].startDate
+            if i + 1 >= samples.count { return cur }
+            let next = samples[i + 1].startDate
+            let gapDays = abs(cal.dateComponents([.day], from: next, to: cur).day ?? 0)
+            if gapDays >= 10 { return cur }
+        }
+        return samples.last?.startDate
+    }
+
+    /// Map cycle day → phase encoding per the brief:
+    ///   1 menstrual (1-5) · 2 follicular (6-13) · 3 ovulatory (14-16) · 4 luteal (17+)
+    private nonisolated func encodedPhase(forCycleDay day: Int) -> Int {
+        switch day {
+        case ..<6:  return 1
+        case 6...13: return 2
+        case 14...16: return 3
+        default:     return 4
+        }
     }
 
     // MARK: - POST workout

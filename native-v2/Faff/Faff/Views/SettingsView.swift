@@ -17,6 +17,11 @@ struct SettingsView: View {
     @State private var notifSession: Bool = true
     @State private var notifNudge: Bool = true
     @State private var notifWeekly: Bool = false
+    /// 2026-06-01 · cycle ingest toggle. Gender-gated · row is only
+    /// rendered when profile.identity.sex normalizes to female. Hydrated
+    /// from HealthKitImporter.shared.cycleEnabled. Brief:
+    /// designs/briefs/iphone-health-ingest-expansion-brief.md §2.
+    @State private var cycleIngestOn: Bool = HealthKitImporter.shared.cycleEnabled
 
     /// Strava reconnect in-flight · disables the row to prevent double-taps
     /// while the OAuth browser is open. Reset when the session returns.
@@ -64,6 +69,26 @@ struct SettingsView: View {
                             navRow(title: "Default shoe", value: "auto-detect")
                             row(title: "Adaptive plan", subtitle: "let Faff retune from readiness") {
                                 FaffToggle(isOn: $adaptivePlan)
+                            }
+                        }
+                    }
+
+                    // HEALTH DATA · cycle ingest opt-in (2026-06-01).
+                    // Row only renders for runners whose biological sex
+                    // resolves to female. Default OFF · tapping ON fires
+                    // the HK cycle-auth dialog and starts ingest. Copy
+                    // is explicit about purpose so it doesn't read as
+                    // creepy ("training adjustments not period
+                    // predictions" per the brief's privacy note).
+                    if isProfileFemale {
+                        section("HEALTH DATA") {
+                            VStack(spacing: 0) {
+                                row(
+                                    title: "Cycle tracking",
+                                    subtitle: "training adjustments · not period predictions"
+                                ) {
+                                    FaffToggle(isOn: $cycleIngestOn)
+                                }
                             }
                         }
                     }
@@ -149,6 +174,7 @@ struct SettingsView: View {
             }
             applyFromServer()
         }
+        .onChange(of: cycleIngestOn) { _, new in onCycleIngestChange(new) }
     }
 
     private var header: some View {
@@ -230,6 +256,39 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 17)
         .padding(.vertical, 15)
+    }
+
+    /// Normalize the existing `profile.identity.sex` freetext to a
+    /// female yes/no for the cycle-ingest gate. Backend has a
+    /// canonical `loadBiologicalSex` helper but it hasn't surfaced
+    /// via the iPhone-facing profile endpoint yet · this mirrors its
+    /// female-bucket rule (M/F + male/female/woman synonyms).
+    /// Returns false on nil / unknown so cycle ingest stays off by
+    /// default.
+    private var isProfileFemale: Bool {
+        guard let raw = profile?.identity.sex?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !raw.isEmpty else { return false }
+        switch raw {
+        case "f", "female", "woman": return true
+        default: return false
+        }
+    }
+
+    /// Handle a cycle-ingest toggle change · gates HK auth and writes
+    /// the persisted flag. ON requests cycle auth then enables
+    /// ingest; OFF just clears the flag (HK auth stays granted but
+    /// we stop reading).
+    private func onCycleIngestChange(_ newValue: Bool) {
+        HealthKitImporter.shared.cycleEnabled = newValue
+        if newValue {
+            Task {
+                _ = await HealthKitImporter.shared.requestCycleAuth()
+                // Trigger one immediate sync so the runner sees data
+                // start landing in the Health page without a foreground
+                // bounce.
+                await HealthKitImporter.shared.importIfConnected(daysBack: 7)
+            }
+        }
     }
 
     private func navRow(title: String, subtitle: String? = nil, value: String, good: Bool = false) -> some View {
