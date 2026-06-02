@@ -478,17 +478,17 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             ) : null}
           </div>
         </div>
-        {/* 2026-06-02 · the route is the hero. Real CartoDB dark terrain
-            tiles (same map stack as completed-run routes), 420px tall.
-            The redundant 13.1 MI / NET / GAIN strip moved out · those
-            numbers already live in rp-stripstats above. START/FINISH
-            chip overlays moved out too · the course-annotations row
-            below names both endpoints explicitly.
+        {/* 2026-06-02 · CartoDB dark terrain tiles (same map stack as
+            completed-run routes) inside the same card the panel always
+            had. With the 13.1 MI / NET / GAIN strip + START/FINISH chip
+            overlays removed (already in rp-stripstats + CourseAnnotations
+            below), the route fills the card properly at the original
+            size instead of sitting tiny in a mostly-empty box.
             Plain wrapper · NOT .rp-map (globals.css forces absolute on
             child svg, which would fight Leaflet's internal layers). */}
-        <div style={{ position: 'relative', height: 420, borderRadius: 16, overflow: 'hidden', marginTop: 10 }}>
+        <div style={{ position: 'relative', height: 200, borderRadius: 12, overflow: 'hidden', marginTop: 10 }}>
           {r.routeLatLng && r.routeLatLng.length >= 2 ? (
-            <RouteMap points={r.routeLatLng} splits={[]} height={420} />
+            <RouteMap points={r.routeLatLng} splits={[]} height={200} />
           ) : (
             <div style={{
               position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
