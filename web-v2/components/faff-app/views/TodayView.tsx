@@ -666,21 +666,26 @@ function paceToSec(p: string): number {
  *  chars stay as authored ("VO2", "PR" survive). */
 /**
  * SessionBlueprint · the redesigned SESSION card per
- * designs/from Design agent/session-card/ (2026-06-02).
+ * designs/from Design agent/session-card/ (v2 · 2026-06-02 refined).
  *
  * SVG Z1-Z5 lane chart with each segment as a rounded block at its
  * effort zone height. Reps render as a comb of work bars + float
  * recovery bars with a bracket label above. Fuel pins drop from the
- * top. Bottom mile ruler. One coach line under a hairline divider.
+ * top. Bottom mile ruler.
  *
- * Header is the run name + a totals strip (DISTANCE · EST TIME ·
- * EFFORT). No "SESSION" eyebrow, no "CUE" pill (both dropped per
- * the design review).
+ * Header is a clean stat row: DISTANCE · EST TIME · EFFORT. Big
+ * Oswald numbers with bright uppercase labels BELOW · separated by
+ * spacing alone (no box, no divider lines, no dots). No run name in
+ * the card · it lives in the page's left column (existing hero).
+ *
+ * Card is a flex column: header (fixed) · chart (grows to absorb
+ * extra height when the card is forced tall) · coach line frosted
+ * panel pinned to the bottom (no divider · the panel itself
+ * separates it).
  */
 function SessionBlueprint({
-  runName, distLabel, estLabel, data, coachLine,
+  distLabel, estLabel, data, coachLine,
 }: {
-  runName: string;
   distLabel: string;
   estLabel: string;
   data: BlueprintData | null;
@@ -689,33 +694,33 @@ function SessionBlueprint({
   return (
     <div className="sessblue">
       <div className="sb-head">
-        <div className="sb-name">{runName}</div>
-        <div className="sb-totes">
-          <div className="sb-te">
-            <b>{distLabel}</b>
-            <span>DISTANCE</span>
-          </div>
-          <div className="sb-dv" />
-          <div className="sb-te">
-            <b>{estLabel}</b>
-            <span>EST TIME</span>
-          </div>
-          <div className="sb-dv" />
-          <div className="sb-te">
-            <b>{data?.effortLabel ?? '·'}</b>
-            <span>EFFORT</span>
-          </div>
+        <div className="sb-stat">
+          <div className="n">{distLabel}</div>
+          <div className="k">DISTANCE</div>
+        </div>
+        <div className="sb-stat">
+          <div className="n">{estLabel}</div>
+          <div className="k">EST TIME</div>
+        </div>
+        <div className="sb-stat">
+          <div className="n">{data?.effortLabel ?? '·'}</div>
+          <div className="k">EFFORT</div>
         </div>
       </div>
 
-      {data && data.segs.length > 0 ? (
-        <SessionBlueprintChart data={data} />
-      ) : (
-        <div className="sb-empty">No structured spec for this run yet.</div>
-      )}
+      <div className="sb-chartwrap">
+        {data && data.segs.length > 0 ? (
+          <SessionBlueprintChart data={data} />
+        ) : (
+          <div className="sb-empty">No structured spec for this run yet.</div>
+        )}
+      </div>
 
       {coachLine ? (
-        <div className="sb-coach">{coachLine}</div>
+        <div className="sb-coach">
+          <span className="sb-coach-dot" aria-hidden="true" />
+          <span className="sb-coach-tx">{coachLine}</span>
+        </div>
       ) : null}
     </div>
   );
@@ -723,13 +728,15 @@ function SessionBlueprint({
 
 /** The SVG itself. Pure render from BlueprintData. */
 function SessionBlueprintChart({ data }: { data: BlueprintData }) {
+  // v2 sizing per design handoff · taller viewBox so the chart fills
+  // the .sb-chartwrap flex:1 column and absorbs extra card height.
   const W = 712;
-  const H = 220;
+  const H = 288;
   const padL = 30;
   const padR = 16;
   const hasReps = data.segs.some(s => !!s.reps);
-  const padT = hasReps ? 46 : 22;
-  const padB = 28;
+  const padT = hasReps ? 56 : 30;
+  const padB = 30;
   const x0 = padL;
   const x1 = W - padR;
   const y0 = H - padB;
@@ -1365,7 +1372,6 @@ function PlannedHeroV2({
       </div>
 
       <SessionBlueprint
-        runName={d.subLabel ?? d.name}
         distLabel={`${d.dist} mi`}
         estLabel={d.est.replace(/^~/, '~')}
         data={deriveBlueprintData(d.workoutSpec ?? null, totalMi, d.type, d.pace)}
