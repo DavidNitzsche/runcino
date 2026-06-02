@@ -30,9 +30,14 @@ import { decodePolyline } from '@/lib/route/polyline';
 type Split = { mile: number; pace: string | null };
 
 export function RouteMap({
-  polyline, splits, height = 480,
+  polyline, points: pointsProp, splits, height = 480,
 }: {
-  polyline: string;
+  /** Encoded polyline string (post-run path · Strava-style). Optional —
+   *  pass `points` instead for race courses where trackPoints are already
+   *  available as raw lat/lng arrays. */
+  polyline?: string;
+  /** Raw lat/lng points. Takes precedence over `polyline` when provided. */
+  points?: Array<[number, number]>;
   splits: Split[];
   height?: number;
 }) {
@@ -41,15 +46,19 @@ export function RouteMap({
 
   useEffect(() => {
     let cancelled = false;
-    if (!hostRef.current || !polyline) return;
+    if (!hostRef.current) return;
+    if (!polyline && (!pointsProp || pointsProp.length < 2)) return;
 
     (async () => {
       // Lazy-load Leaflet so SSR doesn't try to evaluate it.
       const L = (await import('leaflet')).default;
       if (cancelled || !hostRef.current) return;
 
-      // Decode the polyline · short-circuit if it's empty or degenerate.
-      const points = decodePolyline(polyline);
+      // Resolve points · raw array wins, fall back to decoding the
+      // polyline string. Short-circuit if either path leaves us degenerate.
+      const points = pointsProp && pointsProp.length >= 2
+        ? pointsProp
+        : (polyline ? decodePolyline(polyline) : []);
       if (points.length < 2) return;
 
       // Tear down any prior instance (re-render on prop change).
@@ -155,7 +164,7 @@ export function RouteMap({
         mapRef.current = null;
       }
     };
-  }, [polyline, splits]);
+  }, [polyline, pointsProp, splits]);
 
   return (
     <div

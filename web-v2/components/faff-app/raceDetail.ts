@@ -343,6 +343,22 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
           routeEnd: r?.end ?? null,
         };
       })(),
+      // 2026-06-02: raw lat/lng for the Leaflet RouteMap (terrain tiles).
+      // Thinned to ≤500 points so a marathon trackpoint dump doesn't bloat
+      // the seed payload; the visual route doesn't need every GPX vertex.
+      routeLatLng: (() => {
+        const pts = geom?.trackPoints;
+        if (!pts || pts.length < 2) return null;
+        const stride = Math.max(1, Math.floor(pts.length / 500));
+        const out: Array<[number, number]> = [];
+        for (let i = 0; i < pts.length; i += stride) out.push([pts[i].lat, pts[i].lon]);
+        // ensure the final endpoint is always included so the route closes
+        const last = pts[pts.length - 1];
+        if (out[out.length - 1]?.[0] !== last.lat || out[out.length - 1]?.[1] !== last.lon) {
+          out.push([last.lat, last.lon]);
+        }
+        return out;
+      })(),
       // 2026-05-31: course_library provenance from migration 127.
       // RaceView shows "Crowd-sourced by N runners" when promoted +
       // multi-contributor.

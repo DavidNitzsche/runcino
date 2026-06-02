@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FaffSeed } from '../types';
 import { CountdownLadder, CourseAnnotations, MARATHON_COUNTDOWN, StateChangeToast } from '../toolkit';
+import { RouteMap } from '../RouteMap';
 
 interface RecalcResult {
   vdotBefore?: number | null;
@@ -91,6 +92,10 @@ export type RaceDetailSeed = {
   routePath: string | null;
   routeStart: [number, number] | null;
   routeEnd: [number, number] | null;
+  // 2026-06-02: raw lat/lng (thinned to ≤500 pts) for the Leaflet terrain
+  // map. Lets the route panel use the same CartoDB tiles as the post-run
+  // map instead of the abstract grid pattern. Null when no GPX is on file.
+  routeLatLng: Array<[number, number]> | null;
   /** course_library provenance (migration 127). When source='promoted' AND
    *  contributorCount > 1 the course was crowd-sourced from N runners'
    *  uploads — surface that on the route panel as social proof. */
@@ -127,6 +132,7 @@ const FALLBACK: RaceDetailSeed = {
   routePath: null,
   routeStart: null,
   routeEnd: null,
+  routeLatLng: null,
   courseSource: null,
   contributorCount: 0,
 };
@@ -472,21 +478,22 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             ) : null}
           </div>
         </div>
-        <div className="rp-map">
-          <svg viewBox="0 0 640 158" preserveAspectRatio="none">
-            <defs><pattern id="rmg" width="44" height="44" patternUnits="userSpaceOnUse"><path d="M44 0H0V44" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1"/></pattern></defs>
-            <rect width="640" height="158" fill="url(#rmg)" />
-          </svg>
-          {r.routePath ? (
-            <svg viewBox="0 0 640 158" preserveAspectRatio="xMidYMid meet">
-              <path d={r.routePath} fill="none" stroke="#FF8847" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-              {r.routeStart && <circle cx={r.routeStart[0]} cy={r.routeStart[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
-              {r.routeEnd && <circle cx={r.routeEnd[0]} cy={r.routeEnd[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />}
-            </svg>
+        {/* 2026-06-02 · the route is the hero. Real CartoDB dark terrain
+            tiles (same map stack as completed-run routes), 420px tall.
+            The redundant 13.1 MI / NET / GAIN strip moved out · those
+            numbers already live in rp-stripstats above. START/FINISH
+            chip overlays moved out too · the course-annotations row
+            below names both endpoints explicitly.
+            Plain wrapper · NOT .rp-map (globals.css forces absolute on
+            child svg, which would fight Leaflet's internal layers). */}
+        <div style={{ position: 'relative', height: 420, borderRadius: 16, overflow: 'hidden', marginTop: 10 }}>
+          {r.routeLatLng && r.routeLatLng.length >= 2 ? (
+            <RouteMap points={r.routeLatLng} splits={[]} height={420} />
           ) : (
             <div style={{
               position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16,
+              background: 'rgba(255,255,255,.02)',
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55, textAlign: 'center' }}>
                 ROUTE UNAVAILABLE
@@ -510,13 +517,6 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
               </div>
             </div>
           )}
-          {r.routePath && <span className="rp-mtag s" style={{ left: 14, bottom: 32 }}>START</span>}
-          {r.routePath && <span className="rp-mtag f" style={{ right: 14, top: 12 }}>FINISH</span>}
-          <div className="rp-mstat">
-            <span>{r.distanceMi} MI</span>
-            <span>{r.netElevFt < 0 ? '↘' : '↗'} {Math.abs(r.netElevFt)} FT NET</span>
-            <span>↗ {r.gainFt.toLocaleString()} FT GAIN</span>
-          </div>
         </div>
         {/* Course editorial annotations · start/finish labels + "what to
             expect" notes from course_library. Renders only on the 4
