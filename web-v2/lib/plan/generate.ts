@@ -1004,18 +1004,26 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level, tierTarget, input.tsbAtStart);
 
   // 2026-06-03 · mid-block doctrine RULE 5 (quality density ramp).
-  // When the runner's recent quality habit is below the tier's target
-  // density, ramp up by ≤1 session per 4 weeks. Skip when recent ≥
-  // target (no need to ramp). Cite: §Rule 5.
+  // When the runner's recent quality habit is below their prefs/tier
+  // target density, ramp UP by ≤1 session per 4 weeks. NEVER slice
+  // below the runner's prefs · the slicing was producing extra easy
+  // slots on cold-start personas (ultra · qualityDows=[2,4], tierQ=1
+  // → sliced to [2] → 5 easies instead of 4 → 113mi weekly vs 100mi
+  // tier cap). The desired-density anchor is the runner's prefs
+  // (qualityDows.length), not the tier table. Tier informs ramp
+  // CEILING, not floor. Cite: §Rule 5 (refined 2026-06-03).
   const tierQ = tierTarget.qualityPerWeek;
+  const desiredDensity = input.qualityDows.length;
   const recentQ = (typeof input.recentQualityPerWeek === 'number' && input.recentQualityPerWeek >= 0)
-    ? Math.min(input.recentQualityPerWeek, tierQ)
-    : tierQ;
+    ? input.recentQualityPerWeek
+    : desiredDensity; // cold-start defaults to prefs
   function densityForWeek(weekIdx: number, phase: string): number {
-    if (phase === 'BASE' || phase === 'TAPER') return tierQ; // unaffected
-    if (recentQ >= tierQ) return tierQ;
+    if (phase === 'BASE' || phase === 'TAPER') return desiredDensity;
+    // Habit ≥ tier OR habit ≥ prefs · no slicing, use prefs.
+    if (recentQ >= tierQ || recentQ >= desiredDensity) return desiredDensity;
+    // Habit genuinely below target · ramp habit → desired over 4wk.
     const stepsUp = Math.min(4, weekIdx);
-    return Math.min(tierQ, Math.round(recentQ + (tierQ - recentQ) * (stepsUp / 4)));
+    return Math.min(desiredDensity, Math.round(recentQ + (desiredDensity - recentQ) * (stepsUp / 4)));
   }
 
   // 2026-06-03 · mid-block doctrine RULE 3 (pace anchor blend).
