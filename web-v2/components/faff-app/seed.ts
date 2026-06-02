@@ -158,25 +158,80 @@ async function loadProfile(uid: string)  { return safe(async () => (await import
  *  oscillation, stride length, vertical ratio) plus 30-day VO2 if present.
  *  The Faff Health view renders these in the FORM strip. */
 async function loadFormMetrics(uid: string) {
+  // 2026-06-01 (David call): the form bar-charts on Health were
+  // pulling from health_samples · which includes daily-aggregated
+  // values that mix walking with running. Cadence ~140s when David's
+  // real running cadence is ~162. The baseline/current was already
+  // fixed in health-state.ts:159 to prefer runs.avgCadence, but the
+  // 14-bar series feeding the chart kept the polluted source.
+  //
+  // Fix: pull per-run values from runs.data (the only honest source
+  // for "running cadence per run") for the fields runs.data carries
+  // (avgCadence, avgPowerW, avgStrideLengthM). For HK-only form
+  // metrics (GCT, vertical osc, vert ratio · not on runs.data yet),
+  // we filter health_samples to only days that ALSO have a run · the
+  // sample lands the day of the run so the daily aggregate at least
+  // doesn't contain non-run days. Still imperfect for split workouts
+  // (long run + later walk same day · the aggregate is biased), but
+  // the right shape until HK ingest writes per-run form metrics.
   return safe(async () => {
     const { pool } = await import('@/lib/db/pool');
-    const rows = await pool.query(
-      `SELECT sample_type, sample_date::date AS d, value
-         FROM health_samples
-        WHERE user_id = $1
-          AND sample_type IN ('cadence','ground_contact_time','vertical_oscillation','stride_length','vertical_ratio','run_power')
-          AND sample_date >= NOW() - interval '30 days'
-        ORDER BY sample_date ASC`,
-      [uid]
-    );
     const acc: Record<string, Array<{ date: string; value: number }>> = {};
-    for (const r of rows.rows) {
-      const key = r.sample_type;
-      (acc[key] ??= []).push({
-        date: r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d),
-        value: Number(r.value),
-      });
+
+    // 1. Per-run series for cadence, power, stride · from runs.data.
+    const runRows = await pool.query(
+      `SELECT (data->>'date')::date AS d,
+              (data->>'avgCadence')::numeric AS cadence,
+              (data->>'avgPowerW')::numeric AS power,
+              (data->>'avgStrideLengthM')::numeric AS stride
+         FROM runs
+        WHERE user_uuid = $1::uuid
+          AND NOT (data ? 'mergedIntoId')
+          AND (data->>'date')::date >= (NOW()::date - interval '30 days')
+        ORDER BY (data->>'date')::date ASC`,
+      [uid]
+    ).catch(() => ({ rows: [] as Array<{ d: Date | string; cadence: string | null; power: string | null; stride: string | null }> }));
+    for (const r of runRows.rows) {
+      const dStr = r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d);
+      // 130-220 spm guard · throws out 0/null cadence rows from runs that
+      // don't carry the field (very-old Strava imports).
+      if (r.cadence != null) {
+        const v = Number(r.cadence);
+        if (v >= 130 && v <= 220) (acc['cadence'] ??= []).push({ date: dStr, value: v });
+      }
+      if (r.power != null) {
+        const v = Number(r.power);
+        if (v > 0 && v < 800) (acc['run_power'] ??= []).push({ date: dStr, value: v });
+      }
+      if (r.stride != null) {
+        const v = Number(r.stride);
+        if (v > 0.5 && v < 2.5) (acc['stride_length'] ??= []).push({ date: dStr, value: v });
+      }
     }
+
+    // 2. HK-only form metrics (GCT, vertical osc, vert ratio) · filter
+    //    health_samples to days that had a run so non-run samples are
+    //    excluded. Not perfect for split workouts but defensible.
+    const hkRows = await pool.query(
+      `SELECT hs.sample_type, hs.sample_date::date AS d, hs.value
+         FROM health_samples hs
+        WHERE hs.user_id = $1
+          AND hs.sample_type IN ('ground_contact_time','vertical_oscillation','vertical_ratio')
+          AND hs.sample_date >= NOW() - interval '30 days'
+          AND EXISTS (
+            SELECT 1 FROM runs r
+             WHERE r.user_uuid::text = hs.user_id
+               AND NOT (r.data ? 'mergedIntoId')
+               AND (r.data->>'date')::date = hs.sample_date
+          )
+        ORDER BY hs.sample_date ASC`,
+      [uid]
+    ).catch(() => ({ rows: [] as Array<{ sample_type: string; d: Date | string; value: number | string }> }));
+    for (const r of hkRows.rows) {
+      const dStr = r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d);
+      (acc[r.sample_type] ??= []).push({ date: dStr, value: Number(r.value) });
+    }
+
     return acc;
   });
 }
