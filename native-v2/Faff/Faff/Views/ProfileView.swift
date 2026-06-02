@@ -20,10 +20,10 @@ struct ProfileView: View {
     /// the NotificationPrefsList exposes alongside the 7 categories. Plus
     /// the LTHR / HRmax / VDOT physiology values for the PHYSIOLOGY block.
     @State private var profileFields: ProfileFields?
-    /// Strava push history sheet · last 10 pushes from /api/strava/pushes.
-    @State private var showStravaPushes: Bool = false
-    /// LLM spend rollup sheet · /api/usage. Lives under a small DEV link.
-    @State private var showUsage: Bool = false
+    // 2026-06-02 round 17 · showStravaPushes / showUsage state retired
+    // along with the dev pills that triggered them. The sheets +
+    // devButton helper below are also dropped · their state was the
+    // last thing referencing them.
 
     var body: some View {
         ZStack {
@@ -113,11 +113,14 @@ struct ProfileView: View {
                     settingsCard
                         .padding(.horizontal, 22).padding(.top, 10)
 
-                    // DEV · small affordances for power users to peek
-                    // under the hood. Strava push history surfaces
-                    // queued/succeeded/failed pushes; LLM spend surfaces
-                    // the 14-day rollup for cost monitoring.
-                    devLinks
+                    // 2026-06-02 round 17 · dev pills (Strava pushes /
+                    // LLM spend) retired from ProfileView. They were
+                    // power-user chrome that read as confusing app UI
+                    // for runners. The signOutButton replaces them as
+                    // the canonical bottom-of-Settings affordance ·
+                    // runners need a way to sign out and this surface
+                    // is where they'll look first.
+                    signOutButton
                         .padding(.horizontal, 22).padding(.top, 24)
                 }
                 .padding(.bottom, 80)
@@ -125,37 +128,49 @@ struct ProfileView: View {
         }
         .task { await reload() }
         .refreshable { await reload() }
-        .sheet(isPresented: $showStravaPushes) {
-            StravaPushHistorySheet().presentationDetents([.medium, .large])
+    }
+
+    /// 2026-06-02 · Sign-out button shipped to ProfileView's bottom.
+    /// Mirrors SettingsView.signOutButton (same destructive styling,
+    /// same confirm dialog, same gate-reset notification) so the two
+    /// surfaces' sign-out paths stay symmetric.
+    @State private var showSignOutConfirm: Bool = false
+    private var signOutButton: some View {
+        Button {
+            showSignOutConfirm = true
+        } label: {
+            Text("Sign out")
+                .font(.body(14, weight: .extraBold))
+                .foregroundStyle(Color(hex: 0xFF8A82))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(hex: 0xFF5A52).opacity(0.14),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color(hex: 0xFF5A52).opacity(0.3), lineWidth: 1))
         }
-        .sheet(isPresented: $showUsage) {
-            UsageSheet().presentationDetents([.medium, .large])
+        .buttonStyle(.plain)
+        .confirmationDialog("Sign out of Faff?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
+            Button("Sign out", role: .destructive) {
+                performSignOut()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You'll need to sign in again to see your data.")
         }
     }
 
-    private var devLinks: some View {
-        HStack(spacing: 8) {
-            devButton("Strava pushes", icon: "bolt.fill") { showStravaPushes = true }
-            devButton("LLM spend",     icon: "dollarsign.circle") { showUsage = true }
-            Spacer()
-        }
+    private func performSignOut() {
+        // Clear local session + the gate's "onboarded" flag so the next
+        // launch lands on SignIn. Mirrors SettingsView.performSignOut().
+        TokenStore.shared.clear()
+        let d = UserDefaults.standard
+        d.removeObject(forKey: "faff.onboarded")
+        d.removeObject(forKey: "faff.health.connected.v2")
+        AppCache.clearAll()
+        NotificationCenter.default.post(name: .faffGateReset, object: nil)
     }
-    private func devButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.mute)
-                Text(title.uppercased())
-                    .font(.body(10, weight: .extraBold)).tracking(1.2)
-                    .foregroundStyle(Theme.txt)
-            }
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .background(Theme.Glass.fill, in: Capsule())
-            .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
+    // devButton helper retired with the dev pills.
 
     private func reload() async {
         async let p  = (try? await API.fetchProfileState())

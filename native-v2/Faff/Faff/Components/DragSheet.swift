@@ -35,8 +35,19 @@
 import SwiftUI
 
 struct DragSheet<Header: View, Body: View>: View {
-    /// Distance the sheet rests below the screen top when collapsed (peek height).
-    let collapsedFromTop: CGFloat
+    /// LEGACY · distance the sheet rests below the screen top when
+    /// collapsed. Hardcoded device-specific value · breaks on phones
+    /// with different screen heights. Prefer `collapsedInsetFromBottom`
+    /// for new callers. Optional · ignored when the inset is set.
+    var collapsedFromTop: CGFloat? = nil
+    /// 2026-06-02 round 21 · device-agnostic anchor. Distance the
+    /// COLLAPSED sheet's top edge sits ABOVE the screen's bottom edge.
+    /// Computed against the live screen height inside the body, so the
+    /// same value lands the peek at the same visual position on any
+    /// iPhone size. Typical value: tabBarHeight + safeArea + a bit of
+    /// breathing room (~200pt covers the floating tab bar pill on all
+    /// iPhones, leaving the peek visible above with a small gap).
+    var collapsedInsetFromBottom: CGFloat? = nil
     /// 0 = fully expanded (rests at top), 1 = fully collapsed (rests at peek).
     @Binding var progress: Double
     /// 2026-06-01 · Today v2 brief: "the whole peek (grab + peek) is filled
@@ -74,11 +85,27 @@ struct DragSheet<Header: View, Body: View>: View {
     var body: some View {
         GeometryReader { geo in
             let screenH = geo.size.height
-            let collapsedY: CGFloat = collapsedFromTop
+            // Prefer device-agnostic inset-from-bottom · falls back to
+            // legacy collapsedFromTop for un-migrated callers. Final
+            // fallback (neither set) = 200pt from bottom (matches the
+            // typical tab-bar + peek + breathing-room offset).
+            let collapsedY: CGFloat = {
+                if let inset = collapsedInsetFromBottom { return screenH - inset }
+                if let top = collapsedFromTop { return top }
+                return screenH - 200
+            }()
             let y = collapsedY * CGFloat(progress)
 
             VStack(spacing: 0) {
                 grabRegion
+                    // 2026-06-02 round 32 · orb overlay retired. The
+                    // peek + the sheet's outer accent fill (round 31
+                    // ZStack overlay) used different render paths for
+                    // the same color · seam visible where the orb-
+                    // shaded peek met the solid accent below. Now the
+                    // peek's BG is just the same `peekBackground` color
+                    // as a flat fill · the outer sheet ZStack overlay
+                    // handles everything else, no seam.
                     .background(peekBackground)
                 // Divider hides when the peek is accent-filled · the
                 // color change itself reads as the boundary, and an
@@ -88,32 +115,60 @@ struct DragSheet<Header: View, Body: View>: View {
                 }
                 ScrollView(showsIndicators: false) {
                     content()
-                        // 2026-06-01 · was 130. Now 170 so the in-sheet
-                        // CTA clears the floating tab bar (~83pt incl.
-                        // safe area) plus the Start-button height
-                        // (~55pt). Without this, expanding the sheet
-                        // hid its own bottom CTA behind the tab bar.
                         .padding(.bottom, 170)
                 }
                 // When peeked, body scrolls would fight the sheet pan ·
                 // disable so vertical drags bubble up to our gesture.
                 .scrollDisabled(progress > 0.5)
+                // 2026-06-02 round 24 · body fades out as the sheet
+                // collapses. Peek stays solid (it's outside this
+                // ScrollView · in grabRegion above). At progress >= 0.7
+                // the body is fully hidden · prevents the first body
+                // section ("EASY" Oswald hero, etc.) from peeking
+                // between the collapsed peek and the floating tab bar.
+                .opacity(max(0, 1 - Double(progress) * 1.4))
+                .allowsHitTesting(progress < 0.5)
             }
             .frame(width: geo.size.width, height: screenH)
-            .background(Color(hex: 0xFAF7F1))
+            // 2026-06-02 round 28 · reverted the peek-color overlay
+            // that bled the accent down through the tab bar area · it
+            // made the menu read as orange-on-orange. Back to the
+            // simple cream gradient that fades to clear at the bottom
+            // so the tab bar pill renders against dark mesh.
+            //   - solid cream for the top 85% (body content reads here)
+            //   - fades to clear over bottom 15% (tab bar renders against
+            //     the dark mesh behind, stays legible)
+            // Peek "life" (subtle orb overlay) stays on the peek itself
+            // via the ZStack inside grabRegion's background (above) ·
+            // affects only the peek surface, not the entire sheet.
+            .background(
+                // 2026-06-02 round 31 · sheet BG interpolates between
+                // cream (expanded) and the peek accent (collapsed).
+                // Collapsed state: accent fills the entire sheet
+                // including the area below the peek that extends behind
+                // the floating tab bar pill · the tab bar sits on
+                // solid accent green/orange/etc. Expanded state: cream
+                // shows behind the body content as before.
+                //
+                // Implementation: cream base + accent overlay whose
+                // opacity tracks progress (0 = expanded → no accent,
+                // 1 = collapsed → full accent).
+                ZStack {
+                    Color(hex: 0xFAF7F1)
+                    if peekBackground != .clear {
+                        peekBackground.opacity(Double(progress))
+                    }
+                }
+            )
             .clipShape(RoundedCorner(radius: 30, corners: [.topLeft, .topRight]))
             .shadow(color: .black.opacity(0.4), radius: 18, x: 0, y: -10)
             .offset(y: y)
             // Whole-sheet pan · start-position-aware (see panGesture).
             .simultaneousGesture(panGesture(collapsedY: collapsedY))
         }
-        // 2026-06-01 · Today redesign brief: "panel goes all the way to
-        // the bottom and fully extends behind the menu." GeometryReader
-        // honors safe area by default · the cream sheet was clipping
-        // at the top of the tab bar pill, breaking visual continuity.
-        // Ignoring the bottom container safe area extends `screenH` to
-        // include the tab-bar inset · cream fills behind, peek + body
-        // sit above (their y is computed from the top, not the bottom).
+        // Re-enabled · sheet extends behind the tab bar so the gradient
+        // can fade UNDER the floating pill. The gradient (above) handles
+        // tab-bar legibility by going transparent in the bottom band.
         .ignoresSafeArea(.container, edges: .bottom)
     }
 

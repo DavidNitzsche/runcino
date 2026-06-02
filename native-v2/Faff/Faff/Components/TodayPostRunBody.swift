@@ -25,6 +25,8 @@
 //
 
 import SwiftUI
+import MapKit
+import CoreLocation
 
 struct TodayPostRunBody: View {
     /// The fetched run detail · drives every section. Until it hydrates
@@ -615,82 +617,101 @@ private struct RoutePolylineCard: View {
 
     var body: some View {
         let points = decodePolyline(polyline)
+        let coords = points.map { CLLocationCoordinate2D(latitude: $0.0, longitude: $0.1) }
         ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(hex: 0x14110D))
-            if points.count >= 2 {
-                // 2026-06-01 round 3: SwiftUI Path strokes inside a
-                // GeometryReader, NOT Canvas. The Canvas approach in
-                // build 136 left the route invisible on TestFlight
-                // (the badge rendered but the polyline never drew) ·
-                // Path strokes are the canonical "draw a thick line
-                // on a SwiftUI canvas" pattern and avoid the Canvas
-                // closure not running on real devices.
-                GeometryReader { geo in
-                    let normalized = normalize(points: points, size: geo.size, padding: 14)
-                    let mileDots = mileMarkerPoints(points: points, normalized: normalized)
-                    // Single coral path · 5pt stroke for visibility on
-                    // the dark background. Bucket-by-pace coloring
-                    // moves into a follow-up · the current goal is to
-                    // make sure SOMETHING renders.
-                    Path { p in
-                        guard let first = normalized.first else { return }
-                        p.move(to: first)
-                        for pt in normalized.dropFirst() { p.addLine(to: pt) }
-                    }
-                    .stroke(BASELINE_UNDER_COLOR, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
-                    // Mile markers · white dots.
-                    ForEach(0..<mileDots.count, id: \.self) { i in
-                        Circle()
-                            .fill(Color.white.opacity(0.85))
-                            .frame(width: 6, height: 6)
-                            .position(x: mileDots[i].0, y: mileDots[i].1)
-                    }
-                    // Start marker · green ring.
-                    if let first = normalized.first {
-                        Circle()
-                            .fill(Color(hex: 0x080B0F))
-                            .frame(width: 14, height: 14)
-                            .overlay(Circle().stroke(START_RING_COLOR, lineWidth: 2.5))
-                            .position(first)
-                    }
-                    // Finish marker · coral fill.
-                    if let last = normalized.last {
-                        Circle()
-                            .fill(FINISH_FILL_COLOR)
-                            .frame(width: 14, height: 14)
-                            .position(last)
-                    }
-                }
+            if coords.count >= 2 {
+                // 2026-06-02 round 11 · MapKit basemap with the route
+                // overlaid · matches the web's RouteMap.tsx (Leaflet +
+                // CartoDB dark tiles) by using MapKit's standard
+                // dark-emphasis style. Apple's basemap renders street
+                // grid + parks + freeways under the polyline so the
+                // run reads with real geography. Polyline = coral
+                // stroke; start = green ring; finish = coral dot.
+                routeMap(coords: coords)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    // Force dark color scheme so the standard map
+                    // renders dark tiles (per the design's dark theme).
+                    .environment(\.colorScheme, .dark)
             } else {
                 // True no-GPS state · matches the web's "NO GPS TRACK
-                // FOR THIS RUN" empty card. Treadmill, indoor, very
-                // short runs, manual entries, and Faff-watch runs land
-                // here (the watch-payload routePolyline gap is open
-                // backend brief).
-                VStack(spacing: 8) {
-                    Image(systemName: "mountain.2.fill")
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.3))
-                    Text("NO GPS TRACK")
-                        .font(.body(10, weight: .extraBold)).tracking(1.4)
-                        .foregroundStyle(.white.opacity(0.45))
-                }
+                // FOR THIS RUN" empty card.
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(hex: 0x14110D))
+                    .overlay(
+                        VStack(spacing: 8) {
+                            Image(systemName: "mountain.2.fill")
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.3))
+                            Text("NO GPS TRACK")
+                                .font(.body(10, weight: .extraBold)).tracking(1.4)
+                                .foregroundStyle(.white.opacity(0.45))
+                        }
+                    )
             }
-            // Overlay text · bottom-leading "X.X MI · ↗ Y FT"
-            VStack {
-                Spacer()
-                HStack {
-                    Text(overlayText)
-                        .font(.body(10, weight: .extraBold)).tracking(1.2)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 9).padding(.vertical, 5)
-                        .background(Color.black.opacity(0.55), in: Capsule())
-                    Spacer()
-                }
-            }
-            .padding(12)
+            // 2026-06-02 round 13 · the X.X MI · ↗ Y FT overlay pill
+            // is retired. Distance + elev already live in the stats
+            // trio (DISTANCE) + secondary stats (ELEV GAIN) directly
+            // above the map · re-stating them on the route was just
+            // chrome noise.
         }
+    }
+
+    @ViewBuilder
+    private func routeMap(coords: [CLLocationCoordinate2D]) -> some View {
+        let region = boundingRegion(for: coords, paddingFactor: 1.18)
+        Map(initialPosition: .region(region), interactionModes: []) {
+            MapPolyline(coordinates: coords)
+                .stroke(BASELINE_UNDER_COLOR, style: StrokeStyle(
+                    lineWidth: 5, lineCap: .round, lineJoin: .round
+                ))
+            if let first = coords.first {
+                // Empty title string suppresses MapKit's default label
+                // floater · the custom circle IS the marker, we don't
+                // want "Start" / "Finish" text floating next to it.
+                Annotation("", coordinate: first, anchor: .center) {
+                    Circle()
+                        .fill(Color(hex: 0x080B0F))
+                        .frame(width: 14, height: 14)
+                        .overlay(Circle().stroke(START_RING_COLOR, lineWidth: 2.5))
+                        .accessibilityLabel("Start")
+                }
+            }
+            if let last = coords.last {
+                Annotation("", coordinate: last, anchor: .center) {
+                    Circle()
+                        .fill(FINISH_FILL_COLOR)
+                        .frame(width: 14, height: 14)
+                        .accessibilityLabel("Finish")
+                }
+            }
+        }
+        // Standard map style with muted emphasis (less label noise) ·
+        // combined with .environment(\.colorScheme, .dark) above gives
+        // the dark-tile look that mirrors the web's CartoDB dark base.
+        .mapStyle(.standard(elevation: .flat, emphasis: .muted))
+    }
+
+    /// MKCoordinateRegion fitting all points with a padding multiplier
+    /// (1.18 = ~9% breathing room on each edge).
+    private func boundingRegion(for coords: [CLLocationCoordinate2D], paddingFactor: Double) -> MKCoordinateRegion {
+        let lats = coords.map { $0.latitude }
+        let lons = coords.map { $0.longitude }
+        let minLat = lats.min() ?? 0
+        let maxLat = lats.max() ?? 0
+        let minLon = lons.min() ?? 0
+        let maxLon = lons.max() ?? 0
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        // Minimum span keeps very short runs from zooming in to a
+        // single building (where the polyline becomes invisible).
+        let latDelta = max(0.0035, (maxLat - minLat) * paddingFactor)
+        let lonDelta = max(0.0035, (maxLon - minLon) * paddingFactor)
+        return MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
+        )
     }
 
     private var overlayText: String {
@@ -812,7 +833,20 @@ private func normalize(points: [(Double, Double)], size: CGSize, padding: CGFloa
     }
     return points.map { (lat, lon) in
         let x = padding + offsetX + CGFloat((lon - minLon) * lonScale) * scale
-        let y = padding + offsetY + drawH - CGFloat(lat - minLat) * scale
+        // 2026-06-02 round 9 · fix wide-shallow-route bug. The previous
+        // formula `y = padding + offsetY + drawH - (lat - minLat) * scale`
+        // added an extra drawH term that pushed every point ~drawH pixels
+        // below the card's frame for routes wider than tall (David's 5K:
+        // 3.5km wide × 500m tall, routeAspect=7.35 vs cardAspect=1.76).
+        // Result: polyline rendered 200+pt below the map card · only the
+        // top edge of the line and the start/finish dots peeked out at
+        // the bottom edge of the surrounding white sheet.
+        //
+        // Correct formula: y from maxLat (top of card · low y) to
+        // minLat (bottom · high y), offset by offsetY for vertical
+        // centering in the width-fit branch. Inverts lat → y axis
+        // (lat increases northward; screen y increases downward).
+        let y = padding + offsetY + CGFloat(maxLat - lat) * scale
         return CGPoint(x: x, y: y)
     }
 }

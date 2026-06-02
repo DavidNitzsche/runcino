@@ -38,6 +38,11 @@ struct TodayView: View {
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
     @State private var weather: WeatherBaseline?   // forecast vs 14-day baseline · drives the HOTTER THAN USUAL tag
+    /// Display-ready forecast for the selected day · /api/forecast/<date>.
+    /// range_label + best_window are pre-composed server-side per the
+    /// web agent's brief; iPhone renders them directly into the
+    /// CONDITIONS & KIT 2x2 grid. Refetches on day-strip selection.
+    @State private var forecast: DailyForecast?
     @State private var stravaStatus: API.StravaStatusResponse?  // drives the reconnect banner
     /// "WHY THIS RUN" coach payload · /api/today/purpose. Replaces the
     /// legacy briefing?.lead placeholder ("Stay in the temperature for
@@ -61,6 +66,22 @@ struct TodayView: View {
     @State private var pendingProposals: [PendingProposal] = []
     /// Per-day shoe picker · POSTs the override to /api/today/shoe.
     @State private var showShoePicker: Bool = false
+    // 2026-06-02 round 14 · run-mode picker state retired. The pre-run
+    // CTA splits into two inline NavigationLink buttons (Outdoor +
+    // Treadmill) · no popover, no action sheet, no pending-route state.
+    // See modeButton() in startCTAButton for the implementation.
+    /// Currently-selected shoe for the displayed run · drives the SHOE
+    /// cell in the pre-run body. Hydrates from /api/today/shoe in a
+    /// future round; today this is purely local state that updates on
+    /// the runner's pick + persists for the rest of the session.
+    @State private var selectedShoe: Shoe? = nil
+    /// Shoe garage from /api/shoe · fetched on appear + lazily on
+    /// picker-open as a belt-and-suspenders. /api/profile/state's
+    /// `shoes` field was nil in prod for David which made the picker
+    /// render "No active shoes in your garage" even though his garage
+    /// has shoes. The dedicated endpoint returns [Shoe] directly with
+    /// the right shape (Int ids, no string-prefix mapping needed).
+    @State private var shoeGarage: [Shoe] = []
     /// Notification inbox sheet (past pushes + acks).
     @State private var showInbox: Bool = false
     /// Async-fetch lifecycle for /api/plan/week (the primary signal for
@@ -181,15 +202,25 @@ struct TodayView: View {
                     }
                     .buttonStyle(.plain)
                     Button { onProfile() } label: {
-                        Text(avatarInitials)
-                            .font(.display(12, weight: .bold))
-                            .foregroundStyle(Theme.txt)
-                            .frame(width: 32, height: 32)
-                            .background(
-                                LinearGradient(colors: [Color(hex: 0xFF7A45), Color(hex: 0xD6263C)],
-                                               startPoint: .topLeading, endPoint: .bottomTrailing),
-                                in: Circle()
-                            )
+                        // 2026-06-02 round 16 · avatar button now matches the
+                        // other topbar circles (translucent glass + stroke)
+                        // instead of the coral→red gradient, which read as
+                        // a notification badge / alert. Falls back to a
+                        // person SF Symbol when initials are empty (profile
+                        // hasn't loaded yet or identity has no name).
+                        Group {
+                            if !avatarInitials.isEmpty {
+                                Text(avatarInitials)
+                                    .font(.display(12, weight: .bold))
+                            } else {
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 13, weight: .bold))
+                            }
+                        }
+                        .foregroundStyle(Theme.txt)
+                        .frame(width: 32, height: 32)
+                        .background(Theme.Glass.fill, in: Circle())
+                        .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -259,7 +290,11 @@ struct TodayView: View {
             }
 
             DragSheet(
-                collapsedFromTop: 540,
+                // 2026-06-02 round 25 · 150 → 180. Peek's "THRESHOLD"
+                // title felt cramped against the tab bar pill; 30pt of
+                // additional clearance gives the title room to breathe
+                // without the body content sneaking back through.
+                collapsedInsetFromBottom: 180,
                 progress: $sheetProgress,
                 peekBackground: peekFill,
                 grabTint: Color.white.opacity(0.6),
@@ -284,27 +319,20 @@ struct TodayView: View {
             // hidden" · the StickyCTABar respects the tab-bar safe area
             // (no .ignoresSafeArea(.bottom)) so the button sits just
             // above the floating tab bar pill.
-            // CTA visibility rules (2026-06-01 round 5):
-            //   · today + active workout → "Start X" picker
-            //   · today + rest/skipped   → "Log Recovery"
-            //   · today + completed      → hidden (sheet has "View full run ›")
-            //   · NOT today              → hidden (sheet IS the preview;
-            //     David explicitly retired PlannedView from Today)
+            // 2026-06-02 round 18 · the bottom Start/Treadmill CTA bar
+            // is suppressed entirely while we wait for the new tab-bar
+            // design that will own run-launch affordances. Removes:
+            //   · "Start <Run>" primary CTA
+            //   · "Treadmill instead" subtle link
+            //   · Outdoor / Apple Watch / Treadmill copy on this surface
+            // The underlying routes (.watchMirror / .treadmill) stay
+            // intact so the new menu can wire them up cleanly. Pre-run
+            // sheet's own "Skip this run" footer is unaffected (lives
+            // inside TodayPreRunBodyV3 · separate concern).
             //
-            // Belt-and-suspenders: !isDone AND !hasCompletedRunForSelectedDay
-            // both check the completion flag via different paths to dodge
-            // state-resolution timing races; selectedIsToday adds the
-            // not-today guard so future/past previews show no button at all.
-            if !isDone && !hasCompletedRunForSelectedDay && selectedIsToday {
-                VStack {
-                    Spacer()
-                    StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
-                        startCTAButton
-                    }
-                    .frame(height: 100)
-                }
-                .opacity(1 - sheetProgress)  // hide when sheet is up; sheet has its own CTA below
-            }
+            // `startCTAButton`, `showsRunModePicker`, and the related
+            // state stay in the file as dead-but-cheap symbols ready
+            // for the new design to re-enable or repoint.
         }
         .task {
             await loadAll()
@@ -349,6 +377,11 @@ struct TodayView: View {
                         self.completedRecap = nil
                     }
                 }
+                // 2026-06-02 · refresh forecast for the newly selected
+                // day so FORECAST + BEST WINDOW reflect that day's
+                // strings, not yesterday's cache.
+                let f = try? await API.fetchDailyForecast(date: newID)
+                await MainActor.run { self.forecast = f }
             }
         }
         .sheet(isPresented: $showNudge) {
@@ -367,12 +400,28 @@ struct TodayView: View {
                 .presentationDetents([.medium])
         }
         .sheet(isPresented: $showShoePicker) {
-            TodayShoeOverrideSheet(
-                profile: profile,
-                date: selectedDayID.isEmpty ? todayISO : selectedDayID,
-                onPicked: { _ in Task { await loadAll() } }
+            // 2026-06-01 round 8 · new TodayShoePicker (cream bottom sheet
+            // per design package #3). Maps ProfileShoe → Shoe for the
+            // picker, persists via /api/today/shoe, updates selectedShoe
+            // so the SHOE cell reflects the new pick immediately.
+            TodayShoePicker(
+                shoes: pickerShoes,
+                selectedId: selectedShoe?.id,
+                accent: selectedEffort.dot,
+                onSelect: { shoe in
+                    selectedShoe = shoe
+                    showShoePicker = false
+                    Task {
+                        let date = selectedDayID.isEmpty ? todayISO : selectedDayID
+                        _ = try? await API.setShoeForDay(date: date, shoeId: shoe.id)
+                        await loadAll()
+                    }
+                },
+                onClose: { showShoePicker = false }
             )
             .presentationDetents([.medium])
+            .presentationBackground(.clear)
+            .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showInbox) {
             NotificationInboxSheet()
@@ -633,13 +682,56 @@ struct TodayView: View {
             dowLabel: shortDOWLabel,
             isToday: selectedIsToday,
             weather: weather,
-            shoeName: nil,                                  // backend not wired yet
+            forecast: forecast,
+            shoeName: selectedShoe?.displayName,            // hydrated by picker
             briefing: briefing,
             purpose: purpose,
             adaptation: adaptationIntent,
             onSkip: skipTodayAction,
-            onShoeTap: nil                                  // shoe picker TODO
+            onShoeTap: {
+                // Lazy-refresh on tap · if the initial /api/shoe fetch
+                // failed (network blip on launch), we get a second
+                // chance to populate before the picker renders.
+                if shoeGarage.isEmpty {
+                    Task {
+                        if let resp = try? await API.fetchShoes(),
+                           let garage = resp.shoes, !garage.isEmpty {
+                            await MainActor.run { self.shoeGarage = garage }
+                        }
+                    }
+                }
+                showShoePicker = true
+            }
         )
+    }
+
+    /// Shoes the picker presents · primary source is the dedicated
+    /// `/api/shoe` endpoint (canonical, returns [Shoe] with Int ids,
+    /// no string-prefix mapping). Falls back to mapping
+    /// profile.shoes (which can be nil) for the rare case where the
+    /// dedicated fetch hasn't completed yet but profile has.
+    private var pickerShoes: [Shoe] {
+        if !shoeGarage.isEmpty { return shoeGarage }
+        // Fallback path · profile.shoes → Shoe[]. ProfileShoe.id is
+        // a string like "shoe_12"; the /api/today/shoe POST expects
+        // an Int. Strip the prefix and skip rows whose id doesn't
+        // parse cleanly.
+        guard let raw = profile?.shoes else { return [] }
+        return raw.compactMap { ps -> Shoe? in
+            let intId = Int(ps.id.replacingOccurrences(of: "shoe_", with: ""))
+            guard let id = intId else { return nil }
+            return Shoe(
+                id: id,
+                brand: ps.brand,
+                model: ps.model,
+                color: ps.color,
+                mileage: ps.mileage,
+                mileage_cap: ps.cap,
+                retired: ps.retired,
+                preferred: ps.preferred,
+                notes: nil
+            )
+        }
     }
 
     /// Short day-of-week label · "MON", "TUE", etc. Drives the pre-run
@@ -1211,28 +1303,49 @@ struct TodayView: View {
     /// (post-run share, rest day "Log Recovery", future planned) push
     /// directly via the existing single-route NavigationLink.
     private var showsRunModePicker: Bool {
+        // 2026-06-02 round 12 · dropped selectedIsToday from the gate.
+        // The Outdoor / Treadmill picker is meaningful on EVERY pre-run
+        // day, not just today · a runner previewing tomorrow's session
+        // still needs to choose how they'll execute it. The earlier
+        // gate fell straight to the default ctaRoute (.watchMirror)
+        // when not-today, bypassing the picker. Symptom: tap Start
+        // on a future day → went directly to "FOLLOWING APPLE WATCH ·
+        // MIRRORED" with no pick affordance.
         !isDone
             && selectedEffort != .rest
-            && selectedIsToday
             && !skipped
     }
 
-    /// The bottom CTA · branches between Menu (active pre-run today) and
-    /// a single-tap NavigationLink (post-run / rest / non-today).
+    /// The bottom CTA · in pre-run state, one primary button defaulting
+    /// to Outdoor (~95% of runs) with a tiny subtle "Treadmill instead"
+    /// text-link below for the rare indoor case. Treadmill stays
+    /// discoverable without dominating screen real-estate · the runner
+    /// who needs it sees it; everyone else taps Start and goes.
+    ///
+    /// Earlier rounds tried: a SwiftUI Menu popover (David: "wack"),
+    /// a confirmationDialog action sheet (too Apple-system-y), an
+    /// inline 70/30 split (sloppy · sizes felt off, gave treadmill
+    /// equal hierarchy to the dominant outdoor case).
     @ViewBuilder
     private var startCTAButton: some View {
         if showsRunModePicker {
-            Menu {
+            VStack(spacing: 9) {
                 NavigationLink(value: FaffRoute.watchMirror) {
-                    Label("Outdoor · Apple Watch", systemImage: "figure.outdoor.cycle")
+                    startButtonShell
                 }
+                .buttonStyle(.plain)
                 NavigationLink(value: FaffRoute.treadmill) {
-                    Label("Treadmill", systemImage: "figure.indoor.run")
+                    HStack(spacing: 6) {
+                        Image(systemName: "figure.run.treadmill.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Treadmill instead")
+                            .font(.body(12, weight: .semibold))
+                    }
+                    .foregroundStyle(Color(hex: 0x9A9286))
+                    .padding(.vertical, 4)
                 }
-            } label: {
-                startButtonShell
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         } else {
             NavigationLink(value: ctaTargetRoute) {
                 startButtonShell
@@ -1260,13 +1373,9 @@ struct TodayView: View {
             Text(ctaTitle)
                 .font(.body(16.5, weight: .extraBold))
                 .foregroundStyle(.white)
-            if showsRunModePicker {
-                // Chevron-up hint so the runner knows tapping pops a
-                // picker rather than launching the watch run straight.
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.66))
-            }
+            // Chevron-up hint retired with the popover · the split CTA
+            // doesn't need a "this opens a picker" affordance because
+            // each half IS the picker.
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 17)
@@ -1422,6 +1531,27 @@ struct TodayView: View {
             if let brief { self.briefing = brief }
             if let prof { self.profile = prof }
             if let wx { self.weather = wx }
+            // 2026-06-02 · forecast (range_label + best_window) fetched
+            // separately · server returns 404 if no GPS home base yet,
+            // which is fine · the iPhone falls back to "—" cells.
+            Task {
+                let date = selectedDayID.isEmpty
+                    ? (planWeek?.today_iso ?? self.plan?.today_iso ?? todayISO)
+                    : selectedDayID
+                let f = try? await API.fetchDailyForecast(date: date)
+                await MainActor.run { self.forecast = f }
+            }
+            // 2026-06-02 · prime the shoe garage from the canonical
+            // /api/shoe endpoint so the picker has data before the
+            // runner ever taps the SHOE cell. /api/profile/state's
+            // shoes field can be nil in prod (David's case · empty);
+            // the dedicated fetch is the source of truth.
+            Task {
+                if let resp = try? await API.fetchShoes(),
+                   let garage = resp.shoes, !garage.isEmpty {
+                    await MainActor.run { self.shoeGarage = garage }
+                }
+            }
             if let stravaStat { self.stravaStatus = stravaStat }
             // Purpose · only overwrite when the fetch actually returned a
             // payload; nil from a transient 5xx shouldn't blank a previously

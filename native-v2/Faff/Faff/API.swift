@@ -1628,6 +1628,42 @@ struct WeatherBaseline: Decodable {
     let deltaF: Int?
 }
 
+// MARK: - Forecast (2026-06-02 round 15 · design pkg #3 follow-up)
+//
+// Per web agent's brief (backend-followup-active-energy-no-toast-needed
+// neighbor): /api/forecast/<YYYY-MM-DD> returns display-ready strings
+// (range_label, best_window) the iPhone renders directly. No client-
+// side derivation · the server composes so iPhone / web / future watch
+// surfaces all read identical copy. Separate from WeatherBaseline
+// which is the temp-delta engine context (intentionally narrow).
+
+struct DailyForecast: Decodable {
+    let date: String
+    let temp_min_f: Double?
+    let temp_max_f: Double?
+    let conditions: String?
+    let precip_chance_pct: Double?
+    let wind_mph: Double?
+    let source: String?
+    /// Pre-composed range string · "60-78° · Cloudy". Render directly.
+    let range_label: String?
+    /// Pre-composed best-window string · "Before 7 AM" / "6-8 AM" /
+    /// "6-9 AM". Render directly.
+    let best_window: String?
+}
+
+extension API {
+    /// Fetch the daily forecast for a given date · returns nil on 404
+    /// (no GPS-anchored home base yet, or date outside the ~16-day
+    /// Open-Meteo window). 30-min cache + SWR upstream.
+    static func fetchDailyForecast(date: String) async throws -> DailyForecast? {
+        let url = baseURL.appendingPathComponent("api/forecast/\(date)")
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(DailyForecast.self, from: data)
+    }
+}
+
 // LearnArticle model lives in Models/Tips.swift — was the original P40
 // home; extended with citations_json in the 2026-05-30 audit so the
 // /api/learn/[slug] reader has the full payload to render.

@@ -26,6 +26,12 @@ struct TodayPreRunBodyV3: View {
     let dowLabel: String        // "MON"
     let isToday: Bool           // drives "TODAY" vs "UPCOMING" tag
     let weather: WeatherBaseline?
+    /// 2026-06-02 · daily forecast from /api/forecast/<date>. Provides
+    /// the pre-composed range_label ("60-78° · Cloudy") + best_window
+    /// ("6-8 AM") strings the FORECAST + BEST WINDOW cells render
+    /// directly. Nil when no GPS home base yet or date is outside the
+    /// ~16-day forecast window · cells fall back to "—".
+    let forecast: DailyForecast?
     let shoeName: String?       // currently always "—" until backend wires
     let briefing: Briefing?
     let purpose: RunPurpose?
@@ -171,42 +177,49 @@ struct TodayPreRunBodyV3: View {
 
     private var effortTargetBar: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                SpecLabel(text: "EFFORT TARGET", size: 11, tracking: 1.5, color: Color(hex: 0xA39A8C))
-                Spacer()
-                SpecLabel(text: zoneTagText, size: 11, tracking: 0.5, color: Color(hex: 0x736C61))
-            }
-            ZStack(alignment: .bottomLeading) {
-                // Gradient bar
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(LinearGradient(colors: [
-                        Color(hex: 0x54DDD0),  // Z1 teal
-                        Color(hex: 0x8EF0B0),  // Z2 mint
-                        Color(hex: 0xFFE0A0),  // Z3 amber
-                        Color(hex: 0xFF9560),  // Z4 orange
-                        Color(hex: 0xFC4D64),  // Z5 coral
-                    ], startPoint: .leading, endPoint: .trailing))
-                    .frame(height: 8)
-                    .padding(.top, 26)
-                // Marker bubble + caret · positioned by effort
-                GeometryReader { geo in
-                    let pin = effortPinPct
-                    let x = geo.size.width * pin
-                    VStack(spacing: 0) {
-                        Text(zoneTagText)
-                            .font(.body(10, weight: .extraBold)).tracking(0.8)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 9).padding(.vertical, 4)
-                            .background(Color(hex: 0x1B1814), in: Capsule())
-                        Triangle()
-                            .fill(Color(hex: 0x1B1814))
-                            .frame(width: 8, height: 6)
-                    }
-                    .offset(x: x - 30, y: -8)
+            SpecLabel(text: "EFFORT TARGET", size: 11, tracking: 1.5, color: Color(hex: 0xA39A8C))
+            // Marker pill sits directly above the gradient bar with the
+            // caret kissing the bar's top edge. Two-row VStack ·
+            // pill+caret first (height fixed at 34pt), gradient bar
+            // second (height 8pt). The GeometryReader does only the X
+            // positioning; no Y offsets so the layout is a clean stack.
+            // (2026-06-02 round 10 fix · previous version used .offset(y:)
+            // hacks that landed the pill 30pt above the bar with a
+            // visible gap and a misaligned caret.)
+            GeometryReader { geo in
+                let pin = effortPinPct
+                let x = geo.size.width * pin
+                VStack(spacing: 0) {
+                    Text(zoneTagText.uppercased())
+                        .font(.body(9.5, weight: .extraBold)).tracking(0.8)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background(Color(hex: 0x1B1814), in: Capsule())
+                    Triangle()
+                        .fill(Color(hex: 0x1B1814))
+                        .frame(width: 8, height: 6)
+                        // Pull the caret up by 1pt so it visually
+                        // touches the bar without a hairline gap.
+                        .offset(y: -1)
                 }
-                .frame(height: 30)
-                .offset(y: -34)
+                // Center the pill on the pin position (use a measured
+                // width via fixedSize won't work in GeometryReader
+                // without overlay-positioning · estimate pill width
+                // by char count + padding, ~70pt for the longest
+                // zone tag · close enough).
+                .position(x: x, y: 17)
             }
+            .frame(height: 34)
+            // Gradient bar
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(LinearGradient(colors: [
+                    Color(hex: 0x54DDD0),  // Z1 teal
+                    Color(hex: 0x8EF0B0),  // Z2 mint
+                    Color(hex: 0xFFE0A0),  // Z3 amber
+                    Color(hex: 0xFF9560),  // Z4 orange
+                    Color(hex: 0xFC4D64),  // Z5 coral
+                ], startPoint: .leading, endPoint: .trailing))
+                .frame(height: 8)
             HStack(spacing: 0) {
                 ForEach(["Z1", "Z2", "Z3", "Z4", "Z5"], id: \.self) { z in
                     Text(z)
@@ -298,17 +311,19 @@ struct TodayPreRunBodyV3: View {
         }
     }
 
+    /// 2026-06-02 · both strings now come server-composed from
+    /// /api/forecast/<date>. Web agent's brief: don't re-derive client-
+    /// side, just render so iPhone / web / future watch surfaces stay
+    /// in sync. Fall back to "—" when no forecast (no GPS home base,
+    /// or date too far out).
     private var forecastText: String {
-        guard let wx = weather, let t = wx.tempF, t > 10, t < 130 else { return "—" }
-        return "\(Int(t.rounded()))°"
+        if let s = forecast?.range_label, !s.isEmpty { return s }
+        return "—"
     }
 
     private var bestWindowText: String {
-        guard let wx = weather, let t = wx.tempF, t > 10 else { return "—" }
-        // Heuristic: hot → before 7AM, cold → midday, mild → anytime.
-        if t >= 78 { return "Before 7 AM" }
-        if t <= 40 { return "Midday" }
-        return "Anytime"
+        if let s = forecast?.best_window, !s.isEmpty { return s }
+        return "—"
     }
 
     private var shoeText: String {

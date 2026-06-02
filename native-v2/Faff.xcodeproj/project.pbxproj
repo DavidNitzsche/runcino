@@ -10,6 +10,7 @@
 		02629A8715894D5C2D6B5F47 /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0C78AC3D1E5FE8777CB224 /* SummaryView.swift */; };
 		037104D1F1956FCD28FA4915 /* TodayPreRunBodyV3.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */; };
 		0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */; };
+		05EEB9EB948603B0592062F2 /* TodayShoePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3F9F97249181DA2EB82D25D /* TodayShoePicker.swift */; };
 		06733C4049CBBF30D8DF2EA1 /* API+Toolkit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E06A7E99186B27147ADDE22 /* API+Toolkit.swift */; };
 		087938D53B0E81241BFCCA7A /* TreadmillHRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760B92E89CF0E2EF5EEB8265 /* TreadmillHRView.swift */; };
 		08CF7BD58B8FA3767E595667 /* WatchFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F2EC545B990808978B44F0 /* WatchFixtures.swift */; };
@@ -287,6 +288,7 @@
 		CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRStreamer.swift; sourceTree = "<group>"; };
 		CE323D928DA355934197F38B /* G_Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = G_Settings.swift; sourceTree = "<group>"; };
 		D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStrip.swift; sourceTree = "<group>"; };
+		D3F9F97249181DA2EB82D25D /* TodayShoePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayShoePicker.swift; sourceTree = "<group>"; };
 		D731B92BA006865E34779D2A /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
 		D8887459C81D2BD8B503FAFE /* F_Sheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = F_Sheets.swift; sourceTree = "<group>"; };
 		D9FA179F02EB61425E2DF62A /* Inter-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Variable.ttf"; sourceTree = "<group>"; };
@@ -383,6 +385,7 @@
 				AB1BDC045093EBA34631A9F1 /* TodayPostRunBody.swift */,
 				A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */,
 				C7A4E3C4D2B9F936674A294E /* TodayReadinessPanel.swift */,
+				D3F9F97249181DA2EB82D25D /* TodayShoePicker.swift */,
 				D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */,
 				BD91B5D2A39BE920DD3C4358 /* ZoneBar.swift */,
 				63DBFAB43C7F7BD31DF0D25E /* Toolkit */,
@@ -795,6 +798,7 @@
 				037104D1F1956FCD28FA4915 /* TodayPreRunBodyV3.swift in Sources */,
 				FD192DE884BE0A0DA2037E99 /* TodayReadinessPanel.swift in Sources */,
 				C2714A39BB9C6911E505C9E9 /* TodayShoeOverrideSheet.swift in Sources */,
+				05EEB9EB948603B0592062F2 /* TodayShoePicker.swift in Sources */,
 				A4B00D17F9CD81D6D57E75E3 /* TodayView.swift in Sources */,
 				E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */,
 				A2205010201940343C1796E2 /* ToolkitPayloads.swift in Sources */,
