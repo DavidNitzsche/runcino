@@ -47,6 +47,10 @@ struct TodayPostRunBody: View {
     var effortLabel: String? = nil   // "HARD"
     var dowLabel: String? = nil      // "TODAY" / "MON"
     var titleText: String? = nil     // "TEMPO" (Oswald hero)
+    /// 2026-06-02 round 45 · workout name shown subordinately to the
+    /// hero title ("4×1 mi @ I · 3 min jog" under "INTERVALS"). Hides
+    /// when it duplicates the hero or is empty.
+    var nameSubtitle: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -82,8 +86,16 @@ struct TodayPostRunBody: View {
                 .font(.display(46, weight: .bold))
                 .tracking(-1.5)
                 .foregroundStyle(Color(hex: 0x14110D))
-                .lineLimit(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .padding(.top, 2)
+            if let sub = subtitleText {
+                Text(sub)
+                    .font(.body(14, weight: .semibold))
+                    .foregroundStyle(Color(hex: 0x736C61))
+                    .lineLimit(2)
+                    .padding(.top, 1)
+            }
             // Inline green win-line under the title · check + recap.win.
             if let win = winLineText {
                 HStack(alignment: .top, spacing: 8) {
@@ -118,6 +130,17 @@ struct TodayPostRunBody: View {
         if let t = titleText, !t.isEmpty { return t }
         if let n = detail?.name, !n.isEmpty { return n }
         return "Run"
+    }
+
+    /// 2026-06-02 round 45 · subordinate workout name under the hero.
+    /// Hides when it duplicates the hero (so "EASY" name under "EASY"
+    /// hero doesn't repeat) or when the caller didn't pass one.
+    private var subtitleText: String? {
+        guard let raw = nameSubtitle?.trimmingCharacters(in: .whitespaces),
+              !raw.isEmpty else { return nil }
+        let title = (titleText ?? "").trimmingCharacters(in: .whitespaces)
+        if raw.uppercased() == title.uppercased() { return nil }
+        return raw
     }
 
     /// Small chevron-link at the bottom of the post-run body · replaces

@@ -84,7 +84,21 @@ struct DragSheet<Header: View, Body: View>: View {
 
     var body: some View {
         GeometryReader { geo in
-            let screenH = geo.size.height
+            // 2026-06-02 round 45 · DEFENSIVE · don't trust geo.size.height
+            // alone. On some first-render passes (tab switch, cold launch
+            // before safe-area-ignore takes effect, layout race during
+            // .task hydration) the GeometryReader returns a shorter
+            // screenH than the real device · collapsedY ends up smaller ·
+            // sheet rests higher than the design intent. The bug was
+            // intermittent because the layout race is timing-dependent.
+            //
+            // Use the MAX of geo.size.height and the device screen height
+            // so the collapsed position is always anchored to a stable
+            // baseline. Once the layout settles, geo catches up and the
+            // max() call is idempotent. iPhone-only app · no split-screen
+            // / multi-window concerns.
+            let stableH = max(geo.size.height, UIScreen.main.bounds.height)
+            let screenH = stableH
             // Prefer device-agnostic inset-from-bottom · falls back to
             // legacy collapsedFromTop for un-migrated callers. Final
             // fallback (neither set) = 200pt from bottom (matches the

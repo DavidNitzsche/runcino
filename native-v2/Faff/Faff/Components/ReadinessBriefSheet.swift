@@ -654,6 +654,30 @@ private struct PillarRowView: View {
     private var tint: Color { contributionTint(pillar.weightContribution) }
     private var dotColor: Color { PillarBand.tint(pillar.band) }
 
+    /// 2026-06-02 round 45 · pillar value · just the leading number
+    /// chunk ("5.9h") · the qualifier part is moved to the subtitle.
+    /// Split on " · " · if the source doesn't carry the separator we
+    /// pass the whole string through unchanged.
+    private var pillarValueShort: String {
+        let v = pillar.observedValue
+        guard let dot = v.range(of: " · ") else { return v }
+        return String(v[..<dot.lowerBound])
+    }
+
+    /// 2026-06-02 round 45 · subtitle · trailing qualifier from
+    /// observedValue joined with the baseline copy. Examples:
+    ///   "7-night avg · target 8.0h"  (had qualifier + baseline)
+    ///   "target 8.0h"                (baseline only)
+    ///   "7-night avg"                (qualifier only · no baseline)
+    private var pillarBaselineCombined: String {
+        let v = pillar.observedValue
+        let baseline = pillar.baseline
+        guard let dot = v.range(of: " · ") else { return baseline }
+        let trailing = String(v[dot.upperBound...])
+        if baseline.isEmpty { return trailing }
+        return "\(trailing) · \(baseline)"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Button(action: { if !isNoData { withAnimation(.easeInOut(duration: 0.16)) { open.toggle() } } }) {
@@ -672,11 +696,17 @@ private struct PillarRowView: View {
                         .frame(maxWidth: .infinity)
 
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text(isNoData ? "·" : pillar.observedValue)
+                        // 2026-06-02 round 45 · "5.9h · 7-night avg" used
+                        // to overflow the 96pt column and truncate to
+                        // "5.9h · 7-nigh...". Split on " · " so the
+                        // value line stays compact ("5.9h") and the
+                        // qualifier rolls into the subtitle alongside
+                        // the baseline copy.
+                        Text(isNoData ? "·" : pillarValueShort)
                             .font(.body(12.5, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
-                        Text(pillar.baseline)
+                        Text(pillarBaselineCombined)
                             .font(.body(9.5, weight: .regular))
                             .foregroundStyle(Color.white.opacity(0.5))
                             .lineLimit(1)

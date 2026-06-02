@@ -616,12 +616,17 @@ struct TodayView: View {
                     .shadow(color: .white.opacity(0.5), radius: 6)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(workoutName.replacingOccurrences(of: "\n", with: " "))
+                // 2026-06-02 round 45 · type-word title, distance subtitle.
+                // Old: workout name + "Today's session" — name read as
+                // noise (already echoed in the hero) and "Today's session"
+                // told the runner nothing. Now: vocabulary matches the
+                // hero (INTERVALS / TEMPO / LONG / EASY) + actual mileage.
+                Text(peekTitleWord)
                     .font(.body(17, weight: .extraBold))
                     .tracking(-0.3)
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text(isDone ? "Today's run" : "Today's session")
+                Text(peekDistanceSubtitle)
                     .font(.body(11, weight: .bold))
                     .foregroundStyle(.white.opacity(0.78))
             }
@@ -657,9 +662,15 @@ struct TodayView: View {
                     recap: completedRecap,
                     accent: selectedEffort.dot,
                     runId: completedRunId,
-                    effortLabel: selectedEffort.effortLabel.uppercased(),
+                    // 2026-06-02 round 45 · type word for eyebrow + hero
+                    // (matches pre-run + web). workout name moves to a
+                    // subtitle line. selectedEffort.effortLabel was the
+                    // severity ("MAX") · should be the type word so
+                    // both surfaces tell the same story.
+                    effortLabel: peekTitleWord,
                     dowLabel: selectedIsToday ? "TODAY" : shortDOWLabel,
-                    titleText: plainWorkoutName.uppercased()
+                    titleText: peekTitleWord,
+                    nameSubtitle: plainWorkoutName
                 )
             } else {
                 preRunSheetContent
@@ -1065,6 +1076,33 @@ struct TodayView: View {
         if let dist = todaySelectedDay?.distance_mi, dist > 0 { return "\(formatMi(dist)) mi" }
         if let mi = displayWorkout?.distanceMi { return "\(formatMi(mi)) mi" }
         return "—"
+    }
+
+    /// 2026-06-02 round 45 · peek bar title · single-word workout type
+    /// from the locked vocabulary (purpose.typeTitle) with derived
+    /// fallback. Matches the pre-run hero so the hierarchy stays
+    /// consistent across collapsed + expanded states.
+    private var peekTitleWord: String {
+        if let t = purpose?.typeTitle?.uppercased(), !t.isEmpty { return t }
+        switch selectedEffort {
+        case .recovery:  return "RECOVERY"
+        case .easy:      return "EASY"
+        case .long:      return "LONG"
+        case .tempo:     return "TEMPO"
+        case .intervals: return "INTERVALS"
+        case .rest:      return "REST"
+        case .race:      return "RACE"
+        }
+    }
+
+    /// 2026-06-02 round 45 · peek bar subtitle · actual mileage
+    /// instead of dead-weight "Today's session" / "Today's run". When
+    /// distance is unknown (loading / cold start) falls back to the
+    /// old copy so the row never blanks.
+    private var peekDistanceSubtitle: String {
+        let d = distanceStr
+        if d != "—" { return d }
+        return isDone ? "Today's run" : "Today's session"
     }
 
     private var paceStr: String {
