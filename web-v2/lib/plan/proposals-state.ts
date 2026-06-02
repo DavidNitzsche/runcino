@@ -32,6 +32,11 @@ export type PlanProposalStatus =
 export interface PlanProposal {
   id: number;
   planId: string | null;
+  /** 2026-06-02 · explicit alias for `planId` on auto_applied rows ·
+   *  for those rows planId = the OLD plan that just got archived (the
+   *  `from` side of the diff). Named `previousPlanId` so the diff page
+   *  can read `proposal.previousPlanId` without spelunking the schema. */
+  previousPlanId: string | null;
   newPlanId: string | null;
   kind: PlanProposalKind;
   status: PlanProposalStatus;
@@ -90,6 +95,7 @@ export async function loadPlanProposals(userId: string): Promise<PlanProposal[]>
     return {
       id: r.id,
       planId: r.plan_id,
+      previousPlanId: r.plan_id,
       newPlanId: r.new_plan_id,
       kind: r.proposal_kind,
       status: r.status,

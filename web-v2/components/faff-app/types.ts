@@ -279,6 +279,10 @@ export type GoalRace = {
 export type PlanProposalSeed = {
   id: number;
   planId: string | null;
+  /** 2026-06-02 · alias for planId on auto_applied rows · the OLD plan
+   *  id (the diff page's `?from=` value). Same column · clearer name
+   *  for the diff page reader. */
+  previousPlanId: string | null;
   newPlanId: string | null;
   kind: 'volume_drift' | 'vdot_drift' | 'staleness'
       | 'race_date_changed' | 'goal_time_changed'
