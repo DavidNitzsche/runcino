@@ -702,24 +702,35 @@ struct TrainView: View {
     }
 
     private func keyLabel(for week: TrainingPlanWeek) -> String {
-        // Pick the "hardest" session in the week for the row label.
-        // Priority: intervals > tempo > long > easy.
+        // 2026-06-02 round 48 · pick the "hardest" session of the week
+        // and describe it as TYPE WORD + distance, NOT the raw workout
+        // name. The old "pick.label" surface returned the workout name
+        // ("4×1 mi @ I · 3 min jog") for every quality week · twelve
+        // rows of structural noise. Now reads "Intervals · 7.5mi" /
+        // "Tempo · 8mi" / "Long · 14mi" · the WEEK'S story in one
+        // glance.
+        //
+        // Priority: race > intervals > tempo > long > easy. Race wins
+        // when the week contains the race day.
         let priority: [String: Int] = [
+            "race": -1,
             "intervals": 0, "vo2": 0, "vo2max": 0, "fartlek": 0, "quality": 0, "track": 0,
             "threshold": 1, "tempo": 1, "progression": 1,
             "long": 2,
-            "race": -1
         ]
         let workouts = week.days
             .filter { $0.type.lowercased() != "rest" && $0.type.lowercased() != "easy" }
             .sorted { (priority[$0.type.lowercased()] ?? 99) < (priority[$1.type.lowercased()] ?? 99) }
         if let pick = workouts.first {
-            let lbl = pick.label ?? FaffEffort.fromType(pick.type).title
-            return lbl
+            let typeWord = FaffEffort.fromType(pick.type).title
+            let miles = Int(pick.mi.rounded())
+            if pick.type.lowercased() == "race" { return "Race · \(miles)mi" }
+            if miles > 0 { return "\(typeWord) · \(miles)mi" }
+            return typeWord
         }
         // Pure easy week → describe the long run instead.
-        if let long = week.days.max(by: { $0.mi < $1.mi }) {
-            return "Long run · \(Int(long.mi.rounded()))mi"
+        if let long = week.days.max(by: { $0.mi < $1.mi }), long.mi > 0 {
+            return "Long · \(Int(long.mi.rounded()))mi"
         }
         return "Easy + base"
     }
@@ -1028,13 +1039,21 @@ private struct TrainWeekRow: View {
                 }
             }
             .padding(.vertical, 9)
-            // 2026-06-02 round 47 · dropped the `-8` horizontal padding
-            // that made today's row physically wider than the others ·
-            // text left-edge shifted, columns disagreed. Now the today
-            // highlight uses the SAME width as every other row, just
-            // with a translucent fill behind the content.
-            .background(isToday ? Color.white.opacity(0.08) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 12))
+            // 2026-06-02 round 48 · today highlight gets a bit of
+            // breathing room on left + right · -6pt horizontal extends
+            // the rounded rectangle past the content without shifting
+            // the content itself (column alignment preserved). Uses a
+            // negative-padded background view rather than `.background(in:)`
+            // so the inset is BG-only.
+            .background(
+                Group {
+                    if isToday {
+                        Color.white.opacity(0.08)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .padding(.horizontal, -6)
+                    }
+                }
+            )
         }
     }
 
