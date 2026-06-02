@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { EFF, MESH, type Mesh, type ViewKey } from './constants';
+import { EFF, MESH, PHASE, type Mesh, type PhaseKey, type ViewKey } from './constants';
 import type { FaffSeed } from './types';
 import { Sidebar } from './Sidebar';
 import { TodayView } from './views/TodayView';
@@ -93,6 +93,31 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     if (route && pathname !== route) router.push(route);
   }, [router, pathname]);
 
+  // Train view default · the current-phase mesh (not the static MESH.train
+  // amber). Fixes the yellow-flash on /train load: TrainView's useEffect
+  // would call onMeshChange(curPhaseMeta.mesh) after first paint, so the
+  // browser briefly painted the amber default before the override landed.
+  // Now Shell computes the same value Shell would have gotten anyway, so
+  // the first paint is correct. TrainView's onMeshChange still drives the
+  // scrubbing case (clicking a different week in the ramp).
+  // David call 2026-06-01: "train page on reload and load starts yellow
+  //                          really quick and then fades to the correct
+  //                          background color"
+  const trainPhaseMesh: Mesh = useMemo(() => {
+    const phases = seed.season?.phases ?? [];
+    const nowIdx = seed.season?.nowIdx ?? 0;
+    if (!phases.length) return MESH.train;
+    const cur = phases.find(p => nowIdx >= p.startWeekIdx && nowIdx <= p.endWeekIdx);
+    const label = (cur?.label ?? '').toLowerCase();
+    const key: PhaseKey =
+      label.startsWith('base')  ? 'base'  :
+      label.startsWith('build') ? 'build' :
+      label.startsWith('peak')  ? 'peak'  :
+      label.startsWith('taper') ? 'taper' :
+      label.startsWith('race')  ? 'race'  : 'base';
+    return PHASE[key]?.mesh ?? MESH.train;
+  }, [seed.season?.phases, seed.season?.nowIdx]);
+
   // Compute the active mesh: per-day on Today, per-view elsewhere.
   const mesh: Mesh = meshOverride
     ? meshOverride
@@ -100,7 +125,9 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
       ? EFF[seed.week[curDay]?.type ?? seed.week[seed.todayIdx].type].mesh
       : view === 'race'
         ? MESH.race
-        : MESH[view as Exclude<ViewKey,'today'|'race'>];
+        : view === 'train'
+          ? trainPhaseMesh
+          : MESH[view as Exclude<ViewKey,'today'|'race'|'train'>];
 
   return (
     <div
