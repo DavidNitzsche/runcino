@@ -719,12 +719,22 @@ final class HealthKitImporter: ObservableObject {
             }
             store.execute(q)
         }
-        // Drop sub-bucket zeros (HK emits placeholders during idle). The
-        // server's per-run sum is robust to missing slices but useless
-        // rows still bloat the payload.
+        // 2026-06-02 · drop ONLY exact-zero placeholders, not the
+        // 0.01-0.05 kcal sub-bucket slices. The original 0.05 threshold
+        // shipped in 031fe5fd was based on a wrong intuition about HK's
+        // bucket size · backend audit (2026-06-01) showed per-day row
+        // counts collapsing from the expected 100-400 down to ~1, with
+        // surviving values clustered just above 0.05 kcal (0.08, 0.13,
+        // 0.14 etc.) · diagnostic that the filter was dropping the
+        // vast majority of real samples. Per-bucket active_energy in
+        // HK runs much smaller than I assumed (sub-minute slices of
+        // light activity emit 0.01-0.05 kcal · longer/harder buckets
+        // emit more). Strict `> 0` keeps every real sample, drops only
+        // the explicit zero markers HK emits during pure idle, and the
+        // server's resolveCalories tier 2 sums them in the run's window.
         return samples.compactMap { s in
             let v = s.quantity.doubleValue(for: kcal)
-            guard v > 0.05 else { return nil }
+            guard v > 0 else { return nil }
             return VitalSample(
                 sample_type: "active_energy",
                 value: (v * 100).rounded() / 100,
