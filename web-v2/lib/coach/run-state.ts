@@ -10,6 +10,7 @@ import { pool } from '@/lib/db/pool';
 import { computeZones } from '@/lib/training/zones';
 import { baselineTempF } from '@/lib/weather/lookup';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
+import { enrichOneActivity } from '@/lib/weather/openmeteo';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
 
@@ -249,8 +250,14 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // The id passed in is whatever the briefing surfaced — could be a real
   // run id, or a synthesized "YYYY-MM-DD-mi.mi" id (state-loader fallback
   // when the activity has no first-party id, e.g. watch-synced runs).
+  //
+  // 2026-06-02 · also pulling `id` (the runs PK) and `weather_enriched_at`
+  // so we can lazy-enrich weather on first read of a freshly-synced run
+  // instead of waiting on the nightly cron at 00:30 PT. Without this,
+  // David's morning interval workout (synced same-day, before the cron
+  // pass) rendered WEATHER as "·" all day.
   let row = (await pool.query(
-    `SELECT data, shoe_id FROM runs
+    `SELECT id, data, shoe_id, weather_enriched_at FROM runs
       WHERE user_uuid = $1
         AND (data->>'id' = $2 OR data->>'activityId' = $2)
       LIMIT 1`,
@@ -263,7 +270,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     if (m) {
       const [, date, mi] = m;
       const fb = (await pool.query(
-        `SELECT data, shoe_id FROM runs
+        `SELECT id, data, shoe_id, weather_enriched_at FROM runs
           WHERE user_uuid = $1
             AND NOT (data ? 'mergedIntoId')
             AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $2
@@ -277,6 +284,38 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
 
   if (!row) return null;
   const r = row.data;
+
+  // 2026-06-02 · lazy weather enrichment. The nightly cron at 00:30 PT
+  // handles bulk backfill, but a runner who finishes a run mid-day and
+  // immediately opens the post-run hero would see WEATHER "·" until
+  // tomorrow's cron pass. enrichOneActivity is idempotent (no-ops if
+  // data.weather already exists) and sets weather_enriched_at on failure
+  // so we don't hammer Open-Meteo on every page reload. Guards:
+  //   · row.id must be a numeric PK (manual-log wko_<uuid> rows have
+  //     non-bigint ids; skip them — they have no GPS anyway)
+  //   · skip if weather already present (cheap idempotency check)
+  //   · skip if weather_enriched_at is set (prior failed attempt, will
+  //     retry via the weekly retry path in the cron)
+  // Failures are swallowed silently; the chip falls through to '·'
+  // exactly as before.
+  if (
+    !r?.weather &&
+    !row.weather_enriched_at &&
+    row.id != null &&
+    /^\d+$/.test(String(row.id))
+  ) {
+    try {
+      const w = await enrichOneActivity(String(row.id));
+      if (w) {
+        // mutate in-memory so the rest of this function picks up the
+        // freshly-fetched weather without another SELECT round-trip
+        r.weather = w;
+        if (w.temp_f != null && r.tempF == null) r.tempF = w.temp_f;
+      }
+    } catch {
+      // surfaces in the cron's daily diagnostic; UI gracefully degrades
+    }
+  }
   // Coerce: bigint columns can come back as strings (see shoes mapping).
   const shoeId: number | null = row.shoe_id == null ? null : Number(row.shoe_id);
 
