@@ -282,24 +282,36 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
           </div>
           <div className="rp-chips">
             {!r.isPast && (
-              <div className="rp-chip">
-                Priority{' '}
-                <select
-                  value={priority}
-                  onChange={(e) => commitPriority(e.target.value as 'A' | 'B' | 'C')}
-                  aria-label="Race priority"
-                  style={{
-                    background: 'transparent', color: 'inherit',
-                    border: 'none', outline: 'none', appearance: 'none',
-                    fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 800,
-                    letterSpacing: 'inherit', textTransform: 'inherit',
-                    padding: 0, margin: 0, cursor: 'pointer',
-                  }}
-                >
-                  <option value="A">A race</option>
-                  <option value="B">B race · tune-up</option>
-                  <option value="C">C race · workout</option>
-                </select>
+              <div
+                className="rp-chip"
+                role="radiogroup"
+                aria-label="Race priority"
+                style={{ gap: 4, padding: '4px 6px 4px 12px' }}
+              >
+                <span style={{ opacity: 0.7 }}>Priority</span>
+                {(['A', 'B', 'C'] as const).map((p) => {
+                  const active = p === priority;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => commitPriority(p)}
+                      title={p === 'A' ? 'A race · goal' : p === 'B' ? 'B race · tune-up' : 'C race · workout'}
+                      style={{
+                        fontFamily: 'inherit', fontWeight: 800, letterSpacing: 'inherit',
+                        fontSize: 'inherit', textTransform: 'inherit', lineHeight: 1,
+                        width: 24, height: 24, borderRadius: 7, padding: 0, cursor: 'pointer',
+                        background: active ? 'var(--ink, #fff)' : 'transparent',
+                        color: active ? 'var(--bg, #10131A)' : 'inherit',
+                        border: active ? 'none' : '1px solid var(--glass-line, rgba(255,255,255,.22))',
+                        opacity: active ? 1 : 0.65,
+                        transition: 'background 120ms, color 120ms, opacity 120ms',
+                      }}
+                    >{p}</button>
+                  );
+                })}
               </div>
             )}
             {!r.isPast && r.registered && (
