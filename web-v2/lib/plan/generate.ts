@@ -664,7 +664,11 @@ async function persistPlan(args: {
       let paceTargetSPerMi: number | null = null;
       let workoutSpec: ReturnType<typeof buildWorkoutSpec>['spec'] = null;
       if (args.tPaceSec != null) {
-        const built = buildWorkoutSpec(d.type, d.distanceMi, args.tPaceSec, args.lthr);
+        // 2026-06-02 · pass the prescription string (sub_label) into
+        // spec-builder so the spec's rep_count / rep_distance_mi /
+        // rep_rest_s match what the label promises. Was hardcoded ·
+        // produced 5×1km specs under "4×1 mi @ I" labels.
+        const built = buildWorkoutSpec(d.type, d.distanceMi, args.tPaceSec, args.lthr, d.subLabel);
         paceTargetSPerMi = built.paceTargetSPerMi;
         workoutSpec = built.spec;
       }

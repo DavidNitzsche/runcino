@@ -6,6 +6,12 @@
  * generator + backfill cron + adapter all derive the same way.
  *
  * Inputs: workout type + distance + T-pace (from VDOT) + LTHR (optional).
+ * Optional: prescription string (e.g. "6×800m @ I pace · 90s jog") ·
+ *           when present, threshold + intervals branches read rep
+ *           count / rep distance / rest seconds from the parsed
+ *           prescription instead of hardcoded defaults. Fixes the
+ *           sub_label vs workout_spec mismatch flagged 2026-06-02.
+ *
  * Outputs: workout_spec jsonb + a primary pace_target_s_per_mi scalar
  * for the column (the "headline" pace for the type · used by chip render).
  *
@@ -14,6 +20,8 @@
  *   · Research/01 §pace-zones
  *   · Friel zones for HR caps (Z2 ≤ 80% LTHR for easy · ≤ 85% for long)
  */
+
+import { parsePrescription } from './prescription-parser';
 
 export type WorkoutSpec = Record<string, unknown> | null;
 
@@ -60,7 +68,16 @@ export function buildWorkoutSpec(
   distance_mi: number | null,
   tPaceSec: number,
   lthr: number | null,
+  prescription?: string | null,
 ): SpecBuildResult {
+  // 2026-06-02 · parse the prescription up front (e.g. "6×800m @ I
+  // pace · 90s jog" → {reps:6, repDistanceMi:0.497, restS:90}). When
+  // parseable, threshold + intervals branches use these instead of
+  // the hardcoded defaults so the spec matches the prescription text.
+  // Null when prescription is absent or doesn't carry a rep pattern
+  // (e.g. "continuous tempo") · branches fall back to historical
+  // defaults.
+  const parsed = parsePrescription(prescription);
   const easyLo = tPaceSec + 60, easyHi = tPaceSec + 110;
   const longLo = tPaceSec + 55, longHi = tPaceSec + 90;
   const tempo  = tPaceSec + 12;         // mid of T+5 to T+18
@@ -124,8 +141,11 @@ export function buildWorkoutSpec(
       };
     }
     case 'threshold': {
-      const repCount = 4;
-      const repMi = 1.0;
+      // 2026-06-02 · prefer parsed prescription · falls back to
+      // historical defaults when the rx string is absent / unparseable.
+      const repCount = parsed?.reps ?? 4;
+      const repMi = parsed?.repDistanceMi ?? 1.0;
+      const restS = parsed?.restS ?? 60;
       const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
       return {
         spec: {
@@ -134,7 +154,7 @@ export function buildWorkoutSpec(
           rep_count: repCount,
           rep_distance_mi: repMi,
           rep_pace_s_per_mi: tPaceSec,
-          rep_rest_s: 60,
+          rep_rest_s: restS,
           cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
         },
@@ -143,8 +163,11 @@ export function buildWorkoutSpec(
     }
     case 'intervals':
     case 'vo2max': {
-      const repCount = 5;
-      const repMi = 0.62;
+      // 2026-06-02 · prefer parsed prescription · falls back to
+      // historical defaults when the rx string is absent / unparseable.
+      const repCount = parsed?.reps ?? 5;
+      const repMi = parsed?.repDistanceMi ?? 0.62;
+      const restS = parsed?.restS ?? 90;
       const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
       return {
         spec: {
@@ -153,7 +176,7 @@ export function buildWorkoutSpec(
           rep_count: repCount,
           rep_distance_mi: repMi,
           rep_pace_s_per_mi: interval,
-          rep_rest_s: 90,
+          rep_rest_s: restS,
           cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
         },
