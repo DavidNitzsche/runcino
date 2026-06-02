@@ -487,8 +487,16 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .standrec.sev-firm .standrec-eyebrow{color:#ffce8a;}
 .standrec-copy{font-size:14px;font-weight:600;line-height:1.45;color:rgba(255,255,255,.88);}
 .standrec-sug{margin-top:6px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.55);}
-.standrec-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
-.standrec-btn{font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;background:transparent;color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:8px 14px;cursor:pointer;transition:background .15s,border-color .15s,color .15s;}
+/* Actions sit as a right-column flex child so the card stays ONE ROW.
+   David call 2026-06-02: "can the buttons be on the right so we arent
+   adding another line/more vertical height?" Stacks below the body
+   only on narrow viewports (≤640px). */
+.standrec-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;margin-left:16px;}
+@media (max-width:640px){
+  .standrec-row{flex-wrap:wrap;}
+  .standrec-actions{flex:1 0 100%;margin-left:0;margin-top:10px;}
+}
+.standrec-btn{font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;background:transparent;color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:8px 14px;cursor:pointer;transition:background .15s,border-color .15s,color .15s;white-space:nowrap;}
 .standrec-btn:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.32);color:#fff;}
 .standrec-btn:disabled{opacity:.5;cursor:not-allowed;}
 .standrec-btn.primary{background:rgba(180,200,230,.18);border-color:rgba(180,200,230,.45);color:#fff;}

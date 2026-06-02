@@ -750,31 +750,33 @@ function StandingRecAdvisory({
           </div>
           <div className="standrec-copy">{rec.copy}</div>
           {sugLine ? <div className="standrec-sug">{sugLine}</div> : null}
-          {(sug && workoutId) || true ? (
-            <div className="standrec-actions">
-              {sug && workoutId ? (
-                <button
-                  type="button"
-                  className="standrec-btn primary"
-                  onClick={onAccept}
-                  disabled={busy}
-                >
-                  {busy ? 'Applying…' : acceptLabel}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="standrec-btn"
-                onClick={() => setDismissed(true)}
-                disabled={busy}
-              >
-                Proceed
-              </button>
-            </div>
-          ) : null}
           {err ? (
             <div className="standrec-err">{friendlyAcceptError(err)}</div>
           ) : null}
+        </div>
+        {/* 2026-06-02 · actions move to the right column so they sit
+            alongside the body content instead of adding a third row
+            of vertical height. Stacks back to a third row only on
+            narrow viewports where the card collapses. */}
+        <div className="standrec-actions">
+          {sug && workoutId ? (
+            <button
+              type="button"
+              className="standrec-btn primary"
+              onClick={onAccept}
+              disabled={busy}
+            >
+              {busy ? 'Applying…' : acceptLabel}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="standrec-btn"
+            onClick={() => setDismissed(true)}
+            disabled={busy}
+          >
+            Proceed
+          </button>
         </div>
       </div>
     </div>
