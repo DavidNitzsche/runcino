@@ -478,58 +478,48 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             ) : null}
           </div>
         </div>
-        {/* 2026-06-02 · CartoDB dark terrain tiles (same map stack as
-            completed-run routes) inside the same card the panel always
-            had. With the 13.1 MI / NET / GAIN strip + START/FINISH chip
-            overlays removed (already in rp-stripstats + CourseAnnotations
-            below), the route fills the card properly at the original
-            size instead of sitting tiny in a mostly-empty box.
-            Plain wrapper · NOT .rp-map (globals.css forces absolute on
-            child svg, which would fight Leaflet's internal layers). */}
-        <div style={{ position: 'relative', height: 200, borderRadius: 12, overflow: 'hidden', marginTop: 10 }}>
-          {r.routeLatLng && r.routeLatLng.length >= 2 ? (
-            <RouteMap points={r.routeLatLng} splits={[]} height={200} />
-          ) : (
-            <div style={{
-              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16,
-              background: 'rgba(255,255,255,.02)',
-            }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55, textAlign: 'center' }}>
-                ROUTE UNAVAILABLE
-              </div>
-              <button
-                type="button"
-                onClick={pickGpx}
-                disabled={uploadingGpx}
-                style={{
-                  fontFamily: 'inherit', fontSize: 11, fontWeight: 700, letterSpacing: 1.6,
-                  textTransform: 'uppercase', color: 'var(--bg, #10131A)',
-                  background: 'var(--ink, #fff)', border: 0,
-                  borderRadius: 12, padding: '9px 16px', cursor: uploadingGpx ? 'wait' : 'pointer',
-                  opacity: uploadingGpx ? 0.6 : 1,
-                }}
-              >
-                {uploadingGpx ? 'Uploading' : 'Upload GPX'}
-              </button>
-              <div style={{ fontSize: 10, opacity: 0.45, textAlign: 'center', maxWidth: 320, lineHeight: 1.5 }}>
-                Adds route, elevation, and notable miles to this race.
-              </div>
-            </div>
-          )}
-        </div>
-        {/* Course editorial annotations · start/finish labels + "what to
-            expect" notes from course_library. Renders only on the 4
-            editorial rows (curated by Faff). Closes coverage row 1185. */}
+        {/* 2026-06-02 · two-column split. LEFT = the route, taller and
+            more square inside its narrower column instead of wide-and-
+            flat. RIGHT = start/finish labels + "what to expect" prose
+            from CourseAnnotations. Better aspect for marathon courses,
+            and pulls the wordy stuff out from under the map.
+            On editorial courses (start/finish/notes present) we split
+            the panel; on stub courses with no annotations the map gets
+            the full width so it doesn't sit half-empty. */}
         {(r.courseStartLabel || r.courseFinishLabel || r.courseNotes) ? (
-          <div style={{ marginTop: 14 }}>
-            <CourseAnnotations
-              startLabel={r.courseStartLabel}
-              finishLabel={r.courseFinishLabel}
-              notes={r.courseNotes}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'minmax(0, 1.55fr) minmax(0, 1fr)',
+            gap: 16, marginTop: 10, alignItems: 'stretch',
+          }}>
+            <RouteMapBlock
+              routeLatLng={r.routeLatLng}
+              height={240}
+              uploadingGpx={uploadingGpx}
+              pickGpx={pickGpx}
+            />
+            <div style={{
+              background: 'rgba(255,255,255,.03)',
+              border: '1px solid var(--glass-line, rgba(255,255,255,.12))',
+              borderRadius: 12, padding: '14px 16px',
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <CourseAnnotations
+                startLabel={r.courseStartLabel}
+                finishLabel={r.courseFinishLabel}
+                notes={r.courseNotes}
+              />
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 10 }}>
+            <RouteMapBlock
+              routeLatLng={r.routeLatLng}
+              height={240}
+              uploadingGpx={uploadingGpx}
+              pickGpx={pickGpx}
             />
           </div>
-        ) : null}
+        )}
       </div>
 
       <div className="rp-2col" style={{ marginTop: 16 }}>
@@ -694,6 +684,58 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         </div>
       ) : null}
     </>
+  );
+}
+
+/** 2026-06-02 · the route panel block · either the Leaflet terrain map
+ *  (when trackPoints exist) or the "no GPX yet" upload CTA. Extracted so
+ *  the 2-col / 1-col split in the parent doesn't have to duplicate this. */
+function RouteMapBlock({
+  routeLatLng, height, uploadingGpx, pickGpx,
+}: {
+  routeLatLng: Array<[number, number]> | null;
+  height: number;
+  uploadingGpx: boolean;
+  pickGpx: () => void;
+}) {
+  return (
+    // Plain wrapper · NOT .rp-map (globals.css forces absolute on child
+    // svg, which would fight Leaflet's internal layers).
+    <div style={{
+      position: 'relative', height, minHeight: height,
+      borderRadius: 12, overflow: 'hidden',
+    }}>
+      {routeLatLng && routeLatLng.length >= 2 ? (
+        <RouteMap points={routeLatLng} splits={[]} height={height} />
+      ) : (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16,
+          background: 'rgba(255,255,255,.02)',
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55, textAlign: 'center' }}>
+            ROUTE UNAVAILABLE
+          </div>
+          <button
+            type="button"
+            onClick={pickGpx}
+            disabled={uploadingGpx}
+            style={{
+              fontFamily: 'inherit', fontSize: 11, fontWeight: 700, letterSpacing: 1.6,
+              textTransform: 'uppercase', color: 'var(--bg, #10131A)',
+              background: 'var(--ink, #fff)', border: 0,
+              borderRadius: 12, padding: '9px 16px', cursor: uploadingGpx ? 'wait' : 'pointer',
+              opacity: uploadingGpx ? 0.6 : 1,
+            }}
+          >
+            {uploadingGpx ? 'Uploading' : 'Upload GPX'}
+          </button>
+          <div style={{ fontSize: 10, opacity: 0.45, textAlign: 'center', maxWidth: 320, lineHeight: 1.5 }}>
+            Adds route, elevation, and notable miles to this race.
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
