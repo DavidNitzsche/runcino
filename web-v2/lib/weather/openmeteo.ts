@@ -262,10 +262,55 @@ export interface DayForecast {
   date: string;                   // YYYY-MM-DD
   temp_min_f: number | null;      // day's low
   temp_max_f: number | null;      // day's high
-  conditions: string | null;      // coarse label
+  conditions: string | null;      // coarse label · machine token
   precip_chance_pct: number | null;
   wind_mph: number | null;
   source: 'open-meteo';
+  /** 2026-06-01 · iPhone agent request · pre-composed strings so any
+   *  client (web, iPhone, watch) renders identically without re-deriving.
+   *  "62-78° · Cloudy" / "78°" / "62-78°". Combines the temp range +
+   *  human-friendly condition label. Null when no temp data. */
+  range_label: string | null;
+  /** "Before 7 AM" / "6-8 AM" / "6-9 AM" / "Anytime". Picks the
+   *  coolest morning window based on the day's high. Falls back to
+   *  "6-8 AM" when no high temp is available. */
+  best_window: string;
+}
+
+/** Pretty-print the machine condition token. Shared with clients so the
+ *  range_label string is identical across web + iPhone. */
+function prettyCondition(c: string): string {
+  switch (c) {
+    case 'clear':        return 'Clear';
+    case 'mostly_clear': return 'Mostly clear';
+    case 'cloudy':       return 'Cloudy';
+    case 'fog':          return 'Foggy';
+    case 'rain':         return 'Rain';
+    case 'snow':         return 'Snow';
+    case 'thunder':      return 'Thunder';
+    case 'partly_cloudy': return 'Partly cloudy';
+    default:             return c.charAt(0).toUpperCase() + c.slice(1).replace(/_/g, ' ');
+  }
+}
+
+/** "62-78° · Cloudy" / "78°" / null when neither temp present. */
+function composeRangeLabel(tempMinF: number | null, tempMaxF: number | null, conditions: string | null): string | null {
+  const lo = tempMinF != null ? Math.round(tempMinF) : null;
+  const hi = tempMaxF != null ? Math.round(tempMaxF) : null;
+  const range = lo != null && hi != null && lo !== hi
+    ? `${lo}-${hi}°`
+    : (hi != null ? `${hi}°` : (lo != null ? `${lo}°` : null));
+  if (!range) return null;
+  const cond = conditions ? prettyCondition(conditions) : null;
+  return cond ? `${range} · ${cond}` : range;
+}
+
+/** Pick the coolest morning window based on the day's high. */
+function composeBestWindow(tempMaxF: number | null): string {
+  if (tempMaxF == null) return '6-8 AM';
+  if (tempMaxF >= 80) return 'Before 7 AM';
+  if (tempMaxF >= 70) return '6-8 AM';
+  return '6-9 AM';
 }
 
 /**
@@ -299,14 +344,19 @@ export async function fetchDayForecast(
     const j: any = await r.json();
     const d = j?.daily;
     if (!d?.time?.length) return null;
+    const tempMinF = num(d.temperature_2m_min?.[0]);
+    const tempMaxF = num(d.temperature_2m_max?.[0]);
+    const conditions = conditionFromCode(d.weathercode?.[0]);
     return {
       date: dateIso,
-      temp_min_f: num(d.temperature_2m_min?.[0]),
-      temp_max_f: num(d.temperature_2m_max?.[0]),
-      conditions: conditionFromCode(d.weathercode?.[0]),
+      temp_min_f: tempMinF,
+      temp_max_f: tempMaxF,
+      conditions,
       precip_chance_pct: num(d.precipitation_probability_max?.[0]),
       wind_mph: num(d.windspeed_10m_max?.[0]),
       source: 'open-meteo',
+      range_label: composeRangeLabel(tempMinF, tempMaxF, conditions),
+      best_window: composeBestWindow(tempMaxF),
     };
   } catch (err) {
     console.error('[weather] fetchDayForecast failed:', err);

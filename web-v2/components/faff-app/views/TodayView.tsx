@@ -1059,11 +1059,16 @@ function PlannedHeroV2({
   );
 }
 
-/** Pick the coolest morning window for a planned run. Falls back to a
- *  reasonable AM-runner default ("6-8 AM") when no forecast detail. */
-function bestWindow(f: { temp_min_f: number | null; temp_max_f: number | null } | null): string {
+/** Pick the coolest morning window for a planned run. Prefers the
+ *  server-composed `best_window` field (added 2026-06-01 for iPhone
+ *  parity · single source of truth) when present, falls back to the
+ *  legacy client derivation for older forecasts cached without the
+ *  field. */
+function bestWindow(f: { temp_min_f: number | null; temp_max_f: number | null; best_window?: string } | null): string {
   if (!f) return '6–8 AM';
-  // Runs at lower temps are more comfortable; AM windows almost always win.
+  if (f.best_window) return f.best_window;
+  // Legacy fallback · matches the server's composeBestWindow for older
+  // cached forecasts. Drop once 30-min cache cycles past 2026-06-01.
   if (f.temp_max_f != null && f.temp_max_f >= 80) return 'Before 7 AM';
   if (f.temp_max_f != null && f.temp_max_f >= 70) return '6–8 AM';
   return '6–9 AM';
@@ -1430,6 +1435,11 @@ type DayForecast = {
   conditions: string | null;
   precip_chance_pct: number | null;
   wind_mph: number | null;
+  /** 2026-06-01 · server-composed pre-rendered strings · added for
+   *  iPhone parity. Optional on the client type so older cached
+   *  responses without these fields still parse. */
+  range_label?: string | null;
+  best_window?: string;
 };
 
 /** Lazy-fetch the day's forecast for a planned (not done) date. Used to
@@ -1450,10 +1460,15 @@ function useDayForecast(dateIso: string | null | undefined): DayForecast | null 
   return data;
 }
 
-/** "62-78° · cloudy" or "62-78°" when no condition label. Returns null
- *  when the forecast is missing both min and max. */
+/** "62-78° · Cloudy" / "78°" / null when no temp data. Prefers the
+ *  server-composed `range_label` (added 2026-06-01 for iPhone parity)
+ *  when present, falls back to the legacy client derivation for older
+ *  cached forecasts. */
 function formatForecast(f: DayForecast | null): string | null {
   if (!f) return null;
+  if (f.range_label !== undefined) return f.range_label;
+  // Legacy fallback · matches the server's composeRangeLabel for older
+  // cached forecasts. Drop once 30-min cache cycles past 2026-06-01.
   const lo = f.temp_min_f != null ? Math.round(f.temp_min_f) : null;
   const hi = f.temp_max_f != null ? Math.round(f.temp_max_f) : null;
   const range = lo != null && hi != null && lo !== hi
