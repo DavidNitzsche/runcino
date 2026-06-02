@@ -841,7 +841,13 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       total_weeks: totalWeeks,
       race_distance_mi: raceDistanceMi,
       goal_pace_s_per_mi: goalPaceSec,
+      // 2026-06-02 · BOTH names · drift-monitor.ts reads weeklyAvg4w
+      // (the canonical name), pre-existing readers may use the older
+      // recent_avg_mpw. Same value in both keys · safe alias.
+      // Without weeklyAvg4w the drift cron computed "∞% higher than
+      // 0 mi/wk" because authoredAvg was undefined.
       recent_avg_mpw: recentMi,
+      weeklyAvg4w: recentMi,
       is_mid_block: isMidBlock,
       t_pace_s_per_mi: tPaceSec,
       lthr_bpm: lthr,
