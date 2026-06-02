@@ -59,6 +59,7 @@ export function TodayView({
   const resolvedPace    = runData?.pace ?? result?.apace;
   const resolvedHr      = runData?.hr_avg ?? result?.hr;
   const resolvedTempF   = runData?.temp_f ?? null;
+  const resolvedTempRange = runData?.temp_range_f ?? null;
   const resolvedGainFt  = runData?.elev_gain_ft != null ? Math.round(runData.elev_gain_ft) : result?.gain;
   const resolvedShoeNm  = (() => {
     if (runData?.shoe_id != null && runData.shoes) {
@@ -409,6 +410,7 @@ export function TodayView({
           resolvedPace={resolvedPace}
           resolvedHr={resolvedHr}
           resolvedTempF={resolvedTempF}
+          resolvedTempRange={resolvedTempRange}
           resolvedGainFt={resolvedGainFt ?? undefined}
           resolvedShoeNm={resolvedShoeNm ?? undefined}
           shoes={seed.shoes}
@@ -485,6 +487,11 @@ type RunSummary = {
   hr_avg: number | null; hr_max: number | null;
   elev_gain_ft: number | null;
   temp_f: number | null;
+  /** Thermal arc from fetchRunWeatherSpan · start/end/peak/mean temps
+   *  across the run's duration. RunDetailModal already shows this as
+   *  "65°F → 77°F" when start↔end differs ≥3°F. 2026-06-02 wires it
+   *  to the post-run hero too · was a gap noted by David. */
+  temp_range_f?: { start: number | null; end: number | null; peak: number | null; mean: number | null } | null;
   power_avg_w: number | null;
   shoe_id: number | null;
   shoes?: Array<{ id: number; brand: string; model: string }>;
@@ -1482,7 +1489,8 @@ function deriveRecap(d: FaffSeed['week'][number], runData: RunSummary | null): s
 
 function CompletedHeroV2({
   d, result, runData, runLoading,
-  resolvedTime, resolvedPace, resolvedHr, resolvedTempF, resolvedGainFt, resolvedShoeNm,
+  resolvedTime, resolvedPace, resolvedHr, resolvedTempF, resolvedTempRange,
+  resolvedGainFt, resolvedShoeNm,
   shoes, seedShoe, persistShoe,
 }: {
   d: FaffSeed['week'][number];
@@ -1493,6 +1501,7 @@ function CompletedHeroV2({
   resolvedPace: string | undefined;
   resolvedHr: number | undefined;
   resolvedTempF: number | null;
+  resolvedTempRange: RunSummary['temp_range_f'];
   resolvedGainFt: number | undefined;
   resolvedShoeNm: string | undefined;
   shoes: FaffSeed['shoes'];
@@ -1610,7 +1619,12 @@ function CompletedHeroV2({
             <div className="cond">
               <div>
                 <div className="kcl">WEATHER</div>
-                <div className="kcv">{resolvedTempF != null ? `${Math.round(resolvedTempF)}°F` : '·'}</div>
+                {/* 2026-06-02 · matches RunDetailModal's renderTempRange:
+                    when start ↔ end differs ≥3°F across the run, show the
+                    arc "65°F → 77°F". Falls through to peak, then
+                    single-point temp_f. We had this on the modal already;
+                    the post-run hero was the gap. */}
+                <div className="kcv">{formatWeatherChip(resolvedTempF, resolvedTempRange)}</div>
               </div>
               <div>
                 <div className="kcl">SHOE</div>
@@ -1822,6 +1836,26 @@ function useDayForecast(dateIso: string | null | undefined): DayForecast | null 
  *  server-composed `range_label` (added 2026-06-01 for iPhone parity)
  *  when present, falls back to the legacy client derivation for older
  *  cached forecasts. */
+/**
+ * Post-run WEATHER chip render · mirrors RunDetailModal's renderTempRange.
+ *   · start + end differ ≥3°F → "65°F → 77°F" (the arc · what the runner
+ *     fought through from gun to finish)
+ *   · span enriched but small swing → peak (honest "what you ran in")
+ *   · legacy single-point → temp_f
+ *   · nothing → "·"
+ */
+function formatWeatherChip(
+  tempF: number | null,
+  range: RunSummary['temp_range_f'],
+): string {
+  if (range && range.start != null && range.end != null && Math.abs(range.end - range.start) >= 3) {
+    return `${Math.round(range.start)}°F → ${Math.round(range.end)}°F`;
+  }
+  if (range && range.peak != null) return `${Math.round(range.peak)}°F`;
+  if (tempF != null) return `${Math.round(tempF)}°F`;
+  return '·';
+}
+
 function formatForecast(f: DayForecast | null): string | null {
   if (!f) return null;
   if (f.range_label !== undefined) return f.range_label;
