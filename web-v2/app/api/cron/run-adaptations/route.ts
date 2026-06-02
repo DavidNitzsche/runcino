@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { detectAdaptations, applyAdaptations } from '@/lib/plan/adapt';
+import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
 
@@ -45,6 +46,13 @@ export async function POST(req: NextRequest) {
     try {
       const { triggers, actions } = await detectAdaptations(uid);
       const applied = await applyAdaptations(uid, actions);
+      // 2026-06-03 · adaptive upward ramp · after pull-back triggers
+      // are handled, check whether the runner is handling load well
+      // enough to push the next long run +1mi (gated to tier upper).
+      // Skip the bump when pull-back actions fired this tick · we
+      // don't push up the same day we pulled down.
+      const bump = await tryAdaptiveBump(uid, applied > 0).catch(() => null);
+      if (bump) await bustBriefingCacheForEvent(uid, 'plan_swap');
       if (applied > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
       // Stamp last_adapted_at even when 0 actions applied — this is the only
       // cron-fire proof we have. Without it we can't distinguish "cron never

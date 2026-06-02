@@ -61,14 +61,16 @@ jobs:
       - name: Run plan-engine bench
         working-directory: web-v2
         run: |
-          # 2026-06-02 · expanded to 3 test files:
-          #   plan-engine.test.ts    · simulator trajectory bench
-          #   generator-bench.test.ts · composePlan() vs persona doctrine
-          #   adapter-bench.test.ts   · adapter mutation invariants
+          # 2026-06-03 · expanded to 4 test files:
+          #   plan-engine.test.ts      · simulator trajectory bench
+          #   generator-bench.test.ts  · composePlan() vs persona doctrine
+          #   adapter-bench.test.ts    · adapter mutation invariants
+          #   adaptive-ramp.test.ts    · upward-adapter gate logic
           npx vitest run \
             lib/plan/plan-engine.test.ts \
             lib/plan/generator-bench.test.ts \
-            lib/plan/adapter-bench.test.ts
+            lib/plan/adapter-bench.test.ts \
+            lib/plan/adaptive-ramp.test.ts
 
       - name: Bench summary
         if: always()
