@@ -100,13 +100,34 @@ export function formatRaceTime(seconds: number | null | undefined): string | nul
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-/** Parse "1:34:54" or "3:30:25" or "59:30" or "23:15" → seconds. */
+/**
+ * Parse a race time string → seconds.
+ *
+ * Accepts three shapes:
+ *   · "H:MM:SS"  → hours + minutes + seconds  (e.g. "1:34:54" finish time)
+ *   · "H:MM"     → hours + minutes            (e.g. "1:30" HM goal)
+ *   · "MM:SS"    → minutes + seconds          (e.g. "23:15" 5K time)
+ *
+ * 2026-06-03 · was treating "1:30" as 90 seconds (MM:SS interpretation) ·
+ * but race GOALS commonly omit seconds ("1:30" sub-1:30 HM, "3:00" sub-3
+ * marathon). Heuristic: first part ≤ 9 → H:MM, else MM:SS. Real races
+ * don't take 10+ hours and 5K/10K times fit in 9:99 MM:SS anyway.
+ *
+ * Cite: David's race meta `goalDisplay: "1:30"` for AFC Half · used to
+ * silently produce 90s = 0.025 hr in vdot calcs · obviously broken.
+ */
 export function parseRaceTime(s: string | null | undefined): number | null {
   if (!s) return null;
   const m = String(s).trim().match(/^(\d+):(\d{2})(?::(\d{2}))?$/);
   if (!m) return null;
   if (m[3] != null) return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
-  return (+m[1]) * 60 + (+m[2]);
+  // Two-part form · H:MM vs MM:SS heuristic.
+  const first = +m[1];
+  const second = +m[2];
+  // First part ≤ 9 → H:MM (sub-9hr race · covers 5K-to-ultra goals).
+  if (first <= 9) return first * 3600 + second * 60;
+  // First part > 9 → MM:SS (any race longer than 10 min · 5K/10K finishes).
+  return first * 60 + second;
 }
 
 export interface RaceVdotCandidate {

@@ -520,8 +520,11 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       [userId, today]
     ).catch(() => ({ rows: [] as any[] }))).rows[0];
     const meta = goalRow?.meta ?? {};
-    const gd = String(meta.goalDisplay ?? '').match(/^(\d+):(\d{2}):(\d{2})$/);
-    if (gd) raceGoalSeconds = (+gd[1]) * 3600 + (+gd[2]) * 60 + (+gd[3]);
+    // 2026-06-03 · use the canonical parser · was a strict H:MM:SS regex
+    // that silently dropped "1:30" goals (David's AFC race) · cascaded
+    // into null pace targets across the glance + breakdown surfaces.
+    const { parseRaceTime } = await import('@/lib/training/vdot');
+    raceGoalSeconds = parseRaceTime(meta.goalDisplay);
     if (meta.distanceMi) {
       raceGoalDistanceMi = Number(meta.distanceMi);
     } else {

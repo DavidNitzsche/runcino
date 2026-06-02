@@ -20,6 +20,7 @@
 import { pool } from '@/lib/db/pool';
 import { prescriptionFor, type WorkoutType, type PrescriptionStep } from '@/lib/training/prescriptions';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
+import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -244,13 +245,10 @@ function labelFor(t: string): string {
 
 // ── Profile helpers ─────────────────────────────────────────────────────
 
-function parseRaceGoalSec(s: string | null | undefined): number | null {
-  if (!s) return null;
-  const m = String(s).trim().match(/^(\d+):(\d{2})(?::(\d{2}))?$/);
-  if (!m) return null;
-  if (m[3] != null) return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
-  return (+m[1]) * 60 + (+m[2]);
-}
+// 2026-06-03 · parseRaceGoalSec used to live inline here as a local
+// fork · removed because it mis-parsed "1:30" as 90 seconds (MM:SS)
+// instead of 5400 (H:MM). Now uses parseRaceTime from vdot.ts (imported
+// at module top) which has the heuristic fix.
 
 function distanceMiFromLabel(label: string | null | undefined): number | null {
   if (!label) return null;

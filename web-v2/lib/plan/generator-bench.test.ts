@@ -31,10 +31,32 @@ import {
   composePlan,
   inlinePrescriptions,
   distanceCategoryOfPublic,
+  parseGoalSeconds,
   type ComposePlanInput,
   type DOW,
 } from './generate';
 import { tPaceFromGoal } from './spec-builder';
+
+describe('parseGoalSeconds · accepts multiple goal-time formats', () => {
+  it.each([
+    ['1:30:00', 5400],
+    ['1:30',    5400],   // H:MM · David's race meta format (sub-1:30 HM)
+    ['3:00:00', 10800],
+    ['3:00',    10800],
+    ['1:35',    5700],
+    ['25:00',   1500],   // MM:SS · 25-minute 5K finish time
+    ['18:30',   1110],   // MM:SS · 18:30 5K time
+  ])('parseGoalSeconds(%s) = %s', (input, expected) => {
+    expect(parseGoalSeconds(input)).toBe(expected);
+  });
+
+  it('rejects null + non-time strings', () => {
+    expect(parseGoalSeconds(null)).toBe(null);
+    expect(parseGoalSeconds(undefined)).toBe(null);
+    expect(parseGoalSeconds('')).toBe(null);
+    expect(parseGoalSeconds('xyz')).toBe(null);
+  });
+});
 
 /**
  * Build a ComposePlanInput from a persona · all DB-sourced facts

@@ -71,12 +71,12 @@ function mondayOf(iso: string): string {
   return addDays(iso, shift);
 }
 
-// Parse a goal time like "1:35:00" or "3:25:00" → seconds, or null.
-function parseGoalSeconds(goal: string | null | undefined): number | null {
-  if (!goal) return null;
-  const m = String(goal).match(/^(\d+):(\d{2}):(\d{2})$/);
-  if (!m) return null;
-  return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+// 2026-06-03 · delegate to lib/training/vdot.parseRaceTime (single
+// canonical parser, imported at the top of this file). Re-exported so
+// the generator-bench keeps its existing test surface. Was a local
+// fork that mis-parsed "1:30" as null instead of 5400.
+export function parseGoalSeconds(goal: string | null | undefined): number | null {
+  return parseRaceTime(goal);
 }
 
 // Race distance in miles. Prefers numeric meta.distanceMi (most reliable),
