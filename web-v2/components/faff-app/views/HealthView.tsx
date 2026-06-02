@@ -441,10 +441,29 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
         </div>
       ) : null}
 
-      {/* ===== RECOVERY PHASE (when present · post-hard-session) ===== */}
+      {/* ===== RECOVERY PHASE (when present · post-hard-session) =====
+          Defensive frontend handling for the backend bug surfaced
+          2026-06-01: when day0 or current measurements are missing for
+          a pillar, lib/coach/recovery-phase.ts defaults pctRecovered
+          to 0 instead of null. With all pillars at 0 + percentRecovered
+          aggregate at 0 + daysSince >= expectedDaysToRecover, the
+          green-light line reads "Body is 0% recovered · ready" which
+          contradicts itself. Detect that data-insufficient state and
+          render an honest "syncing" framing. Brief filed at
+          designs/briefs/recovery-phase-null-vs-zero-brief.md.
+      */}
       {seed.health.recoveryPhase ? (() => {
         const rp = seed.health.recoveryPhase;
         const pcol = (p: number) => p >= 80 ? COLOR_GOOD : p >= 55 ? COLOR_WATCH : COLOR_BAD;
+        // Heuristic for "data insufficient": all pillar pcts at 0 AND
+        // their day0/current values are null. Backend should ship a
+        // proper null indicator but until then this catches the bug.
+        const allPillarsZero = rp.pillars.every(p => p.pctRecovered === 0);
+        const allPillarsNoData = rp.pillars.every(p =>
+          p.day0Value == null || p.currentValue == null
+        );
+        const dataInsufficient = allPillarsZero && allPillarsNoData;
+
         return (
           <div className="hrecov">
             <div className="hrecov-head">
@@ -453,19 +472,32 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 <div className="hrecov-anchor">{rp.anchor.label}</div>
               </div>
               <div className="hrecov-tl">
-                <div className="hrecov-pct">{rp.percentRecovered}%</div>
+                <div className="hrecov-pct">
+                  {dataInsufficient ? '·' : `${rp.percentRecovered}%`}
+                </div>
                 <div className="hrecov-day">Day {rp.daysSince} of {rp.expectedDaysToRecover} expected</div>
               </div>
             </div>
-            <div className="hrecov-bar"><i style={{ width: `${rp.percentRecovered}%` }} /></div>
+            <div className="hrecov-bar">
+              <i style={{ width: `${dataInsufficient ? 0 : rp.percentRecovered}%` }} />
+            </div>
             <div className="hrecov-grid">
-              {rp.pillars.map(p => (
-                <div key={p.key} className="hrcp">
-                  <div className="k">{p.label}</div>
-                  <div className="pb"><i style={{ width: `${p.pctRecovered}%`, background: pcol(p.pctRecovered) }} /></div>
-                  <div className="pv" style={{ color: pcol(p.pctRecovered) }}>{p.pctRecovered}% back</div>
-                </div>
-              ))}
+              {rp.pillars.map(p => {
+                const hasData = p.day0Value != null && p.currentValue != null;
+                return (
+                  <div key={p.key} className="hrcp">
+                    <div className="k">{p.label}</div>
+                    <div className="pb">
+                      {hasData ? (
+                        <i style={{ width: `${p.pctRecovered}%`, background: pcol(p.pctRecovered) }} />
+                      ) : null}
+                    </div>
+                    <div className="pv" style={{ color: hasData ? pcol(p.pctRecovered) : 'rgba(255,255,255,.4)' }}>
+                      {hasData ? `${p.pctRecovered}% back` : 'no data'}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             {rp.muscleSignals?.summary ? (
               <div className="hrecov-muscle">
@@ -474,7 +506,10 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               </div>
             ) : null}
             <div className="hrecov-green">
-              Earliest quality session: <b>{rp.nextQualityGreenLight.date}</b> · {rp.nextQualityGreenLight.reason}
+              {dataInsufficient
+                ? <>Recovery tracking awaiting watch sync · pillar measurements not in yet.</>
+                : <>Earliest quality session: <b>{rp.nextQualityGreenLight.date}</b> · {rp.nextQualityGreenLight.reason}</>
+              }
             </div>
           </div>
         );
