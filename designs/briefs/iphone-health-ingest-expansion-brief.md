@@ -72,6 +72,18 @@ gated by total sleep but not interchangeable.
 
 ## 2 · Menstrual cycle phase
 
+### Gating · CRITICAL
+
+**Only ingest + surface this for runners who self-identify as female
+in settings.** The HK permission prompt + the data field + the
+Health-page tile should ALL be gender-gated. For male / non-binary /
+prefer-not-to-say users, this entire path is invisible.
+
+Backend will add a `profile.identity.biological_sex` enum
+(`female` | `male` | `not_specified`) so iPhone can branch on it.
+Default for existing users = `not_specified` until they edit
+settings. Cycle ingest fires only when `biological_sex === 'female'`.
+
 ### What we have today
 
 Nothing.

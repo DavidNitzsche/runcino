@@ -1055,6 +1055,14 @@ function adaptHealth(
     const cvStatus: 'good' | 'warn' = hrvCv.band === 'destabilizing' ? 'warn' : 'good';
     body.push(mk('hrv_cv', 'HRV CV', '%', hrvCv.pct, undefined, [0, 10], [], cvStatus, 1));
   }
+  // 2026-06-01 · Max HR tile · 30-day true max (informs zone math + HRR).
+  // Health-state computes MAX over 30d so a single low-effort walk doesn't
+  // pull the ceiling down. No series · just the ceiling.
+  const maxHrCurrent = health?.maxHr.current ?? 0;
+  if (maxHrCurrent > 0) {
+    body.push(mk('max_hr', 'MAX HR', 'bpm', maxHrCurrent, undefined,
+      [Math.max(150, maxHrCurrent - 30), maxHrCurrent + 10], [], 'good'));
+  }
   // Real form metrics from health_samples (HealthKit ingest).
   const formRaw = (form?.ok ? form.value : null) ?? {};
   const formSeries = (k: string): { last: number; series: number[] } => {

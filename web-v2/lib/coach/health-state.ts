@@ -176,14 +176,24 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
-    // Max HR · TRUE max over the last 30d (informs zone math + HRR).
-    // Picking single-most-recent gave the last activity's max which
-    // could be a 58bpm walk. MAX over a window is the real ceiling.
+    // Max HR · TRUE max over the last 365 days (informs zone math + HRR).
+    // 30d was too tight: if the runner hasn't max'd out recently the
+    // ceiling reads too low. Joel Friel doctrine: HRmax = highest verified
+    // value from a hard effort in the last 12 months (physiological max
+    // doesn't drift much year-over-year for trained runners).
+    // ALSO pull from runs.data.maxHr · race + interval efforts often
+    // produce higher peaks than HealthKit's daily summary.
     pool.query<{ value: number | string }>(
-      `SELECT MAX(value::numeric) AS value
-         FROM health_samples
-        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'max_hr'
-          AND sample_date >= ($2::date - interval '30 days')`,
+      `SELECT GREATEST(
+         (SELECT COALESCE(MAX(value::numeric), 0) FROM health_samples
+           WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'max_hr'
+             AND sample_date >= ($2::date - interval '365 days')),
+         (SELECT COALESCE(MAX((data->>'maxHr')::numeric), 0) FROM runs
+           WHERE user_uuid = $1::uuid AND NOT (data ? 'mergedIntoId')
+             AND data->>'maxHr' IS NOT NULL
+             AND (data->>'maxHr')::numeric BETWEEN 100 AND 230
+             AND (data->>'date')::date >= ($2::date - interval '365 days'))
+       ) AS value`,
       [userId, today]
     ).then((r) => r.rows[0]),
     // Sleep bedtime times · for consistency / variability calc.
