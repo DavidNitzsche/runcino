@@ -444,11 +444,34 @@ private struct SplitRow: View {
 }
 
 // MARK: - Route polyline card
+//
+// Renders the Google-polyline route as a stroked path on a dark card.
+// Visual parity with the web's RouteMap.tsx (Leaflet + CartoDB tiles) ·
+// same coloring + endpoint markers + mile dots, just no basemap. The
+// MapKit-with-tiles upgrade can come later · this gets the line clean.
+//
+// Web parity:
+//   · 5 pace quintile buckets across the polyline's own progress
+//     · coral #FC4D64 → orange #FF8847 → amber #F3AD38 → teal #48B3B5 → blue #27B4E0
+//   · start marker · green ring #14C08C around a dark fill
+//   · finish marker · coral #FC4D64 fill
+//   · mile markers · white dots along the line at integer-mile crossings
+//     (Haversine walk)
+//   · coral baseline underlayer drawn first · belt-and-suspenders so
+//     the line is always visible even if the bucket walker errors
+//   · 5pt stroke · round caps + joins
 
-/// Decodes the Google polyline (precision 5) and renders it as a Path
-/// on a dark card. No MapKit dependency · stylized polyline only.
-/// Includes start (white) + finish (accent) dots and a "X.X MI · ↗ Y FT"
-/// overlay per the design.
+private let PACE_BUCKETS: [Color] = [
+    Color(hex: 0xFC4D64),  // fastest · coral
+    Color(hex: 0xFF8847),  // orange
+    Color(hex: 0xF3AD38),  // amber
+    Color(hex: 0x48B3B5),  // teal
+    Color(hex: 0x27B4E0),  // slowest · blue
+]
+private let START_RING_COLOR = Color(hex: 0x14C08C)
+private let FINISH_FILL_COLOR = Color(hex: 0xFC4D64)
+private let BASELINE_UNDER_COLOR = Color(hex: 0xFC4D64)
+
 private struct RoutePolylineCard: View {
     let polyline: String
     let accent: Color
@@ -468,26 +491,82 @@ private struct RoutePolylineCard: View {
                         path.move(to: first)
                         for p in normalized.dropFirst() { path.addLine(to: p) }
                     }
+                    // Belt-and-suspenders coral baseline · the bucket
+                    // walker below colors the line in 5 pace quintiles,
+                    // but if the segment math degenerates (very short
+                    // runs, identical points, etc.) the coral underlayer
+                    // guarantees the route is always visible.
                     ctx.stroke(path,
-                               with: .color(accent),
-                               style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                    // start dot · white
-                    if let first = normalized.first {
-                        ctx.fill(
-                            Path(ellipseIn: CGRect(x: first.x - 5, y: first.y - 5, width: 10, height: 10)),
-                            with: .color(.white))
+                               with: .color(BASELINE_UNDER_COLOR),
+                               style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+
+                    // 5 pace quintile buckets across the route's
+                    // progress. Web parity: same hex palette in the
+                    // same coral→blue order (fastest = coral, slowest
+                    // = blue). We bucket by INDEX rather than per-mile
+                    // pace · matches the web's "5 quintile buckets
+                    // across the run's own splits" simplification when
+                    // we don't have a per-point pace stream.
+                    let segCount = normalized.count - 1
+                    if segCount >= 5 {
+                        let bucketSize = max(1, segCount / PACE_BUCKETS.count)
+                        for b in 0..<PACE_BUCKETS.count {
+                            let from = b * bucketSize
+                            let to = b == PACE_BUCKETS.count - 1 ? normalized.count : min(normalized.count, (b + 1) * bucketSize + 1)
+                            guard to > from else { continue }
+                            var bucketPath = Path()
+                            bucketPath.move(to: normalized[from])
+                            for i in (from + 1)..<to {
+                                bucketPath.addLine(to: normalized[i])
+                            }
+                            ctx.stroke(bucketPath,
+                                       with: .color(PACE_BUCKETS[b]),
+                                       style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                        }
                     }
-                    // finish dot · accent
-                    if let last = normalized.last {
+
+                    // Mile markers · white dots along the line at
+                    // every full mile crossing (Haversine walk).
+                    for (px, py) in mileMarkerPoints(points: points, normalized: normalized) {
+                        let r: CGFloat = 3
                         ctx.fill(
-                            Path(ellipseIn: CGRect(x: last.x - 5, y: last.y - 5, width: 10, height: 10)),
-                            with: .color(accent))
+                            Path(ellipseIn: CGRect(x: px - r, y: py - r, width: r*2, height: r*2)),
+                            with: .color(.white.opacity(0.85)))
+                    }
+
+                    // Start marker · green ring on dark fill (web parity).
+                    if let first = normalized.first {
+                        let r: CGFloat = 7
+                        ctx.fill(
+                            Path(ellipseIn: CGRect(x: first.x - r, y: first.y - r, width: r*2, height: r*2)),
+                            with: .color(Color(hex: 0x080B0F)))
+                        ctx.stroke(
+                            Path(ellipseIn: CGRect(x: first.x - r, y: first.y - r, width: r*2, height: r*2)),
+                            with: .color(START_RING_COLOR),
+                            lineWidth: 2.5)
+                    }
+                    // Finish marker · coral fill.
+                    if let last = normalized.last {
+                        let r: CGFloat = 7
+                        ctx.fill(
+                            Path(ellipseIn: CGRect(x: last.x - r, y: last.y - r, width: r*2, height: r*2)),
+                            with: .color(FINISH_FILL_COLOR))
                     }
                 }
             } else {
-                Text("Route map · no GPS")
-                    .font(.body(11, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.4))
+                // True no-GPS state · matches the web's "NO GPS TRACK
+                // FOR THIS RUN" empty card. Treadmill, indoor, very
+                // short runs, manual entries, and Faff-watch runs land
+                // here (the watch-payload routePolyline gap is open
+                // backend brief).
+                VStack(spacing: 8) {
+                    Image(systemName: "mountain.2.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.3))
+                    Text("NO GPS TRACK")
+                        .font(.body(10, weight: .extraBold)).tracking(1.4)
+                        .foregroundStyle(.white.opacity(0.45))
+                }
             }
             // Overlay text · bottom-leading "X.X MI · ↗ Y FT"
             VStack {
@@ -512,6 +591,50 @@ private struct RoutePolylineCard: View {
         if elevGainFt > 0 { return "\(mi) · ↗ \(elevGainFt) FT" }
         return mi
     }
+}
+
+/// Walk the polyline by Haversine distance and emit the
+/// already-normalized CGPoints that fall on integer-mile boundaries.
+/// Web parity: mileMarkersAlongPolyline in lib/route/polyline.ts.
+private func mileMarkerPoints(
+    points: [(Double, Double)],
+    normalized: [CGPoint],
+) -> [(CGFloat, CGFloat)] {
+    guard points.count >= 2 && normalized.count == points.count else { return [] }
+    var markers: [(CGFloat, CGFloat)] = []
+    var distMi: Double = 0
+    var nextMile: Double = 1
+    for i in 1..<points.count {
+        let (lat1, lon1) = points[i - 1]
+        let (lat2, lon2) = points[i]
+        let segMi = haversineMi(lat1: lat1, lon1: lon1, lat2: lat2, lon2: lon2)
+        if segMi <= 0 { continue }
+        let prevDist = distMi
+        distMi += segMi
+        // Emit one marker for every integer-mile boundary this segment
+        // crosses (a single very long segment can cross multiple).
+        while distMi >= nextMile {
+            let frac = (nextMile - prevDist) / segMi
+            let x = normalized[i - 1].x + CGFloat(frac) * (normalized[i].x - normalized[i - 1].x)
+            let y = normalized[i - 1].y + CGFloat(frac) * (normalized[i].y - normalized[i - 1].y)
+            markers.append((x, y))
+            nextMile += 1
+            if markers.count > 50 { return markers }   // sanity cap
+        }
+    }
+    return markers
+}
+
+/// Great-circle distance in miles. Earth radius 3958.8.
+private func haversineMi(lat1: Double, lon1: Double, lat2: Double, lon2: Double) -> Double {
+    let R = 3958.8
+    let dLat = (lat2 - lat1) * .pi / 180
+    let dLon = (lon2 - lon1) * .pi / 180
+    let a = sin(dLat/2) * sin(dLat/2)
+        + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180)
+        * sin(dLon/2) * sin(dLon/2)
+    let c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return R * c
 }
 
 /// Decode a Google polyline (precision 5) into an array of (lat, lon).
