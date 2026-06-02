@@ -10,6 +10,7 @@ import { pool } from '@/lib/db/pool';
 import { computeZones } from '@/lib/training/zones';
 import { baselineTempF } from '@/lib/weather/lookup';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
+import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 
 export interface RunSplit {
   mile: number;
@@ -201,6 +202,20 @@ export interface RunDetail {
   /** plan_workouts.distance_mi for the matching row; used as the "planned
    *  distance" axis when the spec ships rep-only structures. */
   planned_distance_mi: number | null;
+  /** 2026-06-01 · Aerobic decoupling on long, steady-state runs. The
+   *  pace-to-HR drift signal · Research/15 §cardiac decoupling. Joel
+   *  Friel bands: <5% race-ready, 5-7% building, >7% poor. Null when
+   *  the run is too short (<6mi) or wasn't steady-state (intervals,
+   *  progression, race effort). Renderer shows a chip on the long-run
+   *  detail card. */
+  aerobic_decoupling: {
+    drift_pct: number;
+    verdict: 'race-ready' | 'building' | 'poor';
+    h1_hr: number;
+    h1_pace_sec: number;
+    h2_hr: number;
+    h2_pace_sec: number;
+  } | null;
 }
 
 function fmtPace(s: number | null): string | null {
@@ -542,6 +557,27 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     planned_spec,
     planned_sub_label,
     planned_distance_mi,
+    aerobic_decoupling: (() => {
+      // Skip interval / tempo / race · those aren't steady-state by
+      // design, and the helper would mostly return null but cheaper
+      // to short-circuit here.
+      const t = String(r.type ?? '').toLowerCase();
+      if (t === 'tempo' || t === 'intervals' || t === 'threshold'
+          || t === 'race' || t === 'fartlek') return null;
+      const result = computeAerobicDecoupling(
+        Array.isArray(r.splits) ? r.splits : [],
+        Number(r.distanceMi) || 0,
+      );
+      if (!result) return null;
+      return {
+        drift_pct: result.driftPct,
+        verdict: result.verdict,
+        h1_hr: result.h1Hr,
+        h1_pace_sec: result.h1PaceSec,
+        h2_hr: result.h2Hr,
+        h2_pace_sec: result.h2PaceSec,
+      };
+    })(),
   };
 }
 
