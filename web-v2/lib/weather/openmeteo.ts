@@ -275,6 +275,19 @@ export interface DayForecast {
    *  coolest morning window based on the day's high. Falls back to
    *  "6-8 AM" when no high temp is available. */
   best_window: string;
+  /** 2026-06-02 · iPhone CONDITIONS chip · temp at the runner's likely
+   *  start time (best_window start or explicit startHHMM override).
+   *  Null when no `?durationMin=N` query param was passed OR no
+   *  hourly data is available. */
+  temp_start_f: number | null;
+  /** 2026-06-02 · iPhone CONDITIONS chip · temp at start + duration.
+   *  Same null rules as temp_start_f. */
+  temp_end_f: number | null;
+  /** 2026-06-02 · iPhone CONDITIONS chip · window-specific range
+   *  string · "54-62° · Clear" · not the whole-day range. Differs from
+   *  range_label which is the full-day min/max. Null when window data
+   *  isn't computed (no durationMin param). */
+  window_label: string | null;
 }
 
 /** Pretty-print the machine condition token. Shared with clients so the
@@ -314,6 +327,46 @@ function composeBestWindow(tempMaxF: number | null): string {
 }
 
 /**
+ * 2026-06-02 · iPhone brief · derive a start hour (0-23.99) from the
+ * best_window label. Used when iPhone doesn't pass an explicit
+ * `startHHMM` override.
+ *
+ * Rules per the brief:
+ *   · "Before 7 AM"  → 6.0  (early-morning rule of thumb)
+ *   · "6-8 AM"       → 6.0  (window start)
+ *   · "6-9 AM"       → 6.0  (window start)
+ *   · "Anytime"      → 7.0  (mild morning default)
+ *   · other / null   → 7.0  (safe morning default)
+ */
+function parseBestWindowStartHour(label: string): number {
+  const l = label.toLowerCase();
+  if (l.includes('before 7')) return 6;
+  if (l.includes('6-')) return 6;
+  if (l.includes('anytime')) return 7;
+  // Fallback for any unrecognized future label · default morning.
+  return 7;
+}
+
+/**
+ * 2026-06-02 · interpolate temp at a fractional hour from hourly
+ * arrays. `hourTemps[i]` is the temp at hour i (0-23 local). For
+ * non-integer hours, linear-interpolate between the two bracketing
+ * hours. Returns null when hourTemps is empty.
+ */
+function interpolateTempAtHour(hourTemps: Array<number | null>, hour: number): number | null {
+  if (!hourTemps.length) return null;
+  const clamped = Math.max(0, Math.min(23, hour));
+  const i = Math.floor(clamped);
+  const frac = clamped - i;
+  const a = hourTemps[i] ?? null;
+  const b = hourTemps[Math.min(23, i + 1)] ?? null;
+  if (a == null && b == null) return null;
+  if (a == null) return b;
+  if (b == null) return a;
+  return a + (b - a) * frac;
+}
+
+/**
  * Fetch a single-day forecast for a (lat, lng) on a given YYYY-MM-DD.
  * Used by the /today + /train surfaces to render a temp range for
  * planned-but-not-yet-run days. For past days the historical archive
@@ -326,6 +379,15 @@ export async function fetchDayForecast(
   lat: number,
   lng: number,
   dateIso: string,
+  /** 2026-06-02 · iPhone brief · when present, computes temp_start_f
+   *  + temp_end_f + window_label for the runner's actual workout
+   *  window. Default start derives from best_window; pass startHourOverride
+   *  to set explicitly (e.g. evening runs). */
+  workoutWindow?: {
+    durationMin: number;
+    /** 0-23.99 local. Optional · falls back to best_window start. */
+    startHourOverride?: number;
+  } | null,
 ): Promise<DayForecast | null> {
   if (!isFinite(lat) || !isFinite(lng)) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
@@ -336,6 +398,7 @@ export async function fetchDayForecast(
       `&start_date=${dateIso}` +
       `&end_date=${dateIso}` +
       `&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max,windspeed_10m_max` +
+      `&hourly=temperature_2m` +
       `&temperature_unit=fahrenheit` +
       `&windspeed_unit=mph` +
       `&timezone=auto`;
@@ -347,6 +410,31 @@ export async function fetchDayForecast(
     const tempMinF = num(d.temperature_2m_min?.[0]);
     const tempMaxF = num(d.temperature_2m_max?.[0]);
     const conditions = conditionFromCode(d.weathercode?.[0]);
+    const bestWindow = composeBestWindow(tempMaxF);
+
+    // 2026-06-02 · workout-window temp range. Only computed when
+    // iPhone passed durationMin; otherwise leave null and the response
+    // is the same shape as before (backward compat).
+    let tempStartF: number | null = null;
+    let tempEndF: number | null = null;
+    let windowLabel: string | null = null;
+    if (workoutWindow && workoutWindow.durationMin > 0) {
+      const hourTemps: Array<number | null> = (j?.hourly?.temperature_2m ?? [])
+        .slice(0, 24)
+        .map((v: unknown) => num(v));
+      const startHour = workoutWindow.startHourOverride != null
+        ? Math.max(0, Math.min(23.99, workoutWindow.startHourOverride))
+        : parseBestWindowStartHour(bestWindow);
+      const endHour = startHour + workoutWindow.durationMin / 60;
+      const startInterp = interpolateTempAtHour(hourTemps, startHour);
+      const endInterp = interpolateTempAtHour(hourTemps, endHour);
+      tempStartF = startInterp != null ? Math.round(startInterp) : null;
+      tempEndF = endInterp != null ? Math.round(endInterp) : null;
+      if (tempStartF != null || tempEndF != null) {
+        windowLabel = composeRangeLabel(tempStartF, tempEndF, conditions);
+      }
+    }
+
     return {
       date: dateIso,
       temp_min_f: tempMinF,
@@ -356,7 +444,10 @@ export async function fetchDayForecast(
       wind_mph: num(d.windspeed_10m_max?.[0]),
       source: 'open-meteo',
       range_label: composeRangeLabel(tempMinF, tempMaxF, conditions),
-      best_window: composeBestWindow(tempMaxF),
+      best_window: bestWindow,
+      temp_start_f: tempStartF,
+      temp_end_f: tempEndF,
+      window_label: windowLabel,
     };
   } catch (err) {
     console.error('[weather] fetchDayForecast failed:', err);
