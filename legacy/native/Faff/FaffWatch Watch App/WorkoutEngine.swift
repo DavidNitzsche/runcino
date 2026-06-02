@@ -174,6 +174,21 @@ final class WorkoutEngine: ObservableObject {
     /// happens against this value.
     private var phaseLastSampleSec: Int = -5
 
+    // ─── Tier 2 RPE pending capture (2026-06-02) ────────────────────
+    /// When a `.work` phase ends, this is set to the index in the
+    /// `results` array of that work phase. The next phase (typically
+    /// `.recovery`) overlays an RPE prompt; on tap, `recordRpe(...)`
+    /// patches the indexed entry. Cleared after capture, on dismiss,
+    /// on 30-sec timeout, or when the next work rep starts.
+    @Published private(set) var pendingRpeResultsIndex: Int? = nil
+    /// True while the post-rep RPE prompt should overlay the current
+    /// face. Views check this; true implies `pendingRpeResultsIndex`
+    /// is set. Cleared by `recordRpe`, `dismissRpePrompt`, or auto-
+    /// timeout (caller schedules dismiss via `flash`-style task).
+    @Published private(set) var rpePromptVisible = false
+    /// 30-sec auto-dismiss countdown task for the RPE prompt.
+    private var rpeDismissTask: Task<Void, Never>?
+
     init(workout: WatchWorkout) {
         self.workout = workout
     }
@@ -767,6 +782,12 @@ final class WorkoutEngine: ObservableObject {
     // MARK: State transitions
 
     private func advance(completedCurrent: Bool) {
+        // If an RPE prompt was still showing from a prior work rep when
+        // we advance into a new phase, treat it as dismissed. Any later
+        // recordCurrentPhase that completes a work rep will re-queue
+        // its own pending RPE index. Dismiss BEFORE recordCurrentPhase
+        // so the index it sets doesn't get cleared.
+        if rpePromptVisible { dismissRpePrompt() }
         recordCurrentPhase(completed: completedCurrent)
 
         // Bank the wall-clock time actually spent in the phase we're
@@ -822,6 +843,13 @@ final class WorkoutEngine: ObservableObject {
                 let target = p.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
                 flash(.go(rep: "REP \(n) / \(totalWorks)", target: target), for: 1.5)
             }
+        }
+        // Tier 2 RPE prompt — if a pending RPE was queued by the prior
+        // work rep's recordCurrentPhase, and we're now landing in a
+        // non-work phase (recovery / cooldown), surface the prompt.
+        // 30-sec auto-dismiss starts inside `showRpePromptIfPending()`.
+        if pendingRpeResultsIndex != nil, currentPhase?.type != .work {
+            showRpePromptIfPending()
         }
     }
 
@@ -911,6 +939,56 @@ final class WorkoutEngine: ObservableObject {
             timeOutOfToleranceSec: timeOutTol,
             verdict: verdict
         ))
+        // Tier 2: queue an RPE prompt for the recovery that follows a
+        // completed work rep. We index the results array entry we just
+        // appended so the prompt's eventual answer patches the right
+        // phase. Skipped reps (completed == false) don't get a prompt —
+        // there's nothing to rate honestly. Wait for the runner to
+        // actually be IN the next phase before showing the prompt; we
+        // just record intent here.
+        if p.type == .work && completed {
+            pendingRpeResultsIndex = results.count - 1
+        }
+    }
+
+    // ─── Tier 2 RPE capture API ────────────────────────────────────
+    /// Show the post-rep RPE prompt overlay. Called from the next
+    /// phase's `LiveRecovery` / `LiveSteady` view onAppear (or by the
+    /// engine right after `advance()` lands on a non-work phase).
+    /// 30-sec auto-dismiss timer starts when this is called.
+    func showRpePromptIfPending() {
+        guard pendingRpeResultsIndex != nil, !rpePromptVisible else { return }
+        rpePromptVisible = true
+        rpeDismissTask?.cancel()
+        rpeDismissTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            await MainActor.run { self?.dismissRpePrompt() }
+        }
+    }
+
+    /// User tapped a rating. Patches the queued results entry and
+    /// dismisses the prompt. Tag is optional (the runner can pick a
+    /// rating without a qualifier).
+    func recordRpe(_ rating: Int, tag: String? = nil) {
+        guard let idx = pendingRpeResultsIndex, idx < results.count else {
+            dismissRpePrompt()
+            return
+        }
+        // WatchCompletionPhase is a struct (value type) inside the
+        // results array — patch in place.
+        var entry = results[idx]
+        entry.repRpe = max(1, min(5, rating))
+        if let tag = tag { entry.repRpeTag = tag }
+        results[idx] = entry
+        dismissRpePrompt()
+    }
+
+    /// User dismissed (down-swipe) or 30 s elapsed. Clears prompt
+    /// state without recording.
+    func dismissRpePrompt() {
+        rpeDismissTask?.cancel(); rpeDismissTask = nil
+        rpePromptVisible = false
+        pendingRpeResultsIndex = nil
     }
 
     private func finish(status: String) {

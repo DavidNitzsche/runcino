@@ -312,6 +312,30 @@ struct WatchCompletionPhase: Encodable {
     ///   "incomplete" user ended the phase early before reaching target
     /// `nil` for phases without a target pace (no band to compare against).
     var verdict: String? = nil
+
+    // ─── Tier 2 (2026-06-02) · subjective per-rep RPE ───────────────
+    /// Rate of Perceived Exertion the runner tapped on the post-rep
+    /// prompt during the following recovery phase. 1-5 scale:
+    ///   1 · easy · "I could do another 10 of these"
+    ///   2 · light · comfortable, controlled
+    ///   3 · moderate · the prescribed effort
+    ///   4 · hard · honest threshold burn
+    ///   5 · max · hanging on, couldn't sustain longer
+    /// Only collected on `.work` phases. `nil` when the runner didn't
+    /// answer (prompt auto-dismisses at 30 s) or when the phase wasn't
+    /// a work rep. Backend `_raw` passthrough preserves these for
+    /// composers gating on subjective effort vs. measured effort
+    /// (e.g. "felt 5/5 but pace was hit" → red-flag fatigue signal).
+    var repRpe: Int? = nil
+
+    /// Optional one-tap tag the runner picked alongside the RPE rating.
+    /// Closed set:
+    ///   "legs" · legs were the limit
+    ///   "lungs" · breathing/cardio was the limit
+    ///   "mind" · mental fatigue / focus
+    ///   "pace" · the target pace itself felt off (too aggressive)
+    /// `nil` when no tag was selected.
+    var repRpeTag: String? = nil
 }
 
 struct WatchCompletion: Encodable {
