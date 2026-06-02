@@ -80,10 +80,36 @@ export async function GET(req: NextRequest) {
     const FORECAST_HOST_FIX_DEPLOYED_MS = Date.parse('2026-06-02T20:30:00Z');
     const auditRows = await Promise.all(rows.map(async (row) => {
       const r = row.data ?? {};
-      const startLat = Number(r.startLat ?? r.start_latitude ?? null);
-      const startLng = Number(r.startLng ?? r.start_longitude ?? null);
+
+      // Field-presence audit · NO coercion to 0. Tells us whether the
+      // coord fields literally exist on the row, what their raw type is,
+      // and whether any of the polyline fallback fields are populated.
+      // This is the thing my last audit blurred · Number(null) === 0 was
+      // hiding "field doesn't exist" as "field is 0".
+      const coordFields = {
+        startLat: typedValue(r.startLat),
+        startLng: typedValue(r.startLng),
+        start_lat: typedValue(r.start_lat),
+        start_lng: typedValue(r.start_lng),
+        startLatLng: typedValue(r.startLatLng),
+        start_latlng: typedValue(r.start_latlng),
+        routeStartLat: typedValue(r.routeStartLat),
+        routeStartLng: typedValue(r.routeStartLng),
+        start_latitude: typedValue(r.start_latitude),
+        start_longitude: typedValue(r.start_longitude),
+        routePolyline: r.routePolyline ? `(string, len ${String(r.routePolyline).length})` : typedValue(r.routePolyline),
+        polyline: r.polyline ? `(string, len ${String(r.polyline).length})` : typedValue(r.polyline),
+        summaryPolyline: r.summaryPolyline ? `(string, len ${String(r.summaryPolyline).length})` : typedValue(r.summaryPolyline),
+      };
+
+      // Mirror pickLatLng's actual logic to show what enrichOneActivity
+      // would pick · same priority order as lib/weather/openmeteo.ts.
+      const pickedCoords = pickLatLngForAudit(r);
+
       const startLocal = r.startLocal ?? r.start_local ?? null;
       const startISO = startLocal ? toUtcIso(startLocal, r.source as string | undefined) : null;
+      const startISOProper = startISO; // alias for clarity in the response
+      const startISORaw = startLocal ? naiveDateParse(startLocal) : null; // what fetchRunWeather sees if it skips toUtcIso
       const durationSec = Number(r.movingTimeS) || Number(r.durationSec) || Number(r.elapsedTimeS) || 0;
 
       // Auto-correct verdict · evaluate each condition explicitly
@@ -97,21 +123,31 @@ export async function GET(req: NextRequest) {
       const willFire =
         idIsNumeric && isRecent && sourceOpenMeteo && hasEnrichedAt && enrichedBeforeFix;
 
-      // Live Open-Meteo fetch · BOTH hosts so we can compare them.
-      const live = (isFinite(startLat) && isFinite(startLng) && startISO)
-        ? await fetchBothHosts(startLat, startLng, startISO, durationSec)
-        : { forecast: null, archive: null };
+      // Live Open-Meteo fetch using THE COORDS pickLatLng actually finds.
+      // This shows what the real enrichment WOULD return given the row's
+      // actual stored data. If pickedCoords is null, weather can't be
+      // fetched at all · that's the upstream bug.
+      const live = (pickedCoords && startISO)
+        ? await fetchBothHosts(pickedCoords.lat, pickedCoords.lng, startISO, durationSec)
+        : null;
+
+      // Also dump all the top-level keys on data so we can spot any field
+      // I'm not looking at by name.
+      const allKeys = Object.keys(r).sort();
 
       return {
         id: row.id,
         source: r.source ?? null,
         startLocal,
+        startISORaw,         // what Date.parse(startLocal) sees · no tz handling
+        startISOProper,      // what toUtcIso returns · source-aware
         startISO,
         ageDays: isFinite(ageDays) ? Math.round(ageDays * 100) / 100 : null,
         mergedIntoId: r.mergedIntoId ?? null,
-        startLat: isFinite(startLat) ? startLat : null,
-        startLng: isFinite(startLng) ? startLng : null,
         durationSec,
+        coordFields,         // per-field presence + type · no Number(null)=0 lie
+        pickedCoords,        // what pickLatLng would return · null if none
+        allDataKeys: allKeys, // every top-level key on data
         storedTempF: r.tempF ?? null,
         storedWeather: r.weather ?? null,
         weather_enriched_at: row.weather_enriched_at,
@@ -125,8 +161,7 @@ export async function GET(req: NextRequest) {
             enrichedBeforeFix,
           },
         },
-        liveOpenMeteoForecast: live.forecast,
-        liveOpenMeteoArchive: live.archive,
+        liveOpenMeteoAtPickedCoords: live,
       };
     }));
 
@@ -144,6 +179,70 @@ export async function GET(req: NextRequest) {
       stack: err.stack ?? null,
     }, { status: 500 });
   }
+}
+
+/** Describe a field's actual type + value without coercion. */
+function typedValue(v: any): { type: string; value: any } {
+  if (v === undefined) return { type: 'undefined', value: null };
+  if (v === null) return { type: 'null', value: null };
+  if (Array.isArray(v)) return { type: `array(${v.length})`, value: v };
+  return { type: typeof v, value: v };
+}
+
+/** Mirror lib/weather/openmeteo.ts:pickLatLng exactly so the audit
+ *  reports what enrichOneActivity would actually do. */
+function pickLatLngForAudit(data: any): { lat: number; lng: number; source: string } | null {
+  if (!data) return null;
+  const sll = data.startLatLng ?? data.start_latlng;
+  if (Array.isArray(sll) && sll.length >= 2) {
+    const nlat = Number(sll[0]); const nlng = Number(sll[1]);
+    if (isFinite(nlat) && isFinite(nlng)) return { lat: nlat, lng: nlng, source: 'startLatLng' };
+  }
+  const lat = data.startLat ?? data.start_lat ?? data.routeStartLat;
+  const lng = data.startLng ?? data.start_lng ?? data.routeStartLng;
+  const nlat = Number(lat); const nlng = Number(lng);
+  if (isFinite(nlat) && isFinite(nlng) && (lat !== undefined && lng !== undefined)) {
+    // Note: this branch returns 0,0 if the values are literally 0 · which
+    // is a bug in pickLatLng itself (Encino isn't at lat=0). Caller's
+    // responsibility to detect Gulf-of-Guinea sentinel.
+    return { lat: nlat, lng: nlng, source: 'startLat/startLng' };
+  }
+  const poly = typeof data.routePolyline === 'string' ? data.routePolyline
+              : typeof data.polyline === 'string' ? data.polyline
+              : typeof data.summaryPolyline === 'string' ? data.summaryPolyline
+              : null;
+  if (poly) {
+    const pt = decodePolylineFirstAudit(poly);
+    if (pt) return { lat: pt[0], lng: pt[1], source: 'polyline-decoded' };
+  }
+  return null;
+}
+
+/** Decode just the first pair from a Google polyline (precision 5). */
+function decodePolylineFirstAudit(str: string): [number, number] | null {
+  let index = 0;
+  const readVal = (): number | null => {
+    let result = 0, shift = 0, byte: number;
+    do {
+      if (index >= str.length) return null;
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    return ((result & 1) ? ~(result >> 1) : (result >> 1)) / 1e5;
+  };
+  const lat = readVal();
+  const lng = readVal();
+  if (lat == null || lng == null) return null;
+  return [lat, lng];
+}
+
+/** What Date.parse sees when given a no-Z local string · this is the bug
+ *  in fetchRunWeather (called from /api/ingest/workout without toUtcIso). */
+function naiveDateParse(local: string): string | null {
+  const ms = Date.parse(local);
+  if (!isFinite(ms)) return null;
+  return new Date(ms).toISOString();
 }
 
 async function fetchBothHosts(lat: number, lng: number, startISO: string, durationSec: number) {
