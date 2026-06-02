@@ -334,7 +334,7 @@ export function TodayView({
                 {isRest ? null : (
                   <span className="effdot" style={{ background: EFF[day.type].dot }} aria-hidden="true" />
                 )}
-                <span className="wc-nm">{isRest ? 'Rest' : toTitleCase(day.name)}</span>
+                <span className="wc-nm">{isRest ? 'Rest' : toTitleCase(workoutTypeTitle(day.type))}</span>
               </div>
 
               {/* Metrics · "{dist} · {pace}" or "rest" */}
@@ -449,7 +449,7 @@ export function TodayView({
             <div className="htag">
               {(d.today ? 'TODAY · ' : `${d.dw} · `) + d.type.toUpperCase()}
             </div>
-            <div className="htitle">{d.name}</div>
+            <div className="htitle">{workoutTypeTitle(d.type)}</div>
             <div className="stats">
               <div><div className="v">{formatSleep(seed.health.body.find(m => m.k === 'sleep')?.current)}</div><div className="k">SLEEP</div></div>
               <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}<small> bpm</small></div><div className="k">RESTING HR</div></div>
