@@ -302,35 +302,45 @@ async function loadMuscleSignals(
 ): Promise<RecoveryPhase['muscleSignals']> {
   // Average form metrics from easy runs AFTER anchor.
   // 2026-06-01 · field names in runs.data: avgCadence, avgPowerW,
-  // avgStrideLengthM. Ground contact lives on per-split rows · null
-  // at the run level for now.
-  const afterRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null }>(
-    `SELECT (data->>'avgCadence')::numeric AS cadence,
-            (data->>'avgStrideLengthM')::numeric AS stride,
-            (data->>'avgPowerW')::numeric AS power
-       FROM runs
-      WHERE user_uuid = $1::uuid
-        AND NOT (data ? 'mergedIntoId')
-        AND (data->>'date')::date > $2::date
-        AND (data->>'date')::date <= $3::date
-        AND COALESCE(data->>'type', 'easy') IN ('easy', 'recovery', '', 'shakeout')
-      ORDER BY (data->>'date')::date DESC LIMIT 3`,
+  // avgStrideLengthM. GCT lives on health_samples (sample_type =
+  // 'ground_contact_time') · joined by date to the easy runs.
+  const afterRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null; gct: number | string | null }>(
+    `SELECT (r.data->>'avgCadence')::numeric AS cadence,
+            (r.data->>'avgStrideLengthM')::numeric AS stride,
+            (r.data->>'avgPowerW')::numeric AS power,
+            (SELECT AVG(value::numeric) FROM health_samples h
+              WHERE COALESCE(h.user_uuid, h.user_id) = $1
+                AND h.sample_type = 'ground_contact_time'
+                AND h.sample_date = (r.data->>'date')::date
+                AND value::numeric BETWEEN 150 AND 400) AS gct
+       FROM runs r
+      WHERE r.user_uuid = $1::uuid
+        AND NOT (r.data ? 'mergedIntoId')
+        AND (r.data->>'date')::date > $2::date
+        AND (r.data->>'date')::date <= $3::date
+        AND COALESCE(r.data->>'type', 'easy') IN ('easy', 'recovery', '', 'shakeout')
+      ORDER BY (r.data->>'date')::date DESC LIMIT 3`,
     [userUuid, anchorDate, today],
-  ).then((r) => r.rows.map((r) => ({ ...r, gct: null }))).catch(() => []);
+  ).then((r) => r.rows).catch(() => []);
 
   // Baseline form metrics from easy runs BEFORE anchor (30d window).
-  const beforeRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null }>(
-    `SELECT (data->>'avgCadence')::numeric AS cadence,
-            (data->>'avgStrideLengthM')::numeric AS stride,
-            (data->>'avgPowerW')::numeric AS power
-       FROM runs
-      WHERE user_uuid = $1::uuid
-        AND NOT (data ? 'mergedIntoId')
-        AND (data->>'date')::date >= ($2::date - interval '30 days')
-        AND (data->>'date')::date < $2::date
-        AND COALESCE(data->>'type', 'easy') IN ('easy', 'recovery', '', 'shakeout')`,
+  const beforeRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null; gct: number | string | null }>(
+    `SELECT (r.data->>'avgCadence')::numeric AS cadence,
+            (r.data->>'avgStrideLengthM')::numeric AS stride,
+            (r.data->>'avgPowerW')::numeric AS power,
+            (SELECT AVG(value::numeric) FROM health_samples h
+              WHERE COALESCE(h.user_uuid, h.user_id) = $1
+                AND h.sample_type = 'ground_contact_time'
+                AND h.sample_date = (r.data->>'date')::date
+                AND value::numeric BETWEEN 150 AND 400) AS gct
+       FROM runs r
+      WHERE r.user_uuid = $1::uuid
+        AND NOT (r.data ? 'mergedIntoId')
+        AND (r.data->>'date')::date >= ($2::date - interval '30 days')
+        AND (r.data->>'date')::date < $2::date
+        AND COALESCE(r.data->>'type', 'easy') IN ('easy', 'recovery', '', 'shakeout')`,
     [userUuid, anchorDate],
-  ).then((r) => r.rows.map((r) => ({ ...r, gct: null }))).catch(() => []);
+  ).then((r) => r.rows).catch(() => []);
 
   if (afterRows.length === 0) return null;
 

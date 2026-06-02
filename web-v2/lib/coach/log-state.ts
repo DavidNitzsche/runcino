@@ -19,6 +19,10 @@ export interface LogRun {
   distance_mi: number;
   pace: string | null;       // formatted "9:18"
   time_moving: string | null;
+  /** 2026-06-01 · raw seconds for weekly aggregation. Same number that
+   *  `time_moving` formats · exposed so consumers can sum without
+   *  re-parsing the mm:ss string. */
+  time_moving_sec: number | null;
   avg_hr: number | null;
   max_hr: number | null;
   cadence: number | null;
@@ -227,6 +231,7 @@ export async function loadLogState(
       distance_mi: Number(a.distanceMi) || 0,
       pace: a.avgPaceMinPerMi || fmtPaceFromSec(sPerMi) || null,
       time_moving: fmtDuration(Number(a.movingTimeS) || null),
+      time_moving_sec: Number(a.movingTimeS) || null,
       avg_hr: Number(a.avgHr) || null,
       max_hr: Number(a.maxHr) || null,
       cadence: Number(a.avgCadence) || null,
@@ -303,13 +308,16 @@ export async function loadLogState(
     .sort((a, b) => b[0].localeCompare(a[0])) // most-recent first
     .map(([monday, ws]) => {
       const totalMi = Math.round(ws.reduce((s, x) => s + x.distance_mi, 0) * 10) / 10;
+      // 2026-06-01 · sum moving times across the week's runs · skip
+      // null values (runs that never carried movingTimeS).
+      const totalSec = ws.reduce((s, x) => s + (x.time_moving_sec ?? 0), 0);
       const isCurrent = monday === thisMonday;
       const sunday = addDays(monday, 6);
       return {
         monday,
         label: isCurrent ? 'THIS WEEK' : `${fmtDay(monday)} → ${fmtDay(sunday)}`,
         totalMi,
-        totalDuration: null, // TODO: sum moving times
+        totalDuration: totalSec > 0 ? fmtDuration(totalSec) : null,
         runs: ws.sort((a, b) => b.date.localeCompare(a.date)), // newest day first within the week
         isCurrent,
       };

@@ -31,6 +31,9 @@ export interface ReadinessHistory {
   rhr:        PillarPoint[];     // bpm (nocturnal preferred where available)
   hrv:        PillarPoint[];     // ms (RMSSD; per-night avg)
   hrRecovery: PillarPoint[];     // bpm 60s drop
+  /** 2026-06-01 · 30-day wrist temp history · feeds the wrist-temp
+   *  forecaster. °C nightly avg. Empty when no wrist_temp data exists. */
+  wristTemp:  PillarPoint[];     // °C
 
   /** Plews HRV derivatives · null when fewer than 7 days of data. */
   hrvPlews: {
@@ -63,7 +66,7 @@ export interface ReadinessHistory {
  * "no data yet" copy rather than blowing up the page.
  */
 export async function loadReadinessHistory(userId: string): Promise<ReadinessHistory> {
-  const [sleepRows, rhrRows, hrvRows, hrrRows] = await Promise.all([
+  const [sleepRows, rhrRows, hrvRows, hrrRows, wristTempRows] = await Promise.all([
     pool.query(
       `SELECT sample_date::date AS d, value
          FROM health_samples
@@ -99,16 +102,29 @@ export async function loadReadinessHistory(userId: string): Promise<ReadinessHis
         ORDER BY recorded_at ASC`,
       [userId],
     ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; value: number }>),
+    // 2026-06-01 · wrist temp 30d for the wrist-temp forecaster.
+    // Research/15 §wrist temp · rises 24-48h pre-illness · the
+    // forecaster surfaces the trajectory before the runner feels it.
+    pool.query(
+      `SELECT sample_date::date AS d, AVG(value::numeric) AS v
+         FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'wrist_temp'
+          AND sample_date >= CURRENT_DATE - 30
+        GROUP BY sample_date::date
+        ORDER BY sample_date::date ASC`,
+      [userId],
+    ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; v: string }>),
   ]);
 
   const sleep      = sleepRows.map((r) => ({ date: dt(r.d), value: Number(r.value) })).filter((p) => p.value > 0);
   const rhr        = rhrRows.map((r) => ({ date: dt(r.d), value: Math.round(Number(r.v)) }));
   const hrv        = hrvRows.map((r) => ({ date: dt(r.d), value: Math.round(Number(r.v)) }));
   const hrRecovery = hrrRows.map((r) => ({ date: dt(r.d), value: Number(r.value) })).filter((p) => p.value > 0);
+  const wristTemp  = wristTempRows.map((r) => ({ date: dt(r.d), value: +Number(r.v).toFixed(2) })).filter((p) => p.value > 30);
 
   const hrvPlews = computePlewsHRV(hrv);
 
-  return { sleep, rhr, hrv, hrRecovery, hrvPlews };
+  return { sleep, rhr, hrv, hrRecovery, wristTemp, hrvPlews };
 }
 
 /**

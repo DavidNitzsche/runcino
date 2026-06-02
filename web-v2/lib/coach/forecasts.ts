@@ -212,12 +212,56 @@ function forecastRhr(history: ReadinessHistory): Forecast | null {
 }
 
 function forecastWristTemp(history: ReadinessHistory): Forecast | null {
-  // wrist temp lives on health-state not history · this helper takes
-  // history but for now wrist temp forecasts are computed inline at
-  // the brief composer level. Return null here · placeholder for the
-  // shape so callers don't have to special-case.
-  void history;
-  return null;
+  // Research/15 §wrist temp · rises 24-48h pre-illness · the
+  // forecaster surfaces the trajectory before the runner feels it.
+  // This is HIGH-VALUE · wrist temp moves earlier than HRV.
+  //
+  // Bands relative to runner's own 14-day baseline:
+  //   delta < +0.2°C  · normal
+  //   delta +0.2..0.4 · watch (early signal)
+  //   delta >= +0.4   · illness-risk band
+  const series = history.wristTemp ?? [];
+  if (series.length < 7) return null;
+  const recent = series.slice(-7);
+  const points = recent.map((p, i) => ({ x: i, y: p.value }));
+  const fit = linearFit(points);
+  if (!fit) return null;
+  if (Math.abs(fit.slope) < 0.05) return null;  // need a meaningful trend (0.05°C/day = 0.35/wk)
+
+  // Baseline = mean of prior 14 days (excluding the recent 7).
+  const priorWindow = series.slice(-21, -7);
+  if (priorWindow.length < 7) return null;
+  const baseline = priorWindow.reduce((s, p) => s + p.value, 0) / priorWindow.length;
+  const currentValue = recent.at(-1)!.value;
+  const currentDelta = currentValue - baseline;
+  const dirMatch = last3MatchDirection(recent.map((p) => p.value), fit.slope);
+
+  // Determine projected band crossing.
+  let threshold: number, projectedBand: string;
+  if (currentDelta < 0.2 && fit.slope > 0) {
+    threshold = baseline + 0.2; projectedBand = 'watch';
+  } else if (currentDelta < 0.4 && fit.slope > 0) {
+    threshold = baseline + 0.4; projectedBand = 'illness-risk';
+  } else if (currentDelta > 0 && fit.slope < 0) {
+    threshold = currentDelta >= 0.4 ? baseline + 0.4 : baseline + 0.2;
+    projectedBand = currentDelta >= 0.4 ? 'watch' : 'back to baseline';
+  } else {
+    return null;
+  }
+  const days = daysUntilCross(currentValue, threshold, fit.slope);
+  if (days == null) return null;
+
+  const direction = fit.slope > 0 ? 'rising' : 'falling';
+  const ratePerDay = Math.abs(fit.slope).toFixed(2);
+  const sign = currentDelta >= 0 ? '+' : '';
+  const message = `Wrist temp ${direction} ${ratePerDay}°C/day (currently ${sign}${currentDelta.toFixed(2)}°C vs baseline) · ${projectedBand === 'back to baseline' ? 'returns to baseline' : `crosses into ${projectedBand} band`} in ~${days} day${days === 1 ? '' : 's'} if trajectory holds.`;
+  return {
+    pillar: 'wrist_temp',
+    daysUntilBandChange: days,
+    projectedBand,
+    message,
+    confidence: classifyConfidence(fit, dirMatch),
+  };
 }
 
 /**

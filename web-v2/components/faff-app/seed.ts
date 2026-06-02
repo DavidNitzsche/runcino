@@ -1961,17 +1961,16 @@ export async function buildSeed(): Promise<FaffSeed> {
     (async () => { try { const { computeQualityPredictors } = await import('@/lib/coach/quality-predictors');
       return await computeQualityPredictors(userId); } catch { return null; } })(),
   ]);
-  // Attach to healthSnapshot as untyped sidecar fields · design agent
-  // reads seed.health.<field> per the v2 brief. Avoid touching the
-  // strict HealthSnapshot type contract.
-  const sidecar = healthSnapshot as unknown as Record<string, unknown>;
-  sidecar.aerobicFitness = aerobicFitness;
-  sidecar.heatAcclim = heatAcclim;
-  sidecar.recoveryPhase = recoveryPhase;
-  sidecar.blockComparison = blockComparison;
-  sidecar.dowPatterns = dowPatterns;
-  sidecar.cyclePerformance = cyclePerformance;
-  sidecar.qualityPredictors = qualityPredictors;
+  // 2026-06-01 · Power moves sidecar fields · HealthSnapshot carries
+  // proper optional types for all 7 (components/faff-app/types.ts).
+  // Design agent reads seed.health.<field> per the v2 brief.
+  healthSnapshot.aerobicFitness = aerobicFitness;
+  healthSnapshot.heatAcclim = heatAcclim;
+  healthSnapshot.recoveryPhase = recoveryPhase;
+  healthSnapshot.blockComparison = blockComparison;
+  healthSnapshot.dowPatterns = dowPatterns;
+  healthSnapshot.cyclePerformance = cyclePerformance;
+  healthSnapshot.qualityPredictors = qualityPredictors;
   const prs = adaptPRs(races, log);
   const racesList = adaptRaces(races);
   const activity = adaptActivity(log);

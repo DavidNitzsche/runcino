@@ -400,10 +400,105 @@ export type ReadinessBriefSeed = {
 };
 export type RaceLite = { slug: string; name: string; meta: string; tag: 'GOAL'|'TUNE-UP'|'PAST'; days: string };
 
+// 2026-06-01 · Power moves sidecar fields. All optional · null when
+// not enough signal exists for the helper to compute. Design agent
+// reads these straight off seed.health.<field>. See
+// designs/briefs/health-page-power-moves-v2.md for the contract.
 export type HealthSnapshot = {
   readiness: Readiness;
   body: HealthMetric[];
   form: HealthMetric[];
+  // Power moves Wave 2 · aerobic engine trajectory across the block.
+  aerobicFitness?: {
+    currentDriftPct: number;
+    blockStartDriftPct: number;
+    weeksTracked: number;
+    runsCount: number;
+    direction: 'improving' | 'flat' | 'declining';
+    summary: string;
+    series: { date: string; driftPct: number }[];
+  } | null;
+  // Power moves Wave 2 · heat acclimatization.
+  heatAcclim?: {
+    daysInWindow: number;
+    avgTempF: number;
+    rhrTrend: 'rising' | 'plateauing' | 'falling';
+    expectedHRPenaltyBpm: number;
+    daysToFullAcclim: number;
+    message: string;
+  } | null;
+  // Power moves #15 · post-session recovery tracker.
+  recoveryPhase?: {
+    anchor: {
+      runId: string;
+      date: string;
+      type: 'race' | 'long' | 'intervals' | 'tempo' | 'threshold';
+      label: string;
+      distanceMi: number;
+      movingTimeS: number;
+    };
+    daysSince: number;
+    expectedDaysToRecover: number;
+    percentRecovered: number;
+    pillars: Array<{
+      key: 'hrv' | 'rhr' | 'sleep' | 'hr_recovery' | 'wrist_temp' | 'resp_rate';
+      label: string;
+      day0Value: number | null;
+      currentValue: number | null;
+      baselineValue: number | null;
+      pctRecovered: number;
+    }>;
+    muscleSignals: {
+      cadenceSpm: number | null;
+      cadenceDelta: number | null;
+      gctMs: number | null;
+      gctDelta: number | null;
+      strideM: number | null;
+      strideDelta: number | null;
+      runPowerW: number | null;
+      runPowerDelta: number | null;
+      summary: string;
+    } | null;
+    nextQualityGreenLight: {
+      date: string;
+      daysOut: number;
+      reason: string;
+    };
+    message: string;
+  } | null;
+  // Power moves Wave 4 · block-over-block comparison.
+  blockComparison?: {
+    currentBlock: { label: string; weeks: number; avgSleepH: number | null; avgHrvMs: number | null; avgRhrBpm: number | null };
+    referenceBlock: { label: string; weeks: number; avgSleepH: number | null; avgHrvMs: number | null; avgRhrBpm: number | null };
+    deltas: { sleepH: number | null; hrvMs: number | null; rhrBpm: number | null };
+    message: string;
+  } | null;
+  // Power moves Wave 4 · day-of-week patterns.
+  dowPatterns?: {
+    sleep: Array<{ dow: number; label: string; avg: number | null }>;
+    hrv: Array<{ dow: number; label: string; avg: number | null }>;
+    rhr: Array<{ dow: number; label: string; avg: number | null }>;
+    insights: string[];
+  } | null;
+  // Power moves Wave 4 · cycle phase performance (female-gated).
+  cyclePerformance?: {
+    follicular: { runCount: number; avgPaceSPerMi: number | null; avgHrBpm: number | null; topQuartileRate: number };
+    ovulatory:  { runCount: number; avgPaceSPerMi: number | null; avgHrBpm: number | null; topQuartileRate: number };
+    luteal:     { runCount: number; avgPaceSPerMi: number | null; avgHrBpm: number | null; topQuartileRate: number };
+    menstrual:  { runCount: number; avgPaceSPerMi: number | null; avgHrBpm: number | null; topQuartileRate: number };
+    insights: string[];
+  } | null;
+  // Power moves Wave 4 · quality predictors.
+  qualityPredictors?: {
+    topPredictor: {
+      metric: string;
+      threshold: number;
+      unit: string;
+      correlation: number;
+      message: string;
+    };
+    allCorrelations: Array<{ metric: string; correlation: number }>;
+  } | null;
 };
 export type HealthMetric = {
   k: string;            // 'hrv', 'rhr', 'sleep', etc.
