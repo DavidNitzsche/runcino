@@ -47,6 +47,14 @@ export interface HealthState {
     awakeMin: number | null;
     deepSeries: { date: string; min: number }[];
     remSeries:  { date: string; min: number }[];
+    /** 2026-06-01 · sleep architecture regularity. Standard deviation
+     *  of (REM minutes / total sleep minutes) across the last 7 nights.
+     *  Saw et al. doctrine: stable architecture = recovered. Higher
+     *  variance = the runner's recovery cycles are unstable. Null
+     *  when fewer than 4 nights of stage data. */
+    remRatioStdev: number | null;
+    /** Plain-language verdict per the doctrine bands. */
+    architectureVerdict: 'stable' | 'mixed' | 'unstable' | null;
   };
   // Watch-list signal
   watchMode: 'steady' | 'watch-amber' | 'watch-red' | 'green';
@@ -371,6 +379,42 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
       date: r.d.toISOString ? r.d.toISOString().slice(0, 10) : String(r.d),
       min: Math.round(Number(r.value)),
     })).filter((p) => Number.isFinite(p.min) && p.min >= 0);
+  // 2026-06-01 · sleep architecture regularity (Saw et al.). Compute
+  // REM/total ratio per night, then SD of those ratios across the last
+  // 7 nights. Higher SD = more night-to-night variance = unstable
+  // architecture. < 0.04 stable · 0.04-0.07 mixed · >= 0.07 unstable.
+  const remRatioPerNight: number[] = [];
+  // Build per-date map of stage minutes so we can pair them per night.
+  const stageMap = new Map<string, { deep?: number; rem?: number; light?: number; awake?: number }>();
+  const stuff = (rows: any[], k: 'deep'|'rem'|'light'|'awake') => {
+    for (const r of (rows ?? [])) {
+      const d = r.d.toISOString ? r.d.toISOString().slice(0, 10) : String(r.d);
+      const v = Number(r.value);
+      if (!Number.isFinite(v) || v < 0) continue;
+      const cur = stageMap.get(d) ?? {};
+      cur[k] = v;
+      stageMap.set(d, cur);
+    }
+  };
+  stuff(sleepDeepRows as any[], 'deep');
+  stuff(sleepRemRows as any[], 'rem');
+  stuff(sleepLightRows as any[], 'light');
+  stuff(sleepAwakeRows as any[], 'awake');
+  for (const [, stages] of [...stageMap].sort(([a],[b]) => a < b ? -1 : 1).slice(-7)) {
+    const total = (stages.deep ?? 0) + (stages.rem ?? 0) + (stages.light ?? 0);
+    if (total > 0 && stages.rem != null) {
+      remRatioPerNight.push(stages.rem / total);
+    }
+  }
+  let remRatioStdev: number | null = null;
+  let architectureVerdict: 'stable' | 'mixed' | 'unstable' | null = null;
+  if (remRatioPerNight.length >= 4) {
+    const mean = remRatioPerNight.reduce((s, x) => s + x, 0) / remRatioPerNight.length;
+    const variance = remRatioPerNight.reduce((s, x) => s + (x - mean) ** 2, 0) / remRatioPerNight.length;
+    remRatioStdev = +Math.sqrt(variance).toFixed(3);
+    architectureVerdict = remRatioStdev < 0.04 ? 'stable'
+      : remRatioStdev < 0.07 ? 'mixed' : 'unstable';
+  }
   const sleepStagesOut = {
     deepMin:  stageAvg(sleepDeepRows  as any[]),
     remMin:   stageAvg(sleepRemRows   as any[]),
@@ -378,6 +422,8 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     awakeMin: stageAvg(sleepAwakeRows as any[]),
     deepSeries: stageSeries(sleepDeepRows as any[]),
     remSeries:  stageSeries(sleepRemRows  as any[]),
+    remRatioStdev,
+    architectureVerdict,
   };
 
   // Sleep consistency · bedtime variability. Use recorded_at as bedtime

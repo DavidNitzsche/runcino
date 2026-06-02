@@ -45,6 +45,12 @@ export interface ReadinessHistory {
     /** Coefficient of variation (CV) of the 7-day rolling, in %.
      *  Rising CV = destabilization · early functional overreach. */
     cv: number | null;
+    /** 2026-06-01 · 14-day CV series for the Health-page trend strip.
+     *  Each entry computes CV using the prior 14d of 7d-rolling values
+     *  ending on that date. Lets the runner SEE CV climbing before
+     *  HRV ms itself drops. Empty when < 21d of HRV history (need 7d
+     *  for the rolling + 14d to compute SD of those rollings). */
+    cvSeries: { date: string; pct: number }[];
   } | null;
 }
 
@@ -142,11 +148,34 @@ function computePlewsHRV(hrv: PillarPoint[]): ReadinessHistory['hrvPlews'] {
   const swc = sd != null ? 0.5 * sd : null;
   const cv = sd != null && mean != null && mean !== 0 ? (sd / mean) * 100 : null;
 
+  // 2026-06-01 · 14-day CV series. For each day in the last 14, recompute
+  // CV using THAT day's prior 14-day rolling window. Lets the runner see
+  // CV climbing before HRV ms drops (the whole point of the Plews framework).
+  const cvSeries: { date: string; pct: number }[] = [];
+  // Need >= 21 rollings to compute 14 CV values · each CV needs the prior 14
+  // rollings for SD. Start at index 14 so prior-window has 14 elements.
+  for (let i = Math.max(14, rolling.length - 14); i < rolling.length; i++) {
+    const window = rolling.slice(Math.max(0, i - 14), i);
+    if (window.length < 7) continue;
+    const wMean = window.reduce((s, v) => s + v, 0) / window.length;
+    const wSd = stddev(window);
+    if (wMean === 0) continue;
+    const wCv = (wSd / wMean) * 100;
+    // hrv array is aligned: rolling[i] corresponds to hrv[i + 6] (window
+    // started at i-6, ended at i in the original loop · so the 7d-rolling
+    // at position i in `rolling` is "as of" hrv[i + 6].date).
+    const dateIdx = i + 6;
+    if (dateIdx < hrv.length) {
+      cvSeries.push({ date: hrv[dateIdx].date, pct: round(wCv, 2) });
+    }
+  }
+
   return {
     rollingLn: rollingLn != null ? round(rollingLn, 3) : null,
     deltaLn: deltaLn != null ? round(deltaLn, 3) : null,
     swc: swc != null ? round(swc, 3) : null,
     cv: cv != null ? round(cv, 2) : null,
+    cvSeries,
   };
 }
 

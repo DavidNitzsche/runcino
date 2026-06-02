@@ -11,6 +11,7 @@ import { computeZones } from '@/lib/training/zones';
 import { baselineTempF } from '@/lib/weather/lookup';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
+import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
 
 export interface RunSplit {
   mile: number;
@@ -215,6 +216,16 @@ export interface RunDetail {
     h1_pace_sec: number;
     h2_hr: number;
     h2_pace_sec: number;
+  } | null;
+  /** 2026-06-01 · Cadence under fatigue · neuromuscular durability
+   *  signal on long, steady-state runs. H2 vs H1 cadence delta.
+   *  Research/16 §form. Null when run isn't long enough, splits
+   *  missing cadence, or pace wasn't steady. */
+  cadence_fatigue: {
+    delta_spm: number;
+    verdict: 'sustained' | 'fading' | 'breaking';
+    h1_spm: number;
+    h2_spm: number;
   } | null;
 }
 
@@ -576,6 +587,24 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
         h1_pace_sec: result.h1PaceSec,
         h2_hr: result.h2Hr,
         h2_pace_sec: result.h2PaceSec,
+      };
+    })(),
+    cadence_fatigue: (() => {
+      // Same workout-type filter as aerobic decoupling · cadence
+      // variability is by-design in intervals/tempo/race efforts.
+      const t = String(r.type ?? '').toLowerCase();
+      if (t === 'tempo' || t === 'intervals' || t === 'threshold'
+          || t === 'race' || t === 'fartlek') return null;
+      const result = computeCadenceFatigue(
+        Array.isArray(r.splits) ? r.splits : [],
+        Number(r.distanceMi) || 0,
+      );
+      if (!result) return null;
+      return {
+        delta_spm: result.deltaSpm,
+        verdict: result.verdict,
+        h1_spm: result.h1Spm,
+        h2_spm: result.h2Spm,
       };
     })(),
   };

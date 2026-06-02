@@ -416,23 +416,38 @@ export async function pullSyncOneUser(args: {
         }
         let shoeId: number | null = null;
         if (payload.gear) shoeId = await tryShoeFromGear({ userUuid, gear: payload.gear });
-        await pool.query(
+        // 2026-06-01 · counter bug fix (task #70). The INSERT below uses
+        // ON CONFLICT DO NOTHING · when a row with the same Strava id
+        // already exists, the insert silently no-ops AND the previous
+        // code would still tick out.inserted++ / shoesAttributed++ /
+        // rpeWritten++. That made the cron's "we inserted N runs" metric
+        // overcount by every silent conflict (which can happen if the
+        // sync ran twice for the same window). Now: capture rowCount and
+        // only tick when it's 1.
+        const insRes = await pool.query(
           `INSERT INTO runs (id, user_uuid, data, provenance, shoe_id, fetched_at)
            VALUES ($1::BIGINT, $2, $3::jsonb, $4::jsonb, $5, NOW())
            ON CONFLICT (id) DO NOTHING`,
           [String(act.id), userUuid, JSON.stringify(payload), JSON.stringify(provenance), shoeId],
         );
+        const reallyInserted = (insRes.rowCount ?? 0) > 0;
+        if (!reallyInserted) {
+          // Row already existed · not a real insert. Skip the counters
+          // and let the next iteration handle it as a match if the
+          // upstream branch's match query missed it.
+          continue;
+        }
         if (shoeId != null) out.shoesAttributed++;
         if (typeof payload.perceived_exertion === 'number') {
           const rpe = Math.round(payload.perceived_exertion);
           if (rpe >= 1 && rpe <= 10) {
-            await pool.query(
+            const rpeRes = await pool.query(
               `INSERT INTO post_run_rpe (user_id, user_uuid, activity_id, rpe, notes, logged_at)
                VALUES ($1, $1, $2, $3, 'auto-imported from strava', NOW())
                ON CONFLICT DO NOTHING`,
               [userUuid, String(act.id), rpe],
-            ).catch(() => {});
-            out.rpeWritten++;
+            ).catch(() => ({ rowCount: 0 } as { rowCount: number | null }));
+            if ((rpeRes.rowCount ?? 0) > 0) out.rpeWritten++;
           }
         }
         out.inserted++;

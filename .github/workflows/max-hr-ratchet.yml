@@ -1,0 +1,56 @@
+# Daily standalone max_hr ratchet · keeps users.max_hr fresh for
+# legacy raw-SQL readers regardless of whether snapshot-projections
+# is healthy.
+#
+# Doctrine: lib/training/max-hr.ts. HRmax is a 12-month physiological
+# ceiling · the canonical loader (loadEffectiveMaxHr) computes it
+# fresh every read, but some legacy paths (zone math fallbacks, race
+# header inline SELECT) still read users.max_hr directly. This cron
+# ratchets that stored value up to the observed ceiling each night so
+# those readers see a sensible recent number.
+#
+# Idempotent · runs after snapshot-projections (which also calls
+# ratchetUsersMaxHr inline). If snapshot-projections is healthy, this
+# is a no-op. If it isn't, this is the safety net.
+#
+# Schedule: 08:30 UTC daily = 01:30 PT.
+#
+# Manual trigger: Actions tab > "Ratchet max HR" > Run workflow.
+
+name: Ratchet max HR
+
+on:
+  schedule:
+    - cron: '30 8 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ratchet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Hit /api/cron/max-hr-ratchet
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 120 \
+            https://www.faff.run/api/cron/max-hr-ratchet)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Ratchet failed with HTTP $status"
+            exit 1
+          fi

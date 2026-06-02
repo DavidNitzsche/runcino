@@ -75,8 +75,12 @@ const SPECS: Record<string, FieldSpec> = {
     transform: (v) => v,
   },
   sex: {
-    label: 'Sex', why: 'Heat + recovery adjustments differ by sex',
-    kind: 'select', options: ['Male', 'Female', 'Other'],
+    label: 'Sex',
+    // Drives heat + recovery adjustments AND the menstrual cycle phase
+    // tile gate on the Health page. Male/Female only · the engine maps
+    // these to biological-sex doctrine paths (Research/13 §sex-specific).
+    why: 'Heat + recovery adjustments + cycle-phase tile',
+    kind: 'select', options: ['Male', 'Female'],
     validate: () => null,
     transform: (v) => v,
   },

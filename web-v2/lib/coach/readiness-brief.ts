@@ -133,6 +133,8 @@ export interface ReadinessBrief {
     pct: number;
     band: 'stable' | 'watch' | 'destabilizing';
     swcMs: number | null;
+    /** 2026-06-01 · 14-day CV trend strip · empty when < 21d of HRV. */
+    series: { date: string; pct: number }[];
   } | null;
   /** "Watching" callouts for tomorrow · the brief points the runner at
    *  what to verify if it persists. */
@@ -293,6 +295,7 @@ export async function loadReadinessBrief(
           ? 'stable'
           : history.hrvPlews.cv < 7 ? 'watch' : 'destabilizing') as 'stable' | 'watch' | 'destabilizing',
         swcMs: history.hrvPlews.swc,
+        series: history.hrvPlews.cvSeries ?? [],
       }
     : null;
 

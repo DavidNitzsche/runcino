@@ -957,7 +957,12 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
 function adaptHealth(
   health: Health | null,
   form: Form | null,
-  hrvCv?: { pct: number; band: 'stable' | 'watch' | 'destabilizing'; swcMs: number | null } | null,
+  hrvCv?: {
+    pct: number;
+    band: 'stable' | 'watch' | 'destabilizing';
+    swcMs: number | null;
+    series: { date: string; pct: number }[];
+  } | null,
 ): HealthSnapshot {
   const series = (arr: Array<{ date: string } & Record<string, unknown>> | undefined, field: string): number[] => {
     if (!arr || arr.length === 0) return [];
@@ -1053,7 +1058,11 @@ function adaptHealth(
   // tile so the Health page can render alongside HRV/RHR.
   if (hrvCv?.pct != null) {
     const cvStatus: 'good' | 'warn' = hrvCv.band === 'destabilizing' ? 'warn' : 'good';
-    body.push(mk('hrv_cv', 'HRV CV', '%', hrvCv.pct, undefined, [0, 10], [], cvStatus, 1));
+    // 2026-06-01 · pass the 14d CV series for the trend strip · empty
+    // until 21d of HRV history exists, in which case the tile renders
+    // bare current-vs-band.
+    const cvSeriesPct = (hrvCv.series ?? []).map((p) => p.pct);
+    body.push(mk('hrv_cv', 'HRV CV', '%', hrvCv.pct, undefined, [0, 10], cvSeriesPct, cvStatus, 1));
   }
   // 2026-06-01 · Max HR tile · 30-day true max (informs zone math + HRR).
   // Health-state computes MAX over 30d so a single low-effort walk doesn't

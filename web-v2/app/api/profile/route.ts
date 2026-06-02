@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { setBiologicalSex, normalizeSex } from '@/lib/coach/biological-sex';
 // 2026-05-28 LLM rip (Cardinal Rule #1, PROJECT.md):
 // generateBriefing deleted. The fact-reciter is deterministic +
 // cheap, so there's no warm-fan-out to kick off — the next surface
@@ -96,7 +97,29 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No allowed fields in body' }, { status: 400 });
   }
 
+  // 2026-06-01 · biological_sex doctrine. When sex/gender is part of
+  // the patch, route through setBiologicalSex() so BOTH users.sex (with
+  // its M/F constraint) AND profile.sex (freetext) are kept in sync.
+  // The direct UPDATE below only touches profile · without this branch
+  // iPhone agent reading users.sex would see a stale value.
+  if ('sex' in updates) {
+    const norm = normalizeSex(updates.sex);
+    await setBiologicalSex(userId, norm);
+    // Strip from `updates` so the profile UPDATE below doesn't double-write.
+    delete updates.sex;
+  }
   const decorated = decorateUpdates(updates);
+  if (Object.keys(decorated).length === 0) {
+    // Only sex was patched · we wrote it via setBiologicalSex. Skip the
+    // empty UPDATE and proceed to the coach_intents + cache-bust block.
+    await pool.query(
+      `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+       VALUES ($1, $1, 'profile_field_added', 'sex', $2)`,
+      [userId, String(body.sex ?? body.gender ?? '')],
+    );
+    await bustBriefingCacheForEvent(userId, 'profile_edit');
+    return NextResponse.json({ ok: true, updated: { sex: body.sex ?? body.gender } });
+  }
   // Build dynamic UPDATE
   const cols = Object.keys(decorated);
   const setClauses = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
