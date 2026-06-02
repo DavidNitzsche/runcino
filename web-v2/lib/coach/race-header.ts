@@ -28,6 +28,7 @@ import {
   formatRaceTime,
 } from '@/lib/training/vdot';
 import { loadNearestSnapshot } from '@/lib/training/projection-snapshots';
+import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import type { ReadinessBreakdown } from './readiness';
 
@@ -281,11 +282,11 @@ async function loadCurrentVdot(userId: string, today: string, asOfDate?: string)
     [userId, qualityCutoff, asOf]
   ).catch(() => ({ rows: [] }))).rows;
 
-  const userMaxHr = (await pool.query(
-    `SELECT COALESCE(max_hr_override, max_hr) AS m FROM users WHERE id = $1`,
-    [userId]
-  ).catch(() => ({ rows: [] }))).rows[0]?.m;
-  const maxHrValue = userMaxHr != null ? Number(userMaxHr) : null;
+  // 2026-06-01 · canonical max HR via loadEffectiveMaxHr · resolves
+  // user_override → 12-month observed (health_samples + runs) → manual
+  // stored → null. Doctrine doc: lib/training/max-hr.ts.
+  const effMaxHr = await loadEffectiveMaxHr(userId, asOf);
+  const maxHrValue = effMaxHr.bpm;
 
   const runCandidates = recentRuns.map((r: { id: string; date: string; workout_type: string | null; distance_mi: string | null; finish_seconds: string | null; avg_hr: string | null }) => ({
     id: String(r.id),

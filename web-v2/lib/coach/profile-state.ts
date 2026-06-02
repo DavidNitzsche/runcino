@@ -6,6 +6,7 @@ import { pool } from '@/lib/db/pool';
 import { loadSettings, type UserSettings } from '@/lib/coach/settings';
 import { computeZones, estimateLTHR, estimateMaxHRFromLTHR, type ZoneTable } from '@/lib/training/zones';
 import { bestRecentVdot, parseRaceTime } from '@/lib/training/vdot';
+import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadNextARace } from './race-lookup';
 import { loadActivePlan } from '@/lib/plan/lookup';
 
@@ -245,13 +246,12 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     [userId, qualityCutoff, today]
   ).catch(() => ({ rows: [] }))).rows;
 
-  // Max HR for the run-gate (HR ≥ 80% MaxHR). We read users.max_hr_override
-  // first, then users.max_hr (auto-ratcheted from Apple Health), then null.
-  const userMaxHr = (await pool.query(
-    `SELECT COALESCE(max_hr_override, max_hr) AS m FROM users WHERE id = $1`,
-    [userId]
-  ).catch(() => ({ rows: [] }))).rows[0]?.m;
-  const maxHrValue = userMaxHr != null ? Number(userMaxHr) : null;
+  // Max HR for the run-gate (HR ≥ 80% MaxHR).
+  // 2026-06-01 · routes through canonical loadEffectiveMaxHr · resolves
+  // user_override → 12-month observed (health_samples + runs) → manual
+  // stored → null. See lib/training/max-hr.ts for the doctrine.
+  const effMaxHr = await loadEffectiveMaxHr(userId, today);
+  const maxHrValue = effMaxHr.bpm;
 
   function distFromLabel(label: string | null | undefined): number | null {
     const l = String(label ?? '').toLowerCase();
@@ -339,13 +339,22 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     }
   }
 
-  // True MaxHR: prefer user-entered, then derived from LTHR (typically LTHR + ~22 bpm),
-  // then observed (existing logic), then null.
-  const max_hr: number | null = p?.hrmax_observed ?? (lthr != null ? estimateMaxHRFromLTHR(lthr) : (mhrRow?.m ? Math.round(Number(mhrRow.m)) : (p?.hrmax ?? null)));
+  // True MaxHR: prefer user-entered, then canonical observation
+  // (12-month max via loadEffectiveMaxHr), then derived from LTHR
+  // (LTHR + ~22 bpm), then any stored fallback, then null.
+  // 2026-06-01 · the old `mhrRow` was an all-time MAX from sample_type='hr'
+  // (per-second readings, no time bound) · noisy + ignored race peaks.
+  // Now anchored on the canonical helper.
+  const max_hr: number | null =
+    p?.hrmax_observed
+    ?? effMaxHr.bpm
+    ?? (lthr != null ? estimateMaxHRFromLTHR(lthr) : null)
+    ?? (p?.hrmax ?? null);
   const max_hr_source: ProfileState['physiology']['max_hr_source'] =
     p?.hrmax_observed ? 'manual' :
+    effMaxHr.bpm != null && effMaxHr.source === 'observed_12mo' ? 'observed' :
+    effMaxHr.bpm != null && effMaxHr.source === 'user_override' ? 'manual' :
     lthr != null ? 'lthr-derived' :
-    mhrRow?.m ? 'observed' :
     p?.hrmax ? 'formula' : null;
 
   const zones = computeZones({ lthr, maxHr: max_hr });

@@ -24,6 +24,7 @@ import {
   bestRecentVdot, predictRaceTime, parseRaceTime,
 } from '@/lib/training/vdot';
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
+import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
 
 export const maxDuration = 60;
 
@@ -138,11 +139,15 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
     [userUuid, qualityCutoff, today],
   ).catch(() => ({ rows: [] }))).rows;
 
-  const userMaxHr = (await pool.query(
-    `SELECT COALESCE(max_hr_override, max_hr) AS m FROM users WHERE id = $1`,
-    [userUuid],
-  ).catch(() => ({ rows: [] }))).rows[0]?.m;
-  const maxHrValue = userMaxHr != null ? Number(userMaxHr) : null;
+  // 2026-06-01 · canonical max HR · 12-month observed ceiling beats
+  // any stale users.max_hr field. While we're at it, ratchet the
+  // stored users.max_hr to the observed value so legacy raw-SQL
+  // readers see the updated number too.
+  const effMaxHr = await loadEffectiveMaxHr(userUuid, today);
+  if (effMaxHr.source === 'observed_12mo') {
+    await ratchetUsersMaxHr(userUuid, today).catch(() => null);
+  }
+  const maxHrValue = effMaxHr.bpm;
 
   const runCandidates = recentRuns.map((r) => ({
     id: String(r.id),

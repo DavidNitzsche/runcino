@@ -4,6 +4,7 @@
  * for the HEALTH surface. Reads from health_samples.
  */
 import { pool } from '@/lib/db/pool';
+import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 
 export interface HealthState {
   today: string;
@@ -176,26 +177,11 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
-    // Max HR · TRUE max over the last 365 days (informs zone math + HRR).
-    // 30d was too tight: if the runner hasn't max'd out recently the
-    // ceiling reads too low. Joel Friel doctrine: HRmax = highest verified
-    // value from a hard effort in the last 12 months (physiological max
-    // doesn't drift much year-over-year for trained runners).
-    // ALSO pull from runs.data.maxHr · race + interval efforts often
-    // produce higher peaks than HealthKit's daily summary.
-    pool.query<{ value: number | string }>(
-      `SELECT GREATEST(
-         (SELECT COALESCE(MAX(value::numeric), 0) FROM health_samples
-           WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'max_hr'
-             AND sample_date >= ($2::date - interval '365 days')),
-         (SELECT COALESCE(MAX((data->>'maxHr')::numeric), 0) FROM runs
-           WHERE user_uuid = $1::uuid AND NOT (data ? 'mergedIntoId')
-             AND data->>'maxHr' IS NOT NULL
-             AND (data->>'maxHr')::numeric BETWEEN 100 AND 230
-             AND (data->>'date')::date >= ($2::date - interval '365 days'))
-       ) AS value`,
-      [userId, today]
-    ).then((r) => r.rows[0]),
+    // Max HR · canonical via loadEffectiveMaxHr (user_override → 12-month
+    // observed → manual stored → null). Doctrine doc: lib/training/max-hr.ts.
+    loadEffectiveMaxHr(userId, today).then((eff) => ({
+      value: eff.bpm ?? 0,
+    })),
     // Sleep bedtime times · for consistency / variability calc.
     // sleep_hours sample_date IS the night-of date · use recorded_at
     // (the timestamp the watch wrote it) as proxy for bedtime.
