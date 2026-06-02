@@ -1029,6 +1029,60 @@ final class WorkoutEngine: ObservableObject {
         // HK-derived active energy total · piped through so resolveCalories
         // tier 1 picks the real number over the estimator (brief 2026-06-01).
         let kcal = tracker?.activeEnergyKcal ?? 0
+
+        // Re-derive top-level avgHr + avgCadence from WORK-PHASE results
+        // only, weighted by each phase's actualDurationSec. The tracker's
+        // lifetime accumulators (`tracker.avgHr` / `tracker.avgCadence`)
+        // pool every per-second sample across recovery, warmup, and
+        // cooldown — for an interval session that drags a 188 spm
+        // threshold pull down toward a 165 spm jog and produces a
+        // meaningless middle number on the iPhone summary card. The same
+        // bug afflicts avgHr (recovery HR still elevated from a hard rep,
+        // not the work HR).
+        //
+        // Per-phase aggregates inside `WatchCompletionPhase.avgHr` /
+        // `.avgCadence` are already isolated per phase (engine resets the
+        // counters on each advance), so we can roll them up cleanly.
+        // Weighting by actualDurationSec is mathematically equivalent to
+        // re-summing the per-second samples, since each phase aggregate
+        // is itself sample-count-weighted at ~1 Hz.
+        //
+        // Edge cases:
+        //   · no work phases recorded (e.g. user ended in warmup) →
+        //     fall back to tracker's pooled value so the field isn't nil
+        //     when SOMETHING was sampled
+        //   · all work-phase avgHr/avgCadence are nil (no HR/cadence
+        //     samples landed) → same fallback
+        //   · single-work-phase steady run → identical to lifetime when
+        //     there is no warmup/cooldown; otherwise correctly excludes
+        //     the framing phases
+        //
+        // 2026-06-02: doctrine ships post Tier 2 RPE rescind audit. See
+        // designs/briefs/watch-work-only-avg-hr-cadence-2026-06-02.md.
+        let workPhases = results.filter { $0.type == "work" }
+        let derivedAvgHr: Int? = {
+            let weighted = workPhases.compactMap { p -> (Int, Int)? in
+                guard let hr = p.avgHr, p.actualDurationSec > 0 else { return nil }
+                return (hr, p.actualDurationSec)
+            }
+            guard !weighted.isEmpty else { return tracker?.avgHr }
+            let totalSec = weighted.reduce(0) { $0 + $1.1 }
+            guard totalSec > 0 else { return tracker?.avgHr }
+            let totalHrSec = weighted.reduce(0) { $0 + ($1.0 * $1.1) }
+            return Int((Double(totalHrSec) / Double(totalSec)).rounded())
+        }()
+        let derivedAvgCadence: Int? = {
+            let weighted = workPhases.compactMap { p -> (Int, Int)? in
+                guard let c = p.avgCadence, p.actualDurationSec > 0 else { return nil }
+                return (c, p.actualDurationSec)
+            }
+            guard !weighted.isEmpty else { return tracker?.avgCadence }
+            let totalSec = weighted.reduce(0) { $0 + $1.1 }
+            guard totalSec > 0 else { return tracker?.avgCadence }
+            let totalCadSec = weighted.reduce(0) { $0 + ($1.0 * $1.1) }
+            return Int((Double(totalCadSec) / Double(totalSec)).rounded())
+        }()
+
         return WatchCompletion(
             workoutId: workout.workoutId,
             startedAt: iso.string(from: workoutStart),
@@ -1036,9 +1090,9 @@ final class WorkoutEngine: ObservableObject {
             status: status,
             totalDistanceMi: dist > 0 ? (dist * 100).rounded() / 100 : nil,
             totalDurationSec: totalElapsedSec,
-            avgHr: tracker?.avgHr,
+            avgHr: derivedAvgHr,
             maxHr: maxHr > 0 ? maxHr : nil,
-            avgCadence: tracker?.avgCadence,
+            avgCadence: derivedAvgCadence,
             kcal: kcal > 0 ? kcal : nil,
             phases: results
         )
