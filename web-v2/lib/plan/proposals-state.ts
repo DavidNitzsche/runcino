@@ -76,12 +76,20 @@ export async function loadPlanProposals(userId: string): Promise<PlanProposal[]>
     created_at: Date | string;
     resolved_at: Date | string | null;
   }>(
+    // 2026-06-02 · auto_applied banners auto-clear after 24h per the
+    // PlanProposalCard doctrine note ("stays up for 24h then hides").
+    // Pending proposals stay 14d so the runner has time to accept /
+    // dismiss; auto_applied are informational records that should
+    // fade once read. The DB row stays · only the surface stops
+    // rendering it. Audit + diff-page deep links still work.
     `SELECT id, plan_id, new_plan_id, proposal_kind, status, source,
             reasons, created_at, resolved_at
        FROM plan_proposals
       WHERE user_uuid = $1
-        AND status IN ('pending', 'auto_applied')
-        AND created_at >= NOW() - interval '14 days'
+        AND (
+          (status = 'pending'      AND created_at >= NOW() - interval '14 days') OR
+          (status = 'auto_applied' AND created_at >= NOW() - interval '24 hours')
+        )
       ORDER BY status ASC, created_at DESC
       LIMIT 20`,
     [userId],
