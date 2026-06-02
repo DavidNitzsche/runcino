@@ -1,5 +1,21 @@
 # Plan Engine · Mid-Block Runner Doctrine
 
+**Status (2026-06-03 night · v3):** 11 rules + post-race graduate cron + Rules 12 + 13 (plan modes) + **Rule 14 (strength training doctrine)** SHIPPED.
+
+**Rule 14 · strength training doctrine.** The previous recommender had the day-placement rule inverted (forbade quality/long days, only allowed easy/recovery/rest) — that's the OPPOSITE of Research/07 + Pfitz Appx A + Daniels. The fix: pair hard with hard. Heavy strength goes on quality run days PM (≥4-6h after the AM run); easy days stay truly easy; never on long-run day or day-before-hard.
+
+Per-phase frequency curve:
+- Build (QUALITY phase): 2/wk · heavy
+- Peak (RACE-SPECIFIC): 1-2/wk · maintenance (cut sets, same loads)
+- Taper: 1/wk · maintenance · skip last 7-10 days
+- Race week: 0
+- Maintenance mode (off-season): 2-3/wk · heavier loads OK
+- Recovery mode (post-race): 0 week 1 · mobility-only week 2+
+
+Recommender returns `picks` array with `intensity` (heavy/maintenance/mobility) and `timing` (pm/anytime) tags. PM timing required when paired same-day with quality run. Mode-aware demotion: peak/taper/maintenance demote heavy→maintenance; recovery mode demotes everything→mobility.
+
+Citations: Blagrove et al. (Sports Med 2018, n=469, 5-15% RE gain), Beattie et al. (Sports Med 2017), Llanos-Lagos et al. (2024), Pfitzinger Advanced Marathoning Appx A, Hudson Run Faster Ch.8, Research/07-strength-programming.md.
+
 **Status (2026-06-03 late evening · v2):** 11 rules + post-race graduate cron + **Rules 12 + 13 (plan modes)** SHIPPED.
 
 **Rule 12 · plan modes.** Three plan modes drive the generator's shape: `race-prep` (the existing 12-18 week periodized build · default), `maintenance` (looping 4-week template at 70-80% of recent peak, 1 quality/wk, no intervals · for when no race is within build window), and `recovery` (1-2 weeks light easy running after a race finishes · mandatory). `pickPlanMode()` decides based on temporal context: distance from last race finish + distance to next race.

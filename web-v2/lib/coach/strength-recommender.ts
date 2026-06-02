@@ -1,29 +1,47 @@
 /**
  * lib/coach/strength-recommender.ts · per-runner strength-day picker.
  *
- * Replaces the frontend's pickStrengthDays() heuristic (which only
- * looked at week shape · no per-user signal). This file owns the
- * decision: which 0-2 days this week get a "+ STRENGTH" annotation,
- * what's the runner's habit state, and (when dormant) what coach
- * intent to emit.
+ * Owns the decision: which 0-2 days this week get a "+ STRENGTH"
+ * annotation, what intensity (heavy/maintenance/mobility), what's the
+ * runner's habit state, and (when dormant) what coach intent to emit.
  *
- * Generic across all users · queries by userUuid + planId, no
- * hardcoded runner identity, no chat fallback.
+ * Generic across all users.
  *
- * Doctrine: Research/07-strength-programming.md
- *   1. Default 2 sessions/wk for distance runners in base/build
- *   2. Easy or recovery days only · never quality, never long
- *   3. Never day-BEFORE quality or long
- *   4. Keep ≥1 pure rest day per week
- *   5. Race week → 0 strength · taper week → ≤1 maintenance
- *   6. ACWR >1.5 → drop to 1 strength/wk on a recovery day
+ * 2026-06-03 REWRITE · Rule 14 · doctrine alignment.
+ * The previous version forbade quality/long days and ONLY allowed
+ * easy/recovery/rest. That's the OPPOSITE of Research/07 + Pfitz +
+ * Daniels: pair hard with hard, keep easy days truly easy.
+ *
+ * Correct doctrine (Research/07-strength-programming.md):
+ *   1. Heavy strength on hard-run days (PM, ≥4-6h after AM quality)
+ *      · "Hard day hard, easy day easy" preserves recovery
+ *   2. Maintenance/light only on recovery days
+ *   3. NEVER day-BEFORE a quality or long run (legs not fresh)
+ *   4. NEVER on long-run day or day after long (CNS depletion)
+ *   5. Keep ≥1 pure rest day per week
+ *   6. Race week → 0 · last heavy 7-10 days before race
+ *   7. Per-phase frequency curve:
+ *        build (QUALITY phase): 2/wk · heavy
+ *        peak  (RACE-SPECIFIC):  1-2/wk · maintenance (cut sets)
+ *        taper:                  1/wk · maintenance · 0 in last 7d
+ *        race week:              0
+ *        maintenance mode:       2-3/wk · heavier loads OK
+ *        recovery mode:          0 (week 1) · mobility only (week 2+)
+ *   8. ACWR > 1.5 OR readiness streak → drop to 1 maintenance
+ *
+ * Citations:
+ *   · Research/07-strength-programming.md (canonical)
+ *   · Blagrove, Howatson, Hayes (Sports Med 2018) · 5-15% RE gain
+ *   · Beattie et al. (Sports Med 2017) · max + explosive lifting
+ *   · Pfitzinger Advanced Marathoning Appx A · hard-day pairing
+ *   · Hudson Run Faster Ch.8 · phase-specific strength morphing
  *
  * Doctrine NOT enforced here (intentional follow-ups):
- *   · Per-phase set/rep prescriptions (Research/07 §4) · the recommender
- *     only picks DAYS, not exercises. Runner picks the session.
+ *   · Per-phase set/rep prescriptions (Research/07 §4) · runner picks
+ *     the exercises; recommender picks DAY + INTENSITY tag.
  *   · Plyometric contact-count progression (Research/07 §6) · same.
  *
- * Brief: designs/briefs/strength-recommender-backend-brief.md
+ * Brief: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 14
  */
 
 import { pool } from '@/lib/db/pool';
@@ -35,11 +53,37 @@ export interface StrengthCoachIntent {
   body: string;
 }
 
+/** 2026-06-03 · Rule 14 · per-pick intensity tag.
+ *   heavy       · max-strength lifts (3-5 reps @ 85%+ 1RM) · build phase
+ *                 same-day-as-quality only · "hard with hard"
+ *   maintenance · same exercises, reduced sets · peak phase + recovery days
+ *   mobility    · bodyweight + foam roll only · taper week, post-race recovery
+ *  Cite: Research/07 §4 (set/rep prescriptions) + Hudson Run Faster Ch.8. */
+export type StrengthIntensity = 'heavy' | 'maintenance' | 'mobility';
+
+/** 2026-06-03 · Rule 14 · timing relative to the day's run.
+ *   pm        · do AFTER the day's run (≥4-6h gap). Required when paired
+ *               with a quality run on the same day. Cite: Research/07 §3.
+ *   anytime   · flex placement (easy/recovery day · no AM run hard stress). */
+export type StrengthTiming = 'pm' | 'anytime';
+
+export interface StrengthPick {
+  date: string;
+  intensity: StrengthIntensity;
+  timing: StrengthTiming;
+  /** True when paired same-day with a quality/long run (hard-with-hard). */
+  pairedWithRun: boolean;
+}
+
 export interface StrengthRecommendation {
   /** ISO YYYY-MM-DD dates for the target Mon-Sun week. 0-2 entries.
    *  Empty when: race week within 7d, runner has active injury we know
-   *  about, plan loaded but week is all rest with no good slot. */
+   *  about, plan loaded but week is all rest with no good slot.
+   *  Kept for back-compat · prefer `picks` for new consumers (carries
+   *  intensity + timing tags). */
   recommendedDays: string[];
+  /** 2026-06-03 · Rule 14 · enriched picks with intensity + timing. */
+  picks: StrengthPick[];
   /** Why these days · one sentence, plain English. */
   reason: string;
   /** Status of the runner's logged strength habit. Derived from
@@ -106,6 +150,7 @@ export async function recommendStrengthDays(
   if (raceContext.kind === 'race_week') {
     return {
       recommendedDays: [],
+      picks: [],
       reason: 'Race week · Zero strength. Save the legs.',
       habit, coachIntent,
     };
@@ -120,6 +165,7 @@ export async function recommendStrengthDays(
   if (readinessGate.suppressAll) {
     return {
       recommendedDays: [],
+      picks: [],
       reason: readinessGate.reason,
       habit, coachIntent,
       _readinessGate: { suppressed: true, capped: false, reason: readinessGate.reason },
@@ -132,16 +178,18 @@ export async function recommendStrengthDays(
   if (candidates.length === 0) {
     return {
       recommendedDays: [],
+      picks: [],
       reason: weekDays.length === 0
         ? 'Plan not loaded for this week yet.'
-        : 'No acceptable slot this week (every easy day is adjacent to a quality or long run).',
+        : 'No acceptable slot this week (every viable day is a long run or adjacent to one).',
       habit, coachIntent,
     };
   }
 
-  // 5. Decide HOW MANY to recommend
+  // 5. Decide HOW MANY to recommend (per-phase frequency curve · Rule 14).
+  const phaseContext = await loadPhaseContext(userUuid, weekStartISO);
   const maxFromRunner = prefs.daysPerWeek;
-  const maxFromPhase = raceContext.kind === 'taper_week' ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
+  const maxFromPhase = phaseFrequencyCap(phaseContext, raceContext);
   const maxFromLoad = (loadContext.acwr != null && loadContext.acwr > ACWR_HIGH_SPIKE_THRESHOLD) ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
   // Readiness streak (without full pull-back) drops to 1 maintenance ·
   // Research/07 same doctrine as ACWR-spike rule. Maintenance is fine
@@ -149,10 +197,14 @@ export async function recommendStrengthDays(
   const maxFromReadiness = readinessGate.capAtOne ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
   const target = Math.min(maxFromRunner, maxFromPhase, maxFromLoad, maxFromReadiness, candidates.length);
 
-  // 6. Pick the best `target` candidates. Stable selection: rank by
-  //    isolation score (distance from nearest quality/long) so the runner
-  //    gets the most-rested-around days first.
-  candidates.sort((a, b) => b.isolationScore - a.isolationScore);
+  // 5b. Mode-aware intensity demotion · per-phase frequency cap doesn't
+  //     touch intensity tags. Demote heavy → maintenance when phase
+  //     calls for it (peak / taper / maintenance mode / recovery mode).
+  const demoteHeavy = shouldDemoteHeavy(phaseContext, raceContext);
+
+  // 6. Pick the best `target` candidates. Sort by preference score
+  //    (quality days first per "hard with hard" doctrine).
+  candidates.sort((a, b) => b.preferenceScore - a.preferenceScore);
 
   // Ensure we don't strand the runner with zero pure rest days. Find
   // the candidate that would leave at least 1 unselected rest day after
@@ -178,14 +230,88 @@ export async function recommendStrengthDays(
   // Sort the final picks chronologically for stable display.
   picked.sort();
 
+  // Build enriched picks with intensity + timing (Rule 14).
+  const picks: StrengthPick[] = picked.map((date) => {
+    const cand = candidates.find((c) => c.date === date)!;
+    let intensity = cand.intensity;
+    if (demoteHeavy && intensity === 'heavy') intensity = 'maintenance';
+    if (phaseContext.mode === 'recovery') intensity = 'mobility';
+    return {
+      date,
+      intensity,
+      timing: cand.timing,
+      pairedWithRun: cand.pairedWithRun,
+    };
+  });
+
   return {
     recommendedDays: picked,
-    reason: buildReason(picked, weekDays, raceContext, loadContext, readinessGate),
+    picks,
+    reason: buildReason(picked, weekDays, raceContext, loadContext, readinessGate, phaseContext),
     habit, coachIntent,
     _readinessGate: readinessGate.capAtOne
       ? { suppressed: false, capped: true, reason: readinessGate.reason }
       : { suppressed: false, capped: false, reason: '' },
   };
+}
+
+// ─── Phase context · Rule 14 ────────────────────────────────────────────
+
+interface PhaseContext {
+  /** Plan mode from training_plans.mode · 'race-prep' / 'maintenance' / 'recovery'. */
+  mode: 'race-prep' | 'maintenance' | 'recovery' | 'unknown';
+  /** Phase label from plan_phases · 'BASE' / 'QUALITY' / 'RACE-SPECIFIC' /
+   *  'TAPER' / 'MAINTENANCE' / 'RECOVERY'. */
+  phaseLabel: string;
+}
+
+async function loadPhaseContext(userUuid: string, weekStartISO: string): Promise<PhaseContext> {
+  const r = (await pool.query<{ mode: string | null; phase_label: string | null }>(
+    `SELECT tp.mode,
+            (SELECT ph.label FROM plan_phases ph
+              JOIN plan_weeks w ON w.phase_id = ph.id
+             WHERE w.plan_id = tp.id
+               AND w.week_start_iso::date <= $2::date
+               AND (w.week_start_iso::date + interval '6 days') >= $2::date
+             LIMIT 1) AS phase_label
+       FROM training_plans tp
+      WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+      ORDER BY tp.authored_iso DESC LIMIT 1`,
+    [userUuid, weekStartISO],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const mode = (r?.mode ?? 'race-prep') as PhaseContext['mode'];
+  return {
+    mode: ['race-prep', 'maintenance', 'recovery'].includes(mode) ? mode : 'unknown',
+    phaseLabel: r?.phase_label ?? '',
+  };
+}
+
+/** Per-phase frequency cap per Rule 14 doctrine + Research/07 §"Periodization". */
+function phaseFrequencyCap(phaseCtx: PhaseContext, raceCtx: RaceContext): number {
+  // Race week trumps everything · 0 (already handled upstream, defensive)
+  if (raceCtx.kind === 'race_week') return 0;
+  // Mode-driven first
+  if (phaseCtx.mode === 'recovery') return 0;        // week 1 post-race · 0
+  if (phaseCtx.mode === 'maintenance') return 3;     // off-season · can go higher
+  // Race-prep phase-driven
+  if (raceCtx.kind === 'taper_week') return 1;
+  const phase = phaseCtx.phaseLabel.toUpperCase();
+  if (phase === 'TAPER') return 1;
+  if (phase === 'RACE-SPECIFIC') return 1; // peak · maintenance only, drop one
+  if (phase === 'QUALITY' || phase === 'BUILD' || phase === 'BASE') return 2;
+  return DEFAULT_STRENGTH_DAYS_PER_WEEK;
+}
+
+/** Heavy lifts get demoted to maintenance in peak/taper/maintenance/recovery. */
+function shouldDemoteHeavy(phaseCtx: PhaseContext, raceCtx: RaceContext): boolean {
+  if (raceCtx.kind === 'race_week') return true;
+  if (raceCtx.kind === 'taper_week') return true;
+  if (phaseCtx.mode === 'recovery') return true; // becomes mobility downstream
+  if (phaseCtx.mode === 'maintenance') return false; // can still go heavy
+  const phase = phaseCtx.phaseLabel.toUpperCase();
+  if (phase === 'TAPER') return true;
+  if (phase === 'RACE-SPECIFIC') return true; // peak · maintenance only
+  return false;
 }
 
 // ─── Habit detection ────────────────────────────────────────────────────
@@ -420,42 +546,90 @@ async function loadLoadContext(userUuid: string): Promise<LoadContext> {
 interface Candidate {
   date: string;
   type: string;
-  /** How isolated this day is from the nearest quality/long. Higher =
-   *  better placement. 0 = adjacent to a hard day · 6 = whole week away. */
-  isolationScore: number;
+  /** 2026-06-03 · Rule 14 · doctrine-driven preference score.
+   *   quality day      = 10  (preferred · "hard with hard" · PM after run)
+   *   easy day         = 5   (acceptable · maintenance, not adjacent to hard)
+   *   recovery day     = 3   (light/mobility only)
+   *   rest day         = 1   (last resort · breaks the "1+ pure rest day" rule)
+   *  Negative scores filter out (day-before-hard, long-run day, race day). */
+  preferenceScore: number;
+  intensity: StrengthIntensity;
+  timing: StrengthTiming;
+  pairedWithRun: boolean;
 }
 
 /**
- * Pick the candidate pool · easy/recovery days only, never adjacent to
- * a quality or long run, respect the "1+ pure rest day" rule.
+ * 2026-06-03 REWRITE · pair hard with hard per Research/07 doctrine.
+ *
+ * Scoring (higher = better placement):
+ *   · quality run day  · score 10 · heavy strength PM (≥4-6h after run)
+ *   · easy run day     · score 5  · maintenance, only if not adjacent to hard
+ *   · recovery run day · score 3  · maintenance/light only
+ *   · rest day         · score 1  · last resort
+ *
+ * Hard exclusions (score = -100, filtered):
+ *   · long-run day (CNS depletion · doctrine §3)
+ *   · day immediately BEFORE a quality or long (legs not fresh · §3)
+ *   · day immediately AFTER long (recovery sacred · §3)
+ *   · race day / shakeout / race-week tune-up
+ *
+ * Cite: Research/07 §3 (day placement) + Pfitz Advanced Marathoning Appx A
  */
 function pickCandidates(weekDays: WeekDay[]): Candidate[] {
   if (weekDays.length === 0) return [];
 
   const hardDayIndexes = new Set<number>();
-  weekDays.forEach((d, i) => { if (d.isQuality || d.isLong) hardDayIndexes.add(i); });
+  const longDayIndexes = new Set<number>();
+  weekDays.forEach((d, i) => {
+    if (d.isQuality || d.isLong) hardDayIndexes.add(i);
+    if (d.isLong) longDayIndexes.add(i);
+  });
 
   const candidates: Candidate[] = [];
   for (let i = 0; i < weekDays.length; i++) {
     const day = weekDays[i];
-    // Skip quality/long days themselves.
-    if (day.isQuality || day.isLong) continue;
-    // Skip race day if present.
+    // Hard exclusions
     if (day.type === 'race' || day.type === 'shakeout' || day.type === 'race_week_tuneup') continue;
-    // Day-BEFORE quality or long is also off-limits per Research/07.
-    if (hardDayIndexes.has(i + 1)) continue;
-    // Acceptable: easy / recovery / rest days that don't precede a hard day.
-    if (day.type !== 'easy' && day.type !== 'recovery' && day.type !== 'rest') continue;
+    if (day.isLong) continue; // long-run day · CNS too cooked
+    if (hardDayIndexes.has(i + 1)) continue; // day-before hard · legs not fresh
+    if (longDayIndexes.has(i - 1)) continue; // day-after long · recovery sacred
 
-    // Isolation score · distance from nearest hard day in this week.
-    let nearestHardDist = 7;
-    for (const hi of hardDayIndexes) {
-      nearestHardDist = Math.min(nearestHardDist, Math.abs(i - hi));
+    // Score by preference
+    let score = 0;
+    let intensity: StrengthIntensity = 'maintenance';
+    let timing: StrengthTiming = 'anytime';
+    let pairedWithRun = false;
+
+    if (day.isQuality) {
+      // PREFERRED · pair heavy strength PM with AM quality run
+      score = 10;
+      intensity = 'heavy';
+      timing = 'pm';
+      pairedWithRun = true;
+    } else if (day.type === 'easy') {
+      score = 5;
+      intensity = 'maintenance';
+      timing = 'anytime';
+    } else if (day.type === 'recovery') {
+      score = 3;
+      intensity = 'maintenance';
+      timing = 'anytime';
+    } else if (day.type === 'rest') {
+      score = 1;
+      intensity = 'maintenance';
+      timing = 'anytime';
+    } else {
+      // Unknown type · skip
+      continue;
     }
+
     candidates.push({
       date: day.date,
       type: day.type,
-      isolationScore: nearestHardDist,
+      preferenceScore: score,
+      intensity,
+      timing,
+      pairedWithRun,
     });
   }
   return candidates;
@@ -469,6 +643,7 @@ function buildReason(
   raceCtx: RaceContext,
   loadCtx: LoadContext,
   readinessGate: ReadinessGate,
+  phaseCtx: PhaseContext,
 ): string {
   if (picked.length === 0) {
     return 'No strength surfaced this week.';
@@ -479,26 +654,39 @@ function buildReason(
   });
   const list = dayLabels.length === 1 ? dayLabels[0] : `${dayLabels.slice(0, -1).join(' + ')} + ${dayLabels.at(-1)}`;
 
+  // 2026-06-03 · Rule 14 · doctrine-driven copy. The picks reflect
+  // "hard with hard" pairing · quality-day picks are PM heavy, easy-day
+  // picks are anytime maintenance.
+  const pairedCount = picked.filter((iso) => weekDays.find((d) => d.date === iso)?.isQuality).length;
+  const easyCount = picked.filter((iso) => {
+    const d = weekDays.find((w) => w.date === iso);
+    return d && !d.isQuality && (d.type === 'easy' || d.type === 'recovery');
+  }).length;
+
   const reasons: string[] = [];
-  // Type characterization · singular/plural aware
-  const types = picked.map(iso => weekDays.find(d => d.date === iso)?.type ?? 'easy');
-  const allEasy = types.every(t => t === 'easy');
-  const anyRest = types.some(t => t === 'rest');
-  if (allEasy) reasons.push(picked.length === 1 ? 'easy day' : 'both easy days');
-  else if (anyRest) reasons.push(picked.length === 1 ? 'rest day' : 'rest day + easy day');
-  // Adjacency to hard days
-  reasons.push(picked.length === 1 ? 'not adjacent to a quality session' : 'neither adjacent to a quality session');
+  if (pairedCount > 0 && easyCount > 0) {
+    reasons.push(`${pairedCount} heavy PM after quality + ${easyCount} maintenance`);
+  } else if (pairedCount > 0) {
+    reasons.push(`${pairedCount === 1 ? 'PM after quality' : 'both PM after quality runs'} · pair hard with hard`);
+  } else {
+    reasons.push(picked.length === 1 ? 'maintenance' : 'both maintenance');
+  }
 
   let suffix = '';
-  // Readiness signal takes precedence over ACWR · it's the multi-pillar
-  // composite that includes ACWR as one of its inputs.
+  // Readiness signal first · it's the multi-pillar composite.
   if (readinessGate.capAtOne && picked.length === 1) {
     const s = readinessGate.reason.split('·')[1]?.trim() ?? 'readiness signal';
-    suffix = ` · dropped to 1 maintenance (${s})`;
+    suffix = ` · dropped to 1 (${s})`;
+  } else if (phaseCtx.mode === 'recovery') {
+    suffix = ' · mobility only · post-race recovery';
+  } else if (phaseCtx.mode === 'maintenance') {
+    suffix = ' · off-season · heavier loads OK';
   } else if (raceCtx.kind === 'taper_week') {
-    suffix = ' · maintenance only, race in 8-14 days';
+    suffix = ' · maintenance only · last heavy 7-10 days before race';
+  } else if (phaseCtx.phaseLabel.toUpperCase() === 'RACE-SPECIFIC') {
+    suffix = ' · peak phase · maintenance, cut sets';
   } else if (loadCtx.acwr != null && loadCtx.acwr > ACWR_HIGH_SPIKE_THRESHOLD) {
-    suffix = ` · dropped to 1 session (ACWR ${loadCtx.acwr.toFixed(1)} · high)`;
+    suffix = ` · dropped to 1 (ACWR ${loadCtx.acwr.toFixed(1)} · high)`;
   }
   return `${list} · ${reasons.join(', ')}${suffix}.`;
 }
