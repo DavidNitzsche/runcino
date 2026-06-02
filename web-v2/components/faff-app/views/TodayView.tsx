@@ -502,6 +502,26 @@ type RunSummary = {
   /** "Hotter than usual" context computed by run-state.ts vs the runner's
    *  14-day baseline at this lat/lon. Set when the delta is ≥8°F. */
   weather_context?: { message: string; hr_bump_bpm: number } | null;
+  /** Phase-by-phase breakdown from coach_intents watch_completion payload.
+   *  Drives THE REPS card for intervals · warmup/cooldown/recovery rows
+   *  + per-rep plan-vs-result bars. Empty array for Strava/HK runs that
+   *  weren't piloted by Faff watch. 2026-06-02 wired through. */
+  phase_breakdown?: Array<{
+    index: number;
+    label: string;
+    type: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown';
+    target_pace: string | null;
+    target_distance_mi: number | null;
+    target_duration_sec: number | null;
+    actual_pace: string | null;
+    actual_distance_mi: number | null;
+    actual_duration_sec: number | null;
+    avg_hr: number | null;
+    max_hr: number | null;
+    avg_cadence: number | null;
+    completed: boolean;
+    status: 'on' | 'fast' | 'slow' | null;
+  }>;
 };
 
 /** Coach-derived "WHY THIS RUN" payload from /api/today/purpose. */
@@ -1768,36 +1788,261 @@ function CompletedHeroV2({
             just the verdict / recap / mile splits. */}
 
         <div className="divider" />
-        <div className="reshead">
-          <span>MILE SPLITS</span>
-          {resolvedPace && <span className="rs">avg {resolvedPace}<small>/mi</small></span>}
-        </div>
-        <div className="splits">
-          {splits.length > 0 ? splits.map((s, i) => {
-            // Bar width: inverse-relative — faster splits read fuller. Falls
-            // back to a neutral 60% when pace data is missing.
-            const sec = paceToSec(s.pace ?? '');
-            const all = splits.map(x => paceToSec(x.pace ?? '')).filter(n => n > 0);
-            const lo = all.length ? Math.min(...all) : 0;
-            const hi = all.length ? Math.max(...all) : 1;
-            const span = Math.max(1, hi - lo);
-            const w = sec > 0 ? Math.round(55 + (1 - (sec - lo) / span) * 40) : 60;
-            return (
-              <div className="spr" key={i}>
-                <span className="spm">{s.mile}</span>
-                <div className="sptrk"><div className="spf" style={{ width: `${w}%` }} /></div>
-                <span className="spp">{s.pace ?? '·'}<small>/mi</small></span>
-              </div>
-            );
-          }) : (
-            <div style={{ fontSize: 12, opacity: 0.55, marginTop: 6 }}>
-              {runLoading ? 'Loading splits…' : 'No mile splits available.'}
+        {/* 2026-06-02 · for interval workouts WITH per-phase data, swap the
+            generic mile-splits panel for THE REPS plan-vs-result card.
+            See designs/from Design agent/design_handoff_run_detail_intervals.
+            Falls back to MILE SPLITS for runs without phase_breakdown (easy,
+            long, Strava/HK runs, or interval runs where the watch payload
+            didn't carry phase data). */}
+        {d.type === 'intervals' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
+          <RepsRail phases={runData.phase_breakdown} />
+        ) : (
+          <>
+            <div className="reshead">
+              <span>MILE SPLITS</span>
+              {resolvedPace && <span className="rs">avg {resolvedPace}<small>/mi</small></span>}
             </div>
-          )}
-        </div>
+            <div className="splits">
+              {splits.length > 0 ? splits.map((s, i) => {
+                // Bar width: inverse-relative — faster splits read fuller. Falls
+                // back to a neutral 60% when pace data is missing.
+                const sec = paceToSec(s.pace ?? '');
+                const all = splits.map(x => paceToSec(x.pace ?? '')).filter(n => n > 0);
+                const lo = all.length ? Math.min(...all) : 0;
+                const hi = all.length ? Math.max(...all) : 1;
+                const span = Math.max(1, hi - lo);
+                const w = sec > 0 ? Math.round(55 + (1 - (sec - lo) / span) * 40) : 60;
+                return (
+                  <div className="spr" key={i}>
+                    <span className="spm">{s.mile}</span>
+                    <div className="sptrk"><div className="spf" style={{ width: `${w}%` }} /></div>
+                    <span className="spp">{s.pace ?? '·'}<small>/mi</small></span>
+                  </div>
+                );
+              }) : (
+                <div style={{ fontSize: 12, opacity: 0.55, marginTop: 6 }}>
+                  {runLoading ? 'Loading splits…' : 'No mile splits available.'}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </aside>
     </div>
   );
+}
+
+/**
+ * THE REPS · plan-vs-result rail for interval workouts. Replaces the
+ * generic MILE SPLITS list when the run has phase_breakdown data (Faff
+ * watch sessions). Renders:
+ *   · phase rows (warmup / cooldown) · teal dot + label + dist + pace
+ *   · work rep rows · rep number, comparison bar with target tick,
+ *     actual pace + delta (green if beat / amber if slower)
+ *   · recovery connector rows · dashed left border, "3:02 jog · recovery"
+ *   · AVG WORK PACE summary + delta vs goal
+ *
+ * Per the spec at designs/from Design agent/design_handoff_run_detail_intervals.
+ * Bar math: GOAL = work-rep avg target_pace (sec). LO = GOAL−30, HI = GOAL+30.
+ * pct(sec) = clamp((HI−sec)/(HI−LO)*100, 4, 98). Tick at (HI−GOAL)/(HI−LO)*100.
+ * 2026-06-02 · David flagged that the post-run hero showed generic mile
+ * splits on intervals · meaningless for the workout shape.
+ */
+type RepsPhase = NonNullable<RunSummary['phase_breakdown']>[number];
+function RepsRail({ phases }: { phases: RepsPhase[] }) {
+  const workPhases = phases.filter(p => p.type === 'work');
+  if (workPhases.length === 0) return null;
+
+  // Goal = the most common target_pace across work reps. Falls back to
+  // the first available target_pace if reps disagreed mid-session.
+  const goalSec = (() => {
+    const targets = workPhases
+      .map(p => paceToSec(p.target_pace ?? ''))
+      .filter(s => s > 0);
+    if (targets.length === 0) return 0;
+    return Math.round(targets.reduce((a, b) => a + b, 0) / targets.length);
+  })();
+
+  // Plan-vs-result bar math · ±30s window around goal.
+  const LO = goalSec - 30;
+  const HI = goalSec + 30;
+  const pct = (sec: number): number => {
+    if (!isFinite(sec) || sec <= 0 || HI <= LO) return 60;
+    const raw = ((HI - sec) / (HI - LO)) * 100;
+    return Math.max(4, Math.min(98, raw));
+  };
+  const tickPct = HI > LO ? ((HI - goalSec) / (HI - LO)) * 100 : 50;
+
+  // Average work pace + delta vs goal · the summary row at the bottom.
+  const workActuals = workPhases
+    .map(p => paceToSec(p.actual_pace ?? ''))
+    .filter(s => s > 0);
+  const avgWorkSec = workActuals.length > 0
+    ? Math.round(workActuals.reduce((a, b) => a + b, 0) / workActuals.length)
+    : 0;
+  const avgWorkDelta = avgWorkSec > 0 && goalSec > 0 ? avgWorkSec - goalSec : null;
+  const avgWorkBeat = avgWorkDelta != null && avgWorkDelta <= 0;
+
+  // Walk the phases in order. Work reps get numbered 1..N as we encounter
+  // them; recoveries render between them; warmup / cooldown anchor the
+  // top + bottom of the rail.
+  let workNum = 0;
+  const rows = phases.map((p, i) => {
+    if (p.type === 'work') workNum += 1;
+    return { phase: p, key: i, repNumber: p.type === 'work' ? workNum : null };
+  });
+
+  return (
+    <>
+      <div className="reshead">
+        <span>THE REPS</span>
+        {goalSec > 0 && (
+          <span className="rs">
+            TARGET <b>{fmtSecAsPace(goalSec)}</b><small>/mi</small>
+          </span>
+        )}
+      </div>
+      <div style={{ marginTop: 4 }}>
+        {rows.map(({ phase: p, key, repNumber }) => {
+          if (p.type === 'warmup' || p.type === 'cooldown') {
+            const label = p.type === 'warmup' ? 'WARM-UP' : 'COOL-DOWN';
+            const dist = p.actual_distance_mi != null
+              ? ` · ${p.actual_distance_mi.toFixed(1)} mi`
+              : '';
+            return (
+              <div key={key} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 0',
+              }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: 'var(--z1, #54ddd0)', flexShrink: 0,
+                }} />
+                <span style={{
+                  fontSize: 11, fontWeight: 700, letterSpacing: 1,
+                  color: 'rgba(255,255,255,.72)', textTransform: 'uppercase',
+                }}>{label}</span>
+                <span style={{
+                  fontSize: 11, color: 'rgba(255,255,255,.45)',
+                }}>{dist}</span>
+                <span style={{
+                  marginLeft: 'auto', fontFamily: 'var(--font-display, Oswald), sans-serif',
+                  fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,.8)',
+                }}>
+                  {p.actual_pace ?? '·'}<small style={{ fontSize: 9, opacity: 0.7, marginLeft: 2 }}>/mi</small>
+                </span>
+              </div>
+            );
+          }
+          if (p.type === 'recovery') {
+            return (
+              <div key={key} style={{
+                marginLeft: 14, paddingLeft: 8,
+                borderLeft: '1.5px dashed rgba(255,255,255,.18)',
+                padding: '6px 0 6px 8px',
+                fontSize: 9.5, fontWeight: 600,
+                color: 'rgba(255,255,255,.42)',
+              }}>
+                {p.actual_duration_sec != null ? fmtMmSs(p.actual_duration_sec) : '·'} jog · recovery
+              </div>
+            );
+          }
+          if (p.type === 'work') {
+            const actualSec = paceToSec(p.actual_pace ?? '');
+            const fillPct = pct(actualSec);
+            const delta = actualSec > 0 && goalSec > 0 ? actualSec - goalSec : null;
+            const beat = delta != null && delta <= 0;
+            const fillColor = beat ? '#3ED06a' : '#ffb24d';
+            const deltaColor = beat ? '#3ED06a' : '#ffb24d';
+            return (
+              <div key={key} style={{
+                display: 'grid', gridTemplateColumns: '46px 1fr 70px',
+                alignItems: 'center', gap: 12, padding: '9px 0',
+              }}>
+                <div>
+                  <div style={{
+                    fontFamily: 'var(--font-display, Oswald), sans-serif',
+                    fontSize: 16, fontWeight: 600, lineHeight: 1,
+                  }}>{repNumber}</div>
+                  <div style={{
+                    fontSize: 8.5, fontWeight: 700, letterSpacing: 0.6,
+                    opacity: 0.5, marginTop: 2,
+                  }}>REP</div>
+                </div>
+                <div style={{
+                  position: 'relative', height: 11, borderRadius: 6,
+                  background: 'rgba(255,255,255,.1)', overflow: 'hidden',
+                }}>
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0,
+                    width: `${fillPct}%`, background: fillColor,
+                    borderRadius: 6, transition: 'width 240ms',
+                  }} />
+                  {/* target tick · 2px white line, extends 3px above/below */}
+                  <div style={{
+                    position: 'absolute', left: `${tickPct}%`,
+                    top: -3, bottom: -3, width: 2,
+                    background: 'rgba(255,255,255,.9)', zIndex: 2,
+                    transform: 'translateX(-1px)',
+                  }} />
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{
+                    fontFamily: 'var(--font-display, Oswald), sans-serif',
+                    fontSize: 16, fontWeight: 600, lineHeight: 1,
+                  }}>{p.actual_pace ?? '·'}</div>
+                  {delta != null && (
+                    <div style={{
+                      fontSize: 10, fontWeight: 700, marginTop: 2,
+                      color: deltaColor,
+                    }}>{delta > 0 ? `+${delta}` : delta}</div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })}
+      </div>
+      {avgWorkSec > 0 && (
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          borderTop: '1px solid rgba(255,255,255,.1)',
+          marginTop: 16, paddingTop: 14,
+        }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: 1,
+            color: 'rgba(255,255,255,.55)', textTransform: 'uppercase',
+          }}>AVG WORK PACE</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <span style={{
+              fontFamily: 'var(--font-display, Oswald), sans-serif',
+              fontSize: 17, fontWeight: 600,
+            }}>{fmtSecAsPace(avgWorkSec)}<small style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>/mi</small></span>
+            {avgWorkDelta != null && (
+              <span style={{
+                fontSize: 12, fontWeight: 700,
+                color: avgWorkBeat ? '#3ED06a' : '#ffb24d',
+              }}>{avgWorkDelta > 0 ? `+${avgWorkDelta}` : avgWorkDelta} vs goal</span>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function fmtSecAsPace(sec: number): string {
+  if (!isFinite(sec) || sec <= 0) return '·';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+function fmtMmSs(sec: number): string {
+  if (!isFinite(sec) || sec <= 0) return '·';
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 type DayForecast = {

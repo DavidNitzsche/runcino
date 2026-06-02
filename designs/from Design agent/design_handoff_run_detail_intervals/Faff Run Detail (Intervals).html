@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Run Detail · Intervals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    --txt:#F6F7F8; --mute:#8A90A0;
+    --good:#3ED06a; --warn:#ffb24d;
+    --z1a:#54ddd0; --z2a:#8ef0b0; --z3a:#ffe0a0; --z4a:#ff9560; --z5a:#ff5a52;
+    --glass:rgba(20,6,12,.40); --glass-line:rgba(255,255,255,.14);
+    --font-display:'Oswald',sans-serif; --font-body:'Inter',sans-serif;
+  }
+  html,body{height:100%;}
+  body{font-family:var(--font-body);background:#5a0e22;color:var(--txt);-webkit-font-smoothing:antialiased;}
+
+  /* ---------- shell ---------- */
+  .pr{position:relative;width:100%;min-height:100vh;overflow:hidden;}
+  .pr *{box-sizing:border-box;}
+
+  /* mesh */
+  .mesh{position:absolute;inset:0;z-index:0;background:#8a1733;}
+  .blobs{position:absolute;inset:-12%;filter:blur(52px);animation:breathe 18s ease-in-out infinite;}
+  @keyframes breathe{0%,100%{filter:blur(52px) saturate(1) brightness(1)}50%{filter:blur(58px) saturate(1.14) brightness(1.05)}}
+  .blob{position:absolute;border-radius:50%;opacity:.92;}
+  .b1{left:-10%;top:-18%;width:72%;height:74%;background:#ff8d7a;animation:d1 23s ease-in-out infinite alternate;}
+  .b2{left:40%;top:-14%;width:66%;height:70%;background:#ff9f5a;animation:d2 27s ease-in-out infinite alternate;}
+  .b3{left:0%;top:18%;width:96%;height:90%;background:#c5223f;animation:d3 31s ease-in-out infinite alternate;}
+  .b4{left:-16%;top:42%;width:78%;height:80%;background:#e23a5e;animation:d4 25s ease-in-out infinite alternate;}
+  .b5{left:34%;top:44%;width:80%;height:82%;background:#a81639;animation:d5 29s ease-in-out infinite alternate;}
+  @keyframes d1{from{transform:translate(0,0) scale(1)}to{transform:translate(7%,6%) scale(1.13)}}
+  @keyframes d2{from{transform:translate(0,0) scale(1.04)}to{transform:translate(-8%,9%) scale(.95)}}
+  @keyframes d3{from{transform:translate(0,0) scale(1)}to{transform:translate(6%,-7%) scale(1.12)}}
+  @keyframes d4{from{transform:translate(0,0) scale(1.05)}to{transform:translate(9%,-6%) scale(.95)}}
+  @keyframes d5{from{transform:translate(0,0) scale(.97)}to{transform:translate(-8%,-8%) scale(1.12)}}
+  .grain{position:absolute;inset:0;z-index:1;opacity:.05;mix-blend-mode:overlay;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .fade{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.30) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 60%,rgba(0,0,0,.40) 100%);}
+
+  .stage{position:relative;z-index:2;max-width:1480px;margin:0 auto;padding:30px 40px 44px;display:flex;flex-direction:column;}
+
+  /* ---------- week strip ---------- */
+  .weekcount{display:flex;align-items:center;gap:9px;font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.72);margin-bottom:13px;}
+  .weekcount svg{width:15px;height:15px;opacity:.8;}
+  .week{display:flex;gap:10px;margin-bottom:26px;flex:0 0 auto;}
+  .day{flex:1;border-radius:13px;padding:12px 13px;border:1px solid rgba(255,255,255,.1);background:rgba(20,6,12,.40);backdrop-filter:blur(8px);}
+  .day:not(.on){opacity:.58;}
+  .day.on{background:rgba(20,6,12,.62);border-color:rgba(255,255,255,.5);box-shadow:0 0 0 1px rgba(255,255,255,.08),0 12px 28px -16px rgba(0,0,0,.6);opacity:1;}
+  .dtop{display:flex;align-items:center;justify-content:space-between;min-height:18px;}
+  .dday{display:flex;align-items:baseline;gap:6px;}
+  .dw{font-size:10px;font-weight:600;letter-spacing:.5px;opacity:.9;}
+  .dn{font-family:var(--font-display);font-size:15px;font-weight:600;}
+  .dck{width:13px;height:13px;color:var(--good);}
+  .dmeta{display:flex;align-items:center;gap:6px;margin-top:11px;}
+  .ddot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;}
+  .ddist{font-size:10.5px;font-weight:500;opacity:.92;white-space:nowrap;}
+
+  /* ---------- hero ---------- */
+  .hero{flex:1;display:flex;gap:26px;min-height:0;align-items:stretch;}
+  .hmain{flex:0 0 400px;display:flex;flex-direction:column;}
+
+  .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
+  .titlerow{margin-top:9px;line-height:1;white-space:nowrap;}
+  .htitle{display:inline;font-family:var(--font-display);font-size:60px;font-weight:600;line-height:.9;text-transform:uppercase;white-space:nowrap;text-shadow:0 2px 20px rgba(0,0,0,.16);}
+  .check{display:inline-flex;width:32px;height:32px;border-radius:50%;background:var(--good);color:#06210a;align-items:center;justify-content:center;vertical-align:middle;margin:0 0 6px 18px;box-shadow:0 4px 14px -4px rgba(62,208,106,.7);}
+  .check svg{width:18px;height:18px;}
+
+  .leftstack{flex:1;display:flex;flex-direction:column;margin-top:28px;min-height:0;}
+
+  .stats{display:flex;gap:34px;}
+  .stat .v{font-family:var(--font-display);font-size:36px;font-weight:600;line-height:.9;white-space:nowrap;}
+  .stat .v small{font-size:14px;opacity:.85;font-weight:400;}
+  .stat .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;margin-top:9px;}
+
+  .zones{margin-top:30px;}
+  .zhead{display:flex;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:10px;opacity:.9;gap:10px;}
+  .zhead b{color:#fff;}
+  .zhead .zmeta{white-space:nowrap;}
+  .zbar{height:13px;border-radius:7px;overflow:hidden;display:flex;background:rgba(255,255,255,.08);}
+  .zbar i{height:100%;}
+  .zleg{display:flex;justify-content:space-between;margin-top:10px;font-size:10px;font-weight:600;opacity:.82;}
+  .zleg .zs{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+
+  /* running form */
+  .form{margin-top:30px;}
+  .formlbl{font-size:11px;font-weight:700;letter-spacing:.4px;opacity:.9;margin-bottom:14px;}
+  .formgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px 22px;}
+  .fm .fk{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
+  .fm .fv{font-family:var(--font-display);font-size:19px;font-weight:600;margin-top:5px;line-height:1;}
+  .fm .fv small{font-family:var(--font-body);font-size:10px;font-weight:500;opacity:.6;margin-left:1px;}
+
+  .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 22px;margin-top:auto;padding-top:30px;}
+  .shoesel{appearance:none;-webkit-appearance:none;background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ffffff' stroke-opacity='0.65' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center;background-size:9px 6px;
+    border:none;border-bottom:1px dashed rgba(255,255,255,.28);color:var(--txt);font:700 14px var(--font-body);line-height:1.25;
+    padding:0 16px 2px 0;margin:0;cursor:pointer;outline:none;max-width:100%;}
+  .shoesel:hover{border-bottom-color:rgba(255,255,255,.55);}
+  .shoesel option{color:#0A0C10;}
+  .cond .kcl{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
+  .cond .kcv{font-size:14px;font-weight:700;margin-top:5px;}
+
+  /* center map */
+  .mapcol{flex:1;display:flex;flex-direction:column;min-height:0;}
+  image-slot{flex:1;width:100%;min-height:340px;border-radius:16px;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);}
+  .mapstat{display:flex;justify-content:space-between;margin-top:10px;font-size:9.5px;font-weight:700;letter-spacing:.4px;opacity:.55;}
+
+  /* ---------- right card ---------- */
+  .wcard{flex:0 0 372px;background:var(--glass);backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px);
+    border:1px solid var(--glass-line);border-radius:16px;padding:25px 25px 22px;display:flex;flex-direction:column;min-height:0;}
+  .wcl{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.55);}
+  .wcl .ok{color:#8af0a6;display:inline-flex;align-items:center;gap:5px;}
+  .wcl .ok svg{width:13px;height:13px;}
+
+  .verdict{font-family:var(--font-display);font-size:30px;font-weight:600;line-height:1;margin:15px 0 0;}
+  .recap{font-size:13.5px;font-weight:500;line-height:1.55;color:rgba(255,255,255,.88);margin-top:11px;}
+
+  .divider{height:1px;background:rgba(255,255,255,.12);margin:20px 0 0;}
+
+  /* reps section */
+  .repshead{display:flex;justify-content:space-between;align-items:baseline;margin:18px 0 4px;}
+  .repshead .rt{font-family:var(--font-display);font-size:15px;font-weight:600;letter-spacing:.5px;white-space:nowrap;}
+  .repshead .rg{font-size:10px;font-weight:700;letter-spacing:.6px;color:rgba(255,255,255,.6);white-space:nowrap;}
+  .repshead .rg b{font-family:var(--font-display);font-size:13px;color:#fff;font-weight:600;letter-spacing:.3px;}
+
+  .rail{margin-top:8px;}
+
+  /* easy phase rows (warm-up / cool-down) */
+  .phase{display:flex;align-items:center;gap:11px;padding:8px 0;}
+  .phase .pdot{width:8px;height:8px;border-radius:50%;background:var(--z1a);flex:0 0 auto;}
+  .phase .pn{font-size:11px;font-weight:700;letter-spacing:1px;color:rgba(255,255,255,.72);}
+  .phase .pd{font-size:11px;font-weight:500;color:rgba(255,255,255,.5);margin-left:2px;}
+  .phase .pp{margin-left:auto;font-family:var(--font-display);font-size:14px;font-weight:500;color:rgba(255,255,255,.8);}
+  .phase .pp small{font-family:var(--font-body);font-size:9.5px;font-weight:500;opacity:.6;}
+
+  /* a single work rep */
+  .rep{display:grid;grid-template-columns:46px 1fr 70px;align-items:center;gap:13px;padding:9px 0;}
+  .rep .rl{display:flex;flex-direction:column;gap:2px;}
+  .rep .rl .rn{font-family:var(--font-display);font-size:16px;font-weight:600;line-height:1;}
+  .rep .rl .rsub{font-size:8.5px;font-weight:700;letter-spacing:.6px;opacity:.5;}
+  .rtrk{position:relative;height:11px;border-radius:6px;background:rgba(255,255,255,.1);overflow:hidden;}
+  .rfill{position:absolute;left:0;top:0;height:100%;border-radius:6px;}
+  .rfill.good{background:var(--good);}
+  .rfill.warn{background:var(--warn);}
+  .rtick{position:absolute;top:-3px;bottom:-3px;width:2px;background:rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.25);border-radius:1px;z-index:2;}
+  .rep .rr{text-align:right;}
+  .rep .rr .rp{font-family:var(--font-display);font-size:16px;font-weight:600;line-height:1;}
+  .rep .rr .rd{font-size:10px;font-weight:700;line-height:1;margin-top:3px;}
+  .rep .rr .rd.good{color:var(--good);}
+  .rep .rr .rd.warn{color:var(--warn);}
+
+  /* recovery connector */
+  .rec{display:flex;align-items:center;gap:9px;padding:2px 0 2px 8px;margin-left:14px;border-left:1.5px dashed rgba(255,255,255,.18);}
+  .rec .rcl{font-size:9.5px;font-weight:600;letter-spacing:.4px;color:rgba(255,255,255,.42);}
+
+  .repsum{display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);}
+  .repsum .sl{font-size:10px;font-weight:700;letter-spacing:1px;color:rgba(255,255,255,.55);}
+  .repsum .sv{font-family:var(--font-display);font-size:17px;font-weight:600;}
+  .repsum .sv small{font-family:var(--font-body);font-size:10px;font-weight:500;opacity:.6;}
+  .repsum .sv .delta{color:var(--good);font-size:12px;margin-left:5px;}
+</style>
+</head>
+<body>
+  <div class="pr" data-screen-label="Run Detail · Intervals">
+    <div class="mesh"><div class="blobs">
+      <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div><div class="blob b5"></div>
+    </div></div>
+    <div class="grain"></div>
+    <div class="fade"></div>
+
+    <div class="stage">
+      <!-- quality session counter -->
+      <div class="weekcount">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"></path></svg>
+        1/1 QUALITY THIS WEEK
+      </div>
+
+      <!-- week strip -->
+      <div class="week" id="week"></div>
+
+      <!-- hero -->
+      <div class="hero">
+        <div class="hmain">
+          <div class="htag">TODAY · INTERVALS · DONE</div>
+          <div class="titlerow">
+            <div class="htitle">INTERVALS</div>
+            <span class="check" title="On plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></span>
+          </div>
+
+          <div class="leftstack">
+              <div class="stats">
+                <div class="stat"><div class="v">7.5<small> mi</small></div><div class="k">DISTANCE</div></div>
+                <div class="stat"><div class="v">60:25</div><div class="k">TIME</div></div>
+                <div class="stat"><div class="v">8:09<small>/mi</small></div><div class="k">AVG PACE</div></div>
+              </div>
+
+              <div class="zones">
+                <div class="zhead"><span>TIME IN ZONES</span><span class="zmeta">avg &hearts; <b>155</b> · pk <b>177</b></span></div>
+                <div class="zbar" id="zbar"></div>
+                <div class="zleg" id="zleg"></div>
+              </div>
+
+              <div class="form">
+                <div class="formlbl">RUNNING FORM</div>
+                <div class="formgrid">
+                  <div class="fm"><div class="fk">CADENCE</div><div class="fv">182<small> spm</small></div></div>
+                  <div class="fm"><div class="fk">RUN POWER</div><div class="fv">312<small> W</small></div></div>
+                  <div class="fm"><div class="fk">STRIDE</div><div class="fv">1.18<small> m</small></div></div>
+                  <div class="fm"><div class="fk">VERT OSC</div><div class="fv">8.4<small> cm</small></div></div>
+                  <div class="fm"><div class="fk">GROUND CONTACT</div><div class="fv">244<small> ms</small></div></div>
+                  <div class="fm"><div class="fk">L/R BALANCE</div><div class="fv">50<small> / 50</small></div></div>
+                </div>
+              </div>
+
+              <div class="cond">
+                <div><div class="kcl">WEATHER</div><div class="kcv">61° · Clear</div></div>
+                <div>
+                  <div class="kcl">SHOE</div>
+                  <div class="kcv">
+                    <select class="shoesel" aria-label="Shoe">
+                      <option selected>New Balance SC Trainer v3</option>
+                      <option>Vaporfly 3</option>
+                      <option>Zoom Fly 6</option>
+                      <option>Superblast 3</option>
+                      <option>Ghost 16</option>
+                    </select>
+                  </div>
+                </div>
+                <div><div class="kcl">ELEV GAIN</div><div class="kcv">543 ft</div></div>
+                <div><div class="kcl">CALORIES</div><div class="kcv">974 kcal</div></div>
+              </div>
+            </div>
+        </div>
+
+        <div class="mapcol">
+          <image-slot id="intervals-route" shape="rounded" radius="16" placeholder="Drop your route map"></image-slot>
+        </div>
+
+        <!-- ============ RIGHT COLUMN · PLAN vs RESULT ============ -->
+        <aside class="wcard">
+          <div class="wcl">
+            <span>HOW IT WENT</span>
+            <span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg> ON PLAN</span>
+          </div>
+
+          <div class="verdict">Reps done.</div>
+          <div class="recap">Four 1-mile reps at 6:30 goal. Pushed every work bout to target or quicker, jogged the recoveries honest.</div>
+
+          <div class="divider"></div>
+
+          <div class="repshead">
+            <span class="rt">THE REPS</span>
+            <span class="rg">TARGET <b>6:30</b>/mi</span>
+          </div>
+
+          <div class="rail" id="rail"></div>
+
+          <div class="repsum">
+            <span class="sl">AVG WORK PACE</span>
+            <span class="sv">6:26<small>/mi</small><span class="delta">−4 vs goal</span></span>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+<script src="image-slot.js"></script>
+<script>
+  /* ---------- week strip ---------- */
+  var WEEK = [
+    { dw:'MON', dn:18, meta:'6.0 mi · 8:42',  dot:'#2faf7c', done:true },
+    { dw:'TUE', dn:19, meta:'6.1 mi · 8:30',  dot:'#2faf7c', done:true },
+    { dw:'WED', dn:20, meta:'7.5 mi · 8:09',  dot:'#ec3a54', done:true, on:true },
+    { dw:'THU', dn:21, meta:'6.0 mi · 8:40',  dot:'#2faf7c' },
+    { dw:'FRI', dn:22, meta:'5.5 mi · 8:20',  dot:'#2faf7c' },
+    { dw:'SAT', dn:23, meta:'rest',           dot:'#8A90A0' },
+    { dw:'SUN', dn:24, meta:'12.0 mi · 8:00', dot:'#F3AD38' }
+  ];
+  var CK = '<svg class="dck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>';
+  document.getElementById('week').innerHTML = WEEK.map(function(d){
+    return '<div class="day'+(d.on?' on':'')+'">'
+      + '<div class="dtop"><span class="dday"><span class="dw">'+d.dw+'</span><span class="dn">'+d.dn+'</span></span>'
+      + '<span class="dstate">'+(d.done?CK:'')+'</span></div>'
+      + '<div class="dmeta"><span class="ddot" style="background:'+d.dot+'"></span><span class="ddist">'+d.meta+'</span></div></div>';
+  }).join('');
+
+  /* ---------- time in zones ---------- */
+  var ZONES = [ ['Z1',14,'var(--z1a)'], ['Z2',0,'var(--z2a)'], ['Z3',29,'var(--z3a)'], ['Z4',43,'var(--z4a)'], ['Z5',14,'var(--z5a)'] ];
+  document.getElementById('zbar').innerHTML = ZONES.map(function(z){ return z[1]>0 ? '<i style="width:'+z[1]+'%;background:'+z[2]+'"></i>' : ''; }).join('');
+  document.getElementById('zleg').innerHTML = ZONES.map(function(z){
+    return '<div style="opacity:'+(z[1]===0?0.4:1)+'"><span class="zs" style="background:'+z[2]+'"></span>'+z[0]+' <b>'+z[1]+'%</b></div>';
+  }).join('');
+
+  /* ---------- THE REPS · plan vs result ----------
+     Bar maps a pace window of 6:00 → 6:50 (360–410 s). Longer fill = faster.
+     Target 6:30 sits at the white tick (40%). Past the tick = beat goal. */
+  var GOAL = 390;            // 6:30 in seconds
+  var LO = 360, HI = 410;    // 6:00 fast end … 6:50 slow end
+  function pct(sec){ return Math.max(4, Math.min(98, (HI - sec) / (HI - LO) * 100)); }
+  var TICK = (HI - GOAL) / (HI - LO) * 100;
+
+  var REPS = [
+    { type:'phase', name:'WARM-UP',   dist:'1.5 mi', pace:'9:48' },
+    { type:'rep',   n:1, sec:388, pace:'6:28', delta:'−2' },
+    { type:'rec',   t:'3:02 jog · recovery' },
+    { type:'rep',   n:2, sec:382, pace:'6:22', delta:'−8' },
+    { type:'rec',   t:'3:00 jog · recovery' },
+    { type:'rep',   n:3, sec:395, pace:'6:35', delta:'+5' },
+    { type:'rec',   t:'2:58 jog · recovery' },
+    { type:'rep',   n:4, sec:378, pace:'6:18', delta:'−12' },
+    { type:'phase', name:'COOL-DOWN', dist:'1.0 mi', pace:'9:40' }
+  ];
+
+  document.getElementById('rail').innerHTML = REPS.map(function(r){
+    if(r.type==='phase'){
+      return '<div class="phase"><span class="pdot"></span><span class="pn">'+r.name+'</span><span class="pd">· '+r.dist+'</span>'
+        + '<span class="pp">'+r.pace+'<small>/mi</small></span></div>';
+    }
+    if(r.type==='rec'){
+      return '<div class="rec"><span class="rcl">'+r.t+'</span></div>';
+    }
+    var beat = r.sec <= GOAL;
+    var cls = beat ? 'good' : 'warn';
+    return '<div class="rep">'
+      + '<div class="rl"><span class="rn">'+r.n+'</span><span class="rsub">REP</span></div>'
+      + '<div class="rtrk"><div class="rfill '+cls+'" style="width:'+pct(r.sec)+'%"></div><div class="rtick" style="left:'+TICK+'%"></div></div>'
+      + '<div class="rr"><div class="rp">'+r.pace+'</div><div class="rd '+cls+'">'+r.delta+'</div></div>'
+      + '</div>';
+  }).join('');
+</script>
+<template id="__bundler_thumbnail">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#8a1733"/><g stroke="#3ED06a" stroke-width="5" stroke-linecap="round"><path d="M30 62h18"/><path d="M30 50h28"/><path d="M30 38h22"/></g><circle cx="68" cy="34" r="6" fill="#3ED06a"/></svg>
+</template>
+</body>
+</html>
