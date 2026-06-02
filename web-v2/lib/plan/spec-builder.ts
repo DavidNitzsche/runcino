@@ -21,7 +21,7 @@
  *   · Friel zones for HR caps (Z2 ≤ 80% LTHR for easy · ≤ 85% for long)
  */
 
-import { parsePrescription } from './prescription-parser';
+import { parsePrescription, parseTempoShape } from './prescription-parser';
 
 export type WorkoutSpec = Record<string, unknown> | null;
 
@@ -126,15 +126,22 @@ export function buildWorkoutSpec(
       };
     }
     case 'tempo': {
-      const tempoDist = Math.max(2, Math.min(7, (distance_mi ?? 8) - 3));
-      const wu = ((distance_mi ?? 8) - tempoDist) / 2;
+      // 2026-06-02 · prefer parsed tempo shape (e.g. "2 mi WU · 4 mi @
+      // T · 2 mi CD" → wu=2, tempo=4, cd=2). Falls back to historical
+      // math when the prescription string is absent or unparseable.
+      const parsedTempo = parseTempoShape(prescription);
+      const tempoDist = parsedTempo?.tempoMi
+        ?? Math.max(2, Math.min(7, (distance_mi ?? 8) - 3));
+      const wu = parsedTempo?.warmupMi
+        ?? ((distance_mi ?? 8) - tempoDist) / 2;
+      const cd = parsedTempo?.cooldownMi ?? wu;
       return {
         spec: {
           kind: 'tempo',
           warmup_mi: Number(wu.toFixed(1)),
           tempo_distance_mi: Number(tempoDist.toFixed(1)),
           tempo_pace_s_per_mi: tempo,
-          cooldown_mi: Number(wu.toFixed(1)),
+          cooldown_mi: Number(cd.toFixed(1)),
           hr_target_bpm: lthr ? Math.round(lthr * 0.92) : null,
         },
         paceTargetSPerMi: tempo,

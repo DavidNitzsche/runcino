@@ -534,14 +534,26 @@ function layoutWeek({
       : qt === 'threshold'  ? rx.threshold
       : qt === 'tempo'      ? `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`
       :                       'QUALITY';
+      // 2026-06-02 · the workout_library uses family='threshold' for
+      // BOTH rep-based cruise intervals AND continuous tempos (both
+      // are T-pace work in Daniels' taxonomy). When the picked library
+      // row's prescription describes a continuous tempo
+      // ("N mi WU · M mi @ T · N mi CD"), the row's TYPE should be
+      // 'tempo' so spec-builder produces a tempo spec (not a rep spec).
+      // Without this remap, the runner sees a sub_label promising
+      // continuous tempo over a workout_spec that's actually 4×1mi reps.
+      let effectiveType = qt;
+      if (qt === 'threshold' && /\d+\s*(?:mi)?\s*WU\s*[·•].*@\s*T[^·•]*[·•]\s*\d+\s*(?:mi)?\s*CD/i.test(sub)) {
+        effectiveType = 'tempo';
+      }
       slots[dow] = {
-        dow: dow as DOW, type: qt, distanceMi: qualityMiEach, isQuality: true, isLong: false,
+        dow: dow as DOW, type: effectiveType, distanceMi: qualityMiEach, isQuality: true, isLong: false,
         subLabel: sub,
         notes:
-          qt === 'intervals' ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
-        : qt === 'threshold' ? 'WU 1.5mi, threshold reps, CD 1mi. Comfortably hard.'
-        : qt === 'tempo'     ? 'WU 1.5mi, continuous tempo, CD 1mi. Just below threshold.'
-        :                      '',
+          effectiveType === 'intervals' ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
+        : effectiveType === 'threshold' ? 'WU 1.5mi, threshold reps, CD 1mi. Comfortably hard.'
+        : effectiveType === 'tempo'     ? 'WU, continuous tempo block, CD. Just below threshold.'
+        :                                  '',
       };
     });
   }

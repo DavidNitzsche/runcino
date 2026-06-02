@@ -42,6 +42,40 @@ export interface ParsedPrescription {
 }
 
 /**
+ * 2026-06-02 · continuous-tempo shape parser. Matches strings like
+ *   "2 mi WU · 4 mi @ T · 2 mi CD"
+ *   "1.5 WU · 8 mi @ HM pace · 1.5 CD"
+ * Returns null when no continuous-tempo block is recognized.
+ *
+ * These come from workout_library rows mislabeled family='threshold'
+ * that actually describe continuous tempos · spec-builder's tempo
+ * branch reads these to produce a tempo spec instead of a rep spec.
+ */
+export interface ParsedTempo {
+  /** warmup_mi · the WU segment in miles. */
+  warmupMi: number;
+  /** tempo_distance_mi · the continuous tempo block in miles. */
+  tempoMi: number;
+  /** cooldown_mi · the CD segment in miles. */
+  cooldownMi: number;
+}
+
+export function parseTempoShape(s: string | null | undefined): ParsedTempo | null {
+  if (!s || typeof s !== 'string') return null;
+  // "X mi WU · Y mi @ T · Z mi CD" · units on the WU/CD are optional
+  // (library has both "2 mi WU" and "1.5 WU" shapes).
+  const m = s.match(
+    /(\d+(?:\.\d+)?)\s*(?:mi)?\s*WU\s*[·•]\s*(\d+(?:\.\d+)?)\s*mi\s*@[^·•]+[·•]\s*(\d+(?:\.\d+)?)\s*(?:mi)?\s*CD/i,
+  );
+  if (!m) return null;
+  const wu = parseFloat(m[1]);
+  const tempo = parseFloat(m[2]);
+  const cd = parseFloat(m[3]);
+  if (!Number.isFinite(wu) || !Number.isFinite(tempo) || !Number.isFinite(cd)) return null;
+  return { warmupMi: wu, tempoMi: tempo, cooldownMi: cd };
+}
+
+/**
  * Parse a prescription string. Returns null when no rep pattern was
  * recognized (e.g. "continuous tempo", malformed strings) · caller
  * should fall back to the hardcoded spec.
