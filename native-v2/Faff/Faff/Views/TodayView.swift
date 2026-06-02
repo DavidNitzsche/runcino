@@ -49,6 +49,12 @@ struct TodayView: View {
     /// the day..."). The whole Faff Coach block hides when this is nil ·
     /// no hardcoded fallback. The empty state IS the honest signal.
     @State private var purpose: RunPurpose?
+    /// Fallback anchor race when /api/today/purpose returns nil (e.g.
+    /// the backend 500 we hit 2026-06-02). Resolved from /api/races
+    /// by highest-priority future race (A > B > C), tie-broken by
+    /// earliest date. Powers the TO RACE chip so it lights up even if
+    /// purpose is down. Cleared once purpose resumes returning a value.
+    @State private var raceFallback: RaceListItem?
     /// Most-recent plan_adapt_* intent · drives AdaptationCard. Hidden
     /// when nil or older than 24h.
     @State private var adaptationIntent: CoachIntent?
@@ -276,7 +282,7 @@ struct TodayView: View {
                     thisWeekMiles: thisWeekMiles,
                     vo2: profile?.physiology.vo2,
                     bestWindow: forecast?.best_window,
-                    weeksToRace: purpose?.weeksToRace,
+                    weeksToRace: weeksToRaceValue,
                     nextHardLabel: nextHardLabel,
                     onTap: { onReadinessTap() }
                 )
@@ -1189,13 +1195,28 @@ struct TodayView: View {
         return f.string(from: d)
     }
 
+    /// 2026-06-02 · Resolved weeks-to-next-anchor-race. Prefers the
+    /// /api/today/purpose value (server-composed, knows about training-
+    /// plan phase + which race the plan actually targets). Falls back
+    /// to /api/races client-side resolution (next future race by
+    /// priority A > B > C, tied-broken by earliest date) so the
+    /// TO RACE chip lights up even when purpose 500s — defense in
+    /// depth against the bug class.
+    private var weeksToRaceValue: Int? {
+        if let w = purpose?.weeksToRace, w > 0 { return w }
+        if let d = raceFallback?.days_to_race, d > 0 {
+            return max(1, Int(ceil(Double(d) / 7.0)))
+        }
+        return nil
+    }
+
     /// Optional context line below the date. Composes from the purpose
     /// payload when we have it: "BUILD · 12 weeks to race" or the phase
     /// alone. Null when nothing meaningful · the topbar drops the line
     /// gracefully (no placeholder).
     private var weekContextLabel: String? {
         let phase = (purpose?.phase ?? "").uppercased()
-        let weeks = purpose?.weeksToRace
+        let weeks = weeksToRaceValue
         if !phase.isEmpty, let w = weeks, w > 0 {
             return "\(phase) · \(w) WEEKS TO RACE"
         }
@@ -1243,6 +1264,27 @@ struct TodayView: View {
         var c = DateComponents()
         c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
         return Calendar.current.date(from: c)
+    }
+
+    /// 2026-06-02 round 40 · client-side next-anchor-race resolution.
+    /// Same doctrine the backend uses on /api/today/purpose · highest-
+    /// priority future race (A > B > C), tie-broken by earliest date.
+    /// Excludes "hilly-excluded" priority (Big Sur etc. · context-only
+    /// races that don't anchor training). Returns nil when no future
+    /// race exists · TO RACE chip then renders "—" honestly.
+    private func pickAnchorRace(_ races: [RaceListItem]) -> RaceListItem? {
+        let priorityOrder: [String: Int] = ["A": 0, "B": 1, "C": 2]
+        let candidates = races.filter { r in
+            guard let d = r.days_to_race, d > 0 else { return false }
+            let pri = (r.priority ?? "").lowercased()
+            return pri != "hilly-excluded" && pri != "excluded"
+        }
+        return candidates.sorted { a, b in
+            let aPri = priorityOrder[a.priority ?? ""] ?? 99
+            let bPri = priorityOrder[b.priority ?? ""] ?? 99
+            if aPri != bPri { return aPri < bPri }
+            return (a.days_to_race ?? Int.max) < (b.days_to_race ?? Int.max)
+        }.first
     }
 
     /// Tap handler for the readiness panel · presents the full readiness
@@ -1590,6 +1632,29 @@ struct TodayView: View {
             // loaded coach card. Doctrine: empty-state from a successful nil
             // is honest; empty-after-a-fail looks identical and isn't.
             if let pur, !pur.verdict.isEmpty { self.purpose = pur }
+            // 2026-06-02 round 40 · TO RACE chip fallback. When purpose
+            // doesn't carry weeksToRace (server 500 / cold path / no
+            // anchor race yet on the plan), resolve client-side from
+            // /api/races. Picks the highest-priority future race
+            // (A > B > C), tie-broken by earliest date. Excludes
+            // priority=hilly-excluded (context-only races like Big Sur
+            // that aren't meant to anchor training). Defense in depth
+            // against /api/today/purpose hiccups; clears once purpose
+            // resumes returning a value.
+            let needsFallback = (pur?.weeksToRace ?? 0) <= 0
+            if needsFallback {
+                Task {
+                    if let resp = try? await API.fetchRaces(),
+                       let anchor = self.pickAnchorRace(resp.races) {
+                        await MainActor.run { self.raceFallback = anchor }
+                    }
+                }
+            } else {
+                // Purpose came back with a real weeksToRace · drop any
+                // stale fallback so the computed property prefers the
+                // server-composed value cleanly.
+                self.raceFallback = nil
+            }
             self.skipped = skip
             self.adaptationIntent = adaptList.first
             self.activeNiggle = activeN
