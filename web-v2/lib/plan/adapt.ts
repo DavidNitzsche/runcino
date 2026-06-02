@@ -56,11 +56,16 @@ export interface AdaptationTrigger {
 }
 
 export interface AdaptationAction {
-  kind: 'reschedule' | 'downgrade' | 'shave' | 'recompute_paces' | 'mark_dirty';
+  kind: 'reschedule' | 'downgrade' | 'shave' | 'recompute_paces' | 'mark_dirty' | 'mark_upgrade';
   workoutIds?: string[];      // plan_workouts.id targeted
   newType?: string;
   newDate?: string;
   shaveFraction?: number;     // e.g. 0.15 = 15% off the volume
+  /** 2026-06-03 · mark_upgrade · per-row distance bumps from adaptive
+   *  ramp. Each entry sets plan_workouts.distance_mi = newDistanceMi,
+   *  with a SQL guard ensuring distance never decreases (only bumps
+   *  UP). Long bump capped at +1mi · weekly total capped at +5mi. */
+  bumps?: Array<{ workoutId: string; newDistanceMi: number }>;
   why: string;                // for the coach to repeat
 }
 
@@ -160,6 +165,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         : a.kind === 'downgrade' ? 'plan_adapt_downgrade'
         : a.kind === 'shave'     ? 'plan_adapt_shave'
         : a.kind === 'mark_dirty' ? 'plan_adapt_mark_dirty'
+        : a.kind === 'mark_upgrade' ? 'plan_adapt_upgrade'
         : 'plan_adapt_other';
 
       if (a.kind === 'reschedule' && a.newDate && a.workoutIds) {
@@ -253,6 +259,24 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           );
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, shaveFraction: a.shaveFraction, why: a.why,
+          });
+          touched++;
+        }
+      } else if (a.kind === 'mark_upgrade' && a.bumps && a.bumps.length > 0) {
+        // 2026-06-03 · adaptive ramp · push UP when signals green.
+        // Per David: "if the runner and the weeks are solid, distance
+        // up is OK." SQL guard `distance_mi < $1` makes this strictly
+        // additive · never accidentally cuts a row.
+        for (const b of a.bumps) {
+          await client.query(
+            `UPDATE plan_workouts
+                SET distance_mi = $1
+              WHERE id = $2
+                AND distance_mi < $1`,
+            [b.newDistanceMi, b.workoutId],
+          );
+          await writeIntent(client, userId, 'plan_adapt_upgrade', b.workoutId, {
+            kind: 'mark_upgrade', newDistanceMi: b.newDistanceMi, why: a.why,
           });
           touched++;
         }

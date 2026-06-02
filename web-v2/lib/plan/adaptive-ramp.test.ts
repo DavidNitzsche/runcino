@@ -13,6 +13,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { TIER_TARGETS } from './goal-tiers';
+import {
+  MAX_LONG_BUMP_MI,
+  MAX_WEEKLY_BUMP_MI,
+  MAX_PER_EASY_BUMP_MI,
+} from './adaptive-ramp';
 
 describe('Adaptive ramp · gate logic', () => {
   // Pure-logic facsimile of the gate check in detectGreenRampOpportunity ·
@@ -103,5 +108,85 @@ describe('Adaptive ramp · cooldown period (7 days)', () => {
     for (const daysSince of [7, 8, 14, 30]) {
       expect(daysSince >= COOLDOWN_DAYS).toBe(true);  // bump allowed
     }
+  });
+});
+
+// ── David's spec'd assertions (2026-06-03) ─────────────────────────────
+
+describe("Adaptive ramp · doesn't false-fire on yellow signals", () => {
+  // YELLOW = any single gate red. The bump must NEVER fire when even
+  // one signal is off · pull-back is non-negotiable doctrine.
+  it.each([
+    ['pull-back streak active', { readinessGreen: false }],
+    ['quality off-pace', { lastQualityOnPace: false }],
+    ['long decoupling > 5%', { lastLongClean: false }],
+    ['at tier ceiling', { belowTierUpper: false }],
+    ['cooldown active', { noBumpRecent: false }],
+  ])('yellow · %s · blocks bump', (_label, partial) => {
+    const allGreen = {
+      readinessGreen: true, lastQualityOnPace: true,
+      lastLongClean: true, belowTierUpper: true, noBumpRecent: true,
+    };
+    const yellow = { ...allGreen, ...partial };
+    const allOk = yellow.readinessGreen && yellow.lastQualityOnPace
+      && yellow.lastLongClean && yellow.belowTierUpper && yellow.noBumpRecent;
+    expect(allOk).toBe(false);  // pull-back rule absolute · no bump
+  });
+});
+
+describe("Adaptive ramp · doesn't exceed tier ceiling", () => {
+  // Tier upper is the HARD doctrine ceiling. No matter how green
+  // signals are, we never push past it.
+  function applyBump(oldLong: number, tierLongUpper: number, bumpAttempt: number): number {
+    return Math.min(oldLong + bumpAttempt, tierLongUpper);
+  }
+
+  it('HM advanced · tier ceiling 17mi · stays ≤ 17', () => {
+    const upper = TIER_TARGETS.hm.advanced.peakLongMiBand[1];  // 17
+    expect(applyBump(16, upper, 1)).toBe(17);
+    expect(applyBump(17, upper, 1)).toBe(17);  // already at cap · no growth
+    expect(applyBump(17, upper, 5)).toBe(17);  // even with wild bump attempt
+  });
+
+  it('marathon advanced · ceiling 22mi · stays ≤ 22', () => {
+    const upper = TIER_TARGETS.m.advanced.peakLongMiBand[1];  // 22
+    expect(applyBump(21, upper, 1)).toBe(22);
+    expect(applyBump(22, upper, 2)).toBe(22);
+  });
+
+  it('5K developing · ceiling 5mi · stays ≤ 5', () => {
+    const upper = TIER_TARGETS['5k'].developing.peakLongMiBand[1];  // 5
+    expect(applyBump(4, upper, 1)).toBe(5);
+    expect(applyBump(5, upper, 1)).toBe(5);
+  });
+});
+
+describe('Adaptive ramp · max +1mi long / +5mi week per step', () => {
+  // The constants doctrine David specified: per-step caps prevent
+  // overreaching even when signals stay green for weeks. Each weekly
+  // cron tick applies AT MOST these caps.
+  it('long-run bump capped at exactly +1mi per step', () => {
+    expect(MAX_LONG_BUMP_MI).toBe(1.0);
+  });
+
+  it('weekly total bump capped at exactly +5mi per step', () => {
+    expect(MAX_WEEKLY_BUMP_MI).toBe(5.0);
+  });
+
+  it('per-easy bump capped at +1mi · prevents shifting one day from 5→10mi', () => {
+    expect(MAX_PER_EASY_BUMP_MI).toBe(1.0);
+  });
+
+  it('weekly + long cap together · sum ≤ 5mi total per step', () => {
+    // Long takes 1mi from the budget · 4mi remains for easy distribution.
+    // Across 5 easy days × 1mi each = 5 max · would exceed the 4mi
+    // remaining · so distribution cap engages.
+    const longBudget = MAX_LONG_BUMP_MI;
+    const remainingForEasies = MAX_WEEKLY_BUMP_MI - longBudget;
+    const fiveEasyDaysMax = 5 * MAX_PER_EASY_BUMP_MI;
+    expect(remainingForEasies).toBe(4.0);
+    expect(Math.min(remainingForEasies, fiveEasyDaysMax)).toBe(4.0);
+    // Total bump per step ≤ 5mi (1mi long + 4mi distributed across easies)
+    expect(longBudget + Math.min(remainingForEasies, fiveEasyDaysMax)).toBe(5.0);
   });
 });

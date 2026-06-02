@@ -244,48 +244,89 @@ export async function detectGreenRampOpportunity(
 }
 
 /**
- * Pick the workout rows to bump. Strategy · the NEXT non-taper long
- * run and any future-week peak long that's below tier upper. Conservative:
- * +1mi on the next long, capped at tier upper.
+ * Compute the per-row bumps for the next 7 days. Two caps:
+ *   · Long run · +1mi (capped at tier.peakLongMiBand[1])
+ *   · Weekly total · +5mi (distributed across easy days, capped per
+ *     easy day at +1mi so we don't accidentally shift a 5mi easy to
+ *     10mi · doctrine: distribute reward, don't pile on one day)
+ *
+ * Returns an AdaptationAction of kind 'mark_upgrade' that
+ * applyAdaptations() consumes.
  */
-export interface BumpPlan {
-  longBump: { workoutId: string; oldDistanceMi: number; newDistanceMi: number } | null;
+export const MAX_LONG_BUMP_MI = 1.0;
+export const MAX_WEEKLY_BUMP_MI = 5.0;
+export const MAX_PER_EASY_BUMP_MI = 1.0;
+
+export interface UpgradePlan {
+  bumps: Array<{ workoutId: string; oldDistanceMi: number; newDistanceMi: number; type: string }>;
+  longBumpMi: number;
+  weeklyBumpMi: number;
   reason: string;
 }
 
-export async function planBump(opp: RampOpportunity): Promise<BumpPlan | null> {
-  // Find the next non-taper long run after today.
-  const nextLong = await pool.query<{
-    id: string; distance_mi: number; date_iso: string; phase: string;
+export async function planUpgrade(opp: RampOpportunity): Promise<UpgradePlan | null> {
+  // Pull next 7 days of rows on the active plan.
+  const rows = await pool.query<{
+    id: string; type: string; distance_mi: number; date_iso: string;
   }>(
-    `SELECT pw.id, pw.distance_mi::numeric AS distance_mi, pw.date_iso::text AS date_iso, pp.label AS phase
+    `SELECT pw.id, pw.type, pw.distance_mi::numeric AS distance_mi, pw.date_iso::text AS date_iso
        FROM plan_workouts pw
        JOIN plan_weeks pwk ON pwk.id = pw.week_id
        JOIN plan_phases pp ON pp.id = pwk.phase_id
       WHERE pw.plan_id = $1
-        AND pw.type = 'long'
-        AND pw.date_iso::date >= CURRENT_DATE
+        AND pw.date_iso::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 6
         AND pp.label <> 'TAPER'
-      ORDER BY pw.date_iso::date ASC LIMIT 1`,
+      ORDER BY pw.date_iso::date ASC`,
     [opp.planId],
-  ).then((r) => r.rows[0]).catch(() => undefined);
-  if (!nextLong) return null;
+  ).then((r) => r.rows).catch(() => []);
 
-  const oldDist = Number(nextLong.distance_mi);
-  // +1mi · capped at tier upper.
-  const proposed = oldDist + 1;
-  const newDist = Math.min(proposed, opp.tierLongUpper);
-  if (newDist <= oldDist) return null;  // already at cap · no bump
+  if (rows.length === 0) return null;
+
+  const bumps: UpgradePlan['bumps'] = [];
+  let longBumpApplied = 0;
+  let weeklyBumpApplied = 0;
+
+  // 1) Long bump · +1mi capped at tier upper.
+  const longRow = rows.find((r) => r.type === 'long');
+  if (longRow) {
+    const old = Number(longRow.distance_mi);
+    const proposed = old + MAX_LONG_BUMP_MI;
+    const capped = Math.min(proposed, opp.tierLongUpper);
+    if (capped > old) {
+      bumps.push({ workoutId: longRow.id, oldDistanceMi: old, newDistanceMi: capped, type: 'long' });
+      longBumpApplied = capped - old;
+    }
+  }
+
+  // 2) Easy bumps · distribute up to (MAX_WEEKLY_BUMP_MI - longBumpApplied)
+  //    across easy days. Per-easy cap = MAX_PER_EASY_BUMP_MI.
+  const easyBudgetMi = MAX_WEEKLY_BUMP_MI - longBumpApplied;
+  if (easyBudgetMi > 0) {
+    const easyRows = rows.filter((r) => r.type === 'easy' || r.type === 'recovery');
+    let remaining = easyBudgetMi;
+    for (const r of easyRows) {
+      if (remaining <= 0) break;
+      const add = Math.min(MAX_PER_EASY_BUMP_MI, remaining);
+      const old = Number(r.distance_mi);
+      const newDist = Number((old + add).toFixed(1));
+      bumps.push({ workoutId: r.id, oldDistanceMi: old, newDistanceMi: newDist, type: r.type });
+      remaining -= add;
+      weeklyBumpApplied += add;
+    }
+  }
+
+  if (bumps.length === 0) return null;
 
   return {
-    longBump: {
-      workoutId: nextLong.id,
-      oldDistanceMi: oldDist,
-      newDistanceMi: newDist,
-    },
+    bumps,
+    longBumpMi: longBumpApplied,
+    weeklyBumpMi: longBumpApplied + weeklyBumpApplied,
     reason: opp.reason,
   };
 }
+
+/** Back-compat alias · the old name still works for the test bench. */
+export const planBump = planUpgrade;
 
 // ── helpers ────────────────────────────────────────────────────────────
 
@@ -304,59 +345,60 @@ function readTierUpper(
 }
 
 /**
- * Orchestrator · detect opportunity, plan bump, write to plan_workouts,
- * log a `plan_adapt_bump` intent. Idempotent · safe to call once per
- * cron tick. Returns the bump applied or null.
+ * Build the `mark_upgrade` AdaptationAction for the canonical applyAdaptations
+ * path. Returns null when no opportunity exists or no rows to bump.
+ * Caller's pattern · `actions.push(...)` next to the other adapter
+ * triggers, then `applyAdaptations(userId, actions)`.
+ */
+export async function actionForAdaptiveRamp(
+  userId: string,
+): Promise<{
+  kind: 'mark_upgrade';
+  bumps: Array<{ workoutId: string; newDistanceMi: number }>;
+  longBumpMi: number;
+  weeklyBumpMi: number;
+  why: string;
+} | null> {
+  const opp = await detectGreenRampOpportunity(userId);
+  if (!opp) return null;
+  const upgrade = await planUpgrade(opp);
+  if (!upgrade) return null;
+  return {
+    kind: 'mark_upgrade',
+    bumps: upgrade.bumps.map((b) => ({ workoutId: b.workoutId, newDistanceMi: b.newDistanceMi })),
+    longBumpMi: upgrade.longBumpMi,
+    weeklyBumpMi: upgrade.weeklyBumpMi,
+    why: opp.reason,
+  };
+}
+
+/**
+ * Cron-path orchestrator · run after detectAdaptations + applyAdaptations.
+ * Skips bump when pull-back actions fired this tick · we don't push up
+ * the same day we pulled down. Calls applyAdaptations with the
+ * mark_upgrade action so all mutations + intent logging go through
+ * one canonical path.
  *
- * Call AFTER detectAdaptations + applyAdaptations · if any pull-back
- * action fired this tick, skip the bump (don't push up the same day
- * we pulled down).
+ * Returns the upgrade summary or null.
  */
 export async function tryAdaptiveBump(
   userId: string,
   pullbackApplied: boolean,
-): Promise<{ workoutId: string; oldDistanceMi: number; newDistanceMi: number; why: string } | null> {
+): Promise<{ bumps: number; longBumpMi: number; weeklyBumpMi: number; why: string } | null> {
   if (pullbackApplied) return null;
-  const opp = await detectGreenRampOpportunity(userId);
-  if (!opp) return null;
-  const bump = await planBump(opp);
-  if (!bump || !bump.longBump) return null;
-
-  // Apply · UPDATE plan_workouts.distance_mi · audit via coach_intents.
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(
-      `UPDATE plan_workouts SET distance_mi = $1 WHERE id = $2`,
-      [bump.longBump.newDistanceMi, bump.longBump.workoutId],
-    );
-    await client.query(
-      `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value, briefing_id)
-       VALUES ($1, $1::uuid, 'plan_adapt_bump', $2, $3, NULL)`,
-      [
-        userId,
-        bump.longBump.workoutId,
-        JSON.stringify({
-          kind: 'bump_distance',
-          oldDistanceMi: bump.longBump.oldDistanceMi,
-          newDistanceMi: bump.longBump.newDistanceMi,
-          why: bump.reason,
-        }),
-      ],
-    );
-    await client.query('COMMIT');
-  } catch (e: unknown) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
-  }
-
+  const action = await actionForAdaptiveRamp(userId);
+  if (!action) return null;
+  const { applyAdaptations } = await import('./adapt');
+  await applyAdaptations(userId, [{
+    kind: 'mark_upgrade',
+    bumps: action.bumps,
+    why: action.why,
+  }]);
   return {
-    workoutId: bump.longBump.workoutId,
-    oldDistanceMi: bump.longBump.oldDistanceMi,
-    newDistanceMi: bump.longBump.newDistanceMi,
-    why: bump.reason,
+    bumps: action.bumps.length,
+    longBumpMi: action.longBumpMi,
+    weeklyBumpMi: action.weeklyBumpMi,
+    why: action.why,
   };
 }
 
