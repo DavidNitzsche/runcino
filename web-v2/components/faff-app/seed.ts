@@ -460,6 +460,10 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>, cadenceBaseline
       planWorkoutId: (d as { plannedId?: string | null }).plannedId ?? null,
       name: d.plannedLabel || humanName(eff, d.plannedMi),
       subLabel: d.plannedLabel ?? null,
+      // 2026-06-02 · workout_spec passes through to PlannedDay so the
+      // SESSION grid on PlannedHeroV2 / WorkoutDetail derives real
+      // segments instead of reading the hardcoded SEGS prototype.
+      workoutSpec: d.plannedSpec ?? null,
       adaptation: (d as { adaptation?: PlannedDay['adaptation'] }).adaptation ?? null,
       dist,
       pace: paceStr,

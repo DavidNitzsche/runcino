@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FaffSeed } from '../types';
-import { EFF, SEGS, KIT, PLAN_CUES, ZC, hexA } from '../constants';
+import { EFF, KIT, PLAN_CUES, ZC, hexA } from '../constants';
+import { deriveSessionSegs, fallbackSessionSegs } from '../session-shape';
 import { decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
 import { WatchPreviewTimeline } from '../toolkit';
 
@@ -138,7 +139,11 @@ function CompletedBody({ d, dayIdx, seed }: { d: FaffSeed['week'][number]; dayId
 }
 
 function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
-  const sg = SEGS[d.type];
+  // 2026-06-02 · spec-driven session shape (was SEGS prototype data)
+  const totalMi = parseFloat(d.dist || '0') || 0;
+  const sg = deriveSessionSegs(d.workoutSpec ?? null, totalMi, d.type, d.pace)
+    ?? fallbackSessionSegs(d.type, totalMi, d.pace)
+    ?? [];
   const k = KIT[d.type];
   const pl = PLAN_CUES[d.type] ?? PLAN_CUES.easy;
   return (
@@ -149,14 +154,18 @@ function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
         <div><div className="k">TARGET PACE</div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div></div>
         <div><div className="k">EST TIME</div><div className="v">{d.est.replace('~','')}</div></div>
       </div>
-      <div className="fll">THE SHAPE</div>
-      <div className="wk-shape">
-        {sg.map((x, i) => <i key={i} style={{ width: `${x.w}%`, background: x.c }} />)}
-      </div>
-      <div className="wk-shapelab">
-        <span>{sg[0].l}</span>
-        {sg.length > 1 && <span>{sg[sg.length - 1].l}</span>}
-      </div>
+      {sg.length > 0 ? (
+        <>
+          <div className="fll">THE SHAPE</div>
+          <div className="wk-shape">
+            {sg.map((x, i) => <i key={i} style={{ width: `${x.w}%`, background: x.c }} />)}
+          </div>
+          <div className="wk-shapelab">
+            <span>{sg[0].l}</span>
+            {sg.length > 1 && <span>{sg[sg.length - 1].l}</span>}
+          </div>
+        </>
+      ) : null}
       <div className="fll" style={{ marginTop: 22 }}>THE SESSION</div>
       <div className="wk-sess">
         {sg.map((x, i) => (

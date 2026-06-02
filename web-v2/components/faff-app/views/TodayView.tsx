@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
-import { EFF, SEGS, KIT, ROLECOL } from '../constants';
+import { EFF, KIT, ROLECOL } from '../constants';
 import { buildAdaptText } from '../adapt-text';
+import { workoutTypeTitle } from '@/lib/coach/workout-title';
+import { deriveSessionSegs, fallbackSessionSegs } from '../session-shape';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { PlanProposalCard } from '../cards/PlanProposalCard';
@@ -495,6 +497,12 @@ type RunSummary = {
 type PurposePayload = {
   verdict: string;
   facts: string[];
+  /** 2026-06-02 · single-source-of-truth one-word hero title shared
+   *  with iPhone + watch. Server resolves from the workout type via
+   *  lib/coach/workout-title.ts. e.g. "INTERVALS" / "TEMPO" / "EASY".
+   *  Optional · falls back to PlannedDay.name when missing on older
+   *  responses (30-min cache cycle). */
+  typeTitle?: string;
 };
 /** Coach-derived "WHAT THIS RUN DID" payload from /api/runs/[id]/recap. */
 type RecapPayload = {
@@ -890,7 +898,14 @@ function PlannedHeroV2({
   skipped: boolean;
   onToggleSkip: (iso: string | undefined, next: boolean) => void;
 }) {
-  const segs = SEGS[d.type] ?? SEGS.easy;
+  // SESSION segments · derive from real workout_spec when present,
+  // honest single-bar fallback otherwise. Replaces the SEGS prototype
+  // table (2026-06-02 brief). totalMi comes from d.dist (correct
+  // post-backend 08093bbf backfill that stores TOTAL miles).
+  const totalMi = parseFloat(d.dist || '0') || 0;
+  const segs = deriveSessionSegs(d.workoutSpec ?? null, totalMi, d.type, d.pace)
+    ?? fallbackSessionSegs(d.type, totalMi, d.pace)
+    ?? [];
   const eff  = EFF[d.type];
   const kit  = KIT[d.type];
   const forecast = useDayForecast(d.iso);
@@ -1030,7 +1045,12 @@ function PlannedHeroV2({
       <div className="hmain">
         <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · ' + eyebrowState}</div>
         <div className="titlerow">
-          <h1 className="htitle">{d.name}</h1>
+          {/* 2026-06-02 · one-word hero title via lib/coach/workout-title.
+              Locked vocabulary shared with iPhone + watch. Replaces the
+              sub_label render ("4×1 MI @ I · 3 Min Jog") that truncated
+              awkwardly when there's a right-side panel. The rich
+              sub_label moves into the SESSION grid where it has room. */}
+          <h1 className="htitle">{workoutTypeTitle(d.type)}</h1>
         </div>
 
         {adapted && adaptedFromLabel ? (
@@ -1323,7 +1343,7 @@ function CompletedHeroV2({
       <div className="hmain">
         <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · DONE'}</div>
         <div className="titlerow">
-          <h1 className="htitle">{d.name}</h1>
+          <h1 className="htitle">{workoutTypeTitle(d.type)}</h1>
           <span className="check" title="On plan" aria-label="On plan">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
           </span>
@@ -1622,7 +1642,11 @@ function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, pe
       </div>
     );
   }
-  const sg = SEGS[d.type];
+  // 2026-06-02 · spec-driven session shape (was SEGS prototype data)
+  const totalMi = parseFloat(d.dist || '0') || 0;
+  const sg = deriveSessionSegs(d.workoutSpec ?? null, totalMi, d.type, d.pace)
+    ?? fallbackSessionSegs(d.type, totalMi, d.pace)
+    ?? [];
   const k = KIT[d.type];
   // 2026-05-30: real forecast for the day of the run replaces the
   // hardcoded "64° · Calm" placeholder. Shows a temp range (no run-time

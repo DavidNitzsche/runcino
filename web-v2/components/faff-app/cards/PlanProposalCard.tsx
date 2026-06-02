@@ -192,18 +192,15 @@ export function PlanProposalCard({ proposal }: { proposal: PlanProposalSeed }) {
         </div>
       ) : null}
 
-      {/* auto_applied: optional deep-link to the rebuilt plan. The link
-          uses newPlanId; if backend left it null we skip the link rather
-          than render a dead chevron. */}
+      {/* auto_applied: deep-link to the plan diff page (was a no-op
+          refresh on /training before 2026-06-02). The diff page reads
+          ?from=<oldPlanId> and renders an old → new comparison. We
+          pass proposal.planId as the from id · backend will add an
+          explicit previousPlanId field in a follow-up commit. The
+          diff page handles missing from gracefully. */}
       {isAutoApplied && proposal.newPlanId ? (
         <a
-          href={`/training`}
-          onClick={(e) => {
-            // Stay on Today + just refresh so the new plan flows through
-            // the seed loader · cheaper than a full nav.
-            e.preventDefault();
-            router.refresh();
-          }}
+          href={`/training/plans/${proposal.newPlanId}/diff${(proposal.previousPlanId ?? proposal.planId) ? `?from=${proposal.previousPlanId ?? proposal.planId}` : ''}`}
           style={{
             display: 'inline-block',
             fontSize: 11, fontWeight: 700, letterSpacing: '0.8px',

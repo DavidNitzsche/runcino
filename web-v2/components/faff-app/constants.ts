@@ -37,25 +37,11 @@ export const MESH: Record<Exclude<ViewKey,'today'>, Mesh> = {
 };
 
 export type Segment = { l: string; sub: string; w: number; c: string };
-export const SEGS: Record<EffortKey, Segment[]> = {
-  easy:      [{ l: 'Easy aerobic',   sub: '6.0 mi · 8:45/mi',     w: 100, c: '#14C08C' }],
-  intervals: [
-    { l: 'Warm-up',     sub: '1.5 mi easy',         w: 18, c: '#14C08C' },
-    { l: '6 × 800 m',   sub: '@ 2:55 · 400m float', w: 64, c: '#FC4D64' },
-    { l: 'Cool-down',   sub: '1.5 mi easy',         w: 18, c: '#14C08C' },
-  ],
-  tempo:     [
-    { l: 'Warm-up',     sub: '1.5 mi easy',         w: 19, c: '#14C08C' },
-    { l: 'Tempo block', sub: '5.0 mi @ 6:38',       w: 62, c: '#FF8847' },
-    { l: 'Cool-down',   sub: '1.5 mi easy',         w: 19, c: '#14C08C' },
-  ],
-  recovery:  [{ l: 'Recovery jog',  sub: '4.0 mi · 9:30/mi',     w: 100, c: '#27B4E0' }],
-  long:      [
-    { l: 'Steady',      sub: '14 mi @ 7:40',        w: 78, c: '#F3AD38' },
-    { l: 'MP finish',   sub: '4 mi @ 6:50',         w: 22, c: '#FF8847' },
-  ],
-  rest:      [{ l: 'Rest day',      sub: 'Full recovery, no run', w: 100, c: '#8A90A0' }],
-};
+// SEGS prototype constant removed 2026-06-02 per the consolidated brief.
+// Every workout's session shape now derives from real plan_workouts.
+// workout_spec via components/faff-app/session-shape.ts:deriveSessionSegs.
+// David's flag: "every intervals day was rendering 6 × 800m regardless
+// of what the engine prescribed."
 
 export const KIT: Record<EffortKey, { weather: string; shoe: string; fuel: string; coach: string }> = {
   easy:      { weather: '66° · Calm', shoe: 'Novablast 5',   fuel: ' · ',            coach: 'Keep it truly easy. Nose-breathing pace the whole way.' },
@@ -94,6 +80,13 @@ export type PlannedDay = {
   /** Planned HR cap (bpm) from workout_spec.hr_cap_bpm. Surfaced on the
    *  PlannedHeroV2 TARGETS row. null when no spec or no HR-band data. */
   hrCap?: number | null;
+  /** 2026-06-02 · raw plan_workouts.workout_spec for SESSION grid
+   *  derivation. Replaces the hardcoded SEGS prototype constant ·
+   *  every "intervals" day was rendering `6 × 800m` regardless of
+   *  what the engine prescribed. See components/faff-app/session-
+   *  shape.ts:deriveSessionSegs. Null on rest days, off-plan days,
+   *  or legacy plans without spec. */
+  workoutSpec?: import('@/lib/faff/types').WorkoutSpec | null;
   /** Runner explicitly skipped this day (day_actions.action='skip'). When
    *  true: week-strip card grayscales, hero swaps to SKIPPED state. */
   skipped?: boolean;
