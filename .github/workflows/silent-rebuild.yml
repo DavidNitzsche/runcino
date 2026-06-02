@@ -1,0 +1,64 @@
+# One-shot silent plan rebuild · landed via workflow_dispatch.
+# Calls /api/cron/silent-rebuild for a given userUuid · the endpoint
+# bypasses fireAutoRebuild's audit + coach_intents so no "your plan was
+# adapted" banner fires.
+
+name: Silent plan rebuild
+
+on:
+  workflow_dispatch:
+    inputs:
+      userUuid:
+        description: 'User UUID to rebuild (required)'
+        required: true
+        type: string
+      raceSlug:
+        description: 'Race slug (optional · uses active plan if blank)'
+        required: false
+        type: string
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/silent-rebuild
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          USER_UUID: ${{ inputs.userUuid }}
+          RACE_SLUG: ${{ inputs.raceSlug }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured"
+            exit 1
+          fi
+          if [ -z "$USER_UUID" ]; then
+            echo "::error::userUuid input required"
+            exit 1
+          fi
+
+          if [ -z "$RACE_SLUG" ]; then
+            body="{\"userUuid\":\"$USER_UUID\"}"
+          else
+            body="{\"userUuid\":\"$USER_UUID\",\"raceSlug\":\"$RACE_SLUG\"}"
+          fi
+
+          echo "POST /api/cron/silent-rebuild · body: $body"
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d "$body" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 120 \
+            https://www.faff.run/api/cron/silent-rebuild)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Silent rebuild failed with HTTP $status"
+            exit 1
+          fi
