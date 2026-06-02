@@ -128,6 +128,13 @@ struct TodayReadinessPanel: View {
     let thisWeekMiles: Double?
     /// VO₂ max from profile.physiology. Drives the VO₂ MAX chip.
     let vo2: Double?
+    /// 2026-06-02 round 39 · second-row chips: BEST WINDOW / TO RACE /
+    /// NEXT HARD. All optional · render "—" when their backing data
+    /// isn't loaded yet (no GPS home base for forecast, no race
+    /// scheduled, etc.).
+    var bestWindow: String? = nil      // "Before 7 AM" from forecast.best_window
+    var weeksToRace: Int? = nil        // purpose.weeksToRace
+    var nextHardLabel: String? = nil   // e.g. "TUE · TEMPO"
     /// Tap target · routes to the "full readiness brief" surface.
     let onTap: () -> Void
 
@@ -217,6 +224,20 @@ struct TodayReadinessPanel: View {
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .shadow(color: .black.opacity(0.28), radius: 20, y: 2)
+                // 2026-06-02 round 40 · subtle "view full" affordance.
+                // The panel was tappable end-to-end (whole Button) but
+                // gave no visual cue · runners might not realize the
+                // ring + headline + WHY all expand into a full brief.
+                // Inline low-contrast chevron-text covers the cue
+                // without competing with the headline.
+                HStack(spacing: 4) {
+                    Text("View full read")
+                        .font(.body(11, weight: .semibold)).tracking(0.2)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(Color.white.opacity(0.55))
+                .padding(.top, 2)
             }
         }
     }
@@ -237,10 +258,17 @@ struct TodayReadinessPanel: View {
     // MARK: 3 · stat chips
 
     private var statChips: some View {
-        HStack(spacing: 8) {
-            StatChip(label: "LAST NIGHT", value: lastNightDisplay)
-            StatChip(label: "THIS WEEK", value: thisWeekDisplay)
-            StatChip(label: "VO₂ MAX",   value: vo2Display)
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                StatChip(label: "LAST NIGHT", value: lastNightDisplay)
+                StatChip(label: "THIS WEEK", value: thisWeekDisplay)
+                StatChip(label: "VO₂ MAX",   value: vo2Display)
+            }
+            HStack(spacing: 8) {
+                StatChip(label: "BEST WINDOW", value: bestWindowDisplay)
+                StatChip(label: "TO RACE",     value: toRaceDisplay)
+                StatChip(label: "NEXT HARD",   value: nextHardDisplay)
+            }
         }
     }
 
@@ -261,6 +289,21 @@ struct TodayReadinessPanel: View {
         guard let v = vo2, v > 0 else { return "—" }
         if v >= 60 { return String(Int(v.rounded())) }
         return String(format: "%.1f", v)
+    }
+
+    private var bestWindowDisplay: String {
+        guard let s = bestWindow, !s.isEmpty else { return "—" }
+        return s
+    }
+
+    private var toRaceDisplay: String {
+        guard let w = weeksToRace, w > 0 else { return "—" }
+        return w == 1 ? "1 WK" : "\(w) WK"
+    }
+
+    private var nextHardDisplay: String {
+        guard let s = nextHardLabel, !s.isEmpty else { return "—" }
+        return s
     }
 }
 

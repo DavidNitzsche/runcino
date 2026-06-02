@@ -154,10 +154,16 @@ struct TreadmillView: View {
     // MARK: - body
 
     var body: some View {
-        let mesh = meshFor(segments[safe: idx]?.kind ?? .work)
+        // 2026-06-02 round 36 · per-RUN effort mesh (not per-segment,
+        // not time-of-day). The run's overall type (easy / tempo /
+        // long / intervals / recovery / rest) drives the palette ·
+        // matches every other run surface in the app + the web app.
+        // Derive from the workout's paceLabel (T/E/I/L tag) with a
+        // fallback to easy for null/unknown.
+        let effort = FaffEffort.fromType(workout?.paceLabel ?? "easy")
+        let mesh = effort.mesh
         ZStack {
             FaffMeshView(mesh: mesh)
-                .animation(.easeInOut(duration: 0.8), value: mesh)
 
             VStack(spacing: 0) {
                 topHead
@@ -203,6 +209,11 @@ struct TreadmillView: View {
         } message: {
             Text("Saves what you've done so far · skips remaining segments.")
         }
+        // 2026-06-02 round 34 · hide the floating tab bar while the
+        // treadmill console is on screen. The console's End/Skip/Pause
+        // buttons sit at the bottom and were getting clipped by the
+        // tab bar pill. Active run = full-screen takeover.
+        .hideFaffTabBar()
     }
 
     // MARK: - Load plan

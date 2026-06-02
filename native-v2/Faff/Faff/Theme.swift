@@ -329,9 +329,15 @@ struct FaffMesh: Equatable {
             return FaffMesh(c1: 0xFFCF8A, c2: 0xFF8E6A, c3: 0xF2673A,
                             c4: 0xC0457A, c5: 0x7A3A86, base: 0x2A142E)
         case .night:
-            // deep indigo
-            return FaffMesh(c1: 0x7E8AD8, c2: 0x5360B4, c3: 0x3A4A8E,
-                            c4: 0x2A2F6E, c5: 0x181F54, base: 0x0B0E26)
+            // 2026-06-02 round 41 · proper night, not "lavender at
+            // dusk." Old palette (#7E8AD8 / #5360B4 / etc.) read as
+            // bright periwinkle-purple even at 11pm · David: "its
+            // supposed to be NIGHTTT". Dropped saturation + brightness
+            // hard so the base reads near-black with the faintest
+            // navy undertone, blobs are deep indigo whispers rather
+            // than purple highlights.
+            return FaffMesh(c1: 0x3F4870, c2: 0x2D3460, c3: 0x1A2050,
+                            c4: 0x131840, c5: 0x0A0E2A, base: 0x04060F)
         }
     }
 

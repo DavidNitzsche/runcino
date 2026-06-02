@@ -12,7 +12,10 @@ struct WatchMirrorView: View {
     @State private var workout: WatchWorkout?
 
     var body: some View {
-        let effort = workout.map { FaffEffort.fromType($0.paceLabel ?? "tempo") } ?? .tempo
+        // 2026-06-02 round 36 · per-RUN effort mesh. Background tracks
+        // the run's type (easy / tempo / long / intervals / etc.) ·
+        // same palette doctrine as every other run surface.
+        let effort = workout.map { FaffEffort.fromType($0.paceLabel ?? "easy") } ?? .easy
         let mesh = effort.mesh
         ZStack {
             FaffMeshView(mesh: mesh)
@@ -54,6 +57,9 @@ struct WatchMirrorView: View {
             }
         }
         .task { workout = try? await API.fetchWatchWorkout() }
+        // 2026-06-02 round 34 · hide the floating tab bar during live
+        // mirror · the watch run is the focus, no tab nav needed.
+        .hideFaffTabBar()
     }
 
     private var followPill: some View {

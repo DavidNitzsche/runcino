@@ -171,19 +171,13 @@ struct TodayView: View {
                     .buttonStyle(.plain)
                     .disabled(refreshing)
 
-                    Menu {
-                        // 2026-06-01 round 2 · removed "View nudges"
-                        // per David's feedback. NudgeSheet is kept in
-                        // the codebase but no longer surfaces from
-                        // the bell · re-add when a real trigger
-                        // (morning coach prompt etc.) takes ownership.
-                        Button("Notification inbox") { showInbox = true }
-                        Divider()
-                        // Toolkit entry points (David's spec: bell/nudge menu).
-                        Button("Log a niggle or sick day") { showSymptomSheet = true }
-                        Button("Log a non-run session")     { showLogNonRunSheet = true }
-                        Button("Today's shoe")             { showShoePicker = true }
-                    } label: {
+                    // 2026-06-02 round 37 · bell stripped to a direct
+                    // notification-inbox tap. The other three menu
+                    // items (Log niggle / Log non-run / Today's shoe)
+                    // moved to the Run-tab action menu where they
+                    // belong (centralized run actions). No more menu
+                    // wrap · single-purpose button.
+                    Button { showInbox = true } label: {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: "bell.fill")
                                 .font(.system(size: 14, weight: .bold))
@@ -244,12 +238,14 @@ struct TodayView: View {
                         .padding(.top, 10)
                 }
 
-                // AdaptationCard · only when an adaptation fired in the last 24h.
-                if let intent = adaptationIntent, isWithinLast24h(intent.when_iso) {
-                    AdaptationCard(intent: intent, onTapDetail: nil)
-                        .padding(.horizontal, 22)
-                        .padding(.top, 10)
-                }
+                // 2026-06-02 round 38 · AdaptationCard hidden from
+                // Today's hero. The "FAFF · Plan adapted · overridden"
+                // copy was vague and not actionable · runner couldn't
+                // tell what changed, from what to what, or why. The
+                // adaptationIntent state still fetches and is passed
+                // down to the pre-run sheet body for context. Re-enable
+                // here once backend ships the structured from/to copy
+                // (designs/briefs/adaptation-intent-structured-from-to.md).
 
                 // COACH PROPOSALS strip · stack of pending swap/injury/
                 // illness proposals from /api/coach/proposals. Tap accept
@@ -279,6 +275,9 @@ struct TodayView: View {
                     lastNightHours: lastNightHours,
                     thisWeekMiles: thisWeekMiles,
                     vo2: profile?.physiology.vo2,
+                    bestWindow: forecast?.best_window,
+                    weeksToRace: purpose?.weeksToRace,
+                    nextHardLabel: nextHardLabel,
                     onTap: { onReadinessTap() }
                 )
                 .padding(.horizontal, 22)
@@ -1202,6 +1201,39 @@ struct TodayView: View {
         }
         if !phase.isEmpty { return "\(phase) PHASE" }
         if let w = weeks, w > 0 { return "\(w) WEEKS TO RACE" }
+        return nil
+    }
+
+    /// 2026-06-02 round 39 · "NEXT HARD" stat chip · walks the
+    /// remaining days in this plan week, picks the first that's not
+    /// easy/recovery/rest, formats as "{DOW} · {EFFORT}". Nil when no
+    /// hard sessions remain (or no plan loaded).
+    private var nextHardLabel: String? {
+        guard let days = plan?.days else { return nil }
+        let todayKey = plan?.today_iso ?? todayISO
+        let dowLetters = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        // Walk days AFTER today (skip today itself · "next" means future)
+        // looking for the first non-easy/non-rest entry.
+        for day in days {
+            guard day.date_iso > todayKey else { continue }
+            let effort = FaffEffort.fromType(day.sub_label ?? day.type)
+            switch effort {
+            case .tempo, .intervals, .long, .race:
+                let dow = dowLetters[((day.dow % 7) + 7) % 7]
+                let typeWord: String = {
+                    switch effort {
+                    case .tempo:     return "TEMPO"
+                    case .intervals: return "INTERVALS"
+                    case .long:      return "LONG"
+                    case .race:      return "RACE"
+                    default:         return ""
+                    }
+                }()
+                return "\(dow) · \(typeWord)"
+            default:
+                continue
+            }
+        }
         return nil
     }
 

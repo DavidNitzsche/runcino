@@ -1,24 +1,36 @@
 //
 //  RootTabView.swift
-//  v3 host · 5 tabs (Today · Train · Activity · Health · Targets).
-//  Profile is reached via the avatar in each tab header.
+//  v4 host (2026-06-02 round 33) · custom floating glass tab bar with
+//  a centered RUN action that opens a popover menu.
 //
-//  Each tab is wrapped in its own NavigationStack so push detail screens
-//  (RunDetail, Planned, WatchMirror, RaceDay, Settings, etc.) land within
-//  the originating tab. Destinations are dispatched via a shared FaffRoute
-//  enum so every tab can navigate to every screen consistently.
+//  Tabs: Today · Train · RUN (action, not route) · Health · Targets.
+//  ACTIVITY tab is retired from the bar · Activity view stays
+//  reachable as a route (.activity case) for deep-links from other
+//  surfaces.
+//
+//  Center RUN tab toggles a RunActionMenu (Outdoor · Treadmill ·
+//  Log niggle · Log non-run). Per design: most runs start from the
+//  watch, so phone-side run starting is a low-key option tucked
+//  inside this menu rather than a prominent button on Today.
+//
+//  Each non-Run tab is wrapped in its own NavigationStack so push
+//  destinations (RunDetail, WatchMirror, Treadmill, etc.) land
+//  within the originating tab via the shared FaffRoute dispatcher.
+//
+//  Reference: /Users/david/Downloads/design_handoff_runner_menu/
 //
 
 import SwiftUI
 
+/// Visible tabs · Activity stays as a route via FaffRoute for any
+/// surface that links to it, but doesn't appear in the bar.
 enum FaffTab: String, CaseIterable, Identifiable {
-    case today, train, activity, health, targets
+    case today, train, health, targets
     var id: String { rawValue }
     var label: String {
         switch self {
         case .today:    return "Today"
         case .train:    return "Train"
-        case .activity: return "Activity"
         case .health:   return "Health"
         case .targets:  return "Targets"
         }
@@ -27,7 +39,6 @@ enum FaffTab: String, CaseIterable, Identifiable {
         switch self {
         case .today:    return "calendar"
         case .train:    return "chart.line.uptrend.xyaxis"
-        case .activity: return "waveform.path.ecg"
         case .health:   return "heart.fill"
         case .targets:  return "flag.fill"
         }
@@ -48,44 +59,116 @@ enum FaffRoute: Hashable {
     case shoes
     case pro
     case paywall
+    case activity
     /// Learn modal — 45 doctrine articles seeded server-side after the
     /// 2026-05-30 backend audit. Pushed from health-tab tile taps and
     /// from any coach card with a `learn` deep-link.
     case learn(slug: String)
 }
 
+/// PreferenceKey that lets pushed views hide the floating tab bar.
+/// Any view (e.g. TreadmillView, WatchMirrorView) that wants to take
+/// over the full screen adds `.hideFaffTabBar()` and the bar fades
+/// out. Defaults to false so most surfaces keep the bar.
+struct HideFaffTabBarKey: PreferenceKey {
+    static let defaultValue: Bool = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = nextValue() || value
+    }
+}
+
+extension View {
+    /// Hide the floating tab bar while this view is on screen. Used by
+    /// active-run surfaces (TreadmillView, WatchMirrorView) where the
+    /// run console is the only thing that should be tappable.
+    func hideFaffTabBar(_ hide: Bool = true) -> some View {
+        self.preference(key: HideFaffTabBarKey.self, value: hide)
+    }
+}
+
 struct RootTabView: View {
     @State private var selected: FaffTab = .today
     @State private var pushProfile = false
-
-    init() {
-        styleTabBar()
-    }
+    @State private var showRunMenu: Bool = false
+    @State private var showSymptomSheet: Bool = false
+    @State private var showLogNonRunSheet: Bool = false
+    /// Pending navigation set by the run-menu mode buttons · triggers a
+    /// push into the active tab's NavigationStack via the .navigationDestination(item:)
+    /// hook below. Cleared once the push lands.
+    @State private var pendingRoute: FaffRoute? = nil
+    /// Reflects whichever view's hideFaffTabBar preference is currently
+    /// set. RootTabView reads this to fade the bar in/out.
+    @State private var tabBarHidden: Bool = false
 
     var body: some View {
-        TabView(selection: $selected) {
-            navStack { TodayView(onProfile: { pushProfile = true }) }
-                .tabItem { Label(FaffTab.today.label, systemImage: FaffTab.today.icon) }
-                .tag(FaffTab.today)
-            navStack { TrainView(onProfile: { pushProfile = true }) }
-                .tabItem { Label(FaffTab.train.label, systemImage: FaffTab.train.icon) }
-                .tag(FaffTab.train)
-            navStack { ActivityView(onProfile: { pushProfile = true }) }
-                .tabItem { Label(FaffTab.activity.label, systemImage: FaffTab.activity.icon) }
-                .tag(FaffTab.activity)
-            navStack { HealthView(onProfile: { pushProfile = true }) }
-                .tabItem { Label(FaffTab.health.label, systemImage: FaffTab.health.icon) }
-                .tag(FaffTab.health)
-            navStack { TargetsView(onProfile: { pushProfile = true }) }
-                .tabItem { Label(FaffTab.targets.label, systemImage: FaffTab.targets.icon) }
-                .tag(FaffTab.targets)
+        ZStack {
+            // Content layer · the active tab's view stack, full-screen.
+            // Tab swap is instant (no TabView crossfade) · matches the
+            // design's hard-cut behavior.
+            content
+                .ignoresSafeArea(.keyboard)
+
+            // Run action menu · scrim + menu card. Renders ABOVE the
+            // content but BELOW the tab bar (per design z-order: scrim
+            // 4 / tabbar 5 / menu 6). The component handles its own
+            // dim + scale-in animation.
+            RunActionMenu(
+                isOpen: $showRunMenu,
+                accent: Color(hex: 0xEE6038),
+                onOutdoor: { pendingRoute = .watchMirror },
+                onTreadmill: { pendingRoute = .treadmill },
+                onNiggle: { showSymptomSheet = true },
+                onNonRun: { showLogNonRunSheet = true }
+            )
+            .allowsHitTesting(showRunMenu)
+
+            // Custom floating glass tab bar · always visible on top
+            // EXCEPT when an active run view (TreadmillView /
+            // WatchMirrorView) sets hideFaffTabBar() · the run console
+            // is full-screen and the tab bar would clip its controls.
+            VStack {
+                Spacer()
+                tabBar
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 14)
+            }
+            .opacity(tabBarHidden ? 0 : 1)
+            .allowsHitTesting(!tabBarHidden)
+            .animation(.easeInOut(duration: 0.22), value: tabBarHidden)
         }
-        .tint(.white)
+        .onPreferenceChange(HideFaffTabBarKey.self) { newValue in
+            tabBarHidden = newValue
+        }
         .sheet(isPresented: $pushProfile) {
             NavigationStack {
                 ProfileView(onDismiss: { pushProfile = false })
                     .navigationDestination(for: FaffRoute.self) { routeDestination($0) }
             }
+        }
+        .sheet(isPresented: $showSymptomSheet) {
+            // SymptomReportSheet (Niggle | Sick) · existing toolkit component.
+            SymptomReportSheet(onSubmitted: { showSymptomSheet = false })
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showLogNonRunSheet) {
+            LogNonRunSheet(onSubmitted: { showLogNonRunSheet = false })
+                .presentationDetents([.medium])
+        }
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private var content: some View {
+        switch selected {
+        case .today:
+            navStack { TodayView(onProfile: { pushProfile = true }) }
+        case .train:
+            navStack { TrainView(onProfile: { pushProfile = true }) }
+        case .health:
+            navStack { HealthView(onProfile: { pushProfile = true }) }
+        case .targets:
+            navStack { TargetsView(onProfile: { pushProfile = true }) }
         }
     }
 
@@ -95,6 +178,9 @@ struct RootTabView: View {
             root()
                 .navigationBarHidden(true)
                 .navigationDestination(for: FaffRoute.self) { routeDestination($0) }
+                .navigationDestination(item: $pendingRoute) { route in
+                    routeDestination(route)
+                }
         }
     }
 
@@ -112,33 +198,83 @@ struct RootTabView: View {
         case .shoes:               ShoesView().navigationBarHidden(true)
         case .pro:                 ProView().navigationBarHidden(true)
         case .paywall:             PaywallView().navigationBarHidden(true)
+        case .activity:            ActivityView(onProfile: { pushProfile = true }).navigationBarHidden(true)
         case .learn(let slug):     LearnArticleSheet(slug: slug).navigationBarHidden(true)
         }
     }
 
-    private func styleTabBar() {
-        let app = UITabBarAppearance()
-        app.configureWithTransparentBackground()
-        app.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
-        app.backgroundColor = UIColor(red: 16/255, green: 9/255, blue: 7/255, alpha: 0.62)
-        app.shadowColor = UIColor.white.withAlphaComponent(0.09)
+    // MARK: - Floating glass tab bar
 
-        let onAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont(name: "Inter-Bold", size: 10) ?? .systemFont(ofSize: 10, weight: .bold),
-            .foregroundColor: UIColor.white,
-            .kern: 0.3
-        ]
-        let offAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont(name: "Inter-Bold", size: 10) ?? .systemFont(ofSize: 10, weight: .bold),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.46),
-            .kern: 0.3
-        ]
-        app.stackedLayoutAppearance.selected.titleTextAttributes = onAttrs
-        app.stackedLayoutAppearance.normal.titleTextAttributes = offAttrs
-        app.stackedLayoutAppearance.selected.iconColor = .white
-        app.stackedLayoutAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.46)
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            tabButton(.today)
+            tabButton(.train)
+            runTabButton
+            tabButton(.health)
+            tabButton(.targets)
+        }
+        .padding(6)
+        .frame(height: 62)
+        .background(
+            ZStack {
+                Color(red: 14/255, green: 20/255, blue: 32/255, opacity: 0.72)
+                Color.clear.background(.ultraThinMaterial)
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.55), radius: 38, y: 16)
+    }
 
-        UITabBar.appearance().standardAppearance = app
-        UITabBar.appearance().scrollEdgeAppearance = app
+    private func tabButton(_ tab: FaffTab) -> some View {
+        let isSelected = selected == tab
+        return Button {
+            // Dismiss the run menu if the runner taps a different tab
+            // while it's open · matches the design's expectation that
+            // any nav action collapses the menu.
+            if showRunMenu { showRunMenu = false }
+            selected = tab
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 19, weight: .semibold))
+                Text(tab.label.uppercased())
+                    .font(.body(9, weight: .extraBold)).tracking(0.4)
+            }
+            .foregroundStyle(isSelected ? .white : Color.white.opacity(0.5))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(TabPressStyle())
+    }
+
+    private var runTabButton: some View {
+        Button {
+            showRunMenu.toggle()
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: "figure.run")
+                    .font(.system(size: 22, weight: .bold))
+                    .shadow(color: .black.opacity(0.4), radius: 8, y: 2)
+                Text("RUN")
+                    .font(.body(9, weight: .extraBold)).tracking(0.4)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(TabPressStyle())
+    }
+}
+
+/// Brief scale-down on tab press · matches the design's `:active` state.
+private struct TabPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .animation(.easeOut(duration: 0.11), value: configuration.isPressed)
     }
 }

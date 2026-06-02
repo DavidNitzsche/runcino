@@ -119,6 +119,7 @@
 		DDEC03C890DF05DF53ECDF7F /* TrainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175401B3AE5EFD5368347E58 /* TrainView.swift */; };
 		DFF432A5660C9F03C222442B /* D_Disclosure.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB749F9A43F92F9DF1CA4C2A /* D_Disclosure.swift */; };
 		E05B05674D1FD82CFD0AC965 /* RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E341D1073CB161F54628F683 /* RunDetailView.swift */; };
+		E0BE2A0BC43ECFFFEFE7A395 /* RunActionMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8579E34E6C74E08AD40FCB48 /* RunActionMenu.swift */; };
 		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
 		E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDE304E9C6471D398E2D102 /* Briefing.swift */; };
 		E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */; };
@@ -242,6 +243,7 @@
 		80D79010E6307A7B819FD164 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
 		81938656B7079C01BB12693C /* ColdStartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartView.swift; sourceTree = "<group>"; };
 		84E231F45E68801F45CA43EB /* DragSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragSheet.swift; sourceTree = "<group>"; };
+		8579E34E6C74E08AD40FCB48 /* RunActionMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunActionMenu.swift; sourceTree = "<group>"; };
 		8638CFAB477DCF206DEFD0EA /* StickyCTABar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickyCTABar.swift; sourceTree = "<group>"; };
 		87DEABD97368BE1C69024791 /* ChimePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChimePlayer.swift; sourceTree = "<group>"; };
 		894094955F354E1174579A70 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
@@ -377,6 +379,7 @@
 				B0E2C05E3027A3C1CB45AEDD /* PageHeader.swift */,
 				2E0F934EAB1B1CC2AD163825 /* Primitives.swift */,
 				FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */,
+				8579E34E6C74E08AD40FCB48 /* RunActionMenu.swift */,
 				0FC065B278966D7AAA360355 /* ScrubbableTrace.swift */,
 				ADD08DB3E4484B1FC6C0C0F8 /* ShoeView.swift */,
 				C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */,
@@ -777,6 +780,7 @@
 				14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */,
 				C1961C2571F61331D7688A9F /* RolePickView.swift in Sources */,
 				097BBD3A01CCAB65AC7F4F60 /* RootTabView.swift in Sources */,
+				E0BE2A0BC43ECFFFEFE7A395 /* RunActionMenu.swift in Sources */,
 				E05B05674D1FD82CFD0AC965 /* RunDetailView.swift in Sources */,
 				3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */,
 				8A9B601EB7B9856185B78459 /* ScrubbableTrace.swift in Sources */,
