@@ -60,7 +60,15 @@ jobs:
 
       - name: Run plan-engine bench
         working-directory: web-v2
-        run: npx vitest run lib/plan/plan-engine.test.ts
+        run: |
+          # 2026-06-02 · expanded to 3 test files:
+          #   plan-engine.test.ts    · simulator trajectory bench
+          #   generator-bench.test.ts · composePlan() vs persona doctrine
+          #   adapter-bench.test.ts   · adapter mutation invariants
+          npx vitest run \
+            lib/plan/plan-engine.test.ts \
+            lib/plan/generator-bench.test.ts \
+            lib/plan/adapter-bench.test.ts
 
       - name: Bench summary
         if: always()
