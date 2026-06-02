@@ -28,3 +28,9 @@ next-env.d.ts
 # macOS AppleDouble
 ._*
 .DS_Store
+
+# Throwaway diagnostic / probe scripts agents drop while debugging.
+# Reference live prod DB via env vars; not part of the app.
+scripts/probe-*.mjs
+scripts/route-debug.mjs
+scripts/smoke-recap-*.mjs
