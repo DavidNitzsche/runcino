@@ -551,13 +551,17 @@
 .fa-gappanel .tag-partly { color: var(--goal); background: rgba(243,173,56,.13); }
 .fa-gappanel .tag-fixed { color: var(--fa-mute); background: rgba(255,255,255,.07); }
 
-/* Doctrine drawer · expands under the legend */
-.fa-gappanel .drawer { margin-top: 12px; border-radius: var(--r-card); background: rgba(0,0,0,.22); border: 1px solid var(--line); overflow: hidden; max-height: 0; transition: max-height .3s var(--ease-smooth); }
-.fa-gappanel .drawer.open { max-height: 280px; }
-.fa-gappanel .drawer .di { padding: 15px 16px; }
-.fa-gappanel .drawer .di p { font: 500 13.5px/1.6 var(--font-body); color: var(--txt); margin: 0; }
-.fa-gappanel .drawer .di p b { color: var(--amber-bright); font-weight: 700; }
-.fa-gappanel .drawer .di .src { font: 600 10.5px/1 var(--font-display); color: var(--dim); letter-spacing: .5px; margin-top: 11px; }
+/* Doctrine drawer · expands inline under the legend, full width,
+   above "What would actually move it". Renamed 2026-06-02 from
+   `.drawer` to `.gp-doctrine` to avoid the global Shell `.drawer`
+   sidebar collision (globals.css:816 sets position:absolute + right:0
+   + transform that pulled this card into the upper-right corner). */
+.fa-gappanel .gp-doctrine { margin-top: 14px; border-radius: var(--r-card); background: rgba(0,0,0,.22); border: 1px solid var(--line); overflow: hidden; max-height: 0; transition: max-height .3s var(--ease-smooth), padding .2s ease; }
+.fa-gappanel .gp-doctrine.is-open { max-height: 320px; }
+.fa-gappanel .gp-doctrine .gp-body { padding: 16px 18px; }
+.fa-gappanel .gp-doctrine .gp-body p { font: 500 14px/1.6 var(--font-body); color: var(--txt); margin: 0; }
+.fa-gappanel .gp-doctrine .gp-body p b { color: var(--amber-bright); font-weight: 700; }
+.fa-gappanel .gp-doctrine .gp-body .src { font: 600 10.5px/1 var(--font-display); color: var(--dim); letter-spacing: .5px; margin-top: 12px; }
 
 /* Hit list · "what would move it" */
 .fa-gappanel .hitrow { display: flex; align-items: center; gap: 15px; padding: 14px 4px; border-bottom: 1px solid var(--line); }

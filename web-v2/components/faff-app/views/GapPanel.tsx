@@ -567,8 +567,17 @@ export function GapPanel({ goal, series }: GapPanelProps) {
                 </button>
               ))}
             </div>
-            <div className={`drawer${openSeg != null ? ' open' : ''}`}>
-              <div className="di">
+            {/* 2026-06-02 · doctrine drawer renamed from `.drawer` to
+                `.gp-doctrine` to avoid the global `.drawer` Shell sidebar
+                collision (globals.css:816 sets position:absolute + right:0
+                + transform:translateX(100%) for the right-side slide-over).
+                The scoped `.fa-gappanel .drawer` rules only overrode the
+                surface, not position · so clicking a chunk button popped
+                this doctrine card up in the corner instead of inline.
+                David call: render inline below the chunk cards, full
+                width, above "What would actually move it". */}
+            <div className={`gp-doctrine${openSeg != null ? ' is-open' : ''}`}>
+              <div className="gp-body">
                 {openSeg != null && segs[openSeg] ? (
                   <>
                     <p dangerouslySetInnerHTML={{ __html: segs[openSeg].doctrine }} />
