@@ -169,11 +169,11 @@ async function recentQualityDistanceMi(userId: string): Promise<number> {
          JOIN training_plans tp ON tp.id = pw.plan_id
          JOIN runs r
            ON r.user_uuid = tp.user_uuid::uuid
-          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso
+          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
           AND NOT (r.data ? 'mergedIntoId')
         WHERE tp.user_uuid = $1
           AND pw.type IN ('tempo','threshold','intervals')
-          AND pw.date_iso >= CURRENT_DATE - 28
+          AND pw.date_iso::date >= CURRENT_DATE - 28
      )
      SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med FROM q`,
     [userId],
@@ -201,11 +201,11 @@ async function recentQualityPerWeek(userId: string): Promise<number> {
          JOIN training_plans tp ON tp.id = pw.plan_id
          JOIN runs r
            ON r.user_uuid = tp.user_uuid::uuid
-          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso
+          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
           AND NOT (r.data ? 'mergedIntoId')
         WHERE tp.user_uuid = $1
           AND pw.type IN ('tempo','threshold','intervals')
-          AND pw.date_iso >= CURRENT_DATE - 28
+          AND pw.date_iso::date >= CURRENT_DATE - 28
         GROUP BY 1
      )
      SELECT AVG(n)::text AS avg FROM wk_q`,
