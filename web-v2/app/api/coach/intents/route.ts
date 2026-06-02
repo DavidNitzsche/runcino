@@ -66,7 +66,17 @@ export async function GET(req: NextRequest) {
   const reasonPrefix = url.searchParams.get('reason_prefix');
 
   const params: unknown[] = [userId, sinceIso];
-  let where = `COALESCE(user_uuid::text, user_id) = $1 AND ts >= $2`;
+  // BOTH columns cast to text · the writer at lib/plan/adapt.ts:292
+  // populates user_id (uuid col) and user_uuid (uuid col) from the
+  // same $1 string. Without ::text on user_id, PG errors with
+  // "COALESCE types text and uuid cannot be matched" because the
+  // first arg (user_uuid::text) is text and the second arg (user_id)
+  // is uuid · they need a common type. Diagnosed 2026-06-01 by
+  // /api/admin/audit-coach-intents · the rows ARE in the table but
+  // the query was throwing and the silent .catch below was returning
+  // [] (so the WhatChangedExpander + CoachActivityTimeline showed
+  // empty for runners who actually had adapter activity).
+  let where = `COALESCE(user_uuid::text, user_id::text) = $1 AND ts >= $2`;
   if (reasonPrefix) {
     params.push(`${reasonPrefix}%`);
     where += ` AND reason LIKE $${params.length}`;
@@ -79,7 +89,13 @@ export async function GET(req: NextRequest) {
        ORDER BY ts DESC
        LIMIT ${limit}`,
     params,
-  ).catch(() => ({ rows: [] as IntentRow[] }));
+  ).catch((e: unknown) => {
+    // Log the underlying error · was silently swallowed before, which
+    // hid the COALESCE type mismatch above. Still degrade to empty so
+    // the UI doesn't crash, but the error is visible in Railway logs.
+    console.error('[api/coach/intents] query failed:', e instanceof Error ? e.message : String(e));
+    return { rows: [] as IntentRow[] };
+  });
 
   const rendered: RenderedRow[] = q.rows.map((r) => ({
     ts: r.ts,
