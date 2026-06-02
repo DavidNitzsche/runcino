@@ -89,6 +89,32 @@ export function predictRaceTime(vdot: number, distanceMi: number): number | null
   return Math.round(mid);
 }
 
+/**
+ * 2026-06-03 · derive Daniels T-pace (s/mi) from a VDOT score.
+ *
+ * Uses predictRaceTime(vdot, 13.1) to get the runner's HM-implied
+ * finish time, then applies the canonical HM → T conversion (HM pace
+ * minus 5 s/mi · matches spec-builder.tPaceFromGoal for HM). This is
+ * the doctrinal mapping: HM race effort is roughly T-pace, so HM-VDOT
+ * is the cleanest anchor for T-pace derivation.
+ *
+ * Used by the plan generator's Rule 3 pace-anchor blend (mid-block
+ * doctrine) · runners whose current VDOT is below goal-implied VDOT
+ * get early-week paces anchored to currentT, ramping toward goalT.
+ *
+ * Cite: Research/01-pace-zones-vdot.md §Daniels-T-pace
+ * Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 3
+ */
+export function tPaceFromVdot(vdot: number | null | undefined): number | null {
+  if (!vdot || !Number.isFinite(vdot) || vdot <= 0) return null;
+  const hmSec = predictRaceTime(vdot, 13.1);
+  if (hmSec == null) return null;
+  const hmPaceSPerMi = hmSec / 13.1;
+  // HM pace minus 5 s/mi · same offset as spec-builder.tPaceFromGoal
+  // for the half-marathon branch (lines 315-316).
+  return Math.round(hmPaceSPerMi - 5);
+}
+
 /** Format seconds → "1:44:50" (h:mm:ss) or "59:30" (m:ss). */
 export function formatRaceTime(seconds: number | null | undefined): string | null {
   if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;

@@ -177,7 +177,10 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
         // bug · the generator must not author a long shorter than the
         // runner's recent peak long (modulo cutback margin). Cutback weeks
         // can drop ~2mi; non-cutback build weeks must hold the floor.
-        const recentLong = Math.round(p.profile.weeklyBaseMi * 0.25); // matches input
+        // Mid-block personas pass explicit recentLongMi; cold-start
+        // personas use the derived value (matches personaToComposeInput).
+        const recentLong = p.profile.midBlock?.recentLongMi
+          ?? Math.round(p.profile.weeklyBaseMi * 0.25);
         if (recentLong < 8) return; // floor only kicks in for true long-runners
         for (let i = 0; i < result.weeks.length; i++) {
           const w = result.weeks[i];

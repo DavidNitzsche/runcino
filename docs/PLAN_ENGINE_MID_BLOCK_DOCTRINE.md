@@ -1,6 +1,8 @@
 # Plan Engine · Mid-Block Runner Doctrine
 
-**Status:** 4 of 10 rules SHIPPED · 6 rules GAP · bench persona `david-mid-block` exercises all 6 GAP rules with failing-test assertions.
+**Status (2026-06-03 PM):** 10 of 10 rules SHIPPED. Simulation against David's live plan: 6/7 testable rules pass · the one failure (Rule 10 derived_from) only because his plan was authored pre-Rule-10; next rebuild populates.
+
+**Earlier status (morning):** 4 of 10 rules SHIPPED · 6 rules GAP · bench persona `david-mid-block` exercises all 6 GAP rules with failing-test assertions.
 
 **Why this doc exists.** The generator was designed for cold-start onboarding (no recent runs, ramp from 0). David is 10 weeks out from AFC Half with established 12mi longs, 35mpw, 1-2 quality/wk. Three bugs in one session (`1:30` parse, `detectMidBlock` active-only, Sun=9 long) had a single root cause: cold-start assumptions broke against mid-block reality. This doc codifies the rules so future patches don't accidentally re-introduce cold-start assumptions.
 
@@ -181,6 +183,39 @@ Predicted bench pass/fail for `david-mid-block` against the CURRENT generator (b
 4. **Rule 3 (pace anchor blend)** · meaty; requires `bestRecentVdot` reader + `tPaceFromVdot` helper + blend math in `layoutWeek`. Real test needs to inspect actual pace targets in the spec.
 5. **Rule 4 (monotonic vol floor, full)** · enforce post-`vols[]` monotonic check.
 6. **Rule 8 (TSB-driven cutback)** · last, needs Banister TSB wired through into `volumeCurve`. Most architecturally invasive.
+
+---
+
+## Simulation results · 2026-06-03 PM
+
+Ran `scripts/_simulate_mid_block.mjs` against David's live plan (`pln_06d040468f7198fd`). 7 of 7 testable rules audited; 6 PASS, 1 expected FAIL (Rule 10 pre-dates ship).
+
+| Rule | Status | Detail |
+|---|---|---|
+| 1 (skip BASE) | PASS | No BASE phase weeks |
+| 2 (quality dist floor) | PASS | All quality days ≥ 7mi (recent 8 − 1) |
+| 4 (monotonic vol) | PASS | Week 0 = 45.5 ≥ 90% of recent 35.7 = 32.1 |
+| 5 (density ramp) | PASS | Week 0 q-count 2 within ±1 of recent 2 |
+| 6 (phase compression) | PASS | 11w plan, no BASE |
+| 7 (long floor) | PASS | All builds ≥ 12mi (cutback ≥ 10mi) |
+| 10 (derived_from) | FAIL (expected) | Plan was authored pre-Rule-10 ship; next rebuild populates |
+
+**Per-week shape from David's live plan:**
+```
+W 0 2026-06-01 QUALITY          45.5mi · long 12mi · 2q × 8mi
+W 1 2026-06-08 QUALITY          45.0mi · long 12mi · 2q × 8mi
+W 2 2026-06-15 QUALITY          48.5mi · long 12mi · 2q × 8mi
+W 3 2026-06-22 QUALITY    [cb]  40.0mi · long 10mi · 2q × 8mi
+W 4 2026-06-29 QUALITY          51.5mi · long 12mi · 2q × 8mi
+W 5 2026-07-06 QUALITY          52.0mi · long 12mi · 2q × 8mi
+W 6 2026-07-13 RACE-SPECIFIC    54.0mi · long 13mi · 2q × 8mi
+W 7 2026-07-20 RACE-SPECIFIC[cb]45.0mi · long 11mi · 2q × 8mi
+W 8 2026-07-27 RACE-SPECIFIC    58.0mi · long 14mi · 2q × 8mi
+W 9 2026-08-03 TAPER            43.0mi · long  9mi · 2q × 8mi
+W10 2026-08-10 TAPER            29.1mi · long  0mi · 0q × 0mi
+```
+
+Rule 3 (pace blend) is type-level only · per-week tPaceSec is now populated by `composePlan`, persisted via `buildWorkoutSpec`, but the audit can't compare to a baseline without a parallel cold-start plan to diff against. Behavior verified by code-trace: `tPaceForWeek(0, 'QUALITY')` returns `currentT` when `bestRecentVdot < goal-implied VDOT`, ramps to `goalT` over the first 60% of build weeks.
 
 ---
 
