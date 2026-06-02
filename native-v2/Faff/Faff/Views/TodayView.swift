@@ -1004,7 +1004,14 @@ struct TodayView: View {
         guard let week = plan,
               let d = week.days.first(where: { $0.date_iso == selectedDayID })
         else { return nil }
-        return FaffEffort.fromType(d.sub_label ?? d.type)
+        // 2026-06-02 round 43 · effort classification reads the
+        // canonical PlanDay.type ONLY · NOT sub_label. sub_label for
+        // quality sessions is the workout name ("4×1 mi @ I · 3 min jog"),
+        // not an effort token, so FaffEffort.fromType fell through to
+        // .easy. Hero, color, target pace, effort target all read off
+        // this · using the wrong source made every quality session look
+        // like an easy run (Z2, 8:12, green mesh).
+        return FaffEffort.fromType(d.type)
     }
 
     private var selectedEffort: FaffEffort {
@@ -1061,8 +1068,15 @@ struct TodayView: View {
     }
 
     private var paceStr: String {
-        if let phase = displayWorkout?.phases.first, let p = phase.targetPaceSPerMi {
-            return formatPace(secondsPerMi: p)
+        // 2026-06-02 round 43 · prefer the WORK phase pace over the
+        // first phase. For intervals/tempo, the first phase is the
+        // warmup at 8:12 but the meaningful target is the rep pace.
+        let phases = displayWorkout?.phases ?? []
+        if let work = phases.first(where: { $0.type == .work && $0.targetPaceSPerMi != nil })?.targetPaceSPerMi {
+            return formatPace(secondsPerMi: work)
+        }
+        if let any = phases.first(where: { $0.targetPaceSPerMi != nil })?.targetPaceSPerMi {
+            return formatPace(secondsPerMi: any)
         }
         return "—"
     }
@@ -1249,7 +1263,8 @@ struct TodayView: View {
         // looking for the first non-easy/non-rest entry.
         for day in days {
             guard day.date_iso > todayKey else { continue }
-            let effort = FaffEffort.fromType(day.sub_label ?? day.type)
+            // type-only · see selectedDayEffort comment.
+            let effort = FaffEffort.fromType(day.type)
             switch effort {
             case .tempo, .intervals, .long, .race:
                 let dow = dowLetters[((day.dow % 7) + 7) % 7]
@@ -1532,7 +1547,7 @@ struct TodayView: View {
                 id: d.date_iso,
                 dow: dowLetter(d.dow),
                 date: dayNumber(d.date_iso),
-                effort: FaffEffort.fromType(d.sub_label ?? d.type),
+                effort: FaffEffort.fromType(d.type),
                 isToday: d.is_today,
                 isDone: d.completedRunId != nil,
                 isSkipped: d.skipped ?? false

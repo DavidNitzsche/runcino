@@ -162,10 +162,20 @@ struct TodayPreRunBodyV3: View {
     }
 
     private var targetPaceText: String {
-        guard let p = workout?.phases.first(where: { $0.targetPaceSPerMi != nil })?.targetPaceSPerMi else {
-            return "—"
+        // 2026-06-02 round 43 · prefer the WORK phase pace (the rep
+        // pace for intervals/tempo/threshold) over the warmup pace.
+        // The old "first non-null" picked the warmup (8:12) for
+        // intervals where the meaningful target is the rep pace
+        // (6:29). For easy runs there's only one phase so the result
+        // is unchanged.
+        let phases = workout?.phases ?? []
+        if let work = phases.first(where: { $0.type == .work && $0.targetPaceSPerMi != nil })?.targetPaceSPerMi {
+            return formatPace(work)
         }
-        return formatPace(p)
+        if let any = phases.first(where: { $0.targetPaceSPerMi != nil })?.targetPaceSPerMi {
+            return formatPace(any)
+        }
+        return "—"
     }
 
     private var estTimeText: String {
