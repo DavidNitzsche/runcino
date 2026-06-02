@@ -157,23 +157,30 @@ async function recentPeakLongMi(userId: string): Promise<number> {
  * with avgHr ≥ 85% of effective max. Returns 0 when no signal.
  */
 async function recentQualityDistanceMi(userId: string): Promise<number> {
+  // 2026-06-03 fix · plan_workouts has NO matched_run_id column.
+  // Matching is date-based: JOIN runs ON (data->>'date')::date = pw.date_iso
+  // (mirrors runner-calibration.ts and drift-monitor.ts patterns).
+  // The previous query silently returned 0 (caught error) · Rule 2
+  // floor never fired since it shipped.
   const r = (await pool.query<{ med: string | null }>(
     `WITH q AS (
        SELECT (r.data->>'distanceMi')::numeric AS mi
-         FROM runs r
-        WHERE r.user_uuid = $1
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+         JOIN runs r
+           ON r.user_uuid = tp.user_uuid::uuid
+          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso
           AND NOT (r.data ? 'mergedIntoId')
-          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date
-              >= CURRENT_DATE - 28
-          AND EXISTS (
-            SELECT 1 FROM plan_workouts pw
-             WHERE pw.matched_run_id = r.id
-               AND pw.type IN ('tempo','threshold','intervals')
-          )
+        WHERE tp.user_uuid = $1
+          AND pw.type IN ('tempo','threshold','intervals')
+          AND pw.date_iso >= CURRENT_DATE - 28
      )
      SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med FROM q`,
     [userId],
-  ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
+  ).catch((e: unknown) => {
+    console.error('[recentQualityDistanceMi]', e instanceof Error ? e.message : String(e));
+    return { rows: [{ med: null }] };
+  })).rows[0];
   const m = Number(r?.med ?? 0);
   if (!Number.isFinite(m) || m <= 0) return 0;
   return Math.round(m * 2) / 2;
@@ -184,19 +191,29 @@ async function recentQualityDistanceMi(userId: string): Promise<number> {
  * Rule 5 density-ramp source. Returns 0 when no signal.
  */
 async function recentQualityPerWeek(userId: string): Promise<number> {
+  // 2026-06-03 fix · same bug as recentQualityDistanceMi. plan_workouts
+  // has no user_uuid column AND no matched_run_id column. Matching is
+  // date-based via JOIN on training_plans + runs.
   const r = (await pool.query<{ avg: string | null }>(
     `WITH wk_q AS (
-       SELECT date_trunc('week', pw.date_iso) AS wk, COUNT(*)::numeric AS n
+       SELECT date_trunc('week', pw.date_iso::timestamp) AS wk, COUNT(DISTINCT pw.id)::numeric AS n
          FROM plan_workouts pw
-        WHERE pw.user_uuid = $1
+         JOIN training_plans tp ON tp.id = pw.plan_id
+         JOIN runs r
+           ON r.user_uuid = tp.user_uuid::uuid
+          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso
+          AND NOT (r.data ? 'mergedIntoId')
+        WHERE tp.user_uuid = $1
           AND pw.type IN ('tempo','threshold','intervals')
-          AND pw.matched_run_id IS NOT NULL
           AND pw.date_iso >= CURRENT_DATE - 28
         GROUP BY 1
      )
      SELECT AVG(n)::text AS avg FROM wk_q`,
     [userId],
-  ).catch(() => ({ rows: [{ avg: null }] }))).rows[0];
+  ).catch((e: unknown) => {
+    console.error('[recentQualityPerWeek]', e instanceof Error ? e.message : String(e));
+    return { rows: [{ avg: null }] };
+  })).rows[0];
   const n = Number(r?.avg ?? 0);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.round(n);
