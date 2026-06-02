@@ -669,8 +669,18 @@ final class WorkoutEngine: ObservableObject {
         // events) so it works on the sim mock and any future tracker too.
         // Paused minutes naturally don't count because totalElapsedSec is
         // paused-corrected.
+        //
+        // GATED to non-work phases. During a structured work rep the runner
+        // is focused on hitting THIS rep's target pace; the global "MILE 2 ·
+        // 6:47" takeover is noise (and a 6s view-blocker — they'd lose pace
+        // feedback mid-rep). The rep's own pace + distance-remaining are
+        // already on the WorkIntervalFace. David flagged this in tomorrow's
+        // preflight (2026-06-02). Bug-fix: warmup / cooldown / recovery /
+        // just-run still get splits — those are where mile pace is the
+        // highest-value read.
         let mileIndex = Int(coveredMi)
-        if mileIndex > lastMileIndex {
+        let allowSplitFlash = currentPhase?.type != .work
+        if allowSplitFlash, mileIndex > lastMileIndex {
             // If GPS jumps multiple integers in one tick (rare, e.g. a sim
             // teleport), we only flash the most-recent mile rather than
             // queuing several — the runner can't process N flashes anyway.
@@ -678,10 +688,13 @@ final class WorkoutEngine: ObservableObject {
             lastMileElapsedSec = totalElapsedSec
             lastMileIndex = mileIndex
             Haptics.play(.transitionWork)
-            // 6s so the runner has time to read it on the wrist while
-            // running — 2.5s was gone before the watch came up. Mile
-            // pace is one of the highest-value reads of the run.
             flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 6.0)
+        } else if mileIndex > lastMileIndex {
+            // Suppressed the flash, but still advance the mile bookkeeping
+            // so the NEXT split (when we leave the work phase) reads the
+            // correct mile number and the correct banked split duration.
+            lastMileElapsedSec = totalElapsedSec
+            lastMileIndex = mileIndex
         }
 
         // Distance-anchored gel cue — RACE DAY ONLY. workout.gelsMi[]
