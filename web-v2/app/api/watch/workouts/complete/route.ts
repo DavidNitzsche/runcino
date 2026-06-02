@@ -24,6 +24,7 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { requireUserId } from '@/lib/auth/session';
+import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 
 export async function POST(req: NextRequest) {
   // 2026-05-30 user-isolation fix: identity comes from the Bearer token,
@@ -39,6 +40,27 @@ export async function POST(req: NextRequest) {
 
   if (!body || typeof body !== 'object' || !body.workoutId) {
     return NextResponse.json({ error: 'workoutId required' }, { status: 400 });
+  }
+
+  // ── 0. Length guard · 2026-06-02 ──
+  // Drop tap-test workouts before any write so they don't pollute the
+  // volume average. Threshold: < 0.25 mi AND < 180 s (both must be tiny).
+  // See lib/runs/length-guard.ts for the rule rationale.
+  const totalSecGuard = Number(body.totalDurationSec) || 0;
+  const totalMiGuard = Number(body.totalDistanceMi) || 0;
+  const guard = isSubThresholdRun({ distanceMi: totalMiGuard, durationSec: totalSecGuard });
+  if (guard.isSubThreshold) {
+    console.log(`[watch/complete] dropped sub-threshold workout ${body.workoutId} · ${guard.distanceMi}mi / ${guard.durationSec}s (min ${MIN_DISTANCE_MI}mi / ${MIN_DURATION_SEC}s)`);
+    return NextResponse.json({
+      ok: true,
+      workoutId: body.workoutId,
+      dropped: guard.reason,
+      distanceMi: guard.distanceMi,
+      durationSec: guard.durationSec,
+      // No row written to coach_intents or runs · client treats as
+      // "accepted quietly, don't surface."
+      api_version: 'watch-complete/p21-guard',
+    });
   }
 
   // ── 1. Full per-phase blob into coach_intents ──

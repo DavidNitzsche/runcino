@@ -11,6 +11,7 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { randomBytes, createHash } from 'crypto';
 import { requireUserId } from '@/lib/auth/session';
+import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -24,6 +25,24 @@ export async function POST(req: NextRequest) {
   const clientId = `manual_${body.date}_${randomBytes(4).toString('hex')}`;
   const slug = `wko_${clientId}`;
   const durationSec = body.duration_min ? Math.round(Number(body.duration_min) * 60) : null;
+
+  // 2026-06-02 · length guard. Manual entries usually have a real
+  // distance, but the same tap-test risk applies if the form ever
+  // accepts a 0.1mi "test" entry. See lib/runs/length-guard.ts.
+  const guard = isSubThresholdRun({
+    distanceMi: Number(body.distance_mi),
+    durationSec: durationSec ?? 0,
+  });
+  if (guard.isSubThreshold) {
+    console.log(`[run/manual] dropped sub-threshold entry ${clientId} · ${guard.distanceMi}mi / ${guard.durationSec}s (min ${MIN_DISTANCE_MI}mi / ${MIN_DURATION_SEC}s)`);
+    return NextResponse.json({
+      ok: true,
+      id: slug,
+      dropped: guard.reason,
+      distanceMi: guard.distanceMi,
+      durationSec: guard.durationSec,
+    });
+  }
 
   const data = {
     id: slug,

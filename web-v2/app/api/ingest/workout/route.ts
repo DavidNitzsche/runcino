@@ -41,6 +41,7 @@ import { autoMergeForDate } from '@/lib/runs/merge';
 import { fetchRunWeather } from '@/lib/weather/openmeteo';
 import { requireUserId } from '@/lib/auth/session';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
+import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -55,6 +56,24 @@ export async function POST(req: NextRequest) {
   if (!body.date || !body.distance_mi) {
     return NextResponse.json({ error: 'date + distance_mi required' }, { status: 400 });
   }
+
+  // 2026-06-02 · length guard · drop tap-test workouts before any
+  // write. See lib/runs/length-guard.ts for the rule.
+  const guard = isSubThresholdRun({
+    distanceMi: Number(body.distance_mi),
+    durationSec: Number(body.duration_sec ?? body.moving_sec ?? 0),
+  });
+  if (guard.isSubThreshold) {
+    console.log(`[ingest/workout] dropped sub-threshold workout ${body.client_workout_id} · ${guard.distanceMi}mi / ${guard.durationSec}s (min ${MIN_DISTANCE_MI}mi / ${MIN_DURATION_SEC}s)`);
+    return NextResponse.json({
+      ok: true,
+      id: `wko_${body.client_workout_id}`,
+      dropped: guard.reason,
+      distanceMi: guard.distanceMi,
+      durationSec: guard.durationSec,
+    });
+  }
+
   const slug = `wko_${body.client_workout_id}`;
 
   // Build the data payload matching the strava_activities.data shape.

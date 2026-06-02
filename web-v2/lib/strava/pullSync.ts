@@ -22,6 +22,7 @@ import { pool } from '@/lib/db/pool';
 import { getStravaToken } from '@/lib/strava/auth';
 import { SOURCE_TIER } from '@/lib/runs/canonical';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
+import { isSubThresholdRun } from '@/lib/runs/length-guard';
 
 const STRAVA_API = 'https://www.strava.com/api/v3';
 const M_PER_MILE = 1609.344;
@@ -288,6 +289,10 @@ export interface SyncOneResult {
   fieldsAdded: number;
   shoesAttributed: number;
   rpeWritten: number;
+  /** 2026-06-02 · sub-threshold drops · count of Strava activities
+   *  rejected at the length guard (< 0.25 mi AND < 180 s).
+   *  See lib/runs/length-guard.ts. */
+  droppedSubThreshold: number;
   errors: string[];
 }
 
@@ -310,6 +315,7 @@ export async function pullSyncOneUser(args: {
     fieldsAdded: 0,
     shoesAttributed: 0,
     rpeWritten: 0,
+    droppedSubThreshold: 0,
     errors: [],
   };
 
@@ -334,6 +340,17 @@ export async function pullSyncOneUser(args: {
   for (const act of acts) {
     try {
       const distMi = act.distance / M_PER_MILE;
+      // 2026-06-02 · length guard · skip tap tests that found their
+      // way to Strava (e.g. a watch test that auto-pushed). Threshold
+      // matches the other 3 ingest sites: < 0.25 mi AND < 180 s.
+      const guard = isSubThresholdRun({
+        distanceMi: distMi,
+        durationSec: act.moving_time ?? act.elapsed_time ?? 0,
+      });
+      if (guard.isSubThreshold) {
+        out.droppedSubThreshold++;
+        continue;
+      }
       const startIso = act.start_date;
       const match = await findCanonicalRow({ userUuid, startIso, distMi });
 

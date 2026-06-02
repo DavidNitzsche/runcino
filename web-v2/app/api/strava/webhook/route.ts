@@ -27,6 +27,7 @@ import { findSubscriptionByVerifyToken, userIdForAthlete } from '@/lib/strava/we
 import { getStravaToken } from '@/lib/strava/auth';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
+import { isSubThresholdRun } from '@/lib/runs/length-guard';
 
 export const dynamic = 'force-dynamic';
 // Node runtime — we hit pg + Strava fetch with timeouts; the Edge
@@ -352,6 +353,15 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
   const elapsedSec = Number(activity?.elapsed_time ?? movingSec);
   const sPerMi = distanceMi > 0 ? Math.round(movingSec / distanceMi) : 0;
   const paceMm = sPerMi > 0 ? `${Math.floor(sPerMi / 60)}:${String(sPerMi % 60).padStart(2, '0')}` : null;
+
+  // 2026-06-02 · length guard · matches the other 3 ingest sites.
+  // Drop tap-test workouts that auto-pushed from the watch and came
+  // back via the Strava webhook. See lib/runs/length-guard.ts.
+  const guard = isSubThresholdRun({ distanceMi, durationSec: elapsedSec });
+  if (guard.isSubThreshold) {
+    console.log(`[strava/webhook] dropped sub-threshold activity ${id} · ${guard.distanceMi}mi / ${guard.durationSec}s`);
+    return { date, dropped: true } as { date: string; dropped: true };
+  }
 
   const data: any = {
     id: String(id),
