@@ -484,73 +484,47 @@ private struct RoutePolylineCard: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(hex: 0x14110D))
             if points.count >= 2 {
-                Canvas { ctx, size in
-                    let normalized = normalize(points: points, size: size, padding: 14)
-                    var path = Path()
+                // 2026-06-01 round 3: SwiftUI Path strokes inside a
+                // GeometryReader, NOT Canvas. The Canvas approach in
+                // build 136 left the route invisible on TestFlight
+                // (the badge rendered but the polyline never drew) ·
+                // Path strokes are the canonical "draw a thick line
+                // on a SwiftUI canvas" pattern and avoid the Canvas
+                // closure not running on real devices.
+                GeometryReader { geo in
+                    let normalized = normalize(points: points, size: geo.size, padding: 14)
+                    let mileDots = mileMarkerPoints(points: points, normalized: normalized)
+                    // Single coral path · 5pt stroke for visibility on
+                    // the dark background. Bucket-by-pace coloring
+                    // moves into a follow-up · the current goal is to
+                    // make sure SOMETHING renders.
+                    Path { p in
+                        guard let first = normalized.first else { return }
+                        p.move(to: first)
+                        for pt in normalized.dropFirst() { p.addLine(to: pt) }
+                    }
+                    .stroke(BASELINE_UNDER_COLOR, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    // Mile markers · white dots.
+                    ForEach(0..<mileDots.count, id: \.self) { i in
+                        Circle()
+                            .fill(Color.white.opacity(0.85))
+                            .frame(width: 6, height: 6)
+                            .position(x: mileDots[i].0, y: mileDots[i].1)
+                    }
+                    // Start marker · green ring.
                     if let first = normalized.first {
-                        path.move(to: first)
-                        for p in normalized.dropFirst() { path.addLine(to: p) }
-                    }
-                    // Belt-and-suspenders coral baseline · the bucket
-                    // walker below colors the line in 5 pace quintiles,
-                    // but if the segment math degenerates (very short
-                    // runs, identical points, etc.) the coral underlayer
-                    // guarantees the route is always visible.
-                    ctx.stroke(path,
-                               with: .color(BASELINE_UNDER_COLOR),
-                               style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
-
-                    // 5 pace quintile buckets across the route's
-                    // progress. Web parity: same hex palette in the
-                    // same coral→blue order (fastest = coral, slowest
-                    // = blue). We bucket by INDEX rather than per-mile
-                    // pace · matches the web's "5 quintile buckets
-                    // across the run's own splits" simplification when
-                    // we don't have a per-point pace stream.
-                    let segCount = normalized.count - 1
-                    if segCount >= 5 {
-                        let bucketSize = max(1, segCount / PACE_BUCKETS.count)
-                        for b in 0..<PACE_BUCKETS.count {
-                            let from = b * bucketSize
-                            let to = b == PACE_BUCKETS.count - 1 ? normalized.count : min(normalized.count, (b + 1) * bucketSize + 1)
-                            guard to > from else { continue }
-                            var bucketPath = Path()
-                            bucketPath.move(to: normalized[from])
-                            for i in (from + 1)..<to {
-                                bucketPath.addLine(to: normalized[i])
-                            }
-                            ctx.stroke(bucketPath,
-                                       with: .color(PACE_BUCKETS[b]),
-                                       style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
-                        }
-                    }
-
-                    // Mile markers · white dots along the line at
-                    // every full mile crossing (Haversine walk).
-                    for (px, py) in mileMarkerPoints(points: points, normalized: normalized) {
-                        let r: CGFloat = 3
-                        ctx.fill(
-                            Path(ellipseIn: CGRect(x: px - r, y: py - r, width: r*2, height: r*2)),
-                            with: .color(.white.opacity(0.85)))
-                    }
-
-                    // Start marker · green ring on dark fill (web parity).
-                    if let first = normalized.first {
-                        let r: CGFloat = 7
-                        ctx.fill(
-                            Path(ellipseIn: CGRect(x: first.x - r, y: first.y - r, width: r*2, height: r*2)),
-                            with: .color(Color(hex: 0x080B0F)))
-                        ctx.stroke(
-                            Path(ellipseIn: CGRect(x: first.x - r, y: first.y - r, width: r*2, height: r*2)),
-                            with: .color(START_RING_COLOR),
-                            lineWidth: 2.5)
+                        Circle()
+                            .fill(Color(hex: 0x080B0F))
+                            .frame(width: 14, height: 14)
+                            .overlay(Circle().stroke(START_RING_COLOR, lineWidth: 2.5))
+                            .position(first)
                     }
                     // Finish marker · coral fill.
                     if let last = normalized.last {
-                        let r: CGFloat = 7
-                        ctx.fill(
-                            Path(ellipseIn: CGRect(x: last.x - r, y: last.y - r, width: r*2, height: r*2)),
-                            with: .color(FINISH_FILL_COLOR))
+                        Circle()
+                            .fill(FINISH_FILL_COLOR)
+                            .frame(width: 14, height: 14)
+                            .position(last)
                     }
                 }
             } else {

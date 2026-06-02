@@ -45,7 +45,7 @@ struct TreadmillHRView: View {
                 // Big BPM hero · "—" until first sample, "162" once it lands.
                 Text(hr.currentBpm > 0 ? "\(hr.currentBpm)" : "—")
                     .font(WatchTheme.display(72))
-                    .foregroundStyle(WatchTheme.C.t1)
+                    .foregroundStyle(WatchTheme.C.ink)
                     .monospacedDigit()
                 Text("BPM")
                     .font(WatchTheme.body(11, .bold))
@@ -63,7 +63,7 @@ struct TreadmillHRView: View {
                     Text("STOP")
                         .font(WatchTheme.body(13, .bold))
                         .tracking(1.5)
-                        .foregroundStyle(WatchTheme.C.t1)
+                        .foregroundStyle(WatchTheme.C.ink)
                         .frame(maxWidth: .infinity).padding(.vertical, 8)
                         .background(WatchTheme.C.orange.opacity(0.18), in: Capsule())
                         .overlay(Capsule().stroke(WatchTheme.C.orange.opacity(0.5), lineWidth: 1))

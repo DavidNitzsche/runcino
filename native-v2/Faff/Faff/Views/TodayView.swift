@@ -284,7 +284,15 @@ struct TodayView: View {
             // hidden" · the StickyCTABar respects the tab-bar safe area
             // (no .ignoresSafeArea(.bottom)) so the button sits just
             // above the floating tab bar pill.
-            if !isDone {
+            // Hide the StickyCTABar when the selected day's run is done
+            // (the "Share run" CTA was buried under the post-run body in
+            // build 134 feedback; the small "View full run ›" chevron at
+            // the bottom of TodayPostRunBody replaces it). Build 136
+            // feedback showed the bar still appearing on a completed
+            // day — fortified with a second redundant check that reads
+            // the same completedRunId via a different path so a state-
+            // timing race can't sneak through.
+            if !isDone && !hasCompletedRunForSelectedDay {
                 VStack {
                     Spacer()
                     StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
@@ -940,8 +948,21 @@ struct TodayView: View {
     /// plan.today_iso yet · everything else on the surface already
     /// treats empty as today, the CTA needs to as well so it doesn't
     /// flash "View THRESHOLD" → "Start THRESHOLD" on first load).
+    ///
+    /// Three-way fallback covers the timezone bug class:
+    ///   1. selectedDayID empty (first frame, before .task seeds it) → today
+    ///   2. selectedDayID matches iPhone-local DateFormatter today → today
+    ///   3. selectedDayID matches the BACKEND's plan.today_iso → today
+    /// The third path catches DST/UTC drift where iPhone-local
+    /// DateFormatter and backend's Pacific-anchored today_iso disagree
+    /// at hour boundaries · empirically build 136 was firing "View
+    /// THRESHOLD" on what David saw as today, which is the symptom of
+    /// the iPhone-local vs backend mismatch.
     private var selectedIsToday: Bool {
-        selectedDayID.isEmpty || selectedDayID == todayISO
+        if selectedDayID.isEmpty { return true }
+        if selectedDayID == todayISO { return true }
+        if let planToday = plan?.today_iso, selectedDayID == planToday { return true }
+        return false
     }
 
     private var startButtonTitle: String {
@@ -1080,6 +1101,19 @@ struct TodayView: View {
     /// fetch RunDetail + RunRecap for the post-run sheet body.
     private var completedRunId: String? {
         todaySelectedDay?.completedRunId
+    }
+
+    /// Belt-and-suspenders for the StickyCTABar gate. Walks the plan
+    /// week directly instead of relying on the todaySelectedDay
+    /// computed property, so a state-resolution timing race in SwiftUI
+    /// can't leave the CTA bar visible on a completed day. Returns
+    /// true whenever ANY plan day with selectedDayID exists AND has a
+    /// completedRunId · matches isDone semantically but reads through
+    /// a different path.
+    private var hasCompletedRunForSelectedDay: Bool {
+        guard let week = plan?.days else { return false }
+        let key = selectedDayID.isEmpty ? (plan?.today_iso ?? todayISO) : selectedDayID
+        return week.contains { $0.date_iso == key && $0.completedRunId != nil }
     }
 
     /// Peek background color · accent for pre-run, emerald for post-run,
