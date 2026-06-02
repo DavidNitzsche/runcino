@@ -89,6 +89,14 @@ export async function GET(req: NextRequest) {
   }
   if (unackedOnly) {
     where += ` AND acknowledged_at IS NULL`;
+    // 2026-06-03 · banner surface should never render info-severity intents.
+    // watch_completion / vdot_auto_recalc / etc. are timeline-only audit
+    // events, not decisions the runner needs to acknowledge. Without this
+    // filter every Strava upload renders a "COACH · ADAPTED" banner.
+    where += ` AND reason NOT IN (
+      'watch_completion','vdot_auto_recalc','lthr_auto_calibrated',
+      'swap_accepted','swap_declined','illness_acknowledged','injury_plan_built'
+    )`;
   }
 
   const q = await pool.query<IntentRow>(
