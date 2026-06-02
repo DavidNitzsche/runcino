@@ -1,28 +1,58 @@
 'use client';
 
+/**
+ * HealthView · big redesign per designs/from Design agent/health-page/
+ * (handed off 2026-06-01). The "all-knowing" recovery dashboard.
+ *
+ * Architecture · glance → scan → drill:
+ *   1. GLANCE · hero (gauge + drivers + 7-day trend) · one focal point
+ *   2. SCAN   · uniform bar-cards across labeled domains
+ *   3. DRILL  · tap-to-expand on tiles (preserved from prior view)
+ *
+ * Page order (top → bottom):
+ *   - Header
+ *   - HERO (3-col: gauge · drivers · aerobic+trend)
+ *   - THE STORY + WATCHING TOMORROW (2-col intelligence row)
+ *   - RECOVERY PHASE (rendered when seed.health.recoveryPhase exists)
+ *   - BODY metric grid (bar-cards)
+ *   - SLEEP STAGES (split out from BODY · architecture line + 4 stage tiles)
+ *   - FORM metric grid
+ *   - DEEPER INSIGHTS (training form · vs last build · DOW · predictors ·
+ *                       heat · cycle-female-only)
+ *
+ * Per the doctrine: every section degrades to ABSENT (not a placeholder)
+ * when its field is null. Sections that need backend wiring that hasn't
+ * landed yet (recoveryPhase, aerobicFitness, forecasts, blockComparison,
+ * dowPatterns, qualityPredictors, heatAcclim, cycle) simply don't render
+ * for the current data shape.
+ */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { FaffSeed, HealthMetric } from '../types';
+import type { FaffSeed, HealthMetric, DriverRow } from '../types';
 import { ManualHealthSheet } from '../toolkit';
 
-const GREEN = '#62e08a', AMBER = '#ffb24d', NEUT = '#bfeee2';
-const STATUS_COLOR: Record<HealthMetric['status'], string> = { good: GREEN, warn: AMBER, neutral: NEUT };
+// Status palette · matches the design tokens. HealthMetric.status uses
+// 'warn' (not 'watch') so the keys align with that union; 'bad' is kept
+// as a separate constant for the "below target" red since HealthMetric
+// has no equivalent · `warn` covers both watch and bad cases per the
+// existing data shape.
+const STATUS: Record<'good' | 'warn' | 'neutral', string> = {
+  good: '#5fd06a', warn: '#F3AD38', neutral: '#5bbfb0',
+};
+// Standalone colors for the non-HealthMetric paths (gauge bands, driver
+// thresholds, recovery percentages).
+const COLOR_BAD = '#FC4D64';
+const COLOR_GOOD = '#5fd06a';
+const COLOR_WATCH = '#F3AD38';
+const COLOR_TEAL = '#5bbfb0';
+// Readiness band colors · also from the design
+const BAND: Record<string, string> = {
+  sharp: '#34D058', ready: '#3EBD41', moderate: '#F3AD38',
+  'pull-back': '#FC4D64', 'no-data': '#8A90A0',
+};
 
-function smooth(pts: [number, number][]) {
-  if (pts.length < 2) return '';
-  let d = `M${pts[0][0]},${pts[0][1]}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i-1] || pts[i], p1 = pts[i], p2 = pts[i+1], p3 = pts[i+2] || p2;
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
-    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
-  }
-  return d;
-}
-
-function fmt(m: HealthMetric, v: number): string {
+function fmtValue(m: HealthMetric): string {
+  const v = m.current;
   if (m.clock) {
     const h = Math.floor(v);
     const mn = Math.round((v - h) * 60);
@@ -31,97 +61,240 @@ function fmt(m: HealthMetric, v: number): string {
   return v.toFixed(m.decimals ?? 0);
 }
 
-function MetricCard({ m, active, onClick }: { m: HealthMetric; active: boolean; onClick: () => void }) {
-  // 2026-05-30: L/R Balance branch removed. Apple Health doesn't expose a
-  // balance signal; the card had no real data and only displayed "balanced".
-  // Restore if a sensor (Stryd, Garmin chest pod) is wired.
-  const W = 150, H = 32, P = 4;
-  const [lo, hi] = m.dom;
-  const X = (i: number) => P + (i / (m.series.length - 1)) * (W - P * 2);
-  const Y = (v: number) => P + (1 - (v - lo) / (hi - lo)) * (H - P * 2);
-  const pts: [number, number][] = m.series.map((v, i) => [X(i), Y(v)]);
-  const line = smooth(pts);
-  const area = line + ` L${X(m.series.length - 1).toFixed(1)},${H - P} L${X(0).toFixed(1)},${H - P} Z`;
-  const tgtMark = m.target != null ? (
-    <line x1={P} y1={Y(m.target).toFixed(1)} x2={W - P} y2={Y(m.target).toFixed(1)} stroke="rgba(255,255,255,.28)" strokeWidth="1" strokeDasharray="2 3" />
-  ) : m.band ? (
-    <rect x={P} y={Y(m.band[1]).toFixed(1)} width={W - P * 2} height={(Y(m.band[0]) - Y(m.band[1])).toFixed(1)} fill="rgba(123,232,160,.10)" />
-  ) : null;
+function avg(a: number[]): number {
+  if (!a.length) return 0;
+  return a.reduce((s, v) => s + v, 0) / a.length;
+}
+
+/** Bar-card · the canonical metric tile (replaces the smooth-line spark).
+ *  14 mini bars · last bar = today, colored by status · others muted ·
+ *  optional dashed target line · caption + status tag at the bottom. */
+function BarCard({ m, onClick, active }: { m: HealthMetric; onClick?: () => void; active?: boolean }) {
+  const series = m.series.slice(-14);
+  const baseColor = STATUS[m.status] ?? STATUS.neutral;
+  // HealthMetric.status is 'good' | 'warn' | 'neutral' (no 'bad'). The
+  // design has 'on target / watch / below target / steady' for four
+  // states · we collapse 'warn' to 'below target' for the strong-signal
+  // tiles (status.warn always means "below the band" in our data shape)
+  // and let neutral cover the rest.
+  const STATUS_TXT: Record<HealthMetric['status'], string> = {
+    good: 'on target', warn: 'below target', neutral: 'steady',
+  };
+  // Local scale so the bars use the full mini-chart height
+  let lo = series.length ? Math.min(...series) : 0;
+  let hi = series.length ? Math.max(...series) : 1;
+  if (m.target != null) { lo = Math.min(lo, m.target); hi = Math.max(hi, m.target); }
+  const pad = (hi - lo) * 0.18 || 1;
+  lo -= pad; hi += pad;
+  const span = (hi - lo) || 1;
+  const tlinePct = m.target != null
+    ? 100 - (8 + ((m.target - lo) / span) * 92)
+    : null;
+  const caption = m.target != null
+    ? `target ${m.clock ? fmtClock(m.target) : m.target.toFixed(m.decimals ?? 0)}`
+    : m.band
+      ? `band ${m.band[0]}–${m.band[1]}`
+      : '30-day';
   return (
-    <div className={`mcard${active ? ' on' : ''}`} onClick={onClick} role="button" tabIndex={0}>
-      <div className="mc-k"><span className="cdot" style={{ background: STATUS_COLOR[m.status] }} />{m.label.replace(' MAX','')}</div>
-      <div className="mc-v">{fmt(m, m.current)}{m.unit && <small>{m.unit}</small>}</div>
-      <svg className="mc-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-        {tgtMark}
-        <path d={area} fill={`${STATUS_COLOR[m.status]}22`} />
-        <path d={line} fill="none" stroke={STATUS_COLOR[m.status]} strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <div className="mc-tgt">{m.target != null ? `target ${fmt(m, m.target)}` : m.band ? `band ${m.band[0]}–${m.band[1]}` : '30-day'}</div>
+    <div
+      className={`hmc${active ? ' on' : ''}${onClick ? ' clickable' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
+      <div className="hmc-top">
+        <span className="hmc-k">
+          <span className="dot" style={{ background: baseColor }} />
+          {m.label.replace(' MAX', '')}
+        </span>
+      </div>
+      <div className="hmc-v">
+        {fmtValue(m)}
+        {m.unit ? <small>{m.unit}</small> : null}
+      </div>
+      <div className="hmc-bars">
+        {tlinePct != null ? (
+          <span className="hmc-tline" style={{ top: `${tlinePct}%` }} />
+        ) : null}
+        {series.length === 0 ? (
+          <span className="hmc-empty">no data yet</span>
+        ) : null}
+        {series.map((v, i) => {
+          const h = series.length > 1 ? 8 + ((v - lo) / span) * 92 : 50;
+          const isToday = i === series.length - 1;
+          return (
+            <i
+              key={i}
+              style={{
+                height: `${h}%`,
+                background: isToday ? baseColor : 'rgba(255,255,255,.16)',
+              }}
+            />
+          );
+        })}
+      </div>
+      <div className="hmc-cap">
+        <span className="lo">{caption}</span>
+        <span className="st" style={{ color: baseColor }}>{STATUS_TXT[m.status]}</span>
+      </div>
     </div>
   );
 }
 
-function Detail({ m, rangeLabel = '30-DAY', sliceN = 30 }: { m: HealthMetric; rangeLabel?: string; sliceN?: 7 | 30 }) {
-  // 2026-05-30: L/R Balance detail branch removed alongside the card.
-  const fullSeries = m.series;
-  const sliced = fullSeries.slice(-sliceN);
-  const W = 1040, H = 220, P = 16;
-  const [lo, hi] = m.dom;
-  const X = (i: number) => P + (i / (sliced.length - 1)) * (W - P * 2);
-  const Y = (v: number) => P + (1 - (v - lo) / (hi - lo)) * (H - P * 2);
-  const pts: [number, number][] = sliced.map((v, i) => [X(i), Y(v)]);
-  const line = smooth(pts);
-  const area = line + ` L${X(sliced.length - 1).toFixed(1)},${H - P} L${X(0).toFixed(1)},${H - P} Z`;
-  const xlabels = sliceN === 7
-    ? ['7D AGO', '5D', '3D', 'TODAY']
-    : ['30D AGO', '20D', '10D', 'TODAY'];
+function fmtClock(v: number): string {
+  const h = Math.floor(v);
+  const mn = Math.round((v - h) * 60);
+  return `${h}:${String(mn).padStart(2, '0')}`;
+}
+
+/** Hero gauge · large ring with the score in the middle, arc colored by band. */
+function HeroGauge({ score, band }: { score: number; band: string }) {
+  const stroke = BAND[band] ?? BAND['no-data'];
+  const dash = 628.3;
+  const offset = dash - (Math.max(0, Math.min(100, score)) / 100) * dash;
   return (
-    <>
-      <div className="hd-head"><div className="hd-title">{m.label}</div></div>
-      <div className="ftop">
-        <div className="fname">{rangeLabel}</div>
-        {m.target != null && <div className="ftgt">target {fmt(m, m.target)}{m.unit}</div>}
+    <div className="hh-gauge">
+      <svg viewBox="0 0 240 240" width="100%" height="100%">
+        <circle cx="120" cy="120" r="100" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="16" />
+        <circle
+          cx="120" cy="120" r="100" fill="none"
+          stroke={stroke} strokeWidth="16" strokeLinecap="round"
+          strokeDasharray={dash} strokeDashoffset={offset}
+          transform="rotate(-90 120 120)"
+          style={{ filter: `drop-shadow(0 0 9px ${stroke}73)` }}
+        />
+      </svg>
+      <div className="hh-gauge-cv">
+        <span className="hh-num">{Math.round(score)}</span>
       </div>
-      <div className="fval">
-        <b>{fmt(m, m.current)}</b><span className="u">{m.unit}</span>
-        <span className={`d ${m.status === 'good' ? 'good' : ''}`}>now</span>
-      </div>
-      <div className="chartwrap">
-        <svg className="chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-          {m.target != null && (
-            <line x1={P} y1={Y(m.target).toFixed(1)} x2={W - P} y2={Y(m.target).toFixed(1)} stroke="rgba(255,255,255,.28)" strokeWidth="1" strokeDasharray="3 5" />
-          )}
-          <path d={area} fill={`${STATUS_COLOR[m.status]}22`} />
-          <path d={line} fill="none" stroke={STATUS_COLOR[m.status]} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-        </svg>
-      </div>
-      <div className="xlabels">{xlabels.map((x, i) => <span key={i}>{x}</span>)}</div>
-      <div className="ctx">
-        <div className="c"><div className="cck">7-DAY AVG</div><div className="ccv">{fmt(m, avg(fullSeries.slice(-7)))}</div></div>
-        <div className="c"><div className="cck">30-DAY AVG</div><div className="ccv">{fmt(m, avg(fullSeries))}</div></div>
-        <div className="c"><div className="cck">DELTA</div><div className="ccv">{(sliced.at(-1)! - sliced[0]).toFixed(m.decimals ?? 0)}{m.unit}</div></div>
-      </div>
-    </>
+    </div>
   );
 }
 
-function avg(a: number[]) { return a.reduce((s, v) => s + v, 0) / a.length; }
-function formatSleep(hours: number | undefined): string {
-  if (!hours || hours <= 0) return '·';
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  return `${h}:${String(m).padStart(2, '0')}`;
+/** Driver row · status dot + label + observed/baseline + center-anchored
+ *  contribution bar + big signed pts. */
+function DriverRowEl({ d }: { d: DriverRow }) {
+  const ptsAbs = Math.abs(d.pts);
+  const col = d.pts <= -8 ? COLOR_BAD
+    : d.pts < 0 ? COLOR_WATCH
+    : d.pts > 0 ? COLOR_GOOD
+    : '#8aa0a0';
+  const width = Math.min(46, ptsAbs * 3.2 + 4);
+  const sign = d.pts > 0 ? '+' : d.pts < 0 ? '−' : '';
+  return (
+    <div className="hdrv">
+      <div className="hdrv-l">
+        <div className="hdrv-n">
+          <span className="hdrv-dot" style={{ background: col }} />
+          {d.name}
+        </div>
+        <div className="hdrv-v">{d.why}</div>
+      </div>
+      <span className="hdrv-bar">
+        <span className="ax" />
+        {d.pts !== 0 ? (
+          <i
+            style={{
+              [d.pts > 0 ? 'left' : 'right']: '50%',
+              width: `${width}%`,
+              background: col,
+              boxShadow: `0 0 8px -2px ${col}`,
+            } as React.CSSProperties}
+          />
+        ) : null}
+      </span>
+      <span className="hdrv-p" style={{ color: col }}>{sign}{ptsAbs}</span>
+    </div>
+  );
+}
+
+/** Streak sparkline · per-pillar bars showing the metric's recent values
+ *  with a dashed baseline. Trailing below-baseline bars red. */
+function StreakSparkline({
+  pillar, days, baseline, series, note,
+}: {
+  pillar: string; days: number; baseline: number | null; series: number[]; note: string;
+}) {
+  if (series.length === 0) return null;
+  const all = baseline != null ? [...series, baseline] : series;
+  let lo = Math.min(...all);
+  let hi = Math.max(...all);
+  const pad = (hi - lo) * 0.2 || 1;
+  lo -= pad; hi += pad;
+  const span = (hi - lo) || 1;
+  const baselinePct = baseline != null ? 100 - ((baseline - lo) / span) * 100 : null;
+  return (
+    <div className="hstk">
+      <div className="hstk-h">
+        <span className="hstk-k">{pillar.toUpperCase()}</span>
+        <span className="hstk-d"><b>{days} days</b> below · {note}</span>
+      </div>
+      <div className="hstk-sp">
+        {baselinePct != null ? (
+          <span className="hstk-base" style={{ top: `${baselinePct}%` }} />
+        ) : null}
+        {series.map((v, i) => {
+          const h = 8 + ((v - lo) / span) * 92;
+          const isStreakDay = i >= series.length - days;
+          return (
+            <i
+              key={i}
+              style={{
+                height: `${h}%`,
+                background: isStreakDay ? COLOR_BAD : 'rgba(255,255,255,.18)',
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function HealthView({ seed }: { seed: FaffSeed }) {
   const router = useRouter();
-  const { readiness, body, form } = seed.health;
-  const [openBody, setOpenBody] = useState<string | null>(null);
-  const [openForm, setOpenForm] = useState<string | null>(null);
-  const [range, setRange] = useState<7 | 30>(30);
+  const { readiness, body, form, sleepArchitectureVerdict } = seed.health;
+  const brief = seed.readinessBrief;
   const [logOpen, setLogOpen] = useState(false);
-  const bodyOpen = body.find(m => m.k === openBody);
-  const formOpen = form.find(m => m.k === openForm);
+  const [openTile, setOpenTile] = useState<string | null>(null);
+
+  // Split sleep stage tiles out of BODY into their own SLEEP STAGES grid.
+  const sleepKeys = new Set(['sleep_deep', 'sleep_rem', 'sleep_light', 'sleep_awake']);
+  const bodyTiles = body.filter(m => !sleepKeys.has(m.k));
+  const sleepTiles = body.filter(m => sleepKeys.has(m.k));
+
+  // Band-aware verdict line under the gauge · pulls from readinessBrief
+  // when present (richer narration), falls back to readiness.coach.
+  const verdictText = brief?.headline ?? readiness.coach;
+  const band = brief?.band ?? (
+    readiness.score >= 85 ? 'sharp'
+    : readiness.score >= 70 ? 'ready'
+    : readiness.score >= 55 ? 'moderate'
+    : 'pull-back'
+  );
+  const baseline = brief?.composition?.baseline ?? readiness.baseline;
+  const todayScore = brief?.composition?.today ?? readiness.score;
+  const net = brief?.composition?.net ?? (todayScore - baseline);
+
+  // 7-day readiness bars · prefer brief.scoreTrend (richer), fall back to
+  // readiness.trend.
+  const weekScores = brief?.scoreTrend?.slice(-7).map(d => d.score) ?? readiness.trend.slice(-7);
+  const weekDays = brief?.scoreTrend?.slice(-7).map(d => {
+    const dt = new Date(d.date + 'T12:00:00');
+    return dt.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase();
+  }) ?? readiness.trendDays.slice(-7);
+  const weekMin = weekScores.length ? Math.min(...weekScores) - 8 : 35;
+  const weekMax = weekScores.length ? Math.max(...weekScores) + 8 : 90;
+
+  // Streak data · combine pillar trend (from brief.pillars[].trend) with
+  // streak metadata (from brief.streaks[]).
+  const pillarTrends = new Map(brief?.pillars.map(p => [p.key, p]) ?? []);
+  const streakRows = (brief?.streaks ?? []).filter(s => s.direction === 'below').slice(0, 3);
+
+  // Training-form insight derived from seed.form (no backend brief needed).
+  const trainingForm = seed.form?.label
+    ? { label: seed.form.label, delta: seed.form.delta }
+    : null;
 
   return (
     <>
@@ -130,89 +303,343 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
           <div className="date">Health</div>
           <div className="wk">Recovery &amp; form · {todayShort()}</div>
         </div>
+        <button
+          type="button"
+          onClick={() => setLogOpen(true)}
+          className="hview-logbtn"
+        >
+          + Log measurement
+        </button>
       </div>
 
-      <div className="hhero">
-        <div className="hhero-grid">
-          <div className="hg-gauge">
-            <ReadinessGauge score={readiness.score} label={readiness.label} />
+      {/* ===== HERO ===== */}
+      <div className="hhero2">
+        <div className="hhero2-grid">
+          {/* Score column */}
+          <div className="hh-score">
+            <HeroGauge score={todayScore} band={band} />
+            <div className="hh-verdict">{verdictText}</div>
+            <div className="hh-base">
+              14-day baseline <b>{Math.round(baseline)}</b> · today <b>{Math.round(todayScore)}</b>
+              {' · '}
+              <b style={{ color: net >= 0 ? COLOR_GOOD : COLOR_BAD }}>
+                {net >= 0 ? '+' : '−'}{Math.abs(Math.round(net))}
+              </b>
+            </div>
           </div>
-          <div className="hg-info">
-            <div className="hr-sec">WHAT IS DRIVING IT</div>
-            <div className="drvlist">
+
+          {/* Drivers column */}
+          <div className="hh-drivers">
+            <div className="hh-lbl">WHAT IS DRIVING IT</div>
+            <div className="hh-drvlist">
               {readiness.drivers.map(d => (
-                <div className="drv" key={d.name}>
-                  <span className="drv-name">{d.name}</span>
-                  <span className="drv-why">{d.why}</span>
-                  <span className="drv-bar"><span className="z" /><span className={`f ${d.dir}`} style={{ width: `${d.pct}%` }} /></span>
-                  <span className={`drv-pts ${d.dir}`}>{d.dir === 'pos' ? `+${d.pts}` : `−${d.pts}`}</span>
+                <DriverRowEl key={d.name} d={d} />
+              ))}
+            </div>
+          </div>
+
+          {/* Right column · aerobic fitness (when present) above 7-day trend */}
+          <div className="hh-week">
+            {seed.health.aerobicFitness ? (
+              <div className="haero">
+                <div className="haero-k">AEROBIC FITNESS</div>
+                <div className="haero-v">
+                  {seed.health.aerobicFitness.blockStartDriftPct.toFixed(1)}%
+                  {' → '}
+                  {seed.health.aerobicFitness.currentDriftPct.toFixed(1)}%
+                </div>
+                <div className="haero-m">{seed.health.aerobicFitness.summary}</div>
+              </div>
+            ) : null}
+            <div className="hh-wk-head">
+              <span className="l">7-DAY READINESS</span>
+              <span className="r">
+                NOW <b>{Math.round(todayScore)}</b> &nbsp;·&nbsp; AVG <b>{Math.round(avg(weekScores))}</b>
+              </span>
+            </div>
+            <div className="hh-wkbars">
+              {weekScores.map((v, i) => {
+                const h = 18 + ((v - weekMin) / (weekMax - weekMin || 1)) * 82;
+                const isToday = i === weekScores.length - 1;
+                return (
+                  <div
+                    key={i}
+                    className={`hh-wb${isToday ? ' now' : ''}`}
+                    style={{
+                      height: `${h}%`,
+                      background: isToday ? (BAND[band] ?? BAND['no-data']) : 'rgba(255,255,255,.14)',
+                      boxShadow: isToday ? `0 0 12px -2px ${BAND[band] ?? BAND['no-data']}` : undefined,
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <div className="hh-wkdays">
+              {weekDays.map((d, i) => <span key={i}>{d}</span>)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== STORY + WATCHING (only when brief is present) ===== */}
+      {brief ? (
+        <div className="hstoryrow">
+          <div className="hsynth">
+            <span className="hsynth-tag">THE STORY</span>
+            <p className="hsynth-tx">{brief.synthesis ?? brief.trendNote ?? brief.headline}</p>
+            {streakRows.length > 0 ? (
+              <div className="hstreaks">
+                {streakRows.map((s, i) => {
+                  const pillar = pillarTrends.get(s.pillar as 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery');
+                  const series = pillar?.trend.map(t => t.value) ?? [];
+                  const baselineNum = parseFloat(pillar?.baseline?.match(/[\d.]+/)?.[0] ?? '0') || null;
+                  return (
+                    <StreakSparkline
+                      key={`${s.pillar}-${i}`}
+                      pillar={s.pillar}
+                      days={s.days}
+                      baseline={baselineNum}
+                      series={series}
+                      note={s.short}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+          <div className="hwatch">
+            <span className="hsynth-tag watch-tag">WATCHING TOMORROW</span>
+            <div className="hwatch-list">
+              {(brief.watchTomorrow ?? []).map((w, i) => (
+                <div key={i} className="hwatch-row">
+                  <span className="hwatch-d" />
+                  <span>{w}</span>
+                </div>
+              ))}
+              {!brief.watchTomorrow?.length ? (
+                <div className="hwatch-empty">Nothing flagged for tomorrow yet.</div>
+              ) : null}
+            </div>
+            {brief.forecasts && brief.forecasts.length > 0 ? (
+              <div className="hforecasts">
+                {brief.forecasts.slice(0, 3).map((f, i) => {
+                  // Pillar key → display label (HRV CV, SLEEP, etc).
+                  const pillarLabels: Record<string, string> = {
+                    sleep: 'SLEEP', hrv: 'HRV', rhr: 'RHR',
+                    load: 'LOAD', hrv_cv: 'HRV CV', wrist_temp: 'WRIST TEMP',
+                  };
+                  return (
+                    <span key={i} className="hfc">
+                      <span className="hfc-ic">FORECAST</span>
+                      <span><b>{pillarLabels[f.pillar] ?? f.pillar.toUpperCase()}</b> {f.message}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ===== RECOVERY PHASE (when present · post-hard-session) ===== */}
+      {seed.health.recoveryPhase ? (() => {
+        const rp = seed.health.recoveryPhase;
+        const pcol = (p: number) => p >= 80 ? COLOR_GOOD : p >= 55 ? COLOR_WATCH : COLOR_BAD;
+        return (
+          <div className="hrecov">
+            <div className="hrecov-head">
+              <div>
+                <div className="hrecov-eyebrow">RECOVERING FROM</div>
+                <div className="hrecov-anchor">{rp.anchor.label}</div>
+              </div>
+              <div className="hrecov-tl">
+                <div className="hrecov-pct">{rp.percentRecovered}%</div>
+                <div className="hrecov-day">Day {rp.daysSince} of {rp.expectedDaysToRecover} expected</div>
+              </div>
+            </div>
+            <div className="hrecov-bar"><i style={{ width: `${rp.percentRecovered}%` }} /></div>
+            <div className="hrecov-grid">
+              {rp.pillars.map(p => (
+                <div key={p.key} className="hrcp">
+                  <div className="k">{p.label}</div>
+                  <div className="pb"><i style={{ width: `${p.pctRecovered}%`, background: pcol(p.pctRecovered) }} /></div>
+                  <div className="pv" style={{ color: pcol(p.pctRecovered) }}>{p.pctRecovered}% back</div>
                 </div>
               ))}
             </div>
-            <div className="hr-base">
-              Baseline <b>{readiness.baseline}</b> → today <b style={{ color: '#7BE8A0' }}>{readiness.score}</b>&nbsp;<span style={{ color: '#7BE8A0' }}>+{readiness.score - readiness.baseline}</span>
-            </div>
-            <div className="hr-bottom">
-              <div className="feeders">
-                <div className="feeder"><div className="fk">SLEEP</div><div className="fv">{formatSleep(body.find(m => m.k === 'sleep')?.current)}</div></div>
-                <div className="feeder"><div className="fk">HRV</div><div className="fv">{Math.round(body.find(m => m.k === 'hrv')?.current ?? 0) || '·'}</div></div>
-                <div className="feeder"><div className="fk">RHR</div><div className="fv">{Math.round(body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}</div></div>
+            {rp.muscleSignals?.summary ? (
+              <div className="hrecov-muscle">
+                <span className="md" />
+                <span>{rp.muscleSignals.summary}</span>
               </div>
-              <div className="hr-trendcol">
-                <div className="hr-trendhead">
-                  <span className="l">7-DAY READINESS</span>
-                  <span className="r">
-                    <span className="now">NOW {readiness.score}</span>
-                    <span className="avg">AVG {Math.round(avg(readiness.trend))}</span>
-                  </span>
-                </div>
-                <Trend trend={readiness.trend} />
-                <div className="hr-days">
-                  {readiness.trendDays.map((d, i) => <span key={i} className={i === readiness.trendDays.length - 1 ? 'tw' : ''}>{d}</span>)}
-                </div>
-              </div>
+            ) : null}
+            <div className="hrecov-green">
+              Earliest quality session: <b>{rp.nextQualityGreenLight.date}</b> · {rp.nextQualityGreenLight.reason}
             </div>
           </div>
-        </div>
-      </div>
+        );
+      })() : null}
 
-      <div className="hhero-sep" />
-      <div className="hseclbl" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
-        <span>BODY · FORM</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            type="button"
-            onClick={() => setLogOpen(true)}
-            style={{
-              fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4,
-              textTransform: 'uppercase', color: 'var(--dist)', background: 'rgba(39,180,224,.08)',
-              border: '1px solid rgba(39,180,224,.28)', borderRadius: 14,
-              padding: '8px 14px', cursor: 'pointer',
-            }}
-          >
-            + Log measurement
-          </button>
-          <RangeToggle range={range} onChange={setRange} />
-        </div>
-      </div>
-      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55, margin: '20px 0 0' }}>BODY</div>
-      <div className="cardgrid">
-        {body.map(m => (
-          <MetricCard key={m.k} m={sliceMetric(m, range)} active={openBody === m.k} onClick={() => setOpenBody(openBody === m.k ? null : m.k)} />
-        ))}
-      </div>
-      <div className="hdetail">{bodyOpen && <Detail m={bodyOpen} rangeLabel={range === 7 ? '7-DAY' : '30-DAY'} sliceN={range} />}</div>
+      {/* ===== BODY ===== */}
+      {bodyTiles.length > 0 ? (
+        <>
+          <div className="hseclbl2">
+            <span className="t">BODY</span>
+            <span className="ln" />
+          </div>
+          <div className="hgrid">
+            {bodyTiles.map(m => (
+              <BarCard
+                key={m.k}
+                m={m}
+                active={openTile === m.k}
+                onClick={() => setOpenTile(openTile === m.k ? null : m.k)}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
 
-      <div className="hseclbl">FORM</div>
-      <div className="cardgrid">
-        {form.map(m => (
-          <MetricCard key={m.k} m={sliceMetric(m, range)} active={openForm === m.k} onClick={() => setOpenForm(openForm === m.k ? null : m.k)} />
-        ))}
-      </div>
-      <div className="hdetail">{formOpen && <Detail m={formOpen} rangeLabel={range === 7 ? '7-DAY' : '30-DAY'} sliceN={range} />}</div>
+      {/* ===== SLEEP STAGES ===== */}
+      {sleepTiles.length > 0 ? (
+        <>
+          <div className="hseclbl2">
+            <span className="t">SLEEP STAGES</span>
+            <span className="ln" />
+          </div>
+          {sleepArchitectureVerdict ? (
+            <div className="harchline">
+              Architecture <b>{sleepArchitectureVerdict}</b> across the last 7 nights
+              {(() => {
+                const deep = sleepTiles.find(m => m.k === 'sleep_deep')?.current ?? 0;
+                const rem  = sleepTiles.find(m => m.k === 'sleep_rem')?.current ?? 0;
+                const light = sleepTiles.find(m => m.k === 'sleep_light')?.current ?? 0;
+                const awake = sleepTiles.find(m => m.k === 'sleep_awake')?.current ?? 0;
+                const total = deep + rem + light + awake;
+                if (total > 0) {
+                  const dPct = Math.round((deep / total) * 100);
+                  const rPct = Math.round((rem / total) * 100);
+                  return ` · ${dPct}% deep, ${rPct}% REM.`;
+                }
+                return '.';
+              })()}
+            </div>
+          ) : null}
+          <div className="hgrid">
+            {sleepTiles.map(m => (
+              <BarCard
+                key={m.k}
+                m={m}
+                active={openTile === m.k}
+                onClick={() => setOpenTile(openTile === m.k ? null : m.k)}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
 
-      {/* Manual health entry sheet · POSTs to /api/health/manual.
-          Closes coverage line 1352 (web-only manual entry). */}
+      {/* ===== FORM ===== */}
+      {form.length > 0 ? (
+        <>
+          <div className="hseclbl2">
+            <span className="t">FORM</span>
+            <span className="ln" />
+          </div>
+          <div className="hgrid">
+            {form.map(m => (
+              <BarCard
+                key={m.k}
+                m={m}
+                active={openTile === m.k}
+                onClick={() => setOpenTile(openTile === m.k ? null : m.k)}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {/* ===== DEEPER INSIGHTS ===== */}
+      {(trainingForm
+        || seed.health.heatAcclim
+        || seed.health.blockComparison
+        || seed.health.dowPatterns
+        || seed.health.qualityPredictors
+        || (seed.user.biologicalSex === 'female' && seed.health.cyclePerformance)
+      ) ? (
+        <>
+          <div className="hseclbl2">
+            <span className="t">DEEPER INSIGHTS</span>
+            <span className="ln" />
+          </div>
+          <div className="hinsgrid">
+            {trainingForm ? (
+              <div className="hins">
+                <div className="hins-k">TRAINING FORM</div>
+                <div className="hins-h">
+                  {trainingForm.delta >= 0 ? '+' : '−'}
+                  {Math.abs(Math.round(trainingForm.delta))} · {trainingForm.label}
+                </div>
+                <div className="hins-m">
+                  Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}.
+                  {seed.form.acwr != null ? ` ACWR ${seed.form.acwr.toFixed(2)}.` : ''}
+                </div>
+              </div>
+            ) : null}
+            {seed.health.blockComparison ? (
+              <div className="hins">
+                <div className="hins-k">VS {seed.health.blockComparison.referenceBlock.label.toUpperCase()}</div>
+                <div className="hins-h">{seed.health.blockComparison.message}</div>
+                <div className="hins-m">
+                  {seed.health.blockComparison.deltas.sleepH != null
+                    ? `Sleep ${seed.health.blockComparison.deltas.sleepH >= 0 ? '+' : ''}${seed.health.blockComparison.deltas.sleepH.toFixed(1)}h vs reference. `
+                    : ''}
+                  {seed.health.blockComparison.deltas.hrvMs != null
+                    ? `HRV ${seed.health.blockComparison.deltas.hrvMs >= 0 ? '+' : ''}${Math.round(seed.health.blockComparison.deltas.hrvMs)}ms. `
+                    : ''}
+                </div>
+              </div>
+            ) : null}
+            {seed.health.dowPatterns && seed.health.dowPatterns.insights.length > 0 ? (
+              <div className="hins">
+                <div className="hins-k">DAY-OF-WEEK</div>
+                <div className="hins-h">{seed.health.dowPatterns.insights[0]}</div>
+                {seed.health.dowPatterns.insights.length > 1 ? (
+                  <div className="hins-m">{seed.health.dowPatterns.insights.slice(1).join(' · ')}</div>
+                ) : null}
+              </div>
+            ) : null}
+            {seed.health.qualityPredictors ? (
+              <div className="hins">
+                <div className="hins-k">WHAT PREDICTS YOUR BEST RUNS</div>
+                <div className="hins-h">{seed.health.qualityPredictors.topPredictor.metric}</div>
+                <div className="hins-m">{seed.health.qualityPredictors.topPredictor.message}</div>
+              </div>
+            ) : null}
+            {seed.health.heatAcclim ? (
+              <div className="hins">
+                <div className="hins-k">ENVIRONMENT · HEAT</div>
+                <div className="hins-h">
+                  {seed.health.heatAcclim.rhrTrend === 'plateauing' ? 'Acclimating'
+                    : seed.health.heatAcclim.rhrTrend === 'rising' ? 'Adapting'
+                    : 'Stable'}
+                </div>
+                <div className="hins-m">{seed.health.heatAcclim.message}</div>
+              </div>
+            ) : null}
+            {seed.user.biologicalSex === 'female' && seed.health.cyclePerformance && seed.health.cyclePerformance.insights.length > 0 ? (
+              <div className="hins">
+                <div className="hins-k">CYCLE · PERFORMANCE</div>
+                <div className="hins-h">{seed.health.cyclePerformance.insights[0]}</div>
+                {seed.health.cyclePerformance.insights.length > 1 ? (
+                  <div className="hins-m">{seed.health.cyclePerformance.insights.slice(1).join(' · ')}</div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {/* Manual entry sheet */}
       {logOpen ? (
         <div
           role="dialog"
@@ -236,68 +663,6 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
   );
 }
 
-function sliceMetric(m: HealthMetric, range: 7 | 30): HealthMetric {
-  if (!m.series.length || range === 30) return m;
-  return { ...m, series: m.series.slice(-range) };
-}
-function RangeToggle({ range, onChange }: { range: 7 | 30; onChange: (r: 7 | 30) => void }) {
-  return (
-    <div style={{
-      display: 'inline-flex', gap: 4, background: 'rgba(8,10,14,.4)',
-      border: '1px solid rgba(255,255,255,.14)', borderRadius: 11, padding: 3,
-      letterSpacing: '.4px',
-    }}>
-      {[7, 30].map(r => (
-        <button
-          key={r}
-          onClick={() => onChange(r as 7 | 30)}
-          style={{
-            fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, color: range === r ? '#10131A' : 'rgba(255,255,255,.7)',
-            background: range === r ? '#fff' : 'transparent', border: 'none',
-            borderRadius: 8, padding: '6px 11px', cursor: 'pointer',
-          }}
-        >
-          {r === 7 ? '7-DAY' : '30-DAY'}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ReadinessGauge({ score, label }: { score: number; label: string }) {
-  return (
-    <div className="gauge">
-      <svg viewBox="0 0 300 300" width="100%" height="100%">
-        <defs>
-          <linearGradient id="rgauge" x1="0" y1="1" x2="1" y2="0">
-            <stop offset="0" stopColor="#FC4D64" />
-            <stop offset=".5" stopColor="#FFCE8A" />
-            <stop offset="1" stopColor="#3EBD41" />
-          </linearGradient>
-        </defs>
-        <path d="M 50,250 A 110,110 0 1 1 250,250" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="18" strokeLinecap="round" />
-        <path d="M 50,250 A 110,110 0 1 1 250,250" fill="none" stroke="url(#rgauge)" strokeWidth="18" strokeLinecap="round" strokeDasharray="518" strokeDashoffset={518 - (score / 100) * 518} />
-        <circle cx="50" cy="250" r="9" fill="#FC4D64" />
-      </svg>
-      <div className="hrv2">
-        <b>{score}</b>
-        <div className="hst">{label}</div>
-      </div>
-    </div>
-  );
-}
-
-function Trend({ trend }: { trend: number[] }) {
-  const max = Math.max(...trend);
-  return (
-    <div className="rtrend" style={{ height: 46, marginTop: 2 }}>
-      {trend.map((v, i) => (
-        <i key={i} className={i === trend.length - 1 ? 'td' : ''} style={{ height: `${(v / max) * 100}%` }} />
-      ))}
-    </div>
-  );
-}
-
-function todayShort() {
+function todayShort(): string {
   return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date());
 }

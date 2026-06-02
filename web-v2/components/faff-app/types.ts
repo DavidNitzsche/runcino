@@ -22,6 +22,10 @@ export type FaffSeed = {
     // 2026-05-30: real profile fields surfaced for Profile view rows so
     // they don't render hardcoded "Runner" / "renews Dec" strings.
     experienceLevel: string | null;   // 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus'
+    /** 2026-06-01 · canonical biological_sex envelope · resolved once
+     *  via lib/coach/biological-sex.ts. Gates cycle-related tiles
+     *  (CYCLE PHASE, CYCLE · PERFORMANCE on Health). */
+    biologicalSex: 'female' | 'male' | 'not_specified';
     subscriptionLabel: string;        // honest single-user-beta default until billing is wired
   };
 
@@ -397,6 +401,23 @@ export type ReadinessBriefSeed = {
     daysToRenegotiate: number | null;
     riskFlags: string[];
   } | null;
+  /** 2026-06-01 · Power move #1 · engine-authored 2-3 sentence
+   *  synthesis paragraph. THE STORY card on Health reads this · falls
+   *  back to trendNote / headline when null. Backend composer at
+   *  lib/coach/synthesis.ts. */
+  synthesis: string | null;
+  /** 2026-06-01 · Power move #9 · predictive forecasts. FORECASTS
+   *  sub-section under WATCHING TOMORROW renders these as small chips.
+   *  Empty array means no slopes met the prediction threshold. Backend
+   *  composer at lib/coach/forecasts.ts · matches that file's Forecast
+   *  shape exactly so values pass through without transformation. */
+  forecasts: Array<{
+    pillar: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hrv_cv' | 'wrist_temp';
+    daysUntilBandChange: number | null;
+    projectedBand: string;
+    message: string;
+    confidence: 'high' | 'medium' | 'low';
+  }>;
 };
 export type RaceLite = { slug: string; name: string; meta: string; tag: 'GOAL'|'TUNE-UP'|'PAST'; days: string };
 
@@ -408,6 +429,12 @@ export type HealthSnapshot = {
   readiness: Readiness;
   body: HealthMetric[];
   form: HealthMetric[];
+  /** 2026-06-01 · Health page redesign · sleep architecture verdict
+   *  threaded from lib/coach/health-state.ts. The architecture line in
+   *  the SLEEP STAGES section reads this · stable/mixed/unstable maps
+   *  to a sentence that mentions the deep/REM fractions inline. Null
+   *  when fewer than 4 nights of stage data have synced. */
+  sleepArchitectureVerdict: 'stable' | 'mixed' | 'unstable' | null;
   // Power moves Wave 2 · aerobic engine trajectory across the block.
   aerobicFitness?: {
     currentDriftPct: number;

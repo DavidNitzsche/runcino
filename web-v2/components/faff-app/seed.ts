@@ -1181,7 +1181,17 @@ function adaptHealth(
     // displayed only as "balanced" with no real underlying value. Bring
     // it back if a sensor (Stryd, Garmin chest dynamics pod) is wired.
   ];
-  return { readiness: adaptReadiness(null, health), body, form: form_ };
+  return {
+    readiness: adaptReadiness(null, health),
+    body,
+    form: form_,
+    // 2026-06-01 · Health page redesign · architecture verdict for the
+    // SLEEP STAGES section's framing line. Backend (health-state.ts)
+    // computes it from the standard deviation of the REM/total ratio
+    // across the last 7 nights. Null when fewer than 4 nights of
+    // stage data have synced.
+    sleepArchitectureVerdict: health?.sleepStages?.architectureVerdict ?? null,
+  };
 }
 
 function adaptPRs(races: Races | null, log: LogT | null): PR[] {
@@ -1668,6 +1678,7 @@ function emptySeed(): FaffSeed {
       initial: 'G',
       pro: false,
       experienceLevel: null,
+      biologicalSex: 'not_specified' as const,
       subscriptionLabel: 'Sign in',
     },
     week, todayIdx, results,
@@ -1682,7 +1693,7 @@ function emptySeed(): FaffSeed {
     weeklyAvg: 0,
     form: { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr: null },
     season: { nowIdx: 0, raceIdx: 0, miles: [], maxMi: 1, phases: [], weekDays: [], adaptations: [] },
-    health: { readiness, body: [], form: [] },
+    health: { readiness, body: [], form: [], sleepArchitectureVerdict: null },
     prs: [],
     races: [],
     projectionTrend: [],

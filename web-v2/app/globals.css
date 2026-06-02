@@ -1069,6 +1069,160 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .supn{font-size:13.5px;font-weight:600;}
 .supt{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:1px;opacity:.65;}
 
+/* ============================================================
+   Health page redesign · 2026-06-01 · per
+   designs/from Design agent/health-page/README.md
+   Three-depth architecture · glance (hero), scan (bar-cards),
+   drill (tap-expand). Every section degrades to absent when
+   its data is missing.
+   ============================================================ */
+
+/* Manual entry button in the top bar */
+.hview-logbtn{margin-left:auto;font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--dist);background:rgba(39,180,224,.08);border:1px solid rgba(39,180,224,.28);border-radius:14px;padding:8px 14px;cursor:pointer;}
+.hview-logbtn:hover{background:rgba(39,180,224,.14);}
+
+/* HERO · 3-col grid · gauge · drivers · 7-day trend */
+.hhero2{margin-top:24px;background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:30px 34px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+.hhero2-grid{display:grid;grid-template-columns:300px 1fr 300px;gap:34px;align-items:stretch;}
+@media (max-width: 1180px){.hhero2-grid{grid-template-columns:1fr;gap:24px;}}
+
+/* Score column */
+.hh-score{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.hh-gauge{position:relative;width:232px;height:232px;}
+.hh-gauge-cv{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;}
+.hh-num{font-family:'Oswald',sans-serif;font-size:82px;font-weight:600;line-height:.8;letter-spacing:-2px;color:var(--txt);}
+.hh-verdict{font-size:17px;font-weight:600;line-height:1.34;max-width:280px;margin-top:18px;color:var(--txt);}
+.hh-base{font-size:12px;font-weight:600;color:rgba(159,179,173,.85);margin-top:14px;letter-spacing:.3px;}
+.hh-base b{color:#fff;}
+
+/* Drivers column */
+.hh-drivers{display:flex;flex-direction:column;}
+.hh-lbl{font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(159,179,173,.85);margin-bottom:14px;}
+.hh-drvlist{flex:1;display:flex;flex-direction:column;justify-content:space-between;}
+.hdrv{display:grid;grid-template-columns:128px 1fr 46px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06);}
+.hdrv:last-child{border-bottom:none;}
+.hdrv-l{display:flex;flex-direction:column;}
+.hdrv-n{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.5px;color:var(--txt);}
+.hdrv-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
+.hdrv-v{font-size:11px;color:rgba(159,179,173,.78);margin-top:5px;font-weight:600;padding-left:15px;}
+.hdrv-bar{height:10px;border-radius:6px;background:rgba(255,255,255,.08);position:relative;display:block;}
+.hdrv-bar .ax{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:rgba(255,255,255,.3);}
+.hdrv-bar i{position:absolute;top:0;bottom:0;border-radius:6px;}
+.hdrv-p{font-family:'Oswald',sans-serif;font-size:21px;font-weight:600;text-align:right;}
+
+/* Right column · 7-day readiness bars */
+.hh-week{display:flex;flex-direction:column;}
+.hh-wk-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;}
+.hh-wk-head .l{font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(159,179,173,.85);}
+.hh-wk-head .r{font-size:11px;font-weight:700;color:rgba(159,179,173,.85);}
+.hh-wk-head .r b{color:#fff;}
+.hh-wkbars{display:flex;align-items:flex-end;gap:7px;flex:1;min-height:110px;}
+.hh-wb{flex:1;border-radius:4px 4px 0 0;min-height:8px;position:relative;}
+.hh-wkdays{display:flex;gap:6px;margin-top:7px;}
+.hh-wkdays span{flex:1;text-align:center;font-size:9px;font-weight:700;color:rgba(159,179,173,.7);}
+
+/* STORY + WATCHING row · 2-col · cards size to content (align-items:start) */
+.hstoryrow{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-top:18px;align-items:start;}
+@media (max-width: 980px){.hstoryrow{grid-template-columns:1fr;}}
+.hsynth{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid #F3AD38;border-radius:14px;padding:18px 22px;}
+.hwatch{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid #5bbfb0;border-radius:14px;padding:18px 22px;}
+.hsynth-tag{font-size:10px;font-weight:800;letter-spacing:2px;color:#F3AD38;}
+.hsynth-tag.watch-tag{color:#5bbfb0;}
+.hsynth-tx{font-size:16px;font-weight:500;line-height:1.55;margin-top:9px;max-width:920px;color:var(--txt);}
+.hsynth-tx b{color:#fff;font-weight:700;}
+
+/* Streaks sub-section · per-pillar bar sparklines */
+.hstreaks{display:flex;flex-direction:column;gap:16px;margin-top:16px;padding-top:15px;border-top:1px solid rgba(255,255,255,.1);}
+.hstk-h{display:flex;align-items:baseline;gap:10px;margin-bottom:7px;}
+.hstk-k{font-size:10.5px;font-weight:800;letter-spacing:.5px;color:#FC4D64;}
+.hstk-d{font-size:11.5px;font-weight:600;color:rgba(159,179,173,.85);}
+.hstk-d b{color:#fff;}
+.hstk-sp{position:relative;display:flex;align-items:flex-end;gap:3px;height:34px;}
+.hstk-sp i{flex:1;border-radius:2px 2px 0 0;min-height:3px;}
+.hstk-base{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(255,255,255,.32);}
+
+/* Watch list rows + forecasts sub-section */
+.hwatch-list{display:flex;flex-direction:column;gap:10px;margin-top:12px;max-width:920px;}
+.hwatch-row{display:flex;gap:12px;align-items:baseline;background:rgba(4,18,16,.4);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px 16px;font-size:14px;line-height:1.5;color:var(--txt);}
+.hwatch-d{width:6px;height:6px;border-radius:50%;background:#F3AD38;flex:0 0 auto;margin-top:7px;}
+.hwatch-empty{font-size:12.5px;color:rgba(159,179,173,.7);font-style:italic;}
+
+/* Section labels · large + hairline */
+.hseclbl2{display:flex;align-items:center;gap:14px;margin:38px 0 16px;}
+.hseclbl2 .t{font-size:12px;font-weight:800;letter-spacing:2.5px;color:rgba(255,255,255,.82);}
+.hseclbl2 .ln{flex:1;height:1px;background:rgba(255,255,255,.1);}
+
+/* Architecture line · sits between SLEEP STAGES label and tiles */
+.harchline{font-size:13.5px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.82);margin:-4px 0 16px;max-width:920px;}
+.harchline b{color:#fff;font-weight:700;text-transform:capitalize;}
+
+/* Bar-card grid · responsive auto-fill */
+.hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:14px;}
+
+/* The bar-card · uniform metric tile */
+.hmc{background:rgba(4,18,16,.4);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:16px 16px 14px;transition:background .15s,border-color .15s;}
+.hmc.clickable{cursor:pointer;}
+.hmc.clickable:hover{background:rgba(8,24,22,.52);border-color:rgba(255,255,255,.14);}
+.hmc.on{background:rgba(8,28,30,.66);border-color:rgba(255,255,255,.32);}
+.hmc-top{display:flex;align-items:center;justify-content:space-between;}
+.hmc-k{font-size:10px;font-weight:800;letter-spacing:1px;color:rgba(159,179,173,.85);display:flex;align-items:center;gap:7px;}
+.hmc-k .dot{width:7px;height:7px;border-radius:50%;}
+.hmc-v{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;line-height:.9;margin-top:12px;letter-spacing:-.5px;color:var(--txt);}
+.hmc-v small{font-size:13px;font-weight:500;color:rgba(159,179,173,.85);margin-left:3px;}
+.hmc-bars{display:flex;align-items:flex-end;gap:2.5px;height:50px;margin-top:14px;position:relative;}
+.hmc-bars i{flex:1;border-radius:2px 2px 0 0;min-height:3px;background:rgba(255,255,255,.16);}
+.hmc-tline{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(255,255,255,.34);pointer-events:none;}
+.hmc-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;letter-spacing:1px;color:rgba(159,179,173,.6);text-transform:uppercase;}
+.hmc-cap{display:flex;align-items:baseline;justify-content:space-between;margin-top:10px;}
+.hmc-cap .lo{font-size:10px;font-weight:700;color:rgba(159,179,173,.85);letter-spacing:.3px;}
+.hmc-cap .st{font-size:9.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;}
+
+/* Aerobic fitness card · sits above the 7-day trend in the hero right col */
+.haero{margin-bottom:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;}
+.haero-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(159,179,173,.85);}
+.haero-v{font-family:'Oswald',sans-serif;font-size:24px;font-weight:600;color:#5fd06a;white-space:nowrap;}
+.haero-m{font-size:12px;font-weight:500;line-height:1.45;color:rgba(255,255,255,.8);}
+
+/* Forecasts sub-section under WATCHING TOMORROW */
+.hforecasts{display:flex;flex-direction:column;gap:9px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);}
+.hfc{display:flex;align-items:baseline;gap:10px;font-size:12.5px;font-weight:500;color:rgba(255,255,255,.82);}
+.hfc-ic{font-size:9px;font-weight:800;letter-spacing:.5px;color:#F3AD38;flex:0 0 auto;border:1px solid rgba(243,173,56,.4);border-radius:5px;padding:2px 6px;}
+.hfc b{color:#fff;}
+
+/* RECOVERY PHASE card · post-hard-session bounce-back */
+.hrecov{margin-top:22px;background:rgba(4,18,16,.5);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:22px 24px;}
+.hrecov-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;}
+.hrecov-eyebrow{font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(159,179,173,.85);}
+.hrecov-anchor{font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;margin-top:5px;color:var(--txt);}
+.hrecov-tl{text-align:right;}
+.hrecov-pct{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;color:#5bbfb0;line-height:.9;}
+.hrecov-day{font-size:11px;font-weight:700;color:rgba(159,179,173,.85);margin-top:4px;}
+.hrecov-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.1);margin:16px 0 22px;overflow:hidden;}
+.hrecov-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#5bbfb0,#5fd06a);}
+.hrecov-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;}
+@media (max-width:880px){.hrecov-grid{grid-template-columns:repeat(3,1fr);}}
+.hrcp{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;}
+.hrcp .k{font-size:10px;font-weight:800;letter-spacing:.5px;color:rgba(159,179,173,.85);}
+.hrcp .pb{height:6px;border-radius:4px;background:rgba(255,255,255,.1);margin-top:9px;overflow:hidden;}
+.hrcp .pb i{display:block;height:100%;border-radius:4px;}
+.hrcp .pv{font-size:11px;font-weight:700;margin-top:7px;}
+.hrecov-muscle{margin-top:20px;font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.86);display:flex;gap:10px;align-items:baseline;}
+.hrecov-muscle .md{width:6px;height:6px;border-radius:50%;background:#F3AD38;flex:0 0 auto;margin-top:6px;}
+.hrecov-green{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1);font-size:14px;font-weight:600;color:var(--txt);}
+.hrecov-green b{color:#5fd06a;}
+
+/* DEEPER INSIGHTS cards · headline + one-liner */
+.hinsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
+.hins{background:rgba(4,18,16,.4);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:16px 18px;}
+.hins-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(159,179,173,.85);}
+.hins-h{font-family:'Oswald',sans-serif;font-size:20px;font-weight:600;margin-top:8px;color:var(--txt);}
+.hins-m{font-size:13px;line-height:1.5;color:rgba(255,255,255,.82);margin-top:8px;}
+.hins-m b{color:#fff;font-weight:700;}
+
+/* ============================================================
+   end Health page redesign 2026-06-01
+   ============================================================ */
+
 /* health · web-native: readiness gauge hero + self-contained metric cards */
 .hhero{padding:6px 2px 6px;}
 .hhero-sep{height:1px;background:rgba(255,255,255,.1);margin:22px 2px 0;}

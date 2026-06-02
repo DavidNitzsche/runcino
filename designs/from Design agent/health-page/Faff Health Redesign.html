@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Health (redesign)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  :root{
+    --txt:#F6F7F8;--mute:#9fb3ad;--line:rgba(255,255,255,.1);
+    --green:#3EBD41;--good:#5fd06a;--watch:#F3AD38;--bad:#FC4D64;--teal:#5bbfb0;
+    --font-display:'Oswald',sans-serif;--font-body:'Inter',sans-serif;
+  }
+  body{font-family:var(--font-body);color:var(--txt);min-height:100vh;display:flex;justify-content:center;
+    background:#08312c;padding:30px;}
+  .win{width:1500px;max-width:100%;min-height:1000px;border-radius:20px;overflow:hidden;display:flex;position:relative;
+    box-shadow:0 40px 100px -40px rgba(0,0,0,.7);}
+
+  /* slim sidebar for context */
+  .side{width:230px;flex:0 0 auto;background:#0A0C10;border-right:1px solid var(--line);padding:24px 16px;display:flex;flex-direction:column;gap:4px;z-index:2;}
+  .brand{font-family:'Anton',sans-serif;font-size:23px;letter-spacing:-.5px;text-transform:uppercase;padding:6px 8px 24px;
+    background:linear-gradient(95deg,#F43F5E,#FF5722,#F5C518,#14C08C,#4F8FF7);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .nav a{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:11px;font-size:14px;font-weight:600;color:rgba(255,255,255,.66);cursor:pointer;}
+  .nav a.on{background:rgba(255,255,255,.08);color:#fff;}
+  .nav a svg{width:18px;height:18px;}
+  .nav a.on svg{color:#4F8FF7;}
+
+  /* main on green mesh */
+  .main{flex:1;position:relative;padding:34px 40px 60px;overflow:hidden;background:
+    radial-gradient(70% 55% at 20% 0%, #2faf9c44 0%, transparent 60%),
+    radial-gradient(60% 50% at 95% 5%, #1f8a6840 0%, transparent 55%),
+    radial-gradient(90% 80% at 60% 100%, #0e6a6a55 0%, transparent 60%),
+    linear-gradient(165deg,#0e5a52,#0a423a 60%,#0c5048);}
+  .htop{display:flex;align-items:baseline;gap:14px;}
+  .htop .h1{font-family:var(--font-display);font-size:26px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;}
+  .htop .sub{font-size:13px;font-weight:600;color:var(--mute);}
+
+  /* ---------- HERO · the focal point ---------- */
+  .hero{margin-top:24px;background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-radius:20px;
+    padding:30px 34px;display:grid;grid-template-columns:300px 1fr 300px;gap:34px;align-items:stretch;backdrop-filter:blur(8px);}
+  .hscore{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+  .gauge{position:relative;width:232px;height:232px;}
+  .gauge .gv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .hband{font-size:11px;font-weight:800;letter-spacing:2px;color:var(--bad);}
+  .hnum{font-family:var(--font-display);font-size:82px;font-weight:600;line-height:.8;letter-spacing:-2px;margin-top:7px;}
+  .hverdict{font-size:17px;font-weight:600;line-height:1.34;text-wrap:pretty;max-width:280px;margin-top:18px;}
+  .hverdict b{color:var(--watch);}
+  .hbase{font-size:12px;font-weight:600;color:var(--mute);margin-top:14px;letter-spacing:.3px;}
+  .hbase b{color:#fff;}
+
+  .hdrivers{display:flex;flex-direction:column;}
+  .hdrivers #drivers{flex:1;display:flex;flex-direction:column;justify-content:space-between;}
+  .hdlbl{font-size:11px;font-weight:800;letter-spacing:2px;color:var(--mute);margin-bottom:14px;}
+  .drv{display:grid;grid-template-columns:128px 1fr 46px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06);}
+  .drv:last-child{border-bottom:none;}
+  .drv .dn{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.5px;}
+  .drv .ddot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
+  .drv .dv{font-size:11px;color:var(--mute);margin-top:5px;font-weight:600;padding-left:15px;}
+  .drv .dv small{font-weight:500;opacity:.78;}
+  .drv .db{height:10px;border-radius:6px;background:rgba(255,255,255,.08);position:relative;}
+  .drv .db .ax{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:rgba(255,255,255,.3);}
+  .drv .db i{position:absolute;top:0;bottom:0;border-radius:6px;}
+  .drv .dp{font-family:var(--font-display);font-size:21px;font-weight:600;text-align:right;}
+
+  .hweek{display:flex;flex-direction:column;}
+  .hwk-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;}
+  .hwk-head .l{font-size:11px;font-weight:800;letter-spacing:2px;color:var(--mute);}
+  .hwk-head .r{font-size:11px;font-weight:700;color:var(--mute);}
+  .hwk-head .r b{color:#fff;}
+  .wkbars{display:flex;align-items:flex-end;gap:7px;flex:1;min-height:110px;}
+  .wkbars .wb{flex:1;border-radius:4px 4px 0 0;background:rgba(255,255,255,.14);min-height:8px;position:relative;}
+  .wkbars .wb.now{background:var(--bad);box-shadow:0 0 12px -2px var(--bad);}
+  .wkdays{display:flex;gap:6px;margin-top:7px;}
+  .wkdays span{flex:1;text-align:center;font-size:9px;font-weight:700;color:var(--mute);}
+
+  /* ---------- metric grid (secondary) ---------- */
+  .seclbl{display:flex;align-items:center;gap:14px;margin:38px 0 16px;}
+  .seclbl .t{font-size:12px;font-weight:800;letter-spacing:2.5px;color:rgba(255,255,255,.82);}
+  .seclbl .ln{flex:1;height:1px;background:rgba(255,255,255,.1);}
+  .seclbl .toggle{display:flex;gap:2px;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:9px;padding:3px;}
+  .seclbl .toggle button{font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--mute);background:transparent;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;}
+  .seclbl .toggle button.on{background:rgba(255,255,255,.92);color:#0a423a;}
+
+  .storyrow{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-top:18px;align-items:start;}
+  .synth{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid var(--watch);border-radius:14px;padding:18px 22px;}
+  .watchcard{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid var(--teal);border-radius:14px;padding:18px 22px;}
+  .watch-tag{color:var(--teal);}
+  .watchcard .watch{margin-top:12px;max-width:none;gap:9px;}
+  .synth-tag{font-size:10px;font-weight:800;letter-spacing:2px;color:var(--watch);}
+  .synth-tx{font-size:16px;font-weight:500;line-height:1.55;margin-top:9px;max-width:920px;text-wrap:pretty;}
+  .synth-tx b{color:#fff;font-weight:700;}
+  .streaks{display:flex;flex-direction:column;gap:16px;margin-top:16px;padding-top:15px;border-top:1px solid rgba(255,255,255,.1);}
+  .stk-h{display:flex;align-items:baseline;gap:10px;margin-bottom:7px;}
+  .stk-k{font-size:10.5px;font-weight:800;letter-spacing:.5px;color:var(--bad);}
+  .stk-d{font-size:11.5px;font-weight:600;color:var(--mute);}
+  .stk-d b{color:#fff;}
+  .stk-spark{position:relative;display:flex;align-items:flex-end;gap:3px;height:34px;}
+  .stk-spark i{flex:1;border-radius:2px 2px 0 0;min-height:3px;}
+  .stk-base{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(255,255,255,.32);}
+  .watch{display:flex;flex-direction:column;gap:10px;max-width:920px;}
+  .watch .wrow{display:flex;gap:12px;align-items:baseline;background:rgba(4,18,16,.4);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px 16px;font-size:14px;line-height:1.5;}
+  .watch .wd{width:6px;height:6px;border-radius:50%;background:var(--watch);flex:0 0 auto;margin-top:7px;}
+  .forecasts{display:flex;flex-direction:column;gap:9px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);}
+  .fcchip{display:flex;align-items:baseline;gap:10px;font-size:12.5px;font-weight:500;color:rgba(255,255,255,.82);}
+  .fcchip .fi{font-size:9px;font-weight:800;letter-spacing:.5px;color:var(--watch);flex:0 0 auto;border:1px solid rgba(243,173,56,.4);border-radius:5px;padding:2px 6px;}
+  .fcchip b{color:#fff;}
+  .recov{margin-top:22px;}
+  .recov-card{background:rgba(4,18,16,.5);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:22px 24px;}
+  .recov-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;}
+  .rc-eyebrow{font-size:11px;font-weight:800;letter-spacing:2px;color:var(--mute);}
+  .rc-anchor{font-family:var(--font-display);font-size:22px;font-weight:600;margin-top:5px;}
+  .rc-timeline{text-align:right;}
+  .rc-pct{font-family:var(--font-display);font-size:34px;font-weight:600;color:var(--teal);line-height:.9;}
+  .rc-tl{font-size:11px;font-weight:700;color:var(--mute);margin-top:4px;}
+  .rc-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.1);margin:16px 0 22px;overflow:hidden;}
+  .rc-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--teal),var(--good));}
+  .rc-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;}
+  .rcp{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;}
+  .rcp .k{font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--mute);}
+  .rcp .pb{height:6px;border-radius:4px;background:rgba(255,255,255,.1);margin-top:9px;overflow:hidden;}
+  .rcp .pb i{display:block;height:100%;border-radius:4px;}
+  .rcp .pv{font-size:11px;font-weight:700;margin-top:7px;}
+  .rc-muscle{margin-top:20px;display:flex;flex-direction:column;gap:9px;}
+  .rc-muscle .ms{font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.86);display:flex;gap:10px;align-items:baseline;}
+  .rc-muscle .ms b{color:var(--watch);font-weight:700;}
+  .rc-muscle .md{width:6px;height:6px;border-radius:50%;background:var(--watch);flex:0 0 auto;margin-top:6px;}
+  .rc-green{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1);font-size:14px;font-weight:600;}
+  .rc-green b{color:var(--good);}
+  .archline{font-size:13.5px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.82);margin:-4px 0 16px;max-width:920px;}
+  .archline b{color:#fff;font-weight:700;}
+  .aero{margin-bottom:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;}
+  .aero .aero-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:var(--mute);}
+  .aero .av{font-family:var(--font-display);font-size:24px;font-weight:600;color:var(--good);white-space:nowrap;}
+  .aero .am{font-size:12px;font-weight:500;line-height:1.45;color:rgba(255,255,255,.8);}
+  .aero .am b{color:#fff;font-weight:700;}
+  .grid.insights{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));}
+  .ins{background:rgba(4,18,16,.4);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:16px 18px;}
+  .ins .ik{font-size:10px;font-weight:800;letter-spacing:1.5px;color:var(--mute);}
+  .ins .ih{font-family:var(--font-display);font-size:20px;font-weight:600;margin-top:8px;}
+  .ins .im{font-size:13px;line-height:1.5;color:rgba(255,255,255,.82);margin-top:8px;}
+  .ins .im b{color:#fff;font-weight:700;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:14px;}
+  .grid.form{grid-template-columns:repeat(auto-fill,minmax(186px,1fr));}
+  .mc{background:rgba(4,18,16,.4);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:16px 16px 14px;}
+  .mc-top{display:flex;align-items:center;justify-content:space-between;}
+  .mc-k{font-size:10px;font-weight:800;letter-spacing:1px;color:var(--mute);display:flex;align-items:center;gap:7px;}
+  .mc-k .dot{width:7px;height:7px;border-radius:50%;}
+  .mc-arrow{font-size:11px;font-weight:800;}
+  .mc-v{font-family:var(--font-display);font-size:34px;font-weight:600;line-height:.9;margin-top:12px;letter-spacing:-.5px;}
+  .mc-v small{font-size:13px;font-weight:500;color:var(--mute);margin-left:3px;}
+  .mc-bars{display:flex;align-items:flex-end;gap:2.5px;height:50px;margin-top:14px;position:relative;}
+  .mc-bars i{flex:1;border-radius:2px 2px 0 0;min-height:3px;background:rgba(255,255,255,.16);}
+  .mc-tline{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(255,255,255,.34);pointer-events:none;}
+  .mc-cap{display:flex;align-items:baseline;justify-content:space-between;margin-top:10px;}
+  .mc-cap .lo{font-size:10px;font-weight:700;color:var(--mute);letter-spacing:.3px;}
+  .mc-cap .st{font-size:9.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;}
+</style>
+</head>
+<body>
+  <div class="win">
+    <aside class="side">
+      <div class="brand">Faff.Run</div>
+      <nav class="nav">
+        <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Today</a>
+        <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16l5-6 4 4 5-8 4 5"/></svg>Train</a>
+        <a class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg>Health</a>
+        <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>Targets</a>
+        <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V7M10 19V4M16 19v-9M22 19H2"/></svg>Activity</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div class="htop"><span class="h1">Health</span><span class="sub">Recovery &amp; form · Mon, Jun 1</span></div>
+
+      <!-- HERO -->
+      <div class="hero">
+        <div class="hscore">
+          <div class="gauge">
+            <svg viewBox="0 0 240 240" width="232" height="232">
+              <circle cx="120" cy="120" r="100" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="16"/>
+              <circle cx="120" cy="120" r="100" fill="none" stroke="var(--bad)" stroke-width="16" stroke-linecap="round" stroke-dasharray="628.3" stroke-dashoffset="364.4" transform="rotate(-90 120 120)" style="filter:drop-shadow(0 0 9px rgba(252,77,100,.45))"/>
+            </svg>
+            <div class="gv"><span class="hnum">42</span></div>
+          </div>
+          <div class="hverdict" id="hverdict">Sleep and HRV are both dragging. <b>A back-off day</b> protects the week.</div>
+          <div class="hbase" id="hbase">14-day baseline <b>58</b> · today <b>42</b> · <b style="color:var(--bad)">−16</b></div>
+        </div>
+        <div class="hdrivers">
+          <div class="hdlbl">WHAT IS DRIVING IT</div>
+          <div id="drivers"></div>
+        </div>
+        <div class="hweek">
+          <div id="aeroBox"></div>
+          <div class="hwk-head"><span class="l">7-DAY READINESS</span><span class="r">NOW <b>42</b> &nbsp;·&nbsp; AVG <b>58</b></span></div>
+          <div class="wkbars" id="wkbars"></div>
+          <div class="wkdays" id="wkdays"></div>
+        </div>
+      </div>
+
+      <!-- SYNTHESIS + WATCHING · two-column intelligence -->
+      <div class="storyrow">
+        <div class="synth">
+          <span class="synth-tag">THE STORY</span>
+          <p class="synth-tx" id="synthTx"></p>
+          <div class="streaks" id="streaks"></div>
+        </div>
+        <div class="watchcard">
+          <span class="synth-tag watch-tag">WATCHING TOMORROW</span>
+          <div class="watch" id="watchList"></div>
+          <div class="forecasts" id="forecasts"></div>
+        </div>
+      </div>
+
+      <!-- RECOVERY PHASE (#15) -->
+      <div class="recov" id="recov"></div>
+
+      <!-- BODY -->
+      <div class="seclbl"><span class="t">BODY</span><span class="ln"></span>
+        <div class="toggle"><button>7-DAY</button><button class="on">30-DAY</button></div>
+      </div>
+      <div class="grid" id="bodyGrid"></div>
+
+      <!-- SLEEP STAGES -->
+      <div class="seclbl"><span class="t">SLEEP STAGES</span><span class="ln"></span></div>
+      <div class="archline" id="archLine"></div>
+      <div class="grid" id="sleepGrid"></div>
+
+      <!-- FORM -->
+      <div class="seclbl"><span class="t">FORM</span><span class="ln"></span></div>
+      <div class="grid form" id="formGrid"></div>
+
+      <!-- DEEPER INSIGHTS (waves 2/4) -->
+      <div class="seclbl"><span class="t">DEEPER INSIGHTS</span><span class="ln"></span></div>
+      <div class="grid insights" id="insightGrid"></div>
+    </main>
+  </div>
+
+<script>
+  var $=function(id){return document.getElementById(id);};
+  var COL={good:'#5fd06a',watch:'#F3AD38',bad:'#FC4D64',neutral:'#5bbfb0'};
+
+  /* ---- drivers ---- */
+  var DRV=[
+    {n:'SLEEP', v:'5.9h', sub:'target 7.5h', pts:-13},
+    {n:'HRV', v:'44 ms', sub:'baseline 55', pts:-10},
+    {n:'RHR', v:'47 bpm', sub:'baseline 50', pts:3},
+    {n:'LOAD', v:'1.70', sub:'ACWR · aim 0.8–1.3', pts:-8},
+    {n:'HR REC', v:'—', sub:'no data yet', pts:0}
+  ];
+  $('drivers').innerHTML=DRV.map(function(d){
+    var col=d.pts<=-8?COL.bad:d.pts<0?COL.watch:d.pts>0?COL.good:'#8aa0a0';
+    var w=Math.min(46,Math.abs(d.pts)*3.2+4);
+    var fill=d.pts===0?'':'<i style="'+(d.pts>0?'left:50%':'right:50%')+';width:'+w+'%;background:'+col+';box-shadow:0 0 8px -2px '+col+'"></i>';
+    var sp=(d.pts>0?'+':d.pts<0?'\u2212':'')+Math.abs(d.pts);
+    return '<div class="drv"><div class="dl"><div class="dn"><span class="ddot" style="background:'+col+'"></span>'+d.n+'</div><div class="dv">'+d.v+' <small>'+d.sub+'</small></div></div>'
+      +'<span class="db"><span class="ax"></span>'+fill+'</span>'
+      +'<span class="dp" style="color:'+col+'">'+sp+'</span></div>';
+  }).join('');
+
+  /* ---- 7-day readiness bars ---- */
+  var RD=[71,64,58,55,52,49,42], RDdays=['TUE','WED','THU','FRI','SAT','SUN','MON'];
+  var rmn=35,rmx=80;
+  $('wkbars').innerHTML=RD.map(function(v,i){
+    var h=18+((v-rmn)/(rmx-rmn))*82;
+    return '<div class="wb'+(i===RD.length-1?' now':'')+'" style="height:'+h+'%"></div>';
+  }).join('');
+  $('wkdays').innerHTML=RDdays.map(function(d){return '<span>'+d+'</span>';}).join('');
+
+  /* ---- metric cards with BAR charts ---- */
+  function genBars(s,e,cur,n,nz,seed){
+    var out=[],x=seed||1;
+    for(var i=0;i<n;i++){
+      x=(x*9301+49297)%233280; var r=(x/233280-0.5);
+      var base=s+(e-s)*(i/(n-1));
+      out.push(base+r*nz);
+    }
+    out[n-1]=cur;
+    return out;
+  }
+  function fmtClock(h){var m=Math.round(h*60);return Math.floor(m/60)+':'+String(m%60).padStart(2,'0');}
+  function card(m){
+    var n=14, bars=genBars(m.s,m.e,m.cur,n,m.nz,m.seed);
+    var lo=Math.min.apply(null,bars), hi=Math.max.apply(null,bars);
+    if(m.target!=null){lo=Math.min(lo,m.target);hi=Math.max(hi,m.target);}
+    var pad=(hi-lo)*0.18||1; lo-=pad; hi+=pad;
+    var col=COL[m.status];
+    var barsHtml=bars.map(function(v,i){
+      var h=8+((v-lo)/(hi-lo))*92;
+      var c=i===n-1?col:'rgba(255,255,255,.16)';
+      return '<i style="height:'+h+'%;background:'+c+'"></i>';
+    }).join('');
+    var tline='';
+    if(m.target!=null){var ty=100-(8+((m.target-lo)/(hi-lo))*92);tline='<span class="mc-tline" style="top:'+ty+'%"></span>';}
+    var val=m.clock?fmtClock(m.cur):(m.dec!=null?m.cur.toFixed(m.dec):m.cur);
+    var arrow=m.dir==='up'?'\u2191':m.dir==='down'?'\u2193':'';
+    var arrCol=m.statusArrow||col;
+    var stTxt={good:'on target',watch:'watch',bad:'below target',neutral:'steady'}[m.status];
+    return '<div class="mc">'
+      +'<div class="mc-top"><span class="mc-k"><span class="dot" style="background:'+col+'"></span>'+m.label+'</span>'
+      +'<span class="mc-arrow" style="color:'+arrCol+'">'+arrow+'</span></div>'
+      +'<div class="mc-v">'+val+'<small>'+m.unit+'</small></div>'
+      +'<div class="mc-bars">'+tline+barsHtml+'</div>'
+      +'<div class="mc-cap"><span class="lo">'+m.cap+'</span><span class="st" style="color:'+col+'">'+stTxt+'</span></div>'
+      +'</div>';
+  }
+
+  var BODY=[
+    {label:'HRV',unit:' ms',s:53,e:47,cur:44,nz:2.5,seed:42,target:53,dir:'down',status:'bad',cap:'target 53'},
+    {label:'RESTING HR',unit:' bpm',s:50,e:48,cur:47,nz:1.2,seed:7,target:48,dir:'down',status:'good',cap:'baseline 48'},
+    {label:'HRV CV',unit:'%',dec:1,s:5.0,e:7.6,cur:8.4,nz:.4,seed:23,target:6,dir:'up',status:'watch',cap:'aim < 6%'},
+    {label:'SLEEP',unit:'',clock:1,s:7.1,e:6.2,cur:5.9,nz:.5,seed:13,target:7.5,dir:'down',status:'bad',cap:'target 7:30'},
+    {label:'RESP RATE',unit:' /min',dec:1,s:15.3,e:15.0,cur:15.0,nz:.3,seed:61,dir:'flat',status:'neutral',cap:'nightly'},
+    {label:'SPO\u2082',unit:'%',dec:0,s:96,e:95,cur:95,nz:.6,seed:71,dir:'flat',status:'good',cap:'nightly'},
+    {label:'WRIST TEMP',unit:' \u00b0C',dec:2,s:35.72,e:35.78,cur:35.80,nz:.05,seed:51,dir:'flat',status:'neutral',cap:'30-day'},
+    {label:'WEIGHT',unit:' lb',dec:1,s:188.2,e:187.3,cur:187.0,nz:.4,seed:21,dir:'flat',status:'neutral',cap:'30-day'},
+    {label:'BODY FAT',unit:'%',dec:1,s:14.3,e:13.9,cur:13.7,nz:.2,seed:81,dir:'down',status:'good',cap:'30-day'},
+    {label:'LEAN MASS',unit:' lb',dec:1,s:160.6,e:161.3,cur:161.6,nz:.3,seed:91,dir:'up',status:'good',cap:'30-day'},
+    {label:'VO\u2082 MAX',unit:'',dec:1,s:60.4,e:61.6,cur:62.0,nz:.3,seed:33,dir:'up',status:'good',cap:'30-day'},
+    {label:'MAX HR',unit:' bpm',dec:0,s:178,e:180,cur:181,nz:1,seed:43,dir:'flat',status:'neutral',cap:'12-month'}
+  ];
+  var SLEEP=[
+    {label:'DEEP SLEEP',unit:' min',dec:0,s:74,e:66,cur:68,nz:5,seed:101,target:75,dir:'down',status:'watch',cap:'target 75'},
+    {label:'REM SLEEP',unit:' min',dec:0,s:96,e:85,cur:84,nz:6,seed:111,target:100,dir:'down',status:'watch',cap:'target 100'},
+    {label:'LIGHT SLEEP',unit:' min',dec:0,s:208,e:201,cur:198,nz:8,seed:121,dir:'flat',status:'neutral',cap:'context'},
+    {label:'AWAKE',unit:' min',dec:0,s:18,e:23,cur:22,nz:4,seed:131,dir:'flat',status:'neutral',cap:'context'}
+  ];
+  var FORM=[
+    {label:'CADENCE',unit:' spm',dec:0,s:158,e:164,cur:162,nz:2,seed:5,target:170,dir:'up',status:'watch',cap:'target 170'},
+    {label:'GROUND CONTACT',unit:' ms',dec:0,s:251,e:247,cur:246,nz:2.5,seed:14,target:235,dir:'down',status:'watch',cap:'aim 235'},
+    {label:'VERTICAL OSC',unit:' cm',dec:1,s:10.5,e:10.2,cur:10.1,nz:.2,seed:19,target:8.5,dir:'down',status:'watch',cap:'aim 8.5'},
+    {label:'VERT RATIO',unit:'%',dec:1,s:7.7,e:7.3,cur:7.2,nz:.2,seed:141,dir:'down',status:'good',cap:'30-day'},
+    {label:'STRIDE LENGTH',unit:' m',dec:2,s:1.11,e:1.13,cur:1.14,nz:.03,seed:27,dir:'up',status:'good',cap:'30-day'},
+    {label:'RUN POWER',unit:' w',dec:0,s:304,e:309,cur:312,nz:4,seed:151,dir:'up',status:'good',cap:'30-day'}
+  ];
+  $('bodyGrid').innerHTML=BODY.map(card).join('');
+  $('sleepGrid').innerHTML=SLEEP.map(card).join('');
+  $('formGrid').innerHTML=FORM.map(card).join('');
+
+  /* ---- intelligence layer ---- */
+  $('synthTx').innerHTML='<b>Sleep is the story.</b> 5.9h with HRV down 10 and RHR up 3, and these three move together when you are undersleep-stressed. Wrist temp is normal, so this is not illness \u00b7 it is a deficit you can close tonight.';
+  var STREAKS=[
+    {k:'HRV', days:3, base:55, series:[59,56,58,54,57,55,53,50,47,44], note:'early overreach'},
+    {k:'SLEEP', days:4, base:7.5, series:[7.5,7.3,7.6,7.2,7.0,7.1,6.5,6.2,5.9,5.9], note:'~6h debt'}
+  ];
+  $('streaks').innerHTML=STREAKS.map(function(s){
+    var v=s.series,n=v.length,all=v.concat([s.base]);
+    var lo=Math.min.apply(null,all),hi=Math.max.apply(null,all),pad=(hi-lo)*0.2||1;lo-=pad;hi+=pad;
+    var by=100-((s.base-lo)/(hi-lo))*100;
+    var bars=v.map(function(x,i){var h=8+((x-lo)/(hi-lo))*92;var red=i>=n-s.days;return '<i style="height:'+h+'%;background:'+(red?'var(--bad)':'rgba(255,255,255,.18)')+'"></i>';}).join('');
+    return '<div class="stk"><div class="stk-h"><span class="stk-k">'+s.k+'</span><span class="stk-d"><b>'+s.days+' days</b> below \u00b7 '+s.note+'</span></div><div class="stk-spark"><span class="stk-base" style="top:'+by+'%"></span>'+bars+'</div></div>';
+  }).join('');
+  var WATCH=[
+    'If HRV stays below the band tomorrow, treat it as signal, not noise.',
+    'Sleep debt is building. One 9h+ night starts resetting the trend.',
+    'HRV CV is 8.4% and rising \u00b7 a cross above the band would read as destabilization.'
+  ];
+  $('watchList').innerHTML=WATCH.map(function(w){return '<div class="wrow"><span class="wd"></span><span>'+w+'</span></div>';}).join('');
+
+  /* ---- forecasts (#9) ---- */
+  var FC=[
+    {p:'HRV CV', m:'crosses the 7% destabilizing band by <b>Thursday</b> if the climb holds'},
+    {p:'SLEEP', m:'one 9h+ night pulls the 7-night avg back over target by <b>Wed</b>'}
+  ];
+  $('forecasts').innerHTML=FC.map(function(f){return '<span class="fcchip"><span class="fi">FORECAST</span><span><b>'+f.p+'</b> '+f.m+'</span></span>';}).join('');
+
+  /* ---- recovery phase (#15) ---- */
+  function pcol(p){return p>=80?COL.good:p>=55?COL.watch:COL.bad;}
+  var RP={anchor:"Sunday\u2019s 14.0 mi long run \u00b7 1h 56m", pct:60, day:2, days:4,
+    pillars:[{k:'HRV',p:55},{k:'RHR',p:72},{k:'SLEEP',p:48},{k:'HR REC',p:80},{k:'WRIST TEMP',p:95},{k:'RESP RATE',p:88}],
+    muscle:['Cadence 168 spm on Monday\u2019s easy vs typical 172 \u00b7 <b>legs still neuromuscular-fatigued</b>','Stride 1.14m vs 1.18m \u00b7 <b>\u22123% \u00b7 eccentric muscle-damage signal</b>','Run power 245W vs 268W \u00b7 muscle output still down'],
+    green:'Thursday'};
+  $('recov').innerHTML='<div class="recov-card">'
+    +'<div class="recov-head"><div><div class="rc-eyebrow">RECOVERING FROM</div><div class="rc-anchor">'+RP.anchor+'</div></div>'
+    +'<div class="rc-timeline"><div class="rc-pct">'+RP.pct+'%</div><div class="rc-tl">Day '+RP.day+' of '+RP.days+' expected</div></div></div>'
+    +'<div class="rc-bar"><i style="width:'+RP.pct+'%"></i></div>'
+    +'<div class="rc-grid">'+RP.pillars.map(function(p){return '<div class="rcp"><div class="k">'+p.k+'</div><div class="pb"><i style="width:'+p.p+'%;background:'+pcol(p.p)+'"></i></div><div class="pv" style="color:'+pcol(p.p)+'">'+p.p+'% back</div></div>';}).join('')+'</div>'
+    +'<div class="rc-muscle">'+RP.muscle.map(function(m){return '<div class="ms"><span class="md"></span><span>'+m+'</span></div>';}).join('')+'</div>'
+    +'<div class="rc-green">Earliest quality session: <b>'+RP.green+'</b> \u00b7 hold easy until HRV and sleep bounce back.</div>'
+    +'</div>';
+
+  /* ---- sleep architecture (#6) ---- */
+  $('archLine').innerHTML='<b>Architecture is healthy</b> (19% deep, 24% REM). The issue is hours, not quality \u00b7 push bedtime 30 min and the stages follow.';
+
+  /* ---- aerobic fitness (#8) ---- */
+  $('aeroBox').innerHTML='<div class="aero"><div class="aero-k">AEROBIC FITNESS</div><div class="av">9.2% \u2192 6.1%</div><div class="am">Decoupling over the last 8 long runs. <b>Engine getting more efficient</b> \u00b7 race-ready by week 8.</div></div>';
+
+  /* ---- deeper insights (#7/#10/#11/#12/#14) ---- */
+  var INS=[
+    {k:'TRAINING FORM',h:'\u22128 \u00b7 LOADED',m:'Productive overload (CTL 52 \u00b7 ATL 60). Fitness is building faster than fatigue clears.'},
+    {k:'VS LAST BUILD',h:'Recovering better',m:'Sleep avg <b>7.4h</b> this block vs <b>6.8h</b> before Berlin.'},
+    {k:'DAY-OF-WEEK',h:'Monday dips',m:'HRV is consistently lowest on <b>Mondays</b> \u00b7 a Sunday-recovery problem.'},
+    {k:'WHAT PREDICTS YOUR BEST RUNS',h:'Deep sleep',m:'Top-quartile runs follow nights with <b>deep sleep &gt; 70 min</b> \u00b7 3\u00d7 more likely.'},
+    {k:'ENVIRONMENT \u00b7 HEAT',h:'Acclimating',m:'9 days in 78\u00b0F+ \u00b7 RHR climb plateauing. HR penalty down to <b>+3 bpm</b>, full adapt in ~5 days.'}
+  ];
+  $('insightGrid').innerHTML=INS.map(function(i){return '<div class="ins"><div class="ik">'+i.k+'</div><div class="ih">'+i.h+'</div><div class="im">'+i.m+'</div></div>';}).join('');
+</script>
+</body>
+</html>
