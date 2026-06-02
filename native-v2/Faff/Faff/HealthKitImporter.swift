@@ -586,10 +586,49 @@ final class HealthKitImporter: ObservableObject {
                                        sample_date: isoDay(d), recorded_at: isoUTC(d)))
             }
         }
-        // sleep_hours — sum of asleepCore/Deep/REM across the night, in hours
-        for (d, hours) in await dailySleepHours(daysBack: daysBack) {
-            out.append(VitalSample(sample_type: "sleep_hours", value: (hours * 10).rounded() / 10,
-                                   sample_date: isoDay(d), recorded_at: isoUTC(d)))
+        // sleep_hours + per-stage minutes — single pass over HK sleep
+        // samples. Total stays as the canonical "how long did you
+        // sleep" scalar; deep / rem / light / awake minutes unlock the
+        // architecture-aware readiness pillars per
+        // designs/briefs/iphone-health-ingest-expansion-brief.md §1.
+        // recorded_at is the bedtime so the per-stage rows share a key
+        // with the sleep_hours row and downstream consumers can join.
+        for night in await dailySleepNights(daysBack: daysBack) {
+            let day = isoDay(night.date)
+            let stamp = isoUTC(night.bedtime)
+            let totalHours = night.totalMinutes / 60.0
+            if totalHours > 0 {
+                out.append(VitalSample(
+                    sample_type: "sleep_hours",
+                    value: (totalHours * 10).rounded() / 10,
+                    sample_date: day, recorded_at: stamp
+                ))
+            }
+            // Round per-stage minutes · zero values still get a row so
+            // backend can distinguish "watch worn, no deep sleep" from
+            // "no data."
+            if night.totalMinutes > 0 {
+                out.append(VitalSample(
+                    sample_type: "sleep_deep_minutes",
+                    value: night.deepMinutes.rounded(),
+                    sample_date: day, recorded_at: stamp
+                ))
+                out.append(VitalSample(
+                    sample_type: "sleep_rem_minutes",
+                    value: night.remMinutes.rounded(),
+                    sample_date: day, recorded_at: stamp
+                ))
+                out.append(VitalSample(
+                    sample_type: "sleep_light_minutes",
+                    value: night.lightMinutes.rounded(),
+                    sample_date: day, recorded_at: stamp
+                ))
+                out.append(VitalSample(
+                    sample_type: "sleep_awake_minutes",
+                    value: night.awakeMinutes.rounded(),
+                    sample_date: day, recorded_at: stamp
+                ))
+            }
         }
         // active_energy — TIME-SERIES, not a daily scalar. HK ships ~15-second
         // buckets during workouts and sparser passive samples between. The
@@ -663,36 +702,81 @@ final class HealthKitImporter: ObservableObject {
         }
     }
 
-    /// Asleep duration per night (asleepCore + asleepDeep + asleepREM) in hours.
-    private nonisolated func dailySleepHours(daysBack: Int) async -> [(Date, Double)] {
+    /// Per-night sleep breakdown · totals + per-stage minutes (deep,
+    /// REM, light, awake). One entry per "morning of" date in the
+    /// window. Backend brief: designs/briefs/iphone-health-ingest-
+    /// expansion-brief.md §1 (2026-06-01).
+    private struct SleepNight {
+        /// "Morning of" date · the date the night ended (Calendar
+        /// startOfDay in PT). Used for sample_date.
+        let date: Date
+        /// Bedtime · first asleep-stage sample's startDate. Used for
+        /// recorded_at so all per-stage rows share a key with
+        /// sleep_hours.
+        let bedtime: Date
+        var deepMinutes: Double = 0
+        var remMinutes: Double = 0
+        var lightMinutes: Double = 0          // asleepCore + asleepUnspecified
+        var awakeMinutes: Double = 0
+        var totalMinutes: Double { deepMinutes + remMinutes + lightMinutes }
+    }
+
+    /// Walk HK sleepAnalysis samples once, bucket by "morning of"
+    /// date, sum minutes per stage. Returns one SleepNight per night.
+    private nonisolated func dailySleepNights(daysBack: Int) async -> [SleepNight] {
         let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
         let pred = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
         let samples: [HKCategorySample] = await withCheckedContinuation { cont in
-            let q = HKSampleQuery(sampleType: HKCategoryType(.sleepAnalysis), predicate: pred,
-                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+            let q = HKSampleQuery(
+                sampleType: HKCategoryType(.sleepAnalysis),
+                predicate: pred,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
+            ) { _, samples, _ in
                 cont.resume(returning: (samples as? [HKCategorySample]) ?? [])
             }
             store.execute(q)
         }
-        // Group by sleep-end date (the "morning of" date).
-        var byDate: [String: Double] = [:]
+
+        // Bucket by "morning of" date (the date the sleep block ENDED
+        // in PT). awake/inBed segments belong to the same night so
+        // their endDate works too.
         let cal = Calendar.current
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "America/Los_Angeles")
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "America/Los_Angeles")
+
+        var byDateKey: [String: SleepNight] = [:]
         for s in samples {
             let val = s.value
-            // asleepCore=3, asleepDeep=4, asleepREM=5, asleep (legacy)=1
-            guard val == HKCategoryValueSleepAnalysis.asleepCore.rawValue
-                || val == HKCategoryValueSleepAnalysis.asleepDeep.rawValue
-                || val == HKCategoryValueSleepAnalysis.asleepREM.rawValue
-                || val == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
-            else { continue }
+            let mins = s.endDate.timeIntervalSince(s.startDate) / 60.0
+            if mins <= 0 { continue }
             let key = f.string(from: s.endDate)
-            byDate[key, default: 0] += s.endDate.timeIntervalSince(s.startDate) / 3600.0
+            // Seed the night with the FIRST sample's start as bedtime ·
+            // sleep blocks come oldest-first so the first sample for a
+            // given night is the bedtime sample.
+            var night = byDateKey[key] ?? SleepNight(
+                date: f.date(from: key).map { cal.startOfDay(for: $0) } ?? s.endDate,
+                bedtime: s.startDate
+            )
+            switch val {
+            case HKCategoryValueSleepAnalysis.asleepDeep.rawValue:
+                night.deepMinutes += mins
+            case HKCategoryValueSleepAnalysis.asleepREM.rawValue:
+                night.remMinutes += mins
+            case HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+                 HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue:
+                night.lightMinutes += mins
+            case HKCategoryValueSleepAnalysis.awake.rawValue:
+                night.awakeMinutes += mins
+            default:
+                // Skip inBed (running total of time in bed not sleeping ·
+                // already partially captured in the awake segments).
+                continue
+            }
+            byDateKey[key] = night
         }
-        return byDate.compactMap { (k, hrs) in
-            guard let d = f.date(from: k) else { return nil }
-            return (cal.startOfDay(for: d), hrs)
-        }
+        return Array(byDateKey.values)
     }
 
     private nonisolated func isoDay(_ d: Date) -> String {
