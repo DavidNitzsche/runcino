@@ -487,6 +487,15 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .standrec.sev-firm .standrec-eyebrow{color:#ffce8a;}
 .standrec-copy{font-size:14px;font-weight:600;line-height:1.45;color:rgba(255,255,255,.88);}
 .standrec-sug{margin-top:6px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.55);}
+.standrec-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+.standrec-btn{font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;background:transparent;color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:8px 14px;cursor:pointer;transition:background .15s,border-color .15s,color .15s;}
+.standrec-btn:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.32);color:#fff;}
+.standrec-btn:disabled{opacity:.5;cursor:not-allowed;}
+.standrec-btn.primary{background:rgba(180,200,230,.18);border-color:rgba(180,200,230,.45);color:#fff;}
+.standrec-btn.primary:hover{background:rgba(180,200,230,.28);border-color:rgba(180,200,230,.65);}
+.standrec.sev-firm .standrec-btn.primary{background:rgba(255,206,138,.18);border-color:rgba(255,206,138,.5);}
+.standrec.sev-firm .standrec-btn.primary:hover{background:rgba(255,206,138,.28);border-color:rgba(255,206,138,.7);}
+.standrec-err{margin-top:10px;font-size:11px;font-weight:600;color:#FC4D64;}
 
 /* ── Train view v2 (Train Options · Direction A · 2026-05-31) ──
    Hero + interactive 13-week ramp + lower dashboard grid (phase

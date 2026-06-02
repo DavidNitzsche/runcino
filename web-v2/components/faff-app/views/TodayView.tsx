@@ -25,6 +25,10 @@ export function TodayView({
   onOpenDrawer: () => void;
   onOpenRace: () => void;
 }) {
+  // 2026-06-01 · router refresh path · used by StandingRecAdvisory's
+  // Accept handler so a successful POST to /accept-standing reloads
+  // the seed (new plan_workouts row + cleared standing rec).
+  const router = useRouter();
   // 2026-05-31: per-day skip overrides keyed by ISO date. Initialized
   // from seed (server-side day_actions read in loadWeekSkips), then
   // mutated optimistically by the PlannedHeroV2 Skip/Restore button so
@@ -430,40 +434,12 @@ export function TodayView({
               styles the left edge (advisory = blue, firm = warn). Read-only
               for now · the dedicated Accept endpoint is queued in a separate
               brief and will land the action wiring. */}
-          {(() => {
-            const rec = d.standingRecommendation;
-            if (!rec || dSkipped) return null;
-            const sug = rec.suggestion;
-            const sugParts: string[] = [];
-            if (sug?.proposedType) sugParts.push(toTitleCase(sug.proposedType));
-            if (sug?.proposedDistanceMi != null) sugParts.push(`${sug.proposedDistanceMi} mi`);
-            if (sug?.proposedDateIso) {
-              try {
-                const dt = new Date(sug.proposedDateIso + 'T12:00:00');
-                sugParts.push(dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }));
-              } catch { /* ignore */ }
-            }
-            const sugLine = sugParts.length ? `Coach suggests · ${sugParts.join(' · ')}` : null;
-            return (
-              <div className={`standrec sev-${rec.severity}`} role="note">
-                <div className="standrec-row">
-                  <span className="standrec-icn" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 8v4M12 16h.01"/>
-                      <circle cx="12" cy="12" r="9"/>
-                    </svg>
-                  </span>
-                  <div className="standrec-body">
-                    <div className="standrec-eyebrow">
-                      {rec.severity === 'firm' ? 'STANDING ADVICE' : 'COACH NOTE'}
-                    </div>
-                    <div className="standrec-copy">{rec.copy}</div>
-                    {sugLine ? <div className="standrec-sug">{sugLine}</div> : null}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+          <StandingRecAdvisory
+            rec={d.standingRecommendation}
+            workoutId={d.planWorkoutId ?? null}
+            hidden={dSkipped}
+            onAccepted={() => router.refresh()}
+          />
         </>
       ) : (
         <div className="hero">
@@ -683,6 +659,135 @@ function toTitleCase(s: string): string {
     if (w.length <= 2) return w; // preserve VO2 / PR / 5K etc.
     return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
   }).join('');
+}
+
+/** Standing recommendation advisory · cooler-tone forward counsel
+ *  shown when the engine still thinks the original prescription should
+ *  ease (e.g. sleep streak still active after a restore). Read pattern:
+ *  the runner overrode the auto-adapter, the engine respectfully holds
+ *  its view. Two CTAs:
+ *
+ *    Accept · POSTs to /api/plan/workout/[id]/accept-standing with the
+ *             suggestion payload. Applies the prescription + writes
+ *             coach_intents.plan_adapt_accepted so the composer clears
+ *             this advisory on next render.
+ *    Proceed · no-op dismiss for this session. The engine still holds
+ *              its view, so the advisory re-mounts on next page load
+ *              if signals haven't cleared. That's correct doctrine:
+ *              the runner is the human in the loop · the coach respects
+ *              their override but doesn't pretend to agree.
+ */
+function StandingRecAdvisory({
+  rec, workoutId, hidden, onAccepted,
+}: {
+  rec: FaffSeed['week'][number]['standingRecommendation'];
+  workoutId: string | null;
+  hidden: boolean;
+  onAccepted: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+
+  if (!rec || hidden || dismissed) return null;
+
+  const sug = rec.suggestion;
+  const sugParts: string[] = [];
+  if (sug?.proposedType) sugParts.push(toTitleCase(sug.proposedType));
+  if (sug?.proposedDistanceMi != null) sugParts.push(`${sug.proposedDistanceMi} mi`);
+  if (sug?.proposedDateIso) {
+    try {
+      const dt = new Date(sug.proposedDateIso + 'T12:00:00');
+      sugParts.push(dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }));
+    } catch { /* ignore */ }
+  }
+  const sugLine = sugParts.length ? `Coach suggests · ${sugParts.join(' · ')}` : null;
+  const acceptLabel = sug?.proposedType
+    ? `Accept · ${toTitleCase(sug.proposedType)}${sug?.proposedDistanceMi != null ? ` ${sug.proposedDistanceMi} mi` : ''}`
+    : 'Accept';
+
+  // Accept the suggestion · POST to the dedicated endpoint, refresh
+  // the page so the new plan_workouts row + cleared standing rec land.
+  async function onAccept() {
+    if (!workoutId || !sug || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/plan/workout/${workoutId}/accept-standing`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          suggestion: {
+            proposedType: sug.proposedType,
+            proposedDistanceMi: sug.proposedDistanceMi,
+            proposedDateIso: sug.proposedDateIso,
+          },
+        }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
+      }
+      onAccepted();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={`standrec sev-${rec.severity}`} role="note">
+      <div className="standrec-row">
+        <span className="standrec-icn" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 8v4M12 16h.01"/>
+            <circle cx="12" cy="12" r="9"/>
+          </svg>
+        </span>
+        <div className="standrec-body">
+          <div className="standrec-eyebrow">
+            {rec.severity === 'firm' ? 'STANDING ADVICE' : 'COACH NOTE'}
+          </div>
+          <div className="standrec-copy">{rec.copy}</div>
+          {sugLine ? <div className="standrec-sug">{sugLine}</div> : null}
+          {(sug && workoutId) || true ? (
+            <div className="standrec-actions">
+              {sug && workoutId ? (
+                <button
+                  type="button"
+                  className="standrec-btn primary"
+                  onClick={onAccept}
+                  disabled={busy}
+                >
+                  {busy ? 'Applying…' : acceptLabel}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="standrec-btn"
+                onClick={() => setDismissed(true)}
+                disabled={busy}
+              >
+                Proceed
+              </button>
+            </div>
+          ) : null}
+          {err ? (
+            <div className="standrec-err">{friendlyAcceptError(err)}</div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Map raw API errors to a one-liner the runner can act on. */
+function friendlyAcceptError(raw: string): string {
+  const r = raw.toLowerCase();
+  if (r.includes('workout_not_found')) return 'Run not found · try refreshing.';
+  if (r.includes('no_changes')) return 'No change to apply.';
+  if (r.includes('invalid')) return 'Coach suggestion is malformed · please reload.';
+  return 'Could not apply right now. Try again in a moment.';
 }
 
 /* ───────────────  PlannedHeroV2 (Run Detail Planned · Easy)  ───────────────
