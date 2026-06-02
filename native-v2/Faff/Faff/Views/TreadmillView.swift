@@ -69,6 +69,16 @@ struct TreadmillView: View {
     @State private var playing: Bool = false
     /// Workout startedAt wall-clock · stamped on first play.
     @State private var startedAt: Date?
+    /// Stable workout id · generated once on first play. Used as the
+    /// WatchConnectivity sessionId for the watch HR bridge AND as the
+    /// payload's workoutId so backend idempotency is consistent across
+    /// retries.
+    @State private var workoutId: String?
+    /// Did we successfully ask the watch to stream HR? false when the
+    /// Faff watch app isn't launched/reachable · drives the "Open Faff
+    /// on watch for live HR" pill in the topbar so the runner knows to
+    /// fix the bridge if they want live HR.
+    @State private var watchHRBridgeUp: Bool = false
     /// Per-segment actuals captured at segment end (or on Skip/End).
     /// Keyed by segment index. Stored as arrays so swift-friendly.
     @State private var actualsBySegment: [Int: PhaseActual] = [:]
@@ -271,6 +281,18 @@ struct TreadmillView: View {
                     .lineLimit(1)
                 SpecLabel(text: "TREADMILL · GUIDED", size: 10, tracking: 2, color: Theme.txt.opacity(0.6))
             }
+            // Watch-HR-bridge hint · only shows when session has started
+            // but the watch wasn't reachable. Tells the runner what they
+            // need to do to light up the live BPM in the SPEED tile.
+            if startedAt != nil, !watchHRBridgeUp, hrStreamer.currentBpm == nil {
+                Text("Open Faff on your watch for live HR")
+                    .font(.body(10, weight: .semibold))
+                    .tracking(0.3)
+                    .foregroundStyle(Theme.txt.opacity(0.75))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Color.white.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.22)))
+            }
             HStack(alignment: .top, spacing: 0) {
                 topStat("TIME", formatClock(totalSec))
                 topStat("DISTANCE", String(format: "%.2f mi", dist))
@@ -464,10 +486,20 @@ struct TreadmillView: View {
             ) {
                 if !playing && startedAt == nil {
                     startedAt = .now
+                    // Stamp the workoutId once so the WatchConnectivity
+                    // sessionId, HR streamer anchor, and POST payload all
+                    // agree across pause/resume + retries.
+                    let id = "trd_\(UUID().uuidString)"
+                    workoutId = id
                     // Kick off the HR stream the first time the runner
                     // starts the session · idempotent on re-calls.
                     let anchor = startedAt ?? .now
                     Task { await hrStreamer.start(from: anchor) }
+                    // Ask the watch to open a parallel indoor-running
+                    // workout session so HK gets fast HR samples (5-15s
+                    // cadence) instead of the passive every-5-min baseline.
+                    // Best-effort · falls through when watch not reachable.
+                    watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: id)
                 }
                 lastTickAt = .now
                 playing.toggle()
@@ -568,6 +600,12 @@ struct TreadmillView: View {
         // Stop streaming new HR samples · session rollup happens inside
         // buildPayload via closeSession().
         hrStreamer.stop()
+        // Tell the watch to end its parallel HR workout session so the
+        // watch returns to passive HR sensing. Idempotent · safe even
+        // if the watch never received the start.
+        if let id = workoutId {
+            WatchSync.shared.stopTreadmillHRSession(sessionId: id)
+        }
         posting = true
         postError = nil
         let payload = buildPayload(status: status)
@@ -613,7 +651,10 @@ struct TreadmillView: View {
         // boundaries. Null when no watch.
         let sessionHr = hrStreamer.closeSession()
         var payload: [String: Any] = [
-            "workoutId": "trd_\(UUID().uuidString)",
+            // Reuse the stable workoutId stamped at first play · keeps
+            // the WatchConnectivity sessionId, HR streamer anchor, and
+            // backend idempotency key all in sync.
+            "workoutId": workoutId ?? "trd_\(UUID().uuidString)",
             "startedAt": iso.string(from: started),
             "completedAt": iso.string(from: .now),
             "status": status,

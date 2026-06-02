@@ -69,6 +69,7 @@ final class WatchRootModel: ObservableObject {
 
 struct WorkoutRootView: View {
     @ObservedObject private var phone = PhoneSync.shared
+    @ObservedObject private var treadmillHR = TreadmillHRSession.shared
     @StateObject private var model = WatchRootModel()
 
     /// Visual-regression fixture: `-face <name>` renders one face with the
@@ -109,7 +110,13 @@ struct WorkoutRootView: View {
 
     @ViewBuilder
     private var content: some View {
-        if let engine = model.engine {
+        if treadmillHR.isActive {
+            // iPhone TreadmillView started us · take over the watch
+            // screen with the live HR display. Takes precedence over
+            // the idle TabView so a wrist-glance during the treadmill
+            // session shows the heart rate immediately.
+            TreadmillHRView()
+        } else if let engine = model.engine {
             switch engine.state {
             case .finished:
                 // Completion is auto-sent on the .finished transition (see

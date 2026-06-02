@@ -184,4 +184,33 @@ extension PhoneSync: WCSessionDelegate {
                              didReceiveApplicationContext applicationContext: [String: Any]) {
         Task { @MainActor in self.apply(applicationContext) }
     }
+
+    /// iPhone → watch real-time messages. Today handles two requests:
+    ///   · `startTreadmillHR` · iPhone TreadmillView started a session ·
+    ///     spin up TreadmillHRSession so HK gets fast HR samples.
+    ///   · `stopTreadmillHR` · iPhone TreadmillView ended · tear down
+    ///     the session so the watch returns to passive sensing.
+    /// Reply with `{status, sessionId}` so the iPhone knows the watch
+    /// accepted (or that the watch app wasn't reachable, in which case
+    /// the iPhone shows a graceful "Open Faff on watch for live HR" hint).
+    nonisolated func session(_ session: WCSession,
+                             didReceiveMessage message: [String: Any],
+                             replyHandler: @escaping ([String: Any]) -> Void) {
+        let request = (message["request"] as? String) ?? ""
+        let sessionId = (message["sessionId"] as? String) ?? ""
+        switch request {
+        case "startTreadmillHR":
+            Task { @MainActor in
+                TreadmillHRSession.shared.start(sessionId: sessionId)
+                replyHandler(["status": "started", "sessionId": sessionId])
+            }
+        case "stopTreadmillHR":
+            Task { @MainActor in
+                await TreadmillHRSession.shared.end()
+                replyHandler(["status": "stopped", "sessionId": sessionId])
+            }
+        default:
+            replyHandler(["status": "unknown"])
+        }
+    }
 }

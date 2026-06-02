@@ -97,6 +97,52 @@ final class WatchSync: NSObject, ObservableObject {
         pendingCompletions = q
     }
 
+    // MARK: - Treadmill HR bridge (2026-06-01 · build 137)
+    //
+    // The iPhone TreadmillView wants HK to sample HR every 5-15s, not
+    // every 5 minutes. The watch's sensor only polls that fast when an
+    // active HKWorkoutSession is running. So when TreadmillView starts,
+    // ask the watch to spin up a minimal indoor-running session via
+    // TreadmillHRSession. Watch teardown is symmetric on stop.
+    //
+    // Best-effort: if the watch app isn't reachable (not installed, not
+    // launched, in low-power mode), the message fails silently and the
+    // iPhone gracefully shows no live HR pill. The treadmill workout
+    // still records · the iPhone's POST is independent of the watch.
+
+    /// Ask the watch to start an indoor-running HR session. Returns
+    /// whether the watch acknowledged (used by TreadmillView to show
+    /// "Open Faff on watch for live HR" when the watch isn't reachable).
+    @discardableResult
+    func startTreadmillHRSession(sessionId: String) -> Bool {
+        guard WCSession.isSupported() else { return false }
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isReachable else { return false }
+        s.sendMessage(
+            ["request": "startTreadmillHR", "sessionId": sessionId],
+            replyHandler: { _ in },
+            errorHandler: { err in
+                print("[WatchSync] startTreadmillHR failed: \(err.localizedDescription)")
+            }
+        )
+        return true
+    }
+
+    /// Ask the watch to end the indoor-running HR session. Idempotent ·
+    /// safe to call even if the watch never received the start.
+    func stopTreadmillHRSession(sessionId: String) {
+        guard WCSession.isSupported() else { return }
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isReachable else { return }
+        s.sendMessage(
+            ["request": "stopTreadmillHR", "sessionId": sessionId],
+            replyHandler: { _ in },
+            errorHandler: { err in
+                print("[WatchSync] stopTreadmillHR failed: \(err.localizedDescription)")
+            }
+        )
+    }
+
     func flushPendingCompletions() async {
         let q = pendingCompletions
         guard !q.isEmpty else { return }
