@@ -161,6 +161,19 @@ final class WorkoutEngine: ObservableObject {
     private var phaseCadSum: Int = 0
     private var phaseCadCount: Int = 0
 
+    // ─── Tier 1 telemetry buffers (2026-06-02) ──────────────────────
+    // Per-phase 5-second pace + HR timelines, populated in tick() and
+    // emitted in recordCurrentPhase(). Reset on every advance() with the
+    // other phaseXxx aggregates. See WatchCompletionPhase for wire shape
+    // and designs/briefs/watch-tier-1-telemetry-swift-diff-2026-06-02.md
+    // for the rationale.
+    private var phaseHrSamples: [HRSample] = []
+    private var phasePaceSamples: [PaceSample] = []
+    /// Last tSec we appended a sample for. Starts at -5 so the first
+    /// tick of a phase (tSec >= 0) is always sampled. 5-sec gating
+    /// happens against this value.
+    private var phaseLastSampleSec: Int = -5
+
     init(workout: WatchWorkout) {
         self.workout = workout
     }
@@ -358,6 +371,7 @@ final class WorkoutEngine: ObservableObject {
         phaseStartMi = coveredMi
         phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
         phaseCadSum = 0; phaseCadCount = 0
+        phaseHrSamples = []; phasePaceSamples = []; phaseLastSampleSec = -5
         tracker?.start()
         prepDrift()
         // Start cue · haptic + chime if Sound is on. User reported no beep
@@ -540,6 +554,26 @@ final class WorkoutEngine: ObservableObject {
         if let cad = tracker?.cadence, cad > 0 {
             phaseCadSum += cad
             phaseCadCount += 1
+        }
+
+        // Tier 1 timeline samples (5-second cadence). The aggregates
+        // above give true averages; these arrays preserve the shape of
+        // the rep so recap composers can detect drift, sandbagging,
+        // surges, recovery rate, etc. tSec is relative to phase start
+        // (not workout start) so each phase is a self-contained timeline.
+        if phaseElapsedSec - phaseLastSampleSec >= 5 {
+            phaseLastSampleSec = phaseElapsedSec
+            let pace = tracker?.paceSPerMi ?? 0
+            phasePaceSamples.append(PaceSample(
+                tSec: phaseElapsedSec,
+                paceSPerMi: pace > 0 ? pace : nil,
+                distMi: phaseCoveredMi
+            ))
+            let hr = tracker?.heartRate ?? 0
+            phaseHrSamples.append(HRSample(
+                tSec: phaseElapsedSec,
+                bpm: hr > 0 ? hr : nil
+            ))
         }
 
         // HR-ceiling alert (easy/Z2/heat). When the plan ships a ceiling and
@@ -770,6 +804,7 @@ final class WorkoutEngine: ObservableObject {
         // Reset per-phase aggregates so the next rep starts clean.
         phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
         phaseCadSum = 0; phaseCadCount = 0
+        phaseHrSamples = []; phasePaceSamples = []; phaseLastSampleSec = -5
         prepDrift()
         if let p = currentPhase {
             Haptics.play(p.haptic)
@@ -810,6 +845,54 @@ final class WorkoutEngine: ObservableObject {
         let avgCad: Int? = phaseCadCount > 0
             ? Int((Double(phaseCadSum) / Double(phaseCadCount)).rounded())
             : nil
+
+        // ── Tier 1 derivations ──────────────────────────────────────
+        // time-in-tolerance: each 5-sec sample represents the band the
+        // runner was in over the prior 5 seconds. Only computed when
+        // the phase has a target pace + tolerance (recovery / just-run
+        // phases have neither — verdict / tolerance fields stay nil).
+        let timeInTol: Int?
+        let timeOutTol: Int?
+        if let target = p.targetPaceSPerMi, let tol = p.tolerancePaceSPerMi,
+           !phasePaceSamples.isEmpty {
+            var inSec = 0, outSec = 0
+            for s in phasePaceSamples {
+                guard let pace = s.paceSPerMi else { continue }
+                if abs(pace - target) <= tol { inSec += 5 } else { outSec += 5 }
+            }
+            timeInTol = inSec
+            timeOutTol = outSec
+        } else {
+            timeInTol = nil
+            timeOutTol = nil
+        }
+
+        // verdict: honest per-phase read for the recap engine.
+        //   incomplete · user ended before reaching the target
+        //   hit        · avg pace in band AND ≥ 70% of samples in band
+        //   drifted    · avg pace in band but < 70% of samples in band
+        //   missed     · avg pace outside the band
+        //   nil        · no target to grade against
+        let verdict: String? = {
+            guard let target = p.targetPaceSPerMi, let tol = p.tolerancePaceSPerMi,
+                  let avgPace = avgPace else { return nil }
+            if !completed { return "incomplete" }
+            let avgInBand = abs(avgPace - target) <= tol
+            let inSec = timeInTol ?? 0
+            let outSec = timeOutTol ?? 0
+            let totalGraded = inSec + outSec
+            let pctInBand = totalGraded > 0 ? Double(inSec) / Double(totalGraded) : 0
+            if avgInBand && pctInBand >= 0.7 { return "hit" }
+            if avgInBand { return "drifted" }
+            return "missed"
+        }()
+
+        // Emit nil instead of an empty array when no samples landed —
+        // backend's `_raw` passthrough preserves the original shape and
+        // composers can field-presence-gate cleanly.
+        let pacesOut = phasePaceSamples.isEmpty ? nil : phasePaceSamples
+        let hrsOut = phaseHrSamples.isEmpty ? nil : phaseHrSamples
+
         results.append(WatchCompletionPhase(
             index: p.index,
             type: p.type.rawValue,
@@ -821,7 +904,12 @@ final class WorkoutEngine: ObservableObject {
             avgHr: avgHr,
             maxHr: maxHr,
             avgCadence: avgCad,
-            completed: completed
+            completed: completed,
+            paceSamples: pacesOut,
+            hrSamples: hrsOut,
+            timeInToleranceSec: timeInTol,
+            timeOutOfToleranceSec: timeOutTol,
+            verdict: verdict
         ))
     }
 

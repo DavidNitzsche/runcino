@@ -224,6 +224,39 @@ struct WatchWorkout: Codable {
 
 // MARK: - Outgoing · completion writeback (phase 6)
 
+// MARK: - Tier 1 telemetry samples
+//
+// Per-phase pace + HR timelines, sampled every 5 seconds during each
+// phase. Backend's `_raw` passthrough preserves them in
+// `runs.data.splits[i]._raw` automatically; the typed `paceSamples` /
+// `hrSamples` fields on WatchCompletionPhase below also surface them
+// via `deriveSplitsFromPhases` for hot-path composer reads.
+//
+// Per agreement in:
+//   designs/briefs/watch-tier-1-telemetry-swift-diff-2026-06-02.md
+//   designs/briefs/backend-response-recap-engine-not-llm-2026-06-02.md
+//   designs/briefs/watch-response-yes-to-raw-passthrough-2026-06-02.md
+//   (backend ship 0489c791 · 2026-06-02)
+struct PaceSample: Encodable {
+    /// Seconds since the phase began (not since workout start).
+    let tSec: Int
+    /// Instantaneous pace at the sample instant, in seconds per mile.
+    /// `nil` when GPS hadn't locked yet or pace couldn't be computed.
+    let paceSPerMi: Int?
+    /// Cumulative distance covered IN THIS PHASE at the sample instant,
+    /// in miles. Anchored to phase start (phaseStartMi subtraction
+    /// happens watch-side before assembly).
+    let distMi: Double
+}
+
+struct HRSample: Encodable {
+    /// Seconds since the phase began.
+    let tSec: Int
+    /// Heart rate in beats per minute. `nil` when HR couldn't be read
+    /// (sensor glitch, cold-start).
+    let bpm: Int?
+}
+
 struct WatchCompletionPhase: Encodable {
     let index: Int
     let type: String
@@ -247,6 +280,38 @@ struct WatchCompletionPhase: Encodable {
     /// Average cadence (steps/min) across the phase.
     let avgCadence: Int?
     let completed: Bool
+
+    // ─── Tier 1 (2026-06-02) ────────────────────────────────────────
+    /// 5-second pace timeline for the phase. `nil` for phases too
+    /// short to produce a sample (<5 sec). Older builds ship `nil` —
+    /// composers gate on field presence.
+    var paceSamples: [PaceSample]? = nil
+
+    /// 5-second HR timeline for the phase. `nil` when no samples
+    /// landed (sensor never reported during the phase).
+    var hrSamples: [HRSample]? = nil
+
+    /// Seconds the runner was within target pace ±tolerance during
+    /// this phase, derived watch-side from `paceSamples` and the
+    /// phase's target/tolerance. Together with `actualDurationSec`
+    /// gives time-in-tolerance percentage:
+    ///   pct = timeInToleranceSec / actualDurationSec.
+    /// `nil` for phases without a target pace (recovery jog, just-run).
+    var timeInToleranceSec: Int? = nil
+
+    /// Seconds outside the target band during this phase.
+    /// `timeInToleranceSec + timeOutOfToleranceSec` ≈ duration of the
+    /// portion of the phase that had pace samples available.
+    /// `nil` for phases without a target.
+    var timeOutOfToleranceSec: Int? = nil
+
+    /// Honest per-phase verdict derived watch-side:
+    ///   "hit"        ≥ 70% of phase within tolerance AND avg in band
+    ///   "drifted"    avg in band but < 70% of phase within tolerance
+    ///   "missed"     avg pace outside the tolerance band
+    ///   "incomplete" user ended the phase early before reaching target
+    /// `nil` for phases without a target pace (no band to compare against).
+    var verdict: String? = nil
 }
 
 struct WatchCompletion: Encodable {
