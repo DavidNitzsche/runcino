@@ -35,6 +35,27 @@ final class WatchRootModel: ObservableObject {
     private var didSendCompletion = false
 
     func start(_ workout: WatchWorkout) {
+        // Flag 6 (backend audit 2026-06-02) — refuse to start a stale
+        // workout. Risk: runner opens the watch app the next morning
+        // before iPhone has pushed today's payload via WCSession, and
+        // taps Start on yesterday's cached `todayWorkout`. The run
+        // would record against the wrong day's plan.
+        //
+        // Window: backend stamps `expiresAt = issuedAt + 14h` (per
+        // backend-response-to-watch-2026-06-02.md). 14h covers both
+        // the evening-issued workout that's used the next morning and
+        // the morning-issued workout that's used that evening, while
+        // still catching the day-late start. Parse-failure is permissive
+        // (fall through and start) to avoid blocking legit runs on a
+        // malformed timestamp; the gap is very small.
+        if let exp = ISO8601DateFormatter().date(from: workout.expiresAt),
+           Date.now > exp {
+            // Trigger a re-fetch from iPhone; once it lands via
+            // applicationContext the IdleView re-renders with the
+            // fresh workout, and the runner can re-tap Start.
+            PhoneSync.shared.requestTodayWorkout()
+            return
+        }
         Task {
             // Prompt for HealthKit (+ location) before the session starts
             // so the run is recorded from the first second.
