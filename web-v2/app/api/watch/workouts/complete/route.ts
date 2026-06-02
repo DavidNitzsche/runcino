@@ -65,12 +65,29 @@ export async function POST(req: NextRequest) {
   const avgPace = totalSec > 0 && totalMi > 0
     ? formatPace(Math.round(totalSec / totalMi))
     : null;
+  // 2026-06-01 · treadmill ingest (iPhone build 136).
+  // Respect body.source · whitelist 'watch' | 'treadmill'. Anything
+  // else falls back to 'watch' so a future iPhone bug shows up in the
+  // server logs instead of silently mis-sourcing.
+  const ALLOWED_SOURCES = new Set(['watch', 'treadmill']);
+  const requestedSource = typeof body.source === 'string' ? body.source : 'watch';
+  const source = ALLOWED_SOURCES.has(requestedSource) ? requestedSource : 'watch';
+  if (requestedSource !== source) {
+    console.warn(`[watch/complete] rejected body.source='${requestedSource}' · falling back to 'watch'. Add to ALLOWED_SOURCES if intentional.`);
+  }
+  const indoor = body.indoor === true;
   const data: any = {
     id: body.workoutId,
     activityId: body.workoutId,
     client_workout_id: body.workoutId,
-    source: 'watch',
-    name: 'Run',
+    source,
+    // 2026-06-01 · `indoor` distinguishes treadmill/incline-trainer from
+    // outdoor-with-no-GPS. Downstream gates (lib/coach/run-recap.ts skips
+    // "you climbed N ft" facts when indoor=true · activity feed renders
+    // a treadmill glyph). Default false.
+    indoor,
+    // Treadmill name reads better than "Run" in the activity feed.
+    name: source === 'treadmill' ? 'Treadmill' : 'Run',
     date,
     startLocal: startLocal || `${date}T08:00:00`,
     distanceMi: totalMi,
@@ -200,5 +217,10 @@ function deriveSplitsFromPhases(phases: any[] | undefined): any[] {
       avgCadence: p.avgCadence ?? null,
       type: p.type ?? null,
       completed: p.completed ?? null,
+      // 2026-06-01 · treadmill-only fields. Null on outdoor watch runs.
+      // Drive the iPhone post-run sheet's form grid ("7.0 mph · 1.5%
+      // incline") and the treadmill-aware win-line composer.
+      actualSpeedMph: p.actualSpeedMph ?? null,
+      actualInclinePct: p.actualInclinePct ?? null,
     }));
 }

@@ -151,6 +151,12 @@ export async function GET(
     actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
     splits: Array.isArray(data.splits) ? data.splits as any[] : undefined,
     verdict: recap.verdict,
+    // 2026-06-01 · treadmill ingest. When indoor=true or
+    // source='treadmill', the win composer routes through the
+    // treadmill-aware patterns (speed adherence, incline discipline,
+    // rep progression) instead of pace-based patterns.
+    indoor: data.indoor === true,
+    source: typeof data.source === 'string' ? data.source : undefined,
   });
 
   return NextResponse.json({

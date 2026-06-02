@@ -39,9 +39,21 @@ export interface WinInput {
     avgHr?: number | null;
     pace?: string | null;
     hr?: number | null;
+    /** 2026-06-01 · treadmill phase fields · null on outdoor runs. */
+    actualSpeedMph?: number | null;
+    actualInclinePct?: number | null;
+    completed?: boolean | null;
+    type?: string | null;
   }>;
   /** Verdict from deriveRecap · gates win composition. */
   verdict: string;
+  /** 2026-06-01 · treadmill ingest. When true, the win composer routes
+   *  through treadmill-aware patterns (speed adherence, incline
+   *  discipline, rep progression) instead of pace-based patterns. */
+  indoor?: boolean;
+  /** 2026-06-01 · source · 'treadmill' triggers indoor-specific
+   *  framing even when indoor flag was missed by older payloads. */
+  source?: string;
 }
 
 /**
@@ -57,6 +69,13 @@ export function deriveWin(input: WinInput): string | null {
 
   // Need at least pace data to call most wins.
   const splits = normalizeSplits(input.splits);
+
+  // 2026-06-01 · treadmill route · take over when indoor=true or
+  // source='treadmill'. Falls back to null when no treadmill pattern
+  // matches, which preserves the "honest, no fabrication" doctrine.
+  if (input.indoor === true || input.source === 'treadmill') {
+    return winTreadmill(input);
+  }
 
   switch (input.type) {
     case 'recovery':
@@ -275,4 +294,81 @@ function formatPace(spm: number): string {
   const m = Math.floor(spm / 60);
   const s = Math.round(spm % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// ─── treadmill win composer ───────────────────────────────────────────
+//
+// Three patterns ranked by leverage. First match wins. Returns null
+// when no pattern fires (preserves the honest-no-fabrication doctrine).
+//
+//   1. All work phases at planned mph ± 0.2 → steady-effort win
+//   2. Each work rep faster than the last → progression win
+//   3. Recovery phases ≤ 5.5 mph (true jog) AND all reps completed →
+//      disciplined-recovery win
+//
+// Doctrine: same gating as outdoor — only fire on positive verdict
+// frames. The treadmill phase data lives on splits[i].actualSpeedMph
+// and actualInclinePct (added 2026-06-01 in deriveSplitsFromPhases).
+function winTreadmill(input: WinInput): string | null {
+  const phases = input.splits ?? [];
+  if (phases.length === 0) return null;
+
+  // Split into work + recovery phases by `type`. Phases without a type
+  // are treated as work if speed > 6 mph, else recovery.
+  const isWork = (p: typeof phases[number]): boolean => {
+    const t = String(p.type ?? '').toLowerCase();
+    if (t === 'work' || t === 'rep' || t === 'tempo' || t === 'threshold' || t === 'intervals') return true;
+    if (t === 'recovery' || t === 'rest' || t === 'jog' || t === 'warmup' || t === 'cooldown') return false;
+    return (p.actualSpeedMph ?? 0) > 6;
+  };
+  const workPhases = phases.filter(isWork);
+  const recoveryPhases = phases.filter((p) => !isWork(p));
+  const workSpeeds = workPhases.map((p) => p.actualSpeedMph ?? 0).filter((v) => v > 0);
+
+  if (workSpeeds.length === 0) return null;
+
+  const allRepsCompleted = workPhases.every((p) => p.completed !== false);
+
+  // Pattern 1 · steady-effort win.
+  // All work phases within ±0.2 mph of each other (low CV).
+  if (workSpeeds.length >= 2) {
+    const meanMph = workSpeeds.reduce((s, v) => s + v, 0) / workSpeeds.length;
+    const maxDelta = Math.max(...workSpeeds.map((v) => Math.abs(v - meanMph)));
+    if (maxDelta <= 0.2) {
+      const inclines = workPhases.map((p) => p.actualInclinePct ?? null).filter((v): v is number => v != null);
+      const inclineNote = inclines.length > 0 && Math.abs(Math.max(...inclines) - Math.min(...inclines)) <= 0.5
+        ? `, steady incline`
+        : '';
+      return `Held the line · ${meanMph.toFixed(1)} mph${inclineNote}. The treadmill didn't drift you · the discipline did.`;
+    }
+  }
+
+  // Pattern 2 · progression win · each rep faster than the last.
+  if (workSpeeds.length >= 3) {
+    const monotonicUp = workSpeeds.every((v, i) => i === 0 || v >= workSpeeds[i - 1]);
+    const totalDelta = workSpeeds[workSpeeds.length - 1] - workSpeeds[0];
+    if (monotonicUp && totalDelta >= 0.5) {
+      return `Building rep by rep · ${workSpeeds[0].toFixed(1)} mph → ${workSpeeds[workSpeeds.length - 1].toFixed(1)} mph. Last one was the strongest.`;
+    }
+  }
+
+  // Pattern 3 · disciplined recovery.
+  // Recovery jogs at true jog pace (≤ 5.5 mph) AND all reps completed.
+  if (recoveryPhases.length >= 2 && allRepsCompleted) {
+    const recoverySpeeds = recoveryPhases.map((p) => p.actualSpeedMph ?? 0).filter((v) => v > 0);
+    if (recoverySpeeds.length >= 2) {
+      const maxRecovery = Math.max(...recoverySpeeds);
+      if (maxRecovery <= 5.5) {
+        return `Disciplined recovery jogs · the reps did the work, not the jog. That's exactly the setup.`;
+      }
+    }
+  }
+
+  // Pattern 4 · simple "you finished" fallback when all reps done.
+  if (allRepsCompleted && workSpeeds.length >= 2) {
+    const meanMph = workSpeeds.reduce((s, v) => s + v, 0) / workSpeeds.length;
+    return `${workPhases.length} reps at ${meanMph.toFixed(1)} mph · clean session.`;
+  }
+
+  return null;
 }
