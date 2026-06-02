@@ -84,6 +84,11 @@ function personaToComposeInput(p: SyntheticRunner): ComposePlanInput {
     // Easy median = weekly base / 4 days (mirrors what the median read
     // returns in practice for steady runners).
     easyDayMedianMi: Math.max(3, Math.round(p.profile.weeklyBaseMi / 5)),
+    // 2026-06-03 · runner's recent peak long. For personas we infer it
+    // from weeklyBaseMi × 0.25 (the canonical long-share for HM advanced)
+    // so the long-run sizing starts from a believable baseline. Real
+    // user reads come from runs in the last 28d (see recentPeakLongMi).
+    recentLongMi: Math.round(p.profile.weeklyBaseMi * 0.25),
     isMidBlock: false,
     longRunDow: 0 as DOW,    // Sun
     restDow: 6 as DOW,        // Sat
@@ -158,6 +163,24 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
         const actualLong = weekLong(result.weeks[peakIdx]);
         expect(actualLong).toBeGreaterThanOrEqual(expectedLong - 1.5);
         expect(actualLong).toBeLessThanOrEqual(expectedLong + 1.5);
+      });
+
+      it('no build-week long is shorter than runner recent long (2026-06-03)', () => {
+        // The fix that closed David's "why is Sun 9mi when I just did 12?"
+        // bug · the generator must not author a long shorter than the
+        // runner's recent peak long (modulo cutback margin). Cutback weeks
+        // can drop ~2mi; non-cutback build weeks must hold the floor.
+        const recentLong = Math.round(p.profile.weeklyBaseMi * 0.25); // matches input
+        if (recentLong < 8) return; // floor only kicks in for true long-runners
+        for (let i = 0; i < result.weeks.length; i++) {
+          const w = result.weeks[i];
+          if (w.phase === 'TAPER' || w.phase === 'BASE' || w.isRaceWeek) continue;
+          const isCutback = i > 0 && (i + 1) % 4 === 0;
+          const floor = isCutback ? recentLong - 2 : recentLong - 1;
+          const long = weekLong(w);
+          if (long === 0) continue; // no long that week (rare)
+          expect(long).toBeGreaterThanOrEqual(floor);
+        }
       });
 
       it('every non-base / non-taper week has at least one quality day', () => {

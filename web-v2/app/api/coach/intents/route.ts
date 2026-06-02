@@ -163,6 +163,8 @@ function summarize(reason: string, field: string | null, value: unknown): string
       return `Race banked · adjacent paces re-anchored.`;
     case 'plan_adapt_goal_changed':
       return `Goal changed · plan re-anchored.`;
+    case 'plan_adapt_long_floor':
+      return `Long-run distance floored to your recent peak long (2026-06-03 fix).`;
     case 'plan_adapt_sick_episode_active':
       return `Illness active · plan paused with a return gate.`;
     case 'plan_adapt_injury_active':

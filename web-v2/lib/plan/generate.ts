@@ -128,6 +128,28 @@ async function recentWeeklyMileage(userId: string): Promise<number> {
  * Returns 0 when there's no recoverable easy-day data · caller falls
  * back to the existing math floor of 3 mi.
  */
+/**
+ * 2026-06-03 · runner's recent peak long-run distance · used as a floor
+ * for the generator's long-run sizing so the plan never authors a long
+ * that's shorter than what the runner has actually been doing.
+ *
+ * Reads the longest run in last 28 days (typically the Sunday long).
+ * Returns 0 when no data · caller treats as no floor.
+ */
+async function recentPeakLongMi(userId: string): Promise<number> {
+  const r = (await pool.query<{ mi: string | null }>(
+    `SELECT MAX((data->>'distanceMi')::numeric)::text AS mi
+       FROM runs
+      WHERE user_uuid = $1
+        AND NOT (data ? 'mergedIntoId')
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date
+            >= CURRENT_DATE - 28
+        AND (data->>'distanceMi')::numeric >= 8`,  // long-ish only
+    [userId]
+  ).catch(() => ({ rows: [{ mi: null }] }))).rows[0];
+  return Math.round((Number(r?.mi ?? 0)) * 10) / 10;
+}
+
 async function easyDayMedianMi(userId: string): Promise<number> {
   const r = await pool.query<{ med: string | null }>(
     `WITH easy_runs AS (
@@ -522,12 +544,15 @@ async function resolvePrescriptions(
 }
 
 function layoutWeek({
-  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, tierTarget,
+  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, tierTarget,
 }: {
   phase: string; weekIdx: number; totalWeeks: number;
   weeklyMi: number; longRunDow: DOW; qualityDows: DOW[]; restDow: DOW;
   isRaceWeek: boolean; raceDow: DOW | null; raceDistanceMi: number;
   rx: ResolvedPrescriptions;
+  /** 2026-06-03 · runner's recent peak long · floors longMi so plan
+   *  never asks for a long shorter than what the runner just did. */
+  recentLongMi?: number;
   /** 2026-06-01 · runner's actual 14-day easy-day median. Floors the
    *  per-easy distance in non-race weeks so the plan never asks for a
    *  4.5-mi easy day when the runner is comfortably running 6+ mi
@@ -578,12 +603,22 @@ function layoutWeek({
                      : phase === 'TAPER' ? 0.18
                      : 0.22;  // total across quality days
   // Cap long at the tier's peakLong upper bound · no overdistance
-  // beyond what doctrine prescribes. For phases that aren't peak
-  // build, allow the lower bound to be a floor too · long runs
-  // need to be substantial even in early build.
+  // beyond what doctrine prescribes. Use the higher of two sizes:
+  //   · weeklyMi × longShare (the volume-curve derived target)
+  //   · runner's recent peak long (don't author a shorter long than
+  //     they just did · 2026-06-03 fix · David's plan was sizing
+  //     Sun 6/7 at 9mi when his 5/31 long was 12.36mi).
+  // Allow cutback weeks to step slightly below the recentLong floor.
+  const isCutback = weekIdx > 0 && (weekIdx + 1) % 4 === 0;
   const longMiRaw = Math.round(weeklyMi * longShare);
   const longCap = tierTarget.peakLongMiBand[1];
-  const longMi = Math.min(longMiRaw, longCap);
+  const longFloor = recentLongMi && recentLongMi >= 8
+    ? Math.round(recentLongMi - (isCutback ? 2 : 0))
+    : 0;
+  const longMi = Math.min(
+    Math.max(longMiRaw, longFloor),
+    longCap,
+  );
   const qualityMiEach = qualityDows.length > 0 ? Math.round((weeklyMi * qualityShare) / qualityDows.length) : 0;
 
   // Pre-allocate: rest = 0, long + quality slotted in
@@ -724,6 +759,10 @@ export interface ComposePlanInput {
   level: LevelKey;
   recentWeeklyMi: number;
   easyDayMedianMi: number;
+  /** 2026-06-03 · runner's recent peak long-run distance · floors the
+   *  long-run sizing so the plan can't ask for a shorter long than the
+   *  runner just did. 0 = no floor (cold start). */
+  recentLongMi: number;
   isMidBlock: boolean;
   longRunDow: DOW;
   restDow: DOW;
@@ -809,6 +848,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       raceDistanceMi: input.raceDistanceMi,
       rx,
       easyMileFloor: input.easyDayMedianMi,
+      recentLongMi: input.recentLongMi,
       tierTarget,
     });
     // P34 · cross-training opt-in · rotate enabled modes across the
@@ -1057,6 +1097,7 @@ async function loadGeneratorInputs(
   const isMidBlock = await detectMidBlock(userId);
   const recentMi = await recentWeeklyMileage(userId);
   const easyFloor = await easyDayMedianMi(userId);
+  const recentLong = await recentPeakLongMi(userId);
   // 2026-06-02 · ensure totalWeeks is an integer here too · matches
   // the same fix in composePlan. Was producing fractional totalWeeks
   // that broke phase advancement.
@@ -1098,6 +1139,7 @@ async function loadGeneratorInputs(
       level,
       recentWeeklyMi: recentMi,
       easyDayMedianMi: easyFloor,
+      recentLongMi: recentLong,
       isMidBlock,
       longRunDow,
       restDow,
