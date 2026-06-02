@@ -1612,7 +1612,17 @@ struct TodayView: View {
                 let date = selectedDayID.isEmpty
                     ? (planWeek?.today_iso ?? self.plan?.today_iso ?? todayISO)
                     : selectedDayID
-                let f = try? await API.fetchDailyForecast(date: date)
+                // 2026-06-02 round 41 · pass workout duration so backend
+                // composes the workout-window temp range
+                // (temp_start_f / temp_end_f / window_label). The pre-run
+                // CONDITIONS row renders the window range, not the
+                // daily min/max swing. Falls back gracefully if the
+                // workout isn't loaded yet.
+                let mins = workout?.totalEstimatedMinutes
+                let f = try? await API.fetchDailyForecast(
+                    date: date,
+                    durationMin: (mins != nil && mins! > 0) ? mins : nil
+                )
                 await MainActor.run { self.forecast = f }
             }
             // 2026-06-02 · prime the shoe garage from the canonical

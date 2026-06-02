@@ -38,10 +38,15 @@ struct RunPurpose: Decodable {
     let weeksToRace: Int?
     let verdict: String
     let facts: [String]
+    /// 2026-06-02 round 41 · single-sentence coach-voice SESSION CUE.
+    /// Backend commit 126784bd · composed by lib/coach/session-cue.ts.
+    /// Rendered as the pre-run sheet CUE row. Null on rest / unplanned
+    /// days · the row hides.
+    let cue: String?
 
     enum CodingKeys: String, CodingKey {
         case ok, date, type, phase, plannedMi, raceDistanceMi, weeksToRace
-        case verdict, facts
+        case verdict, facts, cue
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -54,6 +59,7 @@ struct RunPurpose: Decodable {
         self.weeksToRace = c.decodeFlexInt(forKey: .weeksToRace)
         self.verdict = try c.decodeIfPresent(String.self, forKey: .verdict) ?? ""
         self.facts = (try? c.decode([String].self, forKey: .facts)) ?? []
+        self.cue = try c.decodeIfPresent(String.self, forKey: .cue)
     }
 }
 

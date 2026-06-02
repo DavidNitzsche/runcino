@@ -311,23 +311,26 @@ struct TodayPreRunBodyV3: View {
         }
     }
 
-    /// 2026-06-02 · both strings now come server-composed from
+    /// 2026-06-02 · all strings come server-composed from
     /// /api/forecast/<date>. Web agent's brief: don't re-derive client-
     /// side, just render so iPhone / web / future watch surfaces stay
     /// in sync. Fall back to "—" when no forecast (no GPS home base,
     /// or date too far out).
     ///
-    /// 2026-06-02 round 41 · forward-compat order:
-    ///   1. range_label · pre-composed daily range from server
-    ///   2. temp_start_f + temp_end_f · the in-run window pair (brief
-    ///      in flight). When backend ships those, we compose
-    ///      "54-62° · CLEAR" client-side for the WINDOW instead of the
-    ///      whole-day temp_min_f-temp_max_f swing. Higher fidelity
-    ///      because it reflects when the runner is actually outside,
-    ///      not the day's overall extremes.
-    ///   3. "—" when no forecast (no GPS home base, or out-of-window).
+    /// Order of preference (2026-06-02 round 41 · backend 43958614):
+    ///   1. window_label · pre-composed workout-window range
+    ///      ("54-62° · CLEAR") · reflects the actual time the runner
+    ///      is outside, not the day-wide swing. Lights up when we
+    ///      pass durationMin to the forecast fetch.
+    ///   2. range_label · pre-composed daily range
+    ///      ("60-78° · CLOUDY") · the original whole-day shape.
+    ///   3. temp_start_f + temp_end_f composed client-side · belt-and-
+    ///      suspenders defense if window_label is ever null but the
+    ///      pair is populated.
+    ///   4. "—" when no forecast (no GPS home base, or out-of-window).
     private var forecastText: String {
-        if let s = forecast?.range_label, !s.isEmpty { return s }
+        if let s = forecast?.window_label, !s.isEmpty { return s }
+        if let s = forecast?.range_label,  !s.isEmpty { return s }
         if let lo = forecast?.temp_start_f, let hi = forecast?.temp_end_f {
             let a = min(lo, hi), b = max(lo, hi)
             let cond = forecast?.conditions ?? ""
@@ -450,13 +453,20 @@ struct TodayPreRunBodyV3: View {
     }
 
     private var cueText: String? {
-        // 2026-06-02 round 41 · forward-compat order of precedence:
-        //   1. workout.cue · dedicated single-sentence coach cue from
-        //      the backend (brief in flight). Lights up automatically
-        //      the moment the field arrives on the payload.
-        //   2. workout.summary first sentence · the legacy proxy. Drops
-        //      the moment workout.cue lands.
-        //   3. type-specific default · so the runner always sees one.
+        // 2026-06-02 round 41 · order of precedence:
+        //   1. purpose.cue · server-composed single-sentence coach cue
+        //      from /api/today/purpose (backend commit 126784bd).
+        //      Reads context-aware signals (yesterday's load, heat,
+        //      pillar streaks) and produces a coach-voice imperative.
+        //   2. workout.cue · forward-compat for a future move to put
+        //      the cue on the WatchWorkout payload alongside other
+        //      run-context fields.
+        //   3. workout.summary first sentence · legacy proxy.
+        //   4. type-specific default · so the runner always sees one.
+        if let cue = purpose?.cue?.trimmingCharacters(in: .whitespaces),
+           !cue.isEmpty {
+            return cue
+        }
         if let cue = workout?.cue?.trimmingCharacters(in: .whitespaces),
            !cue.isEmpty {
             return cue

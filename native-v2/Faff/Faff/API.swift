@@ -1650,25 +1650,47 @@ struct DailyForecast: Decodable {
     /// Pre-composed best-window string · "Before 7 AM" / "6-8 AM" /
     /// "6-9 AM". Render directly.
     let best_window: String?
-    /// 2026-06-02 round 41 · forward-compat for temp_start_f /
-    /// temp_end_f brief. Hourly-interpolated temperature at the START of
-    /// the runner's best run window (or planned start time when present).
-    /// When the backend ships these fields, the pre-run CONDITIONS row
-    /// can render an in-run range like "54-62°" instead of a single
-    /// daily snapshot. nil → fall back to range_label / temp_min_f.
+    /// 2026-06-02 round 41 · backend commit 43958614 · workout-window
+    /// temp pair. Hourly-interpolated temperature at the START of the
+    /// runner's best window (or planned start time when present).
+    /// Populated when fetchDailyForecast is called with durationMin.
+    /// Pre-run CONDITIONS row renders "54-62° · CLEAR" off this pair
+    /// instead of the daily temp_min/temp_max swing. nil → fall back
+    /// to range_label.
     let temp_start_f: Double?
-    /// Hourly-interpolated temperature at START + workout duration · the
-    /// other half of the in-run range pair.
+    /// Hourly-interpolated temperature at START + workout duration ·
+    /// the other half of the workout-window pair.
     let temp_end_f: Double?
+    /// Pre-composed workout-window label · "54-62° · CLEAR". Prefer
+    /// this over composing the range client-side · keeps surfaces in
+    /// sync (web, iPhone, future watch).
+    let window_label: String?
 }
 
 extension API {
     /// Fetch the daily forecast for a given date · returns nil on 404
     /// (no GPS-anchored home base yet, or date outside the ~16-day
     /// Open-Meteo window). 30-min cache + SWR upstream.
-    static func fetchDailyForecast(date: String) async throws -> DailyForecast? {
-        let url = baseURL.appendingPathComponent("api/forecast/\(date)")
-        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+    ///
+    /// 2026-06-02 round 41 · pass durationMin so the backend computes
+    /// the workout-window temp pair (temp_start_f / temp_end_f /
+    /// window_label) for the pre-run CONDITIONS row. nil → daily-range
+    /// fields only. startHHMM lets evening / non-default start times
+    /// override the best_window default (e.g. "1730" for a 5:30 PM run).
+    static func fetchDailyForecast(date: String,
+                                   durationMin: Int? = nil,
+                                   startHHMM: String? = nil) async throws -> DailyForecast? {
+        var comps = URLComponents(url: baseURL.appendingPathComponent("api/forecast/\(date)"),
+                                  resolvingAgainstBaseURL: false)!
+        var qi: [URLQueryItem] = []
+        if let d = durationMin, d > 0 {
+            qi.append(URLQueryItem(name: "durationMin", value: String(d)))
+        }
+        if let s = startHHMM, !s.isEmpty {
+            qi.append(URLQueryItem(name: "startHHMM", value: s))
+        }
+        if !qi.isEmpty { comps.queryItems = qi }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
         guard (200..<300).contains(http.statusCode) else { return nil }
         return try? JSONDecoder().decode(DailyForecast.self, from: data)
     }
