@@ -600,7 +600,10 @@ struct TodayView: View {
                     detail: completedDetail,
                     recap: completedRecap,
                     accent: selectedEffort.dot,
-                    runId: completedRunId
+                    runId: completedRunId,
+                    effortLabel: selectedEffort.effortLabel.uppercased(),
+                    dowLabel: selectedIsToday ? "TODAY" : shortDOWLabel,
+                    titleText: plainWorkoutName.uppercased()
                 )
             } else {
                 preRunSheetContent
@@ -619,12 +622,37 @@ struct TodayView: View {
     /// structured-from-to.md); both surfaces will read the cleaner
     /// "Adjusted from {original} · Restore" template once it lands.
     private var preRunSheetContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            existingPrescriptionAndConditions
-            if !isDone && selectedEffort != .rest {
-                skipThisRunButton
-            }
+        // 2026-06-01 round 7 · design package #3 wires the new
+        // structured pre-run body (header → stats trio → effort target →
+        // conditions 2x2 → session+CUE → THE PLAN → skip). Replaces the
+        // generic prescription-stack used in v2. The component owns its
+        // own skip-footer.
+        TodayPreRunBodyV3(
+            workout: displayWorkout,
+            effort: selectedEffort,
+            dowLabel: shortDOWLabel,
+            isToday: selectedIsToday,
+            weather: weather,
+            shoeName: nil,                                  // backend not wired yet
+            briefing: briefing,
+            purpose: purpose,
+            adaptation: adaptationIntent,
+            onSkip: skipTodayAction,
+            onShoeTap: nil                                  // shoe picker TODO
+        )
+    }
+
+    /// Short day-of-week label · "MON", "TUE", etc. Drives the pre-run
+    /// header eyebrow for non-today selections.
+    private var shortDOWLabel: String {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        if !selectedDayID.isEmpty, selectedDayID != todayISO,
+           let day = todaySelectedDay,
+           let d = isoDateFromDay(day.date_iso) {
+            return f.string(from: d).uppercased()
         }
+        return f.string(from: Date()).uppercased()
     }
 
     private var skipThisRunButton: some View {

@@ -39,10 +39,16 @@ struct TodayPostRunBody: View {
     /// run" link at the bottom of the body. Optional · the link hides
     /// when there's no id (e.g. during hydration).
     let runId: String?
+    /// 2026-06-01 round 7 · design package #3 header inputs.
+    /// Drives the eyebrow ("TODAY · HARD · DONE") and Oswald title.
+    /// Optional · falls back gracefully when not provided.
+    var effortLabel: String? = nil   // "HARD"
+    var dowLabel: String? = nil      // "TODAY" / "MON"
+    var titleText: String? = nil     // "TEMPO" (Oswald hero)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            winLine
+            header                          // NEW · eyebrow + Oswald title + win line
             statsTrio
             secondaryStats
             // Route map · only render the section when there's actual
@@ -58,6 +64,58 @@ struct TodayPostRunBody: View {
             howItWent
             viewFullRunLink
         }
+    }
+
+    /// 2026-06-01 round 7 · eyebrow + Oswald title + green-check win line.
+    /// All three live in one section above the stats trio so the design's
+    /// "TEMPO" hero reads in the same beat as the result framing.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SpecLabel(
+                text: headerEyebrow,
+                size: 10, tracking: 1.8,
+                color: Color(hex: 0xA39A8C)
+            )
+            Text(headerTitle.uppercased())
+                .font(.display(46, weight: .bold))
+                .tracking(-1.5)
+                .foregroundStyle(Color(hex: 0x14110D))
+                .lineLimit(2)
+                .padding(.top, 2)
+            // Inline green win-line under the title · check + recap.win.
+            if let win = winLineText {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x1F9A6F))
+                    Text(win)
+                        .font(.body(13.5, weight: .extraBold))
+                        .foregroundStyle(Color(hex: 0x1F9A6F))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 8)
+            }
+        }
+        .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .overlay(
+            Rectangle().fill(Color(hex: 0xEEE7DA)).frame(height: 1),
+            alignment: .bottom
+        )
+    }
+
+    private var headerEyebrow: String {
+        let day = dowLabel ?? "TODAY"
+        let eff = effortLabel ?? "RUN"
+        return "\(day) · \(eff) · DONE"
+    }
+
+    private var headerTitle: String {
+        if let t = titleText, !t.isEmpty { return t }
+        if let n = detail?.name, !n.isEmpty { return n }
+        return "Run"
     }
 
     /// Small chevron-link at the bottom of the post-run body · replaces
@@ -186,7 +244,11 @@ struct TodayPostRunBody: View {
             divider
             statColumn(key: "ELEV GAIN", value: elevText)
             divider
-            statColumn(key: "TEMP", value: tempText)
+            // 2026-06-01 round 7 · design renames TEMP → CONDITIONS and
+            // shows a range "60° → 74°" when backend ships both start
+            // and end. Single value falls back to "{N}°" (no °F · the
+            // arrow + range column header carries the unit).
+            statColumn(key: "CONDITIONS", value: conditionsText)
         }
         .padding(.vertical, 14)
         .background(Color.white)
@@ -203,9 +265,14 @@ struct TodayPostRunBody: View {
         guard let ft = detail?.elev_gain_ft, ft > 0 else { return "—" }
         return "\(ft) ft"
     }
-    private var tempText: String {
+    /// Conditions column · range when both ends present, single-value
+    /// fallback otherwise. RunDetail.temp_f is single-value today (the
+    /// avg over the run); when backend adds temp_start_f / temp_end_f
+    /// the range renders cleanly.
+    private var conditionsText: String {
         guard let t = detail?.temp_f else { return "—" }
-        return "\(Int(t.rounded()))°F"
+        // Single value fallback. Range support waits for backend.
+        return "\(Int(t.rounded()))°"
     }
 
     // MARK: - 4. Route map
@@ -391,10 +458,78 @@ struct TodayPostRunBody: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 4)
                 }
+                // 2026-06-01 round 7 · planned-vs-actual comparison rows
+                // from the design package. Per-axis (Heart rate / Pace /
+                // Cadence) the row reads "{actual} avg vs {target}" so
+                // the runner sees in one line whether they hit the plan.
+                // Renders only the axes we have data for.
+                comparisonRows
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
             .background(Color.white)
         }
+    }
+
+    /// 2026-06-01 round 7 · planned-vs-actual triplet
+    /// (HEART RATE / PACE / CADENCE) below the verdict + recap.
+    @ViewBuilder
+    private var comparisonRows: some View {
+        let rows = comparisonItems
+        if !rows.isEmpty {
+            VStack(spacing: 10) {
+                ForEach(rows, id: \.0) { (key, value) in
+                    HStack {
+                        Text(key)
+                            .font(.body(11, weight: .extraBold)).tracking(1.5)
+                            .foregroundStyle(Color(hex: 0xA39A8C))
+                        Spacer()
+                        Text(value)
+                            .font(.body(13, weight: .extraBold)).tracking(-0.2)
+                            .foregroundStyle(Color(hex: 0x14110D))
+                    }
+                }
+            }
+            .padding(.top, 14)
+            .padding(.horizontal, 0)
+        }
+    }
+
+    private var comparisonItems: [(String, String)] {
+        var out: [(String, String)] = []
+        // HR · actual avg vs target band (when both present).
+        if let avg = detail?.hr_avg {
+            // The target band would ideally come from the workout payload's
+            // recommended zone; for now, show actual only · the eyebrow
+            // already implies the planned effort.
+            out.append(("HEART RATE", "\(avg) avg"))
+        }
+        // Pace · actual vs target.
+        if let pace = detail?.pace, !pace.isEmpty {
+            if let plannedPace = plannedPaceLabel {
+                out.append(("PACE", "\(pace) avg vs \(plannedPace) target"))
+            } else {
+                out.append(("PACE", "\(pace) avg"))
+            }
+        }
+        if let cad = detail?.cadence_avg, cad > 0 {
+            out.append(("CADENCE", "\(cad) spm"))
+        }
+        return out
+    }
+
+    /// Pull the planned target pace from RunDetail.planned_spec when
+    /// the workout had one. Null on easy/long runs without a structured
+    /// target.
+    private var plannedPaceLabel: String? {
+        guard let s = detail?.planned_spec else { return nil }
+        let secs: Int? = {
+            if let p = s.rep_pace_s_per_mi { return Int(p) }
+            if let p = s.tempo_pace_s_per_mi { return Int(p) }
+            if let p = s.mp_pace_s_per_mi { return Int(p) }
+            return nil
+        }()
+        guard let s = secs else { return nil }
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     private var verdictTint: Color {

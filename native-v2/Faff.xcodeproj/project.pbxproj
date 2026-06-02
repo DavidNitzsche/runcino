@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		02629A8715894D5C2D6B5F47 /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0C78AC3D1E5FE8777CB224 /* SummaryView.swift */; };
+		037104D1F1956FCD28FA4915 /* TodayPreRunBodyV3.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */; };
 		0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */; };
 		06733C4049CBBF30D8DF2EA1 /* API+Toolkit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E06A7E99186B27147ADDE22 /* API+Toolkit.swift */; };
 		087938D53B0E81241BFCCA7A /* TreadmillHRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760B92E89CF0E2EF5EEB8265 /* TreadmillHRView.swift */; };
@@ -257,6 +258,7 @@
 		9DDE304E9C6471D398E2D102 /* Briefing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Briefing.swift; sourceTree = "<group>"; };
 		9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthView.swift; sourceTree = "<group>"; };
+		A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayPreRunBodyV3.swift; sourceTree = "<group>"; };
 		A946A92F47DD42163C1A409F /* RaceName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceName.swift; sourceTree = "<group>"; };
 		A94A80371C0077976A33426E /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
 		AB1BDC045093EBA34631A9F1 /* TodayPostRunBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayPostRunBody.swift; sourceTree = "<group>"; };
@@ -379,6 +381,7 @@
 				8638CFAB477DCF206DEFD0EA /* StickyCTABar.swift */,
 				9BE2FACB96AFFAE039358E11 /* StravaReconnectBanner.swift */,
 				AB1BDC045093EBA34631A9F1 /* TodayPostRunBody.swift */,
+				A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */,
 				C7A4E3C4D2B9F936674A294E /* TodayReadinessPanel.swift */,
 				D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */,
 				BD91B5D2A39BE920DD3C4358 /* ZoneBar.swift */,
@@ -789,6 +792,7 @@
 				83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */,
 				49DD1311332CCD7EC88681EC /* Tips.swift in Sources */,
 				C04EABC1AFE4F8CEAC64F2F5 /* TodayPostRunBody.swift in Sources */,
+				037104D1F1956FCD28FA4915 /* TodayPreRunBodyV3.swift in Sources */,
 				FD192DE884BE0A0DA2037E99 /* TodayReadinessPanel.swift in Sources */,
 				C2714A39BB9C6911E505C9E9 /* TodayShoeOverrideSheet.swift in Sources */,
 				A4B00D17F9CD81D6D57E75E3 /* TodayView.swift in Sources */,
