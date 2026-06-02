@@ -58,6 +58,67 @@ export async function POST(req: NextRequest) {
       signals_skipped: 0,
     };
     try {
+      // 2026-06-03 · Rule 12 · maintenance → race-prep transition.
+      // When an active MAINTENANCE plan's target race comes within
+      // its build window (BUILD_WINDOW_WEEKS[distance]), fire a
+      // rebuild that picks race-prep mode. The runner has been in
+      // maintenance possibly for months; now it's time to build.
+      const maintenancePlan = (await pool.query<{
+        plan_id: string; race_id: string; race_date: string; race_dist_mi: string;
+      }>(
+        `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
+                (rc.meta->>'date')::text AS race_date,
+                (rc.meta->>'distanceMi')::text AS race_dist_mi
+           FROM training_plans tp
+           JOIN races rc ON rc.slug = tp.race_id
+          WHERE tp.user_uuid = $1
+            AND tp.archived_iso IS NULL
+            AND tp.mode = 'maintenance'
+          ORDER BY tp.authored_iso DESC LIMIT 1`,
+        [u],
+      ).catch(() => ({ rows: [] }))).rows[0];
+
+      if (maintenancePlan) {
+        const { BUILD_WINDOW_WEEKS } = await import('@/lib/plan/goal-tiers');
+        const { distanceCategoryOf } = await import('@/lib/plan/goal-tiers');
+        const dMi = Number(maintenancePlan.race_dist_mi);
+        const buildWindowDays = BUILD_WINDOW_WEEKS[distanceCategoryOf(dMi)] * 7;
+        const raceMs = new Date(maintenancePlan.race_date + 'T12:00:00Z').getTime();
+        const nowMs = Date.now();
+        const daysToRace = (raceMs - nowMs) / 86400000;
+        if (daysToRace > 0 && daysToRace <= buildWindowDays) {
+          // De-dupe within 24h
+          const alreadyTransitioned = (await pool.query(
+            `SELECT 1 FROM plan_proposals
+              WHERE user_uuid = $1
+                AND proposal_kind = 'maintenance_to_raceprep'
+                AND created_at >= NOW() - interval '24 hours'`,
+            [u],
+          ).catch(() => ({ rowCount: 0 }))).rowCount;
+          if (!alreadyTransitioned) {
+            try {
+              const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
+              const result = await fireAutoRebuild({
+                userUuid: u,
+                raceSlug: maintenancePlan.race_id,
+                kind: 'race_graduate', // reuses graduate path · same semantics
+                reasons: {
+                  transition: 'maintenance_to_raceprep',
+                  race_slug: maintenancePlan.race_id,
+                  weeks_to_race: Math.round(daysToRace / 7),
+                  build_window_weeks: buildWindowDays / 7,
+                  message: `Race within build window · transitioning from maintenance to race-prep.`,
+                },
+                source: 'maintenance_transition_cron',
+              });
+              if (result.ok) r.proposals_written++;
+            } catch (e) {
+              console.error('[plan-drift] maintenance→race-prep failed:', e);
+            }
+          }
+        }
+      }
+
       // 2026-06-03 · post-race auto-graduate (Rule 11 follow-on).
       // If the runner's active plan target's race date is in the past
       // (race day finished), find the next A-priority race in their

@@ -1,5 +1,19 @@
 # Plan Engine · Mid-Block Runner Doctrine
 
+**Status (2026-06-03 late evening · v2):** 11 rules + post-race graduate cron + **Rules 12 + 13 (plan modes)** SHIPPED.
+
+**Rule 12 · plan modes.** Three plan modes drive the generator's shape: `race-prep` (the existing 12-18 week periodized build · default), `maintenance` (looping 4-week template at 70-80% of recent peak, 1 quality/wk, no intervals · for when no race is within build window), and `recovery` (1-2 weeks light easy running after a race finishes · mandatory). `pickPlanMode()` decides based on temporal context: distance from last race finish + distance to next race.
+
+Build windows per distance (Pfitz + Daniels):
+- 5K: 10 wk · 10K: 12 wk · HM: 14 wk · M: 18 wk · ultra: 24 wk
+
+If next race is within window → race-prep. Else → maintenance.
+
+**Rule 13 · post-race recovery.** Mandatory low-volume easy window after race finishes:
+- 5K/10K: 1 wk · HM: 1 wk · M: 2 wk · ultra: 3 wk
+
+Pfitz says skipping it causes overtraining ~80% of the time. The graduate cron now waits out the recovery window before transitioning to race-prep OR maintenance.
+
 **Status (2026-06-03 late evening):** 11 rules + post-race graduate cron SHIPPED. The daily 09:00 UTC drift-cron now also handles race graduation: when an active plan's race date is in the past, fire `fireAutoRebuild({kind: 'race_graduate'})` against the next A-priority race. The new plan inherits all training history via composePlan's existing readers (recentLong, recentQuality, bestRecentVdot, tsbAtStart). Verified against David: post-AFC (8/17), CIM would auto-graduate as the new target. No manual nudge required.
 
 **Status (2026-06-03 evening):** 11 of 11 rules SHIPPED. Added Rule 11 (horizon-aware planning) · A/B-priority races within 24 weeks influence the current plan's long-run dials when the future race is longer.

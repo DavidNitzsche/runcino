@@ -30,6 +30,130 @@ export type GoalTier =
 
 export type DistCategory = '5k' | '10k' | 'hm' | 'm' | 'ultra';
 
+/**
+ * 2026-06-03 · Rule 12 · build-window per distance.
+ *
+ * The maximum useful race-specific build duration. Past this, you're
+ * burning the runner out without additional gain. Used by pickPlanMode
+ * to decide if a future race is close enough to warrant race-prep mode
+ * (vs maintenance mode that waits for the build window to open).
+ *
+ * Cite: Daniels Running Formula 3rd ed §"Building the Plan"
+ * Cite: Pfitzinger Faster Road Racing §"Block Periodization"
+ */
+export const BUILD_WINDOW_WEEKS: Record<DistCategory, number> = {
+  '5k': 10,
+  '10k': 12,
+  'hm': 14,
+  'm': 18,
+  'ultra': 24,
+};
+
+/**
+ * 2026-06-03 · Rule 13 · post-race recovery weeks per distance.
+ *
+ * Mandatory low-volume easy-running window AFTER a race finishes,
+ * BEFORE either maintenance or the next race-prep starts. Pfitz
+ * explicitly says skipping recovery causes overtraining 80% of the
+ * time. Race-prep blocks that fire too soon after a race land into
+ * a runner with depleted glycogen + microscopic muscle damage and
+ * stall out by week 3.
+ *
+ * Cite: Pfitzinger Advanced Marathoning §"Post-race recovery"
+ * Cite: Daniels Running Formula §"Recovery after racing"
+ */
+export const POST_RACE_RECOVERY_WEEKS: Record<DistCategory, number> = {
+  '5k': 0,    // 2-3 days easy, no full week needed
+  '10k': 1,
+  'hm': 1,
+  'm': 2,
+  'ultra': 3,
+};
+
+/**
+ * 2026-06-03 · Rule 12 · maintenance-mode shape per tier.
+ *
+ * When a runner has no race within the build window (BUILD_WINDOW_WEEKS),
+ * the plan enters MAINTENANCE mode · holds aerobic fitness + leg
+ * turnover without race-specific stress. Anchored to the runner's
+ * recent peak (from the just-completed race-prep block) so the
+ * shape is per-runner even though the percentages are doctrine.
+ *
+ * Frequency holds (Daniels' "use it or lose it" curve · dropping
+ * days/wk loses neuromuscular pattern fast). Volume + quality drop.
+ * VO2 work is CUT entirely · with no race in window that stress
+ * is just damaging.
+ *
+ * Cite: Pfitzinger Faster Road Racing §"Recovery & Off-Season Training"
+ * Cite: Daniels Running Formula 3rd ed §"Off-Season Training"
+ * Cite: Hudson Run Faster Ch. 7 §"Maintenance Periods"
+ */
+export interface MaintenanceShape {
+  /** Days running per week · held from race-prep habit. */
+  daysPerWeek: number;
+  /** Weekly volume as fraction of recent race-prep peak (0-1). */
+  weeklyPctOfPeak: number;
+  /** Long run as fraction of recent peak long (0-1). */
+  longPctOfPeak: number;
+  /** Quality sessions per week (always 1 for maintenance · never 2). */
+  qualityPerWeek: 0 | 1;
+  /** Quality type for maintenance · NO vo2/intervals. */
+  qualityType: 'threshold' | 'fartlek' | 'none';
+}
+
+export const MAINTENANCE_BY_TIER: Record<GoalTier, MaintenanceShape> = {
+  elite:        { daysPerWeek: 7, weeklyPctOfPeak: 0.75, longPctOfPeak: 0.80, qualityPerWeek: 1, qualityType: 'threshold' },
+  advanced:     { daysPerWeek: 6, weeklyPctOfPeak: 0.75, longPctOfPeak: 0.80, qualityPerWeek: 1, qualityType: 'threshold' },
+  intermediate: { daysPerWeek: 5, weeklyPctOfPeak: 0.70, longPctOfPeak: 0.75, qualityPerWeek: 1, qualityType: 'fartlek' },
+  developing:   { daysPerWeek: 5, weeklyPctOfPeak: 0.70, longPctOfPeak: 0.70, qualityPerWeek: 0, qualityType: 'none' },
+};
+
+export type PlanMode = 'race-prep' | 'maintenance' | 'recovery';
+
+/**
+ * 2026-06-03 · Rule 12 + 13 · pick plan mode based on temporal context.
+ *
+ * Three modes:
+ *   - 'recovery'    · within POST_RACE_RECOVERY_WEEKS of the last race
+ *                     finish. Light easy running. Mandatory.
+ *   - 'race-prep'   · next race is within BUILD_WINDOW_WEEKS of today.
+ *                     Full periodized build (Base/Build/Peak/Taper).
+ *   - 'maintenance' · next race is OUTSIDE the build window. Holding
+ *                     pattern · 70-80% of peak, 1 quality/wk, no
+ *                     race-specific work. Waits for transition.
+ *
+ * The maintenance-to-race-prep transition fires automatically when
+ * today crosses (nextRaceDate − BUILD_WINDOW_WEEKS).
+ *
+ * Cite: Pfitzinger Faster Road Racing §"Block Periodization"
+ */
+export function pickPlanMode(
+  todayISO: string,
+  nextRaceDateISO: string | null,
+  nextRaceDistanceMi: number | null,
+  lastRaceFinishedISO: string | null,
+  lastRaceDistanceMi: number | null,
+): PlanMode {
+  const today = new Date(todayISO + 'T12:00:00Z').getTime();
+  // 1. Recovery check · within POST_RACE_RECOVERY_WEEKS of last race finish?
+  if (lastRaceFinishedISO && lastRaceDistanceMi) {
+    const lastCat = distanceCategoryOf(lastRaceDistanceMi);
+    const recoveryEnd = new Date(lastRaceFinishedISO + 'T12:00:00Z').getTime()
+      + POST_RACE_RECOVERY_WEEKS[lastCat] * 7 * 86400000;
+    if (today < recoveryEnd) return 'recovery';
+  }
+  // 2. No next race · maintenance by default
+  if (!nextRaceDateISO || !nextRaceDistanceMi) return 'maintenance';
+  // 3. Race-prep when next race is within build window
+  const nextCat = distanceCategoryOf(nextRaceDistanceMi);
+  const buildWindowMs = BUILD_WINDOW_WEEKS[nextCat] * 7 * 86400000;
+  const raceMs = new Date(nextRaceDateISO + 'T12:00:00Z').getTime();
+  const weeksOut = (raceMs - today) / (7 * 86400000);
+  if (weeksOut > 0 && (raceMs - today) <= buildWindowMs) return 'race-prep';
+  // 4. Too far out · maintenance until build window opens
+  return 'maintenance';
+}
+
 export interface TierTarget {
   /** Peak weekly volume target [min, max] in miles. From Research/22. */
   peakWeeklyMileageBand: [number, number];

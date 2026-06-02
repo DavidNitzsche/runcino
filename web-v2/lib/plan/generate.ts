@@ -27,7 +27,7 @@ import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
-import { lookupTierTarget, type TierTarget, type GoalTier } from './goal-tiers';
+import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode } from './goal-tiers';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -1136,6 +1136,252 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   };
 }
 
+// ── Maintenance + Recovery composers ────────────────────────────────────
+//
+// 2026-06-03 · Rule 12 + 13 · pickPlanMode returns 'race-prep' for the
+// existing composePlan path. These two functions handle the other modes.
+//
+// MAINTENANCE · runner has no race within build window. Hold aerobic
+// fitness + leg turnover; volume + long drop to ~70-80% of peak; 1
+// quality per week (threshold OR fartlek per tier); NO vo2/intervals.
+// 4-week looping plan that regenerates monthly via the graduate cron.
+//
+// RECOVERY · 1-2 weeks immediately after a race. Very low volume,
+// all easy + rest. Auto-transitions to maintenance OR race-prep.
+//
+// Cite: Pfitzinger Faster Road Racing §"Recovery & Off-Season Training"
+// Cite: Daniels Running Formula 3rd ed §"Off-Season Training"
+
+export interface ComposeNonRaceInput {
+  startMondayISO: string;
+  level: LevelKey;
+  /** Recent 4-week avg weekly mileage · the maintenance anchor. */
+  recentWeeklyMi: number;
+  /** Runner's recent peak long · 28d max. Drops to longPctOfPeak in
+   *  maintenance / recovery. */
+  recentLongMi: number;
+  /** Runner's recent peak weekly · last race-prep peak. When unknown,
+   *  recentWeeklyMi serves as the proxy. */
+  recentPeakWeeklyMi: number;
+  easyDayMedianMi: number;
+  longRunDow: DOW;
+  restDow: DOW;
+  qualityDows: DOW[];
+  crossModes: string[];
+  /** For maintenance: tier of the next race (so the maintenance shape
+   *  matches the runner's level). For recovery: tier of the race that
+   *  just finished. */
+  tier: GoalTier;
+  /** Next race (for context · maintenance plans show "X weeks until
+   *  CIM build starts"). Null when no future race scheduled. */
+  nextRace: { slug: string; name: string; date: string; distanceMi: number; goalPaceSec: number | null } | null;
+  /** Last race finished (recovery mode only). */
+  lastRaceFinished: { slug: string; name: string; date: string; distanceMi: number } | null;
+  rxQuality: ResolvedPrescriptions;
+  tPaceSec: number | null;
+  lthr: number | null;
+}
+
+/**
+ * Compose a 4-week maintenance plan. Single phase 'MAINTENANCE'. The
+ * graduate cron regenerates this every 4 weeks until the next race
+ * enters its build window, at which point it auto-transitions to
+ * race-prep. Volume + long held at maintenance percentages of the
+ * runner's recent peak; quality drops to 1/week; intervals removed.
+ */
+export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanResult {
+  const shape = MAINTENANCE_BY_TIER[input.tier];
+  const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
+  const targetWeekly = Math.round(peakAnchor * shape.weeklyPctOfPeak);
+  const targetLong = Math.max(8, Math.round(input.recentLongMi * shape.longPctOfPeak));
+
+  // 4-week rolling template. Days = tier's daysPerWeek. Rest = 7 -
+  // daysPerWeek (so days held even though volume dropped).
+  const TOTAL_WEEKS = 4;
+  const weeks: ComposedWeek[] = [];
+  const blocks: BlockPlan = {
+    totalWeeks: TOTAL_WEEKS,
+    phases: [{
+      label: 'MAINTENANCE',
+      weeks: TOTAL_WEEKS,
+      rationale: 'Holding aerobic fitness · no race in build window. 1 quality, 1 long, easies otherwise.',
+      citation: 'Research/00a-distance-running-training.md §off-season + Pfitzinger Faster Road Racing §Recovery & Off-Season',
+    }],
+  };
+
+  // Layout one canonical week, then clone it for all 4. Cutback is just
+  // a recovery-week step-down at week 3 (final week of cycle).
+  function maintenanceWeek(weekIdx: number): DayPlan[] {
+    const isCutback = weekIdx === 3; // week 4 (zero-indexed) = recovery
+    const wkWeekly = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
+    const wkLong = isCutback ? Math.max(8, Math.round(targetLong * 0.80)) : targetLong;
+
+    const slots: (DayPlan | null)[] = new Array(7).fill(null);
+    // Rest day
+    slots[input.restDow] = { dow: input.restDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Sleep, mobility, fuel.' };
+    // Long run · simpler than race-prep (no race-pace inserts)
+    slots[input.longRunDow] = {
+      dow: input.longRunDow, type: 'long', distanceMi: wkLong, isQuality: false, isLong: true,
+      subLabel: 'LONG',
+      notes: 'Conversational. Maintenance long · holding aerobic base.',
+    };
+    // Quality day (skip when tier shape has qualityPerWeek=0)
+    if (shape.qualityPerWeek > 0 && input.qualityDows.length > 0) {
+      const qDow = input.qualityDows[0]; // single quality, first picked day
+      if (slots[qDow] == null) {
+        const qDist = Math.max(5, Math.round(wkWeekly * 0.16));
+        if (shape.qualityType === 'threshold') {
+          slots[qDow] = {
+            dow: qDow, type: 'threshold', distanceMi: qDist, isQuality: true, isLong: false,
+            subLabel: `${Math.max(3, Math.round(qDist * 0.5))}mi @ T pace · cruise`,
+            notes: 'WU 1.5mi · steady at threshold · CD 1mi. Aerobic engine maintenance.',
+          };
+        } else if (shape.qualityType === 'fartlek') {
+          slots[qDow] = {
+            dow: qDow, type: 'tempo', distanceMi: qDist, isQuality: true, isLong: false,
+            subLabel: `${qDist}mi w/ 6×1min surges`,
+            notes: 'Easy with 1-minute pickups every 5 min. Leg turnover · not race-pace.',
+          };
+        }
+      }
+    }
+    // Fill easies up to daysPerWeek
+    const easyFloor = Math.max(3, input.easyDayMedianMi || 5);
+    const allocated = slots.filter(Boolean).reduce((s, d) => s + (d?.distanceMi ?? 0), 0);
+    const easyMiBudget = Math.max(0, wkWeekly - allocated);
+    const easySlots = slots
+      .map((s, i) => ({ slot: s, dow: i as DOW }))
+      .filter((x) => x.slot == null);
+    const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - (slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length)));
+    const perEasy = targetEasyCount > 0 ? Math.max(easyFloor, Math.round(easyMiBudget / targetEasyCount)) : 0;
+    for (let i = 0; i < easySlots.length; i++) {
+      const { dow } = easySlots[i];
+      if (i < targetEasyCount) {
+        slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational throughout.' };
+      } else {
+        // Extra slot · rest day (we're holding daysPerWeek, not adding)
+        slots[dow] = { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off.' };
+      }
+    }
+    return slots.filter(Boolean) as DayPlan[];
+  }
+
+  for (let wi = 0; wi < TOTAL_WEEKS; wi++) {
+    const startISO = addDays(input.startMondayISO, wi * 7);
+    weeks.push({
+      startISO,
+      phase: 'MAINTENANCE',
+      weeklyMi: weeks[wi]?.weeklyMi ?? (wi === 3 ? Math.round(targetWeekly * 0.80) : targetWeekly),
+      days: maintenanceWeek(wi),
+      isRaceWeek: false,
+      tPaceSec: input.tPaceSec,
+    });
+  }
+
+  return {
+    weeks,
+    blocks,
+    totalWeeks: TOTAL_WEEKS,
+    vols: weeks.map((w) => w.weeklyMi),
+    authoredState: {
+      mode: 'maintenance',
+      total_weeks: TOTAL_WEEKS,
+      recent_avg_mpw: input.recentWeeklyMi,
+      tier: input.tier,
+      maintenance_shape: shape,
+      target_weekly_mi: targetWeekly,
+      target_long_mi: targetLong,
+      next_race: input.nextRace,
+      citations: blocks.phases.map((p) => p.citation),
+    },
+  };
+}
+
+/**
+ * Compose a 1-2 week recovery plan. Very low volume; all easy + rest;
+ * no quality. Transitions automatically to maintenance or race-prep
+ * via the graduate cron when the recovery window closes.
+ */
+export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResult {
+  if (!input.lastRaceFinished) {
+    // Shouldn't happen · recovery requires a finished race. Bail to a
+    // single-week placeholder.
+    return composeMaintenancePlan(input);
+  }
+  const lastCat = (input.lastRaceFinished.distanceMi <= 4) ? '5k'
+    : input.lastRaceFinished.distanceMi <= 8 ? '10k'
+    : input.lastRaceFinished.distanceMi <= 17 ? 'hm'
+    : input.lastRaceFinished.distanceMi <= 30 ? 'm'
+    : 'ultra';
+  const recoveryWeeks = POST_RACE_RECOVERY_WEEKS[lastCat];
+  const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
+
+  // Pfitz: week 1 = 25-40% of peak (5K/10K) or 30% (M). Week 2 (M only) = 50-60%.
+  const wkPctSeq = lastCat === 'm' ? [0.30, 0.55] : lastCat === 'ultra' ? [0.25, 0.40, 0.55] : [0.40];
+  const weeks: ComposedWeek[] = [];
+  const blocks: BlockPlan = {
+    totalWeeks: recoveryWeeks || 1,
+    phases: [{
+      label: 'RECOVERY',
+      weeks: recoveryWeeks || 1,
+      rationale: `Post-race recovery · ${input.lastRaceFinished.name}. Easy running only · no quality.`,
+      citation: 'Research/00a-distance-running-training.md §recovery + Pfitzinger Advanced Marathoning §Post-race recovery',
+    }],
+  };
+
+  for (let wi = 0; wi < (recoveryWeeks || 1); wi++) {
+    const wkPct = wkPctSeq[wi] ?? wkPctSeq[wkPctSeq.length - 1];
+    const wkWeekly = Math.round(peakAnchor * wkPct);
+    const slots: (DayPlan | null)[] = new Array(7).fill(null);
+    slots[input.restDow] = { dow: input.restDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Recover.' };
+    // 1 extra rest day adjacent · 2 rest in recovery weeks
+    const extraRestDow = ((input.restDow + 3) % 7) as DOW;
+    slots[extraRestDow] = { dow: extraRestDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Extra rest · still recovering.' };
+    // 1 medium easy mid-week (optional · only if Pfitz says >40% of peak)
+    let mediumEasy: DayPlan | null = null;
+    if (wkPct >= 0.50) {
+      const mediumDow = input.longRunDow; // use long-run slot for medium
+      mediumEasy = { dow: mediumDow, type: 'easy', distanceMi: Math.max(6, Math.round(wkWeekly * 0.20)), isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
+      slots[mediumDow] = mediumEasy;
+    }
+    // Fill rest with easies
+    const easyFloor = Math.max(3, Math.round((input.easyDayMedianMi || 5) * 0.7)); // shorter easies in recovery
+    const allocated = slots.filter(Boolean).reduce((s, d) => s + (d?.distanceMi ?? 0), 0);
+    const easyMiBudget = Math.max(0, wkWeekly - allocated);
+    const easySlots = slots
+      .map((s, i) => ({ slot: s, dow: i as DOW }))
+      .filter((x) => x.slot == null);
+    const perEasy = easySlots.length > 0 ? Math.max(easyFloor, Math.round(easyMiBudget / easySlots.length)) : 0;
+    for (const { dow } of easySlots) {
+      slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Recovery easy · conversational, no surges.' };
+    }
+    weeks.push({
+      startISO: addDays(input.startMondayISO, wi * 7),
+      phase: 'RECOVERY',
+      weeklyMi: wkWeekly,
+      days: slots.filter(Boolean) as DayPlan[],
+      isRaceWeek: false,
+      tPaceSec: null,
+    });
+  }
+
+  return {
+    weeks,
+    blocks,
+    totalWeeks: weeks.length,
+    vols: weeks.map((w) => w.weeklyMi),
+    authoredState: {
+      mode: 'recovery',
+      total_weeks: weeks.length,
+      tier: input.tier,
+      last_race_finished: input.lastRaceFinished,
+      next_race: input.nextRace,
+      target_weekly_mi: weeks[0]?.weeklyMi ?? 0,
+      citations: blocks.phases.map((p) => p.citation),
+    },
+  };
+}
+
 // ── Persistence ─────────────────────────────────────────────────────────
 
 async function clearActivePlansFor(userId: string): Promise<void> {
@@ -1268,8 +1514,54 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   const inputs = await loadGeneratorInputs(userId, raceSlug);
   if (!inputs.ok) return { ok: false, reason: inputs.reason };
 
-  // 2. Compose the plan from the bundle · pure function, no DB.
-  const composed = composePlan(inputs.compose);
+  // 2026-06-03 · Rules 12 + 13 · pick plan mode based on temporal context.
+  // race-prep: race is within build window
+  // maintenance: race is too far out · hold aerobic base
+  // recovery: another race finished recently · 1-2 week light-running
+  const todayISO = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const { lastRaceFinished, lastRaceDistanceMi } = await loadLastRaceFinished(userId, todayISO);
+  const mode: PlanMode = pickPlanMode(
+    todayISO,
+    inputs.compose.raceDateISO,
+    inputs.compose.raceDistanceMi,
+    lastRaceFinished?.date ?? null,
+    lastRaceDistanceMi ?? null,
+  );
+
+  // 2. Compose · branch by mode.
+  let composed: ComposePlanResult;
+  if (mode === 'race-prep') {
+    composed = composePlan(inputs.compose);
+  } else {
+    const tier = lookupTierTarget(inputs.compose.goalPaceSec, inputs.compose.raceDistanceMi).tier;
+    const nonRaceInput: ComposeNonRaceInput = {
+      startMondayISO: inputs.compose.startMondayISO,
+      level: inputs.compose.level,
+      recentWeeklyMi: inputs.compose.recentWeeklyMi,
+      recentLongMi: inputs.compose.recentLongMi,
+      recentPeakWeeklyMi: inputs.compose.recentWeeklyMi, // proxy when peak unknown
+      easyDayMedianMi: inputs.compose.easyDayMedianMi,
+      longRunDow: inputs.compose.longRunDow,
+      restDow: inputs.compose.restDow,
+      qualityDows: inputs.compose.qualityDows,
+      crossModes: inputs.compose.crossModes,
+      tier,
+      nextRace: {
+        slug: raceSlug,
+        name: raceSlug,
+        date: inputs.compose.raceDateISO,
+        distanceMi: inputs.compose.raceDistanceMi,
+        goalPaceSec: inputs.compose.goalPaceSec,
+      },
+      lastRaceFinished: lastRaceFinished ?? null,
+      rxQuality: inputs.compose.rxQuality,
+      tPaceSec: inputs.compose.tPaceSec,
+      lthr: inputs.compose.lthr,
+    };
+    composed = mode === 'recovery'
+      ? composeRecoveryPlan(nonRaceInput)
+      : composeMaintenancePlan(nonRaceInput);
+  }
 
   // 3. Archive existing + persist.
   await clearActivePlansFor(userId);
@@ -1285,11 +1577,48 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     lthr: inputs.compose.lthr,
     authoredState: {
       ...composed.authoredState,
+      mode,
       generated_at: new Date().toISOString(),
     },
   });
 
+  // Write the mode column for fast filtering by graduate/transition crons.
+  await pool.query(
+    `UPDATE training_plans SET mode = $1 WHERE id = $2`,
+    [mode, planId],
+  );
+
   return { ok: true, plan_id: planId, weeks_generated: composed.totalWeeks };
+}
+
+/**
+ * 2026-06-03 · helper · read the runner's last finished A/B race so
+ * pickPlanMode can decide if we're inside the recovery window.
+ */
+async function loadLastRaceFinished(
+  userId: string,
+  todayISO: string,
+): Promise<{ lastRaceFinished: { slug: string; name: string; date: string; distanceMi: number } | null; lastRaceDistanceMi: number | null }> {
+  const r = (await pool.query<{ slug: string; meta: any }>(
+    `SELECT slug, meta FROM races
+      WHERE user_uuid = $1
+        AND meta->>'priority' IN ('A','B')
+        AND (meta->>'date')::date < $2::date
+      ORDER BY (meta->>'date')::date DESC LIMIT 1`,
+    [userId, todayISO],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!r) return { lastRaceFinished: null, lastRaceDistanceMi: null };
+  const m = r.meta || {};
+  const dMi = Number(m.distanceMi);
+  return {
+    lastRaceFinished: {
+      slug: r.slug,
+      name: String(m.name || r.slug),
+      date: String(m.date),
+      distanceMi: dMi,
+    },
+    lastRaceDistanceMi: dMi || null,
+  };
 }
 
 /**
