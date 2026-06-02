@@ -125,6 +125,15 @@ export interface ReadinessBrief {
     net: number;
     today: number;
   } | null;
+  /** 2026-06-01 · HRV CV (Plews coefficient of variation, %).
+   *  Research/15 · rising CV = destabilization · 24-72h early-overreach
+   *  signal that fires BEFORE HRV ms itself drops. Surfaced on the
+   *  Health page as its own tile. Null when < 14d of HRV history. */
+  hrvCv: {
+    pct: number;
+    band: 'stable' | 'watch' | 'destabilizing';
+    swcMs: number | null;
+  } | null;
   /** "Watching" callouts for tomorrow · the brief points the runner at
    *  what to verify if it persists. */
   watchTomorrow: string[];
@@ -225,6 +234,7 @@ export async function loadReadinessBrief(
       coldStart,
       trendNote: null,
       composition: null,
+      hrvCv: null,
       watchTomorrow: [],
       gapReport: null,
     };
@@ -272,6 +282,20 @@ export async function loadReadinessBrief(
   // truth for BASELINE / NET / TODAY math row.
   const composition = buildComposition(scoreTrend, breakdown.score);
 
+  // 2026-06-01 · HRV CV surface. Plews early-overreach signal already
+  // computed in readiness-history · expose it here as a top-level field
+  // so the Health page can render a tile. Bands per Research/15: <5%
+  // stable · 5-7% watch · ≥7% destabilizing.
+  const hrvCv = history.hrvPlews?.cv != null
+    ? {
+        pct: history.hrvPlews.cv,
+        band: (history.hrvPlews.cv < 5
+          ? 'stable'
+          : history.hrvPlews.cv < 7 ? 'watch' : 'destabilizing') as 'stable' | 'watch' | 'destabilizing',
+        swcMs: history.hrvPlews.swc,
+      }
+    : null;
+
   // Watch tomorrow · forward-looking guidance.
   const watchTomorrow = buildWatchTomorrow(breakdown, streaks, history);
 
@@ -296,6 +320,7 @@ export async function loadReadinessBrief(
     coldStart,
     trendNote,
     composition,
+    hrvCv,
     watchTomorrow,
     gapReport,
   };

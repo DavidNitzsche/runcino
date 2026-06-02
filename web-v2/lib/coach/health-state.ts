@@ -15,6 +15,12 @@ export interface HealthState {
   // P2 #11 (2026-05-30): VO2 max trend. HealthKit only emits 1-2 readings
   // per week so we widen the window to 6 months for a meaningful chart.
   vo2Series:    { date: string; v: number }[];       // up to 6 months
+  // 2026-06-01 · Health page Quick Wins · 30d series for new tiles.
+  wristTempSeries:        { date: string; tempC: number }[];
+  respiratoryRateSeries:  { date: string; bpm: number }[];
+  spo2Series:             { date: string; pct: number }[];
+  bodyFatSeries:          { date: string; pct: number }[];
+  leanMassSeries:         { date: string; kg: number }[];
   // Summary
   sleep: { avg7n: number | null; avg30n: number | null; deficit7: number };
   rhr:   { current: number | null; baseline: number | null; delta: number | null };
@@ -22,6 +28,15 @@ export interface HealthState {
   weight:{ current: number | null; delta30: number | null };
   cadence:{ baseline: number | null };
   vo2:    { current: number | null };
+  // 2026-06-01 · Quick Win summaries
+  wristTemp:       { current: number | null; baseline: number | null; deltaC: number | null };
+  respiratoryRate: { current: number | null; baseline: number | null; delta: number | null };
+  spo2:            { current: number | null; baseline: number | null };
+  bodyFat:         { current: number | null; delta30: number | null };
+  leanMass:        { current: number | null; delta30: number | null };
+  maxHr:           { current: number | null };
+  // 2026-06-01 · sleep consistency · bedtime variability over last 7 nights
+  sleepConsistency: { variabilityMin: number | null; avgBedtimeISO: string | null };
   // Watch-list signal
   watchMode: 'steady' | 'watch-amber' | 'watch-red' | 'green';
   watchItems: { label: string; status: 'amber' | 'red'; note: string }[];
@@ -45,6 +60,14 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     wRows,
     cadRow,
     vo2Row,
+    // 2026-06-01 · Quick Win queries · order matches Promise.all below.
+    wristTempRows,
+    respRateRows,
+    spo2Rows,
+    bodyFatRows,
+    leanMassRows,
+    maxHrRow,
+    sleepBedtimeRows,
     vo2SeriesRows,
   ] = await Promise.all([
     pool.query(
@@ -112,6 +135,68 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     ).then((r) => r.rows[0]),
     // Series for the trend chart. 6-month window — HealthKit ships VO2 max
     // sparsely (1-2 readings/wk) so 30 days is too few points for a chart.
+    // 2026-06-01 · Quick Win queries · all in parallel for latency.
+    // Wrist temp · Apple Watch nightly skin temp. 30d series.
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'wrist_temp'
+          AND sample_date >= ($2::date - interval '30 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    // Respiratory rate · nightly average from HK.
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'respiratory_rate'
+          AND sample_date >= ($2::date - interval '30 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    // SpO2 · nightly avg.
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'spo2'
+          AND sample_date >= ($2::date - interval '30 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    // Body fat % · weekly cadence.
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'body_fat_pct'
+          AND sample_date >= ($2::date - interval '90 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    // Lean mass · weekly cadence.
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'lean_mass'
+          AND sample_date >= ($2::date - interval '90 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    // Max HR · TRUE max over the last 30d (informs zone math + HRR).
+    // Picking single-most-recent gave the last activity's max which
+    // could be a 58bpm walk. MAX over a window is the real ceiling.
+    pool.query<{ value: number | string }>(
+      `SELECT MAX(value::numeric) AS value
+         FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'max_hr'
+          AND sample_date >= ($2::date - interval '30 days')`,
+      [userId, today]
+    ).then((r) => r.rows[0]),
+    // Sleep bedtime times · for consistency / variability calc.
+    // sleep_hours sample_date IS the night-of date · use recorded_at
+    // (the timestamp the watch wrote it) as proxy for bedtime.
+    pool.query(
+      `SELECT sample_date::date AS d, recorded_at
+         FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours'
+          AND sample_date >= ($2::date - interval '14 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
     pool.query(
       `SELECT sample_date::date AS d, value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'vo2_max'
@@ -175,6 +260,89 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     v: +Number(r.value).toFixed(1),
   })).filter((d) => d.v > 0);
 
+  // 2026-06-01 · Quick Win signals from health_samples.
+  const mapSeries = <T>(rows: any[], key: string, transform: (v: number) => T): { date: string; [k: string]: any }[] =>
+    rows.map((r: any) => ({
+      date: r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d),
+      [key]: transform(Number(r.value)),
+    })).filter((d: any) => Number.isFinite(d[key]));
+
+  const wristTempSeries = mapSeries(wristTempRows, 'tempC', (v) => +v.toFixed(2));
+  const respiratoryRateSeries = mapSeries(respRateRows, 'bpm', (v) => +v.toFixed(1));
+  const spo2Series = mapSeries(spo2Rows, 'pct', (v) => Math.round(v));
+  const bodyFatSeries = mapSeries(bodyFatRows, 'pct', (v) => +v.toFixed(1));
+  const leanMassSeries = mapSeries(leanMassRows, 'kg', (v) => +v.toFixed(1));
+
+  // Wrist temp · current vs 30d baseline. Apple Watch outputs delta-from-
+  // user-baseline · we store the absolute value. Compute our own delta.
+  const wristTempVals = wristTempSeries.map((d) => d.tempC as number);
+  const wristTempCurrent = wristTempVals.at(-1) ?? null;
+  const wristTempBaseline = wristTempVals.length >= 7
+    ? +(wristTempVals.slice(0, -3).reduce((s, x) => s + x, 0) / Math.max(1, wristTempVals.length - 3)).toFixed(2)
+    : null;
+  const wristTempDeltaC = (wristTempCurrent != null && wristTempBaseline != null)
+    ? +(wristTempCurrent - wristTempBaseline).toFixed(2) : null;
+
+  // Respiratory rate · 7-night avg vs 30d baseline.
+  const rrVals = respiratoryRateSeries.map((d) => d.bpm as number);
+  const rrCurrent = rrVals.length >= 7
+    ? +(rrVals.slice(-7).reduce((s, x) => s + x, 0) / 7).toFixed(1)
+    : (rrVals.at(-1) ?? null);
+  const rrBaseline = rrVals.length >= 14
+    ? +(rrVals.slice(0, -7).reduce((s, x) => s + x, 0) / Math.max(1, rrVals.length - 7)).toFixed(1)
+    : null;
+  const rrDelta = (rrCurrent != null && rrBaseline != null)
+    ? +(rrCurrent - rrBaseline).toFixed(1) : null;
+
+  // SpO2 · most recent + 30d baseline.
+  const spo2Vals = spo2Series.map((d) => d.pct as number);
+  const spo2Current = spo2Vals.at(-1) ?? null;
+  const spo2Baseline = spo2Vals.length
+    ? Math.round(spo2Vals.reduce((s, x) => s + x, 0) / spo2Vals.length)
+    : null;
+
+  // Body fat % · current + 30d delta.
+  const bfVals = bodyFatSeries.map((d) => d.pct as number);
+  const bfCurrent = bfVals.at(-1) ?? null;
+  const bfFirst = bfVals[0] ?? null;
+  const bfDelta30 = (bfCurrent != null && bfFirst != null) ? +(bfCurrent - bfFirst).toFixed(1) : null;
+
+  // Lean mass · current + 30d delta. Stored as kg (HK native).
+  const lmVals = leanMassSeries.map((d) => d.kg as number);
+  const lmCurrent = lmVals.at(-1) ?? null;
+  const lmFirst = lmVals[0] ?? null;
+  const lmDelta30 = (lmCurrent != null && lmFirst != null) ? +(lmCurrent - lmFirst).toFixed(1) : null;
+
+  // Max HR · most recent.
+  const maxHrCurrent = maxHrRow?.value != null ? Math.round(Number(maxHrRow.value)) : null;
+
+  // Sleep consistency · bedtime variability. Use recorded_at as bedtime
+  // proxy (when watch wrote the sleep sample) · compute stddev of the
+  // local-time minute-of-day across the last 7 nights.
+  const bedtimeMinutes: number[] = (sleepBedtimeRows as any[]).map((r) => {
+    if (!r.recorded_at) return null;
+    const ts = r.recorded_at instanceof Date ? r.recorded_at : new Date(r.recorded_at);
+    if (!Number.isFinite(ts.getTime())) return null;
+    // Use UTC hours/minutes · all rows share the same offset adjustment.
+    return ts.getUTCHours() * 60 + ts.getUTCMinutes();
+  }).filter((m: number | null): m is number => m != null).slice(-7);
+  let sleepConsistencyVarMin: number | null = null;
+  let sleepConsistencyAvgBedtimeISO: string | null = null;
+  if (bedtimeMinutes.length >= 4) {
+    const mean = bedtimeMinutes.reduce((s, x) => s + x, 0) / bedtimeMinutes.length;
+    const variance = bedtimeMinutes.reduce((s, x) => s + (x - mean) ** 2, 0) / bedtimeMinutes.length;
+    const sd = Math.round(Math.sqrt(variance));
+    // Sanity check: if ALL recorded_at land on the same minute (the
+    // watch wrote sample_date midnight for every row), bedtime can't
+    // be derived from this field. Surface null rather than fake "±0".
+    const allSameMinute = sd === 0;
+    if (!allSameMinute) {
+      sleepConsistencyVarMin = sd;
+      const meanH = Math.floor(mean / 60), meanM = Math.round(mean % 60);
+      sleepConsistencyAvgBedtimeISO = `${String(meanH).padStart(2, '0')}:${String(meanM).padStart(2, '0')}`;
+    }
+  }
+
   // Watch-list logic
   const rhrElevated     = rhrDelta != null && rhrDelta >= 5;
   const rhrSustainedRed = rhrDelta != null && rhrDelta >= 8;
@@ -204,12 +372,28 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   return {
     today,
     sleepSeries, rhrSeries, hrvSeries, weightSeries, vo2Series,
+    // 2026-06-01 · Quick Win series for tiles.
+    wristTempSeries: wristTempSeries as { date: string; tempC: number }[],
+    respiratoryRateSeries: respiratoryRateSeries as { date: string; bpm: number }[],
+    spo2Series: spo2Series as { date: string; pct: number }[],
+    bodyFatSeries: bodyFatSeries as { date: string; pct: number }[],
+    leanMassSeries: leanMassSeries as { date: string; kg: number }[],
     sleep: { avg7n, avg30n, deficit7 },
     rhr: { current: rhrCurrent, baseline: rhrBaseline, delta: rhrDelta },
     hrv: { current: hrvCurrent, baseline: hrvBaseline, pctAboveBaseline: hrvPct },
     weight: { current: weightCurrent, delta30: weightDelta30 },
     cadence: { baseline: cadenceBaseline },
     vo2: { current: vo2Current },
+    wristTemp:       { current: wristTempCurrent, baseline: wristTempBaseline, deltaC: wristTempDeltaC },
+    respiratoryRate: { current: rrCurrent, baseline: rrBaseline, delta: rrDelta },
+    spo2:            { current: spo2Current, baseline: spo2Baseline },
+    bodyFat:         { current: bfCurrent, delta30: bfDelta30 },
+    leanMass:        { current: lmCurrent, delta30: lmDelta30 },
+    maxHr:           { current: maxHrCurrent },
+    sleepConsistency: {
+      variabilityMin: sleepConsistencyVarMin,
+      avgBedtimeISO: sleepConsistencyAvgBedtimeISO,
+    },
     watchMode,
     watchItems,
   };

@@ -164,7 +164,7 @@ async function loadFormMetrics(uid: string) {
       `SELECT sample_type, sample_date::date AS d, value
          FROM health_samples
         WHERE user_id = $1
-          AND sample_type IN ('cadence','ground_contact_time','vertical_oscillation','stride_length','vertical_ratio')
+          AND sample_type IN ('cadence','ground_contact_time','vertical_oscillation','stride_length','vertical_ratio','run_power')
           AND sample_date >= NOW() - interval '30 days'
         ORDER BY sample_date ASC`,
       [uid]
@@ -954,7 +954,11 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
   return { nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5, phases, weekDays, adaptations };
 }
 
-function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
+function adaptHealth(
+  health: Health | null,
+  form: Form | null,
+  hrvCv?: { pct: number; band: 'stable' | 'watch' | 'destabilizing'; swcMs: number | null } | null,
+): HealthSnapshot {
   const series = (arr: Array<{ date: string } & Record<string, unknown>> | undefined, field: string): number[] => {
     if (!arr || arr.length === 0) return [];
     const xs = arr.map(d => Number((d as Record<string, unknown>)[field])).filter(v => Number.isFinite(v));
@@ -978,6 +982,25 @@ function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
   const vo2Current = health?.vo2.current ?? 0;
   const cadenceCurrent = health?.cadence.baseline ?? 0;
 
+  // 2026-06-01 · Quick Win signals from health-state.
+  const wristTempCurrent = health?.wristTemp.current ?? 0;
+  const wristTempBaseline = health?.wristTemp.baseline ?? undefined;
+  const wristTempDelta = health?.wristTemp.deltaC ?? null;
+  const rrCurrent = health?.respiratoryRate.current ?? 0;
+  const rrBaseline = health?.respiratoryRate.baseline ?? undefined;
+  const rrDelta = health?.respiratoryRate.delta ?? null;
+  const spo2Current = health?.spo2.current ?? 0;
+  const spo2Baseline = health?.spo2.baseline ?? undefined;
+  const bfCurrent = health?.bodyFat.current ?? 0;
+  const lmCurrent = health?.leanMass.current ?? 0;
+  // Convert lean mass kg → lb to match the weight tile unit convention.
+  const lmCurrentLb = lmCurrent ? +(lmCurrent * 2.20462).toFixed(1) : 0;
+  const wristTempSeries = (health?.wristTempSeries ?? []).map((d) => d.tempC).filter((v) => Number.isFinite(v));
+  const respiratoryRateSeries = (health?.respiratoryRateSeries ?? []).map((d) => d.bpm).filter((v) => Number.isFinite(v));
+  const spo2SeriesArr = (health?.spo2Series ?? []).map((d) => d.pct).filter((v) => Number.isFinite(v));
+  const bodyFatSeriesArr = (health?.bodyFatSeries ?? []).map((d) => d.pct).filter((v) => Number.isFinite(v));
+  const leanMassSeriesLb = (health?.leanMassSeries ?? []).map((d) => +(d.kg * 2.20462).toFixed(1)).filter((v) => Number.isFinite(v));
+
   const body: HealthMetric[] = [
     mk('hrv',    'HRV',        'ms',  hrvCurrent,    health?.hrv.baseline ?? undefined,
        [Math.max(20, (hrvCurrent || 60) - 30), (hrvCurrent || 60) + 30],
@@ -997,7 +1020,41 @@ function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
        [Math.max(30, (vo2Current || 50) - 8), (vo2Current || 50) + 6],
        packVo2Series(health?.vo2Series ?? [], vo2Current),
        'good', 1),
+    // 2026-06-01 · Health page Quick Wins · 5 new tiles.
+    // Wrist temp · Apple Watch nightly skin temp. Doctrine: rises before
+    // HRV drops on early illness/overtraining (Research/00b).
+    mk('wrist_temp', 'WRIST TEMP', '°C', wristTempCurrent, wristTempBaseline,
+       [Math.max(34, (wristTempCurrent || 36) - 1), (wristTempCurrent || 36) + 1],
+       wristTempSeries,
+       wristTempDelta != null && wristTempDelta >= 0.4 ? 'warn'
+         : wristTempDelta != null && wristTempDelta <= -0.4 ? 'warn'
+         : 'good', 2),
+    // Respiratory rate · 24-48h early-illness signal per Research/15.
+    mk('resp_rate', 'RESP RATE', '/min', rrCurrent, rrBaseline,
+       [Math.max(10, (rrCurrent || 16) - 4), (rrCurrent || 16) + 4],
+       respiratoryRateSeries,
+       rrDelta != null && rrDelta >= 2 ? 'warn' : 'good', 1),
+    // SpO2 · quiet at sea-level, flags at altitude / when sick.
+    mk('spo2', 'SPO₂', '%', spo2Current, spo2Baseline,
+       [90, 100], spo2SeriesArr,
+       spo2Current >= 96 ? 'good' : spo2Current >= 93 ? 'warn' : 'warn'),
+    // Body fat % · trend signal for body composition.
+    mk('body_fat', 'BODY FAT', '%', bfCurrent, undefined,
+       [Math.max(5, (bfCurrent || 15) - 5), (bfCurrent || 15) + 5],
+       bodyFatSeriesArr, 'good', 1),
+    // Lean mass · maintaining lean mass through build = strength outcome.
+    mk('lean_mass', 'LEAN MASS', 'lb', lmCurrentLb, undefined,
+       [Math.max(100, (lmCurrentLb || 150) - 10), (lmCurrentLb || 150) + 10],
+       leanMassSeriesLb, 'good', 1),
   ];
+  // 2026-06-01 · HRV CV (Plews coefficient of variation %). Surfaced
+  // when readinessBrief carries it · early-overreach signal that fires
+  // 24-72h before HRV ms itself drops per Research/15. Append as a body
+  // tile so the Health page can render alongside HRV/RHR.
+  if (hrvCv?.pct != null) {
+    const cvStatus: 'good' | 'warn' = hrvCv.band === 'destabilizing' ? 'warn' : 'good';
+    body.push(mk('hrv_cv', 'HRV CV', '%', hrvCv.pct, undefined, [0, 10], [], cvStatus, 1));
+  }
   // Real form metrics from health_samples (HealthKit ingest).
   const formRaw = (form?.ok ? form.value : null) ?? {};
   const formSeries = (k: string): { last: number; series: number[] } => {
@@ -1010,6 +1067,8 @@ function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
   const gctForm     = formSeries('ground_contact_time');
   const voscForm    = formSeries('vertical_oscillation');
   const strideForm  = formSeries('stride_length');
+  const vratioForm  = formSeries('vertical_ratio');
+  const powerForm   = formSeries('run_power');
   const cadCurrent  = cadenceForm.last || cadenceCurrent;
   const form_: HealthMetric[] = [
     mk('cadence', 'CADENCE',        'spm', cadCurrent, 170,
@@ -1027,6 +1086,20 @@ function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
     mk('stride',  'STRIDE LENGTH',  'm',   strideForm.last, undefined,
        [Math.max(0.8, (strideForm.last || 1.1) - 0.3), (strideForm.last || 1.1) + 0.3],
        strideForm.series, 'neutral', 2),
+    // 2026-06-01 · Vertical ratio · vertical-osc / stride-length × 100.
+    // Research/16 §form: lower ratio = better economy. 6-7% elite, 8-9%
+    // typical recreational. Apple Watch surfaces it directly.
+    mk('vratio', 'VERT RATIO', '%', vratioForm.last, undefined,
+       [Math.max(4, (vratioForm.last || 8) - 2), (vratioForm.last || 8) + 2],
+       vratioForm.series,
+       vratioForm.last > 0 && vratioForm.last < 8 ? 'good' : 'neutral', 1),
+    // 2026-06-01 · Run power · Stryd / Apple Watch native running power.
+    // Research/16 §form: power at threshold pace = running economy
+    // proxy. Typical recreational 200-280W, advanced 280-340W.
+    mk('power', 'RUN POWER', 'W', Math.round(powerForm.last), undefined,
+       [Math.max(150, (powerForm.last || 280) - 50), (powerForm.last || 280) + 50],
+       powerForm.series.map(v => Math.round(v)),
+       powerForm.last > 0 ? 'good' : 'neutral'),
     // 2026-05-30: L/R Balance removed. Apple Health doesn't expose a
     // left/right balance signal — the card had a zero-data source and
     // displayed only as "balanced" with no real underlying value. Bring
@@ -1752,7 +1825,25 @@ export async function buildSeed(): Promise<FaffSeed> {
         } catch { return [] as Array<{ date: string; projectionSec: number | null; vdot: number | null }>; }
       })()
     : [];
-  const healthSnapshot = adaptHealth(health, formMetrics);
+  // 2026-05-31 · daily readiness brief envelope. Composed from CoachState
+  // + 60-day health history + readiness_snapshots trend. Returns null when
+  // the runner has no recoverable signal (brand-new user). See
+  // designs/briefs/readiness-brief-backend-landed.md for the contract.
+  // 2026-06-01 · moved above adaptHealth so hrvCv can be threaded in to
+  // surface a Plews CV tile on the Health page.
+  const readinessBrief = await (async () => {
+    try {
+      const [{ loadCoachState }, { loadReadinessBrief }] = await Promise.all([
+        import('@/lib/coach/state-loader'),
+        import('@/lib/coach/readiness-brief'),
+      ]);
+      const state = await loadCoachState(userId);
+      if (!state) return null;
+      return await loadReadinessBrief(userId, state);
+    } catch { return null; }
+  })();
+
+  const healthSnapshot = adaptHealth(health, formMetrics, readinessBrief?.hrvCv);
   // Stamp the real readiness on top · honestReadiness overrides the
   // stale HRV-baseline-as-readiness-baseline below in the main return.
   healthSnapshot.readiness = readiness;
@@ -1772,22 +1863,6 @@ export async function buildSeed(): Promise<FaffSeed> {
       const { loadPendingProposals } = await import('@/lib/coach/proposals-state');
       return await loadPendingProposals(userId);
     } catch { return []; }
-  })();
-
-  // 2026-05-31 · daily readiness brief envelope. Composed from CoachState
-  // + 60-day health history + readiness_snapshots trend. Returns null when
-  // the runner has no recoverable signal (brand-new user). See
-  // designs/briefs/readiness-brief-backend-landed.md for the contract.
-  const readinessBrief = await (async () => {
-    try {
-      const [{ loadCoachState }, { loadReadinessBrief }] = await Promise.all([
-        import('@/lib/coach/state-loader'),
-        import('@/lib/coach/readiness-brief'),
-      ]);
-      const state = await loadCoachState(userId);
-      if (!state) return null;
-      return await loadReadinessBrief(userId, state);
-    } catch { return null; }
   })();
 
   // 2026-06-01 · autonomous plan-adaptation surface. Pending drift
