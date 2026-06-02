@@ -22,6 +22,7 @@ import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { derivePurpose, type Phase, type WorkoutType } from '@/lib/coach/run-purpose';
 import { composeCue } from '@/lib/coach/session-cue';
+import { workoutTypeTitle } from '@/lib/coach/workout-title';
 
 export const dynamic = 'force-dynamic';
 
@@ -237,6 +238,7 @@ export async function GET(req: NextRequest) {
         ok: true,
         date,
         type: 'unplanned',
+        typeTitle: workoutTypeTitle('unplanned'),
         phase: null,
         plannedMi: 0,
         raceDistanceMi,
@@ -275,6 +277,10 @@ export async function GET(req: NextRequest) {
       ok: true,
       date,
       type,
+      // 2026-06-02 · one-word hero title for the Today card.
+      // Single source across web + iPhone + watch. See
+      // lib/coach/workout-title.ts for the locked vocabulary.
+      typeTitle: workoutTypeTitle(type),
       phase: phaseUpper,
       phaseLower,
       plannedMi,
@@ -293,6 +299,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       date,
       type: 'unplanned',
+      typeTitle: workoutTypeTitle('unplanned'),
       phase: null,
       phaseLower: null,
       plannedMi: 0,
