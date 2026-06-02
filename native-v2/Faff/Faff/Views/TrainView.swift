@@ -1001,23 +1001,40 @@ private struct TrainWeekRow: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                // 2026-06-02 round 47 · right-column alignment fix. The
+                // mi text needs a FIXED-WIDTH frame so done rows (with
+                // check) and undone rows (no check) line up at the same
+                // right edge · before, the optional check pushed "mi"
+                // left by ~14pt on done rows.
                 Text(metaLabel())
                     .font(.display(12.5, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.82))
-                if isDone {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x7BE8A0))
-                } else if isToday {
-                    Text("TODAY")
-                        .font(.body(8.5, weight: .extraBold)).tracking(1)
-                        .foregroundStyle(Color(hex: 0xFFCE8A))
+                    .frame(width: 44, alignment: .trailing)
+                // Status indicator gets its own fixed-width slot · same
+                // 18pt whether check / TODAY badge / empty. Now every
+                // row's mi text sits in the same column.
+                ZStack(alignment: .trailing) {
+                    Color.clear.frame(width: 18, height: 1)
+                    if isDone {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color(hex: 0x7BE8A0))
+                    } else if isToday {
+                        Text("TODAY")
+                            .font(.body(8.5, weight: .extraBold)).tracking(1)
+                            .foregroundStyle(Color(hex: 0xFFCE8A))
+                            .fixedSize()
+                    }
                 }
             }
             .padding(.vertical, 9)
+            // 2026-06-02 round 47 · dropped the `-8` horizontal padding
+            // that made today's row physically wider than the others ·
+            // text left-edge shifted, columns disagreed. Now the today
+            // highlight uses the SAME width as every other row, just
+            // with a translucent fill behind the content.
             .background(isToday ? Color.white.opacity(0.08) : Color.clear,
                         in: RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, isToday ? -8 : 0)
         }
     }
 
