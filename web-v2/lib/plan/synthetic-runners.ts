@@ -23,6 +23,19 @@ export interface PersonaProfile {
   weeklyBaseMi: number;
   vdotAtStart: number;
   ageYears: number;
+  /** 2026-06-03 · mid-block carriers. When set, the bench asserts the
+   *  generator respects these as floors / habits instead of cold-start
+   *  defaults. Optional · cold-start personas leave undefined. */
+  midBlock?: {
+    /** Runner's recent peak long over last 28 days (mi). */
+    recentLongMi: number;
+    /** Median quality sessions per week over last 28 days. */
+    recentQualityPerWeek: number;
+    /** Runner's typical quality-day distance (mi). */
+    recentQualityDistanceMi: number;
+    /** Best recent VDOT (from races or quality runs in last 60 days). */
+    bestRecentVdot: number;
+  };
 }
 
 export interface PersonaRace {
@@ -114,6 +127,55 @@ export const PERSONAS: SyntheticRunner[] = [
       // (35 mpw) is below the typical tier-base (45+), so the
       // generator ramps from 35 toward the LOWER band (55) over 12
       // weeks. ±10% tolerance in the bench.
+      peakWeeklyMileageBand: [50, 70],
+      qualityPerWeek: 2,
+      longRunShare: 0.25,
+      taperDepth: 'medium',
+    },
+    healthPattern: 'baseline',
+  },
+
+  // 2a. David MID-BLOCK · same goal as #2 but 10 weeks out with an
+  // established training base. Models the failure class David surfaced
+  // 2026-06-03 (Sun=9 long-run bug + 2 earlier mid-block bugs · "1:30"
+  // parse + detectMidBlock active-only check). Used to exercise the
+  // 6 gap rules from the mid-block doctrine pass:
+  //   · long floor (recentLongMi)              · SHIPPED 2026-06-03
+  //   · quality distance floor                  · GAP
+  //   · pace anchor blend (recent VDOT → goal)  · GAP
+  //   · monotonic volume floor                  · GAP
+  //   · quality density ramp from current habit · GAP
+  //   · phase compression < 10wk runway         · GAP
+  //   · cutback frequency from TSB load         · GAP
+  {
+    name: 'david-mid-block',
+    profile: {
+      experienceLevel: 'advanced',
+      weeklyBaseMi: 35,
+      vdotAtStart: 48,
+      ageYears: 35,
+      midBlock: {
+        recentLongMi: 12,            // David's 5/31 was 12.36mi
+        recentQualityPerWeek: 2,     // 1-2 quality/wk recent
+        recentQualityDistanceMi: 8,  // typical tempo distance
+        bestRecentVdot: 48,          // matches vdotAtStart for mid-block
+      },
+    },
+    initialCalibration: {
+      vdotPerQuality: 0.10,
+      longRunWeight: 0.30,
+      recoveryMult: 1.0,
+      plateauVdot: 65,
+    },
+    race: {
+      slug: 'persona-david-mid-block',
+      distanceMi: 13.1,
+      goalSec: 5400,  // 1:30:00 HM (same as #2)
+      weeksOut: 10,   // 10 weeks · NO BASE allowed, compressed quality
+    },
+    expectedPlan: {
+      // Same tier as #2 (HM Advanced). Peak band: 55-85. Runner's base
+      // is 35 so ramp aims at lower band 55 over 10 weeks.
       peakWeeklyMileageBand: [50, 70],
       qualityPerWeek: 2,
       longRunShare: 0.25,

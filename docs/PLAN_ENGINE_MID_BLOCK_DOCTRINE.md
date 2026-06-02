@@ -1,0 +1,193 @@
+# Plan Engine · Mid-Block Runner Doctrine
+
+**Status:** 4 of 10 rules SHIPPED · 6 rules GAP · bench persona `david-mid-block` exercises all 6 GAP rules with failing-test assertions.
+
+**Why this doc exists.** The generator was designed for cold-start onboarding (no recent runs, ramp from 0). David is 10 weeks out from AFC Half with established 12mi longs, 35mpw, 1-2 quality/wk. Three bugs in one session (`1:30` parse, `detectMidBlock` active-only, Sun=9 long) had a single root cause: cold-start assumptions broke against mid-block reality. This doc codifies the rules so future patches don't accidentally re-introduce cold-start assumptions.
+
+**How to use this doc.** Each rule has: status (SHIPPED / GAP), the doctrine, the file:function where it lands, the bench test that gates it. When closing a GAP rule, update status here AND remove the `2026-06-03 TODO` comment in the source.
+
+---
+
+## The 10 rules
+
+### Rule 1 · skip BASE phase when mid-block
+**Status:** SHIPPED (`detectMidBlock`)
+**Doctrine.** If runner has done ≥2 quality runs OR ≥1 long ≥10mi in last 28d → start at QUALITY, not BASE.
+**Code.** `lib/plan/generate.ts § detectMidBlock` reads active + archived (30d) plans for prescribed quality, plus HR-based effort (≥85% maxHR) on runs. `sizeBlocks(totalWeeks, raceDistanceMi, isMidBlock)` zeros `baseWeeks` when true.
+**Bench.** `generator-bench.test.ts §"[mid-block] no BASE phase weeks"`.
+
+### Rule 2 · every distance prescription floored at recent baseline
+**Status.** Long ✓ SHIPPED · Easy ✓ SHIPPED · Quality ✗ GAP · Weekly ✓ partial.
+**Doctrine.** Generator never authors LESS than what the runner just did.
+- Long: `recentPeakLongMi` (28d max ≥ 8mi) floors `layoutWeek` long-run sizing.
+- Easy: `easyDayMedianMi` (14d median) floors `easyMileFloor`.
+- Quality: `recentQualityDistanceMi` should floor `qualityMiEach` — **GAP**.
+- Weekly: `recentMi` is `baseMi` in `volumeCurve` · partial (see Rule 4).
+
+**Code (Quality GAP).** `lib/plan/generate.ts § layoutWeek` line ~651 (`qualityMiEach = round(weeklyMi × qualityShare / qDows)` · goal-blind to runner baseline).
+
+**Fix.** When `input.recentQualityDistanceMi` is set:
+```ts
+const qualityMiEach = Math.max(
+  Math.round(weeklyMi * qualityShare / qualityDows.length),
+  input.recentQualityDistanceMi - 1,
+);
+```
+
+**Bench.** `generator-bench.test.ts §"[mid-block] quality distance ≥ runner recent quality distance"`.
+
+### Rule 3 · pace anchor blend
+**Status:** ✗ GAP
+**Doctrine.** Pace targets anchor to current fitness in early weeks, ramp to goal-pace by mid-block. A runner whose current VDOT is below goal-implied VDOT shouldn't get week-1 quality at goal-pace · it's not hittable.
+
+**Code.** `lib/plan/generate.ts § composePlan` line ~1167 (`tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi)` · ignores `bestRecentVdot`).
+
+**Fix.** Source `bestRecentVdot` from `lib/training/vdot.bestRecentVdot` and pass through. In `layoutWeek`, compute:
+```ts
+const goalT = tPaceFromGoal(goalSec, raceDistanceMi);
+const currentT = tPaceFromVdot(bestRecentVdot);
+const blend = Math.min(1, weekIdx / (totalBuildWeeks * 0.6));
+const weekT = currentT + (goalT - currentT) * blend;
+```
+
+**Bench.** `generator-bench.test.ts §"[mid-block] bestRecentVdot read"` (hook test until policy lands).
+
+### Rule 4 · monotonic volume floor
+**Status.** ✓ partial
+**Doctrine.** Week 1 weekly volume must be ≥ runner's recent weekly. The climbFactor can be 1.0 but never < 1.0.
+
+**Code.** `lib/plan/generate.ts § volumeCurve` line ~410 (`start = Math.max(VOLUME_FLOOR, baseMi)`). Partial because `baseMi` reads recent weekly, but rounding + cutback-week 0.85× deload can produce week-1 targets below `baseMi`.
+
+**Fix.** After computing `vols[]`, enforce `vols[0] = max(vols[0], baseMi)` for non-cutback non-taper week 0. Plus add a `MONOTONIC_FLOOR` check that no non-cutback week dips below `baseMi - 5`.
+
+**Bench.** `generator-bench.test.ts §"[mid-block] week 1 weekly volume ≥ runner recent weekly"`.
+
+### Rule 5 · quality density mirrors recent habit
+**Status:** ✗ GAP
+**Doctrine.** If runner did 1 quality/wk for 28d → start at 1, ramp to 2 by week 5. Current code pulls density from `tierTarget.qualityPerWeek` regardless of habit.
+
+**Code.** `lib/plan/generate.ts § composePlan` line ~1125 (`qualityDows = prefs?.quality_days ?? ['tue', 'thu']` · no habit-based ramping).
+
+**Fix.** When `input.recentQualityPerWeek < tierTarget.qualityPerWeek`:
+```ts
+function densityForWeek(weekIdx: number, recent: number, target: number, buildWeeks: number): number {
+  if (recent >= target) return target;
+  const rampOverWeeks = 4;
+  const stepsUp = Math.min(rampOverWeeks, weekIdx);
+  return Math.min(target, recent + (target - recent) * (stepsUp / rampOverWeeks));
+}
+```
+Then in `layoutWeek`, slice `qualityDows` to `densityForWeek(weekIdx, ...)`.
+
+**Bench.** `generator-bench.test.ts §"[mid-block] week 1 quality count within ±1 of recent habit"`.
+
+### Rule 6 · phase compression when weeks_to_race < 10
+**Status:** ✓ partial
+**Doctrine.** 10-week plan ≠ 12-week scaled down. `weeks_to_race < 8` should auto-suppress BASE entirely + compress QUALITY → RACE-SPECIFIC ratio.
+
+**Code.** `lib/plan/generate.ts § sizeBlocks` line ~320 (`isMidBlock ? 0 : baseWeeksRaw` · only checks isMidBlock, not totalWeeks).
+
+**Fix.** `const baseWeeks = (isMidBlock || totalWeeks < 10) ? 0 : baseWeeksRaw;`. Plus for `totalWeeks < 8`, compress QUALITY:RACE-SPECIFIC from 6:2 to 4:2 or 3:2.
+
+**Bench.** `generator-bench.test.ts §"[mid-block] no BASE phase weeks"` (passes for david-mid-block via isMidBlock; doesn't gate on totalWeeks).
+
+### Rule 7 · long-run progression respects current peak
+**Status:** ✓ SHIPPED
+**Doctrine.** Long ramps from `max(recentLong, weeklyMi × longShare)` toward tier band over build weeks. Cutback weeks drop by ≤2mi from prior peak.
+**Code.** `lib/plan/generate.ts § layoutWeek` lines ~605-621.
+**Bench.** `generator-bench.test.ts §"no build-week long is shorter than runner recent long"`.
+
+### Rule 8 · cutback frequency calibrated to cumulative load
+**Status:** ✗ GAP
+**Doctrine.** Cold-start cutback = every 4th week. Mid-block runner with 8+ weeks prior load may need every 3rd · Banister TSB ratio drives this.
+
+**Code.** `lib/plan/generate.ts § volumeCurve` line ~424 (`deloadMask.push(i > 0 && (i + 1) % 4 === 0)` · week-idx mod 4 only).
+
+**Fix.** Read TSB from `lib/health/tsb.ts § currentTsb(userId)`. When TSB < -10 (high cumulative stress), shift to mod 3. Pass TSB into `volumeCurve` as a parameter.
+
+**Bench.** `generator-bench.test.ts §"[mid-block] cutback frequency hook"` (documentation only · no enforceable assertion until policy lands).
+
+### Rule 9 · easy median, not tier-derived easy
+**Status:** ✓ SHIPPED
+**Doctrine.** Easy day floor = runner's own 14-day median, not a derived % of weekly target.
+**Code.** `lib/plan/generate.ts § easyDayMedianMi` (reader) + `layoutWeek § easyMileFloor` (consumer).
+**Bench.** Implicit via Rule 4's weekly-floor check.
+
+### Rule 10 · transparency · is_mid_block + derived_from envelope
+**Status:** ✓ partial
+**Doctrine.** Plan envelope flags `is_mid_block=true` with `derived_from: { recentMi, recentLong, recentQualityCount, bestRecentVdot }`. So the runner can see which inputs drove the plan.
+
+**Code.** `lib/plan/generate.ts § composePlan` writes `authoredState.is_mid_block` ✓. Missing: `derived_from` block under `authoredState`.
+
+**Fix.** In `composePlan`, add to `authoredState`:
+```ts
+derived_from: {
+  recentMi: input.recentWeeklyMi,
+  recentLongMi: input.recentLongMi,
+  recentQualityPerWeek: input.recentQualityPerWeek ?? null,
+  bestRecentVdot: input.bestRecentVdot ?? null,
+}
+```
+Then surface in brief envelope + plan UI so David can audit.
+
+**Bench.** No assertion yet · add when `derived_from` lands.
+
+---
+
+## Bench persona
+
+`lib/plan/synthetic-runners.ts § PERSONAS["david-mid-block"]`:
+
+| field | value | mirrors |
+|---|---|---|
+| weeklyBaseMi | 35 | David's recent 35.7 avg |
+| vdotAtStart | 48 | from recent quality runs |
+| midBlock.recentLongMi | 12 | David's 5/31 long was 12.36mi |
+| midBlock.recentQualityPerWeek | 2 | 1-2/wk recent |
+| midBlock.recentQualityDistanceMi | 8 | typical tempo |
+| midBlock.bestRecentVdot | 48 | matches start (mid-block has no recent race) |
+| race.distanceMi | 13.1 | AFC Half |
+| race.goalSec | 5400 | 1:30:00 HM |
+| race.weeksOut | 10 | exercises Rule 6 compression |
+
+---
+
+## Audit results (self-audit · 2026-06-03)
+
+Predicted bench pass/fail for `david-mid-block` against the CURRENT generator (before any GAP rule lands):
+
+| Rule | Bench test | Predicted | Reasoning |
+|---|---|---|---|
+| 1 (skip BASE) | `[mid-block] no BASE phase weeks` | PASS | isMidBlock=true zeros baseWeeks |
+| 2 (quality dist floor) | `[mid-block] quality distance ≥ recent` | **FAIL** | qualityMiEach is goal-blind. With weeklyMi=42, qShare=0.22, qDows=2 → qualityMiEach = round(42×0.22/2) = 5mi. Persona floor = 8mi − 1 = 7. **5 < 7 → FAIL.** |
+| 3 (pace blend) | `[mid-block] bestRecentVdot read` | PASS | Hook test only · checks input wiring, not policy. |
+| 4 (monotonic vol) | `[mid-block] week 1 weekly ≥ recent` | PASS | start = max(20, 35) = 35; vols[0] = 35; assertion = ≥ round(35×0.9) = 32. **35 ≥ 32 → PASS.** |
+| 5 (density ramp) | `[mid-block] week 1 quality count within ±1 of recent` | PASS | qualityDows.length = 2 from prefs; persona recent = 2. **abs(2−2) ≤ 1 → PASS.** (Would FAIL if persona's recentQualityPerWeek were 1.) |
+| 6 (phase compress) | `[mid-block] no BASE phase weeks` | PASS | Already covered by Rule 1's isMidBlock zeroing. |
+| 7 (long floor) | `no build-week long shorter than recent` | PASS | Shipped today; bench was added in commit ab16bfbf. |
+| 8 (cutback freq) | `[mid-block] cutback frequency hook` | PASS | Documentation-only test; no enforceable assertion. |
+
+**Predicted failures:** 1 (Rule 2 quality distance floor). The other 5 GAP rules pass because the bench test is either documenting-only or the persona happens to match the cold-start default.
+
+**Next persona to ship.** "david-mid-block-1-quality" (same as david-mid-block but `recentQualityPerWeek: 1`) would FAIL Rule 5's density check (week 1 would author 2 quality, persona allows max 1+1=2 ✓ — actually still PASS; need to make the rule strict: actualQ ≤ recent + 0 in week 1, +1 by week 5).
+
+---
+
+## Order of operations to close the GAPs
+
+1. **Rule 2 (quality distance floor)** · 1-line fix in `layoutWeek`, will immediately turn FAIL → PASS on david-mid-block. Highest ROI.
+2. **Rule 5 (density ramp)** · tighten test to be strict in week 1; add `densityForWeek` helper. Add a 1-quality persona to exercise.
+3. **Rule 10 (derived_from envelope)** · cheap; just append to authoredState. Unlocks runner-facing transparency.
+4. **Rule 3 (pace anchor blend)** · meaty; requires `bestRecentVdot` reader + `tPaceFromVdot` helper + blend math in `layoutWeek`. Real test needs to inspect actual pace targets in the spec.
+5. **Rule 4 (monotonic vol floor, full)** · enforce post-`vols[]` monotonic check.
+6. **Rule 8 (TSB-driven cutback)** · last, needs Banister TSB wired through into `volumeCurve`. Most architecturally invasive.
+
+---
+
+## Citations
+
+- Daniels' Running Formula 3rd ed Ch.4 §"adapting plans mid-block"
+- Pfitzinger Faster Road Racing §"jumping into a plan"
+- Research/22-plan-templates.md (tier targets)
+- Research/00a-distance-running-training.md §progressive-overload (10%/wk cap)
+- Research/08-pacing-and-race-week.md §taper

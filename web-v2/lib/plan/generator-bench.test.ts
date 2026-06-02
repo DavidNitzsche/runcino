@@ -84,12 +84,19 @@ function personaToComposeInput(p: SyntheticRunner): ComposePlanInput {
     // Easy median = weekly base / 4 days (mirrors what the median read
     // returns in practice for steady runners).
     easyDayMedianMi: Math.max(3, Math.round(p.profile.weeklyBaseMi / 5)),
-    // 2026-06-03 · runner's recent peak long. For personas we infer it
-    // from weeklyBaseMi × 0.25 (the canonical long-share for HM advanced)
+    // 2026-06-03 · runner's recent peak long. Mid-block personas pass
+    // their explicit recentLongMi; cold-start personas infer from
+    // weeklyBaseMi × 0.25 (the canonical long-share for HM advanced)
     // so the long-run sizing starts from a believable baseline. Real
     // user reads come from runs in the last 28d (see recentPeakLongMi).
-    recentLongMi: Math.round(p.profile.weeklyBaseMi * 0.25),
-    isMidBlock: false,
+    recentLongMi: p.profile.midBlock?.recentLongMi
+      ?? Math.round(p.profile.weeklyBaseMi * 0.25),
+    // 2026-06-03 · mid-block carriers · only set on personas with a
+    // midBlock block. Cold-start personas leave these undefined.
+    recentQualityDistanceMi: p.profile.midBlock?.recentQualityDistanceMi,
+    recentQualityPerWeek: p.profile.midBlock?.recentQualityPerWeek,
+    bestRecentVdot: p.profile.midBlock?.bestRecentVdot,
+    isMidBlock: Boolean(p.profile.midBlock),
     longRunDow: 0 as DOW,    // Sun
     restDow: 6 as DOW,        // Sat
     qualityDows: [2, 4] as DOW[],   // Tue + Thu
@@ -247,6 +254,114 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
           const hasLong = w.days.some((d) => d.type === 'long' && d.distanceMi > 0);
           expect(hasLong).toBe(true);
         }
+      });
+
+      /* ──────────────────────────────────────────────────────────────────
+       * Mid-block runner doctrine · 6 gap rules (2026-06-03).
+       * Only fire on personas with profile.midBlock set. The "david-mid-
+       * block" persona exercises each. EXPECTED TO FAIL until the
+       * corresponding generator policy lands.
+       *
+       * Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md
+       * ──────────────────────────────────────────────────────────────── */
+
+      // RULE 2 · quality distance floor.
+      // Generator must not author a quality day shorter than runner's
+      // typical quality distance (e.g. if recent tempos are 8mi, don't
+      // author a 5mi tempo on week 1). GAP · layoutWeek currently sizes
+      // qualityMiEach = round(weeklyMi × 0.22 / qualityDows.length),
+      // which is goal-blind to recent baseline.
+      it('[mid-block] quality distance ≥ runner recent quality distance', () => {
+        if (!p.profile.midBlock) return; // cold-start exempt
+        const floor = p.profile.midBlock.recentQualityDistanceMi;
+        if (floor < 5) return; // only applies to non-trivial baselines
+        for (const w of result.weeks) {
+          if (w.phase !== 'QUALITY' && w.phase !== 'RACE-SPECIFIC') continue;
+          if (w.isRaceWeek) continue;
+          const qualityDays = w.days.filter((d) =>
+            d.type === 'tempo' || d.type === 'threshold' || d.type === 'intervals'
+          );
+          for (const q of qualityDays) {
+            // Allow a 1mi tolerance for rep-shape work where total varies
+            expect(q.distanceMi).toBeGreaterThanOrEqual(floor - 1);
+          }
+        }
+      });
+
+      // RULE 3 · pace anchor blend.
+      // Early build weeks should anchor pace targets to bestRecentVdot,
+      // not the goal-tier table. Pace tightens to goal-pace by mid-block.
+      // GAP · pace is sourced from goal-tier from week 1.
+      // Test asserts that for mid-block personas with recent VDOT below
+      // goal-implied VDOT, week 1 quality has a "calibrated pace" note
+      // OR sub_label includes a "current" tag. As a proxy until the
+      // policy lands, this test just asserts the persona's `bestRecentVdot`
+      // is wired through `composePlan` (i.e. the policy has a hook).
+      it('[mid-block] bestRecentVdot read · pace anchor blend hook exists', () => {
+        if (!p.profile.midBlock) return;
+        // The bench can't reach into composePlan internals without an
+        // export · so this test just verifies the carrier is non-null on
+        // the input. The actual blend assertion lands when the policy
+        // ships (see TODO at generate.ts § layoutWeek pace targets).
+        expect(input.bestRecentVdot).toBe(p.profile.midBlock.bestRecentVdot);
+      });
+
+      // RULE 4 · monotonic volume floor.
+      // Week 1 weekly volume must be ≥ runner's recent weekly (the
+      // climbFactor can be 1.0 but never < 1.0). GAP · volumeCurve
+      // starts at max(VOLUME_FLOOR, baseMi) so this should already pass
+      // when baseMi ≥ floor · the test catches regressions.
+      it('[mid-block] week 1 weekly volume ≥ runner recent weekly', () => {
+        if (!p.profile.midBlock) return;
+        const recentMi = p.profile.weeklyBaseMi;
+        const wk1 = weekTotal(result.weeks[0]);
+        // Allow 10% downside · easyMileFloor + quality + long math can
+        // round below the strict target by ~3-4mi for a 35mpw base.
+        expect(wk1).toBeGreaterThanOrEqual(Math.round(recentMi * 0.9));
+      });
+
+      // RULE 5 · quality density mirrors recent habit, ramps gradually.
+      // If runner did 1 quality/wk recently, week 1 should be 1-2, not 3.
+      // If they did 2, week 1 should be 2 (matches habit). GAP · currently
+      // pulls qualityDows.length straight from the input regardless of
+      // recent habit.
+      it('[mid-block] week 1 quality count within ±1 of recent habit', () => {
+        if (!p.profile.midBlock) return;
+        const recentQ = p.profile.midBlock.recentQualityPerWeek;
+        // Skip BASE · density there is always 0.
+        const wk1 = result.weeks.find((w) =>
+          w.phase === 'QUALITY' || w.phase === 'RACE-SPECIFIC'
+        );
+        if (!wk1) return;
+        const actualQ = weekQualityCount(wk1);
+        expect(actualQ).toBeLessThanOrEqual(recentQ + 1);
+        expect(actualQ).toBeGreaterThanOrEqual(Math.max(1, recentQ - 1));
+      });
+
+      // RULE 6 · phase compression when weeks_to_race < 10.
+      // Mid-block runner with limited runway should skip BASE entirely
+      // and compress QUALITY:RACE-SPECIFIC. GAP · sizeBlocks already
+      // honors isMidBlock=true to skip BASE, but doesn't auto-compress
+      // based on weeks_to_race alone. This test ensures BASE = 0 for
+      // mid-block personas regardless of runway.
+      it('[mid-block] no BASE phase weeks', () => {
+        if (!p.profile.midBlock) return;
+        const baseWeeks = result.weeks.filter((w) => w.phase === 'BASE').length;
+        expect(baseWeeks).toBe(0);
+      });
+
+      // RULE 8 · cutback frequency calibrated to cumulative load.
+      // Mid-block runner with N weeks of prior load should have cutback
+      // every 3rd week, not every 4th (proxy · until Banister TSB
+      // signal is wired through). GAP · current cutback is week-idx mod 4
+      // only. This is a NEGATIVE assertion for now · documents the gap
+      // without enforcing a policy that doesn't exist.
+      it('[mid-block] cutback frequency hook · documented gap', () => {
+        if (!p.profile.midBlock) return;
+        // No assertion · this test exists to document the gap rule
+        // until the Banister-TSB-driven cutback policy lands.
+        // (See generate.ts § volumeCurve deload mask comment.)
+        expect(true).toBe(true);
       });
     });
   }

@@ -316,6 +316,13 @@ function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBlock: bool
   // threshold/intervals in the last 28 days, an auto-rebuild that drops
   // them back into a fresh BASE phase is a regression. Skip BASE entirely
   // (baseWeeks = 0) · the freed weeks fold into expandedQuality below.
+  // 2026-06-03 TODO · mid-block doctrine RULE 6 (phase compression).
+  // sizeBlocks already honors isMidBlock=true to zero BASE. Pending:
+  // also auto-compress when totalWeeks < 10 regardless of isMidBlock
+  // (a 9-week plan should never have BASE). Wire `totalWeeks < 10`
+  // as a second clause: `const baseWeeks = (isMidBlock || totalWeeks < 10)
+  //   ? 0 : baseWeeksRaw;`. Bench: generator-bench.test.ts
+  // §"[mid-block] no BASE phase weeks".
   const baseWeeksRaw     = Math.min(8, Math.max(0, totalWeeks - taperWeeks - raceSpecificWks - qualityWeeks));
   const baseWeeks        = isMidBlock ? 0 : baseWeeksRaw;
   // If base was capped, redistribute the extras into quality so we don't end
@@ -404,6 +411,14 @@ function volumeCurve(
 ): number[] {
   const vols: number[] = [];
   const floor = level ? VOLUME_FLOOR_MPW[level] : VOLUME_FLOOR_MPW.intermediate;
+  // 2026-06-03 TODO · mid-block doctrine RULE 4 (monotonic volume floor).
+  // `start` is already max(VOLUME_FLOOR, baseMi) which is correct · but
+  // when isMidBlock=true, the climbFactor can still produce week-1
+  // targets BELOW baseMi after rounding + cutback-week deload of 0.85×.
+  // A mid-block runner's week 1 weekly volume must be ≥ recentWeeklyMi
+  // (modulo cutback). Enforce a monotonic floor on the volumeCurve output
+  // for non-cutback non-taper weeks. Bench: generator-bench.test.ts
+  // §"[mid-block] week 1 weekly volume ≥ runner recent weekly".
   const start = Math.max(floor, baseMi);
   // Peak target · LOWER band of the tier so it's achievable from a
   // realistic base. If the runner already exceeds the lower band,
@@ -418,6 +433,13 @@ function volumeCurve(
   // along the build span so the ramp targets the right week.
   const buildPhases = blocks.phases.filter((p) => p.label !== 'TAPER');
   const buildWeeks = buildPhases.reduce((s, p) => s + p.weeks, 0);
+  // 2026-06-03 TODO · mid-block doctrine RULE 8 (cutback frequency).
+  // Currently deload every 4th week regardless of cumulative training load.
+  // A mid-block runner with 8+ weeks of prior load has more cumulative
+  // stress than a cold-start runner; doctrine suggests every 3rd week
+  // for advanced cohorts deep into a build. Wire Banister TSB ratio
+  // (lib/health/tsb.ts) as the cutback driver when isMidBlock=true.
+  // Bench: generator-bench.test.ts §"[mid-block] cutback frequency hook"
   const deloadMask: boolean[] = [];
   for (let i = 0; i < buildWeeks; i++) {
     // Deload at week 3, 7, 11... · cursor+1 divisible by 4 in 0-index.
@@ -619,6 +641,13 @@ function layoutWeek({
     Math.max(longMiRaw, longFloor),
     longCap,
   );
+  // 2026-06-03 TODO · mid-block doctrine RULE 2 (quality distance floor).
+  // qualityMiEach is currently sized from weeklyMi alone · goal-blind to
+  // the runner's actual quality-day distance baseline. A mid-block runner
+  // who's been doing 8mi tempos shouldn't get a 5mi tempo on week 1.
+  // Fix: when input.recentQualityDistanceMi is set, floor qualityMiEach at
+  //   max(round(weeklyMi × qualityShare / qDows), recentQualityDistanceMi - 1)
+  // Bench: generator-bench.test.ts §"[mid-block] quality distance ≥ ..."
   const qualityMiEach = qualityDows.length > 0 ? Math.round((weeklyMi * qualityShare) / qualityDows.length) : 0;
 
   // Pre-allocate: rest = 0, long + quality slotted in
@@ -763,6 +792,20 @@ export interface ComposePlanInput {
    *  long-run sizing so the plan can't ask for a shorter long than the
    *  runner just did. 0 = no floor (cold start). */
   recentLongMi: number;
+  /** 2026-06-03 · mid-block runner doctrine carriers. Optional · all
+   *  default to 0/undefined for cold-start runners. Bench persona
+   *  "david-mid-block" exercises each as a gap-rule assertion. See
+   *  docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md for the full ruleset. */
+  /** Runner's typical quality-day distance (mi) over last 28d · floors
+   *  per-quality distance (Rule 2 · GAP). */
+  recentQualityDistanceMi?: number;
+  /** Median quality sessions per week over last 28d · density-ramp anchor
+   *  (Rule 5 · GAP). */
+  recentQualityPerWeek?: number;
+  /** Best recent VDOT from races or quality runs in last 60d · pace-
+   *  anchor blend source (Rule 3 · GAP). When < tier-implied VDOT, early
+   *  weeks should anchor to this and ramp toward the goal tier. */
+  bestRecentVdot?: number;
   isMidBlock: boolean;
   longRunDow: DOW;
   restDow: DOW;
@@ -1079,6 +1122,14 @@ async function loadGeneratorInputs(
   const prefs = await loadSettings(userId).catch(() => null);
   const longRunDow  = dayKeyToDow((prefs?.long_run_day ?? 'sun') as DayKey);
   const restDow     = dayKeyToDow((prefs?.rest_day ?? 'sat') as DayKey);
+  // 2026-06-03 TODO · mid-block doctrine RULE 5 (quality density ramp).
+  // qualityDows is sourced straight from profile prefs · ignores the
+  // runner's recent quality habit. A runner who's been doing 1 quality/
+  // wk should ramp to 2 over 4 weeks, not jump to 2 in week 1. When
+  // isMidBlock and recentQualityPerWeek < tierTarget.qualityPerWeek,
+  // generate a per-week density ramp and slice qualityDows accordingly
+  // in layoutWeek. Bench: generator-bench.test.ts §"[mid-block] week 1
+  // quality count within ±1 of recent habit".
   const qualityDows = (prefs?.quality_days ?? ['tue', 'thu']).map((d) => dayKeyToDow(d as DayKey));
 
   // 3. Cross-training opt-in (P34)
@@ -1121,6 +1172,15 @@ async function loadGeneratorInputs(
   ]);
 
   // 7. T-pace + LTHR
+  // 2026-06-03 TODO · mid-block doctrine RULE 3 (pace anchor blend).
+  // tPaceSec is goal-derived only · ignores the runner's current
+  // bestRecentVdot. For mid-block runners whose current VDOT is below
+  // goal-implied VDOT, week 1 pace targets should anchor to current
+  // (so early quality is hittable) and blend toward goal-pace by mid-
+  // block. Source bestRecentVdot from lib/training/vdot.bestRecentVdot
+  // and pass into composePlan as input.bestRecentVdot. In layoutWeek,
+  // compute weekPace = blend(currentT, goalT, weekIdx / totalBuildWeeks).
+  // Bench: generator-bench.test.ts §"[mid-block] bestRecentVdot read".
   const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi);
   const lthrRow = (await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
