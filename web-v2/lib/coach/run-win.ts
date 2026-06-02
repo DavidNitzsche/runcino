@@ -44,6 +44,23 @@ export interface WinInput {
     actualInclinePct?: number | null;
     completed?: boolean | null;
     type?: string | null;
+    /** 2026-06-02 · Tier 1 · watch-derived verdict per phase ·
+     *  "hit" / "drifted" / "missed" / "incomplete" · null when phase
+     *  has no target pace. */
+    verdict?: string | null;
+    /** 2026-06-02 · Tier 1 · seconds within target pace ±tolerance. */
+    timeInToleranceSec?: number | null;
+    /** 2026-06-02 · Tier 1 · seconds outside the target band. */
+    timeOutOfToleranceSec?: number | null;
+    /** 2026-06-02 · Tier 1 · 5-second HR timeline · null when no
+     *  samples landed. */
+    hrSamples?: Array<{ tSec: number; bpm: number | null }> | null;
+    /** 2026-06-02 · Tier 1 · 5-second pace timeline. */
+    paceSamples?: Array<{ tSec: number; paceSPerMi: number | null; distMi: number }> | null;
+    /** 2026-06-02 · Tier 2 · subjective per-rep RPE (1-5). */
+    rep_rpe?: number | null;
+    /** 2026-06-02 · Tier 2 · optional qualifier · 'legs'|'lungs'|'mind'|'pace'. */
+    rep_rpe_tag?: string | null;
   }>;
   /** Verdict from deriveRecap · gates win composition. */
   verdict: string;
@@ -76,6 +93,30 @@ export function deriveWin(input: WinInput): string | null {
   if (input.indoor === true || input.source === 'treadmill') {
     return winTreadmill(input);
   }
+
+  // 2026-06-02 · Tier 1+2 composers · field-presence-gated. Try in
+  // priority order. First non-null wins. Falls through to type-
+  // specific composers when none fire.
+  //
+  // Order rationale:
+  //   1. flagRpeMismatch · "hit pace but felt brutal" is the most
+  //      actionable insight · catch overcommitment first
+  //   2. winRpeUndershot · suggests stepping up next week
+  //   3. winRpeMatched · clean confirmation the prescription was right
+  //   4. winRpeTrajectory · fade-vs-hold pattern across the set
+  //   5. winVerdictHit · Tier 1 reps-hit pattern
+  //   6. winTimeInTolerance · pacing discipline as a percentage
+  //
+  // Each composer gates on field presence · returns null when data
+  // missing. Old runs without Tier 1/2 fields fall through to the
+  // existing type-based dispatch below.
+  const tier12 = flagRpeMismatch(input)
+    ?? winRpeUndershot(input)
+    ?? winRpeMatched(input)
+    ?? winRpeTrajectory(input)
+    ?? winVerdictHit(input)
+    ?? winTimeInTolerance(input);
+  if (tier12) return tier12;
 
   switch (input.type) {
     case 'recovery':
@@ -294,6 +335,137 @@ function formatPace(spm: number): string {
   const m = Math.floor(spm / 60);
   const s = Math.round(spm % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// ─── Tier 2 RPE composers (2026-06-02) ────────────────────────────────
+//
+// All gate on `rep_rpe != null` for at least 2 work phases · null when
+// the runner skipped / dismissed / no-tap'd the prompt. Opt-in honesty
+// per the watch agent's UX brief.
+
+/**
+ * #1 in priority · the "felt brutal but hit pace" anti-pattern.
+ *
+ * Watch's Tier 1 verdict says the rep hit the target band; RPE says
+ * the runner was barely hanging on. That mismatch is a fatigue /
+ * overcommitment signal that wouldn't be visible from metrics alone.
+ * Strongest reason for capturing RPE in the first place.
+ */
+function flagRpeMismatch(input: WinInput): string | null {
+  const reps = (input.splits ?? []).filter((s) =>
+    s.type === 'work' && s.rep_rpe != null && s.verdict != null
+  );
+  if (reps.length < 2) return null;
+  const overcooked = reps.filter((s) => s.verdict === 'hit' && (s.rep_rpe ?? 0) >= 5);
+  if (overcooked.length >= 2) {
+    return `Hit target pace but rated ${overcooked.length} reps as max effort · quietly overcooked, dial the next session.`;
+  }
+  return null;
+}
+
+/**
+ * The "easier than prescribed" pattern · RPE consistently below
+ * threshold suggests the pace target may be too soft. Signal to
+ * step up the prescription next week.
+ */
+function winRpeUndershot(input: WinInput): string | null {
+  const reps = (input.splits ?? []).filter((s) =>
+    s.type === 'work' && s.rep_rpe != null
+  );
+  if (reps.length < 3) return null;
+  const avgRpe = reps.reduce((s, r) => s + (r.rep_rpe ?? 0), 0) / reps.length;
+  // Below threshold AND on a workout type that should feel hard.
+  const t = input.type;
+  if (avgRpe < 3 && (t === 'threshold' || t === 'tempo' || t === 'intervals')) {
+    return `Avg RPE ${avgRpe.toFixed(1)}/5 · easier than the prescription. The pace target may be too soft for this block.`;
+  }
+  return null;
+}
+
+/**
+ * The "felt as expected" pattern · honest confirmation the prescription
+ * was right. RPE 3-4 is the canonical window for threshold / tempo /
+ * interval work.
+ */
+function winRpeMatched(input: WinInput): string | null {
+  const reps = (input.splits ?? []).filter((s) =>
+    s.type === 'work' && s.rep_rpe != null
+  );
+  if (reps.length < 2) return null;
+  const avgRpe = reps.reduce((s, r) => s + (r.rep_rpe ?? 0), 0) / reps.length;
+  if (avgRpe >= 3 && avgRpe <= 4) {
+    return `Avg RPE ${avgRpe.toFixed(1)}/5 · effort matched the prescription.`;
+  }
+  return null;
+}
+
+/**
+ * The "fade vs. hold" pattern · rep 1 vs rep N RPE. Should be similar
+ * for a well-paced threshold. If rep N is 2+ points higher, the runner
+ * overcommitted at the start.
+ */
+function winRpeTrajectory(input: WinInput): string | null {
+  const reps = (input.splits ?? []).filter((s) =>
+    s.type === 'work' && s.rep_rpe != null
+  );
+  if (reps.length < 3) return null;
+  const first = reps[0].rep_rpe!;
+  const last = reps[reps.length - 1].rep_rpe!;
+  const delta = last - first;
+  if (delta >= 2) {
+    return `Rep 1 rated ${first}/5 · rep ${reps.length} rated ${last}/5 · faded across the set, dial the opening next time.`;
+  }
+  if (delta <= -2) {
+    return `Rep 1 rated ${first}/5 · rep ${reps.length} rated ${last}/5 · settled into the work, strong closing reps.`;
+  }
+  return null;
+}
+
+// ─── Tier 1 verdict + time-in-tolerance composers (2026-06-02) ────────
+
+/**
+ * The "clean reps" pattern · watch derives `verdict` per phase. Count
+ * the work phases that hit cleanly. Fires only when ≥75% of the work
+ * reps hit.
+ */
+function winVerdictHit(input: WinInput): string | null {
+  const work = (input.splits ?? []).filter((s) =>
+    s.type === 'work' && s.verdict != null
+  );
+  if (work.length < 2) return null;
+  const hits = work.filter((s) => s.verdict === 'hit').length;
+  const drift = work.filter((s) => s.verdict === 'drifted').length;
+  const miss = work.filter((s) => s.verdict === 'missed').length;
+  const hitRate = hits / work.length;
+  if (hitRate >= 0.75 && drift + miss <= 1) {
+    return `Hit target band on ${hits} of ${work.length} reps · clean execution.`;
+  }
+  if (hitRate < 0.5 && miss >= 2) {
+    return `Missed target band on ${miss} of ${work.length} reps · pace was off today.`;
+  }
+  return null;
+}
+
+/**
+ * The "pacing discipline" pattern · time-in-tolerance as a percentage
+ * across all work phases. Higher = more steady inside the band.
+ */
+function winTimeInTolerance(input: WinInput): string | null {
+  const work = (input.splits ?? []).filter((s) =>
+    s.type === 'work' && s.timeInToleranceSec != null && s.timeOutOfToleranceSec != null
+  );
+  if (work.length < 2) return null;
+  const tin = work.reduce((s, r) => s + (r.timeInToleranceSec ?? 0), 0);
+  const tot = tin + work.reduce((s, r) => s + (r.timeOutOfToleranceSec ?? 0), 0);
+  if (tot === 0) return null;
+  const pct = Math.round((tin / tot) * 100);
+  if (pct >= 80) {
+    return `${pct}% of work time inside the target band · steady, disciplined pacing.`;
+  }
+  if (pct < 50) {
+    return `${pct}% of work time inside the target band · pace was hunting today.`;
+  }
+  return null;
 }
 
 // ─── treadmill win composer ───────────────────────────────────────────

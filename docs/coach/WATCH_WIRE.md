@@ -24,6 +24,19 @@ all changes here for accuracy.
   in DB regardless of whether it's typed at ingest. Composers prefer
   typed fields; `_raw` is the escape hatch for pre-greenlight /
   exploratory fields.
+- `2026-06-02` · **Tier 1** shipped (watch `5b8bcc80`) · `paceSamples[]`,
+  `hrSamples[]`, `timeInToleranceSec`, `timeOutOfToleranceSec`,
+  `verdict` typed on `WatchCompletionPhase`. Backend
+  `deriveSplitsFromPhases` preserves them as typed fields on
+  `runs.data.splits[i]`. Composers `winVerdictHit` +
+  `winTimeInTolerance` read them.
+- `2026-06-02` · **Tier 2** shipped (watch `2cc8bdd0`) · `repRpe`
+  (1-5) + `repRpeTag` (closed-set qualifier · `legs|lungs|mind|pace`)
+  on `WatchCompletionPhase`. Opt-in honesty UX: prompt during
+  recovery after completed work rep, applies to the prior rep,
+  null when skipped / dismissed / 30s auto-timeout. Composers
+  `flagRpeMismatch` / `winRpeUndershot` / `winRpeMatched` /
+  `winRpeTrajectory` read them.
 
 ---
 
@@ -212,6 +225,13 @@ per-phase actuals. Swift struct at `WatchWorkoutModels.swift:227-250`.
 | `maxHr` | `int?` | no | bpm | Peak HR observed during the phase. |
 | `avgCadence` | `int?` | no | spm | Average cadence across the phase. |
 | `completed` | `bool` | yes | — | True when auto-advance fired (target reached). False when runner long-pressed end / abandoned. Backend's `!== false` default treats missing as truthy · the watch ALWAYS supplies this field, so the default only applies to non-watch sources. |
+| `paceSamples` | `PaceSample[]?` | no | — | Tier 1 · 5-second pace timeline · `{ tSec, paceSPerMi?, distMi }`. Null for phases too short (<5s). |
+| `hrSamples` | `HRSample[]?` | no | — | Tier 1 · 5-second HR timeline · `{ tSec, bpm? }`. Null when sensor never reported. |
+| `timeInToleranceSec` | `int?` | no | s | Tier 1 · seconds within target pace ±tolerance. Null for phases without a target pace. |
+| `timeOutOfToleranceSec` | `int?` | no | s | Tier 1 · seconds outside the target band. Pair with `timeInToleranceSec` for percentage. |
+| `verdict` | `string?` | no | — | Tier 1 · watch-derived per-phase verdict: `'hit'` (≥70% in tolerance + avg in band) / `'drifted'` (avg in band but <70% in tolerance) / `'missed'` (avg outside band) / `'incomplete'` (early stop). Null for phases without a target. |
+| `rep_rpe` | `int?` | no | 1-5 | Tier 2 · subjective per-rep RPE. Maffetone 5-category: 1=easy · 2=light · 3=moderate · 4=hard · 5=max. Opt-in honesty: null when runner skipped, dismissed, or 30s timeout fired. Watch posts as `repRpe` (camelCase); backend stores as `rep_rpe` (snake_case) to match split convention. |
+| `rep_rpe_tag` | `string?` | no | — | Tier 2 · optional qualifier · closed set: `'legs'` (muscular limit) / `'lungs'` (cardio limit) / `'mind'` (focus/motivation) / `'pace'` (target felt off). Posted as `repRpeTag`. |
 
 ### `_raw` passthrough on `runs.data.splits[i]`
 

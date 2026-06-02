@@ -222,6 +222,21 @@ function deriveSplitsFromPhases(phases: any[] | undefined): any[] {
       // incline") and the treadmill-aware win-line composer.
       actualSpeedMph: p.actualSpeedMph ?? null,
       actualInclinePct: p.actualInclinePct ?? null,
+      // 2026-06-02 · Tier 1 · per-phase pace/HR timelines + derived
+      // verdict + time-in-tolerance. Watch ships these to feed the
+      // pacing-discipline composers (winVerdictHit / winTimeInTolerance).
+      // Doctrine: designs/briefs/watch-tier-2-rpe-shipped-2026-06-02.md
+      paceSamples: p.paceSamples ?? null,
+      hrSamples: p.hrSamples ?? null,
+      timeInToleranceSec: p.timeInToleranceSec ?? null,
+      timeOutOfToleranceSec: p.timeOutOfToleranceSec ?? null,
+      verdict: p.verdict ?? null,
+      // 2026-06-02 · Tier 2 · subjective per-rep RPE (1-5) + optional
+      // qualifier tag ('legs'|'lungs'|'mind'|'pace'). Opt-in honesty ·
+      // null when runner skipped, dismissed, or 30s auto-timeout fired.
+      // Feeds the RPE composers (matched, undershot, mismatch, trajectory).
+      rep_rpe: p.repRpe ?? null,
+      rep_rpe_tag: p.repRpeTag ?? null,
       // 2026-06-02 · `_raw` passthrough · watch agent confirmed GO.
       // Every future watch field lands in runs.data with zero backend
       // ingest change. Composers prefer typed fields (fast path) but
