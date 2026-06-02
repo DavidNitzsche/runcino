@@ -1863,15 +1863,34 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
     return Math.round(targets.reduce((a, b) => a + b, 0) / targets.length);
   })();
 
-  // Plan-vs-result bar math · ±30s window around goal.
-  const LO = goalSec - 30;
-  const HI = goalSec + 30;
-  const pct = (sec: number): number => {
-    if (!isFinite(sec) || sec <= 0 || HI <= LO) return 60;
-    const raw = ((HI - sec) / (HI - LO)) * 100;
-    return Math.max(4, Math.min(98, raw));
+  // Plan-vs-result bar math · centered-on-goal model.
+  //
+  // 2026-06-02 · David flagged that the original left-anchored fill
+  // (per the handoff README) made +29s and +32s reps look identical
+  // when clamped to the 4% floor · "they're not even close to the
+  // goal and only 30 seconds off." He vetoed widening the window.
+  //
+  // Switched to a centered model · the tick stays at 50%, fill
+  // emerges FROM the tick: green leftward when actual ≤ goal, amber
+  // rightward when actual > goal. Length = |delta|/30 * 50%, clamped
+  // to 50% at the bar edges. A rep at +29 fills nearly the entire
+  // right half; a rep at +5 fills a small stub. The delta number
+  // beside the bar still carries the precise magnitude · the bar
+  // communicates direction + qualitative miss, the number is the
+  // quantitative answer.
+  //
+  // Visual story:
+  //   · on goal → tick alone, no fill
+  //   · slight miss → small stub on the miss side
+  //   · big miss → fill extends to the bar edge (clamped at 50%)
+  //   · beat → green stub or fill on the left
+  const TICK_PCT = 50;
+  const HALF_WIDTH_SEC = 30;
+  const fillPctFromCenter = (deltaSec: number): number => {
+    if (!isFinite(deltaSec)) return 0;
+    const mag = Math.abs(deltaSec);
+    return Math.min(50, (mag / HALF_WIDTH_SEC) * 50);
   };
-  const tickPct = HI > LO ? ((HI - goalSec) / (HI - LO)) * 100 : 50;
 
   // Average work pace + delta vs goal · the summary row at the bottom.
   const workActuals = workPhases
@@ -1949,11 +1968,15 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
           }
           if (p.type === 'work') {
             const actualSec = paceToSec(p.actual_pace ?? '');
-            const fillPct = pct(actualSec);
             const delta = actualSec > 0 && goalSec > 0 ? actualSec - goalSec : null;
             const beat = delta != null && delta <= 0;
             const fillColor = beat ? '#3ED06a' : '#ffb24d';
             const deltaColor = beat ? '#3ED06a' : '#ffb24d';
+            const fillW = delta != null ? fillPctFromCenter(delta) : 0;
+            // Faster than goal → fill extends LEFT from tick (left edge at
+            // 50% - fillW). Slower than goal → fill extends RIGHT from tick
+            // (left edge at 50%, width fillW). Equal → no fill, tick alone.
+            const fillLeft = beat ? TICK_PCT - fillW : TICK_PCT;
             return (
               <div key={key} style={{
                 display: 'grid', gridTemplateColumns: '46px 1fr 70px',
@@ -1973,14 +1996,18 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
                   position: 'relative', height: 11, borderRadius: 6,
                   background: 'rgba(255,255,255,.1)', overflow: 'hidden',
                 }}>
+                  {fillW > 0 && (
+                    <div style={{
+                      position: 'absolute', top: 0, bottom: 0,
+                      left: `${fillLeft}%`, width: `${fillW}%`,
+                      background: fillColor,
+                      borderRadius: beat ? '6px 0 0 6px' : '0 6px 6px 0',
+                      transition: 'left 240ms, width 240ms',
+                    }} />
+                  )}
+                  {/* goal tick · centered, 2px white line, extends 3px above/below */}
                   <div style={{
-                    position: 'absolute', left: 0, top: 0, bottom: 0,
-                    width: `${fillPct}%`, background: fillColor,
-                    borderRadius: 6, transition: 'width 240ms',
-                  }} />
-                  {/* target tick · 2px white line, extends 3px above/below */}
-                  <div style={{
-                    position: 'absolute', left: `${tickPct}%`,
+                    position: 'absolute', left: `${TICK_PCT}%`,
                     top: -3, bottom: -3, width: 2,
                     background: 'rgba(255,255,255,.9)', zIndex: 2,
                     transform: 'translateX(-1px)',

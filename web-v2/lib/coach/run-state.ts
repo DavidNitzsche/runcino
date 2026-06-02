@@ -13,6 +13,7 @@ import { weatherContext } from '@/lib/weather/heat-adjustment';
 import { enrichOneActivity } from '@/lib/weather/openmeteo';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
+import { toUtcIso } from '@/lib/runs/normalize-time';
 
 export interface RunSplit {
   mile: number;
@@ -285,29 +286,63 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   if (!row) return null;
   const r = row.data;
 
-  // 2026-06-02 · lazy weather enrichment. The nightly cron at 00:30 PT
-  // handles bulk backfill, but a runner who finishes a run mid-day and
-  // immediately opens the post-run hero would see WEATHER "·" until
-  // tomorrow's cron pass. enrichOneActivity is idempotent (no-ops if
-  // data.weather already exists) and sets weather_enriched_at on failure
-  // so we don't hammer Open-Meteo on every page reload. Guards:
-  //   · row.id must be a numeric PK · accepts the NEGATIVE bigints that
-  //     watch-direct + watch-ingest write (stableId = -stableBigintFromString
-  //     in app/api/watch/workouts/complete + ingest/workout). The earlier
-  //     /^\d+$/ regex silently skipped those, which is the source David's
-  //     interval run came from — chip stayed "·" on reload despite the fix.
-  //   · skip if weather already present (cheap idempotency check)
-  //   · skip if weather_enriched_at is set (prior failed attempt, will
-  //     retry via the weekly retry path in the cron)
-  // Failures are swallowed silently; the chip falls through to '·'
-  // exactly as before.
-  if (
-    !r?.weather &&
-    !row.weather_enriched_at &&
-    row.id != null &&
-    /^-?\d+$/.test(String(row.id))
-  ) {
+  // 2026-06-02 · lazy weather enrichment. Two cases:
+  //
+  //   (a) MISSING · no data.weather and no weather_enriched_at · fresh
+  //       run that hasn't been touched by the nightly cron yet.
+  //       enrichOneActivity fetches and persists.
+  //
+  //   (b) STALE-ARCHIVE · data.weather present, source 'open-meteo',
+  //       and weather_enriched_at predates the forecast-host fix
+  //       (commit 9c960be8, 2026-06-02 ~20:00 UTC). The previous
+  //       enrichment hit archive-api during its ~5-day lag window and
+  //       returned interpolated garbage (David's 57°F in Burbank on
+  //       a June morning · should have been 65-70°F). Force-clear and
+  //       re-fetch via the forecast endpoint. One-time auto-correction;
+  //       the condition stops firing once weather_enriched_at advances
+  //       past the threshold.
+  //
+  // Guards on both paths:
+  //   · row.id must be numeric · accepts NEGATIVE bigints from watch-
+  //     direct + watch-ingest (-stableBigintFromString).
+  //   · enrichOneActivity is idempotent on its own (short-circuits if
+  //     data.weather already exists) so (a) is safe even on warm rows.
+  // Failures swallowed silently; chip falls through to '·'.
+  const FORECAST_HOST_FIX_DEPLOYED_MS = Date.parse('2026-06-02T20:30:00Z');
+  const isNumericId = row.id != null && /^-?\d+$/.test(String(row.id));
+  const isRecentRun = (() => {
+    const startISO: string | undefined = r?.startLocal ?? r?.start_local ?? r?.startISO;
+    if (!startISO) return false;
+    const utc = toUtcIso(startISO, r?.source as string | undefined) ?? startISO;
+    const ageDays = (Date.now() - Date.parse(utc)) / (1000 * 60 * 60 * 24);
+    return isFinite(ageDays) && ageDays <= 5;
+  })();
+  const isStaleArchiveWeather = (
+    isRecentRun &&
+    r?.weather?.source === 'open-meteo' &&
+    row.weather_enriched_at &&
+    Date.parse(row.weather_enriched_at) < FORECAST_HOST_FIX_DEPLOYED_MS
+  );
+
+  if (isNumericId && (
+    (!r?.weather && !row.weather_enriched_at) ||
+    isStaleArchiveWeather
+  )) {
     try {
+      if (isStaleArchiveWeather) {
+        // Clear the stale row so enrichOneActivity doesn't short-circuit.
+        await pool.query(
+          `UPDATE runs
+              SET data = (data - 'weather' - 'tempF'),
+                  weather_enriched_at = NULL
+            WHERE id = $1::BIGINT`,
+          [String(row.id)],
+        );
+        // Mirror the clear into the in-memory row so the re-enrich path
+        // below behaves like a fresh fetch.
+        delete (r as any).weather;
+        delete (r as any).tempF;
+      }
       const w = await enrichOneActivity(String(row.id));
       if (w) {
         // mutate in-memory so the rest of this function picks up the
