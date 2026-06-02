@@ -151,10 +151,11 @@ struct TodayView: View {
                     .disabled(refreshing)
 
                     Menu {
-                        // Tap-equivalent · keep the existing nudge sheet
-                        // as the primary action so the bell behaves the
-                        // way runners expect.
-                        Button("View nudges") { showNudge = true }
+                        // 2026-06-01 round 2 · removed "View nudges"
+                        // per David's feedback. NudgeSheet is kept in
+                        // the codebase but no longer surfaces from
+                        // the bell · re-add when a real trigger
+                        // (morning coach prompt etc.) takes ownership.
                         Button("Notification inbox") { showInbox = true }
                         Divider()
                         // Toolkit entry points (David's spec: bell/nudge menu).
@@ -274,20 +275,25 @@ struct TodayView: View {
             // Each option is its own NavigationLink so tapping either
             // pushes directly · no path-state plumbing.
             // Rest day: "Log Recovery" → planned/today recovery surface.
-            // Post-run: "Share run" → RunDetail (Strava push lives there).
+            // Post-run: bar HIDDEN · per the v2 feedback round, the
+            // Share Run CTA was burying the post-run body. The post-run
+            // sheet body carries a small "View full run ›" link at the
+            // bottom instead (inside TodayPostRunBody).
             //
             // Today v2 brief: "the start run or share run so its not
             // hidden" · the StickyCTABar respects the tab-bar safe area
             // (no .ignoresSafeArea(.bottom)) so the button sits just
             // above the floating tab bar pill.
-            VStack {
-                Spacer()
-                StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
-                    startCTAButton
+            if !isDone {
+                VStack {
+                    Spacer()
+                    StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
+                        startCTAButton
+                    }
+                    .frame(height: 100)
                 }
-                .frame(height: 100)   // 30pt shorter · no safe-area pad to absorb anymore
+                .opacity(1 - sheetProgress)  // hide when sheet is up; sheet has its own CTA below
             }
-            .opacity(1 - sheetProgress)  // hide when sheet is up; sheet has its own CTA below
         }
         .task {
             await loadAll()
@@ -582,7 +588,8 @@ struct TodayView: View {
                 TodayPostRunBody(
                     detail: completedDetail,
                     recap: completedRecap,
-                    accent: selectedEffort.dot
+                    accent: selectedEffort.dot,
+                    runId: completedRunId
                 )
             } else {
                 preRunSheetContent
@@ -590,48 +597,23 @@ struct TodayView: View {
         }
     }
 
-    /// Pre-run sheet body · the existing prescription + fueling +
-    /// conditions + coach stack, plus the v2 additions (adaptation
-    /// banner + Skip this run). Extracted for the isDone branch.
+    /// Pre-run sheet body · prescription + fueling + conditions + coach
+    /// stack + Skip-this-run footer.
+    ///
+    /// 2026-06-01 round 2: in-sheet adaptation banner retired. The
+    /// AdaptationCard ABOVE the hero is the canonical surface ·
+    /// duplicating the banner inside the sheet stacked the same vague
+    /// "Plan adapted · overridden" text twice. Backend brief out for
+    /// structured from/to copy (designs/briefs/adaptation-intent-
+    /// structured-from-to.md); both surfaces will read the cleaner
+    /// "Adjusted from {original} · Restore" template once it lands.
     private var preRunSheetContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Adaptation banner · in-sheet variant of the AdaptationCard
-            // above the hero (2026-06-01 Today v2 brief). Reads from the
-            // same coach_intents plan_adapt_* signal. "Restore" decodes
-            // via the existing coach proposal flow.
-            if let intent = adaptationIntent, isWithinLast24h(intent.when_iso) {
-                inSheetAdaptationBanner(intent)
-            }
             existingPrescriptionAndConditions
             if !isDone && selectedEffort != .rest {
                 skipThisRunButton
             }
         }
-    }
-
-    private func inSheetAdaptationBanner(_ intent: CoachIntent) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color(hex: 0xC47812))
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(intent.summary)
-                    .font(.body(13, weight: .extraBold))
-                    .foregroundStyle(Color(hex: 0x14110D))
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Restore", action: restoreAdaptationAction)
-                    .font(.body(11, weight: .extraBold)).tracking(0.4)
-                    .foregroundStyle(Color(hex: 0xC47812))
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 24).padding(.vertical, 14)
-        .background(Color(hex: 0xFFF4DC))
-        .overlay(
-            Rectangle().fill(Color(hex: 0xEEE7DA)).frame(height: 1),
-            alignment: .bottom
-        )
     }
 
     private var skipThisRunButton: some View {
@@ -760,15 +742,30 @@ struct TodayView: View {
                 }
             }
 
-            pBlock(title: "CONDITIONS & KIT") {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)], spacing: 1) {
-                    infoCell(key: "Weather", value: conditions.weather)
-                    infoCell(key: "Shoe",    value: conditions.shoe)
-                    infoCell(key: "Fuel",    value: conditions.fuel)
-                    infoCell(key: "Effort",  value: selectedEffort.effortLabel)
+            // CONDITIONS & KIT · only render the cells that have real
+            // data. 2026-06-01 round 2 feedback: "—" placeholders made
+            // the grid feel empty (Weather 0°F + Shoe — + Fuel — left
+            // only Effort meaningful). Effort always shows; the rest
+            // gate on a non-"—" value. Section header hides when only
+            // Effort is left (the effort label is already on the peek).
+            do {
+                let cells: [(String, String)] = [
+                    ("Weather", conditions.weather),
+                    ("Shoe",    conditions.shoe),
+                    ("Fuel",    conditions.fuel),
+                    ("Effort",  selectedEffort.effortLabel),
+                ].filter { _, v in v != "—" }
+                if cells.count > 1 {  // hide section if only Effort has data
+                    pBlock(title: "CONDITIONS & KIT") {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)], spacing: 1) {
+                            ForEach(Array(cells.enumerated()), id: \.offset) { _, kv in
+                                infoCell(key: kv.0, value: kv.1)
+                            }
+                        }
+                        .background(Color(hex: 0xEEE7DA))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
                 }
-                .background(Color(hex: 0xEEE7DA))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
             }
 
             // BRIEFING TOPICS · polymorphic dispatcher across the 27
@@ -938,10 +935,19 @@ struct TodayView: View {
         return String(format: "%d:%02d/mi", m, s)
     }
 
+    /// True when the selected day IS today · empty selectedDayID also
+    /// counts as today (the .task hasn't populated it from
+    /// plan.today_iso yet · everything else on the surface already
+    /// treats empty as today, the CTA needs to as well so it doesn't
+    /// flash "View THRESHOLD" → "Start THRESHOLD" on first load).
+    private var selectedIsToday: Bool {
+        selectedDayID.isEmpty || selectedDayID == todayISO
+    }
+
     private var startButtonTitle: String {
         if skipped { return "Log Recovery" }
         if selectedEffort == .rest { return "Log Recovery" }
-        if selectedDayID == todayISO { return "Start \(plainWorkoutName)" }
+        if selectedIsToday { return "Start \(plainWorkoutName)" }
         return "View \(plainWorkoutName)"
     }
 
@@ -950,7 +956,7 @@ struct TodayView: View {
     ///   · future planned day → planned detail
     ///   · rest day / past completed → planned detail (or run detail in future)
     private var ctaRoute: FaffRoute {
-        if selectedDayID == todayISO && selectedEffort != .rest && !skipped {
+        if selectedIsToday && selectedEffort != .rest && !skipped {
             return .watchMirror
         }
         if let day = todaySelectedDay, let runId = day.completedRunId {
@@ -1131,7 +1137,7 @@ struct TodayView: View {
     private var showsRunModePicker: Bool {
         !isDone
             && selectedEffort != .rest
-            && selectedDayID == todayISO
+            && selectedIsToday
             && !skipped
     }
 
@@ -1192,21 +1198,11 @@ struct TodayView: View {
         .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
     }
 
-    /// Restore an adapted plan day · taps from the in-sheet adaptation
-    /// banner. Wires to the existing /api/coach/proposal flow with
-    /// action="decline" on the adapt intent, so the backend can revert
-    /// to the original session. If the backend rejects the action shape,
-    /// the banner stays read-only and the next refresh resolves state.
-    private func restoreAdaptationAction() {
-        guard let intent = adaptationIntent else { return }
-        Task {
-            _ = try? await API.postCoachProposal(
-                action: "decline",
-                proposal: ["intent_id": intent.id]
-            )
-            await loadAll()
-        }
-    }
+    // restoreAdaptationAction retired 2026-06-01 round 2 along with
+    // the in-sheet banner. When the AdaptationCard above the hero
+    // grows a Restore affordance, re-introduce a posted decline-with-
+    // intent-id call here (or move it onto AdaptationCard so both
+    // surfaces share one path).
 
     /// Phase breakdown rendered in the drag-sheet. Empty when no real
     /// phases on the workout · TodayView's drag sheet gates the section on
@@ -1229,8 +1225,15 @@ struct TodayView: View {
     /// the prior hardcoded "Water" fuel default.
     private struct Conditions { let weather: String; let shoe: String; let fuel: String }
     private var conditions: Conditions {
+        // Weather · null-out clearly-bogus values so the cell renders
+        // "—" instead of "0°F". 2026-06-01 round 2 feedback: 0°F was
+        // showing on a run-day where the forecast hadn't fetched yet.
+        // Real outdoor running temps sit in [10, 130]°F · anything
+        // outside that is almost certainly a default or sensor glitch.
         let weather: String = {
-            if let t = self.weather?.tempF { return "\(Int(t.rounded()))°F" }
+            if let t = self.weather?.tempF, t > 10, t < 130 {
+                return "\(Int(t.rounded()))°F"
+            }
             return "—"
         }()
         // WatchWorkout doesn't carry a shoe field today. When it does, wire

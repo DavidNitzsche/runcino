@@ -35,18 +35,51 @@ struct TodayPostRunBody: View {
     /// Run accent color · matches the pre-run effort accent so the
     /// peek + ticks + splits stay in one palette.
     let accent: Color
+    /// The run's id · used to push to RunDetail from the "View full
+    /// run" link at the bottom of the body. Optional · the link hides
+    /// when there's no id (e.g. during hydration).
+    let runId: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             winLine
             statsTrio
             secondaryStats
-            if let poly = detail?.route_polyline, !poly.isEmpty {
+            // Route map · only render the section when there's actual
+            // polyline data. The Today v2 feedback caught the old
+            // unconditional render leaving a black card on runs without
+            // GPS export (apple_watch source · most of David's runs).
+            if let poly = detail?.route_polyline, !poly.isEmpty,
+               decodePolyline(poly).count >= 2 {
                 routeMap(polyline: poly)
             }
             mileSplits
             formGrid
             howItWent
+            viewFullRunLink
+        }
+    }
+
+    /// Small chevron-link at the bottom of the post-run body · replaces
+    /// the old StickyCTABar Share Run button (which buried the body
+    /// content). Pushes to RunDetail where Push-to-Strava lives.
+    @ViewBuilder
+    private var viewFullRunLink: some View {
+        if let id = runId {
+            NavigationLink(value: FaffRoute.runDetail(id: id)) {
+                HStack(spacing: 6) {
+                    Spacer(minLength: 0)
+                    Text("View full run")
+                        .font(.body(13, weight: .extraBold)).tracking(0.4)
+                        .foregroundStyle(accent)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(accent)
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 18)
+            }
+            .buttonStyle(.plain)
         }
     }
 
