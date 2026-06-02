@@ -339,7 +339,11 @@ export function TodayView({
 
               {/* Metrics · "{dist} · {pace}" or "rest" */}
               <div className="wc-met">
-                {isRest || day.dist === ' · ' ? <span className="wc-met-rest">rest</span> : `${day.dist} mi · ${day.pace}`}
+                {/* 2026-06-02 · David call: rest-day chip was rendering
+                    "Rest" (title) + "rest" (meta) · duplicate. The title
+                    above already says it. Empty meta row on rest days
+                    keeps the card height aligned with the strip. */}
+                {isRest ? null : day.dist === ' · ' ? <span className="wc-met-rest">·</span> : `${day.dist} mi · ${day.pace}`}
               </div>
 
               {/* Spacer to push meta to bottom */}
