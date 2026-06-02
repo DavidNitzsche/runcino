@@ -1028,13 +1028,21 @@ private struct TrainWeekRow: View {
                 }
             }
             .padding(.vertical, 9)
-            // 2026-06-02 round 47 · dropped the `-8` horizontal padding
-            // that made today's row physically wider than the others ·
-            // text left-edge shifted, columns disagreed. Now the today
-            // highlight uses the SAME width as every other row, just
-            // with a translucent fill behind the content.
-            .background(isToday ? Color.white.opacity(0.08) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 12))
+            // 2026-06-02 round 48 · today highlight gets a bit of
+            // breathing room on left + right · -6pt horizontal extends
+            // the rounded rectangle past the content without shifting
+            // the content itself (column alignment preserved). Uses a
+            // negative-padded background view rather than `.background(in:)`
+            // so the inset is BG-only.
+            .background(
+                Group {
+                    if isToday {
+                        Color.white.opacity(0.08)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .padding(.horizontal, -6)
+                    }
+                }
+            )
         }
     }
 
