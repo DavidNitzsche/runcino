@@ -97,26 +97,12 @@ function distanceMiOf(meta: any): number {
 
 // Recent 4-week avg weekly volume → starting point for the ramp.
 async function recentWeeklyMileage(userId: string): Promise<number> {
-  // 2026-06-01 - MAX-per-day dedupe. Absorber sometimes does not fire,
-  // leaving duplicate source rows (watch + apple_watch) as canonical
-  // siblings. SUMing double-counted mileage 2x and inflated plan
-  // baseline accordingly. MAX-per-day is honest because duplicate
-  // sources record the same distance for the same physical run.
-  const r = await pool.query(
-    `WITH per_day AS (
-       SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date AS d,
-              MAX((data->>'distanceMi')::numeric) AS mi
-         FROM runs
-        WHERE user_uuid = $1
-          AND NOT (data ? 'mergedIntoId')
-          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
-              >= (NOW() - interval '28 days')::date
-        GROUP BY 1
-     )
-     SELECT COALESCE(SUM(mi), 0) AS mi FROM per_day`,
-    [userId]
-  ).catch(() => ({ rows: [{ mi: 0 }] }));
-  return Math.round((Number(r.rows[0]?.mi ?? 0) / 4) * 10) / 10;
+  // 2026-06-02 · delegated to lib/runs/volume.ts § recentWeeklyMileageMi
+  // which uses smart-dedup (bucket by date + 0.1-mi distance). Old
+  // MAX-per-day was undercounting legit same-day doubles (AM/PM,
+  // separate lunch runs) · David's 35.7 mi/wk was reading as 32.6.
+  const { recentWeeklyMileageMi } = await import('@/lib/runs/volume');
+  return (await recentWeeklyMileageMi(userId)) ?? 0;
 }
 
 /**

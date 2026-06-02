@@ -320,22 +320,12 @@ function checkStaleness(plan: ActivePlan): DriftSignal | null {
 // ─── data helpers ───────────────────────────────────────────────────────
 
 async function loadCurrentWeeklyMileage(userUuid: string): Promise<number | null> {
-  // 2026-06-01 - MAX-per-day dedupe defense (see lib/plan/generate.ts).
-  const r = (await pool.query<{ mi: string }>(
-    `WITH per_day AS (
-       SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date AS d,
-              MAX((data->>'distanceMi')::numeric) AS mi
-         FROM runs
-        WHERE user_uuid = $1
-          AND NOT (data ? 'mergedIntoId')
-          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
-              >= CURRENT_DATE - $2::int
-        GROUP BY 1
-     )
-     SELECT COALESCE(SUM(mi), 0)::text AS mi FROM per_day`,
-    [userUuid, VOLUME_WINDOW_DAYS],
-  ).catch(() => ({ rows: [{ mi: '0' }] }))).rows[0];
-  const total = Number(r?.mi ?? 0);
+  // 2026-06-02 · delegated to lib/runs/volume.ts § recentMileageMi
+  // which uses smart-dedup (date + 0.1-mi distance bucket). Old
+  // MAX-per-day was undercounting David by ~3 mi/wk on weeks with
+  // legitimate same-day doubles.
+  const { recentMileageMi } = await import('@/lib/runs/volume');
+  const total = await recentMileageMi(userUuid, VOLUME_WINDOW_DAYS);
   return total > 0 ? Math.round((total / 4) * 10) / 10 : null;
 }
 
