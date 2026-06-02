@@ -481,11 +481,20 @@ function layoutWeek({
   // Pre-allocate: rest = 0, long + quality slotted in
   const slots: (DayPlan | null)[] = new Array(7).fill(null);
   slots[restDow] = { dow: restDow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Sleep, mobility, fuel.' };
+  // 2026-06-02 · race-pace label varies by race distance · "MP" only
+  // makes sense for a marathon target. HM target → HM pace. 5K/10K
+  // target → no MP insert at all (those distances train via reps, not
+  // long-run pace inserts).
+  const racePaceTag = raceDistanceMi >= 25 ? 'MP'
+                    : raceDistanceMi >= 12 ? 'HM'
+                    : null;
   slots[longRunDow] = {
     dow: longRunDow, type: 'long', distanceMi: longMi, isQuality: false, isLong: true,
-    subLabel: phase === 'RACE-SPECIFIC' ? `LONG · ${Math.round(longMi * 0.4)}mi @ MP` : 'LONG',
-    notes: phase === 'RACE-SPECIFIC'
-      ? `Steady ${longMi - Math.round(longMi * 0.4)}mi, then ${Math.round(longMi * 0.4)}mi at race pace.`
+    subLabel: phase === 'RACE-SPECIFIC' && racePaceTag
+      ? `LONG · ${Math.round(longMi * 0.4)}mi @ ${racePaceTag}`
+      : 'LONG',
+    notes: phase === 'RACE-SPECIFIC' && racePaceTag
+      ? `Steady ${longMi - Math.round(longMi * 0.4)}mi, then ${Math.round(longMi * 0.4)}mi at ${racePaceTag === 'MP' ? 'marathon pace' : 'half-marathon pace'}.`
       : phase === 'TAPER' ? 'Easy long, hold pace. Quality lives in the race itself.'
       : 'Conversational throughout. Build the engine.',
   };
