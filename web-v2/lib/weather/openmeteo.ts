@@ -38,7 +38,10 @@ export interface RunWeather {
   precip_in: number | null;
   conditions: string | null;        // "clear" | "cloudy" | "rain" | "snow" | "wind"
   fetched_at: string;               // ISO UTC
-  source: 'open-meteo';
+  /** 'apple_hk' when sourced from HKMetadataKeyWeatherTemperature (the
+   *  value the runner SAW on their watch); 'open-meteo' when fetched
+   *  server-side as fallback. Consumers can use this for provenance. */
+  source: 'open-meteo' | 'apple_hk';
 }
 
 /**

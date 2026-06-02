@@ -235,10 +235,51 @@ export async function POST(req: NextRequest) {
       console.error('[ingest/workout] ack stale watch intent warn:', e?.message);
     }
 
-    // P31 — best-effort weather enrichment on ingest. Needs GPS — uses
-    // route_polyline start coords if present, else skip until the nightly
-    // cron's batch with whatever lat/lng we infer later. Fire-and-forget.
-    if (body.route_polyline) {
+    // P31 — best-effort weather enrichment on ingest. Three tiers, in
+    // priority order:
+    //   1. HK metadata weather · Apple's Workouts.app stamps
+    //      HKMetadataKeyWeatherTemperature + HKMetadataKeyWeatherHumidity
+    //      from the runner's local Weather app data. iOS importer surfaces
+    //      these as body.weather_hk_temp_f + body.weather_hk_humidity_pct.
+    //      This is the value the runner SAW on their watch · trust it over
+    //      any server-side fallback.
+    //   2. Open-Meteo span fetch · route_polyline start coords + duration.
+    //      Used when HK didn't stamp weather (older watch builds, Weather
+    //      permission denied, third-party workout sources).
+    //   3. Open-Meteo single-point fetch · same coords, start time only.
+    //      Already handled by enrichOneActivity downstream as a fallback.
+    const hkTempF = typeof body.weather_hk_temp_f === 'number' && isFinite(body.weather_hk_temp_f)
+      ? body.weather_hk_temp_f : null;
+    const hkHumPct = typeof body.weather_hk_humidity_pct === 'number' && isFinite(body.weather_hk_humidity_pct)
+      ? body.weather_hk_humidity_pct : null;
+
+    if (hkTempF != null) {
+      // Tier 1 · trust the Watch's reading. Shape mirrors RunWeather (see
+      // lib/weather/openmeteo.ts) so downstream consumers don't branch.
+      const w = {
+        temp_f: hkTempF,
+        temp_f_start: hkTempF,
+        humidity_pct: hkHumPct,
+        wind_mph: null,
+        wind_gust_mph: null,
+        cloud_cover_pct: null,
+        precip_in: null,
+        conditions: null,
+        fetched_at: new Date().toISOString(),
+        source: 'apple_hk' as const,
+      };
+      (data as any).weather = w;
+      (data as any).tempF = hkTempF;
+      await pool.query(
+        `UPDATE runs
+            SET data = $1, weather_enriched_at = NOW()
+          WHERE user_uuid = $2
+            AND data->>'client_workout_id' = $3`,
+        [data, userId, body.client_workout_id]
+      );
+    } else if (body.route_polyline) {
+      // Tier 2 · Open-Meteo span fetch (forecast host for recent runs,
+      // archive host for older · see lib/weather/openmeteo.ts weatherHost).
       try {
         const firstPair = decodePolylineFirst(body.route_polyline);
         if (firstPair) {
@@ -246,8 +287,6 @@ export async function POST(req: NextRequest) {
           if (w) {
             (data as any).weather = w;
             (data as any).tempF = w.temp_f ?? (data as any).tempF;
-            // Re-write with weather. INSERT happened just above with the
-            // pre-weather data; UPDATE the row we just wrote.
             await pool.query(
               `UPDATE runs
                   SET data = $1, weather_enriched_at = NOW()

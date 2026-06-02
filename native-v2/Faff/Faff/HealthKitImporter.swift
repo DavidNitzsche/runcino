@@ -331,6 +331,29 @@ final class HealthKitImporter: ObservableObject {
             payload["avg_gct_ms"] = Int(gct.rounded())
         }
 
+        // 2026-06-02 · weather from the Watch itself. Apple's Workouts.app
+        // stamps HKMetadataKeyWeatherTemperature + HKMetadataKeyWeatherHumidity
+        // on the HKWorkout when Weather access is granted to the source app.
+        // The values are what the runner saw on their watch face during the
+        // run · local conditions sourced from Apple Weather, more accurate
+        // than our server-side Open-Meteo fallback (which is keyed off the
+        // archive/forecast hourly grid and can be 1-2°F off the actual
+        // start-line read). When present we send it through and the backend
+        // skips the Open-Meteo fetch entirely.
+        if let tempQ = w.metadata?[HKMetadataKeyWeatherTemperature] as? HKQuantity {
+            let tempF = tempQ.doubleValue(for: HKUnit.degreeFahrenheit())
+            if tempF.isFinite {
+                payload["weather_hk_temp_f"] = (tempF * 10).rounded() / 10
+            }
+        }
+        if let humQ = w.metadata?[HKMetadataKeyWeatherHumidity] as? HKQuantity {
+            // HKMetadataKeyWeatherHumidity is HKUnit.percent() · returns 0-100.
+            let humPct = humQ.doubleValue(for: HKUnit.percent())
+            if humPct.isFinite {
+                payload["weather_hk_humidity_pct"] = Int(humPct.rounded())
+            }
+        }
+
         // Per-mile splits from HKWorkoutRoute (if present). Enriches each
         // split with HR + cadence by querying HKQuantitySamples in the
         // split's time window — the route alone has only GPS, so per-
