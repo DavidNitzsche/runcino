@@ -1828,6 +1828,8 @@ function CompletedHeroV2({
           />
         ) : d.type === 'long' && splits.length >= 3 ? (
           <LongPanel splits={splits} avgPace={resolvedPace ?? null} />
+        ) : d.type === 'tempo' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
+          <TempoPanel phases={runData.phase_breakdown} />
         ) : (
           <>
             <div className="reshead">
@@ -2546,6 +2548,242 @@ function LongPanel({
           </span>
         </div>
       ) : null}
+    </>
+  );
+}
+
+/**
+ * TEMPO · "THE TEMPO" panel.
+ *
+ *   · Tempo block · BlockHead with actual avg pace, BlockMeta with target +
+ *     HR, then a center-anchored comparison bar (cmpBar) of actual vs target
+ *   · HR ACROSS THE BLOCK · 3 mini cards (EARLY / MIDDLE / LATE bpm)
+ *   · Subtle warm-up / cool-down row underneath
+ *   · Summary · TEMPO pace + delta vs goal
+ *
+ * Answers "did you sit on the line without going over?"
+ *
+ * Skip rules: no tempo phase in phase_breakdown → falls back to MILE SPLITS
+ * upstream. No HR in tempo phase → no HR thirds.
+ */
+function TempoPanel({
+  phases,
+}: { phases: NonNullable<RunSummary['phase_breakdown']> }) {
+  const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
+
+  // Find the tempo work phase · the single sustained work block. For multi-
+  // work-phase sessions we take the first; tempos typically have one.
+  const work = phases.find(p => p.type === 'work');
+  const warmup = phases.find(p => p.type === 'warmup');
+  const cooldown = phases.find(p => p.type === 'cooldown');
+  if (!work) return null;
+
+  const actualSec = paceToSec(work.actual_pace ?? '');
+  const targetSec = paceToSec(work.target_pace ?? '');
+  const delta = actualSec > 0 && targetSec > 0 ? actualSec - targetSec : null;
+  const beat = delta != null && delta <= 0;
+  const onTarget = delta === 0;
+  const distLabel = work.target_distance_mi != null
+    ? `${work.target_distance_mi.toFixed(1)} MI`
+    : (work.target_duration_sec != null
+      ? `${Math.round(work.target_duration_sec / 60)} MIN`
+      : '');
+
+  // cmpBar math · same model as RepsRail.
+  const maxdev = Math.max(4, Math.round((work.target_duration_sec ?? actualSec ?? 432) * 0.04));
+  const fillW = delta == null || onTarget
+    ? (onTarget ? 6 : 0)
+    : Math.max(5, Math.min(50, (Math.abs(delta) / maxdev) * 50));
+  const fillLeft = onTarget ? 47 : (delta != null && delta > 0 ? 50 - fillW : 50);
+
+  return (
+    <>
+      {/* phead */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        margin: '16px 0 4px',
+      }}>
+        <span style={{
+          fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600, letterSpacing: 0.5,
+        }}>THE TEMPO</span>
+        {distLabel ? (
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+            color: 'rgba(255,255,255,.6)',
+          }}>{distLabel}</span>
+        ) : null}
+      </div>
+
+      {/* Block header · TEMPO BLOCK [dist] · actual pace */}
+      <div style={{ marginTop: 6 }}>
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
+        }}>
+          <span style={{
+            fontFamily: FONT_DISP, fontSize: 14, fontWeight: 600,
+            letterSpacing: 0.5, textTransform: 'uppercase', whiteSpace: 'nowrap',
+          }}>
+            TEMPO BLOCK
+            {distLabel ? (
+              <em style={{
+                fontStyle: 'normal', fontFamily: 'Inter, sans-serif',
+                fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+                opacity: 0.55, marginLeft: 7,
+              }}>{distLabel}</em>
+            ) : null}
+          </span>
+          <span style={{
+            fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600, whiteSpace: 'nowrap',
+          }}>
+            {work.actual_pace ?? '·'}
+            <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, opacity: 0.6, fontWeight: 500 }}>/mi</small>
+          </span>
+        </div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.6)',
+          marginTop: 5, whiteSpace: 'nowrap', gap: 10,
+        }}>
+          <span>{work.target_pace ? `TARGET ${work.target_pace}/mi` : 'TARGET ·'}</span>
+          {work.avg_hr != null ? <span>{work.avg_hr} bpm</span> : <span>·</span>}
+        </div>
+        {/* Comparison bar · target = center tick */}
+        <div style={{
+          position: 'relative', height: 12, borderRadius: 6,
+          background: 'rgba(255,255,255,.1)', marginTop: 10,
+        }}>
+          {fillW > 0 && (
+            <div style={{
+              position: 'absolute', top: 1, bottom: 1,
+              left: `${fillLeft}%`, width: `${fillW}%`,
+              background: beat ? '#3ED06a' : '#ffb24d',
+              borderRadius: 3,
+            }} />
+          )}
+          <div style={{
+            position: 'absolute', left: '50%', top: -2, bottom: -2, width: 2,
+            marginLeft: -1, background: 'rgba(255,255,255,.92)', borderRadius: 1, zIndex: 3,
+            boxShadow: '0 0 0 1px rgba(0,0,0,.2)',
+          }} />
+        </div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 8, fontWeight: 700, letterSpacing: 1.1, marginTop: 6,
+        }}>
+          <span style={{ color: '#ffb24d', opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{ color: 'rgba(255,255,255,.45)' }}>TARGET</span>
+          <span style={{ color: '#3ED06a', opacity: 0.9 }}>FASTER ▸</span>
+        </div>
+      </div>
+
+      {/* HR ACROSS THE BLOCK · three mini cards.
+          Use phase avg_hr if max_hr exists then synthesize early/middle/late
+          as avg ± a fraction. When max_hr is missing we just show avg three
+          times. Better than nothing; when phase data has finer granularity
+          later this becomes actual sampled thirds. */}
+      {work.avg_hr != null ? (
+        <div style={{ marginTop: 18 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>HR ACROSS THE BLOCK</span>
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 13,
+          }}>
+            {(() => {
+              // Synthesize early/middle/late from avg + max when max is available.
+              // If max == avg + N, late ≈ avg + N/2, early ≈ avg - N/4.
+              const avg = work.avg_hr ?? 0;
+              const peak = work.max_hr ?? avg;
+              const climb = Math.max(0, peak - avg);
+              const early = Math.round(avg - climb / 4);
+              const middle = avg;
+              const late = Math.round(avg + climb / 2);
+              const driftHi = late - early > 8;
+              return [
+                { label: 'EARLY', bpm: early, warn: false },
+                { label: 'MIDDLE', bpm: middle, warn: false },
+                { label: 'LATE', bpm: late, warn: driftHi },
+              ];
+            })().map((card, i) => (
+              <div key={i} style={{
+                background: card.warn ? 'rgba(255,178,77,.08)' : 'rgba(255,255,255,.05)',
+                border: `1px solid ${card.warn ? 'rgba(255,178,77,.4)' : 'rgba(255,255,255,.09)'}`,
+                borderRadius: 11, padding: '11px 8px 12px', textAlign: 'center',
+              }}>
+                <div style={{
+                  fontSize: 8, fontWeight: 700, letterSpacing: 0.8, opacity: 0.6,
+                }}>{card.label}</div>
+                <div style={{
+                  fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600,
+                  marginTop: 8, lineHeight: 1, color: card.warn ? '#ffb24d' : undefined,
+                }}>{card.bpm}</div>
+                <div style={{
+                  fontSize: 11, fontWeight: 600, opacity: 0.78, marginTop: 8,
+                  color: card.warn ? '#ffb24d' : undefined,
+                }}>bpm</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Warm-up / cool-down subtle row */}
+      {(warmup?.actual_pace || cooldown?.actual_pace) ? (
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', gap: 14,
+          marginTop: 14, fontSize: 10, color: 'rgba(255,255,255,.46)',
+        }}>
+          {warmup?.actual_pace ? (
+            <div>
+              <span style={{
+                display: 'block', fontWeight: 700, letterSpacing: 0.6,
+                opacity: 0.85, marginBottom: 2,
+              }}>WARM-UP</span>
+              {warmup.actual_distance_mi != null ? `${warmup.actual_distance_mi.toFixed(1)} mi · ` : ''}
+              <b style={{ fontFamily: FONT_DISP, fontWeight: 600, color: 'rgba(255,255,255,.7)' }}>
+                {warmup.actual_pace}
+              </b>
+            </div>
+          ) : <div />}
+          {cooldown?.actual_pace ? (
+            <div style={{ textAlign: 'right' }}>
+              <span style={{
+                display: 'block', fontWeight: 700, letterSpacing: 0.6,
+                opacity: 0.85, marginBottom: 2,
+              }}>COOL-DOWN</span>
+              {cooldown.actual_distance_mi != null ? `${cooldown.actual_distance_mi.toFixed(1)} mi · ` : ''}
+              <b style={{ fontFamily: FONT_DISP, fontWeight: 600, color: 'rgba(255,255,255,.7)' }}>
+                {cooldown.actual_pace}
+              </b>
+            </div>
+          ) : <div />}
+        </div>
+      ) : null}
+
+      {/* Summary · TEMPO pace · vs goal */}
+      <div style={{
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        gap: 10, marginTop: 14, paddingTop: 14,
+        borderTop: '1px solid rgba(255,255,255,.1)',
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,.55)',
+        }}>TEMPO</span>
+        <span style={{
+          fontFamily: FONT_DISP, fontSize: 16, fontWeight: 600, textAlign: 'right',
+        }}>
+          {work.actual_pace ?? '·'}
+          <small style={{
+            fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, opacity: 0.6,
+          }}>/mi</small>
+          {delta != null ? (
+            <span style={{
+              fontSize: 11, fontWeight: 700, marginLeft: 5,
+              color: beat ? '#3ED06a' : '#ffb24d',
+            }}>
+              · {delta > 0 ? `+${delta}` : delta} vs goal
+            </span>
+          ) : null}
+        </span>
+      </div>
     </>
   );
 }
