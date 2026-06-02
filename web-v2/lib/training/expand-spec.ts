@@ -254,6 +254,76 @@ function expandRecovery(
 
 // ── helpers ────────────────────────────────────────────────────────────
 
+/**
+ * 2026-06-03 · iPhone agent Tier 2.d brief · derive sub_label from
+ * workout_spec so the title row and grid can never drift.
+ *
+ * Produces the same human-readable strings the generator's prescription
+ * resolver produces, but sourced from the authored spec instead of a
+ * template. Used at generator write time + adapter mutation sites + a
+ * one-off backfill for rows where stored sub_label diverged from spec.
+ *
+ * Returns null for spec=null (rest/cross/strength · no breakdown).
+ *
+ * Output examples:
+ *   tempo  spec wu=2 tempo=4 cd=2  → "2 mi WU · 4 mi @ T · 2 mi CD"
+ *   intervals 4×1mi 180s rest     → "4×1 mi @ I · 3 min jog"
+ *   threshold 5×1km 60s rest      → "5×1 km @ T pace · 60s jog"
+ *   easy / recovery / long / race → "EASY" / "RECOVERY" / "LONG" / "RACE"
+ */
+export function subLabelFromSpec(spec: WorkoutSpec): string | null {
+  if (!spec || typeof spec !== 'object') return null;
+  const s = spec as Record<string, unknown>;
+  const kind = String(s.kind ?? '');
+  switch (kind) {
+    case 'tempo': {
+      const wu = Number(s.warmup_mi ?? 0);
+      const tempo = Number(s.tempo_distance_mi ?? 0);
+      const cd = Number(s.cooldown_mi ?? 0);
+      if (!wu && !cd) return `${formatMi(tempo)} mi continuous tempo`;
+      return `${formatMi(wu)} mi WU · ${formatMi(tempo)} mi @ T · ${formatMi(cd)} mi CD`;
+    }
+    case 'threshold':
+    case 'intervals': {
+      const reps = Number(s.rep_count ?? 0) || 0;
+      const repMi = Number(s.rep_distance_mi ?? 0) || 0;
+      const repM = Number(s.rep_distance_m ?? 0) || 0;
+      const effRepMi = repMi > 0 ? repMi : (repM / 1609.34);
+      const restS = Number(s.rep_rest_s ?? 0) || 0;
+      const repLabel = formatRepLabel(effRepMi);
+      const paceTag = kind === 'intervals' ? '@ I' : '@ T pace';
+      const restLabel = formatRestLabel(restS);
+      return `${reps}×${repLabel} ${paceTag} · ${restLabel}`;
+    }
+    // 2026-06-03 · easy / recovery / long / race / shakeout · return
+    // null so the caller's existing sub_label sticks. The spec's
+    // `kind` doesn't carry the decorations these labels need:
+    //   · long  · "LONG · 5mi @ HM" race-pace insert isn't in spec
+    //   · race  · spec.kind='long' (stash) · would mis-derive as "LONG"
+    //   · shakeout · spec.kind='easy' · would mis-derive as "EASY"
+    // Only the rep/tempo shapes (where the drift bug actually
+    // happened) get derived. Everything else keeps generator-time
+    // labels.
+    default:
+      return null;
+  }
+}
+
+function formatMi(n: number): string {
+  const r = Math.round(n * 10) / 10;
+  return r % 1 === 0 ? String(r) : r.toFixed(1);
+}
+function formatRestLabel(s: number): string {
+  if (s <= 0) return 'jog rest';
+  if (s >= 60 && s % 60 === 0) return `${s / 60} min jog`;
+  if (s >= 60) {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, '0')} jog`;
+  }
+  return `${s}s jog`;
+}
+
 function formatRepLabel(repMi: number): string {
   // 1.0 → "1 mi"; 0.62 → "1 km"; 0.5 → "800 m"; 0.25 → "400 m"
   if (Math.abs(repMi - 1.0) < 0.05) return '1 mi';

@@ -25,6 +25,7 @@ import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
+import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { lookupTierTarget, type TierTarget, type GoalTier } from './goal-tiers';
 
@@ -946,6 +947,12 @@ async function persistPlan(args: {
       // runner's math didn't tie. See spec-builder.totalDistanceMiFromSpec
       // for the inclusion rules.
       const totalDistanceMi = totalDistanceMiFromSpec(workoutSpec, d.distanceMi);
+      // 2026-06-03 · iPhone agent Tier 2.d brief · sub_label derived
+      // from spec instead of the rx template string. The spec is the
+      // authored truth · deriving sub_label from it means the chip
+      // title and the spec can never drift. Falls back to d.subLabel
+      // when spec is null (rest/cross/strength).
+      const derivedSubLabel = subLabelFromSpec(workoutSpec) ?? d.subLabel;
       // dow stored as 1=Mon..7=Sun in our convention? Use what plan_workouts expects.
       // We pass dow 0..6 (Sun..Sat). Existing reader treats numeric dow + sub_label.
       await pool.query(
@@ -956,7 +963,7 @@ async function persistPlan(args: {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $4, $6, $7, $13)`,
         [wkoId, planId, weekId, dateISO, d.dow, d.type, totalDistanceMi,
          paceTargetSPerMi, workoutSpec ? JSON.stringify(workoutSpec) : null,
-         d.isQuality, d.isLong, d.notes, d.subLabel]
+         d.isQuality, d.isLong, d.notes, derivedSubLabel]
       );
     }
   }
