@@ -7,7 +7,7 @@ import type { FaffSeed } from '../types';
 import { EFF, KIT, ROLECOL } from '../constants';
 import { buildAdaptText } from '../adapt-text';
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
-import { deriveSessionSegs, fallbackSessionSegs } from '../session-shape';
+import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type BlueprintData, type BlueprintSegment } from '../session-shape';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { PlanProposalCard } from '../cards/PlanProposalCard';
@@ -660,6 +660,243 @@ function paceToSec(p: string): number {
  *  ("THRESHOLD", "TEMPO RUN", "LONG"); design wants "Threshold",
  *  "Tempo Run", "Long". Preserves intentional acronyms · words 1-2
  *  chars stay as authored ("VO2", "PR" survive). */
+/**
+ * SessionBlueprint · the redesigned SESSION card per
+ * designs/from Design agent/session-card/ (2026-06-02).
+ *
+ * SVG Z1-Z5 lane chart with each segment as a rounded block at its
+ * effort zone height. Reps render as a comb of work bars + float
+ * recovery bars with a bracket label above. Fuel pins drop from the
+ * top. Bottom mile ruler. One coach line under a hairline divider.
+ *
+ * Header is the run name + a totals strip (DISTANCE · EST TIME ·
+ * EFFORT). No "SESSION" eyebrow, no "CUE" pill (both dropped per
+ * the design review).
+ */
+function SessionBlueprint({
+  runName, distLabel, estLabel, data, coachLine,
+}: {
+  runName: string;
+  distLabel: string;
+  estLabel: string;
+  data: BlueprintData | null;
+  coachLine: string | null | undefined;
+}) {
+  return (
+    <div className="sessblue">
+      <div className="sb-head">
+        <div className="sb-name">{runName}</div>
+        <div className="sb-totes">
+          <div className="sb-te">
+            <b>{distLabel}</b>
+            <span>DISTANCE</span>
+          </div>
+          <div className="sb-dv" />
+          <div className="sb-te">
+            <b>{estLabel}</b>
+            <span>EST TIME</span>
+          </div>
+          <div className="sb-dv" />
+          <div className="sb-te">
+            <b>{data?.effortLabel ?? '·'}</b>
+            <span>EFFORT</span>
+          </div>
+        </div>
+      </div>
+
+      {data && data.segs.length > 0 ? (
+        <SessionBlueprintChart data={data} />
+      ) : (
+        <div className="sb-empty">No structured spec for this run yet.</div>
+      )}
+
+      {coachLine ? (
+        <div className="sb-coach">{coachLine}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The SVG itself. Pure render from BlueprintData. */
+function SessionBlueprintChart({ data }: { data: BlueprintData }) {
+  const W = 712;
+  const H = 220;
+  const padL = 30;
+  const padR = 16;
+  const hasReps = data.segs.some(s => !!s.reps);
+  const padT = hasReps ? 46 : 22;
+  const padB = 28;
+  const x0 = padL;
+  const x1 = W - padR;
+  const y0 = H - padB;
+  const y1 = padT;
+  const laneH = (y0 - y1) / 5;
+  const total = data.totalMi;
+  const xOf = (mi: number) => x0 + (mi / total) * (x1 - x0);
+  // Stable id for the gradient (per-mount).
+  const gradId = `sb-sheen-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Lanes background · alternating row tint + a horizontal line at the
+  // top of each lane + a Z-label gutter on the left.
+  const lanes: React.ReactNode[] = [];
+  for (let zz = 1; zz <= 5; zz++) {
+    const ly = y0 - (zz - 1) * laneH;
+    const lt = ly - laneH;
+    if (zz % 2 === 0) {
+      lanes.push(<rect key={`zb-${zz}`} x={x0} y={lt} width={x1 - x0} height={laneH} fill="rgba(255,255,255,.05)" />);
+    }
+    lanes.push(<line key={`zl-${zz}`} x1={x0} y1={ly} x2={x1} y2={ly} stroke="rgba(255,255,255,.12)" strokeWidth={1} />);
+    lanes.push(
+      <text key={`zt-${zz}`} x={x0 - 8} y={ly - laneH / 2 + 3} textAnchor="end" fontFamily="Oswald" fontSize="9" fill="rgba(255,255,255,.5)">
+        Z{zz}
+      </text>
+    );
+  }
+
+  // Blocks · one per segment. Rep blocks render as a comb of work bars
+  // + N-1 float bars with a bracket label above.
+  const blocks: React.ReactNode[] = [];
+  data.segs.forEach((seg, segIdx) => {
+    const bx = xOf(seg.from);
+    const bw = xOf(seg.to) - xOf(seg.from);
+    const bh = seg.zone * laneH;
+    const by = y0 - bh;
+
+    if (seg.reps && seg.reps > 0) {
+      const n = seg.reps;
+      const units = n * 2 + (n - 1); // each rep = 2 units, each rest = 1 unit
+      const uW = bw / units;
+      const repBh = 5 * laneH;
+      const repBy = y0 - repBh;
+      const floBh = 1.3 * laneH;
+      const floBy = y0 - floBh;
+      const floCol = '#48B3B5';
+      let cxp = bx;
+      for (let r = 0; r < n; r++) {
+        const rw = 2 * uW;
+        blocks.push(
+          <rect key={`rep-${segIdx}-${r}-fill`} x={cxp + 1} y={repBy} width={rw - 2} height={repBh} rx={4} fill={seg.color} opacity={0.96} />,
+          <rect key={`rep-${segIdx}-${r}-sheen`} x={cxp + 1} y={repBy} width={rw - 2} height={repBh} rx={4} fill={`url(#${gradId})`} />,
+        );
+        cxp += rw;
+        if (r < n - 1) {
+          blocks.push(
+            <rect key={`flo-${segIdx}-${r}-fill`} x={cxp} y={floBy} width={uW} height={floBh} rx={3} fill={floCol} opacity={0.85} />,
+            <rect key={`flo-${segIdx}-${r}-sheen`} x={cxp} y={floBy} width={uW} height={floBh} rx={3} fill={`url(#${gradId})`} />,
+          );
+          cxp += uW;
+        }
+      }
+      // Bracket + label above the comb.
+      const bxs = bx + 1;
+      const bxe = bx + bw - 1;
+      const byr = repBy - 9;
+      const gcx = bx + bw / 2;
+      blocks.push(
+        <path
+          key={`bracket-${segIdx}`}
+          d={`M${bxs} ${byr + 5} L${bxs} ${byr} L${bxe} ${byr} L${bxe} ${byr + 5}`}
+          fill="none" stroke="rgba(255,255,255,.5)" strokeWidth={1.3}
+        />,
+        <text
+          key={`bracket-lbl-${segIdx}`}
+          x={gcx} y={byr - 6} textAnchor="middle"
+          fontFamily="Inter" fontSize="11.5" fontWeight={800} letterSpacing=".3" fill="#fff"
+        >
+          {seg.label}
+          {seg.pace ? (
+            <tspan fontFamily="Oswald" fontWeight={700} fill="rgba(255,255,255,.82)">
+              {' '}@ {seg.pace}
+              {seg.repDistanceLabel ? ` /${seg.repDistanceLabel.replace(/\s+/g, '')}` : ''}
+            </tspan>
+          ) : null}
+        </text>
+      );
+      return;
+    }
+
+    // Standard block · rounded rect with sheen overlay.
+    blocks.push(
+      <rect key={`b-${segIdx}-fill`} x={bx + 2} y={by} width={Math.max(0, bw - 4)} height={bh} rx={8} fill={seg.color} opacity={0.96} />,
+      <rect key={`b-${segIdx}-sheen`} x={bx + 2} y={by} width={Math.max(0, bw - 4)} height={bh} rx={8} fill={`url(#${gradId})`} />,
+    );
+
+    // Left-anchored text · NAME · big pace · "X mi · Zn" when block tall enough.
+    const tx = bx + 14;
+    blocks.push(
+      <text key={`bl-${segIdx}`} x={tx} y={by + 19} fontFamily="Inter" fontSize="9.5" fontWeight={800} letterSpacing="1" fill="rgba(255,255,255,.82)">
+        {seg.label.toUpperCase()}
+      </text>
+    );
+    if (seg.pace) {
+      blocks.push(
+        <text key={`bp-${segIdx}`} x={tx} y={by + 41} fontFamily="Oswald" fontSize="20" fontWeight={700} fill="#fff">
+          {seg.pace}
+          <tspan fontSize="11" fill="rgba(255,255,255,.72)"> /mi</tspan>
+        </text>
+      );
+    }
+    if (bh > 62) {
+      const segMi = (seg.to - seg.from);
+      blocks.push(
+        <text key={`bm-${segIdx}`} x={tx} y={by + bh - 11} fontFamily="Oswald" fontSize="11" fontWeight={600} fill="rgba(255,255,255,.7)">
+          {segMi.toFixed(segMi === Math.round(segMi) ? 0 : 1)} mi · {seg.zn}
+        </text>
+      );
+    }
+  });
+
+  // Mile ruler · ticks every 1 mi (≤10 total) or 2 mi (longer), with a
+  // closing "MI" label at the right edge.
+  const ruler: React.ReactNode[] = [
+    <line key="r-base" x1={x0} y1={y0} x2={x1} y2={y0} stroke="rgba(255,255,255,.35)" strokeWidth={1.4} />,
+  ];
+  const stepMi = total > 10 ? 2 : 1;
+  for (let t = 0; t <= total + 0.001; t += stepMi) {
+    const rx2 = xOf(t);
+    ruler.push(
+      <line key={`rt-${t}`} x1={rx2} y1={y0} x2={rx2} y2={y0 + 4} stroke="rgba(255,255,255,.45)" strokeWidth={1.2} />,
+      <text key={`rl-${t}`} x={rx2} y={y0 + 16} textAnchor="middle" fontFamily="Oswald" fontSize="9.5" fill="rgba(255,255,255,.55)">
+        {t}
+      </text>
+    );
+  }
+  ruler.push(
+    <text key="r-end" x={x1} y={y0 + 16} textAnchor="end" fontFamily="Oswald" fontSize="9.5" fill="rgba(255,255,255,.5)">MI</text>
+  );
+
+  // Fuel pins · dashed line starting BELOW the GEL label, drop icon
+  // above the dashed start.
+  const fuel: React.ReactNode[] = [];
+  data.fuelMi.forEach((f, i) => {
+    const fx = xOf(f);
+    fuel.push(
+      <line key={`f-${i}-line`} x1={fx} y1={y1 + 28} x2={fx} y2={y0} stroke="rgba(255,255,255,.4)" strokeWidth={1} strokeDasharray="2 3" />,
+      <path
+        key={`f-${i}-icn`}
+        d={`M${fx} ${y1 + 5 - 8} C${fx + 5} ${y1 + 5 - 2} ${fx + 4.5} ${y1 + 5 + 4} ${fx} ${y1 + 5 + 4} C${fx - 4.5} ${y1 + 5 + 4} ${fx - 5} ${y1 + 5 - 2} ${fx} ${y1 + 5 - 8} Z`}
+        fill="rgba(255,255,255,.92)"
+      />,
+      <text key={`f-${i}-lbl`} x={fx} y={y1 + 22} textAnchor="middle" fontFamily="Oswald" fontSize="8" fontWeight={700} fill="rgba(255,255,255,.78)">GEL</text>
+    );
+  });
+
+  return (
+    <svg className="sb-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.26" />
+          <stop offset="42%" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {lanes}
+      {blocks}
+      {ruler}
+      {fuel}
+    </svg>
+  );
+}
+
 function toTitleCase(s: string): string {
   if (!s) return s;
   return s.split(/(\s+)/).map(w => {
@@ -898,14 +1135,9 @@ function PlannedHeroV2({
   skipped: boolean;
   onToggleSkip: (iso: string | undefined, next: boolean) => void;
 }) {
-  // SESSION segments · derive from real workout_spec when present,
-  // honest single-bar fallback otherwise. Replaces the SEGS prototype
-  // table (2026-06-02 brief). totalMi comes from d.dist (correct
-  // post-backend 08093bbf backfill that stores TOTAL miles).
+  // 2026-06-02 · totalMi feeds the SessionBlueprint chart. d.dist is
+  // total post the backend 08093bbf backfill (WU + core + floats + CD).
   const totalMi = parseFloat(d.dist || '0') || 0;
-  const segs = deriveSessionSegs(d.workoutSpec ?? null, totalMi, d.type, d.pace)
-    ?? fallbackSessionSegs(d.type, totalMi, d.pace)
-    ?? [];
   const eff  = EFF[d.type];
   const kit  = KIT[d.type];
   const forecast = useDayForecast(d.iso);
@@ -1128,24 +1360,13 @@ function PlannedHeroV2({
         </div>
       </div>
 
-      <div className="session">
-        <div className="sh">SESSION</div>
-        <div className="shape">
-          {segs.map((x, i) => <i key={i} style={{ width: `${x.w}%`, background: x.c }} />)}
-        </div>
-        <div className="segs">
-          {segs.map((x, i) => (
-            <div className="seg" key={i}>
-              <span className="sd" style={{ background: x.c }} />
-              <span className="sl">{x.l}</span>
-              <span className="ss">{x.sub}</span>
-            </div>
-          ))}
-        </div>
-        <div className="scue">
-          <span className="ct">CUE</span>{kit.coach}
-        </div>
-      </div>
+      <SessionBlueprint
+        runName={d.subLabel ?? d.name}
+        distLabel={`${d.dist} mi`}
+        estLabel={d.est.replace(/^~/, '~')}
+        data={deriveBlueprintData(d.workoutSpec ?? null, totalMi, d.type, d.pace)}
+        coachLine={kit.coach}
+      />
 
       <aside className="wcard">
         <div className="wcl">
