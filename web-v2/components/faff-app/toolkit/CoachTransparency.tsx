@@ -44,10 +44,15 @@ function useIntents({
   limit,
   reasonPrefix,
   initial,
+  unackedOnly,
 }: {
   limit?: number;
   reasonPrefix?: string;
   initial?: IntentRow[] | null;
+  /** 2026-06-03 · banner surfaces (AdaptationCard) set this so once
+   *  the engine acks an intent it stops banner-rendering. Timeline
+   *  surfaces leave it undefined to keep the full audit log. */
+  unackedOnly?: boolean;
 }) {
   const [rows, setRows] = useState<IntentRow[] | null>(initial ?? null);
   const [state, setState] = useState<'idle' | 'loading' | 'error'>(initial ? 'idle' : 'loading');
@@ -60,6 +65,7 @@ function useIntents({
     const params = new URLSearchParams();
     if (limit) params.set('limit', String(limit));
     if (reasonPrefix) params.set('reason_prefix', reasonPrefix);
+    if (unackedOnly) params.set('unacked_only', 'true');
     fetch(`/api/coach/intents${params.toString() ? '?' + params.toString() : ''}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((j: IntentsResponse) => {

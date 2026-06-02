@@ -64,6 +64,12 @@ export async function GET(req: NextRequest) {
   const sinceIso = url.searchParams.get('since') ||
     new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
   const reasonPrefix = url.searchParams.get('reason_prefix');
+  // 2026-06-03 · banner surfaces (AdaptationCard) pass unacked_only=true
+  // so once an intent is marked acknowledged (engine-side via
+  // autoMergeForDate, or runner-side via dismiss) it stops banner-
+  // rendering. Timeline / history surfaces leave it false to keep
+  // the audit log complete.
+  const unackedOnly = url.searchParams.get('unacked_only') === 'true';
 
   const params: unknown[] = [userId, sinceIso];
   // BOTH columns cast to text · the writer at lib/plan/adapt.ts:292
@@ -80,6 +86,9 @@ export async function GET(req: NextRequest) {
   if (reasonPrefix) {
     params.push(`${reasonPrefix}%`);
     where += ` AND reason LIKE $${params.length}`;
+  }
+  if (unackedOnly) {
+    where += ` AND acknowledged_at IS NULL`;
   }
 
   const q = await pool.query<IntentRow>(
