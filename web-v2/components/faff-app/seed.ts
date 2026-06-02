@@ -1933,6 +1933,45 @@ export async function buildSeed(): Promise<FaffSeed> {
   // Stamp the real readiness on top · honestReadiness overrides the
   // stale HRV-baseline-as-readiness-baseline below in the main return.
   healthSnapshot.readiness = readiness;
+
+  // 2026-06-01 · Power moves Waves 2-4 · aerobic-fitness trend, heat
+  // acclim, post-session recovery, block comparison, DOW patterns,
+  // cycle performance, quality predictors. All best-effort · return
+  // null when not enough signal exists. Fired in parallel.
+  const [
+    aerobicFitness, heatAcclim, recoveryPhase, blockComparison,
+    dowPatterns, cyclePerformance, qualityPredictors,
+  ] = await Promise.all([
+    (async () => { try { const { computeDecouplingTrend } = await import('@/lib/training/decoupling-trend');
+      return await computeDecouplingTrend(userId); } catch { return null; } })(),
+    (async () => { try { const { computeHeatAcclimatization } = await import('@/lib/coach/heat-acclimatization');
+      return await computeHeatAcclimatization(userId); } catch { return null; } })(),
+    (async () => { try { const { computeRecoveryPhase } = await import('@/lib/coach/recovery-phase');
+      return await computeRecoveryPhase(userId); } catch { return null; } })(),
+    (async () => { try { const { computeBlockComparison } = await import('@/lib/coach/block-comparison');
+      return await computeBlockComparison(userId); } catch { return null; } })(),
+    (async () => { try { const { computeDowPatterns } = await import('@/lib/coach/dow-patterns');
+      return await computeDowPatterns(userId); } catch { return null; } })(),
+    (async () => {
+      // Gender-gated · only compute for female-identified runners.
+      if (biologicalSex !== 'female') return null;
+      try { const { computeCyclePerformance } = await import('@/lib/coach/cycle-performance');
+        return await computeCyclePerformance(userId); } catch { return null; }
+    })(),
+    (async () => { try { const { computeQualityPredictors } = await import('@/lib/coach/quality-predictors');
+      return await computeQualityPredictors(userId); } catch { return null; } })(),
+  ]);
+  // Attach to healthSnapshot as untyped sidecar fields · design agent
+  // reads seed.health.<field> per the v2 brief. Avoid touching the
+  // strict HealthSnapshot type contract.
+  const sidecar = healthSnapshot as unknown as Record<string, unknown>;
+  sidecar.aerobicFitness = aerobicFitness;
+  sidecar.heatAcclim = heatAcclim;
+  sidecar.recoveryPhase = recoveryPhase;
+  sidecar.blockComparison = blockComparison;
+  sidecar.dowPatterns = dowPatterns;
+  sidecar.cyclePerformance = cyclePerformance;
+  sidecar.qualityPredictors = qualityPredictors;
   const prs = adaptPRs(races, log);
   const racesList = adaptRaces(races);
   const activity = adaptActivity(log);
