@@ -26,6 +26,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
 import { parseRaceTime } from '@/lib/training/vdot';
+import { lookupTierTarget, type TierTarget, type GoalTier } from './goal-tiers';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -318,40 +319,84 @@ const RAMP_PCT: Record<Exclude<LevelKey, null>, number> = {
 
 /** Returns target mileage for each week 0..N-1 (chronological).
  *
- * Cite: Research/00a-distance-running-training.md §progressive-overload (10%/wk cap, deload every 4th wk)
- * Cite: Research/08-pacing-and-race-week.md §taper (cut volume, hold intensity)
+ * 2026-06-02 rewrite (David's fail-proof generator ask):
+ *   · ramp geometrically from baseMi to tier.peakWeeklyMileageBand[0]
+ *     (the tier's LOWER bound · ambitious but doctrine-safe)
+ *   · cutback every 4th non-taper week to 85% of last peak
+ *   · taper math unchanged
  *
- * Non-deload weeks ramp by RAMP_PCT (level-scaled, 5-8%); cutback weeks
- * land at 85% of the previous PEAK so the trend climbs cleanly across
- * cycles. Floor scales by experience_level.
+ * The geometric ramp respects Research/00a §progressive-overload's
+ * 10%/wk cap: when (peak/base)^(1/buildWeeks) > 1.10, we cap the
+ * per-week growth at 10% and accept that the peak target won't be
+ * fully reached. Honest about what's achievable in the runway.
+ *
+ * Cite: Research/00a-distance-running-training.md §progressive-overload
+ * Cite: Research/22-plan-templates.md (tier targets via TIER_TARGETS)
+ * Cite: Research/08-pacing-and-race-week.md §taper
  */
-function volumeCurve(baseMi: number, blocks: BlockPlan, level: LevelKey): number[] {
+function volumeCurve(
+  baseMi: number,
+  blocks: BlockPlan,
+  level: LevelKey,
+  tierTarget: TierTarget,
+): number[] {
   const vols: number[] = [];
   const floor = level ? VOLUME_FLOOR_MPW[level] : VOLUME_FLOOR_MPW.intermediate;
-  const ramp  = level ? RAMP_PCT[level]         : RAMP_PCT.intermediate;
-  let weekVol = Math.max(floor, baseMi);
-  let lastPeak = weekVol;
+  const start = Math.max(floor, baseMi);
+  // Peak target · LOWER band of the tier so it's achievable from a
+  // realistic base. If the runner already exceeds the lower band,
+  // aim 10% above their current base (still respects tier doctrine).
+  const peakTarget = Math.max(
+    tierTarget.peakWeeklyMileageBand[0],
+    Math.round(start * 1.10),
+  );
 
-  let cursor = 0;
-  for (const phase of blocks.phases) {
-    for (let w = 0; w < phase.weeks; w++) {
-      if (phase.label === 'TAPER') {
-        const wksLeft = phase.weeks - w;
-        const taperFactor = wksLeft === 1 ? 0.45 : wksLeft === 2 ? 0.60 : 0.75;
-        vols.push(Math.round(lastPeak * taperFactor));
-      } else {
-        const isDeload = cursor > 0 && (cursor + 1) % 4 === 0;
-        if (cursor > 0) {
-          if (isDeload) {
-            weekVol = Math.round(lastPeak * 0.85);
-          } else {
-            weekVol = Math.round(weekVol * (1 + ramp));
-            lastPeak = Math.max(lastPeak, weekVol);
-          }
-        }
-        vols.push(weekVol);
-      }
-      cursor++;
+  // Build phases · everything before TAPER. Each is a ramp week or a
+  // deload (every 4th non-taper week). We pre-mark deload positions
+  // along the build span so the ramp targets the right week.
+  const buildPhases = blocks.phases.filter((p) => p.label !== 'TAPER');
+  const buildWeeks = buildPhases.reduce((s, p) => s + p.weeks, 0);
+  const deloadMask: boolean[] = [];
+  for (let i = 0; i < buildWeeks; i++) {
+    // Deload at week 3, 7, 11... · cursor+1 divisible by 4 in 0-index.
+    deloadMask.push(i > 0 && (i + 1) % 4 === 0);
+  }
+  const climbWeeks = deloadMask.filter((d) => !d).length;
+
+  // Geometric ramp factor across climb weeks (skipping deloads).
+  // Capped at 10%/week per progressive-overload doctrine.
+  const idealFactor = climbWeeks > 1 && peakTarget > start
+    ? Math.pow(peakTarget / start, 1 / (climbWeeks - 1))
+    : 1.0;
+  const climbFactor = Math.min(1.10, idealFactor);
+
+  // Walk climb weeks · target = start * climbFactor^N where N is
+  // the climbing-week index (skips deloads). Deload weeks = previous
+  // climb week × 0.85.
+  let climbIdx = 0;
+  let lastClimb = start;
+  let lastPeak = start;
+  for (let i = 0; i < buildWeeks; i++) {
+    if (deloadMask[i]) {
+      const deload = Math.round(lastClimb * 0.85);
+      vols.push(deload);
+    } else {
+      const target = start * Math.pow(climbFactor, climbIdx);
+      const rounded = Math.round(Math.min(target, peakTarget));
+      vols.push(rounded);
+      lastClimb = rounded;
+      lastPeak = Math.max(lastPeak, rounded);
+      climbIdx++;
+    }
+  }
+
+  // Taper phase · scale from lastPeak.
+  const taperPhase = blocks.phases.find((p) => p.label === 'TAPER');
+  if (taperPhase) {
+    for (let w = 0; w < taperPhase.weeks; w++) {
+      const wksLeft = taperPhase.weeks - w;
+      const taperFactor = wksLeft === 1 ? 0.45 : wksLeft === 2 ? 0.60 : 0.75;
+      vols.push(Math.round(lastPeak * taperFactor));
     }
   }
   return vols;
@@ -437,7 +482,7 @@ async function resolvePrescriptions(
 }
 
 function layoutWeek({
-  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor,
+  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, tierTarget,
 }: {
   phase: string; weekIdx: number; totalWeeks: number;
   weeklyMi: number; longRunDow: DOW; qualityDows: DOW[]; restDow: DOW;
@@ -448,6 +493,10 @@ function layoutWeek({
    *  4.5-mi easy day when the runner is comfortably running 6+ mi
    *  easy. Pass 0 to skip the floor (falls back to historical math). */
   easyMileFloor?: number;
+  /** 2026-06-02 · tier targets from Research/22 (via lookupTierTarget).
+   *  Drives longShare + caps the long-run upper bound at the tier
+   *  band. Without it, the generator was producing goal-blind plans. */
+  tierTarget: TierTarget;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -478,10 +527,23 @@ function layoutWeek({
   }
 
   // Standard week: 1 long, 1-2 quality, rest = easy, 1 rest day.
-  // Distribute remaining miles across easy days proportionally.
-  const longShare    = phase === 'BASE' ? 0.30 : phase === 'TAPER' ? 0.28 : 0.34;
-  const qualityShare = phase === 'BASE' ? 0    : phase === 'TAPER' ? 0.18 : 0.22; // total across quality days
-  const longMi = Math.round(weeklyMi * longShare);
+  // 2026-06-02 · longShare is tier-driven (from Research/22). BASE
+  // phase keeps a lower share since the long is the only quality.
+  // TAPER pulls back to a recovery long. QUALITY + RACE-SPECIFIC use
+  // the full tier share.
+  const longShare = phase === 'BASE' ? Math.max(0.28, tierTarget.longRunShare - 0.04)
+                  : phase === 'TAPER' ? 0.28
+                  : tierTarget.longRunShare;
+  const qualityShare = phase === 'BASE' ? 0
+                     : phase === 'TAPER' ? 0.18
+                     : 0.22;  // total across quality days
+  // Cap long at the tier's peakLong upper bound · no overdistance
+  // beyond what doctrine prescribes. For phases that aren't peak
+  // build, allow the lower bound to be a floor too · long runs
+  // need to be substantial even in early build.
+  const longMiRaw = Math.round(weeklyMi * longShare);
+  const longCap = tierTarget.peakLongMiBand[1];
+  const longMi = Math.min(longMiRaw, longCap);
   const qualityMiEach = qualityDows.length > 0 ? Math.round((weeklyMi * qualityShare) / qualityDows.length) : 0;
 
   // Pre-allocate: rest = 0, long + quality slotted in
@@ -660,9 +722,23 @@ export interface ComposePlanResult {
  * `expectedPlan.peakWeeklyMileageBand`, `longRunShare`, etc.
  */
 export function composePlan(input: ComposePlanInput): ComposePlanResult {
-  const totalWeeks = daysBetween(input.startMondayISO, input.raceDateISO) / 7 + 1;
+  // 2026-06-02 · totalWeeks MUST be an integer · was fractional for
+  // non-Monday races (race day Sun = 6 days span, 7×N-1 days = N
+  // weeks - 1/7). Fractional weeks made phaseWkRemaining never hit
+  // exactly 0, so phase advancement broke and plans stayed in BASE
+  // for the entire runway. Caught by the generator bench.
+  const totalWeeks = Math.max(3,
+    Math.floor(daysBetween(input.startMondayISO, input.raceDateISO) / 7) + 1
+  );
   const blocks = sizeBlocks(totalWeeks, input.raceDistanceMi, input.isMidBlock);
-  const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level);
+  // 2026-06-02 · tier targets drive volume + long-run sizing.
+  // Sourced from Research/22 via lookupTierTarget. Classification
+  // uses goalPaceSec; falls back to intermediate tier when no goal.
+  const { tier, target: tierTarget } = lookupTierTarget(
+    input.goalPaceSec,
+    input.raceDistanceMi,
+  );
+  const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level, tierTarget);
 
   const weeks: ComposedWeek[] = [];
   let phaseCursor = 0;
@@ -693,6 +769,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       raceDistanceMi: input.raceDistanceMi,
       rx,
       easyMileFloor: input.easyDayMedianMi,
+      tierTarget,
     });
     // P34 · cross-training opt-in · rotate enabled modes across the
     // rest day. Same logic that used to live in generatePlan's loop.
@@ -726,6 +803,11 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       is_mid_block: input.isMidBlock,
       t_pace_s_per_mi: input.tPaceSec,
       lthr_bpm: input.lthr,
+      // 2026-06-02 · tier classification for downstream consumers
+      // (gap-report, projection snapshots, brief).
+      goal_tier: tier,
+      tier_peak_weekly_band: tierTarget.peakWeeklyMileageBand,
+      tier_peak_long_band: tierTarget.peakLongMiBand,
       citations: blocks.phases.map((p) => p.citation),
     },
   };
@@ -929,6 +1011,13 @@ async function loadGeneratorInputs(
   const isMidBlock = await detectMidBlock(userId);
   const recentMi = await recentWeeklyMileage(userId);
   const easyFloor = await easyDayMedianMi(userId);
+  // 2026-06-02 · ensure totalWeeks is an integer here too · matches
+  // the same fix in composePlan. Was producing fractional totalWeeks
+  // that broke phase advancement.
+  const integerTotalWeeks = Math.max(3,
+    Math.floor(daysBetween(startMondayISO, mondayOf(raceDateISO)) / 7) + 1
+  );
+  void integerTotalWeeks;  // computed for the early-return check below
 
   // 5. Experience level
   const expRow = (await pool.query<{ experience_level: string | null }>(

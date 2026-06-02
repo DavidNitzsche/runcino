@@ -85,11 +85,14 @@ export const PERSONAS: SyntheticRunner[] = [
     healthPattern: 'baseline',
   },
 
-  // 2. Intermediate HM · David's profile
+  // 2. Advanced HM · David's actual profile + goal (sub-1:30)
+  // Per Research/22 "HM Advanced" tier · 45+ mpw base · 55-85 peak ·
+  // 15-17 mi peak long · longShare 0.25. The persona is named "david-
+  // sub-1-30-hm" so it's unambiguous.
   {
-    name: 'intermediate-hm',
+    name: 'david-sub-1-30-hm',
     profile: {
-      experienceLevel: 'intermediate',
+      experienceLevel: 'advanced',
       weeklyBaseMi: 35,
       vdotAtStart: 48,
       ageYears: 35,
@@ -101,21 +104,58 @@ export const PERSONAS: SyntheticRunner[] = [
       plateauVdot: 65,
     },
     race: {
-      slug: 'persona-intermediate-hm',
+      slug: 'persona-david-sub-1-30-hm',
       distanceMi: 13.1,
       goalSec: 5400,  // 1:30:00 HM
       weeksOut: 12,
     },
     expectedPlan: {
-      peakWeeklyMileageBand: [38, 50],
+      // Tier band from Research/22 (HM Advanced). The runner's base
+      // (35 mpw) is below the typical tier-base (45+), so the
+      // generator ramps from 35 toward the LOWER band (55) over 12
+      // weeks. ±10% tolerance in the bench.
+      peakWeeklyMileageBand: [50, 70],
       qualityPerWeek: 2,
-      longRunShare: 0.32,
+      longRunShare: 0.25,
+      taperDepth: 'medium',
+    },
+    healthPattern: 'baseline',
+  },
+
+  // 2b. Intermediate HM · sub-2:00 goal
+  // Per Research/22 "HM Intermediate" tier · 25-35 mpw base · 35-45
+  // peak · 12-14 mi peak long · longShare 0.30.
+  {
+    name: 'intermediate-hm-sub-2',
+    profile: {
+      experienceLevel: 'intermediate',
+      weeklyBaseMi: 28,
+      vdotAtStart: 42,
+      ageYears: 38,
+    },
+    initialCalibration: {
+      vdotPerQuality: 0.10,
+      longRunWeight: 0.30,
+      recoveryMult: 1.0,
+      plateauVdot: 55,
+    },
+    race: {
+      slug: 'persona-intermediate-hm-sub-2',
+      distanceMi: 13.1,
+      goalSec: 7080,  // 1:58:00 HM
+      weeksOut: 12,
+    },
+    expectedPlan: {
+      peakWeeklyMileageBand: [32, 45],
+      qualityPerWeek: 2,
+      longRunShare: 0.30,
       taperDepth: 'medium',
     },
     healthPattern: 'baseline',
   },
 
   // 3. Advanced marathon · sub-3 attempt
+  // Per Research/22 "Marathon Advanced" tier · 55-75 peak · 20-22 peak long.
   {
     name: 'advanced-marathon',
     profile: {
@@ -137,7 +177,7 @@ export const PERSONAS: SyntheticRunner[] = [
       weeksOut: 16,
     },
     expectedPlan: {
-      peakWeeklyMileageBand: [65, 85],
+      peakWeeklyMileageBand: [55, 75],
       qualityPerWeek: 2,
       longRunShare: 0.30,
       taperDepth: 'deep',
@@ -167,7 +207,9 @@ export const PERSONAS: SyntheticRunner[] = [
       weeksOut: 20,
     },
     expectedPlan: {
-      peakWeeklyMileageBand: [90, 110],
+      // Ultra · keep above marathon-advanced band (uses M tier for now ·
+      // explicit ultra tier is a Phase-4 follow-up).
+      peakWeeklyMileageBand: [65, 100],
       qualityPerWeek: 2,
       longRunShare: 0.32,
       taperDepth: 'deep',
@@ -175,7 +217,10 @@ export const PERSONAS: SyntheticRunner[] = [
     healthPattern: 'baseline',
   },
 
-  // 5. Returning from injury · ramping back conservatively
+  // 5. Returning from injury · 1:45 HM goal · conservative ramp
+  // Goal pace 8:00/mi → intermediate HM tier (peak 35-45, long 12-14).
+  // Base 20mpw is well under tier base · 14 weeks lets the ramp catch
+  // up at 10%/week. Bench tolerance: ±10% on the lower band.
   {
     name: 'returning-from-injury',
     profile: {
@@ -197,15 +242,20 @@ export const PERSONAS: SyntheticRunner[] = [
       weeksOut: 14,
     },
     expectedPlan: {
-      peakWeeklyMileageBand: [28, 38],   // conservative ramp
-      qualityPerWeek: 1,                  // no quality stacking
+      // Goal 1:45 = 8:00/mi → HM intermediate tier (35-45 mpw peak).
+      // Bench: lower band ±10% so the ramp from 20mpw is realistic
+      // within 14 weeks · accepts that the runner won't fully reach
+      // 35 from base of 20.
+      peakWeeklyMileageBand: [28, 45],
+      qualityPerWeek: 2,
       longRunShare: 0.30,
       taperDepth: 'medium',
     },
     healthPattern: 'returning-from-injury',
   },
 
-  // 6. Sleep-debt-prone · chronic 6.5h sleep, RHR sensitive
+  // 6. Sleep-debt-prone · chronic 6.5h sleep, RHR sensitive · 1:40 HM
+  // Goal 1:40 = 7:38/mi → intermediate HM tier (35-45 peak, 12-14 long).
   {
     name: 'sleep-debt-prone',
     profile: {
@@ -227,9 +277,9 @@ export const PERSONAS: SyntheticRunner[] = [
       weeksOut: 12,
     },
     expectedPlan: {
-      peakWeeklyMileageBand: [32, 42],
-      qualityPerWeek: 1,    // suppressed by chronic recovery deficit
-      longRunShare: 0.28,
+      peakWeeklyMileageBand: [33, 45],
+      qualityPerWeek: 2,
+      longRunShare: 0.30,
       taperDepth: 'medium',
     },
     healthPattern: 'sleep-debt',

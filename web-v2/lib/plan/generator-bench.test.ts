@@ -104,25 +104,36 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
       });
 
       it('peak weekly mileage within doctrine band', () => {
-        const peak = Math.max(...result.weeks.map(weekTotal));
+        // Look at BUILD weeks only · exclude TAPER + race week.
+        const buildWeeks = result.weeks.filter((w) =>
+          w.phase !== 'TAPER' && !w.isRaceWeek
+        );
+        const peak = Math.max(...buildWeeks.map(weekTotal));
         const [lo, hi] = exp.peakWeeklyMileageBand;
-        // ±10% tolerance · the band is the doctrine target, generator
-        // is allowed to drift slightly with the volume curve math.
+        // ±10% tolerance.
         const tolerance = 0.10;
         expect(peak).toBeGreaterThanOrEqual(lo * (1 - tolerance));
         expect(peak).toBeLessThanOrEqual(hi * (1 + tolerance));
       });
 
-      it('peak long matches peak weekly × longRunShare ±1mi', () => {
-        // Find peak weekly week + report its long.
+      it('peak long matches peak weekly × longRunShare ±1.5mi (build only)', () => {
+        // Build-week peak only · TAPER has long=0 by design.
         let peakIdx = 0, peakMi = 0;
         for (let i = 0; i < result.weeks.length; i++) {
-          const t = weekTotal(result.weeks[i]);
+          const w = result.weeks[i];
+          if (w.phase === 'TAPER' || w.isRaceWeek) continue;
+          const t = weekTotal(w);
           if (t > peakMi) { peakMi = t; peakIdx = i; }
         }
-        const expectedLong = peakMi * exp.longRunShare;
+        // Expected long · respects the tier peakLong band cap. Some
+        // personas' longRunShare × peakWeekly would exceed the tier's
+        // peakLong upper bound (e.g. ultra) · the generator correctly
+        // caps and the assertion follows.
+        const tierLongMax = result.authoredState.tier_peak_long_band
+          ? (result.authoredState.tier_peak_long_band as number[])[1]
+          : Infinity;
+        const expectedLong = Math.min(peakMi * exp.longRunShare, tierLongMax);
         const actualLong = weekLong(result.weeks[peakIdx]);
-        // ±1.5 mi tolerance · accounts for rounding in the generator.
         expect(actualLong).toBeGreaterThanOrEqual(expectedLong - 1.5);
         expect(actualLong).toBeLessThanOrEqual(expectedLong + 1.5);
       });
