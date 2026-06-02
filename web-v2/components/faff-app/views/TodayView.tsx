@@ -1579,17 +1579,48 @@ function CompletedHeroV2({
   const elevPerMi = (resolvedGainFt != null && distMi > 0) ? resolvedGainFt / distMi : 0;
   const elevSuspicious = elevPerMi > 200;
 
-  // "ON PLAN" verdict gates: distance landed within ±10% AND no heat
-  // penalty (weather_context absent or hr_bump &lt; 5). When a heat
-  // bump is real we swap the chip to "HOT DAY" so the runner sees the
-  // coach acknowledged the conditions instead of a hollow ON PLAN.
+  // Verdict badge · "did the runner do what they were supposed to do?"
+  // The doctrine varies by workout type:
+  //
+  //   · EASY / RECOVERY · the assignment is "keep it easy for ~N miles."
+  //     Distance is negotiable (going short on a hot day is correct
+  //     execution); what matters is whether the runner stayed in Z1-Z2.
+  //     ON PLAN when Z1+Z2 share ≥ 85% AND actual ≥ 75% of planned
+  //     (caps the case where 1 mi instead of 6 mi clearly wasn't the
+  //     workout). When zone data is missing we degrade to the legacy
+  //     ±10% distance check.
+  //
+  //   · EVERYTHING ELSE · the prescribed dose matters. Distance within
+  //     ±15% (slightly more forgiving than the old ±10%, which flagged
+  //     normal Garmin/HK rounding as off-plan).
+  //
+  // HOT DAY swaps in when heat bump ≥ 5 bpm · the coach acknowledges
+  // the conditions instead of a hollow ON PLAN.
+  //
+  // 2026-06-02 · David flagged a 5.1 mi easy run (vs 6 mi planned, 85%)
+  // with KEPT IT EASY 100% + +3 bpm drift firing OFF PLAN. Badge was
+  // punishing the right call · runner DID what the easy doctrine wants.
   const plannedMi = Number(d.dist) || 0;
   const actualMi  = runData?.distance_mi ?? plannedMi;
-  const onDistance = plannedMi > 0 && actualMi >= plannedMi * 0.9 && actualMi <= plannedMi * 1.1;
   const heatBump = runData?.weather_context?.hr_bump_bpm ?? 0;
+  const isEasy = d.type === 'easy' || d.type === 'recovery';
+  const easyShare = runData?.hrZonePcts
+    ? Math.round((runData.hrZonePcts.z1 ?? 0) + (runData.hrZonePcts.z2 ?? 0))
+    : null;
+
+  const onPlan = (() => {
+    if (plannedMi <= 0) return false;
+    if (isEasy && easyShare != null) {
+      // Easy doctrine · stayed easy + didn't bomb the distance.
+      return easyShare >= 85 && actualMi >= plannedMi * 0.75 && actualMi <= plannedMi * 1.2;
+    }
+    // Quality / long / fallback · ±15% distance window.
+    return actualMi >= plannedMi * 0.85 && actualMi <= plannedMi * 1.15;
+  })();
+
   const verdictBadge: 'on-plan' | 'hot-day' | 'off-plan' =
-    onDistance && heatBump < 5 ? 'on-plan'
-    : onDistance && heatBump >= 5 ? 'hot-day'
+    onPlan && heatBump >= 5 ? 'hot-day'
+    : onPlan ? 'on-plan'
     : 'off-plan';
 
   return (
