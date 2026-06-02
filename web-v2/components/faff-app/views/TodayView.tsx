@@ -1863,34 +1863,23 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
     return Math.round(targets.reduce((a, b) => a + b, 0) / targets.length);
   })();
 
-  // Plan-vs-result bar math · centered-on-goal model.
+  // Plan-vs-result diverging bar · per the 2026-06-02 design tweak handoff
+  // (designs/from Design agent/run_detail_intervals_tweak).
   //
-  // 2026-06-02 · David flagged that the original left-anchored fill
-  // (per the handoff README) made +29s and +32s reps look identical
-  // when clamped to the 4% floor · "they're not even close to the
-  // goal and only 30 seconds off." He vetoed widening the window.
+  //   slower than goal → amber fill extends LEFT from the centered tick
+  //                       (toward the SLOWER axis-legend marker)
+  //   faster than goal → green fill extends RIGHT from the tick
+  //                       (toward the FASTER axis-legend marker)
+  //   on goal          → small centered nub straddling the tick
   //
-  // Switched to a centered model · the tick stays at 50%, fill
-  // emerges FROM the tick: green leftward when actual ≤ goal, amber
-  // rightward when actual > goal. Length = |delta|/30 * 50%, clamped
-  // to 50% at the bar edges. A rep at +29 fills nearly the entire
-  // right half; a rep at +5 fills a small stub. The delta number
-  // beside the bar still carries the precise magnitude · the bar
-  // communicates direction + qualitative miss, the number is the
-  // quantitative answer.
-  //
-  // Visual story:
-  //   · on goal → tick alone, no fill
-  //   · slight miss → small stub on the miss side
-  //   · big miss → fill extends to the bar edge (clamped at 50%)
-  //   · beat → green stub or fill on the left
+  // maxdev scales with rep duration: a 6:30 mile rep tolerates more
+  // absolute variance than a 90-sec 400m. 4% of target duration matches
+  // the design's mile=14s / 800m=6s / 400m=3s examples within rounding.
+  // Floor of 4 keeps very short reps from collapsing.
   const TICK_PCT = 50;
-  const HALF_WIDTH_SEC = 30;
-  const fillPctFromCenter = (deltaSec: number): number => {
-    if (!isFinite(deltaSec)) return 0;
-    const mag = Math.abs(deltaSec);
-    return Math.min(50, (mag / HALF_WIDTH_SEC) * 50);
-  };
+  const firstWorkTargetDur = workPhases.find(p => p.target_duration_sec != null)?.target_duration_sec ?? null;
+  const maxdev = Math.max(4, Math.round((firstWorkTargetDur ?? goalSec) * 0.04));
+  const compact = workPhases.length > 6;
 
   // Average work pace + delta vs goal · the summary row at the bottom.
   const workActuals = workPhases
@@ -1911,6 +1900,12 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
     return { phase: p, key: i, repNumber: p.type === 'work' ? workNum : null };
   });
 
+  // Bar shape · same column geometry as a rep row so the axis legend
+  // strip + the rep tracks line up.
+  const REP_GRID_COLS = '46px 1fr 70px';
+  const REP_GRID_GAP = 13;
+  const BAR_HEIGHT = compact ? 9 : 11;
+
   return (
     <>
       <div className="reshead">
@@ -1921,7 +1916,34 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
           </span>
         )}
       </div>
-      <div style={{ marginTop: 4 }}>
+      {/* Axis legend · sits in the same grid column as the rep tracks
+          so SLOWER / TARGET / FASTER align with the bar fills. */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: REP_GRID_COLS, gap: REP_GRID_GAP,
+        marginTop: 12, marginBottom: 2,
+      }}>
+        <div />
+        <div style={{
+          position: 'relative', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: 8, fontWeight: 700, letterSpacing: 1.2,
+        }}>
+          <span style={{ color: '#ffb24d', opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{
+            position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+            color: 'rgba(255,255,255,.45)',
+          }}>TARGET</span>
+          <span style={{ color: '#3ED06a', opacity: 0.9 }}>FASTER ▸</span>
+        </div>
+        <div />
+      </div>
+      {/* Rail · 300px cap with fade mask at bottom when content overflows.
+          Compact mode (>6 work reps) hides recovery rows + the REP sublabel
+          and tightens row padding so a 10-rep session reads at a glance. */}
+      <div style={{
+        marginTop: 8, maxHeight: 300, overflowY: 'auto', overflowX: 'hidden',
+        paddingRight: 4,
+      }}>
         {rows.map(({ phase: p, key, repNumber }) => {
           if (p.type === 'warmup' || p.type === 'cooldown') {
             const label = p.type === 'warmup' ? 'WARM-UP' : 'COOL-DOWN';
@@ -1931,7 +1953,7 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
             return (
               <div key={key} style={{
                 display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 0',
+                padding: compact ? '4px 0' : '8px 0',
               }}>
                 <span style={{
                   width: 8, height: 8, borderRadius: '50%',
@@ -1954,6 +1976,7 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
             );
           }
           if (p.type === 'recovery') {
+            if (compact) return null;
             return (
               <div key={key} style={{
                 marginLeft: 14, paddingLeft: 8,
@@ -1969,60 +1992,77 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
           if (p.type === 'work') {
             const actualSec = paceToSec(p.actual_pace ?? '');
             const delta = actualSec > 0 && goalSec > 0 ? actualSec - goalSec : null;
-            const beat = delta != null && delta <= 0;
+            const beat = delta != null && delta < 0;
+            const onTarget = delta != null && delta === 0;
             const fillColor = beat ? '#3ED06a' : '#ffb24d';
             const deltaColor = beat ? '#3ED06a' : '#ffb24d';
-            const fillW = delta != null ? fillPctFromCenter(delta) : 0;
-            // Faster than goal → fill extends LEFT from tick (left edge at
-            // 50% - fillW). Slower than goal → fill extends RIGHT from tick
-            // (left edge at 50%, width fillW). Equal → no fill, tick alone.
-            const fillLeft = beat ? TICK_PCT - fillW : TICK_PCT;
+            // Diverging bar math · same as the design's session-driven JS:
+            //   d > 0 (slower) → fill from (50 - mag)% leftward toward SLOWER
+            //   d < 0 (faster) → fill from 50% rightward toward FASTER
+            //   d == 0         → small 6% nub centered at 47%
+            const mag = delta != null && delta !== 0
+              ? Math.max(4, Math.min(50, (Math.abs(delta) / maxdev) * 50))
+              : 0;
+            const fillW = onTarget ? 6 : mag;
+            const fillLeft = onTarget ? 47 : (delta != null && delta > 0 ? TICK_PCT - mag : TICK_PCT);
             return (
               <div key={key} style={{
-                display: 'grid', gridTemplateColumns: '46px 1fr 70px',
-                alignItems: 'center', gap: 12, padding: '9px 0',
+                display: 'grid', gridTemplateColumns: REP_GRID_COLS,
+                alignItems: 'center', gap: REP_GRID_GAP,
+                padding: compact ? '4px 0' : '9px 0',
               }}>
                 <div>
                   <div style={{
                     fontFamily: 'var(--font-display, Oswald), sans-serif',
-                    fontSize: 16, fontWeight: 600, lineHeight: 1,
+                    fontSize: compact ? 13 : 16, fontWeight: 600, lineHeight: 1,
                   }}>{repNumber}</div>
-                  <div style={{
-                    fontSize: 8.5, fontWeight: 700, letterSpacing: 0.6,
-                    opacity: 0.5, marginTop: 2,
-                  }}>REP</div>
+                  {!compact && (
+                    <div style={{
+                      fontSize: 8.5, fontWeight: 700, letterSpacing: 0.6,
+                      opacity: 0.5, marginTop: 2,
+                    }}>REP</div>
+                  )}
                 </div>
                 <div style={{
-                  position: 'relative', height: 11, borderRadius: 6,
-                  background: 'rgba(255,255,255,.1)', overflow: 'hidden',
+                  position: 'relative', height: BAR_HEIGHT, borderRadius: 6,
+                  background: 'rgba(255,255,255,.1)',
                 }}>
                   {fillW > 0 && (
                     <div style={{
-                      position: 'absolute', top: 0, bottom: 0,
+                      position: 'absolute', top: 1, bottom: 1,
                       left: `${fillLeft}%`, width: `${fillW}%`,
                       background: fillColor,
-                      borderRadius: beat ? '6px 0 0 6px' : '0 6px 6px 0',
+                      borderRadius: 3,
                       transition: 'left 240ms, width 240ms',
                     }} />
                   )}
-                  {/* goal tick · centered, 2px white line, extends 3px above/below */}
+                  {/* goal tick · centered, 2px white line, extends 2px above/below,
+                      sits ABOVE the fill so it's always visible at center. */}
                   <div style={{
                     position: 'absolute', left: `${TICK_PCT}%`,
-                    top: -3, bottom: -3, width: 2,
-                    background: 'rgba(255,255,255,.9)', zIndex: 2,
+                    top: -2, bottom: -2, width: 2,
+                    background: 'rgba(255,255,255,.92)', zIndex: 3,
                     transform: 'translateX(-1px)',
+                    borderRadius: 1,
+                    boxShadow: '0 0 0 1px rgba(0,0,0,.2)',
                   }} />
                 </div>
-                <div style={{ textAlign: 'right' }}>
+                <div style={{
+                  textAlign: 'right',
+                  display: compact ? 'flex' : 'block',
+                  alignItems: 'baseline', justifyContent: 'flex-end', gap: 5,
+                }}>
                   <div style={{
                     fontFamily: 'var(--font-display, Oswald), sans-serif',
-                    fontSize: 16, fontWeight: 600, lineHeight: 1,
+                    fontSize: compact ? 14 : 16, fontWeight: 600, lineHeight: 1,
                   }}>{p.actual_pace ?? '·'}</div>
                   {delta != null && (
                     <div style={{
-                      fontSize: 10, fontWeight: 700, marginTop: 2,
+                      fontSize: 10, fontWeight: 700,
+                      marginTop: compact ? 0 : 3,
+                      lineHeight: 1,
                       color: deltaColor,
-                    }}>{delta > 0 ? `+${delta}` : delta}</div>
+                    }}>{delta > 0 ? `+${delta}` : (delta < 0 ? delta : '±0')}</div>
                   )}
                 </div>
               </div>
