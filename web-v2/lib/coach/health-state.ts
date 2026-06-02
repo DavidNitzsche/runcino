@@ -73,6 +73,16 @@ export interface HealthState {
     remRatioStdev: number | null;
     /** Plain-language verdict per the doctrine bands. */
     architectureVerdict: 'stable' | 'mixed' | 'unstable' | null;
+    /** 2026-06-01 · Power moves #6 · architecture vs quantity framing.
+     *  Distinguishes "architecture is fine, hours are the problem" from
+     *  "architecture is also off." Renders next to sleep tile. */
+    architectureFraming: {
+      deepPct: number;          // deep / total · 0-100
+      remPct: number;           // REM / total · 0-100
+      hoursTotal: number;
+      verdict: 'healthy_architecture' | 'architecture_off';
+      framing: string;          // coach-voice plain English
+    } | null;
   };
   // Watch-list signal
   watchMode: 'steady' | 'watch-amber' | 'watch-red' | 'green';
@@ -465,15 +475,51 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     architectureVerdict = remRatioStdev < 0.04 ? 'stable'
       : remRatioStdev < 0.07 ? 'mixed' : 'unstable';
   }
+  // 2026-06-01 · Power moves #6 · architecture vs quantity framing.
+  // If the runner slept SHORT but the ratios (deep%, REM%) are in
+  // the normal range, the architecture is fine and hours are the
+  // story. If ratios are off (deep < 12% or > 25%, REM < 15% or
+  // > 30%), the architecture itself is disturbed and rest alone
+  // won't fully fix it.
+  const deepAvg = stageAvg(sleepDeepRows as any[]);
+  const remAvg  = stageAvg(sleepRemRows  as any[]);
+  const lightAvg = stageAvg(sleepLightRows as any[]);
+  let architectureFraming: {
+    deepPct: number; remPct: number; hoursTotal: number;
+    verdict: 'healthy_architecture' | 'architecture_off';
+    framing: string;
+  } | null = null;
+  if (deepAvg != null && remAvg != null && lightAvg != null) {
+    const totalMin = deepAvg + remAvg + lightAvg;
+    if (totalMin > 0) {
+      const deepPct = Math.round((deepAvg / totalMin) * 100);
+      const remPct = Math.round((remAvg / totalMin) * 100);
+      const hoursTotal = +(totalMin / 60).toFixed(1);
+      const architectureHealthy = deepPct >= 12 && deepPct <= 25 && remPct >= 15 && remPct <= 30;
+      const verdict = architectureHealthy ? 'healthy_architecture' : 'architecture_off';
+      let framing: string;
+      if (architectureHealthy && hoursTotal < 7) {
+        framing = `Architecture is healthy (${deepPct}% deep, ${remPct}% REM). The issue is hours · push bedtime tonight.`;
+      } else if (architectureHealthy) {
+        framing = `Architecture is healthy (${deepPct}% deep, ${remPct}% REM) and hours are in the band.`;
+      } else if (hoursTotal < 7) {
+        framing = `Architecture is also off (${deepPct}% deep, ${remPct}% REM) on top of low hours · two stories stacking.`;
+      } else {
+        framing = `Hours are fine but architecture is off (${deepPct}% deep, ${remPct}% REM) · check stress + bedtime caffeine.`;
+      }
+      architectureFraming = { deepPct, remPct, hoursTotal, verdict, framing };
+    }
+  }
   const sleepStagesOut = {
-    deepMin:  stageAvg(sleepDeepRows  as any[]),
-    remMin:   stageAvg(sleepRemRows   as any[]),
-    lightMin: stageAvg(sleepLightRows as any[]),
+    deepMin:  deepAvg,
+    remMin:   remAvg,
+    lightMin: lightAvg,
     awakeMin: stageAvg(sleepAwakeRows as any[]),
     deepSeries: stageSeries(sleepDeepRows as any[]),
     remSeries:  stageSeries(sleepRemRows  as any[]),
     remRatioStdev,
     architectureVerdict,
+    architectureFraming,
   };
 
   // 2026-06-01 · Active energy daily kcal · iPhone 031fe5fd.

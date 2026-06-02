@@ -28,6 +28,9 @@ import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown, type ReadinessInput } from './readiness';
 import { loadReadinessHistory, type PillarPoint, type ReadinessHistory } from './readiness-history';
 import type { CoachState } from '@/lib/topics/types';
+import { buildSynthesis } from './synthesis';
+import { buildForecasts, type Forecast } from './forecasts';
+import { computeTrainingForm } from './training-form';
 
 export type PillarKey = 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
 export type PillarBand = 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
@@ -136,6 +139,30 @@ export interface ReadinessBrief {
     /** 2026-06-01 · 14-day CV trend strip · empty when < 21d of HRV. */
     series: { date: string; pct: number }[];
   } | null;
+  /** 2026-06-01 · Power moves #1 · engine-authored 2-3 sentence story
+   *  per morning. Pulls dominant pillar movement + confounder hints +
+   *  illness watch into plain coach English. Null on cold start. */
+  synthesis: string | null;
+  /** 2026-06-01 · Power moves #7 · Banister TSB on the brief envelope
+   *  so Health page can render it alongside readiness. Same source as
+   *  Train page's training-form.ts. Null when < 7 days of training data. */
+  trainingForm: {
+    tsb: number;
+    ctl: number;
+    atl: number;
+    band: 'detraining' | 'race-ready' | 'productive' | 'loaded' | 'overreach';
+    label: string;
+  } | null;
+  /** 2026-06-01 · Power moves #9 · forecasts · slope detection per
+   *  pillar. Projects when each metric crosses into a new band based
+   *  on the current trajectory. Empty when no detectable trend. */
+  forecasts: Array<{
+    pillar: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hrv_cv' | 'wrist_temp';
+    daysUntilBandChange: number | null;
+    projectedBand: string;
+    message: string;
+    confidence: 'high' | 'medium' | 'low';
+  }>;
   /** "Watching" callouts for tomorrow · the brief points the runner at
    *  what to verify if it persists. */
   watchTomorrow: string[];
@@ -237,6 +264,9 @@ export async function loadReadinessBrief(
       trendNote: null,
       composition: null,
       hrvCv: null,
+      synthesis: null,
+      trainingForm: null,
+      forecasts: [],
       watchTomorrow: [],
       gapReport: null,
     };
@@ -307,6 +337,45 @@ export async function loadReadinessBrief(
   // effort (returns null when runner has no active plan + goal).
   const gapReport = await loadGapReport(userId);
 
+  // 2026-06-01 · Power moves #7 · Training Form (Banister TSB). Lift
+  // from training-form.ts onto the brief so Health page renders it
+  // alongside readiness.
+  const trainingFormRaw = await computeTrainingForm(userId).catch(() => null);
+  const trainingForm = trainingFormRaw
+    ? {
+        tsb: Math.round(trainingFormRaw.tsb),
+        ctl: Math.round(trainingFormRaw.ctl),
+        atl: Math.round(trainingFormRaw.atl),
+        band: (trainingFormRaw.label === 'RACE-READY' ? 'race-ready'
+          : trainingFormRaw.label === 'PRODUCTIVE' ? 'productive'
+          : trainingFormRaw.label === 'LOADED' ? 'loaded'
+          : trainingFormRaw.label === 'OVERREACH' ? 'overreach'
+          : trainingFormRaw.label === 'DETRAINING' ? 'detraining'
+          : 'productive') as 'detraining' | 'race-ready' | 'productive' | 'loaded' | 'overreach',
+        label: trainingFormRaw.label,
+      }
+    : null;
+
+  // 2026-06-01 · Power moves #10 · forecasts. Slope detection per
+  // pillar with band-crossing projections.
+  const forecasts: Forecast[] = buildForecasts(history);
+
+  // 2026-06-01 · Power moves #1 · synthesis card. Engine-authored
+  // cross-metric story. Needs wrist temp + RR + sleep stages + TSB ·
+  // pull those from health-state via a side-load (kept light · just
+  // the deltas we need).
+  const synthesisHealth = await loadSynthesisHealthSignals(userId, date);
+  const recentHardSession = await detectRecentHardSession(userId, date);
+  const synthesis = buildSynthesis({
+    breakdown,
+    state,
+    wristTempDeltaC: synthesisHealth.wristTempDeltaC,
+    rrDelta: synthesisHealth.rrDelta,
+    sleepStages: synthesisHealth.sleepStages,
+    tsb: trainingForm?.tsb ?? null,
+    recentHardSession,
+  });
+
   return {
     date,
     score: breakdown.score,
@@ -324,6 +393,9 @@ export async function loadReadinessBrief(
     trendNote,
     composition,
     hrvCv,
+    synthesis,
+    trainingForm,
+    forecasts,
     watchTomorrow,
     gapReport,
   };
@@ -937,6 +1009,98 @@ function buildComposition(
  * the runner sees their trajectory + what closes the gap + A/B/C
  * alternatives every morning.
  */
+/**
+ * Power moves #1 · pull the minimum health signals the synthesis card
+ * needs. Light query so we don't load the full HealthState envelope.
+ */
+async function loadSynthesisHealthSignals(userId: string, today: string): Promise<{
+  wristTempDeltaC: number | null;
+  rrDelta: number | null;
+  sleepStages: {
+    deepMin: number | null;
+    remMin: number | null;
+    lightMin: number | null;
+    totalMin: number | null;
+  } | null;
+}> {
+  const [wt, rr, ss] = await Promise.all([
+    pool.query<{ today: number | string | null; baseline: number | string | null }>(
+      `SELECT
+        (SELECT AVG(value::numeric) FROM health_samples
+          WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'wrist_temp'
+            AND sample_date >= ($2::date - interval '2 days')) AS today,
+        (SELECT AVG(value::numeric) FROM health_samples
+          WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'wrist_temp'
+            AND sample_date >= ($2::date - interval '30 days')
+            AND sample_date < ($2::date - interval '2 days')) AS baseline`,
+      [userId, today],
+    ).then((r) => r.rows[0]),
+    pool.query<{ today: number | string | null; baseline: number | string | null }>(
+      `SELECT
+        (SELECT AVG(value::numeric) FROM health_samples
+          WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'respiratory_rate'
+            AND sample_date >= ($2::date - interval '2 days')) AS today,
+        (SELECT AVG(value::numeric) FROM health_samples
+          WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'respiratory_rate'
+            AND sample_date >= ($2::date - interval '30 days')
+            AND sample_date < ($2::date - interval '2 days')) AS baseline`,
+      [userId, today],
+    ).then((r) => r.rows[0]),
+    pool.query<{ stage: string; avg: number | string }>(
+      `SELECT sample_type AS stage, AVG(value::numeric) AS avg FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type IN ('sleep_deep_minutes','sleep_rem_minutes','sleep_light_minutes')
+          AND sample_date >= ($2::date - interval '7 days')
+        GROUP BY sample_type`,
+      [userId, today],
+    ).then((r) => r.rows),
+  ]);
+
+  const wristTempDeltaC = wt?.today != null && wt?.baseline != null
+    ? +(Number(wt.today) - Number(wt.baseline)).toFixed(2)
+    : null;
+  const rrDelta = rr?.today != null && rr?.baseline != null
+    ? +(Number(rr.today) - Number(rr.baseline)).toFixed(1)
+    : null;
+  const deep = ss.find((r) => r.stage === 'sleep_deep_minutes')?.avg;
+  const rem = ss.find((r) => r.stage === 'sleep_rem_minutes')?.avg;
+  const light = ss.find((r) => r.stage === 'sleep_light_minutes')?.avg;
+  let sleepStages: { deepMin: number | null; remMin: number | null; lightMin: number | null; totalMin: number | null } | null = null;
+  if (deep != null || rem != null || light != null) {
+    const deepN = deep != null ? Math.round(Number(deep)) : null;
+    const remN = rem != null ? Math.round(Number(rem)) : null;
+    const lightN = light != null ? Math.round(Number(light)) : null;
+    const totalN = (deepN ?? 0) + (remN ?? 0) + (lightN ?? 0);
+    sleepStages = { deepMin: deepN, remMin: remN, lightMin: lightN, totalMin: totalN > 0 ? totalN : null };
+  }
+  return { wristTempDeltaC, rrDelta, sleepStages };
+}
+
+/**
+ * Power moves #1 · was yesterday's run a hard session? Used by the
+ * synthesis card to frame recovery-debt stories.
+ */
+async function detectRecentHardSession(userId: string, today: string): Promise<boolean> {
+  const r = await pool.query<{ type: string | null; dist: number | string | null }>(
+    `SELECT data->>'type' AS type, (data->>'distanceMi')::numeric AS dist
+       FROM runs
+      WHERE user_uuid = $1::uuid
+        AND NOT (data ? 'mergedIntoId')
+        AND (data->>'date')::date >= ($2::date - interval '2 days')
+        AND (data->>'date')::date < $2::date
+      ORDER BY (data->>'date')::date DESC LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] as { type: string | null; dist: number | string | null }[] }));
+  const row = r.rows[0];
+  if (!row) return false;
+  const type = (row.type ?? '').toLowerCase();
+  if (type === 'race' || type === 'long' || type === 'intervals' || type === 'tempo'
+      || type === 'threshold' || type === 'fartlek') return true;
+  // Distance heuristic when type is missing
+  const dist = row.dist != null ? Number(row.dist) : 0;
+  return dist >= 12;
+}
+
 async function loadGapReport(userId: string): Promise<ReadinessBrief['gapReport']> {
   try {
     const { composeGapReport } = await import('@/lib/plan/gap-report');
