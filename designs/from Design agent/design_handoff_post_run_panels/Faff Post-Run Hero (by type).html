@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Post-Run Hero · by type</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="faff-hero.css">
+</head>
+<body>
+  <div class="pr t-easy" id="pr" data-screen-label="Post-Run Hero">
+    <div class="mesh"><div class="blobs">
+      <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div><div class="blob b5"></div>
+    </div></div>
+    <div class="grain"></div>
+    <div class="fade"></div>
+
+    <div class="stage">
+      <!-- top row: quality counter + type switcher (review affordance) -->
+      <div class="toprow">
+        <div class="weekcount">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"></path></svg>
+          TODAY · DONE
+        </div>
+        <div class="seg" id="seg">
+          <span class="sl">RUN TYPE</span>
+          <button data-t="easy" class="on">Easy</button>
+          <button data-t="long">Long</button>
+          <button data-t="mp">Long · MP</button>
+          <button data-t="tempo">Tempo</button>
+        </div>
+      </div>
+
+      <!-- week strip -->
+      <div class="week" id="week"></div>
+
+      <!-- hero -->
+      <div class="hero">
+        <div class="hmain">
+          <div class="htag" id="htag"></div>
+          <div class="titlerow">
+            <span class="htitle" id="htitle"></span><span class="check" title="On plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></span>
+          </div>
+
+          <div class="leftstack">
+            <div class="stats" id="stats"></div>
+            <div class="zones">
+              <div class="zhead"><span>TIME IN ZONES</span><span class="zmeta">avg &hearts; <b id="zavg">0</b> · pk <b id="zpk">0</b></span></div>
+              <div class="zbar" id="zbar"></div>
+              <div class="zleg" id="zleg"></div>
+            </div>
+            <div class="form">
+              <div class="formlbl">RUNNING FORM</div>
+              <div class="formgrid" id="formgrid"></div>
+            </div>
+            <div class="cond" id="cond"></div>
+          </div>
+        </div>
+
+        <div class="mapcol">
+          <image-slot id="route" shape="rounded" radius="16" placeholder="Drop your route map"></image-slot>
+        </div>
+
+        <!-- ===== RIGHT COLUMN · workout-shaped panel (changes per type) ===== -->
+        <aside class="wcard">
+          <div class="vhead">
+            <div class="verdict" id="verdict"></div>
+            <span class="ok" id="badge"></span>
+          </div>
+          <div class="recap" id="recap"></div>
+          <div class="divider"></div>
+          <div class="panelbody" id="panel"></div>
+          <div class="repsum">
+            <span class="sl" id="sumlbl"></span>
+            <span class="sv" id="sumval"></span>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+<script src="image-slot.js"></script>
+<script src="faff-hero.js"></script>
+<template id="__bundler_thumbnail">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0c3b30"/><g stroke="#37c98f" stroke-width="5" stroke-linecap="round"><path d="M28 60h44"/><path d="M28 48h30"/><path d="M28 36h38"/></g><circle cx="74" cy="32" r="6" fill="#37c98f"/></svg>
+</template>
+</body>
+</html>

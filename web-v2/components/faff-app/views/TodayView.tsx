@@ -1759,27 +1759,51 @@ function CompletedHeroV2({
           </div>
 
       <aside className="wcard">
-        <div className="wcl">
-          HOW IT WENT
+        {/* 2026-06-02 · new vhead per the post-run-panels design handoff ·
+            verdict + badge live on a single top row, no separate "HOW IT
+            WENT" label. Verdict drops from 23px → 27px Oswald nowrap. Badge
+            tone classes: ok (green), warn (amber, drifted/late fade), hot
+            (orange, hot day), off (coral, off plan). */}
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+          gap: 14, flex: '0 0 auto',
+        }}>
+          <div className="verdict" style={{
+            fontFamily: "var(--font-display, 'Oswald', sans-serif)",
+            fontSize: 27, fontWeight: 600, lineHeight: 1.02,
+            whiteSpace: 'nowrap', margin: 0,
+          }}>{verdict}</div>
           {verdictBadge === 'on-plan' && (
-            <span className="ok">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              fontSize: 11, fontWeight: 700, letterSpacing: 2,
+              whiteSpace: 'nowrap', marginTop: 7, flex: '0 0 auto',
+              color: '#8af0a6',
+            }}>
+              <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
               ON PLAN
             </span>
           )}
           {verdictBadge === 'hot-day' && (
-            <span className="ok" style={{ color: '#FF8847' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v6m0 0c-2 2-3.5 4.2-3.5 7a3.5 3.5 0 1 0 7 0c0-2.8-1.5-5-3.5-7z"/></svg>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              fontSize: 11, fontWeight: 700, letterSpacing: 2,
+              whiteSpace: 'nowrap', marginTop: 7, flex: '0 0 auto',
+              color: '#ff8a5c',
+            }}>
+              <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v6m0 0c-2 2-3.5 4.2-3.5 7a3.5 3.5 0 1 0 7 0c0-2.8-1.5-5-3.5-7z"/></svg>
               HOT DAY
             </span>
           )}
           {verdictBadge === 'off-plan' && (
-            <span className="ok" style={{ color: '#F3AD38' }}>
-              OFF PLAN
-            </span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              fontSize: 11, fontWeight: 700, letterSpacing: 2,
+              whiteSpace: 'nowrap', marginTop: 7, flex: '0 0 auto',
+              color: '#ff6a6a',
+            }}>OFF PLAN</span>
           )}
         </div>
-        <div className="verdict">{verdict}</div>
         <div className="recap">{recap}</div>
 
         {/* CONDITIONS + COACH TIP + CITATIONS moved into the leftstack
