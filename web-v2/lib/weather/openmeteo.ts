@@ -42,6 +42,31 @@ export interface RunWeather {
 }
 
 /**
+ * 2026-06-02 · Open-Meteo's archive-api (ERA5 reanalysis) lags ~5 days
+ * behind real-time and returns interpolated / null values for very recent
+ * dates. The free forecast API serves observed past data via past_days +
+ * accepts start_date/end_date for any window within ~5d back through
+ * +16d future. Same response shape, just a different host.
+ *
+ * Pick the right host based on how recent the run is:
+ *   · within the last ARCHIVE_LAG_DAYS → forecast API (observed real data)
+ *   · older → archive API (ERA5 history, deep retention)
+ *
+ * David flagged a freshly-completed interval showing WEATHER 57°F in
+ * Burbank on a June morning · archive-api was returning model-interp
+ * data because the real obs hadn't landed yet. Switching to forecast
+ * API for recent runs fixes it.
+ */
+const ARCHIVE_LAG_DAYS = 5;
+function weatherHost(runStartISO: string): string {
+  const runMs = Date.parse(runStartISO);
+  const ageDays = (Date.now() - runMs) / (1000 * 60 * 60 * 24);
+  return ageDays <= ARCHIVE_LAG_DAYS
+    ? 'https://api.open-meteo.com/v1/forecast'
+    : 'https://archive-api.open-meteo.com/v1/archive';
+}
+
+/**
  * Map Open-Meteo weather codes to a coarse "condition" label the coach
  * can read. See https://open-meteo.com/en/docs WMO Weather interpretation.
  */
@@ -71,7 +96,7 @@ export async function fetchRunWeather(
   if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   try {
     const date = startISO.slice(0, 10);
-    const url = `https://archive-api.open-meteo.com/v1/archive` +
+    const url = `${weatherHost(startISO)}` +
       `?latitude=${lat}` +
       `&longitude=${lng}` +
       `&start_date=${date}` +
@@ -152,10 +177,11 @@ export async function fetchRunWeatherSpan(
   try {
     // Open-Meteo's archive returns whole-day hourly data; we just need
     // the start date and (rarely) the next day if the run crosses
-    // midnight UTC.
+    // midnight UTC. Pick archive vs forecast based on age · see
+    // weatherHost() comment.
     const startDate = startISO.slice(0, 10);
     const endDate = endISO.slice(0, 10);
-    const url = `https://archive-api.open-meteo.com/v1/archive` +
+    const url = `${weatherHost(startISO)}` +
       `?latitude=${lat}` +
       `&longitude=${lng}` +
       `&start_date=${startDate}` +
