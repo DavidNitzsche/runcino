@@ -36,6 +36,13 @@ final class HealthKitImporter: ObservableObject {
     @Published var status: Status = .idle
     @Published var lastMessage: String?
     @Published var lastImportedAt: Date?
+    /// 2026-06-02 round 42 · most-recent night's total sleep hours, picked
+    /// from the latest `sleep_hours` sample seen during this import. The
+    /// LAST NIGHT chip on Today reads this directly so it reflects *last
+    /// night*, not the 7-night rolling average exposed by /api/readiness
+    /// (sleep7Avg). Nil until the first import completes with a sleep
+    /// sample (cold start / HK auth not yet granted / Watch not worn).
+    @Published var lastNightHours: Double?
 
     enum Status: Equatable { case idle, requesting, importing, done, error }
 
@@ -168,6 +175,17 @@ final class HealthKitImporter: ObservableObject {
         // payload or HK simply doesn't have the data.
         let activeEnergyCount = samples.filter { $0.sample_type == "active_energy" }.count
         let sleepStageCount = samples.filter { $0.sample_type.hasPrefix("sleep_") && $0.sample_type.hasSuffix("_minutes") }.count
+        // 2026-06-02 round 42 · stash the most-recent sleep_hours row so
+        // the LAST NIGHT chip on Today reflects last night, not the 7-day
+        // average. recorded_at is the bedtime ISO; we pick the lexically
+        // greatest one (date strings sort correctly for ISO-8601).
+        if let latestSleep = samples
+            .filter({ $0.sample_type == "sleep_hours" })
+            .max(by: { $0.recorded_at < $1.recorded_at })
+        {
+            let v = latestSleep.value
+            await MainActor.run { self.lastNightHours = v > 0 ? v : nil }
+        }
         if !samples.isEmpty {
             do {
                 try await postHealthSamples(samples)

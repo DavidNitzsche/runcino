@@ -99,9 +99,11 @@ struct TodayView: View {
     /// runner who leaves the app open across an hour boundary still sees
     /// the right palette when they come back. Initial value is from now.
     @State private var timeOfDay: TimeOfDay = TimeOfDay.current()
-    /// Last-night sleep hours · drives the LAST NIGHT readiness stat chip.
-    /// Hydrated from /api/health/state inside loadAll().
-    @State private var lastNightHours: Double?
+    /// 2026-06-02 round 42 · observe the HK importer so the LAST NIGHT
+    /// chip updates the moment a background→foreground triggered import
+    /// lands (importer publishes `lastNightHours` and the view re-renders).
+    /// Without this the chip would only refresh on the next loadAll cycle.
+    @ObservedObject private var hkImporter: HealthKitImporter = .shared
     /// This-week mileage · drives the THIS WEEK readiness stat chip.
     /// Hydrated from /api/training/state inside loadAll().
     @State private var thisWeekMiles: Double?
@@ -1195,6 +1197,16 @@ struct TodayView: View {
         return f.string(from: d)
     }
 
+    /// 2026-06-02 round 42 · LAST NIGHT chip · prefer the most-recent
+    /// HealthKit sleep_hours sample stashed by HealthKitImporter, fall
+    /// back to readiness.sleep7Avg (7-night rolling) until the first
+    /// import lands. Reactive: observing hkImporter means the chip
+    /// updates the moment a background→foreground triggered import
+    /// publishes a new value, without waiting for the next loadAll.
+    private var lastNightHours: Double? {
+        hkImporter.lastNightHours ?? readiness?.sleep7Avg
+    }
+
     /// 2026-06-02 · Resolved weeks-to-next-anchor-race. Prefers the
     /// /api/today/purpose value (server-composed, knows about training-
     /// plan phase + which race the plan actually targets). Falls back
@@ -1674,14 +1686,12 @@ struct TodayView: View {
 
             // Today redesign (2026-06-01) · readiness-panel stat chips.
             //
-            // LAST NIGHT · the panel labels the chip "LAST NIGHT" but the
-            // most-granular sleep number we surface today is the readiness
-            // 7-night average. Wire it as a stand-in until a per-night
-            // sample lands on /api/readiness (or until the iPhone fetches
-            // /api/health/state for the last sleep_hours sample directly).
-            // The TODO is intentional · placeholder display is more honest
-            // than fabricating a single-night number.
-            self.lastNightHours = ready?.sleep7Avg
+            // LAST NIGHT · 2026-06-02 round 42 · the value now lives as
+            // a computed property reading hkImporter.lastNightHours with
+            // a readiness.sleep7Avg fallback, so the chip refreshes
+            // automatically when the importer publishes a new value
+            // (background→fg triggered import lands). No write here.
+            //
             // THIS WEEK · sum of plan days, already computed above. The
             // Train tab does the same calculation; both surfaces stay in
             // sync.
