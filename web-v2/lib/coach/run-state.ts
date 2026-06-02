@@ -291,8 +291,11 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // tomorrow's cron pass. enrichOneActivity is idempotent (no-ops if
   // data.weather already exists) and sets weather_enriched_at on failure
   // so we don't hammer Open-Meteo on every page reload. Guards:
-  //   · row.id must be a numeric PK (manual-log wko_<uuid> rows have
-  //     non-bigint ids; skip them — they have no GPS anyway)
+  //   · row.id must be a numeric PK · accepts the NEGATIVE bigints that
+  //     watch-direct + watch-ingest write (stableId = -stableBigintFromString
+  //     in app/api/watch/workouts/complete + ingest/workout). The earlier
+  //     /^\d+$/ regex silently skipped those, which is the source David's
+  //     interval run came from — chip stayed "·" on reload despite the fix.
   //   · skip if weather already present (cheap idempotency check)
   //   · skip if weather_enriched_at is set (prior failed attempt, will
   //     retry via the weekly retry path in the cron)
@@ -302,7 +305,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     !r?.weather &&
     !row.weather_enriched_at &&
     row.id != null &&
-    /^\d+$/.test(String(row.id))
+    /^-?\d+$/.test(String(row.id))
   ) {
     try {
       const w = await enrichOneActivity(String(row.id));
