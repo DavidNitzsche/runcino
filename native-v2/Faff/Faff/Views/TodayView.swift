@@ -284,15 +284,18 @@ struct TodayView: View {
             // hidden" · the StickyCTABar respects the tab-bar safe area
             // (no .ignoresSafeArea(.bottom)) so the button sits just
             // above the floating tab bar pill.
-            // Hide the StickyCTABar when the selected day's run is done
-            // (the "Share run" CTA was buried under the post-run body in
-            // build 134 feedback; the small "View full run ›" chevron at
-            // the bottom of TodayPostRunBody replaces it). Build 136
-            // feedback showed the bar still appearing on a completed
-            // day — fortified with a second redundant check that reads
-            // the same completedRunId via a different path so a state-
-            // timing race can't sneak through.
-            if !isDone && !hasCompletedRunForSelectedDay {
+            // CTA visibility rules (2026-06-01 round 5):
+            //   · today + active workout → "Start X" picker
+            //   · today + rest/skipped   → "Log Recovery"
+            //   · today + completed      → hidden (sheet has "View full run ›")
+            //   · NOT today              → hidden (sheet IS the preview;
+            //     David explicitly retired PlannedView from Today)
+            //
+            // Belt-and-suspenders: !isDone AND !hasCompletedRunForSelectedDay
+            // both check the completion flag via different paths to dodge
+            // state-resolution timing races; selectedIsToday adds the
+            // not-today guard so future/past previews show no button at all.
+            if !isDone && !hasCompletedRunForSelectedDay && selectedIsToday {
                 VStack {
                     Spacer()
                     StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
@@ -968,14 +971,24 @@ struct TodayView: View {
     private var startButtonTitle: String {
         if skipped { return "Log Recovery" }
         if selectedEffort == .rest { return "Log Recovery" }
-        if selectedIsToday { return "Start \(plainWorkoutName)" }
-        return "View \(plainWorkoutName)"
+        // Only today gets a CTA. For non-today selections, the entire
+        // CTA is hidden via showsAnyCTA · this title only renders for
+        // today, so "Start X" is correct unconditionally.
+        return "Start \(plainWorkoutName)"
     }
 
     /// Route the CTA pushes to:
     ///   · today + active workout → live (watchMirror)
-    ///   · future planned day → planned detail
-    ///   · rest day / past completed → planned detail (or run detail in future)
+    ///   · past completed day → run detail
+    ///   · everything else · CTA hidden, route unused
+    ///
+    /// 2026-06-01 round 5: dropped the .planned(date:) fallback for
+    /// future days. PlannedView was being pushed from Today as a
+    /// separate page even though the Today sheet already renders the
+    /// same content (selected day's planned workout, conditions,
+    /// fueling, coach block). David's feedback: "we do not need it
+    /// on or from TODAY." Train + WeekAhead still drill into
+    /// PlannedView · those callers are unchanged.
     private var ctaRoute: FaffRoute {
         if selectedIsToday && selectedEffort != .rest && !skipped {
             return .watchMirror
@@ -983,9 +996,10 @@ struct TodayView: View {
         if let day = todaySelectedDay, let runId = day.completedRunId {
             return .runDetail(id: runId)
         }
-        // Pass the selected day's ISO so PlannedView fetches that day's
-        // workout (not always today's).
-        return .planned(date: selectedDayID.isEmpty ? nil : selectedDayID)
+        // Unreachable in practice · the CTA is hidden when no real
+        // route applies. Fall back to watchMirror so a degenerate
+        // tap doesn't crash.
+        return .watchMirror
     }
 
     private var plainWorkoutName: String { workoutName.replacingOccurrences(of: "\n", with: " ") }

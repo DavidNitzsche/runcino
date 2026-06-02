@@ -86,21 +86,23 @@ struct PlannedView: View {
                         .padding(.top, 18)
                     }
 
-                    Spacer(minLength: 140)
+                    Spacer(minLength: 40)
                 }
             }
-
-            VStack {
-                Spacer()
-                StickyCTABar(bgColor: mesh.base) {
-                    FaffPrimaryButton(
-                        title: "Start \(workoutTitle)",
-                        accentDot: effort.dot
-                    ) { /* push WatchMirror */ }
-                }
-                .frame(height: 130)
-            }
-            .ignoresSafeArea(edges: .bottom)
+            // 2026-06-01 round 5: dead Start CTA retired.
+            //
+            // PlannedView's StickyCTABar shipped with an empty action
+            // body (`/* push WatchMirror */` was a comment, not code)
+            // AND .ignoresSafeArea(edges: .bottom) which buried it
+            // behind the floating tab bar anyway. Doubly broken.
+            //
+            // The page is now preview-only · reached from TrainView
+            // (tap a day in the plan) and WeekAheadView (tap a future
+            // day in AT A GLANCE). Today no longer routes here ·
+            // David's feedback: the pre-run sheet already shows
+            // identical content, so a separate page was redundant.
+            // Live runs launch from Today's sheet directly into
+            // WatchMirrorView, not from a preview page.
         }
         .task { await load() }
     }
