@@ -1,34 +1,138 @@
 //
 //  TreadmillView.swift
-//  Guided treadmill console. Mesh shifts with current segment type.
-//  State management: per-segment countdown, total accumulated stats.
+//  Guided treadmill console · 2026-06-01 v2 (build 136 target).
+//
+//  Previously: hardcoded 4-interval session, no plan read, no POST,
+//  nothing persisted. Visual stub only.
+//
+//  Now:
+//  · Fetches today's WatchWorkout via /api/watch/today on appear
+//  · Derives segments from the plan's WatchPhase array (warmup/
+//    work/recovery/cooldown). Falls back to a single open-run
+//    segment when no plan / rest day / fetch fails.
+//  · Real timer counts elapsed seconds via TimelineView; pause halts,
+//    skip advances, end POSTs.
+//  · Runner enters actual speed (±0.1 mph) + incline (±0.5%) per
+//    segment via the existing steppers. Initial values come from the
+//    plan's target pace (mph-converted) when available, else 5.5/1.0.
+//  · Per-segment actuals (speed + incline at end of segment) get
+//    recorded into a phase buffer. On End, the buffer becomes the
+//    POST payload's `phases[].actualSpeedMph` + `actualInclinePct`.
+//  · Distance accumulates from speed × time per tick (treadmill GPS
+//    is unavailable on the phone).
+//  · End button POSTs WatchCompletion-shaped payload to
+//    /api/watch/workouts/complete with source='treadmill' +
+//    indoor=true. Backend ingest changes are in
+//    designs/briefs/treadmill-backend-wire-brief.md (must land
+//    alongside this for source to be respected).
+//
+//  HR-from-HK (live) is intentionally deferred · v1 ships without
+//  it, payload's avgHr/maxHr stay null. iPhone brief notes the
+//  follow-up.
 //
 
 import SwiftUI
 
 struct TreadmillView: View {
-    private let segments: [TreadSeg] = [
-        TreadSeg(label: "Warm Up",  sub: "",       kind: .warm, mph: 5.5, inc: 1.0, dur: 300),
-        TreadSeg(label: "Interval", sub: "1 / 3",  kind: .work, mph: 7.0, inc: 1.5, dur: 180),
-        TreadSeg(label: "Recovery", sub: "1 / 3",  kind: .rec,  mph: 5.0, inc: 0.5, dur: 120),
-        TreadSeg(label: "Interval", sub: "2 / 3",  kind: .work, mph: 7.0, inc: 1.5, dur: 180),
-        TreadSeg(label: "Recovery", sub: "2 / 3",  kind: .rec,  mph: 5.0, inc: 0.5, dur: 120),
-        TreadSeg(label: "Interval", sub: "3 / 3",  kind: .work, mph: 7.2, inc: 1.5, dur: 180),
-        TreadSeg(label: "Recovery", sub: "3 / 3",  kind: .rec,  mph: 5.0, inc: 0.5, dur: 120),
-        TreadSeg(label: "Cool Down",sub: "",       kind: .cool, mph: 5.0, inc: 0.5, dur: 300)
-    ]
+    @Environment(\.dismiss) private var dismiss
 
-    @State private var idx: Int = 1
-    @State private var leftInSeg: Int = 180
-    @State private var totalSec: Int = 330
-    @State private var dist: Double = 0.52
-    @State private var elev: Double = 29
-    @State private var speedMph: Double = 7.0
-    @State private var inclinePct: Double = 1.5
-    @State private var playing: Bool = true
+    // ── Plan source · fetched on .task ──────────────────────────────
+    @State private var workout: WatchWorkout?
+    @State private var loaded: Bool = false
+
+    // ── Live session state ──────────────────────────────────────────
+    /// Index into `segments` for the active segment.
+    @State private var idx: Int = 0
+    /// Seconds elapsed within the current segment (counts UP from 0).
+    @State private var elapsedInSeg: Int = 0
+    /// Cumulative elapsed seconds across the whole session.
+    @State private var totalSec: Int = 0
+    /// Cumulative distance in miles, accumulated each tick from speedMph.
+    @State private var dist: Double = 0
+    /// Cumulative elevation gain in ft (placeholder · treadmill incline
+    /// doesn't translate to "feet climbed" cleanly without segment math).
+    @State private var elev: Double = 0
+    /// Current runner-input speed (mph). Initialized per segment from
+    /// the plan's target; runner adjusts via steppers.
+    @State private var speedMph: Double = 5.5
+    /// Current runner-input incline (%).
+    @State private var inclinePct: Double = 1.0
+    /// Timer playing vs paused.
+    @State private var playing: Bool = false
+    /// Workout startedAt wall-clock · stamped on first play.
+    @State private var startedAt: Date?
+    /// Per-segment actuals captured at segment end (or on Skip/End).
+    /// Keyed by segment index. Stored as arrays so swift-friendly.
+    @State private var actualsBySegment: [Int: PhaseActual] = [:]
+    /// Wall-clock instant of the last tick · used by TimelineView to
+    /// derive `delta` since we last advanced state, so background
+    /// pauses don't double-count.
+    @State private var lastTickAt: Date = .now
+
+    /// Confirm-end prompt before POST.
+    @State private var showEndConfirm: Bool = false
+    /// Status indicator for the POST request.
+    @State private var posting: Bool = false
+    @State private var postError: String?
+
+    private struct PhaseActual {
+        var avgSpeedMph: Double
+        var avgInclinePct: Double
+        var distanceMi: Double
+        var durationSec: Int
+        var completed: Bool
+    }
+
+    // ── Derived: segments from workout.phases ──────────────────────
+
+    private var segments: [TreadSeg] {
+        guard let phases = workout?.phases, !phases.isEmpty else {
+            // Cold path · no plan loaded yet OR rest day OR fetch
+            // failed. Single open segment, runner just logs.
+            return [TreadSeg(label: "Just Run", sub: "",
+                             kind: .work, mph: 5.5, inc: 1.0, dur: 30 * 60)]
+        }
+        return phases.map { phase in
+            let mph = mphFromPaceSPerMi(phase.targetPaceSPerMi) ?? defaultMphFor(phase.type)
+            let kind: TreadSegKind = {
+                switch phase.type {
+                case .warmup:   return .warm
+                case .work:     return .work
+                case .recovery: return .rec
+                case .cooldown: return .cool
+                }
+            }()
+            return TreadSeg(
+                label: phase.label,
+                sub: "",
+                kind: kind,
+                mph: mph,
+                inc: 1.0,   // treadmill default; runner adjusts
+                dur: phase.durationSec
+            )
+        }
+    }
+
+    /// Convert sec/mi pace into mph. 7:00/mi → 8.57 mph.
+    private func mphFromPaceSPerMi(_ secPerMi: Int?) -> Double? {
+        guard let s = secPerMi, s > 0 else { return nil }
+        return 3600.0 / Double(s)
+    }
+
+    /// Sensible defaults when the plan didn't carry a target pace.
+    private func defaultMphFor(_ type: WatchPhaseType) -> Double {
+        switch type {
+        case .warmup:   return 5.5
+        case .work:     return 7.0
+        case .recovery: return 5.0
+        case .cooldown: return 5.0
+        }
+    }
+
+    // MARK: - body
 
     var body: some View {
-        let mesh = meshFor(segments[min(idx, segments.count - 1)].kind)
+        let mesh = meshFor(segments[safe: idx]?.kind ?? .work)
         ZStack {
             FaffMeshView(mesh: mesh)
                 .animation(.easeInOut(duration: 0.8), value: mesh)
@@ -57,21 +161,102 @@ struct TreadmillView: View {
                     .padding(.bottom, 24)
             }
             .foregroundStyle(Theme.txt)
+            // Live tick. Drives elapsedInSeg / totalSec / dist forward
+            // by `delta = now - lastTickAt` each frame. TimelineView at
+            // 1s cadence is plenty for a treadmill counter; saves
+            // battery vs continuous redraw.
+            .background(
+                TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                    Color.clear
+                        .onChange(of: ctx.date) { _, now in tick(at: now) }
+                }
+            )
+        }
+        .task {
+            await loadPlan()
+        }
+        .alert("End workout?", isPresented: $showEndConfirm) {
+            Button("End and save", role: .destructive) { endAndPost(status: "completed") }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Saves what you've done so far · skips remaining segments.")
         }
     }
+
+    // MARK: - Load plan
+
+    private func loadPlan() async {
+        guard !loaded else { return }
+        let fetched = try? await API.fetchWatchWorkout()
+        await MainActor.run {
+            self.workout = fetched
+            self.loaded = true
+            // Seed first segment's speed/incline from its derived defaults.
+            if let first = segments.first {
+                self.speedMph = first.mph
+                self.inclinePct = first.inc
+            }
+        }
+    }
+
+    // MARK: - Tick
+
+    private func tick(at now: Date) {
+        guard playing else { lastTickAt = now; return }
+        let delta = max(0, Int(now.timeIntervalSince(lastTickAt).rounded()))
+        lastTickAt = now
+        guard delta > 0 else { return }
+        // Advance elapsed counters.
+        elapsedInSeg += delta
+        totalSec += delta
+        // Distance accumulates · mph × hours = miles
+        dist += Double(delta) / 3600.0 * speedMph
+        // Auto-advance when the current segment runs out.
+        let seg = segments[safe: idx]
+        if let seg, elapsedInSeg >= seg.dur {
+            recordActual(forSegment: idx, completed: true)
+            let next = idx + 1
+            if next < segments.count {
+                idx = next
+                elapsedInSeg = 0
+                let nseg = segments[next]
+                speedMph = nseg.mph
+                inclinePct = nseg.inc
+            } else {
+                // All segments done · auto-end as completed.
+                playing = false
+                endAndPost(status: "completed")
+            }
+        }
+    }
+
+    private func recordActual(forSegment i: Int, completed: Bool) {
+        let seg = segments[i]
+        let durActual = min(elapsedInSeg, seg.dur * 2)  // cap defensive
+        actualsBySegment[i] = PhaseActual(
+            avgSpeedMph: speedMph,
+            avgInclinePct: inclinePct,
+            distanceMi: Double(durActual) / 3600.0 * speedMph,
+            durationSec: durActual,
+            completed: completed
+        )
+    }
+
+    // MARK: - Topbar
 
     private var topHead: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Threshold Intervals")
+                Text(workout?.name ?? "Just Run")
                     .font(.body(19, weight: .extraBold))
                     .tracking(-0.3)
+                    .lineLimit(1)
                 SpecLabel(text: "TREADMILL · GUIDED", size: 10, tracking: 2, color: Theme.txt.opacity(0.6))
             }
             HStack(alignment: .top, spacing: 0) {
                 topStat("TIME", formatClock(totalSec))
-                topStat("DISTANCE", "\(String(format: "%.2f", dist)) mi")
-                topStat("ELEV GAIN", "\(Int(round(elev))) ft")
+                topStat("DISTANCE", String(format: "%.2f mi", dist))
+                topStat("PHASE", "\(min(idx + 1, segments.count))/\(segments.count)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -85,6 +270,8 @@ struct TreadmillView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: - Segment row + bar
+
     private var segRow: some View {
         HStack {
             Text(segLabelText)
@@ -97,7 +284,7 @@ struct TreadmillView: View {
                 .background(.ultraThinMaterial, in: Capsule())
             Spacer()
             HStack(alignment: .lastTextBaseline, spacing: 6) {
-                Text(formatClock(leftInSeg))
+                Text(formatClock(remainingInSeg))
                     .font(.display(42, weight: .bold))
                     .tracking(-1)
                 Text("LEFT")
@@ -107,10 +294,14 @@ struct TreadmillView: View {
         }
     }
 
+    private var remainingInSeg: Int {
+        guard let seg = segments[safe: idx] else { return 0 }
+        return max(0, seg.dur - elapsedInSeg)
+    }
+
     private var segProgressBar: some View {
-        let s = segments[idx]
-        let elapsed = max(0, s.dur - leftInSeg)
-        let frac = max(0, min(1, Double(elapsed) / Double(s.dur)))
+        let seg = segments[safe: idx]
+        let frac = seg.map { max(0, min(1, Double(elapsedInSeg) / Double($0.dur))) } ?? 0
         return GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.2)).frame(height: 8)
@@ -119,6 +310,8 @@ struct TreadmillView: View {
         }
         .frame(height: 8)
     }
+
+    // MARK: - Console (speed + incline steppers)
 
     private var console: some View {
         VStack(spacing: 11) {
@@ -181,11 +374,19 @@ struct TreadmillView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Bottom (next-up + ticks + controls)
+
     private var bottomBlock: some View {
         VStack(spacing: 11) {
             nextUpCard
             overallTicks
             controlRow
+            if let err = postError {
+                Text(err)
+                    .font(.body(11, weight: .medium))
+                    .foregroundStyle(Color(hex: 0xFF7A66))
+                    .multilineTextAlignment(.center)
+            }
         }
     }
 
@@ -235,11 +436,21 @@ struct TreadmillView: View {
 
     private var controlRow: some View {
         HStack(spacing: 9) {
-            controlBtn(icon: playing ? "pause.fill" : "play.fill", label: playing ? "Pause" : "Resume", style: .secondary) {
+            controlBtn(
+                icon: playing ? "pause.fill" : "play.fill",
+                label: playing ? "Pause" : (totalSec == 0 ? "Start" : "Resume"),
+                style: .secondary
+            ) {
+                if !playing && startedAt == nil { startedAt = .now }
+                lastTickAt = .now
                 playing.toggle()
             }
             controlBtn(icon: "forward.fill", label: "Skip", style: .secondary) { advance() }
-            controlBtn(icon: "stop.fill", label: "End", style: .primary) { /* end */ }
+            controlBtn(icon: "stop.fill", label: posting ? "Saving" : "End", style: .primary) {
+                playing = false
+                showEndConfirm = true
+            }
+            .disabled(posting)
         }
     }
 
@@ -271,16 +482,17 @@ struct TreadmillView: View {
     // MARK: - State helpers
 
     private var segLabelText: String {
-        let s = segments[idx]
+        guard let s = segments[safe: idx] else { return "" }
         return s.sub.isEmpty ? s.label.uppercased() : "\(s.label.uppercased()) \(s.sub)"
     }
 
     private func advance() {
+        guard idx + 1 < segments.count else { return }
+        recordActual(forSegment: idx, completed: false)   // skipped before timer ran out
         let nextIdx = idx + 1
-        guard nextIdx < segments.count else { return }
         withAnimation(.easeInOut(duration: 0.4)) {
             idx = nextIdx
-            leftInSeg = segments[nextIdx].dur
+            elapsedInSeg = 0
             speedMph = segments[nextIdx].mph
             inclinePct = segments[nextIdx].inc
         }
@@ -311,6 +523,89 @@ struct TreadmillView: View {
         case .cool: return FaffMesh(c1: 0x7FE0D0, c2: 0x34B0A0, c3: 0x1F8A8A, c4: 0x127A72, c5: 0x0F6A64, base: 0x06322E)
         }
     }
+
+    // MARK: - End + POST
+
+    private func endAndPost(status: String) {
+        // Record the active segment's actual before flushing.
+        if idx < segments.count {
+            recordActual(forSegment: idx, completed: status == "completed" && elapsedInSeg >= segments[idx].dur)
+        }
+        posting = true
+        postError = nil
+        let payload = buildPayload(status: status)
+        Task {
+            let ok = await postTreadmillCompletion(payload: payload)
+            await MainActor.run {
+                posting = false
+                if ok {
+                    dismiss()
+                } else {
+                    postError = "Couldn't save · check connection and try End again."
+                }
+            }
+        }
+    }
+
+    private func buildPayload(status: String) -> [String: Any] {
+        let iso = ISO8601DateFormatter()
+        let started = startedAt ?? Date(timeIntervalSinceNow: -Double(totalSec))
+        let phasePayloads: [[String: Any]] = segments.enumerated().map { i, seg in
+            let act = actualsBySegment[i]
+            var phase: [String: Any] = [
+                "label": seg.label,
+                "type": treadKindToWatchType(seg.kind),
+                "completed": act?.completed ?? false,
+                "actualSpeedMph": act?.avgSpeedMph ?? seg.mph,
+                "actualInclinePct": act?.avgInclinePct ?? seg.inc,
+            ]
+            if let act {
+                phase["actualDistanceMi"] = (act.distanceMi * 100).rounded() / 100
+                phase["actualDurationSec"] = act.durationSec
+                // Approximate pace from speed for backend's split row.
+                let paceSec = Int(round(3600.0 / max(0.5, act.avgSpeedMph)))
+                phase["actualPaceSPerMi"] = paceSec
+            }
+            return phase
+        }
+        let payload: [String: Any] = [
+            "workoutId": "trd_\(UUID().uuidString)",
+            "startedAt": iso.string(from: started),
+            "completedAt": iso.string(from: .now),
+            "status": status,
+            "totalDistanceMi": (dist * 100).rounded() / 100,
+            "totalDurationSec": totalSec,
+            // Faff watch's kcal/HR fields stay null on iPhone-treadmill v1 ·
+            // backend resolveCalories tier 3 estimator picks up.
+            "source": "treadmill",
+            "indoor": true,
+            "phases": phasePayloads,
+        ]
+        return payload
+    }
+
+    private func treadKindToWatchType(_ k: TreadSegKind) -> String {
+        switch k {
+        case .warm: return "warmup"
+        case .work: return "work"
+        case .rec:  return "recovery"
+        case .cool: return "cooldown"
+        }
+    }
+
+    private func postTreadmillCompletion(payload: [String: Any]) async -> Bool {
+        do {
+            var req = URLRequest(url: API.baseURL.appendingPathComponent("api/watch/workouts/complete"))
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            let (_, http) = try await API.authedSend(req)
+            return (200..<300).contains(http.statusCode)
+        } catch {
+            print("[treadmill] POST failed: \(error)")
+            return false
+        }
+    }
 }
 
 private enum TreadSegKind { case warm, work, rec, cool }
@@ -322,4 +617,10 @@ private struct TreadSeg {
     let mph: Double
     let inc: Double
     let dur: Int
+}
+
+private extension Array {
+    subscript(safe i: Int) -> Element? {
+        indices.contains(i) ? self[i] : nil
+    }
 }
