@@ -28,7 +28,13 @@ export type AutoRebuildKind =
   | 'race_date_changed'
   | 'goal_time_changed'
   | 'a_race_added'
-  | 'a_race_removed';
+  | 'a_race_removed'
+  /** 2026-06-03 · graduation · the current target's race day has
+   *  passed; we're transitioning to the next A-race. fireAutoRebuild
+   *  skips the race_mismatch check in this mode because the active
+   *  plan's race_id IS expected to differ (old race). generatePlan
+   *  archives the old plan via persistPlan's clearActivePlansFor. */
+  | 'race_graduate';
 
 export interface AutoRebuildInput {
   userUuid: string;
@@ -75,9 +81,16 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
   ).catch(() => ({ rows: [] }))).rows[0];
 
   if (!plan) {
-    return { ok: false, reason: 'no_active_plan' };
+    // No active plan · race_graduate path is OK with this (build fresh).
+    if (input.kind !== 'race_graduate') {
+      return { ok: false, reason: 'no_active_plan' };
+    }
   }
-  if (plan.race_id !== input.raceSlug) {
+  // 2026-06-03 · race_graduate intentionally crosses race_id boundaries.
+  // The active plan is for the OLD race (which just finished); we're
+  // building the NEW plan for the next A-race. generatePlan archives
+  // the old plan inside persistPlan's clearActivePlansFor.
+  if (plan && plan.race_id !== input.raceSlug && input.kind !== 'race_graduate') {
     return { ok: false, reason: 'race_mismatch', oldPlanId: plan.id };
   }
 
@@ -89,13 +102,13 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
         AND proposal_kind = $3
         AND created_at >= NOW() - interval '60 seconds'
       ORDER BY created_at DESC LIMIT 1`,
-    [input.userUuid, plan.id, input.kind],
+    [input.userUuid, plan?.id ?? null, input.kind],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (recent) {
     return {
       ok: true,
       reason: 'deduped_within_60s',
-      oldPlanId: plan.id,
+      oldPlanId: plan?.id ?? undefined,
       newPlanId: recent.new_plan_id ?? undefined,
       proposalId: recent.id,
     };
@@ -126,7 +139,7 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
      RETURNING id`,
     [
       input.userUuid,
-      plan.id,
+      plan?.id ?? null,
       input.kind,
       JSON.stringify({
         ...input.reasons,
@@ -142,7 +155,7 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
   return {
     ok: rebuildOk,
     reason: rebuildReason,
-    oldPlanId: plan.id,
+    oldPlanId: plan?.id ?? undefined,
     newPlanId,
     proposalId: proposalRow.id,
   };

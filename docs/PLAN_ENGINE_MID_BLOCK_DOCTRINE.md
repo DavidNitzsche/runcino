@@ -1,5 +1,7 @@
 # Plan Engine · Mid-Block Runner Doctrine
 
+**Status (2026-06-03 late evening):** 11 rules + post-race graduate cron SHIPPED. The daily 09:00 UTC drift-cron now also handles race graduation: when an active plan's race date is in the past, fire `fireAutoRebuild({kind: 'race_graduate'})` against the next A-priority race. The new plan inherits all training history via composePlan's existing readers (recentLong, recentQuality, bestRecentVdot, tsbAtStart). Verified against David: post-AFC (8/17), CIM would auto-graduate as the new target. No manual nudge required.
+
 **Status (2026-06-03 evening):** 11 of 11 rules SHIPPED. Added Rule 11 (horizon-aware planning) · A/B-priority races within 24 weeks influence the current plan's long-run dials when the future race is longer.
 
 **Status (2026-06-03 PM):** 10 of 10 rules SHIPPED. Simulation against David's live plan: 6/7 testable rules pass · the one failure (Rule 10 derived_from) only because his plan was authored pre-Rule-10; next rebuild populates.

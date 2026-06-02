@@ -58,6 +58,78 @@ export async function POST(req: NextRequest) {
       signals_skipped: 0,
     };
     try {
+      // 2026-06-03 · post-race auto-graduate (Rule 11 follow-on).
+      // If the runner's active plan target's race date is in the past
+      // (race day finished), find the next A-priority race in their
+      // schedule and fire a rebuild with kind='race_graduate'. The new
+      // plan inherits all training history via composePlan's readers
+      // (recentLong, recentQuality, bestRecentVdot, tsbAtStart, etc.)
+      // so it's a continuous progression, not a cold-start.
+      // Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 11 follow-on.
+      const finishedRow = (await pool.query<{
+        plan_id: string; race_id: string; race_date: string;
+      }>(
+        `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
+                (rc.meta->>'date')::text AS race_date
+           FROM training_plans tp
+           JOIN races rc ON rc.slug = tp.race_id
+          WHERE tp.user_uuid = $1
+            AND tp.archived_iso IS NULL
+            AND (rc.meta->>'date')::date < CURRENT_DATE - interval '1 day'
+          ORDER BY tp.authored_iso DESC LIMIT 1`,
+        [u],
+      ).catch(() => ({ rows: [] }))).rows[0];
+
+      if (finishedRow) {
+        // Pick the next A-race AFTER today
+        const nextRow = (await pool.query<{ slug: string; race_date: string }>(
+          `SELECT slug, (meta->>'date')::text AS race_date
+             FROM races
+            WHERE user_uuid = $1
+              AND meta->>'priority' = 'A'
+              AND (meta->>'date')::date >= CURRENT_DATE
+            ORDER BY (meta->>'date')::date ASC LIMIT 1`,
+          [u],
+        ).catch(() => ({ rows: [] }))).rows[0];
+
+        if (nextRow) {
+          // De-dupe · don't graduate twice for the same (old race, new race) pair
+          // within 24h. After the first successful graduate the active plan's
+          // race_id matches nextRow.slug · so this only fires once per transition.
+          const alreadyGraduated = (await pool.query(
+            `SELECT 1 FROM plan_proposals
+              WHERE user_uuid = $1
+                AND proposal_kind = 'race_graduate'
+                AND reasons->>'previous_race' = $2
+                AND created_at >= NOW() - interval '24 hours'`,
+            [u, finishedRow.race_id],
+          ).catch(() => ({ rowCount: 0 }))).rowCount;
+
+          if (!alreadyGraduated) {
+            try {
+              const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
+              const result = await fireAutoRebuild({
+                userUuid: u,
+                raceSlug: nextRow.slug,
+                kind: 'race_graduate',
+                reasons: {
+                  previous_race: finishedRow.race_id,
+                  previous_race_date: finishedRow.race_date,
+                  new_race_date: nextRow.race_date,
+                  message: `${finishedRow.race_id} finished · graduating to ${nextRow.slug}.`,
+                },
+                source: 'graduate_cron',
+              });
+              if (result.ok) r.proposals_written++;
+            } catch (e) {
+              console.error('[plan-drift] race-graduate failed:', e);
+            }
+          }
+        }
+        // No next A-race · leave plan as-is. Runner gets a "schedule your next race"
+        // empty-state on the next /today render. NOT a drift signal · move on.
+      }
+
       // 2026-06-01 · Phase 1.1 · goal-gap engine. Continuous projection-
       // vs-goal check · fires a rebuild when the gap is WIDENING for 3+
       // consecutive days. This is the closed-loop signal the architecture
