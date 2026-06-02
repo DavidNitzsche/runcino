@@ -878,6 +878,20 @@ export interface ComposePlanInput {
   /** Banister TSB at generate-time · shifts cutback frequency to every
    *  3rd week when TSB < -10 (Rule 8). Optional · falls back to mod-4. */
   tsbAtStart?: number;
+  /** 2026-06-03 · Rule 11 · horizon races · A/B-priority races within 24
+   *  weeks of raceDateISO. When any has a LARGER tier band than the
+   *  current race's tier, long-run dials (cap + share) extend toward
+   *  that larger band. Weekly cap + quality density stay current-race.
+   *  Empty/undefined = no horizon. Cite: §Rule 11 + Pfitz Advanced
+   *  Marathoning §"Bridging from half to full." */
+  horizonRaces?: Array<{
+    slug: string;
+    name: string;
+    date: string;
+    distanceMi: number;
+    goalPaceSec: number | null;
+    priority: 'A' | 'B';
+  }>;
   isMidBlock: boolean;
   longRunDow: DOW;
   restDow: DOW;
@@ -932,10 +946,61 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // 2026-06-02 · tier targets drive volume + long-run sizing.
   // Sourced from Research/22 via lookupTierTarget. Classification
   // uses goalPaceSec; falls back to intermediate tier when no goal.
-  const { tier, target: tierTarget } = lookupTierTarget(
+  const { tier, target: baseTierTarget } = lookupTierTarget(
     input.goalPaceSec,
     input.raceDistanceMi,
   );
+
+  // 2026-06-03 · Rule 11 · horizon-aware long-run dials.
+  // Find the most demanding A/B race within 24 weeks. If its tier's
+  // long-run band exceeds the current race's, override the long dials
+  // (cap + share) so the current plan sets up the future block's long
+  // progression. Weekly + quality stay at current-race tier. Cite §11.
+  const horizonRaise = (() => {
+    const horizon = input.horizonRaces ?? [];
+    if (horizon.length === 0) return null;
+    // For each horizon race, compute its tier target.
+    let bestCap = baseTierTarget.peakLongMiBand[1];
+    let bestShare = baseTierTarget.longRunShare;
+    let bestRace: { slug: string; name: string; date: string; distanceMi: number } | null = null;
+    for (const h of horizon) {
+      const { target: ht } = lookupTierTarget(h.goalPaceSec, h.distanceMi);
+      // Only LARGER bands count · we extend up, never contract down.
+      if (ht.peakLongMiBand[1] > bestCap || ht.longRunShare > bestShare) {
+        if (ht.peakLongMiBand[1] > bestCap) bestCap = ht.peakLongMiBand[1];
+        if (ht.longRunShare > bestShare) bestShare = ht.longRunShare;
+        bestRace = { slug: h.slug, name: h.name, date: h.date, distanceMi: h.distanceMi };
+      }
+    }
+    if (!bestRace) return null;
+    return {
+      fromLongCapMi: baseTierTarget.peakLongMiBand[1],
+      toLongCapMi: bestCap,
+      fromLongShare: baseTierTarget.longRunShare,
+      toLongShare: bestShare,
+      race: bestRace,
+    };
+  })();
+
+  // Tier target used by the layout · when horizon raise is active:
+  //   · long cap extends to horizon race's cap
+  //   · long share extends to horizon race's share
+  //   · weekly peakTarget shifts from lower-band toward mid-band so the
+  //     plan has enough weekly volume to support the bigger long runs
+  //   · weekly UPPER band stays current-race (don't blow up HM training
+  //     intensity for marathon-prep ambition)
+  //   · qualityPerWeek stays current-race (we're still sharpening for
+  //     the immediate goal, not the horizon goal)
+  const tierTarget: TierTarget = horizonRaise ? {
+    ...baseTierTarget,
+    peakLongMiBand: [baseTierTarget.peakLongMiBand[0], horizonRaise.toLongCapMi],
+    longRunShare: horizonRaise.toLongShare,
+    peakWeeklyMileageBand: [
+      Math.round((baseTierTarget.peakWeeklyMileageBand[0] + baseTierTarget.peakWeeklyMileageBand[1]) / 2),
+      baseTierTarget.peakWeeklyMileageBand[1],
+    ],
+  } : baseTierTarget;
+
   const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level, tierTarget, input.tsbAtStart);
 
   // 2026-06-03 · mid-block doctrine RULE 5 (quality density ramp).
@@ -1050,6 +1115,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       goal_tier: tier,
       tier_peak_weekly_band: tierTarget.peakWeeklyMileageBand,
       tier_peak_long_band: tierTarget.peakLongMiBand,
+      // 2026-06-03 · Rule 11 · horizon raise. Null when no future race
+      // raises the long-run cap above the current tier's. Drives the
+      // chip on the plan UI ("LONG-RUN CAP · 22mi · setting up CIM").
+      horizon_raise: horizonRaise,
       // 2026-06-03 · Rule 10 · transparency envelope so the runner can
       // audit which signals drove their plan. Surfaces in /plan brief
       // as "plan built from your last 28 days." Cite: §Rule 10.
@@ -1335,6 +1404,32 @@ async function loadGeneratorInputs(
       return f?.tsb;
     } catch { return undefined; }
   })();
+  // 2026-06-03 · Rule 11 · horizon races · A/B-priority races within 24
+  // weeks of the current race day. Filtered to "longer distance than
+  // current race" — sharpening races (5K/10K after a HM) don't raise
+  // the long-run cap.
+  const horizonRacesRows = (await pool.query<{ slug: string; meta: any }>(
+    `SELECT slug, meta FROM races
+      WHERE user_uuid = $1
+        AND (meta->>'date')::date > $2::date
+        AND (meta->>'date')::date <= ($2::date + interval '168 days')
+        AND meta->>'priority' IN ('A','B')
+        AND (meta->>'distanceMi')::numeric > $3::numeric`,
+    [userId, raceDateISO, raceDistanceMi],
+  ).catch(() => ({ rows: [] }))).rows;
+  const horizonRaces: ComposePlanInput['horizonRaces'] = horizonRacesRows.map((r) => {
+    const m = r.meta || {};
+    const dMi = Number(m.distanceMi);
+    const goalSec = parseRaceTime(m.goalDisplay ?? m.goalTime);
+    return {
+      slug: r.slug,
+      name: String(m.name || r.slug),
+      date: String(m.date),
+      distanceMi: dMi,
+      goalPaceSec: goalSec && dMi > 0 ? Math.round(goalSec / dMi) : null,
+      priority: (m.priority === 'A' ? 'A' : 'B') as 'A' | 'B',
+    };
+  });
   // 2026-06-02 · ensure totalWeeks is an integer here too · matches
   // the same fix in composePlan. Was producing fractional totalWeeks
   // that broke phase advancement.
@@ -1382,6 +1477,7 @@ async function loadGeneratorInputs(
       recentQualityPerWeek: recentQualityPW > 0 ? recentQualityPW : undefined,
       bestRecentVdot,
       tsbAtStart,
+      horizonRaces: horizonRaces.length > 0 ? horizonRaces : undefined,
       isMidBlock,
       longRunDow,
       restDow,

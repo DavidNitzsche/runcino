@@ -877,7 +877,7 @@ function adaptVolumeBars(log: LogT | null, training: Training | null): { bars: V
 }
 
 function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeof loadPlanAdapts>>['value'], raceDistanceMi: number | null = null) {
-  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, phases: [], weekDays: [], adaptations: [] };
+  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, phases: [], weekDays: [], adaptations: [], horizonRaise: null };
   const miles = training.weeks.map(w => Math.round(w.plannedMi || 0));
   const nowIdx = Math.max(0, Math.min(miles.length - 1, training.currentWeekIdx ?? 0));
   const raceIdx = miles.length - 1;
@@ -1010,7 +1010,12 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
     };
   }).filter((a) => a.weekIdx >= 0);
 
-  return { nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5, phases, weekDays, adaptations };
+  return {
+    nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5, phases, weekDays, adaptations,
+    // 2026-06-03 · Rule 11 (horizon-aware planning) · drives the
+    // "LONG-RUN CAP · 22mi · setting up CIM" chip on TrainView.
+    horizonRaise: training?.horizonRaise ?? null,
+  };
 }
 
 function adaptHealth(
@@ -1756,7 +1761,7 @@ function emptySeed(): FaffSeed {
     thisWeekMiles: 0,
     weeklyAvg: 0,
     form: { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr: null },
-    season: { nowIdx: 0, raceIdx: 0, miles: [], maxMi: 1, phases: [], weekDays: [], adaptations: [] },
+    season: { nowIdx: 0, raceIdx: 0, miles: [], maxMi: 1, phases: [], weekDays: [], adaptations: [], horizonRaise: null },
     health: { readiness, body: [], form: [], sleepArchitectureVerdict: null },
     prs: [],
     races: [],

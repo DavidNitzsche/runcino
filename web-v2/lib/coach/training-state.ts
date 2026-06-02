@@ -82,6 +82,16 @@ export interface TrainingState {
    *  "Plan refreshed Xh ago" freshness line on the Train tab. Added
    *  2026-05-30 audit. Null when the cron hasn't run yet. */
   last_adapted_at: string | null;
+  /** 2026-06-03 · Rule 11 (horizon-aware planning). Null when no future
+   *  A/B race within 24 weeks raises the long-run cap above the current
+   *  tier's. Surfaced as a chip on the Train tab. */
+  horizonRaise: {
+    fromLongCapMi: number;
+    toLongCapMi: number;
+    fromLongShare: number;
+    toLongShare: number;
+    race: { slug: string; name: string; date: string; distanceMi: number };
+  } | null;
 }
 
 export async function loadTrainingState(userId: string): Promise<TrainingState> {
@@ -95,8 +105,18 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       currentPhase: null, currentWeekIdx: null, nextQuality: null,
       weekDone: 0, weekPlanned: null,
       last_adapted_at: null,
+      horizonRaise: null,
     };
   }
+
+  // 2026-06-03 · Rule 11 · read horizon_raise from authored_state.
+  const authRow = (await pool.query<{ horizon: any }>(
+    `SELECT authored_state->'horizon_raise' AS horizon FROM training_plans WHERE id = $1`,
+    [plan.id],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const horizonRaise = authRow?.horizon
+    ? authRow.horizon as TrainingState['horizonRaise']
+    : null;
 
   const phases: PlanPhase[] = (await pool.query(
     `SELECT label, start_week_idx, end_week_idx FROM plan_phases WHERE plan_id = $1 ORDER BY start_week_idx`,
@@ -296,5 +316,6 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     plan_id: plan.id, today, race, phases, weeks,
     currentPhase, currentWeekIdx, nextQuality, weekDone, weekPlanned,
     last_adapted_at: plan.last_adapted_at,
+    horizonRaise,
   };
 }

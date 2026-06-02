@@ -1,5 +1,7 @@
 # Plan Engine · Mid-Block Runner Doctrine
 
+**Status (2026-06-03 evening):** 11 of 11 rules SHIPPED. Added Rule 11 (horizon-aware planning) · A/B-priority races within 24 weeks influence the current plan's long-run dials when the future race is longer.
+
 **Status (2026-06-03 PM):** 10 of 10 rules SHIPPED. Simulation against David's live plan: 6/7 testable rules pass · the one failure (Rule 10 derived_from) only because his plan was authored pre-Rule-10; next rebuild populates.
 
 **Earlier status (morning):** 4 of 10 rules SHIPPED · 6 rules GAP · bench persona `david-mid-block` exercises all 6 GAP rules with failing-test assertions.
@@ -183,6 +185,39 @@ Predicted bench pass/fail for `david-mid-block` against the CURRENT generator (b
 4. **Rule 3 (pace anchor blend)** · meaty; requires `bestRecentVdot` reader + `tPaceFromVdot` helper + blend math in `layoutWeek`. Real test needs to inspect actual pace targets in the spec.
 5. **Rule 4 (monotonic vol floor, full)** · enforce post-`vols[]` monotonic check.
 6. **Rule 8 (TSB-driven cutback)** · last, needs Banister TSB wired through into `volumeCurve`. Most architecturally invasive.
+
+---
+
+### Rule 11 · horizon-aware planning
+**Status:** ✓ SHIPPED (2026-06-03 evening)
+**Doctrine.** The current plan isn't just "AFC training" — it's "training that peaks at AFC and continues into the next block." When a future A/B-priority race within 24 weeks of `raceDateISO` is LONGER than the current race, its tier's long-run dials extend the current plan's long-run cap and share. Weekly volume cap + quality density stay at the current race's tier so we don't blow up sharpening intensity. Inverse case (future race is SHORTER) leaves the current plan untouched · only EXTEND, never CONTRACT.
+
+**Per Pfitz Advanced Marathoning §"Bridging from half to full":** "Set up your buildup so weekly mileage and long-run progression have continuity across races. Don't reset between the HM tune-up and the goal marathon."
+
+**Trigger.** Future A or B race within 24 weeks (168 days) of current `raceDateISO` AND distanceMi > current. Sharpening races (5K/10K after a HM) ignored.
+
+**Effect.**
+- `peakLongMiBand[1]` extends to max horizon race's cap (e.g. HM advanced 17mi → M advanced 22mi)
+- `longRunShare` extends to max horizon race's share (e.g. 0.25 → 0.30)
+- `peakWeeklyMileageBand[0]` shifts from lower-band to mid-band so volume supports the longer long runs (e.g. HM advanced 55 → 70). Upper-band cap unchanged.
+- `qualityPerWeek` unchanged · sharpening for the immediate race, not the horizon race.
+
+**Code.** `lib/plan/generate.ts § composePlan` computes `horizonRaise` after `lookupTierTarget`. Wrapper reads A/B races within 24 weeks via SQL filter on `meta->>'priority'` and `meta->>'distanceMi'`.
+
+**Envelope.** `authoredState.horizon_raise = { fromLongCapMi, toLongCapMi, fromLongShare, toLongShare, race: {slug, name, date, distanceMi} }`. Null when no horizon raise applies.
+
+**UI surface.** `TrainView` renders a chip in the hero when `season.horizonRaise` is non-null: "LONG-RUN CAP · 22mi · setting up CIM."
+
+**Bench.** No explicit assertion yet · david-mid-block persona currently has no horizon. Real-world wiring verified via DB query against David's live race schedule.
+
+**David's specific case.** Sub-1:30 AFC HM (8/16) → sub-3 CIM marathon (12/6) is exactly 16 weeks. CIM is A-priority, longer distance. Horizon-raise:
+- HM advanced longCap [15,17] → M advanced [20,22] · cap = 22
+- HM advanced longShare 0.25 → M advanced 0.30 · share = 0.30
+- HM advanced weekly [55,85] → [70,85] · target band shifts toward mid
+- Result: AFC peak weekly ~70 (vs 58 currently), peak long ~21-22mi (vs 14 currently)
+- CIM block then starts at 18-20mi long, ramps to 22 over its build · much smoother than starting at 12
+
+Run Malibu HM (B, 11/8) doesn't raise the cap because it's same distance as AFC. Dodgers 10K (C, 9/26) is filtered by priority (C-only) anyway. So only CIM drives the raise.
 
 ---
 

@@ -363,6 +363,22 @@ export function TrainView({
             <span className="ftag">FOCUS</span>
             <span className="ftx">{curPhaseMeta?.focus ?? 'Active block.'}</span>
           </div>
+          {/* 2026-06-03 · Rule 11 chip · horizon-aware long-run cap. Renders
+              only when a future A/B race within 24 weeks raises the cap. */}
+          {seed.season.horizonRaise ? (
+            <div className="t-horizon-chip" style={{
+              marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '6px 10px', borderRadius: 999, fontSize: 11,
+              fontFamily: 'Inter, -apple-system, sans-serif', letterSpacing: 0.6,
+              background: 'rgba(252, 206, 138, .12)', border: '1px solid rgba(252, 206, 138, .35)',
+              color: '#FFCE8A',
+            }}>
+              <span style={{ fontWeight: 700 }}>LONG-RUN CAP · {seed.season.horizonRaise.toLongCapMi}mi</span>
+              <span style={{ opacity: 0.72 }}>
+                setting up {seed.season.horizonRaise.race.name}
+              </span>
+            </div>
+          ) : null}
         </div>
         <div className="t-status">
           <span className="t-wkpill">

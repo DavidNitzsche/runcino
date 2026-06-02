@@ -169,6 +169,17 @@ export type FaffSeed = {
        *  have kind='overridden' and supersededByOverride=false. */
       supersededByOverride: boolean;
     }>;
+    /** 2026-06-03 · Rule 11 · horizon-aware planning. Non-null when a
+     *  future A/B race within 24 weeks raises the long-run cap above
+     *  the current race's tier. Drives the "LONG-RUN CAP · 22mi ·
+     *  setting up CIM" chip on TrainView. Cite docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 11. */
+    horizonRaise: {
+      fromLongCapMi: number;
+      toLongCapMi: number;
+      fromLongShare: number;
+      toLongShare: number;
+      race: { slug: string; name: string; date: string; distanceMi: number };
+    } | null;
   };
 
   // health view
