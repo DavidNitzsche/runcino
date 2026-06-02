@@ -21,7 +21,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
-import { WhatChangedExpander } from '../toolkit';
 import { buildAdaptText } from '../adapt-text';
 
 interface PhaseMeta {
@@ -644,13 +643,15 @@ export function TrainView({
             </div>
           </div>
 
-          {/* Plan mutation history · WhatChangedExpander filters
-              coach_intents to reason LIKE 'plan_adapt_%'. Closes
-              coverage lines 487 (plan mutation history) + 580
-              (9 adaptation trigger types). */}
-          <div style={{ marginTop: 18 }}>
-            <WhatChangedExpander label="PLAN ADJUSTMENTS" reasonPrefix="plan_adapt" />
-          </div>
+          {/* Plan mutation history removed from TrainView 2026-06-01
+              (David call). The full audit log lives on Profile via
+              CoachActivityTimeline · the week strip + KEY WORKOUTS
+              chips already surface per-day "was X" annotations at
+              the point of decision. A buried dropdown at the bottom
+              of Train was hidden chrome that read empty more often
+              than not (see designs/briefs/coach-intents-empty-
+              diagnostic.md for the underlying writer/reader
+              mismatch that was hiding rows). */}
         </div>
       </div>
 
