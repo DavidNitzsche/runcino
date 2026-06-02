@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { derivePurpose, type Phase, type WorkoutType } from '@/lib/coach/run-purpose';
+import { composeCue } from '@/lib/coach/session-cue';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +115,61 @@ async function loadAnchorRace(userId: string, todayIso: string): Promise<AnchorR
   }
 }
 
+/**
+ * 2026-06-02 · iPhone CUE field context loader.
+ *
+ * Pulls three lightweight signals composeCue() reads to make the cue
+ * specific to TODAY · was yesterday hard · is it hot · are pillars
+ * trending red. Every signal defaults to false/null on failure so
+ * the cue still composes from the bare type fallback. Failures here
+ * NEVER 500 the route.
+ */
+async function loadCueContext(userId: string, date: string): Promise<{
+  recentHardSession: boolean;
+  heatPenaltyBpm: number | null;
+  pillarDownStreak: boolean;
+}> {
+  const hardYesterday = await pool.query<{ type: string | null; dist: number | string | null }>(
+    `SELECT data->>'type' AS type, (data->>'distanceMi')::numeric AS dist
+       FROM runs WHERE user_uuid = $1::uuid AND NOT (data ? 'mergedIntoId')
+        AND (data->>'date')::date = ($2::date - interval '1 day')
+       ORDER BY (data->>'date')::date DESC LIMIT 1`,
+    [userId, date],
+  ).then((r) => r.rows[0]).catch(() => undefined);
+  const t = (hardYesterday?.type ?? '').toLowerCase();
+  const dist = hardYesterday?.dist != null ? Number(hardYesterday.dist) : 0;
+  const recentHardSession = t === 'race' || t === 'long' || t === 'intervals'
+    || t === 'tempo' || t === 'threshold' || t === 'fartlek' || dist >= 12;
+
+  let heatPenaltyBpm: number | null = null;
+  try {
+    const { resolveHomeLatLng, fetchDayForecast } = await import('@/lib/weather/openmeteo');
+    const home = await resolveHomeLatLng(userId);
+    if (home) {
+      const f = await fetchDayForecast(home.lat, home.lng, date);
+      if (f?.temp_max_f != null && f.temp_max_f >= 75) {
+        // Research/06 §heat · ~1 bpm per 2°F over 65°F baseline.
+        heatPenaltyBpm = Math.round((f.temp_max_f - 65) / 2);
+      }
+    }
+  } catch { /* swallow · null is fine */ }
+
+  let pillarDownStreak = false;
+  try {
+    const { loadCoachState } = await import('@/lib/coach/state-loader');
+    const { loadReadinessBrief } = await import('@/lib/coach/readiness-brief');
+    const state = await loadCoachState(userId);
+    if (state) {
+      const brief = await loadReadinessBrief(userId, state);
+      pillarDownStreak = (brief?.streaks ?? []).some((s) =>
+        s.direction === 'below' && s.days >= 3
+      );
+    }
+  } catch { /* swallow · false is fine */ }
+
+  return { recentHardSession, heatPenaltyBpm, pillarDownStreak };
+}
+
 /** 2026-06-02 · compute weeks between two dates · `Math.ceil(days/7)` ·
  *  null when date is missing or invalid. */
 function weeksBetween(todayIso: string, raceIso: string | null): number | null {
@@ -203,6 +259,18 @@ export async function GET(req: NextRequest) {
       type, phase: phaseUpper, plannedMi, raceDistanceMi, weeksToRace,
     });
 
+    // 2026-06-02 · iPhone brief · one-line SESSION CUE.
+    // Composer reads recent context (hard session yesterday, pillar
+    // streaks, heat) and produces a single-sentence coach-voice cue.
+    // Returns null on rest/unplanned · iPhone hides the section.
+    const cueContext = await loadCueContext(userId, date);
+    const cue = composeCue({
+      type, phase: phaseUpper, plannedMi,
+      recentHardSession: cueContext.recentHardSession,
+      heatPenaltyBpm: cueContext.heatPenaltyBpm,
+      pillarDownStreak: cueContext.pillarDownStreak,
+    });
+
     return NextResponse.json({
       ok: true,
       date,
@@ -213,6 +281,7 @@ export async function GET(req: NextRequest) {
       raceDistanceMi,
       weeksToRace,
       race: anchor,
+      cue,
       ...purpose,
     });
   } catch (err: unknown) {
