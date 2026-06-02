@@ -963,6 +963,7 @@ function adaptHealth(
     swcMs: number | null;
     series: { date: string; pct: number }[];
   } | null,
+  biologicalSex?: 'female' | 'male' | 'not_specified',
 ): HealthSnapshot {
   const series = (arr: Array<{ date: string } & Record<string, unknown>> | undefined, field: string): number[] => {
     if (!arr || arr.length === 0) return [];
@@ -1071,6 +1072,35 @@ function adaptHealth(
   if (maxHrCurrent > 0) {
     body.push(mk('max_hr', 'MAX HR', 'bpm', maxHrCurrent, undefined,
       [Math.max(150, maxHrCurrent - 30), maxHrCurrent + 10], [], 'good'));
+  }
+  // 2026-06-01 · Active energy from iPhone 031fe5fd · daily kcal total.
+  // Bumps to ~180 buckets/run once TF updates · same query works either
+  // way (SUM by day). Targets vary wildly per runner so no fixed target ·
+  // status driven by recency (today >= 50% of 7d avg = good).
+  const aeToday = health?.activeEnergy?.today ?? 0;
+  const aeAvg7 = health?.activeEnergy?.avg7 ?? 0;
+  if (aeToday > 0 || aeAvg7 > 0) {
+    const aeSeriesKcal = (health?.activeEnergy?.series ?? []).map((p) => p.kcal);
+    const aeStatus: 'good' | 'warn' = aeAvg7 > 0 && aeToday >= aeAvg7 * 0.5 ? 'good' : 'warn';
+    body.push(mk('active_energy', 'ACTIVE ENERGY', 'kcal', aeToday || aeAvg7, aeAvg7 || undefined,
+      [0, Math.max(2500, aeAvg7 + 500)], aeSeriesKcal, aeStatus));
+  }
+  // 2026-06-01 · Cycle phase from iPhone 0fa7d55a · gender-gated.
+  // Only render for biologicalSex === 'female' AND data exists (runner
+  // has opted in + cycle has synced). Caller threads biologicalSex.
+  // Phase labels are uppercased per the ALL-CAPS labels rule.
+  const cpDay = health?.cyclePhase?.dayOfCycle ?? null;
+  const cpLabel = health?.cyclePhase?.phaseLabel ?? null;
+  if (biologicalSex === 'female' && cpDay != null) {
+    // Suggestion field re-uses the `unit` slot so the design agent
+    // gets the phase label inline. e.g. "DAY 14 · OVULATORY".
+    const phaseUpper = (cpLabel ?? '').toUpperCase();
+    body.push(mk('cycle_phase', 'CYCLE', phaseUpper, cpDay, undefined,
+      [1, 35], [], 'neutral', 0));
+    // Note: design agent uses `current` for the day-of-cycle and `unit`
+    // for the phase label · this is a small abuse of the shape, but it
+    // means the existing tile renderer can paint the cycle tile without
+    // a new shape. Phase color → design agent's call.
   }
   // 2026-06-01 · Sleep stages from iPhone b58abfc3 · deep / REM / light /
   // awake minutes (7-night avg). Carriers ship even before iPhone data
@@ -1889,7 +1919,17 @@ export async function buildSeed(): Promise<FaffSeed> {
     } catch { return null; }
   })();
 
-  const healthSnapshot = adaptHealth(health, formMetrics, readinessBrief?.hrvCv);
+  // 2026-06-01 · canonical biological_sex · resolved once and threaded
+  // through to adaptHealth (gates cycle-phase tile) AND to the user
+  // envelope below (drives settings UI + iPhone client gates).
+  const biologicalSex = await (async () => {
+    try {
+      const { loadBiologicalSex } = await import('@/lib/coach/biological-sex');
+      return await loadBiologicalSex(userId);
+    } catch { return 'not_specified' as const; }
+  })();
+
+  const healthSnapshot = adaptHealth(health, formMetrics, readinessBrief?.hrvCv, biologicalSex);
   // Stamp the real readiness on top · honestReadiness overrides the
   // stale HRV-baseline-as-readiness-baseline below in the main return.
   healthSnapshot.readiness = readiness;
@@ -1923,16 +1963,6 @@ export async function buildSeed(): Promise<FaffSeed> {
   })();
 
   const fullName = profile?.identity.full_name ?? glance?.greetingName ?? null;
-  // 2026-06-01 · canonical biological_sex for cycle-phase gating.
-  // Reads through loadBiologicalSex which normalizes across users / profile /
-  // runner_profile (three legacy storage sites). Design agent gates the
-  // cycle-phase tile on this · iPhone agent gates HK ingest on this.
-  const biologicalSex = await (async () => {
-    try {
-      const { loadBiologicalSex } = await import('@/lib/coach/biological-sex');
-      return await loadBiologicalSex(userId);
-    } catch { return 'not_specified' as const; }
-  })();
   const user = {
     name: fullName ? fullName.split(' ')[0] : 'You',
     city: profile?.identity.city ?? '',

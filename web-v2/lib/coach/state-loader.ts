@@ -10,6 +10,7 @@ import type { CoachState } from '@/lib/topics/types';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadActivePlan } from '@/lib/plan/lookup';
+import { loadBiologicalSex } from '@/lib/coach/biological-sex';
 
 export async function loadCoachState(userId: string): Promise<CoachState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
@@ -333,6 +334,23 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     [userId]
   ).catch(() => ({ rows: [] }));
 
+  // 2026-06-01 · biological sex + cycle phase (iPhone 0fa7d55a · gender-gated).
+  // Used in readiness.ts to apply the luteal-phase HRV adjustment.
+  const biologicalSex = await loadBiologicalSex(userId).catch(() => 'not_specified' as const);
+  const cyclePhaseRow = (await pool.query<{ value: number | string }>(
+    `SELECT value FROM health_samples
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'menstrual_cycle_phase'
+        AND sample_date >= CURRENT_DATE - interval '2 days'
+      ORDER BY sample_date DESC, recorded_at DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const cyclePhaseNum = cyclePhaseRow?.value != null ? Number(cyclePhaseRow.value) : null;
+  const cyclePhase: CoachState['cyclePhase'] = (cyclePhaseNum === 1 ? 'menstrual'
+    : cyclePhaseNum === 2 ? 'follicular'
+    : cyclePhaseNum === 3 ? 'ovulatory'
+    : cyclePhaseNum === 4 ? 'luteal'
+    : null);
+
   return {
     today,
     user_id: userId,
@@ -365,6 +383,9 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     loadAcute7,
     loadChronic28,
     loadAcwr,
+    // 2026-06-01 · sex + cycle for the luteal-phase HRV adjustment.
+    biologicalSex,
+    cyclePhase,
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
     activeNiggle,
     pendingIntents: intents.rows.map((r: any) => ({

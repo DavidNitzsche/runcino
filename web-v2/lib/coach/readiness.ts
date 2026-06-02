@@ -67,11 +67,22 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
 
   // HRV (30%)
   if (state.hrvCurrent != null && state.hrvBaseline != null && state.hrvBaseline > 0) {
-    const pct = ((state.hrvCurrent - state.hrvBaseline) / state.hrvBaseline) * 100;
+    // 2026-06-01 · Luteal-phase adjustment (Research/13 §sex-specific).
+    // Luteal HRV runs 5-10ms lower regardless of fitness · subtract 5ms
+    // from the baseline so the runner isn't penalized for biology. Only
+    // applies when biologicalSex === 'female' AND cyclePhase === 'luteal'.
+    // For non-female users or non-luteal phases, baseline is unchanged.
+    const lutealAdjusted = state.biologicalSex === 'female' && state.cyclePhase === 'luteal'
+      ? Math.max(1, state.hrvBaseline - 5)
+      : state.hrvBaseline;
+    const pct = ((state.hrvCurrent - lutealAdjusted) / lutealAdjusted) * 100;
     // ±1 per 2%, clamp ±18 (scaled from old ±15 for new 30% weight)
     const w = Math.max(-18, Math.min(18, Math.round(pct / 2)));
     score += w;
-    const meaning = pct >= 15
+    const lutealNote = state.cyclePhase === 'luteal'
+      ? ' Baseline adjusted for luteal phase.'
+      : '';
+    const meaning = (pct >= 15
       ? `Well above your baseline. Nervous system fully recovered, green light for hard work.`
       : pct >= 5
         ? `Above baseline. Recovered, ready to go.`
@@ -79,12 +90,14 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
           ? `At baseline. Neutral signal.`
           : pct >= -15
             ? `Below baseline. Could be stress, sleep, or accumulating load. Watch tomorrow.`
-            : `Well below baseline. Pull back today and check rest.`;
+            : `Well below baseline. Pull back today and check rest.`) + lutealNote;
     inputs.push({
       key: 'hrv', label: 'HRV · 28%', weight: w,
       observedV: `${state.hrvCurrent}ms`,
       // State both numbers, no delta. Same rule the coach voice follows.
-      observedSub: `baseline ${state.hrvBaseline}ms`,
+      observedSub: state.cyclePhase === 'luteal'
+        ? `baseline ${state.hrvBaseline}ms · luteal-adjusted ${lutealAdjusted}ms`
+        : `baseline ${state.hrvBaseline}ms`,
       meaning,
     });
   } else {

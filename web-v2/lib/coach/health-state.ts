@@ -38,6 +38,24 @@ export interface HealthState {
   maxHr:           { current: number | null };
   // 2026-06-01 · sleep consistency · bedtime variability over last 7 nights
   sleepConsistency: { variabilityMin: number | null; avgBedtimeISO: string | null };
+  // 2026-06-01 · active energy (iPhone 031fe5fd ships daily kcal totals,
+  // bumps to ~180 buckets/run once TF updates). Current = today's total ·
+  // avg7 = 7-day rolling average · series = 14-day chart strip.
+  activeEnergy: {
+    today: number | null;
+    avg7: number | null;
+    series: { date: string; kcal: number }[];
+  };
+  // 2026-06-01 · menstrual cycle (iPhone 0fa7d55a). Gender-gated by
+  // caller (seed.ts reads biologicalSex). Null when no data exists ·
+  // either runner is not female, opt-in not flipped, or cycle data
+  // hasn't synced yet. Phase encoding: 1=menstrual 2=follicular
+  // 3=ovulatory 4=luteal.
+  cyclePhase: {
+    dayOfCycle: number | null;
+    phase: 1 | 2 | 3 | 4 | null;
+    phaseLabel: 'menstrual' | 'follicular' | 'ovulatory' | 'luteal' | null;
+  };
   // 2026-06-01 · sleep stages (iPhone b58abfc3 ships per-night minutes).
   // Each is a 7-night avg. Null when no data yet (pre-build, no watch).
   sleepStages: {
@@ -91,6 +109,9 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     sleepRemRows,
     sleepLightRows,
     sleepAwakeRows,
+    activeEnergyRows,
+    cycleDayRow,
+    cyclePhaseRow,
     vo2SeriesRows,
   ] = await Promise.all([
     pool.query(
@@ -246,6 +267,35 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
+    // 2026-06-01 · active energy daily totals · iPhone 031fe5fd. Sums
+    // per-day kcal across the 14d window. Once TF updates push the ~180
+    // sub-day buckets, SUM gives the same daily total · this query is
+    // forward-compatible without a rewrite.
+    pool.query(
+      `SELECT sample_date::date AS d, SUM(value::numeric) AS value
+         FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'active_energy'
+          AND sample_date >= ($2::date - interval '14 days')
+        GROUP BY sample_date::date
+        ORDER BY sample_date::date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    // 2026-06-01 · menstrual cycle day · most-recent value (iPhone refreshes
+    // daily so MAX(value) on most recent date = today's day-of-cycle).
+    pool.query(
+      `SELECT value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'menstrual_cycle_day'
+          AND sample_date >= ($2::date - interval '2 days')
+        ORDER BY sample_date DESC, recorded_at DESC LIMIT 1`,
+      [userId, today]
+    ).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'menstrual_cycle_phase'
+          AND sample_date >= ($2::date - interval '2 days')
+        ORDER BY sample_date DESC, recorded_at DESC LIMIT 1`,
+      [userId, today]
+    ).then((r) => r.rows[0]),
     pool.query(
       `SELECT sample_date::date AS d, value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'vo2_max'
@@ -426,6 +476,40 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     architectureVerdict,
   };
 
+  // 2026-06-01 · Active energy daily kcal · iPhone 031fe5fd.
+  const aeSeries = (activeEnergyRows as any[]).map((r) => ({
+    date: r.d.toISOString ? r.d.toISOString().slice(0, 10) : String(r.d),
+    kcal: Math.round(Number(r.value) || 0),
+  })).filter((p) => Number.isFinite(p.kcal));
+  const aeToday = aeSeries.at(-1)?.kcal ?? null;
+  const aeLast7 = aeSeries.slice(-7).map((p) => p.kcal).filter((v) => v > 0);
+  const aeAvg7 = aeLast7.length >= 3
+    ? Math.round(aeLast7.reduce((s, x) => s + x, 0) / aeLast7.length)
+    : null;
+  const activeEnergyOut = {
+    today: aeToday != null && aeToday > 0 ? aeToday : null,
+    avg7: aeAvg7,
+    series: aeSeries,
+  };
+
+  // 2026-06-01 · Cycle phase · iPhone 0fa7d55a. Caller (seed.ts) is
+  // responsible for the female-gated render · we always expose the
+  // shape, even for non-female users, so the type is stable.
+  const PHASE_LABELS: Record<1 | 2 | 3 | 4, 'menstrual' | 'follicular' | 'ovulatory' | 'luteal'> = {
+    1: 'menstrual', 2: 'follicular', 3: 'ovulatory', 4: 'luteal',
+  };
+  const cycleDay = cycleDayRow?.value != null ? Math.round(Number(cycleDayRow.value)) : null;
+  const cyclePhaseNum = cyclePhaseRow?.value != null ? Math.round(Number(cyclePhaseRow.value)) : null;
+  const cyclePhaseOut = {
+    dayOfCycle: cycleDay != null && cycleDay >= 1 && cycleDay <= 60 ? cycleDay : null,
+    phase: (cyclePhaseNum != null && cyclePhaseNum >= 1 && cyclePhaseNum <= 4
+      ? cyclePhaseNum as 1 | 2 | 3 | 4
+      : null),
+    phaseLabel: (cyclePhaseNum != null && cyclePhaseNum >= 1 && cyclePhaseNum <= 4
+      ? PHASE_LABELS[cyclePhaseNum as 1 | 2 | 3 | 4]
+      : null),
+  };
+
   // Sleep consistency · bedtime variability. Use recorded_at as bedtime
   // proxy (when watch wrote the sleep sample) · compute stddev of the
   // local-time minute-of-day across the last 7 nights.
@@ -505,6 +589,8 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
       avgBedtimeISO: sleepConsistencyAvgBedtimeISO,
     },
     sleepStages: sleepStagesOut,
+    activeEnergy: activeEnergyOut,
+    cyclePhase: cyclePhaseOut,
     watchMode,
     watchItems,
   };

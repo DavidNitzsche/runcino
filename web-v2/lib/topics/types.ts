@@ -88,6 +88,12 @@ export interface CoachState {
   sleep7Deficit: number;
   hrvCurrent: number | null;
   hrvBaseline: number | null;
+  // 2026-06-01 · biological sex + cycle phase (iPhone 0fa7d55a shipped
+  // menstrual cycle ingest). Used in readiness.ts to subtract a small
+  // ms allowance from hrvBaseline in the luteal phase per Research/13.
+  // Null for non-female users + female users who haven't opted in.
+  biologicalSex: 'female' | 'male' | 'not_specified';
+  cyclePhase: 'menstrual' | 'follicular' | 'ovulatory' | 'luteal' | null;
   rhrCurrent: number | null;
   rhrBaseline: number | null;
   cadenceBaseline: number | null;

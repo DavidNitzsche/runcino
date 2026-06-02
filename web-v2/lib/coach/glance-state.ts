@@ -490,6 +490,12 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     // surfaces show the same number for the same metric.
     hrRecoveryCurrent, hrRecoveryBaseline,
     loadAcute7, loadChronic28, loadAcwr,
+    // 2026-06-01 · glance state is the fast-path · skip the cycle DB
+    // query (state-loader does it for the brief). Luteal adjustment
+    // only matters for the morning brief score · glance shows the raw
+    // pillars, not the score, so this default is honest.
+    biologicalSex: 'not_specified' as const,
+    cyclePhase: null,
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
     activeNiggle: null,  // glance state doesn't pull niggle extras
     pendingIntents: [], shoes: [],
