@@ -157,13 +157,91 @@ Bottom tile-row. Same width as the existing tiles. Three glances of context:
 - **Pillar bars** · same shape but the fill represents "% of 24h recovery complete" rather than "% of baseline"
 - **Transition** · when pivot fires (run logged or 12pm-with-completion), animate. Don't blink-swap.
 
-## Open questions for design
+## Trigger + mode-switching · the full state machine
 
-1. **Pivot timing.** When the runner logs a run before noon, do we pivot immediately or wait until afternoon? Recommend: pivot on run-logged regardless of time, because the post-run decision space is the same.
-2. **Long-run day specifically.** Sunday long runs are 2+ hours · pivot may want to differ from a Tuesday tempo. Add a "long-run mode" with sleep-banking emphasis?
-3. **Strength sessions.** If runner logs a strength session, partial pivot? Just the fueling pillar?
-4. **Rest days.** Stay morning mode all day, or show a "banking" variant that emphasizes the recovery investment?
-5. **Two-a-day handling.** Runner does AM run, evening run. Post-evening: pivot stays. Pre-evening (after AM only): pivot already fired. OK.
+The pivot is a state transition, not a clock check. The screen has three modes; runner sees exactly one at a time.
+
+| Mode | When it shows | What it answers |
+|---|---|---|
+| **MORNING** | No run logged today; rest days; strength-only days; sick / injury days | "How hard should I go today?" |
+| **POST-RUN** | Today's first run logged DONE (any distance > 1mi or completed scheduled workout) | "Am I recovering well enough for what's next?" |
+| **LONG-RUN POST** | Today's logged run is the week's planned long run | "What's the recovery window from this peak session?" |
+
+Transitions:
+
+```
+MORNING ──run done──► POST-RUN ──midnight──► MORNING (next day)
+MORNING ──long done─► LONG-RUN POST ──midnight──► MORNING
+POST-RUN ──2nd run done──► POST-RUN (recompute, same mode)
+```
+
+Key rule: **the screen never pivots BACK from POST-RUN to MORNING within the same day.** Once today's stressor lands, the decision space is recovery + prep for tomorrow. That doesn't change.
+
+### Answers to specific edge cases
+
+**1. Early-AM runs (6am).** Pivot fires immediately on run completion. Runner views POST-RUN mode the rest of the day. This is correct: the data is about recovery from THIS session and prep for TOMORROW, which stays valid through 11pm. Midnight rolls to next day → MORNING mode again.
+
+**2. Long-run day variant (LONG-RUN POST mode).** Distinct mode, same 5 sections, different defaults:
+
+| Section | Standard POST-RUN | LONG-RUN POST |
+|---|---|---|
+| Recovery score | 24-48h window weighting | 48-72h window weighting |
+| Sleep target | TSS-prescribed (+30-60min) | bumps to 9.0-9.5h (sleep banking mandatory) |
+| Fueling pillar | 0-30min carb+protein window | Adds a 24h carb-window emphasis (glycogen restoration) |
+| Trajectory chip | "Tomorrow's easy" framing | "Monday's easy will determine Tuesday quality" framing |
+| Next hard countdown | typically next quality 24-48h | typically Tuesday quality · 48h+ |
+
+Detection: today's plan_workouts row has `is_long=true` AND runner logged a run of ≥80% of the prescribed long-run distance.
+
+**3. Strength sessions.**
+
+| Scenario | Mode |
+|---|---|
+| Strength + run same day | POST-RUN (run drives the pivot; strength TSS adds to today's load) |
+| Strength only, no run | MORNING (no pivot · strength is too local a stressor to flip the frame) |
+
+Doctrine (Pfitz Appx A): strength is a localized neuromuscular stressor, not systemic aerobic. Its recovery window is 24h, doesn't affect tomorrow's easy-run capability the way a tempo does. Morning mode stays valid.
+
+If strength is logged on a strength-only day, the morning's load pillar updates (small bar fill increase) but the screen mode doesn't change.
+
+**4. Rest days.** MORNING mode all day.
+
+Single content tweak: if today is a planned rest day AND tomorrow has a hard quality workout, the readiness one-line copy adopts a "banking" frame:
+- standard rest: "Resting up. Easy by design."
+- banking-for-tomorrow: "Banking for Thursday tempo · sleep is the multiplier."
+
+This is a one-line copy variant, not a layout change. Engine authors it via `lib/coach/readiness-brief.ts` checking tomorrow's plan_workouts row.
+
+**5. Two-a-day handling.** Pivot stays in POST-RUN after the first run. Second-run recomputes the recovery score + pillars live · no mode flip.
+
+The trajectory chip gets a two-a-day-aware copy variant when the runner has TWO consecutive run rows today:
+- "Second session: +47 TSS · plan for 9h sleep tonight"
+- "Two sessions today · HRV will run low tomorrow morning"
+
+Detection: count(plan_workouts WHERE date_iso = today AND type IN ('easy','recovery','tempo','threshold','intervals','long') AND distance_mi > 1).
+
+**6. Missed workout (extra · not explicitly asked but relevant).** Plan said TEMPO but runner skipped. No DONE state fires. Screen stays in MORNING mode. The adapter cron may reschedule overnight; the morning frame remains valid (runner can still decide today, can still see what was planned).
+
+**7. Sick / injury day.** MORNING mode. Readiness one-line copy adopts an explicit "hold" frame ("Illness logged · plan paused. No expectations today.") and the workout chip shows REST. No pivot.
+
+## How the pivot mechanically fires
+
+```
+Trigger: run logged with distance_mi > 1 AND date = today (local TZ)
+   OR    plan_workouts row for today flips to status='done'
+
+Backend writes:
+  · coach_state.today_run_done = true
+  · coach_state.today_run_long = (is_long === true)
+
+Frontend reads coach_state on app foreground or pull-to-refresh.
+Pivot animates · 240ms transition · no blink-swap.
+
+Reverse trigger: midnight in user's local TZ.
+  · coach_state.today_run_done = false (computed live, not stored)
+```
+
+No new tables. `coach_state` already exists; two new computed booleans.
 
 ## Data sources · all shipped
 
