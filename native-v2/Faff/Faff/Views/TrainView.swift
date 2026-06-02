@@ -964,7 +964,12 @@ private struct TrainWeekRow: View {
     var body: some View {
         let eff = FaffEffort.fromType(day.type)
         let isRest = day.type.lowercased() == "rest"
-        let isDone = day.doneMi > 0.1 && !isToday
+        // 2026-06-02 round 46 · `&& !isToday` was hiding the check for
+        // today's completed run · David flagged today's INTERVALS as
+        // missing the check while MON's done easy had it. Done takes
+        // priority over the TODAY badge · if both are true the check
+        // wins, badge hides.
+        let isDone = day.doneMi > 0.1
         return VStack(spacing: 0) {
             if !isFirst {
                 Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
@@ -981,7 +986,12 @@ private struct TrainWeekRow: View {
                     Circle().fill(eff.dot).frame(width: 9, height: 9)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(day.label ?? eff.title)
+                    // 2026-06-02 round 46 · title is the type word (EASY /
+                    // INTERVALS / TEMPO / LONG / REST), NOT day.label.
+                    // For quality sessions day.label is the workout name
+                    // ("4×1 mi @ I · 3 min jog") · that goes in the
+                    // subline instead. Matches the peek / hero pattern.
+                    Text(eff.title.uppercased())
                         .font(.body(14, weight: .bold)).tracking(-0.2)
                         .foregroundStyle(Theme.txt)
                         .lineLimit(1)
@@ -1017,9 +1027,21 @@ private struct TrainWeekRow: View {
         return labels[idx]
     }
 
+    /// 2026-06-02 round 46 · subline · workout name when day.label
+    /// is the structural sub_label ("4×1 mi @ I · 3 min jog" ·
+    /// "2 mi WU · 4 mi @ T · 2 mi CD"), effort severity otherwise.
+    /// For matched-name days (sub_label == type word) we show the
+    /// severity so the row isn't half-empty.
     private func subline() -> String {
         if day.type.lowercased() == "rest" { return "Sleep + mobility" }
-        return FaffEffort.fromType(day.type).effortLabel
+        let eff = FaffEffort.fromType(day.type)
+        let typeWord = eff.title.uppercased()
+        if let lbl = day.label,
+           !lbl.isEmpty,
+           lbl.uppercased() != typeWord {
+            return lbl
+        }
+        return eff.effortLabel
     }
 
     private func metaLabel() -> String {
