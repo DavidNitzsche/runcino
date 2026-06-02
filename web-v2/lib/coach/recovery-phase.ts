@@ -7,12 +7,29 @@
  * surfaces muscle signals derived from form metrics on the easy runs
  * that follow.
  *
- * Doctrine:
- *   · Friel · 1 day per mile recovery for marathons
- *   · Half marathon · 5-7 days full recovery
- *   · Long run 15+ mi · 36-48h glycogen, 3-5 days muscles
- *   · Intervals / threshold · 24-72h
+ * Reframe (2026-06-01): the tracker reports "quality-ready" timeline
+ * (actionable · when can I do quality again) rather than "full
+ * recovery to peak" (which is 2-3× longer for races and rarely
+ * actionable). Most runners do their next quality session well
+ * before they're "100% recovered" · that's how training works.
+ *
+ * Doctrine (quality-ready timelines):
+ *   · Long 13-15 mi · 2 days (Pfitzinger Sun long → Tue quality)
+ *   · Long 16-19 mi · 3 days (Sun long → Wed quality)
+ *   · Long 20+ mi · 4 days (Sun long → Thu quality)
+ *   · Half race · 4-5 days (Sat race → Thu/Fri quality)
+ *   · Marathon race · ~10 days (NOT Friel's "1 day per mile"
+ *     for peak · that's race-ready, not quality-ready)
+ *   · 10k race · 2-3 days
+ *   · 5k race · 2 days
+ *   · Intervals / tempo / threshold · 2 days
+ *
+ * Doctrine sources:
+ *   · Pfitzinger · Advanced Marathoning (long Sun → quality Tue/Wed)
+ *   · Daniels · Running Formula (Q-day spacing tables)
  *   · Research/15 · DOMS peaks 24-48h post-eccentric load
+ *   · Friel · 1 day per mile is for "race again at peak" not
+ *     "next hard session"
  *
  * Per-pillar bounce-back:
  *   - Capture each pillar's value the day of the session (day_0)
@@ -74,20 +91,27 @@ export interface RecoveryPhase {
   message: string;            // one-line coach-voice summary
 }
 
-// Doctrine timelines · days to full recovery per session type.
+// Doctrine timelines · "quality-ready" days per session type.
+// This is when the runner can do the NEXT QUALITY session · not full
+// recovery to peak. Aligned with Pfitzinger/Daniels actual plan
+// patterns (Sunday long → Tue/Wed quality).
 function expectedDays(type: AnchorType, distanceMi: number): number {
   switch (type) {
     case 'race':
-      // Friel rule: 1 day per mile for marathons. Half = 5-7d. 10k = 2-3d. 5k = 1-2d.
-      if (distanceMi >= 26) return Math.min(28, Math.round(distanceMi));
-      if (distanceMi >= 13) return 6;
-      if (distanceMi >= 6) return 3;
-      return 2;
+      // Marathon: peak-ready is ~26 days (Friel) but quality-ready is
+      // ~10 days · easy by day 3, hard quality session by day 10ish.
+      if (distanceMi >= 24) return 10;
+      if (distanceMi >= 13) return 5;   // half marathon: 4-5d
+      if (distanceMi >= 6) return 3;     // 10k: 2-3d
+      return 2;                           // 5k: 2d
     case 'long':
-      // 36-48h glycogen, 3-5d muscles. Longer = more.
-      if (distanceMi >= 20) return 5;
-      if (distanceMi >= 15) return 4;
-      return 3;
+      // Pfitzinger/Daniels patterns · long Sunday → quality Tue/Wed:
+      // - 13-15 mi · 2 days (Sun long → Tue quality)
+      // - 16-19 mi · 3 days (Sun long → Wed quality)
+      // - 20+ mi · 4 days (Sun long → Thu quality)
+      if (distanceMi >= 20) return 4;
+      if (distanceMi >= 16) return 3;
+      return 2;
     case 'intervals':
     case 'tempo':
     case 'threshold':
