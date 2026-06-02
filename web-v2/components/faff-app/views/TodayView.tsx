@@ -1826,6 +1826,8 @@ function CompletedHeroV2({
             splits={splits}
             hrAvg={runData?.hr_avg ?? null}
           />
+        ) : d.type === 'long' && splits.length >= 3 ? (
+          <LongPanel splits={splits} avgPace={resolvedPace ?? null} />
         ) : (
           <>
             <div className="reshead">
@@ -2348,6 +2350,199 @@ function EasyPanel({
             {hrAvg}<small style={{
               fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, opacity: 0.6,
             }}> bpm</small>
+          </span>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * LONG · "THE LONG" panel.
+ *
+ *   · Thirds cards · FIRST 3 / MIDDLE 3 / FINAL 3 with pace + HR per third
+ *     (final card tinted amber when HR drift vs first third > 8 bpm)
+ *   · HEART RATE DRIFT · first-third vs final-third avg HR
+ *   · Summary · AVG PACE
+ *
+ * Answers "did the engine hold for the whole distance?"
+ */
+function LongPanel({
+  splits, avgPace,
+}: {
+  splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
+  avgPace: string | null;
+}) {
+  const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
+
+  // Chunk splits into thirds · per-third avg pace + avg HR.
+  const n = splits.length;
+  const thirds = [
+    splits.slice(0, Math.floor(n / 3)),
+    splits.slice(Math.floor(n / 3), Math.floor((2 * n) / 3)),
+    splits.slice(Math.floor((2 * n) / 3)),
+  ].map(slice => {
+    const paces = slice.map(s => paceToSec(s.pace ?? '')).filter(x => x > 0);
+    const hrs = slice.map(s => s.hr ?? 0).filter(x => x > 0);
+    return {
+      paceSec: paces.length ? Math.round(paces.reduce((a, b) => a + b, 0) / paces.length) : 0,
+      hr: hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null,
+      startMile: slice[0]?.mile ?? null,
+      endMile: slice[slice.length - 1]?.mile ?? null,
+    };
+  });
+
+  const firstThirdHr = thirds[0]?.hr;
+  const finalThirdHr = thirds[2]?.hr;
+  const hrDelta = firstThirdHr != null && finalThirdHr != null ? finalThirdHr - firstThirdHr : null;
+  const finalThirdWarn = hrDelta != null && hrDelta > 8;
+
+  const driftBand: { text: string; color: string } | null = hrDelta == null
+    ? null
+    : hrDelta <= 4 ? { text: 'HELD STEADY', color: '#3ED06a' }
+    : hrDelta <= 8 ? { text: 'SOME DRIFT', color: '#ffb24d' }
+    : { text: 'LATE FADE', color: '#ff6a6a' };
+
+  // Find the mile where HR drift crossed +8 bpm vs first third · for the
+  // summary's "held to mi N" caption.
+  const heldMile = (() => {
+    if (firstThirdHr == null) return null;
+    for (let i = 0; i < splits.length; i++) {
+      const h = splits[i].hr ?? 0;
+      if (h > 0 && h - firstThirdHr > 8) return splits[i].mile;
+    }
+    return null;
+  })();
+
+  return (
+    <>
+      {/* phead */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        margin: '16px 0 4px',
+      }}>
+        <span style={{
+          fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600, letterSpacing: 0.5,
+        }}>THE LONG</span>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+          color: 'rgba(255,255,255,.6)',
+        }}>{n} MI</span>
+      </div>
+
+      {/* Thirds cards */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 13,
+      }}>
+        {thirds.map((t, i) => {
+          const warn = i === 2 && finalThirdWarn;
+          const labels = ['FIRST 3', 'MIDDLE 3', 'FINAL 3'];
+          return (
+            <div key={i} style={{
+              background: warn ? 'rgba(255,178,77,.08)' : 'rgba(255,255,255,.05)',
+              border: `1px solid ${warn ? 'rgba(255,178,77,.4)' : 'rgba(255,255,255,.09)'}`,
+              borderRadius: 11, padding: '11px 8px 12px', textAlign: 'center',
+            }}>
+              <div style={{
+                fontSize: 8, fontWeight: 700, letterSpacing: 0.8, opacity: 0.6,
+              }}>{labels[i]}</div>
+              <div style={{
+                fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600,
+                marginTop: 8, lineHeight: 1, color: warn ? '#ffb24d' : undefined,
+              }}>{t.paceSec > 0 ? fmtSecAsPace(t.paceSec) : '·'}</div>
+              <div style={{
+                fontSize: 11, fontWeight: 600, opacity: 0.78, marginTop: 8,
+                color: warn ? '#ffb24d' : undefined,
+              }}>{t.hr != null ? `${t.hr} ♥` : '·'}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* HEART RATE DRIFT */}
+      {driftBand && firstThirdHr != null && finalThirdHr != null ? (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>HEART RATE DRIFT</span>
+            <span style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: 1.2, color: driftBand.color,
+            }}>{driftBand.text}</span>
+          </div>
+          <div style={{ marginTop: 11 }}>
+            {[
+              { label: 'FIRST THIRD', bpm: firstThirdHr, hi: hrDelta != null && hrDelta < 0 },
+              { label: 'FINAL THIRD', bpm: finalThirdHr, hi: hrDelta != null && hrDelta > 0 },
+            ].map((row, i) => {
+              const w = Math.max(6, Math.min(100, ((row.bpm - 120) / 50) * 100));
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, marginTop: 9,
+                }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: 0.7,
+                    color: 'rgba(255,255,255,.62)', width: 82, flex: '0 0 auto',
+                  }}>{row.label}</span>
+                  <div style={{
+                    flex: 1, height: 10, borderRadius: 5,
+                    background: 'rgba(255,255,255,.1)', overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%', borderRadius: 5,
+                      background: row.hi ? '#f8c876' : '#F3AD38',
+                      width: `${w}%`,
+                    }} />
+                  </div>
+                  <span style={{
+                    fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600,
+                    width: 60, textAlign: 'right', flex: '0 0 auto',
+                  }}>
+                    {row.bpm}
+                    <small style={{
+                      fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 500, opacity: 0.6,
+                    }}> bpm</small>
+                  </span>
+                </div>
+              );
+            })}
+            <div style={{
+              fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,.62)',
+              marginTop: 12, lineHeight: 1.45,
+            }}>
+              Pace held, but your heart climbed{' '}
+              <b style={{
+                fontFamily: FONT_DISP, fontWeight: 600, fontSize: 13, color: driftBand.color,
+              }}>{(hrDelta ?? 0) >= 0 ? '+' : ''}{hrDelta} bpm</b>
+              {' '}from the first third to the last.
+              {driftBand.text === 'HELD STEADY' && ' The engine held all the way through.'}
+              {driftBand.text === 'SOME DRIFT' && ' Normal late-run rise · the engine worked harder to hold the same pace.'}
+              {driftBand.text === 'LATE FADE' && ' Normal late-run fade · fuel a touch earlier next time.'}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Summary · AVG PACE */}
+      {avgPace ? (
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          gap: 10, marginTop: 14, paddingTop: 14,
+          borderTop: '1px solid rgba(255,255,255,.1)',
+        }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,.55)',
+          }}>AVG PACE</span>
+          <span style={{
+            fontFamily: FONT_DISP, fontSize: 16, fontWeight: 600, textAlign: 'right',
+          }}>
+            {avgPace}
+            <small style={{
+              fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, opacity: 0.6,
+            }}>/mi</small>
+            {heldMile != null && hrDelta != null && hrDelta > 8 ? (
+              <span style={{
+                fontSize: 11, fontWeight: 700, marginLeft: 5, color: '#ffb24d',
+              }}>· held to mi {heldMile - 1}</span>
+            ) : null}
           </span>
         </div>
       ) : null}
