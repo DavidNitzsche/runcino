@@ -96,7 +96,7 @@ export function TargetsView({
             tabIndex={0}
           >
             <div className="rcn">{r.name}<span className="rcm">{r.meta}</span></div>
-            <span className={`rctag ${r.tag === 'GOAL' ? 'rc-goal' : ''}`}>{r.tag}</span>
+            <span className={`rctag ${r.tag === 'A RACE' ? 'rc-goal' : ''}`}>{r.tag}</span>
             <span className="rcd">{r.days}</span>
           </div>
         ))}

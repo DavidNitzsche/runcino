@@ -423,7 +423,7 @@ export type ReadinessBriefSeed = {
     confidence: 'high' | 'medium' | 'low';
   }>;
 };
-export type RaceLite = { slug: string; name: string; meta: string; tag: 'GOAL'|'TUNE-UP'|'PAST'; days: string };
+export type RaceLite = { slug: string; name: string; meta: string; tag: 'A RACE'|'TUNE-UP'|'PAST'; days: string };
 
 // 2026-06-01 · Power moves sidecar fields. All optional · null when
 // not enough signal exists for the helper to compute. Design agent

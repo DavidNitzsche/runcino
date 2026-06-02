@@ -497,7 +497,7 @@ export function GapPanel({ goal, series }: GapPanelProps) {
     : `Your fitness ${heldDays >= 14 ? `hasn't moved in <em>${heldDays} days</em>` : `held its mark this week`}. That's expected, not a stall.`;
   const truthSub = isOff
     ? `The projection ${fmtClock(projSec ?? 0)} is a real gap, not an off day. <b>${goal.daysAway} days can close part of it</b> · setting a B-target keeps race day a win instead of a referendum.`
-    : `The projection is deterministic · it only re-rates when a race or a breakthrough session beats your current estimate. It will not drift on its own. <b>Next test point is the race itself.</b>`;
+    : `The projection is deterministic · it only re-rates when a race or a breakthrough session beats your current estimate. It will not drift on its own. <b>Next test point: any quality workout that beats it, or the race.</b>`;
 
   return (
     <div className="fa-gappanel">
@@ -518,7 +518,7 @@ export function GapPanel({ goal, series }: GapPanelProps) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
               <rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" />
             </svg>
-            Next re-rate: race day
+            Re-rates: breakthrough or race
           </span>
         </div>
       </div>

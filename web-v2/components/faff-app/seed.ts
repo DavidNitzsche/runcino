@@ -1333,11 +1333,16 @@ function compareTimes(a: string, b: string): number {
 function adaptRaces(races: Races | null): RaceLite[] {
   if (!races) return [];
   const today = Date.now();
+  // 2026-06-02 · "A RACE" label replaces "GOAL" (David call: AFC / CIM
+  // / LA are A races · not abstract goals · they happen to have a goal
+  // time but the runner is going there to compete). Sort by date
+  // ascending so nearest race is at the top, furthest at the bottom.
   const upcoming = [
-    ...races.aRaces.map(r => ({ ...r, tag: 'GOAL' as const })),
+    ...races.aRaces.map(r => ({ ...r, tag: 'A RACE' as const })),
     ...races.upcomingBs.map(r => ({ ...r, tag: 'TUNE-UP' as const })),
     ...races.upcomingCs.map(r => ({ ...r, tag: 'TUNE-UP' as const })),
   ];
+  upcoming.sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
   return upcoming.map(r => ({
     slug: r.slug, name: r.name,
     meta: `${shortDate(r.date)}${r.location ? ' · ' + r.location : ''}`,
