@@ -188,7 +188,7 @@ export const ROLECOL: Record<string,string> = {
   RACE: '#FC4D64', TEMPO: '#FF8847', LONG: '#F3AD38', EASY: '#14C08C', RECOVERY: '#27B4E0',
 };
 
-export type PhaseKey = 'base'|'build'|'peak'|'taper'|'race';
+export type PhaseKey = 'base'|'build'|'peak'|'taper'|'race'|'maintenance'|'recovery';
 export const PHASE: Record<PhaseKey, { lab: string; name: string; sub: string; focus: string; mesh: Mesh }> = {
   base:  { lab: 'PHASE 01 · WEEKS 1–8',  name: 'BASE',     sub: 'Aerobic foundation',
     focus: 'Build the aerobic engine with easy volume and durability. The patient work that pays off in the fall.',
@@ -205,6 +205,15 @@ export const PHASE: Record<PhaseKey, { lab: string; name: string; sub: string; f
   race:  { lab: 'FINISH · DEC 6, 2026', name: 'RACE DAY', sub: 'California International Marathon',
     focus: 'Race day. 26.2 miles. Everything you built is on the line. Hold 6:51/mi and don’t bank time early.',
     mesh: MESH.race },
+  // 2026-06-03 · Rule 12 · maintenance mode. No race in build window ·
+  // holding aerobic fitness + leg turnover. 1 quality/wk, no intervals.
+  maintenance: { lab: 'MAINTENANCE', name: 'MAINTENANCE', sub: 'Holding pattern · aerobic base',
+    focus: 'No race in the build window yet. Hold the engine warm with steady volume, one weekly threshold, and the long run. We flip into BUILD when the next race gets close.',
+    mesh: MESH.health },
+  // 2026-06-03 · Rule 13 · post-race recovery. 1-2 weeks low-volume easy.
+  recovery: { lab: 'RECOVERY', name: 'RECOVERY', sub: 'Post-race · let the body absorb',
+    focus: 'You just raced. Volume drops sharply. Easy running only · no quality. The plan rebuilds as soon as the recovery window closes.',
+    mesh: ['#8EF0B0','#34C194','#1F8A68','#128A64','#137259','#06382E'] },
 };
 
 export type SeasonType = 'easy'|'recovery'|'intervals'|'tempo'|'mp'|'long'|'vo2'|'sharp'|'rest';
@@ -226,6 +235,12 @@ export const PHASE_TPL: Record<Exclude<PhaseKey,'race'>, [string, SeasonType, nu
   build: [['M','easy',.13],['T','intervals',.15],['W','tempo',.17],['T','recovery',.10],['F','rest',0],['S','long',.33],['S','easy',.12]],
   peak:  [['M','easy',.12],['T','vo2',.15],['W','mp',.18],['T','recovery',.10],['F','rest',0],['S','long',.33],['S','easy',.12]],
   taper: [['M','easy',.20],['T','tempo',.18],['W','rest',0],['T','recovery',.16],['F','rest',0],['S','sharp',.16],['S','easy',.30]],
+  // 2026-06-03 · Rule 12 · maintenance · 1 quality (tempo · NO intervals),
+  // 1 long, easies otherwise. Holds aerobic base · no race-specific stress.
+  maintenance: [['M','easy',.18],['T','tempo',.16],['W','easy',.18],['T','easy',.14],['F','rest',0],['S','long',.22],['S','recovery',.12]],
+  // 2026-06-03 · Rule 13 · recovery · post-race · easy + rest only, no
+  // quality, no long. Volume falls sharply.
+  recovery: [['M','rest',0],['T','recovery',.16],['W','easy',.20],['T','rest',0],['F','recovery',.14],['S','easy',.24],['S','easy',.26]],
 };
 
 export function hexA(hex: string, a: number): string {

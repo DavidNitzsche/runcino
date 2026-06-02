@@ -41,10 +41,17 @@ const PHASE_TYPE_COLOR: Record<string, string> = {
 function phaseKey(label: string): PhaseKey {
   const s = label.toLowerCase().trim();
   if (s.startsWith('base')) return 'base';
+  // QUALITY + RACE-SPECIFIC are composePlan's authored race-prep labels ·
+  // map to 'build' and 'peak' respectively for the brand phase palette.
+  if (s.startsWith('quality')) return 'build';
+  if (s.startsWith('race-specific') || s.startsWith('race specific')) return 'peak';
   if (s.startsWith('build')) return 'build';
   if (s.startsWith('peak')) return 'peak';
   if (s.startsWith('taper')) return 'taper';
   if (s.startsWith('race')) return 'race';
+  // 2026-06-03 · Rules 12 + 13 · non-race-prep modes.
+  if (s.startsWith('maintenance')) return 'maintenance';
+  if (s.startsWith('recovery')) return 'recovery';
   return 'base';
 }
 function phaseColor(p: PhaseKey): string {
@@ -53,6 +60,10 @@ function phaseColor(p: PhaseKey): string {
   if (p === 'build') return '#E0A23A';
   if (p === 'peak')  return '#FF7A45';
   if (p === 'taper') return '#34C194';
+  // 2026-06-03 · maintenance ≈ cool steel-teal (holding · not building).
+  // recovery ≈ light cyan (low-key · soft).
+  if (p === 'maintenance') return '#5C8B9A';
+  if (p === 'recovery')    return '#27B4E0';
   return '#FFCE8A'; // race
 }
 
