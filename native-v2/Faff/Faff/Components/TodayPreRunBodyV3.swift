@@ -316,8 +316,24 @@ struct TodayPreRunBodyV3: View {
     /// side, just render so iPhone / web / future watch surfaces stay
     /// in sync. Fall back to "—" when no forecast (no GPS home base,
     /// or date too far out).
+    ///
+    /// 2026-06-02 round 41 · forward-compat order:
+    ///   1. range_label · pre-composed daily range from server
+    ///   2. temp_start_f + temp_end_f · the in-run window pair (brief
+    ///      in flight). When backend ships those, we compose
+    ///      "54-62° · CLEAR" client-side for the WINDOW instead of the
+    ///      whole-day temp_min_f-temp_max_f swing. Higher fidelity
+    ///      because it reflects when the runner is actually outside,
+    ///      not the day's overall extremes.
+    ///   3. "—" when no forecast (no GPS home base, or out-of-window).
     private var forecastText: String {
         if let s = forecast?.range_label, !s.isEmpty { return s }
+        if let lo = forecast?.temp_start_f, let hi = forecast?.temp_end_f {
+            let a = min(lo, hi), b = max(lo, hi)
+            let cond = forecast?.conditions ?? ""
+            let range = "\(Int(round(a)))-\(Int(round(b)))°"
+            return cond.isEmpty ? range : "\(range) · \(cond.uppercased())"
+        }
         return "—"
     }
 
@@ -434,11 +450,17 @@ struct TodayPreRunBodyV3: View {
     }
 
     private var cueText: String? {
-        // Derive a coaching cue from the workout summary when present.
-        // The backend doesn't ship a dedicated `cue` field yet (open ask
-        // in the design package); for now we pull the first sentence of
-        // workout.summary as a proxy. Falls back to type-specific defaults
-        // so the runner always sees one.
+        // 2026-06-02 round 41 · forward-compat order of precedence:
+        //   1. workout.cue · dedicated single-sentence coach cue from
+        //      the backend (brief in flight). Lights up automatically
+        //      the moment the field arrives on the payload.
+        //   2. workout.summary first sentence · the legacy proxy. Drops
+        //      the moment workout.cue lands.
+        //   3. type-specific default · so the runner always sees one.
+        if let cue = workout?.cue?.trimmingCharacters(in: .whitespaces),
+           !cue.isEmpty {
+            return cue
+        }
         if let summary = workout?.summary,
            let first = summary.split(separator: ".").first {
             let s = first.trimmingCharacters(in: .whitespaces)

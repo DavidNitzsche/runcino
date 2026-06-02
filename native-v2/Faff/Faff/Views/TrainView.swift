@@ -1,10 +1,23 @@
 //
 //  TrainView.swift
-//  v3 Train tab · scrubbable 26-week season arc.
-//  BASE → BUILD → PEAK → TAPER → RACE. Bars live directly on the mesh
-//  (no dark container · per locked design). The whole background lerps
-//  between phase meshes as you scrub. FOCUS row is height-locked under
-//  the phase headline. THIS WEEK panel binds to the scrubbed week.
+//
+//  Train tab (rewrite 2026-06-02 round 41 · design_handoff_train_combined).
+//  One screen, one job: navigate the whole multi-week plan.
+//
+//  Composition top → bottom:
+//    1. Header  · ROAD TO <race> · <goal>  |  <days>d  →  PHASE big +
+//       "Phase N · <subtitle>"  +  WK x OF y · z MI pill
+//    2. THIS WEEK card · 7-day schedule (dot · name · sub · meta · done/today)
+//    3. Plan adjustments expander (reuses WhatChangedExpander)
+//    4. FULL PLAN card · WEEKS ↔ CALENDAR segmented lens
+//        · WEEKS: phases grouped, volume bar, key session, ★ for key
+//          workouts, NOW tag for current. Tap expands a 7-day peek AND
+//          warms the mesh to that week's phase.
+//        · CALENDAR: month grid with day-tinted cells, today ringed,
+//          race day flagged 🏁. Tap a day → fills detail strip below.
+//
+//  Phase mesh is the soul · exploring future weeks warms cool→hot. Default
+//  is the current phase. Reverts when the user dismisses any selection.
 //
 
 import SwiftUI
@@ -14,72 +27,84 @@ struct TrainView: View {
 
     @State private var state: TrainingState? =
         AppCache.read(.trainingState, as: TrainingState.self)
-    @State private var planFacts: CoachFactsBlock?
+    @State private var planAdaptIntents: [CoachIntent]?
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
-    @State private var focusedIndex: Int = 0
-    /// Recent plan_adapt_* intents · drives WhatChangedExpander below
-    /// the detail block. nil while loading; empty array hides the row.
-    @State private var planAdaptIntents: [CoachIntent]?
 
-    /// Linear interpolation across phases for the mesh.
-    private var currentMesh: FaffMesh {
-        guard let state else { return FaffMesh.forView(.train) }
-        return phaseMeshFor(weekIndex: focusedIndex, totalWeeks: state.weeks.count)
-    }
+    // MARK: Lens + selection state
+
+    enum TrainLens: String, CaseIterable { case weeks, calendar }
+    @State private var lens: TrainLens = .weeks
+    @State private var expandedWeekIdx: Int? = nil
+    @State private var calMonthOffset: Int = 0          // 0 = month containing current week
+    @State private var selectedCalDate: String? = nil   // ISO yyyy-mm-dd
+    @State private var refreshing = false
+
+    /// Phase the mesh currently renders. Defaults to the current week's
+    /// phase and shifts (warms) when the runner explores a future week
+    /// or pages the calendar forward.
+    @State private var displayPhase: TrainPhase = .base
+
+    // MARK: Body
 
     var body: some View {
         ZStack {
-            FaffMeshView(mesh: currentMesh)
+            FaffMeshView(mesh: FaffMesh.forPhase(displayPhase))
+                .animation(.easeInOut(duration: 0.9), value: displayPhase)
+                .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 24).padding(.top, 12)
-                focusBlock
-                    .padding(.horizontal, 24).padding(.top, 22)
-
-                if let s = state {
-                    bars(for: s)
-                        .padding(.top, 20)
-                        .padding(.horizontal, 6)
-                        .frame(height: 180)
-                    detail(for: s)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 14)
-                    // WhatChangedExpander · counts + lists recent
-                    // plan_adapt_* intents. Collapsed by default so the
-                    // arc + this-week panel stay the lead.
-                    if let rows = planAdaptIntents, !rows.isEmpty {
-                        WhatChangedExpander(intents: rows)
-                            .padding(.horizontal, 24)
-                            .padding(.top, 18)
-                    }
-                } else {
-                    Spacer()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    topbar
+                        .padding(.horizontal, 22)
+                        .padding(.top, 8)
+                    header
+                        .padding(.horizontal, 22)
+                        .padding(.top, 18)
+                    thisWeekCard
+                        .padding(.horizontal, 22)
+                        .padding(.top, 16)
+                    adjustmentsBlock
+                        .padding(.horizontal, 22)
+                        .padding(.top, 16)
+                    fullPlanCard
+                        .padding(.horizontal, 22)
+                        .padding(.top, 16)
+                    Spacer(minLength: 110) // tab bar clearance
                 }
-
-                Spacer(minLength: 0)
             }
-            .padding(.bottom, 100)
+            .refreshable { await reload() }
         }
         .task { await reload() }
+        .onAppear { syncDisplayPhase() }
     }
 
-    private func reload() async {
-        async let s  = (try? await API.fetchTrainingState())
-        async let f  = (try? await API.fetchCoachFacts(surface: "plan"))
-        async let p  = (try? await API.fetchProfileState())
-        async let ai = (try? await API.fetchCoachIntents(limit: 10, reasonLike: "plan_adapt_"))
-        let (st, fc, pf, ints) = await (s, f, p, ai)
-        await MainActor.run {
-            // Don't wipe cached state on a transient failure · the
-            // 26-week arc + bars + phase headlines should stay on screen.
-            if let st { self.state = st }
-            if let fc { self.planFacts = fc }
-            if let pf { self.profile = pf }
-            self.planAdaptIntents = ints ?? []
+    // MARK: Topbar (avatar + refresh)
+
+    @ViewBuilder
+    private var topbar: some View {
+        HStack {
+            Button { onProfile() } label: {
+                Group {
+                    if !avatarInitials.isEmpty {
+                        Text(avatarInitials).font(.display(12, weight: .bold))
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                }
+                .foregroundStyle(Theme.txt)
+                .frame(width: 32, height: 32)
+                .background(Theme.Glass.fill, in: Circle())
+                .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            refreshButton
         }
     }
+
+    private var avatarInitials: String { profile?.identity.avatarInitials ?? "" }
 
     private var refreshButton: some View {
         Button {
@@ -93,7 +118,7 @@ struct TrainView: View {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(refreshing ? 0.4 : 0.85))
-                .frame(width: 28, height: 28)
+                .frame(width: 32, height: 32)
                 .background(Theme.Glass.fill, in: Circle())
                 .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
                 .rotationEffect(.degrees(refreshing ? 360 : 0))
@@ -103,336 +128,1014 @@ struct TrainView: View {
         .disabled(refreshing)
     }
 
-    /// Compact coach overlay shown under the readout chip when planFacts loads.
-    /// Surfaces NEXT QUALITY / WEEKS TO RACE / THIS WEEK lines from the
-    /// /api/coach/facts?surface=plan block.
+    // MARK: Header (eyebrow + days · phase big · subtitle · week pill)
+
     @ViewBuilder
-    private var coachOverlay: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let facts = planFacts?.facts, !facts.isEmpty {
-                ForEach(facts.prefix(3)) { f in
-                    HStack(spacing: 8) {
-                        SpecLabel(text: f.label, size: 9, tracking: 1.2, color: Theme.txt.opacity(0.55))
-                        Text(f.value)
-                            .font(.display(11, weight: .semibold))
-                            .foregroundStyle(tint(f.valueColor))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                        Spacer()
-                    }
-                }
-            }
-            // Plan-freshness ticker — 2026-05-30 audit surface. Tells the
-            // runner the run-adaptations cron actually ran recently so the
-            // plan isn't stale. Hidden if last_adapted_at is unset / older
-            // than 7 days (cron is broken — would rather show nothing than
-            // a misleadingly old timestamp).
-            if let freshness = planFreshnessLabel {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Theme.txt.opacity(0.45))
-                    Text(freshness)
-                        .font(.display(10, weight: .semibold))
-                        .tracking(0.5)
-                        .foregroundStyle(Theme.txt.opacity(0.55))
-                    Spacer()
-                }
-            }
-        }
-    }
-
-    /// "Plan refreshed 2h ago" line. Uses ISO8601DateFormatter to parse the
-    /// server's `last_adapted_at` (Postgres timestamptz cast to text). Hidden
-    /// when nil, in the future, or > 7d old.
-    private var planFreshnessLabel: String? {
-        guard let iso = state?.last_adapted_at else { return nil }
-        // Postgres emits "2026-05-30 14:22:01.123+00" by default · the
-        // ISO8601DateFormatter wants "2026-05-30T14:22:01Z" — try both.
-        let fmt = ISO8601DateFormatter()
-        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let cleaned = iso.replacingOccurrences(of: " ", with: "T")
-        let date = fmt.date(from: cleaned) ?? fmt.date(from: cleaned + "Z")
-        guard let d = date else { return nil }
-        let elapsed = Date().timeIntervalSince(d)
-        if elapsed < 0 { return nil }
-        let days = Int(elapsed / 86400)
-        if days > 7 { return nil }   // cron is stale; don't lie
-        let hours = Int(elapsed / 3600)
-        if hours < 1 { return "PLAN REFRESHED · JUST NOW" }
-        if hours < 24 { return "PLAN REFRESHED · \(hours)H AGO" }
-        return "PLAN REFRESHED · \(days)D AGO"
-    }
-
-    private func tint(_ tone: String?) -> Color {
-        switch (tone ?? "").lowercased() {
-        case "race":  return Theme.race
-        case "green": return Theme.green
-        case "amber": return Theme.goal
-        case "over":  return Theme.over
-        default:      return Theme.txt.opacity(0.9)
-        }
-    }
-
-    // MARK: - Header
-
-    @State private var refreshing: Bool = false
-
     private var header: some View {
-        HStack(alignment: .center) {
-            SpecLabel(text: roadToText, size: 11, tracking: 2, color: Theme.txt)
-            Spacer()
-            Text(daysOutText)
-                .font(.display(11, weight: .semibold))
+        let race = state?.race
+        let raceLabel = race?.name.uppercased() ?? "RACE TBD"
+        let goal = (race?.goal?.isEmpty == false ? race!.goal! : "Sub —").uppercased()
+        let days = race?.days_to_race ?? 0
+        let curIdx = state?.currentWeekIdx ?? 0
+        let totalWks = max(1, state?.weeks.count ?? 13)
+        let curWeek = state?.weeks.first(where: { $0.isCurrent })
+        let weekMi = Int((curWeek?.plannedMi ?? 0).rounded())
+        let phaseKey = (state?.currentPhase ?? "base").lowercased()
+        let phase = TrainPhase(rawValue: phaseKey) ?? .base
+        let phaseLabel = phase.label
+        let phaseSub = phaseSubtitle(for: phase, totalWeeks: totalWks)
+        let phaseColor = accent(for: phase)
+
+        VStack(alignment: .leading, spacing: 0) {
+            // ROAD TO X · SUB X:XX  |  XXd
+            HStack(alignment: .center) {
+                (
+                    Text("ROAD TO \(raceShortName(raceLabel)) ")
+                    + Text("· \(goal)").foregroundColor(Theme.txt.opacity(0.62))
+                )
+                .font(.body(10.5, weight: .extraBold))
+                .tracking(1.6)
                 .foregroundStyle(Theme.txt.opacity(0.82))
-            refreshButton
-            Button { onProfile() } label: {
-                Text(avatarInitials)
-                    .font(.display(11, weight: .bold))
-                    .foregroundStyle(Theme.txt)
-                    .frame(width: 28, height: 28)
-                    .background(LinearGradient(colors: [Color(hex: 0xFF7A45), Color(hex: 0xD6263C)], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
+                .lineLimit(1).minimumScaleFactor(0.75)
+                Spacer()
+                if days > 0 {
+                    Text("\(days)d")
+                        .font(.display(12, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.85))
+                        .padding(.horizontal, 11).padding(.vertical, 4)
+                        .background(Theme.Glass.fill, in: Capsule())
+                        .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
+                }
             }
-            .buttonStyle(.plain)
-            .padding(.leading, 8)
-        }
-    }
 
-    /// Avatar initials · delegates to ProfileIdentity.avatarInitials.
-    private var avatarInitials: String { profile?.identity.avatarInitials ?? "" }
-
-    private var roadToText: String {
-        if let race = state?.race?.name { return "ROAD TO \(race.uppercased())" }
-        return "ROAD TO RACE"
-    }
-
-    private var daysOutText: String {
-        if let s = state, let d = s.race?.days_to_race { return "\(d)d" }
-        return ""
-    }
-
-    // MARK: - Focus block (phase headline + readout chip)
-
-    private var focusBlock: some View {
-        let (phaseLabel, phaseName, phaseSub) = phaseInfoForFocus()
-        return VStack(alignment: .leading, spacing: 6) {
-            SpecLabel(text: phaseLabel, size: 11, tracking: 2, color: Theme.txt.opacity(0.8))
-            Text(phaseName)
-                .displayRecipe(size: 62, weight: .bold)
+            // Phase big
+            Text(phaseLabel)
+                .font(.display(60, weight: .bold))
+                .tracking(-2)
                 .foregroundStyle(Theme.txt)
-                .shadow(color: .black.opacity(0.34), radius: 30, y: 3)
+                .padding(.top, 14)
+                .shadow(color: Color.black.opacity(0.32), radius: 26, x: 0, y: 3)
+
+            // Phase subtitle
             Text(phaseSub)
                 .font(.body(13.5, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(0.9))
-                .frame(height: 36, alignment: .topLeading)    // height-locked 2 lines
-            HStack(spacing: 9) {
-                Text(readoutChip)
+                .padding(.top, 9)
+
+            // WK pill
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(phaseColor)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: phaseColor.opacity(0.9), radius: 4)
+                Text("WK \(curIdx + 1) OF \(totalWks) · \(weekMi) MI")
                     .font(.display(12.5, weight: .bold))
                     .foregroundStyle(Theme.txt)
-                if isViewingNow {
-                    HStack(spacing: 5) {
-                        Circle().fill(Color(hex: 0x7BE8A0)).frame(width: 6, height: 6)
-                            .shadow(color: Color(hex: 0x7BE8A0), radius: 4)
-                        Text("NOW")
-                            .font(.label(10)).tracking(0.5).textCase(.uppercase)
-                            .foregroundStyle(Color(hex: 0xAEF0C4))
-                    }
-                }
             }
             .padding(.horizontal, 13).padding(.vertical, 6)
-            .background(Color.white.opacity(0.16), in: Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.28)))
-            .padding(.top, 8)
-
-            coachOverlay
-                .padding(.top, 14)
+            .background(Theme.Glass.fill, in: Capsule())
+            .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
+            .padding(.top, 14)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var readoutChip: String {
-        guard let s = state else { return "" }
-        if focusedIndex >= s.weeks.count - 1 { return "RACE WEEK" }
-        let week = s.weeks[focusedIndex]
-        let mi = Int(week.plannedMi)
-        return "WK \(week.idx + 1) · \(mi) MI"
-    }
+    // MARK: This week
 
-    private var isViewingNow: Bool {
-        (state?.currentWeekIdx ?? -1) == focusedIndex
-    }
-
-    // MARK: - Bars
-
-    private func bars(for s: TrainingState) -> some View {
-        let maxMi = max(1, s.weeks.map { $0.plannedMi }.max() ?? 1)
-        return ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .bottom, spacing: 7) {
-                    Spacer().frame(width: 160)
-                    ForEach(s.weeks, id: \.idx) { wk in
-                        let h = CGFloat(wk.plannedMi / maxMi) * 140
-                        VStack(spacing: 6) {
-                            if wk.idx == (s.currentWeekIdx ?? -1) {
-                                Circle()
-                                    .fill(Color.white)
-                                    .frame(width: 7, height: 7)
-                                    .shadow(color: .white.opacity(0.4), radius: 5)
-                            } else { Color.clear.frame(height: 7) }
-                            Rectangle()
-                                .fill(barColor(for: wk.phase))
-                                .frame(width: 18, height: max(10, h))
-                                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                                .opacity(focusedIndex == wk.idx ? 1.0 : 0.78)
-                                .scaleEffect(focusedIndex == wk.idx ? CGSize(width: 1.0, height: 1.06) : CGSize(width: 1, height: 1))
-                            Text("\(wk.idx + 1)")
-                                .font(.label(8.5)).tracking(0.5)
-                                .foregroundStyle(Theme.txt.opacity(focusedIndex == wk.idx ? 1 : 0.45))
-                        }
-                        .id(wk.idx)
-                        .onTapGesture {
-                            withAnimation(Theme.Motion.mesh) { focusedIndex = wk.idx }
-                        }
-                    }
-                    // Race finish marker
-                    VStack(spacing: 6) {
-                        Text("🏁").font(.system(size: 18))
-                        Rectangle()
-                            .fill(Color.white.opacity(0.85))
-                            .frame(width: 3, height: 60)
-                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                        Text("FIN")
-                            .font(.label(8.5)).tracking(0.5)
-                            .foregroundStyle(Theme.txt.opacity(0.85))
-                    }
-                    .id(s.weeks.count)
-                    Spacer().frame(width: 160)
+    @ViewBuilder
+    private var thisWeekCard: some View {
+        if let curWeek = state?.weeks.first(where: { $0.isCurrent }) {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("THIS WEEK · WK \((state?.currentWeekIdx ?? 0) + 1)")
+                        .font(.body(10.5, weight: .extraBold))
+                        .tracking(1.4)
+                        .foregroundStyle(Theme.txt.opacity(0.66))
+                    Spacer()
+                    Text("\(Int(curWeek.plannedMi.rounded())) MI PLANNED")
+                        .font(.display(11, weight: .bold))
+                        .tracking(0.3)
+                        .foregroundStyle(Theme.txt.opacity(0.78))
                 }
-                .frame(maxHeight: .infinity, alignment: .bottom)
-            }
-            .onAppear {
-                let i = s.currentWeekIdx ?? 0
-                proxy.scrollTo(i, anchor: .center)
-                focusedIndex = i
-            }
-        }
-    }
-
-    private func barColor(for phase: String) -> Color {
-        switch phase.lowercased() {
-        case "base":  return Color(hex: 0x3FAE9A)
-        case "build": return Color(hex: 0xE0972C)
-        case "peak":  return Color(hex: 0xE0432C)
-        case "taper": return Color(hex: 0x3FAE6E)
-        case "race":  return Color(hex: 0xE0432C)
-        default:      return Color(hex: 0xE0972C)
-        }
-    }
-
-    // MARK: - Detail
-
-    private func detail(for s: TrainingState) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(focusText(s))
-                .font(.body(13.5, weight: .bold))
-                .foregroundStyle(Theme.txt.opacity(0.95))
-
-            let wk = s.weeks[min(max(0, focusedIndex), s.weeks.count - 1)]
-            HStack(spacing: 5) {
-                ForEach(wk.days, id: \.date) { day in
-                    let dayContent = VStack(spacing: 5) {
-                        Text(["S","M","T","W","T","F","S"][day.dow % 7])
-                            .font(.label(9)).tracking(0.4)
-                            .foregroundStyle(Theme.txt.opacity(0.5))
-                        if day.type.lowercased() == "rest" {
-                            Capsule().fill(Color.white.opacity(0.4)).frame(width: 8, height: 2)
-                        } else {
-                            Circle().fill(FaffEffort.fromType(day.type).dot).frame(width: 7, height: 7)
-                        }
-                        Text(day.mi > 0 ? "\(Int(day.mi))" : "—")
-                            .font(.display(12.5, weight: .bold))
-                            .foregroundStyle(Theme.txt.opacity(0.95))
-                        Text(day.type.prefix(3).capitalized)
-                            .font(.label(8)).tracking(0.2)
-                            .foregroundStyle(Theme.txt.opacity(0.62))
-                    }
-                    .frame(maxWidth: .infinity)
-                    if let runId = day.activityId {
-                        NavigationLink(value: FaffRoute.runDetail(id: runId)) {
-                            dayContent
-                        }
-                        .buttonStyle(.plain)
-                    } else if day.type.lowercased() != "rest" {
-                        NavigationLink(value: FaffRoute.planned(date: day.date)) {
-                            dayContent
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        dayContent
+                VStack(spacing: 0) {
+                    ForEach(Array(curWeek.days.enumerated()), id: \.offset) { idx, day in
+                        TrainWeekRow(
+                            day: day,
+                            isFirst: idx == 0,
+                            isToday: day.date == (state?.today ?? "")
+                        )
                     }
                 }
             }
-            .padding(.top, 6)
+            .padding(15)
+            .background(Color(hex: 0x0C1416).opacity(0.32),
+                        in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
+        }
+    }
 
-            Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1)
+    // MARK: Adjustments
 
-            HStack {
-                Text("WEEK \(wk.idx + 1) OF \(s.weeks.count)")
-                    .font(.label(10)).tracking(0.8)
-                    .foregroundStyle(Theme.txt.opacity(0.78))
+    @ViewBuilder
+    private var adjustmentsBlock: some View {
+        if let rows = planAdaptIntents, !rows.isEmpty {
+            WhatChangedExpander(intents: rows)
+        }
+    }
+
+    // MARK: Full plan card
+
+    @ViewBuilder
+    private var fullPlanCard: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("FULL PLAN · \(state?.weeks.count ?? 13) WEEKS TO RACE")
+                    .font(.body(10.5, weight: .extraBold))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.txt.opacity(0.66))
                 Spacer()
-                Text("\(Int(wk.plannedMi)) MI PLANNED")
-                    .font(.label(10)).tracking(0.8)
+                Text(lens == .weeks ? "★ KEY" : monthHeaderTrailingLabel())
+                    .font(.display(11, weight: .bold))
+                    .tracking(0.3)
                     .foregroundStyle(Theme.txt.opacity(0.78))
+            }
+            .padding(.bottom, 13)
+
+            lensToggle
+                .padding(.bottom, 14)
+
+            switch lens {
+            case .weeks:    weeksLens
+            case .calendar: calendarLens
             }
         }
         .padding(15)
-        .background(Color(hex: 0x100905).opacity(0.34), in: RoundedRectangle(cornerRadius: 22))
-        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.white.opacity(0.16)))
+        .background(Color(hex: 0x0C1416).opacity(0.32),
+                    in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+        )
     }
 
-    private func focusText(_ s: TrainingState) -> String {
-        guard focusedIndex < s.weeks.count else { return "" }
-        switch s.weeks[focusedIndex].phase.lowercased() {
-        case "base":  return "Build the engine. Easy volume and durability before the hard work begins."
-        case "build": return "Sharpen threshold and layer in marathon pace. Where the sub-goal is built."
-        case "peak":  return "Top-end fitness and race rehearsal at your highest weekly load."
-        case "taper": return "Cut the volume, keep the intensity, and roll into the start line fresh."
-        default:      return "Same shape next week. The plan adapts."
+    // MARK: Lens toggle
+
+    @ViewBuilder
+    private var lensToggle: some View {
+        HStack(spacing: 4) {
+            lensButton(.weeks, label: "WEEKS", icon: "list.bullet")
+            lensButton(.calendar, label: "CALENDAR", icon: "calendar")
         }
+        .padding(4)
+        .background(Color.white.opacity(0.1),
+                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
-    // MARK: - Phase info
-
-    private func phaseInfoForFocus() -> (String, String, String) {
-        guard let s = state, focusedIndex < s.weeks.count else { return ("PHASE", "TRAIN", "") }
-        let wk = s.weeks[focusedIndex]
-        let label = "PHASE · WEEK \(wk.idx + 1)"
-        switch wk.phase.lowercased() {
-        case "base":  return (label.replacingOccurrences(of: "PHASE", with: "PHASE 01"), "BASE", "Aerobic foundation")
-        case "build": return (label.replacingOccurrences(of: "PHASE", with: "PHASE 02"), "BUILD", "Threshold + marathon-pace volume")
-        case "peak":  return (label.replacingOccurrences(of: "PHASE", with: "PHASE 03"), "PEAK", "Max volume & race simulation")
-        case "taper": return (label.replacingOccurrences(of: "PHASE", with: "PHASE 04"), "TAPER", "Freshen, sharpen, arrive primed")
-        default:      return (label, "RACE", "Everything you built, on the line")
+    private func lensButton(_ which: TrainLens, label: String, icon: String) -> some View {
+        let on = (lens == which)
+        return Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                lens = which
+                if which == .weeks { syncDisplayPhase() }
+                else { setMonthMesh() }
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .bold))
+                Text(label)
+                    .font(.body(12, weight: .extraBold))
+                    .tracking(0.4)
+            }
+            .foregroundStyle(on ? Color.black : Color.white.opacity(0.6))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(on ? Color.white.opacity(0.94) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
+        .buttonStyle(.plain)
     }
 
-    private func phaseMeshFor(weekIndex: Int, totalWeeks: Int) -> FaffMesh {
-        // 5 phase anchors across the season; lerp between them.
-        let anchors: [(Double, TrainPhase)] = [
-            (Double(totalWeeks) * 0.10, .base),
-            (Double(totalWeeks) * 0.35, .build),
-            (Double(totalWeeks) * 0.65, .peak),
-            (Double(totalWeeks) * 0.88, .taper),
-            (Double(totalWeeks),         .race)
-        ]
-        let x = Double(weekIndex)
-        for i in 0..<(anchors.count - 1) {
-            let (xa, pa) = anchors[i]; let (xb, pb) = anchors[i + 1]
-            if x >= xa && x < xb {
-                let t = (x - xa) / max(0.0001, xb - xa)
-                return FaffMesh.forPhase(pa).lerp(to: FaffMesh.forPhase(pb), t: t)
+    // MARK: Weeks lens
+
+    @ViewBuilder
+    private var weeksLens: some View {
+        if let weeks = state?.weeks, !weeks.isEmpty {
+            let maxMi = max(1.0, weeks.map(\.plannedMi).max() ?? 1)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(weeks.enumerated()), id: \.offset) { idx, week in
+                    let prevPhase = idx == 0 ? "" : weeks[idx - 1].phase
+                    if week.phase != prevPhase {
+                        phaseDivider(phaseKey: week.phase, weeks: weeks)
+                    }
+                    TrainWeekRowSummary(
+                        week: week,
+                        idx: idx,
+                        maxMi: maxMi,
+                        keyLabel: keyLabel(for: week),
+                        starred: isStarWeek(week),
+                        selected: expandedWeekIdx == idx,
+                        onTap: { tapWeek(idx) }
+                    )
+                    if expandedWeekIdx == idx {
+                        weekDayPeek(week: week)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
+                // Race row
+                if let race = state?.race, !race.name.isEmpty {
+                    raceDividerAndRow(race: race)
+                }
             }
         }
-        return FaffMesh.forPhase(anchors.last!.1)
+    }
+
+    @ViewBuilder
+    private func phaseDivider(phaseKey: String, weeks: [TrainingPlanWeek]) -> some View {
+        let phase = TrainPhase(rawValue: phaseKey.lowercased()) ?? .base
+        let range = phaseWeekRange(phaseKey: phaseKey, weeks: weeks)
+        HStack(spacing: 10) {
+            Text("\(phase.label) · WK \(range.0)–\(range.1)")
+                .font(.body(10, weight: .extraBold)).tracking(1.6)
+                .foregroundStyle(accent(for: phase))
+            Rectangle().fill(accent(for: phase).opacity(0.27))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.top, 14).padding(.bottom, 6)
+    }
+
+    @ViewBuilder
+    private func weekDayPeek(week: TrainingPlanWeek) -> some View {
+        // Seven small dot+mi cells under the row, matching the brief's
+        // .wexp-in layout. Reads real day types from the plan.
+        HStack(spacing: 5) {
+            ForEach(week.days, id: \.id) { day in
+                VStack(spacing: 5) {
+                    Text(dayLetter(day))
+                        .font(.body(8.5, weight: .extraBold))
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                    Group {
+                        if day.type.lowercased() == "rest" {
+                            Capsule().fill(Color.white.opacity(0.4))
+                                .frame(width: 8, height: 2)
+                        } else {
+                            Circle().fill(FaffEffort.fromType(day.type).dot)
+                                .frame(width: 7, height: 7)
+                        }
+                    }
+                    Text(day.type.lowercased() == "rest" ? "—" : "\(Int(day.mi.rounded()))")
+                        .font(.body(11, weight: .extraBold))
+                        .foregroundStyle(Theme.txt)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 12)
+    }
+
+    @ViewBuilder
+    private func raceDividerAndRow(race: TrainingRace) -> some View {
+        let gold = Color(hex: 0xFFCE8A)
+        HStack(spacing: 10) {
+            Text("RACE")
+                .font(.body(10, weight: .extraBold)).tracking(1.6)
+                .foregroundStyle(gold)
+            Rectangle().fill(gold.opacity(0.27))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.top, 14).padding(.bottom, 6)
+
+        HStack(spacing: 11) {
+            Text("★")
+                .font(.display(14, weight: .bold))
+                .foregroundStyle(gold)
+                .frame(width: 20, alignment: .center)
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.12))
+                RoundedRectangle(cornerRadius: 3).fill(gold)
+            }
+            .frame(width: 54, height: 6)
+            Text("\(race.name) · \(race.goal ?? "")")
+                .font(.body(13, weight: .semibold))
+                .foregroundStyle(Theme.txt)
+                .lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(expandedWeekIdx == -1 ? Color.white.opacity(0.14) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 13))
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if expandedWeekIdx == -1 {
+                    expandedWeekIdx = nil
+                    syncDisplayPhase()
+                } else {
+                    expandedWeekIdx = -1
+                    displayPhase = .race
+                }
+            }
+        }
+    }
+
+    // MARK: Calendar lens
+
+    @ViewBuilder
+    private var calendarLens: some View {
+        VStack(spacing: 0) {
+            calendarNav
+                .padding(.bottom, 12)
+            calendarGrid
+            calendarLegend
+                .padding(.top, 13)
+            calendarSelection
+                .padding(.top, 13)
+        }
+    }
+
+    @ViewBuilder
+    private var calendarNav: some View {
+        HStack {
+            Button { paginateMonth(by: -1) } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+                    .frame(width: 30, height: 30)
+                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.white.opacity(0.2), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .opacity(calCanGo(-1) ? 1 : 0.3)
+            .disabled(!calCanGo(-1))
+
+            Spacer()
+            Text(monthHeaderTitle())
+                .font(.display(17, weight: .bold)).tracking(0.3)
+                .foregroundStyle(Theme.txt)
+            Spacer()
+
+            Button { paginateMonth(by: +1) } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+                    .frame(width: 30, height: 30)
+                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.white.opacity(0.2), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .opacity(calCanGo(+1) ? 1 : 0.3)
+            .disabled(!calCanGo(+1))
+        }
+    }
+
+    @ViewBuilder
+    private var calendarGrid: some View {
+        let cells = monthCells()
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                ForEach(["M","T","W","T","F","S","S"], id: \.self) { d in
+                    Text(d)
+                        .font(.body(9, weight: .extraBold)).tracking(0.5)
+                        .foregroundStyle(Theme.txt.opacity(0.45))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            ForEach(0..<6, id: \.self) { row in
+                HStack(spacing: 4) {
+                    ForEach(0..<7, id: \.self) { col in
+                        let i = row * 7 + col
+                        if i < cells.count {
+                            calendarCell(cells[i])
+                        } else {
+                            Color.clear.aspectRatio(1, contentMode: .fit)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func calendarCell(_ cell: CalCell) -> some View {
+        let isSelected = (selectedCalDate == cell.dateISO && cell.dateISO != nil)
+        let gold = Color(hex: 0xFFCE8A)
+        let bg: Color = {
+            if cell.isRace { return gold.opacity(0.2) }
+            if isSelected { return Color.white.opacity(0.2) }
+            if cell.kind == .empty { return Color.clear }
+            return Color.white.opacity(0.05)
+        }()
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(bg)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(cell.isToday ? Color.white : (cell.isRace ? gold : Color.clear),
+                                lineWidth: cell.isToday ? 1.6 : (cell.isRace ? 1.4 : 0))
+                )
+                .aspectRatio(1, contentMode: .fit)
+            if let label = cell.dayLabel {
+                Text(label)
+                    .font(.body(11, weight: .extraBold))
+                    .foregroundStyle(Theme.txt.opacity(cell.kind == .rest ? 0.4 : 0.82))
+                    .padding(.leading, 5).padding(.top, 5)
+            }
+            if cell.isRace {
+                Text("🏁")
+                    .font(.system(size: 10))
+                    .padding(.top, 3).padding(.trailing, 4)
+                    .frame(maxWidth: .infinity, alignment: .topTrailing)
+            }
+            VStack {
+                Spacer()
+                if cell.kind == .normal || cell.isRace {
+                    Capsule()
+                        .fill(cell.isRace ? gold : cell.tint)
+                        .frame(height: 4)
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 5)
+                }
+            }
+        }
+        .opacity(cell.isPast && !cell.isToday ? 0.4 : 1.0)
+        .onTapGesture {
+            if cell.kind == .empty { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if selectedCalDate == cell.dateISO {
+                    selectedCalDate = nil
+                } else {
+                    selectedCalDate = cell.dateISO
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var calendarLegend: some View {
+        let legends: [(String, Color)] = [
+            ("Easy",      FaffEffort.easy.dot),
+            ("Tempo",     FaffEffort.tempo.dot),
+            ("Intervals", FaffEffort.intervals.dot),
+            ("Long",      FaffEffort.long.dot),
+            ("Rest",      FaffEffort.rest.dot),
+            ("Race",      Color(hex: 0xFFCE8A))
+        ]
+        // Wrap manually so the row doesn't overflow on small phones.
+        FlowRow(spacing: 11) {
+            ForEach(legends, id: \.0) { item in
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 3).fill(item.1)
+                        .frame(width: 8, height: 8)
+                    Text(item.0)
+                        .font(.body(10, weight: .extraBold))
+                        .foregroundStyle(Theme.txt.opacity(0.72))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var calendarSelection: some View {
+        let selected = resolveSelectedCalDay()
+        VStack(spacing: 0) {
+            Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1)
+                .padding(.bottom, 13)
+            if let sel = selected {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(sel.isRace ? Color(hex: 0xFFCE8A) : FaffEffort.fromType(sel.day.type).dot)
+                        .frame(width: 11, height: 11)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(sel.dateHeader)
+                            .font(.body(10, weight: .extraBold)).tracking(0.6)
+                            .foregroundStyle(Theme.txt.opacity(0.55))
+                        Text(sel.title)
+                            .font(.body(15, weight: .extraBold))
+                            .foregroundStyle(Theme.txt)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    Text(sel.meta)
+                        .font(.display(13, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.82))
+                }
+                .frame(minHeight: 46)
+            } else {
+                Text("Tap a day to see its session")
+                    .font(.body(12.5, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .frame(minHeight: 46)
+            }
+        }
+    }
+
+    // MARK: Loaders
+
+    private func reload() async {
+        async let s  = (try? await API.fetchTrainingState())
+        async let p  = (try? await API.fetchProfileState())
+        async let ai = (try? await API.fetchCoachIntents(limit: 10, reasonLike: "plan_adapt_"))
+        let (st, pf, ints) = await (s, p, ai)
+        await MainActor.run {
+            if let st { self.state = st }
+            if let pf { self.profile = pf }
+            self.planAdaptIntents = ints ?? []
+            syncDisplayPhase()
+            primeCalMonthFromToday()
+        }
+    }
+
+    // MARK: Helpers · phase / mesh
+
+    private func syncDisplayPhase() {
+        guard expandedWeekIdx == nil else { return }
+        let key = (state?.currentPhase ?? "base").lowercased()
+        displayPhase = TrainPhase(rawValue: key) ?? .base
+    }
+
+    private func tapWeek(_ idx: Int) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if expandedWeekIdx == idx {
+                expandedWeekIdx = nil
+                syncDisplayPhase()
+            } else {
+                expandedWeekIdx = idx
+                if let week = state?.weeks[safe: idx] {
+                    let p = TrainPhase(rawValue: week.phase.lowercased()) ?? .base
+                    displayPhase = p
+                }
+            }
+        }
+    }
+
+    private func phaseSubtitle(for phase: TrainPhase, totalWeeks: Int) -> String {
+        switch phase {
+        case .base:  return "Phase 1 · Aerobic foundation"
+        case .build: return "Phase 2 · Race-specific work"
+        case .peak:  return "Phase 3 · Top-end sharpening"
+        case .taper: return "Phase 4 · Bank the fitness"
+        case .race:  return "Race week · Trust the work"
+        }
+    }
+
+    private func accent(for phase: TrainPhase) -> Color {
+        switch phase {
+        case .base:  return Color(hex: 0x3FB6B0)
+        case .build: return Color(hex: 0xE0A23A)
+        case .peak:  return Color(hex: 0xFF7A45)
+        case .taper: return Color(hex: 0x34C194)
+        case .race:  return Color(hex: 0xFFCE8A)
+        }
+    }
+
+    private func phaseWeekRange(phaseKey: String, weeks: [TrainingPlanWeek]) -> (Int, Int) {
+        let inPhase = weeks.enumerated().filter { $0.element.phase.lowercased() == phaseKey.lowercased() }
+        let first = (inPhase.first?.offset ?? 0) + 1
+        let last = (inPhase.last?.offset ?? 0) + 1
+        return (first, last)
+    }
+
+    private func keyLabel(for week: TrainingPlanWeek) -> String {
+        // Pick the "hardest" session in the week for the row label.
+        // Priority: intervals > tempo > long > easy.
+        let priority: [String: Int] = [
+            "intervals": 0, "vo2": 0, "vo2max": 0, "fartlek": 0, "quality": 0, "track": 0,
+            "threshold": 1, "tempo": 1, "progression": 1,
+            "long": 2,
+            "race": -1
+        ]
+        let workouts = week.days
+            .filter { $0.type.lowercased() != "rest" && $0.type.lowercased() != "easy" }
+            .sorted { (priority[$0.type.lowercased()] ?? 99) < (priority[$1.type.lowercased()] ?? 99) }
+        if let pick = workouts.first {
+            let lbl = pick.label ?? FaffEffort.fromType(pick.type).title
+            return lbl
+        }
+        // Pure easy week → describe the long run instead.
+        if let long = week.days.max(by: { $0.mi < $1.mi }) {
+            return "Long run · \(Int(long.mi.rounded()))mi"
+        }
+        return "Easy + base"
+    }
+
+    private func isStarWeek(_ week: TrainingPlanWeek) -> Bool {
+        // Mark weeks containing intervals / race-pace as ★ workouts.
+        week.days.contains(where: {
+            let t = $0.type.lowercased()
+            return ["intervals","vo2","vo2max","fartlek","track","quality","threshold","tempo","race"].contains(t)
+                && $0.mi >= 3
+        })
+    }
+
+    private func dayLetter(_ day: TrainingPlanDay) -> String {
+        let letters = ["S","M","T","W","T","F","S"]
+        let idx = ((day.dow % 7) + 7) % 7
+        return letters[idx]
+    }
+
+    private func raceShortName(_ raceLabel: String) -> String {
+        let words = raceLabel.split(separator: " ").map(String.init)
+        if words.count >= 3 {
+            let acronym = words.compactMap { $0.first.map(String.init) }.joined()
+            if acronym.count >= 3 { return acronym }
+        }
+        return raceLabel
+    }
+
+    // MARK: Helpers · calendar
+
+    private struct CalCell {
+        enum Kind { case empty, normal, rest }
+        let kind: Kind
+        let dayLabel: String?
+        let dateISO: String?
+        let tint: Color
+        let isToday: Bool
+        let isRace: Bool
+        let isPast: Bool
+    }
+
+    private func primeCalMonthFromToday() {
+        guard let todayISO = state?.today,
+              let today = Self.isoDate(todayISO) else { return }
+        // Anchor month offset 0 to the month containing today, so paging
+        // forward/back is relative to "this month".
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year,.month], from: today)
+        if let anchor = cal.date(from: comps), let _ = anchor as Date? {
+            // calMonthOffset stays at 0 — we just need anchor for the page
+            // headers. Anchor month resolution lives in monthAnchorDate().
+        }
+    }
+
+    private func monthAnchorDate() -> Date {
+        let today = Self.isoDate(state?.today ?? "") ?? Date()
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year,.month], from: today)
+        comps.day = 1
+        let anchor = cal.date(from: comps) ?? today
+        return cal.date(byAdding: .month, value: calMonthOffset, to: anchor) ?? anchor
+    }
+
+    private func monthHeaderTitle() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM yyyy"
+        return f.string(from: monthAnchorDate())
+    }
+
+    private func monthHeaderTrailingLabel() -> String {
+        // Show the season span (e.g. "JUN → AUG") when in calendar lens.
+        guard let first = state?.weeks.first?.startDate,
+              let last = state?.weeks.last?.startDate,
+              let a = Self.isoDate(first),
+              let b = Self.isoDate(last) else { return "" }
+        let f = DateFormatter(); f.dateFormat = "MMM"
+        return "\(f.string(from: a).uppercased()) → \(f.string(from: b).uppercased())"
+    }
+
+    private func paginateMonth(by delta: Int) {
+        let next = calMonthOffset + delta
+        guard calCanGoTo(next) else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            calMonthOffset = next
+            selectedCalDate = nil
+            setMonthMesh()
+        }
+    }
+
+    private func setMonthMesh() {
+        // Pick the dominant phase across the anchored month.
+        let cal = Calendar.current
+        let anchor = monthAnchorDate()
+        guard let weeks = state?.weeks else {
+            syncDisplayPhase()
+            return
+        }
+        let monthInterval = cal.dateInterval(of: .month, for: anchor)
+        let phasesInMonth = weeks.compactMap { wk -> TrainPhase? in
+            guard let wd = Self.isoDate(wk.startDate),
+                  let mi = monthInterval, mi.contains(wd) else { return nil }
+            return TrainPhase(rawValue: wk.phase.lowercased())
+        }
+        let chosen = phasesInMonth.first ?? (TrainPhase(rawValue: state?.currentPhase?.lowercased() ?? "base") ?? .base)
+        displayPhase = chosen
+    }
+
+    private func calCanGo(_ delta: Int) -> Bool { calCanGoTo(calMonthOffset + delta) }
+
+    private func calCanGoTo(_ off: Int) -> Bool {
+        // Allow paging across the months the plan touches plus 1 buffer
+        // either side, so the runner can peek pre-/post-plan freely.
+        guard let weeks = state?.weeks, !weeks.isEmpty else { return false }
+        let today = Self.isoDate(state?.today ?? "") ?? Date()
+        let cal = Calendar.current
+        guard let firstStart = Self.isoDate(weeks.first?.startDate ?? ""),
+              let lastStart  = Self.isoDate(weeks.last?.startDate  ?? "") else { return false }
+        // Convert today/first/last to month-offset relative to today.
+        let f = cal.dateComponents([.month], from: today, to: firstStart).month ?? 0
+        let l = cal.dateComponents([.month], from: today, to: lastStart).month ?? 0
+        return off >= f - 1 && off <= l + 1
+    }
+
+    private func monthCells() -> [CalCell] {
+        guard let todayISO = state?.today, let today = Self.isoDate(todayISO)
+        else { return [] }
+        let cal = Calendar.current
+        let anchor = monthAnchorDate()
+        let monthComps = cal.dateComponents([.year, .month], from: anchor)
+        let firstOfMonth = cal.date(from: monthComps) ?? anchor
+        let leadDow = (cal.component(.weekday, from: firstOfMonth) + 5) % 7 // Mon-first
+        let daysInMonth = cal.range(of: .day, in: .month, for: firstOfMonth)?.count ?? 30
+
+        var dayMap: [String: TrainingPlanDay] = [:]
+        for wk in (state?.weeks ?? []) {
+            for d in wk.days { dayMap[d.date] = d }
+        }
+        let raceISO = state?.race?.date
+
+        var cells: [CalCell] = []
+        for _ in 0..<leadDow {
+            cells.append(CalCell(kind: .empty, dayLabel: nil, dateISO: nil, tint: .clear,
+                                 isToday: false, isRace: false, isPast: false))
+        }
+        for dayNum in 1...daysInMonth {
+            var c = cal.dateComponents([.year, .month], from: firstOfMonth)
+            c.day = dayNum
+            let date = cal.date(from: c) ?? firstOfMonth
+            let iso = Self.isoString(date)
+            let isToday = (iso == todayISO)
+            let isPast = date < today && !isToday
+            let isRace = (iso == raceISO)
+            let plannedDay = dayMap[iso]
+            let kind: CalCell.Kind = {
+                if let p = plannedDay {
+                    if p.type.lowercased() == "rest" { return .rest }
+                    return .normal
+                }
+                return .normal // unplanned days (shouldn't happen if plan covers all dates)
+            }()
+            let tint: Color = {
+                if isRace { return Color(hex: 0xFFCE8A) }
+                if let p = plannedDay { return FaffEffort.fromType(p.type).dot }
+                return .clear
+            }()
+            cells.append(CalCell(kind: kind, dayLabel: "\(dayNum)", dateISO: iso, tint: tint,
+                                 isToday: isToday, isRace: isRace, isPast: isPast))
+        }
+        // Pad to a multiple of 7
+        while cells.count % 7 != 0 {
+            cells.append(CalCell(kind: .empty, dayLabel: nil, dateISO: nil, tint: .clear,
+                                 isToday: false, isRace: false, isPast: false))
+        }
+        return cells
+    }
+
+    // MARK: Calendar selection resolution
+
+    private struct CalSelected {
+        let day: TrainingPlanDay
+        let dateHeader: String
+        let title: String
+        let meta: String
+        let isRace: Bool
+    }
+
+    private func resolveSelectedCalDay() -> CalSelected? {
+        guard let iso = selectedCalDate else { return nil }
+        let dayMap: [String: TrainingPlanDay] = {
+            var m: [String: TrainingPlanDay] = [:]
+            for wk in (state?.weeks ?? []) { for d in wk.days { m[d.date] = d } }
+            return m
+        }()
+        let isRace = (iso == state?.race?.date)
+        // Build a synthetic TrainingPlanDay for race day if it's not in the plan.
+        let day: TrainingPlanDay = dayMap[iso] ?? TrainingPlanDay.placeholder(date: iso, type: isRace ? "race" : "rest")
+        let dateHeader: String = {
+            let f = DateFormatter(); f.dateFormat = "EEE LLL d"
+            if let d = Self.isoDate(iso) { return f.string(from: d).uppercased() }
+            return iso
+        }()
+        let title: String = {
+            if isRace { return state?.race?.name ?? "Race day" }
+            if day.type.lowercased() == "rest" { return "Rest" }
+            return day.label ?? FaffEffort.fromType(day.type).title
+        }()
+        let meta: String = {
+            if isRace {
+                let goal = state?.race?.goal ?? ""
+                return goal.isEmpty ? "Race" : goal
+            }
+            if day.type.lowercased() == "rest" { return "Sleep + mobility" }
+            return "\(Int(day.mi.rounded())) mi"
+        }()
+        return CalSelected(day: day, dateHeader: dateHeader, title: title, meta: meta, isRace: isRace)
+    }
+
+    // MARK: Date utilities
+
+    static func isoDate(_ s: String) -> Date? {
+        guard !s.isEmpty else { return nil }
+        let parts = s.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var c = DateComponents()
+        c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
+        return Calendar.current.date(from: c)
+    }
+
+    static func isoString(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+}
+
+// MARK: - Row subviews
+
+private struct TrainWeekRow: View {
+    let day: TrainingPlanDay
+    let isFirst: Bool
+    let isToday: Bool
+
+    var body: some View {
+        let eff = FaffEffort.fromType(day.type)
+        let isRest = day.type.lowercased() == "rest"
+        let isDone = day.doneMi > 0.1 && !isToday
+        return VStack(spacing: 0) {
+            if !isFirst {
+                Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+            }
+            HStack(spacing: 12) {
+                Text(dowAbbrev())
+                    .font(.body(10, weight: .extraBold)).tracking(0.5)
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                    .frame(width: 30, alignment: .leading)
+                if isRest {
+                    Capsule().fill(Color.white.opacity(0.4)).frame(width: 11, height: 2)
+                        .padding(.vertical, 3.5)
+                } else {
+                    Circle().fill(eff.dot).frame(width: 9, height: 9)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(day.label ?? eff.title)
+                        .font(.body(14, weight: .bold)).tracking(-0.2)
+                        .foregroundStyle(Theme.txt)
+                        .lineLimit(1)
+                    Text(subline())
+                        .font(.body(11.5, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Text(metaLabel())
+                    .font(.display(12.5, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.82))
+                if isDone {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x7BE8A0))
+                } else if isToday {
+                    Text("TODAY")
+                        .font(.body(8.5, weight: .extraBold)).tracking(1)
+                        .foregroundStyle(Color(hex: 0xFFCE8A))
+                }
+            }
+            .padding(.vertical, 9)
+            .background(isToday ? Color.white.opacity(0.08) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, isToday ? -8 : 0)
+        }
+    }
+
+    private func dowAbbrev() -> String {
+        let labels = ["SUN","MON","TUE","WED","THU","FRI","SAT"]
+        let idx = ((day.dow % 7) + 7) % 7
+        return labels[idx]
+    }
+
+    private func subline() -> String {
+        if day.type.lowercased() == "rest" { return "Sleep + mobility" }
+        return FaffEffort.fromType(day.type).effortLabel
+    }
+
+    private func metaLabel() -> String {
+        if day.type.lowercased() == "rest" { return "—" }
+        return "\(Int(day.mi.rounded())) mi"
+    }
+}
+
+private struct TrainWeekRowSummary: View {
+    let week: TrainingPlanWeek
+    let idx: Int
+    let maxMi: Double
+    let keyLabel: String
+    let starred: Bool
+    let selected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        let phase = TrainPhase(rawValue: week.phase.lowercased()) ?? .base
+        let phaseAccent: Color = {
+            switch phase {
+            case .base:  return Color(hex: 0x3FB6B0)
+            case .build: return Color(hex: 0xE0A23A)
+            case .peak:  return Color(hex: 0xFF7A45)
+            case .taper: return Color(hex: 0x34C194)
+            case .race:  return Color(hex: 0xFFCE8A)
+            }
+        }()
+        let cur = week.isCurrent
+        let pct = max(0.05, min(1.0, week.plannedMi / maxMi))
+        return Button(action: onTap) {
+            HStack(spacing: 11) {
+                Text("\(idx + 1)")
+                    .font(.display(14, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.75))
+                    .frame(width: 20, alignment: .center)
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.12))
+                    RoundedRectangle(cornerRadius: 3).fill(phaseAccent)
+                        .frame(width: 54 * pct)
+                }
+                .frame(width: 54, height: 6)
+                Text(keyLabel)
+                    .font(.body(13, weight: .semibold))
+                    .foregroundStyle(Theme.txt)
+                    .lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if starred {
+                    Text("★")
+                        .font(.body(11, weight: .extraBold))
+                        .foregroundStyle(Color(hex: 0xFFCE8A))
+                }
+                if cur {
+                    Text("NOW")
+                        .font(.body(8, weight: .extraBold)).tracking(0.8)
+                        .foregroundStyle(Color(hex: 0xFFCE8A))
+                } else {
+                    Text("\(Int(week.plannedMi.rounded()))")
+                        .font(.display(12.5, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.78))
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 9)
+            .background(
+                (cur ? Color.white.opacity(0.1)
+                     : (selected ? Color.white.opacity(0.14) : Color.clear)),
+                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(cur ? Color.white.opacity(0.2) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - FlowRow (simple wrapping HStack)
+
+private struct FlowRow<Content: View>: View {
+    let spacing: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        // SwiftUI's Layout API would be cleaner but for 6 short legend chips
+        // an LTR multi-line HStack is fine. We approximate with a 3-col grid
+        // so it never overflows on small phones.
+        LazyVGrid(columns: [
+            GridItem(.flexible(), spacing: spacing),
+            GridItem(.flexible(), spacing: spacing),
+            GridItem(.flexible(), spacing: spacing)
+        ], alignment: .leading, spacing: 6) {
+            content()
+        }
+    }
+}
+
+// MARK: - TrainingPlanDay placeholder
+
+extension TrainingPlanDay {
+    /// Synthesise a minimal placeholder day for selection edge cases
+    /// (race day not present in the plan, or an empty date the calendar
+    /// surfaces). Mileage zero · type defaults to "rest".
+    static func placeholder(date: String, type: String = "rest") -> TrainingPlanDay {
+        let json = """
+        {"date":"\(date)","dow":0,"type":"\(type)","mi":0,"label":null,"doneMi":0,"activityId":null}
+        """.data(using: .utf8)!
+        return (try? JSONDecoder().decode(TrainingPlanDay.self, from: json))
+            ?? (try! JSONDecoder().decode(TrainingPlanDay.self, from: json))
+    }
+}
+
+// MARK: - Array safe index
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

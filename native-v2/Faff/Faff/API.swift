@@ -1650,6 +1650,16 @@ struct DailyForecast: Decodable {
     /// Pre-composed best-window string · "Before 7 AM" / "6-8 AM" /
     /// "6-9 AM". Render directly.
     let best_window: String?
+    /// 2026-06-02 round 41 · forward-compat for temp_start_f /
+    /// temp_end_f brief. Hourly-interpolated temperature at the START of
+    /// the runner's best run window (or planned start time when present).
+    /// When the backend ships these fields, the pre-run CONDITIONS row
+    /// can render an in-run range like "54-62°" instead of a single
+    /// daily snapshot. nil → fall back to range_label / temp_min_f.
+    let temp_start_f: Double?
+    /// Hourly-interpolated temperature at START + workout duration · the
+    /// other half of the in-run range pair.
+    let temp_end_f: Double?
 }
 
 extension API {

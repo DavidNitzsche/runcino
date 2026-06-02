@@ -148,12 +148,19 @@ struct WatchWorkout: Codable {
     // The phase-driven default rules (single-work-phase + target → EasyFace
     // etc.) still apply when this is nil, so older payloads keep working.
     let displayHint: String?
+    // 2026-06-02 round 41 · forward-compat. Dedicated single-sentence coach
+    // cue rendered in the pre-run sheet SESSION CUE row. Backend brief in
+    // flight (see `cue field on workout payload` brief David sent
+    // 2026-06-02). When the field arrives, TodayPreRunBodyV3.cueText reads
+    // it directly; until then, the pre-run body falls back to its existing
+    // type-specific defaults so the UI is unaffected.
+    let cue: String?
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
         case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
-        case displayHint
+        case displayHint, cue
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
@@ -162,7 +169,7 @@ struct WatchWorkout: Codable {
          distanceMi: Double? = nil, paceLabel: String? = nil,
          isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
          fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil,
-         displayHint: String? = nil) {
+         displayHint: String? = nil, cue: String? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -181,6 +188,7 @@ struct WatchWorkout: Codable {
         self.fueling = fueling
         self.hrCeilingBpm = hrCeilingBpm
         self.displayHint = displayHint
+        self.cue = cue
     }
 
     init(from decoder: Decoder) throws {
@@ -202,6 +210,7 @@ struct WatchWorkout: Codable {
         self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
         self.hrCeilingBpm = try c.decodeIfPresent(Int.self, forKey: .hrCeilingBpm)
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
+        self.cue = try c.decodeIfPresent(String.self, forKey: .cue)
         // Re-stamp each phase with its cursor index. Mirror watch agent's
         // 2026-05-25 fix (e304b82 watch(decode): pass repUnit + distanceMi
         // through phase re-stamp) — without those fields the iPhone-side
