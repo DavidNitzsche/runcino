@@ -819,6 +819,45 @@ struct PlanWeek: Decodable {
     }
 }
 
+/// 2026-06-02 round 43 · canonical per-workout authored spec stored
+/// in plan_workouts.workout_spec (jsonb). Web /today reads this via
+/// glance state (`plannedSpec`) and renders chart bars directly · it
+/// is THE source of truth for the workout protocol. iPhone reads
+/// from /api/watch/today today (which fabricates phases from a
+/// generic template, ignoring this spec — backend brief in flight to
+/// fix). Decoding it here forward-compat so the moment backend
+/// exposes plannedSpec on /api/plan/week (Tier 2 of the architectural
+/// brief), iPhone has structured access without a rebuild.
+///
+/// All fields optional · the shape evolves (rep_rest_pace_s_per_mi,
+/// rep_rest_type may land) and easy/rest workouts may omit fields.
+struct PlannedSpec: Decodable {
+    let kind: String?                  // "intervals" / "tempo" / "long" / etc.
+    let rep_count: Int?
+    let rep_distance_mi: Double?
+    let rep_pace_s_per_mi: Int?
+    let rep_rest_s: Int?
+    let warmup_mi: Double?
+    let cooldown_mi: Double?
+    let lthr_bpm: Int?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        self.rep_count = c.decodeFlexInt(forKey: .rep_count)
+        self.rep_distance_mi = try c.decodeIfPresent(Double.self, forKey: .rep_distance_mi)
+        self.rep_pace_s_per_mi = c.decodeFlexInt(forKey: .rep_pace_s_per_mi)
+        self.rep_rest_s = c.decodeFlexInt(forKey: .rep_rest_s)
+        self.warmup_mi = try c.decodeIfPresent(Double.self, forKey: .warmup_mi)
+        self.cooldown_mi = try c.decodeIfPresent(Double.self, forKey: .cooldown_mi)
+        self.lthr_bpm = c.decodeFlexInt(forKey: .lthr_bpm)
+    }
+    enum CodingKeys: String, CodingKey {
+        case kind, rep_count, rep_distance_mi, rep_pace_s_per_mi
+        case rep_rest_s, warmup_mi, cooldown_mi, lthr_bpm
+    }
+}
+
 struct PlanDay: Decodable, Identifiable {
     var id: String { date_iso }
     let date_iso: String
@@ -831,6 +870,12 @@ struct PlanDay: Decodable, Identifiable {
     let completedRunId: String?
     let done_mi: Double?
     let skipped: Bool?
+    /// 2026-06-02 round 43 · forward-compat for backend's Tier 2 fix.
+    /// When `plannedSpec` lands on /api/plan/week's PlanDay, iPhone
+    /// can drive the SESSION breakdown directly from the canonical
+    /// authored spec instead of the fabricated /api/watch/today
+    /// phases. Until then: nil · no display change.
+    let plannedSpec: PlannedSpec?
 
     // Lenient decode · doctrine 2026-05-31. Server has emitted partial
     // PlanDay rows (null type / distance_mi) during plan-regen windows;
@@ -839,7 +884,7 @@ struct PlanDay: Decodable, Identifiable {
     // so we default them safely here.
     enum CodingKeys: String, CodingKey {
         case date_iso, dow, type, distance_mi, sub_label, is_today, is_past
-        case completedRunId, done_mi, skipped
+        case completedRunId, done_mi, skipped, plannedSpec
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -853,6 +898,7 @@ struct PlanDay: Decodable, Identifiable {
         self.completedRunId = try c.decodeIfPresent(String.self, forKey: .completedRunId)
         self.done_mi = try c.decodeIfPresent(Double.self, forKey: .done_mi)
         self.skipped = try c.decodeIfPresent(Bool.self, forKey: .skipped)
+        self.plannedSpec = try? c.decode(PlannedSpec.self, forKey: .plannedSpec)
     }
 }
 
