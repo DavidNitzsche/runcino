@@ -303,6 +303,11 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       startTime,
       course: race.location ?? '·',
       certification: race.priority === 'A' ? 'USATF certified' : '·',
+      // 2026-06-02 · A/B/C priority is editable on the race detail page.
+      // Default to 'A' for legacy rows whose priority was never set —
+      // matches POST /api/race's default. Type-narrow because race.priority
+      // is a free string upstream.
+      priority: ((race.priority === 'B' || race.priority === 'C') ? race.priority : 'A') as 'A' | 'B' | 'C',
       registered: (meta as { registered?: boolean }).registered ?? true,
       bib,
       wave,

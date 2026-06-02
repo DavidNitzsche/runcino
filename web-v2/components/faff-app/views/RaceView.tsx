@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { FaffSeed } from '../types';
 import { CountdownLadder, CourseAnnotations, MARATHON_COUNTDOWN, StateChangeToast } from '../toolkit';
 
@@ -51,6 +52,10 @@ export type RaceDetailSeed = {
   startTime: string;
   course: string;
   certification: string;
+  // 2026-06-02: A/B/C race priority. Editable from the race detail page
+  // via the priority chip; PATCH /api/race fires the auto-rebuild hook
+  // when this changes (A → B/C demotes the plan, B/C → A promotes).
+  priority: 'A' | 'B' | 'C';
   registered: boolean;
   bib: string;
   wave: string;
@@ -103,6 +108,7 @@ export type RaceDetailSeed = {
 const FALLBACK: RaceDetailSeed = {
   slug: 'race', name: 'Race', date: '', startTime: '·',
   course: '·', certification: '·',
+  priority: 'A',
   registered: false, bib: '·', wave: '·',
   daysAway: 0, isPast: false, finishTime: null, pb: false,
   distanceMi: 0, netElevFt: 0, gainFt: 0, goalPace: '·',
@@ -127,10 +133,18 @@ const FALLBACK: RaceDetailSeed = {
 
 export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?: RaceDetailSeed; onBack: () => void }) {
   const r = race ?? FALLBACK;
-  const [aGoal, setAGoal] = useState(r.aGoal);
-  const [bGoal, setBGoal] = useState(r.bGoal);
+  const router = useRouter();
+  // 2026-06-02 · normalize the incoming goal strings so a stored "1:30:00"
+  // never renders as "1:30:00" then snaps to "1:30" on blur. Goal times are
+  // H:MM only — seconds are noise on an aspirational target. Finish times
+  // (line ~265) still keep seconds via fmtHMS.
+  const [aGoal, setAGoal] = useState(normalizeGoalTime(r.aGoal));
+  const [bGoal, setBGoal] = useState(normalizeGoalTime(r.bGoal));
   const [bib, setBib] = useState(r.bib);
   const [goalPace, setGoalPace] = useState(r.goalPace);
+  // 2026-06-02 · priority editor. A/B/C drives the eyebrow label and PATCH
+  // /api/race fires the auto-rebuild hook when this changes (A↔B/C).
+  const [priority, setPriority] = useState<'A' | 'B' | 'C'>(r.priority ?? 'A');
   // 2026-05-30: post-race retro state. Hero swaps to a result card when
   // race.isPast — finishTime free-text edit (HMS) + PB toggle persist to
   // races.actual_result via PATCH /api/race.
@@ -138,11 +152,17 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
   const [pb, setPb] = useState(r.pb);
   const [savingFinish, setSavingFinish] = useState(false);
   const [finishAck, setFinishAck] = useState<'saved' | 'error' | null>(null);
+  // 2026-06-02 · GPX upload. Triggers a hidden <input type="file">, POSTs
+  // multipart/form-data to /api/race/gpx, then router.refresh() so the new
+  // routePath + course annotations land without a hard reload.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingGpx, setUploadingGpx] = useState(false);
+  const [gpxAck, setGpxAck] = useState<'saved' | 'error' | null>(null);
 
   async function commitA(text: string) {
     const sec = parseHMS(text);
-    if (sec <= 0) { setAGoal(r.aGoal); return; }
-    const next = fmtHMS(sec);
+    if (sec <= 0) { setAGoal(normalizeGoalTime(r.aGoal)); return; }
+    const next = fmtHM(sec);
     setAGoal(next);
     setGoalPace(sec2pace(sec));
     const { autoRebuild } = await patchRace(r.slug, { goal: next });
@@ -150,11 +170,48 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
   }
   async function commitB(text: string) {
     const sec = parseHMS(text);
-    if (sec <= 0) { setBGoal(r.bGoal); return; }
-    const next = fmtHMS(sec);
+    if (sec <= 0) { setBGoal(normalizeGoalTime(r.bGoal)); return; }
+    const next = fmtHM(sec);
     setBGoal(next);
     const { autoRebuild } = await patchRace(r.slug, { goal_safe: next });
     if (autoRebuild?.ok) setAutoRebuildToast(autoRebuild);
+  }
+  async function commitPriority(next: 'A' | 'B' | 'C') {
+    if (next === priority) return;
+    setPriority(next);
+    const { autoRebuild } = await patchRace(r.slug, { priority: next });
+    if (autoRebuild?.ok) setAutoRebuildToast(autoRebuild);
+  }
+  async function uploadGpx(file: File) {
+    setUploadingGpx(true);
+    try {
+      const fd = new FormData();
+      fd.append('slug', r.slug);
+      fd.append('file', file);
+      const res = await fetch('/api/race/gpx', { method: 'POST', body: fd });
+      if (res.ok) {
+        setGpxAck('saved');
+        // refresh the server component so routePath + course annotations
+        // re-render from the freshly-stored course_geometry.
+        router.refresh();
+      } else {
+        setGpxAck('error');
+      }
+    } catch {
+      setGpxAck('error');
+    } finally {
+      setUploadingGpx(false);
+      setTimeout(() => setGpxAck(null), 2400);
+    }
+  }
+  function pickGpx() {
+    fileInputRef.current?.click();
+  }
+  function onGpxInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) void uploadGpx(f);
+    // reset so picking the same file twice still fires onChange
+    e.target.value = '';
   }
   function commitBib(text: string) {
     const next = (text || '').trim() || r.bib;
@@ -216,7 +273,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
 
       <div className="rp-hero">
         <div>
-          <div className="rp-eyebrow">{r.isPast ? 'PAST RACE' : 'GOAL RACE'} · {distLabel(r.distanceMi)}</div>
+          <div className="rp-eyebrow">{r.isPast ? 'PAST RACE' : `${priority} RACE`} · {distLabel(r.distanceMi)}</div>
           <div className="rp-title">{r.name.split(' ').map((w, i) => <span key={i}>{w}<br/></span>)}</div>
           <div className="rp-meta">
             <span><b>{formatDateFull(r.date)}</b>{r.isPast ? '' : ' · ' + r.startTime}</span>
@@ -224,6 +281,27 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             <span>{r.certification}</span>
           </div>
           <div className="rp-chips">
+            {!r.isPast && (
+              <div className="rp-chip">
+                Priority{' '}
+                <select
+                  value={priority}
+                  onChange={(e) => commitPriority(e.target.value as 'A' | 'B' | 'C')}
+                  aria-label="Race priority"
+                  style={{
+                    background: 'transparent', color: 'inherit',
+                    border: 'none', outline: 'none', appearance: 'none',
+                    fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 800,
+                    letterSpacing: 'inherit', textTransform: 'inherit',
+                    padding: 0, margin: 0, cursor: 'pointer',
+                  }}
+                >
+                  <option value="A">A race</option>
+                  <option value="B">B race · tune-up</option>
+                  <option value="C">C race · workout</option>
+                </select>
+              </div>
+            )}
             {!r.isPast && r.registered && (
               <div className="rp-chip reg">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#7BE8A0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -350,9 +428,37 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         </span>
       </div>
       <div className="rp-panel">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".gpx,application/gpx+xml,application/xml,text/xml"
+          onChange={onGpxInputChange}
+          style={{ display: 'none' }}
+        />
         <div className="rp-elevhead">
           <div className="t">Route{r.course ? ` · ${r.course}` : ''}</div>
-          <div className="s">{r.routePath ? 'GPX loaded' : 'No GPX yet'}</div>
+          <div className="s" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span>
+              {uploadingGpx ? 'Uploading' :
+                gpxAck === 'saved' ? 'GPX saved' :
+                gpxAck === 'error' ? 'Upload failed · retry' :
+                r.routePath ? 'GPX loaded' : 'No GPX yet'}
+            </span>
+            {!r.isPast && r.routePath ? (
+              <button
+                type="button"
+                onClick={pickGpx}
+                disabled={uploadingGpx}
+                style={{
+                  fontFamily: 'inherit', fontSize: 10, fontWeight: 700, letterSpacing: 1.4,
+                  textTransform: 'uppercase', color: 'var(--ink, #fff)',
+                  background: 'rgba(255,255,255,.07)', border: '1px solid var(--glass-line, rgba(255,255,255,.18))',
+                  borderRadius: 10, padding: '5px 10px', cursor: uploadingGpx ? 'wait' : 'pointer',
+                  opacity: uploadingGpx ? 0.6 : 1,
+                }}
+              >Replace</button>
+            ) : null}
+          </div>
         </div>
         <div className="rp-map">
           <svg viewBox="0 0 640 158" preserveAspectRatio="none">
@@ -367,10 +473,29 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             </svg>
           ) : (
             <div style={{
-              position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55,
+              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16,
             }}>
-              ROUTE UNAVAILABLE · UPLOAD GPX TO SEE THE COURSE
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55, textAlign: 'center' }}>
+                ROUTE UNAVAILABLE
+              </div>
+              <button
+                type="button"
+                onClick={pickGpx}
+                disabled={uploadingGpx}
+                style={{
+                  fontFamily: 'inherit', fontSize: 11, fontWeight: 700, letterSpacing: 1.6,
+                  textTransform: 'uppercase', color: 'var(--bg, #10131A)',
+                  background: 'var(--ink, #fff)', border: 0,
+                  borderRadius: 12, padding: '9px 16px', cursor: uploadingGpx ? 'wait' : 'pointer',
+                  opacity: uploadingGpx ? 0.6 : 1,
+                }}
+              >
+                {uploadingGpx ? 'Uploading' : 'Upload GPX'}
+              </button>
+              <div style={{ fontSize: 10, opacity: 0.45, textAlign: 'center', maxWidth: 320, lineHeight: 1.5 }}>
+                Adds route, elevation, and notable miles to this race.
+              </div>
             </div>
           )}
           {r.routePath && <span className="rp-mtag s" style={{ left: 14, bottom: 32 }}>START</span>}
@@ -595,6 +720,25 @@ function fmtHMS(sec: number): string {
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
   return `${h}:${String(m).padStart(2,'0')}${s ? ':' + String(s).padStart(2,'0') : ''}`;
+}
+/** 2026-06-02 · goal times only carry H:MM precision (a goal is "1:30",
+ *  not "1:30:00" or "1:29:42"). Used by commitA / commitB so the editor
+ *  doesn't flicker "1:30:00 → 1:30" on first blur. Sub-hour distances
+ *  render as plain minutes ("42"). */
+function fmtHM(sec: number): string {
+  const totalMin = Math.round(sec / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2,'0')}` : `${m}`;
+}
+/** Normalize any incoming goal string (could be "1:30:00" from a legacy
+ *  row, "1:30" from a fresh edit, or "·" for empty) to the H:MM display
+ *  shape. Anything unparseable passes through. */
+function normalizeGoalTime(t: string): string {
+  if (!t || t === '·') return t;
+  const sec = parseHMS(t);
+  if (sec <= 0) return t;
+  return fmtHM(sec);
 }
 function sec2pace(sec: number): string {
   const per = sec / 26.2188;
