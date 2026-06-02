@@ -592,6 +592,139 @@ function layoutWeek({
   return slots as DayPlan[];
 }
 
+// ── Pure compose layer (2026-06-02) ─────────────────────────────────────
+// Extracted from generatePlan() so the plan-engine bench can test the
+// actual plan output against persona doctrine targets without a database.
+// generatePlan() is the I/O wrapper · loadGeneratorInputs() gathers all
+// the DB-sourced facts and bundles them into a ComposePlanInput · then
+// composePlan() does the pure work and returns the plan shape ·
+// persistPlan() writes it.
+//
+// All branching that depends on user data lives in loadGeneratorInputs,
+// the test bench, or persona fixtures. composePlan is mechanically
+// deterministic against a fixed input.
+
+export interface ComposePlanInput {
+  raceDistanceMi: number;
+  goalSec: number | null;
+  goalPaceSec: number | null;
+  /** Race day ISO date (YYYY-MM-DD). */
+  raceDateISO: string;
+  /** Monday of the plan start week (YYYY-MM-DD). Caller computes from
+   *  today() · keeps composePlan pure (no Date.now()). */
+  startMondayISO: string;
+  level: LevelKey;
+  recentWeeklyMi: number;
+  easyDayMedianMi: number;
+  isMidBlock: boolean;
+  longRunDow: DOW;
+  restDow: DOW;
+  qualityDows: DOW[];
+  /** Profile cross-training modes · drives rest-day relabeling. */
+  crossModes: string[];
+  rxQuality: ResolvedPrescriptions;
+  rxRaceSpecific: ResolvedPrescriptions;
+  tPaceSec: number | null;
+  lthr: number | null;
+}
+
+export interface ComposedWeek {
+  startISO: string;
+  phase: string;
+  weeklyMi: number;
+  days: DayPlan[];
+  isRaceWeek: boolean;
+}
+
+export interface ComposePlanResult {
+  weeks: ComposedWeek[];
+  blocks: BlockPlan;
+  totalWeeks: number;
+  vols: number[];
+  /** Bundle that persistPlan writes verbatim to training_plans.authored_state. */
+  authoredState: Record<string, unknown>;
+}
+
+/**
+ * Pure plan composition · no DB, no clock. Given a ComposePlanInput,
+ * returns the full plan shape ready for persistence + the authored_state
+ * blob.
+ *
+ * Tests assert this function against persona doctrine targets ·
+ * `expectedPlan.peakWeeklyMileageBand`, `longRunShare`, etc.
+ */
+export function composePlan(input: ComposePlanInput): ComposePlanResult {
+  const totalWeeks = daysBetween(input.startMondayISO, input.raceDateISO) / 7 + 1;
+  const blocks = sizeBlocks(totalWeeks, input.raceDistanceMi, input.isMidBlock);
+  const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level);
+
+  const weeks: ComposedWeek[] = [];
+  let phaseCursor = 0;
+  let phaseWkRemaining = blocks.phases[0].weeks;
+  let phaseLabel = blocks.phases[0].label;
+  for (let wi = 0; wi < totalWeeks; wi++) {
+    while (phaseWkRemaining === 0) {
+      phaseCursor++;
+      phaseWkRemaining = blocks.phases[phaseCursor].weeks;
+      phaseLabel = blocks.phases[phaseCursor].label;
+    }
+    const weekStart = addDays(input.startMondayISO, wi * 7);
+    const isRaceWeek = wi === totalWeeks - 1;
+    const raceDow: DOW | null = isRaceWeek
+      ? ((new Date(input.raceDateISO + 'T12:00:00Z').getUTCDay()) as DOW)
+      : null;
+    const rx = phaseLabel === 'RACE-SPECIFIC' ? input.rxRaceSpecific : input.rxQuality;
+    const days = layoutWeek({
+      phase: phaseLabel,
+      weekIdx: wi,
+      totalWeeks,
+      weeklyMi: vols[wi],
+      longRunDow: input.longRunDow,
+      qualityDows: input.qualityDows,
+      restDow: input.restDow,
+      isRaceWeek,
+      raceDow,
+      raceDistanceMi: input.raceDistanceMi,
+      rx,
+      easyMileFloor: input.easyDayMedianMi,
+    });
+    // P34 · cross-training opt-in · rotate enabled modes across the
+    // rest day. Same logic that used to live in generatePlan's loop.
+    if (input.crossModes.length > 0) {
+      const restDay = days.find((d) => d.type === 'rest' && d.distanceMi === 0);
+      if (restDay) {
+        const mode = input.crossModes[wi % input.crossModes.length];
+        const subLabel = mode === 'strength' ? 'STRENGTH'
+          : mode === 'bike' ? 'BIKE 45-60 MIN'
+          : mode === 'swim' ? 'SWIM 30-40 MIN'
+          : 'CROSS-TRAIN';
+        restDay.subLabel = subLabel;
+        restDay.notes = `Cross-training: ${mode}. Easy effort. Not a run replacement · keeps the engine humming on a non-impact day.`;
+      }
+    }
+    weeks.push({ startISO: weekStart, phase: phaseLabel, weeklyMi: vols[wi], days, isRaceWeek });
+    phaseWkRemaining--;
+  }
+
+  return {
+    weeks,
+    blocks,
+    totalWeeks,
+    vols,
+    authoredState: {
+      total_weeks: totalWeeks,
+      race_distance_mi: input.raceDistanceMi,
+      goal_pace_s_per_mi: input.goalPaceSec,
+      recent_avg_mpw: input.recentWeeklyMi,
+      weeklyAvg4w: input.recentWeeklyMi,
+      is_mid_block: input.isMidBlock,
+      t_pace_s_per_mi: input.tPaceSec,
+      lthr_bpm: input.lthr,
+      citations: blocks.phases.map((p) => p.citation),
+    },
+  };
+}
+
 // ── Persistence ─────────────────────────────────────────────────────────
 
 async function clearActivePlansFor(userId: string): Promise<void> {
@@ -709,7 +842,51 @@ async function persistPlan(args: {
 export async function generatePlan(input: GenerateInput): Promise<GenerateResult> {
   const { userId, raceSlug } = input;
 
-  // 1. Load the target race
+  // 1. Load all DB-sourced inputs into a pure-data bundle.
+  const inputs = await loadGeneratorInputs(userId, raceSlug);
+  if (!inputs.ok) return { ok: false, reason: inputs.reason };
+
+  // 2. Compose the plan from the bundle · pure function, no DB.
+  const composed = composePlan(inputs.compose);
+
+  // 3. Archive existing + persist.
+  await clearActivePlansFor(userId);
+  const planId = await persistPlan({
+    userId,
+    raceSlug,
+    raceDateISO: inputs.compose.raceDateISO,
+    blocks: composed.blocks,
+    weeks: composed.weeks.map((w) => ({
+      startISO: w.startISO, phase: w.phase, days: w.days, isRaceWeek: w.isRaceWeek,
+    })),
+    tPaceSec: inputs.compose.tPaceSec,
+    lthr: inputs.compose.lthr,
+    authoredState: {
+      ...composed.authoredState,
+      generated_at: new Date().toISOString(),
+    },
+  });
+
+  return { ok: true, plan_id: planId, weeks_generated: composed.totalWeeks };
+}
+
+/**
+ * Gather all DB-sourced facts a plan needs · race, user prefs, recent
+ * volume, easy median, experience level, prescriptions, T-pace, LTHR.
+ * Returns a ComposePlanInput ready for composePlan() · OR a failure
+ * reason that generatePlan converts to a result.
+ *
+ * Split from generatePlan() 2026-06-02 so the plan-engine bench can
+ * test composePlan() without needing the database.
+ */
+async function loadGeneratorInputs(
+  userId: string,
+  raceSlug: string,
+): Promise<
+  | { ok: true; compose: ComposePlanInput }
+  | { ok: false; reason: string }
+> {
+  // 1. Race
   const raceRow = (await pool.query(`SELECT slug, meta FROM races WHERE slug = $1`, [raceSlug])).rows[0];
   if (!raceRow) return { ok: false, reason: 'race not found' };
   const meta = raceRow.meta ?? {};
@@ -724,16 +901,13 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   const goalSec = parseGoalSeconds(meta.goalDisplay);
   const goalPaceSec = goalSec ? Math.round(goalSec / raceDistanceMi) : null;
 
-  // 2. Load user prefs for layout
+  // 2. User prefs · layout
   const prefs = await loadSettings(userId).catch(() => null);
   const longRunDow  = dayKeyToDow((prefs?.long_run_day ?? 'sun') as DayKey);
   const restDow     = dayKeyToDow((prefs?.rest_day ?? 'sat') as DayKey);
   const qualityDows = (prefs?.quality_days ?? ['tue', 'thu']).map((d) => dayKeyToDow(d as DayKey));
 
-  // P34 — cross-training opt-in. If the runner has cross_training_modes
-  // set on profile (bike/swim/strength/other), we tag the rest day's
-  // sub_label so the plan shows the activity instead of just "REST".
-  // (Type stays 'rest' so distance + readiness logic don't break.)
+  // 3. Cross-training opt-in (P34)
   const ctRow = (await pool.query(
     `SELECT cross_training_modes FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId]
@@ -741,102 +915,30 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   const crossModes: string[] = Array.isArray(ctRow?.cross_training_modes)
     ? ctRow.cross_training_modes : [];
 
-  // 3. Determine week count + block sizes
-  // The plan starts on the Monday of "this week", ends on the week containing race day.
-  const startMonday = mondayOf(today());
-  const raceMonday  = mondayOf(raceDateISO);
-  const totalWeeks = daysBetween(startMonday, raceMonday) / 7 + 1;
+  // 4. Plan-shape inputs
+  const startMondayISO = mondayOf(today());
+  const totalWeeks = daysBetween(startMondayISO, mondayOf(raceDateISO)) / 7 + 1;
   if (totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 
-  // 2026-06-01 · mid-block awareness (web agent gap). Runner who's been
-  // doing quality for weeks shouldn't be sent back to a fresh BASE phase
-  // by an auto-rebuild. Detect quality activity in the last 28 days ·
-  // skip BASE entirely if present (fold those weeks into QUALITY).
   const isMidBlock = await detectMidBlock(userId);
-  const blocks = sizeBlocks(totalWeeks, raceDistanceMi, isMidBlock);
   const recentMi = await recentWeeklyMileage(userId);
-  // 2026-06-01 · runner's real easy-day baseline · floors `perEasy` in
-  // layoutWeek so the generator never authors silently-low easy days.
   const easyFloor = await easyDayMedianMi(userId);
 
-  // Read experience_level for volume-curve scaling (Q-01 / SIM-02 fix).
-  // Falls back to 'intermediate' shape when unknown.
+  // 5. Experience level
   const expRow = (await pool.query<{ experience_level: string | null }>(
     `SELECT experience_level FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
   const level = (expRow?.experience_level ?? null) as LevelKey;
 
-  const vols = volumeCurve(recentMi, blocks, level);
-
-  // Resolve quality + race-specific prescriptions ONCE from the workout
-  // library. Per the locked decision ("best becomes rules of law"), every
-  // user reads the same library; per-runner customization is a follow-up.
-  // Falls back to the inline catalog if a library row is missing.
+  // 6. Prescriptions (workout_library)
   const cat = distanceCategoryOf(raceDistanceMi);
   const [rxQuality, rxRaceSpecific] = await Promise.all([
     resolvePrescriptions(cat, 'quality',        level),
     resolvePrescriptions(cat, 'race_specific',  level),
   ]);
 
-  // 4. Build each week
-  const weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean }> = [];
-  let phaseCursor = 0;
-  let phaseWkRemaining = blocks.phases[0].weeks;
-  let phaseLabel = blocks.phases[0].label;
-  for (let wi = 0; wi < totalWeeks; wi++) {
-    while (phaseWkRemaining === 0) {
-      phaseCursor++;
-      phaseWkRemaining = blocks.phases[phaseCursor].weeks;
-      phaseLabel = blocks.phases[phaseCursor].label;
-    }
-    const weekStart = addDays(startMonday, wi * 7);
-    const isRaceWeek = wi === totalWeeks - 1;
-    const raceDow: DOW | null = isRaceWeek
-      ? ((new Date(raceDateISO + 'T12:00:00Z').getUTCDay()) as DOW)
-      : null;
-    const rx = phaseLabel === 'RACE-SPECIFIC' ? rxRaceSpecific : rxQuality;
-    const days = layoutWeek({
-      phase: phaseLabel,
-      weekIdx: wi,
-      totalWeeks,
-      weeklyMi: vols[wi],
-      longRunDow,
-      qualityDows,
-      restDow,
-      isRaceWeek,
-      raceDow,
-      raceDistanceMi,
-      rx,
-      easyMileFloor: easyFloor,
-    });
-    // P34 — relabel the rest day with cross-training activity when opted
-    // in. Rotates through enabled modes across weeks so the runner gets
-    // variety (bike one week, swim the next, etc.). Strength gets one
-    // dedicated day every other week when it's in the mix.
-    if (crossModes.length > 0) {
-      const restDay = days.find((d) => d.type === 'rest' && d.distanceMi === 0);
-      if (restDay) {
-        const mode = crossModes[wi % crossModes.length];
-        const subLabel = mode === 'strength' ? 'STRENGTH'
-          : mode === 'bike' ? 'BIKE 45-60 MIN'
-          : mode === 'swim' ? 'SWIM 30-40 MIN'
-          : 'CROSS-TRAIN';
-        restDay.subLabel = subLabel;
-        restDay.notes = `Cross-training: ${mode}. Easy effort. Not a run replacement · keeps the engine humming on a non-impact day.`;
-      }
-    }
-    weeks.push({ startISO: weekStart, phase: phaseLabel, days, isRaceWeek });
-    phaseWkRemaining--;
-  }
-
-  // 5. Archive existing active plans, then persist
-  await clearActivePlansFor(userId);
-
-  // 2026-06-01 · derive T-pace + read LTHR ONCE before insert so every
-  // workout row gets its pace_target + workout_spec populated at write
-  // time. No more null-column-waiting-for-backfill-cron · plan is
-  // self-contained from row one.
+  // 7. T-pace + LTHR
   const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi);
   const lthrRow = (await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
@@ -844,27 +946,26 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   ).catch(() => ({ rows: [] }))).rows[0];
   const lthr = lthrRow?.lthr ?? null;
 
-  const planId = await persistPlan({
-    userId, raceSlug, raceDateISO, blocks, weeks,
-    tPaceSec, lthr,
-    authoredState: {
-      generated_at: new Date().toISOString(),
-      total_weeks: totalWeeks,
-      race_distance_mi: raceDistanceMi,
-      goal_pace_s_per_mi: goalPaceSec,
-      // 2026-06-02 · BOTH names · drift-monitor.ts reads weeklyAvg4w
-      // (the canonical name), pre-existing readers may use the older
-      // recent_avg_mpw. Same value in both keys · safe alias.
-      // Without weeklyAvg4w the drift cron computed "∞% higher than
-      // 0 mi/wk" because authoredAvg was undefined.
-      recent_avg_mpw: recentMi,
-      weeklyAvg4w: recentMi,
-      is_mid_block: isMidBlock,
-      t_pace_s_per_mi: tPaceSec,
-      lthr_bpm: lthr,
-      citations: blocks.phases.map((p) => p.citation),
+  return {
+    ok: true,
+    compose: {
+      raceDistanceMi,
+      goalSec,
+      goalPaceSec,
+      raceDateISO,
+      startMondayISO,
+      level,
+      recentWeeklyMi: recentMi,
+      easyDayMedianMi: easyFloor,
+      isMidBlock,
+      longRunDow,
+      restDow,
+      qualityDows,
+      crossModes,
+      rxQuality,
+      rxRaceSpecific,
+      tPaceSec,
+      lthr,
     },
-  });
-
-  return { ok: true, plan_id: planId, weeks_generated: totalWeeks };
+  };
 }
