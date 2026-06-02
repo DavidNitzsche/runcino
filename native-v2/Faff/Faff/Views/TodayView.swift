@@ -297,11 +297,12 @@ struct TodayView: View {
             }
 
             DragSheet(
-                // 2026-06-02 round 25 · 150 → 180. Peek's "THRESHOLD"
-                // title felt cramped against the tab bar pill; 30pt of
-                // additional clearance gives the title room to breathe
-                // without the body content sneaking back through.
-                collapsedInsetFromBottom: 180,
+                // 2026-06-02 round 25 · 150 → 180.
+                // 2026-06-02 round 46 · 180 → 200. David flagged the
+                // peek sat right against the tab bar pill · 20pt more
+                // clearance gives a comfortable gap so the tab bar
+                // reads as separate from the peek.
+                collapsedInsetFromBottom: 200,
                 progress: $sheetProgress,
                 peekBackground: peekFill,
                 grabTint: Color.white.opacity(0.6),
