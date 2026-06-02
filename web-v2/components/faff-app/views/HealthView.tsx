@@ -483,17 +483,22 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             </div>
             <div className="hrecov-grid">
               {rp.pillars.map(p => {
-                const hasData = p.day0Value != null && p.currentValue != null;
+                // 2026-06-01 · null-vs-zero hygiene · backend now ships
+                // p.pctRecovered as nullable when measurements aren't
+                // in yet. The TypeScript-narrowing gate is on the
+                // nullable field itself, not on the raw value fields.
+                const pct = p.pctRecovered;
+                const hasData = pct != null;
                 return (
                   <div key={p.key} className="hrcp">
                     <div className="k">{p.label}</div>
                     <div className="pb">
                       {hasData ? (
-                        <i style={{ width: `${p.pctRecovered}%`, background: pcol(p.pctRecovered) }} />
+                        <i style={{ width: `${pct}%`, background: pcol(pct) }} />
                       ) : null}
                     </div>
-                    <div className="pv" style={{ color: hasData ? pcol(p.pctRecovered) : 'rgba(255,255,255,.4)' }}>
-                      {hasData ? `${p.pctRecovered}% back` : 'no data'}
+                    <div className="pv" style={{ color: hasData ? pcol(pct) : 'rgba(255,255,255,.4)' }}>
+                      {hasData ? `${pct}% back` : 'no data'}
                     </div>
                   </div>
                 );
@@ -506,7 +511,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               </div>
             ) : null}
             <div className="hrecov-green">
-              {dataInsufficient
+              {dataInsufficient || rp.nextQualityGreenLight == null
                 ? <>Recovery tracking awaiting watch sync · pillar measurements not in yet.</>
                 : <>Earliest quality session: <b>{rp.nextQualityGreenLight.date}</b> · {rp.nextQualityGreenLight.reason}</>
               }

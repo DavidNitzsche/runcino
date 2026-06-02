@@ -455,6 +455,10 @@ export type HealthSnapshot = {
     message: string;
   } | null;
   // Power moves #15 · post-session recovery tracker.
+  // 2026-06-01 · brief response · percentRecovered + pctRecovered are
+  // nullable (null when data is missing). dataInsufficient is the
+  // single gate for "is the recovery story honest yet?" ·
+  // nextQualityGreenLight is null when dataInsufficient.
   recoveryPhase?: {
     anchor: {
       runId: string;
@@ -466,14 +470,15 @@ export type HealthSnapshot = {
     };
     daysSince: number;
     expectedDaysToRecover: number;
-    percentRecovered: number;
+    percentRecovered: number | null;
+    dataInsufficient: boolean;
     pillars: Array<{
       key: 'hrv' | 'rhr' | 'sleep' | 'hr_recovery' | 'wrist_temp' | 'resp_rate';
       label: string;
       day0Value: number | null;
       currentValue: number | null;
       baselineValue: number | null;
-      pctRecovered: number;
+      pctRecovered: number | null;
     }>;
     muscleSignals: {
       cadenceSpm: number | null;
@@ -490,7 +495,7 @@ export type HealthSnapshot = {
       date: string;
       daysOut: number;
       reason: string;
-    };
+    } | null;
     message: string;
   } | null;
   // Power moves Wave 4 · block-over-block comparison.

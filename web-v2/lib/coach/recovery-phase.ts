@@ -63,14 +63,27 @@ export interface RecoveryPhase {
   };
   daysSince: number;
   expectedDaysToRecover: number;
-  percentRecovered: number;   // 0-100
+  /** 2026-06-01 · brief response · null when measurement data is
+   *  insufficient (< 2 pillars have all of baseline / day0 / current).
+   *  Frontend gates the "X% recovered" copy on this · renders a
+   *  "syncing" framing instead. Was: number (defaulted to 0 when
+   *  data missing · self-contradicting). */
+  percentRecovered: number | null;
+  /** 2026-06-01 · true when fewer than 2 pillars have full comparison
+   *  data. Frontend uses this as the single gate for "is the recovery
+   *  story honest yet?" · single source of truth, no scattered null
+   *  checks. */
+  dataInsufficient: boolean;
   pillars: Array<{
     key: 'hrv' | 'rhr' | 'sleep' | 'hr_recovery' | 'wrist_temp' | 'resp_rate';
     label: string;
     day0Value: number | null;
     currentValue: number | null;
     baselineValue: number | null;
-    pctRecovered: number;     // 0-100 per pillar
+    /** 2026-06-01 · null when any of baseline / day0 / current is null.
+     *  Was: number (defaulted to 0 when data missing · misleading
+     *  "0% back" copy). */
+    pctRecovered: number | null;
   }>;
   muscleSignals: {
     cadenceSpm: number | null;
@@ -83,11 +96,13 @@ export interface RecoveryPhase {
     runPowerDelta: number | null;        // signed
     summary: string;                     // plain English
   } | null;
+  /** 2026-06-01 · null when dataInsufficient · the engine can't honestly
+   *  call a green-light day without measurement data. Was: always set. */
   nextQualityGreenLight: {
     date: string;             // YYYY-MM-DD
     daysOut: number;
     reason: string;
-  };
+  } | null;
   message: string;            // one-line coach-voice summary
 }
 
@@ -187,35 +202,47 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
   // 30-day baseline excluding the post-anchor window.
   const pillars = await loadPillarBounceBack(userUuid, anchor.date, today);
 
-  // 3 · Recovery % weighted by Plews-style importance
+  // 3 · Recovery % weighted by Plews-style importance.
+  // 2026-06-01 · brief response: count how many pillars have full
+  // comparison data. < 2 = data insufficient (frontend gates the
+  // "X% recovered" copy on this) · percentRecovered becomes null.
   const weights: Record<string, number> = {
     hrv: 0.30, sleep: 0.28, rhr: 0.24, hr_recovery: 0.10, wrist_temp: 0.05, resp_rate: 0.03,
   };
   let weightedSum = 0;
   let weightTotal = 0;
+  let pillarsWithData = 0;
   for (const p of pillars) {
     const w = weights[p.key] ?? 0;
-    if (p.pctRecovered != null && p.day0Value != null && p.baselineValue != null) {
+    if (p.pctRecovered != null) {
       weightedSum += p.pctRecovered * w;
       weightTotal += w;
+      pillarsWithData++;
     }
   }
-  const percentRecovered = weightTotal > 0 ? Math.round(weightedSum / weightTotal) : 50;
+  const dataInsufficient = pillarsWithData < 2;
+  const percentRecovered: number | null = dataInsufficient
+    ? null
+    : Math.round(weightedSum / weightTotal);
 
   // 4 · Muscle signals from form metrics on easy runs after anchor.
   const muscleSignals = await loadMuscleSignals(userUuid, anchor.date, today);
 
-  // 5 · Next quality green-light date.
-  const nextGreenLight = computeNextQualityGreenLight(anchor, daysSince, expDays, percentRecovered);
+  // 5 · Next quality green-light date. Null when dataInsufficient ·
+  // the engine can't honestly call a green-light day without data.
+  const nextGreenLight = dataInsufficient
+    ? null
+    : computeNextQualityGreenLight(anchor, daysSince, expDays, percentRecovered!);
 
-  // 6 · One-line message.
-  const message = composeRecoveryMessage(anchor, daysSince, expDays, percentRecovered);
+  // 6 · One-line message · accepts nullable percentRecovered.
+  const message = composeRecoveryMessage(anchor, daysSince, expDays, percentRecovered, dataInsufficient);
 
   return {
     anchor,
     daysSince,
     expectedDaysToRecover: expDays,
     percentRecovered,
+    dataInsufficient,
     pillars,
     muscleSignals,
     nextQualityGreenLight: nextGreenLight,
@@ -268,7 +295,12 @@ async function loadPillarBounceBack(
 
     // pct_recovered: 100 = back to baseline, 0 = still at day-0 deficit.
     // If isLowerBetter (RHR, wrist temp, RR), invert the math.
-    let pctRecovered = 0;
+    // 2026-06-01 · null vs zero hygiene brief response (Option C):
+    // pctRecovered is null when we can't compute it (missing baseline
+    // or current). The fallback used to return 50/90 when day0 missing
+    // but baseline + current present · we keep that since it has signal.
+    // Frontend gates "X% back" copy on this being non-null.
+    let pctRecovered: number | null = null;
     if (baseline != null && day0 != null && current != null) {
       const peakDeficit = spec.isLowerBetter ? Math.max(0, day0 - baseline) : Math.max(0, baseline - day0);
       if (peakDeficit === 0) {
@@ -282,6 +314,7 @@ async function loadPillarBounceBack(
       const diff = spec.isLowerBetter ? Math.abs(current - baseline) : Math.abs(baseline - current);
       pctRecovered = diff < 0.5 ? 90 : 50;
     }
+    // else: any of baseline / current is null · pctRecovered stays null.
 
     out.push({
       key: spec.key,
@@ -401,15 +434,27 @@ function computeNextQualityGreenLight(
   daysSince: number,
   expDays: number,
   percentRecovered: number,
-): RecoveryPhase['nextQualityGreenLight'] {
-  // Green-light when ≥ 80% recovered OR daysSince >= expDays.
+): NonNullable<RecoveryPhase['nextQualityGreenLight']> {
+  // 2026-06-01 · brief response · green-light copy that doesn't
+  // contradict itself. Previously: `>= expDays` alone → "ready"
+  // even when percentRecovered was 0. Now four explicit branches:
   let daysOut: number;
   let reason: string;
-  if (percentRecovered >= 80 || daysSince >= expDays) {
+  if (percentRecovered >= 80) {
+    // Truly recovered · go.
     daysOut = 0;
     reason = `Body is ${percentRecovered}% recovered · ready for the next quality session.`;
+  } else if (daysSince >= expDays && percentRecovered >= 50) {
+    // Past the typical window AND meaningfully recovered · go on feel.
+    daysOut = 0;
+    reason = `Past expected recovery window · body ${percentRecovered}% back · resume on feel.`;
+  } else if (daysSince >= expDays) {
+    // Past the window but recovery numbers are weak · don't claim
+    // "ready" with a contradicting %. Defer to subjective feel.
+    daysOut = 0;
+    reason = `Past expected recovery window · resume on feel.`;
   } else {
-    // Estimate based on average recovery rate (1/expDays of the deficit per day).
+    // Still within the window · project forward.
     const deficit = 100 - percentRecovered;
     const recoveryRate = 100 / expDays;
     daysOut = Math.max(1, Math.ceil(deficit / recoveryRate));
@@ -424,10 +469,17 @@ function composeRecoveryMessage(
   anchor: RecoveryPhase['anchor'],
   daysSince: number,
   expDays: number,
-  percentRecovered: number,
+  percentRecovered: number | null,
+  dataInsufficient: boolean,
 ): string {
   if (daysSince === 0) {
     return `${anchor.label} just landed · day 0 of ~${expDays} expected recovery.`;
+  }
+  // 2026-06-01 · brief response · honest copy when data is missing.
+  // Don't fabricate a "0% recovered" story when we just don't have
+  // the measurements yet.
+  if (dataInsufficient || percentRecovered == null) {
+    return `Day ${daysSince} of ${expDays} since ${anchor.label} · recovery tracking awaiting watch sync.`;
   }
   if (percentRecovered >= 85) {
     return `Day ${daysSince} of ${expDays} · ${percentRecovered}% recovered from ${anchor.label}. Body is mostly back.`;
