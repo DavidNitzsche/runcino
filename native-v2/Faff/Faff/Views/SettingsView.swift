@@ -29,6 +29,12 @@ struct SettingsView: View {
     /// Last-action banner under the Connections section. Cleared after
     /// 6 seconds so it doesn't linger.
     @State private var stravaToast: String? = nil
+    /// 2026-06-01 · manual HK re-sync in-flight + result toast.
+    @State private var healthResyncing: Bool = false
+    @State private var healthResyncToast: String? = nil
+    /// Observe the importer's @Published state so the row reflects
+    /// status changes from any sync (foreground, manual, cycle-toggle).
+    @ObservedObject private var hkImporter: HealthKitImporter = .shared
 
     private let mesh = FaffMesh(
         c1: 0x3FB6B0, c2: 0x62E08A, c3: 0x0E4F4C,
@@ -114,6 +120,32 @@ struct SettingsView: View {
                                 value: profile?.connections.appleHealth.connected == true ? "Synced" : "Connect",
                                 good: profile?.connections.appleHealth.connected == true
                             )
+                            // 2026-06-01 · explicit manual re-sync trigger.
+                            // The .onChange foreground refresh runs once per
+                            // 30s but a runner who just installed a new
+                            // TestFlight build wants confirmation the new
+                            // data types (sleep stages, active energy density)
+                            // are flowing without waiting for background sync
+                            // serendipity. Tapping pulls the last 14 days
+                            // and surfaces the row count toast so we can
+                            // diagnose silently-dropped types from the field.
+                            Button(action: forceHealthResync) {
+                                navRow(
+                                    title: "Re-sync Health (14d)",
+                                    subtitle: healthSyncStatusLine,
+                                    value: healthResyncing ? "Syncing…" : "Tap"
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(healthResyncing)
+                            if let t = healthResyncToast {
+                                Text(t)
+                                    .font(.body(12, weight: .medium))
+                                    .foregroundStyle(Theme.txt.opacity(0.7))
+                                    .padding(.horizontal, 17)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                             // Tappable Strava row · launches the OAuth flow
                             // via ASWebAuthenticationSession when tapped.
                             // Disabled while reconnecting so a double-tap
@@ -272,6 +304,44 @@ struct SettingsView: View {
         case "f", "female", "woman": return true
         default: return false
         }
+    }
+
+    /// 2026-06-01 · Manual 14-day HK re-sync. Useful right after
+    /// installing a TestFlight build that ships new sample types
+    /// (sleep stages, active energy density, cycle phase) · the
+    /// runner doesn't have to wait for the next foreground refresh
+    /// or for HK background delivery to catch up.
+    ///
+    /// Surfaces the row count in a toast so we can diagnose silently-
+    /// dropped types from the field (e.g. backend whitelist gap).
+    private func forceHealthResync() {
+        guard !healthResyncing else { return }
+        healthResyncing = true
+        healthResyncToast = nil
+        Task {
+            await HealthKitImporter.shared.importIfConnected(daysBack: 14)
+            await MainActor.run {
+                healthResyncing = false
+                // Surface the importer's own summary ("N runs · M vitals").
+                healthResyncToast = HealthKitImporter.shared.lastMessage ?? "Sync complete."
+            }
+            // Clear the toast after 8s so it doesn't linger forever.
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            await MainActor.run { healthResyncToast = nil }
+        }
+    }
+
+    /// Subtitle line under the re-sync row · shows the last successful
+    /// sync time so the runner knows whether the data is fresh.
+    private var healthSyncStatusLine: String? {
+        guard let when = hkImporter.lastImportedAt else { return "Never synced" }
+        let mins = Int(Date().timeIntervalSince(when) / 60)
+        if mins < 1 { return "Just synced" }
+        if mins < 60 { return "Synced \(mins)m ago" }
+        let hrs = mins / 60
+        if hrs < 24 { return "Synced \(hrs)h ago" }
+        let days = hrs / 24
+        return "Synced \(days)d ago"
     }
 
     /// Handle a cycle-ingest toggle change · gates HK auth and writes

@@ -37,6 +37,17 @@ const ALLOWED_TYPES = new Set([
   'spo2', 'respiratory_rate', 'wrist_temp', 'active_energy',
   'hr_recovery', 'run_power', 'stride_length',
   'ground_contact_time', 'vertical_oscillation', 'vertical_ratio',
+  // 2026-06-01 · per-stage sleep minutes (iPhone build 134+ ships
+  // these alongside sleep_hours per the iphone-health-ingest-
+  // expansion-brief). Without these on the whitelist the per-stage
+  // rows silently skipped at ingest · sleep architecture pillars
+  // (deep/rem/light/awake) had zero rows in prod.
+  'sleep_deep_minutes', 'sleep_rem_minutes',
+  'sleep_light_minutes', 'sleep_awake_minutes',
+  // 2026-06-01 · menstrual cycle ingest (iPhone build 134+, opt-in
+  // + gender-gated). Same skip-bug shape: rows arrived but didn't
+  // land because the whitelist didn't know them.
+  'menstrual_cycle_day', 'menstrual_cycle_phase',
 ]);
 
 export async function POST(req: NextRequest) {
