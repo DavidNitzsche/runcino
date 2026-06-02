@@ -1826,6 +1826,9 @@ function CompletedHeroV2({
             splits={splits}
             hrAvg={runData?.hr_avg ?? null}
           />
+        ) : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.some(p => p.type === 'work') ? (
+          // Long-run WITH a work phase = MP-finish variant · "THE BUILD".
+          <LongMpPanel phases={runData.phase_breakdown} splits={splits} />
         ) : d.type === 'long' && splits.length >= 3 ? (
           <LongPanel splits={splits} avgPace={resolvedPace ?? null} />
         ) : d.type === 'tempo' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
@@ -2780,6 +2783,285 @@ function TempoPanel({
               color: beat ? '#3ED06a' : '#ffb24d',
             }}>
               · {delta > 0 ? `+${delta}` : delta} vs goal
+            </span>
+          ) : null}
+        </span>
+      </div>
+    </>
+  );
+}
+
+/**
+ * LONG+MP · "THE BUILD" panel · for long-run-with-MP-finish workouts
+ * (e.g. 8 easy + 4 at marathon pace).
+ *
+ *   · AEROBIC BASE block · BlockHead + ribbon + meta · the easy build
+ *   · MP SHIFT transition · last-easy → first-MP pace with signed gear
+ *     change delta (green if drop ≥45s, amber if <30s)
+ *   · MARATHON SHIFT block · BlockHead + meta + cmpBar (actual vs goal)
+ *     + per-mile chips for the MP miles
+ *   · Summary · MP BLOCK pace + delta vs goal
+ *
+ * Answers "did you nail the gear change?"
+ */
+function LongMpPanel({
+  phases, splits,
+}: {
+  phases: NonNullable<RunSummary['phase_breakdown']>;
+  splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
+}) {
+  const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
+  const ACCENT_MP = '#ff9f5a';
+
+  // Aggregate the easy portion · everything before the work phase. Take the
+  // first contiguous run of warmup/easy/cooldown-equivalent (treat all
+  // non-work phases before the work phase as the base).
+  const workIdx = phases.findIndex(p => p.type === 'work');
+  if (workIdx === -1) return null;
+  const work = phases[workIdx];
+  const basePhases = phases.slice(0, workIdx);
+  const baseDist = basePhases.reduce((sum, p) => sum + (p.actual_distance_mi ?? 0), 0);
+  const baseDurSec = basePhases.reduce((sum, p) => sum + (p.actual_duration_sec ?? 0), 0);
+  const basePaceSec = baseDist > 0 && baseDurSec > 0
+    ? Math.round(baseDurSec / baseDist) : 0;
+  const basePaceStr = basePaceSec > 0 ? fmtSecAsPace(basePaceSec) : null;
+  const baseHrAvg = basePhases.length > 0
+    ? (() => {
+      const hrs = basePhases.map(p => p.avg_hr).filter((x): x is number => x != null && x > 0);
+      return hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null;
+    })()
+    : null;
+
+  // Transition · last easy mile pace vs first MP mile pace.
+  const baseMileCount = Math.round(baseDist);
+  const lastEasyMile = baseMileCount > 0 ? splits[baseMileCount - 1] : null;
+  const firstMpMile = baseMileCount < splits.length ? splits[baseMileCount] : null;
+  const lastEasyPace = lastEasyMile?.pace ?? null;
+  const firstMpPace = firstMpMile?.pace ?? null;
+  const shiftAvail = lastEasyPace && firstMpPace;
+  const shiftDrop = shiftAvail
+    ? paceToSec(lastEasyPace) - paceToSec(firstMpPace) : null;
+  const shiftTone = shiftDrop == null ? '#3ED06a'
+    : shiftDrop >= 45 ? '#3ED06a'
+    : shiftDrop >= 30 ? '#3ED06a'
+    : '#ffb24d';
+  const shiftSign = (shiftDrop ?? 0) > 0 ? '−' : '+';
+  const shiftMm = Math.floor(Math.abs(shiftDrop ?? 0) / 60);
+  const shiftSs = Math.abs(shiftDrop ?? 0) % 60;
+
+  // MP cmpBar · actual vs target.
+  const mpActualSec = paceToSec(work.actual_pace ?? '');
+  const mpTargetSec = paceToSec(work.target_pace ?? '');
+  const mpDelta = mpActualSec > 0 && mpTargetSec > 0 ? mpActualSec - mpTargetSec : null;
+  const mpBeat = mpDelta != null && mpDelta <= 0;
+  const mpOnTarget = mpDelta === 0;
+  const mpMaxdev = Math.max(8, Math.round((work.target_duration_sec ?? mpActualSec ?? 470) * 0.04));
+  const mpFillW = mpDelta == null || mpOnTarget
+    ? (mpOnTarget ? 6 : 0)
+    : Math.max(5, Math.min(50, (Math.abs(mpDelta) / mpMaxdev) * 50));
+  const mpFillLeft = mpOnTarget ? 47 : (mpDelta != null && mpDelta > 0 ? 50 - mpFillW : 50);
+
+  // Per-mile chips · MP miles from splits aligned with the work phase.
+  const mpMileChips: Array<{ label: string; pace: string; warn?: boolean }> = [];
+  if (baseMileCount < splits.length && work.target_distance_mi != null) {
+    const mpMiles = splits.slice(baseMileCount, baseMileCount + Math.round(work.target_distance_mi));
+    mpMiles.forEach((s) => {
+      const sec = paceToSec(s.pace ?? '');
+      const warn = sec > 0 && mpTargetSec > 0 && sec > mpTargetSec + 10;
+      if (s.pace) {
+        mpMileChips.push({ label: `mi ${s.mile}`, pace: s.pace, warn });
+      }
+    });
+  }
+
+  return (
+    <>
+      {/* phead */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        margin: '16px 0 4px',
+      }}>
+        <span style={{
+          fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600, letterSpacing: 0.5,
+        }}>THE BUILD</span>
+        {baseDist > 0 && work.target_distance_mi != null ? (
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+            color: 'rgba(255,255,255,.6)',
+          }}>
+            {Math.round(baseDist + work.target_distance_mi)} MI · {Math.round(baseDist)} + {Math.round(work.target_distance_mi)}
+          </span>
+        ) : null}
+      </div>
+
+      {/* Aerobic base block */}
+      <div style={{ marginTop: 6 }}>
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
+        }}>
+          <span style={{
+            fontFamily: FONT_DISP, fontSize: 14, fontWeight: 600,
+            letterSpacing: 0.5, textTransform: 'uppercase', whiteSpace: 'nowrap',
+          }}>
+            AEROBIC BASE
+            <em style={{
+              fontStyle: 'normal', fontFamily: 'Inter, sans-serif',
+              fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+              opacity: 0.55, marginLeft: 7,
+            }}>{Math.round(baseDist)} MI</em>
+          </span>
+          <span style={{
+            fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600, whiteSpace: 'nowrap',
+          }}>
+            {basePaceStr ?? '·'}
+            <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, opacity: 0.6, fontWeight: 500 }}>/mi</small>
+          </span>
+        </div>
+        {/* Ribbon · accent gradient. */}
+        <div style={{
+          height: 11, borderRadius: 6, marginTop: 9,
+          background: `linear-gradient(90deg, ${ACCENT_MP}, color-mix(in oklab, ${ACCENT_MP}, #fff 22%))`,
+          opacity: 0.92,
+        }} />
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.6)',
+          marginTop: 5, whiteSpace: 'nowrap', gap: 10,
+        }}>
+          <span>Held easy through the build.</span>
+          {baseHrAvg != null ? <span>{baseHrAvg} bpm</span> : <span>·</span>}
+        </div>
+      </div>
+
+      {/* MP SHIFT transition */}
+      {shiftAvail && shiftDrop != null ? (
+        <div style={{ textAlign: 'center', margin: '16px 0 4px' }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 9, fontWeight: 800, letterSpacing: 1.6, color: ACCENT_MP,
+          }}>↓ MP SHIFT</span>
+          <div style={{
+            fontSize: 11.5, fontWeight: 600,
+            color: 'rgba(255,255,255,.7)', marginTop: 6,
+          }}>
+            Last easy <b style={{ fontFamily: FONT_DISP, color: '#fff', fontWeight: 600 }}>{lastEasyPace}</b>
+            {' → '}first MP <b style={{ fontFamily: FONT_DISP, color: '#fff', fontWeight: 600 }}>{firstMpPace}</b>
+          </div>
+          <div style={{
+            fontFamily: FONT_DISP, fontSize: 14, fontWeight: 600,
+            marginTop: 4, color: shiftTone,
+          }}>
+            {shiftSign}{shiftMm}:{String(shiftSs).padStart(2, '0')} gear change
+          </div>
+        </div>
+      ) : null}
+
+      {/* Marathon shift block */}
+      <div style={{ marginTop: 18 }}>
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
+        }}>
+          <span style={{
+            fontFamily: FONT_DISP, fontSize: 14, fontWeight: 600,
+            letterSpacing: 0.5, textTransform: 'uppercase', whiteSpace: 'nowrap',
+          }}>
+            MARATHON SHIFT
+            {work.target_distance_mi != null ? (
+              <em style={{
+                fontStyle: 'normal', fontFamily: 'Inter, sans-serif',
+                fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+                opacity: 0.55, marginLeft: 7,
+              }}>{Math.round(work.target_distance_mi)} MI</em>
+            ) : null}
+          </span>
+          <span style={{
+            fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600, whiteSpace: 'nowrap',
+          }}>
+            {work.actual_pace ?? '·'}
+            <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, opacity: 0.6, fontWeight: 500 }}>/mi</small>
+          </span>
+        </div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.6)',
+          marginTop: 5, whiteSpace: 'nowrap', gap: 10,
+        }}>
+          <span>{work.target_pace ? `TARGET ${work.target_pace}/mi` : 'TARGET ·'}</span>
+          {work.avg_hr != null ? <span>{work.avg_hr} bpm</span> : <span>·</span>}
+        </div>
+        {/* MP cmpBar */}
+        <div style={{
+          position: 'relative', height: 12, borderRadius: 6,
+          background: 'rgba(255,255,255,.1)', marginTop: 10,
+        }}>
+          {mpFillW > 0 && (
+            <div style={{
+              position: 'absolute', top: 1, bottom: 1,
+              left: `${mpFillLeft}%`, width: `${mpFillW}%`,
+              background: mpBeat ? '#3ED06a' : '#ffb24d',
+              borderRadius: 3,
+            }} />
+          )}
+          <div style={{
+            position: 'absolute', left: '50%', top: -2, bottom: -2, width: 2,
+            marginLeft: -1, background: 'rgba(255,255,255,.92)', borderRadius: 1, zIndex: 3,
+            boxShadow: '0 0 0 1px rgba(0,0,0,.2)',
+          }} />
+        </div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 8, fontWeight: 700, letterSpacing: 1.1, marginTop: 6,
+        }}>
+          <span style={{ color: '#ffb24d', opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{ color: 'rgba(255,255,255,.45)' }}>TARGET</span>
+          <span style={{ color: '#3ED06a', opacity: 0.9 }}>FASTER ▸</span>
+        </div>
+
+        {/* Per-mile chips */}
+        {mpMileChips.length > 0 ? (
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 11,
+          }}>
+            {mpMileChips.map((chip, i) => (
+              <span key={i} style={{
+                fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,.55)',
+                background: 'rgba(255,255,255,.05)',
+                border: '1px solid rgba(255,255,255,.08)',
+                borderRadius: 7, padding: '4px 7px',
+              }}>
+                {chip.label}
+                <b style={{
+                  fontFamily: FONT_DISP, fontWeight: 600,
+                  color: chip.warn ? '#ffb24d' : '#fff', marginLeft: 3,
+                }}>{chip.pace}</b>
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Summary · MP BLOCK pace · vs goal */}
+      <div style={{
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        gap: 10, marginTop: 14, paddingTop: 14,
+        borderTop: '1px solid rgba(255,255,255,.1)',
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,.55)',
+        }}>MP BLOCK</span>
+        <span style={{
+          fontFamily: FONT_DISP, fontSize: 16, fontWeight: 600, textAlign: 'right',
+        }}>
+          {work.actual_pace ?? '·'}
+          <small style={{
+            fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, opacity: 0.6,
+          }}>/mi</small>
+          {mpDelta != null ? (
+            <span style={{
+              fontSize: 11, fontWeight: 700, marginLeft: 5,
+              color: mpBeat ? '#3ED06a' : '#ffb24d',
+            }}>
+              · {mpDelta > 0 ? `+${mpDelta}` : mpDelta} vs goal
             </span>
           ) : null}
         </span>
