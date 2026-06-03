@@ -359,7 +359,7 @@ final class HealthKitImporter: ObservableObject {
         // split's time window — the route alone has only GPS, so per-
         // split HR/cadence aren't there for free.
         if let route = await routeLocations(for: w),
-           let splits = perMileSplits(locations: route) {
+           let splits = perMileSplits(locations: route, workout: w) {
             var enrichedSplits: [[String: Any]] = []
             for s in splits.splits {
                 var split: [String: Any] = [
@@ -486,14 +486,33 @@ final class HealthKitImporter: ObservableObject {
         let polyline: String?
     }
 
-    /// Walk locations, accumulate per-mile splits + total elevation gain.
-    /// Includes start/end timestamps per split so we can later query HR +
-    /// cadence samples in that window (the route alone has only GPS).
-    private nonisolated func perMileSplits(locations rawLocs: [CLLocation]) -> SplitsResult? {
+    /// 2026-06-03 round 71 · pause-aware per-mile splits, per backend brief
+    /// designs/briefs/iphone-split-pause-fix.md.
+    ///
+    /// PRIOR BUG: walked raw GPS timestamps for per-mile elapsed time. When
+    /// the runner paused mid-run (red light, water stop, etc.), Apple Watch
+    /// correctly excludes that paused time from workout.duration · but our
+    /// derived splits included it, inflating mile pace for whichever mile
+    /// contained the pause. David's 6.08mi today: 50:34 actual vs 52:40
+    /// summed-splits · 126s of pause time leaked into mile 6 (read as 9:57,
+    /// should've been ~7:51).
+    ///
+    /// FIX: Read HKWorkoutEvent pause/resume markers, build paused-time
+    /// ranges, subtract any overlap with each mile's elapsed window.
+    /// Reconciliation self-check (sum of splits vs workout.duration ± 5s)
+    /// returns an empty result rather than bad numbers if the math doesn't
+    /// add up — backend's /api/ingest/workout validates the same way and
+    /// drops splits with splits_unreliable=true when off.
+    private nonisolated func perMileSplits(
+        locations rawLocs: [CLLocation],
+        workout: HKWorkout
+    ) -> SplitsResult? {
         let locs = rawLocs
             .filter { $0.horizontalAccuracy >= 0 && $0.horizontalAccuracy <= 50 }
             .sorted { $0.timestamp < $1.timestamp }
         guard locs.count >= 2 else { return nil }
+
+        let pauses = Self.pauseRanges(in: workout)
 
         let mileMeters = 1609.344
         var splits: [SplitsResult.Split] = []
@@ -506,7 +525,9 @@ final class HealthKitImporter: ObservableObject {
             distSoFar += locs[i].distance(from: locs[i - 1])
             while distSoFar >= lastMileMark + mileMeters {
                 lastMileMark += mileMeters
-                let secs = Int(locs[i].timestamp.timeIntervalSince(mileStartTime).rounded())
+                let secs = Int(Self.unpaused(
+                    from: mileStartTime, to: locs[i].timestamp, pauses: pauses
+                ).rounded())
                 if secs >= 120 && secs <= 3600 {
                     let pace = "\(secs / 60):\(String(format: "%02d", secs % 60))"
                     let elevFt = Int(((locs[i].altitude - mileStartElev) * 3.28084).rounded())
@@ -522,6 +543,24 @@ final class HealthKitImporter: ObservableObject {
                 mileStartTime = locs[i].timestamp
                 mileStartElev = locs[i].altitude
             }
+        }
+
+        // 2026-06-03 · RECONCILIATION SELF-CHECK. Sum the unpaused
+        // per-mile times and compare to workout.duration (which Apple
+        // Watch already excludes paused time from). If off by > 5s,
+        // our derivation is still buggy — drop the splits rather than
+        // ship bad data. Backend will fall back to total-stats-only.
+        // Matches backend /api/ingest/workout's 5s tolerance for
+        // parity (backend brief recommended same number).
+        let splitsSumS = splits.reduce(0) { acc, s in
+            let parts = s.pace.split(separator: ":").compactMap { Int($0) }
+            guard parts.count == 2 else { return acc }
+            return acc + parts[0] * 60 + parts[1]
+        }
+        let durationS = Int(workout.duration.rounded())
+        if !splits.isEmpty && abs(splitsSumS - durationS) > 5 {
+            print("⚠️ [HK] splits don't reconcile · sum=\(splitsSumS)s vs duration=\(durationS)s (Δ\(abs(splitsSumS - durationS))s) · dropping splits")
+            splits = []
         }
 
         // 2026-05-31 · derive elevGainFt from the per-mile split deltas,
@@ -553,6 +592,51 @@ final class HealthKitImporter: ObservableObject {
             elevGainFt: elevGainFtFromSplits,
             polyline: encodePolyline(coords)
         )
+    }
+
+    /// 2026-06-03 round 71 · paused-time ranges from HKWorkoutEvent pause
+    /// + resume markers (per backend brief iphone-split-pause-fix.md).
+    /// Walks workout.workoutEvents in order, pairs each pause with its
+    /// matching resume. Edge case: a workout ending while still paused
+    /// gets its open range closed at workout.endDate.
+    nonisolated fileprivate static func pauseRanges(in workout: HKWorkout) -> [(Date, Date)] {
+        var ranges: [(Date, Date)] = []
+        var pausedAt: Date? = nil
+        let events = workout.workoutEvents ?? []
+        for ev in events {
+            switch ev.type {
+            case .pause:
+                pausedAt = ev.dateInterval.start
+            case .resume:
+                if let start = pausedAt {
+                    ranges.append((start, ev.dateInterval.start))
+                    pausedAt = nil
+                }
+            default:
+                break
+            }
+        }
+        if let start = pausedAt {
+            ranges.append((start, workout.endDate))
+        }
+        return ranges
+    }
+
+    /// 2026-06-03 round 71 · elapsed time across [start, end] MINUS any
+    /// overlap with paused intervals. The Apple Watch's workout.duration
+    /// already excludes paused time at the whole-workout level; this
+    /// applies the same exclusion to a per-mile sub-window.
+    nonisolated fileprivate static func unpaused(
+        from start: Date, to end: Date, pauses: [(Date, Date)]
+    ) -> TimeInterval {
+        var elapsed = end.timeIntervalSince(start)
+        for (pStart, pEnd) in pauses {
+            let overlapStart = max(start, pStart)
+            let overlapEnd = min(end, pEnd)
+            let overlap = overlapEnd.timeIntervalSince(overlapStart)
+            if overlap > 0 { elapsed -= overlap }
+        }
+        return max(0, elapsed)
     }
 
     /// Google polyline encoder (precision 5).

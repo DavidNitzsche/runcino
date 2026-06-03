@@ -650,11 +650,22 @@ extension HealthKitManager {
     }
 
     /// Downsampled polyline + per-mile splits from a route's locations.
+    ///
+    /// 2026-06-03 round 71 · pause-aware per-mile elapsed time, per
+    /// backend brief designs/briefs/iphone-split-pause-fix.md.
+    /// Prior bug: raw GPS timestamps included paused intervals,
+    /// inflating mile pace whenever the runner paused mid-mile.
+    /// Now reads HKWorkoutEvent pause/resume markers and subtracts
+    /// any overlap from each mile's elapsed time. Reconciliation
+    /// self-check (sum of splits vs workout.duration ± 5s) drops the
+    /// splits if the math doesn't add up · same tolerance as backend.
     nonisolated fileprivate static func buildRoutePayload(workout: HKWorkout, locations rawLocs: [CLLocation]) -> RouteUpload? {
         let locs = rawLocs
             .filter { $0.horizontalAccuracy >= 0 && $0.horizontalAccuracy <= 50 }
             .sorted { $0.timestamp < $1.timestamp }
         guard locs.count >= 2 else { return nil }
+
+        let pauses = pauseRanges(in: workout)
 
         // Per-mile splits, walk the path accumulating distance + time.
         let mileMeters = 1609.344
@@ -666,7 +677,9 @@ extension HealthKitManager {
             distSoFar += locs[i].distance(from: locs[i - 1])
             while distSoFar >= lastMileMark + mileMeters {
                 lastMileMark += mileMeters
-                let pace = Int(locs[i].timestamp.timeIntervalSince(mileStartTime).rounded())
+                let pace = Int(unpaused(
+                    from: mileStartTime, to: locs[i].timestamp, pauses: pauses
+                ).rounded())
                 if pace >= 120 && pace <= 3600 {
                     let elevFt = Int(((locs[i].altitude - mileStartElev) * 3.28084).rounded())
                     splits.append(RouteSplitUpload(mile: mileNo, paceSPerMi: pace, avgHr: nil, elevDeltaFt: elevFt))
@@ -675,6 +688,17 @@ extension HealthKitManager {
                 mileStartTime = locs[i].timestamp
                 mileStartElev = locs[i].altitude
             }
+        }
+
+        // Reconciliation self-check · sum of splits must match
+        // workout.duration ± 5s. If off, our derivation is still
+        // wrong — drop the splits rather than ship bad numbers.
+        // Backend's /api/ingest/workout uses the same 5s tolerance.
+        let splitsSumS = splits.reduce(0) { $0 + $1.paceSPerMi }
+        let durationS = Int(workout.duration.rounded())
+        if !splits.isEmpty && abs(splitsSumS - durationS) > 5 {
+            print("⚠️ [HK] splits don't reconcile · sum=\(splitsSumS)s vs duration=\(durationS)s (Δ\(abs(splitsSumS - durationS))s) · dropping splits")
+            splits = []
         }
 
         // Downsample so the payload stays small (~600 points is plenty for a map).
@@ -694,6 +718,49 @@ extension HealthKitManager {
             startLat: locs.first?.coordinate.latitude, startLng: locs.first?.coordinate.longitude,
             endLat: locs.last?.coordinate.latitude, endLng: locs.last?.coordinate.longitude,
             splits: splits)
+    }
+
+    /// 2026-06-03 round 71 · paused-time ranges from HKWorkoutEvent
+    /// pause + resume markers (per backend brief). Pairs each pause
+    /// with its matching resume. Workout-ended-while-paused edge
+    /// case closes the open range at workout.endDate.
+    nonisolated fileprivate static func pauseRanges(in workout: HKWorkout) -> [(Date, Date)] {
+        var ranges: [(Date, Date)] = []
+        var pausedAt: Date? = nil
+        let events = workout.workoutEvents ?? []
+        for ev in events {
+            switch ev.type {
+            case .pause:
+                pausedAt = ev.dateInterval.start
+            case .resume:
+                if let start = pausedAt {
+                    ranges.append((start, ev.dateInterval.start))
+                    pausedAt = nil
+                }
+            default:
+                break
+            }
+        }
+        if let start = pausedAt {
+            ranges.append((start, workout.endDate))
+        }
+        return ranges
+    }
+
+    /// 2026-06-03 round 71 · elapsed time across [start, end] MINUS any
+    /// overlap with paused intervals. Mirrors what workout.duration
+    /// already does at the whole-workout level.
+    nonisolated fileprivate static func unpaused(
+        from start: Date, to end: Date, pauses: [(Date, Date)]
+    ) -> TimeInterval {
+        var elapsed = end.timeIntervalSince(start)
+        for (pStart, pEnd) in pauses {
+            let overlapStart = max(start, pStart)
+            let overlapEnd = min(end, pEnd)
+            let overlap = overlapEnd.timeIntervalSince(overlapStart)
+            if overlap > 0 { elapsed -= overlap }
+        }
+        return max(0, elapsed)
     }
 
     /// Google polyline encoder (precision 5).
