@@ -28,7 +28,14 @@ export interface HealthState {
   hrv:   { current: number | null; baseline: number | null; pctAboveBaseline: number | null };
   weight:{ current: number | null; delta30: number | null };
   cadence:{ baseline: number | null };
-  vo2:    { current: number | null };
+  /** 2026-06-03 · series28d added for iPhone Direction A bottom-sheet
+   *  detail chart. VO2 max is a sparse signal · sample_type='vo2_max'
+   *  fires on workouts long/hard enough for Apple's algorithm to update
+   *  (~1-3× per week for trained runners). Series is interpolated daily
+   *  via last-value-carry-forward so the chart line is continuous · null
+   *  entries only at the start when the runner has no historical reading.
+   *  Length is always 28, oldest → newest. */
+  vo2:    { current: number | null; series28d: (number | null)[] };
   // 2026-06-01 · Quick Win summaries
   wristTemp:       { current: number | null; baseline: number | null; deltaC: number | null };
   respiratoryRate: { current: number | null; baseline: number | null; delta: number | null };
@@ -58,13 +65,18 @@ export interface HealthState {
   };
   // 2026-06-01 · sleep stages (iPhone b58abfc3 ships per-night minutes).
   // Each is a 7-night avg. Null when no data yet (pre-build, no watch).
+  // 2026-06-03 · series fields extended 14→28 nights for iPhone Direction
+  // A bottom-sheet detail charts. light + awake series added (were sparse
+  // in the original shape · iPhone wants all 4 stages on the chart spec).
   sleepStages: {
     deepMin: number | null;
     remMin: number | null;
     lightMin: number | null;
     awakeMin: number | null;
-    deepSeries: { date: string; min: number }[];
-    remSeries:  { date: string; min: number }[];
+    deepSeries:  { date: string; min: number }[];
+    remSeries:   { date: string; min: number }[];
+    lightSeries: { date: string; min: number }[];
+    awakeSeries: { date: string; min: number }[];
     /** 2026-06-01 · sleep architecture regularity. Standard deviation
      *  of (REM minutes / total sleep minutes) across the last 7 nights.
      *  Saw et al. doctrine: stable architecture = recovered. Higher
@@ -97,13 +109,18 @@ export interface HealthState {
    *  lrBalance is NULL · HK ships running.balance type but our ingest
    *  doesn't surface it yet. When iPhone agent adds it on the ingest
    *  payload, it'll auto-populate here. */
+  /** 2026-06-03 · series28d = 28-element array, OLDEST → NEWEST, one entry
+   *  per day. Form metrics only exist on run-days · rest-day entries are
+   *  null (sparse array policy per iPhone brief). iPhone bottom-sheet
+   *  hero chart reads series28d directly; falls back to its synthetic
+   *  fabrication when null or length < 14. */
   runForm: {
-    cadenceSpm:        { current: number | null; avg14d: number | null; avg28d: number | null };
-    runPowerW:         { current: number | null; avg14d: number | null; avg28d: number | null };
-    strideLengthM:     { current: number | null; avg14d: number | null; avg28d: number | null };
-    vertOscCm:         { current: number | null; avg14d: number | null; avg28d: number | null };
-    groundContactMs:   { current: number | null; avg14d: number | null; avg28d: number | null };
-    lrBalancePct:      { current: number | null; avg14d: number | null; avg28d: number | null };
+    cadenceSpm:        { current: number | null; avg14d: number | null; avg28d: number | null; series28d: (number | null)[] };
+    runPowerW:         { current: number | null; avg14d: number | null; avg28d: number | null; series28d: (number | null)[] };
+    strideLengthM:     { current: number | null; avg14d: number | null; avg28d: number | null; series28d: (number | null)[] };
+    vertOscCm:         { current: number | null; avg14d: number | null; avg28d: number | null; series28d: (number | null)[] };
+    groundContactMs:   { current: number | null; avg14d: number | null; avg28d: number | null; series28d: (number | null)[] };
+    lrBalancePct:      { current: number | null; avg14d: number | null; avg28d: number | null; series28d: (number | null)[] };
   };
 
   /** 2026-06-03 · iPhone Direction A · DAILY READINESS series · 7-day.
@@ -319,38 +336,40 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
       `SELECT sample_date::date AS d, recorded_at
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours'
-          AND sample_date >= ($2::date - interval '14 days')
+          AND sample_date >= ($2::date - interval '28 days')
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
     // 2026-06-01 · sleep stages from iPhone b58abfc3. Per-stage minute
-    // counts per night. 14-night window gives a 7-night avg + a chart
-    // strip for deep/REM trends (the two stages the runner cares about).
+    // counts per night. 2026-06-03 · extended 14→28 nights for iPhone
+    // Direction A · bottom-sheet detail charts read the same series and
+    // the 14-night window cut off the trend tail. 28 lines up with the
+    // runForm series28d.
     pool.query(
       `SELECT sample_date::date AS d, value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_deep_minutes'
-          AND sample_date >= ($2::date - interval '14 days')
+          AND sample_date >= ($2::date - interval '28 days')
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
     pool.query(
       `SELECT sample_date::date AS d, value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_rem_minutes'
-          AND sample_date >= ($2::date - interval '14 days')
+          AND sample_date >= ($2::date - interval '28 days')
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
     pool.query(
       `SELECT sample_date::date AS d, value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_light_minutes'
-          AND sample_date >= ($2::date - interval '14 days')
+          AND sample_date >= ($2::date - interval '28 days')
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
     pool.query(
       `SELECT sample_date::date AS d, value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_awake_minutes'
-          AND sample_date >= ($2::date - interval '14 days')
+          AND sample_date >= ($2::date - interval '28 days')
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
@@ -592,8 +611,10 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     remMin:   remAvg,
     lightMin: lightAvg,
     awakeMin: stageAvg(sleepAwakeRows as any[]),
-    deepSeries: stageSeries(sleepDeepRows as any[]),
-    remSeries:  stageSeries(sleepRemRows  as any[]),
+    deepSeries:  stageSeries(sleepDeepRows  as any[]),
+    remSeries:   stageSeries(sleepRemRows   as any[]),
+    lightSeries: stageSeries(sleepLightRows as any[]),
+    awakeSeries: stageSeries(sleepAwakeRows as any[]),
     remRatioStdev,
     architectureVerdict,
     architectureFraming,
@@ -700,7 +721,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     hrv: { current: hrvCurrent, baseline: hrvBaseline, pctAboveBaseline: hrvPct },
     weight: { current: weightCurrent, delta30: weightDelta30 },
     cadence: { baseline: cadenceBaseline },
-    vo2: { current: vo2Current },
+    vo2: { current: vo2Current, series28d: buildVo2Series28d(vo2Series, today) },
     wristTemp:       { current: wristTempCurrent, baseline: wristTempBaseline, deltaC: wristTempDeltaC },
     respiratoryRate: { current: rrCurrent, baseline: rrBaseline, delta: rrDelta },
     spo2:            { current: spo2Current, baseline: spo2Baseline },
@@ -782,46 +803,89 @@ async function loadRunForm(userId: string, today: string): Promise<HealthState['
     { key: 'avgGctMs',          bounds: { lo: 150, hi: 400 }, out: 'groundContactMs' },
   ];
 
+  // Empty 28-element series · iPhone uses length-≥14 as the
+  // "use real data" trigger so we ship the placeholder when there's no
+  // signal at all. Rest-day entries stay null (sparse policy).
+  const emptySeries28 = (): (number | null)[] => new Array(28).fill(null);
   const out: HealthState['runForm'] = {
-    cadenceSpm:      { current: null, avg14d: null, avg28d: null },
-    runPowerW:       { current: null, avg14d: null, avg28d: null },
-    strideLengthM:   { current: null, avg14d: null, avg28d: null },
-    vertOscCm:       { current: null, avg14d: null, avg28d: null },
-    groundContactMs: { current: null, avg14d: null, avg28d: null },
-    lrBalancePct:    { current: null, avg14d: null, avg28d: null },
+    cadenceSpm:      { current: null, avg14d: null, avg28d: null, series28d: emptySeries28() },
+    runPowerW:       { current: null, avg14d: null, avg28d: null, series28d: emptySeries28() },
+    strideLengthM:   { current: null, avg14d: null, avg28d: null, series28d: emptySeries28() },
+    vertOscCm:       { current: null, avg14d: null, avg28d: null, series28d: emptySeries28() },
+    groundContactMs: { current: null, avg14d: null, avg28d: null, series28d: emptySeries28() },
+    lrBalancePct:    { current: null, avg14d: null, avg28d: null, series28d: emptySeries28() },
   };
 
   await Promise.all(metrics.map(async (m) => {
     try {
-      const r = await pool.query<{
-        current_v: string | null;
-        avg14: string | null;
-        avg28: string | null;
-      }>(
-        `WITH recent AS (
-           SELECT (data->>'${m.key}')::numeric AS v,
-                  COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date AS d
-             FROM runs
-            WHERE user_uuid = $1::uuid
-              AND NOT (data ? 'mergedIntoId')
-              AND data->>'${m.key}' IS NOT NULL
-              AND (data->>'${m.key}')::numeric BETWEEN ${m.bounds.lo} AND ${m.bounds.hi}
-              AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= ($2::date - interval '28 days')
-              AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date <= $2::date
-         )
-         SELECT
-           (SELECT v::text FROM recent ORDER BY d DESC LIMIT 1)               AS current_v,
-           (SELECT AVG(v)::text FROM recent WHERE d >= ($2::date - interval '14 days')) AS avg14,
-           (SELECT AVG(v)::text FROM recent)                                   AS avg28`,
-        [userId, today],
+      // 2026-06-03 · iPhone Direction A · split the load into two queries
+      // so the per-day series can stream alongside the aggregate scalars.
+      // Could collapse to a single query via a CTE but the readability
+      // win + tiny extra round-trip aren't a concern at this scale.
+      const [aggR, seriesR] = await Promise.all([
+        pool.query<{
+          current_v: string | null;
+          avg14: string | null;
+          avg28: string | null;
+        }>(
+          `WITH recent AS (
+             SELECT (data->>'${m.key}')::numeric AS v,
+                    COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date AS d
+               FROM runs
+              WHERE user_uuid = $1::uuid
+                AND NOT (data ? 'mergedIntoId')
+                AND data->>'${m.key}' IS NOT NULL
+                AND (data->>'${m.key}')::numeric BETWEEN ${m.bounds.lo} AND ${m.bounds.hi}
+                AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= ($2::date - interval '28 days')
+                AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date <= $2::date
+           )
+           SELECT
+             (SELECT v::text FROM recent ORDER BY d DESC LIMIT 1)               AS current_v,
+             (SELECT AVG(v)::text FROM recent WHERE d >= ($2::date - interval '14 days')) AS avg14,
+             (SELECT AVG(v)::text FROM recent)                                   AS avg28`,
+          [userId, today],
+        ),
+        // Daily series · LEFT JOIN against a 28-day date spine so rest
+        // days surface as NULL. When multiple runs land on one day
+        // (unusual but possible) we take the day's average · matches
+        // how the chart-tap detail screen would frame "your day's value."
+        pool.query<{ d: string; v: string | null }>(
+          `WITH spine AS (
+             SELECT (($2::date - interval '27 days') + (n || ' days')::interval)::date AS d
+               FROM generate_series(0, 27) AS n
+           )
+           SELECT spine.d::text AS d, AVG((r.data->>'${m.key}')::numeric)::text AS v
+             FROM spine
+        LEFT JOIN runs r
+                  ON r.user_uuid = $1::uuid
+                 AND NOT (r.data ? 'mergedIntoId')
+                 AND r.data->>'${m.key}' IS NOT NULL
+                 AND (r.data->>'${m.key}')::numeric BETWEEN ${m.bounds.lo} AND ${m.bounds.hi}
+                 AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = spine.d
+            GROUP BY spine.d
+            ORDER BY spine.d ASC`,
+          [userId, today],
+        ),
+      ]);
+      const row = aggR.rows[0];
+      const series28d: (number | null)[] = seriesR.rows.map((r) =>
+        r.v != null ? +Number(r.v).toFixed(2) : null
       );
-      const row = r.rows[0];
+      // Defensive · spine query SHOULD return 28 rows but pad/trim if not.
+      while (series28d.length < 28) series28d.unshift(null);
+      if (series28d.length > 28) series28d.splice(0, series28d.length - 28);
+
       if (row) {
         out[m.out] = {
           current: row.current_v != null ? +Number(row.current_v).toFixed(2) : null,
           avg14d: row.avg14 != null ? +Number(row.avg14).toFixed(2) : null,
           avg28d: row.avg28 != null ? +Number(row.avg28).toFixed(2) : null,
+          series28d,
         };
+      } else {
+        // Aggregate query returned nothing but series may still have
+        // entries · expose what we have.
+        out[m.out] = { current: null, avg14d: null, avg28d: null, series28d };
       }
     } catch (e) {
       console.warn(`[health/runForm] ${m.key} query failed:`, e instanceof Error ? e.message : String(e));
@@ -1135,4 +1199,58 @@ function sleepBelowBaselineDaysCount(
 ): number {
   if (!baseline || baseline <= 0) return 0;
   return series.filter((s) => s.hours > 0 && s.hours < baseline).length;
+}
+
+/**
+ * 2026-06-03 · iPhone Direction A · build a continuous 28-day VO2 series
+ * from the sparse vo2_max sample stream. Apple's algorithm only emits
+ * a new reading on workouts that satisfy the calibration criteria · for
+ * trained runners that's 1-3 readings per week, with long gaps possible
+ * during taper or recovery weeks.
+ *
+ * Policy: last-value-carry-forward (LVCF) interpolation. Each day in the
+ * 28-day window inherits the most-recent reading on or before that day.
+ * Returns null only for days BEFORE the first reading · the chart
+ * gracefully ignores leading nulls. Length is always 28, oldest → newest.
+ *
+ * Why LVCF over sparse-null: VO2 is a stock signal (your aerobic
+ * ceiling persists between readings · it's not a per-day metric like
+ * sleep or HRV). A null gap on rest days would mislead the runner into
+ * thinking "my VO2 dropped." LVCF holds the line until a fresh reading
+ * moves it.
+ */
+function buildVo2Series28d(
+  vo2Series: { date: string; v: number }[],
+  today: string,
+): (number | null)[] {
+  const out: (number | null)[] = new Array(28).fill(null);
+  if (!vo2Series.length) return out;
+  // Build a date → value index for fast lookup.
+  const byDate = new Map<string, number>();
+  for (const r of vo2Series) byDate.set(r.date, r.v);
+  // Sort readings ASC so we can do LVCF in one pass.
+  const sorted = [...vo2Series].sort((a, b) => a.date.localeCompare(b.date));
+
+  const toIso = (d: Date): string => d.toISOString().slice(0, 10);
+  // 27 days back through today, inclusive.
+  const todayDate = new Date(`${today}T12:00:00Z`);
+  const start = new Date(todayDate);
+  start.setUTCDate(start.getUTCDate() - 27);
+
+  let lastVal: number | null = null;
+  // Seed lastVal with the most-recent reading STRICTLY BEFORE the window
+  // (so a runner who tested last month doesn't get nulls at the front).
+  for (const r of sorted) {
+    if (r.date < toIso(start)) lastVal = r.v;
+    else break;
+  }
+
+  for (let i = 0; i < 28; i++) {
+    const d = new Date(start);
+    d.setUTCDate(d.getUTCDate() + i);
+    const iso = toIso(d);
+    if (byDate.has(iso)) lastVal = byDate.get(iso)!;
+    out[i] = lastVal != null ? +lastVal.toFixed(1) : null;
+  }
+  return out;
 }
