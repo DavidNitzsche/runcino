@@ -1845,8 +1845,20 @@ export async function buildSeed(): Promise<FaffSeed> {
   // annotation · the week strip shows zero "+ STRENGTH" chips, which
   // is the correct silent state.
   const strengthDays = new Set(glance?.recommendedStrengthDays ?? []);
+  // 2026-06-03 · per-day strengthDone flag · reads from strengthWeekStatus
+  // confirmed[] (sessions logged on a recommended day) + bonus[] (sessions
+  // logged on a non-recommended day · still done). HK pushes from Apple
+  // Health land here via POST /api/strength → strength_sessions → reconcile.
+  const confirmedDates = new Set<string>(
+    (glance?.strengthWeekStatus?.confirmed ?? []).map((c) => c.date)
+  );
+  const bonusDates = new Set<string>(
+    (glance?.strengthWeekStatus?.bonus ?? []).map((b) => b.date)
+  );
   for (let i = 0; i < week.length; i++) {
-    week[i].strengthSuggested = !!week[i].iso && strengthDays.has(week[i].iso!);
+    const iso = week[i].iso;
+    week[i].strengthSuggested = !!iso && strengthDays.has(iso!);
+    week[i].strengthDone = !!iso && (confirmedDates.has(iso!) || bonusDates.has(iso!));
   }
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);

@@ -301,6 +301,10 @@ export function TodayView({
           // skipped days. Tomorrow's chip auto-recomputes when today
           // passes (date moves out of the week).
           const showStrength = !!day.strengthSuggested && !skipped;
+          // 2026-06-03 · per-day done state from strength_sessions
+          // reconcile · flips chip when HK push or manual log lands.
+          // Source: glance.strengthWeekStatus.{confirmed,bonus}.
+          const strengthDone = !!day.strengthDone;
           const showDone = !!day.done && !skipped;
           return (
             <button
@@ -317,11 +321,23 @@ export function TodayView({
                 </span>
                 <span className="wc-ic">
                   {showStrength ? (
-                    <span className="gly str" title="Strength add-on" aria-label="Strength add-on">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/>
-                      </svg>
-                    </span>
+                    strengthDone ? (
+                      <span className="gly str strdone" title="Strength logged" aria-label="Strength logged">
+                        {/* 2026-06-03 · done state when HK / manual session
+                            matched this date. Dumbbell + check overlay. */}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/>
+                          <circle cx="18" cy="18" r="5" fill="#34C194" stroke="none"/>
+                          <path d="M16 18l1.5 1.5L20 17" stroke="#fff" strokeWidth="2.2"/>
+                        </svg>
+                      </span>
+                    ) : (
+                      <span className="gly str" title="Strength add-on" aria-label="Strength add-on">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/>
+                        </svg>
+                      </span>
+                    )
                   ) : null}
                   {showDone ? (
                     <span className="gly done" title="Done" aria-label="Done">

@@ -96,6 +96,12 @@ export type PlannedDay = {
    *  long-run quality). Surfaces as a "STRENGTH" annotation on the
    *  week strip + a coach hint on TodayView when today matches. */
   strengthSuggested?: boolean;
+  /** 2026-06-03 · true when a strength_sessions row exists for this
+   *  date (manual log OR Apple Health import via POST /api/strength
+   *  source='apple_health'). Read from glance.strengthWeekStatus
+   *  confirmed + bonus arrays. Flips the chip to a done-state so
+   *  runners see their lift was registered. */
+  strengthDone?: boolean;
   /** 2026-06-01 · plan-adapter provenance per day (backend commit
    *  a54c7069). Populated from glance.weekDays[].adaptation. Null on
    *  off-plan days or before backfill landed. When wasAdapted is true
