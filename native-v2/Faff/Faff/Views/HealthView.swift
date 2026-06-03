@@ -35,6 +35,9 @@ struct HealthView: View {
     @State private var loadState: LoadState =
         AppCache.read(.healthState, as: HealthState.self) == nil ? .idle : .loaded
     @State private var showLogSheet: Bool = false
+    /// 2026-06-03 round 78 · tapped bar-card opens this metric in a
+    /// bottom sheet (HealthMetricSheet). nil = no sheet open.
+    @State private var selectedMetric: HealthMetric? = nil
 
     var body: some View {
         ZStack {
@@ -72,6 +75,12 @@ struct HealthView: View {
         .refreshable { await reload() }
         .sheet(isPresented: $showLogSheet) {
             HealthLogSheet(onDismiss: { showLogSheet = false })
+        }
+        // 2026-06-03 round 78 · metric detail sheet (item: presentation)
+        // opens whenever selectedMetric is set by a card tap. Setting
+        // back to nil dismisses.
+        .sheet(item: $selectedMetric) { metric in
+            HealthMetricSheet(metric: metric) { selectedMetric = nil }
         }
     }
 
@@ -477,13 +486,19 @@ struct HealthView: View {
     // MARK: - Helpers
 
     /// 2-column grid of bar-cards · used by BODY · SLEEP · FORM panes.
+    /// 2026-06-03 round 78 · tap on a card now opens the metric in a
+    /// bottom sheet via selectedMetric, instead of expanding in place.
+    /// Avoids the L-shape layout where one card grew tall while its
+    /// row neighbor stayed small.
     private func metricsGrid(_ metrics: [HealthMetric],
                              variant: HealthBarCardVariant) -> some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
                             GridItem(.flexible(), spacing: 10)],
                   spacing: 10) {
             ForEach(metrics) { m in
-                HealthBarCard(metric: m, variant: variant)
+                HealthBarCard(metric: m, variant: variant) {
+                    selectedMetric = m
+                }
             }
         }
     }

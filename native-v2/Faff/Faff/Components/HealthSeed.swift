@@ -35,12 +35,20 @@ enum HealthSeed {
         let bodyTempBaseline = healthState?.bodyTemp?.baselineC ?? 36.5
         let bodyTempSeries30 = healthState?.bodyTemp?.series30d ?? []
 
+        // 2026-06-03 round 79 · chart consistency · the line chart in
+        // the expanded sheet now derives from the same history array
+        // as the collapsed bar chart, padded at the FRONT with drift
+        // when the real history is < 28 days. Trends in both views
+        // are now identical (no more "bar going up, chart going down").
+        let hrvHistory = drift(from: Double(hrvBase) - 2, to: Double(hrvCur), n: 14, seed: 42)
+        let rhrHistory = drift(from: Double(rhrBase) + 1, to: Double(rhrCur), n: 14, seed: 7)
+        let vo2History = drift(from: vo2 - 1.0, to: vo2, n: 14, seed: 33)
         return [
             metric(
                 id: "hrv", label: "HRV",
                 value: "\(hrvCur)", unit: " ms",
-                history: drift(from: Double(hrvBase) - 2, to: Double(hrvCur), n: 14, seed: 42),
-                chart28: drift(from: Double(hrvBase) + 1, to: Double(hrvCur), n: 28, seed: 142),
+                history: hrvHistory,
+                chart28: chartFromHistory(history: hrvHistory, priorAvg: Double(hrvBase) + 1, seed: 142),
                 target: Double(hrvBase),
                 status: hrvCur < hrvBase - 4 ? .warn : (hrvCur < hrvBase - 8 ? .bad : .good),
                 direction: hrvCur < hrvBase ? .down : .up,
@@ -50,8 +58,8 @@ enum HealthSeed {
             metric(
                 id: "rhr", label: "RESTING HR",
                 value: "\(rhrCur)", unit: " bpm",
-                history: drift(from: Double(rhrBase) + 1, to: Double(rhrCur), n: 14, seed: 7),
-                chart28: drift(from: Double(rhrBase) + 2, to: Double(rhrCur), n: 28, seed: 107),
+                history: rhrHistory,
+                chart28: chartFromHistory(history: rhrHistory, priorAvg: Double(rhrBase) + 2, seed: 107),
                 target: Double(rhrBase),
                 status: rhrCur <= rhrBase ? .good : .warn,
                 direction: rhrCur < rhrBase ? .down : .flat,
@@ -61,8 +69,8 @@ enum HealthSeed {
             metric(
                 id: "vo2", label: "VO₂ MAX",
                 value: String(format: "%.1f", vo2), unit: nil,
-                history: drift(from: vo2 - 1.0, to: vo2, n: 14, seed: 33),
-                chart28: drift(from: vo2 - 1.4, to: vo2, n: 28, seed: 133),
+                history: vo2History,
+                chart28: chartFromHistory(history: vo2History, priorAvg: vo2 - 1.4, seed: 133),
                 target: nil,
                 status: .good, direction: .up,
                 caption: "30-day",
@@ -72,7 +80,9 @@ enum HealthSeed {
                 id: "resp", label: "RESP RATE",
                 value: "15.1", unit: " /min",
                 history: drift(from: 15.0, to: 15.1, n: 14, seed: 61),
-                chart28: drift(from: 15.2, to: 15.1, n: 28, seed: 161),
+                chart28: chartFromHistory(
+                    history: drift(from: 15.0, to: 15.1, n: 14, seed: 61),
+                    priorAvg: 15.2, seed: 161),
                 target: nil,
                 status: .neutral, direction: .flat,
                 caption: "nightly",
@@ -82,11 +92,16 @@ enum HealthSeed {
                 id: "btemp", label: "BODY TEMP",
                 value: bodyTempC.map { String(format: "%.1f", $0) } ?? "—",
                 unit: " °C",
-                history: bodyTempSeries30.suffix(14).map { $0 }.isEmpty
-                    ? drift(from: 36.5, to: 36.6, n: 14, seed: 71)
-                    : Array(bodyTempSeries30.suffix(14)),
+                history: {
+                    if bodyTempSeries30.isEmpty {
+                        return drift(from: 36.5, to: 36.6, n: 14, seed: 71)
+                    }
+                    return Array(bodyTempSeries30.suffix(14))
+                }(),
                 chart28: bodyTempSeries30.isEmpty
-                    ? drift(from: 36.5, to: 36.6, n: 28, seed: 171)
+                    ? chartFromHistory(
+                        history: drift(from: 36.5, to: 36.6, n: 14, seed: 71),
+                        priorAvg: 36.5, seed: 171)
                     : bodyTempSeries30,
                 target: nil,
                 status: .neutral, direction: .flat,
@@ -97,7 +112,9 @@ enum HealthSeed {
                 id: "wtemp", label: "WRIST TEMP",
                 value: "35.78", unit: " °C",
                 history: drift(from: 35.74, to: 35.78, n: 14, seed: 51),
-                chart28: drift(from: 35.74, to: 35.78, n: 28, seed: 151),
+                chart28: chartFromHistory(
+                    history: drift(from: 35.74, to: 35.78, n: 14, seed: 51),
+                    priorAvg: 35.74, seed: 151),
                 target: nil,
                 status: .neutral, direction: .flat,
                 caption: "30-day",
@@ -151,9 +168,7 @@ enum HealthSeed {
                 id: "deep", label: "DEEP",
                 value: clock(deep), unit: nil,
                 history: deepSeries,
-                chart28: deepSeries.count < 28
-                    ? drift(from: 80, to: Double(deep), n: 28, seed: 201)
-                    : deepSeries,
+                chart28: chartFromHistory(history: deepSeries, priorAvg: 80, seed: 201),
                 target: 75,
                 status: deep < 70 ? .warn : .good,
                 direction: deep < 75 ? .down : .flat,
@@ -164,9 +179,7 @@ enum HealthSeed {
                 id: "rem", label: "REM",
                 value: clock(rem), unit: nil,
                 history: remSeries,
-                chart28: remSeries.count < 28
-                    ? drift(from: 98, to: Double(rem), n: 28, seed: 211)
-                    : remSeries,
+                chart28: chartFromHistory(history: remSeries, priorAvg: 98, seed: 211),
                 target: 100,
                 status: rem < 90 ? .warn : .good,
                 direction: rem < 100 ? .down : .flat,
@@ -177,9 +190,7 @@ enum HealthSeed {
                 id: "light", label: "LIGHT",
                 value: clock(light), unit: nil,
                 history: lightSeries,
-                chart28: lightSeries.count < 28
-                    ? drift(from: 205, to: Double(light), n: 28, seed: 221)
-                    : lightSeries,
+                chart28: chartFromHistory(history: lightSeries, priorAvg: 205, seed: 221),
                 target: nil,
                 status: .neutral, direction: .flat,
                 caption: "context",
@@ -189,9 +200,7 @@ enum HealthSeed {
                 id: "awake", label: "AWAKE",
                 value: clock(awake), unit: nil,
                 history: awakeSeries,
-                chart28: awakeSeries.count < 28
-                    ? drift(from: 16, to: Double(awake), n: 28, seed: 231)
-                    : awakeSeries,
+                chart28: chartFromHistory(history: awakeSeries, priorAvg: 16, seed: 231),
                 target: nil,
                 status: .neutral, direction: .flat,
                 caption: "context",
@@ -303,8 +312,13 @@ enum HealthSeed {
         // History bars from the small drift between avg14 and current ·
         // backend doesn't ship a per-day series for form yet so we
         // synthesize a plausible 14-bar drift between 28d-avg and current.
+        // 2026-06-03 round 79 · chart28 derives from history so the
+        // sheet's line chart trends to the same end-point as the
+        // collapsed card's bar chart (was using a separate drift with
+        // a different seed which made them tell different stories).
         let history = drift(from: avg28, to: cur, n: 14, seed: id.hashValue & 0xFFFF)
-        let chart28 = drift(from: avg28 * 0.97, to: cur, n: 28, seed: (id + "28").hashValue & 0xFFFF)
+        let chart28 = chartFromHistory(history: history, priorAvg: avg28 * 0.97,
+                                        seed: (id + "28").hashValue & 0xFFFF)
         return HealthMetric(
             id: id, label: label, value: valueStr, unit: unit,
             history: history, chart28: chart28,
@@ -327,6 +341,26 @@ enum HealthSeed {
             target: target, status: status, direction: direction,
             caption: caption, coach: coach
         )
+    }
+
+    /// 2026-06-03 round 79 · chart consistency · build a 28-day series
+    /// that ENDS with the real history so the expanded sheet's line
+    /// chart trends to the same current value as the collapsed bar
+    /// chart. When the real history is < 28 days, pads the FRONT with
+    /// a stable drift from `priorAvg` toward the oldest real value.
+    /// When ≥ 28, just returns the last 28 of history.
+    private static func chartFromHistory(
+        history: [Double], priorAvg: Double, seed: Int
+    ) -> [Double] {
+        if history.count >= 28 { return Array(history.suffix(28)) }
+        let needed = 28 - history.count
+        guard let firstReal = history.first else {
+            // No history at all · synthesize 28 from priorAvg → priorAvg
+            return drift(from: priorAvg, to: priorAvg, n: 28, seed: seed)
+        }
+        // Pad front · drift from priorAvg → firstReal, then concat real.
+        let pad = drift(from: priorAvg, to: firstReal, n: needed, seed: seed)
+        return pad + history
     }
 
     /// Stable pseudo-random drift from `start` → `end` over `n` samples

@@ -71,8 +71,14 @@ enum HealthBarCardVariant { case standard, big }
 struct HealthBarCard: View {
     let metric: HealthMetric
     var variant: HealthBarCardVariant = .standard
-
-    @State private var expanded: Bool = false
+    /// 2026-06-03 round 78 · David: "open horizontal instead of
+    /// vertical... or better yet, a panel that slides up from the
+    /// bottom · more room, better way to present info." Tap now
+    /// fires this callback · parent (HealthView) opens a bottom
+    /// sheet with the expanded detail. Card stays collapsed in
+    /// the grid · no more L-shape layout when one card expands
+    /// while its row neighbor stays small.
+    var onTap: () -> Void = {}
 
     private var valueFont: Font {
         variant == .big ? .display(38, weight: .bold) : .display(32, weight: .bold)
@@ -85,10 +91,6 @@ struct HealthBarCard: View {
             valueRow
             miniBars
             captionRow
-            if expanded {
-                expandedDetail
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 14)
@@ -98,15 +100,11 @@ struct HealthBarCard: View {
                 .fill(Color(red: 0.016, green: 0.071, blue: 0.063).opacity(0.40))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(expanded ? 0.16 : 0.09), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.09), lineWidth: 1)
                 )
         )
         .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.easeOut(duration: 0.22)) {
-                expanded.toggle()
-            }
-        }
+        .onTapGesture { onTap() }
     }
 
     // MARK: - Header (label + trend)
