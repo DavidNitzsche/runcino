@@ -26,6 +26,12 @@ import { buildAdaptText } from '../adapt-text';
 // hardcoded marathon strings in PHASE constants. A half-marathon plan
 // no longer reads "sub-3 gets built" or "Hold 6:51/mi at CIM."
 import { phaseFocus } from '@/lib/faff/phase-focus';
+// 2026-06-03 · canonical one-word workout title (TEMPO / INTERVALS /
+// LONG / etc) per David: "We dont show names like this, they should
+// be TEMPO, INTERVAL, etc." Three Train surfaces were rendering the
+// sub_label structure detail ("4×1 mi @ I · 3 min jog") instead of
+// the type title. Single source of truth at lib/coach/workout-title.ts.
+import { workoutTypeTitle } from '@/lib/coach/workout-title';
 
 interface PhaseMeta {
   k: PhaseKey;
@@ -275,10 +281,13 @@ export function TrainView({
       // legacy fixture rows · formatDate() returns "·" on empty.
       const wkLabel = formatDate(pick.date ?? '').toUpperCase();
       const dot = PHASE_TYPE_COLOR[pick.type] ?? '#8A90A0';
-      const ttype = pick.type === 'intervals' ? 'Intervals'
-        : pick.type === 'tempo' ? 'Tempo'
-        : pick.type === 'long' ? 'Long run' : pick.name;
-      const title = pick.name || ttype;
+      // 2026-06-03 · canonical title per David. Was: prefer pick.name
+      // (the sub_label like "4×1 mi @ I · 3 min jog") with the type
+      // string as fallback. Result: KEY WORKOUTS list rendered the
+      // workout-structure detail instead of the type. Now: workoutTypeTitle
+      // wins. The structure detail still lives in plan_workouts.sub_label
+      // for surfaces that need it (e.g. the Today card body).
+      const title = workoutTypeTitle(pick.type);
       const sub = `${pick.mi.toFixed(1)} mi${pick.paceSec ? ` @ ${Math.floor(pick.paceSec / 60)}:${String(Math.round(pick.paceSec % 60)).padStart(2, '0')}` : ''}`;
       const state: Mile['state'] = isPast ? 'DONE' : isNow ? 'NOW' : isMid && i >= raceIdx - 3 ? 'KEY' : '';
       // Training trajectory: prefer backend-authored trainingInfluence
@@ -534,7 +543,11 @@ export function TrainView({
                   >
                     <span className="tdw">{d.dw}</span>
                     <span className="tdot" style={{ background: col }} />
-                    <span className="tnm">{d.name}</span>
+                    {/* 2026-06-03 · canonical title per David · was d.name
+                        (sub_label) which rendered as "4×1 mi @ I · 3 min
+                        jog". Now uses workoutTypeTitle for the one-word
+                        type label. */}
+                    <span className="tnm">{workoutTypeTitle(d.type)}</span>
                     <span className="tmeta">{meta}</span>
                     {d.skipped ? null : d.done ? (
                       <span style={{ marginLeft: 10, display: 'flex', alignItems: 'center' }}>
@@ -907,7 +920,10 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
             body = (
               <div className="cwk">
                 <span className="ctag" style={tint(c)}>
-                  {w.name}
+                  {/* 2026-06-03 · canonical title per David · was w.name
+                      (sub_label) which rendered as "4×1 MI @ I · 3 MIN
+                      JOG" in the calendar cells. */}
+                  {workoutTypeTitle(w.type)}
                   {adapted ? (
                     <span
                       style={{
