@@ -301,7 +301,20 @@ struct TodayView: View {
                     // owns its own ScrollView since there's no DragSheet
                     // to provide one. Post-run body for completed days,
                     // simple stub for missed/rest days.
-                    ScrollView(showsIndicators: false) {
+                    //
+                    // 2026-06-02 round 65 · David caught the page
+                    // sliding left/right when scrolling. Root cause:
+                    // some sub-rows (signature "+0 vs threshold")
+                    // overflow viewport width, and a vertical
+                    // ScrollView surfaces overflow horizontally if
+                    // content's intrinsic width > viewport. Belt-and-
+                    // suspenders fix: (a) explicit .vertical axes
+                    // (default but stated), (b) maxWidth clamp on the
+                    // inner VStack so child content can't push wider
+                    // than the screen, (c) per-row lineLimit +
+                    // minimumScaleFactor in HowItWentSignature so the
+                    // value cluster shrinks instead of overflowing.
+                    ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 0) {
                             if isDone {
                                 postRunBody
@@ -309,6 +322,7 @@ struct TodayView: View {
                                 pastDayNoRunStub
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         // Clear of the floating tab bar pill.
                         .padding(.bottom, 120)
                     }

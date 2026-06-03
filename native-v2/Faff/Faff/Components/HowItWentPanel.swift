@@ -84,28 +84,40 @@ struct HowItWentSignature: View {
             Text(label)
                 .font(.body(11, weight: .extraBold)).tracking(0.6)
                 .foregroundStyle(mutedText)
-            Spacer(minLength: 0)
+                .lineLimit(1)
+            Spacer(minLength: 8)
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(value)
                     .font(.display(18, weight: .bold))
                     .foregroundStyle(primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 if let unit = valueUnit, !unit.isEmpty {
                     Text(unit)
                         .font(.body(10, weight: .semibold))
                         .foregroundStyle(mutedText)
+                        .lineLimit(1)
                 }
                 if let d = delta, !d.isEmpty {
                     Text(d)
                         .font(.body(10.5, weight: .extraBold))
                         .foregroundStyle(deltaTone.color)
                         .padding(.leading, 3)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
             }
+            .layoutPriority(1)
         }
-        // 2026-06-02 round 56 · 14pt → 0. Padding added 14pt on top of
-        // the parent VStack's 18pt spacing · gap from last panel row
-        // (COOL-DOWN / final third / last rep) to the signature was
-        // 32pt and read too loose. Now just the 18pt natural rhythm.
+        // 2026-06-02 round 65 · added lineLimit(1) + minimumScaleFactor
+        // to value + delta and put a positive layoutPriority on the
+        // right-side stack. The delta string "+0 vs threshold" (or worse,
+        // "+12 vs threshold" with longer label) was sizing the row wider
+        // than the viewport. A vertical ScrollView surfaces that
+        // overflow as a HORIZONTAL pan · whole page slid left/right.
+        // Now the right cluster wins the priority battle and shrinks
+        // (vs the label getting truncated), keeping the row at viewport
+        // width and killing the rogue horizontal scroll.
     }
 }
 
