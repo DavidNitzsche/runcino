@@ -79,6 +79,16 @@ struct TodayPostRunBody: View {
             // now · everything the runner needs lives here. The
             // viewFullRunLink view itself is kept dead-coded in case
             // a future deep-link route brings it back.
+            //
+            // 2026-06-02 round 53 · white tail-filler. Each section above
+            // has its own white background; below the last card the
+            // sheet's cream bg would show through as a band before the
+            // floating tab bar. Filler extends white all the way down
+            // so the body reads as a single continuous white surface
+            // behind the tab bar pill.
+            Color.white
+                .frame(maxWidth: .infinity)
+                .frame(height: 320)
         }
     }
 
