@@ -127,13 +127,13 @@ struct DragSheet<Header: View, Body: View>: View {
                 }
                 ScrollView(showsIndicators: false) {
                     content()
-                        // 2026-06-02 round 55 · 170 → 100. Was 170pt of
-                        // dead space under content to clear the floating
-                        // tab bar pill · with round-54 white sheet bg the
-                        // gap reads as too much empty surface. 100pt is
-                        // enough to clear the pill (60pt + 14pt inset +
-                        // breathing room) without leaving a visible void.
-                        .padding(.bottom, 100)
+                        // 2026-06-02 round 55 · 170 → 100.
+                        // 2026-06-02 round 57 · 100 → 120. Signature
+                        // row was reading too close to the tab bar pill ·
+                        // 20pt more bottom gap pushes the last visible
+                        // content row clear of the pill with comfortable
+                        // breathing room.
+                        .padding(.bottom, 120)
                 }
                 // When peeked, body scrolls would fight the sheet pan ·
                 // disable so vertical drags bubble up to our gesture.
