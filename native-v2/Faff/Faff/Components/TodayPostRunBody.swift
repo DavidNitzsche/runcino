@@ -721,6 +721,16 @@ private struct RoutePolylineCard: View {
                     // Force dark color scheme so the standard map
                     // renders dark tiles (per the design's dark theme).
                     .environment(\.colorScheme, .dark)
+                    // 2026-06-02 round 63 · David: "this completed run
+                    // panel tries to scroll or move off screen left to
+                    // right." The Map view was intercepting touches even
+                    // though interactionModes is []. MapKit still hit-
+                    // tests the view region for gesture recognition; that
+                    // pulled the page's vertical scroll into a horizontal
+                    // drag whenever the finger landed on the map. Killing
+                    // hit-testing makes the map purely visual — touches
+                    // pass through to the parent ScrollView's pan.
+                    .allowsHitTesting(false)
             } else {
                 // True no-GPS state · matches the web's "NO GPS TRACK
                 // FOR THIS RUN" empty card. RoutePolylineCard is a

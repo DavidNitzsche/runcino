@@ -314,28 +314,47 @@ struct TodayView: View {
                     }
                     .padding(.top, 16)
                 } else if isPostRunMode {
-                    TodayRecoveryPanel(
-                        brief: recoveryBrief,
-                        onTapRecoveryCard: { onReadinessTap() }
-                    )
-                    .padding(.horizontal, 22)
-                    .padding(.top, 22)
+                    // 2026-06-02 round 63 · David: "cant scroll this top
+                    // section." The recovery panel renders 5 sections
+                    // stacked (A: card · B: pillars · C: training input ·
+                    // D: NEXT HARD + ETA · E: week-to-date). On most
+                    // phones D + E sat behind the collapsed peek with no
+                    // way to reveal them. Wrap in a ScrollView with
+                    // bottom padding ≥ peek inset so the tail sections
+                    // are reachable while the peek stays anchored.
+                    ScrollView(showsIndicators: false) {
+                        TodayRecoveryPanel(
+                            brief: recoveryBrief,
+                            onTapRecoveryCard: { onReadinessTap() }
+                        )
+                        .padding(.horizontal, 22)
+                        .padding(.top, 22)
+                        // 220pt = 200pt peek inset + 20pt breathing room
+                        // so the last section clears the peek edge.
+                        .padding(.bottom, 220)
+                    }
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
                 } else {
                     // Readiness panel · the new Today hero (2026-06-01).
-                    TodayReadinessPanel(
-                        snapshot: readiness,
-                        lastNightHours: lastNightHours,
-                        thisWeekMiles: thisWeekMiles,
-                        vo2: profile?.physiology.vo2,
-                        bestWindow: forecast?.best_window,
-                        weeksToRace: weeksToRaceValue,
-                        nextHardLabel: nextHardLabel,
-                        onTap: { onReadinessTap() }
-                    )
-                    .padding(.horizontal, 22)
-                    .padding(.top, 22)
+                    // 2026-06-02 round 63 · same scroll-wrap treatment as
+                    // the recovery panel · readiness pillars + tile grid
+                    // can also overflow the peek on smaller phones.
+                    ScrollView(showsIndicators: false) {
+                        TodayReadinessPanel(
+                            snapshot: readiness,
+                            lastNightHours: lastNightHours,
+                            thisWeekMiles: thisWeekMiles,
+                            vo2: profile?.physiology.vo2,
+                            bestWindow: forecast?.best_window,
+                            weeksToRace: weeksToRaceValue,
+                            nextHardLabel: nextHardLabel,
+                            onTap: { onReadinessTap() }
+                        )
+                        .padding(.horizontal, 22)
+                        .padding(.top, 22)
+                        .padding(.bottom, 220)
+                    }
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
                 }
