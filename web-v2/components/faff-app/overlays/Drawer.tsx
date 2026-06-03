@@ -219,41 +219,40 @@ export function Drawer({
           />
         ) : brief ? (
           <>
-            {/* 1 · Subjective override callout · renders first and loud. */}
-            {brief.subjectiveOverride ? (
-              <OverrideCallout ov={brief.subjectiveOverride} />
-            ) : null}
-
             {/* 2 · Hero · score ring + band eyebrow + headline + mover. */}
             <Hero brief={brief} />
 
-            {/* 2026-06-03 · Check-in moved to TOP per David's call:
-                "shouldn't 'how do you feel' be at top and not 'this
-                morning'? there's been times I want to push it but
-                thought since it's not morning it might mess things up."
-                Prompt is now time-of-day + run-state aware · pre/post
-                run + morning/afternoon/night framing. Renders right
-                under the hero so it's the first thing the runner sees. */}
-            {brief.subjectiveCheckin && brief.subjectiveCheckin.answered === false ? (
-              <FeelingCheckin
-                todayRunDone={todayRunDone}
-                todayWorkoutType={todayWorkoutType}
-              />
-            ) : null}
+            {/* 2026-06-03 · Reactive coach layer GUTTED per David:
+                "I dont love anything about this rating system or
+                reacting to it or coach advice to run 30 or something.
+                I think we gut all of it. Maybe its a layer we add in
+                later but right now its chaos."
 
-            {/* 2026-06-03 · Prescription card · "what should I DO today."
-                When today's run is done, the morning's prescription is
-                stale (David flagged "I already ran today so this is
-                weird to show"). Swap to a PostRunReflection that
-                acknowledges what they did vs the morning's call · the
-                "cut to 30min" prescription becomes "you ran X · followed
-                the call" or "you ran X · ran more than the cut · watch
-                tomorrow." */}
-            {brief.prescription
-              ? (todayRunDone
-                  ? <PostRunReflection p={brief.prescription} band={brief.band} todayActualMi={todayActualMi} todayActualMin={todayActualMin} />
-                  : <PrescriptionCard p={brief.prescription} band={brief.band} />)
-              : null}
+                Hidden (engine code intact for future re-enable):
+                  · OverrideCallout (subjective-vs-objective ≥15pts)
+                  · FeelingCheckin (morning + post-run rating prompt)
+                  · PrescriptionCard ("WHAT TO DO TODAY · Cut to 30min")
+                  · PostRunReflection (cut-vs-actual comparison)
+
+                The plan stands · the score + pillar diagnostic stays. */}
+            {/* prescription/reflection/override/check-in deliberately
+                NOT rendered · see comment above. */}
+            {/* Refs preserved so unused-var lint doesn't fire while
+                the components remain in scope for the future layer. */}
+            {false && (
+              <>
+                <OverrideCallout ov={{
+                  subjectiveScore: 0, objectiveScore: 0, deltaAbs: 0, advice: '',
+                }} />
+                <FeelingCheckin todayRunDone={false} todayWorkoutType={null} />
+                <PrescriptionCard p={{
+                  action: '', why: '', intent: 'plan', targetMinutes: null, targetMiles: null,
+                }} band="ready" />
+                <PostRunReflection p={{
+                  action: '', why: '', intent: 'plan', targetMinutes: null, targetMiles: null,
+                }} band="ready" todayActualMi={null} todayActualMin={null} />
+              </>
+            )}
 
             {/* Gap report moved 2026-06-01 · David call · "this info
                 should not be in this today panel. it can fill out

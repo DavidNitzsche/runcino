@@ -464,12 +464,24 @@ export function TodayView({
               styles the left edge (advisory = blue, firm = warn). Read-only
               for now · the dedicated Accept endpoint is queued in a separate
               brief and will land the action wiring. */}
-          <StandingRecAdvisory
-            rec={d.standingRecommendation}
-            workoutId={d.planWorkoutId ?? null}
-            hidden={dSkipped}
-            onAccepted={() => router.refresh()}
-          />
+          {/* 2026-06-03 · StandingRecAdvisory GUTTED per David: "my
+              target wasn't 30min. I didn't accept that. I did the
+              plan. I don't love anything about this rating system or
+              reacting to it or coach advice to run 30 or something."
+              The standing advice was the planned-day surface that
+              said "Coach still recommends easing this run · Composite
+              readiness in pull-back band · COACH SUGGESTS · EASY · 8
+              MI" on a tempo day. Now hidden · the plan stands
+              regardless of readiness band. Engine code intact for
+              future re-enable as an optional layer. */}
+          {false && (
+            <StandingRecAdvisory
+              rec={d.standingRecommendation}
+              workoutId={d.planWorkoutId ?? null}
+              hidden={dSkipped}
+              onAccepted={() => router.refresh()}
+            />
+          )}
         </>
       ) : (
         <div className="hero">
