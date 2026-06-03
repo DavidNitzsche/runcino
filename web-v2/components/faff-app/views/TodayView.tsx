@@ -2343,7 +2343,35 @@ function EasyPanel({
     : { text: 'LATE FADE', color: '#ff6a6a' };
 
   // Mile pace footprint · per-mile pace in seconds.
-  const paceSecs = splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0);
+  const paceSecsAll = splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0);
+
+  // 2026-06-03 · detect cooldown-jog tail. On easy runs without explicit
+  // phase tags, runners often jog the last full mile (or partial) as a
+  // cool-down · 1-3 min/mi slower than the rest of the run. The chart was
+  // reporting that mile as "slowest" — read by David as "your worst mile"
+  // when it's really a deliberate jog tail.
+  //
+  // Tail rule: the LAST split is treated as a cooldown tail when (a) more
+  // than 3 splits exist AND (b) its pace is ≥18% slower than the median of
+  // the prior splits. 18% catches genuine jog-down miles (~7:30→8:50,
+  // ~8:00→9:30) without false-flagging a normal last-mile fade. Median (not
+  // mean) so a single fast split doesn't pull the threshold up.
+  //
+  // When tail is detected, fastest/slowest/spread + the narrative use the
+  // PRIOR splits only. The bar still renders (the runner DID run it) but
+  // muted, and the caption says "5 work miles · last was cooldown jog."
+  const lastIdx = paceSecsAll.length - 1;
+  const medianOf = (xs: number[]): number => {
+    if (!xs.length) return 0;
+    const s = [...xs].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  const cooldownTail =
+    paceSecsAll.length > 3 &&
+    paceSecsAll[lastIdx] >= medianOf(paceSecsAll.slice(0, lastIdx)) * 1.18;
+  const paceSecs = cooldownTail ? paceSecsAll.slice(0, lastIdx) : paceSecsAll;
+
   const fastest = paceSecs.length ? Math.min(...paceSecs) : 0;
   const slowest = paceSecs.length ? Math.max(...paceSecs) : 0;
   // 2026-06-03 · the dashed "avg" line MUST match the run's headline
@@ -2358,7 +2386,10 @@ function EasyPanel({
   // Footprint bar heights · taller = faster. Anchor on min/max with avg as
   // a dashed reference line.
   const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
-  const fpAll = [...paceSecs, avgPaceSec].filter(n => n > 0);
+  // Height anchors include ALL paces (including the cooldown tail when
+  // present) so the visual range fits every bar · stats use the trimmed
+  // paceSecs so the narrative doesn't penalize the jog.
+  const fpAll = [...paceSecsAll, avgPaceSec].filter(n => n > 0);
   const fpMin = fpAll.length ? Math.min(...fpAll) : 0;
   const fpMax = fpAll.length ? Math.max(...fpAll) : 1;
   const fpRng = Math.max(1, fpMax - fpMin);
@@ -2499,28 +2530,38 @@ function EasyPanel({
                 color: 'rgba(255,255,255,.8)',
               }}>{fmtSecAsPace(avgPaceSec)} avg</span>
             </div>
-            {paceSecs.map((s, i) => (
-              <div key={i} style={{
-                flex: 1, borderRadius: '3px 3px 1px 1px',
-                background: 'linear-gradient(180deg, #5fdba6, #37c98f)',
-                minHeight: 5, height: `${Math.round(fpH(s))}%`,
-              }} />
-            ))}
+            {paceSecsAll.map((s, i) => {
+              const isCooldownBar = cooldownTail && i === lastIdx;
+              return (
+                <div key={i} style={{
+                  flex: 1, borderRadius: '3px 3px 1px 1px',
+                  // Cooldown tail bar gets a muted gradient so the visual
+                  // says "this was a jog, not a struggle mile."
+                  background: isCooldownBar
+                    ? 'linear-gradient(180deg, rgba(255,255,255,.25), rgba(255,255,255,.12))'
+                    : 'linear-gradient(180deg, #5fdba6, #37c98f)',
+                  minHeight: 5, height: `${Math.round(fpH(s))}%`,
+                }} />
+              );
+            })}
           </div>
           <div style={{
             display: 'flex', gap: 5, marginTop: 6, paddingRight: 50,
           }}>
-            {paceSecs.map((_, i) => (
-              <span key={i} style={{
-                flex: 1, textAlign: 'center', fontSize: 8.5, fontWeight: 600,
-                color: 'rgba(255,255,255,.42)',
-              }}>{i + 1}</span>
-            ))}
+            {paceSecsAll.map((_, i) => {
+              const isCooldownLabel = cooldownTail && i === lastIdx;
+              return (
+                <span key={i} style={{
+                  flex: 1, textAlign: 'center', fontSize: 8.5, fontWeight: 600,
+                  color: isCooldownLabel ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.42)',
+                }}>{isCooldownLabel ? 'CD' : i + 1}</span>
+              );
+            })}
           </div>
           <div style={{
             fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,.5)', marginTop: 8,
           }}>
-            {paceSecs.length} miles · fastest {fmtSecAsPace(fastest)} · slowest {fmtSecAsPace(slowest)} · {slowest - fastest}s spread
+            {paceSecs.length} {cooldownTail ? 'work miles' : 'miles'} · fastest {fmtSecAsPace(fastest)} · slowest {fmtSecAsPace(slowest)} · {slowest - fastest}s spread{cooldownTail ? ` · last mile was cooldown jog (${fmtSecAsPace(paceSecsAll[lastIdx])})` : ''}
           </div>
         </div>
       ) : null}
