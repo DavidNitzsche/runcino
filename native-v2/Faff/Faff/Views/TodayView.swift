@@ -737,6 +737,11 @@ struct TodayView: View {
     /// 2026-06-02 round 61 · extracted so the past-day flat layout (no
     /// drag-sheet) and the today + done drag-sheet body both render the
     /// same recap content from one source. Identical params either way.
+    ///
+    /// 2026-06-02 round 62 · `onMesh: isPastDayView` flips the recap's
+    /// styling to white-on-mesh for the past-day flat layout. The
+    /// today + done drag-sheet usage keeps the default (cream-context),
+    /// preserving the white-cards-on-white-sheet read.
     @ViewBuilder
     private var postRunBody: some View {
         TodayPostRunBody(
@@ -752,7 +757,8 @@ struct TodayView: View {
             effortLabel: peekTitleWord,
             dowLabel: selectedIsToday ? "TODAY" : shortDOWLabel,
             titleText: peekTitleWord,
-            nameSubtitle: plainWorkoutName
+            nameSubtitle: plainWorkoutName,
+            onMesh: isPastDayView
         )
     }
 

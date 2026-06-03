@@ -51,6 +51,41 @@ struct TodayPostRunBody: View {
     /// hero title ("4×1 mi @ I · 3 min jog" under "INTERVALS"). Hides
     /// when it duplicates the hero or is empty.
     var nameSubtitle: String? = nil
+    /// 2026-06-02 round 62 · render context flag.
+    ///
+    /// Default false → the original white-on-cream styling for the
+    /// today + done drag-sheet body (white card sections + dark text
+    /// on a white sheet background). The drag-sheet is a white
+    /// surface, so white cards blend into a continuous result page.
+    ///
+    /// When true → render for the dark time-of-day MESH (past-day
+    /// flat layout). All white card backgrounds go transparent so
+    /// the mesh shows through, dark text inverts to white with
+    /// opacity tiers for hierarchy, cream dividers become white
+    /// lines at low opacity. The recap reads as one beat of the
+    /// mesh page instead of a hard cream slab welded onto it.
+    var onMesh: Bool = false
+
+    // MARK: - Context-aware colors (round 62)
+    //
+    // Five tokens drive every surface decision. Each gets a literal
+    // value for cream-context and a mesh-context variant. Replacing
+    // the 28 literal-color sites with these tokens means future tone
+    // tweaks (e.g. softer dividers, warmer mute) happen in one place.
+
+    /// Section background. White for the drag-sheet body, transparent
+    /// for the mesh page so the time-of-day palette shows through.
+    private var sectionBg: Color { onMesh ? Color.clear : Color.white }
+    /// Primary readable text (titles, hero numbers, stat values).
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    /// Mid-tier text (subtitles, secondary labels).
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
+    /// Tertiary text (eyebrows, hint copy, axis labels).
+    private var subtleText: Color { onMesh ? Color.white.opacity(0.55) : Color(hex: 0xA39A8C) }
+    /// Hairline dividers between sections / chip strokes.
+    /// Named dividerColor (not divider) to avoid colliding with the
+    /// existing `private var divider: some View` 1×28pt vertical rule.
+    private var dividerColor: Color { onMesh ? Color.white.opacity(0.18) : Color(hex: 0xEEE7DA) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -104,19 +139,19 @@ struct TodayPostRunBody: View {
             SpecLabel(
                 text: headerEyebrow,
                 size: 10, tracking: 1.8,
-                color: Color(hex: 0xA39A8C)
+                color: subtleText
             )
             Text(headerTitle.uppercased())
                 .font(.display(46, weight: .bold))
                 .tracking(-1.5)
-                .foregroundStyle(Color(hex: 0x14110D))
+                .foregroundStyle(primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .padding(.top, 2)
             if let sub = subtitleText {
                 Text(sub)
                     .font(.body(14, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x736C61))
+                    .foregroundStyle(mutedText)
                     .lineLimit(2)
                     .padding(.top, 1)
             }
@@ -137,9 +172,9 @@ struct TodayPostRunBody: View {
         }
         .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(sectionBg)
         .overlay(
-            Rectangle().fill(Color(hex: 0xEEE7DA)).frame(height: 1),
+            Rectangle().fill(dividerColor).frame(height: 1),
             alignment: .bottom
         )
     }
@@ -209,7 +244,7 @@ struct TodayPostRunBody: View {
             .background(Color(hex: 0xE9F7EE))
             .overlay(
                 Rectangle()
-                    .fill(Color(hex: 0xEEE7DA))
+                    .fill(dividerColor)
                     .frame(height: 1),
                 alignment: .bottom
             )
@@ -241,10 +276,10 @@ struct TodayPostRunBody: View {
             statColumn(key: "MOVING", value: movingText)
         }
         .padding(.vertical, 18)
-        .background(Color.white)
+        .background(sectionBg)
         .overlay(
             Rectangle()
-                .fill(Color(hex: 0xEEE7DA))
+                .fill(dividerColor)
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -254,10 +289,10 @@ struct TodayPostRunBody: View {
         VStack(spacing: 4) {
             Text(key)
                 .font(.body(10, weight: .extraBold)).tracking(1.0)
-                .foregroundStyle(Color(hex: 0xA39A8C))
+                .foregroundStyle(subtleText)
             Text(value)
                 .font(.display(22, weight: .bold)).tracking(-0.3)
-                .foregroundStyle(Color(hex: 0x14110D))
+                .foregroundStyle(primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
@@ -266,7 +301,7 @@ struct TodayPostRunBody: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color(hex: 0xEEE7DA))
+            .fill(dividerColor)
             .frame(width: 1, height: 28)
     }
 
@@ -300,10 +335,10 @@ struct TodayPostRunBody: View {
             statColumn(key: "CONDITIONS", value: conditionsText)
         }
         .padding(.vertical, 14)
-        .background(Color.white)
+        .background(sectionBg)
         .overlay(
             Rectangle()
-                .fill(Color(hex: 0xEEE7DA))
+                .fill(dividerColor)
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -338,10 +373,10 @@ struct TodayPostRunBody: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 18)
         }
-        .background(Color.white)
+        .background(sectionBg)
         .overlay(
             Rectangle()
-                .fill(Color(hex: 0xEEE7DA))
+                .fill(dividerColor)
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -355,7 +390,7 @@ struct TodayPostRunBody: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("MILE SPLITS")
                     .font(.body(11, weight: .extraBold)).tracking(1.5)
-                    .foregroundStyle(Color(hex: 0xA39A8C))
+                    .foregroundStyle(subtleText)
                 let paces = splits.compactMap { paceSecForSplit($0) }
                 let fastest = paces.min() ?? 0
                 let slowest = paces.max() ?? 1
@@ -373,10 +408,10 @@ struct TodayPostRunBody: View {
                 }
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
-            .background(Color.white)
+            .background(sectionBg)
             .overlay(
                 Rectangle()
-                    .fill(Color(hex: 0xEEE7DA))
+                    .fill(dividerColor)
                     .frame(height: 1),
                 alignment: .bottom
             )
@@ -414,16 +449,16 @@ struct TodayPostRunBody: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("FORM")
                     .font(.body(11, weight: .extraBold)).tracking(1.5)
-                    .foregroundStyle(Color(hex: 0xA39A8C))
+                    .foregroundStyle(subtleText)
                 LazyVGrid(columns: gridColumns(count: metrics.count), spacing: 8) {
                     ForEach(metrics, id: \.0) { item in
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.0)
                                 .font(.body(9, weight: .extraBold)).tracking(1.0)
-                                .foregroundStyle(Color(hex: 0xA39A8C))
+                                .foregroundStyle(subtleText)
                             Text(item.1)
                                 .font(.display(18, weight: .bold)).tracking(-0.2)
-                                .foregroundStyle(Color(hex: 0x14110D))
+                                .foregroundStyle(primaryText)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12).padding(.vertical, 10)
@@ -432,10 +467,10 @@ struct TodayPostRunBody: View {
                 }
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
-            .background(Color.white)
+            .background(sectionBg)
             .overlay(
                 Rectangle()
-                    .fill(Color(hex: 0xEEE7DA))
+                    .fill(dividerColor)
                     .frame(height: 1),
                 alignment: .bottom
             )
@@ -474,7 +509,7 @@ struct TodayPostRunBody: View {
                 HStack(spacing: 8) {
                     Text("HOW IT WENT")
                         .font(.body(11, weight: .extraBold)).tracking(1.5)
-                        .foregroundStyle(Color(hex: 0xA39A8C))
+                        .foregroundStyle(subtleText)
                     Spacer()
                     Text(recap.verdict.replacingOccurrences(of: ".", with: "").uppercased())
                         .font(.body(9, weight: .extraBold)).tracking(1.2)
@@ -522,7 +557,7 @@ struct TodayPostRunBody: View {
                 )
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
-            .background(Color.white)
+            .background(sectionBg)
         }
     }
 
@@ -537,11 +572,11 @@ struct TodayPostRunBody: View {
                     HStack {
                         Text(key)
                             .font(.body(11, weight: .extraBold)).tracking(1.5)
-                            .foregroundStyle(Color(hex: 0xA39A8C))
+                            .foregroundStyle(subtleText)
                         Spacer()
                         Text(value)
                             .font(.body(13, weight: .extraBold)).tracking(-0.2)
-                            .foregroundStyle(Color(hex: 0x14110D))
+                            .foregroundStyle(primaryText)
                     }
                 }
             }
@@ -688,7 +723,12 @@ private struct RoutePolylineCard: View {
                     .environment(\.colorScheme, .dark)
             } else {
                 // True no-GPS state · matches the web's "NO GPS TRACK
-                // FOR THIS RUN" empty card.
+                // FOR THIS RUN" empty card. RoutePolylineCard is a
+                // private struct out of TodayPostRunBody's scope, so
+                // the context-aware helpers (round 62) don't reach
+                // here — literal dark fill is correct for both
+                // contexts (the empty card stays visually dark
+                // whether the parent is cream or mesh).
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color(hex: 0x14110D))
                     .overlay(
