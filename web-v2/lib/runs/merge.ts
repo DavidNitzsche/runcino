@@ -215,6 +215,27 @@ export async function autoMergeForDate(
     }
   }
 
+  // 2026-06-03 · loud log when autoMerge leaves a cluster un-resolved
+  // (>1 row in cluster but neither got mergedIntoId set). This typically
+  // means the absorber ran with only one row present and the second row
+  // landed milliseconds later · race between two ingest endpoints firing
+  // in parallel. Without this log, the symptom is invisible: two
+  // duplicate rows sit in `runs` forever, downstream dedupes at read-
+  // time and looks fine, but data hygiene rots.
+  //
+  // The right structural fix is hard (both endpoints must coordinate via
+  // a lock or post-write hook). The loud log lets us see when it
+  // happens and tighten the absorber later if it's frequent.
+  if (rows.length >= 2 && changed === 0) {
+    const sources = rows.map((r) => r.data?.source ?? '?').join(',');
+    console.warn(
+      `[merge] autoMergeForDate · user=${userId.slice(0,8)} date=${date} · ` +
+      `${rows.length} rows · ${clusters.length} clusters · 0 merges fired · ` +
+      `sources=${sources} · race condition? (each ingest path may have ` +
+      `seen only its own row)`,
+    );
+  }
+
   return { changed, clusters: clusters.length };
 }
 

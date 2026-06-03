@@ -122,7 +122,44 @@ export async function POST(req: NextRequest) {
       };
     })(),
     tempF: body.temp_f ?? null,
-    splits: Array.isArray(body.splits) ? body.splits : [],
+    // 2026-06-03 · splits validation · iPhone derives per-mile splits
+    // from HKWorkoutRoute GPS timestamps in HealthKitManager.swift
+    // buildRoutePayload. When the runner pauses mid-mile, GPS keeps
+    // emitting samples but the watch correctly excludes paused time
+    // from `workout.duration`. iPhone-side bug: split computation uses
+    // raw GPS timestamps without consulting HKWorkoutEvent pause/resume
+    // events. Result: split times sum to more than total duration, so
+    // the "slowest mile" / drift / pace surfaces lie.
+    //
+    // Defense in depth: validate splits-time-sum vs total duration · if
+    // off by > 5s, drop the splits and stamp splits_unreliable so
+    // downstream renderers fall back to total stats only.
+    //
+    // Source-of-truth fix: designs/briefs/iphone-split-pause-fix.md ·
+    // iPhone agent updates buildRoutePayload to mask paused time.
+    ...(() => {
+      const rawSplits = Array.isArray(body.splits) ? body.splits : [];
+      const splitsCheck = validateSplitsAgainstDuration(rawSplits,
+        Number(body.duration_sec ?? body.moving_sec ?? 0));
+      if (!splitsCheck.reliable && rawSplits.length > 0) {
+        console.warn(
+          `[ingest/workout] dropping unreliable splits · user=${userId.slice(0,8)} ` +
+          `client_workout_id=${body.client_workout_id} · ` +
+          `splits_sum=${splitsCheck.splitsSumS}s vs duration=${splitsCheck.durationS}s ` +
+          `(delta ${splitsCheck.deltaS}s)`,
+        );
+      }
+      return {
+        splits: splitsCheck.reliable ? rawSplits : [],
+        splits_unreliable: !splitsCheck.reliable && rawSplits.length > 0,
+        splits_validation: splitsCheck.reliable ? null : {
+          splitsSumS: splitsCheck.splitsSumS,
+          durationS: splitsCheck.durationS,
+          deltaS: splitsCheck.deltaS,
+          droppedCount: rawSplits.length,
+        },
+      };
+    })(),
     // 2026-05-31: was defaulting to {z1:0,...,z5:0} — a falsey-looking value
     // that's actually truthy, so the run-detail loader treated it as
     // "zones present" and skipped the deriveHrZones fallback. The Faff
@@ -374,6 +411,62 @@ function bigIntIdFromString(s: string): string {
   for (let i = 0; i < 8; i++) n = (n << 8n) | BigInt(digest[i]);
   n = n & 0x000fffffffffffffn;   // 52 bits
   return (-n).toString();
+}
+
+/**
+ * 2026-06-03 · Splits sanity check · sum of per-mile times must match
+ * total moving duration within 5 seconds. When the sum is > duration,
+ * splits include time the watch correctly excluded (pause/stop), which
+ * means iPhone's GPS-timestamp-derived split computation in
+ * HealthKitManager.swift didn't consult HKWorkoutEvent pause/resume.
+ *
+ * `reliable=false` means we drop the splits at storage time so downstream
+ * surfaces (slowest mile / drift / fastest mile) fall back to total
+ * stats only instead of rendering wrong numbers from inconsistent data.
+ *
+ * Source-of-truth fix lives at designs/briefs/iphone-split-pause-fix.md
+ * · iPhone agent updates buildRoutePayload to mask paused time.
+ */
+function validateSplitsAgainstDuration(
+  splits: unknown,
+  durationS: number,
+): { reliable: boolean; splitsSumS: number; durationS: number; deltaS: number } {
+  if (!Array.isArray(splits) || splits.length === 0 || durationS <= 0) {
+    return { reliable: true, splitsSumS: 0, durationS, deltaS: 0 };
+  }
+  let splitsSumS = 0;
+  for (const s of splits) {
+    if (!s || typeof s !== 'object') continue;
+    // Split formats vary · iPhone sends `pace: "9:19"`, watch derives
+    // `paceSecPerMi: 559`. Both represent seconds-per-mile for a 1-mile
+    // split. Sum the per-mile times, optionally scaling by mile size if
+    // mile distance is sub-1 (rare · tail-end partial splits).
+    const split = s as Record<string, unknown>;
+    const distMi = typeof split.distanceMi === 'number'
+      ? split.distanceMi
+      : (typeof split.distance_mi === 'number' ? split.distance_mi : 1);
+    const paceSec = parsePaceToSec(split.pace ?? split.paceMinPerMi)
+      ?? (typeof split.paceSecPerMi === 'number' ? split.paceSecPerMi : null)
+      ?? (typeof split.pace_s_per_mi === 'number' ? split.pace_s_per_mi : null);
+    if (paceSec == null || !Number.isFinite(paceSec)) continue;
+    splitsSumS += paceSec * (distMi ?? 1);
+  }
+  const deltaS = Math.round(splitsSumS - durationS);
+  const reliable = Math.abs(deltaS) <= 5;
+  return {
+    reliable,
+    splitsSumS: Math.round(splitsSumS),
+    durationS,
+    deltaS,
+  };
+}
+
+/** Parse "M:SS" pace string to seconds. Returns null on garbage input. */
+function parsePaceToSec(v: unknown): number | null {
+  if (typeof v !== 'string') return null;
+  const m = v.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
 /** Decode just the first lat,lng pair from a Google polyline (precision 5). */

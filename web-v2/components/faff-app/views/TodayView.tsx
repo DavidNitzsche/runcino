@@ -1640,8 +1640,21 @@ function CompletedHeroV2({
     return actualMi >= plannedMi * 0.85 && actualMi <= plannedMi * 1.15;
   })();
 
+  // 2026-06-03 · HOT DAY rescue · when heat-bump is significant (≥5 bpm
+  // physiological cost) AND the runner ran the right distance on an
+  // easy day, badge says HOT DAY regardless of easyShare. The recap
+  // text already explains the heat ("63°F → 68°F · costs you 9% on
+  // pace"); the badge should match that nuance instead of contradicting
+  // it with OFF PLAN. Previously hot-day only rescued on-plan runs ·
+  // the runner whose HR drifted into Z3 BECAUSE of heat got punished
+  // for honest execution. Cite: prior David flag 2026-06-03.
+  const distanceWithinEasyTolerance =
+    plannedMi > 0 && actualMi >= plannedMi * 0.75 && actualMi <= plannedMi * 1.2;
+  const heatRescue = isEasy && heatBump >= 5 && distanceWithinEasyTolerance;
+
   const verdictBadge: 'on-plan' | 'hot-day' | 'off-plan' =
     onPlan && heatBump >= 5 ? 'hot-day'
+    : heatRescue ? 'hot-day'    // off-plan-by-zones but heat explains it
     : onPlan ? 'on-plan'
     : 'off-plan';
 
@@ -1664,7 +1677,18 @@ function CompletedHeroV2({
 
         <div className="leftstack">
             <div className="stats">
-              <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
+              {/* 2026-06-03 · DISTANCE on DONE state shows ACTUAL run
+                  mileage (rounded to 1 decimal), not planned. Sibling
+                  TIME + AVG PACE already show actual values. Showing
+                  planned "6.0" next to actual time of a 6.08 mi run
+                  reads as inconsistent · and worse, the right-side
+                  recap text uses actual ("Easy 6.1 mi") so the two
+                  display the same run with different distances. */}
+              <div><div className="v">{
+                runData?.distance_mi != null
+                  ? runData.distance_mi.toFixed(1)
+                  : d.dist
+              }<small> mi</small></div><div className="k">DISTANCE</div></div>
               <div><div className="v">{resolvedTime ?? '·'}</div><div className="k">TIME{runLoading && !runData ? ' …' : ''}</div></div>
               <div><div className="v">{resolvedPace ?? '·'}<small>/mi</small></div><div className="k">AVG PACE</div></div>
             </div>
