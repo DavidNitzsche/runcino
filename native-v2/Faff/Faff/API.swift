@@ -1521,11 +1521,23 @@ struct HealthState: Decodable {
     let vo2Trend: Vo2TrendSummary?
     let insights: [HealthInsight]
     let overview: HealthOverviewBlock?
+    /// 2026-06-03 round 80 → 81 · per backend brief reply (030bfbe7).
+    /// respiratoryRate + wristTemp are TOP-LEVEL summary blocks ·
+    /// matching series live in separate top-level arrays
+    /// (respiratoryRateSeries, wristTempSeries). Don't nest the
+    /// series inside the summary · backend ships them as siblings.
+    /// All nullable · iPhone reads when present, falls back to
+    /// existing fabrication when absent.
+    let respiratoryRate: RespRateSummary?
+    let respiratoryRateSeries: [Double]
+    let wristTemp: WristTempSummary?
+    let wristTempSeries: [Double]
 
     enum CodingKeys: String, CodingKey {
         case today, sleepSeries, rhrSeries, hrvSeries, weightSeries
         case sleep, rhr, hrv, weight, cadence, vo2, watchMode, watchItems
         case sleepStages, runForm, dailyReadiness, bodyTemp, vo2Trend, insights, overview
+        case respiratoryRate, respiratoryRateSeries, wristTemp, wristTempSeries
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1555,6 +1567,10 @@ struct HealthState: Decodable {
         self.vo2Trend = try? c.decode(Vo2TrendSummary.self, forKey: .vo2Trend)
         self.insights = (try? c.decode([HealthInsight].self, forKey: .insights)) ?? []
         self.overview = try? c.decode(HealthOverviewBlock.self, forKey: .overview)
+        self.respiratoryRate = try? c.decode(RespRateSummary.self, forKey: .respiratoryRate)
+        self.respiratoryRateSeries = (try? c.decode([Double].self, forKey: .respiratoryRateSeries)) ?? []
+        self.wristTemp = try? c.decode(WristTempSummary.self, forKey: .wristTemp)
+        self.wristTempSeries = (try? c.decode([Double].self, forKey: .wristTempSeries)) ?? []
     }
 }
 
@@ -1595,16 +1611,22 @@ struct RunFormSummary: Decodable {
 }
 
 /// One run-form metric · current value + rolling averages.
+/// 2026-06-03 round 80 · added optional series28d per backend brief
+/// reply. When backend ships an array of per-day form values, iPhone
+/// uses it directly in the chart instead of fabricating with drift.
+/// Lenient: empty falls back to history-padded fabrication.
 struct RunFormMetric: Decodable {
     let current: Double?
     let avg14d: Double?
     let avg28d: Double?
-    enum CodingKeys: String, CodingKey { case current, avg14d, avg28d }
+    let series28d: [Double]
+    enum CodingKeys: String, CodingKey { case current, avg14d, avg28d, series28d }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.current = try c.decodeIfPresent(Double.self, forKey: .current)
         self.avg14d = try c.decodeIfPresent(Double.self, forKey: .avg14d)
         self.avg28d = try c.decodeIfPresent(Double.self, forKey: .avg28d)
+        self.series28d = (try? c.decode([Double].self, forKey: .series28d)) ?? []
     }
 }
 
@@ -1818,11 +1840,48 @@ struct CadenceSummary: Decodable {
 }
 struct Vo2Summary: Decodable {
     let current: Double?
-    init(current: Double?) { self.current = current }
-    enum CodingKeys: String, CodingKey { case current }
+    /// 2026-06-03 round 80 · per backend brief reply. Daily 28-day
+    /// series (may be interpolated since VO2 max readings are test-
+    /// day-only on Apple Watch). Empty falls back to fabrication.
+    let series28d: [Double]
+    init(current: Double?) { self.current = current; self.series28d = [] }
+    enum CodingKeys: String, CodingKey { case current, series28d }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.current = try c.decodeIfPresent(Double.self, forKey: .current)
+        self.series28d = (try? c.decode([Double].self, forKey: .series28d)) ?? []
+    }
+}
+
+/// 2026-06-03 round 80 → 81 · Respiratory rate summary.
+/// Shape per backend 030bfbe7 reply: `{ current, baseline, delta }`.
+/// The 28-day series is a SEPARATE top-level field
+/// `respiratoryRateSeries: [Double]` on HealthState (NOT nested here).
+struct RespRateSummary: Decodable {
+    let current: Double?
+    let baseline: Double?
+    let delta: Double?
+    enum CodingKeys: String, CodingKey { case current, baseline, delta }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = try c.decodeIfPresent(Double.self, forKey: .current)
+        self.baseline = try c.decodeIfPresent(Double.self, forKey: .baseline)
+        self.delta = try c.decodeIfPresent(Double.self, forKey: .delta)
+    }
+}
+
+/// 2026-06-03 round 80 → 81 · Apple sleeping wrist temp summary.
+/// Series lives in separate `wristTempSeries: [Double]` top-level field.
+struct WristTempSummary: Decodable {
+    let current: Double?
+    let baseline: Double?
+    let delta: Double?
+    enum CodingKeys: String, CodingKey { case current, baseline, delta }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = try c.decodeIfPresent(Double.self, forKey: .current)
+        self.baseline = try c.decodeIfPresent(Double.self, forKey: .baseline)
+        self.delta = try c.decodeIfPresent(Double.self, forKey: .delta)
     }
 }
 

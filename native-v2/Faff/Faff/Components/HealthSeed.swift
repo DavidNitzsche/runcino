@@ -40,15 +40,43 @@ enum HealthSeed {
         // as the collapsed bar chart, padded at the FRONT with drift
         // when the real history is < 28 days. Trends in both views
         // are now identical (no more "bar going up, chart going down").
-        let hrvHistory = drift(from: Double(hrvBase) - 2, to: Double(hrvCur), n: 14, seed: 42)
-        let rhrHistory = drift(from: Double(rhrBase) + 1, to: Double(rhrCur), n: 14, seed: 7)
-        let vo2History = drift(from: vo2 - 1.0, to: vo2, n: 14, seed: 33)
+        //
+        // 2026-06-03 round 80 · PREFER real backend series when present.
+        // hrvSeries / rhrSeries are top-level HealthState arrays of
+        // {date, ms/bpm} that backend has been shipping all along ·
+        // iPhone now reads them. vo2.series28d / respRate / wristTemp
+        // are new fields (lenient · empty falls back to fabrication).
+        let hrvHistory: [Double] = {
+            let real = healthState?.hrvSeries ?? []
+            if !real.isEmpty {
+                return real.suffix(14).map { Double($0.ms) }
+            }
+            return drift(from: Double(hrvBase) - 2, to: Double(hrvCur), n: 14, seed: 42)
+        }()
+        let rhrHistory: [Double] = {
+            let real = healthState?.rhrSeries ?? []
+            if !real.isEmpty {
+                return real.suffix(14).map { Double($0.bpm) }
+            }
+            return drift(from: Double(rhrBase) + 1, to: Double(rhrCur), n: 14, seed: 7)
+        }()
+        let vo2History: [Double] = {
+            let real = healthState?.vo2.series28d ?? []
+            if !real.isEmpty {
+                return Array(real.suffix(14))
+            }
+            return drift(from: vo2 - 1.0, to: vo2, n: 14, seed: 33)
+        }()
         return [
             metric(
                 id: "hrv", label: "HRV",
                 value: "\(hrvCur)", unit: " ms",
                 history: hrvHistory,
-                chart28: chartFromHistory(history: hrvHistory, priorAvg: Double(hrvBase) + 1, seed: 142),
+                chart28: preferRealOrPad(
+                    realFull: (healthState?.hrvSeries ?? []).map { Double($0.ms) },
+                    history: hrvHistory,
+                    priorAvg: Double(hrvBase) + 1, seed: 142
+                ),
                 target: Double(hrvBase),
                 status: hrvCur < hrvBase - 4 ? .warn : (hrvCur < hrvBase - 8 ? .bad : .good),
                 direction: hrvCur < hrvBase ? .down : .up,
@@ -59,7 +87,11 @@ enum HealthSeed {
                 id: "rhr", label: "RESTING HR",
                 value: "\(rhrCur)", unit: " bpm",
                 history: rhrHistory,
-                chart28: chartFromHistory(history: rhrHistory, priorAvg: Double(rhrBase) + 2, seed: 107),
+                chart28: preferRealOrPad(
+                    realFull: (healthState?.rhrSeries ?? []).map { Double($0.bpm) },
+                    history: rhrHistory,
+                    priorAvg: Double(rhrBase) + 2, seed: 107
+                ),
                 target: Double(rhrBase),
                 status: rhrCur <= rhrBase ? .good : .warn,
                 direction: rhrCur < rhrBase ? .down : .flat,
@@ -70,7 +102,11 @@ enum HealthSeed {
                 id: "vo2", label: "VO₂ MAX",
                 value: String(format: "%.1f", vo2), unit: nil,
                 history: vo2History,
-                chart28: chartFromHistory(history: vo2History, priorAvg: vo2 - 1.4, seed: 133),
+                chart28: preferRealOrPad(
+                    realFull: healthState?.vo2.series28d ?? [],
+                    history: vo2History,
+                    priorAvg: vo2 - 1.4, seed: 133
+                ),
                 target: nil,
                 status: .good, direction: .up,
                 caption: "30-day",
@@ -78,14 +114,27 @@ enum HealthSeed {
             ),
             metric(
                 id: "resp", label: "RESP RATE",
-                value: "15.1", unit: " /min",
-                history: drift(from: 15.0, to: 15.1, n: 14, seed: 61),
-                chart28: chartFromHistory(
-                    history: drift(from: 15.0, to: 15.1, n: 14, seed: 61),
-                    priorAvg: 15.2, seed: 161),
+                value: healthState?.respiratoryRate?.current.map { String(format: "%.1f", $0) } ?? "15.1",
+                unit: " /min",
+                history: {
+                    let real = healthState?.respiratoryRateSeries ?? []
+                    return real.isEmpty
+                        ? drift(from: 15.0, to: 15.1, n: 14, seed: 61)
+                        : Array(real.suffix(14))
+                }(),
+                chart28: preferRealOrPad(
+                    realFull: healthState?.respiratoryRateSeries ?? [],
+                    history: {
+                        let real = healthState?.respiratoryRateSeries ?? []
+                        return real.isEmpty
+                            ? drift(from: 15.0, to: 15.1, n: 14, seed: 61)
+                            : Array(real.suffix(14))
+                    }(),
+                    priorAvg: 15.2, seed: 161
+                ),
                 target: nil,
                 status: .neutral, direction: .flat,
-                caption: "nightly",
+                caption: healthState?.respiratoryRate?.baseline.map { "baseline \(String(format: "%.1f", $0))" } ?? "nightly",
                 coach: "Steady and normal · no illness signal in breathing rate."
             ),
             metric(
@@ -110,14 +159,27 @@ enum HealthSeed {
             ),
             metric(
                 id: "wtemp", label: "WRIST TEMP",
-                value: "35.78", unit: " °C",
-                history: drift(from: 35.74, to: 35.78, n: 14, seed: 51),
-                chart28: chartFromHistory(
-                    history: drift(from: 35.74, to: 35.78, n: 14, seed: 51),
-                    priorAvg: 35.74, seed: 151),
+                value: healthState?.wristTemp?.current.map { String(format: "%.2f", $0) } ?? "35.78",
+                unit: " °C",
+                history: {
+                    let real = healthState?.wristTempSeries ?? []
+                    return real.isEmpty
+                        ? drift(from: 35.74, to: 35.78, n: 14, seed: 51)
+                        : Array(real.suffix(14))
+                }(),
+                chart28: preferRealOrPad(
+                    realFull: healthState?.wristTempSeries ?? [],
+                    history: {
+                        let real = healthState?.wristTempSeries ?? []
+                        return real.isEmpty
+                            ? drift(from: 35.74, to: 35.78, n: 14, seed: 51)
+                            : Array(real.suffix(14))
+                    }(),
+                    priorAvg: 35.74, seed: 151
+                ),
                 target: nil,
                 status: .neutral, direction: .flat,
-                caption: "30-day",
+                caption: healthState?.wristTemp?.baseline.map { "baseline \(String(format: "%.2f", $0))" } ?? "30-day",
                 coach: "Skin temperature is stable overnight · no deviation."
             ),
         ]
@@ -164,11 +226,16 @@ enum HealthSeed {
             : drift(from: 18, to: Double(awake), n: 14, seed: 131)
 
         return [
+            // 2026-06-03 round 80 · sleep stages also use preferRealOrPad
+            // so that when backend extends deepSeries/etc to 28 days
+            // the line chart goes straight to the real history.
             metric(
                 id: "deep", label: "DEEP",
                 value: clock(deep), unit: nil,
                 history: deepSeries,
-                chart28: chartFromHistory(history: deepSeries, priorAvg: 80, seed: 201),
+                chart28: preferRealOrPad(
+                    realFull: (stages?.deepSeries ?? []).map(Double.init),
+                    history: deepSeries, priorAvg: 80, seed: 201),
                 target: 75,
                 status: deep < 70 ? .warn : .good,
                 direction: deep < 75 ? .down : .flat,
@@ -179,7 +246,9 @@ enum HealthSeed {
                 id: "rem", label: "REM",
                 value: clock(rem), unit: nil,
                 history: remSeries,
-                chart28: chartFromHistory(history: remSeries, priorAvg: 98, seed: 211),
+                chart28: preferRealOrPad(
+                    realFull: (stages?.remSeries ?? []).map(Double.init),
+                    history: remSeries, priorAvg: 98, seed: 211),
                 target: 100,
                 status: rem < 90 ? .warn : .good,
                 direction: rem < 100 ? .down : .flat,
@@ -190,7 +259,9 @@ enum HealthSeed {
                 id: "light", label: "LIGHT",
                 value: clock(light), unit: nil,
                 history: lightSeries,
-                chart28: chartFromHistory(history: lightSeries, priorAvg: 205, seed: 221),
+                chart28: preferRealOrPad(
+                    realFull: (stages?.lightSeries ?? []).map(Double.init),
+                    history: lightSeries, priorAvg: 205, seed: 221),
                 target: nil,
                 status: .neutral, direction: .flat,
                 caption: "context",
@@ -200,7 +271,9 @@ enum HealthSeed {
                 id: "awake", label: "AWAKE",
                 value: clock(awake), unit: nil,
                 history: awakeSeries,
-                chart28: chartFromHistory(history: awakeSeries, priorAvg: 16, seed: 231),
+                chart28: preferRealOrPad(
+                    realFull: (stages?.awakeSeries ?? []).map(Double.init),
+                    history: awakeSeries, priorAvg: 16, seed: 231),
                 target: nil,
                 status: .neutral, direction: .flat,
                 caption: "context",
@@ -309,16 +382,21 @@ enum HealthSeed {
             }
             return "30-day avg \(decimals == 0 ? "\(Int(avg28.rounded()))" : String(format: "%.\(decimals)f", avg28))"
         }()
-        // History bars from the small drift between avg14 and current ·
-        // backend doesn't ship a per-day series for form yet so we
-        // synthesize a plausible 14-bar drift between 28d-avg and current.
-        // 2026-06-03 round 79 · chart28 derives from history so the
-        // sheet's line chart trends to the same end-point as the
-        // collapsed card's bar chart (was using a separate drift with
-        // a different seed which made them tell different stories).
-        let history = drift(from: avg28, to: cur, n: 14, seed: id.hashValue & 0xFFFF)
-        let chart28 = chartFromHistory(history: history, priorAvg: avg28 * 0.97,
-                                        seed: (id + "28").hashValue & 0xFFFF)
+        // 2026-06-03 round 80 · prefer real series28d when backend ships
+        // it (per brief reply, optional field on each RunFormMetric).
+        // Falls back to history-padded fabrication when empty (cold
+        // start / non-watch session / backend hasn't deployed yet).
+        let realSeries = m?.series28d ?? []
+        let history: [Double]
+        let chart28: [Double]
+        if !realSeries.isEmpty {
+            history = Array(realSeries.suffix(14))
+            chart28 = realSeries.count >= 28 ? Array(realSeries.suffix(28)) : realSeries
+        } else {
+            history = drift(from: avg28, to: cur, n: 14, seed: id.hashValue & 0xFFFF)
+            chart28 = chartFromHistory(history: history, priorAvg: avg28 * 0.97,
+                                       seed: (id + "28").hashValue & 0xFFFF)
+        }
         return HealthMetric(
             id: id, label: label, value: valueStr, unit: unit,
             history: history, chart28: chart28,
@@ -341,6 +419,19 @@ enum HealthSeed {
             target: target, status: status, direction: direction,
             caption: caption, coach: coach
         )
+    }
+
+    /// 2026-06-03 round 80 · single switch for the "use backend's real
+    /// 28-day series when shipped; else pad the visible 14-day history
+    /// with drift" decision. `realFull` is whatever the backend handed
+    /// us (may be 0/14/28+ entries); `history` is the 14 we already
+    /// committed to display in the bar chart so the line chart's END
+    /// always matches the last bar.
+    private static func preferRealOrPad(
+        realFull: [Double], history: [Double], priorAvg: Double, seed: Int
+    ) -> [Double] {
+        if realFull.count >= 28 { return Array(realFull.suffix(28)) }
+        return chartFromHistory(history: history, priorAvg: priorAvg, seed: seed)
     }
 
     /// 2026-06-03 round 79 · chart consistency · build a 28-day series
