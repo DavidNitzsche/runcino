@@ -845,7 +845,7 @@ function detectStreaks(
         short: `RHR up ${above} days running.`,
         meaning: `Resting HR ≥3 bpm above your 60-day baseline ${above} days ` +
           `in a row. Common culprits: brewing illness, dehydration, alcohol, ` +
-          `or accumulating load. Worth checking subjective state.`,
+          `or accumulating load.`,
       });
     }
   }
@@ -1074,8 +1074,11 @@ function buildWatchTomorrow(
   const out: string[] = [];
   if (streaks.length > 0) {
     const s = streaks[0];
+    // 2026-06-03 · dropped "check subjective state" tail · the
+    // subjective check-in surface was gutted at b4a059e1 (no
+    // reactive coach layer) so referencing it leaves a dead pointer.
     out.push(`If ${PILLAR_LABEL[s.pillar]} stays ${s.direction} another day, ` +
-      `treat it as signal, not noise · Ease the load and check subjective state.`);
+      `treat it as signal, not noise · Ease the load.`);
   }
   // Sleep debt heading up
   if (history.sleep.length >= 3) {

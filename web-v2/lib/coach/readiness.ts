@@ -58,7 +58,12 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
       key: 'sleep', label: 'SLEEP · 28%', weight: w,
       // Tag the value as the 7-night average so it doesn't read as "last night".
       observedV: `${state.sleep7Avg.toFixed(1)}h · 7-night avg`,
-      observedSub: delta >= 0 ? `+${delta.toFixed(1)}h vs 7.5h target` : `${delta.toFixed(1)}h vs 7.5h target`,
+      // 2026-06-03 · dropped "vs 7.5h target" tail · the pillar's
+      // baseline field also says "target 7.5h" so showing both gave
+      // the runner "-1.4h vs 7.5h target · target 7.5h" with the
+      // target value duplicated. Now just shows the signed delta ·
+      // baseline carries the target.
+      observedSub: delta >= 0 ? `+${delta.toFixed(1)}h vs target` : `${delta.toFixed(1)}h vs target`,
       meaning,
     });
   } else {
