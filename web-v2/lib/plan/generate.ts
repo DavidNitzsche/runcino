@@ -27,6 +27,10 @@ import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
+// 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
+// users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
+// profile.max_hr is NOT the source of truth per task #141.
+import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode } from './goal-tiers';
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 
@@ -1858,15 +1862,21 @@ async function loadGeneratorInputs(
 
   // 7. T-pace + LTHR + maxHR · plan-wide goal-T (composePlan computes
   //    per-week blend in tPaceForWeek when bestRecentVdot is set, Rule 3).
-  //    2026-06-03 · Rule 16 · maxHR added · drives easy/long HR cap
-  //    via spec-builder's max(89% LTHR, 78% maxHR) doctrine.
+  //    2026-06-03 · Rule 16 · maxHR drives easy/long HR cap via
+  //    spec-builder's max(89% LTHR, 78% maxHR) doctrine.
+  //
+  //    LTHR · profile.lthr (manual entry, stable per-runner).
+  //    maxHR · loadEffectiveMaxHr (canonical · resolves user override
+  //            → hybrid 12-mo observed → users.max_hr → null). Reading
+  //            profile.max_hr directly would miss the observed peak ·
+  //            per task #141 the profile column is not source of truth.
   const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi);
-  const profHrRow = (await pool.query<{ lthr: number | null; max_hr: number | null }>(
-    `SELECT lthr, max_hr FROM profile WHERE user_uuid = $1 LIMIT 1`,
+  const lthrRow = (await pool.query<{ lthr: number | null }>(
+    `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
-  const lthr = profHrRow?.lthr ?? null;
-  const maxHr = profHrRow?.max_hr ?? null;
+  const lthr = lthrRow?.lthr ?? null;
+  const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
 
   return {
     ok: true,
