@@ -99,7 +99,10 @@ export function derivePurpose(input: PurposeInput): PurposePayload {
   switch (type) {
     case 'easy': {
       const facts: string[] = [];
-      facts.push('Easy day. Conversational pace · should feel like nothing.');
+      // 2026-06-03 · drop the redundant "Easy day." prefix · the
+      // verdict already says it. David flagged "Easy day. Easy day."
+      // appearing back-to-back on the Fri 6/5 upcoming card.
+      facts.push('Conversational pace · should feel like nothing.');
       if (phase === 'BASE') {
         facts.push("Just put the miles in. The week's volume is what matters · not how fast any one run goes.");
       } else if (phase === 'PEAK' || phase === 'TAPER') {

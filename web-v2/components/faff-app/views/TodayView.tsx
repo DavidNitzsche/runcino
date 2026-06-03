@@ -1127,6 +1127,92 @@ function planRecap(t: string): string {
     default:          return 'Run the prescription. Don\'t freelance.';
   }
 }
+
+/**
+ * 2026-06-03 · derive the FUEL chip text from the real workout_spec
+ * instead of the KIT constant template ("PF 30 @ 5·10·15" was
+ * hardcoded for marathon-length plans · for a 12mi long the chart
+ * showed gels at 5 + 9 while the chip text still said 5·10·15).
+ *
+ * Source of truth: workout_spec.fuel_mi (computed by
+ * lib/plan/spec-builder.ts § fuelMi). Falls back to the KIT label
+ * when the spec doesn't carry fuel_mi (e.g. legacy plan rows).
+ *
+ * Today: defaults to "PF 30" brand (Precision Fuel 30g carb). Gel
+ * brand preference will be runner-configurable in a follow-up (see
+ * docs/IPHONE_SYNC_LEDGER.md gel-preference row).
+ */
+function deriveFuelLabel(
+  d: { type: string; workoutSpec?: unknown },
+  kitFallback: string,
+): string {
+  const spec = d.workoutSpec as { fuel_mi?: number[] } | null | undefined;
+  const fuelMi = spec?.fuel_mi ?? null;
+  if (Array.isArray(fuelMi) && fuelMi.length > 0) {
+    return `PF 30 @ ${fuelMi.join('·')}`;
+  }
+  if (kitFallback?.trim() && kitFallback !== ' · ') return kitFallback;
+  return 'Water';
+}
+
+/**
+ * 2026-06-03 · derive the COACH line for the SessionBlueprint from
+ * real workout_spec values instead of KIT template strings.
+ *
+ * Bugs this fixes:
+ *   · Thu 6/4 tempo showed "Hold 6:38" hardcoded · actual target was
+ *     6:59. Now derived from workout_spec.tempo_pace_s_per_mi.
+ *   · Sun 6/7 long showed "Easy first 10, then squeeze the last 4 to
+ *     marathon pace" · 10+4=14 ≠ 12mi distance. Now derived from
+ *     real distance with sensible defaults per workout type.
+ *
+ * Falls back to KIT for types whose spec doesn't carry the right
+ * fields, or when distance is too small to author a useful line.
+ */
+function deriveCoachLine(
+  d: { type: string; dist: string; pace: string | null; workoutSpec?: unknown },
+  kitFallback: string,
+): string {
+  const spec = d.workoutSpec as {
+    tempo_pace_s_per_mi?: number;
+    rep_pace_s_per_mi?: number;
+    kind?: string;
+  } | null | undefined;
+  const fmtPace = (s?: number): string | null => {
+    if (!s || s <= 0) return null;
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, '0')}`;
+  };
+  const totalMi = parseFloat(d.dist || '0') || 0;
+
+  if (d.type === 'tempo') {
+    const paceStr = fmtPace(spec?.tempo_pace_s_per_mi)
+      ?? (d.pace && d.pace.match(/^\d+:\d{2}/) ? d.pace : null);
+    if (paceStr) {
+      return `Hold ${paceStr}. Sustainable but focused. The back half is the test.`;
+    }
+  }
+
+  if (d.type === 'long' && totalMi >= 8) {
+    // Long runs without an MP-finish work-phase get the plain "easy
+    // throughout" framing. Distance-aware fuel hint instead of
+    // hardcoded "first 10, last 4."
+    const gelHint = totalMi >= 14
+      ? 'Take a gel every 30-45 min · early and often.'
+      : 'Sip water, take a gel mid-run if needed.';
+    return `Easy and steady the whole way. ${gelHint}`;
+  }
+
+  if (d.type === 'intervals') {
+    const paceStr = fmtPace(spec?.rep_pace_s_per_mi);
+    if (paceStr) {
+      return `Reps at ${paceStr}. Full float between · don't bleed the recoveries.`;
+    }
+  }
+
+  return kitFallback;
+}
 function planEffortLabel(t: string): { copy: string; ratio: string } {
   switch (t) {
     case 'easy':      return { copy: 'Conversational · Z2',     ratio: '3 / 10' };
@@ -1410,7 +1496,7 @@ function PlannedHeroV2({
             </div>
             <div>
               <div className="kcl">FUEL</div>
-              <div className="kcv">{kit.fuel?.trim() && kit.fuel !== ' · ' ? kit.fuel : 'Water'}</div>
+              <div className="kcv">{deriveFuelLabel(d, kit.fuel)}</div>
             </div>
             <div>
               <div className="kcl">BEST WINDOW</div>
@@ -1424,7 +1510,7 @@ function PlannedHeroV2({
         distLabel={`${d.dist} mi`}
         estLabel={d.est.replace(/^~/, '~')}
         data={deriveBlueprintData(d.workoutSpec ?? null, totalMi, d.type, d.pace)}
-        coachLine={kit.coach}
+        coachLine={deriveCoachLine(d, kit.coach)}
       />
 
       <aside className="wcard">
