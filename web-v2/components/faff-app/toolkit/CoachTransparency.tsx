@@ -81,7 +81,7 @@ function useIntents({
         }
       });
     return () => { alive = false; };
-  }, [limit, reasonPrefix, initial]);
+  }, [limit, reasonPrefix, initial, unackedOnly]);
 
   return { rows, state, err };
 }
@@ -95,13 +95,20 @@ function useIntents({
 export function AdaptationCard({
   initial,
   onOpenHistory,
-  recencyHours = 36,
+  recencyHours = 24,
 }: {
   initial?: IntentRow[] | null;
   onOpenHistory?: () => void;
   recencyHours?: number;
 }) {
-  const { rows, state } = useIntents({ limit: 5, initial });
+  // 2026-06-03 · pass unackedOnly: true so the banner surface respects
+  // the engine + frontend ack pipeline. Without this, AdaptationCard
+  // renders ANY recent intent within recencyHours regardless of
+  // acknowledged_at · the previous bug where watch_completion intents
+  // kept appearing as banners even after backend acked them.
+  // Bumped recencyHours default from 36 → 24 to match the doctrine
+  // (banner surface = "happened in the last day").
+  const { rows, state } = useIntents({ limit: 5, initial, unackedOnly: true });
 
   // 2026-06-01: return null while loading. Previously this rendered
   // a full COACH-badged skeleton card for the duration of
