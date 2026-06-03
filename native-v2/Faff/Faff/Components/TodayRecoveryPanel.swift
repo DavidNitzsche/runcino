@@ -57,11 +57,16 @@ private extension TodayRecoveryPanel {
     var sectionA: some View {
         Button(action: onTapRecoveryCard) {
             VStack(alignment: .leading, spacing: 10) {
-                // Big band word · band-tinted, no box
+                // 2026-06-02 round 60 · band word now SOLID WHITE.
+                // Earlier rounds tinted by band (recovering = amber etc) ·
+                // amber-on-warm-mesh washed out. White carries on any
+                // time-of-day palette. The WORD itself ("DRAGGING") +
+                // score communicate the band; color is no longer the
+                // semantic signal.
                 Text(bandWordUpper)
                     .font(.display(42, weight: .bold))
                     .tracking(-0.5)
-                    .foregroundStyle(bandColor)
+                    .foregroundStyle(Color.white)
                 // Engine one-liner directly below
                 if let line = brief?.oneLine, !line.isEmpty {
                     Text(line)
@@ -117,18 +122,12 @@ private extension TodayRecoveryPanel {
         }
     }
 
-    /// 2026-06-02 round 59 · per design: recovering = amber (mid-state ·
-    /// not fully back, not concerning). Earlier muted-teal read as too
-    /// close to "recovered" green.
-    var bandColor: Color {
-        switch (brief?.band ?? "").lowercased() {
-        case "recovered":  return Color(hex: 0x3FB6B0)   // teal
-        case "recovering": return Color(hex: 0xE5A85B)   // amber/gold
-        case "dragging":   return Color(hex: 0xE0823A)   // deeper amber
-        case "depleted":   return Color(hex: 0xD6483F)   // coral
-        default:           return Color(hex: 0xE5A85B)
-        }
-    }
+    // 2026-06-02 round 60 · bandColor helper retired. Recovery panel
+    // now renders solid white across the time-of-day mesh palettes
+    // (sunrise / day / dusk / night). Band semantics are carried by
+    // the WORD ("DRAGGING") + the score + the engine one-liner;
+    // color isn't the channel. See round-60 doctrine note above the
+    // band-word text.
 
     @ViewBuilder
     var projectionCurve: some View {
@@ -152,15 +151,15 @@ private extension TodayRecoveryPanel {
                         control2: CGPoint(x: w * 0.7, y: endY + h * 0.15)
                     )
                 }
-                .stroke(bandColor.opacity(0.85), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                .stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
                 // NOW dot
                 Circle()
-                    .fill(bandColor)
+                    .fill(Color.white)
                     .frame(width: 7, height: 7)
                     .position(x: 4, y: h * (1 - CGFloat(brief?.score ?? 0) / 100))
                 // +24h dot
                 Circle()
-                    .fill(bandColor.opacity(0.35))
+                    .fill(Color.white.opacity(0.55))
                     .frame(width: 6, height: 6)
                     .position(x: w - 4, y: h * 0.08)
                 // Inner tick labels removed · the outer axis row below
@@ -207,7 +206,7 @@ private extension TodayRecoveryPanel {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.10))
                     Capsule()
-                        .fill(Color(hex: 0xE5A85B))
+                        .fill(Color.white)
                         .frame(width: geo.size.width * CGFloat(min(100, max(0, pct))) / 100)
                 }
             }
@@ -268,22 +267,21 @@ private extension TodayRecoveryPanel {
     var sectionC: some View {
         if let t = brief?.trainingInput {
             HStack(alignment: .center, spacing: 0) {
-                // +TSS
-                inputCell(value: "+\(t.tssDelta)", label: "TSS",
-                          tone: t.tssDelta > 0 ? Color(hex: 0x7BC8B8) : Color.white)
+                // 2026-06-02 round 60 · all input-cell values solid white.
+                // Semantic info (band label / arc direction) carried by
+                // the value text + glyph, not color.
+                inputCell(value: "+\(t.tssDelta)", label: "TSS", tone: Color.white)
                 middot
-                // Form delta + band
                 inputCell(
                     value: "\(t.formDelta >= 0 ? "+" : "")\(t.formDelta)",
                     label: t.formBandLabel.isEmpty ? "FORM" : t.formBandLabel,
-                    tone: formTone(t.formBandLabel)
+                    tone: Color.white
                 )
                 middot
-                // Arc direction
                 inputCell(
                     value: arcGlyph(t.arcDirection),
                     label: "ARC",
-                    tone: arcTone(t.arcDirection)
+                    tone: Color.white
                 )
             }
             .padding(.horizontal, 14).padding(.vertical, 13)
@@ -314,15 +312,9 @@ private extension TodayRecoveryPanel {
             .foregroundStyle(Color.white)
     }
 
-    func formTone(_ band: String) -> Color {
-        switch band.uppercased() {
-        case "OPTIMAL":    return Color(hex: 0x7BC8B8)
-        case "PRODUCTIVE": return Color(hex: 0x7BC8B8)
-        case "OVERREACH":  return Color(hex: 0xE0A23A)
-        case "FRESH":      return Color.white
-        default:           return Color.white
-        }
-    }
+    // 2026-06-02 round 60 · formTone + arcTone retired alongside
+    // bandColor. Form-band label + arc glyph carry the meaning;
+    // color reads as solid white.
 
     func arcGlyph(_ dir: String) -> String {
         switch dir.lowercased() {
@@ -330,15 +322,6 @@ private extension TodayRecoveryPanel {
         case "flat":     return "→"
         case "slipping": return "↘"
         default:         return "→"
-        }
-    }
-
-    func arcTone(_ dir: String) -> Color {
-        switch dir.lowercased() {
-        case "on_track": return Color(hex: 0x7BC8B8)
-        case "flat":     return Color.white.opacity(0.85)
-        case "slipping": return Color(hex: 0xE0A23A)
-        default:         return Color.white
         }
     }
 }
