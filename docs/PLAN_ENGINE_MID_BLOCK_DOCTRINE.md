@@ -39,6 +39,8 @@ Every reader (`recentWeeklyMileage`, `recentPeakLongMi`, `easyDayMedianMi`, `rec
 | 13 · post-race recovery | `goal-tiers.ts § POST_RACE_RECOVERY_WEEKS` + graduate cron | Daily graduate cron when a race date passes | All runners with finished A/B races |
 | 14 · strength · pair hard with hard | `strength-recommender.ts § pickCandidates + phaseFrequencyCap + shouldDemoteHeavy` | Every seed build (loaded by `glance-state.ts`) | All runners |
 | 15 · completed days immutable | `seal.ts § snapshotSealedDays, filterUnsealedWorkouts` | Every rebuild (snapshot before archive) + every adapter UPDATE (skip + log) | All runners |
+| 16 · easy HR cap = Daniels E ceiling, not Friel Z1 recovery | `spec-builder.ts § hrCapEasy/hrCapLong` · `max(89% LTHR, 78% maxHR)` | Every plan composition · `buildWorkoutSpec` | All runners (with LTHR or maxHR · graceful fallback when only one) |
+| 17 · easy verdict is pace-first · HR is descriptive | `TodayView.tsx § onPlan/verdictBadge` · reads `spec.pace_target_s_per_mi_lo/hi` | Every Done-state render | All runners |
 
 ### What activates rules for a brand-new user
 
@@ -62,7 +64,43 @@ When someone signs up and creates their first plan:
 
 ---
 
-**Status (2026-06-03 night · v4):** 11 rules + post-race graduate cron + Rules 12-14 + **Rule 15 (completed days are immutable)** SHIPPED.
+**Status (2026-06-03 late · v5):** 11 rules + post-race graduate cron + Rules 12-14 + 15 + **Rules 16 + 17 (easy HR cap doctrine + pace-first easy verdict)** SHIPPED.
+
+**Rule 16 · easy + long HR cap is Daniels E pace ceiling, not Friel Z2 recovery cap.**
+
+Easy and long HR caps both derive from `max(89% LTHR, 78% maxHR)` — top of Friel Z2 ("Aerobic / Long-run base") OR Daniels' E pace upper, whichever is higher when both anchors known.
+
+**Was (bug):** `hrCapEasy = LTHR × 0.80` (top of Friel Z1 RECOVERY · way too tight) and `hrCapLong = LTHR × 0.85` (mid-Z2 · also too tight). David's profile (LTHR 162, maxHR 188) got 130 bpm — a *recovery-day* cap. Every honest easy run with HR drift into 130-144 (well within true Z2/E zone) tripped OFF PLAN.
+
+**Now (doctrine):** `max(89% × LTHR, 78% × maxHR)`. David: max(144, 147) = 147. Matches Daniels E ceiling + Friel Z2 upper. Same number for easy AND long because long IS easy effort with more volume — the prior split was an over-cautious Friel translation, not a doctrinal distinction.
+
+**Why max-of-anchors:** the two methods disagree by ~5-10 bpm for most runners depending on aerobic vs anaerobic skew. Taking the max is the *lenient, honest* read · forces a cap below "easy" only when BOTH anchors agree it should be lower. Universal applicability without per-profile carve-outs.
+
+Watch app's `lib/watch/build-workout.ts` already used `LTHR × 0.89` — the plan generator was the outlier. Rule 16 aligns generator with watch · single doctrine across surfaces.
+
+**Code:** `lib/plan/spec-builder.ts § hrCapEasy(lthr, maxHr) + hrCapLong(lthr, maxHr)` · plumbed through `buildWorkoutSpec(...)` · `lib/plan/generate.ts` reads `profile.max_hr` at the entry point and passes through `persistPlan`.
+
+Cite: Research/03-heart-rate-zones.md §6 (Friel) · Daniels Running Formula 3e §"E pace" · `lib/training/zones.ts` lthrZones Z2 upper.
+
+---
+
+**Rule 17 · easy verdict is PACE-first · HR is descriptive, not gating.**
+
+The Done-state recap badge for easy runs reads ON PLAN when the runner hit the prescribed pace band AND the prescribed distance. HR informs the recap copy ("HR ran high · hot day") but does not flip the badge.
+
+**Was (bug):** the badge gated on `easyShare ≥ 85%` where `easyShare = Z1 + Z2 share of moving time`. Failed for any runner whose HR ran above the (Rule-16-fixed) Z2 ceiling — heat, sleep debt, life stress, training fatigue all drift HR up by 5-15 bpm without changing the runner's actual execution. David's 2026-06-03 run: pace 8:18 inside the 7:47-8:37 target band, distance 6.08 vs 6.0 planned. He DID the easy run. HR ran 144 (true Z2 upper) which read as 50% easyShare → OFF PLAN.
+
+**Now (doctrine):** Pace inside the plan's `pace_target_s_per_mi_lo/hi` band (±15s tolerance · band is already 30s) AND distance within `[0.75×, 1.20×]` planned = ON PLAN. HR doesn't enter the verdict for easy. For non-easy (quality / long / race), pace + distance gates remain unchanged — those workouts ARE intensity-defined.
+
+**Why:** Daniels' "E pace is defined by pace, not heart rate. HR is the feedback signal." If we tell the runner "easy = 7:47-8:37/mi" and they hit 8:18, they did easy. Flipping the badge on HR-derived `easyShare` punishes physiological reality the runner can't control.
+
+**Code:** `components/faff-app/views/TodayView.tsx § onPlan/verdictBadge` · reads `d.workoutSpec.pace_target_s_per_mi_lo/hi` from the (Rule-16-fixed) spec.
+
+**Hot-day rescue still active for non-easy:** quality/long with `heatBump ≥ 5 bpm` AND distance in tolerance gets HOT DAY badge even if pace was off. Easy doesn't need rescue · pace tells the truth.
+
+Cite: Daniels Running Formula 3e · "E pace" · Pfitzinger FRR §General aerobic doctrine.
+
+---
 
 **Rule 15 · completed days are immutable.** Once a `plan_workouts` row has a corresponding completed run, NOTHING on its prescription fields (type, distance_mi, pace_target_s_per_mi, workout_spec, sub_label, is_quality, is_long, notes) may change. Plan adjustments, doctrine updates, rule-engine retroactives, rebuilds — all stop at the boundary of "did the runner complete this day."
 

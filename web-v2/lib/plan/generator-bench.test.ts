@@ -105,6 +105,10 @@ function personaToComposeInput(p: SyntheticRunner): ComposePlanInput {
     rxRaceSpecific: inlinePrescriptions(cat),
     tPaceSec: tPaceFromGoal(p.race.goalSec, p.race.distanceMi),
     lthr: null,
+    // 2026-06-03 · Rule 16 · personas without maxHr fall back to
+    // LTHR-only HR cap derivation. Null is the honest default for
+    // a synthetic persona without a measured max.
+    maxHr: null,
   };
 }
 

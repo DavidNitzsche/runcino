@@ -1630,31 +1630,76 @@ function CompletedHeroV2({
     ? Math.round((runData.hrZonePcts.z1 ?? 0) + (runData.hrZonePcts.z2 ?? 0))
     : null;
 
+  // 2026-06-03 · Rule 17 · Easy verdict is PACE-first.
+  //
+  // Easy days are defined by PACE for runners with calibrated paces.
+  // HR is the DESCRIPTIVE signal (cardiovascular state · heat, sleep,
+  // fatigue, life), not the GATING signal. If the runner hit the
+  // prescribed pace band AND the prescribed distance, they executed
+  // easy correctly · period. HR drifting into Z3 doesn't mean they
+  // pushed; it means they were running easy in a hot/tired body.
+  //
+  // Was: easyShare ≥ 85% (Z1+Z2 share) gated the verdict. Failed for
+  //   any runner whose HR ran above their (now Rule-16-fixed) Z2
+  //   ceiling · heat, sleep debt, fitness state, all trip OFF PLAN
+  //   even when the runner DID exactly what easy demanded.
+  // Now: pace-first. Pace inside the plan's pace_target band = easy
+  //   was executed correctly. HR informs the recap copy but doesn't
+  //   gate the verdict.
+  //
+  // Doctrine: Daniels Running Formula 3e · "E pace is defined by pace,
+  // not heart rate. HR is the feedback signal."
+  //
+  // For non-easy (quality / long / race) the pace+distance gate stays
+  // the same · those workouts ARE intensity-defined.
+  const specPaceLo = (d.workoutSpec as Record<string, number> | null)?.pace_target_s_per_mi_lo ?? null;
+  const specPaceHi = (d.workoutSpec as Record<string, number> | null)?.pace_target_s_per_mi_hi ?? null;
+  // Parse runData.pace ("8:18") to seconds when pace_s_per_mi isn't on
+  // the envelope. Inline since this is the only callsite in the file.
+  const actualPaceSec: number | null = (() => {
+    const direct = (runData as { pace_s_per_mi?: number } | undefined)?.pace_s_per_mi;
+    if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
+    const s = typeof runData?.pace === 'string' ? runData.pace.trim() : null;
+    if (!s) return null;
+    const m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  })();
+  // Pace within ±15s of the band edges is still "in band" (band is
+  // already a 30s window; this stops a 1s-over from flipping verdict).
+  const paceInBand = isEasy && specPaceLo != null && specPaceHi != null && actualPaceSec != null
+    ? actualPaceSec >= specPaceLo - 15 && actualPaceSec <= specPaceHi + 15
+    : null;
+
   const onPlan = (() => {
     if (plannedMi <= 0) return false;
-    if (isEasy && easyShare != null) {
-      // Easy doctrine · stayed easy + didn't bomb the distance.
-      return easyShare >= 85 && actualMi >= plannedMi * 0.75 && actualMi <= plannedMi * 1.2;
+    if (isEasy) {
+      const distanceOk = actualMi >= plannedMi * 0.75 && actualMi <= plannedMi * 1.2;
+      if (!distanceOk) return false;
+      // Rule 17 · pace-first when pace data + spec available.
+      if (paceInBand != null) return paceInBand;
+      // No pace target on this row · legacy easyShare gate (rare ·
+      // workouts without workout_spec).
+      if (easyShare != null) return easyShare >= 85;
+      // No HR + no pace data · trust distance alone for easy.
+      return true;
     }
     // Quality / long / fallback · ±15% distance window.
     return actualMi >= plannedMi * 0.85 && actualMi <= plannedMi * 1.15;
   })();
 
-  // 2026-06-03 · HOT DAY rescue · when heat-bump is significant (≥5 bpm
-  // physiological cost) AND the runner ran the right distance on an
-  // easy day, badge says HOT DAY regardless of easyShare. The recap
-  // text already explains the heat ("63°F → 68°F · costs you 9% on
-  // pace"); the badge should match that nuance instead of contradicting
-  // it with OFF PLAN. Previously hot-day only rescued on-plan runs ·
-  // the runner whose HR drifted into Z3 BECAUSE of heat got punished
-  // for honest execution. Cite: prior David flag 2026-06-03.
+  // 2026-06-03 · HOT DAY rescue · for NON-easy types where heat is
+  // bumping HR significantly above what pace alone would predict.
+  // Easy is already pace-first (Rule 17) · pace tells the truth, heat
+  // doesn't change the verdict. This rescue only fires for quality/long
+  // where HR running hot signals real cardiovascular cost.
   const distanceWithinEasyTolerance =
     plannedMi > 0 && actualMi >= plannedMi * 0.75 && actualMi <= plannedMi * 1.2;
-  const heatRescue = isEasy && heatBump >= 5 && distanceWithinEasyTolerance;
+  const heatRescue = !isEasy && heatBump >= 5 && distanceWithinEasyTolerance;
 
   const verdictBadge: 'on-plan' | 'hot-day' | 'off-plan' =
     onPlan && heatBump >= 5 ? 'hot-day'
-    : heatRescue ? 'hot-day'    // off-plan-by-zones but heat explains it
+    : heatRescue ? 'hot-day'
     : onPlan ? 'on-plan'
     : 'off-plan';
 

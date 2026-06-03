@@ -18,7 +18,18 @@
  * Doctrine:
  *   · Daniels' Running Formula · T/I/M/E pace offsets
  *   · Research/01 §pace-zones
- *   · Friel zones for HR caps (Z2 ≤ 80% LTHR for easy · ≤ 85% for long)
+ *   · Friel zones for HR caps · Rule 16 (2026-06-03 doctrine fix):
+ *     Easy + Long HR cap = 89% LTHR (top of Friel Z2 "Aerobic / Long-run
+ *     base") OR 78% maxHR (Daniels E pace upper) — whichever is higher
+ *     when both anchors are known.
+ *
+ *     Was: 80% LTHR for easy (=top of Friel Z1 RECOVERY · way too tight),
+ *          85% LTHR for long.
+ *     David's profile: LTHR 162, maxHR 188 → cap was 130 (recovery zone),
+ *          now 144 (top of Friel Z2 = honest easy ceiling).
+ *
+ *     Universal applicability · every runner uses the same math. No UUID
+ *     hardcodes, no carve-outs.
  */
 
 import { parsePrescription, parseTempoShape } from './prescription-parser';
@@ -35,12 +46,56 @@ export interface SpecBuildResult {
 
 // ── HR helpers ──────────────────────────────────────────────────────────
 
-function hrCapEasy(lthr: number | null): number | null {
-  return lthr ? Math.round(lthr * 0.80) : null;
+/**
+ * 2026-06-03 · Rule 16 (Easy HR cap doctrine fix · canonical).
+ *
+ * Easy + Long HR cap = MAX(89% LTHR, 78% maxHR) when both known, else
+ * the available single anchor.
+ *
+ *  · 89% LTHR = top of Friel Z2 "Aerobic / Long-run base"
+ *    (Research/03-heart-rate-zones.md §6 · matches lthrZones() Z2 upper)
+ *  · 78% maxHR = top of Daniels E pace zone
+ *    (Daniels Running Formula 3e · "easy / aerobic" upper bound)
+ *
+ * Was: lthr × 0.80 for easy (= top of Friel Z1 RECOVERY, way too tight)
+ *      and lthr × 0.85 for long (= mid-Z2, also too tight).
+ *
+ * For a runner with LTHR 162 + maxHR 188 (David's profile):
+ *   · old easy cap: 130 bpm (recovery zone · made every honest easy
+ *     run trip OFF PLAN on warm days)
+ *   · new easy cap: max(89% × 162, 78% × 188) = max(144, 147) = 147
+ *   · matches Daniels E ceiling, accommodates real easy effort
+ *
+ * Same number for easy + long because LONG IS EASY EFFORT, just more
+ * volume. The old 85% LTHR split between them was an artifact of
+ * over-cautious Friel translation, not a doctrinal distinction.
+ *
+ * Why MAX-of-anchors: the two methods often disagree (different
+ * physiologies map differently). Taking the max is the lenient,
+ * honest read · forces a cap below "easy" only when BOTH anchors say
+ * it should be lower. Runners whose maxHR is high relative to LTHR
+ * (anaerobic-trained) get the maxHR-derived cap; runners whose LTHR
+ * is high relative to maxHR (aerobic-trained) get the LTHR-derived
+ * cap. Universal applicability without per-profile carve-outs.
+ *
+ * Watch app already used `lthr × 0.89` in lib/watch/build-workout.ts ·
+ * this aligns the plan generator with the watch app · single doctrine.
+ */
+function hrCapEasy(lthr: number | null, maxHr: number | null = null): number | null {
+  const lthrCap = lthr ? Math.round(lthr * 0.89) : null;
+  const maxHrCap = maxHr ? Math.round(maxHr * 0.78) : null;
+  if (lthrCap == null && maxHrCap == null) return null;
+  if (lthrCap == null) return maxHrCap;
+  if (maxHrCap == null) return lthrCap;
+  return Math.max(lthrCap, maxHrCap);
 }
-function hrCapLong(lthr: number | null): number | null {
-  return lthr ? Math.round(lthr * 0.85) : null;
+
+/** Long-run HR cap · same as easy. Long IS easy effort, just more volume.
+ *  Kept as a separate function for callsite clarity + future divergence. */
+function hrCapLong(lthr: number | null, maxHr: number | null = null): number | null {
+  return hrCapEasy(lthr, maxHr);
 }
+
 function hrLthrBpm(lthr: number | null): number | null {
   return lthr ?? null;
 }
@@ -69,6 +124,12 @@ export function buildWorkoutSpec(
   tPaceSec: number,
   lthr: number | null,
   prescription?: string | null,
+  // 2026-06-03 · Rule 16 · maxHR anchor for the easy/long HR cap.
+  // Optional · when both lthr + maxHr present, hrCapEasy takes the
+  // higher of the two anchor-derived caps. Callers that don't yet
+  // thread maxHr fall back to lthr-only (89% LTHR · still honest
+  // Friel Z2 ceiling, just no Daniels cross-check).
+  maxHr: number | null = null,
 ): SpecBuildResult {
   // 2026-06-02 · parse the prescription up front (e.g. "6×800m @ I
   // pace · 90s jog" → {reps:6, repDistanceMi:0.497, restS:90}). When
@@ -92,7 +153,7 @@ export function buildWorkoutSpec(
           kind: 'easy',
           pace_target_s_per_mi_lo: easyLo,
           pace_target_s_per_mi_hi: easyHi,
-          hr_cap_bpm: hrCapEasy(lthr),
+          hr_cap_bpm: hrCapEasy(lthr, maxHr),
           fuel_mi: [],
         },
         // Easy days don't have a single "headline" pace · the chip
@@ -105,7 +166,7 @@ export function buildWorkoutSpec(
           kind: 'recovery',
           pace_target_s_per_mi_lo: recovery,
           pace_target_s_per_mi_hi: recovery + 30,
-          hr_cap_bpm: hrCapEasy(lthr),
+          hr_cap_bpm: hrCapEasy(lthr, maxHr),
         },
         paceTargetSPerMi: null,
       };
@@ -117,7 +178,7 @@ export function buildWorkoutSpec(
           kind: 'long',
           pace_target_s_per_mi_lo: longLo,
           pace_target_s_per_mi_hi: longHi,
-          hr_cap_bpm: hrCapLong(lthr),
+          hr_cap_bpm: hrCapLong(lthr, maxHr),
           fuel_mi: fuelMi(distance_mi),
         },
         // Long-run "headline" pace is the easy long pace · take the
@@ -207,7 +268,7 @@ export function buildWorkoutSpec(
           kind: 'easy',
           pace_target_s_per_mi_lo: easyHi,
           pace_target_s_per_mi_hi: easyHi + 30,
-          hr_cap_bpm: hrCapEasy(lthr),
+          hr_cap_bpm: hrCapEasy(lthr, maxHr),
           fuel_mi: [],
         },
         paceTargetSPerMi: null,

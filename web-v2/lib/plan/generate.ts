@@ -920,6 +920,9 @@ export interface ComposePlanInput {
   rxRaceSpecific: ResolvedPrescriptions;
   tPaceSec: number | null;
   lthr: number | null;
+  /** 2026-06-03 · Rule 16 · maxHr for the easy/long HR cap doctrine.
+   *  Optional · null falls back to LTHR-only cap. */
+  maxHr: number | null;
 }
 
 export interface ComposedWeek {
@@ -1443,6 +1446,11 @@ async function persistPlan(args: {
   /** Runner's LTHR for spec HR caps. Optional · spec falls back to
    *  pace-only when missing. */
   lthr: number | null;
+  /** 2026-06-03 · Rule 16 · maxHR for the easy/long HR cap doctrine
+   *  (max of 89% LTHR + 78% maxHR). Optional · null falls back to
+   *  LTHR-only. Plumbed from profile.hrmax_observed at the entry
+   *  point so every plan_workouts row gets a Daniels-grade cap. */
+  maxHr: number | null;
 }): Promise<string> {
   const planId = id('pln');
   await pool.query(
@@ -1507,7 +1515,9 @@ async function persistPlan(args: {
         // spec-builder so the spec's rep_count / rep_distance_mi /
         // rep_rest_s match what the label promises. Was hardcoded ·
         // produced 5×1km specs under "4×1 mi @ I" labels.
-        const built = buildWorkoutSpec(d.type, d.distanceMi, weekT, args.lthr, d.subLabel);
+        // 2026-06-03 · Rule 16 · pass maxHr alongside LTHR so easy/long
+        // HR caps use max(89% LTHR, 78% maxHR) instead of LTHR-only.
+        const built = buildWorkoutSpec(d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null);
         paceTargetSPerMi = built.paceTargetSPerMi;
         workoutSpec = built.spec;
       }
@@ -1635,6 +1645,11 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     })),
     tPaceSec: inputs.compose.tPaceSec,
     lthr: inputs.compose.lthr,
+    // 2026-06-03 · Rule 16 · plumb maxHr through to spec-builder so
+    // easy/long HR caps land at max(89% LTHR, 78% maxHR) instead of
+    // LTHR-only. profile.max_hr already loaded in inputs.compose.maxHr
+    // via the planInputs reader.
+    maxHr: inputs.compose.maxHr,
     authoredState: {
       ...composed.authoredState,
       mode,
@@ -1841,14 +1856,17 @@ async function loadGeneratorInputs(
     resolvePrescriptions(cat, 'race_specific',  level),
   ]);
 
-  // 7. T-pace + LTHR · plan-wide goal-T (composePlan computes per-week
-  //    blend in tPaceForWeek when bestRecentVdot is set, Rule 3).
+  // 7. T-pace + LTHR + maxHR · plan-wide goal-T (composePlan computes
+  //    per-week blend in tPaceForWeek when bestRecentVdot is set, Rule 3).
+  //    2026-06-03 · Rule 16 · maxHR added · drives easy/long HR cap
+  //    via spec-builder's max(89% LTHR, 78% maxHR) doctrine.
   const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi);
-  const lthrRow = (await pool.query<{ lthr: number | null }>(
-    `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
+  const profHrRow = (await pool.query<{ lthr: number | null; max_hr: number | null }>(
+    `SELECT lthr, max_hr FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
-  const lthr = lthrRow?.lthr ?? null;
+  const lthr = profHrRow?.lthr ?? null;
+  const maxHr = profHrRow?.max_hr ?? null;
 
   return {
     ok: true,
@@ -1876,6 +1894,8 @@ async function loadGeneratorInputs(
       rxRaceSpecific,
       tPaceSec,
       lthr,
+      // 2026-06-03 · Rule 16 · plumbed to persistPlan + buildWorkoutSpec.
+      maxHr,
     },
   };
 }
