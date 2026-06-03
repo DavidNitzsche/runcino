@@ -34,6 +34,9 @@ import {
   type HistAvg,
   type HistLong,
   type HistYears,
+  type RaceHistoryEntry,
+  type RaceHistoryDistance,
+  type RaceHistoryWhen,
 } from '@/lib/onboarding/state';
 
 const TT_DISTANCES: { value: TTDistance | null; label: string }[] = [
@@ -184,6 +187,15 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
           </div>
         )}
       </Section>
+
+      {/* ── NEW · RACE HISTORY (optional · TASK B4) ─────────────────
+          Self-reported PRs at any distance · drives voice-band
+          calibration / guided / challenge band selection. Up to 3
+          entries. Empty → "first race ever" → calibration mode. */}
+      <RaceHistorySection
+        entries={state.raceHistory}
+        onChange={(entries) => setState({ ...state, raceHistory: entries })}
+      />
 
       {/* ── Section B · WEEKLY TARGET (required) ───────────────────── */}
       <Section header="HOW MUCH PER WEEK?" required>
@@ -512,4 +524,362 @@ function StatBlock({
       </div>
     </div>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// RACE HISTORY · 2026-06-03 · TASK B4 from onboarding-master-execution
+// ─────────────────────────────────────────────────────────────────
+
+const RACE_HISTORY_DISTANCES: { value: RaceHistoryDistance; label: string }[] = [
+  { value: '5k',       label: '5K' },
+  { value: '10k',      label: '10K' },
+  { value: 'half',     label: 'HALF' },
+  { value: 'marathon', label: 'MARATHON' },
+  { value: 'other',    label: 'OTHER' },
+];
+
+const RACE_HISTORY_WHEN: { value: RaceHistoryWhen; label: string }[] = [
+  { value: '<6mo',   label: '< 6 MO' },
+  { value: '6-12mo', label: '6-12 MO' },
+  { value: '1-2yr',  label: '1-2 YR' },
+  { value: '2+yr',   label: '2+ YR' },
+];
+
+const RACE_HISTORY_MAX = 3;
+
+/** Pre-baked time ladders per distance · chip values like "22:00" stored
+ *  as label, value = numeric seconds. */
+const RACE_HISTORY_TIME_LADDERS: Record<Exclude<RaceHistoryDistance, 'other'>, Array<{ label: string; sec: number }>> = {
+  '5k': [
+    { label: 'Sub-18', sec: 17 * 60 + 30 },
+    { label: '18-20', sec: 19 * 60 },
+    { label: '20-22', sec: 21 * 60 },
+    { label: '22-25', sec: 23 * 60 + 30 },
+    { label: '25-28', sec: 26 * 60 + 30 },
+    { label: '28-32', sec: 30 * 60 },
+    { label: '32+',   sec: 34 * 60 },
+  ],
+  '10k': [
+    { label: 'Sub-40', sec: 39 * 60 },
+    { label: '40-45',  sec: 42 * 60 + 30 },
+    { label: '45-50',  sec: 47 * 60 + 30 },
+    { label: '50-60',  sec: 55 * 60 },
+    { label: '60+',    sec: 65 * 60 },
+  ],
+  'half': [
+    { label: 'Sub-1:25', sec: 85 * 60 },
+    { label: '1:25-1:35', sec: 90 * 60 },
+    { label: '1:35-1:50', sec: 100 * 60 },
+    { label: '1:50-2:10', sec: 120 * 60 },
+    { label: '2:10+',     sec: 130 * 60 },
+  ],
+  'marathon': [
+    { label: 'Sub-3:00', sec: 175 * 60 },
+    { label: '3:00-3:30', sec: 195 * 60 },
+    { label: '3:30-4:00', sec: 225 * 60 },
+    { label: '4:00-4:30', sec: 255 * 60 },
+    { label: '4:30-5:30', sec: 300 * 60 },
+    { label: '5:30+',     sec: 330 * 60 },
+  ],
+};
+
+function RaceHistorySection({
+  entries, onChange,
+}: {
+  entries: RaceHistoryEntry[];
+  onChange: (next: RaceHistoryEntry[]) => void;
+}) {
+  // null = no entry being edited · the section shows "Yes / No, first race"
+  // when collapsed AND empty. Once at least one entry is added, the
+  // collapsed state shows the entries with an "+ Add another" affordance.
+  const [adding, setAdding] = useState<RaceHistoryEntry | null>(null);
+  const isEmpty = entries.length === 0;
+
+  function startAdd() {
+    setAdding({ distance: '5k', timeSec: 0, whenRaced: '<6mo' });
+  }
+  function confirmAdd() {
+    if (!adding) return;
+    if (adding.timeSec <= 0) return;
+    if (adding.distance === 'other' && (!adding.otherDistanceMi || adding.otherDistanceMi <= 0)) return;
+    onChange([...entries, adding].slice(0, RACE_HISTORY_MAX));
+    setAdding(null);
+  }
+  function cancelAdd() {
+    setAdding(null);
+  }
+  function removeEntry(idx: number) {
+    onChange(entries.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <Section header="RACE HISTORY" optional>
+      {isEmpty && !adding && (
+        <div>
+          <SubLabel>HAVE YOU RACED BEFORE?</SubLabel>
+          <ChipRow>
+            <Chip active={false} onClick={() => { /* no-op · empty array = first race */ }} label="No, first race" />
+            <Chip active={false} onClick={startAdd} label="Yes — add PR" />
+          </ChipRow>
+        </div>
+      )}
+
+      {entries.length > 0 && !adding && (
+        <div>
+          <SubLabel>YOUR RACES</SubLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {entries.map((e, i) => (
+              <RaceHistoryRow key={i} entry={e} onRemove={() => removeEntry(i)} />
+            ))}
+          </div>
+          {entries.length < RACE_HISTORY_MAX && (
+            <div style={{ marginTop: 10 }}>
+              <Chip active={false} onClick={startAdd} label="+ Add another" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {adding && (
+        <RaceHistoryEditor
+          entry={adding}
+          onChange={setAdding}
+          onConfirm={confirmAdd}
+          onCancel={cancelAdd}
+        />
+      )}
+    </Section>
+  );
+}
+
+function RaceHistoryRow({ entry, onRemove }: { entry: RaceHistoryEntry; onRemove: () => void }) {
+  const distLabel = entry.distance === 'other'
+    ? `${entry.otherDistanceMi}mi`
+    : entry.distance.toUpperCase();
+  const timeLabel = formatRaceTime(entry.timeSec);
+  const whenLabel = (RACE_HISTORY_WHEN.find((w) => w.value === entry.whenRaced)?.label ?? '').toLowerCase();
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      background: 'var(--card-2)',
+      border: '1px solid var(--line)',
+      borderRadius: 12,
+      padding: '10px 14px',
+    }}>
+      <div style={{
+        fontFamily: 'var(--f-body)',
+        fontWeight: 700,
+        fontSize: 13,
+        color: 'var(--ink)',
+        letterSpacing: 0.3,
+      }}>
+        {distLabel} · {timeLabel}
+        <span style={{
+          fontWeight: 400,
+          color: 'var(--mute)',
+          marginLeft: 8,
+          fontSize: 11,
+          textTransform: 'lowercase',
+        }}>{whenLabel}</span>
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: 'var(--mute)',
+          fontFamily: 'var(--f-body)',
+          fontSize: 11,
+          letterSpacing: 0.2,
+          cursor: 'pointer',
+          textDecoration: 'underline',
+          padding: 0,
+        }}
+      >remove</button>
+    </div>
+  );
+}
+
+function RaceHistoryEditor({
+  entry, onChange, onConfirm, onCancel,
+}: {
+  entry: RaceHistoryEntry;
+  onChange: (e: RaceHistoryEntry) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const isStandardDist = entry.distance !== 'other';
+  const ladder = isStandardDist
+    ? RACE_HISTORY_TIME_LADDERS[entry.distance as Exclude<RaceHistoryDistance, 'other'>]
+    : [];
+
+  const canConfirm = entry.timeSec > 0
+    && (entry.distance !== 'other' || (entry.otherDistanceMi != null && entry.otherDistanceMi > 0));
+
+  return (
+    <div>
+      <SubLabel>DISTANCE</SubLabel>
+      <ChipRow>
+        {RACE_HISTORY_DISTANCES.map((d) => (
+          <Chip
+            key={d.value}
+            active={entry.distance === d.value}
+            onClick={() => onChange({
+              ...entry,
+              distance: d.value,
+              timeSec: 0,  // reset when distance changes (different ladders)
+              otherDistanceMi: d.value === 'other' ? entry.otherDistanceMi : undefined,
+            })}
+            label={d.label}
+          />
+        ))}
+      </ChipRow>
+
+      {entry.distance === 'other' && (
+        <div style={{ marginTop: 12 }}>
+          <SubLabel>DISTANCE · MILES</SubLabel>
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0.5}
+            max={200}
+            step={0.1}
+            placeholder="e.g. 50"
+            value={entry.otherDistanceMi ?? ''}
+            onChange={(ev) => {
+              const v = Number(ev.target.value);
+              onChange({ ...entry, otherDistanceMi: Number.isFinite(v) ? v : undefined });
+            }}
+            style={{
+              background: 'var(--card-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 10,
+              padding: '10px 12px',
+              fontFamily: 'var(--f-body)',
+              fontWeight: 700,
+              fontSize: 15,
+              color: 'var(--ink)',
+              width: 140,
+            }}
+          />
+        </div>
+      )}
+
+      {isStandardDist && ladder.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <SubLabel>FINISH TIME</SubLabel>
+          <ChipRow>
+            {ladder.map((t) => (
+              <Chip
+                key={t.label}
+                active={entry.timeSec === t.sec}
+                onClick={() => onChange({ ...entry, timeSec: t.sec })}
+                label={t.label}
+              />
+            ))}
+          </ChipRow>
+        </div>
+      )}
+
+      {entry.distance === 'other' && (
+        <div style={{ marginTop: 12 }}>
+          <SubLabel>FINISH TIME · HH:MM</SubLabel>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="e.g. 8:30"
+            onChange={(ev) => {
+              const sec = parseHmToSec(ev.target.value);
+              if (sec != null) onChange({ ...entry, timeSec: sec });
+            }}
+            style={{
+              background: 'var(--card-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 10,
+              padding: '10px 12px',
+              fontFamily: 'var(--f-body)',
+              fontWeight: 700,
+              fontSize: 15,
+              color: 'var(--ink)',
+              width: 140,
+            }}
+          />
+        </div>
+      )}
+
+      <div style={{ marginTop: 12 }}>
+        <SubLabel>WHEN</SubLabel>
+        <ChipRow>
+          {RACE_HISTORY_WHEN.map((w) => (
+            <Chip
+              key={w.value}
+              active={entry.whenRaced === w.value}
+              onClick={() => onChange({ ...entry, whenRaced: w.value })}
+              label={w.label}
+            />
+          ))}
+        </ChipRow>
+      </div>
+
+      <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            background: 'transparent',
+            border: '1px solid var(--line)',
+            borderRadius: 10,
+            padding: '8px 16px',
+            fontFamily: 'var(--f-body)',
+            fontWeight: 700,
+            fontSize: 12,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            color: 'var(--mute)',
+            cursor: 'pointer',
+          }}
+        >Cancel</button>
+        <button
+          type="button"
+          disabled={!canConfirm}
+          onClick={onConfirm}
+          style={{
+            background: canConfirm ? 'var(--ink)' : 'rgba(255,255,255,0.15)',
+            border: 'none',
+            borderRadius: 10,
+            padding: '8px 16px',
+            fontFamily: 'var(--f-body)',
+            fontWeight: 700,
+            fontSize: 12,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            color: canConfirm ? '#2a1a5a' : 'var(--mute)',
+            cursor: canConfirm ? 'pointer' : 'not-allowed',
+            opacity: canConfirm ? 1 : 0.6,
+          }}
+        >Save</button>
+      </div>
+    </div>
+  );
+}
+
+function formatRaceTime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function parseHmToSec(input: string): number | null {
+  const m = input.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  const s = m[3] ? parseInt(m[3], 10) : 0;
+  if (mm >= 60 || s >= 60) return null;
+  return h * 3600 + mm * 60 + s;
 }

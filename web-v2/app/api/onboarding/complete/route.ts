@@ -85,6 +85,9 @@ import {
   type TTDistance,
   type WeeklyMileage,
   type WeeklyFrequency,
+  type RaceHistoryEntry,
+  type RaceHistoryDistance,
+  type RaceHistoryWhen,
 } from '@/lib/onboarding/state';
 import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboarding';
 import { generatePlan } from '@/lib/plan/generate';
@@ -97,6 +100,39 @@ const VALID_FREQ = new Set<WeeklyFrequency>([3, 4, 5, 6]);
 const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+']);
 const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
+const VALID_RACE_HIST_DISTANCES = new Set<RaceHistoryDistance>(['5k', '10k', 'half', 'marathon', 'other']);
+const VALID_RACE_HIST_WHEN = new Set<RaceHistoryWhen>(['<6mo', '6-12mo', '1-2yr', '2+yr']);
+const RACE_HISTORY_MAX_ENTRIES = 3;
+
+/** Validate + normalize the body.raceHistory array. Skips bad entries
+ *  rather than rejecting the whole request · partial-input tolerance. */
+function validateRaceHistory(raw: unknown): RaceHistoryEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RaceHistoryEntry[] = [];
+  for (const item of raw) {
+    if (out.length >= RACE_HISTORY_MAX_ENTRIES) break;
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const distance = r.distance as string | undefined;
+    const timeSec = Number(r.timeSec);
+    const whenRaced = r.whenRaced as string | undefined;
+    if (!distance || !VALID_RACE_HIST_DISTANCES.has(distance as RaceHistoryDistance)) continue;
+    if (!Number.isFinite(timeSec) || timeSec < 60 || timeSec > 3600 * 50) continue;
+    if (!whenRaced || !VALID_RACE_HIST_WHEN.has(whenRaced as RaceHistoryWhen)) continue;
+    const entry: RaceHistoryEntry = {
+      distance: distance as RaceHistoryDistance,
+      timeSec: Math.round(timeSec),
+      whenRaced: whenRaced as RaceHistoryWhen,
+    };
+    if (distance === 'other') {
+      const otherMi = Number(r.otherDistanceMi);
+      if (!Number.isFinite(otherMi) || otherMi <= 0 || otherMi > 200) continue;
+      entry.otherDistanceMi = otherMi;
+    }
+    out.push(entry);
+  }
+  return out;
+}
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -158,6 +194,11 @@ export async function POST(req: NextRequest) {
   const histYears = !isRace && typeof body.histYears === 'string'
       && VALID_HIST_YEARS.has(body.histYears as HistYears)
     ? (body.histYears as HistYears) : null;
+
+  // 2026-06-03 · race history capture (TASK B4). Accepted on EITHER
+  // path · first-race runners on either race or no-race path drive
+  // voice-band → calibration · prior race finishers → guided/challenge.
+  const raceHistory = validateRaceHistory(body.raceHistory);
 
   // Convert chip ranges → integer midpoints for the DB (history_* columns).
   // The original chip strings are still recoverable from the bucket order
@@ -262,7 +303,8 @@ export async function POST(req: NextRequest) {
           birthday                = COALESCE(birthday, $15::date),
           sex                     = COALESCE(sex, $16),
           height_cm               = COALESCE(height_cm, $17),
-          age                     = COALESCE(age, $18)
+          age                     = COALESCE(age, $18),
+          race_history            = $19::jsonb
         WHERE user_uuid = $14
         RETURNING user_uuid`,
       [
@@ -271,6 +313,10 @@ export async function POST(req: NextRequest) {
         histAvgMi, histLongMi, histYears,
         userId,
         birthday, sex, heightCm, ageNum,
+        // 2026-06-03 · race history JSONB · always written (may be []).
+        // Stamps the runner's self-reported PRs · voice-band reads from
+        // profile.race_history alongside the races table.
+        JSON.stringify(raceHistory.map((e) => ({ ...e, source: 'self_reported' }))),
       ]
     );
 
@@ -286,17 +332,20 @@ export async function POST(req: NextRequest) {
             tt_goal_distance, tt_goal_time,
             weekly_mileage_target, weekly_frequency,
             history_avg_weekly_mi, history_longest_recent_mi, history_years_running,
-            birthday, sex, height_cm, age
+            birthday, sex, height_cm, age,
+            race_history
           ) VALUES (
             $1, $2, $3, $4, $5, $6, NOW(), NOW(), $7,
             $8, $9, $10, $11, $12, $13, $14,
-            $15::date, $16, $17, $18
+            $15::date, $16, $17, $18,
+            $19::jsonb
           )`,
         [
           userId, distance, date, time, name, timezone, connectionsSkipped,
           ttDistance, ttTime, weeklyMi, weeklyFreq,
           histAvgMi, histLongMi, histYears,
           birthday, sex, heightCm, ageNum,
+          JSON.stringify(raceHistory.map((e) => ({ ...e, source: 'self_reported' }))),
         ]
       );
     }

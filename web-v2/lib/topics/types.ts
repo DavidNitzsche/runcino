@@ -82,6 +82,10 @@ export interface CoachState {
     // truth instead of breaking the type round-trip in state-loader.
     slug: string; name: string | null; date: string; goal: string | null;
     days_to_race: number;
+    /** 2026-06-03 · race distance for phase-focus authoring + iPhone
+     *  poster eyebrow. Null when meta is unparseable. */
+    distanceMi: number | null;
+    distanceLabel: string | null;
   } | null;
 
   sleep7Avg: number | null;
@@ -162,6 +166,32 @@ export interface CoachState {
    *  Null on state-load failure · consumers fall back to 'guided'
    *  which is the safest default. */
   voiceBand: import('@/lib/coach/voice-band').VoiceBandReason | null;
+
+  /** 2026-06-03 · authored phase copy · distance-aware name + sub +
+   *  focus for the runner's current plan phase. Mirrors what the web
+   *  TrainView renders via lib/faff/phase-focus.ts · exposed on
+   *  CoachState so iPhone's poster eyebrow / brief envelope can show
+   *  the same copy without re-deriving.
+   *
+   *  Examples:
+   *    half-marathon BUILD:
+   *      name='BUILD', sub='Threshold and race-pace volume',
+   *      focus='Sharpen threshold and race-pace volume. The two-
+   *             quality-day weeks where the back half of your 13.1
+   *             miles gets built.'
+   *    5K runner's RACE day:
+   *      name='RACE DAY', sub='Americas Finest City',
+   *      focus='Race day. 5 kilometers. Everything you built is
+   *             on the line. Send goal pace.'
+   *
+   *  null when no active plan OR no goal race (cold-start runner with
+   *  consistency goal). Consumers fall back to neutral copy. */
+  phase: {
+    key: 'base' | 'build' | 'peak' | 'taper' | 'race' | 'maintenance' | 'recovery';
+    name: string;
+    sub: string;
+    focus: string;
+  } | null;
 }
 
 /* ────────────────────────── Topic payloads ────────────────────────── */

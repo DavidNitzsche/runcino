@@ -447,8 +447,63 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       activeNiggle,
       recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
     }),
+    // 2026-06-03 · authored phase copy · distance-aware name + focus.
+    // Loads lazily so failures degrade to null · iPhone + brief
+    // composers fall back to neutral copy.
+    phase: await loadPhaseFocusSafe({ phaseLabel, nextARace }),
   };
 }
+
+/** Best-effort phase-focus loader. Maps the plan_phases.label string to
+ *  a PhaseKey, builds a minimal PhaseFocusRace from nextARace, and
+ *  calls the lib/faff/phase-focus authoring function. */
+async function loadPhaseFocusSafe(input: {
+  phaseLabel: string | null;
+  nextARace: CoachState['nextARace'];
+}): Promise<CoachState['phase']> {
+  if (!input.phaseLabel) return null;
+  try {
+    const { phaseFocus } = await import('@/lib/faff/phase-focus');
+    const key = phaseKeyFromLabel(input.phaseLabel);
+    // loadNextARace now exposes distanceMi + distanceLabel directly ·
+    // we don't need to re-parse the label here.
+    const distanceMi = input.nextARace?.distanceMi ?? null;
+    const authored = phaseFocus(key, {
+      name: input.nextARace?.name ?? null,
+      distanceMi,
+      goal: input.nextARace?.goal ?? null,
+    });
+    return {
+      key,
+      name: authored.name,
+      sub: authored.sub,
+      focus: authored.focus,
+    };
+  } catch (e) {
+    console.warn('[state-loader] phase-focus load failed:', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+/** Map plan_phases.label → PhaseKey · mirrors components/faff-app/views/
+ *  TrainView.tsx phaseKey() so backend + web agree. */
+function phaseKeyFromLabel(label: string): NonNullable<CoachState['phase']>['key'] {
+  const s = label.toLowerCase().trim();
+  if (s.startsWith('base')) return 'base';
+  if (s.startsWith('quality')) return 'build';
+  if (s.startsWith('race-specific') || s.startsWith('race specific')) return 'peak';
+  if (s.startsWith('build')) return 'build';
+  if (s.startsWith('peak')) return 'peak';
+  if (s.startsWith('taper')) return 'taper';
+  if (s.startsWith('race')) return 'race';
+  if (s.startsWith('maintenance')) return 'maintenance';
+  if (s.startsWith('recovery')) return 'recovery';
+  return 'base';
+}
+
+// 2026-06-03 · distance-from-label helper removed · loadNextARace now
+// resolves distanceMi at the source (lib/coach/race-lookup.ts). State-
+// loader just reads .distanceMi off the nextARace shape.
 
 /** Best-effort voice band loader. Lazily imported so state-loader
  *  doesn't take a module-load dependency on voice-band's SQL helpers,

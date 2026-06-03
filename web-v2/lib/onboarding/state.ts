@@ -37,6 +37,22 @@ export type HistLong = '0-3' | '3-6' | '6-10' | '10+';
 /** Years-running history chip values. */
 export type HistYears = '<1' | '1-3' | '3-7' | '7+';
 
+/** 2026-06-03 · Race history capture (TASK B4 from onboarding-master).
+ *  Distance bucket for a self-reported past race. */
+export type RaceHistoryDistance = '5k' | '10k' | 'half' | 'marathon' | 'other';
+
+/** Years-ago bucket · drives "recent race" weighting in voice-band. */
+export type RaceHistoryWhen = '<6mo' | '6-12mo' | '1-2yr' | '2+yr';
+
+export interface RaceHistoryEntry {
+  distance: RaceHistoryDistance;
+  /** Required when distance === 'other'. Distance in miles. */
+  otherDistanceMi?: number;
+  /** Finish time in seconds. */
+  timeSec: number;
+  whenRaced: RaceHistoryWhen;
+}
+
 export interface OnboardingState {
   /** Which screen the runner is on. `landing` = no `step` param. */
   step: 'landing' | 'goal' | 'goal-details' | 'signals' | 'confirm' | 'done';
@@ -54,6 +70,13 @@ export interface OnboardingState {
   histAvg: HistAvg | null;
   histLong: HistLong | null;
   histYears: HistYears | null;
+
+  /** 2026-06-03 · Race history (TASK B4). Captured on either the race
+   *  OR no-race path · self-reported PRs at any distance. Empty array
+   *  when the runner answers "No, this would be my first race." Up
+   *  to 3 entries · the UI caps it. Drives voice-band raceCount
+   *  signal alongside the `races` table. */
+  raceHistory: RaceHistoryEntry[];
 
   /** Step 2 signal-state hints. */
   stravaConnected: boolean;   // true after returning from OAuth with ?strava=connected
@@ -76,11 +99,20 @@ const DEFAULT: OnboardingState = {
   histAvg: null,
   histLong: null,
   histYears: null,
+  raceHistory: [],
   stravaConnected: false,
   name: null,
   timezone: null,
   connectionsSkipped: false,
 };
+
+const VALID_RACE_HIST_DISTANCES = new Set<RaceHistoryDistance>([
+  '5k', '10k', 'half', 'marathon', 'other',
+]);
+const VALID_RACE_HIST_WHEN = new Set<RaceHistoryWhen>([
+  '<6mo', '6-12mo', '1-2yr', '2+yr',
+]);
+const RACE_HISTORY_MAX_ENTRIES = 3;
 
 const VALID_STEPS = new Set([
   'goal', 'goal-details', 'signals', 'confirm', 'done',
@@ -156,6 +188,13 @@ export function parseOnboardingParams(
   const histYears = rawHistYears && VALID_HIST_YEARS.has(rawHistYears as HistYears)
     ? (rawHistYears as HistYears) : null;
 
+  // 2026-06-03 · race history · URL-encoded as compact semicolon-
+  // separated tuples: `rh=5k:1320:lt6mo;10k:2840:6_12mo;half:5400:1-2yr`
+  // Decoder tolerates unknown values · skips bad tuples rather than
+  // throwing. Capped at RACE_HISTORY_MAX_ENTRIES.
+  const rawRaceHistory = get('rh');
+  const raceHistory: RaceHistoryEntry[] = parseRaceHistoryParam(rawRaceHistory);
+
   return {
     ...DEFAULT,
     step,
@@ -169,11 +208,65 @@ export function parseOnboardingParams(
     histAvg,
     histLong,
     histYears,
+    raceHistory,
     stravaConnected,
     name: name && name.length > 0 ? name : null,
     timezone,
     connectionsSkipped,
   };
+}
+
+/** Decode the compact `rh` URL param. Format:
+ *    distance:timeSec:when[:otherMi]   semicolon-separated
+ *  e.g.   `5k:1320:lt6mo;half:5400:1-2yr`
+ *  Note: `<6mo` → `lt6mo` in URL because `<` is not URL-safe.
+ *
+ *  Returns [] on null/empty/malformed. Caps at RACE_HISTORY_MAX_ENTRIES.
+ *  Per-tuple validation · bad tuples are skipped, not rejected
+ *  whole-array (so a partial URL still decodes the good entries). */
+function parseRaceHistoryParam(raw: string | null): RaceHistoryEntry[] {
+  if (!raw) return [];
+  const out: RaceHistoryEntry[] = [];
+  for (const tuple of raw.split(';')) {
+    if (out.length >= RACE_HISTORY_MAX_ENTRIES) break;
+    const parts = tuple.split(':');
+    if (parts.length < 3) continue;
+    const [distRaw, timeRaw, whenRawUrl, otherRaw] = parts;
+    if (!VALID_RACE_HIST_DISTANCES.has(distRaw as RaceHistoryDistance)) continue;
+    const timeSec = Number(timeRaw);
+    if (!Number.isFinite(timeSec) || timeSec < 60 || timeSec > 3600 * 50) continue;
+    const whenRaw = whenRawUrl === 'lt6mo' ? '<6mo' : whenRawUrl;
+    if (!VALID_RACE_HIST_WHEN.has(whenRaw as RaceHistoryWhen)) continue;
+    const entry: RaceHistoryEntry = {
+      distance: distRaw as RaceHistoryDistance,
+      timeSec: Math.round(timeSec),
+      whenRaced: whenRaw as RaceHistoryWhen,
+    };
+    if (distRaw === 'other' && otherRaw) {
+      const otherMi = Number(otherRaw);
+      if (Number.isFinite(otherMi) && otherMi > 0 && otherMi <= 200) {
+        entry.otherDistanceMi = otherMi;
+      } else {
+        continue; // 'other' without a sane mileage is invalid
+      }
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
+/** Inverse of parseRaceHistoryParam · used by buildOnboardingHref. */
+function encodeRaceHistoryParam(entries: RaceHistoryEntry[]): string {
+  return entries
+    .slice(0, RACE_HISTORY_MAX_ENTRIES)
+    .map((e) => {
+      const whenUrl = e.whenRaced === '<6mo' ? 'lt6mo' : e.whenRaced;
+      const base = `${e.distance}:${e.timeSec}:${whenUrl}`;
+      return e.distance === 'other' && e.otherDistanceMi != null
+        ? `${base}:${e.otherDistanceMi}`
+        : base;
+    })
+    .join(';');
 }
 
 /**
@@ -200,6 +293,11 @@ export function buildOnboardingHref(
   if (merged.histAvg) sp.set('hist_avg', merged.histAvg);
   if (merged.histLong) sp.set('hist_long', merged.histLong);
   if (merged.histYears) sp.set('hist_years', merged.histYears);
+  // 2026-06-03 · race history compact encoding · see parseRaceHistoryParam
+  if (merged.raceHistory && merged.raceHistory.length > 0) {
+    const encoded = encodeRaceHistoryParam(merged.raceHistory);
+    if (encoded) sp.set('rh', encoded);
+  }
   if (merged.stravaConnected) sp.set('strava', 'connected');
   if (merged.name) sp.set('name', merged.name);
   if (merged.timezone) sp.set('tz', merged.timezone);

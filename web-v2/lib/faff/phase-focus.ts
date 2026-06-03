@@ -26,6 +26,16 @@
 import type { GoalRace } from '@/components/faff-app/types';
 import type { PhaseKey } from '@/components/faff-app/constants';
 
+/** 2026-06-03 · minimal race shape phase-focus consumes. Lets backend
+ *  callers (state-loader) reach the same authored copy without dragging
+ *  in the full GoalRace component-layer type (which carries view-only
+ *  fields like projected / phaseLabel / goalPct). */
+export interface PhaseFocusRace {
+  name: string | null;
+  distanceMi: number | null;
+  goal: string | null;
+}
+
 export interface PhaseFocusCopy {
   /** "BUILD" / "PEAK" / "TAPER" / "RACE DAY" / etc. Unchanged from PHASE constants. */
   name: string;
@@ -40,7 +50,7 @@ type DistanceBucket = '5k' | '10k' | 'half' | 'marathon' | 'ultra' | 'unknown';
 /** Classify the race distance into a coaching bucket.
  *  Buckets · 5K / 10K / half / marathon / ultra. Anything beyond
  *  marathon (>27mi) reads as ultra. Unknown returns neutral copy. */
-function bucketOf(goalRace: GoalRace | null): DistanceBucket {
+function bucketOf(goalRace: GoalRace | PhaseFocusRace | null): DistanceBucket {
   const mi = goalRace?.distanceMi;
   if (!mi || !Number.isFinite(mi)) return 'unknown';
   if (mi < 4.5) return '5k';      // 5K = 3.1mi · band 2.5-4.5
@@ -51,7 +61,7 @@ function bucketOf(goalRace: GoalRace | null): DistanceBucket {
 }
 
 /** Format the goal-pace target as "M:SS/mi" if goal time + distance present. */
-function goalPaceLabel(goalRace: GoalRace | null): string | null {
+function goalPaceLabel(goalRace: GoalRace | PhaseFocusRace | null): string | null {
   if (!goalRace?.goal || !goalRace.distanceMi) return null;
   const sec = parseClockToSec(goalRace.goal);
   if (sec == null) return null;
@@ -71,10 +81,13 @@ function parseClockToSec(s: string): number | null {
 
 /** Goal-time label for the race-day copy ("1:30 at AFC"). Falls back
  *  to just the race name when goal is absent. */
-function goalLabel(goalRace: GoalRace | null): string {
+function goalLabel(goalRace: GoalRace | PhaseFocusRace | null): string {
   if (!goalRace) return 'your race';
-  if (!goalRace.goal) return goalRace.name;
-  return `${goalRace.goal} at ${goalRace.name}`;
+  // PhaseFocusRace.name is nullable (the backend may not have a race
+  // name on cold-start); fall back to the same neutral phrase.
+  const name = goalRace.name ?? 'your race';
+  if (!goalRace.goal) return name;
+  return `${goalRace.goal} at ${name}`;
 }
 
 /** Distance display in human form for the race-day copy. */
@@ -118,7 +131,14 @@ function paceEmphasis(bucket: DistanceBucket): {
  * `mesh` stays in the consumer's existing PHASE constants · this
  * module owns text only.
  */
-export function phaseFocus(phase: PhaseKey, goalRace: GoalRace | null): PhaseFocusCopy {
+export function phaseFocus(
+  phase: PhaseKey,
+  goalRace: GoalRace | PhaseFocusRace | null,
+): PhaseFocusCopy {
+  // goalLabel is kept around for future use (composed race-day mid-
+  // sentence variants). Referencing here so tree-shaking keeps the
+  // helper alongside the rest of the authoring surface.
+  void goalLabel;
   const bucket = bucketOf(goalRace);
   const pace = paceEmphasis(bucket);
   const paceLbl = goalPaceLabel(goalRace);

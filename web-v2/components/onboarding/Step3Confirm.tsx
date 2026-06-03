@@ -86,6 +86,10 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
           histAvg: initial.histAvg,
           histLong: initial.histLong,
           histYears: initial.histYears,
+          // 2026-06-03 · race history (TASK B4) · captured on Step 1b
+          // for the no-race path, but could be added on race path too
+          // once UI ships it there. Empty array = "first race ever".
+          raceHistory: initial.raceHistory,
           name: name.trim(),
           timezone,
           connectionsSkipped: initial.connectionsSkipped,

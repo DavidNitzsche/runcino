@@ -18,6 +18,13 @@ export interface NextARace {
   date: string;
   goal: string | null;
   days_to_race: number;
+  /** 2026-06-03 · race distance for downstream consumers · phase-focus
+   *  authoring + iPhone poster eyebrow + CoachState.phase. Null when
+   *  meta.distanceLabel is unset or unparseable. */
+  distanceMi: number | null;
+  /** Raw distance label string · "5K", "Half Marathon", "Marathon", etc.
+   *  Surfaced for clients that prefer the label over the numeric mileage. */
+  distanceLabel: string | null;
 }
 
 interface CacheEntry {
@@ -62,6 +69,8 @@ export async function loadNextARace(
           date,
           goal: row.meta?.goalDisplay ?? null,
           days_to_race: daysBetween(today, date),
+          distanceMi: parseDistanceMi(row.meta),
+          distanceLabel: row.meta?.distanceLabel ?? null,
         };
       }
     }
@@ -86,6 +95,8 @@ export async function loadNextARace(
           date,
           goal: row.meta?.goalDisplay ?? null,
           days_to_race: daysBetween(today, date),
+          distanceMi: parseDistanceMi(row.meta),
+          distanceLabel: row.meta?.distanceLabel ?? null,
         };
       }
     }
@@ -110,4 +121,24 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round(
     (Date.parse(toIso + 'T12:00:00Z') - Date.parse(fromIso + 'T12:00:00Z')) / 86400000
   );
+}
+
+/** Parse race distance from meta.distanceLabel or meta.distanceMi · the
+ *  races row may carry either depending on the writer (race CRUD uses
+ *  distanceLabel; plan generator sets distanceMi numerically). */
+function parseDistanceMi(meta: any): number | null {
+  const direct = Number(meta?.distanceMi);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const label = meta?.distanceLabel;
+  if (!label) return null;
+  const s = String(label).toLowerCase().trim();
+  if (s.includes('marathon') && !s.includes('half')) return 26.219;
+  if (s.includes('half')) return 13.109;
+  if (s.includes('10k')) return 6.214;
+  if (s.includes('5k')) return 3.107;
+  if (s.includes('ultra') && s.includes('50k')) return 31.07;
+  if (s.includes('50mi') || s.includes('50 mile')) return 50;
+  if (s.includes('100k')) return 62.14;
+  if (s.includes('100mi') || s.includes('100 mile')) return 100;
+  return null;
 }

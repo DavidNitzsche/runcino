@@ -88,9 +88,16 @@ export async function computeVoiceBand(
   userUuid: string,
   state: CoachState,
 ): Promise<VoiceBandReason> {
-  // 1. Race history · count + recency
-  const raceRows = (await pool.query<{ date_iso: string }>(
-    `SELECT date_iso::text
+  // 1. Race history · count + recency · TWO sources:
+  //    (a) `races` table · the app's own race lifecycle (upcoming +
+  //        completed finish times the runner logged through the app)
+  //    (b) `profile.race_history` JSONB · self-reported PRs captured
+  //        at onboarding (B4 · TASK B4 from onboarding-master)
+  // Union the two and dedupe by (distance, timeSec ±30s) so a runner
+  // who reports a 5K PR at onboarding AND later logs the same race
+  // through the app's race lifecycle isn't double-counted.
+  const raceTableRows = (await pool.query<{ date_iso: string; distance_mi: string; finish_seconds: string }>(
+    `SELECT date_iso::text, distance_mi::text, finish_seconds::text
        FROM races
       WHERE user_uuid = $1::uuid
         AND finish_seconds IS NOT NULL
@@ -98,13 +105,58 @@ export async function computeVoiceBand(
         AND date_iso::date >= CURRENT_DATE - $2::int
       ORDER BY date_iso DESC`,
     [userUuid, RACE_RECENT_DAYS],
-  ).catch(() => ({ rows: [] as Array<{ date_iso: string }> }))).rows;
+  ).catch(() => ({ rows: [] as Array<{ date_iso: string; distance_mi: string; finish_seconds: string }> }))).rows;
 
-  const raceCount = raceRows.length;
-  const daysSinceMostRecentRace = raceRows[0]?.date_iso
-    ? Math.max(0, Math.round(
-        (Date.now() - Date.parse(raceRows[0].date_iso + 'T12:00:00Z')) / 86400000
-      ))
+  const profileRow = (await pool.query<{ race_history: any }>(
+    `SELECT race_history FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as Array<{ race_history: any }> }))).rows[0];
+
+  type RaceSig = { distanceMi: number; timeSec: number; dateMs: number };
+  const raceSigs: RaceSig[] = [];
+
+  for (const r of raceTableRows) {
+    const distMi = Number(r.distance_mi);
+    const timeSec = Number(r.finish_seconds);
+    if (!Number.isFinite(distMi) || !Number.isFinite(timeSec)) continue;
+    const dateMs = Date.parse(r.date_iso + 'T12:00:00Z');
+    if (!Number.isFinite(dateMs)) continue;
+    raceSigs.push({ distanceMi: distMi, timeSec, dateMs });
+  }
+
+  if (Array.isArray(profileRow?.race_history)) {
+    for (const entry of profileRow!.race_history as Array<{
+      distance?: string; otherDistanceMi?: number; timeSec?: number; whenRaced?: string;
+    }>) {
+      const distMi = distanceMiOfBucket(entry.distance, entry.otherDistanceMi);
+      const timeSec = Number(entry.timeSec);
+      if (distMi == null || !Number.isFinite(timeSec) || timeSec <= 0) continue;
+      // Bucket dateMs from whenRaced · we don't get a real date here, so
+      // map the bucket to a midpoint days-ago that drives the "recent"
+      // gate (< 365 days) consistently.
+      const daysAgo = whenRacedDaysAgo(entry.whenRaced);
+      if (daysAgo == null || daysAgo > RACE_RECENT_DAYS) continue;
+      raceSigs.push({
+        distanceMi: distMi,
+        timeSec,
+        dateMs: Date.now() - daysAgo * 86400000,
+      });
+    }
+  }
+
+  // Dedupe · same distance ±0.05mi AND time within ±30s → same race.
+  const deduped: RaceSig[] = [];
+  for (const sig of raceSigs.sort((a, b) => b.dateMs - a.dateMs)) {
+    const isDupe = deduped.some((d) =>
+      Math.abs(d.distanceMi - sig.distanceMi) < 0.05
+      && Math.abs(d.timeSec - sig.timeSec) < 30
+    );
+    if (!isDupe) deduped.push(sig);
+  }
+
+  const raceCount = deduped.length;
+  const daysSinceMostRecentRace = deduped[0]
+    ? Math.max(0, Math.round((Date.now() - deduped[0].dateMs) / 86400000))
     : null;
 
   // 2. VDOT confidence · derive from candidate spread + count
@@ -203,6 +255,30 @@ export async function computeVoiceBand(
 }
 
 /* ────────────────────────── Helpers ────────────────────────── */
+
+/** Map a race_history distance bucket to mileage. */
+function distanceMiOfBucket(d: string | undefined, otherMi: number | undefined): number | null {
+  switch (d) {
+    case '5k':       return 3.107;
+    case '10k':      return 6.214;
+    case 'half':     return 13.109;
+    case 'marathon': return 26.219;
+    case 'other':
+      return Number.isFinite(otherMi) && (otherMi ?? 0) > 0 ? Number(otherMi) : null;
+    default: return null;
+  }
+}
+
+/** Map a whenRaced bucket to a midpoint days-ago. */
+function whenRacedDaysAgo(w: string | undefined): number | null {
+  switch (w) {
+    case '<6mo':   return 90;     // midpoint of 0-180
+    case '6-12mo': return 270;    // midpoint of 180-365
+    case '1-2yr':  return 547;    // midpoint of 365-730
+    case '2+yr':   return 1095;   // representative 3yr · drops out of recent gate
+    default:       return null;
+  }
+}
 
 function stepDown(band: VoiceBand): VoiceBand {
   if (band === 'challenge') return 'guided';

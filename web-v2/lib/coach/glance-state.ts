@@ -480,7 +480,14 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     todayWorkout: null,
     nextWorkout: null,
     nextARace: nextARaceName && daysToARace != null
-      ? { slug: '', name: nextARaceName, date: '', goal: null, days_to_race: daysToARace }
+      ? {
+          slug: '', name: nextARaceName, date: '', goal: null,
+          days_to_race: daysToARace,
+          // 2026-06-03 · glance fast-path skips the distance lookup ·
+          // the brief envelope (state-loader) carries the real value.
+          distanceMi: null,
+          distanceLabel: null,
+        }
       : null,
     sleep7Avg, sleep7Deficit, hrvCurrent, hrvBaseline,
     rhrCurrent, rhrBaseline, cadenceBaseline,
@@ -508,6 +515,10 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     // 2026-06-03 · voice band null on the fast path · morning brief
     // composer falls back to 'guided' (safe default) when null.
     voiceBand: null,
+    // 2026-06-03 · phase focus null on the fast path · iPhone reads
+    // from the full state-loader path (e.g. /api/coach/today) when
+    // it needs the authored copy.
+    phase: null,
   });
 
   // Pace-derivation inputs (Phase 47 · /today fallback). LTHR + the closest
