@@ -57,6 +57,12 @@ struct DragSheet<Header: View, Body: View>: View {
     /// render on this color, the divider hides, and the body still uses
     /// the standard cream background.
     var peekBackground: Color = .clear
+    /// 2026-06-02 round 54 · sheet body background color. Defaults to
+    /// the brand cream (#FAF7F1) so existing callers keep their look.
+    /// Post-run today switches to white so the per-section white cards
+    /// blend into one continuous surface · no "see-behind" cream band
+    /// below the last card before the floating tab bar.
+    var bodyBackground: Color = Color(hex: 0xFAF7F1)
     /// Color of the grab capsule. Stays at the cream-on-cream charcoal by
     /// default; switch to white-with-opacity when peekBackground is
     /// non-clear so the handle stays visible against the accent fill.
@@ -160,7 +166,7 @@ struct DragSheet<Header: View, Body: View>: View {
                 // opacity tracks progress (0 = expanded → no accent,
                 // 1 = collapsed → full accent).
                 ZStack {
-                    Color(hex: 0xFAF7F1)
+                    bodyBackground
                     if peekBackground != .clear {
                         peekBackground.opacity(Double(progress))
                     }

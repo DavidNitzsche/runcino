@@ -51,13 +51,8 @@ struct TodayPreRunBodyV3: View {
             cueLine                       // 6
             thePlan                       // 7
             skipFooter                    // 8
-            // 2026-06-02 round 53 · white tail-filler · same fix as
-            // TodayPostRunBody. Without this, the sheet's cream bg
-            // shows as a band below the last white section before the
-            // floating tab bar pill · reads as "see-behind".
-            Color.white
-                .frame(maxWidth: .infinity)
-                .frame(height: 320)
+            // 2026-06-02 round 54 · tail-filler REVERTED · see TodayView
+            // (DragSheet bodyBackground param) for the real fix.
         }
     }
 

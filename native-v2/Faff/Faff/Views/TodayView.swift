@@ -305,6 +305,13 @@ struct TodayView: View {
                 collapsedInsetFromBottom: 200,
                 progress: $sheetProgress,
                 peekBackground: peekFill,
+                // 2026-06-02 round 54 · BOTH bodies stack white-bg
+                // section cards on a colored sheet bg. The default
+                // cream showed through as a gap below the last card
+                // before the floating tab bar pill · "see-behind the
+                // page" feel. Going white-on-white removes the contrast
+                // · sheet reads as one continuous surface.
+                bodyBackground: Color.white,
                 grabTint: Color.white.opacity(0.6),
                 header: { peekHeader },
                 content: { sheetContent }
