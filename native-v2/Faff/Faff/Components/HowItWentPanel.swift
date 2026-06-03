@@ -97,7 +97,10 @@ struct HowItWentSignature: View {
                 }
             }
         }
-        .padding(.top, 14)
+        // 2026-06-02 round 56 · 14pt → 0. Padding added 14pt on top of
+        // the parent VStack's 18pt spacing · gap from last panel row
+        // (COOL-DOWN / final third / last rep) to the signature was
+        // 32pt and read too loose. Now just the 18pt natural rhythm.
     }
 }
 
