@@ -48,17 +48,18 @@ struct HowItWentPanel: View {
     let effort: FaffEffort
     let detail: RunDetail?
     let accent: Color
+    var onMesh: Bool = false
 
     var body: some View {
         switch effort {
         case .easy, .recovery:
-            AerobicStampPanel(detail: detail, accent: accent, isRecovery: effort == .recovery)
+            AerobicStampPanel(detail: detail, accent: accent, isRecovery: effort == .recovery, onMesh: onMesh)
         case .long:
-            ThePLongPanel(detail: detail, accent: accent)
+            ThePLongPanel(detail: detail, accent: accent, onMesh: onMesh)
         case .tempo:
-            TempoPostPanel(detail: detail, accent: accent)
+            TempoPostPanel(detail: detail, accent: accent, onMesh: onMesh)
         case .intervals:
-            RepsPostPanel(detail: detail, accent: accent)
+            RepsPostPanel(detail: detail, accent: accent, onMesh: onMesh)
         case .race, .rest:
             EmptyView()
         }
@@ -73,21 +74,25 @@ struct HowItWentSignature: View {
     let valueUnit: String?
     let delta: String?
     let deltaTone: HIWTone
+    var onMesh: Bool = false
+
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
 
     var body: some View {
         HStack(spacing: 0) {
             Text(label)
                 .font(.body(11, weight: .extraBold)).tracking(0.6)
-                .foregroundStyle(Color(hex: 0x6B6358))
+                .foregroundStyle(mutedText)
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(value)
                     .font(.display(18, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x14110D))
+                    .foregroundStyle(primaryText)
                 if let unit = valueUnit, !unit.isEmpty {
                     Text(unit)
                         .font(.body(10, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x6B6358))
+                        .foregroundStyle(mutedText)
                 }
                 if let d = delta, !d.isEmpty {
                     Text(d)
@@ -126,17 +131,21 @@ enum HIWTone {
 private struct HIWHead: View {
     let title: String
     let meta: String?
+    var onMesh: Bool = false
+
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
                 .font(.display(15, weight: .bold)).tracking(0.4)
-                .foregroundStyle(Color(hex: 0x1B1814))
+                .foregroundStyle(primaryText)
             Spacer(minLength: 8)
             if let m = meta, !m.isEmpty {
                 Text(m)
                     .font(.body(10, weight: .extraBold)).tracking(0.8)
-                    .foregroundStyle(Color(hex: 0x6B6358))
+                    .foregroundStyle(mutedText)
             }
         }
         .padding(.bottom, 12)
@@ -150,12 +159,15 @@ private struct HIWSectionHead: View {
     let label: String
     let tag: String?
     let tagTone: HIWTone?
+    var onMesh: Bool = false
+
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(.body(11, weight: .extraBold)).tracking(0.6)
-                .foregroundStyle(Color(hex: 0x6B6358))
+                .foregroundStyle(mutedText)
             Spacer(minLength: 6)
             if let t = tag, !t.isEmpty {
                 Text(t)
@@ -173,18 +185,23 @@ private struct DriftRow: View {
     let bpm: Int
     let accent: Color
     let darker: Bool
+    var onMesh: Bool = false
+
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
+    private var dividerColor: Color { onMesh ? Color.white.opacity(0.18) : Color(hex: 0xEEE7DA) }
 
     var body: some View {
         HStack(spacing: 11) {
             Text(label)
                 .font(.body(9.5, weight: .extraBold)).tracking(0.6)
-                .foregroundStyle(Color(hex: 0x7D756A))
+                .foregroundStyle(mutedText)
                 .frame(width: 84, alignment: .leading)
             GeometryReader { geo in
                 let pct = max(0.06, min(1.0, Double(bpm - 120) / 50.0))
                 let w = geo.size.width
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6).fill(Color(hex: 0xECE5D7))
+                    RoundedRectangle(cornerRadius: 6).fill(dividerColor)
                     RoundedRectangle(cornerRadius: 6)
                         .fill(darker ? accent.opacity(0.86) : accent)
                         .frame(width: w * pct)
@@ -194,10 +211,10 @@ private struct DriftRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text("\(bpm)")
                     .font(.display(16, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x1B1814))
+                    .foregroundStyle(primaryText)
                 Text("bpm")
                     .font(.body(9, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x6B6358))
+                    .foregroundStyle(mutedText)
             }
             .frame(width: 62, alignment: .trailing)
         }
@@ -211,18 +228,24 @@ private struct ThirdCard: View {
     let big: String
     let sub: String
     let tone: HIWTone
+    var onMesh: Bool = false
+
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
+    private var subtleText: Color { onMesh ? Color.white.opacity(0.55) : Color(hex: 0xA39A8C) }
+    private var dividerColor: Color { onMesh ? Color.white.opacity(0.18) : Color(hex: 0xEEE7DA) }
 
     var body: some View {
         VStack(spacing: 8) {
             Text(label)
                 .font(.body(8.5, weight: .extraBold)).tracking(0.6)
-                .foregroundStyle(Color(hex: 0x6B6358))
+                .foregroundStyle(mutedText)
             Text(big)
                 .font(.display(20, weight: .bold))
-                .foregroundStyle(tone == .neutral ? Color(hex: 0x1B1814) : tone.color)
+                .foregroundStyle(tone == .neutral ? primaryText : tone.color)
             Text(sub)
                 .font(.body(11, weight: .bold))
-                .foregroundStyle(tone == .neutral ? Color(hex: 0x7D756A) : tone.color.opacity(0.85))
+                .foregroundStyle(tone == .neutral ? subtleText : tone.color.opacity(0.85))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -235,10 +258,10 @@ private struct ThirdCard: View {
 
     private var thirdBg: Color {
         switch tone {
-        case .good: return Color(hex: 0x1F9A6F).opacity(0.10)
-        case .warn: return Color(hex: 0xBD7A16).opacity(0.10)
-        case .bad:  return Color(hex: 0xD6483F).opacity(0.10)
-        case .neutral: return Color(hex: 0xF6EFE2)
+        case .good: return onMesh ? Color(hex: 0x1F9A6F).opacity(0.18) : Color(hex: 0x1F9A6F).opacity(0.10)
+        case .warn: return onMesh ? Color(hex: 0xBD7A16).opacity(0.18) : Color(hex: 0xBD7A16).opacity(0.10)
+        case .bad:  return onMesh ? Color(hex: 0xD6483F).opacity(0.18) : Color(hex: 0xD6483F).opacity(0.10)
+        case .neutral: return onMesh ? Color.white.opacity(0.10) : Color(hex: 0xF6EFE2)
         }
     }
     private var thirdBorder: Color {
@@ -246,7 +269,7 @@ private struct ThirdCard: View {
         case .good: return Color(hex: 0x1F9A6F).opacity(0.38)
         case .warn: return Color(hex: 0xBD7A16).opacity(0.40)
         case .bad:  return Color(hex: 0xD6483F).opacity(0.36)
-        case .neutral: return Color(hex: 0xE2D8C5)
+        case .neutral: return dividerColor
         }
     }
 }
@@ -257,6 +280,11 @@ private struct PaceFootprint: View {
     let secondsPerMile: [Int]
     let avgSecondsPerMile: Int
     let accent: Color
+    var onMesh: Bool = false
+
+    private var sectionBg: Color { onMesh ? Color.clear : Color.white }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
+    private var subtleText: Color { onMesh ? Color.white.opacity(0.55) : Color(hex: 0xA39A8C) }
 
     var body: some View {
         let all = secondsPerMile + [avgSecondsPerMile]
@@ -285,12 +313,12 @@ private struct PaceFootprint: View {
                             p.move(to: CGPoint(x: 0, y: avgY))
                             p.addLine(to: CGPoint(x: geo.size.width, y: avgY))
                         }
-                        .stroke(Color(hex: 0xB9B0A0), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .stroke(subtleText, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                         Text(formatPace(avgSecondsPerMile) + " avg")
                             .font(.body(9, weight: .extraBold)).tracking(0.2)
-                            .foregroundStyle(Color(hex: 0x6B6358))
+                            .foregroundStyle(mutedText)
                             .padding(.horizontal, 6)
-                            .background(Color.white)
+                            .background(sectionBg)
                             .position(x: geo.size.width - 32, y: max(8, avgY))
                     }
                 }
@@ -300,7 +328,7 @@ private struct PaceFootprint: View {
                 ForEach(0..<secondsPerMile.count, id: \.self) { i in
                     Text("\(i + 1)")
                         .font(.body(9, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xB3AA9C))
+                        .foregroundStyle(subtleText)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -314,6 +342,11 @@ private struct CmpBar: View {
     let actualSec: Int
     let goalSec: Int
     let maxDev: Int
+    var onMesh: Bool = false
+
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
+    private var dividerColor: Color { onMesh ? Color.white.opacity(0.18) : Color(hex: 0xEEE7DA) }
 
     var body: some View {
         let d = actualSec - goalSec
@@ -323,7 +356,7 @@ private struct CmpBar: View {
             GeometryReader { geo in
                 let w = geo.size.width
                 ZStack {
-                    RoundedRectangle(cornerRadius: 6).fill(Color(hex: 0xECE5D7))
+                    RoundedRectangle(cornerRadius: 6).fill(dividerColor)
                         .frame(height: 12)
                     if abs(d) > 0 {
                         let xStart: Double = d > 0 ? 0.5 - mag : 0.5
@@ -333,12 +366,12 @@ private struct CmpBar: View {
                             .offset(x: w * xStart - w / 2 + w * mag / 2, y: 0)
                     } else {
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color(hex: 0x1B1814))
+                            .fill(primaryText)
                             .frame(width: w * 0.06, height: 10)
                     }
                     // Centre tick
                     Rectangle()
-                        .fill(Color(hex: 0x1B1814))
+                        .fill(primaryText)
                         .frame(width: 2, height: 16)
                 }
             }
@@ -350,7 +383,7 @@ private struct CmpBar: View {
                 Spacer()
                 Text("TARGET")
                     .font(.body(8, weight: .extraBold)).tracking(1)
-                    .foregroundStyle(Color(hex: 0x6B6358))
+                    .foregroundStyle(mutedText)
                 Spacer()
                 Text("FASTER ▸")
                     .font(.body(8, weight: .extraBold)).tracking(1)
@@ -366,10 +399,15 @@ private struct AerobicStampPanel: View {
     let detail: RunDetail?
     let accent: Color
     let isRecovery: Bool
+    var onMesh: Bool = false
+
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
+    private var dividerColor: Color { onMesh ? Color.white.opacity(0.18) : Color(hex: 0xEEE7DA) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HIWHead(title: "AEROBIC STAMP", meta: nil)
+            HIWHead(title: "AEROBIC STAMP", meta: nil, onMesh: onMesh)
             keptItEasyGauge
             heartRateDriftSection
             milePaceSection
@@ -398,15 +436,15 @@ private struct AerobicStampPanel: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(isRecovery ? "KEPT IT EASY" : "KEPT IT EASY")
                         .font(.body(11, weight: .extraBold)).tracking(0.6)
-                        .foregroundStyle(Color(hex: 0x6B6358))
+                        .foregroundStyle(mutedText)
                     Spacer()
                     Text("\(pct)%")
                         .font(.display(20, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x1B1814))
+                        .foregroundStyle(primaryText)
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 7).fill(Color(hex: 0xECE5D7))
+                        RoundedRectangle(cornerRadius: 7).fill(dividerColor)
                         RoundedRectangle(cornerRadius: 7)
                             .fill(easyTone.color)
                             .frame(width: geo.size.width * Double(pct) / 100.0)
@@ -415,7 +453,7 @@ private struct AerobicStampPanel: View {
                 .frame(height: 13)
                 Text(isRecovery ? "Z1 share of moving time" : "Z1–Z2 share of moving time")
                     .font(.body(11, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x6B6358))
+                    .foregroundStyle(mutedText)
             }
         }
     }
@@ -458,22 +496,22 @@ private struct AerobicStampPanel: View {
         if let first = firstHalfHr, let second = secondHalfHr {
             VStack(alignment: .leading, spacing: 10) {
                 HIWSectionHead(label: "Heart rate drift",
-                               tag: driftBand?.text, tagTone: driftBand?.tone)
-                DriftRow(label: "FIRST HALF", bpm: first, accent: accent, darker: false)
-                DriftRow(label: "SECOND HALF", bpm: second, accent: accent, darker: true)
+                               tag: driftBand?.text, tagTone: driftBand?.tone, onMesh: onMesh)
+                DriftRow(label: "FIRST HALF", bpm: first, accent: accent, darker: false, onMesh: onMesh)
+                DriftRow(label: "SECOND HALF", bpm: second, accent: accent, darker: true, onMesh: onMesh)
                 if let d = hrDelta {
                     let sign = d > 0 ? "+\(d)" : "\(d)"
                     let tone: HIWTone = driftBand?.tone ?? .neutral
                     HStack(alignment: .top, spacing: 4) {
                         Text("Heart rose ")
                             .font(.body(12, weight: .medium))
-                            .foregroundStyle(Color(hex: 0x4F483F))
+                            .foregroundStyle(mutedText)
                         Text("\(sign) bpm")
                             .font(.display(13, weight: .bold))
                             .foregroundStyle(tone.color)
                         Text(" across the run.")
                             .font(.body(12, weight: .medium))
-                            .foregroundStyle(Color(hex: 0x4F483F))
+                            .foregroundStyle(mutedText)
                         Spacer(minLength: 0)
                     }
                     .fixedSize(horizontal: false, vertical: true)
@@ -501,13 +539,13 @@ private struct AerobicStampPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("MILE PACE")
                     .font(.body(11, weight: .extraBold)).tracking(0.6)
-                    .foregroundStyle(Color(hex: 0x6B6358))
-                PaceFootprint(secondsPerMile: secs, avgSecondsPerMile: avg, accent: accent)
+                    .foregroundStyle(mutedText)
+                PaceFootprint(secondsPerMile: secs, avgSecondsPerMile: avg, accent: accent, onMesh: onMesh)
                 if let mn = secs.min(), let mx = secs.max() {
                     let spread = mx - mn
                     Text("\(secs.count) mi · fastest \(formatPace(mn)) · slowest \(formatPace(mx)) · \(spread)s spread")
                         .font(.body(11, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x6B6358))
+                        .foregroundStyle(mutedText)
                 }
             }
         }
@@ -524,7 +562,8 @@ private struct AerobicStampPanel: View {
                 value: "\(avg)",
                 valueUnit: "bpm",
                 delta: "\(delta >= 0 ? "+" : "")\(delta) vs threshold",
-                deltaTone: tone
+                deltaTone: tone,
+                onMesh: onMesh
             )
         }
     }
@@ -535,6 +574,7 @@ private struct AerobicStampPanel: View {
 private struct ThePLongPanel: View {
     let detail: RunDetail?
     let accent: Color
+    var onMesh: Bool = false
 
     private var thirds: (first: [RunSplit], middle: [RunSplit], last: [RunSplit])? {
         let arr = detail?.splits ?? []
@@ -550,7 +590,7 @@ private struct ThePLongPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HIWHead(title: "THE LONG", meta: distanceLabel)
+            HIWHead(title: "THE LONG", meta: distanceLabel, onMesh: onMesh)
             if let t = thirds { thirdsRow(t) }
             heartRateDriftSection
             signature
@@ -586,19 +626,22 @@ private struct ThePLongPanel: View {
                 label: "FIRST \(t.first.count)",
                 big: firstPace.map(formatPace) ?? "—",
                 sub: firstHr.map { "\($0) ♥" } ?? "—",
-                tone: .neutral
+                tone: .neutral,
+                onMesh: onMesh
             )
             ThirdCard(
                 label: "MIDDLE \(t.middle.count)",
                 big: middlePace.map(formatPace) ?? "—",
                 sub: middleHr.map { "\($0) ♥" } ?? "—",
-                tone: .neutral
+                tone: .neutral,
+                onMesh: onMesh
             )
             ThirdCard(
                 label: "LAST \(t.last.count)",
                 big: lastPace.map(formatPace) ?? "—",
                 sub: lastHr.map { "\($0) ♥" } ?? "—",
-                tone: lastTone
+                tone: lastTone,
+                onMesh: onMesh
             )
         }
     }
@@ -621,9 +664,9 @@ private struct ThePLongPanel: View {
                     return ("LATE FADE", .bad)
                 }()
                 VStack(alignment: .leading, spacing: 10) {
-                    HIWSectionHead(label: "Heart rate drift", tag: tag.0, tagTone: tag.1)
-                    DriftRow(label: "FIRST THIRD", bpm: f, accent: accent, darker: false)
-                    DriftRow(label: "FINAL THIRD", bpm: l, accent: accent, darker: true)
+                    HIWSectionHead(label: "Heart rate drift", tag: tag.0, tagTone: tag.1, onMesh: onMesh)
+                    DriftRow(label: "FIRST THIRD", bpm: f, accent: accent, darker: false, onMesh: onMesh)
+                    DriftRow(label: "FINAL THIRD", bpm: l, accent: accent, darker: true, onMesh: onMesh)
                 }
             }
         }
@@ -641,7 +684,8 @@ private struct ThePLongPanel: View {
                 value: pace,
                 valueUnit: "/mi",
                 delta: neg ? "neg split" : nil,
-                deltaTone: .good
+                deltaTone: .good,
+                onMesh: onMesh
             )
         }
     }
@@ -663,6 +707,11 @@ private struct ThePLongPanel: View {
 private struct TempoPostPanel: View {
     let detail: RunDetail?
     let accent: Color
+    var onMesh: Bool = false
+
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
+    private var subtleText: Color { onMesh ? Color.white.opacity(0.55) : Color(hex: 0xA39A8C) }
 
     /// The single "work" phase = the tempo block. Picked from
     /// phase_breakdown when present.
@@ -678,7 +727,7 @@ private struct TempoPostPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HIWHead(title: "THE TEMPO", meta: blockMeta)
+            HIWHead(title: "THE TEMPO", meta: blockMeta, onMesh: onMesh)
             tempoBlock
             hrAcrossBlock
             warmupCooldownRow
@@ -703,29 +752,29 @@ private struct TempoPostPanel: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("TEMPO BLOCK")
                         .font(.body(11, weight: .extraBold)).tracking(0.6)
-                        .foregroundStyle(Color(hex: 0x1B1814))
+                        .foregroundStyle(primaryText)
                     Spacer()
                     HStack(alignment: .firstTextBaseline, spacing: 3) {
                         Text(formatPace(actualSec))
                             .font(.display(20, weight: .bold))
-                            .foregroundStyle(Color(hex: 0x1B1814))
+                            .foregroundStyle(primaryText)
                         Text("/mi")
                             .font(.body(10, weight: .semibold))
-                            .foregroundStyle(Color(hex: 0x6B6358))
+                            .foregroundStyle(mutedText)
                     }
                 }
                 HStack {
                     Text("TARGET \(formatPace(targetSec))/mi")
                         .font(.body(10.5, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x7D756A))
+                        .foregroundStyle(mutedText)
                     Spacer()
                     if let hr = w.avg_hr {
                         Text("\(hr) bpm")
                             .font(.body(10.5, weight: .bold))
-                            .foregroundStyle(Color(hex: 0x7D756A))
+                            .foregroundStyle(mutedText)
                     }
                 }
-                CmpBar(actualSec: actualSec, goalSec: targetSec, maxDev: 10)
+                CmpBar(actualSec: actualSec, goalSec: targetSec, maxDev: 10, onMesh: onMesh)
             }
         }
     }
@@ -747,11 +796,11 @@ private struct TempoPostPanel: View {
                 VStack(alignment: .leading, spacing: 11) {
                     Text("HR ACROSS THE BLOCK")
                         .font(.body(11, weight: .extraBold)).tracking(0.6)
-                        .foregroundStyle(Color(hex: 0x6B6358))
+                        .foregroundStyle(mutedText)
                     HStack(spacing: 8) {
-                        ThirdCard(label: "EARLY",  big: fhr.map { "\($0)" } ?? "—", sub: "bpm", tone: .neutral)
-                        ThirdCard(label: "MIDDLE", big: mhr.map { "\($0)" } ?? "—", sub: "bpm", tone: .neutral)
-                        ThirdCard(label: "LATE",   big: lhr.map { "\($0)" } ?? "—", sub: "bpm", tone: .neutral)
+                        ThirdCard(label: "EARLY",  big: fhr.map { "\($0)" } ?? "—", sub: "bpm", tone: .neutral, onMesh: onMesh)
+                        ThirdCard(label: "MIDDLE", big: mhr.map { "\($0)" } ?? "—", sub: "bpm", tone: .neutral, onMesh: onMesh)
+                        ThirdCard(label: "LATE",   big: lhr.map { "\($0)" } ?? "—", sub: "bpm", tone: .neutral, onMesh: onMesh)
                     }
                 }
             }
@@ -766,16 +815,16 @@ private struct TempoPostPanel: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("WARM-UP")
                             .font(.body(9, weight: .extraBold)).tracking(0.8)
-                            .foregroundStyle(Color(hex: 0x7D756A))
+                            .foregroundStyle(mutedText)
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(distLabel(w.actual_distance_mi) ?? "—")
                                 .font(.body(12, weight: .semibold))
-                                .foregroundStyle(Color(hex: 0x4F483F))
+                                .foregroundStyle(mutedText)
                             Text("·")
-                                .foregroundStyle(Color(hex: 0xB9B0A0))
+                                .foregroundStyle(subtleText)
                             Text(w.actual_pace ?? "—")
                                 .font(.display(13, weight: .bold))
-                                .foregroundStyle(Color(hex: 0x1B1814))
+                                .foregroundStyle(primaryText)
                         }
                     }
                 }
@@ -784,16 +833,16 @@ private struct TempoPostPanel: View {
                     VStack(alignment: .trailing, spacing: 3) {
                         Text("COOL-DOWN")
                             .font(.body(9, weight: .extraBold)).tracking(0.8)
-                            .foregroundStyle(Color(hex: 0x7D756A))
+                            .foregroundStyle(mutedText)
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(distLabel(c.actual_distance_mi) ?? "—")
                                 .font(.body(12, weight: .semibold))
-                                .foregroundStyle(Color(hex: 0x4F483F))
+                                .foregroundStyle(mutedText)
                             Text("·")
-                                .foregroundStyle(Color(hex: 0xB9B0A0))
+                                .foregroundStyle(subtleText)
                             Text(c.actual_pace ?? "—")
                                 .font(.display(13, weight: .bold))
-                                .foregroundStyle(Color(hex: 0x1B1814))
+                                .foregroundStyle(primaryText)
                         }
                     }
                 }
@@ -818,7 +867,8 @@ private struct TempoPostPanel: View {
                 value: formatPace(actualSec),
                 valueUnit: "/mi",
                 delta: deltaStr,
-                deltaTone: tone
+                deltaTone: tone,
+                onMesh: onMesh
             )
         }
     }
@@ -841,6 +891,12 @@ private struct TempoPostPanel: View {
 private struct RepsPostPanel: View {
     let detail: RunDetail?
     let accent: Color
+    var onMesh: Bool = false
+
+    private var sectionBg: Color { onMesh ? Color.white.opacity(0.10) : Color(hex: 0xF6EFE2) }
+    private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x736C61) }
+    private var dividerColor: Color { onMesh ? Color.white.opacity(0.18) : Color(hex: 0xEEE7DA) }
 
     private var workReps: [PhaseBreakdown] {
         (detail?.phase_breakdown ?? []).filter { $0.type.lowercased() == "work" }
@@ -861,7 +917,7 @@ private struct RepsPostPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HIWHead(title: "THE REPS", meta: targetMeta)
+            HIWHead(title: "THE REPS", meta: targetMeta, onMesh: onMesh)
             axisLegend
             rail
             signature
@@ -881,7 +937,7 @@ private struct RepsPostPanel: View {
             Spacer()
             Text("TARGET")
                 .font(.body(8, weight: .extraBold)).tracking(1)
-                .foregroundStyle(Color(hex: 0x6B6358))
+                .foregroundStyle(mutedText)
             Spacer()
             Text("FASTER ▸")
                 .font(.body(8, weight: .extraBold)).tracking(1)
@@ -913,26 +969,26 @@ private struct RepsPostPanel: View {
             Circle().fill(Color(hex: 0x7BC8B8)).frame(width: 6, height: 6)
             Text(name)
                 .font(.body(10.5, weight: .extraBold)).tracking(0.6)
-                .foregroundStyle(Color(hex: 0x1B1814))
+                .foregroundStyle(primaryText)
             if let mi = phase.actual_distance_mi, mi > 0 {
                 Text("· \(formatMi(mi)) mi")
                     .font(.body(10.5, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x6B6358))
+                    .foregroundStyle(mutedText)
             }
             Spacer(minLength: 0)
             if let pace = phase.actual_pace {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(pace)
                         .font(.display(13, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x1B1814))
+                        .foregroundStyle(primaryText)
                     Text("/mi")
                         .font(.body(9, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x6B6358))
+                        .foregroundStyle(mutedText)
                 }
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(Color(hex: 0xF6EFE2),
+        .background(sectionBg,
                     in: RoundedRectangle(cornerRadius: 10))
     }
 
@@ -949,7 +1005,7 @@ private struct RepsPostPanel: View {
             Color.clear.frame(width: 6, height: 6)
             Text("\(durLabel) jog · recovery")
                 .font(.body(10, weight: .semibold))
-                .foregroundStyle(Color(hex: 0x7D756A))
+                .foregroundStyle(mutedText)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10).padding(.vertical, 4)
@@ -968,17 +1024,17 @@ private struct RepsPostPanel: View {
             VStack(spacing: 0) {
                 Text("\(idx + 1)")
                     .font(.display(15, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x1B1814))
+                    .foregroundStyle(primaryText)
                 Text("REP")
                     .font(.body(7.5, weight: .extraBold)).tracking(0.6)
-                    .foregroundStyle(Color(hex: 0x7D756A))
+                    .foregroundStyle(mutedText)
             }
             .frame(width: 30)
             GeometryReader { geo in
                 let w = geo.size.width
                 let mag = max(0.04, min(1.0, Double(abs(delta)) / 6.0)) * 0.5
                 ZStack {
-                    RoundedRectangle(cornerRadius: 6).fill(Color(hex: 0xECE5D7))
+                    RoundedRectangle(cornerRadius: 6).fill(dividerColor)
                         .frame(height: 12)
                     if abs(delta) > 0 {
                         let xStart: Double = delta > 0 ? 0.5 - mag : 0.5
@@ -988,11 +1044,11 @@ private struct RepsPostPanel: View {
                             .offset(x: w * xStart - w / 2 + w * mag / 2, y: 0)
                     } else {
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color(hex: 0x1B1814))
+                            .fill(primaryText)
                             .frame(width: w * 0.06, height: 10)
                     }
                     Rectangle()
-                        .fill(Color(hex: 0x1B1814))
+                        .fill(primaryText)
                         .frame(width: 2, height: 16)
                 }
             }
@@ -1000,7 +1056,7 @@ private struct RepsPostPanel: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(rep.actual_pace ?? "—")
                     .font(.display(13, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x1B1814))
+                    .foregroundStyle(primaryText)
                 Text(deltaStr)
                     .font(.body(10, weight: .extraBold))
                     .foregroundStyle(tone.color)
@@ -1028,7 +1084,8 @@ private struct RepsPostPanel: View {
                     value: formatPace(avgWork),
                     valueUnit: "/mi",
                     delta: deltaStr,
-                    deltaTone: tone
+                    deltaTone: tone,
+                    onMesh: onMesh
                 )
             }
         }

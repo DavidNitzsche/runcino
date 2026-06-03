@@ -86,6 +86,13 @@ struct TodayPostRunBody: View {
     /// Named dividerColor (not divider) to avoid colliding with the
     /// existing `private var divider: some View` 1×28pt vertical rule.
     private var dividerColor: Color { onMesh ? Color.white.opacity(0.18) : Color(hex: 0xEEE7DA) }
+    /// 2026-06-02 round 64 · subtle visible-tile background (mile-split
+    /// stat tiles, etc.). On cream context: warm tan (cream surface
+    /// elevation). On mesh: low-opacity white wash so the tile is
+    /// readable against the dark mesh without dropping a hard cream
+    /// slab. Use this anywhere a contained chip needs a faint bg fill ·
+    /// not for white-card sections (those are sectionBg).
+    private var chipBg: Color { onMesh ? Color.white.opacity(0.08) : Color(hex: 0xF6F0E2) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -241,7 +248,7 @@ struct TodayPostRunBody: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 24).padding(.vertical, 16)
-            .background(Color(hex: 0xE9F7EE))
+            .background(sectionBg)
             .overlay(
                 Rectangle()
                     .fill(dividerColor)
@@ -402,7 +409,8 @@ struct TodayPostRunBody: View {
                             paceSec: paceSecForSplit(split),
                             tint: tintForSplit(split, total: splits.count),
                             fastestSec: fastest,
-                            denom: denom
+                            denom: denom,
+                            onMesh: onMesh
                         )
                     }
                 }
@@ -462,7 +470,7 @@ struct TodayPostRunBody: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12).padding(.vertical, 10)
-                        .background(Color(hex: 0xF6F0E2), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background(chipBg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                 }
             }
@@ -535,7 +543,7 @@ struct TodayPostRunBody: View {
                                     .padding(.top, 6)
                                 Text(line)
                                     .font(.body(13))
-                                    .foregroundStyle(Color(hex: 0x4F483F))
+                                    .foregroundStyle(mutedText)
                                     .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 0)
                             }
@@ -553,7 +561,8 @@ struct TodayPostRunBody: View {
                 HowItWentPanel(
                     effort: hiwEffort,
                     detail: detail,
-                    accent: accent
+                    accent: accent,
+                    onMesh: onMesh
                 )
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
@@ -638,19 +647,28 @@ private struct SplitRow: View {
     let tint: Color
     let fastestSec: Int
     let denom: Int
+    /// 2026-06-02 round 64 · same context flag as TodayPostRunBody.
+    /// SplitRow is a private struct (out of scope of the parent's
+    /// helpers), so it takes its own copy. Default false preserves
+    /// the cream-context look for the drag-sheet body.
+    var onMesh: Bool = false
+
+    private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x4F483F) }
+    private var subtleText: Color { onMesh ? Color.white.opacity(0.55) : Color(hex: 0x9A9286) }
+    private var trackFill: Color { onMesh ? Color.white.opacity(0.15) : Color(hex: 0xF1EBDF) }
 
     var body: some View {
         HStack(spacing: 12) {
             Text("\(split.mile)")
                 .font(.display(14, weight: .bold))
-                .foregroundStyle(Color(hex: 0x4F483F))
+                .foregroundStyle(mutedText)
                 .frame(width: 22, alignment: .leading)
             GeometryReader { geo in
                 let frac = denom > 0 ? CGFloat(paceSec - fastestSec) / CGFloat(denom) : 0
                 let w = geo.size.width * (0.25 + 0.75 * frac)
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color(hex: 0xF1EBDF))
+                        .fill(trackFill)
                     Capsule()
                         .fill(tint.opacity(0.85))
                         .frame(width: max(28, w))
@@ -659,11 +677,11 @@ private struct SplitRow: View {
             .frame(height: 8)
             Text(split.pace ?? "—")
                 .font(.body(12, weight: .bold))
-                .foregroundStyle(Color(hex: 0x4F483F))
+                .foregroundStyle(mutedText)
                 .frame(width: 50, alignment: .trailing)
             Text(split.hr.map { "\($0)" } ?? "—")
                 .font(.body(11, weight: .semibold))
-                .foregroundStyle(Color(hex: 0x9A9286))
+                .foregroundStyle(subtleText)
                 .frame(width: 32, alignment: .trailing)
         }
     }
