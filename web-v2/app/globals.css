@@ -137,8 +137,13 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 /* hero */
 .hero{display:flex;gap:16px;align-items:flex-start;margin-top:26px;min-height:300px;}
 .hmain{flex:1;min-width:0;}
+/* 2026-06-03 · the .htag eyebrow JSX is gone (David: pure repetition of
+   the week strip + title). The CSS rule is kept dormant in case any
+   future render path still emits it · but htitle's margin-top is dropped
+   so the title now anchors at the very top of .hmain, aligning with the
+   route + recap card top edges. */
 .hero .htag{font-size:13px;font-weight:700;letter-spacing:3px;opacity:1;}
-.hero .htitle{font-family:'Oswald',sans-serif;font-size:68px;font-weight:600;line-height:.92;margin-top:8px;min-height:126px;text-shadow:0 2px 20px rgba(0,0,0,.12);text-transform:uppercase;}
+.hero .htitle{font-family:'Oswald',sans-serif;font-size:68px;font-weight:600;line-height:.92;margin-top:0;min-height:126px;text-shadow:0 2px 20px rgba(0,0,0,.12);text-transform:uppercase;}
 .stats{display:flex;gap:40px;margin-top:20px;}
 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:500;line-height:.9;}
 .stats .v small{font-size:14px;opacity:.9;font-weight:400;}
@@ -189,7 +194,10 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2{display:flex;gap:24px;align-items:stretch;margin-top:26px;min-height:480px;}
 .hero-v2 .hmain{flex:0 0 296px;min-width:0;display:flex;flex-direction:column;}
 .hero-v2 .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
-.hero-v2 .titlerow{display:flex;align-items:center;gap:16px;margin-top:8px;}
+/* 2026-06-03 · margin-top dropped to 0 · the eyebrow above is gone now,
+   so the title row anchors at the top of .hmain. Was 8px (clear of the
+   eyebrow that used to sit above). */
+.hero-v2 .titlerow{display:flex;align-items:center;gap:16px;margin-top:0;}
 .hero-v2 .htitle{font-family:'Oswald',sans-serif;font-size:62px;font-weight:600;line-height:.92;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-shadow:0 2px 20px rgba(0,0,0,.14);}
 .hero-v2 .check{width:30px;height:30px;border-radius:50%;background:#3EBD41;color:#06210a;display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 4px 14px -4px rgba(62,189,65,.7);}
 .hero-v2 .check svg{width:17px;height:17px;}
@@ -1511,7 +1519,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .wk-badge.today{background:#fff;color:#10131A;}
 .wk-badge.plan{background:rgba(255,255,255,.16);color:#fff;}
 .wk-badge svg{width:11px;height:11px;}
-.wk-title{font-family:'Oswald',sans-serif;font-size:48px;font-weight:600;text-transform:uppercase;line-height:.9;letter-spacing:-1px;margin-top:12px;}
+/* 2026-06-03 · margin-top dropped (was 12px clearing the eyebrow that
+   sat above · eyebrow JSX removed app-wide). Title now anchors at the
+   top of its drawer. */
+.wk-title{font-family:'Oswald',sans-serif;font-size:48px;font-weight:600;text-transform:uppercase;line-height:.9;letter-spacing:-1px;margin-top:0;}
 .wk-win{display:flex;align-items:center;gap:9px;margin-top:14px;font-size:14px;font-weight:700;color:#c4f5d6;}
 .wk-win .c{width:18px;height:18px;border-radius:50%;background:#3EBD41;color:#06210a;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .wk-win .c svg{width:11px;height:11px;}

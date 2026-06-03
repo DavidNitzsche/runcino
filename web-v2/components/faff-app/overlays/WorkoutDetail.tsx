@@ -55,7 +55,9 @@ function CompletedHero({ d, dayIdx, seed }: { d: FaffSeed['week'][number]; dayId
   const det = seed.results[dayIdx] ?? seed.results[0]!;
   return (
     <>
-      <div className="wk-eyebrow">{d.full.toUpperCase()}</div>
+      {/* 2026-06-03 · David: drop the eyebrow above the workout title in
+          every surface · pure repetition of the title + week-strip
+          context. Same removal applied to the TodayView heroes. */}
       <div className="wk-title">
         {d.name}
         <span className="wk-badge done"><Check />DONE</span>
@@ -68,20 +70,21 @@ function CompletedHero({ d, dayIdx, seed }: { d: FaffSeed['week'][number]; dayId
 }
 
 function PlannedHero({ d }: { d: FaffSeed['week'][number] }) {
-  const dateLbl = (d.today ? 'TODAY · ' : `${d.dw} · `) + d.type.toUpperCase();
   const badge = d.today ? <span className="wk-badge today">TODAY</span> : <span className="wk-badge plan">PLANNED · WK 14</span>;
   return (
     <>
-      <div className="wk-eyebrow">{dateLbl}</div>
+      {/* 2026-06-03 · David: drop the "TODAY · TYPE" eyebrow · same
+          removal as the TodayView + CompletedHero variants. */}
       <div className="wk-title">{d.name}{badge}</div>
     </>
   );
 }
 
-function RestHero({ d }: { d: FaffSeed['week'][number] }) {
+function RestHero({ d: _d }: { d: FaffSeed['week'][number] }) {
   return (
     <>
-      <div className="wk-eyebrow">{d.full.toUpperCase()}</div>
+      {/* 2026-06-03 · David: drop the date eyebrow · matches the rest
+          of the surfaces. */}
       <div className="wk-title">Rest Day<span className="wk-badge plan">OFF</span></div>
     </>
   );

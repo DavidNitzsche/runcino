@@ -486,9 +486,10 @@ export function TodayView({
       ) : (
         <div className="hero">
           <div className="hmain">
-            <div className="htag">
-              {(d.today ? 'TODAY · ' : `${d.dw} · `) + d.type.toUpperCase()}
-            </div>
+            {/* 2026-06-03 · David: drop the small "DAY · TYPE · STATE"
+                eyebrow · same info as the week strip + the title itself,
+                pure repetition. Title now sits at the top of the column
+                aligned with the route + recap cards' top edges. */}
             <div className="htitle">{workoutTypeTitle(d.type)}</div>
             <div className="stats">
               {/* 2026-06-03 · subtitles added per David: "not sure what
@@ -1485,7 +1486,9 @@ function PlannedHeroV2({
           3-column flex row (hmain | session | wcard) instead of a
           2-column with session nested inside hmain. */}
       <div className="hmain">
-        <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · ' + eyebrowState}</div>
+        {/* 2026-06-03 · David: drop the "DAY · TYPE · PLANNED" eyebrow ·
+            it repeats the week strip + the title. Title row sits at the
+            top of the column now. */}
         <div className="titlerow">
           {/* 2026-06-02 · one-word hero title via lib/coach/workout-title.
               Locked vocabulary shared with iPhone + watch. Replaces the
@@ -1862,7 +1865,10 @@ function CompletedHeroV2({
     // the two-column layout where .mapcol sits inside .hbody.
     <div className="hero-v2 hero-v2-done">
       <div className="hmain">
-        <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · DONE'}</div>
+        {/* 2026-06-03 · David: drop the "DAY · TYPE · DONE" eyebrow ·
+            it repeats the week strip + the title. Title row sits at the
+            top of the column now, aligning with the route + recap card
+            top edges. */}
         <div className="titlerow">
           <h1 className="htitle">{workoutTypeTitle(d.type)}</h1>
           <span className="check" title="On plan" aria-label="On plan">
