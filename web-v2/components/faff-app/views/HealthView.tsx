@@ -52,6 +52,12 @@ const BAND: Record<string, string> = {
 };
 
 function fmtValue(m: HealthMetric): string {
+  // 2026-06-03 · honest empty state · when the source signal isn't
+  // tracked (watch not worn, no Apple Health connection, etc.) we
+  // render an em-dash rather than the placeholder 0 the seed carries
+  // for shape stability. Backend ships noData=true on the metric so
+  // every reader (web tile, iPhone Health page, brief copy) can opt in.
+  if (m.noData) return '—';
   const v = m.current;
   if (m.clock) {
     const h = Math.floor(v);
@@ -135,7 +141,9 @@ function BarCard({ m, onClick, active }: { m: HealthMetric; onClick?: () => void
       </div>
       <div className="hmc-cap">
         <span className="lo">{caption}</span>
-        <span className="st" style={{ color: baseColor }}>{STATUS_TXT[m.status]}</span>
+        <span className="st" style={{ color: baseColor }}>
+          {m.noData ? 'no data' : STATUS_TXT[m.status]}
+        </span>
       </div>
     </div>
   );

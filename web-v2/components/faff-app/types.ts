@@ -559,6 +559,14 @@ export type HealthMetric = {
   status: 'good'|'warn'|'neutral';
   decimals?: number;
   clock?: boolean;
+  /**
+   * 2026-06-03 · honest empty-state flag. True when there is no source
+   * data for this metric (watch wasn't worn, signal never tracked, etc.).
+   * Consumers should render "—" / empty state, NOT a number. `current`
+   * stays at 0 for shape stability · do not display it when noData=true.
+   * Backward-compatible · existing consumers ignore the flag and see 0.
+   */
+  noData?: boolean;
 };
 
 export type ActivityData = {

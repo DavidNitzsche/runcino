@@ -903,26 +903,38 @@ async function loadInsights(userId: string, today: string): Promise<HealthState[
   } catch { /* skip on error */ }
 
   // Insight 2: SLEEP DEBT · last 7 nights vs target
+  // 2026-06-03 · disclosure-honest · counts ACTUAL nights tracked, not
+  // assumed 7. When a runner skipped wearing the watch for some nights,
+  // we report the deficit over the nights we have, AND we name the
+  // count ("over 6 of 7 nights"). When fewer than 4 nights are tracked,
+  // we skip the insight entirely · too sparse to claim a trend.
   try {
-    const r = await pool.query<{ avg7: string | null; deficit_h: string | null }>(
+    const r = await pool.query<{ avg7: string | null; deficit_h: string | null; night_count: string | null }>(
       `SELECT AVG(value)::text AS avg7,
-              SUM(GREATEST(0, 7.5 - value))::text AS deficit_h
+              SUM(GREATEST(0, 7.5 - value))::text AS deficit_h,
+              COUNT(*)::text AS night_count
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1
           AND sample_type = 'sleep_hours'
           AND sample_date >= ($2::date - interval '7 days')
-          AND sample_date <= $2::date`,
+          AND sample_date <= $2::date
+          AND value > 0`,    // 0-hour rows are HK glitches · skip
       [userId, today],
     );
     const avg7 = r.rows[0]?.avg7 ? Number(r.rows[0].avg7) : null;
     const deficit = r.rows[0]?.deficit_h ? Number(r.rows[0].deficit_h) : null;
-    if (avg7 != null && deficit != null) {
+    const nightCount = r.rows[0]?.night_count ? Number(r.rows[0].night_count) : 0;
+    if (avg7 != null && deficit != null && nightCount >= 4) {
+      const ofN = nightCount < 7 ? ` (${nightCount} of 7 nights tracked)` : '';
       insights.push({
         id: 'sleep_debt',
         eyebrow: 'SLEEP DEBT',
-        title: `${deficit.toFixed(1)}h short of target over 7 nights`,
+        title: `${deficit.toFixed(1)}h short of target${ofN}`,
         body: `Avg ${avg7.toFixed(1)}h vs 7.5h target. ${deficit > 5 ? 'Material debt · ease tomorrow.' : deficit > 2 ? 'Mild debt · watch HRV.' : 'On track.'}`,
       });
+    } else if (nightCount === 0) {
+      // Genuinely no sleep data · skip insight rather than fabricate.
+      // The Health page already shows the empty-state on its sleep tile.
     }
   } catch { /* skip */ }
 
@@ -1102,13 +1114,19 @@ async function loadVo2Trend(
   }
 }
 
-/** Counter helpers · reused inside the loaders. */
+/** Counter helpers · reused inside the loaders.
+ *  2026-06-03 · MISSING data is honestly missing · these counters only
+ *  count rows that exist (where the runner wore the watch). A skipped
+ *  night doesn't count as "below baseline" because we don't know what
+ *  the value would have been. Also filters out zero-value rows · HK
+ *  occasionally writes a 0-hour row when sync fails partway, and we
+ *  don't want that pretending to be a "0h slept" night. */
 function hrvBelowBaselineDaysCount(
   series: { date: string; ms: number }[],
   baseline: number | null,
 ): number {
   if (!baseline || baseline <= 0) return 0;
-  return series.filter((s) => s.ms < baseline).length;
+  return series.filter((s) => s.ms > 0 && s.ms < baseline).length;
 }
 
 function sleepBelowBaselineDaysCount(
@@ -1116,5 +1134,5 @@ function sleepBelowBaselineDaysCount(
   baseline: number | null,
 ): number {
   if (!baseline || baseline <= 0) return 0;
-  return series.filter((s) => s.hours < baseline).length;
+  return series.filter((s) => s.hours > 0 && s.hours < baseline).length;
 }

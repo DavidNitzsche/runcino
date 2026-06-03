@@ -352,7 +352,12 @@ export const TopicPrereqs: Record<TopicKind, (s: CoachState) => boolean> = {
   watch_list: (s) => {
     const rhrElevated = s.rhrCurrent != null && s.rhrBaseline != null &&
                         (s.rhrCurrent - s.rhrBaseline) >= 5;
-    const sleepShort  = s.sleep7Deficit >= 3.0;
+    // 2026-06-03 · gate on sleep7Avg != null · when no nights are tracked,
+    // sleep7Deficit defaults to 0 (no data, not zero deficit). Don't let
+    // a missing-data 0 fire a sleepShort claim, and don't let it suppress
+    // a legitimate RHR-only watch flag. See state-loader sleepVals filter
+    // (v > 0) · sleep7Avg null IS the "no data" signal.
+    const sleepShort  = s.sleep7Avg != null && s.sleep7Deficit >= 3.0;
     return rhrElevated || sleepShort;
   },
 

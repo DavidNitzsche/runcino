@@ -1059,10 +1059,23 @@ function adaptHealth(
   const sleepSeries  = series(health?.sleepSeries,  'hours');
   const weightSeries = series(health?.weightSeries, 'lb');
 
-  const mk = (k: string, label: string, unit: string, cur: number, target: number | undefined, dom: [number, number], s: number[], status: 'good' | 'warn' | 'neutral', decimals = 0, clock = false): HealthMetric => ({
+  const mk = (k: string, label: string, unit: string, cur: number, target: number | undefined, dom: [number, number], s: number[], status: 'good' | 'warn' | 'neutral', decimals = 0, clock = false, noData = false): HealthMetric => ({
     k, label, unit, current: cur, target, dom, series: s, status, decimals, clock,
+    ...(noData ? { noData: true } : {}),
   });
 
+  // 2026-06-03 · honest empty-state · when the runner skipped wearing
+  // the watch (sleep) or hasn't connected the data source (HRV / RHR /
+  // weight / vo2 / cadence), surface that as `noData: true` rather than
+  // a misleading "0" reading. Tiles render an em-dash instead of 0h /
+  // 0ms / 0bpm. `current` stays 0 for shape stability · consumers should
+  // gate display on noData, not the number.
+  const hasHrv = health?.hrv.current != null;
+  const hasRhr = health?.rhr.current != null;
+  const hasSleep = health?.sleep.avg7n != null;
+  const hasWeight = health?.weight.current != null;
+  const hasVo2 = health?.vo2.current != null;
+  const hasCadence = health?.cadence.baseline != null;
   const hrvCurrent = health?.hrv.current ?? 0;
   const rhrCurrent = health?.rhr.current ?? 0;
   const sleepAvg = health?.sleep.avg7n ?? 0;
@@ -1092,22 +1105,28 @@ function adaptHealth(
   const body: HealthMetric[] = [
     mk('hrv',    'HRV',        'ms',  hrvCurrent,    health?.hrv.baseline ?? undefined,
        [Math.max(20, (hrvCurrent || 60) - 30), (hrvCurrent || 60) + 30],
-       hrvSeries, hrvCurrent >= (health?.hrv.baseline ?? hrvCurrent) ? 'good' : 'warn'),
+       hrvSeries,
+       !hasHrv ? 'neutral' : hrvCurrent >= (health?.hrv.baseline ?? hrvCurrent) ? 'good' : 'warn',
+       0, false, !hasHrv),
     mk('rhr',    'RESTING HR', 'bpm', rhrCurrent,    health?.rhr.baseline ?? undefined,
        [Math.max(35, (rhrCurrent || 50) - 10), (rhrCurrent || 50) + 10],
-       rhrSeries, rhrCurrent <= (health?.rhr.baseline ?? rhrCurrent) ? 'good' : 'warn'),
+       rhrSeries,
+       !hasRhr ? 'neutral' : rhrCurrent <= (health?.rhr.baseline ?? rhrCurrent) ? 'good' : 'warn',
+       0, false, !hasRhr),
     mk('sleep',  'SLEEP',      'h',   sleepAvg,      7.5,
-       [4, 10], sleepSeries, sleepAvg >= 7 ? 'good' : 'warn', 1, true),
+       [4, 10], sleepSeries,
+       !hasSleep ? 'neutral' : sleepAvg >= 7 ? 'good' : 'warn',
+       1, true, !hasSleep),
     mk('weight', 'WEIGHT',     'lb',  weightCurrent, undefined,
        [Math.max(120, (weightCurrent || 180) - 10), (weightCurrent || 180) + 10],
-       weightSeries, 'good', 1),
+       weightSeries, 'good', 1, false, !hasWeight),
     // P2 #11 (2026-05-30): real VO2 trend over 6 months. health-state ships
     // vo2Series as the sparse Apple Health readings. We sort + clamp into
     // a 30-point chart (downsample if 30+ points, pad-with-last if fewer).
     mk('vo2',    'VO₂ MAX',    '',    vo2Current,    undefined,
        [Math.max(30, (vo2Current || 50) - 8), (vo2Current || 50) + 6],
        packVo2Series(health?.vo2Series ?? [], vo2Current),
-       'good', 1),
+       'good', 1, false, !hasVo2),
     // 2026-06-01 · Health page Quick Wins · 5 new tiles.
     // Wrist temp · Apple Watch nightly skin temp. Doctrine: rises before
     // HRV drops on early illness/overtraining (Research/00b).
