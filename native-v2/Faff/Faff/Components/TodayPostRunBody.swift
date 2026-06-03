@@ -74,7 +74,11 @@ struct TodayPostRunBody: View {
             }
             formGrid
             howItWent
-            viewFullRunLink
+            // 2026-06-02 round 50 · "View full run ›" link retired.
+            // Post-run pull-up sheet is the canonical post-run surface
+            // now · everything the runner needs lives here. The
+            // viewFullRunLink view itself is kept dead-coded in case
+            // a future deep-link route brings it back.
         }
     }
 
@@ -491,13 +495,25 @@ struct TodayPostRunBody: View {
                         }
                     }
                 }
+                // 2026-06-02 round 50 · coach_tip now renders as a
+                // bullet in the same list as facts · David flagged the
+                // standalone paragraph looked orphaned ("not a bullet
+                // point. looks like it should be"). Visually identical
+                // to the facts above so the whole block reads as one
+                // coherent observation list.
                 if let tip = recap.coach_tip, !tip.isEmpty {
-                    Text(tip)
-                        .font(.body(13.5, weight: .medium))
-                        .foregroundStyle(Color(hex: 0x3C362F))
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle()
+                            .fill(accent)
+                            .frame(width: 4, height: 4)
+                            .padding(.top, 6)
+                        Text(tip)
+                            .font(.body(13))
+                            .foregroundStyle(Color(hex: 0x4F483F))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.top, 7)
                 }
                 // 2026-06-02 round 49 · per-run-type analysis panel
                 // (design_handoff_iphone_postrun). Swaps body by effort:
