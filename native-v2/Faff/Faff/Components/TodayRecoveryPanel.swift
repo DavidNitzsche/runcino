@@ -376,8 +376,13 @@ private extension TodayRecoveryPanel {
     }
 
     var fullyRecoveredBig: String {
-        // Show projected return time from HRV rebound's
-        // projectedReturnISO if present, else "—".
+        // 2026-06-02 round 66 · prefer backend's top-level
+        // fullyRecoveredAt (LATEST of all pillar returns: typically
+        // HRV rebound, but RHR-baseline wins on high-RHR + mild-HRV
+        // days). Falls back to per-pillar HRV-rebound math when the
+        // top-level field is absent (older backend payloads).
+        if let iso = brief?.fullyRecoveredAt, !iso.isEmpty,
+           let t = shortTime(iso: iso) { return t }
         guard let iso = brief?.pillars.hrvRebound.projectedReturnISO,
               let t = shortTime(iso: iso) else { return "—" }
         return t

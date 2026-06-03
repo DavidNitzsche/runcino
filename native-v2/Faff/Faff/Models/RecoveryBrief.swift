@@ -32,6 +32,14 @@ struct RecoveryBrief: Decodable {
     let trainingInput: RecoveryTrainingInput
     let nextHard: RecoveryNextHard
     let weekProgress: RecoveryWeekProgress
+    /// 2026-06-02 round 66 · backend shipped @ c4579d85.
+    /// ISO timestamp of the LATEST pillar return-time (typically HRV
+    /// rebound, but RHR-baseline wins on high-RHR + mild-HRV days).
+    /// Sleep target intentionally excluded — would conflate "fully
+    /// recovered" with "after you wake up." Empty string when not
+    /// computable. Prefer this over per-pillar projectedReturnISO
+    /// math for the FULLY RECOVERED tile (Section D).
+    let fullyRecoveredAt: String
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -44,10 +52,12 @@ struct RecoveryBrief: Decodable {
         self.trainingInput = (try? c.decode(RecoveryTrainingInput.self, forKey: .trainingInput)) ?? RecoveryTrainingInput.empty
         self.nextHard = (try? c.decode(RecoveryNextHard.self, forKey: .nextHard)) ?? RecoveryNextHard.empty
         self.weekProgress = (try? c.decode(RecoveryWeekProgress.self, forKey: .weekProgress)) ?? RecoveryWeekProgress.empty
+        self.fullyRecoveredAt = try c.decodeIfPresent(String.self, forKey: .fullyRecoveredAt) ?? ""
     }
     enum CodingKeys: String, CodingKey {
         case mode, score, band, oneLine, bigCopy
         case pillars, trainingInput, nextHard, weekProgress
+        case fullyRecoveredAt
     }
 }
 
