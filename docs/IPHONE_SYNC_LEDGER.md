@@ -23,7 +23,8 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 | 8519b5ac | Check-in moved to TOP + time/run-aware prompt | iPhone's readiness panel should mirror: check-in card right after the Hero · prompt switches based on hour + `todayRunDone` (POST-RUN / heading into today / afternoon / tonight / restDay) | NEEDS WIRING |
 | cfbc3347 | Tempo `Hold X` pace + Long fuel + Long coach copy now derived from workout_spec | iPhone planned-card coach line / fuel chip should mirror: read `workout_spec.tempo_pace_s_per_mi` / `fuel_mi` / distance · stop reading hardcoded KIT-style strings | NEEDS WIRING |
 | cfbc3347 | Easy verdict "Easy day." dedup · first fact no longer repeats it | iPhone purpose card · skip the "Easy day." prefix when verdict already says it · or just use `facts` array as-is (the dedup is now at source) | AUTO-RIPPLE |
-| 07c04d04 | `prescription.intent` ('cut'/'plan'/'send'/'rest') + `targetMinutes` / `targetMiles` | iPhone readiness panel: when todayRunDone, swap PrescriptionCard for a PostRunReflection that compares actual run vs intent+target. See web `PostRunReflection` for the four-tier copy ladder. | NEEDS WIRING |
+| 07c04d04 | `prescription.intent` ('cut'/'plan'/'send'/'rest') + `targetMinutes` / `targetMiles` | iPhone readiness panel: when todayRunDone, swap PrescriptionCard for a PostRunReflection that compares actual run vs intent+target. See web `PostRunReflection` for the four-tier copy ladder. | DEFERRED · gutted from web @ b4a059e1 |
+| b4a059e1 | Reactive coach layer GUTTED from web UI · prescription card, post-run reflection, override callout, feeling check-in, standing advice all hidden | iPhone equivalents: do NOT wire any of the "what to do today" / post-run-reflection / morning check-in / coach-suggests-easier surfaces. The plan stands, the score informs, no reactive layer. Engine code intact for future re-enable. | REVERT-NOT-WIRED |
 
 ## AUTO-RIPPLE · iPhone gets it free
 
