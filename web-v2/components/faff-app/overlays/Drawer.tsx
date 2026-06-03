@@ -120,7 +120,9 @@ function fmtTimeFromSec(sec: number): string {
 }
 
 export function Drawer({
-  open, onClose, brief, fallbackReadiness, goalSlug, onViewFullHealth,
+  open, onClose, brief, fallbackReadiness, goalSlug,
+  todayRunDone = false, todayWorkoutType = null,
+  onViewFullHealth,
 }: {
   open: boolean;
   onClose: () => void;
@@ -133,6 +135,12 @@ export function Drawer({
    *  no active goal race · the gap report itself won't render either,
    *  so this is only the slug for the action target. */
   goalSlug?: string | null;
+  /** 2026-06-03 · today's planned run completed yet?
+   *  Drives the check-in prompt framing · pre/post-run distinction. */
+  todayRunDone?: boolean;
+  /** 2026-06-03 · today's planned workout type (easy / long / intervals
+   *  / etc) · combined with todayRunDone to author the check-in prompt. */
+  todayWorkoutType?: string | null;
   onViewFullHealth: () => void;
 }) {
   // Auto-expand pull-back-band pillars per README `confounders=auto`
@@ -212,6 +220,20 @@ export function Drawer({
 
             {/* 2 · Hero · score ring + band eyebrow + headline + mover. */}
             <Hero brief={brief} />
+
+            {/* 2026-06-03 · Check-in moved to TOP per David's call:
+                "shouldn't 'how do you feel' be at top and not 'this
+                morning'? there's been times I want to push it but
+                thought since it's not morning it might mess things up."
+                Prompt is now time-of-day + run-state aware · pre/post
+                run + morning/afternoon/night framing. Renders right
+                under the hero so it's the first thing the runner sees. */}
+            {brief.subjectiveCheckin && brief.subjectiveCheckin.answered === false ? (
+              <FeelingCheckin
+                todayRunDone={todayRunDone}
+                todayWorkoutType={todayWorkoutType}
+              />
+            ) : null}
 
             {/* 2026-06-03 · Prescription · "what should I DO today" line.
                 Authored from band + active streaks + planned workout type.
@@ -299,14 +321,13 @@ export function Drawer({
               </Section>
             ) : null}
 
-            {/* 8 · Morning check-in · renders when today's subjective
-                rating hasn't been logged yet. POST resolves the answer +
-                returns whether it disagrees with objective ≥15 pts
-                (willTriggerOverride). Backend-shipped 2026-06-01 at
-                commit 463d4a4c. */}
-            {brief.subjectiveCheckin && brief.subjectiveCheckin.answered === false ? (
-              <MorningCheckin />
-            ) : null}
+            {/* 8 · Morning check-in MOVED TO TOP 2026-06-03 (now renders
+                right after the Hero as <FeelingCheckin />) per David's
+                call: "shouldn't 'how do you feel' be at top and not
+                'this morning'? there's been times I want to push it but
+                thought since it's not morning it might mess things up."
+                The check-in is now first-class · the runner sees it
+                before scrolling through the diagnostic. */}
 
             {/* 9 · View full health link. */}
             <div className="dlink" onClick={onViewFullHealth} role="button" tabIndex={0}>
@@ -742,16 +763,59 @@ function ColdStart({ coldStart, onConnect }: {
 }
 
 /* ============================================================
-   MorningCheckin · captures the runner's 1-10 wellness reading.
-   POSTs to /api/readiness/subjective; when willTriggerOverride is
-   true, the next brief refresh will surface the subjective override
-   block at the top of the drawer. Per Saw et al. doctrine,
-   subjective beats objective when they disagree by ≥15 pts.
+   FeelingCheckin · time-of-day + run-state aware check-in.
+   2026-06-03 · replaces MorningCheckin per David's feedback ·
+   "shouldn't 'how do you feel' be at top and not 'this morning'?"
+
+   Authors the question text based on:
+     · current local hour
+     · whether today's planned run is done (todayRunDone)
+     · what the planned workout was (todayWorkoutType)
+
+   Prompts cover every realistic time/state combination so the runner
+   never has to wonder "is it appropriate to log right now?" Whatever
+   time you tap, the question fits. The check-in's rating math is
+   unchanged · time context is captured in the row's created_at and
+   informs voice tone downstream.
    ============================================================ */
-function MorningCheckin() {
+function FeelingCheckin({ todayRunDone, todayWorkoutType }: {
+  todayRunDone: boolean;
+  todayWorkoutType: string | null;
+}) {
   const [saving, setSaving] = useState<number | null>(null);
   const [done, setDone] = useState<{ rating: number; willOverride: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Author prompt + label based on time + run state.
+  const hour = new Date().getHours();
+  const isMorning   = hour >= 4  && hour < 12;
+  const isAfternoon = hour >= 12 && hour < 17;
+  const isEvening   = hour >= 17 && hour < 22;
+  // Late night (22-3) folds into "tonight" framing.
+  const planned = (todayWorkoutType ?? '').toLowerCase();
+  const isRestDay = planned === 'rest' || planned === '';
+
+  let label: string;
+  let question: string;
+  if (todayRunDone) {
+    label = 'POST-RUN CHECK-IN';
+    question = 'How are you feeling after the run?';
+  } else if (isMorning && !isRestDay) {
+    label = 'CHECK-IN';
+    question = 'How are you feeling heading into today?';
+  } else if (isAfternoon && !isRestDay) {
+    label = 'CHECK-IN';
+    question = 'How are you feeling this afternoon?';
+  } else if (isEvening) {
+    label = 'CHECK-IN';
+    question = 'How are you feeling tonight?';
+  } else if (isRestDay) {
+    label = 'CHECK-IN';
+    question = 'How are you feeling today?';
+  } else {
+    label = 'CHECK-IN';
+    question = 'How are you feeling right now?';
+  }
 
   async function submit(rating: number) {
     setSaving(rating);
@@ -779,8 +843,8 @@ function MorningCheckin() {
 
   if (done) {
     return (
-      <div className="rb-checkin rb-checkin-done">
-        <div className="dcl">MORNING CHECK-IN</div>
+      <div className="rb-checkin rb-checkin-done" style={{ marginTop: 14 }}>
+        <div className="dcl">{label}</div>
         <div className="rb-checkin-msg">
           Logged · <b>{done.rating}/10</b>.
           {done.willOverride
@@ -792,9 +856,9 @@ function MorningCheckin() {
   }
 
   return (
-    <div className="rb-checkin">
-      <div className="dcl">MORNING CHECK-IN</div>
-      <div className="rb-checkin-q">How do you feel this morning?</div>
+    <div className="rb-checkin" style={{ marginTop: 14 }}>
+      <div className="dcl">{label}</div>
+      <div className="rb-checkin-q">{question}</div>
       <div className="rb-checkin-scale">
         {[2, 4, 6, 8, 10].map((n) => (
           <button

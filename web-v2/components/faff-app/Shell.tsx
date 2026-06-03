@@ -226,6 +226,12 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         brief={seed.readinessBrief}
         fallbackReadiness={seed.readiness}
         goalSlug={seed.goalRace?.slug ?? null}
+        // 2026-06-03 · today's run state · drives the time/run-aware
+        // check-in prompt ("How are you feeling after the run?" vs
+        // "How are you feeling heading into today?" vs after-hours
+        // framing). seed.results is keyed by week index.
+        todayRunDone={Boolean(seed.results[seed.todayIdx])}
+        todayWorkoutType={seed.week[seed.todayIdx]?.type ?? null}
         onViewFullHealth={() => { setOpenOverlay(null); navigate('health'); }}
       />
       {typeof openOverlay === 'object' && openOverlay?.type === 'wk' && (
