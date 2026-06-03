@@ -144,7 +144,13 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .stats .v small{font-size:14px;opacity:.9;font-weight:400;}
 .stats .k{font-size:11px;font-weight:600;letter-spacing:1.2px;opacity:1;margin-top:7px;}
 .effort{margin-top:28px;max-width:380px;padding-top:30px;}
-.wcard{flex:0 0 460px;align-self:stretch;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#F6F7F8;text-shadow:none;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;box-shadow:0 12px 30px -20px rgba(0,0,0,.5);}
+/* 2026-06-03 · wcard grows with the viewport like the rows above + below
+   the hero (week strip / signal row) rather than being locked at a fixed
+   pixel width. Pair with .hero-v2-done .mapcol's 1.4 share so the map
+   stays the visual focus while the right card claims its 1 share of
+   remaining space (after the fixed left column). Min-width keeps the
+   tiles inside the card readable on narrower viewports. */
+.wcard{flex:1 1 0;min-width:380px;align-self:stretch;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#F6F7F8;text-shadow:none;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;box-shadow:0 12px 30px -20px rgba(0,0,0,.5);}
 .wcl{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.5);margin-bottom:14px;}
 .shape{display:flex;gap:3px;height:8px;margin-bottom:16px;}
 .shape i{border-radius:3px;}
@@ -235,7 +241,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    sane size on ultrawide monitors · the route shape rarely needs more
    than ~720 px to read clearly. Map centers in whatever space the
    .mapcol gets after the wcard claims its 344px. */
-.hero-v2-done .mapcol{flex:1 1 0;align-self:stretch;min-width:0;max-width:760px;}
+.hero-v2-done .mapcol{flex:1.4 1 0;align-self:stretch;min-width:0;max-width:760px;}
 /* Leaflet-hosted route card · Style F+ from designs/route-map-mockups.
    The Leaflet map fills the entire .routemap box · tiles ARE the
    background now, no need for the synthetic grid + dark gradient. The
