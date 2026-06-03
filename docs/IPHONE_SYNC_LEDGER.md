@@ -20,6 +20,7 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 | 3109bdc9 | `confounders[].categoryTag` (optional) | Use as the chip label instead of `pillar` (which was self-referential) | NEEDS WIRING |
 | ba7063dc | `HealthMetric.noData` (optional bool) | When true, render "—" instead of `current` value; caption "no data" instead of status text | LENIENT · iPhone can opt in |
 | 48a64339 / 9357a5c0 | Mile-pace chart cooldown/warmup tail detection | Web has it inline (TodayView § EasyPanel). iPhone's per-mile chart could mirror: tail = ≥15% slower than median AND ≥45s absolute | OPTIONAL · web-side only for now |
+| 8519b5ac | Check-in moved to TOP + time/run-aware prompt | iPhone's readiness panel should mirror: check-in card right after the Hero · prompt switches based on hour + `todayRunDone` (POST-RUN / heading into today / afternoon / tonight / restDay) | NEEDS WIRING |
 
 ## AUTO-RIPPLE · iPhone gets it free
 
