@@ -1324,7 +1324,12 @@ function planCadenceTarget(
 function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: string } {
   if (d.hrCap != null) {
     if (d.type === 'tempo' || d.type === 'intervals') return { value: `~${d.hrCap}`, sub: ` bpm · Z4` };
-    return { value: `< ${d.hrCap}`, sub: ` bpm · ${d.type === 'long' ? 'Z3' : 'Z2'}` };
+    // 2026-06-03 · long runs ALSO cap at Z2 per Rule 16 doctrine
+    // (hrCapEasy = hrCapLong = max(89% LTHR, 78% maxHR)). David flagged
+    // the Sun 6/7 card showing "<144 bpm · Z3" when 144 IS the Z2 upper
+    // cap. Labeling it Z3 implied long runs should run in Z3, which
+    // contradicts the cap value. Both easy + long now show Z2.
+    return { value: `< ${d.hrCap}`, sub: ` bpm · Z2 cap` };
   }
   return { value: 'by feel', sub: '' };
 }
