@@ -136,6 +136,22 @@ export interface CoachState {
     id: string; name: string; mileage: number; cap: number; pctUsed: number;
     isRaceShoe: boolean;
   }>;
+
+  /** 2026-06-03 · Today screen post-run pivot · iPhone forward-compat
+   *  decoded these on iOS already (Decodable lenient defaults). When
+   *  the iPhone calls /api/glance / state-loader and sees
+   *  todayRunDone === true, it swaps the morning readiness ring for the
+   *  recovery brief view at GET /api/coach/recovery-brief.
+   *
+   *  todayRunDone · TRUE when any run > 1mi on today's date exists in
+   *    runs.data (deduped, NOT (data ? 'mergedIntoId')).
+   *  todayRunLong · TRUE when todayRunDone === TRUE AND today's planned
+   *    workout type='long' AND actual mi ≥ 0.80 × prescribed long mi.
+   *
+   *  Hard rule (iPhone enforces): once todayRunDone flips true within
+   *  a day it stays true until midnight rolls · no morning-mode bounce. */
+  todayRunDone: boolean;
+  todayRunLong: boolean;
 }
 
 /* ────────────────────────── Topic payloads ────────────────────────── */

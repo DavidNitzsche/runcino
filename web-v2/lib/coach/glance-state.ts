@@ -499,6 +499,12 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
     activeNiggle: null,  // glance state doesn't pull niggle extras
     pendingIntents: [], shoes: [],
+    // 2026-06-03 · Today screen post-run pivot · glance-state is a
+    // FAST-PATH variant of state-loader (skips heavy reads). Default
+    // false here · the dedicated /api/coach/recovery-brief endpoint
+    // re-queries via the full state-loader, which DOES compute these.
+    todayRunDone: false,
+    todayRunLong: false,
   });
 
   // Pace-derivation inputs (Phase 47 · /today fallback). LTHR + the closest

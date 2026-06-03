@@ -334,6 +334,51 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     [userId]
   ).catch(() => ({ rows: [] }));
 
+  // 2026-06-03 · Rule · Today screen post-run pivot · iPhone gates the
+  // recovery-brief swap on these flags. Computed at state-load so every
+  // CoachState carries them (any envelope iPhone reads picks them up).
+  //
+  // todayRunDone · ANY run > 1mi today (deduped) drives this true. We
+  // accept runs even before plan-match has happened (the watch can write
+  // before the plan reconciliation cron).
+  //
+  // todayRunLong · TRUE when today's prescription is type='long' AND the
+  // canonical run distance ≥ 0.80 × prescribed long mi. The 0.80 floor
+  // protects against partial / aborted long runs flipping the long-run
+  // mode early (which would surface the wrong sleep-target band).
+  const todayRunDoneRow = (await pool.query<{ done: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM runs
+        WHERE user_uuid = $1::uuid
+          AND NOT (data ? 'mergedIntoId')
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date = $2::date
+          AND (data->>'distanceMi')::numeric > 1
+     ) AS done`,
+    [userId, today],
+  ).catch(() => ({ rows: [{ done: false }] }))).rows[0] ?? { done: false };
+  const todayRunDone = !!todayRunDoneRow.done;
+
+  let todayRunLong = false;
+  if (todayRunDone) {
+    const todayRunLongRow = (await pool.query<{ long: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+           JOIN runs r ON r.user_uuid = tp.user_uuid::uuid
+                      AND NOT (r.data ? 'mergedIntoId')
+                      AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
+          WHERE tp.user_uuid = $1::uuid
+            AND tp.archived_iso IS NULL
+            AND pw.date_iso::date = $2::date
+            AND pw.type = 'long'
+            AND (r.data->>'distanceMi')::numeric >= pw.distance_mi * 0.80
+       ) AS long`,
+      [userId, today],
+    ).catch(() => ({ rows: [{ long: false }] }))).rows[0] ?? { long: false };
+    todayRunLong = !!todayRunLongRow.long;
+  }
+
   // 2026-06-01 · biological sex + cycle phase (iPhone 0fa7d55a · gender-gated).
   // Used in readiness.ts to apply the luteal-phase HRV adjustment.
   const biologicalSex = await loadBiologicalSex(userId).catch(() => 'not_specified' as const);
@@ -392,5 +437,8 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       reason: r.reason, field: r.field, value: r.value,
     })),
     shoes: [], // populated by P0.6b · out of scope for the engine skeleton
+    // 2026-06-03 · Today screen post-run pivot · iPhone forward-compat.
+    todayRunDone,
+    todayRunLong,
   };
 }
