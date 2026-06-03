@@ -213,6 +213,12 @@ export function Drawer({
             {/* 2 · Hero · score ring + band eyebrow + headline + mover. */}
             <Hero brief={brief} />
 
+            {/* 2026-06-03 · Prescription · "what should I DO today" line.
+                Authored from band + active streaks + planned workout type.
+                Renders right under the hero so it's the first concrete
+                action the runner sees. Hidden on cold-start (band='no-data'). */}
+            {brief.prescription ? <PrescriptionCard p={brief.prescription} band={brief.band} /> : null}
+
             {/* Gap report moved 2026-06-01 · David call · "this info
                 should not be in this today panel. it can fill out
                 this middle panel in training better." The component
@@ -372,6 +378,47 @@ function Hero({ brief }: { brief: ReadinessBriefSeed }) {
         {brief.oneLineMover ? (
           <div className="rb-mover">{stripCitations(brief.oneLineMover)}</div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PrescriptionCard · "what should I DO today" line.
+   2026-06-03 · authored by readiness-brief composePrescription · band-
+   aware + streak-aware + planned-workout-aware. Renders right under
+   the Hero so it's the first concrete action the runner sees.
+   ============================================================ */
+function PrescriptionCard({ p, band }: {
+  p: NonNullable<ReadinessBriefSeed['prescription']>;
+  band: ReadinessBriefSeed['band'];
+}) {
+  const accent = BAND_COLOR[band] ?? '#8A90A0';
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: '12px 14px',
+        borderRadius: 12,
+        background: 'rgba(255,255,255,.04)',
+        border: `1px solid ${accent}33`,
+        borderLeft: `3px solid ${accent}`,
+      }}
+    >
+      <div style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
+        color: 'rgba(255,255,255,.55)', marginBottom: 6,
+      }}>
+        WHAT TO DO TODAY
+      </div>
+      <div style={{
+        fontFamily: 'var(--font-display, Oswald, sans-serif)',
+        fontSize: 17, lineHeight: 1.3, color: '#fff', marginBottom: 6,
+      }}>
+        {p.action}
+      </div>
+      <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', lineHeight: 1.4 }}>
+        {p.why}
       </div>
     </div>
   );

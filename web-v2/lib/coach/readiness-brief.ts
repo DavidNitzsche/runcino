@@ -98,6 +98,20 @@ export interface ReadinessBrief {
   headline: string;
   /** "Score down 6 from yesterday · HRV is the mover." */
   oneLineMover: string | null;
+  /** 2026-06-03 · "What should I DO today?" — concrete prescription
+   *  derived from band + active streaks + today's planned workout type +
+   *  subjective override (when present). Authored, not templated.
+   *
+   *  Examples:
+   *    SHARP + planned quality → "Send it. Plan as scheduled."
+   *    PULL-BACK + sleep streak + planned tempo → "Swap tempo for
+   *      easy 4-5mi. Hold tomorrow's plan."
+   *    MODERATE + planned long → "Cap effort at 'tired, not wrecked.'
+   *      Cut long by 1-2mi if heart climbs above easy band."
+   *
+   *  Null only on true cold-start (band='no-data') or when the
+   *  composition can't read today's planned workout. */
+  prescription: { action: string; why: string } | null;
   /** Score trend, 14-day. Includes today's row. */
   scoreTrend: { date: string; score: number; band: PillarBand }[];
   pillars: ReadinessPillarTile[];
@@ -266,6 +280,7 @@ export async function loadReadinessBrief(
       label: 'BUILDING',
       headline: coldStart?.note ?? 'Connect Apple Health to start your baseline.',
       oneLineMover: null,
+      prescription: null,
       scoreTrend: [],
       pillars: [],
       streaks: [],
@@ -284,8 +299,20 @@ export async function loadReadinessBrief(
     };
   }
 
-  // Pull yesterday's snapshot (for mover detection) · best-effort.
-  const yesterdaySnap = await loadYesterdaySnapshot(userId, date);
+  // 2026-06-03 · Pull yesterday's pillar weights for mover detection.
+  // Was: read readiness_snapshots[yesterday] · but that table is
+  // populated by the nightly cron at 09:00 UTC, BEFORE today's HRV/RHR
+  // readings come in. Each snapshot row therefore stored the PREVIOUS
+  // day's most-recent reading · so snapshot[6/2] held the 6/1 values.
+  // Mover delta was computed against this one-day-stale baseline and
+  // came out wildly understated (David's 6/3 HRV swing 85→37ms gave
+  // a -7 mover instead of the real -35).
+  //
+  // Now: compute yesterday's pillar weights LIVE from raw signals (HRV
+  // reading on yesterday's date, sleep avg ending yesterday, etc.) and
+  // run them through computeReadiness. Mover delta = today.weight -
+  // yesterday.weight using the same formula on both sides.
+  const yesterdaySnap = await computeYesterdayPillars(userId, date, stateForScore);
 
   // 14-day score trend.
   const scoreTrend = await loadScoreTrend(userId, date, 14, breakdown);
@@ -313,6 +340,17 @@ export async function loadReadinessBrief(
   // ×10 normalization), populate subjectiveOverride per Saw et al.
   const subjectiveCheckin = await loadSubjectiveCheckin(userId, date);
   const subjectiveOverride = computeSubjectiveOverride(breakdown, subjectiveCheckin);
+
+  // 2026-06-03 · prescription · concrete "what should I DO today" line
+  // based on band + active streaks + today's planned workout type +
+  // subjective override. Authored, not templated · the engine writes
+  // one line the runner can act on, citing the trigger.
+  const prescription = composePrescription({
+    band: breakdown.band,
+    streaks,
+    todayWorkoutType: state.todayWorkout?.type ?? null,
+    subjectiveOverride,
+  });
 
   // 2026-06-01 · cold-start envelope (web agent brief §2). Null when
   // we have a score · only populated for band='no-data' runners.
@@ -395,6 +433,7 @@ export async function loadReadinessBrief(
     label: breakdown.label,
     headline,
     oneLineMover,
+    prescription,
     scoreTrend,
     pillars,
     streaks,
@@ -413,6 +452,118 @@ export async function loadReadinessBrief(
   };
 }
 
+/* ────────────────────────── Prescription ──────────────────────────
+ * 2026-06-03 · "What should I DO today?" composer.
+ *
+ * Authored per band + active streaks + today's planned workout type.
+ * Strong streaks (sleep / HRV) override band-only guidance because
+ * chronic signals trump today's number.
+ *
+ * Subjective override (when the runner's check-in disagrees with
+ * objective ≥15 pts) softens or hardens the prescription per Saw
+ * et al. doctrine · "subjective wins on the day."
+ *
+ * Doctrine cites: Plews/Buchheit (HRV-guided training), Pfitzinger
+ * (sleep is the recovery floor), Daniels (easy is non-negotiable
+ * when load is elevated), Saw et al. (subjective beats objective).
+ */
+function composePrescription(args: {
+  band: ReadinessBreakdown['band'] | 'no-data';
+  streaks: ReadinessStreak[];
+  todayWorkoutType: string | null;
+  subjectiveOverride: ReadinessBrief['subjectiveOverride'];
+}): ReadinessBrief['prescription'] {
+  const { band, streaks, todayWorkoutType, subjectiveOverride } = args;
+  if (band === 'no-data') return null;
+
+  // Subjective override takes precedence per Saw et al. doctrine.
+  if (subjectiveOverride) {
+    const sub = subjectiveOverride.subjectiveScore;
+    const obj = subjectiveOverride.objectiveScore;
+    if (sub - obj >= 15) {
+      return {
+        action: 'Plan stands. You feel better than the numbers.',
+        why: `Subjective ${sub} vs objective ${obj} · trust the body when the gap is this wide.`,
+      };
+    }
+    if (obj - sub >= 15) {
+      return {
+        action: 'Ease back regardless of plan. Easy 20-30min only or full rest.',
+        why: `Subjective ${sub} vs objective ${obj} · the body knows when the numbers don't.`,
+      };
+    }
+  }
+
+  const sleepStreak = streaks.find((s) => s.pillar === 'sleep');
+  const hrvStreak   = streaks.find((s) => s.pillar === 'hrv');
+  const chronicSignal = sleepStreak || hrvStreak;
+  const wType = (todayWorkoutType ?? '').toLowerCase();
+  const isQuality = wType === 'intervals' || wType === 'tempo' || wType === 'threshold';
+  const isLong    = wType === 'long';
+  const isEasy    = wType === 'easy' || wType === 'recovery';
+  const isRest    = wType === 'rest' || wType === '';
+
+  // Hard pull-back when chronic streak compounds with a low band.
+  if (band === 'pull-back') {
+    if (chronicSignal && chronicSignal.days >= 5) {
+      if (isQuality) {
+        return {
+          action: 'Skip today\'s quality. Easy 30min only or full rest.',
+          why: `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + PULL BACK band · don't add load on a depleted base.`,
+        };
+      }
+      if (isLong) {
+        return {
+          action: 'Drop the long to 50-60% distance. No pace targets · jog.',
+          why: `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + PULL BACK band · long-run cost will compound.`,
+        };
+      }
+      if (isEasy) {
+        return {
+          action: 'Cut the easy to 30min. Keep it conversational, walk if needed.',
+          why: `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + PULL BACK band · pull back even on easy days.`,
+        };
+      }
+      return {
+        action: 'Rest. Or 20-30min walk if you need to move.',
+        why: `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + PULL BACK band · the body needs the day off.`,
+      };
+    }
+    // Acute pull-back · no streak. Less aggressive.
+    if (isQuality) return { action: 'Swap quality for easy 30-45min.', why: 'PULL BACK band today · save the work for a recovered day.' };
+    if (isLong)    return { action: 'Drop long to 70-80% distance. No pace targets.', why: 'PULL BACK band today · long-run on a bad day costs more than it gains.' };
+    if (isEasy)    return { action: 'Easy as planned, but cut 1-2mi if it feels off.', why: 'PULL BACK band today · easy is already the right call.' };
+    return { action: 'Rest as planned. Mobility if you want.', why: 'PULL BACK band · rest day matches the signal.' };
+  }
+
+  if (band === 'moderate') {
+    if (chronicSignal && chronicSignal.days >= 5) {
+      if (isQuality) return { action: 'Run quality as planned, but cap effort. Stop if pace slips badly.', why: `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · proceed with caution.` };
+      if (isLong)    return { action: 'Long as planned, but slower than usual easy pace. No fast finish.', why: `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · build aerobic, skip the strain.` };
+      return { action: 'Plan stands. Keep effort conservative.', why: `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · run, don't push.` };
+    }
+    if (isQuality) return { action: 'Plan stands. Hold the easy band on warm-up + recovery.', why: 'MODERATE band · execute, don\'t over-reach.' };
+    if (isLong)    return { action: 'Long as planned. Cap effort at "tired, not wrecked."', why: 'MODERATE band · build aerobic without paying the next-day tax.' };
+    return { action: 'Plan stands.', why: 'MODERATE band · within normal training band.' };
+  }
+
+  if (band === 'ready') {
+    if (isQuality) return { action: 'Plan stands. Execute the workout.', why: 'READY band · system is recovered.' };
+    if (isLong)    return { action: 'Long as planned. Optional fast finish if it feels right.', why: 'READY band · take the long honestly.' };
+    if (isEasy)    return { action: 'Plan stands. Easy as scheduled.', why: 'READY band · easy days build the base.' };
+    return { action: 'Plan stands.', why: 'READY band · run as scheduled.' };
+  }
+
+  if (band === 'sharp') {
+    if (isQuality) return { action: 'Send it. Plan as scheduled.', why: 'SHARP band · system is firing · don\'t hold back.' };
+    if (isLong)    return { action: 'Send it. Plan stands · fast finish if it\'s scheduled.', why: 'SHARP band · use the day.' };
+    if (isEasy)    return { action: 'Easy as planned · don\'t turn it into a hard day because you feel good.', why: 'SHARP band but easy day · banking days like this matter.' };
+    return { action: 'Plan stands.', why: 'SHARP band · run as scheduled.' };
+  }
+
+  return null;
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────
 
 function breakdownIsEmpty(b: ReadinessBreakdown): boolean {
@@ -427,6 +578,101 @@ function computeDynamicSleepTarget(acwr: number | null | undefined): number {
   if (acwr > 1.3) return 8.5;
   if (acwr > 1.0) return 8.0;
   return 7.5;
+}
+
+/**
+ * 2026-06-03 · compute yesterday's pillar weights from raw signals.
+ *
+ * Replaces loadYesterdaySnapshot for the mover calc · the snapshot
+ * table is populated by an early-morning cron and stores stale data
+ * (one day behind on each pillar), which produced systematically
+ * understated mover deltas.
+ *
+ * This helper queries the signals as they were on yesterday's date:
+ *   · HRV: latest reading on or before yesterday
+ *   · RHR: latest reading on or before yesterday
+ *   · sleep7Avg: average of 7 nights ending yesterday
+ *   · hr_recovery: latest reading on or before yesterday
+ *   · load: ACWR not recomputed (slow-moving · today's value is fine
+ *     proxy for yesterday's; if it changed > sensitivity threshold the
+ *     trend will surface elsewhere)
+ *
+ * Then builds a snapshot-shaped CoachState with yesterday's values and
+ * runs computeReadiness · returns the same shape loadYesterdaySnapshot
+ * used to so the caller (computeMovers) doesn't change.
+ */
+async function computeYesterdayPillars(
+  userId: string,
+  todayISO: string,
+  todayState: CoachState,
+): Promise<{ score: number; pillars: Record<string, number> } | null> {
+  try {
+    const yesterdayISO = new Date(Date.parse(todayISO + 'T00:00:00Z') - 86400000)
+      .toISOString().slice(0, 10);
+
+    // Query each signal as of yesterday. Each query returns the
+    // most-recent reading on or before yesterdayISO · matches what the
+    // runner would have seen if they'd opened the app yesterday.
+    const [hrvR, rhrR, sleepR, hrRecR] = await Promise.all([
+      pool.query<{ v: string }>(
+        `SELECT value::text AS v FROM health_samples
+          WHERE COALESCE(user_uuid, user_id) = $1
+            AND sample_type = 'hrv'
+            AND recorded_at::date <= $2::date
+          ORDER BY recorded_at DESC LIMIT 1`,
+        [userId, yesterdayISO],
+      ).catch(() => ({ rows: [] as { v: string }[] })),
+      pool.query<{ v: string }>(
+        `SELECT value::text AS v FROM health_samples
+          WHERE COALESCE(user_uuid, user_id) = $1
+            AND sample_type = 'resting_hr'
+            AND recorded_at::date <= $2::date
+          ORDER BY recorded_at DESC LIMIT 1`,
+        [userId, yesterdayISO],
+      ).catch(() => ({ rows: [] as { v: string }[] })),
+      // 7-night avg ending yesterday · matches the sleep pillar's
+      // observedV framing of "X.Xh · 7-night avg"
+      pool.query<{ avg: string }>(
+        `SELECT AVG(value)::text AS avg FROM (
+            SELECT value FROM health_samples
+             WHERE COALESCE(user_uuid, user_id) = $1
+               AND sample_type = 'sleep_hours'
+               AND sample_date <= $2::date
+               AND value > 0
+             ORDER BY sample_date DESC LIMIT 7
+         ) s`,
+        [userId, yesterdayISO],
+      ).catch(() => ({ rows: [] as { avg: string }[] })),
+      pool.query<{ v: string }>(
+        `SELECT value::text AS v FROM health_samples
+          WHERE COALESCE(user_uuid, user_id) = $1
+            AND sample_type = 'hr_recovery'
+            AND recorded_at::date <= $2::date
+          ORDER BY recorded_at DESC LIMIT 1`,
+        [userId, yesterdayISO],
+      ).catch(() => ({ rows: [] as { v: string }[] })),
+    ]);
+
+    // Build yesterday-state · clone today's state, overwrite the
+    // signal values that drive the pillar weights. Baselines stay
+    // today's values · they're 14-30 day rolling so the one-day shift
+    // is noise. Load (ACWR) stays today's value · ACWR is a 7/28 ratio
+    // that doesn't move materially day-to-day.
+    const yesterdayState: CoachState = {
+      ...todayState,
+      hrvCurrent:        hrvR.rows[0]?.v != null ? Number(hrvR.rows[0].v) : null,
+      rhrCurrent:        rhrR.rows[0]?.v != null ? Number(rhrR.rows[0].v) : null,
+      sleep7Avg:         sleepR.rows[0]?.avg != null ? +Number(sleepR.rows[0].avg).toFixed(1) : null,
+      hrRecoveryCurrent: hrRecR.rows[0]?.v != null ? Number(hrRecR.rows[0].v) : null,
+    };
+
+    const yesterdayBreakdown = computeReadiness(yesterdayState);
+    const pillars: Record<string, number> = {};
+    for (const i of yesterdayBreakdown.inputs) pillars[i.key] = i.weight;
+    return { score: yesterdayBreakdown.score, pillars };
+  } catch {
+    return null;
+  }
 }
 
 async function loadYesterdaySnapshot(

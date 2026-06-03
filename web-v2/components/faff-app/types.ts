@@ -320,6 +320,9 @@ export type ReadinessBriefSeed = {
   label: string;                // 'READY'
   headline: string;             // one-line plain-language framing
   oneLineMover: string | null;  // "HRV down 8 pts vs yesterday"
+  /** 2026-06-03 · concrete "what should I DO today" line from the
+   *  prescription engine. Null on cold-start. */
+  prescription: { action: string; why: string } | null;
   scoreTrend: Array<{ date: string; score: number; band: string }>;
   pillars: Array<{
     key: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
