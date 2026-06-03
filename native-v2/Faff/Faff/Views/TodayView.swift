@@ -1316,10 +1316,26 @@ struct TodayView: View {
     }
 
     /// Optional context line below the date. Composes from the purpose
-    /// payload when we have it: "BUILD · 12 weeks to race" or the phase
-    /// alone. Null when nothing meaningful · the topbar drops the line
-    /// gracefully (no placeholder).
+    /// payload when we have it. Null when nothing meaningful · the
+    /// topbar drops the line gracefully (no placeholder).
+    ///
+    /// 2026-06-02 round 59 · per design_handoff_today_postrun_pivot:
+    /// post-run mode uses race-name + days-out format ("CIM · 84 DAYS
+    /// OUT") · runs front-of-mind during recovery. Pre-run keeps the
+    /// phase + weeks format ("BASE · 11 WEEKS TO RACE") because the
+    /// runner is in training-state thinking, not race-countdown.
     private var weekContextLabel: String? {
+        // Post-run · race countdown by days, anchored to the race name.
+        if isPostRunMode {
+            let raceName = raceShortDisplay
+            let days = recoveryNextRaceDays
+            if !raceName.isEmpty, let d = days, d > 0 {
+                return "\(raceName) · \(d) DAYS OUT"
+            }
+            if let d = days, d > 0 { return "\(d) DAYS OUT" }
+            // Fall through to phase format if no race
+        }
+        // Pre-run · existing phase + weeks format.
         let phase = (purpose?.phase ?? "").uppercased()
         let weeks = weeksToRaceValue
         if !phase.isEmpty, let w = weeks, w > 0 {
@@ -1327,6 +1343,32 @@ struct TodayView: View {
         }
         if !phase.isEmpty { return "\(phase) PHASE" }
         if let w = weeks, w > 0 { return "\(w) WEEKS TO RACE" }
+        return nil
+    }
+
+    /// 2026-06-02 round 59 · short race name for the topbar eyebrow.
+    /// Prefers an acronym for 3+ word names (Americas Finest City →
+    /// AFC), else uppercased name. Pulls from purpose.race when
+    /// loaded, falls back to raceFallback.
+    private var raceShortDisplay: String {
+        let name: String = {
+            if let n = raceFallback?.name, !n.isEmpty { return n }
+            return ""
+        }()
+        guard !name.isEmpty else { return "" }
+        let words = name.split(separator: " ").map(String.init)
+        if words.count >= 3 {
+            let ac = words.compactMap { $0.first.map(String.init) }.joined()
+            if ac.count >= 3 { return ac.uppercased() }
+        }
+        return name.uppercased()
+    }
+
+    /// Days-to-next-anchor-race · used by the post-run eyebrow.
+    private var recoveryNextRaceDays: Int? {
+        if let d = raceFallback?.days_to_race, d > 0 { return d }
+        // Derive from weeksToRaceValue as a fallback.
+        if let w = weeksToRaceValue, w > 0 { return w * 7 }
         return nil
     }
 

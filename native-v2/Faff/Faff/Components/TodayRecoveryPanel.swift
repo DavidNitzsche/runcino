@@ -48,53 +48,61 @@ struct TodayRecoveryPanel: View {
 // MARK: - Section A · Recovery card (Status-forward variant)
 
 private extension TodayRecoveryPanel {
+    /// 2026-06-02 round 59 · matches design_handoff_today_postrun_pivot
+    /// Status-forward variant · NO glass card box, all on the mesh:
+    ///   RECOVERING (big band word, band-tinted)
+    ///   "Sleep tonight matters. HRV down 18ms…" (one-liner)
+    ///   64/100 score on left, projection curve on right (one row)
+    ///   NOW · 12 AM · ≈7 AM ✓ ticks
     var sectionA: some View {
         Button(action: onTapRecoveryCard) {
-            VStack(alignment: .leading, spacing: 12) {
-                // Big band word hero
-                HStack(alignment: .firstTextBaseline) {
-                    Text(bandWordUpper)
-                        .font(.display(36, weight: .bold))
-                        .tracking(-0.5)
-                        .foregroundStyle(bandColor)
-                    Spacer(minLength: 8)
-                    // Score
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text("\(brief?.score ?? 0)")
-                            .font(.display(28, weight: .bold))
-                            .foregroundStyle(Color.white)
-                        Text("RECOVERY")
-                            .font(.body(8, weight: .extraBold)).tracking(1.2)
-                            .foregroundStyle(Color.white.opacity(0.55))
-                    }
-                }
-                // 24h projection curve · placeholder when no data
-                projectionCurve
-                    .frame(height: 38)
-                // Engine one-liner
+            VStack(alignment: .leading, spacing: 10) {
+                // Big band word · band-tinted, no box
+                Text(bandWordUpper)
+                    .font(.display(42, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(bandColor)
+                // Engine one-liner directly below
                 if let line = brief?.oneLine, !line.isEmpty {
                     Text(line)
-                        .font(.body(13, weight: .semibold))
+                        .font(.body(13.5, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.78))
-                        .lineLimit(2)
+                        .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 2)
                 }
-                // "View full read ›" affordance
-                HStack(spacing: 4) {
-                    Text("View full read")
-                        .font(.body(11, weight: .semibold)).tracking(0.2)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
+                // Score + curve row
+                HStack(alignment: .center, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline, spacing: 1) {
+                        Text("\(brief?.score ?? 0)")
+                            .font(.display(44, weight: .bold))
+                            .foregroundStyle(Color.white)
+                        Text("/100")
+                            .font(.body(13, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                    }
+                    projectionCurve
+                        .frame(height: 44)
                 }
-                .foregroundStyle(Color.white.opacity(0.55))
+                // Axis ticks · NOW · 12 AM · ≈7 AM ✓
+                HStack {
+                    Text("NOW")
+                        .font(.body(9, weight: .extraBold)).tracking(0.8)
+                    Spacer()
+                    Text("12 AM")
+                        .font(.body(9, weight: .extraBold)).tracking(0.8)
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Text("~7 AM")
+                            .font(.body(9, weight: .extraBold)).tracking(0.8)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                }
+                .foregroundStyle(Color.white.opacity(0.5))
+                .padding(.top, -2)
             }
-            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Theme.Glass.line, lineWidth: 1)
-            )
         }
         .buttonStyle(.plain)
     }
@@ -109,13 +117,16 @@ private extension TodayRecoveryPanel {
         }
     }
 
+    /// 2026-06-02 round 59 · per design: recovering = amber (mid-state ·
+    /// not fully back, not concerning). Earlier muted-teal read as too
+    /// close to "recovered" green.
     var bandColor: Color {
         switch (brief?.band ?? "").lowercased() {
         case "recovered":  return Color(hex: 0x3FB6B0)   // teal
-        case "recovering": return Color(hex: 0x7BC8B8)   // muted teal
-        case "dragging":   return Color(hex: 0xE0A23A)   // amber
+        case "recovering": return Color(hex: 0xE5A85B)   // amber/gold
+        case "dragging":   return Color(hex: 0xE0823A)   // deeper amber
         case "depleted":   return Color(hex: 0xD6483F)   // coral
-        default:           return Color(hex: 0x7BC8B8)
+        default:           return Color(hex: 0xE5A85B)
         }
     }
 
@@ -169,8 +180,13 @@ private extension TodayRecoveryPanel {
 // MARK: - Section B · Recovery pillars
 
 private extension TodayRecoveryPanel {
+    /// 2026-06-02 round 59 · per design · single-row layout:
+    ///   LABEL ── amber bar ── subtext (right-aligned)
+    /// Drops the boxed/glassy container, drops the two-line stack.
+    /// Bars use amber fill (Sleep/HRV/RHR/Fueling all read as "in
+    /// progress" while recovery completes · amber is the right tone).
     var sectionB: some View {
-        VStack(spacing: 11) {
+        VStack(spacing: 14) {
             pillarRow(label: "SLEEP TARGET",
                       pct: sleepTargetPct,
                       subtext: sleepTargetSubtext)
@@ -184,32 +200,30 @@ private extension TodayRecoveryPanel {
                       pct: brief?.pillars.fueling.pct ?? 0,
                       subtext: fuelingSubtext)
         }
-        .padding(.horizontal, 2)
     }
 
     @ViewBuilder
     func pillarRow(label: String, pct: Int, subtext: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(label)
-                    .font(.body(10, weight: .extraBold)).tracking(1.2)
-                    .foregroundStyle(Color.white.opacity(0.7))
-                Spacer()
-                Text(subtext)
-                    .font(.body(10, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.62))
-            }
-            // Left-anchored % fill (NOT diverging from baseline · this
-            // represents % of 24h recovery complete per the design)
+        HStack(spacing: 11) {
+            Text(label)
+                .font(.body(10, weight: .extraBold)).tracking(1.0)
+                .foregroundStyle(Color.white.opacity(0.65))
+                .frame(width: 112, alignment: .leading)
+            // Amber left-anchored fill bar
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.12))
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.78))
+                    Capsule().fill(Color.white.opacity(0.10))
+                    Capsule()
+                        .fill(Color(hex: 0xE5A85B))
                         .frame(width: geo.size.width * CGFloat(min(100, max(0, pct))) / 100)
                 }
             }
-            .frame(height: 7)
+            .frame(height: 6)
+            Text(subtext)
+                .font(.body(10.5, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.68))
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .frame(maxWidth: 140, alignment: .trailing)
         }
     }
 
