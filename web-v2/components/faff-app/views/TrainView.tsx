@@ -502,16 +502,41 @@ export function TrainView({
             tabIndex={0}
           />
         </div>
-        {/* 2026-06-03 · dropped week numbers row. Position is conveyed
-            by the NOW-outlined bar + the race-star terminator; the
-            numbers added false precision that resets every rebuild. */}
-        <div className="ramp-phases">
-          {phaseAxis.map((p, i) => (
-            <div key={i} className="pp" style={{ flex: p.flex, color: p.color }}>
-              {p.label.toUpperCase()}
+        {/* 2026-06-03 · phase labels use grid with EXPLICIT column spans
+            matching the bars' grid. .ramp has 12 bars with 11 gaps; if
+            ramp-phases used flex with 4 labels and 3 gaps the total
+            widths matched but the column positions drifted (different
+            number of gaps = different unit widths). Grid with the same
+            column template + each label spanning its phase's columns
+            gives mathematical alignment. */}
+        {(() => {
+          const totalCols = phaseAxis.reduce((s, p) => s + p.flex, 0);
+          let cursor = 1;
+          return (
+            <div className="ramp-phases" style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${totalCols}, 1fr)`,
+              gap: 6,
+            }}>
+              {phaseAxis.map((p, i) => {
+                const start = cursor;
+                cursor += p.flex;
+                // marker tint stays phase-colored via CSS var so
+                // ::before reads the accent; text itself is white
+                // for readability on the yellow/orange mesh.
+                const style = {
+                  gridColumn: `${start} / span ${p.flex}`,
+                  '--pp-accent': p.color,
+                } as React.CSSProperties;
+                return (
+                  <div key={i} className="pp" style={style}>
+                    {p.label.toUpperCase()}
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          );
+        })()}
       </div>
 
       {/* Lower dashboard */}
