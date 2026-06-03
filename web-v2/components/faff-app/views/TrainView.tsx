@@ -22,6 +22,10 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { buildAdaptText } from '../adapt-text';
+// 2026-06-03 · per-distance phase + race-day copy author. Replaces the
+// hardcoded marathon strings in PHASE constants. A half-marathon plan
+// no longer reads "sub-3 gets built" or "Hold 6:51/mi at CIM."
+import { phaseFocus } from '@/lib/faff/phase-focus';
 
 interface PhaseMeta {
   k: PhaseKey;
@@ -114,15 +118,21 @@ function phaseOfWeek(
 function buildPhaseMeta(
   raceIdx: number,
   phases: Array<{ label: string; startWeekIdx: number; endWeekIdx: number }>,
+  // 2026-06-03 · take goalRace so the breakdown grid shows distance-
+  // aware focus copy. Was reading PHASE constants directly → marathon
+  // copy on every plan.
+  goalRace: import('../types').GoalRace | null,
 ): PhaseMeta[] {
   return phaseGroups(raceIdx, phases).map((g) => {
-    const p = PHASE[g.phase];
+    const authored = phaseFocus(g.phase, goalRace);
     return {
       k: g.phase,
-      name: p?.name ?? g.label,
+      name: authored.name,
       color: phaseColor(g.phase),
-      desc: p?.focus ?? '',
-      weeksLabel: g.from === g.to ? `Wk ${g.from + 1}` : `Wk ${g.from + 1}–${g.to + 1}`,
+      desc: authored.focus,
+      // 2026-06-03 · dropped "Wk N–M" weeksLabel · same rebuild-resets-
+      // week-1 problem. The phase title carries enough position on its own.
+      weeksLabel: '',
       vol: '', // filled in from miles below
     };
   });
@@ -142,15 +152,27 @@ export function TrainView({
 
   const isRace = focusIdx === raceIdx;
   const curPhase = phaseOfWeek(focusIdx, raceIdx, realPhases);
-  const curPhaseMeta = PHASE[curPhase];
+  // 2026-06-03 · `curPhaseMeta` now blends the PHASE constant's mesh
+  // (gradient color · stays in constants for design parity) with the
+  // distance-aware name + focus from phaseFocus(). The old code read
+  // `PHASE[curPhase].focus` directly · that string was hardcoded to
+  // marathon copy ("where a sub-3 gets built", "Hold 6:51/mi at CIM")
+  // and shipped on every runner's plan.
   const goal = seed.goalRace;
+  const _phaseAuthored = phaseFocus(curPhase, goal);
+  const curPhaseMeta = {
+    ...PHASE[curPhase],
+    name: _phaseAuthored.name,
+    sub: _phaseAuthored.sub,
+    focus: _phaseAuthored.focus,
+  };
   const daysOut = (raceIdx - focusIdx) * 7;
 
   // Per-phase metadata + volume range (compute from miles in that span).
   // Uses REAL plan_phases when present; falls back to a proportional split
   // for legacy plans that didn't author the phases table.
   const phases = useMemo(() => {
-    const meta = buildPhaseMeta(raceIdx, realPhases);
+    const meta = buildPhaseMeta(raceIdx, realPhases, goal);
     return meta.map((m) => {
       const grp = phaseGroups(raceIdx, realPhases).find((g) => g.phase === m.k);
       if (!grp) return m;
@@ -160,7 +182,7 @@ export function TrainView({
       const vol = slice.length ? (lo === hi ? `${lo} mi` : `${lo}–${hi} mi`) : '—';
       return { ...m, vol };
     });
-  }, [raceIdx, miles, realPhases]);
+  }, [raceIdx, miles, realPhases, goal]);
 
   // Keep mesh in sync with focused week (lets the Shell mesh follow scrubbing)
   useEffect(() => {
@@ -247,7 +269,11 @@ export function TrainView({
       const isNow = i === nowIdx;
       const isPast = i < nowIdx;
       const isMid = i > nowIdx;
-      const wkLabel = `WK ${i + 1}`;
+      // 2026-06-03 · was "WK N" · same week-numbering problem as the
+      // top-of-page pill. Switched to the workout's actual date which
+      // never lies after a rebuild. pick.date can be undefined on
+      // legacy fixture rows · formatDate() returns "·" on empty.
+      const wkLabel = formatDate(pick.date ?? '').toUpperCase();
       const dot = PHASE_TYPE_COLOR[pick.type] ?? '#8A90A0';
       const ttype = pick.type === 'intervals' ? 'Intervals'
         : pick.type === 'tempo' ? 'Tempo'
@@ -394,7 +420,12 @@ export function TrainView({
         <div className="t-status">
           <span className="t-wkpill">
             <span className="dot" style={{ background: phaseColor(curPhase), boxShadow: `0 0 8px ${phaseColor(curPhase)}` }} />
-            WK {focusIdx + 1} · {miles[focusIdx]} MI
+            {/* 2026-06-03 · dropped "WK N · " prefix. Plan rebuilds reset
+                week_idx=0 to the current Monday, so a runner mid-block sees
+                their training "rewind" to week 1 every regenerate. The
+                NOW outline on the bar + the days-to-race countdown carry
+                the position more honestly. */}
+            {isRace ? 'RACE DAY' : `${miles[focusIdx]} MI · NOW`}
           </span>
           <span className="cd">
             {isRace ? <>Race day. It&rsquo;s here.</> : goal ? <><b>{daysOut}</b> days to {formatDate(goal.date)}</> : <><b>{daysOut}</b> days to go</>}
@@ -405,7 +436,11 @@ export function TrainView({
       {/* Phase ramp */}
       <div className="ramp-wrap">
         <div className="ramp-head">
-          <span className="lbl">{raceIdx}-WEEK BLOCK · WEEKLY VOLUME</span>
+          {/* 2026-06-03 · dropped "{raceIdx}-WEEK BLOCK" prefix. The block
+              length is whatever's left to race day after the most-recent
+              rebuild · it doesn't carry the runner's full training arc
+              forward. "Weekly volume to race day" is the honest framing. */}
+          <span className="lbl">WEEKLY VOLUME · TO RACE DAY</span>
           <button className="ghostbtn" onClick={() => openPlan('month')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
             FULL PLAN
@@ -422,7 +457,7 @@ export function TrainView({
                 key={i}
                 className={`bar${isCur ? ' cur' : ''}`}
                 style={{ height: `${h}%`, background: phaseColor(ph), opacity: isPast && !isCur ? 0.62 : 1 }}
-                title={`Week ${i + 1} · ${mi} mi`}
+                title={`${mi} mi`}
                 onClick={() => setFocusIdx(i)}
                 role="button"
                 tabIndex={0}
@@ -440,10 +475,9 @@ export function TrainView({
             tabIndex={0}
           />
         </div>
-        <div className="ramp-nums">
-          {miles.map((_, i) => <span key={i}>{i + 1}</span>)}
-          <span style={{ color: '#FFCE8A', opacity: 0.85 }}>★</span>
-        </div>
+        {/* 2026-06-03 · dropped week numbers row. Position is conveyed
+            by the NOW-outlined bar + the race-star terminator; the
+            numbers added false precision that resets every rebuild. */}
         <div className="ramp-phases">
           {phaseAxis.map((p, i) => (
             <div key={i} className="pp" style={{ flex: p.flex, color: p.color }}>
@@ -464,7 +498,9 @@ export function TrainView({
                 <span className="pbar" style={{ background: p.color }} />
                 {now && <span className="nowtag">NOW</span>}
                 <div className="pnm" style={{ color: p.color }}>{p.name}</div>
-                <div className="pwk">{p.weeksLabel.toUpperCase()}</div>
+                {/* 2026-06-03 · weeksLabel removed · was "Wk N–M" which
+                    reset to wk 1 every rebuild. The phase title + position
+                    on the bar ramp carries the same info honestly. */}
                 <div className="pdesc">{p.desc}</div>
                 <div className="pvol">{p.vol} <small>TARGET VOL</small></div>
               </div>
@@ -477,7 +513,10 @@ export function TrainView({
           {/* THIS WEEK list */}
           <div className="card">
             <div className="ch">
-              <span className="ct">THIS WEEK · WK {nowIdx + 1}</span>
+              {/* 2026-06-03 · dropped "· WK N" suffix. THIS WEEK is
+                  unambiguous on its own; the rebuild-resets-week-1
+                  problem made the WK count meaningless. */}
+              <span className="ct">THIS WEEK</span>
               <span className="cx">{miles[nowIdx]} MI PLANNED</span>
             </div>
             <div className="twk">
