@@ -281,9 +281,14 @@ struct TodayView: View {
                 // 2026-06-02 round 58 · Today screen post-run pivot
                 // (designs/briefs/today-postrun-pivot-execution.md +
                 // /Users/david/Downloads/design_handoff_today_postrun_pivot).
+                // 2026-06-02 round 61 · past-day flat-recap added.
                 //
-                // morning mode  → readiness ring + 4 pillars + 6 chips
-                // postRun mode  → 5 recovery sections (A-E)
+                // 3-way branch:
+                //   past day       → flat recap, no drag-sheet, no hero
+                //                    (morning decision furniture is
+                //                    irrelevant on a historical day)
+                //   today + done   → 5 recovery sections (A-E)
+                //   today + ready  → readiness ring + 4 pillars + 6 chips
                 //
                 // Mode is gated on selectedIsToday + completedRunId for
                 // V1. When backend B2 ships envelope flags
@@ -291,7 +296,24 @@ struct TodayView: View {
                 // those · doctrine-correct (catches non-prescribed runs
                 // too). Hard rule: once postRun fires, stays until
                 // midnight rolls (no pivot BACK to morning).
-                if isPostRunMode {
+                if isPastDayView {
+                    // Flat recap takes the remaining vertical space ·
+                    // owns its own ScrollView since there's no DragSheet
+                    // to provide one. Post-run body for completed days,
+                    // simple stub for missed/rest days.
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            if isDone {
+                                postRunBody
+                            } else {
+                                pastDayNoRunStub
+                            }
+                        }
+                        // Clear of the floating tab bar pill.
+                        .padding(.bottom, 120)
+                    }
+                    .padding(.top, 16)
+                } else if isPostRunMode {
                     TodayRecoveryPanel(
                         brief: recoveryBrief,
                         onTapRecoveryCard: { onReadinessTap() }
@@ -318,29 +340,44 @@ struct TodayView: View {
                     .offset(y: -22 * (1 - sheetProgress))
                 }
 
-                Spacer(minLength: 0)
+                // Spacer only when a fixed-size hero panel sits above ·
+                // pushes the panel up so the DragSheet covers the bottom.
+                // On past days the ScrollView IS the bottom-filling view
+                // and a Spacer would steal half its height. Skip it.
+                if !isPastDayView {
+                    Spacer(minLength: 0)
+                }
             }
 
-            DragSheet(
-                // 2026-06-02 round 25 · 150 → 180.
-                // 2026-06-02 round 46 · 180 → 200. David flagged the
-                // peek sat right against the tab bar pill · 20pt more
-                // clearance gives a comfortable gap so the tab bar
-                // reads as separate from the peek.
-                collapsedInsetFromBottom: 200,
-                progress: $sheetProgress,
-                peekBackground: peekFill,
-                // 2026-06-02 round 54 · BOTH bodies stack white-bg
-                // section cards on a colored sheet bg. The default
-                // cream showed through as a gap below the last card
-                // before the floating tab bar pill · "see-behind the
-                // page" feel. Going white-on-white removes the contrast
-                // · sheet reads as one continuous surface.
-                bodyBackground: Color.white,
-                grabTint: Color.white.opacity(0.6),
-                header: { peekHeader },
-                content: { sheetContent }
-            )
+            // 2026-06-02 round 61 · DragSheet suppressed entirely on
+            // past-day views. The flat recap rendered in the VStack
+            // above is the whole page · no peek, no slide-up,
+            // nothing covering the recap from below. Today's drag
+            // sheet stays on today only, where it carries the
+            // pre-run prescription or the post-run recap on top of
+            // the morning readiness/recovery hero.
+            if !isPastDayView {
+                DragSheet(
+                    // 2026-06-02 round 25 · 150 → 180.
+                    // 2026-06-02 round 46 · 180 → 200. David flagged the
+                    // peek sat right against the tab bar pill · 20pt more
+                    // clearance gives a comfortable gap so the tab bar
+                    // reads as separate from the peek.
+                    collapsedInsetFromBottom: 200,
+                    progress: $sheetProgress,
+                    peekBackground: peekFill,
+                    // 2026-06-02 round 54 · BOTH bodies stack white-bg
+                    // section cards on a colored sheet bg. The default
+                    // cream showed through as a gap below the last card
+                    // before the floating tab bar pill · "see-behind the
+                    // page" feel. Going white-on-white removes the contrast
+                    // · sheet reads as one continuous surface.
+                    bodyBackground: Color.white,
+                    grabTint: Color.white.opacity(0.6),
+                    header: { peekHeader },
+                    content: { sheetContent }
+                )
+            }
 
             // 2026-06-01 · Start Run / Share Run button.
             //
@@ -690,25 +727,70 @@ struct TodayView: View {
             // post-run results body; pre-run days fall through to the
             // existing prescription/fueling/conditions/coach stack.
             if isDone {
-                TodayPostRunBody(
-                    detail: completedDetail,
-                    recap: completedRecap,
-                    accent: selectedEffort.dot,
-                    runId: completedRunId,
-                    // 2026-06-02 round 45 · type word for eyebrow + hero
-                    // (matches pre-run + web). workout name moves to a
-                    // subtitle line. selectedEffort.effortLabel was the
-                    // severity ("MAX") · should be the type word so
-                    // both surfaces tell the same story.
-                    effortLabel: peekTitleWord,
-                    dowLabel: selectedIsToday ? "TODAY" : shortDOWLabel,
-                    titleText: peekTitleWord,
-                    nameSubtitle: plainWorkoutName
-                )
+                postRunBody
             } else {
                 preRunSheetContent
             }
         }
+    }
+
+    /// 2026-06-02 round 61 · extracted so the past-day flat layout (no
+    /// drag-sheet) and the today + done drag-sheet body both render the
+    /// same recap content from one source. Identical params either way.
+    @ViewBuilder
+    private var postRunBody: some View {
+        TodayPostRunBody(
+            detail: completedDetail,
+            recap: completedRecap,
+            accent: selectedEffort.dot,
+            runId: completedRunId,
+            // 2026-06-02 round 45 · type word for eyebrow + hero
+            // (matches pre-run + web). workout name moves to a
+            // subtitle line. selectedEffort.effortLabel was the
+            // severity ("MAX") · should be the type word so both
+            // surfaces tell the same story.
+            effortLabel: peekTitleWord,
+            dowLabel: selectedIsToday ? "TODAY" : shortDOWLabel,
+            titleText: peekTitleWord,
+            nameSubtitle: plainWorkoutName
+        )
+    }
+
+    /// 2026-06-02 round 61 · placeholder body for past days where there's
+    /// no completed run · rest day, skipped, missed, or a future day
+    /// reached via the week strip (rare, but reachable). Single eyebrow +
+    /// big title in the type word so the runner sees what was on the
+    /// plan but no fake recap data is rendered. Minimal by design.
+    @ViewBuilder
+    private var pastDayNoRunStub: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(shortDOWLabel)
+                .font(.body(11, weight: .extraBold))
+                .tracking(1.4)
+                .foregroundStyle(Color.white.opacity(0.66))
+            Text(peekTitleWord.isEmpty ? "REST" : peekTitleWord)
+                .font(.display(54, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(.white)
+            Text(pastDayNoRunSubtitle)
+                .font(.body(13.5, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.78))
+                .padding(.top, 4)
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 28)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 2026-06-02 round 61 · single-line context for the past-day stub.
+    /// Maps the day's effort/state to plain coach voice.
+    private var pastDayNoRunSubtitle: String {
+        if selectedEffort == .rest { return "Rest day · nothing to recap." }
+        if let day = todaySelectedDay, day.skipped == true { return "Skipped." }
+        if let day = todaySelectedDay, day.completedRunId == nil {
+            return "No run recorded."
+        }
+        return "No run recorded."
     }
 
     /// Pre-run sheet body · prescription + fueling + conditions + coach
@@ -1475,6 +1557,31 @@ struct TodayView: View {
     private var isPostRunMode: Bool {
         guard selectedIsToday else { return false }
         return isDone
+    }
+
+    /// 2026-06-02 round 61 · true ONLY for genuinely past days (not
+    /// today, not future). Drives a different layout: morning
+    /// readiness + drag-up sheet are killed, the post-run recap
+    /// renders flat in their place.
+    ///
+    /// David: "going back to a previous day it makes no sense to
+    /// show readiness or recovery · we should remove the slide-up
+    /// panel altogether and just have the screen be the run recap."
+    /// Morning decision furniture (readiness ring, today-only HR
+    /// pillars, recovery curve) doesn't belong on a historical view ·
+    /// the runner is reviewing a finished day, not planning one.
+    ///
+    /// Future days are deliberately EXCLUDED — the drag-up pre-run
+    /// sheet is still useful for previewing the next session's
+    /// prescription / fueling / conditions. Only past gets the
+    /// flat-recap treatment.
+    private var isPastDayView: Bool {
+        guard !selectedIsToday else { return false }
+        // Prefer the backend's is_past flag (Pacific-anchored,
+        // agrees with the rest of the plan). Falls back to ISO
+        // string compare when the flag is missing.
+        if let day = todaySelectedDay { return day.is_past }
+        return selectedDayID < todayISO
     }
 
     /// Belt-and-suspenders for the StickyCTABar gate. Walks the plan
