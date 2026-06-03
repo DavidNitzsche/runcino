@@ -326,6 +326,29 @@ enum API {
         return try? JSONDecoder().decode(RunPurpose.self, from: data)
     }
 
+    /// 2026-06-02 round 58 · post-run pivot brief.
+    ///
+    /// GET /api/coach/recovery-brief · returns the RecoveryBrief
+    /// payload (designs/briefs/today-postrun-pivot-execution.md TASK
+    /// B1 contract) used to power the 5 recovery sections on Today
+    /// when the day's run is done. Returns nil for cold-start
+    /// (no HRV history etc) or 404 (endpoint not shipped yet · iPhone
+    /// is forward-compat before backend B1 lands).
+    ///
+    /// V1 endpoint expectation: GET /api/coach/recovery-brief returns
+    /// the RecoveryBrief shape DIRECTLY (not wrapped). If backend
+    /// embeds it in an envelope (e.g. /api/coach/today returning
+    /// `{ recoveryBrief: {...} }`), swap this to decode the envelope
+    /// and pull out the brief.
+    static func fetchRecoveryBrief() async throws -> RecoveryBrief? {
+        let url = baseURL.appendingPathComponent("api/coach/recovery-brief")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(RecoveryBrief.self, from: data)
+    }
+
     static func fetchRunRecap(runId: String) async throws -> RunRecap? {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/runs/\(runId)/recap"))
         req.httpMethod = "GET"

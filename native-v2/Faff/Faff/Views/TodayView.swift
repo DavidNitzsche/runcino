@@ -49,6 +49,11 @@ struct TodayView: View {
     /// the day..."). The whole Faff Coach block hides when this is nil ·
     /// no hardcoded fallback. The empty state IS the honest signal.
     @State private var purpose: RunPurpose?
+    /// 2026-06-02 round 58 · post-run pivot brief · drives the 5
+    /// recovery sections when isPostRunMode is true. Nil during
+    /// morning OR before backend B1 ships (forward-compat). View
+    /// renders empty-state cleanly when nil.
+    @State private var recoveryBrief: RecoveryBrief?
     /// Fallback anchor race when /api/today/purpose returns nil (e.g.
     /// the backend 500 we hit 2026-06-02). Resolved from /api/races
     /// by highest-priority future race (A > B > C), tie-broken by
@@ -273,25 +278,45 @@ struct TodayView: View {
                         .padding(.top, 10)
                 }
 
-                // Readiness panel · the new Today hero (2026-06-01).
-                // Replaces the legacy run-name + pace + effort-meter
-                // hero. Tap routes to the full readiness brief surface
-                // (stubbed until that surface design lands · brief:
-                // designs/briefs/readiness-brief-iphone-surface-brief.md).
-                TodayReadinessPanel(
-                    snapshot: readiness,
-                    lastNightHours: lastNightHours,
-                    thisWeekMiles: thisWeekMiles,
-                    vo2: profile?.physiology.vo2,
-                    bestWindow: forecast?.best_window,
-                    weeksToRace: weeksToRaceValue,
-                    nextHardLabel: nextHardLabel,
-                    onTap: { onReadinessTap() }
-                )
-                .padding(.horizontal, 22)
-                .padding(.top, 22)
-                .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
-                .offset(y: -22 * (1 - sheetProgress))
+                // 2026-06-02 round 58 · Today screen post-run pivot
+                // (designs/briefs/today-postrun-pivot-execution.md +
+                // /Users/david/Downloads/design_handoff_today_postrun_pivot).
+                //
+                // morning mode  → readiness ring + 4 pillars + 6 chips
+                // postRun mode  → 5 recovery sections (A-E)
+                //
+                // Mode is gated on selectedIsToday + completedRunId for
+                // V1. When backend B2 ships envelope flags
+                // (todayRunDone + todayRunLong) the gate flips to
+                // those · doctrine-correct (catches non-prescribed runs
+                // too). Hard rule: once postRun fires, stays until
+                // midnight rolls (no pivot BACK to morning).
+                if isPostRunMode {
+                    TodayRecoveryPanel(
+                        brief: recoveryBrief,
+                        onTapRecoveryCard: { onReadinessTap() }
+                    )
+                    .padding(.horizontal, 22)
+                    .padding(.top, 22)
+                    .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
+                    .offset(y: -22 * (1 - sheetProgress))
+                } else {
+                    // Readiness panel · the new Today hero (2026-06-01).
+                    TodayReadinessPanel(
+                        snapshot: readiness,
+                        lastNightHours: lastNightHours,
+                        thisWeekMiles: thisWeekMiles,
+                        vo2: profile?.physiology.vo2,
+                        bestWindow: forecast?.best_window,
+                        weeksToRace: weeksToRaceValue,
+                        nextHardLabel: nextHardLabel,
+                        onTap: { onReadinessTap() }
+                    )
+                    .padding(.horizontal, 22)
+                    .padding(.top, 22)
+                    .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
+                    .offset(y: -22 * (1 - sheetProgress))
+                }
 
                 Spacer(minLength: 0)
             }
@@ -1392,6 +1417,24 @@ struct TodayView: View {
         todaySelectedDay?.completedRunId
     }
 
+    /// 2026-06-02 round 58 · Post-run pivot mode.
+    ///
+    /// True when the runner is viewing TODAY and today's prescribed
+    /// run has a completedRunId. V1 gate. Backend B2 will surface
+    /// `todayRunDone` + `todayRunLong` on the envelope which will
+    /// supersede this (catches non-prescribed runs that still satisfy
+    /// the "did a run today" rule per the brief). For now, plan-day
+    /// completedRunId is the cleanest signal we already have.
+    ///
+    /// Hard rule (per the design brief): once postRun fires it stays
+    /// until midnight rolls · no pivot BACK to morning. The
+    /// completedRunId on the plan day naturally persists for the rest
+    /// of the day, so this gate honors the rule for free.
+    private var isPostRunMode: Bool {
+        guard selectedIsToday else { return false }
+        return isDone
+    }
+
     /// Belt-and-suspenders for the StickyCTABar gate. Walks the plan
     /// week directly instead of relying on the todaySelectedDay
     /// computed property, so a state-resolution timing race in SwiftUI
@@ -1638,6 +1681,10 @@ struct TodayView: View {
         async let pr = (try? await API.fetchProfileState())
         async let ss = (try? await API.fetchStravaStatus())
         async let pp = (try? await API.fetchTodayPurpose())
+        // 2026-06-02 round 58 · post-run pivot brief.
+        // try? swallows 404 (endpoint not shipped yet) and any decode
+        // failures so the morning view never blocks on this fetch.
+        async let rb = (try? await API.fetchRecoveryBrief())
         // Toolkit additions · adaptation intent + active niggle +
         // pending coach proposals.
         async let ai = (try? await API.fetchCoachIntents(limit: 1, reasonLike: "plan_adapt_%"))
@@ -1660,6 +1707,7 @@ struct TodayView: View {
         let (watch, ready, brief, skip, prof) = await (w, r, b, s, pr)
         let stravaStat = await ss
         let pur = await pp
+        let recBrief = await rb
         let adaptList = (await ai) ?? []
         let activeN   = await an
         let proposals = (await pp2) ?? []
@@ -1729,6 +1777,11 @@ struct TodayView: View {
             // loaded coach card. Doctrine: empty-state from a successful nil
             // is honest; empty-after-a-fail looks identical and isn't.
             if let pur, !pur.verdict.isEmpty { self.purpose = pur }
+            // 2026-06-02 round 58 · only overwrite recoveryBrief when
+            // the fetch returned something. nil from a transient 404
+            // (backend B1 not shipped) shouldn't blank a previously-
+            // loaded brief. Doctrine matches purpose handling above.
+            if let recBrief { self.recoveryBrief = recBrief }
             // 2026-06-02 round 40 · TO RACE chip fallback. When purpose
             // doesn't carry weeksToRace (server 500 / cold path / no
             // anchor race yet on the plan), resolve client-side from
