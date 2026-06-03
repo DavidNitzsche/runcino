@@ -93,10 +93,19 @@ export async function GET(req: NextRequest) {
     // watch_completion / vdot_auto_recalc / etc. are timeline-only audit
     // events, not decisions the runner needs to acknowledge. Without this
     // filter every Strava upload renders a "COACH · ADAPTED" banner.
-    where += ` AND reason NOT IN (
-      'watch_completion','vdot_auto_recalc','lthr_auto_calibrated',
-      'swap_accepted','swap_declined','illness_acknowledged','injury_plan_built',
-      'strength_recommend','strength_skip','strength_resume'
+    // 2026-06-03 · banner surface filters by SEVERITY, not reason.
+    // Banner = decisions the runner should acknowledge. Info-events
+    // (watch_completion, vdot_auto_recalc, strength_*, swap_*, etc.)
+    // are timeline-only · they never surface as banners regardless
+    // of how many new info-reason kinds the engine adds later.
+    //
+    // The severity rules mirror severityOf() below:
+    //   override · plan_adapt_override*, injury_active, sick_episode_active
+    //   warn     · plan_adapt_*, rhr_spike, sleep_crater, niggle_reported
+    //   info     · everything else
+    where += ` AND (
+      reason LIKE 'plan_adapt_%'
+      OR reason IN ('injury_active','sick_episode_active','rhr_spike','sleep_crater','niggle_reported')
     )`;
   }
 
