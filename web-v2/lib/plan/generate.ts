@@ -28,6 +28,7 @@ import { buildWorkoutSpec, tPaceFromGoal, totalDistanceMiFromSpec } from './spec
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode } from './goal-tiers';
+import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -1420,6 +1421,17 @@ async function clearActivePlansFor(userId: string): Promise<void> {
   (await import('./lookup')).bustPlanLookupCache(userId);
 }
 
+/**
+ * 2026-06-03 · Rule 15 · Seal completed days against retroactive
+ * mutation. Snapshotted BEFORE clearActivePlansFor archives the prior
+ * plan; applied during INSERT so the new plan's row for a completed
+ * date inherits the prior prescription.
+ *
+ * Captured at module scope so persistPlan + its caller share the same
+ * snapshot · the wrapper sets it on each invocation.
+ */
+let sealedSnapshot: Map<string, SealedPrescription> = new Map();
+
 async function persistPlan(args: {
   userId: string; raceSlug: string; raceDateISO: string;
   blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean }>;
@@ -1512,6 +1524,23 @@ async function persistPlan(args: {
       // title and the spec can never drift. Falls back to d.subLabel
       // when spec is null (rest/cross/strength).
       const derivedSubLabel = subLabelFromSpec(workoutSpec) ?? d.subLabel;
+      // 2026-06-03 · Rule 15 · seal completed days. If the prior
+      // active plan had a row for this date AND a completed run
+      // exists, OVERRIDE the freshly-composed prescription with the
+      // prior's. The runner trained against the prior prescription ·
+      // changing it after-the-fact would make every retro lie.
+      const sealed = sealedSnapshot.get(dateISO);
+      const finalType = sealed?.type ?? d.type;
+      const finalDistanceMi = sealed?.distance_mi ?? totalDistanceMi;
+      const finalPaceSec = sealed?.pace_target_s_per_mi ?? paceTargetSPerMi;
+      const finalSpec = sealed?.workout_spec ?? workoutSpec;
+      const finalSubLabel = sealed?.sub_label ?? derivedSubLabel;
+      const finalIsQuality = sealed?.is_quality ?? d.isQuality;
+      const finalIsLong = sealed?.is_long ?? d.isLong;
+      const finalNotes = sealed?.notes ?? d.notes;
+      if (sealed) {
+        logSealSkip('persistPlan/rebuild', args.userId, dateISO);
+      }
       // dow stored as 1=Mon..7=Sun in our convention? Use what plan_workouts expects.
       // We pass dow 0..6 (Sun..Sat). Existing reader treats numeric dow + sub_label.
       await pool.query(
@@ -1520,9 +1549,9 @@ async function persistPlan(args: {
                                     is_quality, is_long, notes, sub_label,
                                     original_date_iso, original_type, original_distance_mi, original_sub_label)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $4, $6, $7, $13)`,
-        [wkoId, planId, weekId, dateISO, d.dow, d.type, totalDistanceMi,
-         paceTargetSPerMi, workoutSpec ? JSON.stringify(workoutSpec) : null,
-         d.isQuality, d.isLong, d.notes, derivedSubLabel]
+        [wkoId, planId, weekId, dateISO, d.dow, finalType, finalDistanceMi,
+         finalPaceSec, finalSpec ? JSON.stringify(finalSpec) : null,
+         finalIsQuality, finalIsLong, finalNotes, finalSubLabel]
       );
     }
   }
@@ -1589,6 +1618,12 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   }
 
   // 3. Archive existing + persist.
+  // 2026-06-03 · Rule 15 · snapshot the prior plan's completed-day
+  // prescriptions BEFORE archiving so persistPlan can overlay them
+  // onto the new plan's rows. Without this, a rebuild would change
+  // what the runner was prescribed for days they already ran ·
+  // every retro surface (badge, recap, VDOT, adapt-text) would lie.
+  sealedSnapshot = await snapshotSealedDays(userId);
   await clearActivePlansFor(userId);
   const planId = await persistPlan({
     userId,

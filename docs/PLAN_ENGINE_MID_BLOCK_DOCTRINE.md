@@ -1,5 +1,21 @@
 # Plan Engine · Mid-Block Runner Doctrine
 
+**Status (2026-06-03 night · v4):** 11 rules + post-race graduate cron + Rules 12-14 + **Rule 15 (completed days are immutable)** SHIPPED.
+
+**Rule 15 · completed days are immutable.** Once a `plan_workouts` row has a corresponding completed run, NOTHING on its prescription fields (type, distance_mi, pace_target_s_per_mi, workout_spec, sub_label, is_quality, is_long, notes) may change. Plan adjustments, doctrine updates, rule-engine retroactives, rebuilds — all stop at the boundary of "did the runner complete this day."
+
+Two enforcement points:
+1. **UPDATE path** (`lib/plan/adapt.ts`) · `filterUnsealedWorkouts(client, userUuid, ids, source)` filters sealed IDs out before every UPDATE, logging `[plan/seal] skipped immutable day YYYY-MM-DD · source=X` for each.
+2. **REBUILD path** (`lib/plan/generate.ts`) · `snapshotSealedDays(userId)` captures the prior plan's completed-day prescriptions BEFORE `clearActivePlansFor` archives it; `persistPlan` overlays the snapshot during INSERT so the new plan's row for a completed date inherits the prior prescription. The new generator's freshly-composed values for completed days are DISCARDED.
+
+Sealed (prescription fields): `type, distance_mi, pace_target_s_per_mi, workout_spec, sub_label, is_quality, is_long, notes`.
+
+Not sealed (structural): `plan_id, week_id, dow, original_*` (new plan's structure is fine to assign).
+
+Verified against David's Mon 6/1 · prescription had drifted 5.1mi → 6.0mi across a rebuild, causing the post-run badge to fire OFF PLAN even though the runner executed perfectly. Restored to 5.1mi. The seal prevents future drift.
+
+Cite: `designs/briefs/backend-rule-completed-days-immutable-2026-06-02.md`
+
 **Status (2026-06-03 night · v3):** 11 rules + post-race graduate cron + Rules 12 + 13 (plan modes) + **Rule 14 (strength training doctrine)** SHIPPED.
 
 **Rule 14 · strength training doctrine.** The previous recommender had the day-placement rule inverted (forbade quality/long days, only allowed easy/recovery/rest) — that's the OPPOSITE of Research/07 + Pfitz Appx A + Daniels. The fix: pair hard with hard. Heavy strength goes on quality run days PM (≥4-6h after the AM run); easy days stay truly easy; never on long-run day or day-before-hard.

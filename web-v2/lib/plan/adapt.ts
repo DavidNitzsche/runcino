@@ -35,6 +35,50 @@
  */
 import { pool } from '@/lib/db/pool';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
+import { logSealSkip } from './seal';
+
+/**
+ * 2026-06-03 · Rule 15 · seal guard for adapter writes.
+ *
+ * Given a list of plan_workouts IDs, returns the subset whose dates
+ * are NOT sealed (no completed run for that date). Sealed IDs are
+ * filtered out with a [plan/seal] log line.
+ *
+ * Used by every UPDATE path in applyAdaptations so the adapter can't
+ * retroactively change what the runner was prescribed for a day they
+ * already ran. Cite: designs/briefs/backend-rule-completed-days-immutable-2026-06-02.md
+ */
+async function filterUnsealedWorkouts(
+  client: { query: typeof pool.query },
+  userUuid: string,
+  workoutIds: string[],
+  source: string,
+): Promise<string[]> {
+  if (workoutIds.length === 0) return [];
+  // Join workouts to runs by date · row is sealed if a non-merged
+  // run row exists for the same date.
+  const r = await client.query<{ id: string; sealed: boolean; date_iso: string }>(
+    `SELECT pw.id::text AS id, pw.date_iso::text,
+            EXISTS (
+              SELECT 1 FROM runs r
+               WHERE r.user_uuid = $1::uuid
+                 AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
+                 AND NOT (r.data ? 'mergedIntoId')
+            ) AS sealed
+       FROM plan_workouts pw
+      WHERE pw.id = ANY($2::text[])`,
+    [userUuid, workoutIds],
+  ).catch(() => ({ rows: [] as Array<{ id: string; sealed: boolean; date_iso: string }> }));
+  const unsealed: string[] = [];
+  for (const row of r.rows) {
+    if (row.sealed) {
+      logSealSkip(source, userUuid, row.date_iso);
+    } else {
+      unsealed.push(row.id);
+    }
+  }
+  return unsealed;
+}
 
 export type AdaptationTriggerKind =
   | 'missed_key_workout'
@@ -168,8 +212,17 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         : a.kind === 'mark_upgrade' ? 'plan_adapt_upgrade'
         : 'plan_adapt_other';
 
+      // 2026-06-03 · Rule 15 · filter sealed (completed-day) workouts
+      // out of every action before iterating · the adapter cannot
+      // retroactively change what was prescribed for a day the runner
+      // already ran. Cite: §Rule 15.
+      const wids = a.workoutIds ?? a.bumps?.map((b) => b.workoutId) ?? [];
+      const unsealedIds = await filterUnsealedWorkouts(client, userId, wids, `adapt/${a.kind}`);
+      const unsealedSet = new Set(unsealedIds);
+
       if (a.kind === 'reschedule' && a.newDate && a.workoutIds) {
         for (const wid of a.workoutIds) {
+          if (!unsealedSet.has(wid)) continue;
           await client.query(
             `UPDATE plan_workouts SET date_iso = $1 WHERE id = $2`,
             [a.newDate, wid]
@@ -181,6 +234,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         }
       } else if (a.kind === 'downgrade' && a.newType && a.workoutIds) {
         for (const wid of a.workoutIds) {
+          if (!unsealedSet.has(wid)) continue;
           // 2026-06-01 · type is source of truth (web agent brief
           // plan-type-column-alignment-brief.md · Option A). When we
           // downgrade a quality workout to easy/recovery/rest, we MUST
@@ -241,6 +295,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         }
       } else if (a.kind === 'shave' && a.workoutIds && a.shaveFraction) {
         for (const wid of a.workoutIds) {
+          if (!unsealedSet.has(wid)) continue;
           // 2026-06-01 · round to nearest 0.5 mi instead of 1-decimal.
           // ROUND(x, 1) produced 5.8 / 4.2 type values that read as
           // arbitrary noise · runners think in half-mile increments.
@@ -268,6 +323,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         // up is OK." SQL guard `distance_mi < $1` makes this strictly
         // additive · never accidentally cuts a row.
         for (const b of a.bumps) {
+          if (!unsealedSet.has(b.workoutId)) continue;
           await client.query(
             `UPDATE plan_workouts
                 SET distance_mi = $1
@@ -282,6 +338,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         }
       } else if (a.kind === 'mark_dirty' && a.workoutIds) {
         for (const wid of a.workoutIds) {
+          if (!unsealedSet.has(wid)) continue;
           await client.query(
             `UPDATE plan_workouts
                 SET notes = COALESCE(notes, '') || ' [paces stale - recompute]'
