@@ -1236,6 +1236,7 @@ function deriveCoachLine(
   const spec = d.workoutSpec as {
     tempo_pace_s_per_mi?: number;
     rep_pace_s_per_mi?: number;
+    fuel_mi?: number[];
     kind?: string;
   } | null | undefined;
   const fmtPace = (s?: number): string | null => {
@@ -1255,12 +1256,20 @@ function deriveCoachLine(
   }
 
   if (d.type === 'long' && totalMi >= 8) {
-    // Long runs without an MP-finish work-phase get the plain "easy
-    // throughout" framing. Distance-aware fuel hint instead of
-    // hardcoded "first 10, last 4."
-    const gelHint = totalMi >= 14
-      ? 'Take a gel every 30-45 min · early and often.'
-      : 'Sip water, take a gel mid-run if needed.';
+    // 2026-06-03 · gel hint now sources from workout_spec.fuel_mi ·
+    // SAME field the chart's gel markers + the FUEL chip read from.
+    // David flagged: prior copy said "sip water, take a gel mid-run
+    // if needed" while the chart showed 2 gels at miles 5+9 for his
+    // 12mi long. Now: copy names the exact gel count + positions so
+    // the chip / chart / sentence all tell the same story.
+    const fuelMi = Array.isArray(spec?.fuel_mi) ? spec!.fuel_mi : [];
+    const gelHint = (() => {
+      if (fuelMi.length === 0) return 'Sip water throughout.';
+      if (fuelMi.length === 1) return `One gel around mile ${fuelMi[0]} · sip water throughout.`;
+      if (fuelMi.length === 2) return `Two gels around miles ${fuelMi[0]} and ${fuelMi[1]} · sip water throughout.`;
+      // 3+ gels · listing them all gets noisy · switch to the cadence framing.
+      return `Take a gel every 30-45 min (miles ${fuelMi.join(', ')}) · sip water throughout.`;
+    })();
     return `Easy and steady the whole way. ${gelHint}`;
   }
 
