@@ -374,35 +374,39 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     [userId]
   ).catch(() => ({ rows: [] }));
 
-  // ACWR for LOAD pillar — sum mi/day in 7d and 28d windows.
-  const acwrRow = await pool.query(
-    `SELECT
-        COALESCE(SUM(CASE WHEN data->>'date' >= ($1::date - interval '7 days')::text
-                          AND  data->>'date' <  ($1::date + interval '1 day')::text
-                          THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS acute_sum,
-        COALESCE(SUM(CASE WHEN data->>'date' >= ($1::date - interval '28 days')::text
-                          AND  data->>'date' <  ($1::date + interval '1 day')::text
-                          THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS chronic_sum,
-        COUNT(*) FILTER (WHERE data->>'date' >= ($1::date - interval '28 days')::text)::int AS runs28
-       FROM runs
-      WHERE user_uuid = $2
-        AND NOT (data ? 'mergedIntoId')
-        AND (data->>'distanceMi')::numeric > 0.3`,
-    [today, userId]
-  ).catch(() => ({ rows: [] as any[] }));
-  let acuteSum = Number(acwrRow.rows[0]?.acute_sum) || 0;
-  let chronicSum = Number(acwrRow.rows[0]?.chronic_sum) || 0;
-  const runs28 = Number(acwrRow.rows[0]?.runs28) || 0;
+  // ACWR for LOAD pillar — Gabbett's Acute:Chronic Workload Ratio.
+  //   acute7    = avg daily distance over last 7 days  (mi/day)
+  //   chronic28 = avg daily distance over last 28 days (mi/day)
+  //
+  // 2026-06-03 · pulled through canonicalMileageByDay (matches state-
+  // loader.ts pattern). Raw SUM(distanceMi) inflated David's ACWR to
+  // 1.60 because mergedIntoId-less duplicate rows from watch+Strava
+  // double-counted. canonicalMileageByDay clusters by (date, distance
+  // ±15%, duration ±20%) and picks one canonical row per cluster — same
+  // dedupe the Readiness drawer uses (which read 0.97). Three Health-
+  // page surfaces had three different ACWR numbers before this fix.
+  const acwrFrom = new Date(Date.parse(today + 'T12:00:00Z') - 28 * 86400000)
+    .toISOString().slice(0, 10);
+  const acuteCutoff = new Date(Date.parse(today + 'T12:00:00Z') - 7 * 86400000)
+    .toISOString().slice(0, 10);
+  const canonicalAcwr = await canonicalMileageByDay(userId, acwrFrom, today);
+  let acuteSum = 0;
+  let chronicSum = 0;
+  let runs28 = 0;
+  for (const [day, info] of canonicalAcwr) {
+    if (info.mi <= 0.3) continue;
+    chronicSum += info.mi;
+    runs28 += info.canonicalIds.length;
+    if (day > acuteCutoff) acuteSum += info.mi;
+  }
   // 2026-06-01 · fold strength_sessions into ACWR. Same conversion +
   // rationale as state-loader · see lib/coach/strength-load.ts.
   try {
     const { strengthLoadByDay } = await import('@/lib/coach/strength-load');
-    const fromISO = new Date(Date.parse(today + 'T00:00:00Z') - 28 * 86400000).toISOString().slice(0, 10);
-    const acuteFromISO = new Date(Date.parse(today + 'T00:00:00Z') - 7 * 86400000).toISOString().slice(0, 10);
-    const strengthByDay = await strengthLoadByDay(userId, fromISO, today);
+    const strengthByDay = await strengthLoadByDay(userId, acwrFrom, today);
     for (const [day, miEquiv] of strengthByDay) {
       chronicSum += miEquiv;
-      if (day >= acuteFromISO) acuteSum += miEquiv;
+      if (day > acuteCutoff) acuteSum += miEquiv;
     }
   } catch (e) {
     console.warn('[glance-state] strength-load fold failed:', e instanceof Error ? e.message : String(e));

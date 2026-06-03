@@ -85,14 +85,18 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
   const daysSpan = (lastDate.getTime() - firstDate.getTime()) / 86400000;
   const weeksTracked = Math.max(1, Math.min(8, Math.round(daysSpan / 7)));
 
+  // 2026-06-03 · stripped prescriptive tails ("push more aerobic volume",
+  // "check whether load has outpaced recovery") per no-reactive-coach
+  // doctrine. The engine describes what the decoupling number says, the
+  // runner decides what to do about it.
   let summary: string;
   if (direction === 'improving') {
-    const verdict = currentDriftPct < 5 ? 'race-ready' : currentDriftPct < 7 ? 'building strongly' : 'building';
+    const verdict = currentDriftPct < 5 ? 'race-ready band' : currentDriftPct < 7 ? 'building strongly' : 'building';
     summary = `Aerobic decoupling ${blockStartDriftPct}% → ${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · the engine is getting more efficient · ${verdict}.`;
   } else if (direction === 'flat') {
-    summary = `Aerobic decoupling holding ~${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · the engine is stable but not building. Push more aerobic volume to move this.`;
+    summary = `Aerobic decoupling holding ~${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · the engine is stable, neither building nor losing efficiency.`;
   } else {
-    summary = `Aerobic decoupling ${blockStartDriftPct}% → ${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · efficiency declining. Check whether load has outpaced recovery this block.`;
+    summary = `Aerobic decoupling ${blockStartDriftPct}% → ${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · efficiency declining across the block.`;
   }
 
   return {

@@ -1047,7 +1047,11 @@ function buildHeadline(
   streaks: ReadinessStreak[],
   movers: ReadinessMover[],
 ): string {
-  // Streak takes precedence · the brief leads with what most needs attention.
+  // 2026-06-03 · stripped prescriptive tails ("Today is for hard work",
+  // "Trade hard work for easy today") per no-reactive-coach. The
+  // headline describes the readiness state · the plan decides the
+  // workout. "Today is whatever the plan says" stays · it's the
+  // doctrine line that reinforces the runner's plan as source of truth.
   if (streaks.length > 0) {
     const s = streaks[0];
     return `${PILLAR_LABEL[s.pillar]} ${s.direction} for ${s.days} days · The trend matters more than today's number.`;
@@ -1055,15 +1059,15 @@ function buildHeadline(
   if (b.band === 'sharp') {
     return movers.length && movers[0].deltaPts > 0
       ? `Sharp · The system is firing. ${movers[0].label.toLowerCase()}.`
-      : `Sharp · The system is firing. Today is for hard work if the plan calls for it.`;
+      : `Sharp · The system is firing.`;
   }
   if (b.band === 'ready') {
     return `Ready · All systems in their normal band. Today is whatever the plan says.`;
   }
   if (b.band === 'moderate') {
-    return `Moderate · One or two pillars dipped. Single-day dips are noise; check tomorrow.`;
+    return `Moderate · One or two pillars dipped. Single-day dips are noise; the next reading clears it up.`;
   }
-  return `Pull back · Multiple pillars are flagging. Trade hard work for easy today.`;
+  return `Pull back · Multiple pillars are flagging.`;
 }
 
 function buildWatchTomorrow(
@@ -1071,27 +1075,30 @@ function buildWatchTomorrow(
   streaks: ReadinessStreak[],
   history: ReadinessHistory,
 ): string[] {
+  // 2026-06-03 · per no-reactive-coach doctrine:
+  //   1. Dropped the streak echo entirely · it restated the STREAKS
+  //      card immediately above and tacked "Ease the load." on the end.
+  //      David: "1- I have no idea wtf that means and 2 its not really
+  //      helpful tbh." Drawer version was unmounted at 182ad4e3 but
+  //      Health page still rendered it from this source · killing here.
+  //   2. Dropped "Worth reducing one hard session if it persists" tail
+  //      from the HRV CV note · engine describes the signal, runner
+  //      decides the action.
+  //   3. Dropped "One 9h+ night this week resets the trend." tail from
+  //      sleep debt · prescription, not observation.
+  // What stays · pure forward-looking observation that isn't already
+  // surfaced elsewhere on the page.
   const out: string[] = [];
-  if (streaks.length > 0) {
-    const s = streaks[0];
-    // 2026-06-03 · dropped "check subjective state" tail · the
-    // subjective check-in surface was gutted at b4a059e1 (no
-    // reactive coach layer) so referencing it leaves a dead pointer.
-    out.push(`If ${PILLAR_LABEL[s.pillar]} stays ${s.direction} another day, ` +
-      `treat it as signal, not noise · Ease the load.`);
-  }
-  // Sleep debt heading up
+  // Sleep debt · forward-looking, not redundant with any other card.
   if (history.sleep.length >= 3) {
     const last3 = history.sleep.slice(-3).reduce((s, p) => s + Math.max(0, 7.5 - p.value), 0);
     if (last3 >= 3) {
-      out.push(`Sleep debt is building (~${last3.toFixed(1)}h short over the last 3 nights). ` +
-        `One 9h+ night this week resets the trend.`);
+      out.push(`Sleep debt is building · roughly ${last3.toFixed(1)}h short over the last 3 nights.`);
     }
   }
-  // CV rising · Plews early-overreach
+  // CV rising · Plews early-overreach signal.
   if (history.hrvPlews?.cv != null && history.hrvPlews.cv > 5) {
-    out.push(`HRV rolling-CV is at ${history.hrvPlews.cv.toFixed(1)}% · Early ` +
-      `destabilization signal. Worth reducing one hard session if it persists.`);
+    out.push(`HRV rolling-CV is at ${history.hrvPlews.cv.toFixed(1)}% · the early-destabilization band per Plews.`);
   }
   return out;
 }

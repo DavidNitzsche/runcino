@@ -206,8 +206,12 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
   // 2026-06-01 · brief response: count how many pillars have full
   // comparison data. < 2 = data insufficient (frontend gates the
   // "X% recovered" copy on this) · percentRecovered becomes null.
+  // 2026-06-03 · re-normalized after dropping wrist_temp + resp_rate from
+  // the pillar set (see loadPillarBounceBack comment). New weights spread
+  // the displaced 0.08 across the four core pillars proportionally so
+  // the recovery % math stays calibrated.
   const weights: Record<string, number> = {
-    hrv: 0.30, sleep: 0.28, rhr: 0.24, hr_recovery: 0.10, wrist_temp: 0.05, resp_rate: 0.03,
+    hrv: 0.33, sleep: 0.30, rhr: 0.26, hr_recovery: 0.11,
   };
   let weightedSum = 0;
   let weightTotal = 0;
@@ -257,13 +261,19 @@ async function loadPillarBounceBack(
   anchorDate: string,
   today: string,
 ): Promise<RecoveryPhase['pillars']> {
+  // 2026-06-03 · dropped wrist_temp + resp_rate from the recovery pillar
+  // list. Both already appear as standalone tiles in the BODY section
+  // directly below, so the recovery panel was rendering the same metric
+  // twice in different framings (% recovered vs current value). David's
+  // Health-page QC flagged it as duplicate signal. Their original weights
+  // in the aggregate were tiny (wrist_temp 0.05, resp_rate 0.03) so
+  // removing them barely shifts the recovery %. Core recovery picture
+  // stays the four pillars that drive the actual readiness number.
   const pillarSpecs: Array<{ key: RecoveryPhase['pillars'][number]['key']; sampleType: string; label: string; isLowerBetter: boolean }> = [
     { key: 'hrv', sampleType: 'hrv', label: 'HRV', isLowerBetter: false },
     { key: 'rhr', sampleType: 'resting_hr', label: 'RHR', isLowerBetter: true },
     { key: 'sleep', sampleType: 'sleep_hours', label: 'SLEEP', isLowerBetter: false },
     { key: 'hr_recovery', sampleType: 'hr_recovery', label: 'HR RECOVERY', isLowerBetter: false },
-    { key: 'wrist_temp', sampleType: 'wrist_temp', label: 'WRIST TEMP', isLowerBetter: true },
-    { key: 'resp_rate', sampleType: 'respiratory_rate', label: 'RESP RATE', isLowerBetter: true },
   ];
 
   const out: RecoveryPhase['pillars'] = [];

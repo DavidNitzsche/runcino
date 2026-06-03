@@ -581,6 +581,18 @@ export type HealthMetric = {
    * Backward-compatible · existing consumers ignore the flag and see 0.
    */
   noData?: boolean;
+  /**
+   * 2026-06-03 · target-source labeling. The `target` field can mean three
+   * different things: a runner-specific rolling baseline, a literature-
+   * derived universal (e.g. cadence 170 spm), or a 7-day average. The
+   * tile caption changes by source so the runner knows what they're
+   * comparing against. Defaults to 'target' for back-compat (old tiles
+   * read as research-target). Options:
+   *   · 'baseline' → "baseline 60ms" · runner-specific 30d rolling
+   *   · 'target'   → "target 75min"  · research-derived universal
+   *   · 'avg7'     → "7d avg 1800kcal" · runner-specific 7-night window
+   */
+  targetKind?: 'baseline' | 'target' | 'avg7';
 };
 
 export type ActivityData = {

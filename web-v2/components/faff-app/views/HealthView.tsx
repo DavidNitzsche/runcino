@@ -96,8 +96,21 @@ function BarCard({ m, onClick, active }: { m: HealthMetric; onClick?: () => void
   const tlinePct = m.target != null
     ? 100 - (8 + ((m.target - lo) / span) * 92)
     : null;
-  const caption = m.target != null
-    ? `target ${m.clock ? fmtClock(m.target) : m.target.toFixed(m.decimals ?? 0)}`
+  // 2026-06-03 · target source labeling. `m.targetKind` differentiates
+  // runner-baseline (HRV/RHR/wrist-temp) from research-target (sleep
+  // 7.5h, cadence 170spm) from 7-day-avg (active energy). Old caption
+  // said "target X" universally · misleading when the comparator was
+  // actually the runner's own baseline.
+  const targetValStr = m.target != null
+    ? (m.clock ? fmtClock(m.target) : m.target.toFixed(m.decimals ?? 0))
+    : null;
+  const targetPrefix = m.targetKind === 'baseline'
+    ? 'baseline'
+    : m.targetKind === 'avg7'
+      ? '7d avg'
+      : 'target';
+  const caption = targetValStr != null
+    ? `${targetPrefix} ${targetValStr}`
     : m.band
       ? `band ${m.band[0]}–${m.band[1]}`
       : '30-day';
@@ -122,8 +135,19 @@ function BarCard({ m, onClick, active }: { m: HealthMetric; onClick?: () => void
         {tlinePct != null ? (
           <span className="hmc-tline" style={{ top: `${tlinePct}%` }} />
         ) : null}
-        {series.length === 0 ? (
+        {/* 2026-06-03 · only show the "no data yet" empty-state when the
+            tile truly has NO value · `m.noData` is the canonical signal
+            from the producer. Previously this triggered on
+            `series.length === 0` which fired for tiles that DO carry a
+            current value but no 14d trend yet (MAX HR, LIGHT SLEEP,
+            AWAKE, HRV CV before 21d history). Those rendered the value
+            in the headline AND "no data yet" in the chart band —
+            contradictory. Now those tiles just show the value with an
+            empty band, no chart placeholder. */}
+        {series.length === 0 && m.noData ? (
           <span className="hmc-empty">no data yet</span>
+        ) : series.length === 0 ? (
+          <span className="hmc-empty hmc-empty-trend">trend builds with daily syncs</span>
         ) : null}
         {series.map((v, i) => {
           const h = series.length > 1 ? 8 + ((v - lo) / span) * 92 : 50;
@@ -360,7 +384,12 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               </div>
             ) : null}
             <div className="hh-wk-head">
-              <span className="l">7-DAY READINESS</span>
+              {/* 2026-06-03 · honest about coverage. The label said
+                  "7-DAY READINESS" even when only 3 days of trend data
+                  existed (cold-start / partial backfill). Reflect actual
+                  coverage so the runner doesn't read 3 bars as 7 days
+                  of evidence. */}
+              <span className="l">{weekScores.length === 7 ? '7-DAY' : `${weekScores.length}-DAY`} READINESS</span>
               <span className="r">
                 NOW <b>{Math.round(todayScore)}</b> &nbsp;·&nbsp; AVG <b>{Math.round(avg(weekScores))}</b>
               </span>

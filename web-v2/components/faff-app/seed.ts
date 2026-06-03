@@ -760,10 +760,17 @@ function adaptReadiness(glance: Glance | null, health: Health | null): Readiness
   // (see lib/coach/readiness.ts). Score now reflects only objective HealthKit
   // signals + load. Subjective check-ins feed the coach voice directly rather
   // than skewing the number.
+  // 2026-06-03 · keep the SIGNED weight in `pts`. Previously this used
+  // Math.abs(i.weight) which stripped the sign · DriverRowEl decides
+  // color and direction from pts > 0 / < 0, so abs-weighted pts meant
+  // every driver rendered green (+N). David's Health page showed SLEEP
+  // +11 GREEN while the Readiness drawer showed SLEEP -11 RED for the
+  // same pillar weight. dir is also a derived hint but the renderer
+  // doesn't read it — pts carries the sign.
   const drivers = (r.inputs || []).map(i => {
     const dir: 'pos' | 'neg' = i.weight >= 0 ? 'pos' : 'neg';
     const pct = Math.min(100, Math.abs(i.weight) * 5);
-    return { name: (i.label.split(' ·')[0] || i.key).toUpperCase(), why: `${i.observedV} · ${i.observedSub}`.trim(), pct, pts: Math.abs(i.weight), dir };
+    return { name: (i.label.split(' ·')[0] || i.key).toUpperCase(), why: `${i.observedV} · ${i.observedSub}`.trim(), pct, pts: i.weight, dir };
   });
   return {
     score: r.score, label, baseline,
@@ -1061,9 +1068,28 @@ function adaptHealth(
   const sleepSeries  = series(health?.sleepSeries,  'hours');
   const weightSeries = series(health?.weightSeries, 'lb');
 
-  const mk = (k: string, label: string, unit: string, cur: number, target: number | undefined, dom: [number, number], s: number[], status: 'good' | 'warn' | 'neutral', decimals = 0, clock = false, noData = false): HealthMetric => ({
+  // 2026-06-03 · targetKind parameter tags what the `target` field
+  // represents · baseline (runner's own rolling 30d), target (research
+  // universal), or avg7 (runner's 7-day average). Defaults to undefined
+  // (renderer falls back to "target" prefix). Tile caption renders the
+  // honest label so the runner knows what they're comparing against.
+  const mk = (
+    k: string,
+    label: string,
+    unit: string,
+    cur: number,
+    target: number | undefined,
+    dom: [number, number],
+    s: number[],
+    status: 'good' | 'warn' | 'neutral',
+    decimals = 0,
+    clock = false,
+    noData = false,
+    targetKind?: 'baseline' | 'target' | 'avg7',
+  ): HealthMetric => ({
     k, label, unit, current: cur, target, dom, series: s, status, decimals, clock,
     ...(noData ? { noData: true } : {}),
+    ...(targetKind ? { targetKind } : {}),
   });
 
   // 2026-06-03 · honest empty-state · when the runner skipped wearing
@@ -1109,16 +1135,16 @@ function adaptHealth(
        [Math.max(20, (hrvCurrent || 60) - 30), (hrvCurrent || 60) + 30],
        hrvSeries,
        !hasHrv ? 'neutral' : hrvCurrent >= (health?.hrv.baseline ?? hrvCurrent) ? 'good' : 'warn',
-       0, false, !hasHrv),
+       0, false, !hasHrv, 'baseline'),
     mk('rhr',    'RESTING HR', 'bpm', rhrCurrent,    health?.rhr.baseline ?? undefined,
        [Math.max(35, (rhrCurrent || 50) - 10), (rhrCurrent || 50) + 10],
        rhrSeries,
        !hasRhr ? 'neutral' : rhrCurrent <= (health?.rhr.baseline ?? rhrCurrent) ? 'good' : 'warn',
-       0, false, !hasRhr),
+       0, false, !hasRhr, 'baseline'),
     mk('sleep',  'SLEEP',      'h',   sleepAvg,      7.5,
        [4, 10], sleepSeries,
        !hasSleep ? 'neutral' : sleepAvg >= 7 ? 'good' : 'warn',
-       1, true, !hasSleep),
+       1, true, !hasSleep, 'target'),
     mk('weight', 'WEIGHT',     'lb',  weightCurrent, undefined,
        [Math.max(120, (weightCurrent || 180) - 10), (weightCurrent || 180) + 10],
        weightSeries, 'good', 1, false, !hasWeight),
@@ -1137,16 +1163,17 @@ function adaptHealth(
        wristTempSeries,
        wristTempDelta != null && wristTempDelta >= 0.4 ? 'warn'
          : wristTempDelta != null && wristTempDelta <= -0.4 ? 'warn'
-         : 'good', 2),
+         : 'good', 2, false, false, 'baseline'),
     // Respiratory rate · 24-48h early-illness signal per Research/15.
     mk('resp_rate', 'RESP RATE', '/min', rrCurrent, rrBaseline,
        [Math.max(10, (rrCurrent || 16) - 4), (rrCurrent || 16) + 4],
        respiratoryRateSeries,
-       rrDelta != null && rrDelta >= 2 ? 'warn' : 'good', 1),
+       rrDelta != null && rrDelta >= 2 ? 'warn' : 'good', 1, false, false, 'baseline'),
     // SpO2 · quiet at sea-level, flags at altitude / when sick.
     mk('spo2', 'SPO₂', '%', spo2Current, spo2Baseline,
        [90, 100], spo2SeriesArr,
-       spo2Current >= 96 ? 'good' : spo2Current >= 93 ? 'warn' : 'warn'),
+       spo2Current >= 96 ? 'good' : spo2Current >= 93 ? 'warn' : 'warn',
+       0, false, false, 'baseline'),
     // Body fat % · trend signal for body composition.
     mk('body_fat', 'BODY FAT', '%', bfCurrent, undefined,
        [Math.max(5, (bfCurrent || 15) - 5), (bfCurrent || 15) + 5],
@@ -1178,15 +1205,33 @@ function adaptHealth(
   }
   // 2026-06-01 · Active energy from iPhone 031fe5fd · daily kcal total.
   // Bumps to ~180 buckets/run once TF updates · same query works either
-  // way (SUM by day). Targets vary wildly per runner so no fixed target ·
-  // status driven by recency (today >= 50% of 7d avg = good).
+  // way (SUM by day). Targets vary wildly per runner so no fixed target.
+  //
+  // 2026-06-03 · partial-day sync handling. The iPhone writes active-
+  // energy samples throughout the day so early-morning reads (or runners
+  // whose Health sync was delayed) saw values like "4 kcal" before the
+  // rest of the day landed. That number is technically honest but reads
+  // as broken. Fix: when today's total is implausibly low for an active
+  // day (< 100 kcal AND we have a real avg7 to compare to), show the 7-
+  // day average instead with a "syncing" cue rather than the partial
+  // total. The runner sees their typical day until the rest catches up.
   const aeToday = health?.activeEnergy?.today ?? 0;
   const aeAvg7 = health?.activeEnergy?.avg7 ?? 0;
   if (aeToday > 0 || aeAvg7 > 0) {
     const aeSeriesKcal = (health?.activeEnergy?.series ?? []).map((p) => p.kcal);
-    const aeStatus: 'good' | 'warn' = aeAvg7 > 0 && aeToday >= aeAvg7 * 0.5 ? 'good' : 'warn';
-    body.push(mk('active_energy', 'ACTIVE ENERGY', 'kcal', aeToday || aeAvg7, aeAvg7 || undefined,
-      [0, Math.max(2500, aeAvg7 + 500)], aeSeriesKcal, aeStatus));
+    // Partial-day floor: 100 kcal is below even sedentary BMR contribution
+    // by mid-morning. If we see 4-90 kcal AND have a recent avg, assume
+    // sync still landing and surface avg7 with `warn` so the chip flags
+    // syncing rather than misreading the runner's day.
+    const partialDayLikely = aeToday > 0 && aeToday < 100 && aeAvg7 >= 500;
+    const displayValue = partialDayLikely
+      ? aeAvg7
+      : (aeToday || aeAvg7);
+    const aeStatus: 'good' | 'warn' = partialDayLikely
+      ? 'warn'
+      : (aeAvg7 > 0 && aeToday >= aeAvg7 * 0.5 ? 'good' : 'warn');
+    body.push(mk('active_energy', 'ACTIVE ENERGY', 'kcal', displayValue, aeAvg7 || undefined,
+      [0, Math.max(2500, aeAvg7 + 500)], aeSeriesKcal, aeStatus, 0, false, false, 'avg7'));
   }
   // 2026-06-01 · Cycle phase from iPhone 0fa7d55a · gender-gated.
   // Only render for biologicalSex === 'female' AND data exists (runner
@@ -1217,12 +1262,14 @@ function adaptHealth(
     if (stages.deepMin != null) {
       body.push(mk('sleep_deep', 'DEEP SLEEP', 'min', stages.deepMin, 75,
         [0, 120], deepSeriesMin,
-        stages.deepMin >= 60 ? 'good' : 'warn'));
+        stages.deepMin >= 60 ? 'good' : 'warn',
+        0, false, false, 'target'));
     }
     if (stages.remMin != null) {
       body.push(mk('sleep_rem', 'REM SLEEP', 'min', stages.remMin, 100,
         [0, 150], remSeriesMin,
-        stages.remMin >= 80 ? 'good' : 'warn'));
+        stages.remMin >= 80 ? 'good' : 'warn',
+        0, false, false, 'target'));
     }
     if (stages.lightMin != null) {
       body.push(mk('sleep_light', 'LIGHT SLEEP', 'min', stages.lightMin, undefined,
@@ -1249,36 +1296,52 @@ function adaptHealth(
   const vratioForm  = formSeries('vertical_ratio');
   const powerForm   = formSeries('run_power');
   const cadCurrent  = cadenceForm.last || cadenceCurrent;
+  // 2026-06-03 · honest empty-state for FORM tiles. Each form metric is
+  // only present in health_samples when the watch model + sensor combo
+  // emits it (older Apple Watches don't surface GCT/vertical oscillation
+  // /run power; only AW Ultra/Series 9+ + Stryd reliably do). When
+  // formSeries returns `last: 0` we mark the tile noData=true rather
+  // than rendering a literal 0 cm / 0 ms / 0 W — those zeros looked
+  // like measurements but meant "source not present."
+  const cadenceMissing = !cadenceForm.last && !cadenceCurrent;
+  const gctMissing     = !gctForm.last;
+  const voscMissing    = !voscForm.last;
+  const strideMissing  = !strideForm.last;
+  const vratioMissing  = !vratioForm.last;
+  const powerMissing   = !powerForm.last;
   const form_: HealthMetric[] = [
     mk('cadence', 'CADENCE',        'spm', cadCurrent, 170,
        [Math.max(140, (cadCurrent || 170) - 20), (cadCurrent || 170) + 15],
-       cadenceForm.series.length ? cadenceForm.series : Array(30).fill(cadCurrent || 0),
-       cadCurrent >= 170 ? 'good' : 'warn'),
+       cadenceForm.series.length ? cadenceForm.series : (cadCurrent > 0 ? Array(30).fill(cadCurrent) : []),
+       cadCurrent >= 170 ? 'good' : 'warn',
+       0, false, cadenceMissing, 'target'),
     mk('gct',     'GROUND CONTACT', 'ms',  Math.round(gctForm.last), undefined,
        [Math.max(160, (gctForm.last || 220) - 30), (gctForm.last || 220) + 30],
        gctForm.series.map(v => Math.round(v)),
-       gctForm.last > 0 && gctForm.last < 240 ? 'good' : 'neutral'),
+       gctForm.last > 0 && gctForm.last < 240 ? 'good' : 'neutral',
+       0, false, gctMissing),
     mk('vosc',    'VERTICAL OSC',   'cm',  voscForm.last, undefined,
        [Math.max(4, (voscForm.last || 8) - 3), (voscForm.last || 8) + 3],
        voscForm.series,
-       voscForm.last > 0 && voscForm.last < 9 ? 'good' : 'neutral', 1),
+       voscForm.last > 0 && voscForm.last < 9 ? 'good' : 'neutral', 1, false, voscMissing),
     mk('stride',  'STRIDE LENGTH',  'm',   strideForm.last, undefined,
        [Math.max(0.8, (strideForm.last || 1.1) - 0.3), (strideForm.last || 1.1) + 0.3],
-       strideForm.series, 'neutral', 2),
+       strideForm.series, 'neutral', 2, false, strideMissing),
     // 2026-06-01 · Vertical ratio · vertical-osc / stride-length × 100.
     // Research/16 §form: lower ratio = better economy. 6-7% elite, 8-9%
     // typical recreational. Apple Watch surfaces it directly.
     mk('vratio', 'VERT RATIO', '%', vratioForm.last, undefined,
        [Math.max(4, (vratioForm.last || 8) - 2), (vratioForm.last || 8) + 2],
        vratioForm.series,
-       vratioForm.last > 0 && vratioForm.last < 8 ? 'good' : 'neutral', 1),
+       vratioForm.last > 0 && vratioForm.last < 8 ? 'good' : 'neutral', 1, false, vratioMissing),
     // 2026-06-01 · Run power · Stryd / Apple Watch native running power.
     // Research/16 §form: power at threshold pace = running economy
     // proxy. Typical recreational 200-280W, advanced 280-340W.
     mk('power', 'RUN POWER', 'W', Math.round(powerForm.last), undefined,
        [Math.max(150, (powerForm.last || 280) - 50), (powerForm.last || 280) + 50],
        powerForm.series.map(v => Math.round(v)),
-       powerForm.last > 0 ? 'good' : 'neutral'),
+       powerForm.last > 0 ? 'good' : 'neutral',
+       0, false, powerMissing),
     // 2026-05-30: L/R Balance removed. Apple Health doesn't expose a
     // left/right balance signal — the card had a zero-data source and
     // displayed only as "balanced" with no real underlying value. Bring
@@ -1731,7 +1794,13 @@ async function adaptForm(userId: string, glance: Glance | null): Promise<FaffSee
         fatigue: tf.atl,
         delta: tf.tsb,
         label: tf.label,
-        acwr: tf.acwr,
+        // 2026-06-03 · always read ACWR from glance (which now uses
+        // canonicalMileageByDay clustering, same as Readiness drawer).
+        // Previously this surfaced tf.acwr · training-form's MAX-per-day
+        // SQL dedupe produced a third independent ACWR number, so the
+        // Health page, Readiness drawer, and THE STORY card each read
+        // a different value. Glance is the canonical source.
+        acwr: glance?.loadAcwr ?? tf.acwr,
       };
     }
   } catch {/* fall through to cold-start */}

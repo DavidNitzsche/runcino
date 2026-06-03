@@ -101,7 +101,11 @@ export async function computeBlockComparison(userUuid: string): Promise<BlockCom
     refStart.setUTCDate(refStart.getUTCDate() - 28);
     refStartStr = refStart.toISOString().slice(0, 10);
     refEndStr = refEnd.toISOString().slice(0, 10);
-    refLabel = `vs ${(raceRow.name ?? 'last A-race').split(' ').slice(0, 3).join(' ')} build`;
+    // 2026-06-03 · dropped the leading "vs " from the label. The Health
+    // page renderer prepends "VS " in display ("VS {label}") so the old
+    // value produced "VS VS LA MARATHON BUILD". Now the label carries
+    // the build name only · "VS LA MARATHON BUILD" reads cleanly.
+    refLabel = `${(raceRow.name ?? 'last A-race').split(' ').slice(0, 3).join(' ')} build`;
   } else {
     // Fallback: 60-90 days ago.
     const refStart = new Date();
@@ -110,7 +114,8 @@ export async function computeBlockComparison(userUuid: string): Promise<BlockCom
     refEnd.setUTCDate(refEnd.getUTCDate() - 62);
     refStartStr = refStart.toISOString().slice(0, 10);
     refEndStr = refEnd.toISOString().slice(0, 10);
-    refLabel = 'vs ~60-90 days ago';
+    // Same dedupe as above · renderer adds "VS ".
+    refLabel = '~60-90 days ago';
   }
 
   const reference = await loadWindowAverages(userUuid, refStartStr, refEndStr);

@@ -121,7 +121,10 @@ function buildIllnessWatchStory(
   const hrvNote = hrv && hrv.weight < -5
     ? ' HRV is also tracking down · the picture lines up.'
     : ' HRV hasn\'t flagged yet, but these two move 24-48h ahead of it.';
-  return `${tempPart} and ${rrPart} for the last day or two. This combination is the textbook early-illness signal in endurance runners.${hrvNote} Hydrate, push bedtime, and don\'t add stress with a hard session today.`;
+  // 2026-06-03 · stripped prescriptive tail ("Hydrate, push bedtime,
+  // and don't add stress with a hard session today.") per no-reactive-
+  // coach doctrine. Engine describes the signal, runner decides action.
+  return `${tempPart} and ${rrPart} for the last day or two. This combination is the textbook early-illness signal in endurance runners.${hrvNote}`;
 }
 
 function buildSleepStory(
@@ -137,7 +140,9 @@ function buildSleepStory(
   const rrNote = rrDelta != null && Math.abs(rrDelta) < 2 && tempNote
     ? ' and respiratory rate is steady'
     : '';
-  return `Sleep is the story. ${sleep.observedV} with ${hrv.observedV} HRV and ${rhr.observedV} RHR · these three move together when the nervous system is undersleep-stressed.${tempNote}${rrNote} · it\'s a deficit you can close tonight.`;
+  // 2026-06-03 · stripped "it's a deficit you can close tonight" tail
+  // per no-reactive-coach. The description of the trifecta is the point.
+  return `Sleep is the story. ${sleep.observedV} with ${hrv.observedV} HRV and ${rhr.observedV} RHR · these three move together when the nervous system is undersleep-stressed.${tempNote}${rrNote}.`;
 }
 
 function buildLoadStory(
@@ -152,7 +157,10 @@ function buildLoadStory(
   const tsbPart = tsb != null && tsb < -15
     ? ` Training Form ${Math.round(tsb)} confirms you\'re carrying real fatigue.`
     : '';
-  return `Load is biting. ACWR ${acwrText} is above the 1.3 ceiling and ${recoveryMarkers} are flagging the cost.${tsbPart} Today is a true recovery day · easy effort if you run at all, or a rest day pays off bigger.`;
+  // 2026-06-03 · stripped "Today is a true recovery day · easy effort
+  // if you run at all, or a rest day pays off bigger." per no-reactive-
+  // coach. The cost description is the point; the runner reads it.
+  return `Load is biting. ACWR ${acwrText} is above the 1.3 ceiling and ${recoveryMarkers} are flagging the cost.${tsbPart}`;
 }
 
 function buildPostHardSessionStory(
@@ -165,7 +173,9 @@ function buildPostHardSessionStory(
   const tsbPart = tsb != null && tsb < -10
     ? ` Training Form ${Math.round(tsb)} · you\'re in the loaded band.`
     : '';
-  return `Recovering from yesterday\'s hard session. ${markers} are the expected post-effort markers.${tsbPart} An easy run or full rest today · push the next quality session when these settle.`;
+  // 2026-06-03 · stripped "An easy run or full rest today · push the
+  // next quality session when these settle." per no-reactive-coach.
+  return `Recovering from yesterday\'s hard session. ${markers} are the expected post-effort markers.${tsbPart}`;
 }
 
 function buildLoneHrvStory(
@@ -175,29 +185,37 @@ function buildLoneHrvStory(
   const cyclePart = state.cyclePhase === 'luteal'
     ? ' (luteal-adjusted)'
     : '';
-  return `HRV is down${cyclePart} while sleep and RHR are holding · could be early functional overreach OR a one-off (stress, alcohol, late caffeine). Watch the next 24-48h · if it persists tomorrow that\'s a real signal. Easy effort today; trust your subjective read.`;
+  // 2026-06-03 · stripped "Easy effort today; trust your subjective
+  // read." per no-reactive-coach. The "what could be causing this" +
+  // "watch tomorrow" framing is description, kept.
+  return `HRV is down${cyclePart} while sleep and RHR are holding · could be early functional overreach OR a one-off (stress, alcohol, late caffeine). Watch the next 24-48h · if it persists tomorrow that\'s a real signal.`;
 }
 
 function buildSharpStory(
   breakdown: ReadinessBreakdown,
   tsb: number | null,
 ): string {
+  // 2026-06-03 · stripped "Green light · push the planned session, hit
+  // your paces, the body will absorb it." and "push some volume" tails
+  // per no-reactive-coach. Engine describes the state.
   const tsbPart = tsb != null && tsb >= 5 && tsb <= 25
     ? ' Training Form is in race-ready territory.'
     : tsb != null && tsb > 25
-      ? ' Training Form is high · you\'re fresh but slightly under-trained · push some volume.'
+      ? ' Training Form is high · fresh but slightly under-trained band.'
       : '';
-  return `All five pillars are in good shape with score ${breakdown.score}.${tsbPart} Green light · push the planned session, hit your paces, the body will absorb it.`;
+  return `All five pillars are in good shape with score ${breakdown.score}.${tsbPart}`;
 }
 
 function buildModerateStory(breakdown: ReadinessBreakdown): string {
+  // 2026-06-03 · stripped "Run the planned session" / "Run as planned,
+  // easy effort." tails per no-reactive-coach.
   const driver = breakdown.inputs
     .filter((i) => i.weight < -3)
     .sort((a, b) => a.weight - b.weight)[0];
   if (!driver) {
-    return `Score ${breakdown.score} · holding pattern. Pillars are mostly even, nothing dramatic to react to. Run the planned session, listen for the body to tell you otherwise.`;
+    return `Score ${breakdown.score} · holding pattern. Pillars are mostly even, nothing dramatic in either direction.`;
   }
-  return `Score ${breakdown.score} · ${driver.label.split(' · ')[0]} is the soft spot (${driver.observedV}). Not enough to back off, but it\'s the one to watch tomorrow. Run as planned, easy effort.`;
+  return `Score ${breakdown.score} · ${driver.label.split(' · ')[0]} is the soft spot (${driver.observedV}). Worth watching tomorrow to see if it persists or rebounds.`;
 }
 
 function buildGenericConcernStory(
@@ -209,5 +227,7 @@ function buildGenericConcernStory(
   const tsbPart = tsb != null && tsb < -10
     ? ` Training Form ${Math.round(tsb)} is in the loaded band.`
     : '';
-  return `Multiple pillars softening · ${labels} are the biggest.${tsbPart} This is a pull-back day. Easy run or rest, sleep is the highest-leverage move tonight.`;
+  // 2026-06-03 · stripped "This is a pull-back day. Easy run or rest,
+  // sleep is the highest-leverage move tonight." per no-reactive-coach.
+  return `Multiple pillars softening · ${labels} are the biggest.${tsbPart}`;
 }

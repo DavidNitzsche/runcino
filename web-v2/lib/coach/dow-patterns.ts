@@ -58,14 +58,21 @@ function computeInsight(series: DowPatterns['sleep'], metric: string, isLowerBet
   const deficit = isLowerBetter ? worstDay.avg! - mean : mean - worstDay.avg!;
   if (deficit < sd) return null;  // not a strong enough signal
 
+  // 2026-06-03 · reframed HRV + RHR insights as pure observation. The
+  // old copy attributed cause to the prior day ("likely a SAT recovery
+  // problem", "pattern points at SAT stress or sleep") which the engine
+  // can't actually verify · per Research/15 §autonomic patterning, the
+  // morning reading reflects the prior 24h but the *cause* could be
+  // training load, sleep, alcohol, stress, or any combination. The
+  // runner reads the pattern and decides what to investigate.
   if (metric === 'HRV') {
-    return `HRV consistently lowest on ${worstDay.label} · likely a ${DOW_LABELS[(worstDay.dow + 6) % 7]} recovery problem.`;
+    return `HRV consistently lowest on ${worstDay.label} · ${(mean - worstDay.avg!).toFixed(0)}ms below your weekly average.`;
   }
   if (metric === 'sleep') {
     return `Sleep shortest on ${worstDay.label} · ${(mean - worstDay.avg!).toFixed(1)}h below your weekly average.`;
   }
   if (metric === 'RHR') {
-    return `RHR highest on ${worstDay.label} · pattern points at ${DOW_LABELS[(worstDay.dow + 6) % 7]} stress or sleep.`;
+    return `RHR highest on ${worstDay.label} · ${(worstDay.avg! - mean).toFixed(0)} bpm above your weekly average.`;
   }
   return null;
 }
