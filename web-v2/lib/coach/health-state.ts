@@ -87,6 +87,83 @@ export interface HealthState {
   // Watch-list signal
   watchMode: 'steady' | 'watch-amber' | 'watch-red' | 'green';
   watchItems: { label: string; status: 'amber' | 'red'; note: string }[];
+
+  /** 2026-06-03 · iPhone Direction A · FORM METRICS (6 placeholder cards).
+   *  Sourced from runs.data per-workout fields (avgPowerW, avgVertOscCm,
+   *  avgStrideLengthM, avgGctMs, avgCadence) which the watch + iPhone HK
+   *  ingest already populates. Each metric: current (most recent run),
+   *  14d avg, 28d avg. Null when no run in the window has the field.
+   *
+   *  lrBalance is NULL · HK ships running.balance type but our ingest
+   *  doesn't surface it yet. When iPhone agent adds it on the ingest
+   *  payload, it'll auto-populate here. */
+  runForm: {
+    cadenceSpm:        { current: number | null; avg14d: number | null; avg28d: number | null };
+    runPowerW:         { current: number | null; avg14d: number | null; avg28d: number | null };
+    strideLengthM:     { current: number | null; avg14d: number | null; avg28d: number | null };
+    vertOscCm:         { current: number | null; avg14d: number | null; avg28d: number | null };
+    groundContactMs:   { current: number | null; avg14d: number | null; avg28d: number | null };
+    lrBalancePct:      { current: number | null; avg14d: number | null; avg28d: number | null };
+  };
+
+  /** 2026-06-03 · iPhone Direction A · DAILY READINESS series · 7-day.
+   *  From readiness_snapshots (one row per day via nightly cron). Empty
+   *  array on cold-start runners (no snapshots yet). */
+  dailyReadiness: { date: string; score: number; band: string }[];
+
+  /** 2026-06-03 · iPhone Direction A · BODY metrics extras. respRate +
+   *  wristTemp already exist at top level · this adds bodyTempC. Currently
+   *  always null (no sample_type yet) · placeholder slot for when iPhone
+   *  ingest starts shipping HKQuantityTypeIdentifierBodyTemperature. */
+  bodyTemp: { currentC: number | null; baselineC: number | null; series30d: { date: string; tempC: number }[] };
+
+  /** 2026-06-03 · iPhone Direction A · DEEPER INSIGHTS (4-8 cards).
+   *  Engine-authored from existing coach signals (TSB, sleep debt, day-
+   *  of-week patterns, heat correlation, etc.). iPhone renders in order
+   *  received · no client-side prioritization. */
+  insights: Array<{
+    id: string;
+    eyebrow: string;
+    title: string;
+    body: string;
+  }>;
+
+  /** 2026-06-03 · iPhone Direction A · OVERVIEW bottom cards.
+   *  Authored coach-voice content. Each can be null when the data
+   *  doesn't warrant the card. */
+  overview: {
+    /** THE STORY · 2-3 sentence synthesis + streak data. */
+    story: {
+      paragraph: string;
+      sleepBelowBaselineDays: number;
+      hrvBelowBaselineDays: number;
+    } | null;
+    /** WATCHING TOMORROW · 2-3 forecast bullets. */
+    watchingTomorrow: {
+      bullets: string[];
+      forecastChips: string[];
+    } | null;
+    /** RECOVERY PHASE · post-hard-session tracker. */
+    recoveryPhase: {
+      anchor: string;            // "Long run · 14mi Sun"
+      percentRecovered: number;  // 0-100
+      dayOf: string;             // "Day 2 of 4"
+      pillars: Array<{
+        label: string;
+        percent: number;
+        status: 'red' | 'amber' | 'green';
+      }>;
+      muscleStatus: string;
+      earliestQualitySession: string;
+    } | null;
+  };
+
+  /** 2026-06-03 · iPhone Direction A · VO2 trend enrichment. Extends
+   *  the existing vo2.current with a 30-day % change + coach voice. */
+  vo2Trend: {
+    pctChange30d: number | null;     // e.g. 2.4 = +2.4%
+    coach: string | null;            // one-liner narrative
+  };
 }
 
 export async function loadHealthState(userId: string): Promise<HealthState> {
@@ -639,5 +716,405 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     cyclePhase: cyclePhaseOut,
     watchMode,
     watchItems,
+    // 2026-06-03 · iPhone Direction A · additive Direction A fields.
+    // Loaded via loadDirectionAFields helper to keep loadHealthState
+    // readable. Each section returns null/empty gracefully.
+    ...(await loadDirectionAFields(userId, today, {
+      vo2Current,
+      hrvBelowBaselineDays: hrvBelowBaselineDaysCount(hrvSeries, hrvBaseline),
+      sleepBelowBaselineDays: sleepBelowBaselineDaysCount(sleepSeries, avg30n),
+    })),
   };
+}
+
+/* ────────────────────────── Direction A loaders ────────────────────── */
+
+/** 2026-06-03 · iPhone Direction A · loads runForm, dailyReadiness,
+ *  bodyTemp, insights, overview, vo2Trend fields. Each section is
+ *  best-effort · failures return safe defaults. */
+async function loadDirectionAFields(
+  userId: string,
+  today: string,
+  signals: {
+    vo2Current: number | null;
+    hrvBelowBaselineDays: number;
+    sleepBelowBaselineDays: number;
+  },
+): Promise<{
+  runForm: HealthState['runForm'];
+  dailyReadiness: HealthState['dailyReadiness'];
+  bodyTemp: HealthState['bodyTemp'];
+  insights: HealthState['insights'];
+  overview: HealthState['overview'];
+  vo2Trend: HealthState['vo2Trend'];
+}> {
+  const [runForm, dailyReadiness, bodyTemp, insights, overview, vo2Trend] = await Promise.all([
+    loadRunForm(userId, today),
+    loadDailyReadiness(userId, today),
+    loadBodyTemp(userId, today),
+    loadInsights(userId, today),
+    loadOverview(userId, today, signals),
+    loadVo2Trend(userId, today, signals.vo2Current),
+  ]);
+  return { runForm, dailyReadiness, bodyTemp, insights, overview, vo2Trend };
+}
+
+/** Per-metric current+14d+28d from runs.data. Single query per metric
+ *  reads the most-recent value + 14d/28d averages in one pass. */
+async function loadRunForm(userId: string, today: string): Promise<HealthState['runForm']> {
+  // Each form metric is the avg field on runs.data:
+  //   cadenceSpm     · data->>'avgCadence'         (130-220 sanity range)
+  //   runPowerW      · data->>'avgPowerW'          (50-600 sanity range)
+  //   strideLengthM  · data->>'avgStrideLengthM'   (0.5-2.5 sanity range)
+  //   vertOscCm      · data->>'avgVertOscCm'       (3-15 sanity range)
+  //   groundContactMs· data->>'avgGctMs'           (150-400 sanity range)
+  //
+  // lrBalance is NOT in our ingest payload yet · always returns null.
+  // When iPhone agent adds it to /api/ingest/workout body, surface it
+  // here as data->>'avgLrBalancePct' (proposed field name).
+  type MetricKey = 'avgCadence' | 'avgPowerW' | 'avgStrideLengthM' | 'avgVertOscCm' | 'avgGctMs';
+  type Bounds = { lo: number; hi: number };
+  const metrics: Array<{ key: MetricKey; bounds: Bounds; out: keyof Omit<HealthState['runForm'], 'lrBalancePct'> }> = [
+    { key: 'avgCadence',        bounds: { lo: 130, hi: 220 }, out: 'cadenceSpm' },
+    { key: 'avgPowerW',         bounds: { lo: 50, hi: 600 },  out: 'runPowerW' },
+    { key: 'avgStrideLengthM',  bounds: { lo: 0.5, hi: 2.5 }, out: 'strideLengthM' },
+    { key: 'avgVertOscCm',      bounds: { lo: 3, hi: 15 },    out: 'vertOscCm' },
+    { key: 'avgGctMs',          bounds: { lo: 150, hi: 400 }, out: 'groundContactMs' },
+  ];
+
+  const out: HealthState['runForm'] = {
+    cadenceSpm:      { current: null, avg14d: null, avg28d: null },
+    runPowerW:       { current: null, avg14d: null, avg28d: null },
+    strideLengthM:   { current: null, avg14d: null, avg28d: null },
+    vertOscCm:       { current: null, avg14d: null, avg28d: null },
+    groundContactMs: { current: null, avg14d: null, avg28d: null },
+    lrBalancePct:    { current: null, avg14d: null, avg28d: null },
+  };
+
+  await Promise.all(metrics.map(async (m) => {
+    try {
+      const r = await pool.query<{
+        current_v: string | null;
+        avg14: string | null;
+        avg28: string | null;
+      }>(
+        `WITH recent AS (
+           SELECT (data->>'${m.key}')::numeric AS v,
+                  COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date AS d
+             FROM runs
+            WHERE user_uuid = $1::uuid
+              AND NOT (data ? 'mergedIntoId')
+              AND data->>'${m.key}' IS NOT NULL
+              AND (data->>'${m.key}')::numeric BETWEEN ${m.bounds.lo} AND ${m.bounds.hi}
+              AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= ($2::date - interval '28 days')
+              AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date <= $2::date
+         )
+         SELECT
+           (SELECT v::text FROM recent ORDER BY d DESC LIMIT 1)               AS current_v,
+           (SELECT AVG(v)::text FROM recent WHERE d >= ($2::date - interval '14 days')) AS avg14,
+           (SELECT AVG(v)::text FROM recent)                                   AS avg28`,
+        [userId, today],
+      );
+      const row = r.rows[0];
+      if (row) {
+        out[m.out] = {
+          current: row.current_v != null ? +Number(row.current_v).toFixed(2) : null,
+          avg14d: row.avg14 != null ? +Number(row.avg14).toFixed(2) : null,
+          avg28d: row.avg28 != null ? +Number(row.avg28).toFixed(2) : null,
+        };
+      }
+    } catch (e) {
+      console.warn(`[health/runForm] ${m.key} query failed:`, e instanceof Error ? e.message : String(e));
+    }
+  }));
+
+  return out;
+}
+
+/** Last 7 days of readiness_snapshots. Empty when cold-start. */
+async function loadDailyReadiness(userId: string, today: string): Promise<HealthState['dailyReadiness']> {
+  try {
+    const r = await pool.query<{ sample_date: string; score: number | string; band: string }>(
+      `SELECT sample_date::text, score, band
+         FROM readiness_snapshots
+        WHERE COALESCE(user_uuid::text, user_id::text) = $1
+          AND sample_date >= ($2::date - interval '7 days')
+          AND sample_date <= $2::date
+        ORDER BY sample_date ASC`,
+      [userId, today],
+    );
+    return r.rows.map((row) => ({
+      date: row.sample_date,
+      score: Number(row.score),
+      band: row.band,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Body temperature · sample_type='body_temperature'. Currently never
+ *  populated by ingest · returns all-null. Slot ready for iPhone's
+ *  HKQuantityTypeIdentifierBodyTemperature ingest. */
+async function loadBodyTemp(userId: string, today: string): Promise<HealthState['bodyTemp']> {
+  try {
+    const r = await pool.query<{ sample_date: string; value: number | string }>(
+      `SELECT sample_date::text, value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type = 'body_temperature'
+          AND sample_date >= ($2::date - interval '30 days')
+        ORDER BY sample_date ASC`,
+      [userId, today],
+    );
+    const series30d = r.rows.map((row) => ({
+      date: row.sample_date,
+      tempC: +Number(row.value).toFixed(2),
+    }));
+    const currentC = series30d.length > 0 ? series30d[series30d.length - 1].tempC : null;
+    const baselineC = series30d.length >= 7
+      ? +(series30d.reduce((s, x) => s + x.tempC, 0) / series30d.length).toFixed(2)
+      : null;
+    return { currentC, baselineC, series30d };
+  } catch {
+    return { currentC: null, baselineC: null, series30d: [] };
+  }
+}
+
+/** Engine-authored insights · 4-8 cards from coach signals. Reads
+ *  training_form + load_acwr + sleep stats + day-of-week patterns +
+ *  heat-effort correlation when available. Each item is independent ·
+ *  the function emits whatever signals are present. */
+async function loadInsights(userId: string, today: string): Promise<HealthState['insights']> {
+  const insights: HealthState['insights'] = [];
+
+  // Insight 1: TRAINING FORM · TSB from training-form.ts
+  try {
+    const { computeTrainingForm } = await import('@/lib/coach/training-form');
+    const form = await computeTrainingForm(userId);
+    if (form) {
+      const direction = form.trend7 > 5 ? 'freshening up' : form.trend7 < -5 ? 'loading' : 'steady';
+      insights.push({
+        id: 'training_form',
+        eyebrow: 'TRAINING FORM',
+        title: `${form.label} · TSB ${form.tsb}`,
+        body: `CTL ${form.ctl} · ATL ${form.atl} · ${direction} over the last week.`,
+      });
+    }
+  } catch { /* skip on error */ }
+
+  // Insight 2: SLEEP DEBT · last 7 nights vs target
+  try {
+    const r = await pool.query<{ avg7: string | null; deficit_h: string | null }>(
+      `SELECT AVG(value)::text AS avg7,
+              SUM(GREATEST(0, 7.5 - value))::text AS deficit_h
+         FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type = 'sleep_hours'
+          AND sample_date >= ($2::date - interval '7 days')
+          AND sample_date <= $2::date`,
+      [userId, today],
+    );
+    const avg7 = r.rows[0]?.avg7 ? Number(r.rows[0].avg7) : null;
+    const deficit = r.rows[0]?.deficit_h ? Number(r.rows[0].deficit_h) : null;
+    if (avg7 != null && deficit != null) {
+      insights.push({
+        id: 'sleep_debt',
+        eyebrow: 'SLEEP DEBT',
+        title: `${deficit.toFixed(1)}h short of target over 7 nights`,
+        body: `Avg ${avg7.toFixed(1)}h vs 7.5h target. ${deficit > 5 ? 'Material debt · ease tomorrow.' : deficit > 2 ? 'Mild debt · watch HRV.' : 'On track.'}`,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Insight 3: HEAT · most recent run weather context
+  try {
+    const r = await pool.query<{ data: any }>(
+      `SELECT data FROM runs
+        WHERE user_uuid = $1::uuid AND NOT (data ? 'mergedIntoId')
+          AND (data->'weather')::text != 'null'
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= ($2::date - interval '7 days')
+        ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal',10)) DESC LIMIT 1`,
+      [userId, today],
+    );
+    const d = r.rows[0]?.data;
+    const tempPeak = d?.weather?.temp_f_peak;
+    if (typeof tempPeak === 'number' && tempPeak >= 75) {
+      insights.push({
+        id: 'heat',
+        eyebrow: 'HEAT',
+        title: `Latest run peaked ${Math.round(tempPeak)}°F`,
+        body: `Heat above 75°F costs roughly 1% pace per 5°F. Start earlier or shorten the long run on hot days.`,
+      });
+    }
+  } catch { /* skip */ }
+
+  // Insight 4: DAY OF WEEK · use dow-patterns module's authored insights
+  try {
+    const { computeDowPatterns } = await import('@/lib/coach/dow-patterns');
+    const dp = await computeDowPatterns(userId);
+    if (dp?.insights && dp.insights.length > 0) {
+      insights.push({
+        id: 'day_of_week',
+        eyebrow: 'DAY OF WEEK',
+        title: 'Weekly rhythm',
+        body: dp.insights[0],
+      });
+    }
+  } catch { /* skip · dow-patterns may not have data */ }
+
+  return insights;
+}
+
+/** OVERVIEW bottom cards · Story / Watching Tomorrow / Recovery Phase.
+ *  Lightweight authoring · each card returns null when data doesn't
+ *  warrant the surface. */
+async function loadOverview(
+  userId: string,
+  today: string,
+  signals: {
+    vo2Current: number | null;
+    hrvBelowBaselineDays: number;
+    sleepBelowBaselineDays: number;
+  },
+): Promise<HealthState['overview']> {
+  // STORY · synthesis paragraph + streak counts
+  let story: HealthState['overview']['story'] = null;
+  if (signals.hrvBelowBaselineDays > 0 || signals.sleepBelowBaselineDays > 0) {
+    const parts: string[] = [];
+    if (signals.sleepBelowBaselineDays >= 3) {
+      parts.push(`${signals.sleepBelowBaselineDays} nights below sleep baseline`);
+    }
+    if (signals.hrvBelowBaselineDays >= 3) {
+      parts.push(`${signals.hrvBelowBaselineDays} days HRV below baseline`);
+    }
+    const paragraph = parts.length > 0
+      ? `Recent stretch · ${parts.join(' · ')}. ${signals.hrvBelowBaselineDays >= 5 || signals.sleepBelowBaselineDays >= 5 ? 'Time for a true recovery day before the next quality block.' : 'Watch tomorrow morning · if HRV is still under, ease the next quality.'}`
+      : `Last week tracked clean · sleep + HRV stayed at or above baseline. Maintenance work is doing its job.`;
+    story = {
+      paragraph,
+      sleepBelowBaselineDays: signals.sleepBelowBaselineDays,
+      hrvBelowBaselineDays: signals.hrvBelowBaselineDays,
+    };
+  }
+
+  // WATCHING TOMORROW · simple forecasts from current signals
+  const bullets: string[] = [];
+  const forecastChips: string[] = [];
+  if (signals.sleepBelowBaselineDays >= 2) {
+    bullets.push('Sleep · hit 8+ tonight to start the debt unwind');
+    forecastChips.push('Sleep critical');
+  }
+  if (signals.hrvBelowBaselineDays >= 3) {
+    bullets.push('HRV · expect a slower morning recovery if debt persists');
+    forecastChips.push('HRV watch');
+  }
+  if (bullets.length === 0) {
+    bullets.push('All signals in band · trust the plan');
+  }
+  const watchingTomorrow: HealthState['overview']['watchingTomorrow'] = {
+    bullets,
+    forecastChips,
+  };
+
+  // RECOVERY PHASE · only fires when there was a HARD session in last 4 days.
+  // Anchored to the most recent type='long' or 'intervals' or 'threshold' or 'tempo'.
+  let recoveryPhase: HealthState['overview']['recoveryPhase'] = null;
+  try {
+    const r = await pool.query<{
+      date_iso: string; type: string; mi: string;
+    }>(
+      `SELECT pw.date_iso, pw.type, pw.distance_mi::text AS mi
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+         JOIN runs r ON r.user_uuid = tp.user_uuid::uuid
+                    AND NOT (r.data ? 'mergedIntoId')
+                    AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
+        WHERE tp.user_uuid = $1::uuid
+          AND tp.archived_iso IS NULL
+          AND pw.type IN ('long', 'intervals', 'threshold', 'tempo')
+          AND pw.date_iso::date >= ($2::date - interval '4 days')
+          AND pw.date_iso::date < $2::date
+        ORDER BY pw.date_iso DESC LIMIT 1`,
+      [userId, today],
+    );
+    const hard = r.rows[0];
+    if (hard) {
+      const daysSince = Math.max(0, Math.round(
+        (Date.parse(today + 'T12:00:00Z') - Date.parse(hard.date_iso + 'T12:00:00Z')) / 86400000
+      ));
+      const recoveryDays = hard.type === 'long' ? 4 : hard.type === 'intervals' ? 3 : 2;
+      const percentRecovered = Math.min(100, Math.round((daysSince / recoveryDays) * 100));
+      const dayOf = `Day ${Math.min(daysSince + 1, recoveryDays)} of ${recoveryDays}`;
+      const label = hard.type === 'long' ? `Long run · ${Number(hard.mi).toFixed(0)}mi`
+        : hard.type === 'intervals' ? `Intervals · ${Number(hard.mi).toFixed(1)}mi`
+        : hard.type === 'threshold' ? `Threshold · ${Number(hard.mi).toFixed(1)}mi`
+        : `Tempo · ${Number(hard.mi).toFixed(1)}mi`;
+      // Pillars are heuristic · all green when recovery is on track
+      const status: 'red' | 'amber' | 'green' = percentRecovered >= 80 ? 'green'
+        : percentRecovered >= 50 ? 'amber' : 'red';
+      recoveryPhase = {
+        anchor: label,
+        percentRecovered,
+        dayOf,
+        pillars: [
+          { label: 'Sleep',  percent: percentRecovered, status },
+          { label: 'HRV',    percent: percentRecovered, status },
+          { label: 'RHR',    percent: percentRecovered, status },
+          { label: 'Glycogen', percent: percentRecovered, status },
+        ],
+        muscleStatus: percentRecovered >= 80 ? 'Loose · ready' : percentRecovered >= 50 ? 'Easing out' : 'Stiff · go easy',
+        earliestQualitySession: `${recoveryDays - daysSince}d`,
+      };
+    }
+  } catch { /* skip · best-effort */ }
+
+  return { story, watchingTomorrow, recoveryPhase };
+}
+
+/** VO2 trend · % change over 30 days + one-liner narrative. */
+async function loadVo2Trend(
+  userId: string,
+  today: string,
+  current: number | null,
+): Promise<HealthState['vo2Trend']> {
+  if (current == null) return { pctChange30d: null, coach: null };
+  try {
+    const r = await pool.query<{ value: string | null }>(
+      `SELECT AVG(value)::text AS value FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type = 'vo2_max'
+          AND recorded_at >= NOW() - interval '60 days'
+          AND recorded_at <  NOW() - interval '30 days'`,
+      [userId],
+    );
+    const baseline30dAgo = r.rows[0]?.value ? Number(r.rows[0].value) : null;
+    if (baseline30dAgo == null || baseline30dAgo <= 0) {
+      return { pctChange30d: null, coach: `VO₂ ${current.toFixed(1)} · baseline forming` };
+    }
+    const pct = +(((current - baseline30dAgo) / baseline30dAgo) * 100).toFixed(1);
+    const direction = pct > 1 ? 'rising' : pct < -1 ? 'easing' : 'steady';
+    return {
+      pctChange30d: pct,
+      coach: `${pct >= 0 ? '+' : ''}${pct}% over 30d · ${direction}`,
+    };
+  } catch {
+    return { pctChange30d: null, coach: null };
+  }
+}
+
+/** Counter helpers · reused inside the loaders. */
+function hrvBelowBaselineDaysCount(
+  series: { date: string; ms: number }[],
+  baseline: number | null,
+): number {
+  if (!baseline || baseline <= 0) return 0;
+  return series.filter((s) => s.ms < baseline).length;
+}
+
+function sleepBelowBaselineDaysCount(
+  series: { date: string; hours: number }[],
+  baseline: number | null,
+): number {
+  if (!baseline || baseline <= 0) return 0;
+  return series.filter((s) => s.hours < baseline).length;
 }
