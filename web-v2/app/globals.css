@@ -144,7 +144,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .stats .v small{font-size:14px;opacity:.9;font-weight:400;}
 .stats .k{font-size:11px;font-weight:600;letter-spacing:1.2px;opacity:1;margin-top:7px;}
 .effort{margin-top:28px;max-width:380px;padding-top:30px;}
-.wcard{flex:0 0 392px;align-self:stretch;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#F6F7F8;text-shadow:none;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;box-shadow:0 12px 30px -20px rgba(0,0,0,.5);}
+.wcard{flex:0 0 460px;align-self:stretch;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#F6F7F8;text-shadow:none;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;box-shadow:0 12px 30px -20px rgba(0,0,0,.5);}
 .wcl{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.5);margin-bottom:14px;}
 .shape{display:flex;gap:3px;height:8px;margin-bottom:16px;}
 .shape i{border-radius:3px;}
