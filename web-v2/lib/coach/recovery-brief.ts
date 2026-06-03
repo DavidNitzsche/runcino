@@ -99,6 +99,22 @@ export interface RecoveryBrief {
     longRun: { dateISO: string; mi: number; daysUntil: number } | null;
     acwr: { value: number; band: AcwrBand };
   };
+
+  /** 2026-06-03 · top-level "fully recovered at" timestamp · ISO.
+   *  iPhone agent's feedback (RE: 28110604 verified) · was deriving
+   *  this client-side from pillars.hrvRebound.projectedReturnISO +
+   *  pct; prefers a dedicated field on the envelope.
+   *
+   *  Definition · the LATEST of the pillar return-times. HRV is
+   *  typically the slowest (24-36h after a hard session), so the
+   *  HRV rebound time wins in the common case. On a high-RHR day
+   *  with mild HRV impact, RHR's projected return wins instead.
+   *
+   *  We do NOT include sleep target completion (waking) because
+   *  that's the runner's tonight-sleep window, not a recovery
+   *  marker · "fully recovered" reads as "physiology back at
+   *  baseline" not "after you wake up." */
+  fullyRecoveredAt: string;
 }
 
 /* ────────────────────────── Internal shapes ────────────────────────── */
@@ -221,6 +237,22 @@ export async function loadRecoveryBrief(
     nextHardLabel: nextHard.label,
   });
 
+  // 2026-06-03 · fullyRecoveredAt · LATEST pillar return-time.
+  // HRV typically wins (slowest signal · 24-36h rebound). RHR can
+  // win on a high-RHR + mild-HRV day where RHR needs longer to
+  // ratchet back to baseline. We project RHR baseline-return as the
+  // run-end + Nh where N = max(6, 4 × bpm-above-baseline) · roughly
+  // 6h for a 1bpm bump, 24h+ for a 6bpm bump.
+  const runEndMs = (runTiming.end_unix_s ?? Math.floor(Date.now() / 1000)) * 1000;
+  const rhrAbove = Math.max(0, rhrDelta.currentBpm - rhrDelta.baselineBpm);
+  const rhrReboundHours = Math.max(6, rhrAbove * 4);
+  const rhrReturnMs = runEndMs + rhrReboundHours * 3600 * 1000;
+  const hrvReturnMs = Date.parse(hrvRebound.projectedReturnISO);
+  const fullyRecoveredAt = new Date(Math.max(
+    Number.isFinite(hrvReturnMs) ? hrvReturnMs : 0,
+    rhrReturnMs,
+  )).toISOString();
+
   return {
     mode,
     score,
@@ -231,6 +263,7 @@ export async function loadRecoveryBrief(
     trainingInput,
     nextHard,
     weekProgress,
+    fullyRecoveredAt,
   };
 }
 
