@@ -814,11 +814,13 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
   const phaseLength = currentPhaseSpan
     ? currentPhaseSpan.endWeekIdx - currentPhaseSpan.startWeekIdx + 1
     : null;
-  const phaseLabel = training?.currentPhase && weekInPhase != null && phaseLength != null
-    ? `${training.currentPhase} phase · wk ${weekInPhase} / ${phaseLength}`
-    : training?.currentPhase
-      ? `${training.currentPhase} phase`
-      : 'In active block';
+  // 2026-06-03 · drop "wk X / Y" suffix per David's week-labels-out
+  // directive. The phase name alone is the load message · the calendar
+  // tile + race-day countdown carry the "how far" framing without the
+  // count-the-weeks feel that early-block week labels create.
+  const phaseLabel = training?.currentPhase
+    ? `${training.currentPhase} phase`
+    : 'In active block';
 
   if (aRace) {
     const days = aRace.days;
@@ -2141,9 +2143,15 @@ export async function buildSeed(): Promise<FaffSeed> {
     // per CLAUDE.md). Switch to a real renewal date when subscriptions ship.
     subscriptionLabel: 'Faff Pro · Beta',
   };
-  const weekOf = goalRace
-    ? `Week ${season.nowIdx + 1} of ${Math.max(1, season.raceIdx + 1)} · ${(glance?.phaseLabel ?? 'Active block')}`
-    : (glance?.phaseLabel ?? 'Active training');
+  // 2026-06-03 · drop "Week N of M" prefix per David's week-labels-out
+  // directive. The "of M" framing implies the runner is at the start of
+  // their training when they're often mid-block (10y of running). Phase
+  // name + race horizon carries the load message without the count.
+  // Example: was "Week 1 of 11 · QUALITY phase" · now "QUALITY phase · 74d to Americas Fin"
+  const horizonNote = goalRace?.daysAway != null && goalRace.daysAway > 0 && goalRace.name
+    ? ` · ${goalRace.daysAway}d to ${goalRace.name.split(' ').slice(0, 2).join(' ')}`
+    : '';
+  const weekOf = `${glance?.phaseLabel ?? 'Active block'}${horizonNote}`;
 
   // 2026-06-01 · honest baseline fix. adaptReadiness was setting
   // `readiness.baseline = health.hrv.baseline ?? 60` · the HRV

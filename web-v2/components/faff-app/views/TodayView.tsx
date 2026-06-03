@@ -1952,6 +1952,18 @@ function CompletedHeroV2({
             // matches the ON PLAN badge instead of contradicting it
             // with a red "KEPT IT EASY 50%" bar.
             paceInBand={paceInBand ?? false}
+            // 2026-06-03 · pass canonical avg pace (run total time ÷
+            // total distance) so the mile-pace chart's "X avg" line
+            // matches the headline avg pace at the top of the card.
+            // Was: panel computed avg from per-mile means · gave wrong
+            // answer when the last split was a partial mile (e.g. 0.1mi
+            // shown as 12:02/mi got equal weight with full-mile splits).
+            //
+            // RunSummary.pace is the canonical "8:30" string from the
+            // run-state engine (total_moving_time ÷ total_distance_mi).
+            // paceToSec parses it back to integer seconds. Falls back
+            // to per-mile mean inside EasyPanel when null.
+            runAvgPaceSec={runData?.pace ? paceToSec(runData.pace) : null}
           />
         ) : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.some(p => p.type === 'work') ? (
           // Long-run WITH a work phase = MP-finish variant · "THE BUILD".
@@ -2278,7 +2290,7 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
  * missing the panel renders just the section header.
  */
 function EasyPanel({
-  hrZonePcts, splits, hrAvg, paceInBand,
+  hrZonePcts, splits, hrAvg, paceInBand, runAvgPaceSec,
 }: {
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null | undefined;
   splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
@@ -2288,6 +2300,11 @@ function EasyPanel({
   // share is descriptive (heat/effort confluence) not a fault ·
   // relax color thresholds to match the ON PLAN verdict.
   paceInBand: boolean;
+  // 2026-06-03 · canonical run-level avg pace (run total time ÷ total
+  // distance). When passed, the mile-pace chart's "X avg" dashed line
+  // uses this instead of the mean of per-mile paces · the per-mile
+  // mean misrepresents the run when the last split is a partial mile.
+  runAvgPaceSec?: number | null;
 }) {
   // KEPT IT EASY · Z1+Z2 share.
   const easyPct = hrZonePcts
@@ -2329,8 +2346,14 @@ function EasyPanel({
   const paceSecs = splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0);
   const fastest = paceSecs.length ? Math.min(...paceSecs) : 0;
   const slowest = paceSecs.length ? Math.max(...paceSecs) : 0;
-  const avgPaceSec = paceSecs.length
-    ? Math.round(paceSecs.reduce((a, b) => a + b, 0) / paceSecs.length) : 0;
+  // 2026-06-03 · the dashed "avg" line MUST match the run's headline
+  // avg pace. Prefer the canonical run-level number (time ÷ distance);
+  // fall back to per-mile mean only when the caller didn't supply it
+  // (rare · only happens for runs without a moving-time field).
+  const avgPaceSec = runAvgPaceSec != null && runAvgPaceSec > 0
+    ? Math.round(runAvgPaceSec)
+    : paceSecs.length
+      ? Math.round(paceSecs.reduce((a, b) => a + b, 0) / paceSecs.length) : 0;
 
   // Footprint bar heights · taller = faster. Anchor on min/max with avg as
   // a dashed reference line.
@@ -2371,7 +2394,16 @@ function EasyPanel({
           </div>
           <div style={{
             fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,.5)', marginTop: 7,
-          }}>Z1–Z2 share of moving time</div>
+          }}>
+            {/* 2026-06-03 · honest framing when pace-first verdict was
+                ON PLAN but HR drifted high (heat / life stress / etc).
+                The Z1-Z2 share is descriptive, not a fault. Was: just
+                "Z1-Z2 share of moving time" with a 50% bar reading like
+                a failure next to the ON PLAN badge above. */}
+            {paceInBand && easyPct != null && easyPct < 70
+              ? 'Pace held the easy band · HR was descriptive, not the gate'
+              : 'Z1–Z2 share of moving time'}
+          </div>
         </div>
       ) : null}
 
