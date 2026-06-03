@@ -289,7 +289,13 @@ export function TrainView({
       // for surfaces that need it (e.g. the Today card body).
       const title = workoutTypeTitle(pick.type);
       const sub = `${pick.mi.toFixed(1)} mi${pick.paceSec ? ` @ ${Math.floor(pick.paceSec / 60)}:${String(Math.round(pick.paceSec % 60)).padStart(2, '0')}` : ''}`;
-      const state: Mile['state'] = isPast ? 'DONE' : isNow ? 'NOW' : isMid && i >= raceIdx - 3 ? 'KEY' : '';
+      // 2026-06-03 · dropped 'KEY' state per David: "they're all
+      // literally in a card that says KEY WORKOUTS TO RACE." The card
+      // title already establishes that every row is a key workout ·
+      // tagging the last 3 rows again was redundant. NOW (today's
+      // quality) and DONE (completed) stay because they're distinct
+      // states the runner can act on.
+      const state: Mile['state'] = isPast ? 'DONE' : isNow ? 'NOW' : '';
       // Training trajectory: prefer backend-authored trainingInfluence
       // (commit 2b7b4889 · names the workout's effect on race trajectory,
       // not execution mechanics · 5 kinds: on_track / consistent /
