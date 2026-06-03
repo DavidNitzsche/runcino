@@ -95,7 +95,8 @@ export async function GET(req: NextRequest) {
     // filter every Strava upload renders a "COACH · ADAPTED" banner.
     where += ` AND reason NOT IN (
       'watch_completion','vdot_auto_recalc','lthr_auto_calibrated',
-      'swap_accepted','swap_declined','illness_acknowledged','injury_plan_built'
+      'swap_accepted','swap_declined','illness_acknowledged','injury_plan_built',
+      'strength_recommend','strength_skip','strength_resume'
     )`;
   }
 
