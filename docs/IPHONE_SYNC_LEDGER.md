@@ -21,6 +21,8 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 | ba7063dc | `HealthMetric.noData` (optional bool) | When true, render "—" instead of `current` value; caption "no data" instead of status text | LENIENT · iPhone can opt in |
 | 48a64339 / 9357a5c0 | Mile-pace chart cooldown/warmup tail detection | Web has it inline (TodayView § EasyPanel). iPhone's per-mile chart could mirror: tail = ≥15% slower than median AND ≥45s absolute | OPTIONAL · web-side only for now |
 | 8519b5ac | Check-in moved to TOP + time/run-aware prompt | iPhone's readiness panel should mirror: check-in card right after the Hero · prompt switches based on hour + `todayRunDone` (POST-RUN / heading into today / afternoon / tonight / restDay) | NEEDS WIRING |
+| cfbc3347 | Tempo `Hold X` pace + Long fuel + Long coach copy now derived from workout_spec | iPhone planned-card coach line / fuel chip should mirror: read `workout_spec.tempo_pace_s_per_mi` / `fuel_mi` / distance · stop reading hardcoded KIT-style strings | NEEDS WIRING |
+| cfbc3347 | Easy verdict "Easy day." dedup · first fact no longer repeats it | iPhone purpose card · skip the "Easy day." prefix when verdict already says it · or just use `facts` array as-is (the dedup is now at source) | AUTO-RIPPLE |
 
 ## AUTO-RIPPLE · iPhone gets it free
 
