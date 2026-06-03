@@ -1947,6 +1947,11 @@ function CompletedHeroV2({
             hrZonePcts={runData?.hrZonePcts ?? null}
             splits={splits}
             hrAvg={runData?.hr_avg ?? null}
+            // 2026-06-03 · Rule 17 · pace-first verdict signal lets
+            // the panel relax HR-zone color when pace was in band ·
+            // matches the ON PLAN badge instead of contradicting it
+            // with a red "KEPT IT EASY 50%" bar.
+            paceInBand={paceInBand ?? false}
           />
         ) : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.some(p => p.type === 'work') ? (
           // Long-run WITH a work phase = MP-finish variant · "THE BUILD".
@@ -2273,18 +2278,35 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
  * missing the panel renders just the section header.
  */
 function EasyPanel({
-  hrZonePcts, splits, hrAvg,
+  hrZonePcts, splits, hrAvg, paceInBand,
 }: {
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null | undefined;
   splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
   hrAvg: number | null;
+  // 2026-06-03 · Rule 17 · true when actual pace landed inside the
+  // plan's pace_target band. When true, HR-derived "KEPT IT EASY"
+  // share is descriptive (heat/effort confluence) not a fault ·
+  // relax color thresholds to match the ON PLAN verdict.
+  paceInBand: boolean;
 }) {
   // KEPT IT EASY · Z1+Z2 share.
   const easyPct = hrZonePcts
     ? Math.round((hrZonePcts.z1 ?? 0) + (hrZonePcts.z2 ?? 0))
     : null;
+  // 2026-06-03 · Rule 17 · thresholds depend on whether pace was the
+  // authoritative easy signal. When pace was in band, HR-zone share
+  // is informational · drift into Z3 from heat/fatigue is honest
+  // execution, not a failure. When pace was OUT of band (rare on easy
+  // days · runner actively pushed past plan), the HR share is the
+  // primary execution signal · stricter thresholds.
   const easyTone: 'good' | 'warn' | 'bad' = easyPct == null
-    ? 'good' : easyPct >= 85 ? 'good' : easyPct >= 70 ? 'warn' : 'bad';
+    ? 'good'
+    : paceInBand
+      // Pace-first verdict was ON PLAN · only flag the bar when the
+      // runner ran SIGNIFICANTLY out of easy zones (≥50% in Z3+).
+      ? easyPct >= 70 ? 'good' : easyPct >= 40 ? 'warn' : 'bad'
+      // Pace was out of band · use the stricter HR-only thresholds.
+      : easyPct >= 85 ? 'good' : easyPct >= 70 ? 'warn' : 'bad';
   const easyColor = easyTone === 'good' ? '#3ED06a' : easyTone === 'warn' ? '#ffb24d' : '#ff6a6a';
 
   // HR halves · only when splits carry HR per mile.
@@ -2403,7 +2425,17 @@ function EasyPanel({
               fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,.62)',
               marginTop: 12, lineHeight: 1.45,
             }}>
-              Same pace throughout, but your heart{' '}
+              {/* 2026-06-03 · honest pace-spread framing. Was hardcoded
+                  "Same pace throughout" which lied when miles ranged
+                  119s (David 2026-06-03 · 7:58-9:57). Now picks copy
+                  from actual fastest/slowest spread. */}
+              {((): string => {
+                const spread = slowest - fastest;
+                if (spread <= 30) return 'Pace stayed steady, ';
+                if (spread <= 60) return 'Pace varied a bit, ';
+                if (spread <= 90) return 'Pace moved around through the miles, ';
+                return 'Pace had a wide spread, ';
+              })()}{' '}your heart{' '}
               <b style={{
                 fontFamily: FONT_DISP, fontWeight: 600, fontSize: 13, color: driftBand.color,
               }}>{(hrDelta ?? 0) >= 0 ? '+' : ''}{hrDelta} bpm</b>

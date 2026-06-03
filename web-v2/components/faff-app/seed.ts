@@ -798,9 +798,27 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
     } catch { /* swallow */ }
   }
   // Real phase label from plan_phases when training-state has it.
-  const phaseLabel = training?.currentPhase && training.currentWeekIdx != null
-    ? `${training.currentPhase} phase · wk ${training.currentWeekIdx + 1} / ${training.weeks.length}`
-    : 'In active block';
+  // 2026-06-03 · use the CURRENT PHASE's own start/end span instead of
+  // the plan's total weeks count. Old format "QUALITY phase · wk 1 / 11"
+  // implied QUALITY spans 11 weeks · misleading when 11 was actually
+  // total-weeks-to-race. Now reads "QUALITY phase · wk 1 / 6" where the
+  // 6 is the phase's actual length (BUILD ≈ 6, PEAK ≈ 3, TAPER ≈ 1, etc).
+  const currentPhaseSpan = training?.phases?.find((p) =>
+    training.currentWeekIdx != null &&
+    training.currentWeekIdx >= p.startWeekIdx &&
+    training.currentWeekIdx <= p.endWeekIdx
+  );
+  const weekInPhase = currentPhaseSpan && training?.currentWeekIdx != null
+    ? training.currentWeekIdx - currentPhaseSpan.startWeekIdx + 1
+    : null;
+  const phaseLength = currentPhaseSpan
+    ? currentPhaseSpan.endWeekIdx - currentPhaseSpan.startWeekIdx + 1
+    : null;
+  const phaseLabel = training?.currentPhase && weekInPhase != null && phaseLength != null
+    ? `${training.currentPhase} phase · wk ${weekInPhase} / ${phaseLength}`
+    : training?.currentPhase
+      ? `${training.currentPhase} phase`
+      : 'In active block';
 
   if (aRace) {
     const days = aRace.days;
