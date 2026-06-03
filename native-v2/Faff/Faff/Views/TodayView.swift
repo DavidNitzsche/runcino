@@ -1398,10 +1398,16 @@ struct TodayView: View {
         return week.contains { $0.date_iso == key && $0.completedRunId != nil }
     }
 
-    /// Peek background color · accent for pre-run, emerald for post-run,
-    /// neutral grey for rest. Matches the Today v2 brief.
+    /// Peek background color · accent for pre-run AND post-run.
+    /// Rest stays neutral grey.
+    ///
+    /// 2026-06-02 round 52 · earlier rounds forced post-run to green
+    /// (#1F9A6F) to communicate "done" · David flagged it lost the
+    /// run-type signal (intervals went green not red). The DONE pill
+    /// + green check icon on the peek already communicate completion ·
+    /// the background color's job is to convey the EFFORT TYPE. Keep
+    /// the effort color through the whole lifecycle.
     private var peekFill: Color {
-        if isDone { return Color(hex: 0x1F9A6F) }
         if selectedEffort == .rest { return Color(hex: 0x9FB0AD) }
         return selectedEffort.dot
     }
