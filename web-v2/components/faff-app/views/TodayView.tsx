@@ -2345,32 +2345,53 @@ function EasyPanel({
   // Mile pace footprint · per-mile pace in seconds.
   const paceSecsAll = splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0);
 
-  // 2026-06-03 · detect cooldown-jog tail. On easy runs without explicit
-  // phase tags, runners often jog the last full mile (or partial) as a
-  // cool-down · 1-3 min/mi slower than the rest of the run. The chart was
-  // reporting that mile as "slowest" — read by David as "your worst mile"
-  // when it's really a deliberate jog tail.
+  // 2026-06-03 · detect warm-up + cool-down outlier miles on easy runs
+  // without explicit phase tags. Runners often jog the first mile easing
+  // into pace and the last mile as a deliberate cool-down · the chart was
+  // reporting these as "slowest" and visually pulling the spread wider
+  // than the actual work portion.
   //
-  // Tail rule: the LAST split is treated as a cooldown tail when (a) more
-  // than 3 splits exist AND (b) its pace is ≥18% slower than the median of
-  // the prior splits. 18% catches genuine jog-down miles (~7:30→8:50,
-  // ~8:00→9:30) without false-flagging a normal last-mile fade. Median (not
-  // mean) so a single fast split doesn't pull the threshold up.
+  // Outlier rule: a split qualifies as warm-up (first) or cool-down (last)
+  // when ALL three hold:
+  //   1. The run has ≥ 5 splits (small runs lack signal for the check)
+  //   2. Its pace is ≥ 15% slower than the median of the interior splits
+  //   3. AND its pace is ≥ 45 seconds slower than that median absolute
   //
-  // When tail is detected, fastest/slowest/spread + the narrative use the
-  // PRIOR splits only. The bar still renders (the runner DID run it) but
-  // muted, and the caption says "5 work miles · last was cooldown jog."
-  const lastIdx = paceSecsAll.length - 1;
+  // Dual criteria keeps the detector honest. Ratio alone false-flagged at
+  // fast paces (5:00 → 5:45 is 1.15 but +45s · easy not a jog). Seconds
+  // alone false-flagged on slow easy runs where +45s is normal heat drift.
+  //
+  // First commit (2026-06-03 PM) used ratio≥1.18 alone · missed David's
+  // 6/3 mile 6 (ratio 1.173, just below). Loosened to 1.15 AND added the
+  // seconds floor · catches 9:57 vs 8:29 median (delta 88s, ratio 1.173).
+  //
+  // Stats (fastest/slowest/spread + narrative) use the trimmed interior.
+  // The outlier bars still render (the runner DID run them) but muted,
+  // with "WU"/"CD" on the x-axis and a caption note naming the pace.
   const medianOf = (xs: number[]): number => {
     if (!xs.length) return 0;
     const s = [...xs].sort((a, b) => a - b);
     const m = Math.floor(s.length / 2);
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   };
+  const isOutlier = (val: number, baseline: number): boolean =>
+    val >= baseline * 1.15 && (val - baseline) >= 45;
+
+  const lastIdx = paceSecsAll.length - 1;
   const cooldownTail =
-    paceSecsAll.length > 3 &&
-    paceSecsAll[lastIdx] >= medianOf(paceSecsAll.slice(0, lastIdx)) * 1.18;
-  const paceSecs = cooldownTail ? paceSecsAll.slice(0, lastIdx) : paceSecsAll;
+    paceSecsAll.length >= 5 &&
+    isOutlier(paceSecsAll[lastIdx], medianOf(paceSecsAll.slice(0, lastIdx)));
+  // Strip cooldown first, then test the head against the resulting
+  // interior · so a warm-up + cool-down pair both come out cleanly.
+  const interiorAfterCooldown = cooldownTail
+    ? paceSecsAll.slice(0, lastIdx)
+    : paceSecsAll;
+  const warmupHead =
+    interiorAfterCooldown.length >= 5 &&
+    isOutlier(interiorAfterCooldown[0], medianOf(interiorAfterCooldown.slice(1)));
+  const paceSecs = warmupHead
+    ? interiorAfterCooldown.slice(1)
+    : interiorAfterCooldown;
 
   const fastest = paceSecs.length ? Math.min(...paceSecs) : 0;
   const slowest = paceSecs.length ? Math.max(...paceSecs) : 0;
@@ -2531,13 +2552,16 @@ function EasyPanel({
               }}>{fmtSecAsPace(avgPaceSec)} avg</span>
             </div>
             {paceSecsAll.map((s, i) => {
+              const isWarmupBar = warmupHead && i === 0;
               const isCooldownBar = cooldownTail && i === lastIdx;
+              const isOutlierBar = isWarmupBar || isCooldownBar;
               return (
                 <div key={i} style={{
                   flex: 1, borderRadius: '3px 3px 1px 1px',
-                  // Cooldown tail bar gets a muted gradient so the visual
-                  // says "this was a jog, not a struggle mile."
-                  background: isCooldownBar
+                  // Outlier bars (warm-up head + cool-down tail) get a
+                  // muted gradient so the visual says "this was a jog,
+                  // not a struggle mile."
+                  background: isOutlierBar
                     ? 'linear-gradient(180deg, rgba(255,255,255,.25), rgba(255,255,255,.12))'
                     : 'linear-gradient(180deg, #5fdba6, #37c98f)',
                   minHeight: 5, height: `${Math.round(fpH(s))}%`,
@@ -2549,19 +2573,24 @@ function EasyPanel({
             display: 'flex', gap: 5, marginTop: 6, paddingRight: 50,
           }}>
             {paceSecsAll.map((_, i) => {
+              const isWarmupLabel = warmupHead && i === 0;
               const isCooldownLabel = cooldownTail && i === lastIdx;
+              const isOutlierLabel = isWarmupLabel || isCooldownLabel;
+              const text = isWarmupLabel ? 'WU' : isCooldownLabel ? 'CD' : String(i + 1);
               return (
                 <span key={i} style={{
                   flex: 1, textAlign: 'center', fontSize: 8.5, fontWeight: 600,
-                  color: isCooldownLabel ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.42)',
-                }}>{isCooldownLabel ? 'CD' : i + 1}</span>
+                  color: isOutlierLabel ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.42)',
+                }}>{text}</span>
               );
             })}
           </div>
           <div style={{
             fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,.5)', marginTop: 8,
           }}>
-            {paceSecs.length} {cooldownTail ? 'work miles' : 'miles'} · fastest {fmtSecAsPace(fastest)} · slowest {fmtSecAsPace(slowest)} · {slowest - fastest}s spread{cooldownTail ? ` · last mile was cooldown jog (${fmtSecAsPace(paceSecsAll[lastIdx])})` : ''}
+            {paceSecs.length} {cooldownTail || warmupHead ? 'work miles' : 'miles'} · fastest {fmtSecAsPace(fastest)} · slowest {fmtSecAsPace(slowest)} · {slowest - fastest}s spread
+            {warmupHead ? ` · first mile warm-up (${fmtSecAsPace(paceSecsAll[0])})` : ''}
+            {cooldownTail ? ` · last mile cooldown jog (${fmtSecAsPace(paceSecsAll[lastIdx])})` : ''}
           </div>
         </div>
       ) : null}
