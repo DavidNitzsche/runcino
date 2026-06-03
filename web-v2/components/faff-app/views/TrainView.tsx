@@ -382,11 +382,17 @@ export function TrainView({
     return out.slice(0, 9);
   }, [seed.season.weekDays, nowIdx, raceIdx, goal]);
 
-  // Phase-ramp metadata aligned with the REAL plan_phases (for the bottom axis)
+  // Phase-ramp metadata aligned with the REAL plan_phases (for the bottom
+  // axis). 2026-06-03 · use phaseFocus(g.phase).name instead of the raw
+  // `g.label` so the ramp's labels match the phase cards below
+  // (buildPhaseMeta uses the same source). Before this, the chart said
+  // QUALITY / RACE-SPECIFIC while the cards said BUILD / PEAK · same
+  // phases, two naming systems, looked broken.
   const phaseAxis = useMemo(() => {
     const out: Array<{ key: PhaseKey; flex: number; color: string; label: string }> = [];
     phaseGroups(raceIdx, realPhases).forEach((g) => {
-      out.push({ key: g.phase, flex: g.to - g.from + 1, color: phaseColor(g.phase), label: g.label });
+      const authored = phaseFocus(g.phase, goal);
+      out.push({ key: g.phase, flex: g.to - g.from + 1, color: phaseColor(g.phase), label: authored.name });
     });
     out.push({ key: 'race', flex: 1, color: '#FFCE8A', label: 'Race' });
     return out;
@@ -463,6 +469,12 @@ export function TrainView({
         </div>
         <div className="ramp">
           {miles.map((mi, i) => {
+            // 2026-06-03 · skip the race-week index · phaseOfWeek(raceIdx)
+            // returns 'race' (peach), and an explicit checkered race bar
+            // is rendered below the map. Without this guard we got two
+            // race bars (a peach one + a checkered one), and the phase
+            // labels' flex sum didn't match the bar count.
+            if (i === raceIdx) return null;
             const h = mi > 0 ? Math.round((mi / Math.max(maxMi, 1)) * 100) : 6;
             const ph = phaseOfWeek(i, raceIdx, realPhases);
             const isCur = i === focusIdx;
