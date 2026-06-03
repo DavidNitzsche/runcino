@@ -294,7 +294,13 @@ export function TodayView({
             iso: (day as { iso?: string; date?: string }).iso ?? (day as { iso?: string; date?: string }).date ?? null,
           });
           const wasAdapted = !!wasText;
-          const showStrength = !!day.strengthSuggested && !day.done && !skipped;
+          // 2026-06-03 · Rule 14 · removed `!day.done` filter. Hard-with-
+          // hard doctrine (Pfitz Advanced Marathoning Appx A) says PM
+          // strength after AM quality run is the canonical placement ·
+          // run-done doesn't preclude strength. Chip now hides only on
+          // skipped days. Tomorrow's chip auto-recomputes when today
+          // passes (date moves out of the week).
+          const showStrength = !!day.strengthSuggested && !skipped;
           const showDone = !!day.done && !skipped;
           return (
             <button
