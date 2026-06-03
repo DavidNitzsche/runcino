@@ -23,6 +23,7 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 | 8519b5ac | Check-in moved to TOP + time/run-aware prompt | iPhone's readiness panel should mirror: check-in card right after the Hero · prompt switches based on hour + `todayRunDone` (POST-RUN / heading into today / afternoon / tonight / restDay) | NEEDS WIRING |
 | cfbc3347 | Tempo `Hold X` pace + Long fuel + Long coach copy now derived from workout_spec | iPhone planned-card coach line / fuel chip should mirror: read `workout_spec.tempo_pace_s_per_mi` / `fuel_mi` / distance · stop reading hardcoded KIT-style strings | NEEDS WIRING |
 | cfbc3347 | Easy verdict "Easy day." dedup · first fact no longer repeats it | iPhone purpose card · skip the "Easy day." prefix when verdict already says it · or just use `facts` array as-is (the dedup is now at source) | AUTO-RIPPLE |
+| 07c04d04 | `prescription.intent` ('cut'/'plan'/'send'/'rest') + `targetMinutes` / `targetMiles` | iPhone readiness panel: when todayRunDone, swap PrescriptionCard for a PostRunReflection that compares actual run vs intent+target. See web `PostRunReflection` for the four-tier copy ladder. | NEEDS WIRING |
 
 ## AUTO-RIPPLE · iPhone gets it free
 
