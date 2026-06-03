@@ -93,6 +93,13 @@ export function ManualHealthSheet({
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 2026-06-03 · saved state · holds the just-saved metric so the sheet
+  // can render an explicit confirmation BEFORE auto-closing. Was: sheet
+  // closed instantly on success, runner had no signal the value landed.
+  // Result: David typed 7h sleep, saw the sheet close, assumed nothing
+  // happened, and spent the next hour debugging a "phantom" DB row that
+  // was actually his own entry.
+  const [saved, setSaved] = useState<{ label: string; value: number; dateLabel: string } | null>(null);
   const def = MANUAL_HEALTH_TYPES.find((t) => t.key === sampleType)!;
 
   async function submit() {
@@ -112,14 +119,67 @@ export function ManualHealthSheet({
         }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      // Surface "saved" state · runner sees what landed BEFORE the sheet
+      // closes. Auto-close fires after a beat so the data refetch +
+      // tile-update lands first · they can also tap the Done button.
+      const dateLabel = date
+        ? new Date(date + 'T12:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        : 'today';
+      setSaved({ label: def.label, value: num, dateLabel });
       setValue('');
+      // Kick off parent refresh immediately so by the time the sheet
+      // closes, the new value is already on the tile behind it.
       onSaved?.();
-      onClose?.();
+      // Auto-close after a beat. The runner can tap Done sooner.
+      setTimeout(() => { onClose?.(); }, 1600);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  // Saved confirmation render branch · shown for ~1.6s before auto-close.
+  if (saved) {
+    return (
+      <SheetShell title="Saved" subtitle="Your health timeline is updated." onClose={onClose}>
+        <div
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            gap: 12, padding: '24px 0 8px',
+          }}
+        >
+          <div
+            style={{
+              width: 56, height: 56, borderRadius: '50%',
+              background: 'rgba(95, 208, 106, .18)',
+              border: '1px solid rgba(95, 208, 106, .55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 28, lineHeight: 1, color: '#5fd06a',
+            }}
+            aria-hidden
+          >
+            ✓
+          </div>
+          <div style={{ textAlign: 'center', display: 'grid', gap: 4 }}>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontSize: 22, lineHeight: 1.1,
+            }}>
+              {saved.value} {saved.label.match(/\((.+)\)/)?.[1] ?? ''}
+            </div>
+            <div style={{ opacity: 0.7, fontSize: 13 }}>
+              {saved.label.replace(/\s*\(.+\)/, '')} · {saved.dateLabel}
+            </div>
+            <div style={{ opacity: 0.55, fontSize: 12, marginTop: 6 }}>
+              Tile updates in a moment.
+            </div>
+          </div>
+        </div>
+        <button type="button" className="fa-submit" onClick={() => onClose?.()}>
+          Done
+        </button>
+      </SheetShell>
+    );
   }
 
   return (
