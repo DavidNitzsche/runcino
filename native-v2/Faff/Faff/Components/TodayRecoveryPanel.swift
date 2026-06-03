@@ -76,36 +76,23 @@ private extension TodayRecoveryPanel {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 2)
                 }
-                // Score + curve row
-                HStack(alignment: .center, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline, spacing: 1) {
-                        Text("\(brief?.score ?? 0)")
-                            .font(.display(44, weight: .bold))
-                            .foregroundStyle(Color.white)
-                        Text("/100")
-                            .font(.body(13, weight: .semibold))
-                            .foregroundStyle(Color.white)
-                    }
-                    projectionCurve
-                        .frame(height: 44)
+                // Score row · projection curve + axis ticks retired
+                // round 69. David: "I dont think the line graph is
+                // actually tracking anything or moving." The curve was
+                // a static cubic bezier that didn't tie to any
+                // backend time-series · backend only ships per-pillar
+                // projectedReturnISO + fullyRecoveredAt (single
+                // timestamps, not a track). Removing visual decoration
+                // that isn't earning its space. Band word + score +
+                // pillar bars below carry the read-out.
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    Text("\(brief?.score ?? 0)")
+                        .font(.display(44, weight: .bold))
+                        .foregroundStyle(Color.white)
+                    Text("/100")
+                        .font(.body(13, weight: .semibold))
+                        .foregroundStyle(Color.white)
                 }
-                // Axis ticks · NOW · 12 AM · ≈7 AM ✓
-                HStack {
-                    Text("NOW")
-                        .font(.body(9, weight: .extraBold)).tracking(0.8)
-                    Spacer()
-                    Text("12 AM")
-                        .font(.body(9, weight: .extraBold)).tracking(0.8)
-                    Spacer()
-                    HStack(spacing: 3) {
-                        Text("~7 AM")
-                            .font(.body(9, weight: .extraBold)).tracking(0.8)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 8, weight: .bold))
-                    }
-                }
-                .foregroundStyle(Color.white)
-                .padding(.top, -2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -129,44 +116,11 @@ private extension TodayRecoveryPanel {
     // color isn't the channel. See round-60 doctrine note above the
     // band-word text.
 
-    @ViewBuilder
-    var projectionCurve: some View {
-        GeometryReader { geo in
-            let w = geo.size.width, h = geo.size.height
-            ZStack {
-                // Axis baseline
-                Path { p in
-                    p.move(to: CGPoint(x: 0, y: h - 1))
-                    p.addLine(to: CGPoint(x: w, y: h - 1))
-                }
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                // Curve · score (now) rising to ~95 at "+24h"
-                Path { p in
-                    let startY = h * (1 - CGFloat(brief?.score ?? 0) / 100)
-                    let endY = h * 0.08
-                    p.move(to: CGPoint(x: 0, y: startY))
-                    p.addCurve(
-                        to: CGPoint(x: w, y: endY),
-                        control1: CGPoint(x: w * 0.4, y: startY - h * 0.1),
-                        control2: CGPoint(x: w * 0.7, y: endY + h * 0.15)
-                    )
-                }
-                .stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-                // NOW dot
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 7, height: 7)
-                    .position(x: 4, y: h * (1 - CGFloat(brief?.score ?? 0) / 100))
-                // +24h dot
-                Circle()
-                    .fill(Color.white.opacity(0.55))
-                    .frame(width: 6, height: 6)
-                    .position(x: w - 4, y: h * 0.08)
-                // Inner tick labels removed · the outer axis row below
-                // the score (NOW · 12 AM · ~7 AM) is the legible signal.
-            }
-        }
-    }
+    // 2026-06-03 round 69 · projectionCurve helper retired alongside
+    // the curve render in sectionA. Re-introduce only when backend
+    // ships a real time-series of recovery scores (currently it
+    // only ships the LATEST projected-return timestamp per pillar +
+    // top-level fullyRecoveredAt · neither is enough to plot a curve).
 }
 
 // MARK: - Section B · Recovery pillars
@@ -178,6 +132,15 @@ private extension TodayRecoveryPanel {
     /// Bars use amber fill (Sleep/HRV/RHR/Fueling all read as "in
     /// progress" while recovery completes · amber is the right tone).
     var sectionB: some View {
+        // 2026-06-03 round 69 · FUELING pillar retired. David:
+        // "Fueling - carb window closed is not wired to anything. If we
+        // cant make this purposeful, then remove." The pillar surfaced
+        // backend's windowState ("open" / "closing" / "closed" / etc.)
+        // but iPhone copy was generic status reporting — no behavior
+        // change, no log-nutrition CTA, no actionable signal. Drop to
+        // 3 physiologically-authoritative pillars (Sleep / HRV / RHR).
+        // Re-introduce when there's a real fueling action loop (e.g.
+        // tap-to-log nutrition + window-aware coach voice).
         VStack(spacing: 14) {
             pillarRow(label: "SLEEP TARGET",
                       pct: sleepTargetPct,
@@ -188,9 +151,6 @@ private extension TodayRecoveryPanel {
             pillarRow(label: "RHR DELTA",
                       pct: brief?.pillars.rhrDelta.pct ?? 0,
                       subtext: rhrSubtext)
-            pillarRow(label: "FUELING",
-                      pct: brief?.pillars.fueling.pct ?? 0,
-                      subtext: fuelingSubtext)
         }
     }
 

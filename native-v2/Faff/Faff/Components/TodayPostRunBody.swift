@@ -139,15 +139,13 @@ struct TodayPostRunBody: View {
     }
 
     /// 2026-06-01 round 7 · eyebrow + Oswald title + green-check win line.
-    /// All three live in one section above the stats trio so the design's
-    /// "TEMPO" hero reads in the same beat as the result framing.
+    /// 2026-06-03 round 68 · eyebrow retired. David: "we can remove
+    /// MON EASY DONE at the top above easy. All of that information is
+    /// already obvious." DOW lives in the week strip, type word IS the
+    /// Oswald title, DONE is implied by being on the post-run surface.
+    /// Just renders Oswald title + green-check win line now.
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            SpecLabel(
-                text: headerEyebrow,
-                size: 10, tracking: 1.8,
-                color: subtleText
-            )
             Text(headerTitle.uppercased())
                 .font(.display(46, weight: .bold))
                 .tracking(-1.5)

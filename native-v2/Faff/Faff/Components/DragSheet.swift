@@ -90,17 +90,27 @@ struct DragSheet<Header: View, Body: View>: View {
 
     var body: some View {
         GeometryReader { geo in
-            // 2026-06-02 round 45 · REVERTED the UIScreen.bounds floor ·
-            // mixed coord spaces (geo = safe-area, UIScreen = full screen)
-            // and pushed the sheet off-screen below the tab bar. The
-            // intermittent high-rest bug needs a different fix — likely
-            // hold off rendering until a stable geo height arrives, OR
-            // detect first-frame underflow and snap-correct.
-            let screenH = geo.size.height
-            // Prefer device-agnostic inset-from-bottom · falls back to
-            // legacy collapsedFromTop for un-migrated callers. Final
-            // fallback (neither set) = 200pt from bottom (matches the
-            // typical tab-bar + peek + breathing-room offset).
+            // 2026-06-03 round 69 · FIRST-FRAME UNDERFLOW GUARD.
+            //
+            // David: "still getting this issue sometimes with the
+            // bottom tab being up on app load. its not every time,
+            // but it is weird." On the first layout pass GeometryReader
+            // can return geo.size.height = 0 (or a small value that
+            // hasn't accounted for safe area), which yielded
+            // collapsedY = -200 (or far smaller than the true bottom
+            // anchor). With progress = 1, the sheet rendered at that
+            // wrong y, then never re-snapped when the second-pass
+            // layout settled.
+            //
+            // Fix: clamp screenH to a sane minimum (450pt). Anything
+            // smaller is a guaranteed mid-layout artifact, not a real
+            // device. The clamp uses a typical iPhone screen height
+            // floor (smallest supported = SE @ 568pt) so we never
+            // computed a garbage collapsedY. Once geo settles to the
+            // real value, body re-evaluates and the sheet lands at
+            // its true bottom position.
+            let rawH = geo.size.height
+            let screenH = max(rawH, 450)
             let collapsedY: CGFloat = {
                 if let inset = collapsedInsetFromBottom { return screenH - inset }
                 if let top = collapsedFromTop { return top }

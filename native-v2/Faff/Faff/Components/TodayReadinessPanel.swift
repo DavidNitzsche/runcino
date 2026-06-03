@@ -208,16 +208,11 @@ struct TodayReadinessPanel: View {
             TodayReadinessRing(score: snapshot?.score, arcTint: arcTint)
                 .frame(width: 108, height: 108)
             VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 8) {
-                    Text("READINESS")
-                        .font(.body(11, weight: .extraBold)).tracking(2)
-                        .foregroundStyle(Color.white.opacity(0.6))
-                    if !bandText.isEmpty {
-                        Text(bandText)
-                            .font(.body(11, weight: .extraBold)).tracking(2)
-                            .foregroundStyle(bandTint)
-                    }
-                }
+                // 2026-06-03 round 68 · "READINESS · READY" eyebrow
+                // retired. David: "we dont need any labels here the
+                // number and circle is doing enough." Ring + score
+                // already communicate the band state; the eyebrow was
+                // redundant noise above the actual headline.
                 Text(headlineText)
                     .font(.body(24, weight: .extraBold))
                     .foregroundStyle(.white)

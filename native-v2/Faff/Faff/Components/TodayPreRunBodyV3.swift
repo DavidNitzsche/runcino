@@ -59,24 +59,15 @@ struct TodayPreRunBodyV3: View {
     // MARK: 1 · Header eyebrow + Oswald title
 
     private var header: some View {
-        // 2026-06-02 round 44 · eyebrow + hero now match the web:
-        //   eyebrow:  "TODAY · INTERVALS · PLANNED"  (type-word, not
-        //             "MAX" which was the effort-severity label)
-        //   hero:     "INTERVALS"  (one-word hero from the locked
-        //             vocabulary at lib/coach/workout-title.ts ·
-        //             backend commit 5bd61bac)
-        //   subtitle: "4×1 mi @ I · 3 min jog"  (the workout name ·
-        //             previously sat in the hero slot and read as
-        //             noise; now subordinate)
+        // 2026-06-02 round 44 · eyebrow + hero match the web vocabulary.
+        // 2026-06-03 round 68 · eyebrow retired. David: "upcoming runs.
+        // Can remove THU TEMPO PLANNED - again all of that is obvious
+        // already." DOW lives in the peek bar + week strip, type IS the
+        // Oswald title below, PLANNED is implied by being on a future
+        // day's pre-run sheet. Just Oswald hero + name subtitle now.
         let typeTag = heroTypeWord
-        let dayTag = isToday ? "TODAY" : dowLabel.uppercased()
         let nameSubtitle = workoutNameSubtitle
         return VStack(alignment: .leading, spacing: 6) {
-            SpecLabel(
-                text: "\(dayTag) · \(typeTag) · PLANNED",
-                size: 10, tracking: 1.8,
-                color: Color(hex: 0xA39A8C)
-            )
             Text(typeTag)
                 .font(.display(46, weight: .bold))
                 .tracking(-1.5)
@@ -604,14 +595,30 @@ struct TodayPreRunBodyV3: View {
     }
 
     private var verdictText: String? {
+        // 2026-06-03 round 69 · CROSS-DAY BLEED FIX. David caught
+        // THE PLAN block on an upcoming 12-mile long-run rendering
+        // "Intervals." with intervals copy — because purpose +
+        // briefing are TODAY's data, not the selected day's.
+        // When a future day is selected, the HR/effort/cadence
+        // targets (below) read from the `effort` enum (selected-
+        // day-aware), but verdict + recap fell through to today's
+        // copy. Symptom: long-run preview reads as the actual
+        // current-day intervals workout.
+        //
+        // Gate both on isToday so the cross-day bleed can't fire.
+        // For future days, the type word (Oswald hero) + HR/effort/
+        // cadence targets are enough context · no need to fabricate
+        // a verdict/recap for a workout that hasn't run yet.
+        guard isToday else { return nil }
         if let p = purpose, !p.verdict.isEmpty { return p.verdict }
         if let lead = briefing?.lead, !lead.isEmpty { return lead }
         return nil
     }
 
     private var recapText: String? {
-        // Use the purpose's first fact if available · the design's "recap"
-        // body is descriptive context, not prescription.
+        // Same isToday gate as verdictText · purpose.facts is TODAY's
+        // data and would leak into future-day previews otherwise.
+        guard isToday else { return nil }
         if let facts = purpose?.facts.first { return facts }
         return nil
     }

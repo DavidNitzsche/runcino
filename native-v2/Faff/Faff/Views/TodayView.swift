@@ -297,41 +297,68 @@ struct TodayView: View {
                 // too). Hard rule: once postRun fires, stays until
                 // midnight rolls (no pivot BACK to morning).
                 if isPastDayView {
-                    // Flat recap takes the remaining vertical space ·
-                    // owns its own ScrollView since there's no DragSheet
-                    // to provide one. Post-run body for completed days,
-                    // simple stub for missed/rest days.
+                    // Flat recap · no DragSheet, no readiness/recovery
+                    // hero, just the run recap on the mesh.
                     //
-                    // 2026-06-02 round 67 · David: "still going left to
-                    // right." Round 65's maxWidth(.infinity) wasn't a
-                    // hard cap — SwiftUI still let child content size
-                    // wider than viewport, which a vertical ScrollView
-                    // surfaces as a horizontal pan.
+                    // 2026-06-03 round 69 · two layered fixes:
                     //
-                    // Hard fix: GeometryReader captures the page's
-                    // exact width, and the inner VStack gets
-                    // .frame(width: proxy.size.width). That's an
-                    // explicit upper bound — no child can push wider
-                    // than the geometry tells it. .clipped() on the
-                    // outer wrapper is the belt-and-suspenders catch
-                    // for any view that ignores the frame.
+                    // (a) LEGIBILITY · a dark gradient scrim sits
+                    //     BEHIND the recap content. The mesh stays
+                    //     visible at the top edge (time-of-day identity
+                    //     preserved through the header + week strip),
+                    //     fades to ~28% black behind the recap so
+                    //     white text + green pills + dividers all have
+                    //     proper contrast against the warm palette.
+                    //     Replaces the round-62 "transparent everything"
+                    //     approach which left dark text floating on
+                    //     warm orange.
+                    //
+                    // (b) HORIZONTAL PAN · GeometryReader + the inner
+                    //     VStack already had .frame(width: proxy.size.
+                    //     width). Round 67 wasn't enough — adding
+                    //     .frame on the ScrollView itself + .clipped()
+                    //     on BOTH the ScrollView AND the wrapping
+                    //     ZStack. SwiftUI's vertical ScrollView can
+                    //     still expose horizontal overflow if any
+                    //     child sizes itself wider than the frame
+                    //     declaration. The double-clip is the catch.
                     GeometryReader { proxy in
-                        ScrollView(.vertical, showsIndicators: false) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                if isDone {
-                                    postRunBody
-                                } else {
-                                    pastDayNoRunStub
+                        ZStack(alignment: .top) {
+                            // Scrim layer · subtle dark wash for
+                            // contrast. Top 80pt is fully transparent
+                            // so the week strip + greeting + bell row
+                            // above keep the mesh identity. Below that
+                            // the scrim ramps to ~28% black so the
+                            // recap content reads cleanly.
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.clear, location: 0),
+                                    .init(color: Color.black.opacity(0.28), location: 0.18),
+                                    .init(color: Color.black.opacity(0.32), location: 1.0),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .allowsHitTesting(false)
+                            ScrollView(.vertical, showsIndicators: false) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    if isDone {
+                                        postRunBody
+                                    } else {
+                                        pastDayNoRunStub
+                                    }
                                 }
+                                // HARD width lock. Children that try
+                                // to size wider than this just get
+                                // clipped by the .clipped() below.
+                                .frame(width: proxy.size.width, alignment: .leading)
+                                // Clear of the floating tab bar pill.
+                                .padding(.bottom, 120)
                             }
-                            // HARD width lock · no horizontal overflow
-                            // possible. The .leading alignment keeps
-                            // left-aligned content; right edge is the
-                            // screen edge.
-                            .frame(width: proxy.size.width, alignment: .leading)
-                            // Clear of the floating tab bar pill.
-                            .padding(.bottom, 120)
+                            .frame(width: proxy.size.width)
+                            .clipped()
                         }
+                        .frame(width: proxy.size.width, height: proxy.size.height)
                         .clipped()
                     }
                     .padding(.top, 16)
