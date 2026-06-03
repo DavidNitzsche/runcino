@@ -20,6 +20,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { loadCoachState } from '@/lib/coach/state-loader';
+import { computeReadiness } from '@/lib/coach/readiness';
 
 const SUBJECTIVE_OVERRIDE_THRESHOLD = 15;
 
@@ -53,24 +55,28 @@ export async function POST(req: NextRequest) {
     [userId, today, Math.round(rating), notes],
   );
 
-  // Compute whether this rating triggers the subjective-override block ·
-  // need today's objective composite for the comparison. Read from the
-  // most recent readiness_snapshots row.
+  // 2026-06-03 · compute today's objective score LIVE (was: read from
+  // readiness_snapshots which the nightly cron populates BEFORE the
+  // day's signals come in, so the row holds yesterday's data and the
+  // override comparison ran against the wrong score). David rated 8/10
+  // on a 45 PULL-BACK day · gap is 35pts (well over the 15 threshold)
+  // but the API said "in line with today's read" because the stale
+  // snapshot showed 76.
+  //
+  // Now: loadCoachState + computeReadiness, same path the brief uses.
+  // Cost is one full state read but the endpoint runs once per check-in
+  // so it's fine. If state-load fails the override flag stays false
+  // (graceful degradation · the next brief refresh will still surface
+  // the override block correctly).
   let willTriggerOverride = false;
   let objectiveScore: number | null = null;
   try {
-    const snap = (await pool.query<{ score: number }>(
-      `SELECT score FROM readiness_snapshots
-        WHERE user_uuid = $1::uuid AND snapshot_date = $2::date
-        LIMIT 1`,
-      [userId, today],
-    ).catch(() => ({ rows: [] }))).rows[0];
-    if (snap?.score != null) {
-      objectiveScore = snap.score;
-      const subjective100 = Math.round(rating * 10);
-      if (Math.abs(objectiveScore - subjective100) >= SUBJECTIVE_OVERRIDE_THRESHOLD) {
-        willTriggerOverride = true;
-      }
+    const state = await loadCoachState(userId);
+    const breakdown = computeReadiness(state);
+    objectiveScore = breakdown.score;
+    const subjective100 = Math.round(rating * 10);
+    if (Math.abs(objectiveScore - subjective100) >= SUBJECTIVE_OVERRIDE_THRESHOLD) {
+      willTriggerOverride = true;
     }
   } catch { /* fall through · override flag stays false */ }
 
