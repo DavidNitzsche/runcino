@@ -84,6 +84,35 @@ Cite: Research/03-heart-rate-zones.md §6 (Friel) · Daniels Running Formula 3e 
 
 ---
 
+**Rule 18 · missing data is missing · never fabricate, never imply.**
+
+When a runner skips wearing the watch (or hasn't connected a data source), the surfaces that depend on that signal MUST render honestly: empty state, "—" / "no data", insight skipped. They MUST NOT default to 0 and report "0h sleep · below target." That's a lie. The runner reads it as "the system thinks I slept zero hours" and either loses trust or accepts a wrong recovery score.
+
+**Was (bug):** Several tiles defaulted `current` to 0 (`health?.sleep.avg7n ?? 0`) AND defaulted `status` to 'warn' (because `sleepAvg >= 7 ? 'good' : 'warn'`). A runner who skipped the watch saw "0h SLEEP · below target." The SLEEP DEBT insight averaged 0 nights silently — innocuous on its own but combined with the tile reading 0, the page lied. The `watch_list` topic check on `sleep7Deficit >= 3.0` didn't gate on `sleep7Avg != null` — when no nights tracked, deficit defaults to 0 (no data, not zero deficit), so the asymmetry was inverted.
+
+**Now (doctrine):** Every health-derived surface obeys three sub-rules:
+1. **Carry the null forward.** When a source field is null, downstream `current` stays a placeholder (0 for shape stability) BUT the metric ships `noData: true`. Consumers render "—" not the number.
+2. **Skip insights when sparse.** Aggregations over a window (avg7, deficit, streak count) require a minimum sample (≥4 nights for sleep insights). When fewer rows exist, skip the insight rather than fire on partial data with no disclosure. When partial but ≥ minimum, name the count ("3.2h short of target (5 of 7 nights tracked)").
+3. **Gate downstream checks on the canonical null signal.** Topics, banners, and scorers that consume aggregated fields (sleep7Deficit, hrvBaseline, rhrBaseline) MUST also check the avg's nullability. A 0-value field where the avg is null means "no data" — don't treat it as a measured 0.
+
+**Code:**
+- `components/faff-app/types.ts § HealthMetric.noData` · honest empty-state flag.
+- `components/faff-app/seed.ts § buildHealthSnapshot` · sleep / HRV / RHR / weight / VO2 tiles all pass `noData=true` when source signal absent, status drops to 'neutral'.
+- `components/faff-app/views/HealthView.tsx § fmtValue` · returns '—' when `m.noData`. Caption reads 'no data' instead of 'steady'.
+- `lib/coach/health-state.ts § loadInsights SLEEP DEBT` · skips when nightCount < 4, discloses count when partial.
+- `lib/coach/health-state.ts § hrv/sleepBelowBaselineDaysCount` · filters `value > 0` so HK glitch 0-rows don't count.
+- `lib/topics/types.ts § watch_list prereqs` · `sleepShort` gates on `sleep7Avg != null`.
+
+Already-safe paths confirmed: state-loader sleepVals filter (`v > 0` → sleep7Avg null when 0 rows), glance-state same filter, `readiness.ts` pillar gates on `sleep7Avg != null`, `sleepStages` tiles already gated on `stages.deepMin != null`, `recovery-brief sleepAdequacyPct` returns mid-band 50 when null.
+
+**Why:** "When there's no data, there's no data" (David, 2026-06-03). A system that fabricates zeros for missing sensor data destroys runner trust the first time the runner notices. A system that's honest about gaps earns trust on day one. This is the same principle as Rule 7 (citation enforcement): if we can't show our work, we don't claim the result.
+
+**Universal applicability:** every runner. The check is on null-ness of the source field, not a per-user condition.
+
+Cite: David direct 2026-06-03 · "When there's no data, there's no data."
+
+---
+
 **Rule 17 · easy verdict is PACE-first · HR is descriptive, not gating.**
 
 The Done-state recap badge for easy runs reads ON PLAN when the runner hit the prescribed pace band AND the prescribed distance. HR informs the recap copy ("HR ran high · hot day") but does not flip the badge.
