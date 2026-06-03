@@ -358,14 +358,20 @@ export async function POST(req: NextRequest) {
 
     await bustBriefingCacheForEvent(userId, 'run_ingest');
 
-    // Notifications v1 §F — check for streak milestone (7/14/30/100 days).
-    // Non-blocking; failures don't affect the ingest path.
-    try {
-      const { maybeFireStreakMilestone } = await import('@/lib/notifications/streak-check');
-      await maybeFireStreakMilestone(userId);
-    } catch (e: any) {
-      console.error('[ingest/workout] streak check failed:', e?.message);
-    }
+    // 2026-06-03 · streak-milestone notifications DISABLED per David:
+    // "I also dont like streaks. Its not about running all these days
+    // in a row. I think thats bad to have, right?" Glorifying
+    // consecutive-day volume with 7/14/30/100-day milestone pushes
+    // undermines rest doctrine. Engine code (streak-check.ts) stays
+    // in source for future re-enable as an opt-in setting; this fire
+    // site is the only place the notifications originated.
+    //
+    // try {
+    //   const { maybeFireStreakMilestone } = await import('@/lib/notifications/streak-check');
+    //   await maybeFireStreakMilestone(userId);
+    // } catch (e: any) {
+    //   console.error('[ingest/workout] streak check failed:', e?.message);
+    // }
 
     // #161 — auto-push to Strava when the toggle is on. Fire-and-forget;
     // failures land in strava_pushes for retry. The push itself is

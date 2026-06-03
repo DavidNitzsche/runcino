@@ -47,10 +47,17 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
           <div className="date">Activity</div>
           <div className="wk">Your training log</div>
         </div>
-        <div style={{ marginTop: 6 }}>
-          {/* Live streak counter · /api/streak. Closes coverage line 1281. */}
-          <StreakPill />
-        </div>
+        {/* 2026-06-03 · StreakPill GUTTED per David: "I also dont like
+            streaks. Its not about running all these days in a row. I
+            think thats bad to have, right?" Run-streak culture
+            encourages compulsive training · skipping rest days, ignoring
+            overreach signals · which is the opposite of what the
+            engine should reinforce. Signal streaks in the readiness
+            brief (HRV / sleep chronic deficits) stay because they
+            detect OVERREACH not glorify volume. The endpoint
+            /api/streak and the StreakPill component remain in source
+            for future re-enable as an opt-in setting. */}
+        {false && <div style={{ marginTop: 6 }}><StreakPill /></div>}
       </div>
 
       <div className="av-top">
