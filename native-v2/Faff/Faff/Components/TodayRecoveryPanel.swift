@@ -443,11 +443,12 @@ private extension TodayRecoveryPanel {
             Text(v > 0 ? String(format: "%.2f", v) : "—")
                 .font(.display(17, weight: .bold))
                 .foregroundStyle(Color.white)
+            // Solid color capsule + white text · max contrast.
             Text(badge.label)
-                .font(.body(9.5, weight: .extraBold)).tracking(0.8)
-                .foregroundStyle(badge.color)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(badge.color.opacity(0.16), in: Capsule())
+                .font(.body(10, weight: .extraBold)).tracking(1.0)
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(badge.color, in: Capsule())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 13).padding(.vertical, 13)
@@ -458,12 +459,21 @@ private extension TodayRecoveryPanel {
         )
     }
 
+    // 2026-06-03 round 70 · ACWR badge contrast bump.
+    // David: "this OK is hard to read." Earlier rounds used the
+    // semantic color as text + a 0.16-opacity capsule of the same
+    // hue · teal-on-teal was muddy against the glass tile. New
+    // treatment: SOLID semantic-color capsule + WHITE text on top.
+    // Same pattern as the win-line pill (white inside, semantic
+    // outside) but inverted color stack — works because the badge
+    // is a tiny chip on its own glass background, can carry the
+    // saturated color without dominating.
     func acwrBadge(_ raw: String) -> (label: String, color: Color) {
         switch raw.uppercased() {
-        case "OK":      return ("OK", Color(hex: 0x7BC8B8))
-        case "WATCH":   return ("WATCH", Color(hex: 0xE0A23A))
-        case "RAMP_UP": return ("RAMP", Color(hex: 0xD6483F))
-        default:        return ("OK", Color(hex: 0x7BC8B8))
+        case "OK":      return ("OK", Color(hex: 0x3FB6B0))     // saturated teal
+        case "WATCH":   return ("WATCH", Color(hex: 0xE0A23A))  // amber
+        case "RAMP_UP": return ("RAMP", Color(hex: 0xD6483F))   // coral
+        default:        return ("OK", Color(hex: 0x3FB6B0))
         }
     }
 }

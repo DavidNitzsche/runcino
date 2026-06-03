@@ -160,19 +160,31 @@ struct TodayPostRunBody: View {
                     .lineLimit(2)
                     .padding(.top, 1)
             }
-            // Inline green win-line under the title · check + recap.win.
+            // 2026-06-03 round 70 · WIN LINE as a contained pill.
+            // David: "still hard to read" — round 67 green-on-mesh
+            // was muddy. Pattern: WHITE pill background + DARK GREEN
+            // text + check on mesh context · semantic green-ness via
+            // the icon/text, max contrast via the white pill.
+            // Cream context keeps the original light-green chip.
             if let win = winLineText {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x1F9A6F))
-                    Text(win)
-                        .font(.body(13.5, weight: .extraBold))
-                        .foregroundStyle(Color(hex: 0x1F9A6F))
-                        .fixedSize(horizontal: false, vertical: true)
+                let pillBg: Color = onMesh ? Color.white : Color(hex: 0xE9F7EE)
+                let inkColor: Color = Color(hex: 0x1F9A6F)
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(inkColor)
+                        Text(win)
+                            .font(.body(15, weight: .extraBold))
+                            .foregroundStyle(inkColor)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(2)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(pillBg, in: Capsule())
                     Spacer(minLength: 0)
                 }
-                .padding(.top, 8)
+                .padding(.top, 10)
             }
         }
         .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 16)
@@ -235,33 +247,33 @@ struct TodayPostRunBody: View {
     @ViewBuilder
     private var winLine: some View {
         if let line = winLineText, !line.isEmpty {
-            // 2026-06-02 round 67 · David: "EASY DAY IN THE BOOKS is hard
-            // to read. Might have to put it in a green pill or something."
-            // Earlier rounds dropped the green chip background on mesh
-            // (sectionBg → transparent), leaving green text floating on
-            // a warm-orange mesh palette with poor contrast.
+            // 2026-06-03 round 70 · David: "still hard to read." Round 67's
+            // saturated-green-pill + white-text combo didn't pop against
+            // the time-of-day mesh (esp. cool sunrise / dusk palettes
+            // where the green pill blended with the gradient). Flipping
+            // to MAX-CONTRAST treatment: WHITE pill + DARK GREEN text +
+            // DARK GREEN check on mesh. White-on-mesh is the brightest
+            // contrast surface in the app · semantic green-ness comes
+            // from the icon + text inside. Cream context keeps the
+            // original light-green pill since it's already on white.
             //
-            // New treatment: a contained green pill that survives both
-            // contexts. On cream: light-green pill + dark-green text +
-            // dark-green check (the original look, tightened to a pill
-            // shape so it's distinct from the section above). On mesh:
-            // saturated green pill + white text + white check · the pill
-            // itself carries the "good outcome" semantic, white text
-            // gives the contrast against the dark warm mesh.
-            let pillBg: Color = onMesh ? Color(hex: 0x1F9A6F) : Color(hex: 0xE9F7EE)
-            let inkColor: Color = onMesh ? Color.white : Color(hex: 0x1F9A6F)
+            // Also bumped text size 14→15, check 14→16, padding
+            // tightened so the pill reads as a confident pill, not a
+            // shy chip.
+            let pillBg: Color = onMesh ? Color.white : Color(hex: 0xE9F7EE)
+            let inkColor: Color = Color(hex: 0x1F9A6F)   // dark green both contexts
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(inkColor)
                     Text(line)
-                        .font(.body(14, weight: .extraBold))
+                        .font(.body(15, weight: .extraBold))
                         .foregroundStyle(inkColor)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineLimit(2)
                 }
-                .padding(.horizontal, 12).padding(.vertical, 7)
+                .padding(.horizontal, 14).padding(.vertical, 9)
                 .background(pillBg, in: Capsule())
                 Spacer(minLength: 0)
             }
