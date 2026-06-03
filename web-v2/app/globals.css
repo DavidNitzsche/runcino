@@ -2106,7 +2106,13 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
    needs. The .rbrief class is the redesign opt-in marker; it
    widens the drawer to 392px per spec.
    ============================================================ */
-.drawer.rbrief{width:392px;padding:26px 26px 30px;}
+/* 2026-06-03 · readiness drawer wider so the per-pillar rows fit on a
+   single line without wrapping. At 392px the value column (e.g. "6.1h ·
+   7-night avg") was cramped against the right edge and the LOAD
+   expanded meta ("0.94 ACWR · acute 5.5 · chronic 5.9 mi/day · Gabbett
+   sweet spot 1.0-1.3") wrapped to three lines. 520px gives the bar +
+   value + delta columns enough room. */
+.drawer.rbrief{width:520px;padding:26px 26px 30px;}
 
 /* Hero · 84px ring + band eyebrow + headline + mover */
 .rb-hero{display:flex;gap:18px;align-items:center;margin-top:6px;}
