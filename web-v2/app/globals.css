@@ -601,9 +601,20 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    doubled-up text was visual noise. */
 .train2 .ramp-nums{display:flex;gap:6px;margin-top:8px;}
 .train2 .ramp-nums span{flex:1;text-align:center;font-size:10px;font-weight:600;opacity:.5;}
-.train2 .ramp-phases{display:flex;margin-top:12px;border-top:1px solid rgba(255,255,255,.12);padding-top:9px;}
-.train2 .ramp-phases .pp{font-size:10px;font-weight:800;letter-spacing:1.5px;opacity:.7;position:relative;}
-.train2 .ramp-phases .pp::before{content:'';position:absolute;top:-9px;left:0;width:20px;height:2px;background:currentColor;opacity:.7;}
+/* 2026-06-03 · two fixes for the bar/label misalignment David flagged:
+   1. `gap:6px` mirrors .ramp's gap so each phase label's flex region
+      lines up with the corresponding group of bars (without the gap,
+      the labels' flex distribution drifts from the bars' positions).
+   2. `text-align:center` on .pp · short labels (QUALITY, TAPER, RACE)
+      now sit visually centered under their phase regions instead of
+      flush-left, which was making a 6-bar QUALITY phase look like it
+      only covered the leftmost bar. The ::before phase-start marker
+      moves to the left edge of the centered text via
+      transform:translateX(-50%) so it still hugs the label without
+      being stranded at the flex-region left edge. */
+.train2 .ramp-phases{display:flex;gap:6px;margin-top:12px;border-top:1px solid rgba(255,255,255,.12);padding-top:9px;}
+.train2 .ramp-phases .pp{font-size:10px;font-weight:800;letter-spacing:1.5px;opacity:.7;position:relative;text-align:center;}
+.train2 .ramp-phases .pp::before{content:'';position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:24px;height:2px;background:currentColor;opacity:.7;}
 
 /* ghost button */
 .train2 .ghostbtn{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.9);font-family:'Inter',sans-serif;font-size:11px;font-weight:700;letter-spacing:.6px;padding:8px 13px;border-radius:9px;cursor:pointer;transition:.15s;text-transform:uppercase;}
