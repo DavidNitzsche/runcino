@@ -65,11 +65,27 @@ struct TodayPostRunBody: View {
                decodePolyline(poly).count >= 2 {
                 routeMap(polyline: poly)
             }
-            mileSplits
+            // 2026-06-02 round 49 · per the post-run-panels handoff,
+            // mile splits surface ONLY for long + tempo. Easy/recovery
+            // are covered by AEROBIC STAMP's mile-pace footprint;
+            // intervals are covered by THE REPS rail.
+            if hiwEffort == .long || hiwEffort == .tempo {
+                mileSplits
+            }
             formGrid
             howItWent
             viewFullRunLink
         }
+    }
+
+    /// 2026-06-02 round 49 · effort resolved from the run's planned type
+    /// (preferred) or actual type (fallback) · drives both the per-type
+    /// HOW IT WENT panel and the mile-splits gate.
+    private var hiwEffort: FaffEffort {
+        let raw = (detail?.planned_spec?.kind
+                   ?? detail?.type
+                   ?? "")
+        return FaffEffort.fromType(raw)
     }
 
     /// 2026-06-01 round 7 · eyebrow + Oswald title + green-check win line.
@@ -483,12 +499,19 @@ struct TodayPostRunBody: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 4)
                 }
-                // 2026-06-01 round 7 · planned-vs-actual comparison rows
-                // from the design package. Per-axis (Heart rate / Pace /
-                // Cadence) the row reads "{actual} avg vs {target}" so
-                // the runner sees in one line whether they hit the plan.
-                // Renders only the axes we have data for.
-                comparisonRows
+                // 2026-06-02 round 49 · per-run-type analysis panel
+                // (design_handoff_iphone_postrun). Swaps body by effort:
+                //   easy/recovery → AEROBIC STAMP
+                //   long          → THE LONG
+                //   tempo         → THE TEMPO
+                //   intervals     → THE REPS
+                // Renders the canonical surface, not the generic
+                // comparisonRows triplet (which is now dead).
+                HowItWentPanel(
+                    effort: hiwEffort,
+                    detail: detail,
+                    accent: accent
+                )
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
             .background(Color.white)
