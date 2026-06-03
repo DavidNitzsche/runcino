@@ -40,6 +40,7 @@
 		3F8961DDB77A018095E82A1D /* ProView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 188559D9B23742DBC413C75E /* ProView.swift */; };
 		3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761D6D9F643EAA00C64D9BBC /* Runs.swift */; };
 		4167E13357AE78F92DB3AB54 /* CoachNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730D6283403CA7FE36BA1199 /* CoachNote.swift */; };
+		4268337743293417D7382EA7 /* HealthBarCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB5B89100A345745753B0C8B /* HealthBarCard.swift */; };
 		44DDBCF77E1B9D072A6A11C1 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 743648B82E2A21410A13F000 /* SettingsView.swift */; };
 		456E4CFA1CB168E314A39A1D /* FaffMesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C18DDEE14414B527EFBB143 /* FaffMesh.swift */; };
 		47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCEEE47B94CDA981E430812A /* NotificationCategories.swift */; };
@@ -48,6 +49,7 @@
 		4E88DDDEE13FBFC793505EDE /* G_Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE323D928DA355934197F38B /* G_Settings.swift */; };
 		5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */; };
 		531A5724C7E47FBEF3AC3D5B /* PlannedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B07A257EFCEFD45EDA03792D /* PlannedView.swift */; };
+		57463FD11EB2AB16CE4C44F7 /* HealthCompactGauge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7AF53AC1B5DF3231932FB6 /* HealthCompactGauge.swift */; };
 		58C73FAA4F3A621C91A48076 /* RaceDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75CB12F69B8E91BD1846A268 /* RaceDayView.swift */; };
 		5966D86B3E01B512FB053BD2 /* CoachFacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45138C09A08463A9958BCD3F /* CoachFacts.swift */; };
 		5A0D13F6D6761F2F12556838 /* UsageSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F56782BD960562D69ADDCB4 /* UsageSheet.swift */; };
@@ -59,6 +61,7 @@
 		669B521E9E81BFA9EFFFBC60 /* MileBars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E832B4905DEB6F14ADB19D0 /* MileBars.swift */; };
 		6A351129DEF28BDCC340851C /* BebasNeue-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D731B92BA006865E34779D2A /* BebasNeue-Regular.ttf */; };
 		6BE40F3E6AA911AD15D8C08E /* SignInFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15FB44D69A865618A457AB74 /* SignInFlowTests.swift */; };
+		6D9687543F5EBEA6E7422E8F /* HealthSegmentedControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F097DD1FEE235AC5D4AD178 /* HealthSegmentedControl.swift */; };
 		72295A32D77A1E55A73562A2 /* GapBeam.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A0089434ECA1192B331A77 /* GapBeam.swift */; };
 		7380AA0621D427003EE43F2E /* WithinReachSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444251779F1CDC004513FAD8 /* WithinReachSheet.swift */; };
 		7A0F250BA4DA7F45225E8030 /* Races.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174FE8C6F00184359AC974B6 /* Races.swift */; };
@@ -99,6 +102,7 @@
 		B28BF8DF63FBE6282E8BF2DF /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94A80371C0077976A33426E /* PaywallView.swift */; };
 		B4BA0E10F8F54E818E92E24F /* CountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327F1896B45C80B0A713921B /* CountdownView.swift */; };
 		B6D9A30FAAC0365482CBE064 /* FaffWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B7A4614D920CC943C7E2CEB4 /* HealthSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1BECCB43A8C9B865BBDCA7 /* HealthSeed.swift */; };
 		BB4BDF90BCB0400D90CCC711 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = 563BE14031D81E39DC6ED1EB /* Fonts */; };
 		BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E036C5FD2EC231D2FCDC1A /* Watch.swift */; };
 		BE1AE0E4AC08E6B55B1B87D7 /* StravaOAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC9DAF37D0E9B3DAE9FFDF1 /* StravaOAuthSession.swift */; };
@@ -195,6 +199,7 @@
 		1AA31DB52794BE1700934B01 /* PaceDrift.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceDrift.swift; sourceTree = "<group>"; };
 		1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolkitPayloads.swift; sourceTree = "<group>"; };
 		1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		1F097DD1FEE235AC5D4AD178 /* HealthSegmentedControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSegmentedControl.swift; sourceTree = "<group>"; };
 		232F9F14460F13DDC369F512 /* Brandmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brandmark.swift; sourceTree = "<group>"; };
 		2600BF38DD79CB8A08592B03 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		29E036C5FD2EC231D2FCDC1A /* Watch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Watch.swift; sourceTree = "<group>"; };
@@ -243,6 +248,7 @@
 		79F2EC545B990808978B44F0 /* WatchFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFixtures.swift; sourceTree = "<group>"; };
 		7A2DDEC15725161C4032FEC9 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
 		7AB076FD4BB8D790F2DB9B79 /* FaceKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceKit.swift; sourceTree = "<group>"; };
+		7C1BECCB43A8C9B865BBDCA7 /* HealthSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSeed.swift; sourceTree = "<group>"; };
 		7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailSignInSheet.swift; sourceTree = "<group>"; };
 		801D9B1925F0DC65C5E66C0D /* FaffTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FaffTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		80D79010E6307A7B819FD164 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
@@ -253,6 +259,7 @@
 		87DEABD97368BE1C69024791 /* ChimePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChimePlayer.swift; sourceTree = "<group>"; };
 		894094955F354E1174579A70 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		89D7554D68355339D82D6F51 /* TargetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetsView.swift; sourceTree = "<group>"; };
+		8A7AF53AC1B5DF3231932FB6 /* HealthCompactGauge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCompactGauge.swift; sourceTree = "<group>"; };
 		8B2D7420891F1F0024E3D933 /* PhoneSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSync.swift; sourceTree = "<group>"; };
 		8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWorkoutModels.swift; sourceTree = "<group>"; };
 		8DEC80E858984418A4E7C61A /* SpectatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectatorView.swift; sourceTree = "<group>"; };
@@ -282,6 +289,7 @@
 		B6BF22DF1BD412FB1CA83446 /* Faff.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Faff.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7BC29B2BF1F273F9E653AEB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsAppDelegate.swift; sourceTree = "<group>"; };
+		BB5B89100A345745753B0C8B /* HealthBarCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthBarCard.swift; sourceTree = "<group>"; };
 		BD91B5D2A39BE920DD3C4358 /* ZoneBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoneBar.swift; sourceTree = "<group>"; };
 		BEB309AB7B2E3BF539872275 /* I_RunDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = I_RunDetail.swift; sourceTree = "<group>"; };
 		BFA85E15978E6315D144D85E /* MIGRATION_PLAN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MIGRATION_PLAN.md; sourceTree = "<group>"; };
@@ -380,6 +388,10 @@
 				84E231F45E68801F45CA43EB /* DragSheet.swift */,
 				0C18DDEE14414B527EFBB143 /* FaffMesh.swift */,
 				14A0089434ECA1192B331A77 /* GapBeam.swift */,
+				BB5B89100A345745753B0C8B /* HealthBarCard.swift */,
+				8A7AF53AC1B5DF3231932FB6 /* HealthCompactGauge.swift */,
+				7C1BECCB43A8C9B865BBDCA7 /* HealthSeed.swift */,
+				1F097DD1FEE235AC5D4AD178 /* HealthSegmentedControl.swift */,
 				ADFCB78F95CAC1B19C758D37 /* Heatmap.swift */,
 				A69925035C6326F0327A2787 /* HowItWentPanel.swift */,
 				FCA4369345EE34EAFD3E307C /* LoadState.swift */,
@@ -761,7 +773,11 @@
 				72295A32D77A1E55A73562A2 /* GapBeam.swift in Sources */,
 				D4E3F4875BAFEC6F6D5FDCC7 /* HRAlerter.swift in Sources */,
 				DCE2223693C29FA234BD04EE /* H_Race.swift in Sources */,
+				4268337743293417D7382EA7 /* HealthBarCard.swift in Sources */,
+				57463FD11EB2AB16CE4C44F7 /* HealthCompactGauge.swift in Sources */,
 				ACA6645F1B466A2A24E43209 /* HealthKitImporter.swift in Sources */,
+				B7A4614D920CC943C7E2CEB4 /* HealthSeed.swift in Sources */,
+				6D9687543F5EBEA6E7422E8F /* HealthSegmentedControl.swift in Sources */,
 				A9540BA3268DA8CC72864FA3 /* HealthView.swift in Sources */,
 				98B67F36D5862F5F11AEE994 /* Heatmap.swift in Sources */,
 				DB7051BAA1747F4009026BA6 /* HowItWentPanel.swift in Sources */,

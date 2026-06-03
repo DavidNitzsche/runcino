@@ -1510,10 +1510,22 @@ struct HealthState: Decodable {
     let vo2: Vo2Summary
     let watchMode: String              // 'steady' / 'watch-amber' / 'watch-red' / 'green'
     let watchItems: [WatchItem]
+    // 2026-06-03 round 77 · Direction A additive fields (backend
+    // aa45d543). All lenient · nil/empty when backend hasn't yet
+    // populated for this user. iPhone consumes them in HealthView +
+    // HealthSeed, falls back to placeholders when absent.
+    let sleepStages: SleepStagesData?
+    let runForm: RunFormSummary?
+    let dailyReadiness: [DailyReadinessRow]
+    let bodyTemp: BodyTempSummary?
+    let vo2Trend: Vo2TrendSummary?
+    let insights: [HealthInsight]
+    let overview: HealthOverviewBlock?
 
     enum CodingKeys: String, CodingKey {
         case today, sleepSeries, rhrSeries, hrvSeries, weightSeries
         case sleep, rhr, hrv, weight, cadence, vo2, watchMode, watchItems
+        case sleepStages, runForm, dailyReadiness, bodyTemp, vo2Trend, insights, overview
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1536,6 +1548,176 @@ struct HealthState: Decodable {
             ?? Vo2Summary(current: nil)
         self.watchMode = try c.decodeIfPresent(String.self, forKey: .watchMode) ?? "steady"
         self.watchItems = (try? c.decode([WatchItem].self, forKey: .watchItems)) ?? []
+        self.sleepStages = try? c.decode(SleepStagesData.self, forKey: .sleepStages)
+        self.runForm = try? c.decode(RunFormSummary.self, forKey: .runForm)
+        self.dailyReadiness = (try? c.decode([DailyReadinessRow].self, forKey: .dailyReadiness)) ?? []
+        self.bodyTemp = try? c.decode(BodyTempSummary.self, forKey: .bodyTemp)
+        self.vo2Trend = try? c.decode(Vo2TrendSummary.self, forKey: .vo2Trend)
+        self.insights = (try? c.decode([HealthInsight].self, forKey: .insights)) ?? []
+        self.overview = try? c.decode(HealthOverviewBlock.self, forKey: .overview)
+    }
+}
+
+// MARK: - HealthState Direction A additive structs (round 77 · backend aa45d543)
+
+/// Sleep stage minutes for last night + 14/28d trend series per stage.
+/// Backend was already shipping this since build 134 in sleepStagesOut ·
+/// iPhone just wasn't reading it. Kills the sleep7Avg-ratio fabrication.
+struct SleepStagesData: Decodable {
+    let deepMin: Int?; let remMin: Int?; let lightMin: Int?; let awakeMin: Int?
+    let deepSeries: [Int]; let remSeries: [Int]; let lightSeries: [Int]; let awakeSeries: [Int]
+    enum CodingKeys: String, CodingKey {
+        case deepMin, remMin, lightMin, awakeMin
+        case deepSeries, remSeries, lightSeries, awakeSeries
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.deepMin = c.decodeFlexInt(forKey: .deepMin)
+        self.remMin = c.decodeFlexInt(forKey: .remMin)
+        self.lightMin = c.decodeFlexInt(forKey: .lightMin)
+        self.awakeMin = c.decodeFlexInt(forKey: .awakeMin)
+        self.deepSeries = (try? c.decode([Int].self, forKey: .deepSeries)) ?? []
+        self.remSeries = (try? c.decode([Int].self, forKey: .remSeries)) ?? []
+        self.lightSeries = (try? c.decode([Int].self, forKey: .lightSeries)) ?? []
+        self.awakeSeries = (try? c.decode([Int].self, forKey: .awakeSeries)) ?? []
+    }
+}
+
+/// Form metrics block · 5 metrics each with current + 14d/28d averages.
+/// lrBalancePct stays nullable until ingest carries it.
+struct RunFormSummary: Decodable {
+    let cadenceSpm: RunFormMetric?
+    let runPowerW: RunFormMetric?
+    let strideLengthM: RunFormMetric?
+    let vertOscCm: RunFormMetric?
+    let groundContactMs: RunFormMetric?
+    let lrBalancePct: RunFormMetric?
+}
+
+/// One run-form metric · current value + rolling averages.
+struct RunFormMetric: Decodable {
+    let current: Double?
+    let avg14d: Double?
+    let avg28d: Double?
+    enum CodingKeys: String, CodingKey { case current, avg14d, avg28d }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = try c.decodeIfPresent(Double.self, forKey: .current)
+        self.avg14d = try c.decodeIfPresent(Double.self, forKey: .avg14d)
+        self.avg28d = try c.decodeIfPresent(Double.self, forKey: .avg28d)
+    }
+}
+
+/// One day in the 7-day readiness series.
+struct DailyReadinessRow: Decodable, Identifiable {
+    let date: String; let score: Int?; let band: String?
+    var id: String { date }
+    enum CodingKeys: String, CodingKey { case date, score, band }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.score = c.decodeFlexInt(forKey: .score)
+        self.band = try c.decodeIfPresent(String.self, forKey: .band)
+    }
+}
+
+/// Body temperature · current + baseline + 30-day series.
+struct BodyTempSummary: Decodable {
+    let currentC: Double?
+    let baselineC: Double?
+    let series30d: [Double]
+    enum CodingKeys: String, CodingKey { case currentC, baselineC, series30d }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.currentC = try c.decodeIfPresent(Double.self, forKey: .currentC)
+        self.baselineC = try c.decodeIfPresent(Double.self, forKey: .baselineC)
+        self.series30d = (try? c.decode([Double].self, forKey: .series30d)) ?? []
+    }
+}
+
+/// VO2 trend enrichment · signed pct change over 30 days + coach line.
+struct Vo2TrendSummary: Decodable {
+    let pctChange30d: Double?
+    let coach: String?
+    enum CodingKeys: String, CodingKey { case pctChange30d, coach }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.pctChange30d = try c.decodeIfPresent(Double.self, forKey: .pctChange30d)
+        self.coach = try c.decodeIfPresent(String.self, forKey: .coach)
+    }
+}
+
+/// One INSIGHTS card · backend ships 4-8 in priority order.
+struct HealthInsight: Decodable, Identifiable {
+    let id: String           // stable id for SwiftUI ForEach
+    let eyebrow: String      // "TRAINING FORM" / "SLEEP DEBT"
+    let title: String        // headline (Oswald hero)
+    let body: String         // body copy with bold-figure markdown allowed
+    enum CodingKeys: String, CodingKey { case id, eyebrow, title, body }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(String.self, forKey: .id)
+            ?? UUID().uuidString
+        self.eyebrow = try c.decodeIfPresent(String.self, forKey: .eyebrow) ?? ""
+        self.title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        self.body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
+    }
+}
+
+/// OVERVIEW bottom-section data · each block individually nullable.
+struct HealthOverviewBlock: Decodable {
+    let story: OverviewStory?
+    let watchingTomorrow: OverviewWatchingTomorrow?
+    let recoveryPhase: OverviewRecoveryPhase?
+}
+
+struct OverviewStory: Decodable {
+    let paragraph: String?
+    let sleepBelowBaselineDays: Int?
+    let hrvBelowBaselineDays: Int?
+}
+
+struct OverviewWatchingTomorrow: Decodable {
+    let bullets: [String]
+    let forecastChips: [String]
+    enum CodingKeys: String, CodingKey { case bullets, forecastChips }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.bullets = (try? c.decode([String].self, forKey: .bullets)) ?? []
+        self.forecastChips = (try? c.decode([String].self, forKey: .forecastChips)) ?? []
+    }
+}
+
+struct OverviewRecoveryPhase: Decodable {
+    let anchor: String?
+    let percentRecovered: Int?
+    let dayOf: String?
+    let pillars: [RecoveryPhasePillar]
+    let earliestQualitySession: String?
+    enum CodingKeys: String, CodingKey {
+        case anchor, percentRecovered, dayOf, pillars, earliestQualitySession
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.anchor = try c.decodeIfPresent(String.self, forKey: .anchor)
+        self.percentRecovered = c.decodeFlexInt(forKey: .percentRecovered)
+        self.dayOf = try c.decodeIfPresent(String.self, forKey: .dayOf)
+        self.pillars = (try? c.decode([RecoveryPhasePillar].self, forKey: .pillars)) ?? []
+        self.earliestQualitySession = try c.decodeIfPresent(String.self, forKey: .earliestQualitySession)
+    }
+}
+
+struct RecoveryPhasePillar: Decodable, Identifiable {
+    let label: String
+    let percentBack: Int?
+    let status: String?       // "good" / "warn" / "bad" / "neutral"
+    var id: String { label }
+    enum CodingKeys: String, CodingKey { case label, percentBack, status }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        self.percentBack = c.decodeFlexInt(forKey: .percentBack)
+        self.status = try c.decodeIfPresent(String.self, forKey: .status)
     }
 }
 
