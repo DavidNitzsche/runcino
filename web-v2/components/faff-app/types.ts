@@ -331,7 +331,7 @@ export type ReadinessBriefSeed = {
     band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
     weightContribution: number;
     meaning: string;
-    confounders: Array<{ pillar: string; explanation: string; likely: boolean }>;
+    confounders: Array<{ pillar: string; explanation: string; likely: boolean; categoryTag?: string }>;
     trend: Array<{ date: string; value: number }>;
     citation: string;
   }>;

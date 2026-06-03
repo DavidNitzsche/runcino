@@ -545,7 +545,15 @@ function PillarRow({ pillar, band: _band, open, onToggle }: {
           <div className="rb-pil-sub">
             {pillar.observedValue}
             {pillar.observedSub ? <> · {pillar.observedSub}</> : null}
-            {pillar.baseline ? <> · {pillar.baseline}</> : null}
+            {/* 2026-06-03 · skip baseline when it equals observedSub.
+                For HRV/RHR/HR_recovery the engine sets both to the same
+                "baseline Xms" string, producing a visible duplicate
+                ("37ms · baseline 56ms · baseline 56ms"). For sleep/load
+                the two fields carry different framing (sub = delta,
+                baseline = target / sweet-spot) and stay distinct. */}
+            {pillar.baseline && pillar.baseline !== pillar.observedSub
+              ? <> · {pillar.baseline}</>
+              : null}
           </div>
           <div className="rb-pil-meaning">{stripCitations(pillar.meaning)}</div>
           <PillarHistory trend={pillar.trend} observedValue={pillar.observedValue} accent={dot} />
@@ -554,7 +562,15 @@ function PillarRow({ pillar, band: _band, open, onToggle }: {
               <div className="rb-conf-h">MOST LIKELY BEHIND IT</div>
               {likely.map((c, i) => (
                 <div className="rb-conf-row" key={`l-${i}`}>
-                  <span className="rb-conf-k rb-conf-likely">{c.pillar.toUpperCase()}</span>
+                  {/* 2026-06-03 · render categoryTag (the cause: SLEEP /
+                      LOAD / STRESS / etc) instead of pillar (which was
+                      always the parent pillar key · self-referential and
+                      misleading). Was: "MOST LIKELY BEHIND IT · HRV ·
+                      Sleep deficit · check the sleep tile" · the "HRV"
+                      chip read as "HRV is the cause" when the cause is
+                      actually SLEEP. Now: "MOST LIKELY BEHIND IT · SLEEP ·
+                      Sleep deficit · check the sleep tile". */}
+                  <span className="rb-conf-k rb-conf-likely">{c.categoryTag ?? c.pillar.toUpperCase()}</span>
                   <span className="rb-conf-x">{stripCitations(c.explanation)}</span>
                 </div>
               ))}

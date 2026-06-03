@@ -55,11 +55,23 @@ export interface ReadinessMover {
 }
 
 export interface ReadinessConfounder {
+  /** Affected pillar · always equals the parent tile's key. Kept for
+   *  legacy field stability · UI should NOT render this as the tag
+   *  (it's redundant with the parent context). Use categoryTag instead. */
   pillar: PillarKey;
   /** One-line plausible explanation the runner can check against. */
   explanation: string;
   /** Whether THIS confounder is likely (vs just listed) · drives surfacing. */
   likely: boolean;
+  /** 2026-06-03 · cause category for display. Names what's BEHIND the
+   *  affected pillar's drop · 'SLEEP' / 'LOAD' / 'STRESS' / 'HEAT' /
+   *  'ILLNESS' / 'HYDRATION' / 'ALCOHOL' / 'MEAL' / 'TRAVEL' / 'OTHER'.
+   *  UI renders this as the tag. The old field `pillar` was the parent
+   *  pillar (always self-referential · e.g. HRV confounder tagged HRV)
+   *  which the Drawer displayed, producing the misleading
+   *  "MOST LIKELY BEHIND IT: HRV · Sleep deficit..." (the cause is
+   *  SLEEP, not HRV). */
+  categoryTag: 'SLEEP' | 'LOAD' | 'STRESS' | 'HEAT' | 'ILLNESS' | 'HYDRATION' | 'ALCOHOL' | 'MEAL' | 'TRAVEL' | 'OTHER';
 }
 
 export interface ReadinessPillarTile {
@@ -610,11 +622,19 @@ function computeMovers(
     const yWeight = yesterday.pillars[input.key] ?? 0;
     const delta = input.weight - yWeight;
     if (Math.abs(delta) < 2) continue;
+    // 2026-06-03 · honest framing · "X down 7 pts vs yesterday" reads as
+    // "X dropped 7 (its-own-unit)" · for HRV especially, runners assume
+    // -7ms when actually it's -7 readiness pts (the pillar's contribution
+    // to today's score moved down by 7). Made the unit explicit: this is
+    // the pillar's hit to the readiness score, not the raw value.
+    const direction = delta > 0 ? 'lifted the score' : 'pulled the score down';
+    const label = delta > 0
+      ? `${PILLAR_LABEL[input.key]} ${direction} ${Math.abs(delta)} pts vs yesterday`
+      : `${PILLAR_LABEL[input.key]} ${direction} ${Math.abs(delta)} pts vs yesterday`;
     movers.push({
       pillar: input.key,
       deltaPts: delta,
-      label: `${PILLAR_LABEL[input.key]} ${delta > 0 ? 'up' : 'down'} ` +
-        `${Math.abs(delta)} pts vs yesterday`,
+      label,
     });
   }
   movers.sort((a, b) => Math.abs(b.deltaPts) - Math.abs(a.deltaPts));
@@ -705,46 +725,46 @@ function confoundersFor(
   switch (key) {
     case 'rhr':
       return [
-        { pillar: 'rhr', explanation: 'Brewing illness or recent vaccine', likely: false },
-        { pillar: 'rhr', explanation: 'Dehydration · check fluid intake last 24h', likely: false },
-        { pillar: 'rhr', explanation: 'Alcohol last night', likely: false },
-        { pillar: 'rhr', explanation: 'Late or heavy dinner', likely: false },
-        { pillar: 'rhr', explanation: 'Recent volume bump or hard session',
+        { pillar: 'rhr', categoryTag: 'ILLNESS',   explanation: 'Brewing illness or recent vaccine', likely: false },
+        { pillar: 'rhr', categoryTag: 'HYDRATION', explanation: 'Dehydration · check fluid intake last 24h', likely: false },
+        { pillar: 'rhr', categoryTag: 'ALCOHOL',   explanation: 'Alcohol last night', likely: false },
+        { pillar: 'rhr', categoryTag: 'MEAL',      explanation: 'Late or heavy dinner', likely: false },
+        { pillar: 'rhr', categoryTag: 'LOAD',      explanation: 'Recent volume bump or hard session',
           likely: state.loadAcwr != null && state.loadAcwr > 1.2 },
-        { pillar: 'rhr', explanation: 'Heat exposure on a recent run',
+        { pillar: 'rhr', categoryTag: 'HEAT',      explanation: 'Heat exposure on a recent run',
           likely: false },
-        { pillar: 'rhr', explanation: 'Genuine training overreach',
+        { pillar: 'rhr', categoryTag: 'LOAD',      explanation: 'Genuine training overreach',
           likely: state.loadAcwr != null && state.loadAcwr > 1.4 },
       ];
     case 'hrv':
       return [
-        { pillar: 'hrv', explanation: 'Cumulative training load',
+        { pillar: 'hrv', categoryTag: 'LOAD',    explanation: 'Cumulative training load',
           likely: state.loadAcwr != null && state.loadAcwr > 1.2 },
-        { pillar: 'hrv', explanation: 'Sleep deficit · check the sleep tile',
+        { pillar: 'hrv', categoryTag: 'SLEEP',   explanation: 'Sleep deficit · check the sleep tile',
           likely: state.sleep7Avg != null && state.sleep7Avg < 7.0 },
-        { pillar: 'hrv', explanation: 'Life stress · work, travel, emotional', likely: false },
-        { pillar: 'hrv', explanation: 'Alcohol or stimulants last night', likely: false },
-        { pillar: 'hrv', explanation: 'Body fighting something off', likely: false },
+        { pillar: 'hrv', categoryTag: 'STRESS',  explanation: 'Life stress · work, travel, emotional', likely: false },
+        { pillar: 'hrv', categoryTag: 'ALCOHOL', explanation: 'Alcohol or stimulants last night', likely: false },
+        { pillar: 'hrv', categoryTag: 'ILLNESS', explanation: 'Body fighting something off', likely: false },
       ];
     case 'sleep':
       return [
-        { pillar: 'sleep', explanation: 'Schedule debt · catch up over the weekend', likely: false },
-        { pillar: 'sleep', explanation: 'High training load needs MORE than 7.5h',
+        { pillar: 'sleep', categoryTag: 'OTHER',   explanation: 'Schedule debt · catch up over the weekend', likely: false },
+        { pillar: 'sleep', categoryTag: 'LOAD',    explanation: 'High training load needs MORE than 7.5h',
           likely: state.loadAcwr != null && state.loadAcwr > 1.2 },
-        { pillar: 'sleep', explanation: 'Caffeine after 2pm or evening alcohol', likely: false },
-        { pillar: 'sleep', explanation: 'Race-week travel or time zone shift', likely: false },
+        { pillar: 'sleep', categoryTag: 'ALCOHOL', explanation: 'Caffeine after 2pm or evening alcohol', likely: false },
+        { pillar: 'sleep', categoryTag: 'TRAVEL',  explanation: 'Race-week travel or time zone shift', likely: false },
       ];
     case 'load':
       return [
-        { pillar: 'load', explanation: 'Big week recently · sweet spot is 1.0-1.3', likely: false },
-        { pillar: 'load', explanation: 'Long layoff before this week · low chronic28', likely: false },
-        { pillar: 'load', explanation: 'Race week · taper drops ACWR by design', likely: false },
+        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'Big week recently · sweet spot is 1.0-1.3', likely: false },
+        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'Long layoff before this week · low chronic28', likely: false },
+        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'Race week · taper drops ACWR by design', likely: false },
       ];
     case 'hr_recovery':
       return [
-        { pillar: 'hr_recovery', explanation: 'Hard session in last 24h', likely: false },
-        { pillar: 'hr_recovery', explanation: 'Heat or humidity during the workout', likely: false },
-        { pillar: 'hr_recovery', explanation: 'Sleep deficit or stress', likely: false },
+        { pillar: 'hr_recovery', categoryTag: 'LOAD',   explanation: 'Hard session in last 24h', likely: false },
+        { pillar: 'hr_recovery', categoryTag: 'HEAT',   explanation: 'Heat or humidity during the workout', likely: false },
+        { pillar: 'hr_recovery', categoryTag: 'SLEEP',  explanation: 'Sleep deficit or stress', likely: false },
       ];
   }
 }
