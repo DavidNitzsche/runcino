@@ -234,14 +234,22 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    The default .hero-v2 (PlannedHeroV2 + the rest-day hero) keeps the
    two-column layout. .hmain is capped at 320px so the route map only
    uses the middle slot, not the entire remaining width. */
-.hero-v2-done{align-items:stretch;}
-.hero-v2-done .hmain{flex:0 0 320px;display:flex;flex-direction:column;}
+/* 2026-06-03 · the hero-v2-done variant switches from flex to grid so
+   all three columns scale proportionally with the viewport, matching the
+   top week strip (grid-template-columns: repeat(7,1fr)) and the bottom
+   signal row (repeat(4,1fr)). The 1 / 1.6 / 1.1 share keeps the map
+   visually dominant while letting the left stats and right recap card
+   grow with width. */
+.hero-v2-done{
+  display:grid;
+  grid-template-columns:1fr 1.6fr 1.1fr;
+  gap:20px;
+  align-items:stretch;
+}
+.hero-v2-done .hmain{display:flex;flex-direction:column;min-width:0;}
 .hero-v2-done .leftstack{flex:initial;width:auto;display:flex;flex-direction:column;}
-/* 2026-05-31: cap the route map at 760px so it doesn't bloat past
-   sane size on ultrawide monitors · the route shape rarely needs more
-   than ~720 px to read clearly. Map centers in whatever space the
-   .mapcol gets after the wcard claims its 344px. */
-.hero-v2-done .mapcol{flex:1.4 1 0;align-self:stretch;min-width:0;max-width:760px;}
+.hero-v2-done .mapcol{align-self:stretch;min-width:0;}
+.hero-v2-done .wcard{align-self:stretch;min-width:0;}
 /* Leaflet-hosted route card · Style F+ from designs/route-map-mockups.
    The Leaflet map fills the entire .routemap box · tiles ARE the
    background now, no need for the synthetic grid + dark gradient. The
