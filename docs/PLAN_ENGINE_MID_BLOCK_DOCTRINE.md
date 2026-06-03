@@ -1,5 +1,67 @@
 # Plan Engine · Mid-Block Runner Doctrine
 
+## Universal applicability · NON-NEGOTIABLE
+
+**Every rule in this document applies to every user, every active plan, every runner who lands in the system.** No per-user bypasses, no allowlists, no "special-case David" branches. The doctrine is enforced via the canonical pipeline that every plan flows through:
+
+```
+onboarding / race-add / race-edit / drift-cron / graduate-cron
+         ↓
+fireAutoRebuild (lib/plan/auto-rebuild.ts)
+         ↓
+generatePlan (lib/plan/generate.ts)
+         ↓
+loadGeneratorInputs (queries by userId — no UUID hardcodes)
+         ↓
+pickPlanMode → composePlan | composeMaintenancePlan | composeRecoveryPlan
+         ↓
+persistPlan (snapshotSealedDays · applies Rule 15 seal on every rebuild)
+```
+
+Every reader (`recentWeeklyMileage`, `recentPeakLongMi`, `easyDayMedianMi`, `recentQualityDistanceMi`, `recentQualityPerWeek`, `bestRecentVdot`, `tsbAtStart`, `detectMidBlock`, `findHorizonRaces`) takes `userId: string` as input and returns a value derived purely from that user's data. No UUID is baked into any rule logic.
+
+### Coverage matrix · how each rule reaches a new user
+
+| Rule | Code location | Activation surface | Applies to |
+|---|---|---|---|
+| 1 · skip BASE when mid-block | `generate.ts § detectMidBlock + sizeBlocks` | Every plan composition | All runners |
+| 2 · prescription floors at recent baseline (long/easy/quality) | `generate.ts § recentPeakLongMi, easyDayMedianMi, recentQualityDistanceMi` + `layoutWeek` | Every plan composition | All runners |
+| 3 · pace anchor blend | `generate.ts § tPaceForWeek` + `vdot.ts § tPaceFromVdot` | Every plan composition (when bestRecentVdot < goalVdot) | All runners |
+| 4 · monotonic volume floor | `generate.ts § volumeCurve` post-build sweep | Every plan composition | All runners |
+| 5 · quality density ramp | `generate.ts § densityForWeek` | Every plan composition | All runners |
+| 6 · phase compression < 10wk | `generate.ts § sizeBlocks` | Every plan composition | All runners |
+| 7 · long-run progression | `generate.ts § layoutWeek longFloor` | Every plan composition | All runners |
+| 8 · TSB-driven cutback | `generate.ts § volumeCurve deloadMask` (TSB read at compose time) | Every plan composition | All runners |
+| 9 · easy median floor | `generate.ts § layoutWeek easyMileFloor` | Every plan composition | All runners |
+| 10 · derived_from envelope | `generate.ts § composePlan authoredState` | Every plan composition · ships in `authored_state.derived_from` | All runners |
+| 11 · horizon-aware long-run dials | `generate.ts § composePlan horizonRaise` (reads `races` table for the user) | Every plan composition | All runners with A/B races within 24wk |
+| 12 · plan modes (race-prep / maintenance / recovery) | `goal-tiers.ts § pickPlanMode` + `generate.ts § generatePlan branch` | Every plan composition + daily transition cron | All runners |
+| 13 · post-race recovery | `goal-tiers.ts § POST_RACE_RECOVERY_WEEKS` + graduate cron | Daily graduate cron when a race date passes | All runners with finished A/B races |
+| 14 · strength · pair hard with hard | `strength-recommender.ts § pickCandidates + phaseFrequencyCap + shouldDemoteHeavy` | Every seed build (loaded by `glance-state.ts`) | All runners |
+| 15 · completed days immutable | `seal.ts § snapshotSealedDays, filterUnsealedWorkouts` | Every rebuild (snapshot before archive) + every adapter UPDATE (skip + log) | All runners |
+
+### What activates rules for a brand-new user
+
+When someone signs up and creates their first plan:
+
+1. **Onboarding** writes their profile + adds their first race → fires `fireAutoRebuild({kind: 'a_race_added'})`
+2. **`generatePlan`** runs the full pipeline above. Every reader returns 0/null for a cold-start (no recent runs yet) · the doctrine handles cold-start cleanly (no floors when no data, all defaults are tier-target-driven).
+3. **First rebuild** uses pure-doctrine defaults. As the runner logs runs, the readers start returning real values, and Rules 2/3/4/5/7/8/10 progressively kick in.
+4. **Daily crons** (`plan-drift` at 09:00 UTC, `run-adaptations` at 07:15 UTC) iterate `SELECT DISTINCT user_uuid FROM training_plans WHERE archived_iso IS NULL` — every user with an active plan gets the same treatment.
+5. **Rule 15 seal** activates the moment they complete their first run. From then on, no rebuild can mutate that day's prescription.
+
+### Anti-pattern checklist · never do these
+
+- ❌ Read `process.env.DEFAULT_USER_ID` inside a rule (the env var is only a cron safety fallback, not a routing decision)
+- ❌ Hard-code David's UUID `0645f40c-951d-4ccc-b86e-9979cd26c795` in any rule logic. Search-and-replace will catch you.
+- ❌ Add an `if (userId === '...') { /* skip rule */ }` branch — there's no scenario where a user should be exempted from doctrine.
+- ❌ Allow the silent-rebuild route (`/api/cron/silent-rebuild`) to be triggered without `CRON_SECRET`. That's an admin-only one-shot.
+- ❌ Special-case David's `david-mid-block` synthetic persona — it's a TEMPLATE for any mid-block runner, not a David carve-out.
+
+**The synthetic personas in `lib/plan/synthetic-runners.ts` (including `david-mid-block`) exist to test the doctrine against representative runner shapes. They are inputs to the bench, not exemptions in production. Every persona type — beginner-5K, advanced-marathon, intermediate-HM, returning-from-injury, sleep-debt-prone, ultra — flows through the same composePlan path that David's plan does.**
+
+---
+
 **Status (2026-06-03 night · v4):** 11 rules + post-race graduate cron + Rules 12-14 + **Rule 15 (completed days are immutable)** SHIPPED.
 
 **Rule 15 · completed days are immutable.** Once a `plan_workouts` row has a corresponding completed run, NOTHING on its prescription fields (type, distance_mi, pace_target_s_per_mi, workout_spec, sub_label, is_quality, is_long, notes) may change. Plan adjustments, doctrine updates, rule-engine retroactives, rebuilds — all stop at the boundary of "did the runner complete this day."
