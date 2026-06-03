@@ -496,32 +496,34 @@ function PostRunReflection({ p, band, todayActualMi, todayActualMin }: {
   };
   const actualLabel = fmtRun(todayActualMi, todayActualMin);
 
-  // Author the reflection based on intent + target vs actual.
+  // 2026-06-03 · purely descriptive reflection · no "note for tomorrow"
+  // / "watch tomorrow" / "good" judgments. David's call: "we don't need
+  // to change all this stuff because of check-ins." The reflection
+  // names what was called and what was done · nothing more. The plan
+  // and adapter run their own course based on objective signals.
   let reflection: string;
   if (p.intent === 'cut') {
     const targetMin = p.targetMinutes;
     const targetMi = p.targetMiles;
     if (targetMin != null && todayActualMin != null) {
       const ratio = todayActualMin / targetMin;
-      if (ratio <= 1.15) reflection = `Followed the call · ran the cut. Good.`;
-      else if (ratio <= 1.5) reflection = `Ran a bit more than the cut · ${Math.round(todayActualMin)}min vs ${targetMin} target.`;
-      else reflection = `Ran more than the cut · ${Math.round(todayActualMin)}min vs ${targetMin} target. Note for tomorrow.`;
+      if (ratio <= 1.15) reflection = `Followed the call · ${Math.round(todayActualMin)}min done.`;
+      else reflection = `Ran ${Math.round(todayActualMin)}min · target was ${targetMin}min.`;
     } else if (targetMi != null && todayActualMi != null) {
       const ratio = todayActualMi / targetMi;
-      if (ratio <= 1.10) reflection = `Followed the call · stayed near the cut. Good.`;
-      else if (ratio <= 1.30) reflection = `Ran a bit more than the cut · ${todayActualMi.toFixed(1)}mi vs ${targetMi} target.`;
-      else reflection = `Ran more than the cut · ${todayActualMi.toFixed(1)}mi vs ${targetMi} target. Note for tomorrow.`;
+      if (ratio <= 1.10) reflection = `Followed the call · ${todayActualMi.toFixed(1)}mi done.`;
+      else reflection = `Ran ${todayActualMi.toFixed(1)}mi · target was ${targetMi}mi.`;
     } else {
-      reflection = `The call was a cut · you ran. Watch tomorrow's signals.`;
+      reflection = `Cut called · ran ${actualLabel}.`;
     }
   } else if (p.intent === 'rest') {
     reflection = todayActualMi != null && todayActualMi > 1
-      ? `The call was rest · you ran ${actualLabel}. Note for tomorrow.`
-      : `Rest as called.`;
+      ? `Rest called · ran ${actualLabel}.`
+      : `Rest done.`;
   } else if (p.intent === 'send') {
-    reflection = `Sent it. Plan executed.`;
+    reflection = `Sent it. ${actualLabel} done.`;
   } else {
-    reflection = `Plan executed.`;
+    reflection = `Plan done · ${actualLabel}.`;
   }
 
   return (
