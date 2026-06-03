@@ -478,15 +478,23 @@ struct TodayPostRunBody: View {
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(verdictTint, in: Capsule())
                 }
-                if !recap.facts.isEmpty {
+                // 2026-06-02 round 51 · facts + coach_tip share one
+                // VStack so every bullet uses the same 7pt spacing.
+                // Earlier round-50 fix split them with .padding(.top, 7)
+                // on the tip · parent VStack's 12pt + the 7pt → double-
+                // gap above the last bullet. Single list = consistent
+                // rhythm.
+                let bullets: [String] = recap.facts +
+                    ((recap.coach_tip ?? "").isEmpty ? [] : [recap.coach_tip!])
+                if !bullets.isEmpty {
                     VStack(alignment: .leading, spacing: 7) {
-                        ForEach(Array(recap.facts.enumerated()), id: \.offset) { _, fact in
+                        ForEach(Array(bullets.enumerated()), id: \.offset) { _, line in
                             HStack(alignment: .top, spacing: 8) {
                                 Circle()
                                     .fill(accent)
                                     .frame(width: 4, height: 4)
                                     .padding(.top, 6)
-                                Text(fact)
+                                Text(line)
                                     .font(.body(13))
                                     .foregroundStyle(Color(hex: 0x4F483F))
                                     .fixedSize(horizontal: false, vertical: true)
@@ -494,26 +502,6 @@ struct TodayPostRunBody: View {
                             }
                         }
                     }
-                }
-                // 2026-06-02 round 50 · coach_tip now renders as a
-                // bullet in the same list as facts · David flagged the
-                // standalone paragraph looked orphaned ("not a bullet
-                // point. looks like it should be"). Visually identical
-                // to the facts above so the whole block reads as one
-                // coherent observation list.
-                if let tip = recap.coach_tip, !tip.isEmpty {
-                    HStack(alignment: .top, spacing: 8) {
-                        Circle()
-                            .fill(accent)
-                            .frame(width: 4, height: 4)
-                            .padding(.top, 6)
-                        Text(tip)
-                            .font(.body(13))
-                            .foregroundStyle(Color(hex: 0x4F483F))
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.top, 7)
                 }
                 // 2026-06-02 round 49 · per-run-type analysis panel
                 // (design_handoff_iphone_postrun). Swaps body by effort:

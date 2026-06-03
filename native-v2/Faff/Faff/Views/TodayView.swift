@@ -1083,8 +1083,16 @@ struct TodayView: View {
     /// from the locked vocabulary (purpose.typeTitle) with derived
     /// fallback. Matches the pre-run hero so the hierarchy stays
     /// consistent across collapsed + expanded states.
+    ///
+    /// 2026-06-02 round 51 · purpose.typeTitle is ONLY authoritative
+    /// when the selected day IS today. /api/today/purpose returns
+    /// today's payload regardless of strip selection · using it for
+    /// non-today days made Wed (easy) read as "INTERVALS" because
+    /// Tuesday's intervals purpose bled through.
     private var peekTitleWord: String {
-        if let t = purpose?.typeTitle?.uppercased(), !t.isEmpty { return t }
+        if selectedIsToday, let t = purpose?.typeTitle?.uppercased(), !t.isEmpty {
+            return t
+        }
         switch selectedEffort {
         case .recovery:  return "RECOVERY"
         case .easy:      return "EASY"

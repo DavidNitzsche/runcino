@@ -105,9 +105,19 @@ struct TodayPreRunBodyV3: View {
 
     /// One-word hero title · prefers backend's canonical typeTitle
     /// (locked vocabulary in lib/coach/workout-title.ts), falls back
-    /// to a derived effort-title when purpose hasn't loaded yet.
+    /// to a derived effort-title.
+    ///
+    /// 2026-06-02 round 51 · CRITICAL · purpose.typeTitle is ONLY
+    /// authoritative when the selected day IS today. /api/today/purpose
+    /// always returns today's coach payload regardless of which day
+    /// the runner tapped on the strip · using it for non-today days
+    /// made Wed (easy) read as "INTERVALS" because Tuesday's intervals
+    /// purpose was bleeding through. For non-today selections, always
+    /// derive the title from the selected day's effort.
     private var heroTypeWord: String {
-        if let t = purpose?.typeTitle?.uppercased(), !t.isEmpty { return t }
+        if isToday, let t = purpose?.typeTitle?.uppercased(), !t.isEmpty {
+            return t
+        }
         switch effort {
         case .recovery:  return "RECOVERY"
         case .easy:      return "EASY"
