@@ -398,6 +398,11 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
      VALUES ($1::bigint, $2, $3)`,
     [String(id), userId, data]
   );
+  // 2026-06-03 · post-write hook · calibration auto-complete on
+  // Strava webhook delivery. Cold-start runner finishing first run
+  // gets calibrated within seconds.
+  void (await import('@/lib/runs/post-write-hooks'))
+    .afterRunWrite({ userUuid: userId, runId: String(id), source: 'strava' });
   return { date };
 }
 

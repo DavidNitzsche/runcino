@@ -454,6 +454,12 @@ export async function pullSyncOneUser(args: {
           // upstream branch's match query missed it.
           continue;
         }
+        // 2026-06-03 · post-write hook · calibration auto-complete on
+        // bulk Strava sync. Cold-start runners connecting Strava with
+        // a few runs already in it get calibrated immediately on the
+        // first qualifying easy run in the imported set.
+        void (await import('@/lib/runs/post-write-hooks'))
+          .afterRunWrite({ userUuid, runId: String(act.id), source: 'strava' });
         if (shoeId != null) out.shoesAttributed++;
         if (typeof payload.perceived_exertion === 'number') {
           const rpe = Math.round(payload.perceived_exertion);

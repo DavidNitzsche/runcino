@@ -85,6 +85,11 @@ export async function POST(req: NextRequest) {
        VALUES ($1::bigint, $2, $3)`,
       [stableId, userId, data]
     );
+    // 2026-06-03 · post-write hook · calibration auto-complete on
+    // manual entry. Manual rows rarely have splits, but the engine
+    // falls back to whole-run avg pace.
+    void (await import('@/lib/runs/post-write-hooks'))
+      .afterRunWrite({ userUuid: userId, runId: String(stableId), source: 'manual' });
     // P27.3 — auto-merge: a manual entry typically backfills something
     // that wasn't captured by watch/Strava, but if it overlaps we want
     // the manual row to lose to the richer source.

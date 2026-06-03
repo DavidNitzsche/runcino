@@ -204,6 +204,11 @@ export async function POST(req: NextRequest) {
       [stableId, userId, data]
     );
 
+    // 2026-06-03 · post-write hook · calibration auto-complete on
+    // HK ingest. Best-effort, doesn't block ingest response.
+    void (await import('@/lib/runs/post-write-hooks'))
+      .afterRunWrite({ userUuid: userId, runId: String(stableId), source: 'hk' });
+
     // P27.3 — auto-merge dupes for this date. If a hollow watch row + a
     // rich HKWorkout row both exist for the same start time, this marks
     // the hollow one's data.mergedIntoId so the coach sees one run.

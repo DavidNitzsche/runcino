@@ -161,6 +161,10 @@ export async function POST(req: NextRequest) {
       `INSERT INTO runs (id, user_uuid, data) VALUES ($1, $2, $3)`,
       [stableId, userId, data]
     );
+    // 2026-06-03 · post-write hook · calibration auto-complete for
+    // cold-start runners on first qualifying easy run. Best-effort.
+    void (await import('@/lib/runs/post-write-hooks'))
+      .afterRunWrite({ userUuid: userId, runId: String(stableId), source: 'watch' });
   } catch (e: any) {
     stravaWriteErr = e?.message ?? String(e);
     console.error('[watch/complete] strava_activities write failed:', e);
