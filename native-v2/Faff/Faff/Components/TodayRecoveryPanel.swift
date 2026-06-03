@@ -66,7 +66,7 @@ private extension TodayRecoveryPanel {
                 if let line = brief?.oneLine, !line.isEmpty {
                     Text(line)
                         .font(.body(13.5, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.78))
+                        .foregroundStyle(Color.white)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 2)
@@ -79,7 +79,7 @@ private extension TodayRecoveryPanel {
                             .foregroundStyle(Color.white)
                         Text("/100")
                             .font(.body(13, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.55))
+                            .foregroundStyle(Color.white)
                     }
                     projectionCurve
                         .frame(height: 44)
@@ -99,7 +99,7 @@ private extension TodayRecoveryPanel {
                             .font(.system(size: 8, weight: .bold))
                     }
                 }
-                .foregroundStyle(Color.white.opacity(0.5))
+                .foregroundStyle(Color.white)
                 .padding(.top, -2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,15 +163,8 @@ private extension TodayRecoveryPanel {
                     .fill(bandColor.opacity(0.35))
                     .frame(width: 6, height: 6)
                     .position(x: w - 4, y: h * 0.08)
-                // Tick labels
-                Text("NOW")
-                    .font(.body(7.5, weight: .extraBold)).tracking(0.8)
-                    .foregroundStyle(Color.white.opacity(0.45))
-                    .position(x: 14, y: h + 6)
-                Text("~7 AM")
-                    .font(.body(7.5, weight: .extraBold)).tracking(0.8)
-                    .foregroundStyle(Color.white.opacity(0.45))
-                    .position(x: w - 18, y: h + 6)
+                // Inner tick labels removed · the outer axis row below
+                // the score (NOW · 12 AM · ~7 AM) is the legible signal.
             }
         }
     }
@@ -207,7 +200,7 @@ private extension TodayRecoveryPanel {
         HStack(spacing: 11) {
             Text(label)
                 .font(.body(10, weight: .extraBold)).tracking(1.0)
-                .foregroundStyle(Color.white.opacity(0.65))
+                .foregroundStyle(Color.white)
                 .frame(width: 112, alignment: .leading)
             // Amber left-anchored fill bar
             GeometryReader { geo in
@@ -221,7 +214,7 @@ private extension TodayRecoveryPanel {
             .frame(height: 6)
             Text(subtext)
                 .font(.body(10.5, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.68))
+                .foregroundStyle(Color.white)
                 .lineLimit(1).minimumScaleFactor(0.85)
                 .frame(maxWidth: 140, alignment: .trailing)
         }
@@ -310,7 +303,7 @@ private extension TodayRecoveryPanel {
                 .foregroundStyle(tone)
             Text(label)
                 .font(.body(8.5, weight: .extraBold)).tracking(0.8)
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(Color.white)
         }
         .frame(maxWidth: .infinity)
     }
@@ -318,7 +311,7 @@ private extension TodayRecoveryPanel {
     var middot: some View {
         Text("·")
             .font(.body(13, weight: .bold))
-            .foregroundStyle(Color.white.opacity(0.3))
+            .foregroundStyle(Color.white)
     }
 
     func formTone(_ band: String) -> Color {
@@ -374,14 +367,14 @@ private extension TodayRecoveryPanel {
         VStack(alignment: .leading, spacing: 4) {
             Text(eyebrow)
                 .font(.body(9, weight: .extraBold)).tracking(1.2)
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(Color.white)
             Text(big)
                 .font(.display(17, weight: .bold))
                 .foregroundStyle(Color.white)
                 .lineLimit(1).minimumScaleFactor(0.7)
             Text(sub)
                 .font(.body(10.5, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.62))
+                .foregroundStyle(Color.white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 13).padding(.vertical, 13)
@@ -428,21 +421,21 @@ private extension TodayRecoveryPanel {
         VStack(alignment: .leading, spacing: 6) {
             Text("WEEK MI")
                 .font(.body(9, weight: .extraBold)).tracking(1.2)
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(Color.white)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text("\(Int((brief?.weekProgress.bankedMi ?? 0).rounded()))")
                     .font(.display(17, weight: .bold))
                     .foregroundStyle(Color.white)
                 Text("/ \(Int((brief?.weekProgress.targetMi ?? 0).rounded()))")
                     .font(.body(11, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.55))
+                    .foregroundStyle(Color.white)
             }
             // 7-dot row
             HStack(spacing: 3) {
                 let dots = brief?.weekProgress.dots ?? 0
                 ForEach(0..<7, id: \.self) { i in
                     Circle()
-                        .fill(i < dots ? Color.white.opacity(0.78) : Color.white.opacity(0.18))
+                        .fill(i < dots ? Color.white : Color.white.opacity(0.18))
                         .frame(width: 5, height: 5)
                 }
             }
@@ -460,7 +453,7 @@ private extension TodayRecoveryPanel {
         VStack(alignment: .leading, spacing: 4) {
             Text("LONG-RUN")
                 .font(.body(9, weight: .extraBold)).tracking(1.2)
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(Color.white)
             if let lr = brief?.weekProgress.longRun {
                 let dayName = dayAbbrev(iso: lr.dateISO)
                 let miStr = lr.mi.truncatingRemainder(dividingBy: 1) == 0
@@ -472,14 +465,14 @@ private extension TodayRecoveryPanel {
                     .lineLimit(1).minimumScaleFactor(0.7)
                 Text(lr.daysUntil == 0 ? "today" : (lr.daysUntil == 1 ? "tomorrow" : "in \(lr.daysUntil) days"))
                     .font(.body(10.5, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.62))
+                    .foregroundStyle(Color.white)
             } else {
                 Text("—")
                     .font(.display(17, weight: .bold))
-                    .foregroundStyle(Color.white.opacity(0.4))
+                    .foregroundStyle(Color.white)
                 Text("done")
                     .font(.body(10.5, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.42))
+                    .foregroundStyle(Color.white)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -498,7 +491,7 @@ private extension TodayRecoveryPanel {
         return VStack(alignment: .leading, spacing: 4) {
             Text("ACWR")
                 .font(.body(9, weight: .extraBold)).tracking(1.2)
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(Color.white)
             Text(v > 0 ? String(format: "%.2f", v) : "—")
                 .font(.display(17, weight: .bold))
                 .foregroundStyle(Color.white)
