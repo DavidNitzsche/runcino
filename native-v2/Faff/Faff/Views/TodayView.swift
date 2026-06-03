@@ -302,29 +302,37 @@ struct TodayView: View {
                     // to provide one. Post-run body for completed days,
                     // simple stub for missed/rest days.
                     //
-                    // 2026-06-02 round 65 · David caught the page
-                    // sliding left/right when scrolling. Root cause:
-                    // some sub-rows (signature "+0 vs threshold")
-                    // overflow viewport width, and a vertical
-                    // ScrollView surfaces overflow horizontally if
-                    // content's intrinsic width > viewport. Belt-and-
-                    // suspenders fix: (a) explicit .vertical axes
-                    // (default but stated), (b) maxWidth clamp on the
-                    // inner VStack so child content can't push wider
-                    // than the screen, (c) per-row lineLimit +
-                    // minimumScaleFactor in HowItWentSignature so the
-                    // value cluster shrinks instead of overflowing.
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            if isDone {
-                                postRunBody
-                            } else {
-                                pastDayNoRunStub
+                    // 2026-06-02 round 67 · David: "still going left to
+                    // right." Round 65's maxWidth(.infinity) wasn't a
+                    // hard cap — SwiftUI still let child content size
+                    // wider than viewport, which a vertical ScrollView
+                    // surfaces as a horizontal pan.
+                    //
+                    // Hard fix: GeometryReader captures the page's
+                    // exact width, and the inner VStack gets
+                    // .frame(width: proxy.size.width). That's an
+                    // explicit upper bound — no child can push wider
+                    // than the geometry tells it. .clipped() on the
+                    // outer wrapper is the belt-and-suspenders catch
+                    // for any view that ignores the frame.
+                    GeometryReader { proxy in
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                if isDone {
+                                    postRunBody
+                                } else {
+                                    pastDayNoRunStub
+                                }
                             }
+                            // HARD width lock · no horizontal overflow
+                            // possible. The .leading alignment keeps
+                            // left-aligned content; right edge is the
+                            // screen edge.
+                            .frame(width: proxy.size.width, alignment: .leading)
+                            // Clear of the floating tab bar pill.
+                            .padding(.bottom, 120)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        // Clear of the floating tab bar pill.
-                        .padding(.bottom, 120)
+                        .clipped()
                     }
                     .padding(.top, 16)
                 } else if isPostRunMode {

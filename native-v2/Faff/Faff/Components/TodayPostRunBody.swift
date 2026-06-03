@@ -237,14 +237,34 @@ struct TodayPostRunBody: View {
     @ViewBuilder
     private var winLine: some View {
         if let line = winLineText, !line.isEmpty {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x1F9A6F))
-                Text(line)
-                    .font(.body(15, weight: .extraBold))
-                    .foregroundStyle(Color(hex: 0x1F9A6F))
-                    .fixedSize(horizontal: false, vertical: true)
+            // 2026-06-02 round 67 · David: "EASY DAY IN THE BOOKS is hard
+            // to read. Might have to put it in a green pill or something."
+            // Earlier rounds dropped the green chip background on mesh
+            // (sectionBg → transparent), leaving green text floating on
+            // a warm-orange mesh palette with poor contrast.
+            //
+            // New treatment: a contained green pill that survives both
+            // contexts. On cream: light-green pill + dark-green text +
+            // dark-green check (the original look, tightened to a pill
+            // shape so it's distinct from the section above). On mesh:
+            // saturated green pill + white text + white check · the pill
+            // itself carries the "good outcome" semantic, white text
+            // gives the contrast against the dark warm mesh.
+            let pillBg: Color = onMesh ? Color(hex: 0x1F9A6F) : Color(hex: 0xE9F7EE)
+            let inkColor: Color = onMesh ? Color.white : Color(hex: 0x1F9A6F)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(inkColor)
+                    Text(line)
+                        .font(.body(14, weight: .extraBold))
+                        .foregroundStyle(inkColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(pillBg, in: Capsule())
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 24).padding(.vertical, 16)
