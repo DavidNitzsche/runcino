@@ -321,18 +321,24 @@ export function Drawer({
               </div>
             ) : null}
 
-            {/* 7 · Watch tomorrow. */}
-            {brief.watchTomorrow.length > 0 ? (
-              <Section label="WATCH TOMORROW">
-                <div className="rb-watch">
-                  {brief.watchTomorrow.map((line, i) => (
-                    <div className="rb-wrow" key={i}>
-                      <span className="rb-wdot" /> <span>{stripCitations(line)}</span>
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            ) : null}
+            {/* 7 · WATCH TOMORROW · GUTTED 2026-06-03 per David:
+                "If SLEEP stays below another day, treat it as signal,
+                not noise · its been saying this literally all week.
+                1 - I have no idea wtf that means and 2 its not really
+                helpful tbh."
+
+                Three problems:
+                  · Redundant with the STREAKS section directly above
+                    (same "10 nights below" data, said differently)
+                  · Prescriptive ("Ease the load") which we gutted from
+                    the rest of the reactive coach layer at b4a059e1
+                  · Repeats verbatim every day → becomes wallpaper, the
+                    runner stops reading it
+                  · "Signal, not noise" is engineer-speak · ironic given
+                    the copy itself was noise
+
+                Engine code (buildWatchTomorrow) stays in source for
+                future re-enable if it's reframed as descriptive only. */}
 
             {/* 8 · Morning check-in MOVED TO TOP 2026-06-03 (now renders
                 right after the Hero as <FeelingCheckin />) per David's
