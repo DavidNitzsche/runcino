@@ -491,9 +491,55 @@ export function TodayView({
             </div>
             <div className="htitle">{workoutTypeTitle(d.type)}</div>
             <div className="stats">
-              <div><div className="v">{formatSleep(seed.health.body.find(m => m.k === 'sleep')?.current)}</div><div className="k">SLEEP</div></div>
-              <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}<small> bpm</small></div><div className="k">RESTING HR</div></div>
-              <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'hrv')?.current ?? 0) || '·'}<small> ms</small></div><div className="k">HRV</div></div>
+              {/* 2026-06-03 · subtitles added per David: "not sure what
+                  it means for 6:06 hours sleep. Seems wrong." The value
+                  was 7-night avg shown without context next to today's
+                  RHR/HRV · runner couldn't tell what time horizon each
+                  number represented. Now: each value carries a tiny
+                  subtitle (7-NIGHT AVG / vs baseline). */}
+              {(() => {
+                const sleepTile = seed.health.body.find(m => m.k === 'sleep');
+                const sleepSeries = sleepTile?.series ?? [];
+                const lastNight = sleepSeries.length ? sleepSeries[sleepSeries.length - 1] : null;
+                const avg7 = sleepTile?.current ?? null;
+                const rhrTile = seed.health.body.find(m => m.k === 'rhr');
+                const rhrCur = rhrTile?.current ?? null;
+                const rhrBase = rhrTile?.target ?? null;
+                const hrvTile = seed.health.body.find(m => m.k === 'hrv');
+                const hrvCur = hrvTile?.current ?? null;
+                const hrvBase = hrvTile?.target ?? null;
+                return (
+                  <>
+                    <div>
+                      <div className="v">{formatSleep(lastNight ?? avg7 ?? undefined)}</div>
+                      <div className="k">LAST NIGHT</div>
+                      {avg7 != null && (
+                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
+                          {avg7.toFixed(1)}h · 7-night avg
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="v">{Math.round(rhrCur ?? 0) || '·'}<small> bpm</small></div>
+                      <div className="k">RESTING HR</div>
+                      {rhrBase != null && rhrCur != null && (
+                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
+                          baseline {Math.round(rhrBase)} · {rhrCur - rhrBase >= 0 ? '+' : ''}{Math.round(rhrCur - rhrBase)}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="v">{Math.round(hrvCur ?? 0) || '·'}<small> ms</small></div>
+                      <div className="k">HRV</div>
+                      {hrvBase != null && hrvCur != null && (
+                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
+                          baseline {Math.round(hrvBase)} · {Math.round((hrvCur - hrvBase) / hrvBase * 100) >= 0 ? '+' : ''}{Math.round((hrvCur - hrvBase) / hrvBase * 100)}%
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
           <WorkoutCard
@@ -507,6 +553,7 @@ export function TodayView({
               ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
               : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
             persistShoe={curDay === seed.todayIdx}
+            seed={seed}
           />
         </div>
       )}
@@ -3522,27 +3569,137 @@ function prettyCondition(c: string): string {
   }
 }
 
-function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, persistShoe }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; runData: RunSummary | null; runLoading: boolean; shoes: FaffSeed['shoes']; seedShoe: string; persistShoe: boolean }) {
+/**
+ * 2026-06-03 · RestDayCard · enriched rest-day surface per David's
+ * call: "Rest isn't just nothing, rest is your body recovering."
+ *
+ * Sections:
+ *   · LET THE LOAD LAND · why today matters (week recap as context)
+ *   · THIS WEEK · concrete numbers (mi done, days run, hard sessions)
+ *   · TOMORROW · preview of the next planned workout · gives the
+ *     rest day a visible purpose
+ *   · RECOVERY · specific, actionable items · not generic platitudes
+ *
+ * Informational only · no "you should do this" prescriptive copy
+ * per the no-reactive-coach doctrine (memory/feedback_no_reactive_coach.md).
+ */
+function RestDayCard({ d, seed }: { d: FaffSeed['week'][number]; seed?: FaffSeed }) {
+  // Derive this week's recap from the week array.
+  let weekMiles = 0;
+  let daysRun = 0;
+  let hardSessions = 0;
+  const tomorrow: { type: string; dist: string; pace: string | null; name: string } | null = (() => {
+    if (!seed) return null;
+    const todayIdx = seed.week.findIndex(w => w.iso === d.iso);
+    if (todayIdx < 0) return null;
+    const nextIdx = todayIdx + 1;
+    if (nextIdx >= seed.week.length) return null;
+    const next = seed.week[nextIdx];
+    return next ? {
+      type: next.type,
+      dist: next.dist || '',
+      pace: next.pace || null,
+      name: next.name || next.type.toUpperCase(),
+    } : null;
+  })();
+  if (seed) {
+    for (const w of seed.week) {
+      if (w.done) {
+        daysRun++;
+        weekMiles += parseFloat(w.dist || '0') || 0;
+        if (w.type === 'intervals' || w.type === 'tempo' || w.type === 'long') {
+          hardSessions++;
+        }
+      }
+    }
+  }
+  weekMiles = Math.round(weekMiles * 10) / 10;
+
+  return (
+    <div className="wcard" style={{ display: 'grid', gap: 16 }}>
+      <div>
+        <div className="wcl">REST</div>
+        <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 28, fontWeight: 600, lineHeight: 1, marginTop: 4 }}>
+          Let the load land.
+        </div>
+        <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.5, opacity: 0.86, marginTop: 12 }}>
+          Recovery is when the body actually adapts to the work · sleep, hydrate, mobilize, and let yesterday's run consolidate.
+        </div>
+      </div>
+
+      {/* THIS WEEK recap · real numbers from the week array. */}
+      {seed ? (
+        <div style={{
+          padding: '12px 14px', borderRadius: 10,
+          background: 'rgba(255,255,255,.04)',
+          border: '1px solid rgba(255,255,255,.08)',
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, opacity: 0.55, marginBottom: 6 }}>
+            THIS WEEK
+          </div>
+          <div style={{ display: 'flex', gap: 24, fontFamily: 'Oswald, sans-serif' }}>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1 }}>{weekMiles}<small style={{ fontSize: 12, opacity: 0.7 }}> mi</small></div>
+              <div style={{ fontSize: 10, opacity: 0.55, marginTop: 4, fontFamily: 'inherit' }}>done</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1 }}>{daysRun}<small style={{ fontSize: 12, opacity: 0.7 }}> days</small></div>
+              <div style={{ fontSize: 10, opacity: 0.55, marginTop: 4, fontFamily: 'inherit' }}>run</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1 }}>{hardSessions}</div>
+              <div style={{ fontSize: 10, opacity: 0.55, marginTop: 4, fontFamily: 'inherit' }}>quality sessions</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* TOMORROW preview · gives the rest day a visible target. */}
+      {tomorrow && tomorrow.type !== 'rest' ? (
+        <div style={{
+          padding: '12px 14px', borderRadius: 10,
+          background: 'rgba(255,255,255,.04)',
+          border: '1px solid rgba(255,255,255,.08)',
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, opacity: 0.55, marginBottom: 6 }}>
+            TOMORROW
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+            <div style={{
+              fontFamily: 'Oswald, sans-serif', fontSize: 20, fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: 0.4,
+            }}>
+              {tomorrow.name.toUpperCase()}
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
+              {tomorrow.dist} mi{tomorrow.pace ? ` · ${tomorrow.pace}/mi` : ''}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Recovery targets · specific, not platitudes. */}
+      <div className="kit">
+        <div className="kc"><div className="kcl">SLEEP TARGET</div><div className="kcv">8h tonight</div></div>
+        <div className="kc"><div className="kcl">MOBILITY</div><div className="kcv">15 min · hips, calves</div></div>
+        <div className="kc"><div className="kcl">FUEL</div><div className="kcv">{tomorrow?.type === 'long' ? 'Carb-forward · top up' : 'Balanced + hydrate'}</div></div>
+      </div>
+    </div>
+  );
+}
+
+function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, persistShoe, seed }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; runData: RunSummary | null; runLoading: boolean; shoes: FaffSeed['shoes']; seedShoe: string; persistShoe: boolean; seed?: FaffSeed }) {
   if (done) {
     return <CompletedResultCard d={d} fallback={result} runData={runData} loading={runLoading} />;
   }
-  // Rest day gets a recovery-focused panel, not the workout shape.
+  // Rest day gets a recovery-focused panel · enriched 2026-06-03 per
+  // David: "Rest isn't just nothing, rest is your body recovering."
+  // Adds THIS WEEK recap (real volume + days run) and TOMORROW preview
+  // (so the rest day has visible purpose). Informational only · no
+  // prescriptive copy ("eat this," "sleep more") per the no-reactive-
+  // coach doctrine.
   if (d.type === 'rest') {
-    return (
-      <div className="wcard">
-        <div className="wcl">RECOVERY</div>
-        <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 28, fontWeight: 600, lineHeight: 1, marginTop: 4 }}>Today is for healing.</div>
-        <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.5, opacity: 0.86, marginTop: 12 }}>
-          Six days on. This is where the work sets in. Sleep, hydrate, mobilize. Let the load land.
-        </div>
-        <div className="kit" style={{ marginTop: 22 }}>
-          <div className="kc"><div className="kcl">SLEEP TARGET</div><div className="kcv">8h</div></div>
-          <div className="kc"><div className="kcl">MOBILITY</div><div className="kcv">15 min</div></div>
-          <div className="kc"><div className="kcl">FUEL</div><div className="kcv">Balanced + hydrate</div></div>
-        </div>
-        <div className="wcoach"><span className="ct">COACH</span>Rest is training. An easy 20-min walk is fine, but do not turn it into a session.</div>
-      </div>
-    );
+    return <RestDayCard d={d} seed={seed} />;
   }
   // 2026-06-02 · spec-driven session shape (was SEGS prototype data)
   const totalMi = parseFloat(d.dist || '0') || 0;
