@@ -102,16 +102,34 @@ export interface ReadinessBrief {
    *  derived from band + active streaks + today's planned workout type +
    *  subjective override (when present). Authored, not templated.
    *
+   *  · action · imperative one-liner the runner can act on
+   *  · why    · one-line reasoning citing the trigger
+   *  · intent · structured intent for downstream comparison:
+   *      'cut'   · prescription reduces planned load (skip quality,
+   *                drop long, ease easy)
+   *      'plan'  · prescription holds the plan as-is
+   *      'send'  · prescription pushes (rare · for SHARP days)
+   *      'rest'  · prescription is full rest
+   *  · targetMinutes / targetMiles · the rough quantity the
+   *      prescription suggests · null when the action is
+   *      qualitative ("plan stands"). Used by the post-run reflection
+   *      to compare actual run to the morning's call.
+   *
    *  Examples:
-   *    SHARP + planned quality → "Send it. Plan as scheduled."
-   *    PULL-BACK + sleep streak + planned tempo → "Swap tempo for
-   *      easy 4-5mi. Hold tomorrow's plan."
-   *    MODERATE + planned long → "Cap effort at 'tired, not wrecked.'
-   *      Cut long by 1-2mi if heart climbs above easy band."
+   *    SHARP + planned quality → action="Send it. Plan as scheduled."
+   *                              intent='send', target* null
+   *    PULL-BACK + sleep streak + planned easy → action="Cut the easy
+   *                              to 30min." intent='cut', targetMinutes=30
    *
    *  Null only on true cold-start (band='no-data') or when the
    *  composition can't read today's planned workout. */
-  prescription: { action: string; why: string } | null;
+  prescription: {
+    action: string;
+    why: string;
+    intent: 'cut' | 'plan' | 'send' | 'rest';
+    targetMinutes: number | null;
+    targetMiles: number | null;
+  } | null;
   /** Score trend, 14-day. Includes today's row. */
   scoreTrend: { date: string; score: number; band: PillarBand }[];
   pillars: ReadinessPillarTile[];
@@ -476,21 +494,41 @@ function composePrescription(args: {
   const { band, streaks, todayWorkoutType, subjectiveOverride } = args;
   if (band === 'no-data') return null;
 
+  // Local helper · consolidates the return shape and structures the
+  // 2026-06-03 intent + target fields downstream consumers (the
+  // post-run reflection in particular) read to compare actual run to
+  // the morning's call.
+  const rx = (
+    action: string,
+    why: string,
+    intent: 'cut' | 'plan' | 'send' | 'rest',
+    targets: { min?: number; mi?: number } = {},
+  ): ReadinessBrief['prescription'] => ({
+    action,
+    why,
+    intent,
+    targetMinutes: targets.min ?? null,
+    targetMiles: targets.mi ?? null,
+  });
+
   // Subjective override takes precedence per Saw et al. doctrine.
   if (subjectiveOverride) {
     const sub = subjectiveOverride.subjectiveScore;
     const obj = subjectiveOverride.objectiveScore;
     if (sub - obj >= 15) {
-      return {
-        action: 'Plan stands. You feel better than the numbers.',
-        why: `Subjective ${sub} vs objective ${obj} · trust the body when the gap is this wide.`,
-      };
+      return rx(
+        'Plan stands. You feel better than the numbers.',
+        `Subjective ${sub} vs objective ${obj} · trust the body when the gap is this wide.`,
+        'plan',
+      );
     }
     if (obj - sub >= 15) {
-      return {
-        action: 'Ease back regardless of plan. Easy 20-30min only or full rest.',
-        why: `Subjective ${sub} vs objective ${obj} · the body knows when the numbers don't.`,
-      };
+      return rx(
+        'Ease back regardless of plan. Easy 20-30min only or full rest.',
+        `Subjective ${sub} vs objective ${obj} · the body knows when the numbers don't.`,
+        'cut',
+        { min: 25 },
+      );
     }
   }
 
@@ -503,64 +541,53 @@ function composePrescription(args: {
   const isEasy    = wType === 'easy' || wType === 'recovery';
   const isRest    = wType === 'rest' || wType === '';
 
+  const reason = (frame: string) =>
+    chronicSignal
+      ? `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + ${frame}`
+      : frame;
+
   // Hard pull-back when chronic streak compounds with a low band.
   if (band === 'pull-back') {
     if (chronicSignal && chronicSignal.days >= 5) {
-      if (isQuality) {
-        return {
-          action: 'Skip today\'s quality. Easy 30min only or full rest.',
-          why: `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + PULL BACK band · don't add load on a depleted base.`,
-        };
-      }
-      if (isLong) {
-        return {
-          action: 'Drop the long to 50-60% distance. No pace targets · jog.',
-          why: `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + PULL BACK band · long-run cost will compound.`,
-        };
-      }
-      if (isEasy) {
-        return {
-          action: 'Cut the easy to 30min. Keep it conversational, walk if needed.',
-          why: `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + PULL BACK band · pull back even on easy days.`,
-        };
-      }
-      return {
-        action: 'Rest. Or 20-30min walk if you need to move.',
-        why: `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + PULL BACK band · the body needs the day off.`,
-      };
+      if (isQuality) return rx('Skip today\'s quality. Easy 30min only or full rest.', `${reason('PULL BACK band')} · don't add load on a depleted base.`, 'cut', { min: 30 });
+      if (isLong)    return rx('Drop the long to 50-60% distance. No pace targets · jog.', `${reason('PULL BACK band')} · long-run cost will compound.`, 'cut');
+      if (isEasy)    return rx('Cut the easy to 30min. Keep it conversational, walk if needed.', `${reason('PULL BACK band')} · pull back even on easy days.`, 'cut', { min: 30 });
+      return rx('Rest. Or 20-30min walk if you need to move.', `${reason('PULL BACK band')} · the body needs the day off.`, 'rest', { min: 20 });
     }
     // Acute pull-back · no streak. Less aggressive.
-    if (isQuality) return { action: 'Swap quality for easy 30-45min.', why: 'PULL BACK band today · save the work for a recovered day.' };
-    if (isLong)    return { action: 'Drop long to 70-80% distance. No pace targets.', why: 'PULL BACK band today · long-run on a bad day costs more than it gains.' };
-    if (isEasy)    return { action: 'Easy as planned, but cut 1-2mi if it feels off.', why: 'PULL BACK band today · easy is already the right call.' };
-    return { action: 'Rest as planned. Mobility if you want.', why: 'PULL BACK band · rest day matches the signal.' };
+    if (isQuality) return rx('Swap quality for easy 30-45min.', 'PULL BACK band today · save the work for a recovered day.', 'cut', { min: 40 });
+    if (isLong)    return rx('Drop long to 70-80% distance. No pace targets.', 'PULL BACK band today · long-run on a bad day costs more than it gains.', 'cut');
+    if (isEasy)    return rx('Easy as planned, but cut 1-2mi if it feels off.', 'PULL BACK band today · easy is already the right call.', 'plan');
+    return rx('Rest as planned. Mobility if you want.', 'PULL BACK band · rest day matches the signal.', 'rest');
   }
 
   if (band === 'moderate') {
     if (chronicSignal && chronicSignal.days >= 5) {
-      if (isQuality) return { action: 'Run quality as planned, but cap effort. Stop if pace slips badly.', why: `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · proceed with caution.` };
-      if (isLong)    return { action: 'Long as planned, but slower than usual easy pace. No fast finish.', why: `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · build aerobic, skip the strain.` };
-      return { action: 'Plan stands. Keep effort conservative.', why: `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · run, don't push.` };
+      if (isQuality) return rx('Run quality as planned, but cap effort. Stop if pace slips badly.', `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · proceed with caution.`, 'plan');
+      if (isLong)    return rx('Long as planned, but slower than usual easy pace. No fast finish.', `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · build aerobic, skip the strain.`, 'plan');
+      return rx('Plan stands. Keep effort conservative.', `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · run, don't push.`, 'plan');
     }
-    if (isQuality) return { action: 'Plan stands. Hold the easy band on warm-up + recovery.', why: 'MODERATE band · execute, don\'t over-reach.' };
-    if (isLong)    return { action: 'Long as planned. Cap effort at "tired, not wrecked."', why: 'MODERATE band · build aerobic without paying the next-day tax.' };
-    return { action: 'Plan stands.', why: 'MODERATE band · within normal training band.' };
+    if (isQuality) return rx('Plan stands. Hold the easy band on warm-up + recovery.', 'MODERATE band · execute, don\'t over-reach.', 'plan');
+    if (isLong)    return rx('Long as planned. Cap effort at "tired, not wrecked."', 'MODERATE band · build aerobic without paying the next-day tax.', 'plan');
+    return rx('Plan stands.', 'MODERATE band · within normal training band.', 'plan');
   }
 
   if (band === 'ready') {
-    if (isQuality) return { action: 'Plan stands. Execute the workout.', why: 'READY band · system is recovered.' };
-    if (isLong)    return { action: 'Long as planned. Optional fast finish if it feels right.', why: 'READY band · take the long honestly.' };
-    if (isEasy)    return { action: 'Plan stands. Easy as scheduled.', why: 'READY band · easy days build the base.' };
-    return { action: 'Plan stands.', why: 'READY band · run as scheduled.' };
+    if (isQuality) return rx('Plan stands. Execute the workout.', 'READY band · system is recovered.', 'plan');
+    if (isLong)    return rx('Long as planned. Optional fast finish if it feels right.', 'READY band · take the long honestly.', 'plan');
+    if (isEasy)    return rx('Plan stands. Easy as scheduled.', 'READY band · easy days build the base.', 'plan');
+    return rx('Plan stands.', 'READY band · run as scheduled.', 'plan');
   }
 
   if (band === 'sharp') {
-    if (isQuality) return { action: 'Send it. Plan as scheduled.', why: 'SHARP band · system is firing · don\'t hold back.' };
-    if (isLong)    return { action: 'Send it. Plan stands · fast finish if it\'s scheduled.', why: 'SHARP band · use the day.' };
-    if (isEasy)    return { action: 'Easy as planned · don\'t turn it into a hard day because you feel good.', why: 'SHARP band but easy day · banking days like this matter.' };
-    return { action: 'Plan stands.', why: 'SHARP band · run as scheduled.' };
+    if (isQuality) return rx('Send it. Plan as scheduled.', 'SHARP band · system is firing · don\'t hold back.', 'send');
+    if (isLong)    return rx('Send it. Plan stands · fast finish if it\'s scheduled.', 'SHARP band · use the day.', 'send');
+    if (isEasy)    return rx('Easy as planned · don\'t turn it into a hard day because you feel good.', 'SHARP band but easy day · banking days like this matter.', 'plan');
+    return rx('Plan stands.', 'SHARP band · run as scheduled.', 'plan');
   }
 
+  // Avoid unused-var lint on isRest · kept for future use.
+  void isRest;
   return null;
 }
 

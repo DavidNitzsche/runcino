@@ -122,6 +122,7 @@ function fmtTimeFromSec(sec: number): string {
 export function Drawer({
   open, onClose, brief, fallbackReadiness, goalSlug,
   todayRunDone = false, todayWorkoutType = null,
+  todayActualMi = null, todayActualMin = null,
   onViewFullHealth,
 }: {
   open: boolean;
@@ -141,6 +142,11 @@ export function Drawer({
   /** 2026-06-03 · today's planned workout type (easy / long / intervals
    *  / etc) · combined with todayRunDone to author the check-in prompt. */
   todayWorkoutType?: string | null;
+  /** 2026-06-03 · actual distance + moving-time of today's completed
+   *  run · drives the PostRunReflection's "you followed the call" vs
+   *  "ran more than the cut" comparison against prescription.target*. */
+  todayActualMi?: number | null;
+  todayActualMin?: number | null;
   onViewFullHealth: () => void;
 }) {
   // Auto-expand pull-back-band pillars per README `confounders=auto`
@@ -235,11 +241,19 @@ export function Drawer({
               />
             ) : null}
 
-            {/* 2026-06-03 · Prescription · "what should I DO today" line.
-                Authored from band + active streaks + planned workout type.
-                Renders right under the hero so it's the first concrete
-                action the runner sees. Hidden on cold-start (band='no-data'). */}
-            {brief.prescription ? <PrescriptionCard p={brief.prescription} band={brief.band} /> : null}
+            {/* 2026-06-03 · Prescription card · "what should I DO today."
+                When today's run is done, the morning's prescription is
+                stale (David flagged "I already ran today so this is
+                weird to show"). Swap to a PostRunReflection that
+                acknowledges what they did vs the morning's call · the
+                "cut to 30min" prescription becomes "you ran X · followed
+                the call" or "you ran X · ran more than the cut · watch
+                tomorrow." */}
+            {brief.prescription
+              ? (todayRunDone
+                  ? <PostRunReflection p={brief.prescription} band={brief.band} todayActualMi={todayActualMi} todayActualMin={todayActualMin} />
+                  : <PrescriptionCard p={brief.prescription} band={brief.band} />)
+              : null}
 
             {/* Gap report moved 2026-06-01 · David call · "this info
                 should not be in this today panel. it can fill out
@@ -440,6 +454,101 @@ function PrescriptionCard({ p, band }: {
       </div>
       <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', lineHeight: 1.4 }}>
         {p.why}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PostRunReflection · post-run replacement for PrescriptionCard.
+   2026-06-03 · David: "I already ran today so [the prescription
+   card] is weird to show. Also if I saw this before the run and
+   then only ran 30 min, what would the post run info show? would
+   it know?"
+
+   Yes, it knows. The brief.prescription carries structured intent
+   ('cut' / 'plan' / 'send' / 'rest') + targetMinutes / targetMiles.
+   When today's run is done, we compare what they actually ran
+   (todayActualMin, todayActualMi) to the morning's call and surface
+   a one-line reflection.
+
+   Examples (PULL-BACK + sleep-streak + planned easy, target 30min):
+     actual ≤ 35min  → "30min done. Followed the call. Good."
+     35 < actual ≤ 45 → "Ran a bit more than the cut · 42min vs 30 target."
+     actual > 45min  → "Ran 50min · the call was 30. Note for tomorrow."
+
+   When prescription is 'plan' or 'send' (no quantity target) the
+   reflection just acknowledges: "Ran X. Plan executed." or "Sent it.
+   X done."
+   ============================================================ */
+function PostRunReflection({ p, band, todayActualMi, todayActualMin }: {
+  p: NonNullable<ReadinessBriefSeed['prescription']>;
+  band: ReadinessBriefSeed['band'];
+  todayActualMi: number | null;
+  todayActualMin: number | null;
+}) {
+  const accent = BAND_COLOR[band] ?? '#8A90A0';
+  const fmtRun = (mi: number | null, min: number | null): string => {
+    if (mi != null && min != null) return `${mi.toFixed(1)}mi · ${Math.round(min)}min`;
+    if (mi != null) return `${mi.toFixed(1)}mi`;
+    if (min != null) return `${Math.round(min)}min`;
+    return 'today\'s run';
+  };
+  const actualLabel = fmtRun(todayActualMi, todayActualMin);
+
+  // Author the reflection based on intent + target vs actual.
+  let reflection: string;
+  if (p.intent === 'cut') {
+    const targetMin = p.targetMinutes;
+    const targetMi = p.targetMiles;
+    if (targetMin != null && todayActualMin != null) {
+      const ratio = todayActualMin / targetMin;
+      if (ratio <= 1.15) reflection = `Followed the call · ran the cut. Good.`;
+      else if (ratio <= 1.5) reflection = `Ran a bit more than the cut · ${Math.round(todayActualMin)}min vs ${targetMin} target.`;
+      else reflection = `Ran more than the cut · ${Math.round(todayActualMin)}min vs ${targetMin} target. Note for tomorrow.`;
+    } else if (targetMi != null && todayActualMi != null) {
+      const ratio = todayActualMi / targetMi;
+      if (ratio <= 1.10) reflection = `Followed the call · stayed near the cut. Good.`;
+      else if (ratio <= 1.30) reflection = `Ran a bit more than the cut · ${todayActualMi.toFixed(1)}mi vs ${targetMi} target.`;
+      else reflection = `Ran more than the cut · ${todayActualMi.toFixed(1)}mi vs ${targetMi} target. Note for tomorrow.`;
+    } else {
+      reflection = `The call was a cut · you ran. Watch tomorrow's signals.`;
+    }
+  } else if (p.intent === 'rest') {
+    reflection = todayActualMi != null && todayActualMi > 1
+      ? `The call was rest · you ran ${actualLabel}. Note for tomorrow.`
+      : `Rest as called.`;
+  } else if (p.intent === 'send') {
+    reflection = `Sent it. Plan executed.`;
+  } else {
+    reflection = `Plan executed.`;
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: '12px 14px',
+        borderRadius: 12,
+        background: 'rgba(255,255,255,.04)',
+        border: `1px solid ${accent}33`,
+        borderLeft: `3px solid ${accent}`,
+      }}
+    >
+      <div style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
+        color: 'rgba(255,255,255,.55)', marginBottom: 6,
+      }}>
+        TODAY · DONE
+      </div>
+      <div style={{
+        fontFamily: 'var(--font-display, Oswald, sans-serif)',
+        fontSize: 17, lineHeight: 1.3, color: '#fff', marginBottom: 6,
+      }}>
+        {reflection}
+      </div>
+      <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', lineHeight: 1.4 }}>
+        Morning call · <i>{p.action}</i>
       </div>
     </div>
   );

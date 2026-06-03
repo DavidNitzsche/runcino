@@ -232,6 +232,27 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         // framing). seed.results is keyed by week index.
         todayRunDone={Boolean(seed.results[seed.todayIdx])}
         todayWorkoutType={seed.week[seed.todayIdx]?.type ?? null}
+        // 2026-06-03 · actual run distance + duration · drives the
+        // PostRunReflection. CompletedRun carries `time` (M:SS / H:MM:SS)
+        // and `apace` (M:SS/mi). Distance derives from time ÷ pace.
+        {...(() => {
+          const r = seed.results[seed.todayIdx];
+          if (!r) return { todayActualMi: null, todayActualMin: null };
+          // Parse "50:34" or "1:23:45" → seconds.
+          const parseT = (s: string): number | null => {
+            const parts = s.split(':').map(Number);
+            if (parts.some(n => !Number.isFinite(n))) return null;
+            if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
+            if (parts.length === 2) return parts[0]*60 + parts[1];
+            return null;
+          };
+          const tSec = parseT(r.time);
+          const paceSec = parseT(r.apace);
+          const min = tSec != null ? tSec / 60 : null;
+          const mi = tSec != null && paceSec != null && paceSec > 0
+            ? +(tSec / paceSec).toFixed(2) : null;
+          return { todayActualMi: mi, todayActualMin: min };
+        })()}
         onViewFullHealth={() => { setOpenOverlay(null); navigate('health'); }}
       />
       {typeof openOverlay === 'object' && openOverlay?.type === 'wk' && (
