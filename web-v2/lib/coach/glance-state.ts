@@ -505,6 +505,9 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     // re-queries via the full state-loader, which DOES compute these.
     todayRunDone: false,
     todayRunLong: false,
+    // 2026-06-03 · voice band null on the fast path · morning brief
+    // composer falls back to 'guided' (safe default) when null.
+    voiceBand: null,
   });
 
   // Pace-derivation inputs (Phase 47 · /today fallback). LTHR + the closest

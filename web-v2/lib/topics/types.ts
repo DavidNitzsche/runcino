@@ -152,6 +152,16 @@ export interface CoachState {
    *  a day it stays true until midnight rolls · no morning-mode bounce. */
   todayRunDone: boolean;
   todayRunLong: boolean;
+
+  /** 2026-06-03 · adaptive coach voice band (lib/coach/voice-band.ts).
+   *  Drives copy verbosity + hedging across morning brief / pre-run
+   *  cue / post-run recap. Three bands:
+   *    · calibration · soft, hedged paces, ±15s bands
+   *    · guided      · concrete prescriptions with soft override
+   *    · challenge   · direct, no hedging
+   *  Null on state-load failure · consumers fall back to 'guided'
+   *  which is the safest default. */
+  voiceBand: import('@/lib/coach/voice-band').VoiceBandReason | null;
 }
 
 /* ────────────────────────── Topic payloads ────────────────────────── */

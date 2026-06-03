@@ -440,5 +440,29 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     // 2026-06-03 · Today screen post-run pivot · iPhone forward-compat.
     todayRunDone,
     todayRunLong,
+    // 2026-06-03 · adaptive coach voice band · null on load failure.
+    // computeVoiceBand makes 4 SQL reads · all best-effort, fall back
+    // to null and consumer (readiness-brief authoring) uses 'guided'.
+    voiceBand: await loadVoiceBandSafe(userId, {
+      activeNiggle,
+      recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
+    }),
   };
+}
+
+/** Best-effort voice band loader. Lazily imported so state-loader
+ *  doesn't take a module-load dependency on voice-band's SQL helpers,
+ *  and so a runtime error in voice-band degrades to null instead of
+ *  breaking every CoachState consumer. */
+async function loadVoiceBandSafe(
+  userId: string,
+  partialState: Pick<CoachState, 'activeNiggle' | 'recentCheckIns'>,
+): Promise<CoachState['voiceBand']> {
+  try {
+    const { computeVoiceBand } = await import('@/lib/coach/voice-band');
+    return await computeVoiceBand(userId, partialState as CoachState);
+  } catch (e) {
+    console.warn('[state-loader] voiceBand load failed:', e instanceof Error ? e.message : String(e));
+    return null;
+  }
 }
