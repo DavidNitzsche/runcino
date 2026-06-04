@@ -382,11 +382,10 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               const af = seed.health.aerobicFitness;
               const delta = af.currentDriftPct - af.blockStartDriftPct;
               const absDelta = Math.abs(delta);
-              // 2026-06-03 · stripped zone chip + bands reference per
-              // David ("dont muddy it with all these other phases and
-              // options · Talk about what is happening NOW"). Card now
-              // shows the runner's actual current state with no phase
-              // taxonomy or zone-band reference cluttering the read.
+              // 2026-06-03 · zone chip stays (David's "you can leave the
+              // BUILDING" · it tells him where his number lands) but the
+              // bands "key" reference is dropped (he didn't need the
+              // taxonomy).
               const arrow = delta < -0.1 ? '↓' : delta > 0.1 ? '↑' : '→';
               const arrowClass = delta < -0.1 ? 'good' : delta > 0.1 ? 'bad' : 'flat';
               const deltaLabel = absDelta < 0.1
@@ -401,6 +400,14 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                     {af.currentDriftPct.toFixed(1)}%
                   </div>
                   <div className={`haero-delta haero-delta-${arrowClass}`}>{deltaLabel}</div>
+                  {af.currentZone ? (
+                    <span className={`haero-chip haero-chip-${af.currentZone}`}>
+                      {af.currentZone === 'race-ready' ? 'RACE-READY'
+                        : af.currentZone === 'building' ? 'BUILDING'
+                        : af.currentZone === 'developing' ? 'DEVELOPING'
+                        : 'EARLY BASE'}
+                    </span>
+                  ) : null}
                   <div className="haero-m">{af.summary}</div>
                   {af.whatItIs ? (
                     <div className="haero-what">{af.whatItIs}</div>
