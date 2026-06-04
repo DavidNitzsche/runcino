@@ -755,6 +755,67 @@ final class HealthKitImporter: ObservableObject {
                                        sample_date: isoDay(d), recorded_at: isoUTC(d)))
             }
         }
+        // 2026-06-03 round 82 · run-form daily samples · per backend
+        // brief designs/briefs/iphone-form-metrics-regression.md. Six
+        // form metrics stopped flowing on 2026-05-25 because no path
+        // in collectVitalSamples emits them as daily HK samples. The
+        // workout-level avg_* fields (line 305-330) write into the
+        // run row, but backend's HealthState.runForm reads from the
+        // health_samples table (daily averages) for the trend series.
+        //
+        // Apple HK exposes 4 of the 6 directly:
+        //  · runningGroundContactTime   → "ground_contact_time"  (ms)
+        //  · runningVerticalOscillation → "vertical_oscillation"  (cm)
+        //  · runningStrideLength        → "stride_length"         (m)
+        //  · runningPower               → "run_power"             (W)
+        //
+        // The remaining 2:
+        //  · vertical_ratio · derived (osc/stride) · backend computes
+        //    from the pair so we don't ship it as a separate sample
+        //  · cadence · we already write `avg_cadence_spm` into the
+        //    workout payload (line 305) AND backend computes daily
+        //    avg-cadence from runs.data on the backend side · no
+        //    separate sample needed. (If backend wants iPhone-side
+        //    cadence samples, file a follow-up.)
+        //
+        // All four queried via dailyStats with discreteAverage · returns
+        // a per-day average across all running periods that day. Skips
+        // days with no quantity data (returns nil) so non-run days
+        // don't get a 0.
+        for (d, stat) in await dailyStats(HKQuantityType(.runningGroundContactTime), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                // GCT comes in seconds · backend expects ms · multiply
+                // 1000, round to nearest integer
+                let ms = (q.doubleValue(for: .secondUnit(with: .milli))).rounded()
+                out.append(VitalSample(sample_type: "ground_contact_time", value: ms,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        for (d, stat) in await dailyStats(HKQuantityType(.runningVerticalOscillation), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                // VertOsc in meters → cm (×100), 1-decimal precision
+                let cm = (q.doubleValue(for: .meterUnit(with: .centi)) * 10).rounded() / 10
+                out.append(VitalSample(sample_type: "vertical_oscillation", value: cm,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        for (d, stat) in await dailyStats(HKQuantityType(.runningStrideLength), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                // Stride in meters · 2-decimal precision
+                let m = (q.doubleValue(for: .meter()) * 100).rounded() / 100
+                out.append(VitalSample(sample_type: "stride_length", value: m,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        for (d, stat) in await dailyStats(HKQuantityType(.runningPower), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                // Power in watts · integer
+                let w = q.doubleValue(for: .watt()).rounded()
+                out.append(VitalSample(sample_type: "run_power", value: w,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+
         // sleep_hours + per-stage minutes — single pass over HK sleep
         // samples. Total stays as the canonical "how long did you
         // sleep" scalar; deep / rem / light / awake minutes unlock the
