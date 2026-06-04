@@ -465,6 +465,13 @@ export async function loadReadinessBrief(
   // ask "instead of watching tomorrow · can we surface something
   // about actions to take". Each rule fires only on a real trigger ·
   // when nothing fires, returns a single ON COURSE entry.
+  // 2026-06-03 · plan adaptation context. When the plan adapter has
+  // already mutated today's or tomorrow's workout (downgrade/shave/
+  // reschedule), the action panel surfaces THAT instead of issuing a
+  // parallel text prescription. "Panel describes the plan, doesn't
+  // double-prescribe" architecture per David.
+  const planAdaptation = await loadActivePlanAdaptation(userId, date);
+
   const actions = buildHealthActions({
     breakdown,
     state,
@@ -476,6 +483,7 @@ export async function loadReadinessBrief(
     // scoreTrend includes today (appended by loadScoreTrend) so the
     // tail of slice(-3) is [day-before-yesterday, yesterday, today].
     scoreTrend: scoreTrend.map((s) => ({ date: s.date, score: s.score })),
+    planAdaptation,
   });
 
   return {
@@ -1349,6 +1357,124 @@ function buildComposition(
  * the runner sees their trajectory + what closes the gap + A/B/C
  * alternatives every morning.
  */
+/**
+ * 2026-06-03 · pull today's + tomorrow's plan_workouts adaptation
+ * state, if either has been mutated by the plan adapter. Returns the
+ * most-recent adaptation (so a tomorrow downgrade trumps a today
+ * downgrade in the chip · "what's about to happen" beats "what
+ * already happened"). Returns null when neither row has been adapted.
+ *
+ * The action panel uses this to:
+ *   1. Surface the actual plan change as the primary read ("Tomorrow's
+ *      tempo downgraded to easy") instead of duplicating it as a
+ *      separate text prescription.
+ *   2. Suppress streak/pull-back triggers that would otherwise issue a
+ *      parallel command · the plan already absorbed the signal.
+ */
+async function loadActivePlanAdaptation(
+  userId: string,
+  todayISO: string,
+): Promise<{
+  date: string;
+  isToday: boolean;
+  currentType: string;
+  currentSubLabel: string | null;
+  currentDistanceMi: number | null;
+  originalType: string | null;
+  originalSubLabel: string | null;
+  originalDistanceMi: number | null;
+  reason: string | null;
+  kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+} | null> {
+  try {
+    const tomorrowISO = new Date(Date.parse(todayISO + 'T00:00:00Z') + 86400000)
+      .toISOString().slice(0, 10);
+    // Most-recent adaptation across today + tomorrow · prefer tomorrow
+    // (forward-looking) when both rows are adapted.
+    const r = (await pool.query<{
+      date_iso: string;
+      type: string;
+      sub_label: string | null;
+      distance_mi: number | string | null;
+      original_type: string | null;
+      original_sub_label: string | null;
+      original_distance_mi: number | string | null;
+      intent_reason: string | null;
+      intent_value: { kind?: string; why?: string } | null;
+    }>(
+      `SELECT pw.date_iso, pw.type, pw.sub_label, pw.distance_mi,
+              pw.original_type, pw.original_sub_label, pw.original_distance_mi,
+              adapt.reason AS intent_reason,
+              adapt.value::jsonb AS intent_value
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+         LEFT JOIN LATERAL (
+           SELECT ci.reason, ci.value
+             FROM coach_intents ci
+            WHERE ci.field = pw.id::text
+              AND ci.reason LIKE 'plan_adapt%'
+            ORDER BY ci.ts DESC
+            LIMIT 1
+         ) adapt ON TRUE
+        WHERE tp.user_uuid = $1::uuid
+          AND tp.status = 'active'
+          AND pw.date_iso IN ($2, $3)
+          AND (pw.original_type IS NOT NULL
+               OR pw.original_sub_label IS NOT NULL
+               OR pw.original_distance_mi IS NOT NULL)
+        ORDER BY (pw.date_iso = $3) DESC, pw.date_iso ASC
+        LIMIT 1`,
+      [userId, todayISO, tomorrowISO],
+    ).catch(() => ({ rows: [] }))).rows[0];
+
+    if (!r) return null;
+
+    // Validate adaptation actually changed something (jsonb numeric
+    // round-trips can mark a row "adapted" when nothing real changed).
+    const typeChanged = r.original_type != null && r.original_type !== r.type;
+    const subLabelChanged = r.original_sub_label != null
+      && r.original_sub_label !== r.sub_label;
+    const distanceChanged = r.original_distance_mi != null
+      && r.distance_mi != null
+      && Math.abs(Number(r.original_distance_mi) - Number(r.distance_mi)) > 0.05;
+    if (!typeChanged && !subLabelChanged && !distanceChanged) return null;
+
+    let kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null = null;
+    if (r.intent_value?.kind) {
+      const k = r.intent_value.kind;
+      if (k === 'downgrade' || k === 'reschedule' || k === 'shave' || k === 'mark_dirty') {
+        kind = k;
+      } else {
+        kind = 'other';
+      }
+    } else if (r.intent_reason) {
+      const suffix = r.intent_reason.replace(/^plan_adapt_?/, '');
+      if (['downgrade', 'reschedule', 'shave', 'mark_dirty'].includes(suffix)) {
+        kind = suffix as 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty';
+      } else {
+        kind = 'other';
+      }
+    } else {
+      kind = 'other';
+    }
+
+    return {
+      date: r.date_iso,
+      isToday: r.date_iso === todayISO,
+      currentType: r.type,
+      currentSubLabel: r.sub_label,
+      currentDistanceMi: r.distance_mi != null ? Number(r.distance_mi) : null,
+      originalType: r.original_type,
+      originalSubLabel: r.original_sub_label,
+      originalDistanceMi: r.original_distance_mi != null ? Number(r.original_distance_mi) : null,
+      reason: r.intent_value?.why ?? r.intent_reason ?? null,
+      kind,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Power moves #1 · pull the minimum health signals the synthesis card
  * needs. Light query so we don't load the full HealthState envelope.

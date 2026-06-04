@@ -56,12 +56,33 @@ export interface HealthAction {
     | 'load_detraining'
     | 'tsb_overreach'
     | 'tsb_race_ready'
+    | 'plan_adapted'       // 2026-06-03 · the plan adapter has changed today/tomorrow
     | 'on_course';
   priority: HealthActionPriority;
   /** Imperative sentence the runner reads first. */
   action: string;
   /** Underlying data citation (one short line · shows the number). */
   cite: string;
+}
+
+/**
+ * 2026-06-03 · plan adaptation context. When the plan adapter has
+ * already mutated today's or tomorrow's workout, the action panel
+ * surfaces that as the primary read instead of issuing a parallel
+ * text prescription · "panel describes the plan, doesn't
+ * double-prescribe."
+ */
+export interface PlanAdaptationContext {
+  date: string;
+  isToday: boolean;
+  currentType: string;
+  currentSubLabel: string | null;
+  currentDistanceMi: number | null;
+  originalType: string | null;
+  originalSubLabel: string | null;
+  originalDistanceMi: number | null;
+  reason: string | null;
+  kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
 }
 
 interface BuildArgs {
@@ -80,6 +101,11 @@ interface BuildArgs {
    *  single-day dips surface as honest acknowledgement without
    *  prescription. */
   scoreTrend: Array<{ date: string; score: number }>;
+  /** 2026-06-03 · today's or tomorrow's plan adaptation, if any. When
+   *  present, the panel surfaces THIS instead of duplicating the same
+   *  message as a separate prescription. Plan is the source of truth
+   *  for "what you actually do" · panel just describes it. */
+  planAdaptation?: PlanAdaptationContext | null;
 }
 
 /**
@@ -91,7 +117,45 @@ interface BuildArgs {
  */
 export function buildHealthActions(args: BuildArgs): HealthAction[] {
   const out: HealthAction[] = [];
-  const { breakdown, state, history, streaks, trainingForm, wristTempDeltaC, activeSick, scoreTrend } = args;
+  const { breakdown, state, history, streaks, trainingForm, wristTempDeltaC, activeSick, scoreTrend, planAdaptation } = args;
+
+  // ── PLAN ADAPTATION (when the plan adapter has already moved) ─────
+  //
+  // 2026-06-03 · The plan adapter mutates plan_workouts when triggers
+  // fire (HRV streak, pull-back, etc). When it has, the panel
+  // surfaces THAT as the read instead of issuing a parallel text
+  // prescription. Architecture: plan is source of truth for "what you
+  // actually do" · the panel describes the plan, doesn't double-coach.
+  //
+  // Sequencing here matters · this fires FIRST (before streak/pull-back
+  // rules) so subsequent rules can see `out.length > 0` and suppress
+  // themselves if they would duplicate the plan-adapt message.
+  if (planAdaptation) {
+    const dayPrefix = planAdaptation.isToday ? "Today's" : "Tomorrow's";
+    const fromType = (planAdaptation.originalType ?? planAdaptation.currentType).toLowerCase();
+    const toType = planAdaptation.currentType.toLowerCase();
+    const distanceShaved = planAdaptation.originalDistanceMi != null
+      && planAdaptation.currentDistanceMi != null
+      && planAdaptation.originalDistanceMi - planAdaptation.currentDistanceMi > 0.05
+      ? `${planAdaptation.originalDistanceMi.toFixed(1)}mi → ${planAdaptation.currentDistanceMi.toFixed(1)}mi`
+      : null;
+    let kindLabel = '';
+    if (planAdaptation.kind === 'downgrade') {
+      kindLabel = `${dayPrefix} ${fromType} downgraded to ${toType}.`;
+    } else if (planAdaptation.kind === 'shave' && distanceShaved) {
+      kindLabel = `${dayPrefix} ${toType} shaved · ${distanceShaved}.`;
+    } else if (planAdaptation.kind === 'reschedule') {
+      kindLabel = `${dayPrefix} ${toType} rescheduled.`;
+    } else {
+      kindLabel = `${dayPrefix} ${toType} adjusted from ${fromType}.`;
+    }
+    out.push({
+      signal: 'plan_adapted',
+      priority: 'high',
+      action: kindLabel,
+      cite: planAdaptation.reason ?? 'Plan adapter applied a change.',
+    });
+  }
 
   // 2026-06-03 · tier-aware thresholds + tone. The runner's
   // experience_level decides:
@@ -105,6 +169,13 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   const rules = tierRulesFor(tier);
   const isInformational = rules.tone === 'informational' || rules.tone === 'red-flag-only';
   const isRedFlagOnly = rules.tone === 'red-flag-only';
+
+  // When the plan adapter has already absorbed a signal, suppress the
+  // duplicate text prescription. "Tomorrow's tempo downgraded to easy.
+  // HRV down 5 days." (plan adapt chip) + "Tomorrow easy · let HRV
+  // recover." (streak chip) say the same thing twice. Hard rules + sleep
+  // (behavioral lever) + informational chips still fire.
+  const planAbsorbed = planAdaptation != null;
 
   // Streak direction convention (lib/coach/readiness-brief.ts):
   //   · hrv  direction 'below' = HRV below baseline (bad)
@@ -171,7 +242,9 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   }
 
   // Compound HRV+RHR streak at tier threshold · urgent for everyone.
-  if (hrvStreak && rhrStreak && hrvStreak.days >= rules.streakDaysMin && rhrStreak.days >= rules.streakDaysMin) {
+  // Suppressed when the plan adapter has already moved · the
+  // plan_adapted chip carries this same message.
+  if (!planAbsorbed && hrvStreak && rhrStreak && hrvStreak.days >= rules.streakDaysMin && rhrStreak.days >= rules.streakDaysMin) {
     out.push({
       signal: 'compound',
       priority: 'urgent',
@@ -190,7 +263,8 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   if (!isRedFlagOnly) {
 
     // TSB deep overreach (Banister · widely-cited -30 threshold).
-    if (trainingForm && trainingForm.tsb <= -30) {
+    // Suppressed when plan adapter already moved (it would have).
+    if (!planAbsorbed && trainingForm && trainingForm.tsb <= -30) {
       out.push({
         signal: 'tsb_overreach',
         priority: 'urgent',
@@ -202,7 +276,9 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     }
 
     // HRV multi-day low at tier threshold (and not already in compound).
-    if (hrvStreak && hrvStreak.days >= rules.streakDaysMin && !(rhrStreak && rhrStreak.days >= rules.streakDaysMin)) {
+    // Suppressed when plan adapter already moved · the plan_adapted
+    // chip carries this message.
+    if (!planAbsorbed && hrvStreak && hrvStreak.days >= rules.streakDaysMin && !(rhrStreak && rhrStreak.days >= rules.streakDaysMin)) {
       out.push({
         signal: 'hrv_low_streak',
         priority: 'high',
@@ -214,7 +290,8 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     }
 
     // RHR multi-day high at tier threshold.
-    if (rhrStreak && rhrStreak.days >= rules.streakDaysMin && !(hrvStreak && hrvStreak.days >= rules.streakDaysMin)) {
+    // Suppressed when plan adapter already moved.
+    if (!planAbsorbed && rhrStreak && rhrStreak.days >= rules.streakDaysMin && !(hrvStreak && hrvStreak.days >= rules.streakDaysMin)) {
       out.push({
         signal: 'rhr_high_streak',
         priority: 'high',
@@ -240,7 +317,9 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     }
 
     // ACWR spike at tier threshold.
-    if (state.loadAcwr != null
+    // Suppressed when plan adapter already moved (likely a 'shave' kind).
+    if (!planAbsorbed
+        && state.loadAcwr != null
         && state.loadAcwr >= rules.acwrSpike
         && state.loadAcwr < HARD_RULES.acwrInjuryHardCap) {
       out.push({
@@ -361,7 +440,7 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     const sustainedPullBack = recentScores.length >= rules.pullbackConsecutiveDays
       && recentPullBack >= rules.pullbackConsecutiveDays;
 
-    if (out.length === 0 && sustainedPullBack) {
+    if (!planAbsorbed && out.length === 0 && sustainedPullBack) {
       const worst = [...breakdown.inputs]
         .filter((i) => i.weight < 0)
         .sort((a, b) => a.weight - b.weight)[0];
