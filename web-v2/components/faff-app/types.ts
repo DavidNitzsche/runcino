@@ -293,7 +293,8 @@ export type GoalRace = {
   }>;
   /** 2026-06-04 · past 1-3 completed quality runs · "recent test
    *  points" with heat-adjusted verdict so the runner can see what
-   *  the quality work actually landed at. */
+   *  the quality work actually landed at.  Paired with nextTestPoints
+   *  in the redesigned ON THE PATH section. */
   recentTestPoints?: Array<{
     dateISO: string;
     type: string;

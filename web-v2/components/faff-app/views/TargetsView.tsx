@@ -1,10 +1,34 @@
 'use client';
 
+/**
+ * TargetsView · rebuild (2026-06-04)
+ *
+ * Implements `designs/from Design agent/targets-rebuild/`.  The page is a
+ * top-to-bottom narrative · the answer → the path → the work → the
+ * record → the calendar.  Mesh is neutral charcoal (see constants.ts ·
+ * MESH.targets) and semantic color is reserved for the data only.
+ *
+ * Sections:
+ *   1 · ANSWER   · goal hero (left) + projection band (right)
+ *   2 · PATH     · status headline + signals + recent/next test points
+ *                 + 3-rung status ladder
+ *   3 · WORK     · current VDOT + 6w delta + held/implies/goalVDOT meta
+ *   4 · PRs      · anchor line vs goal + 4-card grid (PR @ goal distance
+ *                 highlighted)
+ *   5 · RACES    · upcoming calendar + "New goal" action
+ *
+ * The off-track state still renders the existing `GapPanel` between
+ * sections 1 and 3 because the redesign brief only covers ON TRACK /
+ * WATCHING.  When the off-track redesign lands, replace the GapPanel
+ * fallback below.
+ */
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { FaffSeed } from '../types';
+import type { FaffSeed, GoalRace } from '../types';
 import { LogNonRunSheet, NewGoalSheet } from '../toolkit';
 import { GapPanel } from './GapPanel';
+import { parseRaceTime, vdotFromRace, formatRaceTime } from '@/lib/training/vdot';
 
 export function TargetsView({
   seed, onOpenRace,
@@ -13,12 +37,66 @@ export function TargetsView({
   const goal = seed.goalRace;
   const [goalOpen, setGoalOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
-  // The "Coach spotted something" banner stays hidden until the coach
-  // engine actually emits a within-reach signal (no such surface yet).
-  // When that ships, accept a `coachInsight` prop and render the banner
-  // conditionally on its presence.
+
+  // === GUEST / NO-GOAL ====================================================
+  if (!goal) {
+    return (
+      <div className="targets2">
+        <div className="top">
+          <div>
+            <div className="date">Targets</div>
+            <div className="wk">Goals &amp; races</div>
+          </div>
+        </div>
+        <div className="t2card" style={{ padding: '36px 40px', marginTop: 30 }}>
+          <div className="eyebrow">No primary goal</div>
+          <div style={{ marginTop: 14, fontSize: 18, lineHeight: 1.5, color: 'rgba(255,255,255,.86)' }}>
+            Set a primary race to start tracking your gap to goal.
+          </div>
+          <div className="raceacts" style={{ marginTop: 22 }}>
+            <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
+          </div>
+        </div>
+        {goalOpen ? (
+          <SheetOverlay onDismiss={() => setGoalOpen(false)}>
+            <NewGoalSheet onSaved={() => router.refresh()} onClose={() => setGoalOpen(false)} />
+          </SheetOverlay>
+        ) : null}
+      </div>
+    );
+  }
+
+  // === DERIVED VALUES =====================================================
+  const status = goal.goalStatus ?? 'on-track';
+  const goalSec = parseRaceTime(goal.goal) ?? null;
+  const fitSec = goal.vdotProjectionSec ?? null;
+  const gapSec = goalSec != null && fitSec != null ? fitSec - goalSec : null; // positive = slower than goal
+
+  // VDOT block · derived from projectionTrend (latest, 6-weeks-ago).
+  const trend = seed.projectionTrend ?? [];
+  const latestVdot = lastNonNull(trend.map(t => t.vdot));
+  const sixWeeksAgoVdot = vdotAtDaysAgo(trend, 42);
+  const vdotDelta = latestVdot != null && sixWeeksAgoVdot != null
+    ? Number((latestVdot - sixWeeksAgoVdot).toFixed(1))
+    : null;
+  const vdotHeldDays = trend.length > 0 ? daysHeld(trend, latestVdot) : null;
+  const goalVdot = goalSec != null && goal.distanceMi != null
+    ? vdotFromRace(goalSec, goal.distanceMi)
+    : null;
+
+  // PR anchor (which PR is closest to the goal distance) — used to
+  // highlight the PR card and write the anchor line.
+  const goalDist = goal.distanceMi ?? null;
+  const anchorPr = goalDist != null
+    ? seed.prs.find(p => prDistanceMi(p.k) === goalDist) ?? null
+    : null;
+  const anchorPrSec = anchorPr ? parseRaceTime(anchorPr.v) : null;
+  const anchorGapSec = anchorPrSec != null && goalSec != null
+    ? anchorPrSec - goalSec
+    : null;
+
   return (
-    <>
+    <div className="targets2">
       <div className="top">
         <div>
           <div className="date">Targets</div>
@@ -26,261 +104,176 @@ export function TargetsView({
         </div>
       </div>
 
-      <div className="goalhero">
-        <div className="ghleft">
-          <div className="ghk">PRIMARY GOAL</div>
-          <div className="ghtitle">{goal ? goal.goal : 'NO GOAL'}</div>
-          <div className="ghsub">{goal ? `${goal.name}${goal.location ? ' · ' + goal.location : ''} · ${formatDate(goal.date)}` : 'Set a primary race to start tracking your gap'}</div>
-          {/* 2026-06-04 · status-aware headline. Was: `on track · 0 sec
-              ahead` rendered whenever onTrack was true · but onTrack
-              is true any time projectionSec === goalSec (plan-trusts-
-              itself doctrine), which fires for BOTH 'on-track' and
-              'watching' status. Reading "on track · 0 sec ahead" while
-              the panel below says "Watching · soft signals firing" +
-              "VDOT projects 1:34:54" was the headline contradiction
-              David flagged. Now:
-                · on-track    → "on track · 0 sec ahead"   (green)
-                · watching    → "watching · {goal} still in play"  (amber)
-                · off-track   → the delta string (e.g. "5 min behind") · red
-              The plan-trusts-itself projection still drives the big
-              number above · this only changes the framing line. */}
-          <div className="ghcd">
-            <b>{goal?.daysAway ?? '·'}</b> days out ·{' '}
-            <span style={
-              goal?.goalStatus === 'watching' ? { color: '#FFCE8A' } :
-              goal?.goalStatus === 'off-track' ? { color: '#FF8A8A' } :
-              undefined
-            } className={
-              goal?.goalStatus === 'watching' || goal?.goalStatus === 'off-track'
-                ? ''
-                : (goal?.onTrack ? 'ok2' : '')
-            }>
-              {goal ? (
-                goal.goalStatus === 'watching'
-                  ? `watching · ${goal.goal} still in play`
-                  : goal.goalStatus === 'off-track'
-                    ? goal.delta
-                    : (goal.onTrack ? `on track · ${goal.delta}` : goal.delta)
-              ) : '·'}
-            </span>
+      {/* ============ SECTION 1 · THE ANSWER ============ */}
+      <div className="answer">
+        <div className="goalblock">
+          <div className="eyebrow">Primary goal</div>
+          <div className="goaltime">{goal.goal}</div>
+          <div className="goalmeta">
+            <b>{goal.name}</b>
+            {goal.location ? <> · {goal.location}</> : null}
+            {' · '}{formatDate(goal.date)}
+          </div>
+          <div className="statusrow">
+            <StatusPill status={status} />
+            <span className="stx">{posturePhrase(goal, status)}</span>
+            <span className="dot">·</span>
+            <span className="days"><b>{goal.daysAway}</b> days out</span>
           </div>
         </div>
-        <div className="ghgauge">
-          <svg viewBox="0 -14 300 176" width="220" style={{ height: 'auto' }}>
-            <defs>
-              <linearGradient id="gz2" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#FC4D64"/>
-                <stop offset=".4" stopColor="#F3AD38"/>
-                <stop offset=".6" stopColor="#3EBD41"/>
-                <stop offset="1" stopColor="#3EBD41"/>
-              </linearGradient>
-            </defs>
-            <path d="M30,150 A120,120 0 0 1 270,150" fill="none" stroke="url(#gz2)" strokeWidth="15" strokeLinecap="round"/>
-            <line x1="166.9" y1="43.3" x2="170.6" y2="19.6" stroke="#fff" strokeWidth="3" />
-            <text x="172.5" y="7.8" fill="#fff" fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="Inter">GOAL</text>
-            <line x1="140.6" y1="162.9" x2="207.6" y2="70.7" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
-            <circle cx="150" cy="150" r="9" fill="#fff" />
-            <circle cx="150" cy="150" r="4" fill="#10131A" />
-          </svg>
-          {/* 2026-06-04 · sublabel reflects what the number IS, not a
-              static "PROJECTED" claim. When watching/on-track the
-              engine returns the goal (plan-trusts-itself) · labeling
-              that as "PROJECTED" implies model agreement we don't
-              actually have. The off-track case is the only time
-              projection = real VDOT-derived prediction. */}
-          <div className="gapval center">
-            <div className="grbig" style={
-              goal?.goalStatus === 'watching' ? { color: '#FFCE8A' } :
-              goal?.goalStatus === 'off-track' ? { color: '#FF8847' } :
-              undefined
-            }>{goal?.projected ?? '·'}</div>
-            <div className="grstat">
-              {goal?.goalStatus === 'off-track' ? 'PROJECTED'
-                : goal?.goalStatus === 'watching' ? 'PLAN TARGET'
-                : 'PLAN TARGET'}
+
+        <div className="t2card bandcard">
+          <div className="bandhead">
+            <div className="t">Projection</div>
+            <div className="t" style={{ color: 'rgba(255,255,255,.72)' }}>
+              {goal.daysAway} days out · {statusWord(status)}
             </div>
           </div>
+          <ProjectionBand
+            goalSec={goalSec}
+            fitSec={fitSec}
+            status={status}
+            gapText={gapText(gapSec, status)}
+          />
+          <div className="bandcap">{bandCaption(goal, gapSec, status)}</div>
         </div>
       </div>
 
-      {/* 2026-06-04 · plan-trusts-itself doctrine. The "Closing the gap"
-          panel only renders when the engine sees CLEAR drift evidence.
-          Otherwise the runner sees the plan-is-the-path framing · "you
-          are on the path, here's what's next." Status comes from
-          goalStatus (see lib/training/goal-projection.ts). */}
-      {goal ? (
-        goal.goalStatus === 'off-track' ? (
-          <>
-            <div className="fll" style={{ marginTop: 30 }}>CLOSING THE GAP</div>
-            <div style={{ marginTop: 12 }}>
-              <GapPanel goal={goal} series={seed.projectionTrend} />
+      {/* off-track keeps the legacy GapPanel until the off-track redesign
+          lands · the new ON THE PATH narrative is for on-track + watching. */}
+      {status === 'off-track' ? (
+        <>
+          <div className="eyebrow-sec">Closing the gap</div>
+          <GapPanel goal={goal} series={seed.projectionTrend} />
+        </>
+      ) : (
+        <>
+          {/* ============ SECTION 2 · THE PATH ============ */}
+          <div className="eyebrow-sec">On the path</div>
+          <div className="t2card pathcard">
+            <div className="pathhead">
+              <h3>{pathHeadline(status)}</h3>
+              <p>{pathSubline(goal, status)}</p>
             </div>
-          </>
-        ) : (
-          <>
-            <div className="fll" style={{ marginTop: 30 }}>ON THE PATH</div>
-            <div style={{ marginTop: 12 }} className="onpath-panel">
-              <div className="onpath-hl">
-                {goal.goalStatus === 'watching'
-                  ? 'Watching · soft signals firing.'
-                  : 'The plan is the path.'}
+            {goal.driftSignals && goal.driftSignals.length > 0 ? (
+              goal.driftSignals.map((s, i) => (
+                <div key={i} className={`signal ${s.weight}`}>
+                  <span className="sig-w">{s.weight}</span>
+                  <div className="sig-tx">
+                    {s.detail}
+                    {evidenceLine(s) ? <span className="ev">{evidenceLine(s)}</span> : null}
+                  </div>
+                </div>
+              ))
+            ) : null}
+
+            <div className="hr" />
+
+            <TestPointsGrid
+              recent={goal.recentTestPoints ?? []}
+              next={goal.nextTestPoints ?? []}
+            />
+
+            <div className="hr" />
+
+            <StatusLadder goal={goal} status={status} />
+          </div>
+
+          {/* ============ SECTION 3 · THE WORK · VDOT ============ */}
+          {latestVdot != null ? (
+            <>
+              <div className="eyebrow-sec">The work behind the number</div>
+              <div className="t2card vdotcard">
+                <div className="vdotmain">
+                  <div className="lbl">Current fitness · VDOT</div>
+                  <div className="vdotrow">
+                    <span className="big">{latestVdot.toFixed(1)}</span>
+                    {vdotDelta != null ? <VdotDelta delta={vdotDelta} /> : null}
+                  </div>
+                </div>
+                <div className="vdotaside">
+                  <div className="vdotsub">{vdotReadCopy(latestVdot, vdotDelta, vdotHeldDays)}</div>
+                  <div className="vdotmeta">
+                    {vdotHeldDays != null ? (
+                      <div className="m"><div className="mk">Held</div><div className="mv">{vdotHeldDays} days</div></div>
+                    ) : null}
+                    {fitSec != null ? (
+                      <div className="m">
+                        <div className="mk">Implies</div>
+                        <div className="mv">{formatRaceTime(fitSec) ?? '·'}</div>
+                      </div>
+                    ) : null}
+                    {goalVdot != null ? (
+                      <div className="m">
+                        <div className="mk">Goal VDOT</div>
+                        <div className="mv">~{goalVdot.toFixed(1)}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-              <div className="onpath-sub">
-                {goal.projectionSummary
-                  ?? (goal.goalStatus === 'watching'
-                      ? 'Hold the plan · next quality run will tell us more.'
-                      : `${goal.daysAway} days to ${goal.name}. The work is doing the work.`)}
-              </div>
-              {goal.driftSignals && goal.driftSignals.length > 0 ? (
-                <div className="onpath-watching">
-                  {goal.driftSignals.map((s, i) => (
-                    <div key={i} className="onpath-signal">
-                      <span className={`onpath-sig-w onpath-sig-${s.weight}`}>
-                        {s.weight.toUpperCase()}
-                      </span>
-                      <span>{s.detail}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {/* 2026-06-04 · two-tense test-point ledger · what the recent
-                  quality work landed at + what's next. Recent uses the
-                  heat-adjusted verdict (lib/training/goal-projection.ts
-                  loadRecentTestPoints) so the badge colors match the
-                  Run Detail page's phase breakdown. */}
-              {goal.recentTestPoints && goal.recentTestPoints.length > 0 ? (
-                <div className="onpath-tests">
-                  <div className="onpath-tests-k">RECENT TEST POINTS</div>
-                  {goal.recentTestPoints.map((tp, i) => (
-                    <div key={`r${i}`} className="onpath-test">
-                      <span className="onpath-test-d" style={{ opacity: 0.78 }}>
-                        {formatTestDate(tp.dateISO)}
-                      </span>
-                      <span className="onpath-test-l">
-                        {tp.label}
-                        {tp.actualPace ? ` · ${tp.actualPace}/mi` : ''}
-                      </span>
-                      {tp.verdict ? (
-                        <span
-                          style={{
-                            marginLeft: 8,
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            fontSize: 9,
-                            fontWeight: 800,
-                            letterSpacing: 0.8,
-                            color:
-                              tp.verdict === 'on' ? '#7BE8A0' :
-                              tp.verdict === 'fast' ? '#FFCE8A' :
-                              '#FF8A8A',
-                            background:
-                              tp.verdict === 'on' ? 'rgba(123,232,160,0.12)' :
-                              tp.verdict === 'fast' ? 'rgba(255,206,138,0.12)' :
-                              'rgba(255,138,138,0.12)',
-                          }}
-                        >
-                          {tp.verdict === 'on' ? '✓ ON' : tp.verdict.toUpperCase()}
-                        </span>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {goal.nextTestPoints && goal.nextTestPoints.length > 0 ? (
-                <div className="onpath-tests">
-                  <div className="onpath-tests-k">NEXT TEST POINTS</div>
-                  {goal.nextTestPoints.map((tp, i) => (
-                    <div key={i} className="onpath-test">
-                      <span className="onpath-test-d">{formatTestDate(tp.dateISO)}</span>
-                      <span className="onpath-test-l">{tp.label}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {goal.transitions && (goal.transitions.toBetter || goal.transitions.toWorse) ? (
-                <div className="onpath-transitions">
-                  <div className="onpath-trans-k">WHAT MOVES THE GAUGE</div>
-                  {goal.transitions.toBetter ? (
-                    <div className="onpath-trans-row">
-                      <span className="onpath-trans-arrow onpath-trans-up">↑ on-track</span>
-                      <span>{goal.transitions.toBetter}</span>
-                    </div>
-                  ) : null}
-                  {goal.transitions.toWorse ? (
-                    <div className="onpath-trans-row">
-                      <span className="onpath-trans-arrow onpath-trans-down">↓ off-track</span>
-                      <span>{goal.transitions.toWorse}</span>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              {goal.vdotProjectionSec ? (
-                <div className="onpath-diag">
-                  Diagnostic · current VDOT projects {formatProjSec(goal.vdotProjectionSec)} ·
-                  shown for transparency, not as a prescription.
-                </div>
-              ) : null}
-            </div>
-          </>
-        )
+            </>
+          ) : null}
+        </>
+      )}
+
+      {/* ============ SECTION 4 · PRs ANCHORED ============ */}
+      <div className="eyebrow-sec">Personal records · measured against the goal</div>
+      {anchorPr && anchorGapSec != null ? (
+        <div className={`anchorline ${status === 'on-track' ? 'ontrack' : ''}`}>
+          Your {anchorPr.k.toLowerCase()} PR is <b>{anchorPr.v}</b>.
+          {' '}The goal is <b>{goal.goal}</b>
+          {anchorGapSec > 0 ? (
+            <> · a <span className="gp">{formatGap(anchorGapSec)} gap</span>, about <b>{formatPerMile(anchorGapSec, goalDist!)}/mi</b>. That's the distance the build is built to close.</>
+          ) : (
+            <> · you're already under it by <b>{formatGap(-anchorGapSec)}</b>. The build is about holding that and going further.</>
+          )}
+        </div>
       ) : null}
-
-      <div className="fll" style={{ marginTop: 30 }}>PERSONAL RECORDS</div>
-      <div className="prgrid">
-        {seed.prs.map(p => (
-          <div className="prt" key={p.k}>
-            <div className="prd">{p.k}</div>
-            <div className="prv">{p.v}</div>
-            <div className="prm">{p.date}</div>
-          </div>
-        ))}
+      <div className="prgrid2">
+        {seed.prs.map(p => {
+          const isAnchor = anchorPr && p.k === anchorPr.k;
+          return (
+            <div className={`prt2 ${isAnchor ? 'hl' : ''}`} key={p.k}>
+              {isAnchor && anchorGapSec != null && anchorGapSec > 0 ? (
+                <span className="gapchip">−{formatGap(anchorGapSec)} to goal</span>
+              ) : null}
+              <div className="prd">{p.k}</div>
+              <div className="prv">{p.v}</div>
+              <div className="prm">{p.date}</div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>RACES</div>
-      <div className="races">
+      {/* ============ SECTION 5 · RACES ============ */}
+      <div className="eyebrow-sec">Races</div>
+      <div className="racelist">
         {seed.races.map((r, i) => (
           <div
-            className="rcr"
+            className="racerow"
             key={r.slug + i}
-            style={{ cursor: 'pointer' }}
             onClick={() => onOpenRace(r.slug)}
             role="button"
             tabIndex={0}
           >
-            <div className="rcn">{r.name}<span className="rcm">{r.meta}</span></div>
-            <span className={`rctag ${r.tag === 'A RACE' ? 'rc-goal' : ''}`}>{r.tag}</span>
-            <span className="rcd">{r.days}</span>
+            <div className="rinfo">
+              <div className="rn">{r.name}</div>
+              <div className="rdate">{r.meta}</div>
+            </div>
+            <span className={`racetag ${r.tag === 'A RACE' ? 'a' : 'tune'}`}>
+              {r.tag === 'A RACE' ? 'A race' : 'Tune-up'}
+            </span>
+            <span className="racedays">
+              {String(r.days).replace(/[^0-9]/g, '') || r.days}
+              <small>days</small>
+            </span>
           </div>
         ))}
       </div>
-
-      {/* Action pills · personal goals + non-run logging. POSTs to
-          /api/goals and /api/strength|cross-training respectively.
-          Closes coverage lines 1830 (personal goals) + 1847/1863 (non-run logging). */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 24 }}>
-        <button
-          type="button"
-          onClick={() => setGoalOpen(true)}
-          style={{
-            fontFamily: 'inherit', fontSize: 11, fontWeight: 700, letterSpacing: 1.4,
-            textTransform: 'uppercase', color: 'var(--bg)', background: 'var(--txt)',
-            border: 0, borderRadius: 14, padding: '11px 18px', cursor: 'pointer',
-          }}
-        >
-          + New goal
-        </button>
-        <button
-          type="button"
-          onClick={() => setLogOpen(true)}
-          style={{
-            fontFamily: 'inherit', fontSize: 11, fontWeight: 700, letterSpacing: 1.4,
-            textTransform: 'uppercase', color: 'var(--txt)', background: 'rgba(255,255,255,.07)',
-            border: '1px solid var(--glass-line)', borderRadius: 14,
-            padding: '11px 18px', cursor: 'pointer',
-          }}
-        >
-          + Log strength / cross
-        </button>
+      <div className="raceacts">
+        <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
+        <button type="button" className="racebtn" onClick={() => setLogOpen(true)}>+ Log strength / cross</button>
       </div>
 
       {goalOpen ? (
@@ -293,10 +286,218 @@ export function TargetsView({
           <LogNonRunSheet onSaved={() => router.refresh()} onClose={() => setLogOpen(false)} />
         </SheetOverlay>
       ) : null}
-    </>
+    </div>
   );
 }
 
+// ============================ STATUS PILL ============================
+function StatusPill({ status }: { status: 'on-track' | 'watching' | 'off-track' }) {
+  if (status === 'on-track') {
+    return <span className="spill ontrack"><span className="d" />On track</span>;
+  }
+  if (status === 'off-track') {
+    return <span className="spill off"><span className="d" />Off track</span>;
+  }
+  return <span className="spill watch"><span className="d" />Watching</span>;
+}
+
+// ============================ PROJECTION BAND ============================
+/**
+ * Horizontal number line · slower → faster left-to-right, goal sits on
+ * the right.  Positions are computed from the actual time delta on a
+ * fixed scale (±10% of goal time around goal), clamped so both markers
+ * stay inside the band.
+ */
+function ProjectionBand({
+  goalSec, fitSec, status, gapText,
+}: {
+  goalSec: number | null;
+  fitSec: number | null;
+  status: 'on-track' | 'watching' | 'off-track';
+  gapText: string;
+}) {
+  if (goalSec == null) {
+    return <div className="band"><div className="btrack" /></div>;
+  }
+  // Scale · left = 1.10 × goal (slowest), right = 0.97 × goal (fastest)
+  // gives the goal marker around 77% (matches design intent of
+  // "goal sits on the right" without being pinned to the edge).
+  const left = goalSec * 1.10;
+  const right = goalSec * 0.97;
+  const pos = (x: number) => {
+    const raw = (left - x) / (left - right);
+    return Math.min(0.95, Math.max(0.05, raw)) * 100;
+  };
+  const goalPct = pos(goalSec);
+  const fitPct = fitSec != null ? pos(fitSec) : null;
+  const gapClass =
+    status === 'on-track' ? 'ontrack'
+    : status === 'off-track' ? 'off'
+    : '';
+  return (
+    <div className="band">
+      <div className="btrack" />
+      {fitPct != null && fitPct < goalPct ? (
+        <>
+          <div className="bgap" style={{ left: `${fitPct}%`, width: `${goalPct - fitPct}%` }} />
+          <div className={`bgaplab ${gapClass}`} style={{ left: `${(fitPct + goalPct) / 2}%` }}>
+            {gapText}
+          </div>
+        </>
+      ) : null}
+      {fitPct != null ? (
+        <div className="bpt fit" style={{ left: `${fitPct}%` }}>
+          <div className="dot" />
+          <div className="cap">
+            <span className="v">{formatRaceTime(fitSec!) ?? '·'}</span>
+            <span className="k">Current fitness</span>
+          </div>
+        </div>
+      ) : null}
+      <div className="bpt goal" style={{ left: `${goalPct}%` }}>
+        <div className="cap">
+          <span className="v">{formatRaceTime(goalSec) ?? '·'}</span>
+          <span className="k">Plan target</span>
+        </div>
+        <div className="dot" />
+      </div>
+    </div>
+  );
+}
+
+// ============================ TEST POINTS GRID ============================
+function TestPointsGrid({
+  recent, next,
+}: {
+  recent: NonNullable<GoalRace['recentTestPoints']>;
+  next: NonNullable<GoalRace['nextTestPoints']>;
+}) {
+  const showBoth = recent.length > 0 && next.length > 0;
+  const showOnly = recent.length > 0 || next.length > 0;
+  if (!showOnly) return null;
+  return (
+    <div className={`testgrid ${showBoth ? '' : 'one'}`}>
+      {recent.length > 0 ? (
+        <div className="tcol">
+          <h4>Recent test points</h4>
+          {recent.map((tp, i) => (
+            <div className="trow" key={'r' + i}>
+              <span className="td">{formatTestDate(tp.dateISO)}</span>
+              <span className="tl">{splitLabel(tp.label)}</span>
+              <span className="tpace">{tp.actualPace ?? '·'}</span>
+              <span className={`verdict ${tp.verdict ?? 'on'}`}>
+                {tp.verdict === 'slow' ? (
+                  <>Slow</>
+                ) : tp.verdict === 'fast' ? (
+                  <>Fast</>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                    On
+                  </>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {next.length > 0 ? (
+        <div className="tcol">
+          <h4>Next test points</h4>
+          {next.map((tp, i) => (
+            <div className="trow next" key={'n' + i}>
+              <span className="td">{formatTestDate(tp.dateISO)}</span>
+              <span className="tl">{splitLabel(tp.label)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ============================ STATUS LADDER ============================
+function StatusLadder({
+  goal, status,
+}: {
+  goal: GoalRace;
+  status: 'on-track' | 'watching' | 'off-track';
+}) {
+  const tr = goal.transitions ?? { toBetter: null, toWorse: null };
+  return (
+    <div className="ladder">
+      <h4>What moves the status</h4>
+      <div className={`rung up ${status === 'on-track' ? 'here ontrack' : ''}`}>
+        <span className="rl">
+          <span className="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </span>
+          On track
+          {status === 'on-track' ? <span className="here-tag">You are here</span> : null}
+        </span>
+        <span className="rx">
+          {status === 'on-track'
+            ? 'Plan is on pace · the work is doing the work.'
+            : (tr.toBetter ?? 'A new race within 5% of goal pace clears this · or 3+ weeks of tempo paces hitting plan targets re-rates VDOT from training.')}
+        </span>
+      </div>
+      <div className={`rung ${status === 'watching' ? 'here' : ''}`}>
+        <span className="rl">
+          <span className="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v4" />
+              <path d="M12 16h.01" />
+            </svg>
+          </span>
+          Watching
+          {status === 'watching' ? <span className="here-tag">You are here</span> : null}
+        </span>
+        <span className="rx">
+          {status === 'watching'
+            ? `One soft signal is live. The plan holds ${goal.goal} · execution is on target.`
+            : 'Soft drift signals fire here · plan stays the same, we just watch the next quality run.'}
+        </span>
+      </div>
+      <div className={`rung down ${status === 'off-track' ? 'here off' : ''}`}>
+        <span className="rl">
+          <span className="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+          </span>
+          Off track
+          {status === 'off-track' ? <span className="here-tag">You are here</span> : null}
+        </span>
+        <span className="rx">
+          {tr.toWorse ?? 'Fires if another medium signal stacks · or a recent race lands 10%+ off goal · or VDOT trend drops 1+ point over 4 weeks. Headline switches to the raw projection.'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ============================ VDOT DELTA ============================
+function VdotDelta({ delta }: { delta: number }) {
+  const cls = delta > 0 ? '' : delta < 0 ? 'down' : 'flat';
+  if (delta === 0) {
+    return <span className={`delta ${cls}`}>flat</span>;
+  }
+  return (
+    <span className={`delta ${cls}`}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15 }}>
+        {delta > 0 ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M5 12l7 7 7-7" />}
+      </svg>
+      {Math.abs(delta).toFixed(1)}
+    </span>
+  );
+}
+
+// ============================ SHEETS ============================
 function SheetOverlay({ children, onDismiss }: { children: React.ReactNode; onDismiss: () => void }) {
   return (
     <div
@@ -316,6 +517,8 @@ function SheetOverlay({ children, onDismiss }: { children: React.ReactNode; onDi
   );
 }
 
+// ============================ HELPERS ============================
+
 function formatDate(iso: string) {
   const d = new Date(iso);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
@@ -328,13 +531,189 @@ function formatTestDate(iso: string): string {
   }).format(d);
 }
 
-function formatProjSec(sec: number | null | undefined): string {
-  if (sec == null) return '·';
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${m}:${String(s).padStart(2, '0')}`;
+function formatGap(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function formatPerMile(gapSec: number, distMi: number): string {
+  const perMi = Math.round(gapSec / distMi);
+  return `${perMi}s`;
+}
+
+/** Split "8mi tempo · 5 mi @ T" into ["8mi tempo", "5 mi @ T"] · the
+ *  detail half renders as a smaller, dimmer aside. */
+function splitLabel(label: string): React.ReactNode {
+  const i = label.indexOf(' · ');
+  if (i === -1) return label;
+  return <>{label.slice(0, i)}<small> · {label.slice(i + 3)}</small></>;
+}
+
+function posturePhrase(_goal: GoalRace, status: 'on-track' | 'watching' | 'off-track'): string {
+  if (status === 'on-track') return 'Plan is on pace';
+  if (status === 'off-track') return 'Honest read';
+  return 'Holding the plan';
+}
+
+function statusWord(status: 'on-track' | 'watching' | 'off-track'): string {
+  if (status === 'on-track') return 'on pace';
+  if (status === 'off-track') return 'off pace';
+  return 'holding';
+}
+
+function gapText(gapSec: number | null, status: 'on-track' | 'watching' | 'off-track'): string {
+  if (gapSec == null || gapSec <= 0) {
+    return status === 'on-track' ? 'on pace' : 'watching';
+  }
+  return `${formatGap(gapSec)} gap · ${status === 'off-track' ? 'off pace' : 'watching'}`;
+}
+
+function bandCaption(goal: GoalRace, gapSec: number | null, status: 'on-track' | 'watching' | 'off-track'): React.ReactNode {
+  const fit = goal.vdotProjectionSec != null ? formatRaceTime(goal.vdotProjectionSec) : null;
+  if (status === 'on-track') {
+    return (
+      <>
+        The plan still targets <b>{goal.goal}</b> · execution is on pace.
+        {fit ? <> Raw fitness reads <b>{fit}</b> · ahead of the target.</> : null}
+      </>
+    );
+  }
+  if (status === 'off-track' && fit && gapSec != null && gapSec > 0) {
+    return (
+      <>
+        Raw fitness reads <b>{fit}</b> · {formatGap(gapSec)} off the {goal.goal} target.
+        {' '}The plan is closing the gap.
+      </>
+    );
+  }
+  return (
+    <>
+      The plan still targets <b>{goal.goal}</b> · we hold the line until the evidence clearly says we can't.
+      {fit ? <> Raw fitness reads <b>{fit}</b> today · that gap is what we're watching.</> : null}
+    </>
+  );
+}
+
+function pathHeadline(status: 'on-track' | 'watching' | 'off-track'): string {
+  if (status === 'on-track') return 'On track · the plan is the path.';
+  if (status === 'off-track') return 'Off track · closing the gap.';
+  return 'Watching · soft signals firing.';
+}
+
+function pathSubline(goal: GoalRace, status: 'on-track' | 'watching' | 'off-track'): string {
+  if (goal.projectionSummary) return goal.projectionSummary;
+  if (status === 'on-track') return 'The work is doing the work · stay the course.';
+  if (status === 'off-track') return 'The next blocks are written to close it.';
+  return 'Hold the plan · the next quality run will tell us more.';
+}
+
+function evidenceLine(s: { kind: string; evidence: Record<string, number | string | null> }): string | null {
+  if (s.kind === 'recent_race') {
+    return 'Most recent comparable race · within the 90-day window the projection reads from.';
+  }
+  if (s.kind === 'vdot_trend') return 'VDOT trend across the last 4 weeks.';
+  if (s.kind === 'aerobic_decoupling') return 'Aerobic decoupling above the doctrine threshold.';
+  if (s.kind === 'tempo_pace_drift') return 'Tempo paces drifting from plan targets.';
+  if (s.kind === 'plan_adapter_downgrades') return 'Plan adapter has downgraded recent quality.';
+  if (s.kind === 'missed_key_workouts') return 'Missed or skipped key workouts in the last block.';
+  return null;
+}
+
+function vdotReadCopy(vdot: number, delta: number | null, heldDays: number | null): React.ReactNode {
+  if (delta != null && delta > 0) {
+    return (
+      <>
+        Up <b>{delta.toFixed(1)} points</b> across the block.
+        {' '}The model only moves on a real result or a breakthrough session, so a flat read is expected, not a stall.
+      </>
+    );
+  }
+  if (delta != null && delta < 0) {
+    return (
+      <>
+        Down <b>{Math.abs(delta).toFixed(1)} points</b> across the block.
+        {' '}One soft signal · we watch the next quality run before adjusting the plan.
+      </>
+    );
+  }
+  if (heldDays != null) {
+    return (
+      <>
+        Flat across <b>{heldDays} days</b>.
+        {' '}The model only moves on a real result or a breakthrough session, so a flat read is expected, not a stall.
+      </>
+    );
+  }
+  return <>VDOT <b>{vdot.toFixed(1)}</b> · the model only moves on a real result or a breakthrough session.</>;
+}
+
+function lastNonNull(arr: Array<number | null>): number | null {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (arr[i] != null) return arr[i];
+  }
+  return null;
+}
+
+function vdotAtDaysAgo(
+  trend: Array<{ date: string; vdot: number | null }>,
+  daysAgo: number,
+): number | null {
+  if (trend.length === 0) return null;
+  // Find the trend entry closest to N days before the latest date.
+  const latestIso = trend[trend.length - 1].date;
+  const latestT = Date.parse(latestIso + 'T00:00:00Z');
+  if (isNaN(latestT)) return null;
+  const targetT = latestT - daysAgo * 86400_000;
+  let best: number | null = null;
+  let bestDelta = Infinity;
+  for (const row of trend) {
+    if (row.vdot == null) continue;
+    const t = Date.parse(row.date + 'T00:00:00Z');
+    if (isNaN(t)) continue;
+    const delta = Math.abs(t - targetT);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = row.vdot;
+    }
+  }
+  return best;
+}
+
+function daysHeld(
+  trend: Array<{ date: string; vdot: number | null }>,
+  currentVdot: number | null,
+): number | null {
+  if (currentVdot == null || trend.length === 0) return null;
+  // Walk backwards from the latest entry · count consecutive days where
+  // vdot equals (within .05) the current value.
+  let last: number | null = null;
+  for (let i = trend.length - 1; i >= 0; i--) {
+    const row = trend[i];
+    if (row.vdot == null) continue;
+    if (Math.abs(row.vdot - currentVdot) > 0.05) {
+      const start = trend[i + 1]?.date ?? null;
+      if (!start) return null;
+      const startT = Date.parse(start + 'T00:00:00Z');
+      const latestT = Date.parse(trend[trend.length - 1].date + 'T00:00:00Z');
+      if (isNaN(startT) || isNaN(latestT)) return null;
+      return Math.max(1, Math.round((latestT - startT) / 86400_000));
+    }
+    last = row.vdot;
+  }
+  // VDOT never changed across the full trend window.
+  const latestT = Date.parse(trend[trend.length - 1].date + 'T00:00:00Z');
+  const earliestT = Date.parse(trend[0].date + 'T00:00:00Z');
+  if (isNaN(latestT) || isNaN(earliestT)) return null;
+  return Math.max(1, Math.round((latestT - earliestT) / 86400_000));
+}
+
+/** PR label → distance in miles. Returns null for unknown labels. */
+function prDistanceMi(label: string): number | null {
+  const s = label.toLowerCase().trim();
+  if (s === '5k') return 3.10686;
+  if (s === '10k') return 6.21371;
+  if (s === 'half' || s === 'half marathon') return 13.1094;
+  if (s === 'marathon' || s === 'full') return 26.2188;
+  return null;
+}

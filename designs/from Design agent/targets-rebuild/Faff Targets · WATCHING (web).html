@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Targets rebuild · WATCHING (web)</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:var(--font-body);background:#0b0d11;color:var(--txt);
+    display:flex;flex-direction:column;align-items:center;gap:30px;padding:40px 24px 80px;-webkit-font-smoothing:antialiased;}
+  .stagelabel{width:100%;max-width:1300px;display:flex;align-items:baseline;gap:14px;color:#6a7080;}
+  .stagelabel b{font-family:var(--font-display);font-weight:600;font-size:18px;letter-spacing:.5px;color:#aab0bd;text-transform:uppercase;}
+  .stagelabel span{font-size:13px;font-weight:500;}
+  .stagelabel .chip{font-size:10px;font-weight:800;letter-spacing:1.5px;color:#1a1206;background:var(--amber-bright);padding:4px 9px;border-radius:7px;}
+
+  /* ---------------- WINDOW SHELL ---------------- */
+  .win{width:100%;max-width:1300px;position:relative;overflow:hidden;border-radius:20px;
+    background:#0C0D11;box-shadow:0 40px 90px -30px rgba(0,0,0,.9),0 0 0 1px rgba(0,0,0,.5);display:flex;
+    /* targets · neutral charcoal orbs (semantic color reserved for the data) */
+    --c1:#363B45;--c2:#2B2F38;--c3:#21242B;--c4:#191C22;--c5:#121419;--mbase:#0C0D11;}
+  .mesh{position:absolute;inset:0;z-index:0;background:var(--mbase);}
+  .blobs{position:absolute;inset:-12%;filter:blur(58px);animation:breathe 19s ease-in-out infinite;}
+  @keyframes breathe{0%,100%{filter:blur(58px) brightness(1)}50%{filter:blur(64px) brightness(1.04)}}
+  .blob{position:absolute;border-radius:50%;opacity:.7;}
+  .b1{left:-12%;top:-16%;width:74%;height:74%;background:var(--c1);animation:d1 22s ease-in-out infinite alternate;}
+  .b2{left:36%;top:-12%;width:70%;height:72%;background:var(--c2);animation:d2 26s ease-in-out infinite alternate;}
+  .b3{left:2%;top:24%;width:98%;height:90%;background:var(--c5);animation:d3 30s ease-in-out infinite alternate;}
+  .b4{left:-18%;top:48%;width:80%;height:80%;background:var(--c4);animation:d4 24s ease-in-out infinite alternate;}
+  .b5{left:34%;top:46%;width:82%;height:82%;background:var(--c3);animation:d5 28s ease-in-out infinite alternate;}
+  @keyframes d1{from{transform:translate(0,0) scale(1)}to{transform:translate(7%,6%) scale(1.13)}}
+  @keyframes d2{from{transform:translate(0,0) scale(1.04)}to{transform:translate(-8%,9%) scale(.95)}}
+  @keyframes d3{from{transform:translate(0,0) scale(1)}to{transform:translate(6%,-7%) scale(1.12)}}
+  @keyframes d4{from{transform:translate(0,0) scale(1.05)}to{transform:translate(9%,-6%) scale(.95)}}
+  @keyframes d5{from{transform:translate(0,0) scale(.97)}to{transform:translate(-8%,-8%) scale(1.12)}}
+  .grain{position:absolute;inset:0;z-index:1;opacity:.05;mix-blend-mode:overlay;pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .fade{position:absolute;inset:0;z-index:1;pointer-events:none;
+    background:linear-gradient(180deg,rgba(0,0,0,.3) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 66%,rgba(0,0,0,.4) 100%);}
+
+  /* ---------------- SIDEBAR ---------------- */
+  .side{position:relative;z-index:3;width:258px;flex:0 0 auto;display:flex;}
+  .side .panel{margin:14px;flex:1;display:flex;flex-direction:column;padding:22px 15px;
+    background:rgba(17,20,26,.96);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 30px -16px rgba(0,0,0,.5);}
+  .sb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 0;}
+  .brandmark{display:inline-block;transform:skewX(-9deg);flex:0 0 auto;padding:2px 2px 4px 2px;}
+  .brandmark svg{display:block;height:23px;width:auto;}
+  @keyframes faffSweep{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+  .sb-toggle{appearance:none;border:0;background:rgba(255,255,255,.06);color:#aeb2bd;width:26px;height:26px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin-left:8px;}
+  .sb-toggle svg{width:15px;height:15px;}
+  .nav{display:flex;flex-direction:column;gap:3px;margin-top:24px;}
+  .nav a{display:flex;align-items:center;gap:13px;padding:12px;border-radius:12px;color:var(--txt);text-decoration:none;font-size:15px;font-weight:500;cursor:pointer;transition:.15s;}
+  .nav a svg{width:19px;height:19px;}
+  .nav a:hover{background:rgba(255,255,255,.05);}
+  .nav a.on{background:rgba(255,255,255,.1);}
+  .nav a.on .ic{color:var(--brand-2);}
+  .nav a .ic{display:flex;color:#c7cbd4;}
+  .spacer{flex:1;}
+  .me{display:flex;align-items:center;gap:11px;padding:8px 6px;cursor:pointer;border-top:1px solid var(--line);margin-top:14px;padding-top:16px;}
+  .me .av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--brand-1),var(--brand-2));display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;flex:0 0 auto;}
+  .me .nm{font-size:14px;font-weight:600;}
+  .me .nm small{display:block;font-size:11px;font-weight:500;opacity:.78;margin-top:1px;}
+  .me .gear{margin-left:auto;opacity:.5;display:flex;}.me .gear svg{width:17px;height:17px;}
+
+  /* ---------------- MAIN ---------------- */
+  .main{position:relative;z-index:2;flex:1;color:var(--txt);padding:22px 40px 44px;min-width:0;}
+  .top .date{font-family:var(--font-display);font-size:17px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;}
+  .top .wk{font-size:12px;font-weight:600;opacity:.88;margin-top:5px;}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:2.4px;color:var(--amber-bright);text-transform:uppercase;}
+  .eyebrow-sec{font-size:11px;font-weight:800;letter-spacing:2.4px;color:rgba(255,255,255,.82);text-transform:uppercase;margin:34px 0 14px;}
+
+  /* glass card base */
+  .card{background:rgba(20,22,28,.55);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    border:1px solid rgba(255,255,255,.1);border-radius:18px;}
+
+  /* ===== SECTION 1 · THE ANSWER ===== */
+  .answer{display:grid;grid-template-columns:0.82fr 1.18fr;gap:26px;margin-top:26px;align-items:stretch;}
+  .goalblock{display:flex;flex-direction:column;justify-content:center;}
+  .goaltime{font-family:var(--font-display);font-weight:600;font-size:104px;line-height:.86;letter-spacing:-2px;margin-top:6px;}
+  .goalmeta{font-size:15px;font-weight:500;color:rgba(255,255,255,.82);margin-top:14px;}
+  .goalmeta b{font-weight:700;color:#fff;}
+  .statusrow{display:flex;align-items:center;gap:11px;margin-top:20px;flex-wrap:nowrap;white-space:nowrap;}
+  .spill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:1.4px;
+    padding:8px 14px;border-radius:30px;text-transform:uppercase;}
+  .spill .d{width:8px;height:8px;border-radius:50%;}
+  .spill.watch{background:rgba(255,206,138,.16);border:1px solid rgba(255,206,138,.5);color:var(--amber-bright);}
+  .spill.watch .d{background:var(--amber-bright);box-shadow:0 0 10px rgba(255,206,138,.8);}
+  .statusrow .stx{font-size:14px;font-weight:600;color:rgba(255,255,255,.9);}
+  .statusrow .dot{opacity:.4;}
+  .statusrow .days{font-size:14px;font-weight:600;color:rgba(255,255,255,.84);}
+  .statusrow .days b{font-family:var(--font-display);font-weight:600;color:#fff;font-size:17px;}
+
+  /* projection band card */
+  .bandcard{padding:22px 26px 24px;}
+  .bandhead{display:flex;align-items:center;justify-content:space-between;}
+  .bandhead .t{font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(255,255,255,.8);text-transform:uppercase;}
+  .bandhead .leg{display:flex;gap:16px;}
+  .bandhead .leg span{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:.3px;color:rgba(255,255,255,.72);text-transform:uppercase;}
+  .bandhead .leg i{width:18px;height:0;border-top-width:3px;border-top-style:solid;border-radius:2px;}
+  .leg .lplan i{border-color:#fff;}
+  .leg .lfit i{border-top-style:dashed;border-color:var(--over);}
+
+  .band{position:relative;height:108px;margin-top:18px;}
+  .btrack{position:absolute;left:2%;right:2%;top:50%;height:4px;transform:translateY(-50%);border-radius:4px;background:rgba(255,255,255,.12);}
+  .bgap{position:absolute;top:50%;height:4px;transform:translateY(-50%);border-radius:4px;background:linear-gradient(90deg,#e08a8a,#e6b079);opacity:.85;}
+  .bpt{position:absolute;top:0;bottom:0;width:0;}
+  .bpt .dot{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);}
+  .bpt.goal .dot{width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 0 0 5px rgba(255,255,255,.1),0 0 12px rgba(255,255,255,.45);}
+  .bpt.fit .dot{width:14px;height:14px;border-radius:50%;background:#e8899a;box-shadow:0 0 0 4px rgba(232,137,154,.16);}
+  .bpt .cap{position:absolute;left:0;transform:translateX(-50%);text-align:center;white-space:nowrap;}
+  .bpt.goal .cap{bottom:calc(50% + 16px);}
+  .bpt.fit .cap{top:calc(50% + 16px);}
+  .bpt .cap .v{display:block;font-family:var(--font-display);font-weight:600;font-size:22px;line-height:1;}
+  .bpt .cap .k{display:block;font-size:9px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-top:5px;}
+  .bpt.goal .cap .v{color:#fff;}
+  .bpt.goal .cap .k{color:rgba(255,255,255,.82);}
+  .bpt.fit .cap .v{color:#f0a6b0;}
+  .bpt.fit .cap .k{color:rgba(240,166,176,.82);}
+  .bgaplab{position:absolute;top:calc(50% - 27px);transform:translateX(-50%);font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#1a1206;background:#f0c890;padding:4px 10px;border-radius:7px;white-space:nowrap;}
+  .bandcap{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.82);margin-top:8px;line-height:1.5;}
+  .bandcap b{color:#fff;font-weight:700;}
+
+  /* ===== SECTION 2 · THE PATH ===== */
+  .pathcard{padding:24px 26px;}
+  .pathhead h3{font-family:var(--font-display);font-weight:600;font-size:24px;letter-spacing:-.2px;}
+  .pathhead p{font-size:14px;font-weight:500;color:rgba(255,255,255,.85);margin-top:6px;}
+  .signal{display:flex;align-items:flex-start;gap:13px;margin-top:20px;padding:15px 17px;border-radius:13px;
+    background:rgba(243,173,56,.08);border:1px solid rgba(243,173,56,.26);}
+  .sig-w{font-size:9.5px;font-weight:800;letter-spacing:1.4px;color:#1a1206;background:var(--goal);padding:5px 9px;border-radius:7px;flex:0 0 auto;margin-top:1px;}
+  .sig-tx{font-size:14px;font-weight:500;color:rgba(255,255,255,.92);line-height:1.5;}
+  .sig-tx b{font-weight:700;color:#fff;}
+  .sig-tx .ev{display:block;font-size:12px;color:rgba(255,255,255,.76);margin-top:4px;}
+
+  .hr{height:1px;background:rgba(255,255,255,.1);margin:22px 0;}
+  .testgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 44px;}
+  .tcol h4{font-size:10.5px;font-weight:800;letter-spacing:1.6px;color:rgba(255,255,255,.74);text-transform:uppercase;margin-bottom:6px;}
+  .trow{display:grid;grid-template-columns:80px 1fr 54px 50px;align-items:center;column-gap:14px;min-height:48px;border-bottom:1px solid rgba(255,255,255,.07);}
+  .trow.next{grid-template-columns:80px 1fr;}
+  .trow:last-child{border-bottom:0;}
+  .trow .td{font-family:var(--font-display);font-weight:600;font-size:12px;letter-spacing:.6px;color:var(--amber-bright);text-transform:uppercase;}
+  .trow.next .td{color:#cfd4dd;}
+  .trow .tl{font-size:13px;font-weight:500;color:rgba(255,255,255,.86);}
+  .trow .tl small{color:rgba(255,255,255,.55);font-weight:500;}
+  .trow .verdict{display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--mint-readiness);justify-self:end;}
+  .trow .verdict svg{width:14px;height:14px;}
+  .trow .tpace{font-family:var(--font-display);font-weight:600;font-size:14px;color:#fff;text-align:right;}
+
+  /* status ladder */
+  .ladder{margin-top:8px;}
+  .ladder h4{font-size:10.5px;font-weight:800;letter-spacing:1.6px;color:rgba(255,255,255,.56);text-transform:uppercase;margin-bottom:14px;}
+  .rung{display:grid;grid-template-columns:128px 1fr;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.07);}
+  .rung:last-child{border-bottom:0;}
+  .rung .rl{display:inline-flex;align-items:center;gap:9px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;}
+  .rung .rl .ic{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .rung .rl .ic svg{width:13px;height:13px;}
+  .rung .rx{font-size:13px;font-weight:500;color:rgba(255,255,255,.86);line-height:1.45;}
+  .rung .rx b{color:#fff;font-weight:700;}
+  .rung.up .rl{color:var(--mint-readiness);}
+  .rung.up .ic{background:rgba(62,189,65,.18);color:var(--mint-readiness);}
+  .rung.here{background:rgba(255,206,138,.09);border-radius:11px;padding:13px 14px;border-bottom:0;margin:2px -14px;position:relative;}
+  .rung.here .rl{color:var(--amber-bright);}
+  .rung.here .ic{background:rgba(255,206,138,.2);color:var(--amber-bright);}
+  .rung.here .here-tag{position:absolute;top:13px;right:14px;white-space:nowrap;font-size:9px;font-weight:800;letter-spacing:1px;color:#1a1206;background:var(--amber-bright);padding:3px 7px;border-radius:6px;}
+  .rung.here .rx{padding-right:104px;}
+  .rung.down .rl{color:#ff9aa8;}
+  .rung.down .ic{background:rgba(252,77,100,.16);color:#ff9aa8;}
+
+  /* ===== SECTION 3 · THE WORK ===== */
+  .vdotcard{padding:24px 28px;display:flex;align-items:stretch;gap:0;}
+  .vdotmain{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;padding-right:36px;}
+  .vdotcard .lbl{font-size:10.5px;font-weight:800;letter-spacing:1.6px;color:rgba(255,255,255,.56);text-transform:uppercase;}
+  .vdotrow{display:flex;align-items:baseline;gap:12px;margin-top:10px;}
+  .vdotrow .big{font-family:var(--font-display);font-weight:600;font-size:66px;line-height:.85;letter-spacing:-1px;}
+  .vdotrow .delta{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-display);font-weight:600;font-size:18px;color:var(--mint-readiness);}
+  .vdotaside{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;border-left:1px solid rgba(255,255,255,.1);padding-left:36px;}
+  .vdotsub{font-size:13.5px;font-weight:500;color:rgba(255,255,255,.84);line-height:1.55;max-width:600px;}
+  .vdotsub b{color:#fff;font-weight:700;}
+  .vdotmeta{display:flex;gap:40px;}
+  .vdotmeta .m{white-space:nowrap;}
+  .vdotmeta .m .mk{font-size:10px;font-weight:700;letter-spacing:.8px;color:rgba(255,255,255,.7);text-transform:uppercase;}
+  .vdotmeta .m .mv{font-family:var(--font-display);font-weight:600;font-size:19px;margin-top:3px;}
+
+  /* (block trajectory removed · lives on Train) */
+
+  /* ===== SECTION 4 · PRs ANCHORED ===== */
+  .tcol h4{font-size:10.5px;font-weight:800;letter-spacing:1.6px;color:rgba(255,255,255,.74);text-transform:uppercase;margin-bottom:6px;}
+  .anchorline{font-size:14px;font-weight:500;color:rgba(255,255,255,.82);margin:-4px 0 16px;line-height:1.5;}
+  .anchorline b{color:#fff;font-weight:700;}
+  .anchorline .gp{color:var(--amber-bright);font-weight:700;}
+  .prgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .prt{padding:18px 20px;position:relative;}
+  .prt .prd{font-size:11px;font-weight:800;letter-spacing:1.6px;color:rgba(255,255,255,.74);text-transform:uppercase;}
+  .prt .prv{font-family:var(--font-display);font-weight:600;font-size:38px;line-height:.9;letter-spacing:-.5px;margin-top:10px;}
+  .prt .prm{font-size:11.5px;font-weight:500;color:rgba(255,255,255,.72);margin-top:9px;}
+  .prt.hl{border-color:rgba(255,206,138,.45);background:rgba(255,206,138,.08);}
+  .prt.hl .prd{color:var(--amber-bright);}
+  .prt .gapchip{position:absolute;top:16px;right:16px;font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--amber-bright);background:rgba(255,206,138,.14);border:1px solid rgba(255,206,138,.3);padding:4px 8px;border-radius:7px;}
+
+  /* ===== SECTION 5 · RACES CALENDAR ===== */
+  .racelist{display:flex;flex-direction:column;gap:10px;}
+  .racerow{display:flex;align-items:center;gap:18px;padding:16px 22px;border-radius:14px;
+    background:rgba(20,22,28,.5);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);transition:.15s;cursor:pointer;}
+  .racerow:hover{background:rgba(10,7,9,.56);border-color:rgba(255,255,255,.2);}
+  .racerow .rinfo{flex:1;min-width:0;}
+  .racerow .rn{font-size:16px;font-weight:700;color:#fff;}
+  .racerow .rdate{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.74);margin-top:3px;}
+  .racetag{font-size:9.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:7px;flex:0 0 auto;white-space:nowrap;}
+  .racetag.a{background:var(--amber-gold);color:#1a1206;}
+  .racetag.tune{background:transparent;border:1px solid rgba(255,255,255,.34);color:rgba(255,255,255,.82);}
+  .racedays{font-family:var(--font-display);font-weight:600;font-size:19px;color:#fff;flex:0 0 auto;width:88px;text-align:right;}
+  .racedays small{font-family:var(--font-body);font-size:11px;font-weight:600;color:rgba(255,255,255,.55);margin-left:4px;}
+  .raceacts{display:flex;gap:12px;margin-top:16px;}
+  .racebtn{font-family:var(--font-body);font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:rgba(255,255,255,.86);white-space:nowrap;
+    background:rgba(20,22,28,.5);border:1px solid rgba(255,255,255,.16);border-radius:11px;padding:12px 18px;cursor:pointer;transition:.15s;}
+  .racebtn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.28);}
+
+  /* ---------------- DESIGN NOTES ---------------- */
+  .notes{width:100%;max-width:1300px;}
+  .notes-h{font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:.5px;color:#aab0bd;text-transform:uppercase;margin-bottom:4px;}
+  .notes-sub{font-size:13px;color:#6a7080;margin-bottom:20px;}
+  .ngrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .ncard{background:#13161c;border:1px solid #222732;border-radius:14px;padding:18px 20px;}
+  .ncard .q{font-size:10.5px;font-weight:800;letter-spacing:1.2px;color:#6a7080;text-transform:uppercase;}
+  .ncard .a{font-size:14px;font-weight:700;color:#e7eaf0;margin-top:8px;}
+  .ncard .d{font-size:12.5px;font-weight:500;color:#8a90a0;margin-top:8px;line-height:1.55;}
+  .ncard .d b{color:#c7cbd4;font-weight:600;}
+</style>
+</head>
+<body>
+
+  <div class="stagelabel">
+    <b>Targets · rebuild</b><span>Flagship state · web</span><span class="chip">Watching</span>
+  </div>
+
+  <div class="win" data-screen-label="Targets · Watching · web">
+    <div class="mesh"><div class="blobs"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div><div class="blob b5"></div></div></div>
+    <div class="grain"></div><div class="fade"></div>
+
+    <!-- SIDEBAR -->
+    <aside class="side"><div class="panel">
+      <div class="sb-head">
+        <div class="brandmark"><svg viewBox="0 0 132 27" role="img" aria-label="Faff Run"><defs><linearGradient id="fsweep" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#F43F5E"></stop><stop offset="17%" stop-color="#FF5722"></stop><stop offset="35%" stop-color="#F5C518"></stop><stop offset="55%" stop-color="#14C08C"></stop><stop offset="75%" stop-color="#4F8FF7"></stop><stop offset="100%" stop-color="#F43F5E"></stop></linearGradient></defs><text x="0" y="21" font-family="Anton, sans-serif" font-size="23" letter-spacing="-0.5" fill="url(#fsweep)">FAFF<tspan fill="#F5C518">·</tspan>RUN</text></svg></div>
+        <button class="sb-toggle" title="Collapse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg></button>
+      </div>
+      <nav class="nav">
+        <a><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10"></path></svg></span><span class="lbl">Today</span></a>
+        <a><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-8 4 5"></path></svg></span><span class="lbl">Train</span></a>
+        <a><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2 5 4-12 2 7h6"></path></svg></span><span class="lbl">Health</span></a>
+        <a class="on"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1"></circle></svg></span><span class="lbl">Targets</span></a>
+        <a><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M9 19V9M14 19v-6M19 19V7"></path></svg></span><span class="lbl">Activity</span></a>
+      </nav>
+      <div class="spacer"></div>
+      <div class="me">
+        <div class="av">D</div>
+        <div class="nm">David<small>Los Angeles</small></div>
+        <div class="gear"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div>
+      </div>
+    </div></aside>
+
+    <!-- MAIN -->
+    <main class="main">
+      <div class="top">
+        <div class="date">Targets</div>
+        <div class="wk">Goals &amp; races</div>
+      </div>
+
+      <!-- SECTION 1 · THE ANSWER -->
+      <div class="answer">
+        <div class="goalblock">
+          <div class="eyebrow">Primary goal</div>
+          <div class="goaltime">1:30:00</div>
+          <div class="goalmeta"><b>Americas Finest City Half</b> · San Diego · Aug 15</div>
+          <div class="statusrow">
+            <span class="spill watch"><span class="d"></span>Watching</span>
+            <span class="stx">Holding the plan</span>
+            <span class="dot">·</span>
+            <span class="days"><b>73</b> days out</span>
+          </div>
+        </div>
+
+        <div class="card bandcard">
+          <div class="bandhead">
+            <div class="t">Projection</div>
+            <div class="t" style="color:rgba(255,255,255,.72)">73 days out · holding</div>
+          </div>
+          <div class="band">
+            <div class="btrack"></div>
+            <div class="bgap" style="left:22%;width:56%"></div>
+            <div class="bgaplab" style="left:50%">4:54 gap · watching</div>
+            <div class="bpt fit" style="left:22%">
+              <div class="dot"></div>
+              <div class="cap"><span class="v">1:34:54</span><span class="k">Current fitness</span></div>
+            </div>
+            <div class="bpt goal" style="left:78%">
+              <div class="cap"><span class="v">1:30:00</span><span class="k">Plan target</span></div>
+              <div class="dot"></div>
+            </div>
+          </div>
+          <div class="bandcap">The plan still targets <b>1:30:00</b> · we hold the line until the evidence clearly says we can't. Raw fitness reads <b>1:34:54</b> today · that gap is what we're watching.</div>
+        </div>
+      </div>
+
+      <!-- SECTION 2 · THE PATH -->
+      <div class="eyebrow-sec">On the path</div>
+      <div class="card pathcard">
+        <div class="pathhead">
+          <h3>Watching · soft signals firing.</h3>
+          <p>Hold the plan · the next quality run will tell us more.</p>
+        </div>
+        <div class="signal">
+          <span class="sig-w">Medium</span>
+          <div class="sig-tx"><b>Disney Half Marathon</b> on Feb 1 implies <b>1:34:54</b> at this distance · 5.4% slower than the goal.
+            <span class="ev">Most recent comparable race · within the 90-day window the projection reads from.</span>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="testgrid">
+          <div class="tcol">
+            <h4>Recent test points</h4>
+            <div class="trow">
+              <span class="td">Wed Jun 2</span>
+              <span class="tl">7mi intervals <small>· 6×800 @ T</small></span>
+              <span class="tpace">7:14</span>
+              <span class="verdict"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>On</span>
+            </div>
+            <div class="trow">
+              <span class="td">Thu Jun 4</span>
+              <span class="tl">8mi tempo <small>· 5 mi @ T</small></span>
+              <span class="tpace">7:17</span>
+              <span class="verdict"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>On</span>
+            </div>
+          </div>
+          <div class="tcol">
+            <h4>Next test points</h4>
+            <div class="trow next">
+              <span class="td">Sun Jun 7</span>
+              <span class="tl">12mi long</span>
+            </div>
+            <div class="trow next">
+              <span class="td">Tue Jun 9</span>
+              <span class="tl">8mi tempo <small>· 2 WU · 4 @ T · 2 CD</small></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="ladder">
+          <h4>What moves the status</h4>
+          <div class="rung up">
+            <span class="rl"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></span>On track</span>
+            <span class="rx">A new race within <b>5% of goal pace</b> clears this · or <b>3+ weeks</b> of tempo paces hitting plan targets lets the engine re-rate VDOT from training.</span>
+          </div>
+          <div class="rung here">
+            <span class="rl"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>Watching<span class="here-tag">You are here</span></span>
+            <span class="rx">One medium signal is live. The plan holds <b>1:30:00</b> · execution is on target.</span>
+          </div>
+          <div class="rung down">
+            <span class="rl"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"></path></svg></span>Off track</span>
+            <span class="rx">Fires if another medium signal stacks on this one · or a recent race lands <b>10%+</b> off goal · or VDOT trend drops <b>1+ point</b> over 4 weeks. Then the headline switches to the raw projection.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 3 · THE WORK -->
+      <div class="eyebrow-sec">The work behind the number</div>
+      <div class="card vdotcard">
+        <div class="vdotmain">
+          <div class="lbl">Current fitness · VDOT</div>
+          <div class="vdotrow">
+            <span class="big">48.5</span>
+            <span class="delta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M12 19V5M5 12l7-7 7 7"></path></svg>1.2</span>
+          </div>
+        </div>
+        <div class="vdotaside">
+          <div class="vdotsub">Up <b>1.2 points</b> across the block · last re-rated by your <b>10K on Feb 25</b>. The model only moves on a real result or a breakthrough session, so a flat read is expected, not a stall.</div>
+          <div class="vdotmeta">
+            <div class="m"><div class="mk">Held</div><div class="mv">38 days</div></div>
+            <div class="m"><div class="mk">Implies</div><div class="mv">1:32:30</div></div>
+            <div class="m"><div class="mk">Goal VDOT</div><div class="mv">~50.5</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 4 · PRs ANCHORED -->
+      <div class="eyebrow-sec">Personal records · measured against the goal</div>
+      <div class="anchorline">Your half PR is <b>1:33:05</b>. The goal is <b>1:30:00</b> · a <span class="gp">3:05 gap</span>, about <b>9s/mi</b>. That's the distance the build is built to close.</div>
+      <div class="prgrid">
+        <div class="card prt"><div class="prd">5K</div><div class="prv">19:21</div><div class="prm">Mission Bay · Apr 2026</div></div>
+        <div class="card prt"><div class="prd">10K</div><div class="prv">40:18</div><div class="prm">Carlsbad · Feb 2026</div></div>
+        <div class="card prt hl"><span class="gapchip">−3:05 to goal</span><div class="prd">Half</div><div class="prv">1:33:05</div><div class="prm">Sombrero · Feb 2026</div></div>
+        <div class="card prt"><div class="prd">Marathon</div><div class="prv">3:30:25</div><div class="prm">LA · Mar 2026</div></div>
+      </div>
+
+      <!-- SECTION 5 · RACES CALENDAR -->
+      <div class="eyebrow-sec">Races</div>
+      <div class="racelist">
+        <div class="racerow"><div class="rinfo"><div class="rn">Americas Finest City</div><div class="rdate">Aug 15 · San Diego</div></div><span class="racetag a">A race</span><span class="racedays">73<small>days</small></span></div>
+        <div class="racerow"><div class="rinfo"><div class="rn">Dodgers</div><div class="rdate">Sep 26 · Los Angeles</div></div><span class="racetag tune">Tune-up</span><span class="racedays">113<small>days</small></span></div>
+        <div class="racerow"><div class="rinfo"><div class="rn">Run Malibu</div><div class="rdate">Nov 8 · Malibu</div></div><span class="racetag tune">Tune-up</span><span class="racedays">156<small>days</small></span></div>
+        <div class="racerow"><div class="rinfo"><div class="rn">CIM</div><div class="rdate">Dec 6 · Sacramento</div></div><span class="racetag a">A race</span><span class="racedays">184<small>days</small></span></div>
+        <div class="racerow"><div class="rinfo"><div class="rn">Los Angeles Marathon</div><div class="rdate">Mar 7 · Los Angeles</div></div><span class="racetag a">A race</span><span class="racedays">275<small>days</small></span></div>
+      </div>
+      <div class="raceacts">
+        <button class="racebtn">+ New goal</button>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- DESIGN NOTES -->
+  <div class="notes">
+    <div class="notes-h">Design decisions</div>
+    <div class="notes-sub">How this pass resolves the open questions in §7 of the brief.</div>
+    <div class="ngrid">
+      <div class="ncard">
+        <div class="q">§7.1 · The gauge</div>
+        <div class="a">Killed the fake needle. Replaced with an honest projection band.</div>
+        <div class="d">A single needle implied precision the engine doesn't have. The band is a clean number line: <b>current fitness</b> (1:34:54) trailing the <b>plan target</b> (1:30:00) on the right, with the <b>4:54 gap being watched</b> between them.</div>
+      </div>
+      <div class="ncard">
+        <div class="q">§2.1 · Plan-trusts-itself</div>
+        <div class="a">The headline number stays at the goal while Watching.</div>
+        <div class="d">1:30:00 is the hero. The raw VDOT read never takes the headline until <b>off-track</b> · here it lives on the band and in "the work" as honest context, not as a verdict.</div>
+      </div>
+      <div class="ncard">
+        <div class="q">§5.6 · "What moves the gauge"</div>
+        <div class="a">Two dense paragraphs became a 3-rung status ladder.</div>
+        <div class="d">The runner sees the rung they're on (Watching), what lifts them up, and what drops them down · the conditions are scannable instead of buried in prose.</div>
+      </div>
+      <div class="ncard">
+        <div class="q">§5.7 · VDOT was invisible</div>
+        <div class="a">Surfaced as "the work behind the number."</div>
+        <div class="d">VDOT 48.5, its 6-week delta, what it implies at the half, and what the goal needs (~50.5). The single most important fitness number now anchors the page that's most about fitness vs goal.</div>
+      </div>
+      <div class="ncard">
+        <div class="q">§7.4 · PRs vs goal</div>
+        <div class="a">Re-anchored PRs to the goal; dropped block trajectory.</div>
+        <div class="d">PRs stop being a disconnected grid · the half PR is measured straight against the goal (<b>−3:05</b>) so it serves the projection story. Block phase (BASE→TAPER) was removed · it already lives on Train.</div>
+      </div>
+      <div class="ncard">
+        <div class="q">§7.6 / §7.7 · Races + diagnostic</div>
+        <div class="a">Races are a full upcoming calendar; the diagnostic folded into the band.</div>
+        <div class="d">Every upcoming race, tagged A / tune-up, with its countdown · a real calendar, not a list of two. The clinical "Diagnostic · VDOT projects…" footer is gone · that number now lives honestly on the band.</div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
