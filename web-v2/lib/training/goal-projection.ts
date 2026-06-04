@@ -75,6 +75,28 @@ export interface GoalProjection {
   driftSignals: DriftSignal[];
   /** One-liner the page can render under the gauge. */
   summary: string;
+  /** 2026-06-04 · the next 1-3 quality workouts on the plan · "next test
+   *  points." Renders as "Next: Wed Jun 11 · 4mi tempo." Empty when no
+   *  active plan or no upcoming quality days. */
+  nextTestPoints: Array<{
+    dateISO: string;
+    type: string;
+    label: string;             // e.g. "4mi tempo"
+    distanceMi: number | null;
+  }>;
+  /** 2026-06-04 · forecast copy · "what would flip the status." Pair of
+   *  human-readable conditions derived from the current signals · tells
+   *  the runner WHAT moves the gauge without being prescriptive. */
+  transitions: {
+    /** Copy that explains what would tip the status one rung BETTER
+     *  (watching → on-track, or off-track → watching). Null when
+     *  already at the top (ON TRACK). */
+    toBetter: string | null;
+    /** Copy that explains what would tip the status one rung WORSE
+     *  (on-track → watching, or watching → off-track). Null when
+     *  already at the bottom (OFF TRACK). */
+    toWorse: string | null;
+  };
 }
 
 export async function computeGoalProjection(args: {
@@ -128,6 +150,8 @@ export async function computeGoalProjection(args: {
     : goalSec;
 
   const summary = composeSummary(status, driftSignals, goalSec, vdotProjectionSec);
+  const nextTestPoints = await loadNextTestPoints(userUuid).catch(() => []);
+  const transitions = composeTransitions(status, driftSignals);
 
   return {
     status,
@@ -136,7 +160,120 @@ export async function computeGoalProjection(args: {
     vdotProjectionSec,
     driftSignals,
     summary,
+    nextTestPoints,
+    transitions,
   };
+}
+
+/** Load the next 1-3 quality workouts from the active plan · tempo,
+ *  threshold, intervals, long, race. Quality days are the test points
+ *  · each one tells us something about current fitness. */
+async function loadNextTestPoints(
+  userUuid: string,
+): Promise<GoalProjection['nextTestPoints']> {
+  const today = await runnerToday(userUuid);
+  const rows = (await pool.query<{
+    date_iso: string;
+    type: string;
+    sub_label: string | null;
+    distance_mi: number | string | null;
+  }>(
+    `SELECT pw.date_iso, pw.type, pw.sub_label, pw.distance_mi
+       FROM plan_workouts pw
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE tp.user_uuid = $1::uuid
+        AND tp.archived_iso IS NULL
+        AND pw.type IN ('tempo','threshold','intervals','long','race')
+        AND pw.date_iso >= $2
+      ORDER BY pw.date_iso ASC
+      LIMIT 3`,
+    [userUuid, today],
+  ).catch(() => ({ rows: [] }))).rows;
+
+  return rows.map((r) => {
+    const dist = r.distance_mi != null ? Number(r.distance_mi) : null;
+    const distLabel = dist != null ? `${dist.toFixed(dist % 1 === 0 ? 0 : 1)}mi` : '';
+    // sub_label like "4 mi @ T" preserves the workout architecture · use
+    // it when present, else fall back to "4mi tempo" pattern.
+    const label = r.sub_label && r.sub_label.length < 40
+      ? `${distLabel} ${r.type}${r.sub_label !== r.type.toUpperCase() ? ' · ' + r.sub_label : ''}`.trim()
+      : `${distLabel} ${r.type}`.trim();
+    return {
+      dateISO: r.date_iso,
+      type: r.type,
+      label,
+      distanceMi: dist,
+    };
+  });
+}
+
+/** Compose human-readable "what flips the status" copy. Tied to the
+ *  current signals · tells the runner WHAT moves the gauge without
+ *  being prescriptive. */
+function composeTransitions(
+  status: GoalStatus,
+  signals: DriftSignal[],
+): GoalProjection['transitions'] {
+  if (status === 'on-track') {
+    // ON TRACK · already at the top. Show what would tip to WATCHING.
+    return {
+      toBetter: null,
+      toWorse: 'Watching fires if a recent race lands 5%+ off goal · OR if aerobic decoupling widens · OR if tempo paces drift 10s/mi slower for 3 weeks · OR if the plan adapter forces 2+ weeks of downgrades.',
+    };
+  }
+  if (status === 'watching') {
+    // WATCHING · could flip either direction. Build "to better" from
+    // the active signals · whatever clears the medium signal puts us
+    // back ON TRACK.
+    const medium = signals.find((s) => s.weight === 'medium');
+    const toBetter = medium
+      ? clearSignalCopy(medium)
+      : 'Clear the soft signals · the next quality run hitting plan pace puts the plan back on the path.';
+    return {
+      toBetter,
+      toWorse: 'OFF TRACK fires if another medium signal stacks on this one · OR if a recent race lands 10%+ off goal · OR if VDOT trend drops 1+ point over 4 weeks.',
+    };
+  }
+  // OFF TRACK · already at the bottom. Show what would tip back to
+  // WATCHING.
+  const strong = signals.find((s) => s.weight === 'strong');
+  if (strong && strong.kind === 'recent_race') {
+    return {
+      toBetter: 'A new race result within 5% of goal (or sustained tempo/threshold work at goal pace) lifts the status back to watching.',
+      toWorse: null,
+    };
+  }
+  if (strong && strong.kind === 'vdot_trend') {
+    return {
+      toBetter: 'A VDOT-yielding quality session that beats the current 4-week-ago estimate reverses the trend.',
+      toWorse: null,
+    };
+  }
+  return {
+    toBetter: 'Clearing the strongest drift signal lifts the status back to watching · a tune-up race or a few weeks of plan-paced quality work usually does it.',
+    toWorse: null,
+  };
+}
+
+/** Per-signal "what clears this" copy. The runner sees exactly what
+ *  the engine is waiting for. */
+function clearSignalCopy(signal: DriftSignal): string {
+  switch (signal.kind) {
+    case 'recent_race':
+      return 'A new race within 5% of goal pace clears this. Or 3+ weeks of tempo/threshold paces hitting plan targets, which lets the engine update VDOT from training.';
+    case 'aerobic_decoupling':
+      return 'Aerobic decoupling tightening back toward 5% (current band) on the next 2-3 long runs clears this. Hydration + carb fueling on long runs is the biggest lever.';
+    case 'tempo_pace_drift':
+      return 'Tempo paces hitting plan target for 2-3 sessions clears this. Cooler conditions, more carb fueling pre-session, or backing off a bit if cumulative fatigue is the culprit.';
+    case 'plan_adapter_downgrades':
+      return 'A clean 2 weeks where the adapter doesn\'t need to step in (steady readiness, no streaks) clears this.';
+    case 'missed_key_workouts':
+      return 'Hit the next 3-4 key workouts as planned · the engine reweighs every week.';
+    case 'vdot_trend':
+      return 'A quality session that yields a VDOT estimate above the 4-week-ago number clears this · usually a tempo or threshold workout at goal pace or faster.';
+    default:
+      return 'Clearing the soft signal puts the plan back on the path.';
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────

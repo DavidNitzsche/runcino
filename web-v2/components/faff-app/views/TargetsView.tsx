@@ -99,6 +99,34 @@ export function TargetsView({
                   ))}
                 </div>
               ) : null}
+              {goal.nextTestPoints && goal.nextTestPoints.length > 0 ? (
+                <div className="onpath-tests">
+                  <div className="onpath-tests-k">NEXT TEST POINTS</div>
+                  {goal.nextTestPoints.map((tp, i) => (
+                    <div key={i} className="onpath-test">
+                      <span className="onpath-test-d">{formatTestDate(tp.dateISO)}</span>
+                      <span className="onpath-test-l">{tp.label}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {goal.transitions && (goal.transitions.toBetter || goal.transitions.toWorse) ? (
+                <div className="onpath-transitions">
+                  <div className="onpath-trans-k">WHAT MOVES THE GAUGE</div>
+                  {goal.transitions.toBetter ? (
+                    <div className="onpath-trans-row">
+                      <span className="onpath-trans-arrow onpath-trans-up">↑ on-track</span>
+                      <span>{goal.transitions.toBetter}</span>
+                    </div>
+                  ) : null}
+                  {goal.transitions.toWorse ? (
+                    <div className="onpath-trans-row">
+                      <span className="onpath-trans-arrow onpath-trans-down">↓ off-track</span>
+                      <span>{goal.transitions.toWorse}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {goal.vdotProjectionSec ? (
                 <div className="onpath-diag">
                   Diagnostic · current VDOT projects {formatProjSec(goal.vdotProjectionSec)} ·
@@ -204,6 +232,13 @@ function SheetOverlay({ children, onDismiss }: { children: React.ReactNode; onDi
 function formatDate(iso: string) {
   const d = new Date(iso);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+}
+
+function formatTestDate(iso: string): string {
+  const d = new Date(iso + 'T12:00:00Z');
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
+  }).format(d);
 }
 
 function formatProjSec(sec: number | null | undefined): string {

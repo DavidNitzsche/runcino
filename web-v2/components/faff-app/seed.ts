@@ -2046,6 +2046,8 @@ export async function buildSeed(): Promise<FaffSeed> {
         (goalRace as { driftSignals?: unknown }).driftSignals = gp.driftSignals;
         (goalRace as { vdotProjectionSec?: number | null }).vdotProjectionSec = gp.vdotProjectionSec;
         (goalRace as { projectionSummary?: string }).projectionSummary = gp.summary;
+        (goalRace as { nextTestPoints?: unknown }).nextTestPoints = gp.nextTestPoints;
+        (goalRace as { transitions?: unknown }).transitions = gp.transitions;
         // Recompute onTrack/delta against the new projection.
         const newProjSec = gp.projectionSec;
         const diff = goalSecForGP - newProjSec;

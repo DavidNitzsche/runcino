@@ -964,6 +964,26 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .onpath-sig-weak{color:rgba(159,179,173,.95);border:1px solid rgba(255,255,255,.18);}
 .onpath-diag{margin-top:16px;padding-top:14px;border-top:1px dashed rgba(255,255,255,.08);font-size:11.5px;font-style:italic;color:rgba(159,179,173,.7);letter-spacing:.1px;line-height:1.5;}
 
+/* 2026-06-04 · next test points · concrete next quality workouts
+   that will inform the projection. Shown when WATCHING or ON TRACK ·
+   gives the runner a "see you Wednesday" anchor for when the engine
+   will know more. */
+.onpath-tests{margin-top:18px;padding-top:18px;border-top:1px dashed rgba(255,255,255,.1);}
+.onpath-tests-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(159,179,173,.85);margin-bottom:10px;}
+.onpath-test{display:flex;gap:14px;font-size:13px;font-weight:500;line-height:1.5;color:var(--txt);margin-bottom:4px;}
+.onpath-test-d{font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;letter-spacing:.5px;color:#5fd06a;flex:0 0 140px;text-transform:uppercase;}
+.onpath-test-l{flex:1;}
+
+/* 2026-06-04 · WHAT MOVES THE GAUGE · plain-English transitions.
+   Tells the runner what flips the status up or down. Not prescriptive
+   · just shows the conditions. */
+.onpath-transitions{margin-top:18px;padding-top:18px;border-top:1px dashed rgba(255,255,255,.1);}
+.onpath-trans-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(159,179,173,.85);margin-bottom:12px;}
+.onpath-trans-row{display:flex;gap:14px;font-size:13px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.86);margin-bottom:8px;}
+.onpath-trans-arrow{font-size:9.5px;font-weight:800;letter-spacing:.5px;flex:0 0 100px;border-radius:4px;padding:4px 7px;text-transform:uppercase;align-self:flex-start;}
+.onpath-trans-up{color:#5fd06a;border:1px solid rgba(95,208,106,.45);background:rgba(95,208,106,.08);}
+.onpath-trans-down{color:#F3AD38;border:1px solid rgba(243,173,56,.45);background:rgba(243,173,56,.08);}
+
 .races{}
 .rcr{display:flex;align-items:center;gap:16px;background:rgba(8,10,14,.36);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:15px 18px;margin-bottom:10px;}
 .rcn{font-size:16px;font-weight:600;display:flex;flex-direction:column;gap:4px;}

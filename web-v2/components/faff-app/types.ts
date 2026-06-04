@@ -262,6 +262,21 @@ export type GoalRace = {
   /** One-line plain-English summary of the projection state · renders
    *  under the gauge. */
   projectionSummary?: string;
+  /** 2026-06-04 · next 1-3 quality workouts on the plan · "next test
+   *  points" that will inform the projection. */
+  nextTestPoints?: Array<{
+    dateISO: string;
+    type: string;
+    label: string;
+    distanceMi: number | null;
+  }>;
+  /** 2026-06-04 · "what changes the status" copy · pair of conditions
+   *  derived from current signals. Tells the runner what would move
+   *  the gauge without being prescriptive. */
+  transitions?: {
+    toBetter: string | null;
+    toWorse: string | null;
+  };
 
   // ─── GapPanel chunks · per-race, per-runner adjusters ───
   // Targets the four placeholder chunks in views/GapPanel.tsx with
