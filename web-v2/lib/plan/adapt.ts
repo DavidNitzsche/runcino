@@ -502,8 +502,26 @@ async function detectReadinessPullback(userId: string): Promise<AdaptationTrigge
     const forcedByHardRule = last7Scores.length === HARD_RULES.pullbackForcedAck
       && last7Scores.every((s) => s < 40);
 
-    // Streaks gated by tier minimum.
-    const tierStreaks = streaks.filter((s) => s.days >= rules.streakDaysMin);
+    // Streaks gated by tier minimum AND by pillar.
+    //
+    // 2026-06-04 · SLEEP streaks excluded from plan-adapt triggers
+    // (David's "why did my plan change in the middle of the night???").
+    // Sleep is a BEHAVIORAL lever the runner controls · short sleep
+    // weeks are life, not fitness drift. Plan adapts to what the body
+    // shows in response to TRAINING (HRV / RHR / hr_recovery / load),
+    // not to lifestyle inputs. Sleep still surfaces in the streaks
+    // panel + WHAT TO DO actions (where it's a behavioral nudge, not
+    // an auto-downgrade trigger).
+    //
+    // The bar for "plan should change" is objective body response,
+    // not behavioral input. A runner sleeping poorly for a week
+    // doesn't need their quality session moved · they need a heads-up
+    // about the sleep itself. Their body will tell us via HRV/RHR if
+    // it's actually compromising training.
+    const adapterRelevantPillars = new Set(['hrv', 'rhr', 'hr_recovery', 'load']);
+    const tierStreaks = streaks.filter((s) =>
+      s.days >= rules.streakDaysMin && adapterRelevantPillars.has(s.pillar)
+    );
     const hasTieredStreak = tierStreaks.length > 0;
 
     if (!sustainedPullBack && !hasTieredStreak && !forcedByHardRule) return null;
