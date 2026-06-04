@@ -1953,7 +1953,14 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .av-hkey i{width:10px;height:10px;border-radius:2.5px;}
 /* fun facts */
 .av-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:14px;}
-.av-fact{background:linear-gradient(135deg,rgba(255,136,71,.12),rgba(255,136,71,.04));border:1px solid rgba(255,136,71,.22);border-radius:15px;padding:16px 17px;display:flex;gap:13px;align-items:flex-start;}
+/* 2026-06-04 · Activity mesh moved to charcoal · the old peach-tinted
+   .av-fact background (rgba(255,136,71,.12 → .04) + peach border) was
+   tuned for the warm-tan view mesh and read as muddy brown on dark
+   charcoal.  Swapped to the canonical Activity dark-glass surface
+   (matches .av-panel / .av-tot / .av-rec).  The peach icon-chip
+   inside still carries the warm accent so the tiles aren't visually
+   neutered. */
+.av-fact{background:rgba(8,10,14,.4);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:15px;padding:16px 17px;display:flex;gap:13px;align-items:flex-start;}
 .av-fact .fi{width:34px;height:34px;border-radius:10px;background:rgba(255,206,138,.16);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .av-fact .fi svg{width:17px;height:17px;}
 .av-fact .fv{font-family:'Oswald',sans-serif;font-size:21px;font-weight:600;letter-spacing:-.5px;line-height:.95;}
