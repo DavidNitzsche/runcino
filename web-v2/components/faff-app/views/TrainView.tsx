@@ -35,19 +35,34 @@ import { workoutTypeTitle } from '@/lib/coach/workout-title';
 
 /**
  * 2026-06-04 · per-phase gradient for the .phgrid .phase cards.
- * Mirrors TodayView's meshGradient · the Train page mesh is now
- * neutral charcoal and each phase card carries its own color
- * identity as a 135° gradient pulled from PHASE[k].mesh stops
- * [1] / [3] / [4].  CSS vars --pg-1/2/3 are picked up by
- * `.train2 .phase` in globals.css.
+ * Each stop is HAND-HARMONIZED with phaseColor() so the bright stop
+ * of the card matches the ramp-bar color exactly (eye reads the
+ * yellow bar + yellow card as the same phase identity).  Earlier
+ * iteration pulled from PHASE[k].mesh and produced a mismatch
+ * (ramp bar #FFCB47 yellow, card #F3AD38 → #C47812 amber) · David
+ * flagged this as "colors should line up between bars and boxes."
+ *
+ * Each phase keeps a single hue across the gradient · saturation +
+ * lightness drop from top-left to bottom-right.  CSS vars
+ * --pg-1/2/3 are picked up by `.train2 .phase` in globals.css.
  */
 function phaseMeshGradient(p: PhaseKey): React.CSSProperties {
-  const m = PHASE[p]?.mesh;
-  if (!m) return {};
+  // light = exact ramp-bar color (matches phaseColor())
+  // mid   = saturation + lightness drop, same hue
+  // dark  = deeper still, same hue
+  let light: string; let mid: string; let dark: string;
+  if (p === 'build')         { light = '#FFCB47'; mid = '#D6A12B'; dark = '#9C7218'; }
+  else if (p === 'peak')     { light = '#FF7733'; mid = '#D04525'; dark = '#9E2820'; }
+  else if (p === 'taper')    { light = '#56E0B0'; mid = '#2DB386'; dark = '#1A8862'; }
+  else if (p === 'race')     { light = '#FFCE8A'; mid = '#D89A5A'; dark = '#9E6B30'; }
+  else if (p === 'base')     { light = '#5BD8D2'; mid = '#2BA8A4'; dark = '#1A7878'; }
+  else if (p === 'maintenance') { light = '#88B8C8'; mid = '#5A8898'; dark = '#3A5868'; }
+  else if (p === 'recovery')    { light = '#5DD0F0'; mid = '#2DA0C8'; dark = '#1A7090'; }
+  else                       { light = '#FFCE8A'; mid = '#D89A5A'; dark = '#9E6B30'; }
   return {
-    ['--pg-1' as string]: m[1],
-    ['--pg-2' as string]: m[3],
-    ['--pg-3' as string]: m[4],
+    ['--pg-1' as string]: light,
+    ['--pg-2' as string]: mid,
+    ['--pg-3' as string]: dark,
   } as React.CSSProperties;
 }
 
