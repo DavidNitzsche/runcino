@@ -10,6 +10,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface DowPatterns {
   sleep: Array<{ dow: number; label: string; avg: number | null }>;
@@ -20,16 +21,16 @@ export interface DowPatterns {
 
 const DOW_LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
 
-async function loadDowSeries(userUuid: string, sampleType: string, dateCol: 'sample_date' | 'recorded_at::date'): Promise<DowPatterns['sleep']> {
+async function loadDowSeries(userUuid: string, sampleType: string, dateCol: 'sample_date' | 'recorded_at::date', today: string): Promise<DowPatterns['sleep']> {
   const rows = await pool.query<{ dow: number | string; avg: number | string }>(
     `SELECT EXTRACT(dow FROM ${dateCol})::int AS dow, AVG(value::numeric) AS avg
        FROM health_samples
       WHERE COALESCE(user_uuid, user_id) = $1
         AND sample_type = $2
-        AND ${dateCol} >= CURRENT_DATE - interval '60 days'
+        AND ${dateCol} >= $3::date - interval '60 days'
       GROUP BY EXTRACT(dow FROM ${dateCol})
       ORDER BY dow ASC`,
-    [userUuid, sampleType],
+    [userUuid, sampleType, today],
   ).then((r) => r.rows).catch(() => []);
 
   const byDow = new Map<number, number>();
@@ -78,10 +79,12 @@ function computeInsight(series: DowPatterns['sleep'], metric: string, isLowerBet
 }
 
 export async function computeDowPatterns(userUuid: string): Promise<DowPatterns | null> {
+  // 2026-06-03 · runner TZ anchors the 60-day window.
+  const today = await runnerToday(userUuid);
   const [sleep, hrv, rhr] = await Promise.all([
-    loadDowSeries(userUuid, 'sleep_hours', 'sample_date'),
-    loadDowSeries(userUuid, 'hrv', 'recorded_at::date'),
-    loadDowSeries(userUuid, 'resting_hr', 'recorded_at::date'),
+    loadDowSeries(userUuid, 'sleep_hours', 'sample_date', today),
+    loadDowSeries(userUuid, 'hrv', 'recorded_at::date', today),
+    loadDowSeries(userUuid, 'resting_hr', 'recorded_at::date', today),
   ]);
 
   // Need at least one pillar with day-of-week coverage.

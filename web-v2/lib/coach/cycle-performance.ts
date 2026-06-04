@@ -17,6 +17,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface CyclePerformance {
   follicular: PhaseStats;
@@ -56,6 +57,8 @@ async function buildPhaseStats(rows: Array<{ pace: number | null; hr: number | n
 }
 
 export async function computeCyclePerformance(userUuid: string): Promise<CyclePerformance | null> {
+  // 2026-06-03 · runner TZ anchors the 90d window.
+  const today = await runnerToday(userUuid);
   // Pull runs in last 90d with paces + HR + the cycle phase from same day.
   const rows = await pool.query<{ date: string; pace: number | string | null; hr: number | string | null; phase: number | string | null }>(
     `SELECT r.data->>'date' AS date,
@@ -74,8 +77,8 @@ export async function computeCyclePerformance(userUuid: string): Promise<CyclePe
        FROM runs r
       WHERE r.user_uuid = $1::uuid
         AND NOT (r.data ? 'mergedIntoId')
-        AND (r.data->>'date')::date >= CURRENT_DATE - interval '90 days'`,
-    [userUuid],
+        AND (r.data->>'date')::date >= $2::date - interval '90 days'`,
+    [userUuid, today],
   ).then((q) => q.rows).catch(() => []);
 
   const normalized = rows.map((r) => ({

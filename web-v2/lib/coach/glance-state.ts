@@ -14,6 +14,7 @@ import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadActivePlan } from '@/lib/plan/lookup';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { WorkoutSpec } from '@/lib/faff/types';
 
 export interface GlanceWeekDay {
@@ -149,7 +150,10 @@ export interface GlanceState {
 }
 
 export async function loadGlanceState(userId: string): Promise<GlanceState> {
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  // 2026-06-03 · runner TZ instead of the old UTC-minus-7-hour Pacific
+  // hack. Now uses profile.timezone which handles DST + non-Pacific
+  // runners + travel automatically.
+  const today = await runnerToday(userId);
 
   // Profile (just for name)
   const prof = (await pool.query(

@@ -25,6 +25,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { computeAerobicDecoupling } from './aerobic-decoupling';
 
 export interface DecouplingTrend {
@@ -53,6 +54,8 @@ export interface DecouplingTrend {
 }
 
 export async function computeDecouplingTrend(userUuid: string): Promise<DecouplingTrend | null> {
+  // 2026-06-03 · runner TZ for the 60d window.
+  const today = await runnerToday(userUuid);
   // Pull last 60d of long runs (>= 6mi).
   const rows = await pool.query<{ id: string; date: string; mi: number | string; splits: unknown }>(
     `SELECT id::text, data->>'date' AS date, (data->>'distanceMi')::numeric AS mi, data->'splits' AS splits
@@ -60,10 +63,10 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
       WHERE user_uuid = $1::uuid
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric >= 6
-        AND (data->>'date')::date >= CURRENT_DATE - interval '60 days'
+        AND (data->>'date')::date >= $2::date - interval '60 days'
         AND COALESCE(data->>'type', '') NOT IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek')
       ORDER BY (data->>'date')::date ASC`,
-    [userUuid],
+    [userUuid, today],
   ).then((r) => r.rows).catch(() => []);
 
   const series: { date: string; driftPct: number }[] = [];

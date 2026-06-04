@@ -19,6 +19,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface PillarPoint {
   date: string;        // YYYY-MM-DD
@@ -66,15 +67,21 @@ export interface ReadinessHistory {
  * "no data yet" copy rather than blowing up the page.
  */
 export async function loadReadinessHistory(userId: string): Promise<ReadinessHistory> {
+  // 2026-06-03 · runner TZ for the 60d / 30d windows · sample_date and
+  // recorded_at are anchored against the runner's calendar day, not
+  // server UTC. NOW() in the recorded_at queries kept as-is because it
+  // compares against a TIMESTAMP column · the day boundary doesn't
+  // matter for a 60-day rolling window of HRV/RHR readings.
+  const today = await runnerToday(userId);
   const [sleepRows, rhrRows, hrvRows, hrrRows, wristTempRows] = await Promise.all([
     pool.query(
       `SELECT sample_date::date AS d, value
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours'
-          AND sample_date >= CURRENT_DATE - 60
-          AND sample_date <= CURRENT_DATE
+          AND sample_date >= $2::date - 60
+          AND sample_date <= $2::date
         ORDER BY sample_date ASC`,
-      [userId],
+      [userId, today],
     ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; value: number }>),
     pool.query(
       `SELECT recorded_at::date AS d, AVG(value)::numeric AS v
@@ -109,10 +116,10 @@ export async function loadReadinessHistory(userId: string): Promise<ReadinessHis
       `SELECT sample_date::date AS d, AVG(value::numeric) AS v
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'wrist_temp'
-          AND sample_date >= CURRENT_DATE - 30
+          AND sample_date >= $2::date - 30
         GROUP BY sample_date::date
         ORDER BY sample_date::date ASC`,
-      [userId],
+      [userId, today],
     ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; v: string }>),
   ]);
 

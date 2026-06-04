@@ -43,6 +43,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export type TrainingFormLabel =
   | 'DETRAINING'
@@ -99,6 +100,10 @@ const INTENSITY_FACTOR: Record<string, number> = {
  * caller falls back to STEADY/cold-start defaults).
  */
 export async function computeTrainingForm(userUuid: string): Promise<TrainingForm | null> {
+  // 2026-06-03 · runner TZ instead of server CURRENT_DATE.
+  // CTL / ATL / TSB calculated against the runner's calendar day so
+  // the 60-day window doesn't shift at UTC-midnight.
+  const today = await runnerToday(userUuid);
   // Pull all runs in the 60-day window with their (date, distance, type-hint).
   // Use type from plan_workouts when matched, else infer from distance.
   const rows = (await pool.query<{
@@ -108,8 +113,8 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
   }>(
     `WITH all_days AS (
        SELECT generate_series(
-         (CURRENT_DATE - INTERVAL '60 days')::date,
-         CURRENT_DATE::date,
+         ($2::date - INTERVAL '60 days')::date,
+         $2::date,
          '1 day'::interval
        )::date AS d
      ),
@@ -130,7 +135,7 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
-          AND (data->>'date')::date >= CURRENT_DATE - 60
+          AND (data->>'date')::date >= $2::date - 60
         GROUP BY 1
      ),
      daily_plan AS (
@@ -140,7 +145,7 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1::uuid
           AND tp.archived_iso IS NULL
-          AND pw.date_iso::date >= CURRENT_DATE - 60
+          AND pw.date_iso::date >= $2::date - 60
      )
      SELECT a.d::text AS d,
             COALESCE(r.mi, 0)::text AS mi,
@@ -149,7 +154,7 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
        LEFT JOIN daily_runs r ON r.d = a.d
        LEFT JOIN daily_plan p ON p.d = a.d
       ORDER BY a.d ASC`,
-    [userUuid],
+    [userUuid, today],
   ).catch(() => ({ rows: [] }))).rows;
 
   if (rows.length === 0) return null;

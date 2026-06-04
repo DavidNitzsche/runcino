@@ -343,7 +343,9 @@ async function maybeFireStravaReconnect(userId: string): Promise<void> {
       row.status === 'failed' && /\b401\b|REAUTH/i.test(row.error_message ?? '')
     );
     if (!all401) return;
-    const dateIso = new Date().toISOString().slice(0, 10);
+    // 2026-06-03 · runner TZ for the date_iso label in the notification.
+    const { runnerToday } = await import('@/lib/runtime/runner-tz');
+    const dateIso = await runnerToday(userId);
     const tpl = renderStravaReconnect({ user_id: userId, date_iso: dateIso });
     await enqueueNotification(userId, tpl, new Date());
   } catch {

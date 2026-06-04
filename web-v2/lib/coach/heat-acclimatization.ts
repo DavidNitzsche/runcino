@@ -22,6 +22,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface HeatAcclimatization {
   daysInWindow: number;
@@ -37,6 +38,8 @@ const FULL_ACCLIM_DAYS = 14;
 const MAX_PENALTY_BPM_AT_PEAK = 8;  // 8 bpm above baseline at peak heat per Research/06
 
 export async function computeHeatAcclimatization(userUuid: string): Promise<HeatAcclimatization | null> {
+  // 2026-06-03 · runner TZ anchors the 14d window.
+  const today = await runnerToday(userUuid);
   // Pull last 14d of runs with weather + RHR.
   const tempRows = await pool.query<{ d: string; temp_f: number | string | null }>(
     `SELECT (data->>'date')::date::text AS d,
@@ -49,9 +52,9 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
       WHERE user_uuid = $1::uuid
         AND NOT (data ? 'mergedIntoId')
         AND data->>'weather' IS NOT NULL
-        AND (data->>'date')::date >= CURRENT_DATE - interval '14 days'
+        AND (data->>'date')::date >= $2::date - interval '14 days'
       ORDER BY (data->>'date')::date ASC`,
-    [userUuid],
+    [userUuid, today],
   ).then((r) => r.rows).catch(() => []);
 
   const temps = tempRows.map((r) => Number(r.temp_f)).filter((v) => Number.isFinite(v) && v > 0);

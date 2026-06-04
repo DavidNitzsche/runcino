@@ -88,6 +88,13 @@ function daysBetween(fromISO: string, toISO: string): number {
 export async function computeRaceConditions(
   input: RaceConditionsInput,
 ): Promise<RaceConditionsResult> {
+  // 2026-06-03 · `today` is server UTC here because RaceConditionsInput
+  // doesn't carry a userUuid. For races more than a day out the off-by-1
+  // doesn't matter (forecast lookup, climate fallback). Callers that
+  // need per-runner-TZ precision should pass `todayISO` directly via the
+  // input. Keeping the helper signature stable for now · upgrade path
+  // is to add `input.todayISO` and pass `await runnerToday(userUuid)`
+  // from the caller. See TZ refactor doctrine.
   const todayISO = new Date().toISOString().slice(0, 10);
   const daysUntil = daysBetween(todayISO, input.raceDateISO);
   const ability = abilityTierFromVdot(input.vdot);

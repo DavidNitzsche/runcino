@@ -49,6 +49,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export type AnchorType = 'race' | 'long' | 'intervals' | 'tempo' | 'threshold';
 
@@ -183,7 +184,8 @@ function formatExpectedWindowDoctrine(type: AnchorType, distanceMi: number, expD
 }
 
 export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPhase | null> {
-  const today = new Date().toISOString().slice(0, 10);
+  // 2026-06-03 · runner TZ instead of server UTC · see lib/runtime/runner-tz.ts.
+  const today = await runnerToday(userUuid);
 
   // 1 · Find the most recent anchor hard session in the last 14 days.
   const runRows = await pool.query<{

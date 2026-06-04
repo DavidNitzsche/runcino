@@ -21,6 +21,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface QualityPredictors {
   topPredictor: {
@@ -69,6 +70,8 @@ function liftScore(rows: JoinedRow[], threshold: number, higherIsBetter: boolean
 }
 
 export async function computeQualityPredictors(userUuid: string): Promise<QualityPredictors | null> {
+  // 2026-06-03 · runner TZ anchors the 60d window.
+  const today = await runnerToday(userUuid);
   // Pull joined dataset · runs + prior night's recovery metrics.
   // 2026-06-01 · pace lives at `avgPaceMinPerMi` as mm:ss text · parse
   // to seconds in JS · SQL converts it via a CASE on whether colons
@@ -112,9 +115,9 @@ export async function computeQualityPredictors(userUuid: string): Promise<Qualit
       WHERE r.user_uuid = $1::uuid
         AND NOT (r.data ? 'mergedIntoId')
         AND r.data->>'avgPaceMinPerMi' IS NOT NULL
-        AND (r.data->>'date')::date >= CURRENT_DATE - interval '60 days'
+        AND (r.data->>'date')::date >= $2::date - interval '60 days'
         AND COALESCE(r.data->>'type', '') NOT IN ('race', 'shakeout', 'recovery')`,
-    [userUuid],
+    [userUuid, today],
   ).then((q) => q.rows).catch(() => []);
 
   if (rows.length < 12) return null;

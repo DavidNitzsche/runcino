@@ -25,6 +25,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 /**
  * Sum of last N days of running mileage with smart-dedup applied.
@@ -37,6 +38,8 @@ export async function recentMileageMi(
   userUuid: string,
   windowDays: number = 28,
 ): Promise<number> {
+  // 2026-06-03 · runner TZ anchors the window.
+  const today = await runnerToday(userUuid);
   // ROUND(distanceMi, 1) buckets identical-distance rows together
   // within a day · catches the HK+Watch pairs that record identical
   // values for the same physical run. Differing-distance rows fall
@@ -50,11 +53,11 @@ export async function recentMileageMi(
         WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
           AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
-              >= CURRENT_DATE - $2::int
+              >= $3::date - $2::int
         GROUP BY 1, 2
      )
      SELECT COALESCE(SUM(mi), 0)::text AS mi FROM dedup`,
-    [userUuid, windowDays],
+    [userUuid, windowDays, today],
   ).catch(() => ({ rows: [{ mi: '0' }] }));
   return Number(r.rows[0]?.mi ?? 0);
 }

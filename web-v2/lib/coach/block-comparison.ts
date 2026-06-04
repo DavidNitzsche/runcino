@@ -12,6 +12,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface BlockComparison {
   currentBlock: {
@@ -67,12 +68,12 @@ async function loadWindowAverages(userUuid: string, startDate: string, endDate: 
 }
 
 export async function computeBlockComparison(userUuid: string): Promise<BlockComparison | null> {
-  const today = new Date().toISOString().slice(0, 10);
+  // 2026-06-03 · runner TZ for "today" + race-recency cutoff.
+  const today = await runnerToday(userUuid);
 
-  // Current block: last 28 days.
-  const currentStart = new Date();
-  currentStart.setUTCDate(currentStart.getUTCDate() - 28);
-  const currentStartStr = currentStart.toISOString().slice(0, 10);
+  // Current block: last 28 days · runner-TZ anchored.
+  const todayMs = Date.parse(today + 'T12:00:00Z');
+  const currentStartStr = new Date(todayMs - 28 * 86400000).toISOString().slice(0, 10);
   const current = await loadWindowAverages(userUuid, currentStartStr, today);
 
   // Reference: most-recent A-race finish · or peak-VDOT window.
@@ -81,10 +82,10 @@ export async function computeBlockComparison(userUuid: string): Promise<BlockCom
        FROM races
       WHERE user_uuid = $1
         AND meta->>'priority' = 'A'
-        AND (meta->>'date')::date < CURRENT_DATE
-        AND (meta->>'date')::date >= CURRENT_DATE - interval '12 months'
+        AND (meta->>'date')::date < $2::date
+        AND (meta->>'date')::date >= $2::date - interval '12 months'
       ORDER BY (meta->>'date')::date DESC LIMIT 1`,
-    [userUuid],
+    [userUuid, today],
   ).catch(() => ({ rows: [] }))).rows[0];
 
   let refLabel: string;
@@ -107,13 +108,9 @@ export async function computeBlockComparison(userUuid: string): Promise<BlockCom
     // the build name only · "VS LA MARATHON BUILD" reads cleanly.
     refLabel = `${(raceRow.name ?? 'last A-race').split(' ').slice(0, 3).join(' ')} build`;
   } else {
-    // Fallback: 60-90 days ago.
-    const refStart = new Date();
-    refStart.setUTCDate(refStart.getUTCDate() - 90);
-    const refEnd = new Date();
-    refEnd.setUTCDate(refEnd.getUTCDate() - 62);
-    refStartStr = refStart.toISOString().slice(0, 10);
-    refEndStr = refEnd.toISOString().slice(0, 10);
+    // Fallback: 60-90 days ago · anchored to runner today.
+    refStartStr = new Date(todayMs - 90 * 86400000).toISOString().slice(0, 10);
+    refEndStr = new Date(todayMs - 62 * 86400000).toISOString().slice(0, 10);
     // Same dedupe as above · renderer adds "VS ".
     refLabel = '~60-90 days ago';
   }

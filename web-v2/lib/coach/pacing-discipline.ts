@@ -29,6 +29,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface PacingDisciplineResult {
   /** Seconds of pacing-buffer for the runner's typical execution. */
@@ -71,6 +72,8 @@ export async function computePacingDiscipline(
   userUuid: string,
   windowDays: number = DEFAULT_WINDOW_DAYS,
 ): Promise<PacingDisciplineResult> {
+  // 2026-06-03 · runner TZ anchors the window.
+  const today = await runnerToday(userUuid);
   // Pull ALL runs ≥ MIN_DISTANCE_MI with ≥ MIN_SPLITS splits in the
   // window · we sort + filter client-side because jsonb_array_length
   // in a WHERE doesn't index well.
@@ -102,10 +105,10 @@ export async function computePacingDiscipline(
         AND COALESCE(
               (data->>'date')::date,
               LEFT(data->>'startLocal', 10)::date
-            ) >= CURRENT_DATE - $3::int
+            ) >= $4::date - $3::int
       ORDER BY (data->>'date') DESC
       LIMIT 80`,
-    [userUuid, MIN_DISTANCE_MI, windowDays],
+    [userUuid, MIN_DISTANCE_MI, windowDays, today],
   ).catch(() => ({ rows: [] }))).rows;
 
   const candidates: RunRow[] = rows

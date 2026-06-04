@@ -11,9 +11,13 @@ import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadBiologicalSex } from '@/lib/coach/biological-sex';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export async function loadCoachState(userId: string): Promise<CoachState> {
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  // 2026-06-03 · runner TZ instead of the old UTC-minus-7-hour Pacific
+  // hack (Date.now() - 7 * 3600000). Now uses profile.timezone which
+  // handles DST + non-Pacific runners + travel automatically.
+  const today = await runnerToday(userId);
 
   // PROFILE — includes LTHR + observed maxHR + experience for HR-zone reasoning
   const profResult = await pool.query(
@@ -385,9 +389,9 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   const cyclePhaseRow = (await pool.query<{ value: number | string }>(
     `SELECT value FROM health_samples
       WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'menstrual_cycle_phase'
-        AND sample_date >= CURRENT_DATE - interval '2 days'
+        AND sample_date >= $2::date - interval '2 days'
       ORDER BY sample_date DESC, recorded_at DESC LIMIT 1`,
-    [userId],
+    [userId, today],
   ).catch(() => ({ rows: [] }))).rows[0];
   const cyclePhaseNum = cyclePhaseRow?.value != null ? Number(cyclePhaseRow.value) : null;
   const cyclePhase: CoachState['cyclePhase'] = (cyclePhaseNum === 1 ? 'menstrual'

@@ -25,6 +25,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { computeReadiness, type ReadinessBreakdown, type ReadinessInput } from './readiness';
 import { loadReadinessHistory, type PillarPoint, type ReadinessHistory } from './readiness-history';
 import type { CoachState } from '@/lib/topics/types';
@@ -1194,15 +1195,17 @@ async function loadColdStart(
 
   const NIGHTS_NEEDED = 7;
 
-  // Count distinct sleep nights in the last 14 days · same source as
-  // readiness-history.ts (health_samples + sample_type='sleep_hours').
+  // 2026-06-03 · runner TZ instead of server CURRENT_DATE.
+  // The 14-day window slides off the runner's calendar day, not the
+  // server's UTC day.
+  const today = await runnerToday(userId);
   const sleepCount = (await pool.query<{ n: string }>(
     `SELECT COUNT(DISTINCT sample_date::date)::text AS n
        FROM health_samples
       WHERE COALESCE(user_uuid, user_id) = $1
         AND sample_type = 'sleep_hours'
-        AND sample_date >= CURRENT_DATE - INTERVAL '14 days'`,
-    [userId],
+        AND sample_date >= $2::date - INTERVAL '14 days'`,
+    [userId, today],
   ).catch(() => ({ rows: [{ n: '0' }] }))).rows[0];
   const nightsLogged = Math.min(NIGHTS_NEEDED, Number(sleepCount?.n ?? 0));
 
