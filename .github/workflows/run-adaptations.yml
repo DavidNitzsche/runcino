@@ -1,13 +1,22 @@
 # Daily plan adaptation triggers (P38).
-# 07:15 UTC = 00:15 PT — between briefing-refresh (07:05) and
-# weather-enrich (07:30). Order matters: adaptation has to land
-# BEFORE the morning briefing reads the plan.
+#
+# 2026-06-04 · moved from 07:15 UTC (00:15 PT) to 03:00 UTC (20:00 PT)
+# per David's "I dont want to wake up to change runs · that was
+# annoying." Cron now fires in the evening · readiness_pullback
+# triggers write plan_workout_proposals (status='pending') instead of
+# mutating plan_workouts directly. Runner sees the proposal banner on
+# Today view BEFORE going to sleep, can accept ("LET IT HAPPEN") or
+# dismiss ("KEEP ORIGINAL"). No more morning surprises.
+#
+# Reactive triggers (missed_key_workout, niggle, sick, injury, pr_bank,
+# goal_changed, volume_overshoot) still apply immediately · those are
+# responses to events that already happened.
 
 name: Run plan adaptations
 
 on:
   schedule:
-    - cron: '15 7 * * *'
+    - cron: '0 3 * * *'
   workflow_dispatch: {}
 
 jobs:

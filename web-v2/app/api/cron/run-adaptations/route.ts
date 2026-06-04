@@ -41,11 +41,64 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'failed to list users', detail: e.message }, { status: 500 });
   }
 
-  const results: Array<{ user_id: string; triggers: number; applied: number; error?: string }> = [];
+  const results: Array<{ user_id: string; triggers: number; applied: number; proposed: number; error?: string }> = [];
   for (const uid of userIds) {
     try {
       const { triggers, actions } = await detectAdaptations(uid);
-      const applied = await applyAdaptations(uid, actions);
+
+      // 2026-06-04 · split actions into APPLY-NOW vs PROPOSE-FIRST.
+      // David's complaint: "I dont want to wake up to change runs ·
+      // that was annoying." Readiness-pullback adaptations now write
+      // a plan_workout_proposals row instead of mutating plan_workouts
+      // directly. The runner sees a banner with [LET IT HAPPEN] /
+      // [KEEP ORIGINAL] before the change lands.
+      //
+      // Apply-now (immediate · reactive to event that already happened):
+      //   · missed_key_workout · runner missed it, no point proposing
+      //   · sick_episode_active · runner logged sick, plan should respond
+      //   · injury_active · same
+      //   · niggle_reported · same
+      //   · pr_bank · runner ran a faster race, paces should update
+      //   · goal_changed · runner edited their goal
+      //   · volume_overshoot · safety net
+      //
+      // Propose-first (engine opinion · runner gates):
+      //   · readiness_pullback · "we'd like to ease tomorrow because..."
+      const triggerKinds = new Set(triggers.map((t) => t.kind));
+      const isPullbackOnly = triggerKinds.size === 1 && triggerKinds.has('readiness_pullback');
+
+      let applied = 0;
+      let proposed = 0;
+      if (isPullbackOnly) {
+        // Pure readiness-pullback · write proposals, don't apply.
+        const { writeWorkoutProposals } = await import('@/lib/plan/workout-proposals');
+        proposed = await writeWorkoutProposals(uid, actions, triggers);
+      } else {
+        // Mixed or non-pullback triggers · apply immediately. (If
+        // readiness_pullback is mixed in with something else, e.g.
+        // niggle + pullback, we apply the niggle response now and
+        // skip the pullback portion · the next evening cron picks
+        // up the pullback as its own proposal.)
+        const nonPullbackActions = actions.filter((_, i) => {
+          // The actions array correlates 1:1 with triggers (per
+          // detectAdaptations + actionsForTrigger contract). We
+          // strip actions whose source trigger is readiness_pullback.
+          // If indices don't align cleanly, default to apply (safer
+          // than dropping a real signal).
+          const trig = triggers[i];
+          return trig?.kind !== 'readiness_pullback';
+        });
+        applied = await applyAdaptations(uid, nonPullbackActions);
+
+        // The pullback portion (if any) still gets proposed.
+        const pullbackActions = actions.filter((_, i) => triggers[i]?.kind === 'readiness_pullback');
+        if (pullbackActions.length > 0) {
+          const pullbackTriggers = triggers.filter((t) => t.kind === 'readiness_pullback');
+          const { writeWorkoutProposals } = await import('@/lib/plan/workout-proposals');
+          proposed = await writeWorkoutProposals(uid, pullbackActions, pullbackTriggers);
+        }
+      }
+
       // 2026-06-03 · adaptive upward ramp · after pull-back triggers
       // are handled, check whether the runner is handling load well
       // enough to push the next long run +1mi (gated to tier upper).
@@ -65,9 +118,9 @@ export async function POST(req: NextRequest) {
           [uid],
         );
       }
-      results.push({ user_id: uid, triggers: triggers.length, applied });
+      results.push({ user_id: uid, triggers: triggers.length, applied, proposed });
     } catch (e: any) {
-      results.push({ user_id: uid, triggers: 0, applied: 0, error: e?.message ?? String(e) });
+      results.push({ user_id: uid, triggers: 0, applied: 0, proposed: 0, error: e?.message ?? String(e) });
       await raiseAlert({
         kind: 'regen_fail',
         severity: 'warn',
@@ -77,10 +130,12 @@ export async function POST(req: NextRequest) {
     }
   }
   const totalApplied = results.reduce((a, r) => a + r.applied, 0);
+  const totalProposed = results.reduce((a, r) => a + r.proposed, 0);
   return NextResponse.json({
     ok: true,
     users: userIds.length,
     total_applied: totalApplied,
+    total_proposed: totalProposed,
     results,
     timestamp: new Date().toISOString(),
   });
