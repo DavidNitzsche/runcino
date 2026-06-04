@@ -42,7 +42,7 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 
   const rows = (await pool.query(
-    `SELECT slug, meta FROM races
+    `SELECT slug, meta, actual_result FROM races
       WHERE user_uuid = $1
       ORDER BY (meta->>'date') NULLS LAST`,
     [userId]
@@ -50,11 +50,27 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
 
   const all: RaceRow[] = rows.map((r: any) => {
     const m = r.meta ?? {};
+    const ar = r.actual_result ?? {};
     const date = m.date ?? null;
     const is_past = date ? date < today : false;
     const days = date
       ? Math.round((Date.parse(date + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000)
       : 0;
+    // 2026-06-04 · finishTime ladder · runners log race results via
+    // actual_result.finishS (the canonical write from /results endpoint);
+    // meta.finishTime is the older convention. Prefer actual_result · it's
+    // the explicit "I ran this in X" log, vs meta.finishTime which can
+    // be stale. Falls back to the Strava-match path below when both null.
+    let finishTime: string | null = m.finishTime ?? null;
+    if (!finishTime && ar?.finishS && Number(ar.finishS) > 0) {
+      const secs = Math.round(Number(ar.finishS));
+      const h = Math.floor(secs / 3600);
+      const mm = Math.floor((secs % 3600) / 60);
+      const ss = secs % 60;
+      finishTime = h > 0
+        ? `${h}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
+        : `${mm}:${String(ss).padStart(2,'0')}`;
+    }
     return {
       slug: r.slug,
       name: m.name ?? r.slug,
@@ -66,7 +82,7 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       location: m.location ?? null,
       is_past,
       days,
-      finishTime: m.finishTime ?? null,
+      finishTime,
       pb: m.pb ?? null,
     };
   });
