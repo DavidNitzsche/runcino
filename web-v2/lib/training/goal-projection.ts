@@ -43,7 +43,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { predictRaceTime } from './vdot';
+import { predictRaceTime, vdotFromRace } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 
@@ -145,8 +145,15 @@ export async function computeGoalProjection(args: {
 // kind).
 // ────────────────────────────────────────────────────────────────────────
 
-/** STRONG · a finished priority A/B race within 180 days that came in
- *  more than 2% slower than goal pace at that race's distance. */
+/** STRONG · a finished priority A/B race at a SIMILAR distance within
+ *  180 days that came in more than 2% slower than the goal's
+ *  equivalent. Distance band ±30% of the goal · marathons don't count
+ *  against half goals (different endurance skill in Daniels' framework
+ *  · a runner can hit VDOT 48 at HM and only VDOT 44 at the marathon
+ *  due to fueling/endurance, not lack of fitness for half).
+ *
+ *  Picks the FASTEST qualifying race (best fitness expression), not
+ *  just the most recent · "what have you shown you can do." */
 async function detectRecentRaceDrift(
   userUuid: string,
   goalSec: number,
@@ -156,7 +163,11 @@ async function detectRecentRaceDrift(
   const today = await runnerToday(userUuid);
   const cutoff = new Date(Date.parse(today + 'T12:00:00Z') - 180 * 86400000)
     .toISOString().slice(0, 10);
+  const minDist = raceDistanceMi * 0.7;
+  const maxDist = raceDistanceMi * 1.3;
 
+  // FASTEST qualifying race · ranked by pace (s/mi). The runner has
+  // proven this fitness · we use it as the "current fitness" anchor.
   const r = (await pool.query<{
     slug: string;
     name: string | null;
@@ -177,29 +188,73 @@ async function detectRecentRaceDrift(
         AND meta->>'priority' IN ('A','B')
         AND meta->>'date' < $2
         AND meta->>'date' >= $3
-      ORDER BY meta->>'date' DESC
+        AND (meta->>'distanceMi')::numeric BETWEEN $4 AND $5
+        AND COALESCE(
+              (actual_result->>'finishS')::numeric,
+              NULLIF(meta->>'finishTime','')::numeric
+            ) IS NOT NULL
+      ORDER BY (
+        COALESCE(
+          (actual_result->>'finishS')::numeric,
+          NULLIF(meta->>'finishTime','')::numeric
+        ) / NULLIF((meta->>'distanceMi')::numeric, 0)
+      ) ASC
       LIMIT 1`,
-    [userUuid, today, cutoff],
+    [userUuid, today, cutoff, minDist, maxDist],
   ).catch(() => ({ rows: [] }))).rows[0];
 
   if (!r || !r.finish_s || !r.dist) return null;
   const dist = Number(r.dist);
   const finishS = Number(r.finish_s);
-  const racePacePerMi = finishS / Math.max(dist, 0.1);
-  const slowdownPct = (racePacePerMi - goalPacePerMi) / goalPacePerMi * 100;
-  if (slowdownPct < 2) return null;
+
+  // 2026-06-04 · compare DISTANCE-NORMALIZED times, not raw paces.
+  // Comparing marathon pace (484 s/mi) to half-marathon goal pace
+  // (408 s/mi) flagged false positives because marathon pace is
+  // naturally slower than half pace · the runner was ON TRACK but the
+  // detector said -18% slow.
+  //
+  // Right move · compute VDOT from the race result, then predict what
+  // that VDOT would yield at the GOAL race's distance. Compare to the
+  // goal time. Same fitness, same effort, just normalized to the same
+  // race length.
+  const raceVdot = vdotFromRace(finishS, dist);
+  if (raceVdot == null) return null;
+  const equivalentGoalDistTime = predictRaceTime(raceVdot, raceDistanceMi);
+  if (equivalentGoalDistTime == null) return null;
+  const slowdownPct = (equivalentGoalDistTime - goalSec) / goalSec * 100;
+  // Goal pace + slowdown context (kept in evidence for the diagnostic
+  // line but no longer drives the trigger).
+  void goalPacePerMi;
+
+  // Thresholds calibrated to David's "very clear cannot get there"
+  // standard. A 6.6% slowdown from a 4-month-old race isn't undeniable
+  // · 4 months of training can close that. The plan deserves the
+  // benefit of the doubt unless the gap is structural.
+  //
+  //   < 5%       · no signal · plan is in close range
+  //   5% to 10%  · MEDIUM    · trending behind · one of several signals
+  //                              before declaring off-track
+  //   ≥ 10%      · STRONG    · ~2 VDOT points off · "very clear"
+  //                              territory
+  //
+  // 10% maps roughly to "the runner's recent best time corresponds to
+  // a VDOT 2 points below the goal VDOT" · in Daniels-speak that's
+  // a real fitness gap, not a training-can-close-it gap.
+  if (slowdownPct < 5) return null;
+  const weight: DriftWeight = slowdownPct >= 10 ? 'strong' : 'medium';
 
   return {
     kind: 'recent_race',
-    weight: 'strong',
-    detail: `${r.name ?? r.slug} on ${r.date} finished ${slowdownPct.toFixed(1)}% off goal pace · the strongest signal we have on current fitness.`,
+    weight,
+    detail: `${r.name ?? r.slug} on ${r.date} implies ${formatGoalTime(equivalentGoalDistTime)} at this race's distance · ${slowdownPct.toFixed(1)}% slower than the goal.`,
     evidence: {
       slug: r.slug,
       raceDate: r.date,
       raceFinishSec: finishS,
       raceDistanceMi: dist,
-      racePacePerMiSec: Math.round(racePacePerMi),
-      goalPacePerMiSec: Math.round(goalPacePerMi),
+      raceVdot: Number(raceVdot.toFixed(1)),
+      equivalentGoalDistTime,
+      goalSec,
       slowdownPct: Number(slowdownPct.toFixed(2)),
     },
   };
