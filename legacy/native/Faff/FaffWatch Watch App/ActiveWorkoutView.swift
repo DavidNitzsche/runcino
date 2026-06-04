@@ -272,6 +272,20 @@ private struct LiveEasy: View {
             // mental math than showing only the bonus portion.
             return distText(tracker.distanceMi)
         }
+        // Prefer PHASE-level remaining when the current phase has its
+        // own distance target. This is the multi-phase case: a tempo
+        // session with 1.5 mi warmup + 5 mi tempo + 1.5 mi cooldown.
+        // The tempo phase carries `distanceMi: 5.0`, so the row should
+        // count down 5 → 0 across the tempo, not workout-total 6.5 → 1.5.
+        // (Bug surfaced on the tempo run 2026-06-03: tempo phase started
+        // at 6.5 because distanceToGoMi reported workout-level remaining.
+        // Cooldown was fine because LiveSteady already prefers phase.)
+        if let remaining = engine.phaseRemainingMi {
+            return distText(remaining)
+        }
+        // Fallback · single-phase easy/long run with no phase-level
+        // distance target. Workout-level remaining IS phase-level
+        // remaining in that case (the phase is the workout).
         if let remaining = engine.distanceToGoMi {
             return distText(remaining)
         }
