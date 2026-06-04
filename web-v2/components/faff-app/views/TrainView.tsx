@@ -214,15 +214,20 @@ export function TrainView({
     });
   }, [raceIdx, miles, realPhases, goal]);
 
-  // Keep mesh in sync with focused week (lets the Shell mesh follow scrubbing)
+  // 2026-06-04 · the mesh-follows-focused-week effect is retired.  Train
+  // joined Today + Targets + Activity on the neutral charcoal page mesh
+  // (Shell.tsx · view === 'train' → MESH.targets) and the per-phase
+  // color now lives on the .phgrid .phase cards as a gradient.  The
+  // ramp-bar scrubbing still updates focusIdx (which still drives the
+  // phgrid + the NOW pill etc.); it just no longer recolors the page.
+  // Symptom this fixes · "train goes grey on refresh but then I think
+  // gets overridden by the phase color" — yes: this useEffect was
+  // firing curPhaseMeta.mesh into Shell after first paint, repainting
+  // the charcoal mesh back to BUILD amber.
   useEffect(() => {
-    if (isRace) {
-      onMeshChange(curPhaseMeta?.mesh ?? null);
-    } else {
-      onMeshChange(curPhaseMeta?.mesh ?? null);
-    }
+    onMeshChange(null);
     return () => onMeshChange(null);
-  }, [focusIdx, isRace, curPhaseMeta, onMeshChange]);
+  }, [onMeshChange]);
 
   // Key workouts pulled from real plan: pick the QUALITY day in each future
   // week + label by type. Done past weeks marked done; current week tagged NOW.
