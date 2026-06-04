@@ -48,6 +48,36 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 | c4579d85 | Recovery brief panel with `fullyRecoveredAt` | iPhone confirmed wired. Waiting on TF push. |
 | 25281ea7 | Prescription card (NEW) | Not yet authored as an iPhone brief · likely batches with next TF push. |
 
+## WATCH TF QUEUE · sitting on David's clearance
+
+Mirror of the iPhone TF queue but for the watch app (`legacy/native/Faff/FaffWatch Watch App/`). The watch only runs whatever binary was last archived to TestFlight — every Swift change here needs a fresh TF push to take effect. Build counter: `legacy/native/.asc.build` (shared with iPhone build numbering).
+
+When David ships a TF build, move rows from this section into a "shipped in build N" subsection or strike them through. Don't delete · the audit trail matters.
+
+### Queued for next watch TF push
+
+| Commit | What | Visible effect on watch / wire |
+|--------|------|-------------------------------|
+| d935c0d2 | Flag 6 · `expiresAt` enforcement on workout start | Stale workout payloads (>14h sliding window) refuse to start; user sees a soft refusal screen instead of yesterday's plan |
+| e9fa6bdc | Mile-split flash gated off during work phases | No more `MILE 2 · 6:47` overlay mid-rep · still fires in warmup / recovery / cooldown / just-run |
+| 031fe5fd | Watch payload ships `kcal` (HK active-energy total) | iPhone summary card kcal reads HK real number, not the distance × weight × hr-multiplier estimator |
+| fe967374 | Treadmill HR bridge · iPhone↔watch indoor session | iPhone-driven indoor sessions can request watch HR via `treadmill_start` / `treadmill_end` PhoneSync messages |
+| 5b8bcc80 | Tier 1 telemetry · per-phase 5-sec pace/HR samples + derivations | `WatchCompletionPhase` carries `paceSamples`, `hrSamples`, `timeInToleranceSec`, `timeOutOfToleranceSec`, `verdict`. Backend's typed ingest + `winVerdictHit` / `winTimeInTolerance` composers light up on first run with this build. |
+| 2174f5ac | Tier 2 RPE visual rescinded (paired with original 2cc8bdd0) | Net zero new UI · both ship together. Data path `repRpe` / `repRpeTag` on wire kept dormant per `designs/briefs/watch-tier-2-rpe-rescinded-2026-06-02.md`. |
+| b41f75ab | Top-level `avgHr` / `avgCadence` work-weighted | iPhone summary card avgs reflect actual work effort, not rest contamination. Wire shape unchanged; per-phase `splits[i].avg_*` was already isolated. |
+| 75c7e172 | LiveEasy distance row prefers phase-remaining over workout-remaining | Tempo / easy-with-target / long-with-target runs: distance row during the work phase counts down from the PHASE target (5.0 → 0), not workout remaining (6.5 → 1.5). Bug surfaced on David's tempo run 2026-06-03. |
+
+### Shipped in build N (after next TF push, fill in N)
+
+_(empty — populate after next archive lands in TestFlight)_
+
+### Operating rules for the watch TF queue
+
+- Every Swift change under `legacy/native/Faff/FaffWatch Watch App/` lands here until pushed to TestFlight.
+- Backend-side changes that the watch CONSUMES (e.g. new `WatchWorkout` fields the payload now carries) belong in the iPhone TF queue · the watch decodes them via `WatchConnectivity` from the iPhone relay, which gets the payload from `/api/watch/today`. So a backend → watch field landing requires the iPhone build to ship, not necessarily a new watch build.
+- A watch build IS required when the change is to: face layout, engine state machine, completion payload shape, PhoneSync messages, HK tracker logic, or any Swift file under the watch target.
+- The mile-split / Tier 1 / Flag 6 work above shipped backend-side but the WATCH enforcement / sampling / gating is in Swift code → needs the watch build.
+
 ## DOCTRINE codified today (2026-06-03)
 
 | Rule | What it says | File |
