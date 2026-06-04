@@ -576,7 +576,12 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2 .t-eyebrow b{color:#FFCE8A;}
 .train2 .t-ptitle{font-family:'Oswald',sans-serif;font-size:82px;font-weight:600;line-height:.86;text-transform:uppercase;letter-spacing:-1px;margin-top:2px;text-shadow:0 3px 24px rgba(0,0,0,.18);}
 .train2 .t-focus{display:flex;align-items:flex-start;gap:13px;margin-top:13px;max-width:680px;}
-.train2 .t-focus .ftag{flex:0 0 auto;font-size:9.5px;font-weight:800;letter-spacing:1.5px;color:#FFCE8A;border:1px solid rgba(255,206,138,.4);border-radius:6px;padding:5px 8px;margin-top:2px;}
+/* 2026-06-03 · FOCUS tag · was an outlined pill (peach border + peach text,
+   transparent fill).  Against the themed-mesh background (yellow for BUILD,
+   orange for PEAK, etc.) the outline + text both wash out.  Fill with a
+   dark backdrop so the peach text always has contrast regardless of which
+   phase mesh sits behind it. */
+.train2 .t-focus .ftag{flex:0 0 auto;font-size:9.5px;font-weight:800;letter-spacing:1.5px;color:#FFCE8A;background:rgba(0,0,0,.55);border:1px solid rgba(0,0,0,.35);border-radius:6px;padding:5px 8px;margin-top:2px;}
 .train2 .t-focus .ftx{font-size:16px;font-weight:500;line-height:1.5;opacity:1;}
 .train2 .t-status{flex:0 0 auto;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:9px;}
 .train2 .t-wkpill{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;background:rgba(8,10,14,.5);border:1px solid rgba(255,255,255,.18);border-radius:30px;padding:8px 15px;font-family:'Oswald',sans-serif;font-size:15px;font-weight:600;letter-spacing:.5px;}

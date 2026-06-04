@@ -434,7 +434,11 @@ export function TrainView({
               marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '6px 10px', borderRadius: 999, fontSize: 11,
               fontFamily: 'Inter, -apple-system, sans-serif', letterSpacing: 0.6,
-              background: 'rgba(252, 206, 138, .12)', border: '1px solid rgba(252, 206, 138, .35)',
+              // 2026-06-03 · was a faint peach outline (rgba(252,206,138,.12) bg,
+              // peach border).  Against the same-hue themed-mesh card behind it
+              // the chip lost legibility.  Fill with a dark backdrop so peach
+              // text always reads.
+              background: 'rgba(0, 0, 0, .55)', border: '1px solid rgba(0, 0, 0, .35)',
               color: '#FFCE8A',
             }}>
               <span style={{ fontWeight: 700 }}>LONG-RUN CAP · {seed.season.horizonRaise.toLongCapMi}mi</span>
