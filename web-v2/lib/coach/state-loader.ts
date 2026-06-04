@@ -207,25 +207,56 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     : null;
   const sleep7Deficit = +sleepVals.reduce((s, x) => s + Math.max(0, 7.5 - x), 0).toFixed(1);
 
-  // HRV current + baseline
-  const hrv = (await pool.query(
-    `SELECT value FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hrv'
-      ORDER BY recorded_at DESC LIMIT 30`,
-    [userId]
-  )).rows.map((r: any) => Number(r.value)).filter((v: number) => v > 0);
-  const hrvCurrent = hrv[0] ?? null;
-  const hrvBaseline = hrv.length ? Math.round(hrv.reduce((s, x) => s + x, 0) / hrv.length) : null;
+  // 2026-06-03 · UNIFIED BASELINE per David's call ("if its more accurate
+  // and better then its the way to go"). All surfaces on the Health page
+  // now share ONE definition: mean of last 30d EXCLUDING the most recent
+  // 7d. This matches lib/coach/health-state.ts (the BODY tile source) so
+  // the driver row, BODY tile, and forecast all show the same number for
+  // the same pillar.
+  //
+  // Old behavior · "mean of last 14 readings" silently included the most
+  // recent week, so the baseline drifted toward the current state. A
+  // runner with a 10-day RHR spike would see "50 vs 51 baseline" (the
+  // baseline adapted to the spike) instead of "50 vs 45 baseline" (the
+  // stable pre-spike normal). New behavior surfaces the drift honestly.
+  //
+  // Net effect for David (verified via probe-baseline.mjs): RHR baseline
+  // 51 → 45, pillar weight +1 → −10, readiness score drops ~12pts
+  // (45 → ~33, still PULL BACK band). HRV ~unchanged (current already
+  // far below either baseline window).
+  //
+  // Helper · groups daily values by sample_date (last 30 days),
+  // returns current (today's reading) + baseline (mean of all
+  // EXCEPT the last 7).
+  const loadStableBaseline = async (sampleType: string): Promise<{ current: number | null; baseline: number | null }> => {
+    const rows = (await pool.query<{ d: string; v: number | string }>(
+      `SELECT recorded_at::date::text AS d, AVG(value)::numeric AS v
+         FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type = $2
+          AND recorded_at >= NOW() - interval '60 days'
+        GROUP BY recorded_at::date
+        ORDER BY d ASC`,
+      [userId, sampleType]
+    ).catch(() => ({ rows: [] as Array<{ d: string; v: number | string }> }))).rows;
+    const vals = rows.slice(-30).map((r) => Math.round(Number(r.v))).filter((v) => v > 0);
+    if (vals.length === 0) return { current: null, baseline: null };
+    const current = vals.at(-1) ?? null;
+    // Stable baseline · mean of all-EXCEPT-last-7. Need ≥ 14 to be honest;
+    // cold-start uses the whole-window mean as fallback.
+    const baseline = vals.length >= 14
+      ? Math.round(vals.slice(0, -7).reduce((s, x) => s + x, 0) / Math.max(1, vals.length - 7))
+      : Math.round(vals.reduce((s, x) => s + x, 0) / vals.length);
+    return { current, baseline };
+  };
 
-  // RHR
-  const rhr = (await pool.query(
-    `SELECT value FROM health_samples
-      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
-        AND recorded_at >= NOW() - interval '60 days'
-      ORDER BY recorded_at DESC LIMIT 14`,
-    [userId]
-  )).rows.map((r: any) => Number(r.value)).filter((v: number) => v > 0);
-  const rhrCurrent = rhr[0] ?? null;
-  const rhrBaseline = rhr.length ? Math.round(rhr.reduce((s, x) => s + x, 0) / rhr.length) : null;
+  const hrvSt = await loadStableBaseline('hrv');
+  const hrvCurrent = hrvSt.current;
+  const hrvBaseline = hrvSt.baseline;
+
+  const rhrSt = await loadStableBaseline('resting_hr');
+  const rhrCurrent = rhrSt.current;
+  const rhrBaseline = rhrSt.baseline;
 
   // Cadence 60d baseline
   const cad = (await pool.query(

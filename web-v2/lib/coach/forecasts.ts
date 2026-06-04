@@ -200,7 +200,20 @@ function forecastRhr(history: ReadinessHistory): Forecast | null {
   if (!fit) return null;
   if (Math.abs(fit.slope) < 0.2) return null;  // less than 0.2 bpm/day, ignore
 
-  const baseline = recent.reduce((s, p) => s + p.value, 0) / recent.length;
+  // 2026-06-03 · UNIFIED BASELINE per David's call. Use the stable
+  // baseline (mean of last 30d EXCLUDING the recent 7) instead of the
+  // last-7 local mean. Slope math still uses the recent 7 (that's the
+  // regression's local center) but the comparator the runner sees ·
+  // "X bpm above your Y bpm baseline" · now matches the driver row +
+  // BODY tile. Three surfaces, one number per pillar.
+  //
+  // Falls back to the 7-day local mean if there aren't ≥14 days · cold-
+  // start runners (or runners with sparse data) just see the local center.
+  const recent7 = series.slice(-7);
+  const localMean = recent7.reduce((s, p) => s + p.value, 0) / recent7.length;
+  const baseline = series.length >= 14
+    ? series.slice(-30, -7).reduce((s, p) => s + p.value, 0) / Math.max(1, series.slice(-30, -7).length)
+    : localMean;
   const currentValue = recent.at(-1)!.value;
   const dirMatch = last3MatchDirection(recent.map((p) => p.value), fit.slope);
 
