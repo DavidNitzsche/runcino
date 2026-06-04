@@ -2494,11 +2494,18 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .bandhead .t{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(255,255,255,.8);text-transform:uppercase;}
 .targets2 .band{position:relative;height:108px;margin-top:18px;}
 .targets2 .btrack{position:absolute;left:2%;right:2%;top:50%;height:4px;transform:translateY(-50%);border-radius:4px;background:rgba(255,255,255,.12);}
-.targets2 .bgap{position:absolute;top:50%;height:4px;transform:translateY(-50%);border-radius:4px;background:linear-gradient(90deg,#e08a8a,#e6b079);opacity:.85;}
+/* 2026-06-04 · projection band coral · the handoff palette used muted
+   pinks (#e0/#e8/#f0 family) which faded out against the dark charcoal
+   mesh.  Swapped to the canonical brand --over (#FC4D64) so the
+   trailing "current fitness" marker reads as a real red · same color
+   the app uses everywhere else for off-target.  Gap bar gradient goes
+   from over → amber-bright (the watching pill color) instead of
+   muted-pink → muted-tan. */
+.targets2 .bgap{position:absolute;top:50%;height:4px;transform:translateY(-50%);border-radius:4px;background:linear-gradient(90deg,#FC4D64,#FFCE8A);opacity:1;}
 .targets2 .bpt{position:absolute;top:0;bottom:0;width:0;}
 .targets2 .bpt .dot{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);}
 .targets2 .bpt.goal .dot{width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 0 0 5px rgba(255,255,255,.1),0 0 12px rgba(255,255,255,.45);}
-.targets2 .bpt.fit .dot{width:14px;height:14px;border-radius:50%;background:#e8899a;box-shadow:0 0 0 4px rgba(232,137,154,.16);}
+.targets2 .bpt.fit .dot{width:14px;height:14px;border-radius:50%;background:#FC4D64;box-shadow:0 0 0 4px rgba(252,77,100,.22),0 0 14px rgba(252,77,100,.5);}
 .targets2 .bpt .cap{position:absolute;left:0;transform:translateX(-50%);text-align:center;white-space:nowrap;}
 .targets2 .bpt.goal .cap{bottom:calc(50% + 16px);}
 .targets2 .bpt.fit .cap{top:calc(50% + 16px);}
@@ -2506,8 +2513,8 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .bpt .cap .k{display:block;font-family:'Inter',sans-serif;font-size:9px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-top:5px;}
 .targets2 .bpt.goal .cap .v{color:#fff;}
 .targets2 .bpt.goal .cap .k{color:rgba(255,255,255,.82);}
-.targets2 .bpt.fit .cap .v{color:#f0a6b0;}
-.targets2 .bpt.fit .cap .k{color:rgba(240,166,176,.82);}
+.targets2 .bpt.fit .cap .v{color:#FC4D64;}
+.targets2 .bpt.fit .cap .k{color:rgba(252,77,100,.92);}
 .targets2 .bgaplab{position:absolute;top:calc(50% - 27px);transform:translateX(-50%);font-family:'Inter',sans-serif;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#1a1206;background:#FFCE8A;padding:4px 10px;border-radius:7px;white-space:nowrap;}
 .targets2 .bgaplab.ontrack{background:#86efa0;}
 .targets2 .bgaplab.off{background:#ff9aa8;color:#1a0606;}
