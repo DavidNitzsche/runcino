@@ -1059,7 +1059,14 @@ final class HealthKitImporter: ObservableObject {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // 2026-06-03 round 83 · ship the device timezone alongside the
+        // samples. Backend (designs/briefs/iphone-tz-sync-backend-ready.md)
+        // auto-populates profile.timezone from this on first sync ·
+        // silent no-op when profile already has a value. Fixes
+        // server-UTC bleed into the recovery panel / readiness brief /
+        // ACWR / sleep streak / plan adapter for any non-UTC runner.
         let body: [String: Any] = [
+            "timezone": TimeZone.current.identifier,
             "samples": try samples.map { sample throws -> [String: Any] in
                 let d = try JSONEncoder().encode(sample)
                 return try JSONSerialization.jsonObject(with: d) as? [String: Any] ?? [:]

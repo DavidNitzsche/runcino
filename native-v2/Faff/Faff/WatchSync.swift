@@ -158,7 +158,28 @@ final class WatchSync: NSObject, ObservableObject {
         var req = URLRequest(url: API.baseURL.appendingPathComponent("api/watch/workouts/complete"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = data
+        // 2026-06-03 round 83 · splice the device timezone onto the
+        // completion body before POST. Backend
+        // (designs/briefs/iphone-tz-sync-backend-ready.md) reads
+        // body.timezone to auto-populate profile.timezone (first sync)
+        // AND stores it on runs.data->>'timezone' for travel-aware
+        // recovery (a Tokyo run stays tagged Tokyo). The watch app
+        // doesn't currently include the field, so the iPhone splices
+        // it in here · cheaper than a watch-app rebuild + new
+        // TestFlight pair. If decode fails (shouldn't · payload is
+        // always JSON from the watch), fall back to the raw bytes.
+        if var dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            if dict["timezone"] == nil {
+                dict["timezone"] = TimeZone.current.identifier
+            }
+            if let mutated = try? JSONSerialization.data(withJSONObject: dict) {
+                req.httpBody = mutated
+            } else {
+                req.httpBody = data
+            }
+        } else {
+            req.httpBody = data
+        }
         // Was raw URLSession with no Authorization header. After the
         // 2026-05-30 audit added Bearer auth to /api/watch/workouts/complete
         // (and dropped the ?user_id fallback), every queued watch completion
