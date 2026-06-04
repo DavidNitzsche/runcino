@@ -440,23 +440,19 @@ function composeSummary(
   goalSec: number,
   vdotProjectionSec: number | null,
 ): string {
+  // 2026-06-04 · sub-headline copy. Pairs with the panel headline
+  // ("The plan is the path." / "Watching · soft signals firing.") ·
+  // the SUB is the supporting line. The actual drift signals get
+  // listed below as their own chips (don't repeat them in the body).
   if (status === 'on-track') {
-    return 'The plan is the path. Keep doing the work.';
+    return 'Keep doing the work · the plan is delivering as designed.';
   }
   if (status === 'watching') {
-    const top = signals.find((s) => s.weight === 'medium') ?? signals[0];
-    return `Watching · ${top?.detail ?? 'soft signal firing'}. The next quality run will tell us more.`;
+    return 'Hold the plan · the next quality run will tell us more.';
   }
-  // off-track
-  const strong = signals.find((s) => s.weight === 'strong');
-  if (strong) {
-    return `Off track · ${strong.detail}`;
-  }
-  const mediums = signals.filter((s) => s.weight === 'medium');
-  if (mediums.length >= 2) {
-    return `Off track · ${mediums[0].detail} Plus ${mediums.length - 1} more drift signal${mediums.length - 1 === 1 ? '' : 's'}.`;
-  }
-  return 'Off track · plan is no longer on pace for goal.';
+  // off-track · the signals get listed as chips below so this stays
+  // a one-liner framing the moment.
+  return 'The math is honest · time to look at what the plan can still close, and what it can\'t.';
 }
 
 /** Format helper · seconds → "1:30:00" or "30:00". */
