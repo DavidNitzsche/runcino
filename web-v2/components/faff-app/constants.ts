@@ -19,14 +19,16 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   recovery:  { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
   easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#48B3B5', mark: 26, lbl: 'EASY' },
   long:      { mesh: ['#FFE7B0','#F8BC4E','#F0A638','#EC8C2A','#D9791C','#A85A14'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
-  // 2026-06-03 · tempo + intervals meshes brought down · the bright mid
-  // stops (#FF9A54 / #FB6E3C and #FF8A54 / #FF526C) were dominating the
-  // page on tempo/intervals days, washing card text out.  Each stop
-  // dropped ~10–15% in lightness and slightly desaturated; deeper end
-  // stays warm so the identity (tempo = orange-red, intervals = pink-red)
-  // is preserved · the wash just stops competing with the readable cards.
-  tempo:     { mesh: ['#E8B589','#DC7A3E','#C45528','#A8391C','#962834','#6E1828'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
-  intervals: { mesh: ['#E8BC74','#D87142','#CC3954','#B02038','#921736','#5A0E24'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
+  // 2026-06-03 · tempo + intervals meshes · second iteration.
+  //   v1 (#FFD2A4 / #FF9A54 / …) was too bright · washed cards out.
+  //   v2 desaturated too aggressively · page went sad/brown.
+  // v3 keeps full saturation (warmth = tempo identity) and only takes the
+  // brightest mid stops down ~6–8% in lightness. Base stays where v1 had
+  // it because the base only fills the void around blobs, not the
+  // foreground. Result: still clearly orange-red / pink-red and alive,
+  // just the brightest peak isn't blasting through anymore.
+  tempo:     { mesh: ['#F5C297','#F18847','#E15F30','#D04525','#C2303E','#8A1E30'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
+  intervals: { mesh: ['#F2C878','#F07A48','#EB4560','#CD2540','#A91A3E','#6D1129'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
   rest:      { mesh: ['#C4C8D2','#9CA2B0','#787E8E','#58606E','#3E4350','#252935'], dot: '#8A90A0', mark: 4,  lbl: 'OFF' },
 };
 
