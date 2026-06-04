@@ -44,11 +44,33 @@ struct SummaryView: View {
     }
 
     private var labelText: String {
-        // Workout type label (e.g. "Threshold", "Easy run") — pulled from
-        // the workout name, capped to a short tag size. Falls back to
-        // status when the name is empty (rare).
-        if !workout.name.isEmpty { return workout.name }
-        return (completion?.status ?? "Complete").capitalized
+        // Workout TYPE tag for the end-of-run summary (e.g. "THRESHOLD",
+        // "TEMPO", "EASY"). The backend's `workout.name` can ship as a
+        // full plan description — David's 2026-06-03 run came in as
+        // "1 MI WU · 4 MI @ 10:12 · 1 MI CD". That overflowed the small
+        // top-label slot and collided with the OS clock at top-right,
+        // producing the chaotic top row in the failure screenshot.
+        //
+        // Strategy: take the first chunk of `workout.name` before any
+        // " · " or " @ " separator (so plan-description noise drops
+        // away), trim, cap at 14 chars defensively, fall back to
+        // status / "WORKOUT" if everything else is empty.
+        let raw = workout.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else {
+            return (completion?.status ?? "Workout").capitalized
+        }
+        var head = raw
+        if let dot = head.range(of: " · ") {
+            head = String(head[..<dot.lowerBound])
+        }
+        if let at = head.range(of: " @ ") {
+            head = String(head[..<at.lowerBound])
+        }
+        head = head.trimmingCharacters(in: .whitespacesAndNewlines)
+        if head.count > 14 {
+            head = String(head.prefix(14)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return head.isEmpty ? "WORKOUT" : head
     }
     private var avgPaceText: String {
         guard let c = completion, let mi = c.totalDistanceMi, mi > 0.05 else { return "—:—" }

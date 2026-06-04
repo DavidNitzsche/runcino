@@ -66,6 +66,7 @@ When David ships a TF build, move rows from this section into a "shipped in buil
 | 2174f5ac | Tier 2 RPE visual rescinded (paired with original 2cc8bdd0) | Net zero new UI · both ship together. Data path `repRpe` / `repRpeTag` on wire kept dormant per `designs/briefs/watch-tier-2-rpe-rescinded-2026-06-02.md`. |
 | b41f75ab | Top-level `avgHr` / `avgCadence` work-weighted | iPhone summary card avgs reflect actual work effort, not rest contamination. Wire shape unchanged; per-phase `splits[i].avg_*` was already isolated. |
 | 75c7e172 | LiveEasy distance row prefers phase-remaining over workout-remaining | Tempo / easy-with-target / long-with-target runs: distance row during the work phase counts down from the PHASE target (5.0 → 0), not workout remaining (6.5 → 1.5). Bug surfaced on David's tempo run 2026-06-03. |
+| _next_ | SummaryView labelText sanitizes plan-description names | CompleteFace top label now strips " · " / " @ " segments and caps at 14 chars · prevents the full plan string ("1 MI WU · 4 MI @ 10:12 · 1 MI CD") from overflowing the small top slot and colliding with the OS clock at top-right. Bug surfaced at end of David's 2026-06-03 run. |
 
 ### Shipped in build N (after next TF push, fill in N)
 
