@@ -22,6 +22,7 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { buildAdaptText } from '../adapt-text';
+import { formatRaceTime } from '@/lib/training/vdot';
 // 2026-06-03 · per-distance phase + race-day copy author. Replaces the
 // hardcoded marathon strings in PHASE constants. A half-marathon plan
 // no longer reads "sub-3 gets built" or "Hold 6:51/mi at CIM."
@@ -690,8 +691,23 @@ export function TrainView({
               // formatted strings. Schematic 50/50 when neither parses.
               const goalSec = seed.readinessBrief?.gapReport?.goalSec
                 ?? parseClockTime(goal.goal) ?? 0;
-              const projSec = seed.readinessBrief?.gapReport?.trajectorySec
-                ?? parseClockTime(goal.projected) ?? 0;
+              // 2026-06-04 · WATCHING state needs to position the
+              // dot at the model's actual read · not at the goal.
+              // The plan-trusts-itself doctrine returns
+              // projectionSec=goalSec when status is on-track or
+              // watching, which made the dot land at the GOAL tick
+              // and the chip read "0 sec ahead" even though the
+              // engine knew there were soft signals (same bug we
+              // fixed on Targets). For watching, use the raw VDOT
+              // projection to position the dot honestly while the
+              // big headline number stays at the goal (= the plan
+              // is still the path). For off-track, goal.projected
+              // is already the VDOT-derived projection, so the
+              // normal parse path works.
+              const projSec = (goal.goalStatus === 'watching' && goal.vdotProjectionSec)
+                ? goal.vdotProjectionSec
+                : (seed.readinessBrief?.gapReport?.trajectorySec
+                  ?? parseClockTime(goal.projected) ?? 0);
               const gapSec = (projSec && goalSec) ? projSec - goalSec : 0;
               // Bar offset · cap at 28% from center so the dot stays
               // visible at big deltas. Floor at 10% so a small gap is
@@ -727,10 +743,28 @@ export function TrainView({
                 </svg>
               );
 
+              // 2026-06-04 · status-aware chip + sublabel · matches
+              // the Targets headline fix · "0 sec ahead" was firing
+              // for both on-track AND watching because chip read
+              // goal.delta directly. Now: chip says "watching" in
+              // watching state, falls through to goal.delta for
+              // on-track/off-track.
+              const isWatching = goal.goalStatus === 'watching';
+              const chipLabel = isWatching ? 'watching' : goal.delta;
+              const sublabel = isWatching
+                ? `WATCHING · ${goal.goal} STILL IN PLAY`
+                : 'PROJECTED FINISH TODAY';
+              // Show the TODAY label using the model's read when
+              // watching · so the runner can compare against the
+              // goal tick. When on-track/off-track, goal.projected
+              // is already the right number.
+              const projLabelTime = isWatching && goal.vdotProjectionSec
+                ? formatRaceTime(goal.vdotProjectionSec) ?? goal.projected
+                : goal.projected;
               return (
                 <>
                   <div className="pjbig amber">{goal.projected}</div>
-                  <div className="pjlab">PROJECTED FINISH TODAY</div>
+                  <div className="pjlab">{sublabel}</div>
                   <div className="pjtrack">
                     <span className="pjzone slow" />
                     <span className="pjzone fast" />
@@ -739,14 +773,14 @@ export function TrainView({
                     ) : null}
                     <span className="pjend left">SLOWER</span>
                     <span className="pjend right">FASTER</span>
-                    {goal.delta && mag > 0 ? (
-                      <span className="pjchip" style={{ left: `${chipLeft}%` }}>{goal.delta}</span>
+                    {chipLabel && mag > 0 ? (
+                      <span className="pjchip" style={{ left: `${chipLeft}%` }}>{chipLabel}</span>
                     ) : null}
                     <span className="pjtick goal" style={{ left: '50%' }} />
                     <span className="pjtick proj" style={{ left: `${projLeftPct}%` }} />
                     <span className="pjlbl" style={{ left: '50%' }}>GOAL<b>{goal.goal}</b></span>
                     {hideProjLabel ? null : (
-                      <span className="pjlbl proj" style={{ left: `${projLeftPct}%` }}>TODAY<b>{goal.projected}</b></span>
+                      <span className="pjlbl proj" style={{ left: `${projLeftPct}%` }}>TODAY<b>{projLabelTime}</b></span>
                     )}
                   </div>
                   {(levers.length > 0 || fallbackLines.length > 0) ? (
