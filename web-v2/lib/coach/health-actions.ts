@@ -115,6 +115,77 @@ interface BuildArgs {
  * triggers, returns a single ON COURSE entry. The frontend can
  * render the priority chip color from .priority.
  */
+/**
+ * 2026-06-03 · transparency line · "what would trigger an adapt".
+ *
+ * David's calibration ask (option C): when the panel is quiet, show
+ * what the engine is watching for and how close the runner is. Lets
+ * the runner SEE the rules of engagement in real-time and re-tune
+ * the tier thresholds if the engagement feels off.
+ *
+ * Format example for an advanced runner with 1-day HRV low, 2-day
+ * RHR high, 1-day pull-back:
+ *   "Watching for: HRV needs 4 more low days · RHR needs 3 more
+ *    high days · score needs 2 more pull-back days. Hard rules
+ *    always on: illness, flare, temp +0.4°C, ACWR > 2.0, TSB ≤ -30."
+ *
+ * For runners with no active progress toward any soft trigger:
+ *   "Watching for: HRV 5-day streak · RHR 5-day streak · score
+ *    3 pull-back days. Hard rules always on: illness, flare, temp
+ *    +0.4°C, ACWR > 2.0, TSB ≤ -30."
+ */
+export function buildThresholdLine(args: {
+  state: CoachState;
+  streaks: ReadinessStreak[];
+  scoreTrend: Array<{ date: string; score: number }>;
+}): string {
+  const tier: ExperienceLevel = args.state.profile?.experience_level ?? null;
+  const rules = tierRulesFor(tier);
+
+  const parts: string[] = [];
+
+  // HRV streak progress
+  const hrvStreak = args.streaks.find((s) => s.pillar === 'hrv' && s.direction === 'below');
+  const hrvHas = hrvStreak?.days ?? 0;
+  const hrvNeeds = Math.max(0, rules.streakDaysMin - hrvHas);
+  if (hrvNeeds > 0) {
+    parts.push(hrvHas > 0
+      ? `HRV needs ${hrvNeeds} more low day${hrvNeeds === 1 ? '' : 's'}`
+      : `HRV ${rules.streakDaysMin}-day streak`);
+  }
+
+  // RHR streak progress
+  const rhrStreak = args.streaks.find((s) => s.pillar === 'rhr' && s.direction === 'above');
+  const rhrHas = rhrStreak?.days ?? 0;
+  const rhrNeeds = Math.max(0, rules.streakDaysMin - rhrHas);
+  if (rhrNeeds > 0) {
+    parts.push(rhrHas > 0
+      ? `RHR needs ${rhrNeeds} more high day${rhrNeeds === 1 ? '' : 's'}`
+      : `RHR ${rules.streakDaysMin}-day streak`);
+  }
+
+  // Sustained pull-back progress · count consecutive trailing days <40.
+  let pbConsec = 0;
+  for (let i = args.scoreTrend.length - 1; i >= 0; i--) {
+    if (args.scoreTrend[i].score < 40) pbConsec++;
+    else break;
+  }
+  const pbNeeds = Math.max(0, rules.pullbackConsecutiveDays - pbConsec);
+  if (pbNeeds > 0) {
+    parts.push(pbConsec > 0
+      ? `score needs ${pbNeeds} more pull-back day${pbNeeds === 1 ? '' : 's'}`
+      : `score ${rules.pullbackConsecutiveDays} pull-back days`);
+  }
+
+  // If all soft rules are already at threshold, the panel above already
+  // fired · this transparency line is a no-op.
+  if (parts.length === 0) return '';
+
+  const softLine = `Watching for: ${parts.join(' · ')}.`;
+  const hardLine = 'Hard rules always on: illness, flare, wrist temp +0.4°C, ACWR > 2.0, TSB ≤ −30.';
+  return `${softLine} ${hardLine}`;
+}
+
 export function buildHealthActions(args: BuildArgs): HealthAction[] {
   const out: HealthAction[] = [];
   const { breakdown, state, history, streaks, trainingForm, wristTempDeltaC, activeSick, scoreTrend, planAdaptation } = args;

@@ -32,7 +32,7 @@ import type { CoachState } from '@/lib/topics/types';
 import { buildSynthesis } from './synthesis';
 import { buildForecasts, type Forecast } from './forecasts';
 import { computeTrainingForm } from './training-form';
-import { buildHealthActions, type HealthAction } from './health-actions';
+import { buildHealthActions, buildThresholdLine, type HealthAction } from './health-actions';
 
 export type PillarKey = 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
 export type PillarBand = 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
@@ -224,6 +224,13 @@ export interface ReadinessBrief {
    *  When nothing triggers, surfaces a single ON COURSE entry. See
    *  lib/coach/health-actions.ts for trigger rules. */
   actions: HealthAction[];
+  /** 2026-06-03 · transparency line ("option C" per David). Shows what
+   *  the engine is watching for and how close the runner is to
+   *  triggering an adapt. Renders as a small italic note below the
+   *  action chips. Empty string when all soft rules are already at
+   *  threshold (the panel above already fired). See buildThresholdLine
+   *  in lib/coach/health-actions.ts. */
+  actionsThreshold: string;
   /** 2026-06-01 · Phase 2.3 · daily projection-vs-goal card. Composed
    *  from goal-gap engine (Phase 1.1) + simulator (Phase 2.1). The
    *  honest-projection surface · status-aware headline, confidence
@@ -328,6 +335,7 @@ export async function loadReadinessBrief(
       forecasts: [],
       watchTomorrow: [],
       actions: [],
+      actionsThreshold: '',
       gapReport: null,
     };
   }
@@ -485,6 +493,11 @@ export async function loadReadinessBrief(
     scoreTrend: scoreTrend.map((s) => ({ date: s.date, score: s.score })),
     planAdaptation,
   });
+  const actionsThreshold = buildThresholdLine({
+    state,
+    streaks,
+    scoreTrend: scoreTrend.map((s) => ({ date: s.date, score: s.score })),
+  });
 
   return {
     date,
@@ -509,6 +522,7 @@ export async function loadReadinessBrief(
     forecasts,
     watchTomorrow,
     actions,
+    actionsThreshold,
     gapReport,
   };
 }

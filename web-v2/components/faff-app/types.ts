@@ -402,6 +402,12 @@ export type ReadinessBriefSeed = {
     action: string;
     cite: string;
   }>;
+  /** 2026-06-03 · transparency line · "what would trigger an adapt".
+   *  Tier-aware (advanced sees 5-day streak thresholds, beginner sees
+   *  3-day). Renders below the action chips as a small italic note ·
+   *  shows progress toward each soft trigger + reminds of hard rules.
+   *  Optional for back-compat with older brief envelopes. */
+  actionsThreshold?: string;
   /** 2026-06-01 · Phase 2.3 · daily projection-vs-goal card.
    *  Composed from goal-gap engine + simulator. Status-aware headline,
    *  confidence band, what-closes-it actions, A/B/C alternatives when

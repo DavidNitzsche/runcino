@@ -522,6 +522,15 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 <div className="hwatch-empty">Building your picture · keep syncing.</div>
               ) : null}
             </div>
+            {/* 2026-06-03 · transparency line ("option C" per David) · what
+                the engine is watching for and how close the runner is to
+                each trigger. Tier-aware · advanced runners see 5-day
+                streak thresholds, beginners see 3-day. Empty string when
+                all soft rules are already at threshold (panel above
+                already fired). */}
+            {brief.actionsThreshold ? (
+              <div className="hact-threshold">{brief.actionsThreshold}</div>
+            ) : null}
           </div>
         </div>
       ) : null}
