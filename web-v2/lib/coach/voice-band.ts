@@ -38,6 +38,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { CoachState } from '@/lib/topics/types';
 
 /* ────────────────────────── Public types ────────────────────────── */
@@ -96,15 +97,17 @@ export async function computeVoiceBand(
   // Union the two and dedupe by (distance, timeSec ±30s) so a runner
   // who reports a 5K PR at onboarding AND later logs the same race
   // through the app's race lifecycle isn't double-counted.
+  // 2026-06-03 · runner TZ anchors the recency cutoff.
+  const today = await runnerToday(userUuid);
   const raceTableRows = (await pool.query<{ date_iso: string; distance_mi: string; finish_seconds: string }>(
     `SELECT date_iso::text, distance_mi::text, finish_seconds::text
        FROM races
       WHERE user_uuid = $1::uuid
         AND finish_seconds IS NOT NULL
         AND finish_seconds > 0
-        AND date_iso::date >= CURRENT_DATE - $2::int
+        AND date_iso::date >= $3::date - $2::int
       ORDER BY date_iso DESC`,
-    [userUuid, RACE_RECENT_DAYS],
+    [userUuid, RACE_RECENT_DAYS, today],
   ).catch(() => ({ rows: [] as Array<{ date_iso: string; distance_mi: string; finish_seconds: string }> }))).rows;
 
   const profileRow = (await pool.query<{ race_history: any }>(
@@ -300,6 +303,8 @@ function stepDown(band: VoiceBand): VoiceBand {
  * interval. Don't over-engineer it.
  */
 async function computeVdotConfidence(userUuid: string): Promise<number> {
+  // 2026-06-03 · runner TZ anchors the 180d window.
+  const today = await runnerToday(userUuid);
   const rows = (await pool.query<{ kind: string; vdot: number | null }>(
     `WITH race_v AS (
        SELECT 'race' AS kind,
@@ -308,7 +313,7 @@ async function computeVdotConfidence(userUuid: string): Promise<number> {
          FROM races
         WHERE user_uuid = $1::uuid
           AND finish_seconds IS NOT NULL AND finish_seconds > 0
-          AND date_iso::date >= CURRENT_DATE - 180
+          AND date_iso::date >= $2::date - 180
      ),
      run_v AS (
        SELECT 'run' AS kind,
@@ -318,10 +323,10 @@ async function computeVdotConfidence(userUuid: string): Promise<number> {
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'workoutType') IN ('threshold', 'tempo', 'intervals', 'race')
           AND (data->>'distanceMi')::numeric >= 3
-          AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= CURRENT_DATE - 180
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= $2::date - 180
      )
      SELECT * FROM race_v UNION ALL SELECT * FROM run_v`,
-    [userUuid],
+    [userUuid, today],
   ).catch(() => ({ rows: [] as Array<{ kind: string; vdot: number | null }> }))).rows;
 
   const raceCount = rows.filter((r) => r.kind === 'race').length;
@@ -350,6 +355,8 @@ async function countSubjectiveObjectiveMismatchDays(
   userUuid: string,
   lookbackDays: number,
 ): Promise<number> {
+  // 2026-06-03 · runner TZ anchors the readiness-snapshot lookback.
+  const today = await runnerToday(userUuid);
   const result = (await pool.query<{ mismatch_days: string }>(
     `WITH days AS (
        SELECT ts::date AS d, rating
@@ -371,13 +378,13 @@ async function countSubjectiveObjectiveMismatchDays(
        SELECT sample_date AS d, value::numeric AS objective_score
          FROM readiness_snapshots
         WHERE COALESCE(user_uuid, user_id) = $1
-          AND sample_date >= CURRENT_DATE - $2::int
+          AND sample_date >= $3::date - $2::int
      )
      SELECT COUNT(*)::text AS mismatch_days
        FROM scored s JOIN objective o ON o.d = s.d
       WHERE s.subjective_score IS NOT NULL
         AND ABS(s.subjective_score - o.objective_score) >= 15`,
-    [userUuid, lookbackDays],
+    [userUuid, lookbackDays, today],
   ).catch(() => ({ rows: [{ mismatch_days: '0' }] }))).rows[0];
 
   return Number(result?.mismatch_days ?? 0);
@@ -392,6 +399,8 @@ async function goalOffProjectedForWindow(
   pct: number,
   windowDays: number,
 ): Promise<boolean> {
+  // 2026-06-03 · runner TZ anchors the projection-snapshot window.
+  const today = await runnerToday(userUuid);
   const result = (await pool.query<{ off_count: string; total_count: string }>(
     `WITH plan_race AS (
        SELECT race_id FROM training_plans
@@ -412,14 +421,14 @@ async function goalOffProjectedForWindow(
          FROM projection_snapshots ps, goal g
         WHERE ps.user_uuid = $1::uuid
           AND ps.distance_mi = g.dist_mi
-          AND ps.snapshot_date >= CURRENT_DATE - $3::int
+          AND ps.snapshot_date >= $4::date - $3::int
      )
      SELECT COUNT(*) FILTER (
               WHERE proj.projection_sec > (SELECT goal_sec FROM goal) * (1 + $2::numeric)
             )::text AS off_count,
             COUNT(*)::text AS total_count
        FROM proj`,
-    [userUuid, pct, windowDays],
+    [userUuid, pct, windowDays, today],
   ).catch(() => ({ rows: [{ off_count: '0', total_count: '0' }] }))).rows[0];
 
   const off = Number(result?.off_count ?? 0);

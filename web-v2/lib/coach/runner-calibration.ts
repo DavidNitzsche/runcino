@@ -17,6 +17,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { RunnerCalibrationLike } from '@/lib/plan/simulator';
 
 export type DataQuality = 'cold-start' | 'building' | 'calibrated';
@@ -146,7 +147,8 @@ export async function loadRunnerCalibration(
 
   return {
     userUuid,
-    asOf: new Date().toISOString().slice(0, 10),
+    // 2026-06-03 · runner TZ for the asOf stamp.
+    asOf: await runnerToday(userUuid),
     ...defaults,
     longRunWeight: raceDistanceMi != null ? longRunWeightForDistance(raceDistanceMi) : defaults.longRunWeight,
     easyToleranceMi: null,
@@ -181,7 +183,8 @@ export async function loadRunnerCalibration(
  *   7. UPSERT into runner_calibration
  */
 export async function refreshRunnerCalibration(userUuid: string): Promise<RunnerCalibration> {
-  const today = new Date().toISOString().slice(0, 10);
+  // 2026-06-03 · runner TZ.
+  const today = await runnerToday(userUuid);
 
   // Count completed workouts in the last 14d
   const counts = (await pool.query<{ n: string; q: string }>(
@@ -195,9 +198,9 @@ export async function refreshRunnerCalibration(userUuid: string): Promise<Runner
             AND NOT (r.data ? 'mergedIntoId')
       WHERE tp.user_uuid = $1::uuid
         AND tp.archived_iso IS NULL
-        AND pw.date_iso >= CURRENT_DATE - 14
-        AND pw.date_iso <  CURRENT_DATE`,
-    [userUuid],
+        AND pw.date_iso >= $2::date - 14
+        AND pw.date_iso <  $2::date`,
+    [userUuid, today],
   ).catch(() => ({ rows: [{ n: '0', q: '0' }] }))).rows[0];
   const workoutCount = Number(counts?.n ?? 0);
   const qualityCount = Number(counts?.q ?? 0);
@@ -280,6 +283,8 @@ async function medianDailyMi(
 }
 
 async function peakWeekMi(userUuid: string, daysBack: number): Promise<number | null> {
+  // 2026-06-03 · runner TZ anchors the lookback.
+  const today = await runnerToday(userUuid);
   const r = (await pool.query<{ peak: string | null }>(
     // 2026-06-01 - MAX-per-day dedupe before weekly SUM. See
     // lib/plan/generate.ts for context.
@@ -289,14 +294,14 @@ async function peakWeekMi(userUuid: string, daysBack: number): Promise<number | 
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
-          AND (data->>'date')::date >= CURRENT_DATE - $2
+          AND (data->>'date')::date >= $3::date - $2
         GROUP BY 1
      ), weekly AS (
        SELECT DATE_TRUNC('week', d) AS wk, SUM(mi) AS mi
          FROM per_day GROUP BY wk
      )
      SELECT MAX(mi)::text AS peak FROM weekly`,
-    [userUuid, daysBack],
+    [userUuid, daysBack, today],
   ).catch(() => ({ rows: [{ peak: null }] }))).rows[0];
   const m = Number(r?.peak);
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;

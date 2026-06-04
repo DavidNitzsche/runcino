@@ -53,8 +53,11 @@ export interface EffectiveMaxHr {
  */
 export async function loadEffectiveMaxHr(
   userId: string,
-  today: string = new Date().toISOString().slice(0, 10),
+  todayArg?: string,
 ): Promise<EffectiveMaxHr> {
+  // 2026-06-03 · default to runner TZ instead of server UTC.
+  const { runnerToday } = await import('@/lib/runtime/runner-tz');
+  const today = todayArg ?? await runnerToday(userId);
   // 1. Override always wins.
   const overrideRow = await pool.query<{ ovr: number | string | null; stored: number | string | null }>(
     `SELECT max_hr_override AS ovr, max_hr AS stored FROM users WHERE id = $1`,
@@ -120,8 +123,11 @@ export async function loadEffectiveMaxHr(
  */
 export async function ratchetUsersMaxHr(
   userId: string,
-  today: string = new Date().toISOString().slice(0, 10),
+  todayArg?: string,
 ): Promise<number | null> {
+  // 2026-06-03 · runner TZ default.
+  const { runnerToday } = await import('@/lib/runtime/runner-tz');
+  const today = todayArg ?? await runnerToday(userId);
   const eff = await loadEffectiveMaxHr(userId, today);
   if (eff.source !== 'observed_12mo' || eff.bpm == null) return null;
 

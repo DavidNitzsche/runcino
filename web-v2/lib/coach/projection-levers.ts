@@ -334,20 +334,23 @@ async function countUpcomingThresholdWorkouts(
   userUuid: string,
   windowDays: number,
 ): Promise<number> {
+  // 2026-06-03 · runner TZ for "today" + future cutoff.
+  const { runnerToday } = await import('@/lib/runtime/runner-tz');
+  const today = await runnerToday(userUuid);
   const row = (await pool.query<{ n: string }>(
     `SELECT COUNT(*)::text AS n
        FROM plan_workouts pw
        JOIN training_plans tp ON tp.id = pw.plan_id
       WHERE tp.user_uuid = $1
         AND tp.archived_iso IS NULL
-        AND pw.date_iso >= CURRENT_DATE::text
-        AND pw.date_iso < (CURRENT_DATE + $2::int)::text
+        AND pw.date_iso >= $3::text
+        AND pw.date_iso < ($3::date + $2::int)::text
         AND (
               LOWER(pw.type) LIKE '%threshold%' OR
               LOWER(pw.type) LIKE '%tempo%' OR
               LOWER(pw.type) LIKE '%cruise%'
             )`,
-    [userUuid, windowDays],
+    [userUuid, windowDays, today],
   ).catch(() => ({ rows: [{ n: '0' }] }))).rows[0];
   return Number(row?.n ?? 0);
 }

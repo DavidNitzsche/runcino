@@ -45,6 +45,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export type StrengthHabit = 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
 
@@ -317,12 +318,14 @@ function shouldDemoteHeavy(phaseCtx: PhaseContext, raceCtx: RaceContext): boolea
 // ─── Habit detection ────────────────────────────────────────────────────
 
 async function loadHabit(userUuid: string): Promise<StrengthHabit> {
+  // 2026-06-03 · runner TZ anchors the habit window.
+  const today = await runnerToday(userUuid);
   const sessions = (await pool.query<{ date: Date }>(
     `SELECT date FROM strength_sessions
       WHERE user_uuid = $1
-        AND date >= CURRENT_DATE - $2::int
+        AND date >= $3::date - $2::int
       ORDER BY date DESC`,
-    [userUuid, HABIT_WINDOW_DAYS],
+    [userUuid, HABIT_WINDOW_DAYS, today],
   ).catch(() => ({ rows: [] }))).rows;
 
   if (sessions.length === 0) {
@@ -516,6 +519,8 @@ async function loadReadinessGate(userUuid: string): Promise<ReadinessGate> {
 }
 
 async function loadLoadContext(userUuid: string): Promise<LoadContext> {
+  // 2026-06-03 · runner TZ anchors the ACWR windows.
+  const today = await runnerToday(userUuid);
   // Quick ACWR derivation · acute (7d) / chronic (28d).
   // 2026-06-01 - MAX-per-day dedupe (see lib/plan/generate.ts).
   const r = (await pool.query<{ acute: string; chronic: string }>(
@@ -526,14 +531,14 @@ async function loadLoadContext(userUuid: string): Promise<LoadContext> {
         WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
           AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
-              >= CURRENT_DATE - 28
+              >= $2::date - 28
         GROUP BY 1
      )
      SELECT
-        COALESCE(SUM(mi) FILTER (WHERE d >= CURRENT_DATE - 7), 0)::text AS acute,
+        COALESCE(SUM(mi) FILTER (WHERE d >= $2::date - 7), 0)::text AS acute,
         COALESCE(SUM(mi), 0)::text AS chronic
       FROM per_day`,
-    [userUuid],
+    [userUuid, today],
   ).catch(() => ({ rows: [{ acute: '0', chronic: '0' }] }))).rows[0];
   const acute = Number(r?.acute ?? 0) / 7;
   const chronic = Number(r?.chronic ?? 0) / 28;
@@ -768,14 +773,16 @@ export async function emitStrengthSkipIntent(
   if (!gate || (!gate.suppressed && !gate.capped)) return;
   const kind = gate.suppressed ? 'suppress' : 'cap_one';
 
+  // 2026-06-03 · runner TZ for idempotency-per-day · was using server UTC.
+  const today = await runnerToday(userUuid);
   const recent = (await pool.query<{ id: number }>(
     `SELECT id FROM coach_intents
       WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
         AND reason = 'strength_skip'
         AND field = $2
-        AND ts::date = CURRENT_DATE
+        AND ts::date = $3::date
       LIMIT 1`,
-    [userUuid, kind],
+    [userUuid, kind, today],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (recent) return;
 
