@@ -237,6 +237,32 @@ export type GoalRace = {
   // race row hasn't been resolved to a real distance yet.
   distanceMi: number | null;
 
+  // ─── 2026-06-04 · plan-trusts-itself doctrine ───
+  /** Status from goal-projection · gates the "math is honest" panel.
+   *  ON TRACK · plan is on pace · panel collapses to "the plan is the path".
+   *  WATCHING · soft drift signals · panel says "next quality run tells us more".
+   *  OFF TRACK · clear evidence · full gap-panel + B-target framing.
+   *  Optional for back-compat with older seed envelopes (treated as ON TRACK). */
+  goalStatus?: 'on-track' | 'watching' | 'off-track';
+  /** Drift signals firing right now · each with weight + plain-English detail
+   *  + raw evidence numbers. Empty array when ON TRACK. */
+  driftSignals?: Array<{
+    kind: 'recent_race' | 'vdot_trend' | 'aerobic_decoupling'
+      | 'tempo_pace_drift' | 'plan_adapter_downgrades' | 'missed_key_workouts';
+    weight: 'strong' | 'medium' | 'weak';
+    detail: string;
+    evidence: Record<string, number | string | null>;
+  }>;
+  /** Raw current-VDOT projection (always computed) · shown as a
+   *  diagnostic chip alongside the plan-trusted projection. The runner
+   *  can see what their CURRENT fitness says alongside what the plan
+   *  is targeting · transparency without prescription. Null when no
+   *  recent race / VDOT-yielding run. */
+  vdotProjectionSec?: number | null;
+  /** One-line plain-English summary of the projection state · renders
+   *  under the gauge. */
+  projectionSummary?: string;
+
   // ─── GapPanel chunks · per-race, per-runner adjusters ───
   // Targets the four placeholder chunks in views/GapPanel.tsx with
   // honest backend numbers. See designs/briefs/targets-gap-panel-

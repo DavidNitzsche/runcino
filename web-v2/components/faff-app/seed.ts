@@ -2022,6 +2022,42 @@ export async function buildSeed(): Promise<FaffSeed> {
   }
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
+  // 2026-06-04 · plan-trusts-itself doctrine (David's call). Replace
+  // the raw VDOT-derived projection with the goalProjection output ·
+  // PROJECTION = GOAL until drift signals fire. See
+  // lib/training/goal-projection.ts for the full rule set.
+  if (goalRace && goalRace.slug && goalRace.distanceMi) {
+    try {
+      const goalSecForGP = parseRaceTime(goalRace.goal);
+      if (goalSecForGP != null) {
+        const { computeGoalProjection, formatGoalTime } = await import('@/lib/training/goal-projection');
+        const gp = await computeGoalProjection({
+          userUuid: userId,
+          goalSec: goalSecForGP,
+          raceDistanceMi: goalRace.distanceMi,
+          vdot: profile?.physiology.vdot ?? null,
+        });
+        // Override projection with plan-trusts-itself value.
+        goalRace.projected = formatGoalTime(gp.projectionSec) ?? goalRace.projected;
+        // Wire status + drift signals + raw VDOT projection so the
+        // frontend can gate panels (only show "math is honest" when
+        // OFF TRACK, etc).
+        (goalRace as { goalStatus?: string }).goalStatus = gp.status;
+        (goalRace as { driftSignals?: unknown }).driftSignals = gp.driftSignals;
+        (goalRace as { vdotProjectionSec?: number | null }).vdotProjectionSec = gp.vdotProjectionSec;
+        (goalRace as { projectionSummary?: string }).projectionSummary = gp.summary;
+        // Recompute onTrack/delta against the new projection.
+        const newProjSec = gp.projectionSec;
+        const diff = goalSecForGP - newProjSec;
+        goalRace.onTrack = diff >= -30;
+        const minutes = Math.abs(Math.round(diff / 60));
+        const seconds = Math.abs(Math.round(diff % 60));
+        goalRace.delta = diff >= 0
+          ? (minutes > 0 ? `${minutes} min ahead` : `${seconds} sec ahead`)
+          : (minutes > 0 ? `${minutes} min behind` : `${seconds} sec behind`);
+      }
+    } catch { /* swallow · keep raw VDOT projection from adaptGoalRace */ }
+  }
   // 2026-05-31 · enrich the GoalRace with per-race-per-runner GapPanel
   // chunks. See designs/briefs/targets-gap-panel-backend-brief.md §2.
   // Each chunk is null-tolerant · GapPanel hides chunks with null impact.

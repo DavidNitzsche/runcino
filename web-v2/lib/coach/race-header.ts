@@ -350,13 +350,39 @@ export async function loadRaceHeader(userId: string, input: RaceHeaderInputs): P
     }
   }
 
-  // PROJ — only from real VDOT. Never fabricated.
+  // PROJ · plan-trusts-itself doctrine (2026-06-04 · David's call).
+  // Old behavior · projection = predictRaceTime(currentVdot, distance) ·
+  // backward-looking · froze at last race result without a tune-up race.
+  // New behavior · projection = goal UNLESS drift signals fire ·
+  // forward-looking · "the plan is the path until it isn't."
+  //
+  // VDOT still calculated · feeds the OFF TRACK fallback projection AND
+  // the diagnostic chips on the page (so the runner can see the engine's
+  // raw read alongside the plan-trusted projection).
   let projSec: number | null = null;
   let projLabel: string | null = null;
   let currentVdot: number | null = null;
+  let projectionGoalStatus: 'on-track' | 'watching' | 'off-track' | null = null;
   if (raceDistanceMi) {
     currentVdot = await loadCurrentVdot(userId, today).catch(() => null);
-    if (currentVdot != null) {
+    const goalSecForProj = parseRaceTime(goalLabel);
+    if (goalSecForProj != null) {
+      const { computeGoalProjection } = await import('@/lib/training/goal-projection');
+      const goalProj = await computeGoalProjection({
+        userUuid: userId,
+        goalSec: goalSecForProj,
+        raceDistanceMi,
+        vdot: currentVdot,
+      }).catch(() => null);
+      if (goalProj) {
+        projSec = goalProj.projectionSec;
+        projLabel = formatRaceTime(projSec);
+        projectionGoalStatus = goalProj.status;
+      }
+    }
+    // Fallback · no goal time or computeGoalProjection failed · old VDOT
+    // path so cold-start runners still get a number.
+    if (projSec == null && currentVdot != null) {
       projSec = predictRaceTime(currentVdot, raceDistanceMi);
       projLabel = formatRaceTime(projSec);
     }

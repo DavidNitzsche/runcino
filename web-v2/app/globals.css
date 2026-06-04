@@ -949,6 +949,21 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .prd{font-size:11px;font-weight:700;letter-spacing:1.5px;opacity:.8;}
 .prv{font-family:'Oswald',sans-serif;font-size:32px;font-weight:600;margin-top:8px;line-height:.9;}
 .prm{font-size:11px;font-weight:500;opacity:.75;margin-top:8px;}
+/* 2026-06-04 · ON THE PATH panel · replaces the gap-panel when the
+   runner is ON TRACK or WATCHING. Plan-trusts-itself doctrine ·
+   shows the plan-is-the-path framing + any soft drift signals +
+   diagnostic VDOT projection (transparent, not prescriptive). */
+.onpath-panel{background:rgba(8,12,18,.4);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:24px 26px;}
+.onpath-hl{font-size:22px;font-weight:700;line-height:1.2;color:var(--txt);}
+.onpath-sub{font-size:14px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.82);margin-top:10px;}
+.onpath-watching{margin-top:18px;padding-top:18px;border-top:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;gap:10px;}
+.onpath-signal{display:flex;align-items:flex-start;gap:11px;font-size:13.5px;line-height:1.45;}
+.onpath-sig-w{font-size:9px;font-weight:800;letter-spacing:.5px;flex:0 0 auto;border-radius:4px;padding:3px 7px;margin-top:2px;}
+.onpath-sig-strong{color:#FC4D64;border:1px solid rgba(252,77,100,.5);}
+.onpath-sig-medium{color:#F3AD38;border:1px solid rgba(243,173,56,.5);}
+.onpath-sig-weak{color:rgba(159,179,173,.95);border:1px solid rgba(255,255,255,.18);}
+.onpath-diag{margin-top:16px;padding-top:14px;border-top:1px dashed rgba(255,255,255,.08);font-size:11.5px;font-style:italic;color:rgba(159,179,173,.7);letter-spacing:.1px;line-height:1.5;}
+
 .races{}
 .rcr{display:flex;align-items:center;gap:16px;background:rgba(8,10,14,.36);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:15px 18px;margin-bottom:10px;}
 .rcn{font-size:16px;font-weight:600;display:flex;flex-direction:column;gap:4px;}

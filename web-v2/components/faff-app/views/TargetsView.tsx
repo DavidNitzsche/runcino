@@ -59,18 +59,55 @@ export function TargetsView({
         </div>
       </div>
 
-      {/* 2026-05-31 redesign · the flat sparkline is replaced by the
-          "Closing the gap" teaching panel · truth headline, VDOT meta
-          strip, gap decomposition + tappable doctrine drawer, and a
-          hit list of levers. Renders only when a goal race is set.
-          Source: designs/from Design agent/Targets page/. */}
+      {/* 2026-06-04 · plan-trusts-itself doctrine. The "Closing the gap"
+          panel only renders when the engine sees CLEAR drift evidence.
+          Otherwise the runner sees the plan-is-the-path framing · "you
+          are on the path, here's what's next." Status comes from
+          goalStatus (see lib/training/goal-projection.ts). */}
       {goal ? (
-        <>
-          <div className="fll" style={{ marginTop: 30 }}>CLOSING THE GAP</div>
-          <div style={{ marginTop: 12 }}>
-            <GapPanel goal={goal} series={seed.projectionTrend} />
-          </div>
-        </>
+        goal.goalStatus === 'off-track' ? (
+          <>
+            <div className="fll" style={{ marginTop: 30 }}>CLOSING THE GAP</div>
+            <div style={{ marginTop: 12 }}>
+              <GapPanel goal={goal} series={seed.projectionTrend} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="fll" style={{ marginTop: 30 }}>ON THE PATH</div>
+            <div style={{ marginTop: 12 }} className="onpath-panel">
+              <div className="onpath-hl">
+                {goal.goalStatus === 'watching'
+                  ? 'Watching · soft signals firing.'
+                  : 'The plan is the path.'}
+              </div>
+              <div className="onpath-sub">
+                {goal.projectionSummary
+                  ?? (goal.goalStatus === 'watching'
+                      ? 'Hold the plan · next quality run will tell us more.'
+                      : `${goal.daysAway} days to ${goal.name}. The work is doing the work.`)}
+              </div>
+              {goal.driftSignals && goal.driftSignals.length > 0 ? (
+                <div className="onpath-watching">
+                  {goal.driftSignals.map((s, i) => (
+                    <div key={i} className="onpath-signal">
+                      <span className={`onpath-sig-w onpath-sig-${s.weight}`}>
+                        {s.weight.toUpperCase()}
+                      </span>
+                      <span>{s.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {goal.vdotProjectionSec ? (
+                <div className="onpath-diag">
+                  Diagnostic · current VDOT projects {formatProjSec(goal.vdotProjectionSec)} ·
+                  shown for transparency, not as a prescription.
+                </div>
+              ) : null}
+            </div>
+          </>
+        )
       ) : null}
 
       <div className="fll" style={{ marginTop: 30 }}>PERSONAL RECORDS</div>
@@ -167,5 +204,15 @@ function SheetOverlay({ children, onDismiss }: { children: React.ReactNode; onDi
 function formatDate(iso: string) {
   const d = new Date(iso);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+}
+
+function formatProjSec(sec: number | null | undefined): string {
+  if (sec == null) return '·';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`;
 }
 
