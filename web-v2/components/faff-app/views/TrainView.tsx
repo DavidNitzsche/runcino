@@ -66,14 +66,16 @@ function phaseKey(label: string): PhaseKey {
 }
 function phaseColor(p: PhaseKey): string {
   // Brand effort palette: base ≈ teal, build ≈ amber, peak ≈ orange, taper ≈ green.
-  if (p === 'base')  return '#3FB6B0';
-  if (p === 'build') return '#E0A23A';
-  if (p === 'peak')  return '#FF7A45';
-  if (p === 'taper') return '#34C194';
-  // 2026-06-03 · maintenance ≈ cool steel-teal (holding · not building).
-  // recovery ≈ light cyan (low-key · soft).
-  if (p === 'maintenance') return '#5C8B9A';
-  if (p === 'recovery')    return '#27B4E0';
+  // 2026-06-03 · brightened across the board so phase-colored text pops
+  // against its themed mesh background instead of muddying out. Each
+  // shade is a saturation + lightness bump from the prior muted version
+  // (BUILD #E0A23A → #FFCB47 etc).
+  if (p === 'base')  return '#5BD8D2';
+  if (p === 'build') return '#FFCB47';
+  if (p === 'peak')  return '#FF9866';
+  if (p === 'taper') return '#56E0B0';
+  if (p === 'maintenance') return '#88B8C8';
+  if (p === 'recovery')    return '#5DD0F0';
   return '#FFCE8A'; // race
 }
 
@@ -432,7 +434,7 @@ export function TrainView({
               color: '#FFCE8A',
             }}>
               <span style={{ fontWeight: 700 }}>LONG-RUN CAP · {seed.season.horizonRaise.toLongCapMi}mi</span>
-              <span style={{ opacity: 0.72 }}>
+              <span>
                 setting up {seed.season.horizonRaise.race.name}
               </span>
             </div>
