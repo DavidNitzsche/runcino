@@ -59,6 +59,16 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(samples)) {
     return NextResponse.json({ error: 'body.samples must be an array' }, { status: 400 });
   }
+  // 2026-06-03 · auto-populate profile.timezone from the iPhone's TZ on
+  // sync · silent · only writes when profile.timezone is currently null.
+  try {
+    const { captureTimezoneFromDevice } = await import('@/lib/runtime/runner-tz');
+    if (typeof body?.timezone === 'string') {
+      await captureTimezoneFromDevice(userId, body.timezone);
+    }
+  } catch {
+    // Best-effort.
+  }
   let inserted = 0;
   let skipped = 0;
   let errors = 0;

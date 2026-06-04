@@ -136,10 +136,27 @@ export async function POST(req: NextRequest) {
     kcal: body.kcal ?? null,
     splits: deriveSplitsFromPhases(body.phases),
     ingestedAt: new Date().toISOString(),
+    // 2026-06-03 · per-run TZ capture · stored on the run row so the
+    // recovery anchor + activity feed read the TZ that was in effect
+    // when this workout actually happened (handles travel correctly).
+    // Best-effort · null when client omitted it.
+    timezone: typeof body.timezone === 'string' ? body.timezone : null,
     // Reference to the full per-phase blob for any downstream consumer
     // that wants the structured detail.
     watchCompletionRef: body.workoutId,
   };
+  // 2026-06-03 · auto-populate profile.timezone from the device's TZ on
+  // first sync. Silent · only writes when profile.timezone is currently
+  // null, so manual overrides stay sticky. See lib/runtime/runner-tz.ts
+  // captureTimezoneFromDevice for the full doctrine.
+  try {
+    const { captureTimezoneFromDevice } = await import('@/lib/runtime/runner-tz');
+    if (typeof body.timezone === 'string') {
+      await captureTimezoneFromDevice(userId, body.timezone);
+    }
+  } catch {
+    // Best-effort · TZ capture failure must not block the workout write.
+  }
   // strava_activities.id is bigint NOT NULL with no default. The legacy
   // shape uses Strava's numeric activity id; watch-side activities have
   // no Strava id, so we generate a stable bigint deterministically from
