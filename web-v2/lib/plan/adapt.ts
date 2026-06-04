@@ -34,6 +34,7 @@
  * the coach can see when the plan changed.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
 
@@ -396,6 +397,8 @@ async function writeIntent(
 // ── Detectors ──────────────────────────────────────────────────────────
 
 async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger | null> {
+  // 2026-06-03 · runner TZ.
+  const today = await runnerToday(userId);
   // Was the last scheduled threshold/intervals NOT completed within ±1d
   // of its plan date?
   const r = (await pool.query(
@@ -405,9 +408,9 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
       WHERE tp.user_uuid = $1
         AND tp.archived_iso IS NULL
         AND pw.type IN ('threshold','tempo','intervals','vo2max')
-        AND pw.date_iso::date BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE - 1
+        AND pw.date_iso::date BETWEEN $2::date - 7 AND $2::date - 1
       ORDER BY pw.date_iso::date DESC LIMIT 1`,
-    [userId]
+    [userId, today]
   )).rows[0];
   if (!r) return null;
 
@@ -505,20 +508,22 @@ async function detectReadinessPullback(userId: string): Promise<AdaptationTrigge
 }
 
 async function detectRhrSpike(userId: string): Promise<AdaptationTrigger | null> {
+  // 2026-06-03 · runner TZ.
+  const today = await runnerToday(userId);
   const r = (await pool.query(
     `WITH recent AS (
        SELECT AVG(value) AS avg3 FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
-          AND sample_date >= CURRENT_DATE - 3
+          AND sample_date >= $2::date - 3
      ), baseline AS (
        SELECT AVG(value) AS avg14 FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
-          AND sample_date BETWEEN CURRENT_DATE - 17 AND CURRENT_DATE - 4
+          AND sample_date BETWEEN $2::date - 17 AND $2::date - 4
      )
      SELECT recent.avg3, baseline.avg14,
             recent.avg3 - baseline.avg14 AS delta
        FROM recent, baseline`,
-    [userId]
+    [userId, today]
   )).rows[0];
   if (!r || r.avg3 == null || r.avg14 == null) return null;
   const delta = Number(r.delta);
@@ -534,13 +539,15 @@ async function detectRhrSpike(userId: string): Promise<AdaptationTrigger | null>
 }
 
 async function detectSleepCrater(userId: string): Promise<AdaptationTrigger | null> {
+  // 2026-06-03 · runner TZ.
+  const today = await runnerToday(userId);
   const r = (await pool.query(
     `SELECT COUNT(*) AS bad_nights
        FROM health_samples
       WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours'
-        AND sample_date >= CURRENT_DATE - 3
+        AND sample_date >= $2::date - 3
         AND value < 5`,
-    [userId]
+    [userId, today]
   )).rows[0];
   const n = Number(r?.bad_nights ?? 0);
   if (n >= 2) {
@@ -753,11 +760,11 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
        FROM races
       WHERE user_uuid = $1
         AND meta->>'priority' IN ('A','B')
-        AND (meta->>'date')::date >= CURRENT_DATE - 14
-        AND (meta->>'date')::date < CURRENT_DATE
+        AND (meta->>'date')::date >= $2::date - 14
+        AND (meta->>'date')::date < $2::date
         AND actual_result->>'finishS' IS NOT NULL
       ORDER BY (meta->>'date') DESC LIMIT 3`,
-    [userId],
+    [userId, await runnerToday(userId)],
   ).catch(() => ({ rows: [] }))).rows;
   if (recent.length === 0) return null;
 
@@ -805,7 +812,7 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
          FROM runs
         WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
-          AND (data->>'date')::date >= CURRENT_DATE - 7
+          AND (data->>'date')::date >= $2::date - 7
         GROUP BY 1, 2
      ), vol AS (
        SELECT COALESCE(SUM(mi), 0) AS mi FROM dedup
@@ -813,7 +820,7 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
        SELECT experience_level FROM profile WHERE user_uuid = $1
      )
      SELECT vol.mi, p.experience_level FROM vol, p`,
-    [userId]
+    [userId, await runnerToday(userId)]
   )).rows[0];
   if (!r) return null;
   const lvl = (r.experience_level ?? 'intermediate') as ExperienceLevel;
@@ -834,6 +841,8 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
 // ── Action builders ─────────────────────────────────────────────────────
 
 async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<AdaptationAction[]> {
+  // 2026-06-03 · runner TZ used by every case below.
+  const today = await runnerToday(userId);
   switch (t.kind) {
     case 'missed_key_workout': {
       const nextKey = (await pool.query(
@@ -841,14 +850,18 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
              AND pw.type IN ('threshold','tempo','intervals','vo2max')
-             AND pw.date_iso::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+             AND pw.date_iso::date BETWEEN $2::date AND $2::date + 7
            ORDER BY pw.date_iso::date ASC LIMIT 1`,
-        [userId]
+        [userId, today]
       )).rows[0];
+      // Reschedule date · runner-TZ today + 2 days · matches the BETWEEN
+      // window above so the rescheduled key lands inside the search window.
+      const rescheduledDate = new Date(Date.parse(today + 'T12:00:00Z') + 2 * 86400000)
+        .toISOString().slice(0, 10);
       const out: AdaptationAction[] = [{
         kind: 'reschedule',
         workoutIds: [t.evidence.workout_id],
-        newDate: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10),
+        newDate: rescheduledDate,
         why: 'Reschedule missed quality day 2 days forward.',
       }];
       if (nextKey) {
@@ -877,9 +890,9 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
              AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
-             AND pw.date_iso = CURRENT_DATE::text
+             AND pw.date_iso = $2::text
            LIMIT 1`,
-        [userId]
+        [userId, today]
       )).rows[0];
       if (!todayKey) return [];
       return [{
@@ -901,9 +914,9 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
              AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
-             AND pw.date_iso = CURRENT_DATE::text
+             AND pw.date_iso = $2::text
            LIMIT 1`,
-        [userId]
+        [userId, today]
       )).rows[0];
       if (!todayKey) return [];
       return [{
@@ -918,8 +931,8 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         `SELECT pw.id FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
-             AND pw.date_iso::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7`,
-        [userId]
+             AND pw.date_iso::date BETWEEN $2::date AND $2::date + 7`,
+        [userId, today]
       )).rows;
       return [{
         kind: 'shave',
@@ -937,9 +950,9 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         `SELECT pw.id FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
-             AND pw.date_iso::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 14
+             AND pw.date_iso::date BETWEEN $2::date AND $2::date + 14
            ORDER BY pw.date_iso::date ASC`,
-        [userId]
+        [userId, today]
       )).rows;
       if (rows.length === 0) return [];
       const why = t.kind === 'pr_bank'
@@ -955,17 +968,19 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       // Q-04 default. ≥7/10 → 48h suspension (downgrade next 2d to rest);
       // 5-6/10 → downgrade next quality day to easy.
       const severity = Number(t.evidence.severity ?? 0);
-      const horizon = severity >= 7 ? 'CURRENT_DATE + 2' : 'CURRENT_DATE + 2';
+      // 2026-06-03 · runner TZ via $2::date · was inline CURRENT_DATE which
+      // shifted at server-UTC midnight. The horizon ternary still selects
+      // 2 days (preserving existing behavior; bug-for-bug per the original).
       const where = severity >= 7
-        ? `pw.date_iso::date BETWEEN CURRENT_DATE AND ${horizon}`
+        ? `pw.date_iso::date BETWEEN $2::date AND $2::date + 2`
         : `pw.type IN ('threshold','tempo','intervals','vo2max','long')
-            AND pw.date_iso::date BETWEEN CURRENT_DATE AND ${horizon}`;
+            AND pw.date_iso::date BETWEEN $2::date AND $2::date + 2`;
       const rows = (await pool.query(
         `SELECT pw.id FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND ${where}
            ORDER BY pw.date_iso::date ASC`,
-        [userId]
+        [userId, today]
       )).rows;
       if (rows.length === 0) return [];
       return [{
