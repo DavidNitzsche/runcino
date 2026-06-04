@@ -136,52 +136,66 @@ interface BuildArgs {
  */
 export function buildThresholdLine(args: {
   state: CoachState;
-  streaks: ReadinessStreak[];
+  history: ReadinessHistory;
   scoreTrend: Array<{ date: string; score: number }>;
 }): string {
   const tier: ExperienceLevel = args.state.profile?.experience_level ?? null;
   const rules = tierRulesFor(tier);
 
-  const parts: string[] = [];
+  // 2026-06-04 · compute current streak length DIRECTLY from history,
+  // not from the streaks array. The streaks array only records 3+ day
+  // streaks · 1- and 2-day runs got dropped, so the line under-reported
+  // progress (David's QC: showed "RHR 5-day streak" when actually
+  // already at 2/5). Now we count from the tail using the same unified
+  // baseline + threshold the streak detector uses, but report ANY
+  // length so the runner sees real progress.
+  const hrvBaseline = args.state.hrvBaseline;
+  const rhrBaseline = args.state.rhrBaseline;
 
-  // HRV streak progress
-  const hrvStreak = args.streaks.find((s) => s.pillar === 'hrv' && s.direction === 'below');
-  const hrvHas = hrvStreak?.days ?? 0;
-  const hrvNeeds = Math.max(0, rules.streakDaysMin - hrvHas);
-  if (hrvNeeds > 0) {
-    parts.push(hrvHas > 0
-      ? `HRV needs ${hrvNeeds} more low day${hrvNeeds === 1 ? '' : 's'}`
-      : `HRV ${rules.streakDaysMin}-day streak`);
-  }
+  const countTrailingHrvLow = (): number => {
+    if (hrvBaseline == null) return 0;
+    let n = 0;
+    for (let i = args.history.hrv.length - 1; i >= 0; i--) {
+      if (args.history.hrv[i].value < hrvBaseline) n++;
+      else break;
+    }
+    return n;
+  };
+  const countTrailingRhrHigh = (): number => {
+    if (rhrBaseline == null) return 0;
+    let n = 0;
+    for (let i = args.history.rhr.length - 1; i >= 0; i--) {
+      // +3 bpm above baseline matches the streak detector threshold
+      // in lib/coach/readiness-brief.ts:840.
+      if (args.history.rhr[i].value - rhrBaseline >= 3) n++;
+      else break;
+    }
+    return n;
+  };
 
-  // RHR streak progress
-  const rhrStreak = args.streaks.find((s) => s.pillar === 'rhr' && s.direction === 'above');
-  const rhrHas = rhrStreak?.days ?? 0;
-  const rhrNeeds = Math.max(0, rules.streakDaysMin - rhrHas);
-  if (rhrNeeds > 0) {
-    parts.push(rhrHas > 0
-      ? `RHR needs ${rhrNeeds} more high day${rhrNeeds === 1 ? '' : 's'}`
-      : `RHR ${rules.streakDaysMin}-day streak`);
-  }
+  const hrvHas = countTrailingHrvLow();
+  const rhvNeeded = rules.streakDaysMin;
+  const rhrHas = countTrailingRhrHigh();
+  const rhrNeeded = rules.streakDaysMin;
 
-  // Sustained pull-back progress · count consecutive trailing days <40.
+  // Sustained pull-back · count consecutive trailing days <40 (PB band).
   let pbConsec = 0;
   for (let i = args.scoreTrend.length - 1; i >= 0; i--) {
     if (args.scoreTrend[i].score < 40) pbConsec++;
     else break;
   }
-  const pbNeeds = Math.max(0, rules.pullbackConsecutiveDays - pbConsec);
-  if (pbNeeds > 0) {
-    parts.push(pbConsec > 0
-      ? `score needs ${pbNeeds} more pull-back day${pbNeeds === 1 ? '' : 's'}`
-      : `score ${rules.pullbackConsecutiveDays} pull-back days`);
-  }
+  const pbNeeded = rules.pullbackConsecutiveDays;
 
-  // If all soft rules are already at threshold, the panel above already
-  // fired · this transparency line is a no-op.
+  // [N/M] format · runner sees "where I am" / "where the bar is" at a
+  // glance. Skip rules already past threshold (the chip above fired).
+  const parts: string[] = [];
+  if (hrvHas < rhvNeeded) parts.push(`HRV low streak [${hrvHas}/${rhvNeeded}]`);
+  if (rhrHas < rhrNeeded) parts.push(`RHR high streak [${rhrHas}/${rhrNeeded}]`);
+  if (pbConsec < pbNeeded) parts.push(`sustained pull-back [${pbConsec}/${pbNeeded}]`);
+
   if (parts.length === 0) return '';
 
-  const softLine = `Watching for: ${parts.join(' · ')}.`;
+  const softLine = `Adapter triggers at: ${parts.join(' · ')}.`;
   const hardLine = 'Hard rules always on: illness, flare, wrist temp +0.4°C, ACWR > 2.0, TSB ≤ −30.';
   return `${softLine} ${hardLine}`;
 }

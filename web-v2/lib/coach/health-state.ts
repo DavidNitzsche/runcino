@@ -440,9 +440,15 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   })).slice(-30);
   const hrvAll = hrvSeries.map((r) => r.ms);
   const hrvCurrent = hrvAll.at(-1) ?? null;
-  const hrvBaseline = hrvAll.length
-    ? Math.round(hrvAll.reduce((s, x) => s + x, 0) / hrvAll.length)
-    : null;
+  // 2026-06-04 · stable baseline · mean of last 30d EXCLUDING last 7
+  // (the runner's "settled" state, not drifting with a recent streak).
+  // Matches state-loader.ts loadStableBaseline + glance-state.ts +
+  // forecasts.ts so the driver row, BODY tile, and forecast all
+  // converge on the same number. David's QC: driver row HRV baseline
+  // 57 vs BODY tile 54 was an old whole-30d-mean artifact.
+  const hrvBaseline = hrvAll.length >= 14
+    ? Math.round(hrvAll.slice(0, -7).reduce((s, x) => s + x, 0) / Math.max(1, hrvAll.length - 7))
+    : (hrvAll.length ? Math.round(hrvAll.reduce((s, x) => s + x, 0) / hrvAll.length) : null);
   const hrvPct = (hrvCurrent != null && hrvBaseline != null && hrvBaseline > 0)
     ? Math.round(((hrvCurrent - hrvBaseline) / hrvBaseline) * 100) : null;
 

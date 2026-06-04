@@ -495,7 +495,7 @@ export async function loadReadinessBrief(
   });
   const actionsThreshold = buildThresholdLine({
     state,
-    streaks,
+    history,
     scoreTrend: scoreTrend.map((s) => ({ date: s.date, score: s.score })),
   });
 
