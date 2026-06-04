@@ -313,6 +313,12 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
                 AND distance_mi >= 1.0`,
             [a.shaveFraction, wid]
           );
+          // 2026-06-04 · rebuild spec + sub_label after the distance
+          // mutation. Without this, label says "5 mi @ T" while the
+          // row is actually shaved to 4mi · the spec says one thing,
+          // the chip says another (David's "is it 5 of 4 miles of the
+          // tempo?" QC).
+          await rebuildWorkoutDerivations(client, userId, wid);
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, shaveFraction: a.shaveFraction, why: a.why,
           });
@@ -332,6 +338,9 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
                 AND distance_mi < $1`,
             [b.newDistanceMi, b.workoutId],
           );
+          // 2026-06-04 · same rebuild as shave · prevent label drift
+          // when distance changes.
+          await rebuildWorkoutDerivations(client, userId, b.workoutId);
           await writeIntent(client, userId, 'plan_adapt_upgrade', b.workoutId, {
             kind: 'mark_upgrade', newDistanceMi: b.newDistanceMi, why: a.why,
           });
@@ -391,6 +400,141 @@ async function writeIntent(
     // the plan change is more important than the audit row.
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[applyAdaptations] writeIntent failed:', msg);
+  }
+}
+
+/**
+ * Rebuild workout_spec + sub_label + pace_target_s_per_mi after a
+ * distance mutation (shave / mark_upgrade). Without this the row
+ * carries a stale label like "5 mi @ T" while distance_mi has been
+ * shaved to 4 · spec, label, and the chip rendered on the planned-day
+ * card disagree on the same workout.
+ *
+ * 2026-06-04 · David's QC: "is it 5 of 4 miles of the tempo?" The
+ * shave path was bumping distance_mi via SQL without touching spec or
+ * sub_label, so subLabelFromSpec on the stale spec produced "5 mi"
+ * while the row was actually 4. Fix: after any distance-touching
+ * UPDATE, re-derive spec from (type, current distance, T-pace from
+ * the active race goal) and re-derive sub_label from the rebuilt
+ * spec.
+ *
+ * Cite: subLabelFromSpec contract · only tempo/threshold/intervals
+ * carry full label info in spec; easy/long/recovery/rest are no-ops
+ * here (subLabelFromSpec returns null and we leave sub_label alone).
+ *
+ * Non-fatal: any failure (missing T-pace, missing race, build error)
+ * logs and returns without throwing. The caller's UPDATE already
+ * landed · we'd rather have a stale label than abort the whole
+ * adaptation transaction over a derivation glitch.
+ */
+async function rebuildWorkoutDerivations(
+  client: { query: typeof pool.query },
+  userId: string,
+  workoutId: string,
+): Promise<void> {
+  try {
+    // 1. Read the workout's current type + distance + race_id.
+    const row = (await client.query<{
+      type: string;
+      distance_mi: string | null;
+      race_id: string | null;
+    }>(
+      `SELECT pw.type, pw.distance_mi::text, tp.race_id
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE pw.id = $1
+          AND tp.user_uuid = $2::uuid
+          AND tp.archived_iso IS NULL
+        LIMIT 1`,
+      [workoutId, userId],
+    )).rows[0];
+
+    if (!row) return;
+    const type = row.type;
+    const distanceMi = row.distance_mi != null ? Number(row.distance_mi) : null;
+
+    // Only quality types carry full label info in their spec. Easy /
+    // recovery / long / rest get their labels at generation time and
+    // subLabelFromSpec returns null for them · skip the rebuild so we
+    // don't accidentally wipe a meaningful sub_label.
+    if (!['tempo', 'threshold', 'intervals'].includes(type)) return;
+    if (distanceMi == null || distanceMi <= 0) return;
+
+    // 2. Derive T-pace from the active race goal. No goal · skip ·
+    //    we'd produce a spec with no pace anchor, which is worse
+    //    than the existing stale-but-consistent spec.
+    const tPaceSec = await deriveTPaceSecForRebuild(client, userId, row.race_id);
+    if (tPaceSec == null) return;
+
+    // 3. Build the fresh spec from (type, current distance, T-pace).
+    //    Pass null lthr/maxHr · the rebuild scope is label drift, not
+    //    HR-cap accuracy. The next briefing/render will re-load HR
+    //    anchors through the standard pipeline.
+    const { buildWorkoutSpec } = await import('./spec-builder');
+    const { spec, paceTargetSPerMi } = buildWorkoutSpec(
+      type,
+      distanceMi,
+      tPaceSec,
+      null,
+      null,
+      null,
+    );
+    if (!spec) return;
+
+    // 4. Derive the fresh sub_label from the rebuilt spec.
+    const { subLabelFromSpec } = await import('@/lib/training/expand-spec');
+    const derivedLabel = subLabelFromSpec(
+      spec as Parameters<typeof subLabelFromSpec>[0],
+    );
+
+    // 5. UPDATE the row. Only overwrite sub_label when we got a fresh
+    //    one from the spec · COALESCE preserves the existing label
+    //    when subLabelFromSpec returned null (shouldn't happen for
+    //    the three types we gate on, but defensive).
+    await client.query(
+      `UPDATE plan_workouts
+          SET workout_spec = $1::jsonb,
+              sub_label = COALESCE($2, sub_label),
+              pace_target_s_per_mi = COALESCE($3, pace_target_s_per_mi)
+        WHERE id = $4`,
+      [JSON.stringify(spec), derivedLabel, paceTargetSPerMi, workoutId],
+    );
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(
+      '[applyAdaptations] rebuildWorkoutDerivations failed for', workoutId, ':', msg,
+    );
+  }
+}
+
+/**
+ * Mirror of /api/plan/restore's deriveTPaceSec helper. Lives here so
+ * adapt.ts doesn't take a cross-module dependency on a route file.
+ * Returns null when no goal time is set or no race is linked · caller
+ * skips the rebuild (the stale spec stays · better than wiping pace
+ * info we can't reconstruct).
+ */
+async function deriveTPaceSecForRebuild(
+  client: { query: typeof pool.query },
+  userId: string,
+  raceId: string | null,
+): Promise<number | null> {
+  if (!raceId) return null;
+  try {
+    const { tPaceFromGoal } = await import('./spec-builder');
+    const race = (await client.query<{ meta: any; plan: any }>(
+      `SELECT meta, plan FROM races
+        WHERE user_uuid = $1::uuid AND slug = $2
+        LIMIT 1`,
+      [userId, raceId],
+    )).rows[0];
+    if (!race) return null;
+    const goalSec = Number(race.plan?.goal?.finish_time_s);
+    const goalDistanceMi = Number(race.meta?.distanceMi);
+    const fromGoal = tPaceFromGoal(goalSec, goalDistanceMi);
+    return fromGoal ?? null;
+  } catch {
+    return null;
   }
 }
 
