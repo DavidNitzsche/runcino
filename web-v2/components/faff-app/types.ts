@@ -533,6 +533,14 @@ export type HealthSnapshot = {
       currentValue: number | null;
       baselineValue: number | null;
       pctRecovered: number | null;
+      /** 2026-06-03 · plain-English delta line replacing "% back" copy.
+       *  Examples: "20ms below baseline", "1 bpm off baseline",
+       *  "1.4h short of target", "at baseline". Empty when no data. */
+      statusLine?: string;
+      /** 2026-06-03 · severity band for the status line color.
+       *  good = within tolerance · watch = mild deficit ·
+       *  bad = significant deficit · no-data = comparison unavailable. */
+      severity?: 'good' | 'watch' | 'bad' | 'no-data';
     }>;
     muscleSignals: {
       cadenceSpm: number | null;

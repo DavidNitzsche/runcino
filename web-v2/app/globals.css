@@ -1347,6 +1347,20 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hrcp .pb{height:6px;border-radius:4px;background:rgba(255,255,255,.1);margin-top:9px;overflow:hidden;}
 .hrcp .pb i{display:block;height:100%;border-radius:4px;}
 .hrcp .pv{font-size:11px;font-weight:700;margin-top:7px;}
+/* 2026-06-03 · v2 layout · drops the "% back" bar visualization. Each
+   pillar tile shows label · current value · status line (color-coded
+   delta vs baseline). Per David: "what does this mean? just sort of
+   random..." The % bar communicated nothing without context. */
+.hrecov-grid-v2{grid-template-columns:repeat(4,1fr);}
+@media (max-width:680px){.hrecov-grid-v2{grid-template-columns:repeat(2,1fr);}}
+.hrcp-v2{padding:14px 14px 12px;display:flex;flex-direction:column;gap:6px;}
+.hrcp-k{font-size:10px;font-weight:800;letter-spacing:.5px;color:rgba(159,179,173,.85);}
+.hrcp-val{font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;color:var(--txt);line-height:1;margin-top:2px;}
+.hrcp-status{font-size:11.5px;font-weight:600;line-height:1.35;letter-spacing:.1px;}
+/* Solo-day chip (now that the % header is dropped) sits as the only
+   element in the timeline column · larger weight so it carries the
+   temporal frame on its own. */
+.hrecov-day-solo{font-size:13px;font-weight:700;color:rgba(255,255,255,.82);margin-top:0;letter-spacing:.3px;text-transform:uppercase;}
 .hrecov-muscle{margin-top:20px;font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.86);display:flex;gap:10px;align-items:baseline;}
 .hrecov-muscle .md{width:6px;height:6px;border-radius:50%;background:#F3AD38;flex:0 0 auto;margin-top:6px;}
 .hrecov-green{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1);font-size:14px;font-weight:600;color:var(--txt);}

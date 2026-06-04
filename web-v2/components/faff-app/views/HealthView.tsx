@@ -540,16 +540,13 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
       */}
       {seed.health.recoveryPhase ? (() => {
         const rp = seed.health.recoveryPhase;
-        const pcol = (p: number) => p >= 80 ? COLOR_GOOD : p >= 55 ? COLOR_WATCH : COLOR_BAD;
-        // 2026-06-03 · trust the backend's `rp.dataInsufficient` flag +
-        // the canonical `rp.percentRecovered == null` signal. The old
-        // frontend tried to second-guess with allPillarsZero +
-        // allPillarsNoData which produced "null%" when the backend
-        // correctly returned dataInsufficient with pillars at null
-        // (David's screenshot: server UTC tipped over to Thu Jun 4
-        // before today's HK readings landed, all pillars dropped to
-        // null, frontend's allPillarsZero=false → rendered "null%").
-        const dataInsufficient = rp.dataInsufficient || rp.percentRecovered == null;
+        // 2026-06-03 · severity → color · replaces the pcol(percent)
+        // mapping. Backend now ships severity directly per pillar.
+        const sevColor = (s: 'good' | 'watch' | 'bad' | 'no-data' | undefined) =>
+          s === 'good' ? COLOR_GOOD :
+          s === 'watch' ? COLOR_WATCH :
+          s === 'bad' ? COLOR_BAD :
+          'rgba(255,255,255,.4)';
         const dayLabel = rp.daysSince === 0
           ? 'Today'
           : rp.daysSince === 1
@@ -563,30 +560,35 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 <div className="hrecov-eyebrow">RECOVERING FROM</div>
                 <div className="hrecov-anchor">{rp.anchor.label}</div>
               </div>
+              {/* 2026-06-03 · panel-level "X%" header dropped per David's
+                  "what does this mean? just sort of random..." feedback.
+                  The aggregate % across mixed-unit pillars was opaque ·
+                  the timeframe alone carries the temporal anchor. */}
               <div className="hrecov-tl">
-                <div className="hrecov-pct">
-                  {dataInsufficient ? '·' : `${rp.percentRecovered}%`}
-                </div>
-                <div className="hrecov-day">{dayLabel}</div>
+                <div className="hrecov-day hrecov-day-solo">{dayLabel}</div>
               </div>
             </div>
-            <div className="hrecov-bar">
-              <i style={{ width: `${dataInsufficient ? 0 : rp.percentRecovered}%` }} />
-            </div>
-            <div className="hrecov-grid">
+            {/* 2026-06-03 · per-pillar bar visualization dropped · the
+                statusLine below speaks for itself. Each row shows the
+                actual value + the delta in plain English. */}
+            <div className="hrecov-grid hrecov-grid-v2">
               {rp.pillars.map(p => {
-                const pct = p.pctRecovered;
-                const hasData = pct != null;
+                const hasValue = p.currentValue != null;
+                const unit =
+                  p.key === 'hrv' ? 'ms' :
+                  p.key === 'rhr' || p.key === 'hr_recovery' ? ' bpm' :
+                  p.key === 'sleep' ? 'h' : '';
+                const valueStr = hasValue
+                  ? p.key === 'hr_recovery'
+                    ? `${p.currentValue} bpm drop`
+                    : `${p.currentValue}${unit}`
+                  : 'no data';
                 return (
-                  <div key={p.key} className="hrcp">
-                    <div className="k">{p.label}</div>
-                    <div className="pb">
-                      {hasData ? (
-                        <i style={{ width: `${pct}%`, background: pcol(pct) }} />
-                      ) : null}
-                    </div>
-                    <div className="pv" style={{ color: hasData ? pcol(pct) : 'rgba(255,255,255,.4)' }}>
-                      {hasData ? `${pct}% back` : 'no data'}
+                  <div key={p.key} className="hrcp hrcp-v2">
+                    <div className="hrcp-k">{p.label}</div>
+                    <div className="hrcp-val">{valueStr}</div>
+                    <div className="hrcp-status" style={{ color: sevColor(p.severity) }}>
+                      {p.statusLine || 'no data'}
                     </div>
                   </div>
                 );

@@ -83,8 +83,20 @@ export interface RecoveryPhase {
     baselineValue: number | null;
     /** 2026-06-01 · null when any of baseline / day0 / current is null.
      *  Was: number (defaulted to 0 when data missing · misleading
-     *  "0% back" copy). */
+     *  "0% back" copy).
+     *  2026-06-03 · still produced for the panel-level aggregate, but
+     *  the per-pillar UI no longer renders this. The frontend reads
+     *  `statusLine` + `severity` (the plain-English delta) instead. */
     pctRecovered: number | null;
+    /** 2026-06-03 · plain-English delta line replacing "% back". David's
+     *  feedback on the prior copy: "what does this mean? just sort of
+     *  random." The X% units couldn't be read without context. New copy
+     *  is concrete: "20ms below baseline", "1.4h short of target",
+     *  "at baseline". Empty string when no data. */
+    statusLine: string;
+    /** 2026-06-03 · severity color band. The frontend renders the
+     *  status line in green/yellow/red based on this. */
+    severity: 'good' | 'watch' | 'bad' | 'no-data';
   }>;
   muscleSignals: {
     cadenceSpm: number | null;
@@ -418,6 +430,11 @@ async function loadPillarBounceBack(
     }
     // else: any of baseline / current is null · pctRecovered stays null.
 
+    // 2026-06-03 · plain-English status line + severity color · replaces
+    // the "% back" jargon. The runner reads a concrete delta instead of
+    // a percentage they have to interpret.
+    const { statusLine, severity } = computeStatusLine(spec, current, baseline);
+
     out.push({
       key: spec.key,
       label: spec.label,
@@ -425,9 +442,69 @@ async function loadPillarBounceBack(
       currentValue: current != null ? +current.toFixed(1) : null,
       baselineValue: baseline != null ? +baseline.toFixed(1) : null,
       pctRecovered,
+      statusLine,
+      severity,
     });
   }
   return out;
+}
+
+/**
+ * Compose the per-pillar status line + color band. Unit-aware so the
+ * runner reads "1.4h short of target" rather than "0.86 deficit ratio".
+ *
+ *   · HRV (more = better, baseline comparison)
+ *   · RHR (lower = better, baseline comparison · BELOW baseline = good)
+ *   · Sleep (target 7.5h regardless of personal baseline · runners
+ *     whose chronic avg is 6.5h still need 7.5h for recovery)
+ *   · HR Recovery (higher 60s drop = better)
+ *
+ * Severity bands are calibrated per-metric · ±1 bpm RHR doesn't deserve
+ * the same red-flag treatment as -20ms HRV.
+ */
+function computeStatusLine(
+  spec: { key: 'hrv' | 'rhr' | 'sleep' | 'hr_recovery' | 'wrist_temp' | 'resp_rate'; isLowerBetter: boolean },
+  current: number | null,
+  baseline: number | null,
+): { statusLine: string; severity: 'good' | 'watch' | 'bad' | 'no-data' } {
+  if (current == null || baseline == null) {
+    return { statusLine: '', severity: 'no-data' };
+  }
+  // Defensive: pillar keys outside the four core get a generic delta
+  // (no special unit treatment). Today's loadPillarBounceBack only
+  // emits the four · this guards future additions.
+  if (spec.key !== 'sleep' && spec.key !== 'hrv' && spec.key !== 'rhr' && spec.key !== 'hr_recovery') {
+    return { statusLine: '', severity: 'no-data' };
+  }
+  if (spec.key === 'sleep') {
+    // Sleep compares to TARGET 7.5h · not personal baseline. A runner
+    // whose chronic average is 6h still needs 7.5h to recover.
+    const TARGET_H = 7.5;
+    const shortBy = +(TARGET_H - current).toFixed(1);
+    if (shortBy <= 0.3) return { statusLine: 'at target', severity: 'good' };
+    if (shortBy <= 1.0) return { statusLine: `${shortBy.toFixed(1)}h short of target`, severity: 'watch' };
+    return { statusLine: `${shortBy.toFixed(1)}h short of target`, severity: 'bad' };
+  }
+  if (spec.key === 'hrv') {
+    const delta = Math.round(current - baseline);
+    if (delta >= 0) return { statusLine: 'at baseline', severity: 'good' };
+    const abs = Math.abs(delta);
+    if (abs < Math.round(baseline * 0.07)) return { statusLine: `${abs}ms below baseline`, severity: 'watch' };
+    return { statusLine: `${abs}ms below baseline`, severity: 'bad' };
+  }
+  if (spec.key === 'rhr') {
+    const delta = Math.round(current - baseline);
+    if (delta <= 0) return { statusLine: 'at baseline', severity: 'good' };
+    if (delta === 1) return { statusLine: '1 bpm above baseline', severity: 'good' };
+    if (delta <= 3) return { statusLine: `${delta} bpm above baseline`, severity: 'watch' };
+    return { statusLine: `${delta} bpm above baseline`, severity: 'bad' };
+  }
+  // hr_recovery · drop > baseline = good
+  const delta = Math.round(current - baseline);
+  if (delta >= 0) return { statusLine: 'at baseline', severity: 'good' };
+  const abs = Math.abs(delta);
+  if (abs <= 3) return { statusLine: `${abs} bpm weaker than baseline`, severity: 'watch' };
+  return { statusLine: `${abs} bpm weaker than baseline`, severity: 'bad' };
 }
 
 async function loadMuscleSignals(
@@ -578,11 +655,15 @@ function composeRecoveryMessage(
   if (dataInsufficient || percentRecovered == null) {
     return `${sincePart}. Recovery tracking is still waiting on watch syncs.`;
   }
+  // 2026-06-03 · message drops the "X% across the recovery pillars" copy
+  // per David: "what does this mean? just sort of random..." The pillar
+  // grid above now shows each pillar's actual delta in plain English ·
+  // the message just describes the overall state in one short phrase.
   if (percentRecovered >= 65) {
-    return `${sincePart}. ${percentRecovered}% across the recovery pillars · the body is most of the way back.`;
+    return `${sincePart}. The body is most of the way back.`;
   }
   if (percentRecovered >= 35) {
-    return `${sincePart}. ${percentRecovered}% across the recovery pillars · the body is still working through it.`;
+    return `${sincePart}. The body is still working through it.`;
   }
-  return `${sincePart}. ${percentRecovered}% across the recovery pillars · the body is still in the hole.`;
+  return `${sincePart}. The body is still in the hole.`;
 }
