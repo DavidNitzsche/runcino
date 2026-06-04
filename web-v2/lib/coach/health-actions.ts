@@ -137,7 +137,22 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   }
 
   // ── HIGH ──────────────────────────────────────────────────────────
-  // HRV multi-day low (and we didn't already collapse it into compound)
+  //
+  // 2026-06-03 · pillar-weight triggers added alongside streak triggers.
+  // The streak path catches sustained patterns (3+ days); the pillar
+  // path catches single-day-deep signals that drag the score hard but
+  // don't form a clean streak yet. Without these, you can have a
+  // PULL-BACK score (33) with a "ON COURSE" action panel · the bug
+  // David flagged ("not sure this makes sense").
+  const pillarWeight = (key: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery'): number => {
+    const i = breakdown.inputs.find((x) => x.key === key);
+    return i?.weight ?? 0;
+  };
+  const hrvWeight = pillarWeight('hrv');
+  const rhrWeight = pillarWeight('rhr');
+  const sleepWeight = pillarWeight('sleep');
+
+  // HRV deep single-day low (drags score by ≥15 pts) OR multi-day streak.
   if (hrvStreak && hrvStreak.days >= 3 && !(rhrStreak && rhrStreak.days >= 3)) {
     out.push({
       signal: 'hrv_low_streak',
@@ -145,15 +160,31 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       action: 'Tomorrow easy · let HRV recover.',
       cite: `HRV at or below baseline ${hrvStreak.days} days running.`,
     });
+  } else if (hrvWeight <= -15 && state.hrvCurrent != null && state.hrvBaseline != null) {
+    const pct = Math.round((1 - state.hrvCurrent / state.hrvBaseline) * 100);
+    out.push({
+      signal: 'hrv_low_streak',
+      priority: 'high',
+      action: 'Run easier than planned tomorrow · HRV is well below baseline today.',
+      cite: `HRV ${state.hrvCurrent}ms vs ${state.hrvBaseline}ms baseline · ${pct}% down.`,
+    });
   }
 
-  // RHR multi-day high (and we didn't already collapse it)
+  // RHR deep single-day high OR multi-day streak.
   if (rhrStreak && rhrStreak.days >= 3 && !(hrvStreak && hrvStreak.days >= 3)) {
     out.push({
       signal: 'rhr_high_streak',
       priority: 'high',
       action: 'Pull tomorrow\'s intensity back · run easier or shorter.',
       cite: `RHR elevated ${rhrStreak.days} days running.`,
+    });
+  } else if (rhrWeight <= -8 && state.rhrCurrent != null && state.rhrBaseline != null) {
+    const delta = state.rhrCurrent - state.rhrBaseline;
+    out.push({
+      signal: 'rhr_high_streak',
+      priority: 'high',
+      action: 'Pull tomorrow\'s intensity back · RHR is up today.',
+      cite: `RHR ${state.rhrCurrent} bpm vs ${state.rhrBaseline} baseline · +${delta} bpm.`,
     });
   }
 
@@ -188,16 +219,26 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   }
 
   // ── MEDIUM ────────────────────────────────────────────────────────
-  // Sleep 3-night deficit
+  // Sleep deficit · two ways to trip:
+  //   1. 3-night cumulative ≥ 3h (acute pattern · recent nights are short)
+  //   2. 7-night avg < 6.8h AND pillar weight ≤ -8 (chronic short sleep ·
+  //      single bad night could be noise, but a -8 weight means the 7-night
+  //      avg is dragging the score hard).
+  // Either way fires the same action with a different cite line.
   if (history.sleep.length >= 3) {
     const last3 = history.sleep.slice(-3);
-    const deficit = last3.reduce((s, p) => s + Math.max(0, 7.5 - p.value), 0);
-    if (deficit >= 3) {
+    const deficit3 = last3.reduce((s, p) => s + Math.max(0, 7.5 - p.value), 0);
+    const fired = deficit3 >= 3
+      ? { cite: `${deficit3.toFixed(1)}h short over the last 3 nights.` }
+      : (sleepWeight <= -8 && state.sleep7Avg != null && state.sleep7Avg < 6.8)
+        ? { cite: `7-night avg ${state.sleep7Avg}h vs 7.5h target.` }
+        : null;
+    if (fired) {
       out.push({
         signal: 'sleep_deficit',
         priority: 'medium',
         action: 'Lights out 30 minutes earlier tonight · target 7.5h.',
-        cite: `${deficit.toFixed(1)}h short over the last 3 nights.`,
+        cite: fired.cite,
       });
     }
   }
@@ -254,7 +295,51 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     });
   }
 
+  // ── BAND-DRIVEN FALLBACK ──────────────────────────────────────────
+  //
+  // 2026-06-03 · the score itself is a signal. If readiness is in
+  // PULL-BACK or MODERATE band and none of the specific rules above
+  // fired, surface a fallback action grounded in the score. Without
+  // this, you could have a 33 / PULL-BACK score with the action panel
+  // saying ON COURSE · keep doing what you're doing · the bug David
+  // flagged ("not sure this makes sense").
+  //
+  // Identify the worst pillar so the fallback names what's actually
+  // dragging things down. "Tomorrow easy" is more useful when it
+  // points at WHY · "HRV is down today" beats a generic "your score
+  // is low."
+  if (out.length === 0 && (breakdown.band === 'pull-back' || breakdown.band === 'moderate')) {
+    const worst = [...breakdown.inputs]
+      .filter((i) => i.weight < 0)
+      .sort((a, b) => a.weight - b.weight)[0];
+    const worstLabel = worst
+      ? worst.key === 'sleep' ? 'sleep is short'
+        : worst.key === 'hrv' ? 'HRV is down'
+        : worst.key === 'rhr' ? 'RHR is up'
+        : worst.key === 'load' ? 'load is off-balance'
+        : worst.key === 'hr_recovery' ? 'HR recovery is weaker'
+        : 'signals are mixed'
+      : 'signals are mixed';
+    if (breakdown.band === 'pull-back') {
+      out.push({
+        signal: 'compound',
+        priority: 'high',
+        action: `Tomorrow easy · ${worstLabel} and the score is in the pull-back band.`,
+        cite: `Today's score is ${breakdown.score} · pull-back.`,
+      });
+    } else {
+      out.push({
+        signal: 'compound',
+        priority: 'medium',
+        action: `Run easier than planned · ${worstLabel}.`,
+        cite: `Today's score is ${breakdown.score} · moderate band.`,
+      });
+    }
+  }
+
   // ── ON COURSE ─────────────────────────────────────────────────────
+  // Only fires when band is 'ready' or 'great' AND no specific rules
+  // tripped. Pull-back / moderate bands always surface SOMETHING above.
   if (out.length === 0) {
     return [{
       signal: 'on_course',
