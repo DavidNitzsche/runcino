@@ -31,8 +31,38 @@ export function TargetsView({
           <div className="ghk">PRIMARY GOAL</div>
           <div className="ghtitle">{goal ? goal.goal : 'NO GOAL'}</div>
           <div className="ghsub">{goal ? `${goal.name}${goal.location ? ' · ' + goal.location : ''} · ${formatDate(goal.date)}` : 'Set a primary race to start tracking your gap'}</div>
+          {/* 2026-06-04 · status-aware headline. Was: `on track · 0 sec
+              ahead` rendered whenever onTrack was true · but onTrack
+              is true any time projectionSec === goalSec (plan-trusts-
+              itself doctrine), which fires for BOTH 'on-track' and
+              'watching' status. Reading "on track · 0 sec ahead" while
+              the panel below says "Watching · soft signals firing" +
+              "VDOT projects 1:34:54" was the headline contradiction
+              David flagged. Now:
+                · on-track    → "on track · 0 sec ahead"   (green)
+                · watching    → "watching · {goal} still in play"  (amber)
+                · off-track   → the delta string (e.g. "5 min behind") · red
+              The plan-trusts-itself projection still drives the big
+              number above · this only changes the framing line. */}
           <div className="ghcd">
-            <b>{goal?.daysAway ?? '·'}</b> days out · <span className={goal?.onTrack ? 'ok2' : ''}>{goal ? (goal.onTrack ? `on track · ${goal.delta}` : goal.delta) : '·'}</span>
+            <b>{goal?.daysAway ?? '·'}</b> days out ·{' '}
+            <span style={
+              goal?.goalStatus === 'watching' ? { color: '#FFCE8A' } :
+              goal?.goalStatus === 'off-track' ? { color: '#FF8A8A' } :
+              undefined
+            } className={
+              goal?.goalStatus === 'watching' || goal?.goalStatus === 'off-track'
+                ? ''
+                : (goal?.onTrack ? 'ok2' : '')
+            }>
+              {goal ? (
+                goal.goalStatus === 'watching'
+                  ? `watching · ${goal.goal} still in play`
+                  : goal.goalStatus === 'off-track'
+                    ? goal.delta
+                    : (goal.onTrack ? `on track · ${goal.delta}` : goal.delta)
+              ) : '·'}
+            </span>
           </div>
         </div>
         <div className="ghgauge">
@@ -52,9 +82,23 @@ export function TargetsView({
             <circle cx="150" cy="150" r="9" fill="#fff" />
             <circle cx="150" cy="150" r="4" fill="#10131A" />
           </svg>
+          {/* 2026-06-04 · sublabel reflects what the number IS, not a
+              static "PROJECTED" claim. When watching/on-track the
+              engine returns the goal (plan-trusts-itself) · labeling
+              that as "PROJECTED" implies model agreement we don't
+              actually have. The off-track case is the only time
+              projection = real VDOT-derived prediction. */}
           <div className="gapval center">
-            <div className="grbig">{goal?.projected ?? '·'}</div>
-            <div className="grstat">PROJECTED</div>
+            <div className="grbig" style={
+              goal?.goalStatus === 'watching' ? { color: '#FFCE8A' } :
+              goal?.goalStatus === 'off-track' ? { color: '#FF8847' } :
+              undefined
+            }>{goal?.projected ?? '·'}</div>
+            <div className="grstat">
+              {goal?.goalStatus === 'off-track' ? 'PROJECTED'
+                : goal?.goalStatus === 'watching' ? 'PLAN TARGET'
+                : 'PLAN TARGET'}
+            </div>
           </div>
         </div>
       </div>

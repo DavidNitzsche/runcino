@@ -3970,19 +3970,46 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
         <div className="tbody cd">
           {/* 2026-05-30: when projection hasn't computed (no recent race result
               yet → no VDOT seed), show the goal as the big number so the tile
-              doesn't read as broken. Bottom row explains why. */}
-          <div className="cdbig" style={{ color: goal?.projected ? (goal.onTrack ? '#3EBD41' : '#FF8847') : '#9099A8' }}>
+              doesn't read as broken. Bottom row explains why.
+
+              2026-06-04: 3-state color · 'watching' status gets amber
+              (was: rendered green because onTrack is true when projection
+              equals goal · matched the headline contradiction David
+              flagged). */}
+          <div className="cdbig" style={{
+            color: !goal?.projected ? '#9099A8'
+              : goal?.goalStatus === 'off-track' ? '#FF8847'
+              : goal?.goalStatus === 'watching' ? '#FFCE8A'
+              : goal.onTrack ? '#3EBD41'
+              : '#FF8847',
+          }}>
             {goal?.projected ?? goal?.goal ?? '—'}
           </div>
           <div className="cdlab">{goal?.projected ? 'PROJECTED FINISH' : (goal ? 'TARGET FINISH' : 'NO GOAL SET')}</div>
           {goal?.projected
-            ? <div className="cdsub">Goal {goal.goal} · {goal.delta}</div>
+            ? (goal.goalStatus === 'watching'
+                ? <div className="cdsub">Goal {goal.goal} · watching</div>
+                : <div className="cdsub">Goal {goal.goal} · {goal.delta}</div>)
             : (goal ? <div className="cdsub" style={{ opacity: 0.7 }}>Log a recent race to project</div> : <div className="cdsub" style={{ opacity: 0.7 }}>Pick a primary race on /races</div>)}
-          <div className="cdbar"><div className="cdfill" style={{ width: `${goal?.goalPct ?? 0}%`, background: goal?.onTrack ? '#3EBD41' : '#FF8847' }} /></div>
-          <div className="cdwk" style={{ color: goal?.onTrack ? '#7BE8A0' : '#FFCE8A', opacity: 1 }}>
+          <div className="cdbar"><div className="cdfill" style={{
+            width: `${goal?.goalPct ?? 0}%`,
+            background: goal?.goalStatus === 'off-track' ? '#FF8847'
+              : goal?.goalStatus === 'watching' ? '#FFCE8A'
+              : goal?.onTrack ? '#3EBD41'
+              : '#FF8847',
+          }} /></div>
+          <div className="cdwk" style={{
+            color: goal?.goalStatus === 'off-track' ? '#FF8847'
+              : goal?.goalStatus === 'watching' ? '#FFCE8A'
+              : goal?.onTrack ? '#7BE8A0'
+              : '#FFCE8A',
+            opacity: 1,
+          }}>
             {goal
               ? (goal.projected
-                  ? (goal.onTrack ? `On track for ${goal.goal}` : `${goal.delta}`)
+                  ? (goal.goalStatus === 'watching'
+                      ? `Watching · ${goal.goal} still in play`
+                      : goal.onTrack ? `On track for ${goal.goal}` : `${goal.delta}`)
                   : 'Projection pending')
               : 'No goal race set'}
           </div>
