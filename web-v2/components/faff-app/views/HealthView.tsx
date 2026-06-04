@@ -89,8 +89,15 @@ function BarCard({ m, onClick, active }: { m: HealthMetric; onClick?: () => void
     baseline: 'baseline', target: 'target', avg7: 'avg', default: 'target',
   };
   const targetNoun = TARGET_NOUN[m.targetKind ?? 'default'];
+  // 2026-06-03 · "below" was lying about direction for low-is-better
+  // metrics. David's RHR is 50 bpm vs baseline 45 bpm · he's ABOVE
+  // baseline (higher RHR = worse), but the chip read "BELOW BASELINE".
+  // Same bug on Awake (above 30 min = warn), Resp Rate (above baseline
+  // = warn). Generic "off ${noun}" is direction-agnostic and honest for
+  // every metric · the COLOR (yellow) still communicates "this is the
+  // concerning state."
   const STATUS_TXT: Record<HealthMetric['status'], string> = {
-    good: `on ${targetNoun}`, warn: `below ${targetNoun}`, neutral: 'steady',
+    good: `on ${targetNoun}`, warn: `off ${targetNoun}`, neutral: 'steady',
   };
   // Local scale so the bars use the full mini-chart height
   let lo = series.length ? Math.min(...series) : 0;
