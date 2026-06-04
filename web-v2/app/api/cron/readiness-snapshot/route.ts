@@ -45,14 +45,15 @@ export async function POST(req: NextRequest) {
   const results = [] as Array<{ userUuid: string; date: string; score: number; band: string; written: boolean; reason?: string; error?: string }>;
 
   for (const u of userIds) {
+    let perUserToday = '';
     try {
-      const today = await runnerToday(u);
-      const r = await writeReadinessSnapshot(u, today);
+      perUserToday = await runnerToday(u);
+      const r = await writeReadinessSnapshot(u, perUserToday);
       results.push(r);
     } catch (e: unknown) {
       results.push({
         userUuid: u,
-        date: today,
+        date: perUserToday,
         score: 0,
         band: 'pull-back',
         written: false,
@@ -63,7 +64,9 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: results.every((r) => !r.error),
-    today,
+    // 2026-06-03 · per-runner today now lives on each result row;
+    // top-level stamp is server UTC (a moment, not a calendar day).
+    timestamp: new Date().toISOString(),
     users: results.length,
     written: results.filter((r) => r.written).length,
     skipped: results.filter((r) => !r.written && !r.error).length,

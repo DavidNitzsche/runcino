@@ -234,7 +234,9 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: results.every((r) => !r.error),
-    today,
+    // 2026-06-03 · per-runner today now resolved inside the loop;
+    // top-level stamp is server UTC (a moment, not a calendar day).
+    timestamp: new Date().toISOString(),
     users: results.length,
     results,
   });
