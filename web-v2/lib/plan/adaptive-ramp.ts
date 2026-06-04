@@ -34,6 +34,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface RampOpportunity {
   /** Why we're bumping · explainer for the intent log. */
@@ -78,13 +79,15 @@ export async function detectRampSignals(
   userId: string,
   activePlan: { id: string; authoredState: Record<string, unknown> },
 ): Promise<RampSignals> {
+  // 2026-06-03 · runner TZ for "today" anchors.
+  const today = await runnerToday(userId);
   // 1. Readiness · no pull-back streaks ≥ 2 days
   const readinessRow = await pool.query<{ streaks: unknown }>(
     `SELECT streaks
        FROM readiness_snapshots
-      WHERE user_uuid = $1 AND snapshot_date >= CURRENT_DATE - 1
+      WHERE user_uuid = $1 AND snapshot_date >= $2::date - 1
       ORDER BY snapshot_date DESC LIMIT 1`,
-    [userId],
+    [userId, today],
   ).then((r) => r.rows[0]).catch(() => undefined);
   const streaks = (readinessRow?.streaks as Array<{ direction?: string; days?: number }> | undefined) ?? [];
   const pullbackStreakDays = streaks
@@ -105,9 +108,9 @@ export async function detectRampSignals(
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'type') IN ('threshold', 'intervals', 'tempo')
-        AND (data->>'date')::date >= CURRENT_DATE - 14
+        AND (data->>'date')::date >= $2::date - 14
       ORDER BY (data->>'date')::date DESC LIMIT 2`,
-    [userId],
+    [userId, today],
   ).then((r) => r.rows).catch(() => []);
   // On-pace check · pace_delta_bpm absolute < tolerance (note: bpm is
   // HR-on-pace not pace-on-pace · but tracks the runner-vs-target gap)
@@ -125,9 +128,9 @@ export async function detectRampSignals(
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'type') = 'long'
-        AND (data->>'date')::date >= CURRENT_DATE - 14
+        AND (data->>'date')::date >= $2::date - 14
       ORDER BY (data->>'date')::date DESC LIMIT 1`,
-    [userId],
+    [userId, today],
   ).then((r) => r.rows[0]).catch(() => undefined);
   const lastLongDecouplingPct = recentLong?.decoupling != null
     ? Number(recentLong.decoupling)
@@ -265,6 +268,17 @@ export interface UpgradePlan {
 }
 
 export async function planUpgrade(opp: RampOpportunity): Promise<UpgradePlan | null> {
+  // 2026-06-03 · resolve runner TZ via plan_id → user_uuid lookup.
+  // RampOpportunity doesn't carry userId, so we look it up. Off-by-1-day
+  // matters here · upgrading "next 7 days" of plan workouts shouldn't
+  // shift at UTC-midnight.
+  const userRow = (await pool.query<{ user_uuid: string }>(
+    `SELECT user_uuid::text FROM training_plans WHERE id = $1 LIMIT 1`,
+    [opp.planId],
+  ).catch(() => ({ rows: [] as Array<{ user_uuid: string }> }))).rows[0];
+  const today = userRow?.user_uuid
+    ? await runnerToday(userRow.user_uuid)
+    : new Date().toISOString().slice(0, 10);
   // Pull next 7 days of rows on the active plan.
   const rows = await pool.query<{
     id: string; type: string; distance_mi: number; date_iso: string;
@@ -274,10 +288,10 @@ export async function planUpgrade(opp: RampOpportunity): Promise<UpgradePlan | n
        JOIN plan_weeks pwk ON pwk.id = pw.week_id
        JOIN plan_phases pp ON pp.id = pwk.phase_id
       WHERE pw.plan_id = $1
-        AND pw.date_iso::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 6
+        AND pw.date_iso::date BETWEEN $2::date AND $2::date + 6
         AND pp.label <> 'TAPER'
       ORDER BY pw.date_iso::date ASC`,
-    [opp.planId],
+    [opp.planId, today],
   ).then((r) => r.rows).catch(() => []);
 
   if (rows.length === 0) return null;

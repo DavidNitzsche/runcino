@@ -37,6 +37,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bestRecentVdot } from '@/lib/training/vdot';
 
 export type DriftKind =
@@ -495,12 +496,14 @@ async function checkEasyDrift(
   userUuid: string,
   plan: ActivePlan,
 ): Promise<DriftSignal | null> {
+  // 2026-06-03 · runner TZ anchors the plan window.
+  const today = await runnerToday(userUuid);
   // Runner's actual easy-day median (last 14d)
   const actualMed = await loadEasyDayMedian(userUuid);
   if (actualMed == null || actualMed <= 0) return null;
 
   // Plan's current-week easy-day median (authored)
-  const planMed = await loadPlanEasyDayMedian(plan.id);
+  const planMed = await loadPlanEasyDayMedian(plan.id, today);
   if (planMed == null || planMed <= 0) return null;
 
   const pctDrift = ((actualMed - planMed) / planMed) * 100;
@@ -541,10 +544,12 @@ async function checkLongDrift(
   userUuid: string,
   plan: ActivePlan,
 ): Promise<DriftSignal | null> {
+  // 2026-06-03 · runner TZ anchors the plan window.
+  const today = await runnerToday(userUuid);
   const actualLong = await loadRecentLongRunMedian(userUuid);
   if (actualLong == null || actualLong <= 0) return null;
 
-  const planLong = await loadPlanLongRunMedian(plan.id);
+  const planLong = await loadPlanLongRunMedian(plan.id, today);
   if (planLong == null || planLong <= 0) return null;
 
   const pctDrift = ((actualLong - planLong) / planLong) * 100;
@@ -605,15 +610,15 @@ async function checkQualityDrift(
               AND (r.data->>'date')::date = pw.date_iso
          WHERE tp.id = $2
            AND pw.is_quality = true
-           AND pw.date_iso >= CURRENT_DATE - INTERVAL '21 days'
-           AND pw.date_iso <  CURRENT_DATE
+           AND pw.date_iso >= $3::date - INTERVAL '21 days'
+           AND pw.date_iso <  $3::date
            AND pw.pace_target_s_per_mi IS NOT NULL
      )
      SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY actual)::text  AS actual_med,
             percentile_cont(0.5) WITHIN GROUP (ORDER BY planned)::text AS planned_med
        FROM recent_quality
       WHERE actual IS NOT NULL`,
-    [userUuid, plan.id],
+    [userUuid, plan.id, await runnerToday(userUuid)],
   ).catch(() => ({ rows: [{ actual_med: null, planned_med: null }] }))).rows[0];
 
   const actualMed = Number(r?.actual_med);
@@ -670,15 +675,15 @@ async function loadEasyDayMedian(userUuid: string): Promise<number | null> {
   return Math.round(m * 2) / 2;
 }
 
-async function loadPlanEasyDayMedian(planId: string): Promise<number | null> {
+async function loadPlanEasyDayMedian(planId: string, today: string): Promise<number | null> {
   const r = (await pool.query<{ med: string | null }>(
     `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY distance_mi)::text AS med
        FROM plan_workouts
       WHERE plan_id = $1
         AND type = 'easy'
-        AND date_iso >= CURRENT_DATE
-        AND date_iso <  CURRENT_DATE + INTERVAL '21 days'`,
-    [planId],
+        AND date_iso >= $2::date
+        AND date_iso <  $2::date + INTERVAL '21 days'`,
+    [planId, today],
   ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
   const m = Number(r?.med);
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
@@ -706,15 +711,15 @@ async function loadRecentLongRunMedian(userUuid: string): Promise<number | null>
   return Math.round(m * 2) / 2;
 }
 
-async function loadPlanLongRunMedian(planId: string): Promise<number | null> {
+async function loadPlanLongRunMedian(planId: string, today: string): Promise<number | null> {
   const r = (await pool.query<{ med: string | null }>(
     `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY distance_mi)::text AS med
        FROM plan_workouts
       WHERE plan_id = $1
         AND type = 'long'
-        AND date_iso >= CURRENT_DATE - INTERVAL '14 days'
-        AND date_iso <  CURRENT_DATE + INTERVAL '14 days'`,
-    [planId],
+        AND date_iso >= $2::date - INTERVAL '14 days'
+        AND date_iso <  $2::date + INTERVAL '14 days'`,
+    [planId, today],
   ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
   const m = Number(r?.med);
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
