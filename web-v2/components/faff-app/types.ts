@@ -42,6 +42,27 @@ export type FaffSeed = {
    *  no drift detected + no recent auto-rebuilds. Today view renders 0-5
    *  cards per the source array. */
   planProposals: PlanProposalSeed[];
+  /** 2026-06-04 · pending per-workout adapter proposals · "we'd swap
+   *  tomorrow's tempo to easy unless you object." Replaces the silent-
+   *  overnight-mutation pattern · runner sees + gates via banner.
+   *  Empty array = no pending proposals · banner hides. */
+  pendingWorkoutProposals?: Array<{
+    id: number;
+    userUuid: string;
+    planWorkoutId: string;
+    workoutDateISO: string;
+    actionKind: 'downgrade' | 'shave' | 'reschedule';
+    actionPayload: {
+      newType?: string;
+      newDate?: string;
+      shaveFraction?: number;
+      why?: string;
+    };
+    reason: string;
+    evidence: Record<string, unknown>;
+    status: 'pending';
+    createdAt: string;
+  }>;
   /** 2026-06-01 · backend-owned strength-day recommendation. Mirror of
    *  glance.strengthRecommendation. `recommendedDays` is also threaded
    *  to each PlannedDay.strengthSuggested so the week-strip annotation

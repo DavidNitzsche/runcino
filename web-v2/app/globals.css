@@ -984,6 +984,26 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .onpath-trans-up{color:#5fd06a;border:1px solid rgba(95,208,106,.45);background:rgba(95,208,106,.08);}
 .onpath-trans-down{color:#F3AD38;border:1px solid rgba(243,173,56,.45);background:rgba(243,173,56,.08);}
 
+/* 2026-06-04 · workout proposal banner · "we'd swap tomorrow's tempo
+   to easy unless you object." Yellow eyebrow + two-button row. Sits
+   in the Today view above the week strip. Runner gates plan changes
+   before they land. */
+.wpb{background:rgba(8,12,18,.5);border:1px solid rgba(243,173,56,.32);border-radius:14px;padding:18px 20px;margin-bottom:10px;}
+.wpb-done{border-color:rgba(95,208,106,.35);background:rgba(8,18,12,.45);}
+.wpb-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.5px;color:#F3AD38;margin-bottom:8px;}
+.wpb-done .wpb-eyebrow{color:#5fd06a;}
+.wpb-headline{font-size:18px;font-weight:700;line-height:1.3;color:var(--txt);margin-bottom:6px;}
+.wpb-reason{font-size:13.5px;font-weight:500;line-height:1.45;color:rgba(255,255,255,.82);margin-bottom:14px;}
+.wpb-body{font-size:14px;font-weight:600;line-height:1.4;color:var(--txt);}
+.wpb-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.wpb-btn{font-family:inherit;font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;border:0;border-radius:10px;padding:11px 18px;cursor:pointer;transition:opacity .15s;}
+.wpb-btn:disabled{opacity:.5;cursor:wait;}
+.wpb-accept{color:#0A0C10;background:#F3AD38;}
+.wpb-accept:hover:not(:disabled){background:#FFC04F;}
+.wpb-dismiss{color:rgba(255,255,255,.85);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);}
+.wpb-dismiss:hover:not(:disabled){background:rgba(255,255,255,.12);}
+.wpb-error{font-size:12px;font-weight:600;color:#FC4D64;margin-top:10px;}
+
 .races{}
 .rcr{display:flex;align-items:center;gap:16px;background:rgba(8,10,14,.36);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:15px 18px;margin-bottom:10px;}
 .rcn{font-size:16px;font-weight:600;display:flex;flex-direction:column;gap:4px;}

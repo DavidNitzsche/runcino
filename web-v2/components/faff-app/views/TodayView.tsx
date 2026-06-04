@@ -11,6 +11,7 @@ import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type Bluep
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { PlanProposalCard } from '../cards/PlanProposalCard';
+import { WorkoutProposalBanner } from '../cards/WorkoutProposalBanner';
 import { RouteMap } from '../RouteMap';
 import {
   AdaptationCard,
@@ -255,6 +256,20 @@ export function TodayView({
           {seed.planProposals
             .filter((p) => p.status === 'auto_applied')
             .map((p) => <PlanProposalCard key={`pp-${p.id}`} proposal={p} />)}
+        </div>
+      ) : null}
+
+      {/* 2026-06-04 · per-workout adapter proposals · "we'd swap
+          tomorrow's tempo to easy unless you object." Replaces the
+          silent-overnight-mutation pattern · runner gates the change
+          via the [LET IT HAPPEN] / [KEEP ORIGINAL] buttons. Engine
+          still detects; runner stays in the driver's seat. See
+          lib/plan/workout-proposals.ts. */}
+      {(seed.pendingWorkoutProposals?.length ?? 0) > 0 ? (
+        <div style={{ marginTop: 8 }}>
+          {seed.pendingWorkoutProposals!.map((p) => (
+            <WorkoutProposalBanner key={`wp-${p.id}`} proposal={p} />
+          ))}
         </div>
       ) : null}
 

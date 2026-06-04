@@ -2290,6 +2290,17 @@ export async function buildSeed(): Promise<FaffSeed> {
     } catch { return []; }
   })();
 
+  // 2026-06-04 · per-workout adapter proposals · "we'd swap tomorrow's
+  // tempo to easy unless you object." Replaces the silent-overnight-
+  // mutation pattern · runner gates the change via banner buttons.
+  // See lib/plan/workout-proposals.ts.
+  const pendingWorkoutProposals = await (async () => {
+    try {
+      const { loadPendingProposals: loadWoP } = await import('@/lib/plan/workout-proposals');
+      return await loadWoP(userId);
+    } catch { return []; }
+  })();
+
   const fullName = profile?.identity.full_name ?? glance?.greetingName ?? null;
   const user = {
     name: fullName ? fullName.split(' ')[0] : 'You',
@@ -2337,6 +2348,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     readiness: honestReadiness,
     readinessBrief,
     planProposals,
+    pendingWorkoutProposals,
     strengthRecommendation: glance?.strengthRecommendation ?? null,
     strengthWeekStatus: glance?.strengthWeekStatus ?? null,
     goalRace,
