@@ -1957,15 +1957,33 @@ function CompletedHeroV2({
                   runId={d.activityId ?? null}
                 />
               </div>
+              {/* 2026-06-04 · David's QC: a bare "·" placeholder for missing
+                  elev / shoe / power reads as broken. Use the same honest
+                  "no data" pattern shipped on Health tiles (task #206
+                  hybrid tiles). The chip stays in place so the grid
+                  doesn't reflow, but the value reads as a known gap
+                  instead of a render glitch. */}
               <div>
                 <div className="kcl">ELEV GAIN{elevSuspicious ? ' · APPROX' : ''}</div>
-                <div className="kcv" style={elevSuspicious ? { color: 'rgba(246,247,248,0.62)' } : undefined}>
-                  {resolvedGainFt != null && resolvedGainFt > 0 ? `${resolvedGainFt} ft` : '·'}
+                <div className="kcv" style={
+                  (resolvedGainFt == null || resolvedGainFt <= 0)
+                    ? { color: 'rgba(246,247,248,0.42)', fontSize: 13, fontWeight: 600, letterSpacing: 0.4 }
+                    : (elevSuspicious ? { color: 'rgba(246,247,248,0.62)' } : undefined)
+                }>
+                  {resolvedGainFt != null && resolvedGainFt > 0 ? `${resolvedGainFt} ft` : 'NO DATA'}
                 </div>
               </div>
               <div>
                 <div className="kcl">{runData?.power_avg_w != null ? 'AVG POWER' : 'CALORIES'}</div>
-                <div className="kcv">{runData?.power_avg_w != null ? `${runData.power_avg_w} W` : (result?.cal && result.cal > 0 ? `${result.cal} kcal` : '·')}</div>
+                <div className="kcv" style={
+                  (runData?.power_avg_w == null && (!result?.cal || result.cal <= 0))
+                    ? { color: 'rgba(246,247,248,0.42)', fontSize: 13, fontWeight: 600, letterSpacing: 0.4 }
+                    : undefined
+                }>
+                  {runData?.power_avg_w != null
+                    ? `${runData.power_avg_w} W`
+                    : (result?.cal && result.cal > 0 ? `${result.cal} kcal` : 'NO DATA')}
+                </div>
               </div>
             </div>
 
@@ -3904,16 +3922,33 @@ function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes
     document.body
   ) : null;
 
+  // 2026-06-04 · David's QC: empty SHOE chip rendered as bare dots (the
+  // .kcv style + an empty `picked` string). Show an explicit "TAP TO
+  // LINK" affordance when no shoe is selected so the absence reads as
+  // an action prompt, not a layout glitch.
+  const hasPicked = !!(picked && picked.trim());
   return (
     <div ref={triggerRef} style={{ display: 'inline-block' }}>
       <div
         className="kcv"
-        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}
+        style={{
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          opacity: saving ? 0.7 : 1,
+          ...(hasPicked ? {} : {
+            color: 'rgba(246,247,248,0.42)',
+            fontSize: 13,
+            fontWeight: 600,
+            letterSpacing: 0.4,
+          }),
+        }}
         onClick={() => setOpen(o => !o)}
         role="button"
         tabIndex={0}
       >
-        {picked}
+        {hasPicked ? picked : 'TAP TO LINK'}
         <span style={{ fontSize: 9, opacity: 0.55 }}>▾</span>
       </div>
       {menu}

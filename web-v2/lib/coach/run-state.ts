@@ -394,7 +394,11 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
         z3: Number(hrPctsRaw.z3) || 0, z4: Number(hrPctsRaw.z4) || 0,
         z5: Number(hrPctsRaw.z5) || 0,
       }
-    : await deriveHrZones(userId, r.avgHr, splits);
+    // 2026-06-04 · prefer per-sample bucketing when raw HR samples
+    // are present (watch path). Falls through to deriveHrZones
+    // (per-split-avg) for older runs or Strava-source that ships
+    // only summary HR per split. See lib/coach/hr-zone-bucket.ts.
+    : await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits);
 
   // Bring the user's LTHR-anchored zone ranges so the modal can render
   // an actionable "where your HR landed" panel.
@@ -1184,4 +1188,43 @@ async function deriveHrZones(
   const zone = classify(hr);
   const k = `z${zone.idx}` as keyof typeof empty;
   return { ...empty, [k]: 100 };
+}
+
+/**
+ * 2026-06-04 · per-sample HR-zone bucketer preferred over the legacy
+ * split-average path. Watch payloads ship raw HR samples every 5s
+ * inside each split's `_raw.hrSamples` · bucketing every sample is
+ * naturally time-weighted and won't put "33% in Z5" just because
+ * a tempo phase happens to have its average HR at LTHR.
+ *
+ * Falls through to `deriveHrZones` (the legacy per-split-avg path)
+ * when no samples are present · covers Strava-source runs and any
+ * legacy data shape that doesn't carry per-second HR.
+ *
+ * Cite: lib/coach/hr-zone-bucket.ts · David's QC 2026-06-04.
+ */
+async function deriveHrZonesFromSamples(
+  userId: string,
+  rawSplits: unknown,
+  avgHr: number | string | null,
+  splits: RunSplit[],
+): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number }> {
+  const empty = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+  const { bucketHrSamplesByZone, hasHrSamples } = await import('./hr-zone-bucket');
+  const rawArr = Array.isArray(rawSplits)
+    ? rawSplits as Parameters<typeof bucketHrSamplesByZone>[0]
+    : [];
+  if (rawArr.length === 0 || !hasHrSamples(rawArr)) {
+    return deriveHrZones(userId, avgHr, splits);
+  }
+  // Load LTHR once · build the zone table · bucket every sample.
+  const lthrRow = await pool.query(
+    `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }));
+  const lthr = lthrRow.rows[0]?.lthr;
+  if (!lthr) return empty;
+  const table = computeZones({ lthr });
+  if (!table) return empty;
+  return bucketHrSamplesByZone(rawArr, table);
 }

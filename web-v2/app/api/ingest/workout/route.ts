@@ -43,6 +43,8 @@ import { toUtcIso } from '@/lib/runs/normalize-time';
 import { requireUserId } from '@/lib/auth/session';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
+import { bucketHrSamplesByZone, hasHrSamples } from '@/lib/coach/hr-zone-bucket';
+import { computeZones } from '@/lib/training/zones';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -76,6 +78,42 @@ export async function POST(req: NextRequest) {
   }
 
   const slug = `wko_${body.client_workout_id}`;
+
+  // 2026-06-04 · compute HR-zone percentages at ingest. Watch payloads
+  // ship raw HR samples every 5s inside each split's `_raw.hrSamples` ·
+  // bucket them per-sample against the runner's LTHR-anchored Friel
+  // zone table. Stored on `data.hrZonePcts` so the run detail page
+  // reads a real distribution instead of falling back to the legacy
+  // per-split-avg derivation at render time (which produced wrong
+  // 33/33/33 splits when a tempo phase landed at LTHR).
+  //
+  // When LTHR isn't set yet, or the payload didn't ship raw samples
+  // (older watch builds, Strava-pushed), we keep `hrZonePcts: null`
+  // and `lib/coach/run-state.ts deriveHrZonesFromSamples` does the
+  // bucketing at render time using the same helper.
+  const rawSplitsForZones = Array.isArray(body.splits) ? body.splits : [];
+  let computedHrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null = null;
+  if (rawSplitsForZones.length > 0 && hasHrSamples(rawSplitsForZones)) {
+    try {
+      const lthrRow = await pool.query(
+        `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
+        [userId],
+      );
+      const lthr = lthrRow.rows[0]?.lthr;
+      if (lthr) {
+        const table = computeZones({ lthr });
+        if (table) {
+          const bucketed = bucketHrSamplesByZone(rawSplitsForZones, table);
+          const sum = bucketed.z1 + bucketed.z2 + bucketed.z3 + bucketed.z4 + bucketed.z5;
+          if (sum > 0) computedHrZonePcts = bucketed;
+        }
+      }
+    } catch (e: unknown) {
+      // Non-fatal · the render-time fallback covers us.
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[ingest/workout] zone bucketing failed:', msg);
+    }
+  }
 
   // Build the data payload matching the strava_activities.data shape.
   const data = {
@@ -160,13 +198,18 @@ export async function POST(req: NextRequest) {
         },
       };
     })(),
-    // 2026-05-31: was defaulting to {z1:0,...,z5:0} — a falsey-looking value
-    // that's actually truthy, so the run-detail loader treated it as
-    // "zones present" and skipped the deriveHrZones fallback. The Faff
-    // watch app + HK ingest paths almost never ship pre-computed zone
-    // percentages (per-mile HR is enough for the loader to compute them),
-    // so we keep this null and let run-state.ts derive at read time.
-    hrZonePcts: body.hr_zone_pcts ?? null,
+    // 2026-06-04 · zone bucketing now runs at ingest from raw HR
+    // samples (preferred) · falls back to body-provided value if the
+    // client pre-computed (rare) · falls back to null when neither is
+    // available, in which case run-state.ts deriveHrZonesFromSamples
+    // does the bucketing at render time using the same helper.
+    //
+    // Was: stored null unconditionally · the render-time fallback
+    // bucketed per-split-average HR, which produced "33% Z1 / 33% Z4
+    // / 33% Z5" on tempo workouts because (a) phase count drove
+    // weight not time, and (b) phase avg HR at LTHR landed exactly
+    // at Z5's lower bound. Per-sample bucketing fixes both.
+    hrZonePcts: computedHrZonePcts ?? body.hr_zone_pcts ?? null,
     routePolyline: body.route_polyline ?? null,
     ingestedAt: new Date().toISOString(),
   };
