@@ -1996,15 +1996,26 @@ function CompletedHeroV2({
                 holds just the verdict + recap + mile splits, and the
                 three columns finish at roughly the same vertical
                 line. */}
+            {/* 2026-06-03 · was a tinted fill (12% orange / 10% teal) with
+                weak border · on the tempo/intervals mesh the orange tint
+                vanished and the teal box didn't read either.  Matches the
+                pattern already shipped in RunDetailModal · dark scrim
+                rgba(10,12,16,.62) + colored 55%-alpha border for identity
+                + white body at fw 500 + accent only on the eyebrow label.
+                The "four legibility laws" comment block in RunDetailModal
+                explains the contract. */}
             {recapPayload?.conditions_note ? (
               <div style={{
-                marginTop: 18, padding: '10px 12px', borderRadius: 8,
-                background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
-                fontSize: 12, lineHeight: 1.5, color: '#FFE7C2',
+                marginTop: 18, padding: '11px 13px', borderRadius: 10,
+                background: 'rgba(10,12,16,.62)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,136,71,.55)',
+                fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
               }}>
                 <div style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
-                  textTransform: 'uppercase', color: '#FF8847', marginBottom: 4,
+                  fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
+                  textTransform: 'uppercase', color: '#FFB07A', marginBottom: 5,
                 }}>
                   CONDITIONS
                 </div>
@@ -2012,9 +2023,12 @@ function CompletedHeroV2({
               </div>
             ) : runData?.weather_context ? (
               <div style={{
-                marginTop: 18, padding: '8px 10px', borderRadius: 8,
-                background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
-                fontSize: 12, lineHeight: 1.45, color: '#FFE7C2',
+                marginTop: 18, padding: '11px 13px', borderRadius: 10,
+                background: 'rgba(10,12,16,.62)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,136,71,.55)',
+                fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
               }}>
                 {runData.weather_context.message}
                 {runData.weather_context.hr_bump_bpm > 0 ? (
@@ -2025,13 +2039,16 @@ function CompletedHeroV2({
 
             {recapPayload?.coach_tip ? (
               <div style={{
-                marginTop: 8, padding: '10px 12px', borderRadius: 8,
-                background: 'rgba(85, 221, 208, 0.10)', border: '1px solid rgba(85, 221, 208, 0.32)',
-                fontSize: 12, lineHeight: 1.5, color: '#cfeeec',
+                marginTop: 8, padding: '11px 13px', borderRadius: 10,
+                background: 'rgba(10,12,16,.62)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                border: '1px solid rgba(85,221,208,.55)',
+                fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
               }}>
                 <div style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
-                  textTransform: 'uppercase', color: '#54ddd0', marginBottom: 4,
+                  fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
+                  textTransform: 'uppercase', color: '#7BE8DC', marginBottom: 5,
                 }}>
                   COACH TIP
                 </div>
