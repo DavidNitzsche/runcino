@@ -42,6 +42,14 @@ export interface DecouplingTrend {
   summary: string;
   /** Latest 8 data points for a tile sparkline. */
   series: { date: string; driftPct: number }[];
+  /** 2026-06-03 · zone for the current drift % · Research/15:
+   *  · < 5%  · race-ready band · aerobic engine deeply built
+   *  · 5-7%  · building band · solid base, still improving
+   *  · 7-10% · developing band · base under construction
+   *  · 10%+  · early base band */
+  currentZone: 'race-ready' | 'building' | 'developing' | 'early-base';
+  /** 2026-06-03 · static explanation · what aerobic decoupling IS. */
+  whatItIs: string;
 }
 
 export async function computeDecouplingTrend(userUuid: string): Promise<DecouplingTrend | null> {
@@ -74,9 +82,13 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
   const currentDriftPct = +(last3.reduce((s, p) => s + p.driftPct, 0) / last3.length).toFixed(1);
   const delta = currentDriftPct - blockStartDriftPct;
 
+  // 2026-06-03 · tightened threshold from ±1pp → ±0.5pp. David's 7.6 →
+  // 6.8 was reading as 'flat' under the 1pp gate even though it's a
+  // 10% relative drop in decoupling · meaningful in this metric.
+  // Aerobic decoupling moves slowly · 0.5pp over 7 weeks IS signal.
   let direction: DecouplingTrend['direction'];
-  if (delta < -1) direction = 'improving';
-  else if (delta > 1) direction = 'declining';
+  if (delta < -0.5) direction = 'improving';
+  else if (delta > 0.5) direction = 'declining';
   else direction = 'flat';
 
   // Weeks tracked = span of dates.
@@ -99,6 +111,15 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
     summary = `Aerobic decoupling ${blockStartDriftPct}% → ${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · efficiency declining across the block.`;
   }
 
+  // 2026-06-03 · zone reference for the current drift % · per Research/15.
+  const currentZone: DecouplingTrend['currentZone'] =
+    currentDriftPct < 5 ? 'race-ready'
+    : currentDriftPct < 7 ? 'building'
+    : currentDriftPct < 10 ? 'developing'
+    : 'early-base';
+
+  const whatItIs = `Aerobic decoupling is how much your heart rate drifts upward during a steady long run · second-half avg vs first-half avg. Lower is better · a well-built aerobic engine holds the same effort at the same HR. Bands: < 5% race-ready · 5–7% building · 7–10% developing · 10%+ early base (Research/15 doctrine).`;
+
   return {
     currentDriftPct,
     blockStartDriftPct,
@@ -107,5 +128,7 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
     direction,
     summary,
     series: series.slice(-8),
+    currentZone,
+    whatItIs,
   };
 }

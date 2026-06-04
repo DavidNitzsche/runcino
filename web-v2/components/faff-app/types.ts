@@ -473,6 +473,10 @@ export type HealthSnapshot = {
     direction: 'improving' | 'flat' | 'declining';
     summary: string;
     series: { date: string; driftPct: number }[];
+    /** 2026-06-03 · zone for current drift % · Research/15. */
+    currentZone?: 'race-ready' | 'building' | 'developing' | 'early-base';
+    /** 2026-06-03 · static explanation of what aerobic decoupling IS. */
+    whatItIs?: string;
   } | null;
   // Power moves Wave 2 · heat acclimatization.
   heatAcclim?: {

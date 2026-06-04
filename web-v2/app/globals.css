@@ -1283,6 +1283,15 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .haero-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(159,179,173,.85);}
 .haero-v{font-family:'Oswald',sans-serif;font-size:24px;font-weight:600;color:#5fd06a;white-space:nowrap;}
 .haero-m{font-size:12px;font-weight:500;line-height:1.45;color:rgba(255,255,255,.8);}
+/* 2026-06-03 · zone chip + band reference + what-it-is. */
+.haero-zone{display:flex;flex-direction:column;gap:4px;margin-top:2px;}
+.haero-chip{align-self:flex-start;font-size:9.5px;font-weight:800;letter-spacing:.8px;padding:3px 8px;border-radius:4px;text-transform:uppercase;}
+.haero-chip-race-ready{background:rgba(95,208,106,.18);color:#7ee08c;}
+.haero-chip-building{background:rgba(95,208,106,.12);color:#5fd06a;}
+.haero-chip-developing{background:rgba(243,173,56,.16);color:#F3AD38;}
+.haero-chip-early-base{background:rgba(252,77,100,.14);color:#FC4D64;}
+.haero-zone-bands{font-size:10.5px;font-weight:500;color:rgba(159,179,173,.7);letter-spacing:.1px;}
+.haero-what{font-size:11px;font-weight:500;line-height:1.5;font-style:italic;color:rgba(159,179,173,.7);margin-top:4px;padding-top:8px;border-top:1px dashed rgba(255,255,255,.08);}
 
 /* Forecasts sub-section under WATCHING TOMORROW */
 .hforecasts{display:flex;flex-direction:column;gap:9px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);}
@@ -1322,6 +1331,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hins-h{font-family:'Oswald',sans-serif;font-size:20px;font-weight:600;margin-top:8px;color:var(--txt);}
 .hins-m{font-size:13px;line-height:1.5;color:rgba(255,255,255,.82);margin-top:8px;}
 .hins-m b{color:#fff;font-weight:700;}
+/* 2026-06-03 · what-it-is explanation line · italic, muted, lives under
+   the headline numbers and explains the metric in plain English. */
+.hins-what{font-size:11.5px;line-height:1.55;font-style:italic;color:rgba(159,179,173,.7);margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,255,255,.08);}
+.hins-what b{font-style:normal;color:rgba(255,255,255,.92);font-weight:700;}
 
 /* ============================================================
    end Health page redesign 2026-06-01

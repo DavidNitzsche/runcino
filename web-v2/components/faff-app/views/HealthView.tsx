@@ -386,7 +386,25 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                   {' → '}
                   {seed.health.aerobicFitness.currentDriftPct.toFixed(1)}%
                 </div>
+                {/* 2026-06-03 · zone chip + what-it-is explanation. David
+                    QC'd this card with "we have room to expand out wtf
+                    this even means" · added zone label + plain-English
+                    definition + bands so the runner can read the number. */}
+                {seed.health.aerobicFitness.currentZone ? (
+                  <div className="haero-zone">
+                    <span className={`haero-chip haero-chip-${seed.health.aerobicFitness.currentZone}`}>
+                      {seed.health.aerobicFitness.currentZone === 'race-ready' ? 'RACE-READY'
+                        : seed.health.aerobicFitness.currentZone === 'building' ? 'BUILDING'
+                        : seed.health.aerobicFitness.currentZone === 'developing' ? 'DEVELOPING'
+                        : 'EARLY BASE'}
+                    </span>
+                    <span className="haero-zone-bands">&lt; 5% race-ready · 5–7% building · 7–10% developing</span>
+                  </div>
+                ) : null}
                 <div className="haero-m">{seed.health.aerobicFitness.summary}</div>
+                {seed.health.aerobicFitness.whatItIs ? (
+                  <div className="haero-what">{seed.health.aerobicFitness.whatItIs}</div>
+                ) : null}
               </div>
             ) : null}
             <div className="hh-wk-head">
@@ -675,17 +693,51 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                   Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}.
                   {seed.form.acwr != null ? ` ACWR ${seed.form.acwr.toFixed(2)}.` : ''}
                 </div>
+                {/* 2026-06-03 · plain-English explanation per David's QC
+                    ("explain it better"). Bands per Banister TSB doctrine. */}
+                <div className="hins-what">
+                  Form = Fitness − Fatigue (Banister TSB). Fitness is your 42-day
+                  rolling training load · Fatigue is your 7-day load. When fatigue
+                  outpaces fitness, you're loaded but adapting · negative numbers
+                  are NORMAL during a build phase.
+                  {' '}
+                  Bands: <b>&gt; +25</b> detraining · <b>+5 to +25</b> race-ready ·
+                  {' '}<b>−5 to +5</b> productive · <b>−5 to −15</b> loaded ·
+                  {' '}<b>&lt; −15</b> overreach watch.
+                  {seed.form.acwr != null ? (
+                    <> ACWR is acute-7-day mileage ÷ chronic-28-day mileage · 0.8–1.3 is the sweet spot per Gabbett.</>
+                  ) : null}
+                </div>
               </div>
             ) : null}
             {seed.health.blockComparison ? (
               <div className="hins">
                 <div className="hins-k">VS {seed.health.blockComparison.referenceBlock.label.toUpperCase()}</div>
                 <div className="hins-h">{seed.health.blockComparison.message}</div>
-                {/* 2026-06-03 · dropped the hins-m duplicate · `message`
-                    already carries the deltas ("Sleep +1.9h.") · the old
-                    sub-line "Sleep +1.9h vs reference. HRV …" repeated
-                    the same numbers with "vs reference" tacked on, where
-                    the card's own title already establishes the reference. */}
+                {/* 2026-06-03 · per David's QC ("explain it better").
+                    Show per-metric deltas + a what-is line explaining
+                    the comparison window. */}
+                {(() => {
+                  const bc = seed.health.blockComparison!;
+                  const parts: string[] = [];
+                  if (bc.deltas.sleepH != null) {
+                    parts.push(`Sleep ${bc.deltas.sleepH >= 0 ? '+' : ''}${bc.deltas.sleepH.toFixed(1)}h/night`);
+                  }
+                  if (bc.deltas.hrvMs != null) {
+                    parts.push(`HRV ${bc.deltas.hrvMs >= 0 ? '+' : ''}${Math.round(bc.deltas.hrvMs)}ms`);
+                  }
+                  if (bc.deltas.rhrBpm != null) {
+                    parts.push(`RHR ${bc.deltas.rhrBpm >= 0 ? '+' : ''}${Math.round(bc.deltas.rhrBpm)}bpm`);
+                  }
+                  return parts.length > 0 ? (
+                    <div className="hins-m">{parts.join(' · ')}.</div>
+                  ) : null;
+                })()}
+                <div className="hins-what">
+                  Comparing your last 4 weeks against the 4 weeks before {seed.health.blockComparison.referenceBlock.label.replace(/ build$/, '')}.
+                  {' '}This block's averages vs the reference block · positive sleep / HRV deltas
+                  and negative RHR deltas read as a more-rested build than the reference.
+                </div>
               </div>
             ) : null}
             {seed.health.dowPatterns && seed.health.dowPatterns.insights.length > 0 ? (
