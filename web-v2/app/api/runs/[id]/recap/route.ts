@@ -134,6 +134,12 @@ export async function GET(
       windMph: typeof data.weather.wind_mph === 'number' ? data.weather.wind_mph : null,
       conditions: typeof data.weather.conditions === 'string' ? data.weather.conditions : null,
       cloudCoverPct: typeof data.weather.cloud_cover_pct === 'number' ? data.weather.cloud_cover_pct : null,
+      // 2026-06-04 · pass run duration so judgeWeather can scale the
+      // marathon-distance Maughan/Vihma penalty down for shorter
+      // efforts. Without this a 36-min tempo at 74°F sun was reading
+      // 17% pace cost (full marathon penalty) when the realistic
+      // duration-scaled cost is ~9%.
+      durationS: typeof data.durationSec === 'number' ? data.durationSec : null,
     } : null,
   });
 

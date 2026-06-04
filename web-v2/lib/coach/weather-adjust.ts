@@ -47,6 +47,16 @@ export interface WeatherInput {
   humidityPct?: number | null;
   conditions?: string | null;      // 'clear' | 'cloudy' | 'rain' | ...
   cloudCoverPct?: number | null;   // 0-100
+  /**
+   * Run duration in seconds. The Maughan/Vihma slowdown table is
+   * anchored to marathon-distance performance · most heat penalty
+   * comes from cumulative dehydration + core-temp + glycogen-
+   * acceleration effects that take HOURS to bite. For sub-marathon
+   * efforts the actual cost is smaller · scaled in judgeWeather
+   * via durationScalingFactor(). Pass when known · falls back to
+   * full marathon-distance penalty when null.
+   */
+  durationS?: number | null;
 }
 
 export type HeatBand = 'neutral' | 'warm' | 'hot' | 'extreme';
@@ -122,6 +132,38 @@ function dewpointMultiplier(dewpointF: number): number {
  * Solar / sun adjustment. Direct sun on cloudless days adds ~5°F to the
  * effective temperature in trained runners (Sources 7 & 17 in Research/06).
  */
+/**
+ * 2026-06-04 · scale the marathon-distance pace tax down for shorter
+ * efforts. The Maughan/Vihma table represents 26.2-mile race-pace
+ * degradation · most of that comes from cumulative dehydration,
+ * core-temp rise, and accelerated glycogen depletion · effects that
+ * accumulate over hours.
+ *
+ * For a 36-minute tempo at 79°F effective the table says ~16% but
+ * the actual cost is closer to 8-9% · the runner doesn't accumulate
+ * the full thermal debt. Linear ramp from 40% of the table at very
+ * short efforts up to 100% at marathon-distance duration.
+ *
+ *   sub-30min  → 0.45   (mostly direct-heat effect, little accumulation)
+ *   30 min     → 0.55
+ *   60 min     → 0.70
+ *   90 min     → 0.85
+ *   120+ min   → 1.00   (full marathon-distance penalty)
+ *
+ * Returns 1.0 when durationS is unknown · keeps the published table
+ * intent as the safe default.
+ *
+ * Cite: Research/06-weather-adjustments.md §"Distance scaling"
+ * (annotation 2026-06-04, David's QC).
+ */
+function durationScalingFactor(durationS: number | null | undefined): number {
+  if (!durationS || durationS <= 0) return 1.0;
+  const TWO_HOURS = 7200;
+  const t = Math.min(1, durationS / TWO_HOURS);
+  // Anchored ramp: factor(0s) → 0.40, factor(2hr+) → 1.00.
+  return Math.max(0.40, Math.min(1.0, 0.40 + 0.60 * t));
+}
+
 function solarEffectiveBump(c: WeatherInput): number {
   const cloud = c.cloudCoverPct ?? null;
   const cond = (c.conditions ?? '').toLowerCase();
@@ -185,9 +227,15 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   const tEff = t + solarEffectiveBump(input);
 
   // Base slowdown from temp, scaled by evaporative-cooling impairment.
+  // 2026-06-04 · also scaled by run duration · the Maughan/Vihma table
+  // is anchored to marathon-distance pace tax (cumulative dehydration +
+  // core-temp + glycogen effects accumulate over hours). For a tempo
+  // or shorter run the actual cost is much smaller. See
+  // durationScalingFactor() header.
   const baseSlow = slowdownFromTemp(tEff);
   const dpMult = td != null ? dewpointMultiplier(td) : 1.0;
-  const slowdownPct = Math.round(baseSlow * dpMult * 10) / 10;
+  const durMult = durationScalingFactor(input.durationS);
+  const slowdownPct = Math.round(baseSlow * dpMult * durMult * 10) / 10;
 
   // 2026-06-03 · raw temp gates the verbal band (see bandFor docs).
   const heatBand = bandFor(slowdownPct, t);
