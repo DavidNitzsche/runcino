@@ -388,6 +388,20 @@ export type ReadinessBriefSeed = {
     today: number;
   } | null;
   watchTomorrow: string[];
+  /** 2026-06-03 · WHAT TO DO panel · prioritized data-grounded actions.
+   *  Replaces WATCHING TOMORROW on the Health page web surface (iPhone
+   *  still reads watchTomorrow for back-compat). Max 3 entries · returns
+   *  a single ON COURSE entry when nothing triggers. See
+   *  lib/coach/health-actions.ts for trigger rules. */
+  actions: Array<{
+    signal: 'sick' | 'niggle' | 'compound' | 'hrv_low_streak' | 'rhr_high_streak'
+      | 'sleep_deficit' | 'hrv_cv_destabilizing' | 'wrist_temp_elevated'
+      | 'load_spike' | 'load_caution' | 'load_detraining'
+      | 'tsb_overreach' | 'tsb_race_ready' | 'on_course';
+    priority: 'urgent' | 'high' | 'medium' | 'low' | 'on-course';
+    action: string;
+    cite: string;
+  }>;
   /** 2026-06-01 · Phase 2.3 · daily projection-vs-goal card.
    *  Composed from goal-gap engine + simulator. Status-aware headline,
    *  confidence band, what-closes-it actions, A/B/C alternatives when

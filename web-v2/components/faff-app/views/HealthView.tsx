@@ -484,46 +484,44 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             ) : null}
           </div>
           <div className="hwatch">
-            <span className="hsynth-tag watch-tag">WATCHING TOMORROW</span>
+            {/* 2026-06-03 · WHAT TO DO replaces WATCHING TOMORROW per
+                David's ask: "instead of watching tomorrow · can we
+                surface something about actions to take? Run slower,
+                sleep more, etc whatever it is based on data."
+
+                Each action is tied to a real trigger in
+                lib/coach/health-actions.ts. The frontend just renders
+                · no extrapolation. Priority chip color: urgent=red,
+                high=amber, medium=yellow, low=neutral, on-course=green. */}
+            <span className="hsynth-tag watch-tag">WHAT TO DO</span>
             <div className="hwatch-list">
-              {(brief.watchTomorrow ?? []).map((w, i) => (
-                <div key={i} className="hwatch-row">
-                  <span className="hwatch-d" />
-                  <span>{w}</span>
-                </div>
-              ))}
-              {/* 2026-06-03 · only show the empty-state line when BOTH
-                  watchTomorrow notes AND forecast chips are empty.
-                  Previously "Nothing flagged for tomorrow yet." rendered
-                  while two FORECAST chips below contradicted it. */}
-              {!brief.watchTomorrow?.length && !(brief.forecasts && brief.forecasts.length > 0) ? (
-                <div className="hwatch-empty">Nothing flagged for tomorrow yet.</div>
+              {(brief.actions ?? []).map((a, i) => {
+                const priorityClass =
+                  a.priority === 'urgent' ? 'hact-pri-urgent' :
+                  a.priority === 'high' ? 'hact-pri-high' :
+                  a.priority === 'medium' ? 'hact-pri-medium' :
+                  a.priority === 'on-course' ? 'hact-pri-on-course' :
+                  'hact-pri-low';
+                const priorityLabel =
+                  a.priority === 'on-course' ? 'ON COURSE' :
+                  a.priority.toUpperCase();
+                return (
+                  <div key={i} className="hwatch-row hact-row">
+                    <span className={`hact-pri ${priorityClass}`}>{priorityLabel}</span>
+                    <div className="hact-body">
+                      <div className="hact-action">{a.action}</div>
+                      <div className="hact-cite">{a.cite}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Defensive empty state · should never fire (the actions
+                  builder always returns at least an ON COURSE entry)
+                  but keeps the panel honest if the envelope is stale. */}
+              {!brief.actions?.length ? (
+                <div className="hwatch-empty">Building your picture · keep syncing.</div>
               ) : null}
             </div>
-            {brief.forecasts && brief.forecasts.length > 0 ? (
-              <div className="hforecasts">
-                {brief.forecasts.slice(0, 3).map((f, i) => {
-                  // Pillar key → display label (HRV CV, SLEEP, etc).
-                  const pillarLabels: Record<string, string> = {
-                    sleep: 'SLEEP', hrv: 'HRV', rhr: 'RHR',
-                    load: 'LOAD', hrv_cv: 'HRV CV', wrist_temp: 'WRIST TEMP',
-                  };
-                  // 2026-06-03 · chip color by direction. 'good' forecasts
-                  // (sleep recovering, RHR settling) → green. 'bad' forecasts
-                  // (RHR climbing, sleep slipping, wrist temp rising) →
-                  // yellow. Defaults to yellow when direction is absent
-                  // (older seed envelopes · conservative).
-                  const dirClass = f.direction === 'good' ? 'hfc-ic-good' : 'hfc-ic-bad';
-                  const chipText = f.direction === 'good' ? 'ON TRACK' : 'WATCH';
-                  return (
-                    <span key={i} className="hfc">
-                      <span className={`hfc-ic ${dirClass}`}>{chipText}</span>
-                      <span><b>{pillarLabels[f.pillar] ?? f.pillar.toUpperCase()}</b> {f.message}</span>
-                    </span>
-                  );
-                })}
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}

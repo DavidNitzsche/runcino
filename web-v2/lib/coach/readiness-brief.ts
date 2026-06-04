@@ -32,6 +32,7 @@ import type { CoachState } from '@/lib/topics/types';
 import { buildSynthesis } from './synthesis';
 import { buildForecasts, type Forecast } from './forecasts';
 import { computeTrainingForm } from './training-form';
+import { buildHealthActions, type HealthAction } from './health-actions';
 
 export type PillarKey = 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
 export type PillarBand = 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
@@ -211,8 +212,18 @@ export interface ReadinessBrief {
     direction?: 'good' | 'bad';
   }>;
   /** "Watching" callouts for tomorrow · the brief points the runner at
-   *  what to verify if it persists. */
+   *  what to verify if it persists. Kept on the envelope for backwards
+   *  compat (iPhone clients still consume it) · the Health page web
+   *  surface has replaced this slot with `actions` per 2026-06-03. */
   watchTomorrow: string[];
+  /** 2026-06-03 · WHAT TO DO panel · replaces WATCHING TOMORROW on the
+   *  Health page web view. Prioritized list of data-grounded actions
+   *  the runner can take · sleep more, run easier, watch for cold
+   *  symptoms, trim a long run, etc. Each entry carries a citation
+   *  (the underlying number) so the runner can verify. Max 3 entries.
+   *  When nothing triggers, surfaces a single ON COURSE entry. See
+   *  lib/coach/health-actions.ts for trigger rules. */
+  actions: HealthAction[];
   /** 2026-06-01 · Phase 2.3 · daily projection-vs-goal card. Composed
    *  from goal-gap engine (Phase 1.1) + simulator (Phase 2.1). The
    *  honest-projection surface · status-aware headline, confidence
@@ -316,6 +327,7 @@ export async function loadReadinessBrief(
       trainingForm: null,
       forecasts: [],
       watchTomorrow: [],
+      actions: [],
       gapReport: null,
     };
   }
@@ -400,7 +412,9 @@ export async function loadReadinessBrief(
       }
     : null;
 
-  // Watch tomorrow · forward-looking guidance.
+  // Watch tomorrow · forward-looking guidance. Kept for iPhone clients
+  // that still consume `watchTomorrow`. Web Health page renders
+  // `actions` below instead.
   const watchTomorrow = buildWatchTomorrow(breakdown, streaks, history);
 
   // 2026-06-01 · Phase 2.3 · gap report. The honest-projection card ·
@@ -447,6 +461,20 @@ export async function loadReadinessBrief(
     recentHardSession,
   });
 
+  // 2026-06-03 · WHAT TO DO panel. Data-grounded actions per David's
+  // ask "instead of watching tomorrow · can we surface something
+  // about actions to take". Each rule fires only on a real trigger ·
+  // when nothing fires, returns a single ON COURSE entry.
+  const actions = buildHealthActions({
+    breakdown,
+    state,
+    history,
+    streaks,
+    trainingForm: trainingForm ? { tsb: trainingForm.tsb, label: trainingForm.label } : null,
+    wristTempDeltaC: synthesisHealth.wristTempDeltaC,
+    activeSick: false, // not currently tracked on CoachState · TODO when sick_episodes flows through
+  });
+
   return {
     date,
     score: breakdown.score,
@@ -469,6 +497,7 @@ export async function loadReadinessBrief(
     trainingForm,
     forecasts,
     watchTomorrow,
+    actions,
     gapReport,
   };
 }
