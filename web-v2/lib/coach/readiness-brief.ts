@@ -473,6 +473,9 @@ export async function loadReadinessBrief(
     trainingForm: trainingForm ? { tsb: trainingForm.tsb, label: trainingForm.label } : null,
     wristTempDeltaC: synthesisHealth.wristTempDeltaC,
     activeSick: false, // not currently tracked on CoachState · TODO when sick_episodes flows through
+    // scoreTrend includes today (appended by loadScoreTrend) so the
+    // tail of slice(-3) is [day-before-yesterday, yesterday, today].
+    scoreTrend: scoreTrend.map((s) => ({ date: s.date, score: s.score })),
   });
 
   return {
