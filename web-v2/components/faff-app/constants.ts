@@ -38,7 +38,11 @@ export const MESH: Record<Exclude<ViewKey,'today'>, Mesh> = {
   train:     ['#FFE0A0','#F3AD38','#E89B3A','#E07A2A','#C47812','#3E2A0A'],
   activity:  ['#D6BE98','#B2916A','#8A6A48','#5E4630','#45331F','#1C140D'],
   health:    ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
-  targets:   ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'],
+  // 2026-06-03 · brought back ~6–8% on the top three stops · was the
+  // brightest mesh in the app (yellow → hot pink → red), competing
+  // with all the on-track green status text on this page.  Ember
+  // identity preserved, peak just doesn't blast through.
+  targets:   ['#F0BC68','#ED6638','#E03A55','#B81E32','#841327','#2C0A0E'],
   profile:   ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
   spectator: ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
   race:      ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'],

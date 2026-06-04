@@ -838,8 +838,11 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .gaprow{display:flex;align-items:center;gap:18px;margin-top:2px;}
 .gauge{width:184px;height:auto;flex:0 0 auto;}
 .gauge text{font-family:'Inter',sans-serif;}
-.grbig{font-family:'Oswald',sans-serif;font-size:40px;font-weight:600;color:#3EBD41;line-height:.9;}
-.grstat{font-size:12px;font-weight:700;letter-spacing:1.2px;color:#3EBD41;margin-top:7px;}
+/* 2026-06-03 · brighter green (#3EBD41 → #5BE066) + text-shadow ·
+   the PROJECTED block sits inside the gauge scrim now but the colored
+   digits still want extra punch so they read at a glance. */
+.grbig{font-family:'Oswald',sans-serif;font-size:40px;font-weight:600;color:#5BE066;line-height:.9;text-shadow:0 1px 6px rgba(0,0,0,.5);}
+.grstat{font-size:12px;font-weight:700;letter-spacing:1.2px;color:#5BE066;margin-top:7px;text-shadow:0 1px 4px rgba(0,0,0,.5);}
 .tbody.gapv{justify-content:flex-start;gap:0;}
 .gapv-main{flex:1;display:flex;flex-direction:column;justify-content:center;gap:11px;width:100%;}
 .gapv-num{font-family:'Oswald',sans-serif;font-size:42px;font-weight:600;line-height:.85;letter-spacing:-1px;color:#3EBD41;text-align:center;}
@@ -942,8 +945,16 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .ghsub{font-size:14px;font-weight:500;opacity:.92;margin-top:10px;}
 .ghcd{font-size:13px;font-weight:600;margin-top:14px;}
 .ghcd b{font-family:'Oswald',sans-serif;font-size:18px;}
-.ok2{color:#86efa0;font-weight:700;letter-spacing:.5px;}
-.ghgauge{display:flex;flex-direction:column;align-items:center;flex:0 0 auto;}
+/* 2026-06-03 · "on track · 0 sec ahead" green text sits in the
+   header on top of the Targets ember mesh.  Brighter green + shadow
+   so it punches through the warm mesh tint. */
+.ok2{color:#7CE085;font-weight:700;letter-spacing:.5px;text-shadow:0 1px 4px rgba(0,0,0,.5);}
+/* 2026-06-03 · gauge sat directly on the page mesh · the green
+   PROJECTED time read fine on the calmer Today/Train meshes but
+   vanished on the Targets ember mesh (green-on-red).  Wrap it in
+   the canonical dark scrim so the colored numerals have a backdrop
+   to read against on any mesh hue. */
+.ghgauge{display:flex;flex-direction:column;align-items:center;flex:0 0 auto;background:rgba(8,12,18,.45);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:18px 24px;}
 .prgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
 .prt{background:rgba(8,10,14,.36);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:16px 18px;}
 .prd{font-size:11px;font-weight:700;letter-spacing:1.5px;opacity:.8;}
@@ -953,15 +964,22 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    runner is ON TRACK or WATCHING. Plan-trusts-itself doctrine ·
    shows the plan-is-the-path framing + any soft drift signals +
    diagnostic VDOT projection (transparent, not prescriptive). */
-.onpath-panel{background:rgba(8,12,18,.4);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:24px 26px;}
+/* 2026-06-03 · scrim .4 → .58 so colored signal text (green dates,
+   accent pills) has a real dark backing on the Targets ember mesh.
+   The header signals "watching/firing" + the next test points
+   underneath were both reading green-on-red without it. */
+.onpath-panel{background:rgba(8,12,18,.58);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:24px 26px;}
 .onpath-hl{font-size:22px;font-weight:700;line-height:1.2;color:var(--txt);}
 .onpath-sub{font-size:14px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.82);margin-top:10px;}
 .onpath-watching{margin-top:18px;padding-top:18px;border-top:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;gap:10px;}
 .onpath-signal{display:flex;align-items:flex-start;gap:11px;font-size:13.5px;line-height:1.45;}
 .onpath-sig-w{font-size:9px;font-weight:800;letter-spacing:.5px;flex:0 0 auto;border-radius:4px;padding:3px 7px;margin-top:2px;}
-.onpath-sig-strong{color:#FC4D64;border:1px solid rgba(252,77,100,.5);}
-.onpath-sig-medium{color:#F3AD38;border:1px solid rgba(243,173,56,.5);}
-.onpath-sig-weak{color:rgba(159,179,173,.95);border:1px solid rgba(255,255,255,.18);}
+/* 2026-06-03 · signal pills · same outline-on-mesh wash problem we
+   fixed on FOCUS/LONG-RUN CAP/CONDITIONS · dark fill so the colored
+   text reads on any mesh hue. */
+.onpath-sig-strong{color:#FF8090;background:rgba(0,0,0,.55);border:1px solid rgba(252,77,100,.55);}
+.onpath-sig-medium{color:#FFC25C;background:rgba(0,0,0,.55);border:1px solid rgba(243,173,56,.55);}
+.onpath-sig-weak{color:rgba(220,230,228,.95);background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.22);}
 .onpath-diag{margin-top:16px;padding-top:14px;border-top:1px dashed rgba(255,255,255,.08);font-size:11.5px;font-style:italic;color:rgba(159,179,173,.7);letter-spacing:.1px;line-height:1.5;}
 
 /* 2026-06-04 · next test points · concrete next quality workouts
@@ -981,8 +999,11 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .onpath-trans-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(159,179,173,.85);margin-bottom:12px;}
 .onpath-trans-row{display:flex;gap:14px;font-size:13px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.86);margin-bottom:8px;}
 .onpath-trans-arrow{font-size:9.5px;font-weight:800;letter-spacing:.5px;flex:0 0 100px;border-radius:4px;padding:4px 7px;text-transform:uppercase;align-self:flex-start;}
-.onpath-trans-up{color:#5fd06a;border:1px solid rgba(95,208,106,.45);background:rgba(95,208,106,.08);}
-.onpath-trans-down{color:#F3AD38;border:1px solid rgba(243,173,56,.45);background:rgba(243,173,56,.08);}
+/* 2026-06-03 · ON-TRACK/OFF-TRACK pills · was 8%-alpha colored fill,
+   washed on dark mesh AND on red mesh.  Dark fill so the green/amber
+   arrow text always pops. */
+.onpath-trans-up{color:#7CE085;background:rgba(0,0,0,.55);border:1px solid rgba(95,208,106,.55);}
+.onpath-trans-down{color:#FFC25C;background:rgba(0,0,0,.55);border:1px solid rgba(243,173,56,.55);}
 
 /* 2026-06-04 · workout proposal banner · "we'd swap tomorrow's tempo
    to easy unless you object." Yellow eyebrow + two-button row. Sits
