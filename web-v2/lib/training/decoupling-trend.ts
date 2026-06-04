@@ -121,10 +121,9 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
     : currentDriftPct < 10 ? 'developing'
     : 'early-base';
 
-  // 2026-06-03 · trimmed per David's "way too wordy" QC. The band
-  // reference renders separately as `haero-zone-bands` so we don't
-  // need to repeat it here. This stays as the one-line what-it-is.
-  const whatItIs = `Aerobic decoupling = HR drift on a steady long run, second-half avg vs first. Lower is better.`;
+  // 2026-06-03 · "Lower is better" moved to the headline eyebrow on
+  // the card render · so the footer just defines the term.
+  const whatItIs = `Aerobic decoupling = HR drift on a steady long run, second-half avg vs first half.`;
 
   return {
     currentDriftPct,

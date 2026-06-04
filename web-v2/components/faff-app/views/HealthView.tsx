@@ -378,35 +378,48 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
 
           {/* Right column · aerobic fitness (when present) above 7-day trend */}
           <div className="hh-week">
-            {seed.health.aerobicFitness ? (
-              <div className="haero">
-                <div className="haero-k">AEROBIC FITNESS</div>
-                <div className="haero-v">
-                  {seed.health.aerobicFitness.blockStartDriftPct.toFixed(1)}%
-                  {' → '}
-                  {seed.health.aerobicFitness.currentDriftPct.toFixed(1)}%
-                </div>
-                {/* 2026-06-03 · zone chip + what-it-is explanation. David
-                    QC'd this card with "we have room to expand out wtf
-                    this even means" · added zone label + plain-English
-                    definition + bands so the runner can read the number. */}
-                {seed.health.aerobicFitness.currentZone ? (
-                  <div className="haero-zone">
-                    <span className={`haero-chip haero-chip-${seed.health.aerobicFitness.currentZone}`}>
-                      {seed.health.aerobicFitness.currentZone === 'race-ready' ? 'RACE-READY'
-                        : seed.health.aerobicFitness.currentZone === 'building' ? 'BUILDING'
-                        : seed.health.aerobicFitness.currentZone === 'developing' ? 'DEVELOPING'
-                        : 'EARLY BASE'}
-                    </span>
-                    <span className="haero-zone-bands">&lt; 5% race-ready · 5–7% building · 7–10% developing</span>
+            {seed.health.aerobicFitness ? (() => {
+              const af = seed.health.aerobicFitness;
+              const delta = af.currentDriftPct - af.blockStartDriftPct;
+              const absDelta = Math.abs(delta);
+              // 2026-06-03 · "lower is better" needs to be visible at
+              // the headline, not buried in a footer. David asked "is it
+              // better to have a bigger or smaller number?" even though
+              // the explainer literally said "Lower is better." Direction
+              // arrow + delta lives at top now; the explainer footer is
+              // trimmed to just the what-it-is sentence.
+              const arrow = delta < -0.1 ? '↓' : delta > 0.1 ? '↑' : '→';
+              const arrowClass = delta < -0.1 ? 'good' : delta > 0.1 ? 'bad' : 'flat';
+              const deltaLabel = absDelta < 0.1
+                ? 'holding steady'
+                : `${arrow} ${absDelta.toFixed(1)}pp ${delta < 0 ? 'better' : 'worse'} over ${af.weeksTracked} week${af.weeksTracked === 1 ? '' : 's'}`;
+              return (
+                <div className="haero">
+                  <div className="haero-k">AEROBIC FITNESS · LOWER IS BETTER</div>
+                  <div className="haero-v">
+                    {af.blockStartDriftPct.toFixed(1)}%
+                    {' → '}
+                    {af.currentDriftPct.toFixed(1)}%
                   </div>
-                ) : null}
-                <div className="haero-m">{seed.health.aerobicFitness.summary}</div>
-                {seed.health.aerobicFitness.whatItIs ? (
-                  <div className="haero-what">{seed.health.aerobicFitness.whatItIs}</div>
-                ) : null}
-              </div>
-            ) : null}
+                  <div className={`haero-delta haero-delta-${arrowClass}`}>{deltaLabel}</div>
+                  {af.currentZone ? (
+                    <div className="haero-zone">
+                      <span className={`haero-chip haero-chip-${af.currentZone}`}>
+                        {af.currentZone === 'race-ready' ? 'RACE-READY'
+                          : af.currentZone === 'building' ? 'BUILDING'
+                          : af.currentZone === 'developing' ? 'DEVELOPING'
+                          : 'EARLY BASE'}
+                      </span>
+                      <span className="haero-zone-bands">&lt; 5% race-ready · 5–7% building · 7–10% developing</span>
+                    </div>
+                  ) : null}
+                  <div className="haero-m">{af.summary}</div>
+                  {af.whatItIs ? (
+                    <div className="haero-what">{af.whatItIs}</div>
+                  ) : null}
+                </div>
+              );
+            })() : null}
             <div className="hh-wk-head">
               {/* 2026-06-03 · honest about coverage. The label said
                   "7-DAY READINESS" even when only 3 days of trend data
