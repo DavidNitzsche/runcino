@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { EFF, MESH, PHASE, type Mesh, type PhaseKey, type ViewKey } from './constants';
+import { MESH, PHASE, type Mesh, type PhaseKey, type ViewKey } from './constants';
 import type { FaffSeed } from './types';
 import { Sidebar } from './Sidebar';
 import { TodayView } from './views/TodayView';
@@ -118,11 +118,18 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     return PHASE[key]?.mesh ?? MESH.train;
   }, [seed.season?.phases, seed.season?.nowIdx]);
 
-  // Compute the active mesh: per-day on Today, per-view elsewhere.
+  // Compute the active mesh: per-view.
+  // 2026-06-04 · David: extend the Targets neutral-charcoal mesh to the
+  // Today page so the colored gradient lives on the hero card itself
+  // (per workout type) rather than bathing the whole page in effort
+  // color.  Keeps the page calm + reserves color for the data, same
+  // pattern as the Targets rebuild.  The per-day workout color now
+  // shows up as a CSS-variable-driven gradient on `.hmain` (see
+  // TodayView meshGradient + globals.css).
   const mesh: Mesh = meshOverride
     ? meshOverride
     : view === 'today'
-      ? EFF[seed.week[curDay]?.type ?? seed.week[seed.todayIdx].type].mesh
+      ? MESH.targets        // shared charcoal · color lives on the hero card
       : view === 'race'
         ? MESH.race
         : view === 'train'

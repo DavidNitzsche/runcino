@@ -4,7 +4,25 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
-import { EFF, KIT, ROLECOL } from '../constants';
+import { EFF, KIT, ROLECOL, type EffortKey } from '../constants';
+
+/**
+ * 2026-06-04 · per-workout-type gradient for the .hmain hero card.
+ * David moved Today's page mesh to neutral charcoal (matches Targets) so
+ * the page reads calm + the effort color now lives on the hero card
+ * itself.  Picks stops [1] / [3] / [4] from the canonical EFF mesh so a
+ * tempo card stays tempo-orange and a recovery card stays cyan-teal —
+ * same palette source, just relocated.  Used by all three hero-hmain
+ * variants (rest-day, planned, completed).
+ */
+function meshGradient(type: EffortKey): React.CSSProperties {
+  const m = EFF[type].mesh;
+  return {
+    ['--hg-1' as string]: m[1],
+    ['--hg-2' as string]: m[3],
+    ['--hg-3' as string]: m[4],
+  } as React.CSSProperties;
+}
 import { buildAdaptText } from '../adapt-text';
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
 import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type BlueprintData, type BlueprintSegment } from '../session-shape';
@@ -500,7 +518,7 @@ export function TodayView({
         </>
       ) : (
         <div className="hero">
-          <div className="hmain">
+          <div className="hmain" style={meshGradient(d.type)}>
             {/* 2026-06-03 · David: drop the small "DAY · TYPE · STATE"
                 eyebrow · same info as the week strip + the title itself,
                 pure repetition. Title now sits at the top of the column
@@ -1515,7 +1533,7 @@ function PlannedHeroV2({
           be a sibling so it can top-align with wcard. Layout becomes a
           3-column flex row (hmain | session | wcard) instead of a
           2-column with session nested inside hmain. */}
-      <div className="hmain">
+      <div className="hmain" style={meshGradient(d.type)}>
         {/* 2026-06-03 · David: drop the "DAY · TYPE · PLANNED" eyebrow ·
             it repeats the week strip + the title. Title row sits at the
             top of the column now. */}
@@ -1894,7 +1912,7 @@ function CompletedHeroV2({
     // and HOW IT WENT. The default .hero-v2 (used by PlannedHeroV2) keeps
     // the two-column layout where .mapcol sits inside .hbody.
     <div className="hero-v2 hero-v2-done">
-      <div className="hmain">
+      <div className="hmain" style={meshGradient(d.type)}>
         {/* 2026-06-03 · David: drop the "DAY · TYPE · DONE" eyebrow ·
             it repeats the week strip + the title. Title row sits at the
             top of the column now, aligning with the route + recap card
