@@ -116,7 +116,6 @@ export async function POST(req: NextRequest) {
 
     // 4. Compute restored values.
     const restoredType = row.original_type ?? row.type;
-    const restoredSubLabel = row.original_sub_label ?? row.sub_label;
     const restoredDistanceMi = row.original_distance_mi != null
       ? Number(row.original_distance_mi)
       : (row.distance_mi != null ? Number(row.distance_mi) : null);
@@ -136,6 +135,22 @@ export async function POST(req: NextRequest) {
         paceTargetSPerMi = result.paceTargetSPerMi;
       }
     }
+
+    // 2026-06-04 · derive sub_label from the FRESH spec instead of using
+    // the stale original_sub_label. David's QC: original_sub_label said
+    // "2 mi WU · 4 mi @ T · 2 mi CD" but the rebuilt spec split as
+    // 1.5/5/1.5 (different distance bucket than when the plan was
+    // originally written). Two surfaces, two numbers, one workout. Spec
+    // is canonical · derive label from it. Falls back to the stored
+    // original_sub_label when subLabelFromSpec returns null (e.g.
+    // easy/long/rest where the spec doesn't carry the full label).
+    const { subLabelFromSpec } = await import('@/lib/training/expand-spec');
+    const derivedFromSpec = workoutSpec
+      ? subLabelFromSpec(workoutSpec as Parameters<typeof subLabelFromSpec>[0])
+      : null;
+    const restoredSubLabel = derivedFromSpec
+      ?? row.original_sub_label
+      ?? row.sub_label;
 
     // 6. UPDATE · promote originals back + clear original_* + restore quality
     //    flag + re-derive spec.
