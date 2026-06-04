@@ -635,7 +635,11 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2 .phase{border-radius:13px;border:1px solid rgba(255,255,255,.12);padding:15px;background:rgba(255,255,255,.035);position:relative;overflow:hidden;}
 .train2 .phase.now{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.07);}
 .train2 .phase .pbar{position:absolute;top:0;left:0;height:3px;width:100%;}
-.train2 .phase .pnm{font-family:'Oswald',sans-serif;font-size:21px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
+/* 2026-06-03 · phase title (BUILD / PEAK / TAPER / RACE) wears the
+   phase color · against its own themed-mesh background that text loses
+   contrast (orange on orange, yellow on yellow). Heavy dark shadow +
+   weight bump gives the colored text enough punch to read cleanly. */
+.train2 .phase .pnm{font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;text-shadow:0 1px 8px rgba(0,0,0,.55),0 0 1px rgba(0,0,0,.4);}
 .train2 .phase .pwk{font-size:10px;font-weight:700;letter-spacing:.6px;opacity:.55;margin-top:3px;}
 .train2 .phase .pdesc{font-size:12px;font-weight:500;line-height:1.4;opacity:1;margin-top:10px;}
 .train2 .phase .pvol{font-family:'Oswald',sans-serif;font-size:14px;font-weight:600;margin-top:11px;opacity:1;}
