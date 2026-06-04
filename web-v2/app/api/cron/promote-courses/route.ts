@@ -45,7 +45,17 @@ export async function POST(req: NextRequest) {
   // Cap the per-run scan so a backfill blowing past doesn't trip the
   // 60s budget. The cron is daily and idempotent, so anything skipped
   // today gets picked up tomorrow.
-  const LIMIT = 200;
+  //
+  // 2026-06-04 · LIMIT dropped from 200 → 50 + soft deadline added.
+  // The 200-cap was tripping the 60s maxDuration on Railway when
+  // many races were waiting (each promote calls GPX genericize +
+  // upserts course_library which can take 0.5-2s each · 200 × 1s
+  // alone busts the budget). Curl saw a 90s timeout with no response.
+  // Now bails after 45s elapsed even if more candidates remain ·
+  // the next cron pass picks them up.
+  const LIMIT = 50;
+  const SOFT_DEADLINE_MS = 45_000;
+  const startedAt = Date.now();
   const candidates = (await pool.query<{ slug: string; user_uuid: string }>(
     `SELECT slug, user_uuid
        FROM races
@@ -58,9 +68,17 @@ export async function POST(req: NextRequest) {
   ).catch(() => ({ rows: [] as { slug: string; user_uuid: string }[] }))).rows;
 
   const results: Array<PromoteResult & { user_uuid: string }> = [];
-  const counts: Record<string, number> = { created: 0, upgraded: 0, incremented: 0, noop: 0, error: 0 };
+  const counts: Record<string, number> = { created: 0, upgraded: 0, incremented: 0, noop: 0, error: 0, skipped_for_deadline: 0 };
 
   for (const c of candidates) {
+    // Bail if we've blown the soft deadline · the cron is idempotent
+    // so leftover candidates get picked up tomorrow. Better to return
+    // a partial-success 200 than to time out and leave the workflow
+    // failing every day with no progress visible.
+    if (Date.now() - startedAt > SOFT_DEADLINE_MS) {
+      counts.skipped_for_deadline = (counts.skipped_for_deadline ?? 0) + 1;
+      continue;
+    }
     try {
       const r = await promoteCourseFromRace({ userUuid: c.user_uuid, raceId: c.slug });
       results.push({ ...r, user_uuid: c.user_uuid });

@@ -35,13 +35,29 @@ jobs:
       - name: Trigger /api/cron/dedupe-runs
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          SITE_URL: ${{ secrets.SITE_URL }}
         run: |
-          set -euo pipefail
-          if [ -z "${SITE_URL:-}" ]; then echo "SITE_URL secret missing"; exit 1; fi
-          if [ -z "${CRON_SECRET:-}" ]; then echo "CRON_SECRET secret missing"; exit 1; fi
-          response=$(curl -sS -w "\nHTTP %{http_code}\n" -X POST "${SITE_URL%/}/api/cron/dedupe-runs" \
+          # 2026-06-04 · SITE_URL secret was missing from repo settings ·
+          # workflow exited immediately every day. Hardcoded prod URL to
+          # match the promote-courses workflow pattern · removes the
+          # dependency on a secret that's easy to forget to set.
+          if [ -z "${CRON_SECRET:-}" ]; then echo "::error::CRON_SECRET secret missing"; exit 1; fi
+          response=$(curl -sS -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            -H "Content-Type: application/json")
-          echo "$response"
-          echo "$response" | grep -q '"ok":true' || { echo "Dedupe response not ok"; exit 1; }
+            -H "Content-Type: application/json" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 150 \
+            https://www.faff.run/api/cron/dedupe-runs)
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+          echo "Status: $status"
+          echo "Body: $body"
+          if [ "$status" != "200" ]; then
+            echo "::error::Dedupe failed with HTTP $status"
+            exit 1
+          fi
+          # Warn on per-user errors but don't fail the workflow · the
+          # cron is idempotent and re-runs daily, so a transient user
+          # failure gets retried tomorrow.
+          if ! echo "$body" | grep -q '"ok":true'; then
+            echo "::warning::Per-user error in dedupe sweep · response not ok=true · see body above"
+          fi
