@@ -446,6 +446,13 @@ export type ReadinessBriefSeed = {
     projectedBand: string;
     message: string;
     confidence: 'high' | 'medium' | 'low';
+    /** 2026-06-03 · 'good' when trajectory leads to a better state,
+     *  'bad' when it leads to worse. Frontend colors the FORECAST chip
+     *  green vs yellow/red so the runner can tell at a glance which
+     *  forecasts are positive vs warning. Optional for back-compat
+     *  with older seed envelopes; defaults to 'bad' if absent (the
+     *  conservative read). */
+    direction?: 'good' | 'bad';
   }>;
 };
 export type RaceLite = { slug: string; name: string; meta: string; tag: 'A RACE'|'TUNE-UP'|'PAST'; days: string };

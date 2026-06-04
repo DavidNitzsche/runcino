@@ -207,6 +207,8 @@ export interface ReadinessBrief {
     projectedBand: string;
     message: string;
     confidence: 'high' | 'medium' | 'low';
+    /** 2026-06-03 · 'good' when trajectory leads to better state. */
+    direction?: 'good' | 'bad';
   }>;
   /** "Watching" callouts for tomorrow · the brief points the runner at
    *  what to verify if it persists. */

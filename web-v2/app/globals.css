@@ -1308,6 +1308,11 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hforecasts{display:flex;flex-direction:column;gap:9px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);}
 .hfc{display:flex;align-items:baseline;gap:10px;font-size:12.5px;font-weight:500;color:rgba(255,255,255,.82);}
 .hfc-ic{font-size:9px;font-weight:800;letter-spacing:.5px;color:#F3AD38;flex:0 0 auto;border:1px solid rgba(243,173,56,.4);border-radius:5px;padding:2px 6px;}
+/* 2026-06-03 · color the FORECAST chip by direction. Good trajectory
+   (sleep recovering, RHR settling) → green. Bad (RHR climbing, sleep
+   slipping, wrist temp rising, HRV CV destabilizing) → yellow. */
+.hfc-ic-good{color:#5fd06a;border-color:rgba(95,208,106,.45);}
+.hfc-ic-bad{color:#F3AD38;border-color:rgba(243,173,56,.45);}
 .hfc b{color:#fff;}
 
 /* RECOVERY PHASE card · post-hard-session bounce-back */

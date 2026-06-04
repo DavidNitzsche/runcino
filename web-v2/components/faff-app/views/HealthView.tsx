@@ -508,9 +508,16 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                     sleep: 'SLEEP', hrv: 'HRV', rhr: 'RHR',
                     load: 'LOAD', hrv_cv: 'HRV CV', wrist_temp: 'WRIST TEMP',
                   };
+                  // 2026-06-03 · chip color by direction. 'good' forecasts
+                  // (sleep recovering, RHR settling) → green. 'bad' forecasts
+                  // (RHR climbing, sleep slipping, wrist temp rising) →
+                  // yellow. Defaults to yellow when direction is absent
+                  // (older seed envelopes · conservative).
+                  const dirClass = f.direction === 'good' ? 'hfc-ic-good' : 'hfc-ic-bad';
+                  const chipText = f.direction === 'good' ? 'ON TRACK' : 'WATCH';
                   return (
                     <span key={i} className="hfc">
-                      <span className="hfc-ic">FORECAST</span>
+                      <span className={`hfc-ic ${dirClass}`}>{chipText}</span>
                       <span><b>{pillarLabels[f.pillar] ?? f.pillar.toUpperCase()}</b> {f.message}</span>
                     </span>
                   );

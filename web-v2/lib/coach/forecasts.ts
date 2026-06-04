@@ -32,6 +32,13 @@ export interface Forecast {
   projectedBand: string;
   message: string;
   confidence: 'high' | 'medium' | 'low';
+  /** 2026-06-03 · 'good' when the trajectory leads to a better state
+   *  (sleep climbing back to target, RHR settling toward baseline,
+   *  HRV CV stabilizing, wrist temp returning to baseline). 'bad' when
+   *  the trajectory leads to a worse state. UI colors the chip
+   *  accordingly so the runner can tell which forecasts are positive
+   *  vs warning without parsing the message. */
+  direction: 'good' | 'bad';
 }
 
 interface SlopeFit {
@@ -122,15 +129,20 @@ function forecastHrvCv(history: ReadinessHistory): Forecast | null {
   const days = daysUntilCross(currentValue, threshold, fit.slope);
   if (days == null) return null;
 
-  const direction = fit.slope > 0 ? 'rising' : 'falling';
+  // 2026-06-03 · plain-English message + good/bad direction. HRV CV
+  // rising = bad (nervous system destabilizing). Falling = good.
   const ratePerDay = Math.abs(fit.slope).toFixed(2);
-  const message = `HRV CV ${direction} ${ratePerDay}%/day · projected to cross into ${projectedBand} band in ~${days} day${days === 1 ? '' : 's'} if trajectory holds.`;
+  const trendDir: 'good' | 'bad' = fit.slope > 0 ? 'bad' : 'good';
+  const message = fit.slope > 0
+    ? `HRV variability is rising · +${ratePerDay}%/day. On pace to cross the ${projectedBand === 'destabilizing' ? '7%' : '5%'} line in about ${days} day${days === 1 ? '' : 's'} · watch for nervous system destabilization.`
+    : `HRV variability is settling · −${ratePerDay}%/day. On pace to drop back into the ${projectedBand === 'stable' ? 'stable' : 'normal'} band in about ${days} day${days === 1 ? '' : 's'}.`;
   return {
     pillar: 'hrv_cv',
     daysUntilBandChange: days,
     projectedBand,
     message,
     confidence: classifyConfidence(fit, dirMatch),
+    direction: trendDir,
   };
 }
 
@@ -160,15 +172,22 @@ function forecastSleep(history: ReadinessHistory): Forecast | null {
   const days = daysUntilCross(currentValue, threshold, fit.slope);
   if (days == null) return null;
 
-  const direction = fit.slope > 0 ? 'building' : 'shrinking';
+  // 2026-06-03 · plain-English message + good/bad direction. Sleep
+  // climbing toward target = good. Sleep falling away from target = bad.
   const ratePerDay = (Math.abs(fit.slope) * 60).toFixed(0);  // min/day
-  const message = `Sleep ${direction} ${ratePerDay} min/day · ${projectedBand === 'on target' ? 'back on target' : `crosses into ${projectedBand}`} in ~${days} day${days === 1 ? '' : 's'} if pattern holds.`;
+  const trendDir: 'good' | 'bad' = fit.slope > 0 ? 'good' : 'bad';
+  const message = fit.slope > 0
+    ? `Sleep is recovering · adding about ${ratePerDay} min/night. On pace to hit your 7.5h target in about ${days} day${days === 1 ? '' : 's'}.`
+    : projectedBand === 'deficit'
+      ? `Sleep is slipping · losing about ${ratePerDay} min/night. On pace to drop below 6.5h in about ${days} day${days === 1 ? '' : 's'} · the real-deficit line.`
+      : `Sleep is slipping · losing about ${ratePerDay} min/night. On pace to drop below 7.5h in about ${days} day${days === 1 ? '' : 's'}.`;
   return {
     pillar: 'sleep',
     daysUntilBandChange: days,
     projectedBand,
     message,
     confidence: classifyConfidence(fit, dirMatch),
+    direction: trendDir,
   };
 }
 
@@ -199,15 +218,24 @@ function forecastRhr(history: ReadinessHistory): Forecast | null {
   const days = daysUntilCross(currentValue, threshold, fit.slope);
   if (days == null) return null;
 
-  const direction = fit.slope > 0 ? 'climbing' : 'settling';
+  // 2026-06-03 · plain-English message + good/bad direction. RHR
+  // climbing = bad (rising RHR = under-recovered / stressed).
+  // Settling toward baseline = good.
   const ratePerDay = Math.abs(fit.slope).toFixed(1);
-  const message = `RHR ${direction} ${ratePerDay} bpm/day · ${projectedBand === 'back to baseline' ? 'returns to baseline' : `enters ${projectedBand} band`} in ~${days} day${days === 1 ? '' : 's'}.`;
+  const baselineRounded = Math.round(baseline);
+  const trendDir: 'good' | 'bad' = fit.slope > 0 ? 'bad' : 'good';
+  const message = fit.slope > 0
+    ? projectedBand === 'sustained elevated'
+      ? `RHR is rising · +${ratePerDay} bpm/night. On pace to climb 8+ bpm above your ${baselineRounded} bpm baseline in about ${days} day${days === 1 ? '' : 's'} · sustained-elevated band.`
+      : `RHR is rising · +${ratePerDay} bpm/night. On pace to climb 5 bpm above your ${baselineRounded} bpm baseline in about ${days} day${days === 1 ? '' : 's'} · worth watching.`
+    : `RHR is settling · −${ratePerDay} bpm/night. On pace to return to your ${baselineRounded} bpm baseline in about ${days} day${days === 1 ? '' : 's'}.`;
   return {
     pillar: 'rhr',
     daysUntilBandChange: days,
     projectedBand,
     message,
     confidence: classifyConfidence(fit, dirMatch),
+    direction: trendDir,
   };
 }
 
@@ -251,16 +279,24 @@ function forecastWristTemp(history: ReadinessHistory): Forecast | null {
   const days = daysUntilCross(currentValue, threshold, fit.slope);
   if (days == null) return null;
 
-  const direction = fit.slope > 0 ? 'rising' : 'falling';
+  // 2026-06-03 · plain-English message + good/bad direction. Wrist
+  // temp rising = bad (early illness signal per Research/15).
+  // Falling back toward baseline = good.
   const ratePerDay = Math.abs(fit.slope).toFixed(2);
   const sign = currentDelta >= 0 ? '+' : '';
-  const message = `Wrist temp ${direction} ${ratePerDay}°C/day (currently ${sign}${currentDelta.toFixed(2)}°C vs baseline) · ${projectedBand === 'back to baseline' ? 'returns to baseline' : `crosses into ${projectedBand} band`} in ~${days} day${days === 1 ? '' : 's'} if trajectory holds.`;
+  const trendDir: 'good' | 'bad' = fit.slope > 0 ? 'bad' : 'good';
+  const message = fit.slope > 0
+    ? projectedBand === 'illness-risk'
+      ? `Wrist temp is rising · +${ratePerDay}°C/night, currently ${sign}${currentDelta.toFixed(2)}°C above your baseline. On pace to cross +0.4°C in about ${days} day${days === 1 ? '' : 's'} · the illness-risk threshold per Research/15.`
+      : `Wrist temp is rising · +${ratePerDay}°C/night, currently ${sign}${currentDelta.toFixed(2)}°C above your baseline. On pace to cross +0.2°C in about ${days} day${days === 1 ? '' : 's'} · the early-watch threshold.`
+    : `Wrist temp is falling · −${ratePerDay}°C/night. On pace to return to baseline in about ${days} day${days === 1 ? '' : 's'}.`;
   return {
     pillar: 'wrist_temp',
     daysUntilBandChange: days,
     projectedBand,
     message,
     confidence: classifyConfidence(fit, dirMatch),
+    direction: trendDir,
   };
 }
 
