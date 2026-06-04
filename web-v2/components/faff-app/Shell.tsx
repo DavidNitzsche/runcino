@@ -93,31 +93,12 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     if (route && pathname !== route) router.push(route);
   }, [router, pathname]);
 
-  // Train view default · the current-phase mesh (not the static MESH.train
-  // amber). Fixes the yellow-flash on /train load: TrainView's useEffect
-  // would call onMeshChange(curPhaseMeta.mesh) after first paint, so the
-  // browser briefly painted the amber default before the override landed.
-  // Now Shell computes the same value Shell would have gotten anyway, so
-  // the first paint is correct. TrainView's onMeshChange still drives the
-  // scrubbing case (clicking a different week in the ramp).
-  // David call 2026-06-01: "train page on reload and load starts yellow
-  //                          really quick and then fades to the correct
-  //                          background color"
-  const trainPhaseMesh: Mesh = useMemo(() => {
-    const phases = seed.season?.phases ?? [];
-    const nowIdx = seed.season?.nowIdx ?? 0;
-    if (!phases.length) return MESH.train;
-    const cur = phases.find(p => nowIdx >= p.startWeekIdx && nowIdx <= p.endWeekIdx);
-    const label = (cur?.label ?? '').toLowerCase();
-    const key: PhaseKey =
-      label.startsWith('base')  ? 'base'  :
-      label.startsWith('build') ? 'build' :
-      label.startsWith('peak')  ? 'peak'  :
-      label.startsWith('taper') ? 'taper' :
-      label.startsWith('race')  ? 'race'  : 'base';
-    return PHASE[key]?.mesh ?? MESH.train;
-  }, [seed.season?.phases, seed.season?.nowIdx]);
-
+  // 2026-06-04 · the per-phase Train mesh useMemo was retired here.
+  // Train now uses MESH.targets (charcoal) for the page, and the
+  // current-phase color lives on the .phgrid .phase cards as a gradient
+  // (see TrainView.phaseMeshGradient).  Removes the yellow-flash on
+  // /train load entirely · the page never starts colored.
+  //
   // Compute the active mesh: per-view.
   // 2026-06-04 · David: extend the Targets neutral-charcoal mesh to the
   // Today page so the colored gradient lives on the hero card itself
@@ -132,8 +113,14 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
       ? MESH.targets        // shared charcoal · color lives on the hero card
       : view === 'race'
         ? MESH.race
+        // 2026-06-04 · Train joins Today + Targets on charcoal · the
+        // per-phase color now lives on the .phgrid .phase cards as a
+        // gradient (TrainView's phaseMeshGradient helper).  Same idiom:
+        // calm page, color reserved for the data.  trainPhaseMesh useMemo
+        // kept above for any future use (e.g., a runner-toggleable
+        // "themed background" mode) but no longer drives this view.
         : view === 'train'
-          ? trainPhaseMesh
+          ? MESH.targets
           : MESH[view as Exclude<ViewKey,'today'|'race'|'train'>];
 
   return (

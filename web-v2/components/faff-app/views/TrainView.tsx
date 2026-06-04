@@ -33,6 +33,24 @@ import { phaseFocus } from '@/lib/faff/phase-focus';
 // the type title. Single source of truth at lib/coach/workout-title.ts.
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
 
+/**
+ * 2026-06-04 · per-phase gradient for the .phgrid .phase cards.
+ * Mirrors TodayView's meshGradient · the Train page mesh is now
+ * neutral charcoal and each phase card carries its own color
+ * identity as a 135° gradient pulled from PHASE[k].mesh stops
+ * [1] / [3] / [4].  CSS vars --pg-1/2/3 are picked up by
+ * `.train2 .phase` in globals.css.
+ */
+function phaseMeshGradient(p: PhaseKey): React.CSSProperties {
+  const m = PHASE[p]?.mesh;
+  if (!m) return {};
+  return {
+    ['--pg-1' as string]: m[1],
+    ['--pg-2' as string]: m[3],
+    ['--pg-3' as string]: m[4],
+  } as React.CSSProperties;
+}
+
 interface PhaseMeta {
   k: PhaseKey;
   name: string;
@@ -556,10 +574,18 @@ export function TrainView({
           {phases.map((p) => {
             const now = p.k === curPhase;
             return (
-              <div className={`phase${now ? ' now' : ''}`} key={p.k}>
+              <div
+                className={`phase${now ? ' now' : ''}`}
+                key={p.k}
+                // 2026-06-04 · per-phase gradient · color identity now
+                // lives in the card background (page mesh is charcoal).
+                // .pnm switches to white in CSS since the gradient already
+                // carries the phase hue.
+                style={phaseMeshGradient(p.k)}
+              >
                 <span className="pbar" style={{ background: p.color }} />
                 {now && <span className="nowtag">NOW</span>}
-                <div className="pnm" style={{ color: p.color }}>{p.name}</div>
+                <div className="pnm">{p.name}</div>
                 {/* 2026-06-03 · weeksLabel removed · was "Wk N–M" which
                     reset to wk 1 every rebuild. The phase title + position
                     on the bar ramp carries the same info honestly. */}
