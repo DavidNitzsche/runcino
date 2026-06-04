@@ -40,7 +40,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // 2026-06-03 · per-user TZ · ratchet anchored to runner's calendar day.
+  const { runnerToday } = await import('@/lib/runtime/runner-tz');
 
   // Walk every active user. Same source as readiness-snapshot: any user
   // with an active plan, plus the default user as a safety net.
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
 
   for (const u of userIds) {
     try {
+      const today = await runnerToday(u);
       const newMax = await ratchetUsersMaxHr(u, today);
       results.push({ userUuid: u.slice(0, 8) + '…', newMax });
       if (newMax != null) ratcheted++;

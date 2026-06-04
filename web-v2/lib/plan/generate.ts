@@ -21,6 +21,7 @@
  *   Cite: Research/08-pacing-and-race-week.md §taper
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
@@ -142,15 +143,16 @@ async function recentWeeklyMileage(userId: string): Promise<number> {
  * Returns 0 when no data · caller treats as no floor.
  */
 async function recentPeakLongMi(userId: string): Promise<number> {
+  const today = await runnerToday(userId);
   const r = (await pool.query<{ mi: string | null }>(
     `SELECT MAX((data->>'distanceMi')::numeric)::text AS mi
        FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date
-            >= CURRENT_DATE - 28
+            >= $2::date - 28
         AND (data->>'distanceMi')::numeric >= 8`,  // long-ish only
-    [userId]
+    [userId, today]
   ).catch(() => ({ rows: [{ mi: null }] }))).rows[0];
   return Math.round((Number(r?.mi ?? 0)) * 10) / 10;
 }
@@ -167,6 +169,7 @@ async function recentQualityDistanceMi(userId: string): Promise<number> {
   // (mirrors runner-calibration.ts and drift-monitor.ts patterns).
   // The previous query silently returned 0 (caught error) · Rule 2
   // floor never fired since it shipped.
+  const today = await runnerToday(userId);
   const r = (await pool.query<{ med: string | null }>(
     `WITH q AS (
        SELECT (r.data->>'distanceMi')::numeric AS mi
@@ -178,10 +181,10 @@ async function recentQualityDistanceMi(userId: string): Promise<number> {
           AND NOT (r.data ? 'mergedIntoId')
         WHERE tp.user_uuid = $1
           AND pw.type IN ('tempo','threshold','intervals')
-          AND pw.date_iso::date >= CURRENT_DATE - 28
+          AND pw.date_iso::date >= $2::date - 28
      )
      SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med FROM q`,
-    [userId],
+    [userId, today],
   ).catch((e: unknown) => {
     console.error('[recentQualityDistanceMi]', e instanceof Error ? e.message : String(e));
     return { rows: [{ med: null }] };
@@ -199,6 +202,7 @@ async function recentQualityPerWeek(userId: string): Promise<number> {
   // 2026-06-03 fix · same bug as recentQualityDistanceMi. plan_workouts
   // has no user_uuid column AND no matched_run_id column. Matching is
   // date-based via JOIN on training_plans + runs.
+  const today = await runnerToday(userId);
   const r = (await pool.query<{ avg: string | null }>(
     `WITH wk_q AS (
        SELECT date_trunc('week', pw.date_iso::timestamp) AS wk, COUNT(DISTINCT pw.id)::numeric AS n
@@ -210,11 +214,11 @@ async function recentQualityPerWeek(userId: string): Promise<number> {
           AND NOT (r.data ? 'mergedIntoId')
         WHERE tp.user_uuid = $1
           AND pw.type IN ('tempo','threshold','intervals')
-          AND pw.date_iso::date >= CURRENT_DATE - 28
+          AND pw.date_iso::date >= $2::date - 28
         GROUP BY 1
      )
      SELECT AVG(n)::text AS avg FROM wk_q`,
-    [userId],
+    [userId, today],
   ).catch((e: unknown) => {
     console.error('[recentQualityPerWeek]', e instanceof Error ? e.message : String(e));
     return { rows: [{ avg: null }] };
@@ -272,6 +276,8 @@ async function detectMidBlock(userId: string): Promise<boolean> {
   // the new active plan has no completed quality yet. Expand to include
   // recently-archived plans + HR-based effort detection on runs.
   //
+  // 2026-06-03 · runner TZ anchors all "last 28d" windows.
+  const today = await runnerToday(userId);
   // Signal 1 · prescribed quality in last 28d across all NON-ANCIENT
   // plans (active OR archived within last 30 days · the plan that
   // just got archived by today's rebuild still counts).
@@ -282,8 +288,8 @@ async function detectMidBlock(userId: string): Promise<boolean> {
       WHERE tp.user_uuid = $1
         AND (tp.archived_iso IS NULL OR tp.archived_iso > NOW() - interval '30 days')
         AND pw.type IN ('threshold','tempo','intervals','vo2max')
-        AND pw.date_iso::date BETWEEN (CURRENT_DATE - 28) AND CURRENT_DATE`,
-    [userId]
+        AND pw.date_iso::date BETWEEN ($2::date - 28) AND $2::date`,
+    [userId, today]
   ).catch(() => ({ rows: [{ n: '0' }] }));
   if (Number(r1.rows[0]?.n ?? 0) >= 2) return true;
 
@@ -294,12 +300,12 @@ async function detectMidBlock(userId: string): Promise<boolean> {
       WHERE r.user_uuid = $1
         AND NOT (r.data ? 'mergedIntoId')
         AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date
-            >= CURRENT_DATE - 28
+            >= $2::date - 28
         AND (
               LOWER(COALESCE(r.data->>'type', '')) IN ('tempo','threshold','intervals','vo2max','race')
               OR LOWER(COALESCE(r.data->>'workoutType', '')) ~ '(tempo|threshold|interval|vo2|race)'
             )`,
-    [userId]
+    [userId, today]
   ).catch(() => ({ rows: [{ n: '0' }] }));
   if (Number(r2.rows[0]?.n ?? 0) >= 2) return true;
 
@@ -323,13 +329,13 @@ async function detectMidBlock(userId: string): Promise<boolean> {
         WHERE r.user_uuid = $1
           AND NOT (r.data ? 'mergedIntoId')
           AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date
-              >= CURRENT_DATE - 28
+              >= $3::date - 28
           AND COALESCE(
                 (r.data->>'avgHr')::numeric,
                 (r.data->>'avg_hr')::numeric,
                 0
               ) >= $2`,
-      [userId, hrThreshold]
+      [userId, hrThreshold, today]
     ).catch(() => ({ rows: [{ n: '0' }] }));
     if (Number(r3.rows[0]?.n ?? 0) >= 2) return true;
   }
@@ -1782,9 +1788,9 @@ async function loadGeneratorInputs(
        FROM runs
       WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric >= 3
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= CURRENT_DATE - 180
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= $2::date - 180
       ORDER BY date DESC LIMIT 200`,
-    [userId],
+    [userId, await runnerToday(userId)],
   ).catch(() => ({ rows: [] }))).rows;
   const raceCandidates = raceRows.map((r) => ({
     slug: r.date,

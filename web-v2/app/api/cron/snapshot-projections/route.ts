@@ -206,7 +206,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // 2026-06-03 · per-user TZ · each runner's snapshot is anchored to
+  // their calendar day, not the server's UTC day.
+  const { runnerToday } = await import('@/lib/runtime/runner-tz');
   const userIds = (await pool.query<{ user_uuid: string }>(
     `SELECT DISTINCT user_uuid FROM training_plans
       WHERE archived_iso IS NULL AND user_uuid IS NOT NULL`,
@@ -219,6 +221,7 @@ export async function POST(req: NextRequest) {
   const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; error?: string }> = [];
   for (const u of userIds) {
     try {
+      const today = await runnerToday(u);
       const r = await snapshotForUser(u, today);
       results.push({ user_uuid: u, vdot: r.vdot, snapshots: r.snapshots });
     } catch (e: unknown) {

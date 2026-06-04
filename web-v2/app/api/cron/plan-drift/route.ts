@@ -127,6 +127,9 @@ export async function POST(req: NextRequest) {
       // (recentLong, recentQuality, bestRecentVdot, tsbAtStart, etc.)
       // so it's a continuous progression, not a cold-start.
       // Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 11 follow-on.
+      // 2026-06-03 · runner TZ for the race-date boundary.
+      const { runnerToday } = await import('@/lib/runtime/runner-tz');
+      const userToday = await runnerToday(u);
       const finishedRow = (await pool.query<{
         plan_id: string; race_id: string; race_date: string;
       }>(
@@ -136,9 +139,9 @@ export async function POST(req: NextRequest) {
            JOIN races rc ON rc.slug = tp.race_id
           WHERE tp.user_uuid = $1
             AND tp.archived_iso IS NULL
-            AND (rc.meta->>'date')::date < CURRENT_DATE - interval '1 day'
+            AND (rc.meta->>'date')::date < $2::date - interval '1 day'
           ORDER BY tp.authored_iso DESC LIMIT 1`,
-        [u],
+        [u, userToday],
       ).catch(() => ({ rows: [] }))).rows[0];
 
       if (finishedRow) {
@@ -148,9 +151,9 @@ export async function POST(req: NextRequest) {
              FROM races
             WHERE user_uuid = $1
               AND meta->>'priority' = 'A'
-              AND (meta->>'date')::date >= CURRENT_DATE
+              AND (meta->>'date')::date >= $2::date
             ORDER BY (meta->>'date')::date ASC LIMIT 1`,
-          [u],
+          [u, userToday],
         ).catch(() => ({ rows: [] }))).rows[0];
 
         if (nextRow) {
