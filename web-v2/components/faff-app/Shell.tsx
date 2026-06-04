@@ -121,7 +121,15 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         // "themed background" mode) but no longer drives this view.
         : view === 'train'
           ? MESH.targets
-          : MESH[view as Exclude<ViewKey,'today'|'race'|'train'>];
+          // 2026-06-04 · Activity also pulled to charcoal · the page's
+          // colored elements (big peach→coral MI number, per-type PR
+          // accents, effort-mix donut, recent-runs dots) all carry their
+          // own identity already, no card-level gradient needed.  The
+          // warm-tan view mesh was bathing the page in an effort color
+          // for no narrative reason.
+          : view === 'activity'
+            ? MESH.targets
+            : MESH[view as Exclude<ViewKey,'today'|'race'|'train'>];
 
   return (
     <div
