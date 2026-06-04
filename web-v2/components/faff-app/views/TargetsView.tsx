@@ -143,6 +143,49 @@ export function TargetsView({
                   ))}
                 </div>
               ) : null}
+              {/* 2026-06-04 · two-tense test-point ledger · what the recent
+                  quality work landed at + what's next. Recent uses the
+                  heat-adjusted verdict (lib/training/goal-projection.ts
+                  loadRecentTestPoints) so the badge colors match the
+                  Run Detail page's phase breakdown. */}
+              {goal.recentTestPoints && goal.recentTestPoints.length > 0 ? (
+                <div className="onpath-tests">
+                  <div className="onpath-tests-k">RECENT TEST POINTS</div>
+                  {goal.recentTestPoints.map((tp, i) => (
+                    <div key={`r${i}`} className="onpath-test">
+                      <span className="onpath-test-d" style={{ opacity: 0.78 }}>
+                        {formatTestDate(tp.dateISO)}
+                      </span>
+                      <span className="onpath-test-l">
+                        {tp.label}
+                        {tp.actualPace ? ` · ${tp.actualPace}/mi` : ''}
+                      </span>
+                      {tp.verdict ? (
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            fontSize: 9,
+                            fontWeight: 800,
+                            letterSpacing: 0.8,
+                            color:
+                              tp.verdict === 'on' ? '#7BE8A0' :
+                              tp.verdict === 'fast' ? '#FFCE8A' :
+                              '#FF8A8A',
+                            background:
+                              tp.verdict === 'on' ? 'rgba(123,232,160,0.12)' :
+                              tp.verdict === 'fast' ? 'rgba(255,206,138,0.12)' :
+                              'rgba(255,138,138,0.12)',
+                          }}
+                        >
+                          {tp.verdict === 'on' ? '✓ ON' : tp.verdict.toUpperCase()}
+                        </span>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {goal.nextTestPoints && goal.nextTestPoints.length > 0 ? (
                 <div className="onpath-tests">
                   <div className="onpath-tests-k">NEXT TEST POINTS</div>

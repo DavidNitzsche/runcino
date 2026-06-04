@@ -291,6 +291,17 @@ export type GoalRace = {
     label: string;
     distanceMi: number | null;
   }>;
+  /** 2026-06-04 · past 1-3 completed quality runs · "recent test
+   *  points" with heat-adjusted verdict so the runner can see what
+   *  the quality work actually landed at. */
+  recentTestPoints?: Array<{
+    dateISO: string;
+    type: string;
+    label: string;
+    distanceMi: number | null;
+    actualPace: string | null;
+    verdict: 'on' | 'fast' | 'slow' | null;
+  }>;
   /** 2026-06-04 · "what changes the status" copy · pair of conditions
    *  derived from current signals. Tells the runner what would move
    *  the gauge without being prescriptive. */

@@ -84,6 +84,22 @@ export interface GoalProjection {
     label: string;             // e.g. "4mi tempo"
     distanceMi: number | null;
   }>;
+  /** 2026-06-04 · the past 1-3 completed quality runs · "recent test
+   *  points." Same shape + verdict from the heat-adjusted phase band.
+   *  Lets the runner see what the recent quality work landed at without
+   *  leaving the Targets page. */
+  recentTestPoints: Array<{
+    dateISO: string;
+    type: string;
+    label: string;
+    distanceMi: number | null;
+    /** Actual avg pace string · "7:17". Null when run lacked pace data. */
+    actualPace: string | null;
+    /** Heat-adjusted verdict · 'on' when ran inside the duration-scaled
+     *  Maughan band, 'fast' when overcooked vs plan, 'slow' when real
+     *  miss even with heat allowance. Null when target pace unknown. */
+    verdict: 'on' | 'fast' | 'slow' | null;
+  }>;
   /** 2026-06-04 · forecast copy · "what would flip the status." Pair of
    *  human-readable conditions derived from the current signals · tells
    *  the runner WHAT moves the gauge without being prescriptive. */
@@ -150,7 +166,10 @@ export async function computeGoalProjection(args: {
     : goalSec;
 
   const summary = composeSummary(status, driftSignals, goalSec, vdotProjectionSec);
-  const nextTestPoints = await loadNextTestPoints(userUuid).catch(() => []);
+  const [nextTestPoints, recentTestPoints] = await Promise.all([
+    loadNextTestPoints(userUuid).catch(() => []),
+    loadRecentTestPoints(userUuid).catch(() => []),
+  ]);
   const transitions = composeTransitions(status, driftSignals);
 
   return {
@@ -161,6 +180,7 @@ export async function computeGoalProjection(args: {
     driftSignals,
     summary,
     nextTestPoints,
+    recentTestPoints,
     transitions,
   };
 }
@@ -196,7 +216,7 @@ async function loadNextTestPoints(
         AND NOT EXISTS (
           SELECT 1 FROM runs r
            WHERE r.user_uuid = $1::uuid
-             AND (r.data->>'date')::date = pw.date_iso
+             AND r.data->>'date' = pw.date_iso
              AND NOT (r.data ? 'mergedIntoId')
              AND r.absorbed_into_canonical_at IS NULL
              AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
@@ -219,6 +239,151 @@ async function loadNextTestPoints(
       type: r.type,
       label,
       distanceMi: dist,
+    };
+  });
+}
+
+/**
+ * 2026-06-04 · the past 3 quality workouts that landed a real run.
+ * Mirrors loadNextTestPoints in shape but joins to canonical runs to
+ * pull the actual pace + weather, then re-derives a heat-adjusted
+ * verdict on the fly. Same band rule as lib/coach/run-state.ts
+ * loadPhaseBreakdown so the Targets page agrees with the phase
+ * breakdown table on the Run Detail page.
+ *
+ * Verdict bands (mirrors the canonical heat-adjusted rule):
+ *   · effectiveTarget = target × (1 + heatSlowdownPct/100)
+ *   · 'on'   · actual ∈ [target − 10s, effectiveTarget + 10s]
+ *   · 'fast' · actual < target − 10s (overcooked vs plan)
+ *   · 'slow' · actual > effectiveTarget + 10s (real miss with heat allowance)
+ */
+async function loadRecentTestPoints(
+  userUuid: string,
+): Promise<GoalProjection['recentTestPoints']> {
+  const today = await runnerToday(userUuid);
+  // 2026-06-04 · pull the work-phase pace from coach_intents
+  // (watch_completion) when available · otherwise fall back to
+  // overall pace. Overall pace on tempo/intervals/threshold is
+  // dragged down by WU + CD + recovery jogs and isn't a fair
+  // comparison to the tempo block pace target.
+  const rows = (await pool.query<{
+    date_iso: string;
+    type: string;
+    sub_label: string | null;
+    distance_mi: number | string | null;
+    pace_target_s: number | string | null;
+    distance_actual: string | null;
+    duration_s: string | null;
+    weather: unknown;
+    work_pace_s: number | string | null;
+  }>(
+    `SELECT pw.date_iso, pw.type, pw.sub_label,
+            pw.distance_mi, pw.pace_target_s_per_mi AS pace_target_s,
+            r.data->>'distanceMi' AS distance_actual,
+            r.data->>'durationSec' AS duration_s,
+            r.data->'weather' AS weather,
+            -- Work-phase actual pace from the watch_completion blob.
+            -- jsonb_path_query_first returns the first matching value ·
+            -- we then cast to numeric. NULL when no watch payload exists
+            -- for the date (Strava-only / HK-only / manual runs).
+            (
+              SELECT AVG((phase->>'actualPaceSPerMi')::numeric)
+                FROM coach_intents ci,
+                     jsonb_array_elements(
+                       CASE jsonb_typeof(ci.value::jsonb)
+                         WHEN 'object' THEN ci.value::jsonb->'phases'
+                         ELSE '[]'::jsonb
+                       END
+                     ) AS phase
+               WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
+                 AND ci.reason = 'watch_completion'
+                 AND ci.ts::date = pw.date_iso::date
+                 AND phase->>'type' = 'work'
+                 AND (phase->>'actualPaceSPerMi')::numeric > 0
+            ) AS work_pace_s
+       FROM plan_workouts pw
+       JOIN training_plans tp ON tp.id = pw.plan_id
+       JOIN runs r
+         ON r.user_uuid = $1::uuid
+        AND r.data->>'date' = pw.date_iso
+        AND NOT (r.data ? 'mergedIntoId')
+        AND r.absorbed_into_canonical_at IS NULL
+        AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
+      WHERE tp.user_uuid = $1::uuid
+        AND tp.archived_iso IS NULL
+        AND pw.type IN ('tempo','threshold','intervals','long','race')
+        AND pw.date_iso <= $2
+      ORDER BY pw.date_iso DESC
+      LIMIT 3`,
+    [userUuid, today],
+  ).catch(() => ({ rows: [] }))).rows;
+
+  if (rows.length === 0) return [];
+
+  const { judgeWeather } = await import('@/lib/coach/weather-adjust');
+
+  return rows.map((r) => {
+    const dist = r.distance_mi != null ? Number(r.distance_mi) : null;
+    const distLabel = dist != null ? `${dist.toFixed(dist % 1 === 0 ? 0 : 1)}mi` : '';
+    const label = r.sub_label && r.sub_label.length < 40
+      ? `${distLabel} ${r.type}${r.sub_label !== r.type.toUpperCase() ? ' · ' + r.sub_label : ''}`.trim()
+      : `${distLabel} ${r.type}`.trim();
+
+    // Prefer work-phase pace (watch_completion · honest comparison
+    // to the tempo target) · fall back to overall pace (distance /
+    // duration · works for Strava-only / HK-only / manual runs).
+    const workS = r.work_pace_s != null ? Number(r.work_pace_s) : null;
+    const overallS = (() => {
+      const distAct = r.distance_actual != null ? Number(r.distance_actual) : 0;
+      const durS = r.duration_s != null ? Number(r.duration_s) : 0;
+      if (distAct > 0 && durS > 0) return Math.round(durS / distAct);
+      return null;
+    })();
+    const actualS = workS && workS > 0 ? Math.round(workS) : overallS;
+    const targetS = r.pace_target_s != null ? Number(r.pace_target_s) : null;
+    const actualPace = actualS && actualS > 0
+      ? `${Math.floor(actualS / 60)}:${String(actualS % 60).padStart(2, '0')}`
+      : null;
+
+    // Heat-adjusted verdict · same band as run-state.ts.
+    let verdict: 'on' | 'fast' | 'slow' | null = null;
+    if (targetS && targetS > 0 && actualS && actualS > 0) {
+      const w = (r.weather && typeof r.weather === 'object') ? r.weather as Record<string, unknown> : null;
+      let heatSlowdownPct = 0;
+      if (w) {
+        try {
+          const j = judgeWeather({
+            tempF: typeof w.temp_f === 'number' ? w.temp_f : null,
+            tempF_start: typeof w.temp_f_start === 'number' ? w.temp_f_start : null,
+            tempF_end: typeof w.temp_f_end === 'number' ? w.temp_f_end : null,
+            tempF_peak: typeof w.temp_f_peak === 'number' ? w.temp_f_peak : null,
+            humidityPct: typeof w.humidity_pct === 'number' ? w.humidity_pct : null,
+            windMph: typeof w.wind_mph === 'number' ? w.wind_mph : null,
+            conditions: typeof w.conditions === 'string' ? w.conditions : null,
+            cloudCoverPct: typeof w.cloud_cover_pct === 'number' ? w.cloud_cover_pct : null,
+            durationS: r.duration_s != null ? Number(r.duration_s) : null,
+          });
+          heatSlowdownPct = j.slowdownPct ?? 0;
+        } catch { /* leave 0 · band collapses to symmetric */ }
+      }
+      const effectiveTarget = heatSlowdownPct >= 2
+        ? Math.round(targetS * (1 + heatSlowdownPct / 100))
+        : targetS;
+      const TOLERANCE = 10;
+      const lo = targetS - TOLERANCE;
+      const hi = effectiveTarget + TOLERANCE;
+      if (actualS >= lo && actualS <= hi) verdict = 'on';
+      else if (actualS < lo) verdict = 'fast';
+      else verdict = 'slow';
+    }
+
+    return {
+      dateISO: r.date_iso,
+      type: r.type,
+      label,
+      distanceMi: dist,
+      actualPace,
+      verdict,
     };
   });
 }
