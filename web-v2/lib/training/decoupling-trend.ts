@@ -100,18 +100,18 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
   const daysSpan = (lastDate.getTime() - firstDate.getTime()) / 86400000;
   const weeksTracked = Math.max(1, Math.min(8, Math.round(daysSpan / 7)));
 
-  // 2026-06-03 · stripped prescriptive tails ("push more aerobic volume",
-  // "check whether load has outpaced recovery") per no-reactive-coach
-  // doctrine. The engine describes what the decoupling number says, the
-  // runner decides what to do about it.
+  // 2026-06-03 · summary describes the runner's NOW · David: "Talk about
+  // what is happening NOW." Dropped phase taxonomy (race-ready / building
+  // strongly / building) which read as overlapping with the previous
+  // zone-chip · the headline numbers + delta line already carry the
+  // direction, this just narrates plainly what those numbers mean.
   let summary: string;
   if (direction === 'improving') {
-    const verdict = currentDriftPct < 5 ? 'race-ready band' : currentDriftPct < 7 ? 'building strongly' : 'building';
-    summary = `Aerobic decoupling ${blockStartDriftPct}% → ${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · the engine is getting more efficient · ${verdict}.`;
+    summary = `Your HR is holding steadier through the back half of your long runs than it was ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} ago. The aerobic engine is getting more efficient.`;
   } else if (direction === 'flat') {
-    summary = `Aerobic decoupling holding ~${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · the engine is stable, neither building nor losing efficiency.`;
+    summary = `Your HR drift on steady long runs is holding around ${currentDriftPct}%. The aerobic engine is stable · neither gaining nor losing efficiency.`;
   } else {
-    summary = `Aerobic decoupling ${blockStartDriftPct}% → ${currentDriftPct}% over ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} · efficiency declining across the block.`;
+    summary = `Your HR is drifting more through the back half of your long runs than it was ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} ago. The aerobic engine is losing efficiency.`;
   }
 
   // 2026-06-03 · zone reference for the current drift % · per Research/15.
