@@ -1417,7 +1417,7 @@ async function loadActivePlanAdaptation(
             LIMIT 1
          ) adapt ON TRUE
         WHERE tp.user_uuid = $1::uuid
-          AND tp.status = 'active'
+          AND tp.archived_iso IS NULL
           AND pw.date_iso IN ($2, $3)
           AND (pw.original_type IS NOT NULL
                OR pw.original_sub_label IS NOT NULL
