@@ -2268,8 +2268,14 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
   // the design's mile=14s / 800m=6s / 400m=3s examples within rounding.
   // Floor of 4 keeps very short reps from collapsing.
   const TICK_PCT = 50;
+  // 2026-06-04 · scale to TARGET PACE, not duration. Prior fallback
+  // `goalSec` was the avg work PACE not a duration, so 4% gave a
+  // maxdev of ~17s which clamped a 18s pace miss to the rail.
+  // 5% of target pace with floor 15 / cap 60 makes ±30s span the bar.
   const firstWorkTargetDur = workPhases.find(p => p.target_duration_sec != null)?.target_duration_sec ?? null;
-  const maxdev = Math.max(4, Math.round((firstWorkTargetDur ?? goalSec) * 0.04));
+  const maxdev = goalSec > 0
+    ? Math.max(15, Math.min(60, Math.round(goalSec * 0.05)))
+    : (firstWorkTargetDur ? Math.max(15, Math.round(firstWorkTargetDur * 0.04)) : 30);
   const compact = workPhases.length > 6;
 
   // Average work pace + delta vs goal · the summary row at the bottom.
@@ -2387,15 +2393,25 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
             const onTarget = delta != null && delta === 0;
             const fillColor = beat ? '#3ED06a' : '#ffb24d';
             const deltaColor = beat ? '#3ED06a' : '#ffb24d';
-            // Diverging bar math · same as the design's session-driven JS:
-            //   d > 0 (slower) → fill from (50 - mag)% leftward toward SLOWER
-            //   d < 0 (faster) → fill from 50% rightward toward FASTER
-            //   d == 0         → small 6% nub centered at 47%
+            // 2026-06-04 · center-anchored marker · same model as
+            // TempoPanel. White tick slides along the bar to the
+            // runner's actual position; the colored fill connects
+            // tick to center. SLOWER → marker LEFT; FASTER → marker
+            // RIGHT. Uses 45% rails on each side so labels don't
+            // touch the marker at full saturation.
+            const clampedDelta = delta != null
+              ? Math.max(-maxdev, Math.min(maxdev, delta))
+              : 0;
+            const markerPos = delta != null
+              ? TICK_PCT - (clampedDelta / maxdev) * 45
+              : TICK_PCT;
             const mag = delta != null && delta !== 0
-              ? Math.max(4, Math.min(50, (Math.abs(delta) / maxdev) * 50))
+              ? Math.abs(markerPos - TICK_PCT)
               : 0;
             const fillW = onTarget ? 6 : mag;
-            const fillLeft = onTarget ? 47 : (delta != null && delta > 0 ? TICK_PCT - mag : TICK_PCT);
+            const fillLeft = onTarget
+              ? TICK_PCT - 3
+              : (delta != null && delta > 0 ? markerPos : TICK_PCT);
             return (
               <div key={key} style={{
                 display: 'grid', gridTemplateColumns: REP_GRID_COLS,
@@ -2427,15 +2443,24 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
                       transition: 'left 240ms, width 240ms',
                     }} />
                   )}
-                  {/* goal tick · centered, 2px white line, extends 2px above/below,
-                      sits ABOVE the fill so it's always visible at center. */}
+                  {/* 2026-06-04 · two ticks now:
+                      · Faded center reference (TARGET position)
+                      · Bright white runner-position marker (slides
+                        with markerPos) */}
                   <div style={{
                     position: 'absolute', left: `${TICK_PCT}%`,
+                    top: 0, bottom: 0, width: 1,
+                    background: 'rgba(255,255,255,.30)', zIndex: 1,
+                    transform: 'translateX(-0.5px)',
+                  }} />
+                  <div style={{
+                    position: 'absolute', left: `${markerPos}%`,
                     top: -2, bottom: -2, width: 2,
-                    background: 'rgba(255,255,255,.92)', zIndex: 3,
+                    background: 'rgba(255,255,255,.96)', zIndex: 3,
                     transform: 'translateX(-1px)',
                     borderRadius: 1,
-                    boxShadow: '0 0 0 1px rgba(0,0,0,.2)',
+                    boxShadow: '0 0 0 1px rgba(0,0,0,.25)',
+                    transition: 'left 240ms',
                   }} />
                 </div>
                 <div style={{
@@ -3063,12 +3088,39 @@ function TempoPanel({
       ? `${Math.round(work.target_duration_sec / 60)} MIN`
       : '');
 
-  // cmpBar math · same model as RepsRail.
-  const maxdev = Math.max(4, Math.round((work.target_duration_sec ?? actualSec ?? 432) * 0.04));
+  // 2026-06-04 · maxdev scaled to TARGET PACE, not duration. Was:
+  // `(work.target_duration_sec ?? actualSec ?? 432) * 0.04` · the
+  // watch usually ships targetDurationSec=null on tempo phases, so
+  // the fallback `actualSec` was the actual PACE (e.g. 437 s/mi)
+  // and 4% of that = 17s. David's 18s pace miss then clamped at the
+  // 50% rail, rendering as "maxed out" even though it's a 4.3%
+  // miss. Now: 5% of target pace, floored at 15s and capped at 60s ·
+  // a 30s/mi slowdown saturates the bar, anything inside scales
+  // proportionally.
+  //
+  // Visual model · faded center line = TARGET · the colored fill
+  // and the white marker show the runner's POSITION relative to it.
+  // SLOWER (positive delta) → marker LEFT of center, fill extending
+  //   leftward from center to marker
+  // FASTER (negative delta) → marker RIGHT of center, fill from
+  //   center to marker
+  const maxdev = targetSec > 0
+    ? Math.max(15, Math.min(60, Math.round(targetSec * 0.05)))
+    : 30;
+  const clampedDelta = delta != null
+    ? Math.max(-maxdev, Math.min(maxdev, delta))
+    : 0;
+  // Bars use 45% of width on each side so labels don't touch the
+  // marker at full saturation.
+  const markerPos = delta != null
+    ? 50 - (clampedDelta / maxdev) * 45
+    : 50;
   const fillW = delta == null || onTarget
     ? (onTarget ? 6 : 0)
-    : Math.max(5, Math.min(50, (Math.abs(delta) / maxdev) * 50));
-  const fillLeft = onTarget ? 47 : (delta != null && delta > 0 ? 50 - fillW : 50);
+    : Math.abs(markerPos - 50);
+  const fillLeft = onTarget
+    ? 47
+    : (delta != null && delta > 0 ? markerPos : 50);
 
   return (
     <>
@@ -3121,23 +3173,35 @@ function TempoPanel({
           <span>{work.target_pace ? `TARGET ${work.target_pace}/mi` : 'TARGET ·'}</span>
           {work.avg_hr != null ? <span>{work.avg_hr} bpm</span> : <span>·</span>}
         </div>
-        {/* Comparison bar · target = center tick */}
+        {/* 2026-06-04 · comparison bar.
+            · Faded center line = TARGET reference.
+            · Colored fill = deviation magnitude from target.
+            · White marker tick = RUNNER'S POSITION (slides left when
+              slower, right when faster). David's 7:17 vs 6:59
+              target lands the marker well left of center, not at
+              center where it used to read as 'on target.' */}
         <div style={{
           position: 'relative', height: 12, borderRadius: 6,
           background: 'rgba(255,255,255,.1)', marginTop: 10,
         }}>
+          {/* Faded center reference · target */}
+          <div style={{
+            position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1,
+            marginLeft: -0.5, background: 'rgba(255,255,255,.32)', zIndex: 1,
+          }} />
           {fillW > 0 && (
             <div style={{
               position: 'absolute', top: 1, bottom: 1,
               left: `${fillLeft}%`, width: `${fillW}%`,
               background: beat ? '#3ED06a' : '#ffb24d',
-              borderRadius: 3,
+              borderRadius: 3, zIndex: 2,
             }} />
           )}
+          {/* Runner position marker · follows actual pace deviation. */}
           <div style={{
-            position: 'absolute', left: '50%', top: -2, bottom: -2, width: 2,
-            marginLeft: -1, background: 'rgba(255,255,255,.92)', borderRadius: 1, zIndex: 3,
-            boxShadow: '0 0 0 1px rgba(0,0,0,.2)',
+            position: 'absolute', left: `${markerPos}%`, top: -2, bottom: -2, width: 2,
+            marginLeft: -1, background: 'rgba(255,255,255,.96)', borderRadius: 1, zIndex: 3,
+            boxShadow: '0 0 0 1px rgba(0,0,0,.25)',
           }} />
         </div>
         <div style={{
