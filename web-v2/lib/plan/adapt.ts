@@ -464,31 +464,67 @@ async function detectReadinessPullback(userId: string): Promise<AdaptationTrigge
   try {
     const { loadCoachState } = await import('@/lib/coach/state-loader');
     const { loadReadinessBrief } = await import('@/lib/coach/readiness-brief');
+    const { tierRulesFor, HARD_RULES } = await import('@/lib/coach/tier-rules');
     const state = await loadCoachState(userId);
     if (!state) return null;
     const brief = await loadReadinessBrief(userId, state);
     if (!brief) return null;
 
-    const isPullback = brief.band === 'pull-back';
+    // 2026-06-03 · tier-aware thresholds. Same rules as the Health
+    // page WHAT TO DO panel (lib/coach/health-actions.ts) · plan and
+    // panel must agree. Per David: "I think the plan adjustments and
+    // flags should be dependent on the level of the runner. So
+    // advanced maybe let the runner push through things more?"
+    //
+    // Advanced runners require:
+    //   · sustained pull-back (3+ consecutive days < 40), OR
+    //   · streak ≥ 5 days, OR
+    //   · 2+ simultaneous streaks ≥ 5 days each
+    // Beginners/intermediate: 2+ days pull-back OR streak ≥ 3 days.
+    //
+    // HARD RULES (always fire regardless of tier):
+    //   · 7-day sustained pull-back · trumps any tier setting
+    //   · We don't gate the streak detector itself · it still emits
+    //     3-day streaks for the streaks panel. Just the plan-adjust
+    //     trigger waits for the tier threshold before downgrading.
+    const tier = state.profile?.experience_level ?? null;
+    const rules = tierRulesFor(tier);
+
     const streaks = brief.streaks ?? [];
-    const hasStreak = streaks.length > 0;
+    const scoreTrend = brief.scoreTrend ?? [];
+    const recentScores = scoreTrend.slice(-rules.pullbackConsecutiveDays).map((s) => s.score);
+    const sustainedPullBack = recentScores.length >= rules.pullbackConsecutiveDays
+      && recentScores.every((s) => s < 40);
 
-    if (!isPullback && !hasStreak) return null;
+    // 7-day hard rule · pull-back sustained that long forces an
+    // adaptation regardless of tier.
+    const last7Scores = scoreTrend.slice(-HARD_RULES.pullbackForcedAck).map((s) => s.score);
+    const forcedByHardRule = last7Scores.length === HARD_RULES.pullbackForcedAck
+      && last7Scores.every((s) => s < 40);
 
-    // Build a human-readable reason from the actual signals · no more
-    // "Resting HR averaging 57 bpm, 9 above 14-day baseline" with no
-    // mention that HRV / sleep / load all looked fine. Now the reason
-    // reflects what TRULY tripped: a multi-day streak, a composite-bad
-    // morning, or both.
+    // Streaks gated by tier minimum.
+    const tierStreaks = streaks.filter((s) => s.days >= rules.streakDaysMin);
+    const hasTieredStreak = tierStreaks.length > 0;
+
+    if (!sustainedPullBack && !hasTieredStreak && !forcedByHardRule) return null;
+
+    // Reason · what TRULY tripped, in plain English.
     const reasonParts: string[] = [];
-    if (streaks.length > 0) {
-      const s = streaks[0];
+    if (tierStreaks.length > 0) {
+      const s = tierStreaks[0];
       reasonParts.push(`${s.pillar.toUpperCase()} ${s.direction} ${s.days} days running`);
     }
-    if (isPullback) {
-      reasonParts.push(`composite readiness ${brief.score}/100 (pull-back band)`);
+    if (forcedByHardRule) {
+      reasonParts.push(`pull-back band sustained ${HARD_RULES.pullbackForcedAck} days (hard rule)`);
+    } else if (sustainedPullBack) {
+      reasonParts.push(`pull-back band sustained ${recentScores.length} days · score ${brief.score}/100`);
     }
-    const severity: 'warn' | 'override' = (isPullback || streaks.length >= 2) ? 'override' : 'warn';
+
+    // Severity ladder: hard-rule sustained pull-back OR 2+ tier-streaks → override.
+    // Single tier-streak OR shorter sustained pull-back → warn (softer adjust).
+    const severity: 'warn' | 'override' = (forcedByHardRule || tierStreaks.length >= 2 || (sustainedPullBack && tierStreaks.length >= 1))
+      ? 'override'
+      : 'warn';
 
     return {
       kind: 'readiness_pullback',
@@ -497,7 +533,10 @@ async function detectReadinessPullback(userId: string): Promise<AdaptationTrigge
       evidence: {
         score: brief.score,
         band: brief.band,
-        streaks: streaks.map(s => ({ pillar: s.pillar, direction: s.direction, days: s.days })),
+        tier: tier ?? 'intermediate',
+        streaks: tierStreaks.map((s) => ({ pillar: s.pillar, direction: s.direction, days: s.days })),
+        sustainedPullBackDays: sustainedPullBack ? recentScores.length : 0,
+        forcedByHardRule,
         headline: brief.headline,
       },
     };
