@@ -8,7 +8,14 @@ const EC: Record<string,string> = {
   recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38',
   tempo: '#FF8847', intervals: '#FC4D64', race: '#D6263C',
 };
-const HEATC = ['rgba(255,255,255,.07)', '#1f6f7a', '#2f9a7e', '#E0913A', '#EF6038'];
+// 2026-06-04 · level 0 lifted from rgba(255,255,255,.07) → .14
+// after the Activity mesh moved to charcoal · the old level-0 cell
+// color was essentially identical to the new dark-glass panel
+// (rgba(8,10,14,.4) over charcoal ≈ #181B20, and white-7-alpha
+// blended in there matched within a couple of % · the heatmap grid
+// vanished).  .14 alpha gives the empty cells enough lift to read
+// as a grid without competing with the populated cells.
+const HEATC = ['rgba(255,255,255,.14)', '#1f6f7a', '#2f9a7e', '#E0913A', '#EF6038'];
 const ICON: Record<string, React.ReactNode> = {
   mtn:   <path d="M3 19l6-11 4 6 3-5 5 10z"/>,
   route: <><path d="M6 19a3 3 0 0 1 0-6h9a3 3 0 0 0 0-6H7"/><circle cx="6" cy="19" r="1.6"/><circle cx="18" cy="5" r="1.6"/></>,
