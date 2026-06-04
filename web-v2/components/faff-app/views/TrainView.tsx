@@ -72,7 +72,11 @@ function phaseColor(p: PhaseKey): string {
   // (BUILD #E0A23A → #FFCB47 etc).
   if (p === 'base')  return '#5BD8D2';
   if (p === 'build') return '#FFCB47';
-  if (p === 'peak')  return '#FF9866';
+  // 2026-06-03 · PEAK was peach (#FF9866) · David flagged off-brand.
+  // Brand orange (--race in globals) is #FF8847; using a slightly more
+  // saturated cousin #FF7733 so PEAK reads as "peak intensity" and
+  // stays distinct from the race-day peach #FFCE8A.
+  if (p === 'peak')  return '#FF7733';
   if (p === 'taper') return '#56E0B0';
   if (p === 'maintenance') return '#88B8C8';
   if (p === 'recovery')    return '#5DD0F0';
