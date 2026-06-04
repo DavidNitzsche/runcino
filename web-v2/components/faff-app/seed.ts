@@ -212,21 +212,38 @@ async function loadFormMetrics(uid: string) {
     // 2. HK-only form metrics (GCT, vertical osc, vert ratio) · filter
     //    health_samples to days that had a run so non-run samples are
     //    excluded. Not perfect for split workouts but defensible.
+    // 2026-06-03 · BUG FIX · this query was throwing a type-mismatch
+    // error (text = uuid) because:
+    //   1. `hs.user_id = $1` filtered by the legacy text column, but
+    //      $1 was a UUID for the form-metric rows. The error was
+    //      caught by the outer .catch and the query returned [].
+    //   2. The EXISTS join `r.user_uuid::text = hs.user_id` failed
+    //      whenever hs.user_id was null (the common case once UUID
+    //      backfill happened).
+    // David's data has 135 GCT samples, 135 VOSC samples, 135 VRATIO
+    // samples between 2025-05-22 and 2026-05-25 · the tiles read
+    // "NO DATA YET" only because the query never returned them.
+    //
+    // Fix · COALESCE on both columns and join properly. Widened the
+    // window to 60d to surface a richer series for the runner.
     const hkRows = await pool.query(
       `SELECT hs.sample_type, hs.sample_date::date AS d, hs.value
          FROM health_samples hs
-        WHERE hs.user_id = $1
+        WHERE COALESCE(hs.user_uuid, hs.user_id::uuid) = $1::uuid
           AND hs.sample_type IN ('ground_contact_time','vertical_oscillation','vertical_ratio')
-          AND hs.sample_date >= NOW() - interval '30 days'
+          AND hs.sample_date >= NOW() - interval '60 days'
           AND EXISTS (
             SELECT 1 FROM runs r
-             WHERE r.user_uuid::text = hs.user_id
+             WHERE r.user_uuid = $1::uuid
                AND NOT (r.data ? 'mergedIntoId')
                AND (r.data->>'date')::date = hs.sample_date
           )
         ORDER BY hs.sample_date ASC`,
       [uid]
-    ).catch(() => ({ rows: [] as Array<{ sample_type: string; d: Date | string; value: number | string }> }));
+    ).catch((e: unknown) => {
+      console.warn('[loadFormMetrics:hk]', e instanceof Error ? e.message : String(e));
+      return { rows: [] as Array<{ sample_type: string; d: Date | string; value: number | string }> };
+    });
     for (const r of hkRows.rows) {
       const dStr = r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d);
       (acc[r.sample_type] ??= []).push({ date: dStr, value: Number(r.value) });

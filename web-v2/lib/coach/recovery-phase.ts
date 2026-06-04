@@ -169,18 +169,20 @@ function formatAnchorLabel(date: string, type: AnchorType, distanceMi: number): 
  * runner reads the doctrine and decides what it means for them.
  */
 function formatExpectedWindowDoctrine(type: AnchorType, distanceMi: number, expDays: number): string {
+  // 2026-06-03 · dropped citation tags per David. The line is informational;
+  // the doctrine source lives in research/code, not in the chip.
   const dayWord = expDays === 1 ? 'day' : 'days';
   if (type === 'race') {
-    if (distanceMi >= 24) return `Typical quality-ready window after a marathon: ${expDays} ${dayWord} (Pfitzinger / Daniels). Peak-ready is ~26 days.`;
-    if (distanceMi >= 13) return `Typical quality-ready window after a half marathon: ${expDays} ${dayWord} (Pfitzinger).`;
-    if (distanceMi >= 6) return `Typical quality-ready window after a 10k: ${expDays} ${dayWord} (Daniels).`;
-    return `Typical quality-ready window after a 5k: ${expDays} ${dayWord} (Daniels).`;
+    if (distanceMi >= 24) return `Typical quality-ready window after a marathon: ${expDays} ${dayWord}. Peak-ready is ~26 days.`;
+    if (distanceMi >= 13) return `Typical quality-ready window after a half marathon: ${expDays} ${dayWord}.`;
+    if (distanceMi >= 6) return `Typical quality-ready window after a 10k: ${expDays} ${dayWord}.`;
+    return `Typical quality-ready window after a 5k: ${expDays} ${dayWord}.`;
   }
   if (type === 'long') {
     const band = distanceMi >= 20 ? '20+mi' : distanceMi >= 16 ? '16–19mi' : '13–15mi';
-    return `Typical quality-ready window for a ${band} long run: ${expDays} ${dayWord} (Pfitzinger).`;
+    return `Typical quality-ready window for a ${band} long run: ${expDays} ${dayWord}.`;
   }
-  return `Typical quality-ready window after intervals or tempo: ${expDays} ${dayWord} (Daniels).`;
+  return `Typical quality-ready window after intervals or tempo: ${expDays} ${dayWord}.`;
 }
 
 export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPhase | null> {
