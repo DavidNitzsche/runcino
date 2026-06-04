@@ -319,31 +319,44 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   const sleep7Avg = sleep.length ? +(sleep.reduce((s, x) => s + x, 0) / sleep.length).toFixed(1) : null;
   const sleep7Deficit = +sleep.reduce((s, x) => s + Math.max(0, 7.5 - x), 0).toFixed(1);
 
-  // RHR
-  const rhr = (await pool.query(
-    `SELECT value FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
-       AND recorded_at >= NOW() - interval '60 days' ORDER BY recorded_at DESC LIMIT 14`,
-    [userId]
-  )).rows.map((r: any) => Number(r.value)).filter((v: number) => v > 0);
-  const rhrCurrent = rhr[0] ?? null;
-  const rhrBaseline = rhr.length ? Math.round(rhr.reduce((s, x) => s + x, 0) / rhr.length) : null;
-
-  // HRV
-  // 2026-05-29 (anti-staleness): bound to a 60-day recency window like RHR
-  // above. Without it, a lapsed HealthKit sync left `current` and the
-  // 30-sample `baseline` drawn from the same stale era → pct≈0, so HRV
-  // silently contributed a neutral value at its full 25% weight and diluted
-  // the real signal. With the window, a stale-only history yields no samples
-  // → hrvCurrent null → readiness drops HRV to weight 0 ("no data") and
-  // re-weights the remaining pillars (see readiness.ts §HRV).
-  const hrv = (await pool.query(
-    `SELECT value FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hrv'
-       AND recorded_at >= NOW() - interval '60 days'
-       ORDER BY recorded_at DESC LIMIT 30`,
-    [userId]
-  )).rows.map((r: any) => Number(r.value)).filter((v: number) => v > 0);
-  const hrvCurrent = hrv[0] ?? null;
-  const hrvBaseline = hrv.length ? Math.round(hrv.reduce((s, x) => s + x, 0) / hrv.length) : null;
+  // RHR + HRV — STABLE BASELINE per the 2026-06-03 unification.
+  //
+  // current = today's daily-avg value · baseline = mean of last 30
+  // days EXCLUDING the recent 7. The 7-day exclusion stops the
+  // comparator from drifting with the runner · a 5-day RHR streak
+  // pulls the rolling-14 baseline up so the pillar always reads
+  // "at baseline" even when the runner is genuinely elevated above
+  // their settled state. Same definition as state-loader.ts
+  // (loadStableBaseline) and the forecasts engine · keeps the
+  // driver row, BODY tile, and WATCHING TOMORROW forecast on the
+  // same number. Previously: driver row used LIMIT 14 here (got 51),
+  // BODY tile + forecast used the stable form (got 45) · same metric,
+  // two numbers, one page.
+  const loadStableBaseline = async (sampleType: string): Promise<{ current: number | null; baseline: number | null }> => {
+    const rows = (await pool.query<{ d: string; v: number | string }>(
+      `SELECT recorded_at::date::text AS d, AVG(value)::numeric AS v
+         FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type = $2
+          AND recorded_at >= NOW() - interval '60 days'
+        GROUP BY recorded_at::date
+        ORDER BY d ASC`,
+      [userId, sampleType]
+    ).catch(() => ({ rows: [] as Array<{ d: string; v: number | string }> }))).rows;
+    const vals = rows.slice(-30).map((r) => Math.round(Number(r.v))).filter((v) => v > 0);
+    if (vals.length === 0) return { current: null, baseline: null };
+    const current = vals.at(-1) ?? null;
+    const baseline = vals.length >= 14
+      ? Math.round(vals.slice(0, -7).reduce((s, x) => s + x, 0) / Math.max(1, vals.length - 7))
+      : Math.round(vals.reduce((s, x) => s + x, 0) / vals.length);
+    return { current, baseline };
+  };
+  const rhrSt = await loadStableBaseline('resting_hr');
+  const rhrCurrent = rhrSt.current;
+  const rhrBaseline = rhrSt.baseline;
+  const hrvSt = await loadStableBaseline('hrv');
+  const hrvCurrent = hrvSt.current;
+  const hrvBaseline = hrvSt.baseline;
 
   // Cadence
   const cad = (await pool.query(
