@@ -29,7 +29,7 @@ export function TargetsView({
       <div className="goalhero">
         <div className="ghleft">
           <div className="ghk">PRIMARY GOAL</div>
-          <div className="ghtitle">{goal ? `SUB${'−'}${goal.goal}` : 'NO GOAL'}</div>
+          <div className="ghtitle">{goal ? goal.goal : 'NO GOAL'}</div>
           <div className="ghsub">{goal ? `${goal.name}${goal.location ? ' · ' + goal.location : ''} · ${formatDate(goal.date)}` : 'Set a primary race to start tracking your gap'}</div>
           <div className="ghcd">
             <b>{goal?.daysAway ?? '·'}</b> days out · <span className={goal?.onTrack ? 'ok2' : ''}>{goal ? (goal.onTrack ? `on track · ${goal.delta}` : goal.delta) : '·'}</span>
