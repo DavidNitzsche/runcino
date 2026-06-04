@@ -1219,10 +1219,17 @@ function adaptHealth(
   const aeAvg7 = health?.activeEnergy?.avg7 ?? 0;
   if (aeToday > 0 || aeAvg7 > 0) {
     const aeSeriesKcal = (health?.activeEnergy?.series ?? []).map((p) => p.kcal);
+    // 2026-06-03 · ingest-noise floor. When BOTH today < 100 kcal AND
+    // avg7 < 100 kcal, the iPhone HK active_energy ingest is broken at
+    // the source · samples landing are noise, not the runner's real
+    // day. Tile renders noData ("—") rather than a confusing "4 kcal ·
+    // 7d avg 3". Investigated separately as part of the HealthKit
+    // ingest investigation queue.
+    const aeIngestBroken = aeToday < 100 && aeAvg7 < 100;
     // Partial-day floor: 100 kcal is below even sedentary BMR contribution
-    // by mid-morning. If we see 4-90 kcal AND have a recent avg, assume
-    // sync still landing and surface avg7 with `warn` so the chip flags
-    // syncing rather than misreading the runner's day.
+    // by mid-morning. If we see 4-90 kcal AND have a real avg7 (≥ 500),
+    // assume sync still landing and surface avg7 with `warn` so the chip
+    // flags syncing rather than misreading the runner's day.
     const partialDayLikely = aeToday > 0 && aeToday < 100 && aeAvg7 >= 500;
     const displayValue = partialDayLikely
       ? aeAvg7
@@ -1231,7 +1238,7 @@ function adaptHealth(
       ? 'warn'
       : (aeAvg7 > 0 && aeToday >= aeAvg7 * 0.5 ? 'good' : 'warn');
     body.push(mk('active_energy', 'ACTIVE ENERGY', 'kcal', displayValue, aeAvg7 || undefined,
-      [0, Math.max(2500, aeAvg7 + 500)], aeSeriesKcal, aeStatus, 0, false, false, 'avg7'));
+      [0, Math.max(2500, aeAvg7 + 500)], aeSeriesKcal, aeStatus, 0, false, aeIngestBroken, 'avg7'));
   }
   // 2026-06-01 · Cycle phase from iPhone 0fa7d55a · gender-gated.
   // Only render for biologicalSex === 'female' AND data exists (runner

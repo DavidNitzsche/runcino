@@ -78,13 +78,19 @@ function avg(a: number[]): number {
 function BarCard({ m, onClick, active }: { m: HealthMetric; onClick?: () => void; active?: boolean }) {
   const series = m.series.slice(-14);
   const baseColor = STATUS[m.status] ?? STATUS.neutral;
-  // HealthMetric.status is 'good' | 'warn' | 'neutral' (no 'bad'). The
-  // design has 'on target / watch / below target / steady' for four
-  // states · we collapse 'warn' to 'below target' for the strong-signal
-  // tiles (status.warn always means "below the band" in our data shape)
-  // and let neutral cover the rest.
+  // HealthMetric.status is 'good' | 'warn' | 'neutral'. The chip text
+  // depends on targetKind so it matches the caption · "BELOW BASELINE"
+  // when the caption is "baseline 54ms", "BELOW TARGET" when the caption
+  // is "target 7:30", "BELOW AVG" when "7d avg 1800kcal". Old code always
+  // said "below target" / "on target" which contradicted baseline tiles
+  // (HRV / RHR / wrist-temp / resp-rate / spo2 all caption baseline but
+  // chip claimed target). 2026-06-03 · David's Health page QC.
+  const TARGET_NOUN: Record<NonNullable<HealthMetric['targetKind']> | 'default', string> = {
+    baseline: 'baseline', target: 'target', avg7: 'avg', default: 'target',
+  };
+  const targetNoun = TARGET_NOUN[m.targetKind ?? 'default'];
   const STATUS_TXT: Record<HealthMetric['status'], string> = {
-    good: 'on target', warn: 'below target', neutral: 'steady',
+    good: `on ${targetNoun}`, warn: `below ${targetNoun}`, neutral: 'steady',
   };
   // Local scale so the bars use the full mini-chart height
   let lo = series.length ? Math.min(...series) : 0;
@@ -453,7 +459,11 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                   <span>{w}</span>
                 </div>
               ))}
-              {!brief.watchTomorrow?.length ? (
+              {/* 2026-06-03 · only show the empty-state line when BOTH
+                  watchTomorrow notes AND forecast chips are empty.
+                  Previously "Nothing flagged for tomorrow yet." rendered
+                  while two FORECAST chips below contradicted it. */}
+              {!brief.watchTomorrow?.length && !(brief.forecasts && brief.forecasts.length > 0) ? (
                 <div className="hwatch-empty">Nothing flagged for tomorrow yet.</div>
               ) : null}
             </div>
@@ -666,14 +676,11 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               <div className="hins">
                 <div className="hins-k">VS {seed.health.blockComparison.referenceBlock.label.toUpperCase()}</div>
                 <div className="hins-h">{seed.health.blockComparison.message}</div>
-                <div className="hins-m">
-                  {seed.health.blockComparison.deltas.sleepH != null
-                    ? `Sleep ${seed.health.blockComparison.deltas.sleepH >= 0 ? '+' : ''}${seed.health.blockComparison.deltas.sleepH.toFixed(1)}h vs reference. `
-                    : ''}
-                  {seed.health.blockComparison.deltas.hrvMs != null
-                    ? `HRV ${seed.health.blockComparison.deltas.hrvMs >= 0 ? '+' : ''}${Math.round(seed.health.blockComparison.deltas.hrvMs)}ms. `
-                    : ''}
-                </div>
+                {/* 2026-06-03 · dropped the hins-m duplicate · `message`
+                    already carries the deltas ("Sleep +1.9h.") · the old
+                    sub-line "Sleep +1.9h vs reference. HRV …" repeated
+                    the same numbers with "vs reference" tacked on, where
+                    the card's own title already establishes the reference. */}
               </div>
             ) : null}
             {seed.health.dowPatterns && seed.health.dowPatterns.insights.length > 0 ? (

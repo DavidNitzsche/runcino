@@ -131,7 +131,10 @@ export async function computeBlockComparison(userUuid: string): Promise<BlockCom
   const rhrBpm = current.rhr != null && reference.rhr != null
     ? Math.round(current.rhr - reference.rhr) : null;
 
-  // Compose the message.
+  // 2026-06-03 · message no longer leads with refLabel · the Health page
+  // already renders "VS {refLabel}" as the card title above this message,
+  // so leading with the label produced "VS LA MARATHON BUILD · LA Marathon
+  // build · sleep +1.9h." Now just the movers (or the calm-state line).
   const movers: string[] = [];
   if (sleepH != null && Math.abs(sleepH) >= 0.3) {
     movers.push(`sleep ${sleepH > 0 ? '+' : ''}${sleepH.toFixed(1)}h`);
@@ -143,8 +146,8 @@ export async function computeBlockComparison(userUuid: string): Promise<BlockCom
     movers.push(`RHR ${rhrBpm > 0 ? '+' : ''}${rhrBpm}bpm`);
   }
   const message = movers.length === 0
-    ? `${refLabel.replace('vs ', '')} · recovery metrics tracking similar to the reference window.`
-    : `${refLabel} · ${movers.join(' · ')}.`;
+    ? `Recovery metrics tracking similar to the reference window.`
+    : `${movers.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(' · ')}.`;
 
   return {
     currentBlock: {
