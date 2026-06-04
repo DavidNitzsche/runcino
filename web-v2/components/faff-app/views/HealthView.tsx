@@ -489,15 +489,16 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
       ) : null}
 
       {/* ===== RECOVERY PHASE (when present · post-hard-session) =====
-          Defensive frontend handling for the backend bug surfaced
-          2026-06-01: when day0 or current measurements are missing for
-          a pillar, lib/coach/recovery-phase.ts defaults pctRecovered
-          to 0 instead of null. With all pillars at 0 + percentRecovered
-          aggregate at 0 + daysSince >= expectedDaysToRecover, the
-          green-light line reads "Body is 0% recovered · ready" which
-          contradicts itself. Detect that data-insufficient state and
-          render an honest "syncing" framing. Brief filed at
-          designs/briefs/recovery-phase-null-vs-zero-brief.md.
+          2026-06-03 · David's QC: "this whole section is nice but tbh
+          it doesnt seem like its working right." Three things fixed:
+            1. "Day 3 of 2 expected" math edge · dropped the /M
+               framing entirely. Now reads "Day 3 since the long run"
+               with no implied countdown.
+            2. "Earliest quality session: YYYY-MM-DD · resume on feel"
+               line · gutted per no-reactive-coach doctrine. The engine
+               doesn't tell the runner when to do quality.
+            3. message rephrased as conversational coach voice rather
+               than data stamp · drives the headline line below the bar.
       */}
       {seed.health.recoveryPhase ? (() => {
         const rp = seed.health.recoveryPhase;
@@ -510,6 +511,11 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
           p.day0Value == null || p.currentValue == null
         );
         const dataInsufficient = allPillarsZero && allPillarsNoData;
+        const dayLabel = rp.daysSince === 0
+          ? 'Today'
+          : rp.daysSince === 1
+            ? '1 day after'
+            : `${rp.daysSince} days after`;
 
         return (
           <div className="hrecov">
@@ -522,7 +528,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 <div className="hrecov-pct">
                   {dataInsufficient ? '·' : `${rp.percentRecovered}%`}
                 </div>
-                <div className="hrecov-day">Day {rp.daysSince} of {rp.expectedDaysToRecover} expected</div>
+                <div className="hrecov-day">{dayLabel}</div>
               </div>
             </div>
             <div className="hrecov-bar">
@@ -530,10 +536,6 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             </div>
             <div className="hrecov-grid">
               {rp.pillars.map(p => {
-                // 2026-06-01 · null-vs-zero hygiene · backend now ships
-                // p.pctRecovered as nullable when measurements aren't
-                // in yet. The TypeScript-narrowing gate is on the
-                // nullable field itself, not on the raw value fields.
                 const pct = p.pctRecovered;
                 const hasData = pct != null;
                 return (
@@ -557,12 +559,10 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 <span>{rp.muscleSignals.summary}</span>
               </div>
             ) : null}
-            <div className="hrecov-green">
-              {dataInsufficient || rp.nextQualityGreenLight == null
-                ? <>Recovery tracking awaiting watch sync · pillar measurements not in yet.</>
-                : <>Earliest quality session: <b>{rp.nextQualityGreenLight.date}</b> · {rp.nextQualityGreenLight.reason}</>
-              }
-            </div>
+            {/* 2026-06-03 · headline reads from rp.message (now
+                conversational coach voice). Old "Earliest quality
+                session · YYYY-MM-DD · resume on feel" line is gone. */}
+            <div className="hrecov-green">{rp.message}</div>
           </div>
         );
       })() : null}

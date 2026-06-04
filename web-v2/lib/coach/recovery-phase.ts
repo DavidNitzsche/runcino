@@ -417,13 +417,16 @@ async function loadMuscleSignals(
   if (strideDelta != null && strideDelta < -3) fatigueSignals.push('stride shortened');
   if (powerDelta != null && powerDelta < -10) fatigueSignals.push('power degraded');
 
+  // 2026-06-03 · description, not verdict. "Muscle recovery on track"
+  // was mildly prescriptive (implied an expected trajectory the runner
+  // didn't sign up for). Now states what the form metrics show.
   let summary: string;
   if (fatigueSignals.length === 0) {
-    summary = `Form metrics on subsequent easy runs are within normal range · muscle recovery on track.`;
+    summary = `Form metrics on the easy runs since are within your normal range.`;
   } else if (fatigueSignals.length === 1) {
-    summary = `${fatigueSignals[0][0].toUpperCase() + fatigueSignals[0].slice(1)} on easy runs after · classic eccentric load signal · still recovering.`;
+    summary = `${fatigueSignals[0][0].toUpperCase() + fatigueSignals[0].slice(1)} on the easy runs since · classic eccentric load signal.`;
   } else {
-    summary = `Multiple fatigue signals (${fatigueSignals.join(', ')}) · neuromuscular system still loaded.`;
+    summary = `Multiple fatigue signals (${fatigueSignals.join(', ')}) · the neuromuscular system is still loaded.`;
   }
 
   return {
@@ -445,34 +448,22 @@ function computeNextQualityGreenLight(
   expDays: number,
   percentRecovered: number,
 ): NonNullable<RecoveryPhase['nextQualityGreenLight']> {
-  // 2026-06-01 · brief response · green-light copy that doesn't
-  // contradict itself. Previously: `>= expDays` alone → "ready"
-  // even when percentRecovered was 0. Now four explicit branches:
-  let daysOut: number;
-  let reason: string;
-  if (percentRecovered >= 80) {
-    // Truly recovered · go.
-    daysOut = 0;
-    reason = `Body is ${percentRecovered}% recovered · ready for the next quality session.`;
-  } else if (daysSince >= expDays && percentRecovered >= 50) {
-    // Past the typical window AND meaningfully recovered · go on feel.
-    daysOut = 0;
-    reason = `Past expected recovery window · body ${percentRecovered}% back · resume on feel.`;
-  } else if (daysSince >= expDays) {
-    // Past the window but recovery numbers are weak · don't claim
-    // "ready" with a contradicting %. Defer to subjective feel.
-    daysOut = 0;
-    reason = `Past expected recovery window · resume on feel.`;
-  } else {
-    // Still within the window · project forward.
-    const deficit = 100 - percentRecovered;
-    const recoveryRate = 100 / expDays;
-    daysOut = Math.max(1, Math.ceil(deficit / recoveryRate));
-    reason = `${percentRecovered}% recovered · projected green light in ~${daysOut} day${daysOut === 1 ? '' : 's'}.`;
-  }
-  const greenDate = new Date();
-  greenDate.setUTCDate(greenDate.getUTCDate() + daysOut);
-  return { date: greenDate.toISOString().slice(0, 10), daysOut, reason };
+  // 2026-06-03 · gutted per no-reactive-coach doctrine. The engine no
+  // longer says "Earliest quality session · YYYY-MM-DD · resume on feel"
+  // because that is prescription (the runner reads the recovery picture
+  // and decides). David's QC: "this whole section is nice but doesnt
+  // seem like its working right · resume on feel? not sure what this
+  // means exactly." The whole "green-light" frame violates the plan-is-
+  // the-runner's-plan doctrine.
+  //
+  // Function kept as a stub returning a near-empty envelope so the
+  // RecoveryPhase type doesn't have to change shape (iPhone reads this
+  // field too); web frontend now ignores it.
+  return {
+    date: anchor.date,
+    daysOut: 0,
+    reason: '',
+  };
 }
 
 function composeRecoveryMessage(
@@ -482,20 +473,24 @@ function composeRecoveryMessage(
   percentRecovered: number | null,
   dataInsufficient: boolean,
 ): string {
-  if (daysSince === 0) {
-    return `${anchor.label} just landed · day 0 of ~${expDays} expected recovery.`;
-  }
-  // 2026-06-01 · brief response · honest copy when data is missing.
-  // Don't fabricate a "0% recovered" story when we just don't have
-  // the measurements yet.
+  // 2026-06-03 · plain coach voice (David's QC: "Can be more 'coach
+  // talking normally'"). Describes the recovery picture in conversational
+  // English, no countdown timer, no quality-day prescription, no
+  // "Day N of M expected" math that goes negative-feeling once daysSince
+  // exceeds expDays. Describes the state, runner reads it.
+  const sincePart = daysSince === 0
+    ? `Today's ${anchor.label.replace(/^[A-Z]/, (c) => c.toLowerCase())}`
+    : daysSince === 1
+      ? `1 day after ${anchor.label}`
+      : `${daysSince} days after ${anchor.label}`;
   if (dataInsufficient || percentRecovered == null) {
-    return `Day ${daysSince} of ${expDays} since ${anchor.label} · recovery tracking awaiting watch sync.`;
+    return `${sincePart}. Recovery tracking is still waiting on watch syncs.`;
   }
   if (percentRecovered >= 85) {
-    return `Day ${daysSince} of ${expDays} · ${percentRecovered}% recovered from ${anchor.label}. Body is mostly back.`;
+    return `${sincePart}. Body is mostly back · ${percentRecovered}% across the recovery pillars.`;
   }
   if (percentRecovered >= 50) {
-    return `Day ${daysSince} of ${expDays} · ${percentRecovered}% recovered from ${anchor.label}. Recovery on schedule.`;
+    return `${sincePart}. ${percentRecovered}% across the recovery pillars · the body is still working through it.`;
   }
-  return `Day ${daysSince} of ${expDays} · ${percentRecovered}% recovered from ${anchor.label}. Behind expected curve · check sleep + load.`;
+  return `${sincePart}. ${percentRecovered}% across the recovery pillars · the body is still in the hole.`;
 }
