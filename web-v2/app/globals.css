@@ -191,7 +191,14 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    previously nested inside hmain.hbody, which pushed it below the
    title bar; now it's a sibling so it top-aligns with wcard. hmain
    shrinks to leftstack width. */
-.hero-v2{display:flex;gap:24px;align-items:stretch;margin-top:26px;min-height:480px;}
+/* 2026-06-04 · planned hero swapped flex → grid · same proportions as
+   .hero-v2-done (1fr 1.6fr 1.1fr) so the EASY/INTERVALS/TEMPO/etc.
+   hero card on the left no longer looks squished on wide viewports
+   when the middle session block expands to fill `flex:1`.  Done
+   variant kept its explicit override below for clarity; the children's
+   `flex:0 0 N` rules become no-ops under grid (column widths come
+   from grid-template-columns now). */
+.hero-v2{display:grid;grid-template-columns:1fr 1.6fr 1.1fr;gap:24px;align-items:stretch;margin-top:26px;min-height:480px;}
 /* 2026-06-04 · per-workout-type gradient · David moved the Today page
    mesh to neutral charcoal (matches Targets) so the effort color now
    lives on the hero card itself.  CSS variables --hg-1/2/3 are written
