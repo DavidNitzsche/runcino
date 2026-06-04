@@ -167,7 +167,15 @@ export async function computeGoalProjection(args: {
 
 /** Load the next 1-3 quality workouts from the active plan · tempo,
  *  threshold, intervals, long, race. Quality days are the test points
- *  · each one tells us something about current fitness. */
+ *  · each one tells us something about current fitness.
+ *
+ *  2026-06-04 · exclude days where a real run already landed. Without
+ *  this, today's completed tempo stays in the list as a "next" test
+ *  point ("I did June 4 today · should we show its impact or remove
+ *  it?" · David's QC). NOT EXISTS join against canonical runs (the
+ *  same dedup-aware filter the rest of the system uses · skips
+ *  absorbed/merged rows). Run-day-of-week 1mi-minimum guard so a tiny
+ *  shake-out doesn't accidentally clear a planned tempo. */
 async function loadNextTestPoints(
   userUuid: string,
 ): Promise<GoalProjection['nextTestPoints']> {
@@ -185,6 +193,14 @@ async function loadNextTestPoints(
         AND tp.archived_iso IS NULL
         AND pw.type IN ('tempo','threshold','intervals','long','race')
         AND pw.date_iso >= $2
+        AND NOT EXISTS (
+          SELECT 1 FROM runs r
+           WHERE r.user_uuid = $1::uuid
+             AND (r.data->>'date')::date = pw.date_iso
+             AND NOT (r.data ? 'mergedIntoId')
+             AND r.absorbed_into_canonical_at IS NULL
+             AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
+        )
       ORDER BY pw.date_iso ASC
       LIMIT 3`,
     [userUuid, today],
