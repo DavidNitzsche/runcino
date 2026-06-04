@@ -249,6 +249,34 @@ async function loadFormMetrics(uid: string) {
       (acc[r.sample_type] ??= []).push({ date: dStr, value: Number(r.value) });
     }
 
+    // 2026-06-03 · iPhone build 155 stopped sending vertical_ratio (per
+    // c2fb7681) · they derive it backend-side from osc + stride. Existing
+    // historical rows (2025-05-22 → 2026-05-25) stay; for any day with
+    // BOTH vertical_oscillation and stride_length but NO vertical_ratio,
+    // compute it: ratio_pct = vertical_osc_cm / stride_length_m
+    // (e.g. 10cm / 1.21m = 8.3%).
+    const oscByDate = new Map<string, number>();
+    const strideByDate = new Map<string, number>();
+    const ratioByDate = new Map<string, true>();
+    for (const p of acc['vertical_oscillation'] ?? []) oscByDate.set(p.date, p.value);
+    for (const p of acc['stride_length'] ?? []) strideByDate.set(p.date, p.value);
+    for (const p of acc['vertical_ratio'] ?? []) ratioByDate.set(p.date, true);
+    const derived: Array<{ date: string; value: number }> = [];
+    for (const [date, osc] of oscByDate) {
+      if (ratioByDate.has(date)) continue;          // HK row exists, keep it
+      const stride = strideByDate.get(date);
+      if (stride == null || stride <= 0) continue;  // can't divide
+      const ratio = +(osc / stride).toFixed(2);     // cm / m = %
+      if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 20) continue;
+      derived.push({ date, value: ratio });
+    }
+    if (derived.length) {
+      acc['vertical_ratio'] = [
+        ...(acc['vertical_ratio'] ?? []),
+        ...derived,
+      ].sort((a, b) => a.date.localeCompare(b.date));
+    }
+
     return acc;
   });
 }
