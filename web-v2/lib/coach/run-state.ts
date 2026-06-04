@@ -463,7 +463,15 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // a Faff-watch run for this date exists in coach_intents. Returns
   // empty array for non-watch runs (Apple Watch Workouts, Strava, manual)
   // where we don't have the planned phase structure.
-  const phaseBreakdown = await loadPhaseBreakdown(userId, day);
+  //
+  // 2026-06-04 · pass heat slowdown so phase status uses a heat-aware
+  // tolerance band instead of the hardcoded ±5s/mi. Without this,
+  // David's tempo phase (target 6:59, actual 7:17, 74°F sun) was
+  // tagged 'slow'/'missed' because the watch had no concept of heat.
+  // The judgeWeather output is the canonical heat penalty · same
+  // duration-scaled value the recap voice uses.
+  const heatSlowdownPct = await computeHeatSlowdownForRun(r).catch(() => 0);
+  const phaseBreakdown = await loadPhaseBreakdown(userId, day, heatSlowdownPct);
 
   // Per-split phase tagging · walks the phaseBreakdown's cumulative
   // distance map and assigns each mile's phase. The renderer uses this
@@ -696,7 +704,41 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
  * if the runner did multiple watch sessions on one day (rare), the
  * latest one wins.
  */
-async function loadPhaseBreakdown(userId: string, date: string | null): Promise<PhaseBreakdown[]> {
+/**
+ * Compute the duration-scaled heat slowdown % for this run. Used by
+ * loadPhaseBreakdown to widen the 'on-target' tolerance band so a
+ * tempo phase that ran at the original target despite heat isn't
+ * tagged 'missed'. Returns 0 when conditions weren't material or
+ * the data is missing · falls through to the legacy ±5s/mi band.
+ *
+ * Mirrors what /api/runs/[id]/recap passes to judgeWeather · single
+ * source of truth for the heat number · the runner shouldn't see one
+ * heat % in the recap and a different verdict-tolerance heat % in
+ * the phase breakdown.
+ */
+async function computeHeatSlowdownForRun(r: Record<string, unknown>): Promise<number> {
+  const weather = (r.weather && typeof r.weather === 'object') ? r.weather as Record<string, unknown> : null;
+  if (!weather) return 0;
+  const { judgeWeather } = await import('./weather-adjust');
+  const j = judgeWeather({
+    tempF: typeof weather.temp_f === 'number' ? weather.temp_f : (typeof r.tempF === 'number' ? r.tempF : null),
+    tempF_start: typeof weather.temp_f_start === 'number' ? weather.temp_f_start : null,
+    tempF_end: typeof weather.temp_f_end === 'number' ? weather.temp_f_end : null,
+    tempF_peak: typeof weather.temp_f_peak === 'number' ? weather.temp_f_peak : null,
+    humidityPct: typeof weather.humidity_pct === 'number' ? weather.humidity_pct : null,
+    windMph: typeof weather.wind_mph === 'number' ? weather.wind_mph : null,
+    conditions: typeof weather.conditions === 'string' ? weather.conditions : null,
+    cloudCoverPct: typeof weather.cloud_cover_pct === 'number' ? weather.cloud_cover_pct : null,
+    durationS: typeof r.durationSec === 'number' ? r.durationSec : null,
+  });
+  return j.slowdownPct ?? 0;
+}
+
+async function loadPhaseBreakdown(
+  userId: string,
+  date: string | null,
+  heatSlowdownPct: number = 0,
+): Promise<PhaseBreakdown[]> {
   if (!date) return [];
   const row = (await pool.query(
     `SELECT value FROM coach_intents
@@ -719,12 +761,37 @@ async function loadPhaseBreakdown(userId: string, date: string | null): Promise<
     const targetSPerMi = Number(p.targetPaceSPerMi) || null;
     const actualSPerMi = Number(p.actualPaceSPerMi) || null;
 
-    // Status: on-target if within ±5s/mi, otherwise fast/slow.
+    // 2026-06-04 · heat-adjusted tolerance band.
+    //
+    // Was: ±5s/mi hardcoded, no weather context. David's tempo
+    // (target 6:59, actual 7:17, 74°F sun) got tagged 'slow' because
+    // the watch had no concept of heat. But 7:17 is BETTER than the
+    // heat-adjusted target (6:59 × 1.12 ≈ 7:49 with the duration-
+    // scaled Maughan penalty) · runner executed despite conditions,
+    // not a miss.
+    //
+    // Now: 'on' band is asymmetric · extends from (original target
+    // − 10s) downward (faster than expected) to (heat-adjusted
+    // target + 10s) upward (slower than heat-adjusted is still OK).
+    //   · 'fast' · ran faster than original target − 10s (overcooked
+    //     vs plan, even after accounting for heat slack)
+    //   · 'on'   · landed inside the band (executed for conditions)
+    //   · 'slow' · ran slower than heat-adjusted target + 10s
+    //     (real miss even with heat allowance)
+    //
+    // When heat is < 2% (cool conditions), effectiveTarget collapses
+    // to the original target and the band stays symmetric ±10s.
+    // Cite: Research/06-weather-adjustments.md §"heat-aware verdict".
     let status: 'on' | 'fast' | 'slow' | null = null;
     if (targetSPerMi && actualSPerMi && p.type !== 'recovery' && p.type !== 'rest') {
-      const delta = actualSPerMi - targetSPerMi;
-      if (Math.abs(delta) <= 5) status = 'on';
-      else if (delta < 0) status = 'fast';      // fewer s/mi = faster
+      const effectiveTarget = heatSlowdownPct >= 2
+        ? Math.round(targetSPerMi * (1 + heatSlowdownPct / 100))
+        : targetSPerMi;
+      const TOLERANCE = 10;
+      const lo = targetSPerMi - TOLERANCE;
+      const hi = effectiveTarget + TOLERANCE;
+      if (actualSPerMi >= lo && actualSPerMi <= hi) status = 'on';
+      else if (actualSPerMi < lo) status = 'fast';
       else status = 'slow';
     }
 

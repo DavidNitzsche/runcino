@@ -221,8 +221,14 @@ export function deriveRecap(input: RecapInput): RecapPayload {
       facts.push(
         `Tempo done · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}. These build up over weeks · one alone doesn't change much, but the bank pays off.`,
       );
+      // 2026-06-04 · don't repeat the heat percentage here · the
+      // CONDITIONS card already owns the "Got from 69°F to 74°F ·
+      // Costs you about X% on pace" quantitative read. Recap keeps
+      // the runner-facing "ignore the clock" framing without
+      // triple-mentioning the same number across recap + conditions
+      // + coach-tip surfaces (David's QC).
       if (heatExplainsDrift && weather!.slowdownPct >= 4) {
-        facts.push(`The heat was costing you about ${Math.round(weather!.slowdownPct)}% on pace. If your HR was right, the stimulus was right · ignore the clock.`);
+        facts.push(`Heat was working against the clock today. If your HR was right, the stimulus was right · go by effort.`);
       }
       return {
         verdict: 'Tempo done.',
