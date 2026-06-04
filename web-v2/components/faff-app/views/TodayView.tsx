@@ -599,6 +599,12 @@ type RunSummary = {
   /** "Hotter than usual" context computed by run-state.ts vs the runner's
    *  14-day baseline at this lat/lon. Set when the delta is ≥8°F. */
   weather_context?: { message: string; hr_bump_bpm: number } | null;
+  /** 2026-06-04 · duration-scaled Maughan/Vihma heat slowdown % for this
+   *  run · used to render a faded heat-adjusted band on the pace bars
+   *  so the runner can see when their actual pace was "on plan given
+   *  the conditions" vs honestly off. Same value drives the heat-
+   *  adjusted phase verdict. 0 when conditions weren't material. */
+  heat_slowdown_pct?: number | null;
   /** Phase-by-phase breakdown from coach_intents watch_completion payload.
    *  Drives THE REPS card for intervals · warmup/cooldown/recovery rows
    *  + per-rep plan-vs-result bars. Empty array for Strava/HK runs that
@@ -2156,7 +2162,10 @@ function CompletedHeroV2({
             long, Strava/HK runs, or interval runs where the watch payload
             didn't carry phase data). */}
         {d.type === 'intervals' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
-          <RepsRail phases={runData.phase_breakdown} />
+          <RepsRail
+            phases={runData.phase_breakdown}
+            heatSlowdownPct={runData.heat_slowdown_pct ?? null}
+          />
         ) : (d.type === 'easy' || d.type === 'recovery') && splits.length >= 3 ? (
           <EasyPanel
             hrZonePcts={runData?.hrZonePcts ?? null}
@@ -2186,7 +2195,10 @@ function CompletedHeroV2({
         ) : d.type === 'long' && splits.length >= 3 ? (
           <LongPanel splits={splits} avgPace={resolvedPace ?? null} />
         ) : d.type === 'tempo' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
-          <TempoPanel phases={runData.phase_breakdown} />
+          <TempoPanel
+            phases={runData.phase_breakdown}
+            heatSlowdownPct={runData.heat_slowdown_pct ?? null}
+          />
         ) : (
           <>
             <div className="reshead">
@@ -2240,7 +2252,7 @@ function CompletedHeroV2({
  * splits on intervals · meaningless for the workout shape.
  */
 type RepsPhase = NonNullable<RunSummary['phase_breakdown']>[number];
-function RepsRail({ phases }: { phases: RepsPhase[] }) {
+function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdownPct?: number | null }) {
   const workPhases = phases.filter(p => p.type === 'work');
   if (workPhases.length === 0) return null;
 
@@ -2415,6 +2427,17 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
             const fillLeft = onTarget
               ? TICK_PCT - 3
               : (delta != null && delta > 0 ? markerPos : TICK_PCT);
+
+            // 2026-06-04 · per-rep heat band · same model as TempoPanel.
+            const heatPct = heatSlowdownPct ?? 0;
+            const heatBandLeft = (goalSec > 0 && heatPct >= 2)
+              ? (() => {
+                  const heatOffsetSec = (goalSec * heatPct) / 100;
+                  const heatBarUnits = Math.min(45, (heatOffsetSec / maxdev) * 45);
+                  return TICK_PCT - heatBarUnits;
+                })()
+              : null;
+            const heatBandW = heatBandLeft != null ? TICK_PCT - heatBandLeft : 0;
             return (
               <div key={key} style={{
                 display: 'grid', gridTemplateColumns: REP_GRID_COLS,
@@ -2437,12 +2460,21 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
                   position: 'relative', height: BAR_HEIGHT, borderRadius: 6,
                   background: 'rgba(255,255,255,.1)',
                 }}>
+                  {heatBandW > 0 && heatBandLeft != null && (
+                    <div style={{
+                      position: 'absolute', top: 1, bottom: 1,
+                      left: `${heatBandLeft}%`, width: `${heatBandW}%`,
+                      background: 'rgba(62,208,106,0.16)',
+                      border: '1px dashed rgba(62,208,106,0.40)',
+                      borderRadius: 3, zIndex: 1,
+                    }} />
+                  )}
                   {fillW > 0 && (
                     <div style={{
                       position: 'absolute', top: 1, bottom: 1,
                       left: `${fillLeft}%`, width: `${fillW}%`,
                       background: fillColor,
-                      borderRadius: 3,
+                      borderRadius: 3, zIndex: 2,
                       transition: 'left 240ms, width 240ms',
                     }} />
                   )}
@@ -3070,7 +3102,11 @@ function LongPanel({
  */
 function TempoPanel({
   phases,
-}: { phases: NonNullable<RunSummary['phase_breakdown']> }) {
+  heatSlowdownPct,
+}: {
+  phases: NonNullable<RunSummary['phase_breakdown']>;
+  heatSlowdownPct: number | null;
+}) {
   const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
 
   // Find the tempo work phase · the single sustained work block. For multi-
@@ -3127,6 +3163,24 @@ function TempoPanel({
   const fillLeft = onTarget
     ? 47
     : (delta != null && delta > 0 ? markerPos : 50);
+
+  // 2026-06-04 · heat-adjusted band · faded region from center
+  // extending LEFT to the position the heat-adjusted target would
+  // occupy. When the runner's marker lands inside this band, they
+  // executed "on plan for the conditions" even if they missed the
+  // nominal target. For David's 12% heat day: band extends from
+  // center (50%) to wherever a 50s slowdown would put the marker
+  // (= 5% of the bar). Marker at ~34% lands INSIDE the band ·
+  // visual confirms the ✓ ON verdict.
+  const heatPct = heatSlowdownPct ?? 0;
+  const heatBandLeft = (targetSec > 0 && heatPct >= 2)
+    ? (() => {
+        const heatOffsetSec = (targetSec * heatPct) / 100;
+        const heatBarUnits = Math.min(45, (heatOffsetSec / maxdev) * 45);
+        return 50 - heatBarUnits;
+      })()
+    : null;
+  const heatBandW = heatBandLeft != null ? 50 - heatBandLeft : 0;
 
   return (
     <>
@@ -3190,10 +3244,23 @@ function TempoPanel({
           position: 'relative', height: 12, borderRadius: 6,
           background: 'rgba(255,255,255,.1)', marginTop: 10,
         }}>
+          {/* 2026-06-04 · heat-adjusted band · the "still on plan
+              given conditions" zone, faded green. When the marker
+              lands INSIDE this band, the runner executed honestly
+              for the day. Only renders when heat slowdown ≥ 2%. */}
+          {heatBandW > 0 && heatBandLeft != null && (
+            <div style={{
+              position: 'absolute', top: 1, bottom: 1,
+              left: `${heatBandLeft}%`, width: `${heatBandW}%`,
+              background: 'rgba(62,208,106,0.18)',
+              border: '1px dashed rgba(62,208,106,0.45)',
+              borderRadius: 3, zIndex: 1,
+            }} />
+          )}
           {/* Faded center reference · target */}
           <div style={{
             position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1,
-            marginLeft: -0.5, background: 'rgba(255,255,255,.32)', zIndex: 1,
+            marginLeft: -0.5, background: 'rgba(255,255,255,.32)', zIndex: 2,
           }} />
           {fillW > 0 && (
             <div style={{
@@ -3210,6 +3277,18 @@ function TempoPanel({
             boxShadow: '0 0 0 1px rgba(0,0,0,.25)',
           }} />
         </div>
+        {/* 2026-06-04 · explainer chip · only when the band actually
+            rendered AND the runner landed inside it. Tells the runner
+            what they're looking at without bloating the panel. */}
+        {heatBandW > 0 && heatBandLeft != null && delta != null && delta > 0 && markerPos >= heatBandLeft ? (
+          <div style={{
+            marginTop: 6, fontSize: 9, fontWeight: 700, letterSpacing: 0.6,
+            color: 'rgba(62,208,106,0.82)',
+            textTransform: 'uppercase',
+          }}>
+            ✓ INSIDE HEAT-ADJUSTED BAND · {Math.round(heatPct)}% pace tax for conditions
+          </div>
+        ) : null}
         <div style={{
           display: 'flex', justifyContent: 'space-between',
           fontSize: 8, fontWeight: 700, letterSpacing: 1.1, marginTop: 6,

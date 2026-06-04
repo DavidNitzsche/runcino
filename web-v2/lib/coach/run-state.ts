@@ -136,6 +136,11 @@ export interface RunDetail {
    * Cite: Research/06-weather-adjustments.md §1 Heat Adjustment.
    */
   weather_context: { message: string; hr_bump_bpm: number } | null;
+  /** 2026-06-04 · duration-scaled Maughan heat slowdown % · drives
+   *  the heat-adjusted band on the pace-comparison bars and is the
+   *  same number the phase verdict uses. 0 when conditions weren't
+   *  material. */
+  heat_slowdown_pct: number;
   suffer_score: number | null;
   kudos: number | null;
   // P2 #10 (2026-05-30): average running power from HealthKit for the
@@ -614,6 +619,12 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       return { start, end, peak, mean };
     })(),
     weather_context: weatherCtx,
+    // 2026-06-04 · expose the duration-scaled heat slowdown so the
+    // pace-comparison bars can render a faded "heat-adjusted band"
+    // alongside the runner's marker. Same value used to widen the
+    // heat-adjusted phase verdict band (loadPhaseBreakdown) ·
+    // single source of truth across surfaces.
+    heat_slowdown_pct: heatSlowdownPct,
     suffer_score: Number(r.sufferScore) || null,
     kudos: Number(r.kudosCount) || null,
     // P2 #10 (2026-05-30): surface the day's avg running power (W).
