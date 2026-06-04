@@ -2268,14 +2268,17 @@ function RepsRail({ phases }: { phases: RepsPhase[] }) {
   // the design's mile=14s / 800m=6s / 400m=3s examples within rounding.
   // Floor of 4 keeps very short reps from collapsing.
   const TICK_PCT = 50;
-  // 2026-06-04 · scale to TARGET PACE, not duration. Prior fallback
-  // `goalSec` was the avg work PACE not a duration, so 4% gave a
-  // maxdev of ~17s which clamped a 18s pace miss to the rail.
-  // 5% of target pace with floor 15 / cap 60 makes ±30s span the bar.
+  // 2026-06-04 · scale to TARGET PACE, not duration. 12% of target
+  // pace, floor 25s, cap 75s · same scale as TempoPanel so the same
+  // delta on tempo vs intervals reads the same on the bar.
+  //   ±5s   on the spot           marker basically at center
+  //   ±15s  close, slightly off   marker ~37 / 63
+  //   ±30s  noticeable miss       marker ~25 / 75
+  //   ±50s+ saturated             marker at 5 / 95 rail
   const firstWorkTargetDur = workPhases.find(p => p.target_duration_sec != null)?.target_duration_sec ?? null;
   const maxdev = goalSec > 0
-    ? Math.max(15, Math.min(60, Math.round(goalSec * 0.05)))
-    : (firstWorkTargetDur ? Math.max(15, Math.round(firstWorkTargetDur * 0.04)) : 30);
+    ? Math.max(25, Math.min(75, Math.round(goalSec * 0.12)))
+    : (firstWorkTargetDur ? Math.max(25, Math.round(firstWorkTargetDur * 0.04)) : 50);
   const compact = workPhases.length > 6;
 
   // Average work pace + delta vs goal · the summary row at the bottom.
@@ -3088,25 +3091,28 @@ function TempoPanel({
       ? `${Math.round(work.target_duration_sec / 60)} MIN`
       : '');
 
-  // 2026-06-04 · maxdev scaled to TARGET PACE, not duration. Was:
-  // `(work.target_duration_sec ?? actualSec ?? 432) * 0.04` · the
-  // watch usually ships targetDurationSec=null on tempo phases, so
-  // the fallback `actualSec` was the actual PACE (e.g. 437 s/mi)
-  // and 4% of that = 17s. David's 18s pace miss then clamped at the
-  // 50% rail, rendering as "maxed out" even though it's a 4.3%
-  // miss. Now: 5% of target pace, floored at 15s and capped at 60s ·
-  // a 30s/mi slowdown saturates the bar, anything inside scales
-  // proportionally.
+  // 2026-06-04 · maxdev = the deviation that saturates the bar.
+  // First pass set this to 5% of target pace · for David's tempo
+  // (target 6:59 = 419s · maxdev 21s) an 18s miss landed at 86% of
+  // saturation, marker at ~12%. David's QC: "I wasnt that far off."
+  // 4.3% pace miss should read as "close to plan but slower" · not
+  // "as slow as possible."
+  //
+  // Now 12% of target pace, floor 25s, cap 75s. For 419s target →
+  // maxdev 50s. David's 18s miss reads at 36% of saturation, marker
+  // at ~34% of the bar · clearly left of center, not slammed.
+  //
+  // Mental scale this matches:
+  //   ±5s   on the spot           marker basically at center
+  //   ±15s  close, slightly off   marker 35-40 / 60-65
+  //   ±30s  noticeable miss       marker 25 / 75
+  //   ±50s+ saturated             marker at 5 / 95 rail
   //
   // Visual model · faded center line = TARGET · the colored fill
   // and the white marker show the runner's POSITION relative to it.
-  // SLOWER (positive delta) → marker LEFT of center, fill extending
-  //   leftward from center to marker
-  // FASTER (negative delta) → marker RIGHT of center, fill from
-  //   center to marker
   const maxdev = targetSec > 0
-    ? Math.max(15, Math.min(60, Math.round(targetSec * 0.05)))
-    : 30;
+    ? Math.max(25, Math.min(75, Math.round(targetSec * 0.12)))
+    : 50;
   const clampedDelta = delta != null
     ? Math.max(-maxdev, Math.min(maxdev, delta))
     : 0;
