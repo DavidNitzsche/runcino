@@ -2464,8 +2464,8 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
                     <div style={{
                       position: 'absolute', top: 1, bottom: 1,
                       left: `${heatBandLeft}%`, width: `${heatBandW}%`,
-                      background: 'rgba(62,208,106,0.16)',
-                      border: '1px dashed rgba(62,208,106,0.40)',
+                      background: 'rgba(92,173,227,0.16)',
+                      border: '1px dashed rgba(92,173,227,0.45)',
                       borderRadius: 3, zIndex: 1,
                     }} />
                   )}
@@ -3181,6 +3181,11 @@ function TempoPanel({
       })()
     : null;
   const heatBandW = heatBandLeft != null ? 50 - heatBandLeft : 0;
+  // 2026-06-04 · runner landed inside the heat-adjusted band ·
+  // drives the chip and replaces the "+X vs goal" tail with "on
+  // plan for conditions" copy.
+  const insideHeatBand = heatBandW > 0 && heatBandLeft != null
+    && delta != null && delta > 0 && markerPos >= heatBandLeft;
 
   return (
     <>
@@ -3252,8 +3257,8 @@ function TempoPanel({
             <div style={{
               position: 'absolute', top: 1, bottom: 1,
               left: `${heatBandLeft}%`, width: `${heatBandW}%`,
-              background: 'rgba(62,208,106,0.18)',
-              border: '1px dashed rgba(62,208,106,0.45)',
+              background: 'rgba(92,173,227,0.18)',
+              border: '1px dashed rgba(92,173,227,0.50)',
               borderRadius: 3, zIndex: 1,
             }} />
           )}
@@ -3280,10 +3285,10 @@ function TempoPanel({
         {/* 2026-06-04 · explainer chip · only when the band actually
             rendered AND the runner landed inside it. Tells the runner
             what they're looking at without bloating the panel. */}
-        {heatBandW > 0 && heatBandLeft != null && delta != null && delta > 0 && markerPos >= heatBandLeft ? (
+        {insideHeatBand ? (
           <div style={{
             marginTop: 6, fontSize: 9, fontWeight: 700, letterSpacing: 0.6,
-            color: 'rgba(62,208,106,0.82)',
+            color: 'rgba(120,190,235,0.95)',
             textTransform: 'uppercase',
           }}>
             ✓ INSIDE HEAT-ADJUSTED BAND · {Math.round(heatPct)}% pace tax for conditions
@@ -3398,12 +3403,21 @@ function TempoPanel({
             fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, opacity: 0.6,
           }}>/mi</small>
           {delta != null ? (
-            <span style={{
-              fontSize: 11, fontWeight: 700, marginLeft: 5,
-              color: beat ? '#3ED06a' : '#ffb24d',
-            }}>
-              · {delta > 0 ? `+${delta}` : delta} vs goal
-            </span>
+            insideHeatBand ? (
+              <span style={{
+                fontSize: 11, fontWeight: 700, marginLeft: 5,
+                color: 'rgba(120,190,235,0.95)',
+              }}>
+                · on plan for conditions
+              </span>
+            ) : (
+              <span style={{
+                fontSize: 11, fontWeight: 700, marginLeft: 5,
+                color: beat ? '#3ED06a' : '#ffb24d',
+              }}>
+                · {delta > 0 ? `+${delta}` : delta} vs goal
+              </span>
+            )
           ) : null}
         </span>
       </div>
