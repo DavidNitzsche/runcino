@@ -97,13 +97,21 @@ export interface RecoveryPhase {
     summary: string;                     // plain English
   } | null;
   /** 2026-06-01 · null when dataInsufficient · the engine can't honestly
-   *  call a green-light day without measurement data. Was: always set. */
+   *  call a green-light day without measurement data. Was: always set.
+   *  2026-06-03 · this field is now stubbed (computeNextQualityGreenLight
+   *  returns an empty envelope) per no-reactive-coach. Frontend ignores
+   *  it. Kept on the type so iPhone consumers don't have to migrate. */
   nextQualityGreenLight: {
     date: string;             // YYYY-MM-DD
     daysOut: number;
     reason: string;
   } | null;
   message: string;            // one-line coach-voice summary
+  /** 2026-06-03 · static doctrine reference for the expected window.
+   *  Renders below the recovery message as info ("Typical window for a
+   *  13–15mi long run: 2 days · Pfitzinger"). Runner reads the doctrine
+   *  and decides what it means · not weaponized as a countdown. */
+  expectedWindowDoctrine: string;
 }
 
 // Doctrine timelines · "quality-ready" days per session type.
@@ -153,6 +161,27 @@ function formatAnchorLabel(date: string, type: AnchorType, distanceMi: number): 
   return `${day}'s run`;
 }
 
+/**
+ * 2026-06-03 · doctrine reference for the expected recovery window.
+ * Renders below the recovery message as static info ("Typical window
+ * for a 13–15mi long run: 2 days · Pfitzinger"). NOT a countdown ·
+ * runner reads the doctrine and decides what it means for them.
+ */
+function formatExpectedWindowDoctrine(type: AnchorType, distanceMi: number, expDays: number): string {
+  const dayWord = expDays === 1 ? 'day' : 'days';
+  if (type === 'race') {
+    if (distanceMi >= 24) return `Typical quality-ready window after a marathon: ${expDays} ${dayWord} (Pfitzinger / Daniels). Peak-ready is ~26 days.`;
+    if (distanceMi >= 13) return `Typical quality-ready window after a half marathon: ${expDays} ${dayWord} (Pfitzinger).`;
+    if (distanceMi >= 6) return `Typical quality-ready window after a 10k: ${expDays} ${dayWord} (Daniels).`;
+    return `Typical quality-ready window after a 5k: ${expDays} ${dayWord} (Daniels).`;
+  }
+  if (type === 'long') {
+    const band = distanceMi >= 20 ? '20+mi' : distanceMi >= 16 ? '16–19mi' : '13–15mi';
+    return `Typical quality-ready window for a ${band} long run: ${expDays} ${dayWord} (Pfitzinger).`;
+  }
+  return `Typical quality-ready window after intervals or tempo: ${expDays} ${dayWord} (Daniels).`;
+}
+
 export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPhase | null> {
   const today = new Date().toISOString().slice(0, 10);
 
@@ -194,8 +223,18 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
   const todayDate = new Date(today + 'T12:00:00Z');
   const daysSince = Math.round((todayDate.getTime() - anchorDate.getTime()) / 86400000);
   const expDays = expectedDays(anchor.type, anchor.distanceMi);
-  // Skip if recovery is conceptually complete (avoid stale anchors).
-  if (daysSince > expDays + 1) return null;
+  // 2026-06-03 · removed the day-based skip (was: daysSince > expDays + 1
+  // → null). The timer made the panel vanish in UTC-rollover at midnight
+  // on day 4, regardless of whether the runner's body was actually back.
+  // For David's case: Sunday 12mi → expDays=2 → panel disappeared Thu UTC
+  // (Wed evening Pacific) even though HRV was still -17 below baseline
+  // and SLEEP had a 10-day streak.
+  //
+  // New rule (per David's design call · Q1d):
+  //   · Hide ONLY when percentRecovered >= 80 (body actually back), OR
+  //   · A newer hard session lands and becomes the new anchor (handled
+  //     by the most-recent-first loop above · the newer session wins).
+  // Otherwise the panel stays as long as there's signal to track.
 
   // 2 · Per-pillar bounce-back tracking.
   // For each pillar, compute the value on anchor date, today, and a
@@ -229,6 +268,12 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
     ? null
     : Math.round(weightedSum / weightTotal);
 
+  // 2026-06-03 · Q1d skip · hide the panel only when the body is
+  // actually back (≥ 80%). Below that, keep rendering — the runner
+  // has real signal to look at. Newer hard sessions auto-supersede
+  // by virtue of the most-recent-first loop above.
+  if (percentRecovered != null && percentRecovered >= 80) return null;
+
   // 4 · Muscle signals from form metrics on easy runs after anchor.
   const muscleSignals = await loadMuscleSignals(userUuid, anchor.date, today);
 
@@ -251,6 +296,7 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
     muscleSignals,
     nextQualityGreenLight: nextGreenLight,
     message,
+    expectedWindowDoctrine: formatExpectedWindowDoctrine(anchor.type, anchor.distanceMi, expDays),
   };
 }
 
@@ -303,26 +349,57 @@ async function loadPillarBounceBack(
     const day0 = day0R?.avg != null ? Number(day0R.avg) : null;
     const current = currentR?.avg != null ? Number(currentR.avg) : null;
 
-    // pct_recovered: 100 = back to baseline, 0 = still at day-0 deficit.
-    // If isLowerBetter (RHR, wrist temp, RR), invert the math.
-    // 2026-06-01 · null vs zero hygiene brief response (Option C):
-    // pctRecovered is null when we can't compute it (missing baseline
-    // or current). The fallback used to return 50/90 when day0 missing
-    // but baseline + current present · we keep that since it has signal.
-    // Frontend gates "X% back" copy on this being non-null.
+    // 2026-06-03 · three-branch pillar math · fixes the "100% back"
+    // contradiction David flagged when SLEEP read 100% recovered while
+    // the BODY tile said "6:06h · 10-day streak below target."
+    //
+    // The old math measured deficit-from-session only. If session day
+    // happened to have a good reading (or better than baseline), there
+    // was "no deficit to recover from" → 100%. But chronic state can
+    // still be in a hole regardless of session timing.
+    //
+    // New branches per pillar:
+    //   1. current is at/better than baseline → fully back (100)
+    //   2. current is between baseline and day0 (session worsened it,
+    //      not yet fully back) → standard recovery curve
+    //   3. current is below baseline (chronic hole) → percent reflects
+    //      how deep the chronic hole is, NOT how far from session-day-0.
+    //      Eliminates the "100% back" / "10-day streak" contradiction.
+    //
+    // `significantBand` is the deficit at which the pillar reads 0%.
+    // 15% of baseline is a defensible "this is a real hole" threshold
+    // for HRV/SLEEP/RHR/HR_RECOVERY.
     let pctRecovered: number | null = null;
     if (baseline != null && day0 != null && current != null) {
-      const peakDeficit = spec.isLowerBetter ? Math.max(0, day0 - baseline) : Math.max(0, baseline - day0);
-      if (peakDeficit === 0) {
+      // Signed delta to baseline · positive means worse-than-baseline
+      // (accounts for isLowerBetter).
+      const baselineToDay0 = spec.isLowerBetter ? day0 - baseline : baseline - day0;
+      const baselineToCurrent = spec.isLowerBetter ? current - baseline : baseline - current;
+      if (baselineToCurrent <= 0) {
+        // Branch 1 · current matches or exceeds baseline · fully back.
         pctRecovered = 100;
+      } else if (baselineToDay0 > 0 && baselineToCurrent < baselineToDay0) {
+        // Branch 2 · standard recovery curve · current is between
+        // session-day deficit and baseline.
+        pctRecovered = Math.round(Math.max(0, Math.min(100, 100 * (1 - baselineToCurrent / baselineToDay0))));
       } else {
-        const currentDeficit = spec.isLowerBetter ? Math.max(0, current - baseline) : Math.max(0, baseline - current);
-        pctRecovered = Math.round(Math.max(0, Math.min(100, (1 - currentDeficit / peakDeficit) * 100)));
+        // Branch 3 · chronic hole · current is below baseline AND
+        // either session day was at/above baseline OR current is even
+        // worse than session day. Either way the honest read is "how
+        // deep is the chronic deficit", not "how far back from session".
+        const significantBand = Math.max(0.5, Math.abs(baseline) * 0.15);
+        pctRecovered = Math.round(Math.max(0, Math.min(100, 100 * (1 - baselineToCurrent / significantBand))));
       }
     } else if (baseline != null && current != null && day0 == null) {
-      // No day-0 reading · assume pillar is at baseline if current is too.
-      const diff = spec.isLowerBetter ? Math.abs(current - baseline) : Math.abs(baseline - current);
-      pctRecovered = diff < 0.5 ? 90 : 50;
+      // No day-0 reading · score against baseline directly · same
+      // three-branch logic without the curve fallback.
+      const baselineToCurrent = spec.isLowerBetter ? current - baseline : baseline - current;
+      if (baselineToCurrent <= 0) {
+        pctRecovered = 100;
+      } else {
+        const significantBand = Math.max(0.5, Math.abs(baseline) * 0.15);
+        pctRecovered = Math.round(Math.max(0, Math.min(100, 100 * (1 - baselineToCurrent / significantBand))));
+      }
     }
     // else: any of baseline / current is null · pctRecovered stays null.
 
@@ -473,11 +550,11 @@ function composeRecoveryMessage(
   percentRecovered: number | null,
   dataInsufficient: boolean,
 ): string {
-  // 2026-06-03 · plain coach voice (David's QC: "Can be more 'coach
-  // talking normally'"). Describes the recovery picture in conversational
-  // English, no countdown timer, no quality-day prescription, no
-  // "Day N of M expected" math that goes negative-feeling once daysSince
-  // exceeds expDays. Describes the state, runner reads it.
+  // 2026-06-03 · plain coach voice describing the recovery picture.
+  // No countdown timer ("Day N of M expected" goes wrong once daysSince
+  // exceeds expDays), no quality-day prescription. Describes state,
+  // runner reads it. Expected-window info renders separately as a
+  // doctrine reference line in the frontend (Q4 design call).
   const sincePart = daysSince === 0
     ? `Today's ${anchor.label.replace(/^[A-Z]/, (c) => c.toLowerCase())}`
     : daysSince === 1
@@ -486,10 +563,10 @@ function composeRecoveryMessage(
   if (dataInsufficient || percentRecovered == null) {
     return `${sincePart}. Recovery tracking is still waiting on watch syncs.`;
   }
-  if (percentRecovered >= 85) {
-    return `${sincePart}. Body is mostly back · ${percentRecovered}% across the recovery pillars.`;
+  if (percentRecovered >= 65) {
+    return `${sincePart}. ${percentRecovered}% across the recovery pillars · the body is most of the way back.`;
   }
-  if (percentRecovered >= 50) {
+  if (percentRecovered >= 35) {
     return `${sincePart}. ${percentRecovered}% across the recovery pillars · the body is still working through it.`;
   }
   return `${sincePart}. ${percentRecovered}% across the recovery pillars · the body is still in the hole.`;

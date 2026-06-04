@@ -1307,6 +1307,9 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hrecov-muscle .md{width:6px;height:6px;border-radius:50%;background:#F3AD38;flex:0 0 auto;margin-top:6px;}
 .hrecov-green{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1);font-size:14px;font-weight:600;color:var(--txt);}
 .hrecov-green b{color:#5fd06a;}
+/* 2026-06-03 · doctrine reference line · muted, smaller, italic to read
+   as informational sidenote rather than a directive. */
+.hrecov-doc{margin-top:8px;font-size:12px;font-weight:500;font-style:italic;color:rgba(159,179,173,.7);letter-spacing:.1px;}
 
 /* DEEPER INSIGHTS cards · headline + one-liner */
 .hinsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}

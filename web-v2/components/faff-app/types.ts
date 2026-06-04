@@ -526,6 +526,11 @@ export type HealthSnapshot = {
       reason: string;
     } | null;
     message: string;
+    /** 2026-06-03 · static doctrine reference for the expected window
+     *  ("Typical window for a 13–15mi long run: 2 days · Pfitzinger").
+     *  Optional for back-compat · readers without the field render
+     *  no doctrine line. */
+    expectedWindowDoctrine?: string;
   } | null;
   // Power moves Wave 4 · block-over-block comparison.
   blockComparison?: {

@@ -561,8 +561,13 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             ) : null}
             {/* 2026-06-03 · headline reads from rp.message (now
                 conversational coach voice). Old "Earliest quality
-                session · YYYY-MM-DD · resume on feel" line is gone. */}
+                session · YYYY-MM-DD · resume on feel" line is gone.
+                Doctrine reference below states the typical recovery
+                window as info, not a countdown. */}
             <div className="hrecov-green">{rp.message}</div>
+            {rp.expectedWindowDoctrine ? (
+              <div className="hrecov-doc">{rp.expectedWindowDoctrine}</div>
+            ) : null}
           </div>
         );
       })() : null}
