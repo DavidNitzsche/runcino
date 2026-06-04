@@ -521,14 +521,15 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
       {seed.health.recoveryPhase ? (() => {
         const rp = seed.health.recoveryPhase;
         const pcol = (p: number) => p >= 80 ? COLOR_GOOD : p >= 55 ? COLOR_WATCH : COLOR_BAD;
-        // Heuristic for "data insufficient": all pillar pcts at 0 AND
-        // their day0/current values are null. Backend should ship a
-        // proper null indicator but until then this catches the bug.
-        const allPillarsZero = rp.pillars.every(p => p.pctRecovered === 0);
-        const allPillarsNoData = rp.pillars.every(p =>
-          p.day0Value == null || p.currentValue == null
-        );
-        const dataInsufficient = allPillarsZero && allPillarsNoData;
+        // 2026-06-03 · trust the backend's `rp.dataInsufficient` flag +
+        // the canonical `rp.percentRecovered == null` signal. The old
+        // frontend tried to second-guess with allPillarsZero +
+        // allPillarsNoData which produced "null%" when the backend
+        // correctly returned dataInsufficient with pillars at null
+        // (David's screenshot: server UTC tipped over to Thu Jun 4
+        // before today's HK readings landed, all pillars dropped to
+        // null, frontend's allPillarsZero=false → rendered "null%").
+        const dataInsufficient = rp.dataInsufficient || rp.percentRecovered == null;
         const dayLabel = rp.daysSince === 0
           ? 'Today'
           : rp.daysSince === 1
@@ -693,20 +694,13 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                   Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}.
                   {seed.form.acwr != null ? ` ACWR ${seed.form.acwr.toFixed(2)}.` : ''}
                 </div>
-                {/* 2026-06-03 · plain-English explanation per David's QC
-                    ("explain it better"). Bands per Banister TSB doctrine. */}
+                {/* 2026-06-03 · trimmed per David's "way too wordy" QC.
+                    Keeps the band reference (the most actionable info)
+                    + 1-line context. Drops the full TSB explanation. */}
                 <div className="hins-what">
-                  Form = Fitness − Fatigue (Banister TSB). Fitness is your 42-day
-                  rolling training load · Fatigue is your 7-day load. When fatigue
-                  outpaces fitness, you're loaded but adapting · negative numbers
-                  are NORMAL during a build phase.
-                  {' '}
-                  Bands: <b>&gt; +25</b> detraining · <b>+5 to +25</b> race-ready ·
-                  {' '}<b>−5 to +5</b> productive · <b>−5 to −15</b> loaded ·
-                  {' '}<b>&lt; −15</b> overreach watch.
-                  {seed.form.acwr != null ? (
-                    <> ACWR is acute-7-day mileage ÷ chronic-28-day mileage · 0.8–1.3 is the sweet spot per Gabbett.</>
-                  ) : null}
+                  Form = Fitness − Fatigue. Negative is normal in a build.
+                  <br />
+                  <b>&gt;+25</b> fresh · <b>+5/+25</b> race-ready · <b>−5/+5</b> productive · <b>−5/−15</b> loaded · <b>&lt;−15</b> overreach.
                 </div>
               </div>
             ) : null}
@@ -734,9 +728,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                   ) : null;
                 })()}
                 <div className="hins-what">
-                  Comparing your last 4 weeks against the 4 weeks before {seed.health.blockComparison.referenceBlock.label.replace(/ build$/, '')}.
-                  {' '}This block's averages vs the reference block · positive sleep / HRV deltas
-                  and negative RHR deltas read as a more-rested build than the reference.
+                  Your last 4 weeks vs the 4 weeks before {seed.health.blockComparison.referenceBlock.label.replace(/ build$/, '')}.
                 </div>
               </div>
             ) : null}

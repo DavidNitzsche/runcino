@@ -338,10 +338,21 @@ async function loadPillarBounceBack(
           AND sample_date = $3::date`,
       [userUuid, spec.sampleType, anchorDate],
     ).then((r) => r.rows[0]).catch(() => ({ avg: null }));
+    // 2026-06-03 · `current` now looks back up to 2 days · server UTC vs
+    // runner-TZ misalignment was making today's readings appear "missing"
+    // for the entire panel until the watch wrote them, which dropped all
+    // pillars to null → "null%". Now we take the most recent reading
+    // within the last 3 days (today + 2 fallback).
     const currentR = await pool.query<{ avg: number | string | null }>(
       `SELECT AVG(value::numeric) AS avg FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = $2
-          AND sample_date = $3::date`,
+          AND sample_date = (
+            SELECT MAX(sample_date) FROM health_samples
+             WHERE COALESCE(user_uuid, user_id) = $1
+               AND sample_type = $2
+               AND sample_date >= ($3::date - interval '2 days')
+               AND sample_date <= $3::date
+          )`,
       [userUuid, spec.sampleType, today],
     ).then((r) => r.rows[0]).catch(() => ({ avg: null }));
 

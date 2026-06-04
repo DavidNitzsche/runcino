@@ -118,7 +118,10 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
     : currentDriftPct < 10 ? 'developing'
     : 'early-base';
 
-  const whatItIs = `Aerobic decoupling is how much your heart rate drifts upward during a steady long run · second-half avg vs first-half avg. Lower is better · a well-built aerobic engine holds the same effort at the same HR. Bands: < 5% race-ready · 5–7% building · 7–10% developing · 10%+ early base (Research/15 doctrine).`;
+  // 2026-06-03 · trimmed per David's "way too wordy" QC. The band
+  // reference renders separately as `haero-zone-bands` so we don't
+  // need to repeat it here. This stays as the one-line what-it-is.
+  const whatItIs = `Aerobic decoupling = HR drift on a steady long run, second-half avg vs first. Lower is better.`;
 
   return {
     currentDriftPct,
