@@ -19,8 +19,16 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   recovery:  { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
   easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#48B3B5', mark: 26, lbl: 'EASY' },
   long:      { mesh: ['#FFE7B0','#F8BC4E','#F0A638','#EC8C2A','#D9791C','#A85A14'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
-  tempo:     { mesh: ['#FFD2A4','#FF9A54','#FB6E3C','#F4502F','#E23A47','#9E2438'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
-  intervals: { mesh: ['#FFDA84','#FF8A54','#FF526C','#E82B49','#C61E46','#7E1432'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
+  // 2026-06-03 · tempo + intervals meshes · second iteration.
+  //   v1 (#FFD2A4 / #FF9A54 / …) was too bright · washed cards out.
+  //   v2 desaturated too aggressively · page went sad/brown.
+  // v3 keeps full saturation (warmth = tempo identity) and only takes the
+  // brightest mid stops down ~6–8% in lightness. Base stays where v1 had
+  // it because the base only fills the void around blobs, not the
+  // foreground. Result: still clearly orange-red / pink-red and alive,
+  // just the brightest peak isn't blasting through anymore.
+  tempo:     { mesh: ['#F5C297','#F18847','#E15F30','#D04525','#C2303E','#8A1E30'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
+  intervals: { mesh: ['#F2C878','#F07A48','#EB4560','#CD2540','#A91A3E','#6D1129'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
   rest:      { mesh: ['#C4C8D2','#9CA2B0','#787E8E','#58606E','#3E4350','#252935'], dot: '#8A90A0', mark: 4,  lbl: 'OFF' },
 };
 
@@ -30,7 +38,11 @@ export const MESH: Record<Exclude<ViewKey,'today'>, Mesh> = {
   train:     ['#FFE0A0','#F3AD38','#E89B3A','#E07A2A','#C47812','#3E2A0A'],
   activity:  ['#D6BE98','#B2916A','#8A6A48','#5E4630','#45331F','#1C140D'],
   health:    ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
-  targets:   ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'],
+  // 2026-06-03 · brought back ~6–8% on the top three stops · was the
+  // brightest mesh in the app (yellow → hot pink → red), competing
+  // with all the on-track green status text on this page.  Ember
+  // identity preserved, peak just doesn't blast through.
+  targets:   ['#F0BC68','#ED6638','#E03A55','#B81E32','#841327','#2C0A0E'],
   profile:   ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
   spectator: ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
   race:      ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'],
