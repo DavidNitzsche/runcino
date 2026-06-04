@@ -661,19 +661,27 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
           without dragging the body color.  --pg-2 / --pg-3 vars are
           still written from TrainView for back-compat / future use
           but are not consumed by the .phase rule itself anymore. */
-.train2 .phase{border-radius:13px;border:0;padding:16px;background:var(--pg-1,#2B2F38);position:relative;overflow:hidden;box-shadow:0 14px 30px -18px rgba(0,0,0,.55),0 1px 0 rgba(255,255,255,.18) inset,0 -18px 24px -18px rgba(0,0,0,.32) inset;}
-.train2 .phase.now{box-shadow:0 18px 38px -16px rgba(0,0,0,.65),0 1px 0 rgba(255,255,255,.28) inset,0 -18px 24px -18px rgba(0,0,0,.32) inset,0 0 0 1.5px rgba(255,255,255,.45) inset;}
+/* 2026-06-04 · v5 · David: "maybe we dont fill them in. its hard to
+   read."  Solid colored cards washed body text out (white on bright
+   yellow / orange).  Reverted to dark glass body · phase identity now
+   lives in the .pbar top stripe + the colored .pnm title.  Same
+   surface as the THIS WEEK / PROJECTION / KEY WORKOUTS cards below
+   for visual consistency. NOW state lifts via outer shadow + a soft
+   outer glow in the phase color (uses --pg-1 var). */
+.train2 .phase{border-radius:13px;border:0;padding:16px;background:rgba(8,10,14,.54);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);position:relative;overflow:hidden;box-shadow:0 14px 30px -18px rgba(0,0,0,.55);}
+.train2 .phase.now{background:rgba(8,10,14,.66);box-shadow:0 20px 42px -16px rgba(0,0,0,.7),0 0 24px -6px var(--pg-1,rgba(255,255,255,.4));}
 .train2 .phase .pbar{position:absolute;top:0;left:0;height:3px;width:100%;}
 /* 2026-06-03 · phase title (BUILD / PEAK / TAPER / RACE) wears the
    phase color · against its own themed-mesh background that text loses
    contrast (orange on orange, yellow on yellow). Heavy dark shadow +
    weight bump gives the colored text enough punch to read cleanly. */
-/* 2026-06-04 · was phase-colored text on a same-hue tinted background
-   which lost contrast (yellow-on-yellow for BUILD, orange-on-orange
-   for PEAK).  Now the gradient carries the phase identity and the
-   title is solid white · maximum contrast, same idiom as the Today
-   hero cards (white "TEMPO" on orange gradient). */
-.train2 .phase .pnm{font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.45);}
+/* 2026-06-04 · v5 · title back in phase color now that the card body
+   is dark glass.  Color comes from inline `style={{ color: p.color }}`
+   in TrainView so it tracks phaseColor() exactly (same color as the
+   ramp bar + the .pbar top stripe of this card · three places, one
+   value).  Text shadow gives the colored title a touch of depth on
+   the dark glass without going washy. */
+.train2 .phase .pnm{font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;text-shadow:0 1px 8px rgba(0,0,0,.55);}
 .train2 .phase .pwk{font-size:10px;font-weight:700;letter-spacing:.6px;opacity:.55;margin-top:3px;}
 .train2 .phase .pdesc{font-size:12px;font-weight:500;line-height:1.4;opacity:1;margin-top:10px;}
 .train2 .phase .pvol{font-family:'Oswald',sans-serif;font-size:14px;font-weight:600;margin-top:11px;opacity:1;}

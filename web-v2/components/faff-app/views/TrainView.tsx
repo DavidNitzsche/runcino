@@ -605,7 +605,12 @@ export function TrainView({
               >
                 <span className="pbar" style={{ background: p.color }} />
                 {now && <span className="nowtag">NOW</span>}
-                <div className="pnm">{p.name}</div>
+                {/* 2026-06-04 · title back in phase color (David: "try
+                    putting just the title in the color · so PEAK, or
+                    TAPER, etc").  Body of the card is dark glass now;
+                    color identity lives in the .pbar top stripe + the
+                    .pnm title, not in the bg. */}
+                <div className="pnm" style={{ color: p.color }}>{p.name}</div>
                 {/* 2026-06-03 · weeksLabel removed · was "Wk N–M" which
                     reset to wk 1 every rebuild. The phase title + position
                     on the bar ramp carries the same info honestly. */}
