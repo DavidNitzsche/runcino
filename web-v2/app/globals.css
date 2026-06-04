@@ -207,8 +207,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    lands top-left and deepest bottom-right · matches the four
    handoff screenshots (recovery teal, easy teal, long amber,
    intervals coral, tempo orange). */
-.hero-v2 .hmain{flex:0 0 296px;min-width:0;display:flex;flex-direction:column;background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);}
-.hero .hmain{background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);}
+/* overflow:hidden added 2026-06-04 · belt-and-suspenders so a long
+   est-time string (e.g. ~2:30:45 on a marathon) physically cannot
+   escape the colored hero card. */
+.hero-v2 .hmain{flex:0 0 296px;min-width:0;display:flex;flex-direction:column;background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;}
+.hero .hmain{background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;}
 .hero-v2 .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
 /* 2026-06-03 · margin-top dropped to 0 · the eyebrow above is gone now,
    so the title row anchors at the top of .hmain. Was 8px (clear of the
@@ -235,10 +238,18 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .adaptline .adapt-restored{color:#FFCE8A;font-weight:600;}
 .hero-v2 .adaptline .adapt-restore-err{color:#FC4D64;font-weight:600;}
 .hero-v2 .leftstack{margin-top:24px;display:flex;flex-direction:column;}
-.hero-v2 .stats{display:flex;gap:30px;margin-top:0;}
-.hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;line-height:.9;}
-.hero-v2 .stats .v small{font-size:14px;opacity:.85;font-weight:400;}
-.hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;margin-top:8px;}
+/* 2026-06-04 · planned hero stats tightened.  Previously gap:30px +
+   font-size:34 + no min-width:0 on children let the third stat
+   (~1:36 EST TIME etc.) brush the right edge of the card with no
+   breathing room.  A marathon est would clearly overflow.  Now:
+   gap:18, font:30, each .v/.k cell allowed to shrink (min-width:0),
+   .v itself is white-space:nowrap so the number/time never wraps
+   awkwardly mid-string. */
+.hero-v2 .stats{display:flex;gap:18px;margin-top:0;min-width:0;}
+.hero-v2 .stats > div{min-width:0;}
+.hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;line-height:.9;white-space:nowrap;}
+.hero-v2 .stats .v small{font-size:13px;opacity:.85;font-weight:400;}
+.hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .hero-v2 .zones{margin-top:28px;}
 .hero-v2 .zhead{display:flex;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:10px;opacity:.9;}
 .hero-v2 .zhead b{color:#fff;}
