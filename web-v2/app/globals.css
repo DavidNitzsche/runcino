@@ -90,7 +90,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .me .nm small{display:block;font-size:11px;font-weight:500;opacity:.85;margin-top:1px;}
 .me .gear{margin-left:auto;opacity:.5;}.me .gear svg{width:17px;height:17px;}
 /* main */
-.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:15px 38px 40px;-ms-overflow-style:none;scrollbar-width:none;}
+/* 2026-06-04 · .main is now the dashboard grid for every view.  Bands
+   (week strip, hero, tiles, sections, etc.) become direct grid items
+   and are separated by --grid-gap automatically · no per-band
+   margin-tops anywhere.  Outer padding = the same gutter so cards
+   never sit closer to the screen edge than they do to each other. */
+.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:var(--grid-gap);display:grid;grid-auto-flow:row;grid-auto-rows:auto;gap:var(--grid-gap);align-content:start;-ms-overflow-style:none;scrollbar-width:none;}
 .main::-webkit-scrollbar{display:none;}
 .top{display:flex;align-items:flex-start;justify-content:space-between;}
 .top .date{font-family:'Oswald',sans-serif;font-size:16px;font-weight:500;letter-spacing:1px;opacity:1;text-transform:uppercase;}
@@ -145,7 +150,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    .wcard spans cols 2-3; planned/completed put .mapcol or .session in
    col 2 and .wcard in col 3.  Anal-left-aligned: every row starts at
    the same left edge under .main padding, with consistent gaps. */
-.hero,.hero-v2{display:grid;grid-template-columns:1fr 1.6fr 1.1fr;gap:var(--grid-gap,16px);align-items:stretch;margin-top:var(--grid-row,28px);min-height:480px;}
+.hero,.hero-v2{display:grid;grid-template-columns:1fr 1.6fr 1.1fr;gap:var(--grid-gap);align-items:stretch;min-height:480px;}
 .hero{min-height:300px;}
 .hero > .hmain,.hero-v2 > .hmain{grid-column:1;}
 .hero > .wcard,.hero-v2 > .wcard{grid-column:3;}
@@ -525,9 +530,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    taller than its neighbors. Strength demoted from text row to
    top-right glyph chip.
    ============================================================ */
-/* 2026-06-04 · week strip uses the shared --grid-gap so it lines up
-   with the hero row and tiles row below.  Was 12px; now 16. */
-.week.wkstrip-v2{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--grid-gap,16px);}
+.week.wkstrip-v2{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--grid-gap);}
 .wc{position:relative;height:120px;padding:12px 14px 11px;display:flex;flex-direction:column;text-align:left;cursor:pointer;border-radius:16px;background:rgba(6,26,28,.4);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--txt);transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;font:inherit;text-shadow:none;}
 .wc:hover{background:rgba(8,28,30,.52);}
 .wc.on{background:rgba(8,28,30,.66);border-color:rgba(255,255,255,.42);box-shadow:0 0 0 1px rgba(255,255,255,.12),0 14px 32px -16px rgba(0,0,0,.6);}
@@ -891,10 +894,9 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2-sheet .cell .cdet{font-size:9px;font-weight:600;opacity:.5;line-height:1.1;}
 .train2-sheet .cell .crest{align-self:flex-start;font-size:9px;font-weight:800;letter-spacing:1px;opacity:.38;margin-top:auto;}
 
-/* 2026-06-04 · uses shared --grid-gap + --grid-row so all Today rows
-   share the same rhythm.  Was 16px gap + 26px margin (close to the
-   tokens · now exactly the tokens). */
-.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap,16px);margin-top:var(--grid-row,28px);}
+/* 2026-06-04 · tiles row · 4-col grid, gap = --grid-gap.  No margin-top
+   · vertical separation comes from .main's grid row gap above. */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap);}
 .tile{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;min-height:222px;display:flex;flex-direction:column;}
 .tile .fll{margin-bottom:0;}
 .tile.click{cursor:pointer;transition:.15s;}
@@ -941,7 +943,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .gapv-goal::after{content:'GOAL';position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:7px;font-weight:800;letter-spacing:.5px;color:rgba(255,255,255,.8);}
 .gapv-you{position:absolute;left:80%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:#3EBD41;border:2.5px solid #fff;box-shadow:0 0 10px rgba(62,189,65,.6);}
 .gapv-chip{align-self:center;font-size:10px;font-weight:700;letter-spacing:.4px;color:#7be89a;background:rgba(62,189,65,.14);border:1px solid rgba(62,189,65,.32);border-radius:9px;padding:6px 11px;white-space:nowrap;}
-.fll{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;margin-bottom:14px;}
+/* 2026-06-04 · margin-bottom stripped · the grid handles vertical
+   rhythm now.  When .fll is used inside a card the local layout takes
+   over (each card can space its eyebrow internally). */
+.fll{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;}
 .vol{position:relative;display:flex;align-items:flex-end;gap:6px;height:60px;}
 .volavg{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(246,247,248,.45);pointer-events:none;}
 .vol i{flex:1;border-radius:4px 4px 0 0;}
@@ -1854,18 +1859,24 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .win.sb-collapsed .me{justify-content:center;}
 .win.sb-collapsed .me .nm,.win.sb-collapsed .me .gear{display:none;}
 
-/* 2026-06-04 · APP-WIDE GRID TOKENS · David: "this site needs to be a
-   grid. same spacing between cards app wide. always flexing, growing,
-   making sure the grid is always anal left aligned."
-   --grid-gap · horizontal gap between cards inside a row (week strip,
-                hero row, tiles row, train phgrid, etc.)
-   --grid-row · vertical gap between rows (between week strip + hero,
-                between hero + tiles, between sections, etc.)
-   All row-level layouts should consume these tokens instead of hard
-   coding pixel values so the app rhythm is one number, not 12. */
+/* 2026-06-04 · APP-WIDE GRID TOKENS · refactored to a single gutter +
+   single card padding per David's spec ("One gutter token for
+   everything. Same value for column-gap, row-gap, and outer page
+   padding · cards carry no margins · one --card-padding on all four
+   sides · cards stretch to fill their cell").
+     --grid-gap     · THE gutter · used by every row's column gap,
+                      every grid's row gap, and the .main outer
+                      padding.  One number, used everywhere.
+     --card-padding · interior padding on every card · same on all
+                      four sides.
+   --card-pad / --card-radius kept as legacy aliases for older rules
+   that already consume them (.tile, .wcard padding above). */
 /* ===================== TWEAKS PANEL ===================== */
-.win{--card-pad:22px;--card-radius:16px;--grid-gap:16px;--grid-row:28px;}
-.tile,.wcard{padding:var(--card-pad);border-radius:var(--card-radius);}
+.win{--card-pad:20px;--card-radius:16px;--grid-gap:20px;--card-padding:20px;}
+/* 2026-06-04 · single --card-padding token, cards stretch via height
+   100% so cards in the same row are equal height regardless of
+   content length. */
+.tile,.wcard{padding:var(--card-padding);border-radius:var(--card-radius);height:100%;}
 .win[data-mesh="calm"] .mesh{filter:saturate(.7) brightness(.9);}
 .win[data-mesh="vivid"] .mesh{filter:saturate(1.34) brightness(1.07);}
 .win[data-accent="gold"]{--goal:#F5C518;--race:#F5A518;}
@@ -1973,13 +1984,13 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .av-range button{font-family:inherit;font-size:11.5px;font-weight:700;letter-spacing:.6px;color:rgba(255,255,255,.66);background:none;border:none;border-radius:9px;padding:9px 15px;cursor:pointer;transition:.15s;white-space:nowrap;}
 .av-range button:hover{color:#fff;}
 .av-range button.on{background:#fff;color:#10131A;}
-.av-totals{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap,16px);margin-top:var(--grid-row,28px);}
+.av-totals{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap);}
 .av-tot{background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:15px 16px;}
 .av-tot .k{font-size:10px;font-weight:700;letter-spacing:1.2px;opacity:.55;}
 .av-tot .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;letter-spacing:-1px;margin-top:7px;line-height:.9;}
 .av-tot .v small{font-family:'Inter';font-size:12px;opacity:.65;font-weight:400;}
 
-.av-grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:var(--grid-gap,16px);margin-top:var(--grid-gap,16px);}
+.av-grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:var(--grid-gap);}
 .av-panel{background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:20px 22px;backdrop-filter:blur(12px);}
 .av-ph{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
 .av-ph .t{font-size:13px;font-weight:700;}
@@ -2007,7 +2018,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .av-lg .nm{opacity:.82;}
 .av-lg .pc{margin-left:auto;font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:-.3px;opacity:.92;}
 /* records */
-.av-recs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--grid-gap,16px);margin-top:var(--grid-gap,16px);}
+.av-recs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--grid-gap);}
 .av-rec{background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:15px;padding:15px 16px;position:relative;overflow:hidden;cursor:default;transition:transform .14s,border-color .14s;}
 .av-rec:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.24);}
 .av-rec::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ec,#FF8847);}
@@ -2028,7 +2039,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .av-hkey{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:12px;font-size:9px;font-weight:700;opacity:.5;}
 .av-hkey i{width:10px;height:10px;border-radius:2.5px;}
 /* fun facts */
-.av-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--grid-gap,16px);margin-top:var(--grid-gap,16px);}
+.av-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--grid-gap);}
 /* 2026-06-04 · Activity mesh moved to charcoal · the old peach-tinted
    .av-fact background (rgba(255,136,71,.12 → .04) + peach border) was
    tuned for the warm-tan view mesh and read as muddy brown on dark
@@ -2319,7 +2330,11 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
   .win:not(.sb-collapsed) .me .nm,.win:not(.sb-collapsed) .me .gear{display:none;}
   .win:not(.sb-collapsed) .sb-recap{justify-content:center;padding:11px 0;}
   .win:not(.sb-collapsed) .sb-recap .tx,.win:not(.sb-collapsed) .sb-recap .arr{display:none;}
-  .main{padding:15px 24px 40px;}
+  /* 2026-06-04 · .main keeps padding:var(--grid-gap) at every breakpoint
+     per David's grid spec.  Removed the old asymmetric override. */
+  /* THREE-BAND RESPONSIVE · main band stacks below 1200 · tiles 2-up */
+  .hero,.hero-v2{grid-template-columns:1fr;}
+  .tiles{grid-template-columns:repeat(2,1fr);}
 }
 
 /* Phone · sidebar becomes a top strip; main views stack */
@@ -2337,10 +2352,12 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
   .me .nm,.me .gear{display:none;}
   .brandmark{display:inline-block!important;font-size:22px;padding:0 8px 0 4px;}
   .sb-toggle{display:none;}
-  .main{padding:14px 18px 36px;}
-  .hero{flex-direction:column;}
-  .wcard{flex:1;width:100%;}
-  .tiles{grid-template-columns:repeat(2,1fr);}
+  /* 2026-06-04 · .main keeps padding:var(--grid-gap) at this breakpoint
+     too · old asymmetric padding removed.  THREE-BAND RESPONSIVE on
+     phone: week wraps 2-up, main stacked, tiles 1-up. */
+  .week.wkstrip-v2{grid-template-columns:repeat(2,1fr);}
+  .hero,.hero-v2{grid-template-columns:1fr;}
+  .tiles{grid-template-columns:1fr;}
   .stats{flex-wrap:wrap;gap:18px 28px;}
   .effort,.heroExtra{max-width:none;}
   .hgrid,.hcols{grid-template-columns:1fr;}
@@ -2569,7 +2586,9 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
    still renders the existing GapPanel).
    ============================================================ */
 .targets2 .eyebrow{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:2.4px;color:#FFCE8A;text-transform:uppercase;}
-.targets2 .eyebrow-sec{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:2.4px;color:rgba(255,255,255,.82);text-transform:uppercase;margin:34px 0 14px;}
+/* 2026-06-04 · margins stripped · vertical rhythm comes from .main
+   grid gap.  Eyebrow + section below are independent grid items. */
+.targets2 .eyebrow-sec{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:2.4px;color:rgba(255,255,255,.82);text-transform:uppercase;}
 .targets2 .t2card{background:rgba(20,22,28,.55);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);border-radius:18px;}
 
 /* === SECTION 1 · THE ANSWER === */
