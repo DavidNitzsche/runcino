@@ -311,11 +311,16 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    with --label-gap between value and label.  Per the spec: vertical
    label-to-value spacing comes from --label-gap, never from per-
    element margin-tops. */
-.hero-v2 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;min-width:0;}
+/* 2026-06-04 · gap aligned to 4px-base scale (was 14, now 16 = 4×base). */
+.hero-v2 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--section-gap);min-width:0;}
 .hero-v2 .stats > div{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0;}
+/* 2026-06-04 · text colors read from per-surface tokens · on dark
+   defaults these resolve to white alphas, on the colored hero card
+   surface they resolve to dark alphas (see BRIGHT SURFACE OVERRIDE
+   in the token block).  No hard-coded opacity here. */
 .hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;line-height:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.hero-v2 .stats .v small{font-size:13px;opacity:.85;font-weight:400;}
-.hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hero-v2 .stats .v small{font-size:13px;font-weight:400;color:var(--fg-muted);}
+.hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 /* 2026-06-04 · margin-top stripped · spacing from card section gap. */
 .hero-v2 .zones{}
 .hero-v2 .zhead{display:flex;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:10px;opacity:.9;}
@@ -335,9 +340,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    row-gap on this grid (18px) is between FIELDS within the group,
    not between sections.  Section gap to the row above/below is the
    parent's --section-gap. */
-.hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 16px;min-width:0;}
+/* 2026-06-04 · row + column gaps both = --section-gap (4-multiple).
+   Was 18×16 · 18 violated the 4px-base scale.  Single token keeps
+   the rhythm consistent in both dimensions. */
+.hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:var(--section-gap);min-width:0;}
 .hero-v2 .cond > div{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0;}
-.hero-v2 .cond .kcl{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
+.hero-v2 .cond .kcl{font-size:9.5px;font-weight:700;letter-spacing:1px;color:var(--fg-faint);}
 /* margin-top stripped · --label-gap on the field flex column handles
    label→value spacing. */
 .hero-v2 .cond .kcv{font-size:14px;font-weight:700;}
@@ -1920,39 +1928,62 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .win.sb-collapsed .me{justify-content:center;}
 .win.sb-collapsed .me .nm,.win.sb-collapsed .me .gear{display:none;}
 
-/* 2026-06-04 · APP-WIDE LAYOUT TOKENS · structural spacing primitives.
-   Each token defined here exactly once; every consumer reads from var().
-     PRIMITIVES
-       --label-gap   · tight · label↔value INSIDE a field.  6px.
-                       Smallest spaced unit.
-       --section-gap · loose · between SECTIONS inside a card.  16px
-                       ≈ 2.67× --label-gap so fields cluster + sections
-                       separate (proximity carries grouping).  A
-                       "section" is any top-level block in a card body
-                       · a field, a group of fields, a standalone
-                       element (bar/chart/map), or a callout box.
-     CONTAINERS
-       --card-padding    · interior padding on every card · all sides.
-       --callout-padding · interior padding on callouts (CONDITIONS /
-                           COACH TIP / rest-coach).  Slightly tighter
-                           than --card-padding because callouts nest
-                           inside the card.
-       --grid-gap        · outer dashboard gutter · column + row gap
-                           between cards, and .main outer padding.
-   Legacy aliases kept so older rules keep resolving:
+/* 2026-06-04 · APP-WIDE DESIGN TOKENS · two dimensions, both rule-based.
+   ────────────────────────────────────────────────────────────────────
+   DIMENSION 1 · SCALE · 4px base unit.
+   Every spacing token = integer multiple of --base.  No freehand
+   pixel values anywhere.  --section-gap must be ≥ 2 base steps
+   larger than --label-gap so the two tiers read as distinct.
+     --base            ·  4px · the unit of rhythm
+     --label-gap       ·  8px · 2× base · tight, label↔value in field
+     --section-gap     · 16px · 4× base · loose, between sections
+     --card-padding    · 20px · 5× base · card interior, all sides
+     --callout-padding · 16px · 4× base · callout interior
+     --grid-gap        · 20px · 5× base · dashboard outer gutter
+   Distinctness check · section-gap − label-gap = 8 = 2 base steps · OK.
+   ────────────────────────────────────────────────────────────────────
+   DIMENSION 2 · CONTRAST · per-surface color roles.
+   Color roles are surface-relative, NEVER global.  Each surface
+   declares its own --fg / --fg-muted / --fg-faint.  Defaults below
+   are for DARK surfaces (page mesh + dark glass cards + callout
+   scrim).  Bright surfaces (the colored hero cards) override
+   --fg-muted to a DARK alpha so it darkens rather than lightens ·
+   enforced per the "muted resolves directionally" rule.
+     --fg       · primary text · ≥ 4.5:1 against the surface
+     --fg-muted · secondary text · ≥ 3:1 against the surface
+     --fg-faint · tertiary text · accent only, not body
+   Legacy aliases kept:
      --card-section-gap → --section-gap
-     --card-pad         → --card-padding
-   Don't introduce new uses of the aliases. */
+     --card-pad         → --card-padding */
 /* ===================== TWEAKS PANEL ===================== */
 .win{
-  --label-gap:6px;
+  --base:4px;
+  --label-gap:8px;
   --section-gap:16px;
   --card-padding:20px;
-  --callout-padding:14px;
+  --callout-padding:16px;
   --grid-gap:20px;
   --card-radius:16px;
   --card-section-gap:var(--section-gap);
   --card-pad:var(--card-padding);
+  /* Default surface · DARK · white text alphas */
+  --fg:#F6F7F8;
+  --fg-muted:rgba(255,255,255,.72);
+  --fg-faint:rgba(255,255,255,.5);
+}
+/* 2026-06-04 · BRIGHT SURFACE OVERRIDE · colored hero cards
+   (.hmain gradient · teal / amber / orange / coral / peach).  The
+   default white-alpha muted on these reads at 1.5–2:1 against the
+   bright stop · FAILS the body 4.5:1 floor AND the small-label 3:1
+   floor.  "Muted resolves directionally" per the rule · on bright
+   surfaces it darkens.  Dark-alpha muted on EASY teal #46CFC6 reads
+   ~6:1 (passes body); on TEMPO orange #F18847 reads ~4.5:1 (passes).
+   --fg stays white because brand identity wants the big title in
+   white · the title is large enough (60px+) that the WCAG large-text
+   floor (3:1) applies, not the body 4.5:1. */
+.hero-v2 .hmain,.hero .hmain{
+  --fg-muted:rgba(0,0,0,.62);
+  --fg-faint:rgba(0,0,0,.42);
 }
 /* 2026-06-04 · UNIVERSAL CARD LAYOUT · per David's spec.
    - flex-column with --card-padding on all four sides + gap of
