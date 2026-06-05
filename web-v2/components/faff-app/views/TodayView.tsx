@@ -1788,7 +1788,13 @@ function CompletedHeroV2({
   const zonePcts = runData?.hrZonePcts
     ? [runData.hrZonePcts.z1 ?? 0, runData.hrZonePcts.z2 ?? 0, runData.hrZonePcts.z3 ?? 0, runData.hrZonePcts.z4 ?? 0, runData.hrZonePcts.z5 ?? 0]
     : (result?.zones ?? [0, 0, 0, 0, 0]);
-  const zoneColors = ['#54ddd0', '#8ef0b0', '#ffe0a0', '#ff9560', '#ff5a52'];
+  // 2026-06-04 · David: "The colors in the HR zone bar are really
+  // weak/faded/pastel not on brand."  Swapped from the -a (faded
+  // 'stacked time-in-zones' set) to the canonical -b brand zone
+  // colors (also used by splits / shoe role chips / etc).
+  // z1 recovery teal · z2 easy green · z3 moderate amber ·
+  // z4 hard orange · z5 max red.
+  const zoneColors = ['#48B3B5', '#3EBD41', '#F3AD38', '#FF8847', '#FC4D64'];
   const peakHr = runData?.hr_max ?? result?.peak ?? null;
 
   // Render every split the run carries (was capped at 8 · landed

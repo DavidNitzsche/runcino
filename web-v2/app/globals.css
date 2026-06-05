@@ -272,10 +272,14 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .adaptline .adapt-restore:disabled{opacity:.55;cursor:wait;text-decoration:none;}
 .hero-v2 .adaptline .adapt-restored{color:#FFCE8A;font-weight:600;}
 .hero-v2 .adaptline .adapt-restore-err{color:#FC4D64;font-weight:600;}
-/* 2026-06-04 · margin-top stripped · the hmain card is a flex-column
-   with --card-section-gap so leftstack is just a section in that
-   stack.  Spacing comes from the gap, not from this rule. */
-.hero-v2 .leftstack{display:flex;flex-direction:column;}
+/* 2026-06-04 · leftstack is the container for all hmain body sections
+   (stats, zones, cond/forecast, conditions, coach-tip).  It's a
+   nested flex column · its OWN children get spacing from a nested
+   --card-section-gap so stats→zones→cond→conditions→coach-tip all
+   sit at the same rhythm as the rest of the card.  Without this gap,
+   the WEATHER / SHOE row sat directly under the zone legend with
+   no breathing room (David flag). */
+.hero-v2 .leftstack{display:flex;flex-direction:column;gap:var(--card-section-gap);}
 /* 2026-06-04 · planned hero stats · v2 · switched from flex+gap to
    3-col equal-width grid.  flex was leaving dead space on the right
    of the card after the third stat ("crammed into the left").  Now
