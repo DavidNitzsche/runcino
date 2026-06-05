@@ -1472,13 +1472,20 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hh-wkdays span{flex:1;text-align:center;font-size:9px;font-weight:700;color:rgba(159,179,173,.7);}
 
 /* STORY + WATCHING row · 2-col · cards size to content (align-items:start) */
-.hstoryrow{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-top:18px;align-items:start;}
+/* 2026-06-04 · margins + freehand stripped · was margin-top:18 (4.5×
+   base) adding to .main's --section-gap = uneven band rhythm David
+   flagged.  Internal col gap 14 → --section-gap (16). */
+.hstoryrow{display:grid;grid-template-columns:1.35fr 1fr;gap:var(--section-gap);align-items:start;}
 @media (max-width: 980px){.hstoryrow{grid-template-columns:1fr;}}
-.hsynth{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid #F3AD38;border-radius:14px;padding:18px 22px;}
-.hwatch{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid #5bbfb0;border-radius:14px;padding:18px 22px;}
+/* 2026-06-04 · cards · padding 18/22 freehand → var(--card-padding)
+   (20 all sides), flex-column with --label-gap so internal tag→tx
+   stacking inherits the system rhythm (no inline margin-tops). */
+.hsynth{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid #F3AD38;border-radius:14px;padding:var(--card-padding);display:flex;flex-direction:column;gap:var(--label-gap);}
+.hwatch{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid #5bbfb0;border-radius:14px;padding:var(--card-padding);display:flex;flex-direction:column;gap:var(--label-gap);}
 .hsynth-tag{font-size:10px;font-weight:800;letter-spacing:2px;color:#F3AD38;}
 .hsynth-tag.watch-tag{color:#5bbfb0;}
-.hsynth-tx{font-size:16px;font-weight:500;line-height:1.55;margin-top:9px;max-width:920px;color:var(--txt);}
+/* margin-top stripped · .hsynth's flex+gap handles tag→tx spacing. */
+.hsynth-tx{font-size:16px;font-weight:500;line-height:1.55;max-width:920px;color:var(--txt);}
 .hsynth-tx b{color:#fff;font-weight:700;}
 
 /* Streaks sub-section · per-pillar bar sparklines */
@@ -1492,7 +1499,11 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hstk-base{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(255,255,255,.32);}
 
 /* Watch list rows + forecasts sub-section */
-.hwatch-list{display:flex;flex-direction:column;gap:10px;margin-top:12px;max-width:920px;}
+/* margin-top stripped · .hwatch's flex+gap handles tag→list spacing.
+   Internal gap 10 → --label-gap (8, 2× base) so action rows stack
+   at the tight tier (they're list items in one block, not separate
+   sections). */
+.hwatch-list{display:flex;flex-direction:column;gap:var(--label-gap);max-width:920px;}
 .hwatch-row{display:flex;gap:12px;align-items:baseline;background:rgba(4,18,16,.4);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:13px 16px;font-size:14px;line-height:1.5;color:var(--txt);}
 .hwatch-d{width:6px;height:6px;border-radius:50%;background:#F3AD38;flex:0 0 auto;margin-top:7px;}
 .hwatch-empty{font-size:12.5px;color:rgba(159,179,173,.7);font-style:italic;}
@@ -1593,14 +1604,27 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hact-threshold{font-size:11px;font-style:italic;font-weight:500;line-height:1.5;color:rgba(159,179,173,.6);margin-top:14px;padding-top:12px;border-top:1px dashed rgba(255,255,255,.08);letter-spacing:.15px;}
 
 /* RECOVERY PHASE card · post-hard-session bounce-back */
-.hrecov{margin-top:22px;background:rgba(4,18,16,.5);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:22px 24px;}
-.hrecov-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;}
+/* 2026-06-04 · margin-top:22 stripped (was adding to --section-gap =
+   uneven band rhythm).  Padding 22/24 freehand → var(--card-padding)
+   on all sides.  Flex-column inside with --section-gap between
+   .hrecov-head + .hrecov-bar + .hrecov-grid + .hrecov-muscle so the
+   internal sections stack at the same loose tier as bands on the
+   page do · no internal margin-tops needed. */
+.hrecov{background:rgba(4,18,16,.5);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:var(--card-padding);display:flex;flex-direction:column;gap:var(--section-gap);}
+.hrecov-head{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--section-gap);}
+/* Left side of .hrecov-head holds the eyebrow + anchor as a FIELD ·
+   the previous design used margin-top on .hrecov-anchor for the
+   label↔value gap.  Now: flex-column with --label-gap on the wrapper. */
+.hrecov-head > div:first-child{display:flex;flex-direction:column;gap:var(--label-gap);}
 .hrecov-eyebrow{font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(159,179,173,.85);}
-.hrecov-anchor{font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;margin-top:5px;color:var(--txt);}
+/* margin-top stripped · parent's flex+gap (--label-gap on .hrecov-head
+   side) carries tag→anchor.  Wrap parent in flex column. */
+.hrecov-anchor{font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;color:var(--txt);}
 .hrecov-tl{text-align:right;}
 .hrecov-pct{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;color:#5bbfb0;line-height:.9;}
-.hrecov-day{font-size:11px;font-weight:700;color:rgba(159,179,173,.85);margin-top:4px;}
-.hrecov-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.1);margin:16px 0 22px;overflow:hidden;}
+.hrecov-day{font-size:11px;font-weight:700;color:rgba(159,179,173,.85);}
+/* margin stripped · .hrecov's flex+section-gap handles separation. */
+.hrecov-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden;}
 .hrecov-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#5bbfb0,#5fd06a);}
 .hrecov-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;}
 @media (max-width:880px){.hrecov-grid{grid-template-columns:repeat(3,1fr);}}
@@ -1622,8 +1646,9 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* Solo-day chip (now that the % header is dropped) sits as the only
    element in the timeline column · larger weight so it carries the
    temporal frame on its own. */
-.hrecov-day-solo{font-size:13px;font-weight:700;color:rgba(255,255,255,.82);margin-top:0;letter-spacing:.3px;text-transform:uppercase;}
-.hrecov-muscle{margin-top:20px;font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.86);display:flex;gap:10px;align-items:baseline;}
+.hrecov-day-solo{font-size:13px;font-weight:700;color:rgba(255,255,255,.82);letter-spacing:.3px;text-transform:uppercase;}
+/* margin-top stripped · .hrecov's flex+section-gap handles it. */
+.hrecov-muscle{font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.86);display:flex;gap:var(--label-gap);align-items:baseline;}
 .hrecov-muscle .md{width:6px;height:6px;border-radius:50%;background:#F3AD38;flex:0 0 auto;margin-top:6px;}
 .hrecov-green{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1);font-size:14px;font-weight:600;color:var(--txt);}
 .hrecov-green b{color:#5fd06a;}
