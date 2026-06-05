@@ -102,7 +102,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         <span className="pfpro" onClick={onOpenPro} style={{ cursor: 'pointer' }}>FAFF PRO</span>
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>SHOE GARAGE</div>
+      <div className="fll">SHOE GARAGE</div>
       <div className="garage">
         {garage.map((s, i) => {
           const pct = Math.min(100, Math.round((s.mi / s.max) * 100));
@@ -129,12 +129,12 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       {/* Physiology block · LTHR / HRmax / VDOT / RHR with provenance.
           Closes coverage row 1480 (HRmax + LTHR provenance) and gives
           ProvenanceLine its primary home on the WEB. */}
-      <div className="fll" style={{ marginTop: 30 }}>PHYSIOLOGY</div>
+      <div className="fll">PHYSIOLOGY</div>
       <div style={{ marginTop: 6 }}>
         <PhysiologyBlock />
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>DOCTRINE</div>
+      <div className="fll">DOCTRINE</div>
       <div className="setlist">
         <a className="setr" href="/learn" style={{ textDecoration: 'none', color: 'inherit', display: 'flex' }}>
           <span className="setk">LEARN</span><span className="setv">Coach research</span><span className="sgo">›</span>
@@ -144,7 +144,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         </a>
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>SETTINGS</div>
+      <div className="fll">SETTINGS</div>
       <div className="setlist">
         <div className="setr" onClick={() => setUnits(units === 'Miles · °F' ? 'Kilometers · °C' : 'Miles · °F')}>
           <span className="setk">UNITS</span><span className="setv">{units}</span><span className="sgo">›</span>
@@ -162,7 +162,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
 
       {/* Connection rows · per-source connection state with sync timestamp.
           Closes coverage line 1816 (connected sources management). */}
-      <div className="fll" style={{ marginTop: 30 }}>CONNECTIONS</div>
+      <div className="fll">CONNECTIONS</div>
 
       {/* StravaConnectionCard · live state from /api/strava/status with
           the full connect / reconnect / disconnect CTA. Lives at the top
@@ -206,7 +206,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       {/* Pro toggles · phone_hr_alerts + strava_auto_push. Closes
           coverage line 2034 (per-user phone HR alerts toggle) + line 1546
           (strava_auto_push). Lazy-fetched/patched via /api/profile. */}
-      <div className="fll" style={{ marginTop: 30 }}>PRO TOGGLES</div>
+      <div className="fll">PRO TOGGLES</div>
       <div className="fa-rows" style={{ marginTop: 6 }}>
         <ProfileToggleRows />
       </div>
@@ -214,14 +214,14 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       {/* Notification preferences · live GET + PATCH against
           /api/profile/notifications. Closes coverage line 1806 (notification
           taxonomy) + line 1468 (per-category prefs). */}
-      <div className="fll" style={{ marginTop: 30 }}>NOTIFICATIONS</div>
+      <div className="fll">NOTIFICATIONS</div>
       <div style={{ marginTop: 6 }}>
         <NotificationPrefsList />
       </div>
 
       {/* Coach activity log · last 30 days of coach_intents rows in plain
           English. Closes coverage line 1999 (coach_intents activity log). */}
-      <div className="fll" style={{ marginTop: 30 }}>COACH ACTIVITY</div>
+      <div className="fll">COACH ACTIVITY</div>
       <div style={{ marginTop: 6 }}>
         <CoachActivityTimeline limit={20} />
       </div>
