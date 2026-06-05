@@ -120,6 +120,22 @@ export function StravaConnectionCard({ initial }: {
     if (connecting) return;
     setConnecting(true);
     try {
+      // 2026-06-05 · multi-tenant audit Pattern 3 fix · capture TZ before
+      // the OAuth round-trip leaves the app. A new Strava-only web user
+      // who lands here pre-Shell-mount (e.g. straight from /onboarding)
+      // would otherwise stay on UTC until they happened to load a
+      // Shell-rooted page. Belt + suspenders with the Shell-mount ping.
+      // Silent + non-blocking · OAuth proceeds either way.
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (tz) {
+          await fetch('/api/profile/timezone', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ timezone: tz }),
+          });
+        }
+      } catch { /* non-fatal · OAuth still proceeds with UTC fallback */ }
       const r = await fetch('/api/auth/strava?action=connect');
       const j = await r.json().catch(() => ({}));
       if (j?.url) window.location.href = j.url;

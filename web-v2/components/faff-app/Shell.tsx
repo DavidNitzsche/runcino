@@ -65,6 +65,30 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     } catch { /* SSR safety */ }
   }, []);
 
+  // 2026-06-05 · multi-tenant audit Pattern 3 fix · capture browser TZ on
+  // every authed mount. The server's `captureTimezoneFromDevice` is silent
+  // + idempotent · only writes when `profile.timezone IS NULL`, so this
+  // is safe to fire on every page entry. The reason this exists at all:
+  // a Strava-only web user never opens the iPhone app, never has a watch
+  // sync, never hits HK ingest · so `profile.timezone` would stay NULL
+  // forever and every server-side `runnerToday()` would fall back to
+  // UTC · "today" off by up to 7 hours (Pacific). Gated on
+  // sessionStorage so we don't spam the endpoint on every nav.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('faffTzPinged') === '1') return;
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!tz) return;
+      fetch('/api/profile/timezone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: tz }),
+        // credentials default · same-origin · cookie auth flows through
+      }).catch(() => { /* non-fatal · server treats null TZ as UTC */ });
+      sessionStorage.setItem('faffTzPinged', '1');
+    } catch { /* SSR + private-mode safety · skip silently */ }
+  }, []);
+
   // Toast nudge ("Easy today · 4.9 mi @ 8:12") removed 2026-06-01 (David
   // call · "I dont want this little thing popping up for anything at all
   // anymore"). The same info already lives on TodayView; auto-popping it
