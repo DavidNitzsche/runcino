@@ -323,7 +323,7 @@ function ProjectionBand({
   gapText: string;
 }) {
   if (goalSec == null) {
-    return <div className="band"><div className="btrack" /></div>;
+    return <div className="pband"><div className="btrack" /></div>;
   }
   // Scale · left = 1.10 × goal (slowest), right = 0.97 × goal (fastest)
   // gives the goal marker around 77% (matches design intent of
@@ -341,7 +341,7 @@ function ProjectionBand({
     : status === 'off-track' ? 'off'
     : '';
   return (
-    <div className="band">
+    <div className="pband">
       <div className="btrack" />
       {fitPct != null && fitPct < goalPct ? (
         <>

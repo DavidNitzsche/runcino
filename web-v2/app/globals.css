@@ -2790,7 +2790,13 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .bandcard{padding:22px 26px 24px;}
 .targets2 .bandhead{display:flex;align-items:center;justify-content:space-between;}
 .targets2 .bandhead .t{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(255,255,255,.8);text-transform:uppercase;}
-.targets2 .band{position:relative;height:108px;margin-top:18px;}
+/* 2026-06-04 · was .targets2 .band · renamed to .pband (projection
+   band) to free the global .band class for page-level section
+   wrappers.  The collision was forcing all section .band wrappers
+   on Targets to height:108px = the stacked overlap David flagged.
+   margin-top:18 also stripped (parent .bandcard's flex+gap handles
+   spacing now). */
+.targets2 .pband{position:relative;height:108px;}
 .targets2 .btrack{position:absolute;left:2%;right:2%;top:50%;height:4px;transform:translateY(-50%);border-radius:4px;background:rgba(255,255,255,.12);}
 /* 2026-06-04 · projection band coral · the handoff palette used muted
    pinks (#e0/#e8/#f0 family) which faded out against the dark charcoal
