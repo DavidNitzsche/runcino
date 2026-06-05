@@ -392,7 +392,22 @@ export async function POST(req: NextRequest) {
     try {
       const distanceLabel = raceDistanceLabel(distance);
       const raceName = `My ${distanceLabel}`;
-      const slug = slugify(`${raceName}-${date}`);
+      // 2026-06-05 · backend audit P0-8 fix · slug was global ("my-5k-
+      // 2026-08-15") · two users picking the same default race
+      // overwrote each other's row + bled meta into the wrong plan.
+      // Conflict-detect: claim the natural slug if free or already owned
+      // by THIS user (idempotent re-onboarding); otherwise disambiguate
+      // with a userId suffix. First runner to claim a name keeps clean
+      // URLs; subsequent runners get "my-5k-2026-08-15-abcdef12".
+      // Cite docs/2026-06-05-backend-audit.html § P0-8.
+      let slug = slugify(`${raceName}-${date}`);
+      const existing = await pool.query(
+        `SELECT user_uuid::text AS u FROM races WHERE slug = $1`,
+        [slug],
+      ).catch(() => ({ rows: [] as Array<{ u: string }> }));
+      if (existing.rows[0] && existing.rows[0].u !== userId) {
+        slug = `${slug}-${userId.slice(0, 8)}`;
+      }
       const meta = {
         name: raceName,
         date,                                   // YYYY-MM-DD (required on race path)

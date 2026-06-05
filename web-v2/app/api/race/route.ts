@@ -25,7 +25,21 @@ export async function POST(req: NextRequest) {
   if (!body?.name || !body?.date) {
     return NextResponse.json({ error: 'name + date required' }, { status: 400 });
   }
-  const slug = slugify(`${body.name}-${body.date}`);
+  // 2026-06-05 · backend audit P0-8 fix · same shape as the onboarding
+  // race write · slug is the PRIMARY KEY of races and two users picking
+  // identical names would have collided. Conflict-detect against the
+  // existing owner before write; disambiguate with a userId suffix if
+  // a DIFFERENT user already holds the natural slug. Same-user re-add
+  // (idempotent) keeps the original slug. Cite docs/2026-06-05-backend
+  // -audit.html § P0-8.
+  let slug = slugify(`${body.name}-${body.date}`);
+  const existing = await pool.query(
+    `SELECT user_uuid::text AS u FROM races WHERE slug = $1`,
+    [slug],
+  ).catch(() => ({ rows: [] as Array<{ u: string }> }));
+  if (existing.rows[0] && existing.rows[0].u !== userId) {
+    slug = `${slug}-${userId.slice(0, 8)}`;
+  }
   // Default priority='A' (locked 2026-05-30 SIM-03): when a runner adds a
   // race to their calendar, they almost always care about it — treating
   // it as a goal race is the right default. Use 'B' for tune-ups and 'C'
