@@ -13,9 +13,46 @@
  * browser, not an API client.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { pool } from '@/lib/db/pool';
 
 export const dynamic = 'force-dynamic';
+
+// 2026-06-05 · backend audit P0-2 fix · HMAC-signed OAuth state.
+//
+// Was: state was the cleartext user_uuid (or "uuid:ios"). The callback
+// trusted it verbatim and wrote the attacker's Strava tokens into
+// whatever profile.user_uuid matched. Anyone who saw a victim's uuid
+// in a URL or log could hijack the victim's Strava link by crafting
+// a callback request with code=attacker_code & state=victim_uuid.
+//
+// Now: state = `<payload>.<nonce>.<hmac>` signed at /api/auth/strava
+// connect time. Verification here uses timing-safe compare against
+// a SHA-256 HMAC keyed by STRAVA_STATE_SECRET (falls back to
+// CRON_SECRET). Mismatch → fail redirect, no token write.
+//
+// Cite docs/2026-06-05-backend-audit.html § P0-2.
+function getStateSecret(): string | null {
+  return process.env.STRAVA_STATE_SECRET || process.env.CRON_SECRET || null;
+}
+
+function verifyState(signedState: string): { userId: string; platform: 'web' | 'ios' } | null {
+  const parts = signedState.split('.');
+  if (parts.length !== 3) return null;
+  const [payload, nonce, providedHmacB64] = parts;
+  const secret = getStateSecret();
+  if (!secret) return null;
+  const expected = createHmac('sha256', secret).update(`${payload}.${nonce}`).digest();
+  let provided: Buffer;
+  try { provided = Buffer.from(providedHmacB64, 'base64url'); } catch { return null; }
+  if (expected.length !== provided.length) return null;
+  if (!timingSafeEqual(expected, provided)) return null;
+  const [userId, platTag] = payload.split(':');
+  if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+    return null;
+  }
+  return { userId, platform: platTag === 'ios' ? 'ios' : 'web' };
+}
 
 /**
  * Build a redirect back to the public app URL. `req.nextUrl.origin`
@@ -82,11 +119,35 @@ export async function GET(req: NextRequest) {
   const stateRaw = req.nextUrl.searchParams.get('state');
   const stravaErr = req.nextUrl.searchParams.get('error');
 
-  // Decode state early so we know whether to bounce to web or iOS even
-  // on the failure paths.
-  const { userId: state, platform } = stateRaw
-    ? decodeState(stateRaw)
-    : { userId: '', platform: 'web' as const };
+  // 2026-06-05 · backend audit P0-2 · verify signed state. Reject
+  // the entire flow if it's not properly HMAC-signed · this stops
+  // the cross-user Strava-link-hijack attack the audit named.
+  // Failure UX: bounce to the web redirect with a clear msg (we
+  // can't infer platform from an unverified state, so we default
+  // to web · the iPhone OAuth flow surfaces the same failure via
+  // its catch-all redirect handler).
+  let stateVerified: { userId: string; platform: 'web' | 'ios' } | null = null;
+  if (stateRaw) {
+    stateVerified = verifyState(stateRaw);
+    // Backward-compat for legacy unsigned state · accept ONLY when
+    // the secret isn't configured (dev/local), then log the warning.
+    if (!stateVerified && !getStateSecret()) {
+      console.warn(`[strava/callback] state secret not configured · falling back to legacy unsigned decode (dev only)`);
+      stateVerified = (() => {
+        const decoded = decodeState(stateRaw);
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decoded.userId)) {
+          return decoded;
+        }
+        return null;
+      })();
+    }
+    if (!stateVerified) {
+      console.warn(`[strava/callback] invalid state · rejecting OAuth flow · state=${stateRaw.slice(0, 16)}…`);
+      return appRedirect(req, 'web', 'failed', { msg: 'state verification failed · please try Connect Strava again' });
+    }
+  }
+  const state = stateVerified?.userId ?? '';
+  const platform = stateVerified?.platform ?? 'web';
 
   // User canceled the consent screen, or Strava returned an error.
   if (stravaErr) {

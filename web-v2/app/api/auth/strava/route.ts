@@ -28,8 +28,67 @@
  * has gone through the OAuth flow.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+
+// ── HMAC-signed OAuth state · 2026-06-05 backend audit P0-2 fix ────
+//
+// Was: state was the raw user_uuid (or "uuid:ios"). The callback
+// trusted it verbatim and wrote the attacker's Strava tokens into
+// whatever profile row the state pointed at. Anyone who saw a
+// victim's user_uuid in a URL, log, or the connect-action JSON
+// response could hijack their Strava link.
+//
+// Now: state is `<payload>.<nonce>.<hmac>` where:
+//   · payload = the original "<uuid>" or "<uuid>:ios" string
+//   · nonce   = 8 random bytes (base64url · replay defense per request)
+//   · hmac    = SHA-256 of "<payload>.<nonce>" keyed by a server secret
+//
+// On callback we verify the HMAC (timing-safe compare). Failed
+// verification → 401, no token write. The secret comes from
+// STRAVA_STATE_SECRET; if that's unset we fall back to CRON_SECRET
+// (which is already configured in prod for the cron auth). Throws
+// at signing time if neither is set, so misconfiguration surfaces
+// loudly instead of silently disabling the security gate.
+//
+// In-flight OAuth flows started before this lands will fail
+// verification on return · runner just clicks Connect Strava again.
+// Cite docs/2026-06-05-backend-audit.html § P0-2.
+
+function getStateSecret(): string {
+  const s = process.env.STRAVA_STATE_SECRET || process.env.CRON_SECRET;
+  if (!s) {
+    throw new Error('STRAVA_STATE_SECRET (or CRON_SECRET) must be set · OAuth state signing requires a server secret');
+  }
+  return s;
+}
+
+function signState(payload: string): string {
+  const nonce = randomBytes(8).toString('base64url');
+  const data = `${payload}.${nonce}`;
+  const hmac = createHmac('sha256', getStateSecret()).update(data).digest('base64url');
+  return `${data}.${hmac}`;
+}
+
+function verifyState(signedState: string): { userId: string; platform: 'web' | 'ios' } | null {
+  const parts = signedState.split('.');
+  if (parts.length !== 3) return null;
+  const [payload, nonce, providedHmacB64] = parts;
+  let secret: string;
+  try { secret = getStateSecret(); } catch { return null; }
+  const expected = createHmac('sha256', secret).update(`${payload}.${nonce}`).digest();
+  let provided: Buffer;
+  try { provided = Buffer.from(providedHmacB64, 'base64url'); } catch { return null; }
+  if (expected.length !== provided.length) return null;
+  if (!timingSafeEqual(expected, provided)) return null;
+  // payload shape: "<user_uuid>" or "<user_uuid>:ios"
+  const [userId, platTag] = payload.split(':');
+  if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+    return null;
+  }
+  return { userId, platform: platTag === 'ios' ? 'ios' : 'web' };
+}
 
 export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get('action') ?? 'connect';
@@ -106,7 +165,17 @@ async function connectURL(req: NextRequest) {
   //   · `<uuid>:ios` · iPhone · callback 302s to faff://strava/callback
   //     which the app catches via ASWebAuthenticationSession
   const platform = req.nextUrl.searchParams.get('platform') === 'ios' ? 'ios' : 'web';
-  const stateValue = platform === 'ios' ? `${userId}:ios` : userId;
+  // 2026-06-05 · backend audit P0-2 · sign state with HMAC so the
+  // callback can verify it wasn't forged. Was: raw user_uuid · any
+  // observer could replay the callback with a different access code
+  // to hijack the runner's Strava link.
+  const payload = platform === 'ios' ? `${userId}:ios` : userId;
+  let stateValue: string;
+  try {
+    stateValue = signState(payload);
+  } catch (e: unknown) {
+    return NextResponse.json({ error: `state-signing misconfigured: ${e instanceof Error ? e.message : String(e)}` }, { status: 503 });
+  }
 
   const url = new URL('https://www.strava.com/oauth/authorize');
   url.searchParams.set('client_id', clientId);
@@ -133,10 +202,27 @@ async function connectURL(req: NextRequest) {
 
 async function callback(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
-  const state = req.nextUrl.searchParams.get('state');
-  if (!code || !state) {
+  const stateParam = req.nextUrl.searchParams.get('state');
+  if (!code || !stateParam) {
     return NextResponse.json({ error: 'missing code or state' }, { status: 400 });
   }
+  // 2026-06-05 · backend audit P0-2 · verify signed state. Was: state
+  // was trusted as cleartext user_uuid, callback wrote tokens into
+  // whatever profile.user_uuid = state. Anyone who saw a victim's
+  // uuid in a URL or log could hijack their Strava link by crafting
+  // a callback to /api/auth/strava?action=callback&code=THEIR_CODE
+  // &state=VICTIM_UUID. HMAC verification closes that path · without
+  // the secret an attacker can't construct a valid signed state.
+  // Cite docs/2026-06-05-backend-audit.html § P0-2.
+  const stateVerified = verifyState(stateParam);
+  if (!stateVerified) {
+    console.warn(`[strava/callback] invalid state · refusing token exchange · state=${stateParam.slice(0,16)}…`);
+    return NextResponse.json({ error: 'invalid or unsigned state · oauth flow rejected' }, { status: 401 });
+  }
+  // From here on, ALL references to the user_uuid go through stateVerified.userId,
+  // NEVER the raw `stateParam`. The legacy code referenced `state` directly · we
+  // keep the var name for diff readability but the value is now the verified uuid.
+  const state = stateVerified.userId;
   const clientId = process.env.STRAVA_CLIENT_ID;
   const clientSecret = process.env.STRAVA_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
