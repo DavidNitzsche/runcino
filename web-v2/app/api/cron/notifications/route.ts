@@ -172,38 +172,86 @@ async function drainPending(stats: any): Promise<void> {
 
 interface ActiveUser {
   user_id: string;
-  // We treat the runner's timezone as device-local. v1 punts on the
-  // travel-race-tz question (deck §OPEN Q3); the next iteration can
-  // store a per-user IANA tz.
-  tz_offset_min: number;
+  /** IANA timezone identifier · 'America/Los_Angeles' / 'Europe/London' /
+   *  'UTC' fallback. Sourced from profile.timezone joined at listActiveUsers
+   *  (2026-06-05 backend audit P0-10 · was hardcoded offset-min=0). */
+  tz: string;
 }
 
 async function listActiveUsers(): Promise<ActiveUser[]> {
-  // For single-user beta, scope to runners that have ANY device_token
-  // on file — keeps the cron from iterating dormant rows. When the
-  // multi-user cutover lands this becomes a join on auth_users.
+  // Per-user-TZ scheduling · 2026-06-05 backend audit P0-10 fix. Was:
+  //   tz_offset_min: 0 hardcoded · race-day morning, race-eve 21:00,
+  //   weekly check-in, daily niggle/sick all fired at SERVER UTC for
+  //   every runner. A Pacific runner's race-eve fired at 14:00 PT
+  //   (21:00 UTC) instead of 21:00 PT.
+  // Now: join profile.timezone (IANA name like 'America/Los_Angeles');
+  // pass it forward as the user's TZ key. All firing decisions go
+  // through Intl-based userLocalClock() · honest to the wall-clock the
+  // runner actually lives on. Cite docs/2026-06-05-backend-audit.html
+  // § P0-10.
   try {
     const r = await pool.query(
-      `SELECT DISTINCT dt.user_id
+      `SELECT DISTINCT dt.user_id, COALESCE(p.timezone, 'UTC') AS tz
          FROM device_tokens dt
+         LEFT JOIN profile p ON p.user_uuid = dt.user_id
         WHERE dt.revoked_at IS NULL`,
     );
-    // v1 assumes runner-local = server-local. We're single-tz beta so
-    // this is fine — the device-local question is OPEN Q3.
-    return r.rows.map((r: any) => ({ user_id: r.user_id, tz_offset_min: 0 }));
+    return r.rows.map((r: any) => ({ user_id: r.user_id, tz: String(r.tz || 'UTC') }));
   } catch {
     return [];
   }
 }
 
-function nowInUserTz(tzOffsetMin: number): Date {
-  return new Date(Date.now() + tzOffsetMin * 60 * 1000);
+/**
+ * Read the runner's local wall clock via Intl. Returns date as
+ * YYYY-MM-DD, hour 0-23, minute 0-59, day-of-week (0=Sun…6=Sat). All
+ * computed from a single `new Date()` so the four fields agree.
+ *
+ * 2026-06-05 · backend audit P0-10 · replaces the old offset-based
+ * approach which was server-UTC at offset 0 · also collapsed the four
+ * different `userNow.toISOString().slice(0,10)` sites in this file
+ * (which all silently used UTC) into one helper.
+ */
+function userLocalClock(tz: string): {
+  dateISO: string;
+  hour: number;
+  minute: number;
+  dow: number;
+} {
+  const now = new Date();
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', weekday: 'short',
+  });
+  const parts = fmt.formatToParts(now);
+  const get = (t: string): string => parts.find((p) => p.type === t)?.value ?? '';
+  const DOW_MAP: Record<string, number> = {
+    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+  };
+  return {
+    dateISO: `${get('year')}-${get('month')}-${get('day')}`,
+    hour: Number(get('hour')) || 0,
+    minute: Number(get('minute')) || 0,
+    dow: DOW_MAP[get('weekday')] ?? 0,
+  };
+}
+
+/** YYYY-MM-DD of (runner-local tomorrow) · used by race-eve enqueue. */
+function userLocalTomorrow(tz: string): string {
+  const tomorrowUtc = new Date(Date.now() + 24 * 3600 * 1000);
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const parts = fmt.formatToParts(tomorrowUtc);
+  const get = (t: string): string => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 /** Returns true iff the user-local current minute equals exactly HH:MM. */
-function isAtLocalTime(userNow: Date, hm: string, slackMin = 15): boolean {
+function isAtLocalTime(hour: number, minute: number, hm: string, slackMin = 15): boolean {
   const [h, m] = hm.split(':').map(Number);
-  const userMin = userNow.getUTCHours() * 60 + userNow.getUTCMinutes();
+  const userMin = hour * 60 + minute;
   const targetMin = h * 60 + m;
   const delta = userMin - targetMin;
   // Cron polls every 15 min → fire if within [0, 15min) of the target.
@@ -248,16 +296,21 @@ async function scheduleTimeBased(stats: any): Promise<void> {
   for (const u of users) {
     const prefs = await loadNotificationPrefs(u.user_id);
     if (!prefs.master_enabled) continue;
-    const userNow = nowInUserTz(u.tz_offset_min);
-    const dow = userNow.getUTCDay(); // 0 = Sun
+    // 2026-06-05 · backend audit P0-10 fix · userLocalClock reads
+    // wall-clock in the runner's TZ via Intl. Replaces the prior
+    // nowInUserTz(0) + toISOString().slice(0,10) chain, which was
+    // server-UTC for every runner. Today's ISO date is now the
+    // runner's calendar date, not the server's.
+    const clk = userLocalClock(u.tz);
+    const dow = clk.dow;
 
     // ──────────────────────────────────────────────────────────
     // CATEGORY A — race day morning
     //   Fire on race-day, at prefs.race_day_wake_time (default 05:30)
     //   Bypasses quiet hours unconditionally (deck §A QUIET HRS).
     // ──────────────────────────────────────────────────────────
-    if (prefs.race_day_enabled && isAtLocalTime(userNow, prefs.race_day_wake_time)) {
-      const today = userNow.toISOString().slice(0, 10);
+    if (prefs.race_day_enabled && isAtLocalTime(clk.hour, clk.minute, prefs.race_day_wake_time)) {
+      const today = clk.dateISO;
       const race = await raceOnDate(u.user_id, today);
       if (race) {
         const tpl = renderRaceDay({
@@ -277,8 +330,8 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     // ──────────────────────────────────────────────────────────
     // CATEGORY B — race eve at 21:00 if a race is in next 24h
     // ──────────────────────────────────────────────────────────
-    if (prefs.race_eve_enabled && isAtLocalTime(userNow, '21:00')) {
-      const tomorrow = new Date(userNow.getTime() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+    if (prefs.race_eve_enabled && isAtLocalTime(clk.hour, clk.minute, '21:00')) {
+      const tomorrow = userLocalTomorrow(u.tz);
       const race = await raceOnDate(u.user_id, tomorrow);
       if (race) {
         const tpl = renderRaceEve({
@@ -298,9 +351,9 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     if (
       prefs.weekly_checkin_enabled &&
       dow === 0 && // Sunday
-      isAtLocalTime(userNow, prefs.weekly_checkin_time)
+      isAtLocalTime(clk.hour, clk.minute, prefs.weekly_checkin_time)
     ) {
-      const summary = await weekSummary(u.user_id, userNow);
+      const summary = await weekSummary(u.user_id, u.tz);
       if (summary && summary.days_run > 0) {
         const tpl = renderWeeklyCheckin({
           user_id: u.user_id,
@@ -319,8 +372,8 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     // ──────────────────────────────────────────────────────────
     // CATEGORY E — daily niggle/sick check at 07:15 local
     // ──────────────────────────────────────────────────────────
-    if (prefs.niggle_sick_enabled && isAtLocalTime(userNow, '07:15')) {
-      const today = userNow.toISOString().slice(0, 10);
+    if (prefs.niggle_sick_enabled && isAtLocalTime(clk.hour, clk.minute, '07:15')) {
+      const today = clk.dateISO;
       const niggle = await activeNiggle(u.user_id);
       if (niggle) {
         const tpl = renderNiggleCheck({
@@ -357,9 +410,9 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     if (
       prefs.streak_enabled &&
       dow === 0 &&
-      isAtLocalTime(userNow, '09:00')
+      isAtLocalTime(clk.hour, clk.minute, '09:00')
     ) {
-      const race = await nextARace(u.user_id, userNow.toISOString().slice(0, 10));
+      const race = await nextARace(u.user_id, clk.dateISO);
       if (race && [12, 10, 8, 6, 4, 2].includes(race.weeks_to_race)) {
         const tpl = renderRaceCountdown({
           user_id: u.user_id,
@@ -463,14 +516,23 @@ async function shakeoutDoneToday(userId: string): Promise<boolean> {
 
 async function weekSummary(
   userId: string,
-  userNow: Date,
+  userTz: string,
 ): Promise<{ week_start_iso: string; actual_mi: number; planned_mi: number; days_run: number } | null> {
   try {
-    // Compute ISO Monday for this week.
-    const day = userNow.getUTCDay() || 7;
-    const monday = new Date(userNow);
-    monday.setUTCDate(monday.getUTCDate() - (day - 1));
-    monday.setUTCHours(0, 0, 0, 0);
+    // 2026-06-05 · backend audit P0-10 fix · compute ISO Monday in
+    // the RUNNER'S TZ, not server UTC. At Pacific Sunday 21:00 (the
+    // weekly check-in fire time) server UTC is already Monday 05:00 ·
+    // the old getUTCDay()-based Monday computation rolled forward by
+    // a week and the summary covered the WRONG seven days.
+    const clk = userLocalClock(userTz);
+    const [y, m, d] = clk.dateISO.split('-').map(Number);
+    // Anchor the runner's "today" at noon UTC of their local date · then
+    // walk back (dow - 1) days for ISO Monday. The noon anchor is purely
+    // arithmetic · we only consume the YYYY-MM-DD slice.
+    const todayUtcAnchor = new Date(Date.UTC(y, m - 1, d, 12));
+    const dow = clk.dow === 0 ? 7 : clk.dow; // map Sun=0 → 7 for ISO week
+    const monday = new Date(todayUtcAnchor);
+    monday.setUTCDate(monday.getUTCDate() - (dow - 1));
     const weekStart = monday.toISOString().slice(0, 10);
 
     const r = await pool.query(
