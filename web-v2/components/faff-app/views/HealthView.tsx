@@ -809,9 +809,14 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               <div className="hins">
                 <div className="hins-k">ENVIRONMENT · HEAT</div>
                 <div className="hins-h">
+                  {/* 2026-06-05 · multi-tenant audit Pattern 5 fix · null
+                      rhrTrend (no RHR data to call) → 'In progress' instead
+                      of defaulting to 'Stable' which silently claims falling
+                      RHR. Cite: docs/2026-06-05-multi-tenant-audit.html. */}
                   {seed.health.heatAcclim.rhrTrend === 'plateauing' ? 'Acclimating'
                     : seed.health.heatAcclim.rhrTrend === 'rising' ? 'Adapting'
-                    : 'Stable'}
+                    : seed.health.heatAcclim.rhrTrend === 'falling' ? 'Stable'
+                    : 'In progress'}
                 </div>
                 <div className="hins-m">{seed.health.heatAcclim.message}</div>
               </div>

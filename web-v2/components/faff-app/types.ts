@@ -583,7 +583,7 @@ export type HealthSnapshot = {
   heatAcclim?: {
     daysInWindow: number;
     avgTempF: number;
-    rhrTrend: 'rising' | 'plateauing' | 'falling';
+    rhrTrend: 'rising' | 'plateauing' | 'falling' | null;
     expectedHRPenaltyBpm: number;
     daysToFullAcclim: number;
     message: string;

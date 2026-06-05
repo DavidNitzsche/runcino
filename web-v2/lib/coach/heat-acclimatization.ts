@@ -27,7 +27,13 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 export interface HeatAcclimatization {
   daysInWindow: number;
   avgTempF: number;
-  rhrTrend: 'rising' | 'plateauing' | 'falling';
+  /** 2026-06-05 · multi-tenant audit Pattern 5 fix · was non-nullable
+   *  with a 'plateauing' default when rhrSeries < 5 readings. That
+   *  silently said "body is plateauing" with no evidence. Now nullable ·
+   *  null means "we don't have enough RHR signal to call a trend."
+   *  Consumers (the message builder) handle null by skipping the
+   *  RHR-conditional prose. */
+  rhrTrend: 'rising' | 'plateauing' | 'falling' | null;
   expectedHRPenaltyBpm: number;
   daysToFullAcclim: number;
   message: string;
@@ -80,7 +86,11 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
   ).then((r) => r.rows).catch(() => []);
   const rhrSeries = rhrRows.map((r) => Number(r.v)).filter((v) => Number.isFinite(v));
 
-  let rhrTrend: HeatAcclimatization['rhrTrend'] = 'plateauing';
+  // 2026-06-05 · multi-tenant audit Pattern 5 fix · was: defaulted to
+  // 'plateauing' when rhrSeries.length < 5. Silent claim about the
+  // body's adaptation state with zero RHR evidence. Now: null when
+  // we don't have at least 5 RHR readings to compare halves of.
+  let rhrTrend: HeatAcclimatization['rhrTrend'] = null;
   if (rhrSeries.length >= 5) {
     const firstHalf = rhrSeries.slice(0, Math.floor(rhrSeries.length / 2));
     const secondHalf = rhrSeries.slice(Math.floor(rhrSeries.length / 2));
@@ -89,6 +99,7 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
     const delta = secondAvg - firstAvg;
     if (delta > 1) rhrTrend = 'rising';
     else if (delta < -1) rhrTrend = 'falling';
+    else rhrTrend = 'plateauing';
   }
 
   // Expected HR penalty using Sawka exponential decay.
@@ -100,6 +111,11 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
   if (daysInWindow <= 3) {
     message = `Heat exposure day ${daysInWindow} of ~10 · expect ~${expectedHRPenaltyBpm} bpm HR penalty on easy efforts. Hydrate harder, cap one workout intensity this week.`;
   } else if (daysInWindow <= 7) {
+    // 2026-06-05 · multi-tenant audit Pattern 5 · only the 'falling'
+    // branch makes a positive RHR claim · keep that gated on real
+    // signal. 'rising' / 'plateauing' / null all flow to the
+    // mid-adaptation copy which is Sawka-curve-based (days, not RHR)
+    // · honest with or without RHR data.
     if (rhrTrend === 'falling') {
       message = `Heat acclimatization day ${daysInWindow} · RHR is settling · the body is adapting on schedule. Expected HR penalty down to ~${expectedHRPenaltyBpm} bpm.`;
     } else {
