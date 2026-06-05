@@ -299,7 +299,9 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   // Race
   let race: TrainingState['race'] = null;
   if (plan.race_id) {
-    const raceRow = (await pool.query(`SELECT slug, meta FROM races WHERE slug = $1`, [plan.race_id])).rows[0];
+    // 2026-06-05 · backend audit P0-6 fix · scope race lookup by user.
+    // Cite docs/2026-06-05-backend-audit.html § P0-6.
+    const raceRow = (await pool.query(`SELECT slug, meta FROM races WHERE slug = $1 AND user_uuid = $2`, [plan.race_id, userId])).rows[0];
     if (raceRow) {
       const date = raceRow.meta?.date;
       const days_to_race = Math.round(

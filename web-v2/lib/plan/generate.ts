@@ -1723,7 +1723,11 @@ async function loadGeneratorInputs(
   | { ok: false; reason: string }
 > {
   // 1. Race
-  const raceRow = (await pool.query(`SELECT slug, meta FROM races WHERE slug = $1`, [raceSlug])).rows[0];
+  // 2026-06-05 · backend audit P0-6 fix · scope race lookup by user.
+  // races.slug is per-user · without user_uuid filter, plan generation
+  // can latch onto another runner's race row with the same slug.
+  // Cite docs/2026-06-05-backend-audit.html § P0-6.
+  const raceRow = (await pool.query(`SELECT slug, meta FROM races WHERE slug = $1 AND user_uuid = $2`, [raceSlug, userId])).rows[0];
   if (!raceRow) return { ok: false, reason: 'race not found' };
   const meta = raceRow.meta ?? {};
   const raceDateISO: string | undefined = meta.date;

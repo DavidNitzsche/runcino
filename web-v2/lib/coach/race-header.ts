@@ -337,8 +337,14 @@ export async function loadRaceHeader(userId: string, input: RaceHeaderInputs): P
   let dateLabel: string | null = null;
 
   if (planRow?.race_id) {
+    // 2026-06-05 · backend audit P0-6 fix · race meta lookup MUST be
+    // user-scoped. races.slug is per-user, not globally unique · two
+    // users with the same slug (e.g. "la-marathon-2026") got the wrong
+    // row, bleeding goal + distance + date into the wrong runner's
+    // RaceHeader. Cite docs/2026-06-05-backend-audit.html § P0-6.
     const raceMeta = await pool
-      .query(`SELECT meta FROM races WHERE slug = $1`, [planRow.race_id])
+      .query(`SELECT meta FROM races WHERE slug = $1 AND user_uuid = $2`,
+        [planRow.race_id, userId])
       .then((r) => (r.rows[0]?.meta ?? null) as Record<string, unknown> | null)
       .catch(() => null);
     if (raceMeta) {

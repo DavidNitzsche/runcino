@@ -388,10 +388,17 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
   // DELETE-then-INSERT on the BIGINT id is the idempotent path used
   // everywhere else in this codebase. Both create and update collapse
   // to the same upsert — dedupe handled.
+  //
+  // 2026-06-05 · backend audit P0-5 fix · scope DELETE by user_uuid.
+  // Strava's activity-id space is global · without the user_uuid
+  // filter, a webhook delivered for user A's activity-update silently
+  // deletes user B's row (if they ever shared an id, e.g. via a future
+  // ingest path or an admin-restore from another runner's export).
+  // Cite docs/2026-06-05-backend-audit.html § P0-5.
   await pool.query(
     `DELETE FROM runs
-      WHERE id = $1::bigint`,
-    [String(id)]
+      WHERE id = $1::bigint AND user_uuid = $2`,
+    [String(id), userId]
   );
   await pool.query(
     `INSERT INTO runs (id, user_uuid, data)

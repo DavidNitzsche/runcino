@@ -172,8 +172,11 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
   let anchorDistance: number | null = null;
   let anchorSlug: string | null = null;
   if (planRow?.race_id) {
+    // 2026-06-05 · backend audit P0-6 fix · scope race lookup by user.
+    // Cite docs/2026-06-05-backend-audit.html § P0-6.
     const raceMeta = (await pool.query<{ meta?: Record<string, unknown> }>(
-      `SELECT meta FROM races WHERE slug = $1`, [planRow.race_id],
+      `SELECT meta FROM races WHERE slug = $1 AND user_uuid = $2`,
+      [planRow.race_id, userUuid],
     ).catch(() => ({ rows: [] }))).rows[0]?.meta;
     if (raceMeta) {
       anchorDistance = raceMeta.distanceMi ? Number(raceMeta.distanceMi) : distFromLabel(raceMeta.distanceLabel as string);

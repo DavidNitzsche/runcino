@@ -56,9 +56,14 @@ export async function loadNextARace(
 
   // Step 1: plan-anchored race
   if (planRaceId) {
+    // 2026-06-05 · backend audit P0-7 fix · races.slug is per-user not
+    // global. Step 1 was selecting by slug alone and then promoting the
+    // row into a per-user-key cache · two users with the same plan
+    // race slug got the wrong row. Step 2 below already passes userId;
+    // Step 1 now matches. Cite docs/2026-06-05-backend-audit.html § P0-7.
     const row = (await pool.query(
-      `SELECT slug, meta FROM races WHERE slug = $1`,
-      [planRaceId]
+      `SELECT slug, meta FROM races WHERE slug = $1 AND user_uuid = $2`,
+      [planRaceId, userId]
     ).catch(() => ({ rows: [] }))).rows[0];
     if (row) {
       const date = row.meta?.date;
