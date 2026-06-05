@@ -90,13 +90,26 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .me .nm small{display:block;font-size:11px;font-weight:500;opacity:.85;margin-top:1px;}
 .me .gear{margin-left:auto;opacity:.5;}.me .gear svg{width:17px;height:17px;}
 /* main */
-/* 2026-06-04 · .main is now the dashboard grid for every view.  Bands
-   (week strip, hero, tiles, sections, etc.) become direct grid items
-   and are separated by --grid-gap automatically · no per-band
-   margin-tops anywhere.  Outer padding = the same gutter so cards
-   never sit closer to the screen edge than they do to each other. */
-.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:var(--grid-gap);display:grid;grid-auto-flow:row;grid-auto-rows:auto;gap:var(--grid-gap);align-content:start;-ms-overflow-style:none;scrollbar-width:none;}
+/* 2026-06-04 · .main is the dashboard column governed by the SAME
+   spacing primitives as the cards · no page-specific spacing.
+   - Bands stack with gap: var(--section-gap) · identical token used
+     between sections inside any card · band-to-band rhythm matches
+     section-to-section inside cards.
+   - Outer padding stays --grid-gap (the dashboard outer gutter).
+   - The header (.top) is the first band, in normal flow · no extra
+     top margin/padding below it · gap to first content band = the
+     same --section-gap as every other band-to-band gap.
+   - Section-labeled bands wrap their label + content in a .band div
+     (see below).  Two-tier rhythm: tight --label-gap inside the
+     band, loose --section-gap between bands. */
+.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:var(--grid-gap);display:grid;grid-auto-flow:row;grid-auto-rows:auto;gap:var(--section-gap);align-content:start;-ms-overflow-style:none;scrollbar-width:none;}
 .main::-webkit-scrollbar{display:none;}
+/* 2026-06-04 · `.band` · a section-labeled band wraps its label
+   (.fll / .weeklab / .eyebrow-sec / etc.) + its content as ONE grid
+   item · tight --label-gap inside; loose --section-gap to the bands
+   above and below from .main's grid.  Apply this whenever a row has
+   a label above it; standalone bands (hero / tiles) don't need it. */
+.band{display:flex;flex-direction:column;gap:var(--label-gap);}
 .top{display:flex;align-items:flex-start;justify-content:space-between;}
 .top .date{font-family:'Oswald',sans-serif;font-size:16px;font-weight:500;letter-spacing:1px;opacity:1;text-transform:uppercase;}
 .top .wk{font-size:12px;font-weight:600;opacity:1;margin-top:5px;}
@@ -536,7 +549,10 @@ body.day-skipped .mesh,
 body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .55s ease;}
 
 /* week */
-.weeklab{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;margin:26px 0 12px;}
+/* 2026-06-04 · margins stripped · .weeklab is a section label inside
+   a .band wrapper.  Spacing comes from the band's flex gap
+   (--label-gap below) and .main's grid gap (--section-gap above). */
+.weeklab{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;}
 .week{display:flex;gap:10px;}
 .day{text-shadow:none;flex:1;border-radius:14px;padding:14px 13px;cursor:pointer;transition:.15s;border:1px solid var(--line);background:rgba(8,10,14,.46);backdrop-filter:blur(10px);}
 .day:hover{background:rgba(8,10,14,.58);}
