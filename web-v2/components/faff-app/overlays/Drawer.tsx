@@ -437,27 +437,29 @@ function PrescriptionCard({ p, band }: {
   return (
     <div
       style={{
-        marginTop: 14,
-        padding: '12px 14px',
+        padding: 'var(--callout-padding)',
         borderRadius: 12,
         background: 'rgba(255,255,255,.04)',
         border: `1px solid ${accent}33`,
         borderLeft: `3px solid ${accent}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--label-gap)',
       }}
     >
       <div style={{
         fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
-        color: 'rgba(255,255,255,.55)', marginBottom: 6,
+        color: 'var(--fg-faint)',
       }}>
         WHAT TO DO TODAY
       </div>
       <div style={{
         fontFamily: 'var(--font-display, Oswald, sans-serif)',
-        fontSize: 17, lineHeight: 1.3, color: '#fff', marginBottom: 6,
+        fontSize: 17, lineHeight: 1.3, color: 'var(--fg)',
       }}>
         {p.action}
       </div>
-      <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', lineHeight: 1.4 }}>
+      <div style={{ fontSize: 12, color: 'var(--fg-faint)', lineHeight: 1.4 }}>
         {p.why}
       </div>
     </div>
@@ -534,27 +536,29 @@ function PostRunReflection({ p, band, todayActualMi, todayActualMin }: {
   return (
     <div
       style={{
-        marginTop: 14,
-        padding: '12px 14px',
+        padding: 'var(--callout-padding)',
         borderRadius: 12,
         background: 'rgba(255,255,255,.04)',
         border: `1px solid ${accent}33`,
         borderLeft: `3px solid ${accent}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--label-gap)',
       }}
     >
       <div style={{
         fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
-        color: 'rgba(255,255,255,.55)', marginBottom: 6,
+        color: 'var(--fg-faint)',
       }}>
         TODAY · DONE
       </div>
       <div style={{
         fontFamily: 'var(--font-display, Oswald, sans-serif)',
-        fontSize: 17, lineHeight: 1.3, color: '#fff', marginBottom: 6,
+        fontSize: 17, lineHeight: 1.3, color: 'var(--fg)',
       }}>
         {reflection}
       </div>
-      <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', lineHeight: 1.4 }}>
+      <div style={{ fontSize: 12, color: 'var(--fg-faint)', lineHeight: 1.4 }}>
         Morning call · <i>{p.action}</i>
       </div>
     </div>
@@ -959,7 +963,7 @@ function FeelingCheckin({ todayRunDone, todayWorkoutType }: {
 
   if (done) {
     return (
-      <div className="rb-checkin rb-checkin-done" style={{ marginTop: 14 }}>
+      <div className="rb-checkin rb-checkin-done">
         <div className="dcl">{label}</div>
         <div className="rb-checkin-msg">
           Logged · <b>{done.rating}/10</b>.
@@ -972,7 +976,7 @@ function FeelingCheckin({ todayRunDone, todayWorkoutType }: {
   }
 
   return (
-    <div className="rb-checkin" style={{ marginTop: 14 }}>
+    <div className="rb-checkin">
       <div className="dcl">{label}</div>
       <div className="rb-checkin-q">{question}</div>
       <div className="rb-checkin-scale">
