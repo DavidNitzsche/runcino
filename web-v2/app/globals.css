@@ -238,16 +238,16 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .adaptline .adapt-restored{color:#FFCE8A;font-weight:600;}
 .hero-v2 .adaptline .adapt-restore-err{color:#FC4D64;font-weight:600;}
 .hero-v2 .leftstack{margin-top:24px;display:flex;flex-direction:column;}
-/* 2026-06-04 · planned hero stats tightened.  Previously gap:30px +
-   font-size:34 + no min-width:0 on children let the third stat
-   (~1:36 EST TIME etc.) brush the right edge of the card with no
-   breathing room.  A marathon est would clearly overflow.  Now:
-   gap:18, font:30, each .v/.k cell allowed to shrink (min-width:0),
-   .v itself is white-space:nowrap so the number/time never wraps
-   awkwardly mid-string. */
-.hero-v2 .stats{display:flex;gap:18px;margin-top:0;min-width:0;}
+/* 2026-06-04 · planned hero stats · v2 · switched from flex+gap to
+   3-col equal-width grid.  flex was leaving dead space on the right
+   of the card after the third stat ("crammed into the left").  Now
+   each stat gets 1fr — distance/pace/est-time spread evenly across
+   the full card width.  Min-width:0 still lets cells shrink under
+   tight columns, white-space:nowrap on .v keeps numbers + times on
+   one line. */
+.hero-v2 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:0;min-width:0;}
 .hero-v2 .stats > div{min-width:0;}
-.hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;line-height:.9;white-space:nowrap;}
+.hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;line-height:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .hero-v2 .stats .v small{font-size:13px;opacity:.85;font-weight:400;}
 .hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .hero-v2 .zones{margin-top:28px;}
@@ -258,7 +258,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .zbar i{height:100%;}
 .hero-v2 .zleg{display:flex;justify-content:space-between;margin-top:10px;font-size:10px;font-weight:600;opacity:.82;}
 .hero-v2 .zleg .zs{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle;}
-.hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 22px;margin-top:30px;}
+/* 2026-06-04 · 4-stat grid (forecast/shoe/fuel/best-window) · column
+   gap dropped 22 → 16 so each 1fr cell gets more usable width,
+   helping shoe names like "New Balance SC Trainer v3" wrap less
+   aggressively. */
+.hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 16px;margin-top:30px;min-width:0;}
+.hero-v2 .cond > div{min-width:0;}
 .hero-v2 .cond .kcl{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
 .hero-v2 .cond .kcv{font-size:14px;font-weight:700;margin-top:5px;}
 .hero-v2 .mapcol{flex:1;display:flex;min-height:0;align-self:stretch;}
