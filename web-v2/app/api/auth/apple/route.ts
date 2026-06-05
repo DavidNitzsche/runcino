@@ -63,6 +63,16 @@ async function fetchJWKS(): Promise<any[]> {
 /**
  * Verify Apple identity token. Returns the decoded claims on success.
  * Throws on any failure.
+ *
+ * 2026-06-05 · backend audit P0-1 fix · was: claims-only, signature
+ * never verified. Any forged JWT with the right iss/aud/exp string
+ * would sign in as any user; the email-bootstrap branch linked the
+ * forged identity into existing rows (David's account included).
+ * Now: JWKS-based RSA-SHA256 verification via Node's built-in crypto
+ * (no jose dependency · Apple's keys are RSA, which crypto.createPublicKey
+ * with format='jwk' handles directly). kid match against Apple's JWKS
+ * is required · unknown kid throws. Cite docs/2026-06-05-backend-audit.html
+ * § P0-1.
  */
 async function verifyAppleToken(token: string): Promise<any> {
   const parts = token.split('.');
@@ -76,21 +86,46 @@ async function verifyAppleToken(token: string): Promise<any> {
   }
   if (claims.exp && claims.exp * 1000 < Date.now()) throw new Error('token expired');
 
-  // Signature verification path is INTENTIONALLY claims-only for now.
-  //
-  // Full JWS verification needs `jose` (or equivalent JWKS-aware lib).
-  // We don't install that yet because:
-  //   (a) the iPhone client isn't using this endpoint in beta — we're
-  //       still single-user with the fallback path
-  //   (b) installing jose was blocking the prod TS build (route imported
-  //       a missing module, every deploy since 7c9b0c2 failed silently
-  //       and the HK-workout-ingest fix never reached prod). Removing
-  //       the import unblocks deploys.
-  //
-  // Issuer + aud + expiry checks above are still enforced. Before
-  // multi-user GA: `npm install jose`, restore JWKS signature verify.
-  // Tracked as a follow-up on P39.
-  void fetchJWKS; // keep the helper around for the follow-up
+  // ── JWS signature verification · the critical security gate ──
+  // The header carries the `kid` (key id) and `alg` (Apple uses RS256
+  // for all keys served from appleid.apple.com/auth/keys). We:
+  //   1. Pull the matching JWK from Apple's JWKS endpoint (60-min cache)
+  //   2. Import as a public key via Node crypto (handles JWK natively)
+  //   3. Verify the (header || '.' || payload) signature against it.
+  const { createPublicKey, createVerify } = await import('crypto');
+  if (!header.kid) throw new Error('missing kid in JWT header');
+  if (header.alg !== 'RS256') throw new Error(`unexpected alg: ${header.alg} (Apple uses RS256)`);
+
+  const keys = await fetchJWKS();
+  const jwk = (keys as Array<Record<string, unknown>>).find((k) => k.kid === header.kid);
+  if (!jwk) {
+    throw new Error(`unknown kid: ${header.kid} · not in Apple JWKS`);
+  }
+
+  // Apple's JWKs are RSA; createPublicKey accepts a JsonWebKeyInput
+  // ({ key, format: 'jwk' }) directly on Node 16+. The resulting
+  // KeyObject feeds straight into createVerify. Cast jwk to the
+  // standard JsonWebKey shape · Apple's keys conform to RFC 7517.
+  let publicKey;
+  try {
+    publicKey = createPublicKey({
+      key: jwk as unknown as import('crypto').JsonWebKey,
+      format: 'jwk',
+    });
+  } catch (e: unknown) {
+    throw new Error(`JWK import failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  const signingInput = `${parts[0]}.${parts[1]}`;
+  const signature = Buffer.from(parts[2], 'base64url');
+  const verifier = createVerify('RSA-SHA256');
+  verifier.update(signingInput);
+  verifier.end();
+  const ok = verifier.verify(publicKey, signature);
+  if (!ok) {
+    throw new Error('JWT signature verification failed');
+  }
+
   return claims;
 }
 
