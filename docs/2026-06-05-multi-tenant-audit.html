@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Runcino · Multi-tenant audit · 2026-06-05</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0d10;
+    --card: #1a1a20;
+    --card2: #20212a;
+    --ink: #e8e8ec;
+    --mute: #9a9aa0;
+    --line: rgba(255,255,255,0.08);
+    --line-2: rgba(255,255,255,0.04);
+
+    --green: #3EBD41;
+    --amber: #FFCE8A;
+    --red: #FF6B6B;
+    --blue: #5CADE3;
+
+    --p0: #FF6B6B;
+    --p1: #FFCE8A;
+    --p2: #5CADE3;
+    --p3: #9a9aa0;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 56px 28px 96px; }
+
+  h1 { font-family: 'Bebas Neue', 'Oswald', sans-serif; font-weight: 700; font-size: 92px; letter-spacing: 0.5px; margin: 0; line-height: 0.9; text-transform: uppercase; }
+  h1 .accent { color: var(--red); }
+  h1 .sub-accent { color: var(--blue); }
+  .hero-sub { color: var(--mute); margin-top: 18px; font-size: 15.5px; max-width: 820px; line-height: 1.55; }
+  .hero-sub strong { color: var(--ink); font-weight: 600; }
+  .meta-row { display: flex; gap: 10px; margin-top: 18px; font-size: 12px; color: var(--mute); flex-wrap: wrap; }
+  .meta-row span { padding: 5px 12px; background: rgba(255,255,255,0.04); border-radius: 4px; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.4px; }
+
+  h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 34px; letter-spacing: 0.3px; margin: 64px 0 18px; border-bottom: 1px solid var(--line); padding-bottom: 12px; text-transform: uppercase; }
+  h2 .num { font-size: 18px; color: var(--mute); margin-right: 12px; font-weight: 400; letter-spacing: 1.4px; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--blue); letter-spacing: 1.6px; text-transform: uppercase; margin: 28px 0 10px; }
+  h4 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 22px; margin: 22px 0 8px; letter-spacing: 0.3px; }
+
+  p { color: rgba(232,232,236,0.9); line-height: 1.65; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; }
+  ol { padding-left: 22px; margin: 0 0 12px; }
+  li { color: rgba(232,232,236,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  strong { color: var(--ink); font-weight: 600; }
+  em { color: var(--ink); font-style: italic; }
+
+  code { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; color: var(--blue); }
+  pre { background: rgba(255,255,255,0.04); border: 1px solid var(--line-2); border-radius: 8px; padding: 12px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.55; overflow-x: auto; color: rgba(232,232,236,0.88); margin: 8px 0 16px; }
+
+  /* TL;DR */
+  .principle { background: linear-gradient(135deg, rgba(255,107,107,0.10), rgba(92,173,227,0.06)); border: 1px solid rgba(255,107,107,0.30); border-radius: 16px; padding: 28px 32px; margin: 28px 0 40px; }
+  .principle .label { font-size: 11px; letter-spacing: 1.8px; color: var(--red); text-transform: uppercase; font-weight: 700; margin-bottom: 12px; }
+  .principle .body { font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 22px; line-height: 1.4; letter-spacing: -0.1px; }
+  .principle .body em { color: var(--red); font-style: normal; font-weight: 600; }
+
+  .severity-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0 28px; }
+  .sev-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 16px 14px; position: relative; }
+  .sev-card .lvl { font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--mute); font-weight: 700; margin-bottom: 8px; }
+  .sev-card .count { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 64px; line-height: 1; margin-bottom: 8px; }
+  .sev-card .one-line { font-size: 11.5px; color: rgba(232,232,236,0.78); line-height: 1.45; }
+  .sev-card.p0 { border-left: 4px solid var(--p0); }
+  .sev-card.p0 .count { color: var(--p0); }
+  .sev-card.p1 { border-left: 4px solid var(--p1); }
+  .sev-card.p1 .count { color: var(--p1); }
+  .sev-card.p2 { border-left: 4px solid var(--p2); }
+  .sev-card.p2 .count { color: var(--p2); }
+  .sev-card.p3 { border-left: 4px solid var(--p3); }
+  .sev-card.p3 .count { color: var(--p3); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; color: var(--mute); font-family: 'Inter', sans-serif; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.02); }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+  td code { font-size: 12px; }
+
+  /* Shape badges */
+  .shape-id { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--amber); white-space: nowrap; }
+  .sev-pill { display: inline-block; padding: 3px 9px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; font-family: 'Inter', sans-serif; }
+  .sev-pill.p0 { background: rgba(255,107,107,0.22); color: #ffa5a5; }
+  .sev-pill.p1 { background: rgba(255,206,138,0.22); color: var(--amber); }
+  .sev-pill.p2 { background: rgba(92,173,227,0.18); color: #a8d4ec; }
+  .sev-pill.p3 { background: rgba(154,154,160,0.18); color: var(--mute); }
+
+  .count-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', monospace; background: rgba(255,255,255,0.06); color: var(--ink); }
+
+  /* Findings */
+  .finding { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--p1); border-radius: 8px; padding: 16px 18px 14px; margin: 12px 0; }
+  .finding.p0 { border-left-color: var(--p0); }
+  .finding.p1 { border-left-color: var(--p1); }
+  .finding.p2 { border-left-color: var(--p2); }
+  .finding.p3 { border-left-color: var(--p3); }
+  .finding .header-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .finding .ttl { font-family: 'Oswald', sans-serif; font-size: 17px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; flex: 1; }
+  .finding .where { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--mute); margin: 4px 0 8px; word-break: break-all; }
+  .finding .section-lbl { font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--mute); margin-top: 10px; margin-bottom: 4px; }
+  .finding .body-text { color: rgba(232,232,236,0.88); font-size: 13.5px; line-height: 1.6; }
+  .finding .body-text code { font-size: 11.5px; }
+
+  /* Ship blocker callout */
+  .blocker-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  .blocker { background: linear-gradient(135deg, rgba(255,107,107,0.08), rgba(26,26,32,0.4)); border: 1px solid rgba(255,107,107,0.30); border-radius: 12px; padding: 18px 22px; }
+  .blocker .blocker-header { display: flex; gap: 12px; align-items: baseline; margin-bottom: 6px; }
+  .blocker .blocker-title { font-family: 'Oswald', sans-serif; font-size: 19px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; color: var(--ink); }
+  .blocker .blocker-shape { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--amber); }
+  .blocker .blocker-where { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--mute); margin: 4px 0 10px; word-break: break-all; }
+  .blocker .blocker-body { font-size: 13.5px; line-height: 1.6; color: rgba(232,232,236,0.88); }
+  .blocker .blocker-fix { background: rgba(62,189,65,0.08); border: 1px solid rgba(62,189,65,0.25); border-radius: 6px; padding: 10px 14px; margin-top: 12px; font-size: 13px; color: rgba(232,232,236,0.92); }
+  .blocker .blocker-fix .lbl { font-size: 10px; font-weight: 700; letter-spacing: 1.4px; color: var(--green); text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  /* Shape detail */
+  .shape-detail { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px 28px; margin: 18px 0 24px; }
+  .shape-detail h4 { margin-top: 0; }
+  .shape-detail .shape-tag { display: inline-block; padding: 4px 10px; border-radius: 5px; background: rgba(255,206,138,0.12); border: 1px solid rgba(255,206,138,0.25); color: var(--amber); font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.4px; margin-bottom: 10px; }
+  .shape-detail .desc { font-size: 14px; color: rgba(232,232,236,0.85); line-height: 1.6; margin-bottom: 14px; max-width: 880px; }
+  .shape-detail .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 12px 0; }
+  .shape-detail .col-label { font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--mute); margin-bottom: 8px; }
+  .shape-detail ul.tight { padding-left: 16px; margin: 0; }
+  .shape-detail ul.tight li { font-size: 12.5px; line-height: 1.5; margin-bottom: 4px; color: rgba(232,232,236,0.82); }
+  .shape-detail ul.tight li code { font-size: 11px; }
+
+  /* Synthetic / patterns sections */
+  .pattern-card { background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; margin: 12px 0 16px; border-left: 4px solid var(--blue); }
+  .pattern-card.p0 { border-left-color: var(--p0); }
+  .pattern-card.p1 { border-left-color: var(--p1); }
+  .pattern-card.p2 { border-left-color: var(--p2); }
+  .pattern-card.p3 { border-left-color: var(--p3); }
+  .pattern-card .ttl { font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
+  .pattern-card .where { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--mute); margin-bottom: 10px; word-break: break-all; }
+  .pattern-card .section-lbl { font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--mute); margin-top: 12px; margin-bottom: 4px; }
+  .pattern-card .body-text { color: rgba(232,232,236,0.88); font-size: 13.5px; line-height: 1.6; }
+
+  /* Recommendation section */
+  .reco-card { background: linear-gradient(135deg, rgba(62,189,65,0.08), rgba(92,173,227,0.05)); border: 1px solid rgba(62,189,65,0.30); border-radius: 14px; padding: 22px 26px; margin: 14px 0 18px; }
+  .reco-card .reco-num { display: inline-block; font-family: 'Bebas Neue', 'Oswald', sans-serif; font-size: 38px; line-height: 1; color: var(--green); margin-right: 14px; vertical-align: top; }
+  .reco-card .reco-body { display: inline-block; width: calc(100% - 60px); vertical-align: top; }
+  .reco-card .reco-title { font-family: 'Oswald', sans-serif; font-size: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; }
+  .reco-card .reco-text { font-size: 13.5px; line-height: 1.6; color: rgba(232,232,236,0.9); }
+  .reco-card .reco-text code { font-size: 11.5px; }
+
+  .footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 11px; color: var(--mute); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Multi-tenant<br><span class="accent">audit</span></h1>
+  <p class="hero-sub">
+    Runcino has been built around David — his data shape, his time zone, his Strava webhook, his Apple Watch.
+    The question this audit answers is the one that determines whether the system can be shipped past a runner-of-one:
+    <strong>can the engine serve a runner who is NOT David?</strong> Thirteen distinct runner shapes were enumerated —
+    from a cold-start signup with no data, to a Strava-only web user with no Apple Health, to a female runner with
+    cycle tracking, to a Pacific-bound elite — and the engine was probed at the seams where his data shape papers over
+    its assumptions. Findings are graded the same way as the previous audit pass: <strong>P0 ships nothing until fixed,</strong>
+    P1 is a credible field bug, P2 is degraded UX, P3 is polish.
+  </p>
+  <div class="meta-row">
+    <span>2026-06-05</span>
+    <span>Branch: main</span>
+    <span>Working app: <code>web-v2/</code></span>
+    <span>13 runner shapes audited</span>
+    <span>31 findings</span>
+  </div>
+
+  <div class="principle">
+    <div class="label">TL;DR</div>
+    <div class="body">
+      The system is <em>not multi-tenant-ready</em>. A web-only Strava runner with no Apple Health will see a confident
+      <em>READY</em> readout built from a 70-point baseline plus a LOAD pillar — the four recovery pillars (sleep, HRV,
+      RHR, HR-recovery) silently default to plausible numbers while the renderer still says "all quiet · keep doing
+      what you're doing." Every "today" calc for that same runner silently runs in UTC because the timezone capture
+      ladder has no web-side path. The same anti-pattern — <em>null-coalesce-to-plausible-default</em> instead of
+      <em>surface-the-gap-as-UI</em> — recurs in six independent coach modules, four readiness consumers, and the
+      seed adapter. The synthetic-runner bench would not catch any of it: <em>68% of the plan engine has zero bench
+      coverage</em>, the four "bench" files are pure-logic facsimiles that test the test instead of the engine, and
+      no persona models the data shapes that surfaced these P0s. Ship-readiness verdict: <em>not yet</em> — but the
+      fixes are concentrated and the doctrine changes are clear.
+    </div>
+  </div>
+
+  <h2><span class="num">01</span> Severity counts</h2>
+
+  <div class="severity-grid">
+    <div class="sev-card p0">
+      <div class="lvl">P0 · ship blocker</div>
+      <div class="count">7</div>
+      <div class="one-line">Cannot ship a multi-tenant build with these intact — runner-facing wrong-data lies or silent UTC drift.</div>
+    </div>
+    <div class="sev-card p1">
+      <div class="lvl">P1 · credible bug</div>
+      <div class="count">12</div>
+      <div class="one-line">Wrong UX in a shape the engine has to serve. Will be reported by a real user.</div>
+    </div>
+    <div class="sev-card p2">
+      <div class="lvl">P2 · degraded UX</div>
+      <div class="count">10</div>
+      <div class="one-line">Confusingly rendered nulls, mismatched copy, drawer rows that read wrong. Not corrupt — just shabby.</div>
+    </div>
+    <div class="sev-card p3">
+      <div class="lvl">P3 · polish</div>
+      <div class="count">2</div>
+      <div class="one-line">NaN bar heights on empty months, stale YAML comments. Cosmetic.</div>
+    </div>
+  </div>
+
+  <p>
+    The 7 P0s split into three doctrinal clusters: <strong>(1) recovery pillars silently default to plausible numbers</strong>
+    (4 findings affecting readiness, recovery brief, heat acclim, the body-tile chart domain), <strong>(2) timezone capture
+    has no web-only path</strong> (1 finding, but cascades into every "today" read for any web-only runner),
+    and <strong>(3) zero is overloaded as both a real measurement and absence</strong> (the seed adapter coerces null → 0 for
+    seven separate physiology pillars, then renders them as if observed). Patterns 1-3 in section 7 are the higher-order
+    versions of these three clusters.
+  </p>
+
+  <h2><span class="num">02</span> Shapes audited</h2>
+
+  <p>
+    Thirteen runner shapes. Each has a distinguishing data shape, a set of engine paths that behave differently because of
+    it, and a finding count. STRAVA_ONLY_WEB_USER is the shape that surfaced most of the P0s — but the doctrine gaps it
+    revealed apply to most of the others as well.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 250px;">Shape</th>
+        <th>What distinguishes it</th>
+        <th style="width: 90px;">Findings</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="shape-id">BRAND_NEW_NO_DATA</span></td>
+        <td>Cold-start signup · T1 identity only · no Strava, no Apple Health, no runs, no goal · the absolute first-touch state.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">COLD_START_3_RUNS_NO_LTHR</span></td>
+        <td>3 easy runs · no quality session · no HR sample ≥ 80% MHR · <code>runner_calibration</code> in 'cold-start' or 'building' data-quality.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">STRAVA_ONLY_WEB_USER</span></td>
+        <td>Strava connected and syncing · zero <code>health_samples</code> rows · web-only, never installed the iPhone app · no TZ-capture path.</td>
+        <td><span class="count-pill">14</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">IPHONE_FAFF_ONLY_NO_STRAVA</span></td>
+        <td>iPhone app + Apple Watch only · runs land via <code>watch_payload</code> · no Strava OAuth, no dedup conflicts.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">NO_GOAL_MAINTENANCE</span></td>
+        <td>Well-equipped runner with no race goal · <code>plan.mode='maintenance'</code> · resolver returns null banner.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">POST_A_RACE_ONE_DAY</span></td>
+        <td>Primary A race finished today or yesterday · still un-graduated · post-race vs race-week resolver is on a knife's edge.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">ULTRA_FAST_SUB_3_MARATHON</span></td>
+        <td>VDOT 58+, advanced experience · 60+ mpw base · sub-3 marathon · hits the VDOT-85 ceiling.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">SLOW_BEGINNER_FIRST_MARATHON</span></td>
+        <td>VDOT 32-36, beginner experience · 12 mpw base · signing up for first marathon · below the persona band.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">FEMALE_CYCLE_TRACKED</span></td>
+        <td><code>users.sex='female'</code> · cycle phase carriers active · luteal HRV adjustment fires on the readiness engine.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">NON_US_TIMEZONE</span></td>
+        <td>Runner in Europe/Asia/Pacific/AU · every "today" boundary depends on <code>runnerToday()</code> · jet-lag flag may fire.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">MULTI_RACE_HORIZON_24WK</span></td>
+        <td>A + B + C races within 24wk window · horizon-aware planning · taper-lite interactions.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">INJURED_3WK_BREAK_ACWR_COLLAPSE</span></td>
+        <td>Last run 3 weeks ago · acute7=0, chronic28 collapsing · TSB unrealistically positive · returning-from-layoff.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+      <tr>
+        <td><span class="shape-id">TREADMILL_INDOOR_ONLY</span></td>
+        <td>All runs indoor · no GPS pace, no elevation, no GAP · weather enrichment is meaningless · belt-pace unreliable.</td>
+        <td><span class="count-pill">cross-cut</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="font-size: 13px; color: var(--mute); margin-top: 12px;">
+    <em style="color: var(--mute);">Note:</em> Only STRAVA_ONLY_WEB_USER was probed exhaustively in this pass — its 14 specific findings
+    are detailed in section 5. The other 12 shapes are described with their "what breaks" theory but were not yet exhaustively
+    grep-tested against the codebase. Patterns 1-9 in section 7 are the higher-order findings that emerged from the deep
+    probe — and most of them apply to every shape in the table above.
+  </p>
+
+  <h2><span class="num">03</span> Ship blockers · all P0 findings</h2>
+
+  <p>
+    Seven P0 findings, six are shape-specific to STRAVA_ONLY_WEB_USER (the deep-probed shape), one is the cross-shape
+    cold-start escape-hatch pattern. Each one renders a confidently-shaped lie to a real user.
+  </p>
+
+  <div class="blocker-grid">
+
+    <div class="blocker">
+      <div class="blocker-header">
+        <span class="sev-pill p0">P0</span>
+        <span class="blocker-shape">STRAVA_ONLY_WEB_USER</span>
+        <span class="blocker-title">Cold-start escape hatch never fires when LOAD is alive</span>
+      </div>
+      <div class="blocker-where">web-v2/lib/coach/readiness-brief.ts:313-341 · lib/coach/readiness.ts:145-184</div>
+      <div class="blocker-body">
+        <p>LOAD pillar fires from runs alone — <code>breakdownIsEmpty</code> returns false because LOAD has <em>some</em>
+        observed value, and the runner gets a fabricated <em>READY · all systems in their normal band</em> headline derived
+        from a 70-point baseline ± LOAD only.</p>
+        <p>The <code>building history</code> short-circuit at <code>readiness.ts:178</code> only fires when ACWR is null.
+        A runner with 4+ weeks of Strava activity has <code>loadAcwr ≥ 0.8</code>, so the short-circuit never fires.
+        <code>readiness-brief.ts:653</code>'s <code>breakdownIsEmpty</code> requires <strong>every</strong> input to be
+        'no data' — LOAD with 'X.XX ACWR' as <code>observedV</code> makes the predicate return false. Score becomes
+        BASELINE ± LOAD = 67..75 → band 'ready'. The runner sees the green ring on Today
+        (<code>TodayView.tsx:182-189</code>) and 'All quiet · keep doing what you're doing' from <code>health-actions.ts:581-586</code>,
+        with zero sleep/HRV/RHR/HR-recovery readings backing the verdict.</p>
+      </div>
+      <div class="blocker-fix">
+        <span class="lbl">Fix</span>
+        Treat <code>breakdownIsEmpty</code> as "every <em>recovery</em> pillar is no-data" (sleep + HRV + RHR + HR-recovery),
+        NOT every input. When all four recovery pillars are no-data force <code>band='no-data'</code> and route into the
+        coldStart envelope path so the brief renders <em>"Connect Apple Health to start your baseline"</em> instead of a
+        score derived from ACWR plus a 70 baseline.
+      </div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-header">
+        <span class="sev-pill p0">P0</span>
+        <span class="blocker-shape">STRAVA_ONLY_WEB_USER</span>
+        <span class="blocker-title">Recovery brief fabricates baseline numbers when state is null</span>
+      </div>
+      <div class="blocker-where">web-v2/lib/coach/recovery-brief.ts:278, 291-293, 308-309</div>
+      <div class="blocker-body">
+        <p>Three independent fallbacks in the same file, each picking a plausible default when CoachState carries nulls.
+        The runner sees a confident "projected morning RHR 60 / baseline 60" — even though the system has zero RHR
+        readings at all.</p>
+        <p><code>computeRhrDelta</code> line 308: <code>const baselineBpm = state.rhrBaseline ?? state.rhrCurrent ?? 60</code>
+        — a hardcoded 60 bpm fallback. <code>computeHrvRebound</code> line 291-293: <code>baseline = state.hrvBaseline ?? 0;
+        current = state.hrvCurrent ?? baseline; currentDrop = Math.max(0, 0 - 0) = 0</code> — claims "HRV at baseline,
+        currentDrop = 0" for a runner with zero HRV samples. <code>computeSleepTarget</code> line 278:
+        <code>personalAvg = state.sleep7Avg ?? hoursTarget</code> — claims runner is on target when there's no sleep data.</p>
+      </div>
+      <div class="blocker-fix">
+        <span class="lbl">Fix</span>
+        Return null from <code>loadRecoveryBrief</code> when <code>state.rhrBaseline</code> AND <code>state.hrvBaseline</code>
+        AND <code>state.sleep7Avg</code> are ALL null — no recovery story is honest without any recovery signal. Or
+        short-circuit each pillar individually with a <code>noData: true</code> flag the renderer must check before
+        showing the projection.
+      </div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-header">
+        <span class="sev-pill p0">P0</span>
+        <span class="blocker-shape">STRAVA_ONLY_WEB_USER</span>
+        <span class="blocker-title">Web-only Strava runner silently runs in UTC</span>
+      </div>
+      <div class="blocker-where">web-v2/lib/runtime/runner-tz.ts:51-63 · app/api/auth/strava/callback/route.ts (missing capture)</div>
+      <div class="blocker-body">
+        <p>The runner whose onboarding pre-dated the timezone-required check has <code>profile.timezone=null</code>.
+        Every "today" calc silently runs in UTC, putting RUNs on the wrong calendar day for ~17 hours per day in
+        Pacific time.</p>
+        <p><code>runnerToday()</code> line 60 returns 'UTC' when <code>profile.timezone</code> is null.
+        <code>captureTimezoneFromDevice()</code> (line 106-127) only fires from watch + iPhone payloads — there is
+        no Strava callback or web-only path that auto-populates the TZ. Once null, every downstream module pulling
+        <code>runnerToday()</code> (recovery-phase, training-form, readiness-brief, plan adapter, score-trend,
+        decoupling-trend, glance-state) operates in UTC: a Pacific runner's Sunday long run lands on Monday's plan
+        slot from midnight UTC (= 5pm Pacific Sunday) through 7am Pacific Monday.</p>
+      </div>
+      <div class="blocker-fix">
+        <span class="lbl">Fix</span>
+        On Strava OAuth callback, accept and persist a <code>tz</code> query param from the client (e.g.
+        <code>Intl.DateTimeFormat().resolvedOptions().timeZone</code> written by a tiny script on the connect-button page).
+        Backfill <code>profile.timezone NOT NULL</code> constraint, then default Pacific tz for any legacy null rows
+        OR fall back to a ProfileGapCard "Set your timezone" nudge.
+      </div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-header">
+        <span class="sev-pill p0">P0</span>
+        <span class="blocker-shape">CROSS-SHAPE PATTERN</span>
+        <span class="blocker-title">Null-coalesce-to-plausible-default · the recurring anti-pattern</span>
+      </div>
+      <div class="blocker-where">readiness.ts:178-184 · recovery-brief.ts:278,291-293,308-309 · heat-acclim.ts:83 · health-state.ts:691-695 · seed.ts:1163-1166,1191-1212</div>
+      <div class="blocker-body">
+        <p>Every recovery module independently picks a hardcoded "normal" value when CoachState carries nulls:
+        60 bpm RHR, 0ms HRV drop = baseline, 60ms HRV center, 50 bpm RHR center, 180lb weight, 50 VO2, 7.5h sleep
+        target as personal avg, <code>watchMode='steady'</code>, <code>rhrTrend='plateauing'</code>. The runner sees
+        a confidently-rendered narrative built from numbers the system never observed.</p>
+        <p>The doctrine gap: NoData is encoded everywhere as either <code>null</code>, <code>0</code>,
+        <code>undefined</code>, or <code>""</code>, and each consumer handles it with its own ad-hoc fallback.
+        <strong>There is no shared <code>presence(state, pillar)</code> predicate.</strong></p>
+      </div>
+      <div class="blocker-fix">
+        <span class="lbl">Fix</span>
+        Define one canonical helper <code>pillarStatus(state, key): 'observed' | 'no-data' | 'building-history'</code> in
+        <code>lib/coach/state-presence.ts</code>. Each consumer must call it before computing anything. When
+        <code>status='no-data'</code>, return null / skip the row — never substitute a plausible default. Add a lint
+        rule that flags <code>?? 0</code>, <code>|| 60</code>, <code>|| 50</code> literal-fallback patterns inside
+        <code>lib/coach/*</code> unless paired with an explicit noData branch.
+      </div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-header">
+        <span class="sev-pill p0">P0</span>
+        <span class="blocker-shape">CROSS-SHAPE PATTERN</span>
+        <span class="blocker-title">Cold-start fires only when EVERY pillar is null — wrong definition</span>
+      </div>
+      <div class="blocker-where">readiness-brief.ts:313+653-656 · readiness.ts:178-184 · health-actions.ts:581-586</div>
+      <div class="blocker-body">
+        <p>The cold-start escape hatch only fires when EVERY input is null, but LOAD (and any non-recovery pillar) can
+        fire from Strava alone. <em>The "all pillars missing" definition of cold-start is wrong.</em> Cold-start in the
+        runner-facing sense means "no recovery signal," not "no signal at all." Same wrong-definition logic surfaces in
+        <code>breakdownIsEmpty</code>, <code>buildHealthActions</code> empty-state branch, and the readiness score
+        gating — they all collude to ship 'READY · all quiet' for a runner with zero recovery data.</p>
+        <p>The doctrine gap is conceptual: there is no separation between <em>SIGNAL pillars</em> (LOAD / run history)
+        vs <em>RECOVERY pillars</em> (sleep, HRV, RHR, HR-recovery). Readiness score should require at least one
+        recovery pillar to be non-null before producing a band.</p>
+      </div>
+      <div class="blocker-fix">
+        <span class="lbl">Fix</span>
+        Split CoachState pillars into <code>signalPillars</code> (LOAD) vs <code>recoveryPillars</code> (sleep, hrv,
+        rhr, hr_recovery). Replace <code>breakdownIsEmpty</code> with <code>hasNoRecoverySignal(b)</code> checking only
+        the 4 recovery pillars. Gate the readiness score: if <code>hasNoRecoverySignal</code>, return
+        <code>band='no-data'</code> and route through coldStart envelope regardless of LOAD weight. The empty-state
+        branch in <code>health-actions.ts</code> must check the same predicate and emit "No recovery signal yet ·
+        connect Apple Health" instead of "all quiet."
+      </div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-header">
+        <span class="sev-pill p0">P0</span>
+        <span class="blocker-shape">CROSS-SHAPE PATTERN</span>
+        <span class="blocker-title">Timezone capture is device-only · web has no path</span>
+      </div>
+      <div class="blocker-where">runner-tz.ts:51-63 · auth/strava/callback/route.ts (missing) · onboarding/complete/route.ts:165-169</div>
+      <div class="blocker-body">
+        <p>The auto-detect ladder has a hole: watch payload, iPhone HK sync, and onboarding all populate it, but a
+        web-only Strava runner's <code>profile.timezone</code> stays null and <code>runnerToday()</code> silently falls
+        back to UTC. This corrupts every "today" read downstream (readiness, plan adapter, glance-state, recovery-phase,
+        training-form, score-trend, decoupling-trend, day-of-week patterns, ALL crons).</p>
+        <p>The doctrine gap: there's no client-side capture on the web (a one-line
+        <code>Intl.DateTimeFormat().resolvedOptions().timeZone</code> would work) and no nightly backfill cron checking
+        for null timezones.</p>
+      </div>
+      <div class="blocker-fix">
+        <span class="lbl">Fix</span>
+        (1) On the <code>/connect/strava</code> page, write a tiny script that POSTs the browser's resolved TZ to
+        <code>/api/profile/timezone</code> before redirecting to OAuth. (2) Add a <code>timezone NOT NULL</code>
+        constraint with a backfill defaulting any remaining nulls to <code>'America/Los_Angeles'</code>. (3) Surface a
+        ProfileGapCard "Confirm your timezone" nudge on Today if <code>profile.timezone</code> matches the
+        default-backfill marker. (4) Add an assertion in <code>runnerToday()</code> that logs a warning when
+        <code>tz === 'UTC'</code> for diagnostic visibility.
+      </div>
+    </div>
+
+    <div class="blocker">
+      <div class="blocker-header">
+        <span class="sev-pill p0">P0</span>
+        <span class="blocker-shape">CROSS-SHAPE PATTERN</span>
+        <span class="blocker-title">Zero is overloaded as both a real value AND absence</span>
+      </div>
+      <div class="blocker-where">seed.ts:1163, 1180-1212 · TodayView.tsx:543-558</div>
+      <div class="blocker-body">
+        <p>The seed adapter coerces null → 0 for sleep / HRV / RHR / weight / VO2 / wristTemp / spo2 before downstream
+        consumers. TodayView (<code>TodayView.tsx:543</code> <code>sleepTile.current ?? null</code> resolves 0, not null!)
+        and the body-tile chart domain logic both treat 0 as a valid measurement — contradicting the
+        <code>noData</code> flag the same row carries. <em>Two truths in the same payload.</em></p>
+        <p>Concrete: <code>seed.ts:1163</code> <code>lastNightSleep = ... ?? 0</code>. <code>seed.ts:1180-1181</code>
+        <code>bfCurrent = health?.bodyFat.current ?? 0; lmCurrent = health?.leanMass.current ?? 0</code>. <code>mk()</code>
+        emits <code>noData=!hasSleep</code> but <code>current=0</code>. <code>TodayView.tsx:553-558</code>
+        <code>avg7 != null</code> is TRUE for 0, so the "0.0h · 7-night avg" subtitle prints next to a formatSleep
+        em-dash. Chart domain at <code>seed.ts:1192</code> takes <code>(hrvCurrent || 60) - 30</code> → 60ms centerpoint
+        when hrvCurrent is 0/null.</p>
+      </div>
+      <div class="blocker-fix">
+        <span class="lbl">Fix</span>
+        Change all <code>?? 0</code> and <code>|| &lt;default&gt;</code> patterns in <code>seed.ts adaptHealth</code> to
+        <code>?? null</code> and <code>?? undefined</code>. <code>mk()</code> must accept <code>current: number | null</code>
+        and skip rendering numeric chrome when null. Chart domain helper:
+        <code>chartDomain(value, span) = value == null ? [0, 1] : [value - span, value + span]</code>. Audit every
+        <code>current ?? 0</code> site in the seed (wristTempCurrent, hrvCurrent, rhrCurrent, weightCurrent, vo2Current)
+        and replace — null carries the noData truth.
+      </div>
+    </div>
+
+  </div>
+
+  <h2><span class="num">04</span> Shape detail · STRAVA_ONLY_WEB_USER</h2>
+
+  <p>
+    The shape that surfaced most of the P0s. Strava connected and syncing, 4+ weeks of activity, but
+    <em>zero rows in <code>health_samples</code></em> — no sleep, no HRV, no RHR, no HR-recovery, no cadence from a
+    watch. Web-only signup, never installed the iPhone Faff app. The doctrine in <code>ONBOARDING_AUDIT_2026-05-31</code>
+    says this shape should work "mostly closed" via manual fallback — in practice it doesn't, and the engine fabricates
+    every recovery readout it surfaces.
+  </p>
+
+  <div class="shape-detail">
+    <div class="shape-tag">STRAVA_ONLY_WEB_USER · distinguishing fields</div>
+
+    <div class="grid2">
+      <div>
+        <div class="col-label">Data shape</div>
+        <ul class="tight">
+          <li><code>profile.strava_access_token</code> populated, sync working</li>
+          <li><code>runs.length</code> 4+ weeks of activity</li>
+          <li>zero <code>health_samples</code> rows (no sleep_hours, no hrv, no resting_hr, no max_hr, no hr_recovery, no cadence)</li>
+          <li>no iOS Bearer token</li>
+          <li><code>watch_payload</code> never delivered</li>
+          <li><code>users.timezone</code> may be IP-derived not device-confirmed</li>
+        </ul>
+      </div>
+      <div>
+        <div class="col-label">What breaks in theory</div>
+        <ul class="tight">
+          <li>Apple Health auto-ratchet for <code>users.max_hr</code> never fires → 220-age fallback → all HR zones systematically wrong</li>
+          <li>Readiness Sleep (25%) + HRV (25%) + RHR (20%) pillars degrade silently — composite reads as 30% (LOAD + check-in) but doctrine 3.3 says it should work without Apple Health</li>
+          <li><code>ManualHealthSheet</code> on iOS is unreachable from web — the "mostly closed" manual fallback doesn't actually save them</li>
+          <li>HR recovery / cadence / VO2 max / form-bio cards collapse with no data</li>
+          <li>watch-mode <code>resolveHealth</code> driven by RHR delta + sleep deficit returns 'steady' even when runner is wrecked</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h3>Findings on STRAVA_ONLY_WEB_USER (14)</h3>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 60px;">Sev</th>
+        <th>Issue</th>
+        <th style="width: 300px;">Where</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="sev-pill p0">P0</span></td>
+        <td><strong>Cold-start escape hatch never fires</strong> because LOAD pillar fires from runs alone — score becomes BASELINE ± LOAD = 67..75, runner sees READY with no recovery data.</td>
+        <td><code>readiness-brief.ts:313-341</code><br><code>readiness.ts:145-184</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p0">P0</span></td>
+        <td><strong>Recovery brief fabricates baseline numbers</strong> with hardcoded 60 bpm RHR, 0ms HRV drop, sleep target as personal avg.</td>
+        <td><code>recovery-brief.ts:278, 291-293, 308-309</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p0">P0</span></td>
+        <td><strong>Web-only Strava runner silently runs in UTC</strong> — <code>runnerToday()</code> falls back to UTC when timezone is null, no web-side capture path exists.</td>
+        <td><code>runner-tz.ts:51-63</code><br><code>onboarding/complete/route.ts:165-169</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p1">P1</span></td>
+        <td><strong>watchMode returns 'steady' for zero RHR + sleep data</strong> — can't distinguish "rested" from "no signal" so flags nothing even when runner is wrecked.</td>
+        <td><code>health-state.ts:695-714</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p1">P1</span></td>
+        <td><strong>WHAT TO DO panel: "All quiet · keep doing what you're doing"</strong> rendered for runner with no recovery signals, citing the LOAD-only score as if comprehensive.</td>
+        <td><code>health-actions.ts:581-586</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p1">P1</span></td>
+        <td><strong>Today header SLEEP block renders "0.0h · 7-night avg"</strong> below the headline because <code>sleepAvg</code> defaults to 0 when series is empty.</td>
+        <td><code>seed.ts:1148-1167</code><br><code>TodayView.tsx:553-558</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p1">P1</span></td>
+        <td><strong>Heat acclim emits "RHR is settling · body is adapting on schedule"</strong> from default <code>rhrTrend='plateauing'</code> when no RHR data exists.</td>
+        <td><code>heat-acclimatization.ts:83, 100-110</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p1">P1</span></td>
+        <td><strong>Body tile chart domain</strong> computed off missing-data fallback (<code>(hrvCurrent || 60) - 30</code>), so the empty chart still shows a baseline tick at 60ms HRV / 50 bpm RHR / 180lb / 50 VO2.</td>
+        <td><code>health-state.ts:1190-1207</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p2">P2</span></td>
+        <td><strong>Readiness null-fallback copy is wrong</strong>: "Connect Apple Health + Strava" prompt, but Strava IS connected.</td>
+        <td><code>seed.ts:794-803</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p2">P2</span></td>
+        <td><strong>max_hr from Strava observed-12mo is treated as authoritative</strong> — Strava max_heartrate is often a single-second chest-strap glitch, not a true HRmax; zones inherit the noise.</td>
+        <td><code>profile-state.ts:348-358</code><br><code>training/zones.ts:124-128</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p2">P2</span></td>
+        <td><strong>READINESS drawer drivers</strong>: four pillars with weight=0 alongside a LOAD pillar at +5 — visually identical to drivers that contributed 0 because at baseline.</td>
+        <td><code>seed.ts:786-825</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p2">P2</span></td>
+        <td><strong>Cold-start envelope only consulted when band === 'no-data'</strong> — STRAVA-only user's band is 'ready' from LOAD, so the "Connect Apple Health" note never surfaces.</td>
+        <td><code>health-state.ts:1276-1283</code></td>
+      </tr>
+      <tr>
+        <td><span class="sev-pill p3">P3</span></td>
+        <td><strong>NaN bar heights</strong> on empty months — <code>Math.max(...d.vol.map(...))</code> returns -Infinity for empty arrays, "AVG NaN" renders.</td>
+        <td><code>ActivityView.tsx:29-30</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2><span class="num">05</span> Synthetic suite gaps</h2>
+
+  <p>
+    The synthetic-runner bench at <code>web-v2/lib/plan/synthetic-runners.ts</code> was built to validate the plan
+    engine against a population of personas. The audit asked: does the bench cover the shapes the engine has to serve,
+    and does it actually exercise the engine? The answer to both is <em>no</em>.
+  </p>
+
+  <div class="pattern-card p1">
+    <div class="ttl">P1 · 8 personas, but all male, all en-US TZ, all the same training week</div>
+    <div class="where">web-v2/lib/plan/synthetic-runners.ts:70-349</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>Diversity is in distance/level/health-pattern only, not in the population dimensions that actually drive
+      the engine's per-runner branches. Zero distinct sex. Zero non-US TZ. Zero menstrual cycle. Zero crossModes.
+      Zero alternative schedule. No 10K at any tier. No elite tier. No persona with measured HR vs persona with
+      null HR. No master-runner (50+) and no youth (sub-20).</p>
+      <p>The 8 personas cover: beginner-5k, david-sub-1-30-hm, david-mid-block, intermediate-hm-sub-2,
+      advanced-marathon, advanced-plus-ultra, returning-from-injury, sleep-debt-prone. Everyone runs Sun-long /
+      Sat-rest / Tue+Thu-quality.</p>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Add the 6-8 personas listed in the next finding so the suite spans the actual user-population
+    the engine has to serve, not just a "happy-path matrix of distance × ability."</div>
+  </div>
+
+  <div class="pattern-card p1">
+    <div class="ttl">P1 · healthPattern is dead metadata</div>
+    <div class="where">web-v2/lib/plan/synthetic-runners.ts:67</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>Declared on every persona but <em>never read by any test or bench</em>. "sleep-debt-prone" and
+      "returning-from-injury" are not actually exercised against a stress event-stream — they behave identically to
+      baseline in every test. Grep across the entire <code>web-v2</code> tree finds <code>healthPattern</code> only
+      at the type def and the literal assignments. Zero reads. Same applies to <code>ageYears</code>: bench treats
+      age 32 and age 42 identically.</p>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Either delete the dead fields, or build a synthetic event-stream generator (e.g.
+    <code>./bench-fixtures/health-streams.ts</code>) that emits 14-28d of HRV/RHR/sleep/RPE for each
+    <code>healthPattern</code>, then feed it into <code>detectAdaptations()</code> and <code>detectDrift()</code>
+    and assert the right trigger fires. Same for <code>ageYears</code>: actually pipe it through HRmax derivation
+    paths.</div>
+  </div>
+
+  <div class="pattern-card p1">
+    <div class="ttl">P1 · Plan-engine bench uses an ideal-trajectory shortcut</div>
+    <div class="where">web-v2/lib/plan/plan-engine.test.ts:32-71</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>The bench does NOT run personas through "generate plan → adapt → simulate". <code>buildPersonaInput()</code>
+      hand-rolls a SimulatorInput from <code>expectedPlan.peakWeeklyMileageBand</code> (averaging the band's lo+hi),
+      feeding the simulator an ideal trajectory the generator never produced. <code>composePlan()</code> is never
+      called from <code>plan-engine.test.ts</code>. The bench validates ONLY simulator math against a hand-built ramp;
+      it cannot catch generator bugs that produce non-ideal ramps.</p>
+      <p>No bench file imports <code>detectAdaptations</code>, <code>applyAdaptations</code>, <code>detectDrift</code>,
+      <code>adaptToday</code>, <code>simulateActivePlan</code> (the DB version), <code>composeMaintenancePlan</code>,
+      <code>composeRecoveryPlan</code>, <code>generatePlan</code> (the seeding wrapper), or <code>autoRebuild</code>.</p>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Add a true end-to-end bench (<code>e2e-bench.test.ts</code>) that: 1) calls
+    <code>composePlan(personaToInput(p))</code>, 2) injects synthetic completed runs from a healthPattern event stream,
+    3) calls <code>detectDrift</code> + <code>detectAdaptations</code> against an in-memory snapshot, 4) re-runs
+    <code>simulate()</code> on the post-adaptation plan, 5) asserts <code>goal-gap.classifyGoalGap()</code> returns the
+    expected status.</div>
+  </div>
+
+  <div class="pattern-card p1">
+    <div class="ttl">P1 · Adapter / adaptive-ramp benches test pure-logic facsimiles, not the actual code</div>
+    <div class="where">adapter-bench.test.ts:23-182 · adaptive-ramp.test.ts:23-192</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>The benches define inline copies of the adapter's math (<code>simShave</code>, <code>allGatesPass</code>,
+      <code>applyBump</code>) and test <em>those copies</em>. The actual <code>adapt.ts</code> and
+      <code>adaptive-ramp.ts</code> code paths are never called. A regression in the real SQL/UPDATE path will not be
+      caught.</p>
+      <p>The whole point of the "four-file bench" is the appearance of coverage; the real reasoning lives in
+      <code>adapt.ts</code> at 1244 LOC, which runs against a DB and is not exercised.</p>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Refactor <code>adapt.ts</code> to extract pure functions (e.g. <code>shaveDistance(mi, frac)</code>,
+    <code>classifyTriggers(signals)</code>) and call those directly. Or mock the pool and test
+    <code>detectAdaptations</code> end-to-end with <code>pg-mem</code>. The current "facsimile" approach gives a false
+    sense of safety — the test mocks the system under test.</div>
+  </div>
+
+  <div class="pattern-card p2">
+    <div class="ttl">P2 · 68% of plan engine has zero bench coverage</div>
+    <div class="where">web-v2/lib/plan/ · .github/workflows/plan-engine-bench.yml:38-93</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>Of 22 engine <code>.ts</code> files in <code>web-v2/lib/plan/</code>, only 7 are imported by the four bench
+      files. <strong>15 files have zero bench coverage</strong>: <code>drift-monitor.ts</code> (744 LOC),
+      <code>seed-from-onboarding.ts</code> (459 LOC), <code>gap-report.ts</code>, <code>adapt-block.ts</code>,
+      <code>auto-rebuild.ts</code>, <code>goal-gap.ts</code>, <code>injury-builder.ts</code>,
+      <code>workout-library.ts</code>, <code>workout-proposals.ts</code>, <code>seal.ts</code>,
+      <code>citation.ts</code>, <code>proposals-state.ts</code>, <code>core.ts</code>, <code>lookup.ts</code>,
+      <code>prescription-parser.ts</code>.</p>
+      <p>CI status check says "Plan engine bench" is required-before-merge, but does not run against these 15
+      modules. The 9 engine triggers in <code>adapt.ts</code> plus the 8 drift kinds — 17 distinct branch-firing paths
+      — are each tested zero times.</p>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Add a bench scoreboard test that lists every export from every <code>plan/*.ts</code> and
+    fails if any "public" detector or applier has no bench call. Or add a <code>vitest --coverage</code> gate to the
+    workflow asserting minimum line-coverage on the directory.</div>
+  </div>
+
+  <div class="pattern-card p2">
+    <div class="ttl">P2 · Coverage matrix is sparse — 6 of 20 distance × tier cells</div>
+    <div class="where">web-v2/lib/plan/synthetic-runners.ts (whole file)</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>5 distances × 4 tiers = 20 cells. Personas fill 6. 10K row empty (all 4 tiers). Elite empty (all 5 distances).
+      5K row only has developing. M row only has advanced. WeeksOut distribution skews to 10-20wk — no race-crunch
+      case (&lt;10wk).</p>
+      <p>Workflow YAML at <code>plan-engine-bench.yml:82-87</code> says 'Personas validated: beginner-5k /
+      intermediate-hm / advanced-marathon / advanced-plus-ultra / returning-from-injury / sleep-debt-prone' — 6 names
+      — but the PERSONAS array has 8. The persona named 'intermediate-hm' doesn't exist (it's
+      <code>intermediate-hm-sub-2</code>, plus there are 2 david HM personas not in the YAML summary).</p>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Update the workflow YAML summary to enumerate all 8 actual personas. Add 10K coverage
+    (4 personas, one per tier). Add elite (sub-15:00 5K runner, sub-2:20 marathon runner). Backfill 5K
+    intermediate/advanced and M developing/intermediate cells.</div>
+  </div>
+
+  <div class="pattern-card p2">
+    <div class="ttl">P2 · Concrete persona gaps — what the suite should fill</div>
+    <div class="where">Engine paths cross-referenced against persona attributes</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>Ten concrete gaps in the suite based on engine paths plus per-shape bug classes:</p>
+      <ol>
+        <li><strong>FEMALE WITH CYCLE TRACKING</strong> — no persona has <code>biological_sex='female'</code>; the
+        luteal-phase HRV adjustment is never bench-fired.</li>
+        <li><strong>NON-US TIMEZONE RUNNER</strong> — every persona is effectively America/Los_Angeles; TZ-08/TZ-09
+        workstream untouched.</li>
+        <li><strong>ACTIVE INJURY</strong> (not "returning" — actually-injured-right-now) — the
+        <code>injury_active</code> AdaptationTriggerKind has no test persona.</li>
+        <li><strong>ACTIVE ILLNESS</strong> — <code>sick_episode_active</code> trigger has no persona.</li>
+        <li><strong>CYCLIST / SWIMMER / CROSS-TRAINER</strong> — <code>crossModes: []</code> on every persona; mod-rotate
+        scheduling at <code>generate.ts:1122-1125</code> never exercised.</li>
+        <li><strong>MID-BLOCK GOAL CHANGE</strong> — <code>goal_changed</code> trigger fires when runner edits goal
+        time; no persona models a goalSec mutation.</li>
+        <li><strong>ELITE-TIER RUNNER</strong> — no persona maps to elite tier (sub-15:00 5K, sub-2:20 marathon).</li>
+        <li><strong>RACE-CRUNCH</strong> (&lt;6wk out) — minimum weeksOut is 10; phase compression below 10wk runway
+        has no persona.</li>
+        <li><strong>CALIBRATED-VDOT BUT NO HR</strong> — every persona has <code>lthr: null, maxHr: null</code>; no
+        persona has <code>lthr=178/maxHr=null</code> OR <code>lthr=null/maxHr=192</code> to validate three-path HR-cap
+        derivation.</li>
+        <li><strong>MAINTENANCE / RECOVERY MODE</strong> — <code>pickPlanMode</code> at <code>goal-tiers.ts:130</code>
+        returns <code>'race-prep' | 'maintenance' | 'recovery'</code>; <code>composeMaintenancePlan</code> +
+        <code>composeRecoveryPlan</code> never bench-called.</li>
+      </ol>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Add 6 high-leverage personas: <em>female-mid-cycle-hm</em>, <em>london-marathoner</em>,
+    <em>active-injury-hamstring</em>, <em>cyclist-running-spring-5k</em>, <em>elite-15-min-5k</em>,
+    <em>post-race-maintenance</em>. Wire <code>healthPattern</code> → event-stream fixtures so the bench actually
+    exercises <code>detectAdaptations</code> against each.</div>
+  </div>
+
+  <div class="pattern-card p2">
+    <div class="ttl">P2 · healthPattern enum covers 24% of engine trigger surface</div>
+    <div class="where">synthetic-runners.ts:67 · adapt.ts:84-93</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>healthPattern has 4 values (<code>baseline | sleep-debt | rhr-sensitive | returning-from-injury</code>), but
+      the engine has 9 adaptation triggers + 8 drift kinds = 17 distinct branches. Even if healthPattern were wired
+      (it isn't), it covers ~24% of the trigger surface. <code>rhr-sensitive</code> is declared in the type but never
+      assigned to any persona.</p>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Either prune <code>healthPattern</code> down to what's wired (today: 0) or expand to a 1:1
+    mapping over engine triggers + drift kinds, then build event-stream fixtures for each.</div>
+  </div>
+
+  <div class="pattern-card p3">
+    <div class="ttl">P3 · Workflow YAML comment lists stale persona names</div>
+    <div class="where">.github/workflows/plan-engine-bench.yml:1-12, 80-95</div>
+    <div class="section-lbl">Issue</div>
+    <div class="body-text">
+      <p>Says "6 personas, 44 assertions" but PERSONAS array has 8. Bench summary step at lines 80-95 prints stale
+      names. Persona named "intermediate-hm" doesn't exist; it's <code>intermediate-hm-sub-2</code>. The mid-block +
+      david-sub-1-30-hm personas added 2026-06-03 weren't propagated.</p>
+    </div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Generate the summary step dynamically from the PERSONAS array, or update the YAML comment
+    and step output to match the 8 personas, then add a CI lint that the summary stays in sync.</div>
+  </div>
+
+  <h2><span class="num">06</span> Cross-shape patterns · the higher-order bugs</h2>
+
+  <p>
+    The 13 shapes each surface their own list of "what breaks." But the patterns that emerged from the deep
+    STRAVA_ONLY_WEB_USER probe — and that recur in 6+ files — are the load-bearing fixes. These are the doctrine
+    changes that, once made, fix many shape-specific findings at once.
+  </p>
+
+  <div class="pattern-card p0">
+    <div class="ttl">PATTERN 1 · P0 · Null-coalesce-to-plausible-default</div>
+    <div class="where">readiness.ts · recovery-brief.ts · heat-acclim.ts · health-state.ts · seed.ts (6+ files)</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">Every recovery module independently picks a hardcoded "normal" value when CoachState carries
+    nulls. The doctrine gap: NoData is encoded everywhere as either <code>null</code>, <code>0</code>,
+    <code>undefined</code>, or <code>""</code>, and each consumer handles it with its own ad-hoc fallback. There is
+    no shared <code>presence(state, pillar)</code> predicate.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">One canonical <code>pillarStatus(state, key)</code> helper in
+    <code>lib/coach/state-presence.ts</code>, called by every consumer. Lint rule flags <code>?? 0</code>,
+    <code>|| 60</code>, <code>|| 50</code> literal-fallback patterns inside <code>lib/coach/*</code>.</div>
+  </div>
+
+  <div class="pattern-card p0">
+    <div class="ttl">PATTERN 2 · P0 · Cold-start = "no signal at all" is the wrong definition</div>
+    <div class="where">readiness-brief.ts:313+653-656 · readiness.ts:178-184 · health-actions.ts:581-586</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">Cold-start should mean "no <em>recovery</em> signal," not "no signal at all." There is no
+    separation between SIGNAL pillars (LOAD / run history) vs RECOVERY pillars (sleep, HRV, RHR, HR-recovery).
+    Readiness score should require at least one recovery pillar to be non-null before producing a band.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Split CoachState pillars. Replace <code>breakdownIsEmpty</code> with
+    <code>hasNoRecoverySignal</code> checking only the 4 recovery pillars. Gate the score: if no recovery signal,
+    force <code>band='no-data'</code> regardless of LOAD weight.</div>
+  </div>
+
+  <div class="pattern-card p0">
+    <div class="ttl">PATTERN 3 · P0 · Timezone capture has no web-only path</div>
+    <div class="where">runner-tz.ts:51-63 · auth/strava/callback (missing) · onboarding/complete:165-169</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">Auto-detect ladder fires from watch payload, iPhone HK sync, and onboarding — but a web-only
+    Strava runner's <code>profile.timezone</code> stays null and <code>runnerToday()</code> silently falls back to
+    UTC. Every downstream "today" read corrupts.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Client-side capture on the <code>/connect/strava</code> page (one-line
+    <code>Intl.DateTimeFormat</code>). <code>timezone NOT NULL</code> constraint with default-backfill. ProfileGapCard
+    nudge for any default-backfill marker. Diagnostic warning when <code>runnerToday()</code> resolves to
+    <code>'UTC'</code>.</div>
+  </div>
+
+  <div class="pattern-card p0">
+    <div class="ttl">PATTERN 4 · P0 · Zero is overloaded as a real value AND absence</div>
+    <div class="where">seed.ts:1163,1180-1212 · TodayView.tsx:543-558</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">Seed adapter coerces null → 0 for seven pillars before downstream. Renderer treats 0 as a
+    valid measurement, contradicting the <code>noData</code> flag the same row carries. Two truths in the same
+    payload.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Change all <code>?? 0</code> and <code>|| &lt;default&gt;</code> in <code>seed.ts adaptHealth</code>
+    to <code>?? null</code>. <code>mk()</code> accepts <code>current: number | null</code>. <code>chartDomain()</code>
+    returns <code>[0, 1]</code> when value is null. Audit every <code>current ?? 0</code> site.</div>
+  </div>
+
+  <div class="pattern-card p1">
+    <div class="ttl">PATTERN 5 · P1 · Authored prose fires unconditionally on null data</div>
+    <div class="where">recovery-brief.ts:308-318, 290-304, 272-287 · health-actions.ts:570-586 · heat-acclim.ts:100-110</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">Message-construction layer doesn't gate on whether the underlying data was real. Heat-acclim
+    day-N message, recovery-brief projected morning RHR, HRV rebound %, "all quiet · keep doing what you're doing"
+    — all render as confident sentences regardless of input presence. The doctrine gap: no precondition contract on
+    the prose-building layer. "Cite or shut up" isn't enforced.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Apply the "no-citations sweep" principle (task #131) to authored prose. Each message
+    template gets a <code>requires: ['rhr', 'rhrBaseline', 'sleep7Avg']</code> annotation. Render layer compares
+    against <code>pillarStatus</code> and falls back to a noData stub when any required input is absent. CI test walks
+    every message template and asserts <code>requires</code> is non-empty or explicitly marked
+    <code>requires: []</code> with justification.</div>
+  </div>
+
+  <div class="pattern-card p1">
+    <div class="ttl">PATTERN 6 · P1 · Readiness score has no coverage field</div>
+    <div class="where">readiness.ts:38 (BASELINE=70) · weighted-pillar fan-in</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">Score starts from BASELINE=70 and adds/subtracts pillar contributions independently. A
+    LOAD-only runner gets 75. A fully-instrumented runner with perfect signals also gets 75. The two are
+    indistinguishable to downstream consumers (forecasts, action panel, score-trend chart, the green ring on Today).
+    No <code>coverage</code> field on the breakdown reflecting what fraction of the 100% weight came from real data.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Add <code>coverage: number</code> to <code>ReadinessBreakdown</code> — sum of weights from
+    pillars with real data over total possible weight. When <code>coverage &lt; 0.4</code>, force
+    <code>band='partial-data'</code> and rendering shows a subdued ring with "limited signal" label. Update
+    score-trend to gray-bar days with <code>coverage &lt; 0.4</code>.</div>
+  </div>
+
+  <div class="pattern-card p1">
+    <div class="ttl">PATTERN 7 · P1 · Fallback ladders end in value-shaped sentinels instead of UI nudges</div>
+    <div class="where">runner-tz.ts (UTC) · health-state.ts (steady) · heat-acclim.ts (plateauing) · etc.</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">Auto-detection assumes at least one rich device is connected. Strava-only web runner is an
+    unmodeled persona — no fallback ladder accounts for "web browser is the only entry point." Same recurs for max HR,
+    VO2, timezone. Ladders top out at "we have no device" and either silently default or render NULL. Neither is the
+    right UX outcome. No shared "PromptForInput" contract.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Define <code>resolveOrPrompt&lt;T&gt;(ladder: Source[], onExhausted: GapPrompt): T | GapPrompt</code>
+    in <code>lib/coach/resolve.ts</code>. Each resolver returns either a value or a typed gap-prompt the renderer turns
+    into a ProfileGapCard ("Set your timezone" / "Connect Apple Health for HRV" / "Manually enter resting HR"). Plumb
+    up to TodayView's gap-card slot. Stop letting modules silently degrade.</div>
+  </div>
+
+  <div class="pattern-card p2">
+    <div class="ttl">PATTERN 8 · P2 · Each module defines "data exists" independently</div>
+    <div class="where">readiness-brief.ts:653-656 · health-actions.ts:557-586 · readiness.ts:178-184 · heat-acclim.ts:83 · health-state.ts:695</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">At least 5 separate presence predicates of varying strictness across coach modules:
+    <code>b.inputs.every(observedV==='no data')</code>, <code>state.loadAcwr != null && acute7 != null && chronic28 != null</code>,
+    <code>rhrSeries.length &gt;= 5</code>, <code>state.rhrBaseline ?? state.rhrCurrent ?? 60</code>,
+    <code>!hasRhr</code>. They disagree on what counts as "real RHR" (some require baseline+current, some require 5+
+    samples, some require non-null current alone). Same pillar, 5 different presence definitions.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Canonical presence module <code>lib/coach/state-presence.ts</code> exporting
+    <code>hasRhrSignal(state, mode: 'point' | 'baseline' | 'trend')</code>, <code>hasSleepSignal(...)</code>,
+    <code>hasHrvSignal(...)</code>, <code>hasLoadSignal(...)</code>. Every consumer imports and calls these. Raw
+    <code>state.X != null</code> checks against CoachState pillars become a code-review red flag.</div>
+  </div>
+
+  <div class="pattern-card p2">
+    <div class="ttl">PATTERN 9 · P2 · Persona suite covers "what kind of runner" not "what kind of data shape"</div>
+    <div class="where">Phase 3.1 synthetic personas (task #124) · plan-engine bench (task #125)</div>
+    <div class="section-lbl">The pattern</div>
+    <div class="body-text">Suite defines runners by "what kind of runner" (marathoner, half, BQ-chase) and not "what
+    kind of data shape" (Strava-only, Strava+manual, watch+web, manual-only). The audit only caught these P0s because
+    of the STRAVA_ONLY_WEB shape — the bench has been green throughout, but no persona has nulls on the recovery
+    pillars while having LOAD data.</div>
+    <div class="section-lbl">Fix</div>
+    <div class="body-text">Add 4 data-shape personas to <code>lib/test/personas.ts</code>: (1) Strava-only web (no Apple
+    Health), (2) Watch-only iPhone (no Strava), (3) Manual-entry only, (4) Mixed-partial (Strava + sleep but no
+    HRV/RHR). Wire each into the bench. CI fails if any of these renders 'READY' or 'all quiet' on a cold-start
+    envelope.</div>
+  </div>
+
+  <h2><span class="num">07</span> Next 5 moves to ship</h2>
+
+  <p>
+    If the goal is "system can serve a runner who is NOT David" — and ship in that order — here is the recommended
+    sequence. Each move is concentrated, has a small blast radius, and unlocks multiple downstream findings at once.
+  </p>
+
+  <div class="reco-card">
+    <div class="reco-num">1</div>
+    <div class="reco-body">
+      <div class="reco-title">Build the presence module</div>
+      <div class="reco-text">
+        Create <code>web-v2/lib/coach/state-presence.ts</code> with four canonical predicates:
+        <code>hasRecoverySignal(state)</code>, <code>hasSleepSignal(state)</code>, <code>hasHrvSignal(state)</code>,
+        <code>hasRhrSignal(state)</code>. Refactor every consumer (readiness scorer, recovery brief, heat acclim,
+        watchMode, health-actions empty-state, seed adapter) to call them. <strong>This is the load-bearing fix</strong>
+        — it kills 3 of the 7 P0s (Patterns 1, 2, and the cold-start escape hatch) and 5 of the 12 P1s at the same
+        time. Add a lint rule banning <code>?? 0</code>, <code>|| 60</code>, <code>|| 50</code> literal-fallbacks
+        inside <code>lib/coach/*</code>.
+      </div>
+    </div>
+  </div>
+
+  <div class="reco-card">
+    <div class="reco-num">2</div>
+    <div class="reco-body">
+      <div class="reco-title">Close the web-side timezone gap</div>
+      <div class="reco-text">
+        On the <code>/connect/strava</code> page (or wherever the Strava OAuth button lives), capture
+        <code>Intl.DateTimeFormat().resolvedOptions().timeZone</code> client-side and POST to
+        <code>/api/profile/timezone</code> before redirect. Add a <code>timezone NOT NULL</code> migration with a
+        backfill default (David's TZ). Add a nightly cron checking for unset/default-only timezones and surfacing
+        a ProfileGapCard. Add a diagnostic warning when <code>runnerToday()</code> resolves to <code>'UTC'</code>.
+        Closes Pattern 3 plus eliminates the silent UTC drift affecting every non-David shape.
+      </div>
+    </div>
+  </div>
+
+  <div class="reco-card">
+    <div class="reco-num">3</div>
+    <div class="reco-body">
+      <div class="reco-title">Kill the seed adapter's null-to-zero coercion</div>
+      <div class="reco-text">
+        In <code>web-v2/components/faff-app/seed.ts adaptHealth</code>, change every <code>?? 0</code> and
+        <code>|| &lt;default&gt;</code> to <code>?? null</code>. Update <code>mk()</code> to accept
+        <code>current: number | null</code> and skip rendering numeric chrome when null. Add a
+        <code>chartDomain(value, span)</code> helper that returns <code>[0, 1]</code> when value is null. Closes
+        Pattern 4 and unblocks Today + Health rendering for any partial-data shape.
+      </div>
+    </div>
+  </div>
+
+  <div class="reco-card">
+    <div class="reco-num">4</div>
+    <div class="reco-body">
+      <div class="reco-title">Add the 4 data-shape personas to the synthetic suite</div>
+      <div class="reco-text">
+        Add <em>strava-only-web</em>, <em>watch-only-iphone</em>, <em>manual-only</em>, and <em>mixed-partial</em>
+        personas to <code>web-v2/lib/plan/synthetic-runners.ts</code>. Build an event-stream fixture generator that
+        emits 14-28d of HRV/RHR/sleep/RPE per <code>healthPattern</code>. Wire them into a new
+        <code>e2e-bench.test.ts</code> that calls <code>composePlan → detectDrift + detectAdaptations → simulate</code>
+        end-to-end. CI must fail if any of these renders 'READY' or 'all quiet' on a cold-start envelope. Stops the
+        regression from re-emerging the next time a recovery pillar gets added.
+      </div>
+    </div>
+  </div>
+
+  <div class="reco-card">
+    <div class="reco-num">5</div>
+    <div class="reco-body">
+      <div class="reco-title">Enforce "cite or shut up" on authored prose</div>
+      <div class="reco-text">
+        Annotate every authored message template in <code>recovery-brief.ts</code>, <code>health-actions.ts</code>,
+        <code>heat-acclimatization.ts</code>, and the readiness-brief composer with a
+        <code>requires: PillarKey[]</code> contract. Render layer compares against <code>pillarStatus</code> and falls
+        back to a noData stub when any required input is absent. CI test walks every template and asserts
+        <code>requires</code> is non-empty (or explicitly marked <code>[]</code> with a justification comment). Closes
+        Pattern 5 plus eliminates fabricated prose from heat-acclim and recovery-brief permanently.
+      </div>
+    </div>
+  </div>
+
+  <p style="margin-top: 28px; font-size: 14px; color: rgba(232,232,236,0.85);">
+    These five moves take the system from "works for David" to "works for any runner who shares David's
+    instrumentation richness OR connects only Strava OR runs in a non-US TZ." They do not solve the higher-order
+    shape coverage (active injury, female cycle tracking, treadmill-only, post-A-race recovery, multi-race horizon)
+    — those are downstream work that gets easier once the presence module, TZ capture, and seed-null patterns are
+    fixed. The five moves are roughly 1-2 days of work each. <strong>None of them require new doctrine</strong> —
+    just disciplined application of doctrine that already exists.
+  </p>
+
+  <div class="footer">
+    Runcino · Multi-tenant audit · 2026-06-05 · authored by Claude · 13 shapes, 31 findings (7 P0, 12 P1, 10 P2, 2 P3)
+  </div>
+
+</div>
+</body>
+</html>
