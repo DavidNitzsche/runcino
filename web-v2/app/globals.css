@@ -176,7 +176,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    stays the visual focus while the right card claims its 1 share of
    remaining space (after the fixed left column). Min-width keeps the
    tiles inside the card readable on narrower viewports. */
-.wcard{flex:1 1 0;min-width:380px;align-self:stretch;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#F6F7F8;text-shadow:none;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;box-shadow:0 12px 30px -20px rgba(0,0,0,.5);}
+/* 2026-06-04 · .wcard · only the surface look declared here.  Layout
+   (padding, display flex column, gap, height 100%) comes from the
+   UNIVERSAL CARD LAYOUT rule below.  Legacy flex sizing dropped · the
+   card lives in a grid column now (.hero / .hero-v2 grid), not a flex
+   row. */
+.wcard{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#F6F7F8;text-shadow:none;border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 30px -20px rgba(0,0,0,.5);min-width:0;}
 .wcl{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.5);margin-bottom:14px;}
 .shape{display:flex;gap:3px;height:8px;margin-bottom:16px;}
 .shape i{border-radius:3px;}
@@ -227,21 +232,21 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 /* overflow:hidden added 2026-06-04 · belt-and-suspenders so a long
    est-time string (e.g. ~2:30:45 on a marathon) physically cannot
    escape the colored hero card. */
-.hero-v2 .hmain{flex:0 0 296px;min-width:0;display:flex;flex-direction:column;background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;}
-/* 2026-06-04 · rest-day hmain · was content clustered at the top of a
-   grid-stretched card with a big gap below the stats (David: "fill
-   the space better").  Switched to flex column with space-between so
-   the title floats at the top, the new coach line sits in the middle,
-   and the stats anchor to the bottom · uses the full vertical height
-   purposefully. */
-.hero .hmain{background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;gap:24px;}
-/* 2026-06-04 · rest-coach line · solid white, no max-width (which may
-   have been collapsing under tight columns), small backdrop scrim so
-   the copy reads cleanly on the rest gradient (grey is the trickiest
-   background to put text on · neither bright nor dark enough to set
-   contrast on its own).  Matches the dark-scrim treatment we use for
-   CONDITIONS / COACH TIP on the same hero. */
-.hero .rest-coach{font-size:15px;font-weight:500;line-height:1.55;color:#fff;background:rgba(10,12,16,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px 16px;}
+/* 2026-06-04 · hero cards · the universal card recipe lives in the
+   `.hero-v2 .hmain,.hero .hmain` rule farther down in this file
+   (UNIVERSAL CARD LAYOUT comment block) · sets flex-column +
+   --card-padding + --card-section-gap.  Here we only declare the
+   card-specific look: gradient bg, border-radius, shadow, overflow,
+   plus min-width:0 for grid shrinking on the .hero-v2 variant. */
+.hero-v2 .hmain{min-width:0;background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;}
+.hero .hmain{background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;}
+/* 2026-06-04 · rest-coach line is FILL content · flex:1 so it grows
+   to fill the slack, pushing the stats row to the bottom (David's
+   spec: "for cards flagged fill, give the primary content flex: 1").
+   `display:flex;align-items:center` centers the copy vertically
+   inside the expanded scrim box so it doesn't look stranded at the
+   top of a tall fill area. */
+.hero .rest-coach{flex:1;display:flex;align-items:center;font-size:15px;font-weight:500;line-height:1.55;color:#fff;background:rgba(10,12,16,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;padding:14px 16px;}
 .hero-v2 .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
 /* 2026-06-03 · margin-top dropped to 0 · the eyebrow above is gone now,
    so the title row anchors at the top of .hmain. Was 8px (clear of the
@@ -267,7 +272,10 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .adaptline .adapt-restore:disabled{opacity:.55;cursor:wait;text-decoration:none;}
 .hero-v2 .adaptline .adapt-restored{color:#FFCE8A;font-weight:600;}
 .hero-v2 .adaptline .adapt-restore-err{color:#FC4D64;font-weight:600;}
-.hero-v2 .leftstack{margin-top:24px;display:flex;flex-direction:column;}
+/* 2026-06-04 · margin-top stripped · the hmain card is a flex-column
+   with --card-section-gap so leftstack is just a section in that
+   stack.  Spacing comes from the gap, not from this rule. */
+.hero-v2 .leftstack{display:flex;flex-direction:column;}
 /* 2026-06-04 · planned hero stats · v2 · switched from flex+gap to
    3-col equal-width grid.  flex was leaving dead space on the right
    of the card after the third stat ("crammed into the left").  Now
@@ -280,7 +288,8 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;line-height:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .hero-v2 .stats .v small{font-size:13px;opacity:.85;font-weight:400;}
 .hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.hero-v2 .zones{margin-top:28px;}
+/* 2026-06-04 · margin-top stripped · spacing from card section gap. */
+.hero-v2 .zones{}
 .hero-v2 .zhead{display:flex;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:10px;opacity:.9;}
 .hero-v2 .zhead b{color:#fff;}
 .hero-v2 .zhead .zmeta{white-space:nowrap;}
@@ -288,11 +297,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .zbar i{height:100%;}
 .hero-v2 .zleg{display:flex;justify-content:space-between;margin-top:10px;font-size:10px;font-weight:600;opacity:.82;}
 .hero-v2 .zleg .zs{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle;}
-/* 2026-06-04 · 4-stat grid (forecast/shoe/fuel/best-window) · column
-   gap dropped 22 → 16 so each 1fr cell gets more usable width,
-   helping shoe names like "New Balance SC Trainer v3" wrap less
-   aggressively. */
-.hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 16px;margin-top:30px;min-width:0;}
+/* 2026-06-04 · 4-stat grid (forecast/shoe/fuel/best-window) · margin
+   stripped, vertical spacing comes from --card-section-gap.  Internal
+   gap is intra-section (between forecast and shoe labels) so it stays
+   independent of the card section gap. */
+.hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 16px;min-width:0;}
 .hero-v2 .cond > div{min-width:0;}
 .hero-v2 .cond .kcl{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
 .hero-v2 .cond .kcv{font-size:14px;font-weight:700;margin-top:5px;}
@@ -381,7 +390,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
   font-size:9px; font-weight:700; letter-spacing:1.4px;
   color:rgba(255,231,194,0.62);
 }
-.hero-v2 .wcard{flex:0 0 344px;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:24px;display:flex;flex-direction:column;min-height:0;}
+/* 2026-06-04 · per-variant .wcard tweaks · base surface comes from
+   `.wcard` above and layout from the UNIVERSAL CARD LAYOUT rule
+   below.  flex:0 0 344px legacy width dropped (lives in grid col 3
+   now). */
+.hero-v2 .wcard{min-height:0;}
 .hero-v2 .wcl{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:8px;margin-bottom:0;}
 .hero-v2 .wcl .ok{color:#86efa0;display:inline-flex;align-items:center;gap:5px;margin-left:auto;}
 .hero-v2 .wcl .ok svg{width:13px;height:13px;}
@@ -415,7 +428,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .effort-band .emark .ecaret{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #F6F7F8;}
 .hero-v2 .effort-band .ezones{display:flex;justify-content:space-between;font-size:9px;font-weight:600;opacity:.85;margin-top:9px;letter-spacing:1px;}
 
-.hero-v2 .session{flex:1;display:flex;flex-direction:column;border-radius:16px;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);background:rgba(4,14,10,.32);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:22px 24px;min-height:0;}
+/* 2026-06-04 · .session card · surface look only.  flex:1 dropped
+   (lived in legacy flex layout; this is now grid col 2).  Padding,
+   border-radius (16 not the token, kept for design parity),
+   flex-direction etc. come from the universal card recipe applied
+   below to .session. */
+.hero-v2 .session{border-radius:16px;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);background:rgba(4,14,10,.32);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);min-height:0;display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);padding:var(--card-padding);}
 .hero-v2 .session .sh{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.55);}
 .hero-v2 .session .shape{display:flex;gap:3px;height:9px;margin:16px 0 22px;}
 .hero-v2 .session .shape i{border-radius:3px;}
@@ -897,8 +915,12 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-04 · tiles row · 4-col grid, gap = --grid-gap.  No margin-top
    · vertical separation comes from .main's grid row gap above. */
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap);}
-.tile{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;min-height:222px;display:flex;flex-direction:column;}
-.tile .fll{margin-bottom:0;}
+/* 2026-06-04 · .tile · only the surface look declared here.
+   Padding, radius, height:100%, display:flex column, gap, align-items
+   stretch all come from the UNIVERSAL CARD LAYOUT rule below.  min-
+   height kept as a floor so a tile with sparse content (e.g., a
+   loading placeholder) doesn't collapse below 222px. */
+.tile{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);min-height:222px;}
 .tile.click{cursor:pointer;transition:.15s;}
 .tile.click:hover{background:rgba(8,10,14,.56);border-color:rgba(255,255,255,.22);}
 .chev{opacity:.55;font-weight:700;}
@@ -1859,24 +1881,39 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .win.sb-collapsed .me{justify-content:center;}
 .win.sb-collapsed .me .nm,.win.sb-collapsed .me .gear{display:none;}
 
-/* 2026-06-04 · APP-WIDE GRID TOKENS · refactored to a single gutter +
-   single card padding per David's spec ("One gutter token for
-   everything. Same value for column-gap, row-gap, and outer page
-   padding · cards carry no margins · one --card-padding on all four
-   sides · cards stretch to fill their cell").
-     --grid-gap     · THE gutter · used by every row's column gap,
-                      every grid's row gap, and the .main outer
-                      padding.  One number, used everywhere.
-     --card-padding · interior padding on every card · same on all
-                      four sides.
+/* 2026-06-04 · APP-WIDE LAYOUT TOKENS · per David's spec.  Three
+   independent values, each set in exactly ONE place:
+     --grid-gap         · THE outer gutter · column/row gap between
+                          cards in the dashboard, AND the .main outer
+                          padding.  20px.
+     --card-padding     · interior padding on every card · same on
+                          all four sides.  20px.
+     --card-section-gap · vertical gap between stacked sections
+                          INSIDE a card.  14px · deliberately
+                          different from --grid-gap so the eye can
+                          read "inside-card spacing" vs "between-card
+                          spacing" as distinct rhythms.
    --card-pad / --card-radius kept as legacy aliases for older rules
-   that already consume them (.tile, .wcard padding above). */
+   that already consume them.  Don't introduce new uses · point new
+   rules at --card-padding etc. */
 /* ===================== TWEAKS PANEL ===================== */
-.win{--card-pad:20px;--card-radius:16px;--grid-gap:20px;--card-padding:20px;}
-/* 2026-06-04 · single --card-padding token, cards stretch via height
-   100% so cards in the same row are equal height regardless of
-   content length. */
-.tile,.wcard{padding:var(--card-padding);border-radius:var(--card-radius);height:100%;}
+.win{--card-pad:20px;--card-radius:16px;--grid-gap:20px;--card-padding:20px;--card-section-gap:14px;}
+/* 2026-06-04 · UNIVERSAL CARD LAYOUT · per David's spec.
+   - flex-column with --card-padding on all four sides + gap of
+     --card-section-gap between stacked sections inside
+   - align-items: stretch · content fills the inner width (the
+     padding box)
+   - height: 100% · cards in the same row equalize height regardless
+     of content length
+   No child element inside should carry its own margin · vertical
+   spacing comes from the column gap, horizontal alignment comes from
+   the padding box.  If something looks off, fix the token, not the
+   card. */
+.tile,.wcard{padding:var(--card-padding);border-radius:var(--card-radius);height:100%;display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);}
+/* Same recipe applied to the colored hero cards on .hmain (rest,
+   planned, completed variants).  Rest also flags its coach line as
+   "fill" content (see .hero .rest-coach below). */
+.hero-v2 .hmain,.hero .hmain{padding:var(--card-padding);display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);}
 .win[data-mesh="calm"] .mesh{filter:saturate(.7) brightness(.9);}
 .win[data-mesh="vivid"] .mesh{filter:saturate(1.34) brightness(1.07);}
 .win[data-accent="gold"]{--goal:#F5C518;--race:#F5A518;}
