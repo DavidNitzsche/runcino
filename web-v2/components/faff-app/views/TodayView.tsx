@@ -1809,18 +1809,40 @@ function CompletedHeroV2({
   // splits 1-8). The CSS in .splits handles long lists with its own
   // scroll/overflow.
   //
-  // 2026-06-04 · sanity guard against legacy rows that landed as
-  // splits=[{mile:1, pace:null}] from the watch-phases path before the
-  // single-phase fix in /api/watch/workouts/complete.  A single split
-  // with null pace covering a multi-mile run is meaningless · treat it
-  // as no-data so the "No mile splits available" empty state shows
-  // instead of a placeholder row.
+  // 2026-06-04 · TWO-LAYER FIX for runs that don't have real per-mile
+  // splits (watch single-phase ingest path, manual logs without GPS,
+  // legacy rows from before the watch single-phase fix).
+  //
+  // Layer A · drop placeholder rows: if rawSplits is a single entry
+  //   with null pace covering a multi-mile run, treat as no real data.
+  // Layer B · synthesize from total time + distance: when we DO know
+  //   the average pace + the run length, build N estimated rows at
+  //   that pace so the panel still shows the rhythm.  Marked as
+  //   estimated so the runner knows it's derived, not measured.
+  //
+  // David: "no mile splits available · thats wrong" · we have the
+  // numbers to surface something useful, "no data" was a cop-out.
   const rawSplits = runData?.splits ?? [];
-  const splits = (
+  const guardedSplits = (
     rawSplits.length === 1
     && !rawSplits[0].pace
     && (runData?.distance_mi ?? 0) > 1.5
   ) ? [] : rawSplits;
+  const distMiForSynth = runData?.distance_mi ?? 0;
+  const paceForSynth = runData?.pace ?? null;
+  const synthesizedSplits = (
+    guardedSplits.length < 2
+    && distMiForSynth >= 1.5
+    && paceForSynth
+  ) ? Array.from({ length: Math.max(1, Math.floor(distMiForSynth)) }, (_, i) => ({
+        mile: i + 1,
+        pace: paceForSynth,
+        elev_change_ft: null,
+        hr: null,
+      }))
+    : null;
+  const splits = synthesizedSplits ?? guardedSplits;
+  const splitsEstimated = !!synthesizedSplits;
 
   // Elevation sanity check. Strava + barometric watches occasionally
   // report multi-thousand-foot gain on flat suburban runs when the
@@ -2253,21 +2275,32 @@ function CompletedHeroV2({
         ) : (
           <>
             <div className="reshead">
-              <span>MILE SPLITS</span>
+              <span>
+                MILE SPLITS
+                {splitsEstimated && (
+                  <span style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: 1, opacity: 0.55, textTransform: 'uppercase' }}>
+                    · estimated
+                  </span>
+                )}
+              </span>
               {resolvedPace && <span className="rs">avg {resolvedPace}<small>/mi</small></span>}
             </div>
             <div className="splits">
               {splits.length > 0 ? splits.map((s, i) => {
                 // Bar width: inverse-relative — faster splits read fuller. Falls
-                // back to a neutral 60% when pace data is missing.
+                // back to a neutral 60% when pace data is missing.  Synthesized
+                // splits all share the same pace, so the bars render at a flat
+                // neutral 70% — honest "we don't know the per-mile rhythm" cue.
                 const sec = paceToSec(s.pace ?? '');
                 const all = splits.map(x => paceToSec(x.pace ?? '')).filter(n => n > 0);
                 const lo = all.length ? Math.min(...all) : 0;
                 const hi = all.length ? Math.max(...all) : 1;
                 const span = Math.max(1, hi - lo);
-                const w = sec > 0 ? Math.round(55 + (1 - (sec - lo) / span) * 40) : 60;
+                const w = splitsEstimated
+                  ? 70
+                  : sec > 0 ? Math.round(55 + (1 - (sec - lo) / span) * 40) : 60;
                 return (
-                  <div className="spr" key={i}>
+                  <div className="spr" key={i} style={splitsEstimated ? { opacity: 0.82 } : undefined}>
                     <span className="spm">{s.mile}</span>
                     <div className="sptrk"><div className="spf" style={{ width: `${w}%` }} /></div>
                     <span className="spp">{s.pace ?? '·'}<small>/mi</small></span>
