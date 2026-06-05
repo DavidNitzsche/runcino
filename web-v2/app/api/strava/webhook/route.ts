@@ -400,6 +400,27 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
       WHERE id = $1::bigint AND user_uuid = $2`,
     [String(id), userId]
   );
+  // 2026-06-05 · backend audit P0-4 fix · same shape as pullSync.ts.
+  // Pre-check the existing-row owner so an INSERT that would silently
+  // collide on PK (id) but with a DIFFERENT user_uuid surfaces as a
+  // loud error rather than getting swallowed. The DELETE above is
+  // already user-scoped (P0-5), so a foreign-owner row would not have
+  // been removed · the INSERT would then throw or no-op depending on
+  // ON CONFLICT. Either way the runner sees nothing. Surface it.
+  // Cite docs/2026-06-05-backend-audit.html § P0-4.
+  const existingOwner = (await pool.query<{ u: string }>(
+    `SELECT user_uuid::text AS u FROM runs WHERE id = $1::bigint`,
+    [String(id)],
+  ).catch(() => ({ rows: [] as Array<{ u: string }> }))).rows[0];
+  if (existingOwner && existingOwner.u !== userId) {
+    console.error(
+      `[strava/webhook] cross-user activity-id collision · ` +
+      `activity=${id} owned_by=${existingOwner.u.slice(0,8)} ` +
+      `attempting=${userId.slice(0,8)} · refusing to write. ` +
+      `Investigate immediately.`,
+    );
+    throw new Error(`cross-user collision on Strava id ${id}`);
+  }
   await pool.query(
     `INSERT INTO runs (id, user_uuid, data)
      VALUES ($1::bigint, $2, $3)`,

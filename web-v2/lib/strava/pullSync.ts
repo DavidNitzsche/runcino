@@ -441,6 +441,31 @@ export async function pullSyncOneUser(args: {
         // overcount by every silent conflict (which can happen if the
         // sync ran twice for the same window). Now: capture rowCount and
         // only tick when it's 1.
+        //
+        // 2026-06-05 · backend audit P0-4 fix · the PK on runs is `id`
+        // alone (Strava activity id). If user A already wrote that id
+        // from any ingest path, user B's cron insert silently no-ops ·
+        // findCanonicalRow upstream is user-scoped so the matcher said
+        // "new for this user" and we ended up dropping the activity.
+        // Pre-check the existing row's owner so cross-user collisions
+        // surface as loud errors instead of silent drops.
+        // Cite docs/2026-06-05-backend-audit.html § P0-4.
+        const existingOwner = (await pool.query<{ u: string }>(
+          `SELECT user_uuid::text AS u FROM runs WHERE id = $1::bigint`,
+          [String(act.id)],
+        ).catch(() => ({ rows: [] as Array<{ u: string }> }))).rows[0];
+        if (existingOwner && existingOwner.u !== userUuid) {
+          console.error(
+            `[strava/pullSync] cross-user activity-id collision · ` +
+            `activity=${act.id} owned_by=${existingOwner.u.slice(0,8)} ` +
+            `attempting=${userUuid.slice(0,8)} · skipping insert to ` +
+            `prevent overwriting another runner's row. This indicates ` +
+            `Strava-id reuse (impossible in practice) or an admin ` +
+            `restore from another runner's export. Investigate.`,
+          );
+          out.errors.push(`activity ${act.id}: cross-user id collision (owner=${existingOwner.u.slice(0,8)})`);
+          continue;
+        }
         const insRes = await pool.query(
           `INSERT INTO runs (id, user_uuid, data, provenance, shoe_id, fetched_at)
            VALUES ($1::BIGINT, $2, $3::jsonb, $4::jsonb, $5, NOW())

@@ -187,6 +187,24 @@ export async function POST(req: NextRequest) {
           AND data->>'client_workout_id' = $2`,
       [userId, body.workoutId]
     );
+    // 2026-06-05 · backend audit P0-4 fix · defense-in-depth · the
+    // synthetic bigint derived from a workout UUID is astronomically
+    // unlikely to collide across users, but if it ever did (or if an
+    // admin restored from another runner's export) silently overwriting
+    // is the wrong behavior. Pre-check owner; refuse the write loudly.
+    // Cite docs/2026-06-05-backend-audit.html § P0-4.
+    const existingOwner = (await pool.query<{ u: string }>(
+      `SELECT user_uuid::text AS u FROM runs WHERE id = $1`,
+      [stableId],
+    ).catch(() => ({ rows: [] as Array<{ u: string }> }))).rows[0];
+    if (existingOwner && existingOwner.u !== userId) {
+      console.error(
+        `[watch/complete] cross-user synthetic-id collision · ` +
+        `stableId=${stableId} owned_by=${existingOwner.u.slice(0,8)} ` +
+        `attempting=${userId.slice(0,8)} · refusing to write.`,
+      );
+      throw new Error(`cross-user collision on synthetic id ${stableId}`);
+    }
     await pool.query(
       `INSERT INTO runs (id, user_uuid, data) VALUES ($1, $2, $3)`,
       [stableId, userId, data]
