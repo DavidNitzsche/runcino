@@ -63,6 +63,9 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 | 154 | 35392f0a | All 7 backend HealthState additive fields wired lenient (sleepStages, runForm, dailyReadiness, bodyTemp, vo2Trend, insights, overview.{story,watchingTomorrow,recoveryPhase}) + preferRealOrPad chart switch |
 | 155 | 6ea0c21b | Form-metric ingest regression FIX · 4 new daily HK samples in `collectVitalSamples` (`ground_contact_time`, `vertical_oscillation`, `stride_length`, `run_power`) restoring the path that broke 2026-05-25. Pause-aware per-mile splits also bundled (78a10810). |
 | 156 | 1a1dfae1 | TZ sync · `body.timezone = TimeZone.current.identifier` on POST /api/ingest/health + POST /api/watch/workouts/complete (iPhone splices into the watch's opaque Data via decode-mutate-encode) |
+| 162 | f61fe8d2 | HK pauseRanges catches Apple Watch AUTO-PAUSE (`.motionPaused` / `.motionResumed`) alongside the manual `.pause`/`.resume` pair. Round 71's per-mile fix only handled user-tapped pauses; auto-pause time leaked into per-mile elapsed and the reconciliation guard dropped every run's splits. Closes `designs/briefs/iphone-hk-splits-regression-2026-06-05.md`. |
+| 162 | bb0671c1 | HK sleep bucketing attributes samples by startDate's PT wall-clock hour (`>=18` PT → next morning, `<18` PT → same morning) instead of by endDate's calendar day. Pre-fix, pre-midnight Core/Deep blocks were attributed to YESTERDAY's morning bucket; iPhone saw only the post-midnight half of every night. Aligns with backend upsert fix `97b6f6f0` (route accepts corrected nightly values on re-sync). |
+| backend | 97b6f6f0 | `/api/ingest/health` UPSERT semantics · `ON CONFLICT (user_id, sample_type, sample_date) DO UPDATE SET value = EXCLUDED.value, recorded_at = EXCLUDED.recorded_at WHERE health_samples.source IS DISTINCT FROM 'manual'`. Was: WHERE NOT EXISTS + catch-23505 silently dropped every iPhone-side correction on re-sync. Now: HK re-syncs land, `source='manual'` rows are protected. Closes `designs/briefs/backend-hk-sleep-upsert-aligned-2026-06-05.md`. |
 
 ## TF PUSH QUEUE · sitting on David's clearance
 
@@ -109,6 +112,9 @@ _(empty — populate after next archive lands in TestFlight)_
 | 17 | Easy verdict is PACE-first · HR descriptive, not gating | same |
 | 18 | Missing data is missing · never fabricate, never imply | same |
 | 16b | Heat band "hot" requires tempF ≥ 75°F · not just pace cost | `lib/coach/weather-adjust.ts § bandFor` |
+| 19 | HKWorkoutEvent pause handling MUST treat `(.pause, .motionPaused)` and `(.resume, .motionResumed)` as equivalent open/close markers. Auto-pause is on by default on watchOS · single-channel pause code silently undercounts paused time and corrupts any duration-derived metric (mile splits, lap times, pace zones, HR zones if zone-time is derived from elapsed). | `native-v2/Faff/Faff/HealthKitImporter.swift § pauseRanges` |
+| 20 | Nightly aggregate samples (`sleep_hours`, `sleep_*_minutes`, `hrv`, `resting_hr`, `vo2_max`, etc · anything with a `sample_date` and not a sub-day time component) MUST be ingested via UPSERT keyed on `(user_id, sample_type, sample_date)`. HK re-syncs deliver CORRECTIONS, not just replays · silent dedup-on-23505 is the wrong semantics. The corrected value wins; `source='manual'` rows are the explicit protected override. | `app/api/ingest/health/route.ts` |
+| 21 | HK sleep bucketing: attribute each sample by `startDate`'s wall-clock hour in the runner's TZ, NOT by `endDate`'s calendar day. `startHour >= 18` (6 PM) → morning is the next calendar day (overnight sleep ending tomorrow). `startHour < 18` → morning is the same calendar day (afternoon nap, late wake-up). Pre-rule, every pre-midnight Core/Deep block was attributed to YESTERDAY's morning bucket and iPhone saw only the post-midnight half of every night. | `native-v2/Faff/Faff/HealthKitImporter.swift § dailySleepNights` |
 
 ## Operating principle
 
