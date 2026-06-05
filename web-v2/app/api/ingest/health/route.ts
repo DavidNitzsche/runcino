@@ -92,37 +92,72 @@ export async function POST(req: NextRequest) {
     const recordedAt = s.recorded_at ?? new Date().toISOString();
 
     try {
-      // Dedup on (user_id, sample_type, sample_date, recorded_at) — won't
-      // double-count if iOS replays. Tries ON CONFLICT first; if no unique
-      // index exists, falls back to a check-then-insert.
+      // 2026-06-05 round 88 fix · UPSERT semantics for HK re-sync.
+      //
+      // Was: WHERE NOT EXISTS check followed by INSERT · the underlying
+      // UNIQUE INDEX (user_id, sample_type, sample_date) caught any
+      // re-sync attempt at the same key and threw 23505, which the
+      // catch branch counted as `skipped` and SILENTLY DROPPED the
+      // new value. That meant any iPhone-side correction to a nightly
+      // aggregate (sleep_hours bucketing fix bb0671c1, stage minute
+      // re-derivation, HRV re-aggregation, etc.) NEVER REACHED the DB
+      // even after the runner re-synced on a new build · the old
+      // (wrong) row stayed forever.
+      //
+      // David QC 2026-06-05: HK Time Asleep 7:55, Faff sleep_hours
+      // 6.8h on this exact pattern · iPhone shipped the bucketing
+      // fix on build 162 but the backend's silent-skip on re-sync
+      // meant the wrong nightly value persisted.
+      //
+      // Now: ON CONFLICT DO UPDATE · last write wins for HK-source
+      // rows · manual entries (source='manual') are protected via
+      // the WHERE clause so a runner's manual override sticks even
+      // through HK re-syncs. iPhone, watch, and HK ingest paths all
+      // land here for nightly aggregates; manual route at
+      // /api/health/manual sets source='manual' explicitly. The
+      // partial-update WHERE is the policy gate that keeps both
+      // layers honest.
       const r = await pool.query(
         `INSERT INTO health_samples (user_id, user_uuid, sample_type, value, sample_date, recorded_at)
-         SELECT $1, $1, $2, $3, $4::date, $5
-          WHERE NOT EXISTS (
-            SELECT 1 FROM health_samples
-             WHERE COALESCE(user_uuid, user_id) = $1
-               AND sample_type = $2
-               AND sample_date = $4::date
-               AND recorded_at = $5
-          )
-         RETURNING id`,
+         VALUES ($1, $1, $2, $3, $4::date, $5)
+         ON CONFLICT (user_id, sample_type, sample_date) DO UPDATE
+            SET value       = EXCLUDED.value,
+                recorded_at = EXCLUDED.recorded_at,
+                user_uuid   = COALESCE(health_samples.user_uuid, EXCLUDED.user_uuid)
+            WHERE health_samples.source IS DISTINCT FROM 'manual'
+         RETURNING id, (xmax = 0) AS was_insert`,
         [userId, s.sample_type, s.value, sampleDate, recordedAt]
       );
+      const wasInsert = (r.rows[0] as { was_insert?: boolean } | undefined)?.was_insert === true;
       if ((r.rowCount ?? 0) > 0) {
-        inserted++;
-        if (READINESS_SIGNAL_TYPES.has(s.sample_type)) insertedSignal++;
+        // RETURNING fires on both INSERT and UPDATE branches. wasInsert
+        // separates them so the cron metrics distinguish new nights from
+        // re-sync overwrites. Only new INSERTs count toward
+        // insertedSignal (the cache-bust gate) · re-sync overwrites
+        // are a different kind of event and shouldn't trigger an LLM
+        // regen on every nightly aggregate refresh.
+        if (wasInsert) {
+          inserted++;
+          if (READINESS_SIGNAL_TYPES.has(s.sample_type)) insertedSignal++;
+        } else {
+          // Re-sync updated an existing row · count separately so we
+          // can see HK-correction volume in the response metrics.
+          skipped++;
+        }
       } else {
+        // rowCount=0 means ON CONFLICT fired but the partial-update
+        // WHERE rejected the update · existing row is source='manual'
+        // and is protected. Manual override sticks. Skipped without
+        // error.
         skipped++;
       }
     } catch (err: any) {
-      // Postgres unique-constraint violation = the row exists from a
-      // prior sync. That's idempotent dedup, not an error.
-      if (err?.code === '23505' || /duplicate key/i.test(err?.message ?? '')) {
-        skipped++;
-      } else {
-        console.error('[ingest/health] sample failed:', s, err.message);
-        errors++;
-      }
+      // 2026-06-05 · 23505 should no longer fire with the UPSERT
+      // shape above (the UNIQUE INDEX is the same one ON CONFLICT
+      // targets). Keep the catch for safety · if some other unique
+      // constraint we don't know about trips, log it as an error.
+      console.error('[ingest/health] sample failed:', s, err?.message ?? String(err));
+      errors++;
     }
   }
 
