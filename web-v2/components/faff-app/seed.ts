@@ -1151,7 +1151,19 @@ function adaptHealth(
   const hasCadence = health?.cadence.baseline != null;
   const hrvCurrent = health?.hrv.current ?? 0;
   const rhrCurrent = health?.rhr.current ?? 0;
-  const sleepAvg = health?.sleep.avg7n ?? 0;
+  // 2026-06-05 · SLEEP body tile now shows LAST NIGHT (matches RHR/HRV
+  // which both show latest single value) · was: 7d avg (`avg7n`),
+  // which made the headline number disagree with what the runner
+  // saw in Apple Health for last night. David's QC: HK shows 7:55,
+  // Faff Web shows 6:06 (= 7d avg). The 7d avg is still meaningful
+  // context · surfaced via the dashed reference line in the chart.
+  // sleepSeries.at(-1) is the most recent night with a non-zero
+  // sleep_hours sample (filtered upstream).
+  const sleepSeriesArr = health?.sleepSeries ?? [];
+  const lastNightSleep = sleepSeriesArr.length > 0
+    ? sleepSeriesArr[sleepSeriesArr.length - 1].hours
+    : (health?.sleep.avg7n ?? 0);
+  const sleepAvg = lastNightSleep;
   const weightCurrent = health?.weight.current ?? 0;
   const vo2Current = health?.vo2.current ?? 0;
   const cadenceCurrent = health?.cadence.baseline ?? 0;
