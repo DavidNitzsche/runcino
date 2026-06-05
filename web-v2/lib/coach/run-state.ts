@@ -363,12 +363,35 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // because we don't know yet, and a later pass walks the splits + phase
   // cumulative-distance map to attach the right tag per mile.
   const splitsRaw: RunSplit[] = Array.isArray(r.splits) ? r.splits.map((s: any, i: number) => {
-    const sPerMi = Number(s.paceSPerMi) || (s.pace_s_per_mi ?? null);
+    // Resolve seconds-per-mile across every source shape we see:
+    //   · paceSPerMi    (legacy)
+    //   · paceSecPerMi  (watch / iPhone HK numeric)
+    //   · pace_s_per_mi (snake-case variant)
+    //   · average_speed (Strava splits_standard · m/s → sec/mi)
+    //   · elapsed_time + distance (Strava fallback when avgSpeed absent)
+    // Without this, Strava-synced runs render `· /mi` on every split
+    // (David: "why still no mile splits/times here") because the
+    // normalizer only checked the camelCase paceSPerMi key.
+    const avgSpeedMps = Number(s.average_speed) || null;
+    const elapsedS = Number(s.elapsed_time ?? s.moving_time) || null;
+    const distM = Number(s.distance) || null;
+    const sPerMiFromSpeed = avgSpeedMps && avgSpeedMps > 0 ? Math.round(1609.34 / avgSpeedMps) : null;
+    const sPerMiFromElapsed = (elapsedS && elapsedS > 0 && distM && distM > 0)
+      ? Math.round((elapsedS * 1609.34) / distM)
+      : null;
+    const sPerMi = Number(s.paceSPerMi)
+      || Number(s.paceSecPerMi)
+      || (s.pace_s_per_mi ?? null)
+      || sPerMiFromSpeed
+      || sPerMiFromElapsed
+      || null;
+    // Strava splits use `split` (1-indexed) for the mile number; iPhone
+    // HK uses `mile`.  Both fall back to the array index + 1.
     return {
-      mile: Number(s.mile ?? s.index ?? i + 1) || (i + 1),
+      mile: Number(s.mile ?? s.split ?? s.index ?? i + 1) || (i + 1),
       pace: s.pace ?? s.pace_min_per_mi ?? fmtPace(sPerMi) ?? null,
-      hr: Number(s.hr ?? s.avgHr) || null,
-      cadence: Number(s.cadence ?? s.avgCadence) || null,
+      hr: Number(s.hr ?? s.avgHr ?? s.average_heartrate) || null,
+      cadence: Number(s.cadence ?? s.avgCadence ?? s.average_cadence) || null,
       // 2026-05-31: also accept `elev_ft` · iPhone HK importer + Faff
       // watch app post per-mile splits keyed `elev_ft` (semantically the
       // mile-end minus mile-start altitude delta, NOT an absolute). Without
