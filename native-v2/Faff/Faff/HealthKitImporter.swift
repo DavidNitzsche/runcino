@@ -858,6 +858,17 @@ final class HealthKitImporter: ObservableObject {
                     value: night.awakeMinutes.rounded(),
                     sample_date: day, recorded_at: stamp
                 ))
+                // 2026-06-05 round 84 · NEW. Catches the legacy iOS-15
+                // `.asleep` value AND the iOS-16+ `.asleepUnspecified`
+                // bucket. Server route whitelist accepts this sample
+                // type as of fad6fce2. Zero is still a row so backend
+                // can distinguish "no third-party tracker, staged
+                // sleep clean" (value = 0) from "no data" (no row).
+                out.append(VitalSample(
+                    sample_type: "sleep_unspecified_minutes",
+                    value: night.unspecifiedMinutes.rounded(),
+                    sample_date: day, recorded_at: stamp
+                ))
             }
         }
         // active_energy — TIME-SERIES, not a daily scalar. HK ships ~15-second
@@ -967,9 +978,30 @@ final class HealthKitImporter: ObservableObject {
         let bedtime: Date
         var deepMinutes: Double = 0
         var remMinutes: Double = 0
-        var lightMinutes: Double = 0          // asleepCore + asleepUnspecified
+        var lightMinutes: Double = 0          // asleepCore only
         var awakeMinutes: Double = 0
-        var totalMinutes: Double { deepMinutes + remMinutes + lightMinutes }
+        /// 2026-06-05 round 84 · NEW · "we know it's sleep, we don't
+        /// know the stage" bucket. Catches:
+        ///  · HKCategoryValueSleepAnalysis.asleep (rawValue 1) ·
+        ///    legacy pre-iOS-16 value used by third-party apps,
+        ///    Sleep-Focus-only entries, manual entries, older watches
+        ///  · HKCategoryValueSleepAnalysis.asleepUnspecified (rawValue 6)
+        ///    · iOS 16+ "sleep detected, no staging" bucket
+        ///
+        /// Earlier the legacy `asleep` was dropped entirely (default:
+        /// continue) and `asleepUnspecified` was rolled into
+        /// lightMinutes. That broke `sleep_hours` parity with HK's
+        /// "Time Asleep" total · David QC 2026-06-05: HK 7:55 vs
+        /// Faff 6:47 (66min gap = the missing legacy bucket).
+        ///
+        /// Sent as `sample_type: "sleep_unspecified_minutes"` ·
+        /// backend whitelisted at fad6fce2.
+        var unspecifiedMinutes: Double = 0
+        /// Canonical "Time Asleep" total. Includes the unspecified
+        /// bucket so it matches Apple Health's number.
+        var totalMinutes: Double {
+            deepMinutes + remMinutes + lightMinutes + unspecifiedMinutes
+        }
     }
 
     /// Walk HK sleepAnalysis samples once, bucket by "morning of"
@@ -1015,9 +1047,23 @@ final class HealthKitImporter: ObservableObject {
                 night.deepMinutes += mins
             case HKCategoryValueSleepAnalysis.asleepREM.rawValue:
                 night.remMinutes += mins
-            case HKCategoryValueSleepAnalysis.asleepCore.rawValue,
-                 HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue:
+            case HKCategoryValueSleepAnalysis.asleepCore.rawValue:
                 night.lightMinutes += mins
+            case HKCategoryValueSleepAnalysis.asleep.rawValue,
+                 HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue:
+                // 2026-06-05 round 84 fix · `.asleep` (rawValue 1) is the
+                // legacy pre-iOS-16 value still written by third-party
+                // trackers (AutoSleep, Pillow, Sleep++), manual Health
+                // entries, naps logged without staging, and Sleep-Focus-
+                // only nights without a watch on the wrist. Previously
+                // dropped via `default: continue` → that's the bulk of
+                // the 66-min gap David QC'd 2026-06-05 (HK 7:55, Faff
+                // 6:47). `.asleepUnspecified` (rawValue 6) is the iOS-16+
+                // "sleep detected, no staging" bucket · used to roll into
+                // lightMinutes which overstated light AND meant we
+                // couldn't surface the "unknown stage" portion separately
+                // when stage breakdowns matter.
+                night.unspecifiedMinutes += mins
             case HKCategoryValueSleepAnalysis.awake.rawValue:
                 night.awakeMinutes += mins
             default:
