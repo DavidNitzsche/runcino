@@ -585,14 +585,43 @@ final class HealthKitImporter: ObservableObject {
         // ship bad data. Backend will fall back to total-stats-only.
         // Matches backend /api/ingest/workout's 5s tolerance for
         // parity (backend brief recommended same number).
+        //
+        // 2026-06-05 round 90 · ADD TRAILING-FRACTION TO THE CHECK.
+        // Round 71's reconciliation compared sumOfFullMileTimes to
+        // workout.duration, which silently assumed totalDistance was
+        // exactly N full miles. It almost never is. A 6.01mi easy run
+        // had a 0.01mi tail (~5s, right at threshold); a 7.41mi run
+        // had a 0.41mi tail (~200s, way over). Result: the guard
+        // dropped splits on 9 of David's 9 most-recent runs (every
+        // ingest 2026-05-29 → 2026-06-05 landed n_splits=0), making
+        // the web "MILE SPLITS" card empty even though the iPhone had
+        // correctly computed the per-mile breakdown.
+        //
+        // Fix: account for the leftover time between the last full
+        // mile boundary and locs.last by computing the same
+        // pause-excluded interval, then compare splitsSum + leftover
+        // vs workout.duration. Now the comparison is apples-to-apples
+        // regardless of how the run's distance lands relative to mile
+        // boundaries.  Tolerance stays at 5s (matches backend).
         let splitsSumS = splits.reduce(0) { acc, s in
             let parts = s.pace.split(separator: ":").compactMap { Int($0) }
             guard parts.count == 2 else { return acc }
             return acc + parts[0] * 60 + parts[1]
         }
         let durationS = Int(workout.duration.rounded())
-        if !splits.isEmpty && abs(splitsSumS - durationS) > 5 {
-            print("⚠️ [HK] splits don't reconcile · sum=\(splitsSumS)s vs duration=\(durationS)s (Δ\(abs(splitsSumS - durationS))s) · dropping splits")
+        // mileStartTime, after the loop, holds the timestamp at the
+        // last full-mile boundary we pushed a split for (or locs[0] if
+        // no full mile completed). The interval from there to the
+        // workout's final GPS sample is the trailing-fractional-mile
+        // time — counts in workout.duration but not in splitsSumS.
+        let leftoverS = Int(Self.unpaused(
+            from: mileStartTime,
+            to: locs.last?.timestamp ?? mileStartTime,
+            pauses: pauses
+        ).rounded())
+        let totalAccountedS = splitsSumS + leftoverS
+        if !splits.isEmpty && abs(totalAccountedS - durationS) > 5 {
+            print("⚠️ [HK] splits don't reconcile · sum=\(splitsSumS)s + leftover=\(leftoverS)s = \(totalAccountedS)s vs duration=\(durationS)s (Δ\(abs(totalAccountedS - durationS))s) · dropping splits")
             splits = []
         }
 
