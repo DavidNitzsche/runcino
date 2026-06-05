@@ -402,19 +402,25 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     };
   }) : [];
   // 2026-06-04 · defensive cleanup for legacy stub splits.  Old watch
-  // ingests wrote `splits: [{mi:1, ...whole-run-stats}]` (single entry,
-  // pace key shape didn't match the normalizer above so pace falls
-  // through to null).  The canonical-merge absorber treats arrays of
-  // length 1 as "present" and skips overwriting from the HK loser's
-  // real splits · so existing legacy rows never get fixed automatically.
-  // Drop the stub here so the canonical surfaces as having no
-  // splits, which lets the absorber-from-richer-source pull from HK
-  // on the next merge cycle AND keeps the frontend honest in the
-  // meantime ("No mile splits available" is the truth on this row).
+  // ingests wrote `splits: [{mi:1, ...whole-run-stats}]` · a single
+  // entry that semantically is the whole-run summary, not a per-mile
+  // breakdown.  The canonical-merge absorber treats arrays of length 1
+  // as "present" and skips overwriting from the HK loser's real splits
+  // · so existing legacy rows never get fixed automatically.
+  //
+  // 2026-06-05 · tightened.  Originally we keyed off `!splits[0].pace`
+  // (the watch stub had paceSecPerMi but no formatted pace), but after
+  // I taught the normalizer above to translate paceSecPerMi → pace, the
+  // stub started rendering as if it were a real per-mile split (mile 1,
+  // 8:21/mi for a 6-mile run). The truth is simpler: a SINGLE split on
+  // a multi-mile run is ALWAYS a phase-summary stub · per-mile splits
+  // would have N entries for N miles.  So drop length===1 splits on
+  // any run over 1.5mi regardless of pace shape.  The frontend then
+  // shows "No mile splits available" until the absorber rebuilds the
+  // canonical with HK's real splits (or a backfill endpoint forces it).
   const totalDistMi = Number(r.distanceMi) || Number(r.distance_mi) || 0;
   const splits: RunSplit[] = (
     splitsRaw.length === 1
-    && !splitsRaw[0].pace
     && totalDistMi > 1.5
   ) ? [] : splitsRaw;
 
