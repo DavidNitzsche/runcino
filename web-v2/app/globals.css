@@ -135,7 +135,14 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .phl{font-family:'Oswald',sans-serif;font-size:40px;font-weight:600;text-transform:uppercase;}
 .phs{font-size:13px;font-weight:500;opacity:.8;margin-top:10px;max-width:340px;line-height:1.5;}
 /* hero */
-.hero{display:flex;gap:16px;align-items:flex-start;margin-top:26px;min-height:300px;}
+/* 2026-06-04 · align-items flex-start → stretch.  Was: .hmain took
+   content height (~250px) while the sibling WorkoutCard was ~570px,
+   and the page-mesh charcoal below looked similar to the rest
+   gradient's dark stop so the eye read "empty space inside the card."
+   With stretch, .hmain matches its sibling's height and the
+   space-between inside has real room to push title + coach + stats
+   apart. */
+.hero{display:flex;gap:16px;align-items:stretch;margin-top:26px;min-height:300px;}
 .hmain{flex:1;min-width:0;}
 /* 2026-06-03 · the .htag eyebrow JSX is gone (David: pure repetition of
    the week strip + title). The CSS rule is kept dormant in case any
@@ -218,7 +225,13 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    and the stats anchor to the bottom · uses the full vertical height
    purposefully. */
 .hero .hmain{background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;gap:24px;}
-.hero .rest-coach{font-size:15px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.92);text-shadow:0 1px 6px rgba(0,0,0,.3);max-width:36ch;}
+/* 2026-06-04 · rest-coach line · solid white, no max-width (which may
+   have been collapsing under tight columns), small backdrop scrim so
+   the copy reads cleanly on the rest gradient (grey is the trickiest
+   background to put text on · neither bright nor dark enough to set
+   contrast on its own).  Matches the dark-scrim treatment we use for
+   CONDITIONS / COACH TIP on the same hero. */
+.hero .rest-coach{font-size:15px;font-weight:500;line-height:1.55;color:#fff;background:rgba(10,12,16,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px 16px;}
 .hero-v2 .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
 /* 2026-06-03 · margin-top dropped to 0 · the eyebrow above is gone now,
    so the title row anchors at the top of .hmain. Was 8px (clear of the
