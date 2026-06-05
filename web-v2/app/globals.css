@@ -688,10 +688,13 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    breakdown, this-week list, projection, key workouts). Coexists
    with the old .season* + .strip* rules below until those callers
    are pulled. */
-.train2{padding:0;display:flex;flex-direction:column;gap:24px;}
+/* 2026-06-04 · TrainView stacks 3 bands (.t-htop, .ramp-wrap, .lower).
+   Vertical gap = --section-gap to match the rest of the system.
+   Was 24 (freehand) → 16 (--section-gap, 4× base). */
+.train2{padding:0;display:flex;flex-direction:column;gap:var(--section-gap);}
 .train2 .t-kicker{font-size:12px;font-weight:800;letter-spacing:2.5px;opacity:.62;line-height:1.5;}
 .train2 .t-kicker b{opacity:.9;}
-.train2 .t-htop{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;}
+.train2 .t-htop{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--section-gap);}
 .train2 .t-htop>div:first-child{min-width:0;}
 /* 2026-06-03 · opacity bumped to 1 on the train header text · David
    flagged the yellow words were hard to read on the BUILD-mesh. Faded
@@ -754,7 +757,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2 .ghostbtn svg{width:13px;height:13px;}
 
 /* lower dashboard */
-.train2 .lower{display:grid;grid-template-rows:auto auto;gap:var(--grid-gap,16px);}
+/* 2026-06-04 · .lower stacks .phgrid + .arow as two sections inside
+   the train view · uses --section-gap not --grid-gap (which is the
+   outer dashboard gutter only). */
+.train2 .lower{display:grid;grid-template-rows:auto auto;gap:var(--section-gap);}
 .train2 .card{background:rgba(8,10,14,.54);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:20px;display:flex;flex-direction:column;min-height:0;}
 .train2 .card .ch{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px;}
 .train2 .card .ch .ct{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.6);}
@@ -1089,7 +1095,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hrow{display:flex;align-items:center;gap:28px;margin-top:18px;}
 .hcoach .hcv{font-size:16px;font-weight:400;line-height:1.55;opacity:.94;margin-top:6px;max-width:560px;}
 .hcoach .hcv b{color:#3EBD41;font-weight:600;}
-.hgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:30px;}
+/* 2026-06-04 · margin-top stripped · vertical rhythm comes from the
+   parent .band's flex gap (--label-gap below the label).  Was 30
+   (freehand) which violated the 4× base scale anyway. */
+.hgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--section-gap);}
 .hcard{background:rgba(8,10,14,.36);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px;min-height:186px;display:flex;flex-direction:column;}
 .hcb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;}
 .bcomp{flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;}
@@ -1489,16 +1498,26 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hwatch-empty{font-size:12.5px;color:rgba(159,179,173,.7);font-style:italic;}
 
 /* Section labels · large + hairline */
-.hseclbl2{display:flex;align-items:center;gap:14px;margin:38px 0 16px;}
+/* 2026-06-04 · margins stripped (was 38/0/16, both freehand · 38
+   broke the 4× base scale).  .hseclbl2 sits inside a .band wrapper
+   on Health; spacing comes from .main grid (--section-gap above) +
+   .band flex gap (--label-gap below).  Internal gap: 14 → 12 (3×base). */
+.hseclbl2{display:flex;align-items:center;gap:12px;}
 .hseclbl2 .t{font-size:12px;font-weight:800;letter-spacing:2.5px;color:rgba(255,255,255,.82);}
 .hseclbl2 .ln{flex:1;height:1px;background:rgba(255,255,255,.1);}
 
 /* Architecture line · sits between SLEEP STAGES label and tiles */
-.harchline{font-size:13.5px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.82);margin:-4px 0 16px;max-width:920px;}
+/* 2026-06-04 · margins stripped (was -4/0/16 · negative margin was
+   pulling the line back into the section label's space, which the
+   .band flex gap now handles).  Color via --fg-muted (the dark-surface
+   default of rgba(255,255,255,.72) — same neighborhood as the old
+   hardcoded .82, but resolves per-surface). */
+.harchline{font-size:13.5px;font-weight:500;line-height:1.5;color:var(--fg-muted);max-width:920px;}
 .harchline b{color:#fff;font-weight:700;text-transform:capitalize;}
 
 /* Bar-card grid · responsive auto-fill */
-.hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:14px;}
+/* gap 14 → --section-gap (16, 4× base · was 3.5× freehand). */
+.hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:var(--section-gap);}
 
 /* The bar-card · uniform metric tile */
 .hmc{background:rgba(4,18,16,.4);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:16px 16px 14px;transition:background .15s,border-color .15s;}
@@ -1672,7 +1691,8 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hr-trendhead .r .avg{opacity:.5;margin-left:10px;font-size:10px;font-weight:700;}
 .hr-days{display:flex;justify-content:space-between;margin-top:6px;font-size:8.5px;font-weight:700;opacity:.42;}
 .hr-days .tw{color:#9af0bf;opacity:1;}
-.hseclbl{font-size:11px;font-weight:700;letter-spacing:2px;opacity:.55;margin:24px 0 0;}
+/* 2026-06-04 · margin stripped · spacing from parent .band / .main grid. */
+.hseclbl{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--fg-faint);}
 .cardgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:13px;}
 .mcard{background:rgba(8,10,14,.32);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:13px 14px;cursor:pointer;transition:border-color .15s,background .15s;}
 .mcard:hover{background:rgba(255,255,255,.06);}

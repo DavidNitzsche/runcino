@@ -142,13 +142,14 @@ export function TargetsView({
       {/* off-track keeps the legacy GapPanel until the off-track redesign
           lands · the new ON THE PATH narrative is for on-track + watching. */}
       {status === 'off-track' ? (
-        <>
+        <div className="band">
           <div className="eyebrow-sec">Closing the gap</div>
           <GapPanel goal={goal} series={seed.projectionTrend} />
-        </>
+        </div>
       ) : (
         <>
           {/* ============ SECTION 2 · THE PATH ============ */}
+          <div className="band">
           <div className="eyebrow-sec">On the path</div>
           <div className="t2card pathcard">
             <div className="pathhead">
@@ -178,10 +179,11 @@ export function TargetsView({
 
             <StatusLadder goal={goal} status={status} />
           </div>
+          </div>{/* .band */}
 
           {/* ============ SECTION 3 · THE WORK · VDOT ============ */}
           {latestVdot != null ? (
-            <>
+            <div className="band">
               <div className="eyebrow-sec">The work behind the number</div>
               <div className="t2card vdotcard">
                 <div className="vdotmain">
@@ -212,12 +214,13 @@ export function TargetsView({
                   </div>
                 </div>
               </div>
-            </>
+            </div>
           ) : null}
         </>
       )}
 
       {/* ============ SECTION 4 · PRs ANCHORED ============ */}
+      <div className="band">
       <div className="eyebrow-sec">Personal records · measured against the goal</div>
       {anchorPr && anchorGapSec != null ? (
         <div className={`anchorline ${status === 'on-track' ? 'ontrack' : ''}`}>
@@ -245,8 +248,10 @@ export function TargetsView({
           );
         })}
       </div>
+      </div>{/* .band */}
 
       {/* ============ SECTION 5 · RACES ============ */}
+      <div className="band">
       <div className="eyebrow-sec">Races</div>
       <div className="racelist">
         {seed.races.map((r, i) => (
@@ -275,6 +280,7 @@ export function TargetsView({
         <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
         <button type="button" className="racebtn" onClick={() => setLogOpen(true)}>+ Log strength / cross</button>
       </div>
+      </div>{/* .band */}
 
       {goalOpen ? (
         <SheetOverlay onDismiss={() => setGoalOpen(false)}>

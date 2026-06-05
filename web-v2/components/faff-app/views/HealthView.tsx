@@ -633,7 +633,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
 
       {/* ===== BODY ===== */}
       {bodyTiles.length > 0 ? (
-        <>
+        <div className="band">
           <div className="hseclbl2">
             <span className="t">BODY</span>
             <span className="ln" />
@@ -648,12 +648,12 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               />
             ))}
           </div>
-        </>
+        </div>
       ) : null}
 
       {/* ===== SLEEP STAGES ===== */}
       {sleepTiles.length > 0 ? (
-        <>
+        <div className="band">
           <div className="hseclbl2">
             <span className="t">SLEEP STAGES</span>
             <span className="ln" />
@@ -703,12 +703,12 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               />
             ))}
           </div>
-        </>
+        </div>
       ) : null}
 
       {/* ===== FORM ===== */}
       {form.length > 0 ? (
-        <>
+        <div className="band">
           <div className="hseclbl2">
             <span className="t">FORM</span>
             <span className="ln" />
@@ -723,7 +723,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               />
             ))}
           </div>
-        </>
+        </div>
       ) : null}
 
       {/* ===== DEEPER INSIGHTS ===== */}
@@ -734,7 +734,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
         || seed.health.qualityPredictors
         || (seed.user.biologicalSex === 'female' && seed.health.cyclePerformance)
       ) ? (
-        <>
+        <div className="band">
           <div className="hseclbl2">
             <span className="t">DEEPER INSIGHTS</span>
             <span className="ln" />
@@ -831,7 +831,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               </div>
             ) : null}
           </div>
-        </>
+        </div>
       ) : null}
 
       {/* Manual entry sheet */}
