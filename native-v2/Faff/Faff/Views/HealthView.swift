@@ -615,6 +615,22 @@ struct HealthView: View {
 
     private func reload() async {
         if state == nil { await MainActor.run { loadState = .loading } }
+        // 2026-06-05 round 86 · also kick the HK importer here so
+        // pull-to-refresh on the Health page actually re-reads HK
+        // (last-night sleep, HRV, RHR, form metrics), not just
+        // /api/readiness + /api/health/state which are downstream of
+        // the importer. Without this the page depends entirely on
+        // FaffApp's lifecycle for HK timing and David's QC kept
+        // seeing stale sleep numbers between launches.
+        //
+        // daysBack: 3 catches today + last 2 nights of sleep · matches
+        // the foreground-resync window used elsewhere. Fire-and-forget
+        // since the importer publishes lastNightHours via @Published
+        // and the @ObservedObject hkImporter on this view will
+        // re-render the architecture line the instant the value lands.
+        Task.detached(priority: .userInitiated) {
+            await HealthKitImporter.shared.importIfConnected(daysBack: 3)
+        }
         async let r = (try? await API.fetchReadiness())
         do {
             let st = try await API.fetchHealthState()

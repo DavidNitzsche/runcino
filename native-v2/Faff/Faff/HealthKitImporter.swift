@@ -28,7 +28,20 @@ import CoreLocation
 @MainActor
 final class HealthKitImporter: ObservableObject {
     static let shared = HealthKitImporter()
-    private init() {}
+    private init() {
+        // 2026-06-05 round 86 · restore the most-recent lastNightHours
+        // value from UserDefaults so the cold-launch render uses the
+        // last-known good number instead of flashing "—" (or worse,
+        // falling back to readiness.sleep7Avg in views that wire that
+        // fallback). The fresh value lands once the next HK sync
+        // completes; the persisted value just bridges the gap.
+        let stashed = UserDefaults.standard.double(forKey: Self.lastNightHoursKey)
+        if stashed > 0 {
+            // Bypass didSet on init so we don't write the same value
+            // we just read · cheap, but clean.
+            _lastNightHours = Published(initialValue: stashed)
+        }
+    }
 
     /// HKHealthStore is thread-safe — reads run off the main actor.
     nonisolated private let store = HKHealthStore()
@@ -38,11 +51,31 @@ final class HealthKitImporter: ObservableObject {
     @Published var lastImportedAt: Date?
     /// 2026-06-02 round 42 · most-recent night's total sleep hours, picked
     /// from the latest `sleep_hours` sample seen during this import. The
-    /// LAST NIGHT chip on Today reads this directly so it reflects *last
-    /// night*, not the 7-night rolling average exposed by /api/readiness
-    /// (sleep7Avg). Nil until the first import completes with a sleep
-    /// sample (cold start / HK auth not yet granted / Watch not worn).
-    @Published var lastNightHours: Double?
+    /// LAST NIGHT chip on Today + the SLEEP architecture line on Health
+    /// read this directly so they reflect *last night*, not the 7-night
+    /// rolling average exposed by /api/readiness (sleep7Avg).
+    ///
+    /// 2026-06-05 round 86 · persisted to UserDefaults via `didSet` ·
+    /// previously the value reset to nil on every cold launch, which
+    /// meant the SLEEP architecture line + Today's LAST NIGHT chip both
+    /// fell back to sleep7Avg until the first sync completed. That's
+    /// what made the round 85 archline-split fix look invisible on
+    /// David's QC (round 86 ticket): build 159 was installed, the
+    /// archline correctly used hkImporter.lastNightHours, but it was
+    /// nil on the cold launch and both labels still showed sleep7Avg.
+    /// Persisting it means the last-known value flashes in immediately,
+    /// then refreshes when the new sync lands.
+    @Published var lastNightHours: Double? {
+        didSet {
+            if let v = lastNightHours, v > 0 {
+                UserDefaults.standard.set(v, forKey: Self.lastNightHoursKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.lastNightHoursKey)
+            }
+        }
+    }
+
+    private static let lastNightHoursKey = "faff.health.lastNightHours.v1"
 
     enum Status: Equatable { case idle, requesting, importing, done, error }
 
