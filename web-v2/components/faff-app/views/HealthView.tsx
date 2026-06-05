@@ -662,10 +662,27 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             <div className="harchline">
               Architecture <b>{sleepArchitectureVerdict}</b> across the last 7 nights
               {(() => {
-                const deep = sleepTiles.find(m => m.k === 'sleep_deep')?.current ?? 0;
-                const rem  = sleepTiles.find(m => m.k === 'sleep_rem')?.current ?? 0;
-                const light = sleepTiles.find(m => m.k === 'sleep_light')?.current ?? 0;
-                const awake = sleepTiles.find(m => m.k === 'sleep_awake')?.current ?? 0;
+                // 2026-06-05 · multi-tenant audit Pattern 4 fix · gate
+                // each stage on !m.noData. seed.ts coerces null→0 for
+                // shape stability, so a runner without sleep staging
+                // (Strava-only, no watch) had `current: 0` on all four
+                // stages with `noData: true` carried alongside. This
+                // math then divided by zero and rendered "·% deep, %
+                // REM" with NaN. The architecture verdict already says
+                // 'healthy_architecture' or 'architecture_off' based
+                // on REAL data; the percentages tail just needs to
+                // skip when stages aren't measured.
+                //
+                // Cite: docs/2026-06-05-multi-tenant-audit.html § Pattern 4.
+                const pick = (k: string): number => {
+                  const m = sleepTiles.find((t) => t.k === k);
+                  if (!m || m.noData) return 0;
+                  return m.current ?? 0;
+                };
+                const deep = pick('sleep_deep');
+                const rem = pick('sleep_rem');
+                const light = pick('sleep_light');
+                const awake = pick('sleep_awake');
                 const total = deep + rem + light + awake;
                 if (total > 0) {
                   const dPct = Math.round((deep / total) * 100);

@@ -37,6 +37,7 @@ import type { CoachState } from '@/lib/topics/types';
 import type { ReadinessHistory } from './readiness-history';
 import type { ReadinessStreak } from './readiness-brief';
 import { tierRulesFor, HARD_RULES, type ExperienceLevel } from './tier-rules';
+import { hasRecoverySignal } from './state-presence';
 
 export type HealthActionPriority = 'urgent' | 'high' | 'medium' | 'low' | 'on-course';
 
@@ -559,6 +560,29 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     const trendStr = trend3.length > 0 ? trend3.join('/') : `${breakdown.score}`;
     const todayInPullBack = breakdown.band === 'pull-back';
     const todayInModerate = breakdown.band === 'moderate';
+
+    // 2026-06-05 · multi-tenant audit Pattern 2 + Pattern 5 fix · the
+    // empty-state ladder fires "All quiet · keep doing what you're
+    // doing" with the runner's score in tow, regardless of whether
+    // that score was backed by real recovery data. For a Strava-only
+    // runner with LOAD signal only, no actions trip · "all quiet"
+    // gets shown · confident sentence on empty input.
+    //
+    // Now: when no recovery pillar is real (sleep/HRV/RHR/HR-recovery
+    // all missing), bail to an honest "connect a source" message
+    // instead of letting the band ladder render. The band itself
+    // came from a near-untouched BASELINE=70 · saying "all quiet"
+    // would be the very lie this audit Pattern 5 named.
+    //
+    // Cite: docs/2026-06-05-multi-tenant-audit.html § Pattern 2, 5.
+    if (!hasRecoverySignal(state)) {
+      return [{
+        signal: 'compound',
+        priority: 'low',
+        action: 'No recovery data yet · connect Apple Health or wear your watch overnight to start tracking.',
+        cite: 'Cold-start envelope · no recovery pillar reporting.',
+      }];
+    }
 
     if (todayInPullBack) {
       // Today's a dip but it's not sustained (otherwise the sustained
