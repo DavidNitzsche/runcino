@@ -651,8 +651,34 @@ function composePrescription(args: {
 // ─── helpers ──────────────────────────────────────────────────────────────
 
 function breakdownIsEmpty(b: ReadinessBreakdown): boolean {
-  // All pillars showing "no data" = no signal at all.
-  return b.inputs.every((i) => i.observedV === 'no data' || i.observedV === 'building history');
+  // 2026-06-05 · multi-tenant audit Pattern 2 fix · cold-start =
+  // "no RECOVERY signal," not "no signal of any kind."
+  //
+  // Was: returned true only when EVERY pillar was 'no data' or
+  // 'building history.' A Strava-only runner has LOAD showing real
+  // data (e.g. '0.95 ACWR'), so this returned FALSE and the
+  // cold-start envelope never fired. Score landed 67-75 = READY
+  // because BASELINE=70 was nearly untouched · no recovery pillar
+  // contributions, only the LOAD weight.
+  //
+  // Now: cold-start fires when none of the 4 RECOVERY pillars
+  // (sleep, hrv, rhr, hr_recovery) are real. LOAD doesn't count ·
+  // a runner can have run history but no recovery data and still
+  // be a cold-start recovery runner.
+  //
+  // Cite: docs/2026-06-05-multi-tenant-audit.html § Pattern 2.
+  const RECOVERY_KEYS: Array<'sleep' | 'hrv' | 'rhr' | 'hr_recovery'> = [
+    'sleep', 'hrv', 'rhr', 'hr_recovery',
+  ];
+  for (const key of RECOVERY_KEYS) {
+    const pillar = b.inputs.find((i) => i.key === key);
+    if (!pillar) continue;
+    const isReal = pillar.observedV !== 'no data'
+      && pillar.observedV !== 'building history'
+      && pillar.weight !== 0;
+    if (isReal) return false;
+  }
+  return true;
 }
 
 function computeDynamicSleepTarget(acwr: number | null | undefined): number {

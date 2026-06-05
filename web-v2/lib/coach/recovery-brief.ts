@@ -36,6 +36,7 @@ import type { CoachState } from '@/lib/topics/types';
 import { computeTrainingForm, type TrainingFormLabel } from './training-form';
 import { loadTrainingState } from './training-state';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
+import { hasSleepSignal, hasHrvSignal, hasRhrSignal } from './state-presence';
 
 /* ────────────────────────── Public types ────────────────────────── */
 
@@ -55,16 +56,28 @@ export interface RecoveryBrief {
 
   pillars: {
     sleepTarget: {
+      /** 2026-06-05 · multi-tenant audit Pattern 1 fix · honest "no data"
+       *  flag. False when the runner has no sleep_hours history · consumer
+       *  should render "Sleep target unknown · log a night to start" instead
+       *  of the made-up target. hoursDelta is meaningless without history.
+       *  Cite: docs/2026-06-05-multi-tenant-audit.html § Pattern 1. */
+      present: boolean;
       hoursTarget: number;
       hoursDelta: number;
       reason: string;
     };
     hrvRebound: {
+      /** 2026-06-05 · present is false when no HRV current+baseline. The
+       *  "your HRV is rebounding" narrative is fabricated otherwise. */
+      present: boolean;
       currentDrop: number;
       projectedReturnISO: string;
       pct: number;
     };
     rhrDelta: {
+      /** 2026-06-05 · present is false when no RHR current+baseline. The
+       *  projected morning bpm is fabricated otherwise (was: ?? 60 default). */
+      present: boolean;
       currentBpm: number;
       baselineBpm: number;
       projectedMorningBpm: number;
@@ -275,8 +288,15 @@ function computeSleepTarget(state: CoachState, mode: RecoveryMode) {
   const loadBump = (state.loadAcwr ?? 0) >= 1.3 ? 0.25 : 0;
   const hoursTarget = +(baseTarget + loadBump).toFixed(2);
 
+  // 2026-06-05 · multi-tenant audit Pattern 1 fix · was:
+  //   const personalAvg = state.sleep7Avg ?? hoursTarget;
+  // When sleep7Avg was null, personalAvg silently became the TARGET
+  // itself · hoursDelta = 0 said "you're sleeping at target" with
+  // zero data to back it up. Now: present=false signals the consumer
+  // to render "Sleep target unknown · log a night to start" instead.
+  const present = hasSleepSignal(state);
   const personalAvg = state.sleep7Avg ?? hoursTarget;
-  const hoursDelta = +(hoursTarget - personalAvg).toFixed(2);
+  const hoursDelta = present ? +(hoursTarget - personalAvg).toFixed(2) : 0;
 
   const reason = mode === 'long_run'
     ? 'Long-run carryover · sleep extension drives glycogen + tissue repair'
@@ -284,13 +304,20 @@ function computeSleepTarget(state: CoachState, mode: RecoveryMode) {
         ? 'High ACWR · recovery needs scale with absolute load'
         : 'Pfitz post-workout window · +30–60min above habit on hard days');
 
-  return { hoursTarget, hoursDelta, reason };
+  return { present, hoursTarget, hoursDelta, reason };
 }
 
 function computeHrvRebound(state: CoachState, runTiming: TodayRunTimingRow) {
+  // 2026-06-05 · multi-tenant audit Pattern 1 fix · was:
+  //   const baseline = state.hrvBaseline ?? 0;
+  //   const current = state.hrvCurrent ?? baseline;
+  //   const currentDrop = max(0, baseline - current);  // = 0 when no data
+  // Said "your HRV is rebounding at baseline" when there was no HRV at
+  // all. Now: gate the math on hasHrvSignal(state, 'baseline').
+  const present = hasHrvSignal(state, 'baseline');
   const baseline = state.hrvBaseline ?? 0;
   const current = state.hrvCurrent ?? baseline;
-  const currentDrop = Math.max(0, baseline - current);
+  const currentDrop = present ? Math.max(0, baseline - current) : 0;
 
   // Project return-to-baseline ~24h post-run end (or 36h if drop > 15ms).
   const runEndMs = (runTiming.end_unix_s ?? Math.floor(Date.now() / 1000)) * 1000;
@@ -298,23 +325,38 @@ function computeHrvRebound(state: CoachState, runTiming: TodayRunTimingRow) {
   const projectedReturnISO = new Date(runEndMs + reboundHours * 3600 * 1000).toISOString();
 
   // pct = how far through the rebound window we are right now (0-100).
+  // Meaningless when present=false · zero it so the UI doesn't paint
+  // a progress arc that looks earned.
   const elapsedH = (Date.now() - runEndMs) / 3600000;
-  const pct = Math.max(0, Math.min(100, Math.round((elapsedH / reboundHours) * 100)));
+  const pct = present
+    ? Math.max(0, Math.min(100, Math.round((elapsedH / reboundHours) * 100)))
+    : 0;
 
-  return { currentDrop, projectedReturnISO, pct };
+  return { present, currentDrop, projectedReturnISO, pct };
 }
 
 function computeRhrDelta(state: CoachState) {
+  // 2026-06-05 · multi-tenant audit Pattern 1 fix · was:
+  //   const baselineBpm = state.rhrBaseline ?? state.rhrCurrent ?? 60;
+  // For a cold-start runner with no RHR, baselineBpm became 60 · the
+  // hardcoded fabricated default the audit called out by name. Now:
+  // gate on hasRhrSignal(state, 'baseline') and zero the math when
+  // the runner has no real RHR signal.
+  const present = hasRhrSignal(state, 'baseline');
   const baselineBpm = state.rhrBaseline ?? state.rhrCurrent ?? 60;
   const currentBpm = state.rhrCurrent ?? baselineBpm;
   // Projected morning RHR · runs are typically +3-5bpm above baseline
   // immediately post-effort, returning to baseline by morning if recovery
   // is on track. Project a straight-line return.
-  const above = Math.max(0, currentBpm - baselineBpm);
-  const projectedMorningBpm = Math.max(baselineBpm, currentBpm - Math.round(above * 0.7));
+  const above = present ? Math.max(0, currentBpm - baselineBpm) : 0;
+  const projectedMorningBpm = present
+    ? Math.max(baselineBpm, currentBpm - Math.round(above * 0.7))
+    : 0;
   // pct = inverse of how far above baseline (0% = at baseline · 100% = +10bpm)
-  const pct = Math.max(0, Math.min(100, Math.round((above / 10) * 100)));
-  return { currentBpm, baselineBpm, projectedMorningBpm, pct };
+  const pct = present
+    ? Math.max(0, Math.min(100, Math.round((above / 10) * 100)))
+    : 0;
+  return { present, currentBpm, baselineBpm, projectedMorningBpm, pct };
 }
 
 function computeFueling(runTiming: TodayRunTimingRow, mode: RecoveryMode) {
