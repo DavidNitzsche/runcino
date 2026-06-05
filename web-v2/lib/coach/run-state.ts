@@ -362,7 +362,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // filled in after phaseBreakdown loads (a few lines down) · null here
   // because we don't know yet, and a later pass walks the splits + phase
   // cumulative-distance map to attach the right tag per mile.
-  const splits: RunSplit[] = Array.isArray(r.splits) ? r.splits.map((s: any, i: number) => {
+  const splitsRaw: RunSplit[] = Array.isArray(r.splits) ? r.splits.map((s: any, i: number) => {
     const sPerMi = Number(s.paceSPerMi) || (s.pace_s_per_mi ?? null);
     return {
       mile: Number(s.mile ?? s.index ?? i + 1) || (i + 1),
@@ -378,6 +378,22 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       phase: null,
     };
   }) : [];
+  // 2026-06-04 · defensive cleanup for legacy stub splits.  Old watch
+  // ingests wrote `splits: [{mi:1, ...whole-run-stats}]` (single entry,
+  // pace key shape didn't match the normalizer above so pace falls
+  // through to null).  The canonical-merge absorber treats arrays of
+  // length 1 as "present" and skips overwriting from the HK loser's
+  // real splits · so existing legacy rows never get fixed automatically.
+  // Drop the stub here so the canonical surfaces as having no
+  // splits, which lets the absorber-from-richer-source pull from HK
+  // on the next merge cycle AND keeps the frontend honest in the
+  // meantime ("No mile splits available" is the truth on this row).
+  const totalDistMi = Number(r.distanceMi) || Number(r.distance_mi) || 0;
+  const splits: RunSplit[] = (
+    splitsRaw.length === 1
+    && !splitsRaw[0].pace
+    && totalDistMi > 1.5
+  ) ? [] : splitsRaw;
 
   // HR zone percentages — stored or computed from splits if missing.
   //

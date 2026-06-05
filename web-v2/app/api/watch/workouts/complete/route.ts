@@ -134,7 +134,20 @@ export async function POST(req: NextRequest) {
     // omitted by older watch builds. Doctrine:
     // designs/briefs/iphone-calories-and-absorption-brief.md.
     kcal: body.kcal ?? null,
-    splits: deriveSplitsFromPhases(body.phases),
+    // 2026-06-04 · DO NOT write splits from phases.  Phases and per-mile
+    // splits are different primitives · phases live in coach_intents
+    // .value (loadPhaseBreakdown reads them for tempo/intervals/longMp
+    // panels), while data.splits is reserved for genuine per-mile data
+    // from the iPhone HK ingest path or Strava sync detail fetch.
+    //
+    // Writing splits here clobbered the canonical row's real per-mile
+    // splits when the watch row got picked as canonical (tier 5 wins
+    // over apple_health tier 2).  David: "we have this data · why are
+    // we estimating?"  Answer: because the watch was overwriting it.
+    //
+    // Leaving splits absent on the watch row lets enhanceCanonicalFrom
+    // Absorbed populate splits from the iPhone HK loser row via the
+    // existing absorb-from-richer-source path.
     ingestedAt: new Date().toISOString(),
     // 2026-06-03 · per-run TZ capture · stored on the run row so the
     // recovery anchor + activity feed read the TZ that was in effect

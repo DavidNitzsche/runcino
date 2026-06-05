@@ -1809,40 +1809,21 @@ function CompletedHeroV2({
   // splits 1-8). The CSS in .splits handles long lists with its own
   // scroll/overflow.
   //
-  // 2026-06-04 · TWO-LAYER FIX for runs that don't have real per-mile
-  // splits (watch single-phase ingest path, manual logs without GPS,
-  // legacy rows from before the watch single-phase fix).
+  // 2026-06-04 · synthesized-estimated fallback REVERTED.  David
+  // ("we have this data · why are we estimating · wtf is happening")
+  // was right · the data exists from the iPhone HK ingest.  Root cause
+  // was the watch endpoint clobbering it: deriveSplitsFromPhases wrote
+  // a phase-derived stub to data.splits, the canonical-merge picked
+  // the watch row as canonical (tier 5 > apple_health tier 2), and the
+  // HK row's real splits never made it through.
   //
-  // Layer A · drop placeholder rows: if rawSplits is a single entry
-  //   with null pace covering a multi-mile run, treat as no real data.
-  // Layer B · synthesize from total time + distance: when we DO know
-  //   the average pace + the run length, build N estimated rows at
-  //   that pace so the panel still shows the rhythm.  Marked as
-  //   estimated so the runner knows it's derived, not measured.
-  //
-  // David: "no mile splits available · thats wrong" · we have the
-  // numbers to surface something useful, "no data" was a cop-out.
-  const rawSplits = runData?.splits ?? [];
-  const guardedSplits = (
-    rawSplits.length === 1
-    && !rawSplits[0].pace
-    && (runData?.distance_mi ?? 0) > 1.5
-  ) ? [] : rawSplits;
-  const distMiForSynth = runData?.distance_mi ?? 0;
-  const paceForSynth = runData?.pace ?? null;
-  const synthesizedSplits = (
-    guardedSplits.length < 2
-    && distMiForSynth >= 1.5
-    && paceForSynth
-  ) ? Array.from({ length: Math.max(1, Math.floor(distMiForSynth)) }, (_, i) => ({
-        mile: i + 1,
-        pace: paceForSynth,
-        elev_change_ft: null,
-        hr: null,
-      }))
-    : null;
-  const splits = synthesizedSplits ?? guardedSplits;
-  const splitsEstimated = !!synthesizedSplits;
+  // Fixed at the source · /api/watch/workouts/complete no longer
+  // writes data.splits at all.  Phases live in coach_intents.value
+  // (loadPhaseBreakdown reads them); data.splits is reserved for
+  // genuine per-mile data from HK ingest or Strava sync.  The
+  // canonical-merge absorber populates the canonical row's splits
+  // from whichever loser actually has them.
+  const splits = runData?.splits ?? [];
 
   // Elevation sanity check. Strava + barometric watches occasionally
   // report multi-thousand-foot gain on flat suburban runs when the
@@ -2275,32 +2256,21 @@ function CompletedHeroV2({
         ) : (
           <>
             <div className="reshead">
-              <span>
-                MILE SPLITS
-                {splitsEstimated && (
-                  <span style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: 1, opacity: 0.55, textTransform: 'uppercase' }}>
-                    · estimated
-                  </span>
-                )}
-              </span>
+              <span>MILE SPLITS</span>
               {resolvedPace && <span className="rs">avg {resolvedPace}<small>/mi</small></span>}
             </div>
             <div className="splits">
               {splits.length > 0 ? splits.map((s, i) => {
                 // Bar width: inverse-relative — faster splits read fuller. Falls
-                // back to a neutral 60% when pace data is missing.  Synthesized
-                // splits all share the same pace, so the bars render at a flat
-                // neutral 70% — honest "we don't know the per-mile rhythm" cue.
+                // back to a neutral 60% when pace data is missing.
                 const sec = paceToSec(s.pace ?? '');
                 const all = splits.map(x => paceToSec(x.pace ?? '')).filter(n => n > 0);
                 const lo = all.length ? Math.min(...all) : 0;
                 const hi = all.length ? Math.max(...all) : 1;
                 const span = Math.max(1, hi - lo);
-                const w = splitsEstimated
-                  ? 70
-                  : sec > 0 ? Math.round(55 + (1 - (sec - lo) / span) * 40) : 60;
+                const w = sec > 0 ? Math.round(55 + (1 - (sec - lo) / span) * 40) : 60;
                 return (
-                  <div className="spr" key={i} style={splitsEstimated ? { opacity: 0.82 } : undefined}>
+                  <div className="spr" key={i}>
                     <span className="spm">{s.mile}</span>
                     <div className="sptrk"><div className="spf" style={{ width: `${w}%` }} /></div>
                     <span className="spp">{s.pace ?? '·'}<small>/mi</small></span>

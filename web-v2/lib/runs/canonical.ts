@@ -147,11 +147,35 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     const canonicalVal = canonicalData[key];
     const existingTier = tierFor(canonicalProv[key]);
 
-    if (canonicalVal == null || canonicalVal === '' || (Array.isArray(canonicalVal) && canonicalVal.length === 0)) {
-      // Canonical field is missing · always populate
+    // 2026-06-04 · stub-splits detection · the watch endpoint used to
+    // write `splits: [{mi:1, ...whole-run-stats}]` for single-phase
+    // runs · key shape (mi/paceSecPerMi) didn't match what the read
+    // normalizer expects (mile/paceSPerMi) so the row looked like
+    // valid splits but rendered as 1 row with null pace.  Treat such
+    // a stub as "missing" so the iPhone HK loser's real per-mile
+    // splits get absorbed in.  Specifically: a single-entry array
+    // whose only row has neither pace nor paceSPerMi nor paceSecPerMi.
+    const canonicalIsStubSplits = (
+      key === 'splits'
+      && Array.isArray(canonicalVal)
+      && canonicalVal.length === 1
+      && canonicalVal[0]
+      && typeof canonicalVal[0] === 'object'
+      && (canonicalVal[0] as Record<string, unknown>).pace == null
+      && (canonicalVal[0] as Record<string, unknown>).paceSPerMi == null
+      && (canonicalVal[0] as Record<string, unknown>).paceSecPerMi == null
+    );
+
+    if (
+      canonicalVal == null
+      || canonicalVal === ''
+      || (Array.isArray(canonicalVal) && canonicalVal.length === 0)
+      || canonicalIsStubSplits
+    ) {
+      // Canonical field is missing (or stub) · always populate
       updatedData[key] = incomingVal;
       updatedProv[key] = incomingSource;
-      fieldsAdded.push(key);
+      fieldsAdded.push(key + (canonicalIsStubSplits ? ' (replaced stub)' : ''));
     } else if (incomingTier > existingTier) {
       // Higher tier wins · overwrite
       updatedData[key] = incomingVal;
