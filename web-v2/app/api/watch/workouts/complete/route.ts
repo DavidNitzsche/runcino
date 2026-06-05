@@ -255,8 +255,18 @@ function stableBigintFromString(s: string): number {
  *  re-aggregate. */
 function deriveSplitsFromPhases(phases: any[] | undefined): any[] {
   if (!Array.isArray(phases)) return [];
-  return phases
-    .filter((p) => p && (p.actualDistanceMi != null || p.actualDurationSec != null))
+  const populated = phases.filter((p) => p && (p.actualDistanceMi != null || p.actualDurationSec != null));
+  // 2026-06-04 · single-phase runs (most easy / long days) have NO real
+  // mile-by-mile breakdown · the one "phase" IS the whole run.  Storing
+  // that as `splits: [{mi:1, ...whole-run-stats}]` made the post-run
+  // MILE SPLITS panel render a single misleading row with the whole
+  // run's pace (or null, because the key shape didn't match what
+  // loadRunDetail normalizes from).  Empty array → frontend renders
+  // the "No mile splits available" empty state, which is honest about
+  // what the watch actually captured.  Multi-phase (intervals / tempo)
+  // still surface as phase-level rows · those ARE real segments.
+  if (populated.length < 2) return [];
+  return populated
     .map((p, i) => ({
       mi: i + 1,
       label: p.label ?? p.type ?? `Phase ${i + 1}`,

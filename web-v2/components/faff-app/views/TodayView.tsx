@@ -1801,7 +1801,19 @@ function CompletedHeroV2({
   // 2026-05-31 after David flagged a 12.1mi long run rendering only
   // splits 1-8). The CSS in .splits handles long lists with its own
   // scroll/overflow.
-  const splits = runData?.splits ?? [];
+  //
+  // 2026-06-04 · sanity guard against legacy rows that landed as
+  // splits=[{mile:1, pace:null}] from the watch-phases path before the
+  // single-phase fix in /api/watch/workouts/complete.  A single split
+  // with null pace covering a multi-mile run is meaningless · treat it
+  // as no-data so the "No mile splits available" empty state shows
+  // instead of a placeholder row.
+  const rawSplits = runData?.splits ?? [];
+  const splits = (
+    rawSplits.length === 1
+    && !rawSplits[0].pace
+    && (runData?.distance_mi ?? 0) > 1.5
+  ) ? [] : rawSplits;
 
   // Elevation sanity check. Strava + barometric watches occasionally
   // report multi-thousand-foot gain on flat suburban runs when the
