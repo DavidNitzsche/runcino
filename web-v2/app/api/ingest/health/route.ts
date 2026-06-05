@@ -44,6 +44,17 @@ const ALLOWED_TYPES = new Set([
   // (deep/rem/light/awake) had zero rows in prod.
   'sleep_deep_minutes', 'sleep_rem_minutes',
   'sleep_light_minutes', 'sleep_awake_minutes',
+  // 2026-06-05 · two more sleep buckets · David's QC:
+  //   "Apple Health says 7:55, Faff says 6:47."
+  // Math: light 280 + REM 119 + deep 10 = 6:49 = sleep_hours. The
+  // 66min gap is HKCategoryValueSleepAnalysisAsleepUnspecified · the
+  // bucket HK uses when sleep is detected but stages aren't (Sleep
+  // Focus + watch off, naps, manual entries, 3rd-party app sleep).
+  // Whitelisting now so the iPhone HK reader can ship its update
+  // and the data lands without a route change. `sleep_in_bed_minutes`
+  // is the optional "time in bed" bucket for runners who want the
+  // tighter sleep-efficiency picture.
+  'sleep_unspecified_minutes', 'sleep_in_bed_minutes',
   // 2026-06-01 · menstrual cycle ingest (iPhone build 134+, opt-in
   // + gender-gated). Same skip-bug shape: rows arrived but didn't
   // land because the whitelist didn't know them.
