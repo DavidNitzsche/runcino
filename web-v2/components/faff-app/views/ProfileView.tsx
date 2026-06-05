@@ -102,6 +102,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         <span className="pfpro" onClick={onOpenPro} style={{ cursor: 'pointer' }}>FAFF PRO</span>
       </div>
 
+      <div className="band">
       <div className="fll">SHOE GARAGE</div>
       <div className="garage">
         {garage.map((s, i) => {
@@ -125,15 +126,17 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       <button className="shoe-add" onClick={() => setEditing(-1)}>
         <span>+</span> Add a shoe
       </button>
+      </div>{/* .band */}
 
       {/* Physiology block · LTHR / HRmax / VDOT / RHR with provenance.
           Closes coverage row 1480 (HRmax + LTHR provenance) and gives
           ProvenanceLine its primary home on the WEB. */}
+      <div className="band">
       <div className="fll">PHYSIOLOGY</div>
-      <div style={{ marginTop: 6 }}>
-        <PhysiologyBlock />
-      </div>
+      <PhysiologyBlock />
+      </div>{/* .band */}
 
+      <div className="band">
       <div className="fll">DOCTRINE</div>
       <div className="setlist">
         <a className="setr" href="/learn" style={{ textDecoration: 'none', color: 'inherit', display: 'flex' }}>
@@ -143,7 +146,9 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           <span className="setk">WORKOUT LIBRARY</span><span className="setv">Full catalog</span><span className="sgo">›</span>
         </a>
       </div>
+      </div>{/* .band */}
 
+      <div className="band">
       <div className="fll">SETTINGS</div>
       <div className="setlist">
         <div className="setr" onClick={() => setUnits(units === 'Miles · °F' ? 'Kilometers · °C' : 'Miles · °F')}>
@@ -159,9 +164,11 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           <span className="setk">SIGN OUT</span><span className="setv"></span>
         </div>
       </div>
+      </div>{/* .band */}
 
       {/* Connection rows · per-source connection state with sync timestamp.
           Closes coverage line 1816 (connected sources management). */}
+      <div className="band">
       <div className="fll">CONNECTIONS</div>
 
       {/* StravaConnectionCard · live state from /api/strava/status with
@@ -169,11 +176,11 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           of CONNECTIONS so the runner sees what's wrong AND the fix in
           one place. Auto-focuses the Reconnect button when the page is
           loaded with the /me#strava-card hash. */}
-      <div id="strava-card" style={{ marginTop: 6 }}>
+      <div id="strava-card">
         <StravaConnectionCard initial={{ connected: false }} />
       </div>
 
-      <div className="fa-rows" style={{ marginTop: 12 }}>
+      <div className="fa-rows">
         {seed.connections.map(c => (
           <ToolkitConnectionRow
             key={c.id}
@@ -202,29 +209,32 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           />
         ))}
       </div>
+      </div>{/* .band */}
 
       {/* Pro toggles · phone_hr_alerts + strava_auto_push. Closes
           coverage line 2034 (per-user phone HR alerts toggle) + line 1546
           (strava_auto_push). Lazy-fetched/patched via /api/profile. */}
+      <div className="band">
       <div className="fll">PRO TOGGLES</div>
-      <div className="fa-rows" style={{ marginTop: 6 }}>
+      <div className="fa-rows">
         <ProfileToggleRows />
       </div>
+      </div>{/* .band */}
 
       {/* Notification preferences · live GET + PATCH against
           /api/profile/notifications. Closes coverage line 1806 (notification
           taxonomy) + line 1468 (per-category prefs). */}
+      <div className="band">
       <div className="fll">NOTIFICATIONS</div>
-      <div style={{ marginTop: 6 }}>
-        <NotificationPrefsList />
-      </div>
+      <NotificationPrefsList />
+      </div>{/* .band */}
 
       {/* Coach activity log · last 30 days of coach_intents rows in plain
           English. Closes coverage line 1999 (coach_intents activity log). */}
+      <div className="band">
       <div className="fll">COACH ACTIVITY</div>
-      <div style={{ marginTop: 6 }}>
-        <CoachActivityTimeline limit={20} />
-      </div>
+      <CoachActivityTimeline limit={20} />
+      </div>{/* .band */}
 
       <ShoeEditor
         editing={editing}
