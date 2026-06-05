@@ -40,14 +40,29 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 | 7942fc81 | ManualHealthSheet confirmation UX | Web-only sheet · no iPhone equivalent. |
 | ba7063dc | SLEEP DEBT insight skips when <4 nights tracked | iPhone reads insights array · stale insights stop appearing automatically. |
 | ba7063dc | watch_list topic gated on sleep7Avg != null | iPhone consumes topics array · gating happens server-side. |
+| 472be22f | `vertical_ratio` derived from osc/stride backend-side · formula vert_osc_cm / stride_length_m, guard 0 < ratio < 20% | iPhone ships osc + stride samples (build 155); backend derives ratio with HK rows precedence. iPhone doesn't need to send the ratio explicitly. |
+| 843833d3 | Backend SQL fix for form-metric `text = uuid` mismatch · restored render of existing samples | iPhone already reads; just data fix on server. |
+| 1f21a0c5 → 0a98a133 | `runnerToday(userUuid)` reads `profile.timezone` across 30+ "today" callsites · recovery panel, readiness brief, ACWR, sleep streak, plan adapter | iPhone reads server-rendered output of all those callsites. Auto-corrects once profile.timezone populates (see TF entry below for the write path). |
+
+## SHIPPED TO TESTFLIGHT (2026-06-02 → 2026-06-03)
+
+| Build | Commit (iPhone) | What landed |
+|-------|-----------------|-------------|
+| 147 | 69eb6885 | All-mesh restyle for past-day flat layout · TodayPostRunBody onMesh context, 28 color sites swept |
+| 148 | d0e296d2 | Recovery panel scrolls + past-day map allowsHitTesting(false) |
+| 149 | 1354d9e6 | Latest live state bundled (round 73 design corrections, scrim, kill horizontal pan) |
+| 150 | eee7104f | Round 69 8-issue cleanup (READINESS label, MON·EASY·DONE eyebrow, recovery line graph, FUELING pillar, THE PLAN cross-day bleed, scrim, horizontal pan, drag-sheet first-frame underflow guard) |
+| 151 / 152 | 7a104dba / cbba0ce0 | Health page Direction A "Pinned Glance" port · pinned 128pt gauge + 5-way segmented control + 5 swappable sections + bar-card grids + 7-section backend wiring. 152 = re-ship of 151 to force fresh CDN fetch |
+| 153 | 614269ad | Metric detail bottom sheet (tap card → slide-up panel) + chart consistency (bar + line tell the same story) + win-line white pill + ACWR solid capsule |
+| 154 | 35392f0a | All 7 backend HealthState additive fields wired lenient (sleepStages, runForm, dailyReadiness, bodyTemp, vo2Trend, insights, overview.{story,watchingTomorrow,recoveryPhase}) + preferRealOrPad chart switch |
+| 155 | 6ea0c21b | Form-metric ingest regression FIX · 4 new daily HK samples in `collectVitalSamples` (`ground_contact_time`, `vertical_oscillation`, `stride_length`, `run_power`) restoring the path that broke 2026-05-25. Pause-aware per-mile splits also bundled (78a10810). |
+| 156 | 1a1dfae1 | TZ sync · `body.timezone = TimeZone.current.identifier` on POST /api/ingest/health + POST /api/watch/workouts/complete (iPhone splices into the watch's opaque Data via decode-mutate-encode) |
 
 ## TF PUSH QUEUE · sitting on David's clearance
 
 | Commit (web side) | Item | Notes |
 |--------|------|-------|
-| 78a10810 | Pause-aware splits | Brief shipped. iPhone confirmed implemented. Waiting on TF push. |
-| c4579d85 | Recovery brief panel with `fullyRecoveredAt` | iPhone confirmed wired. Waiting on TF push. |
-| 25281ea7 | Prescription card (NEW) | Not yet authored as an iPhone brief · likely batches with next TF push. |
+| 25281ea7 | Prescription card (NEW) | Not yet authored as an iPhone brief · DEFERRED, gutted from web reactive layer @ b4a059e1. |
 
 ## WATCH TF QUEUE · sitting on David's clearance
 
