@@ -170,7 +170,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                     <div style={{
                       marginTop: 10, padding: '11px 13px', borderRadius: 10,
                       background: 'rgba(10,12,16,0.62)',
-                      border: '1px solid rgba(255,136,71,0.55)',
+                      border: 0,
                       backdropFilter: 'blur(10px)',
                       WebkitBackdropFilter: 'blur(10px)',
                       fontSize: 13, lineHeight: 1.55, color: '#FFFFFF',
@@ -187,7 +187,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                     <div style={{
                       marginTop: 8, padding: '11px 13px', borderRadius: 10,
                       background: 'rgba(10,12,16,0.62)',
-                      border: '1px solid rgba(85,221,208,0.55)',
+                      border: 0,
                       backdropFilter: 'blur(10px)',
                       WebkitBackdropFilter: 'blur(10px)',
                       fontSize: 13, lineHeight: 1.55, color: '#FFFFFF',

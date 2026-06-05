@@ -2039,7 +2039,7 @@ function CompletedHeroV2({
                 background: 'rgba(10,12,16,.62)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,136,71,.55)',
+                border: 0,
                 fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
               }}>
                 <div style={{
@@ -2056,7 +2056,7 @@ function CompletedHeroV2({
                 background: 'rgba(10,12,16,.62)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,136,71,.55)',
+                border: 0,
                 fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
               }}>
                 {runData.weather_context.message}
@@ -2072,7 +2072,7 @@ function CompletedHeroV2({
                 background: 'rgba(10,12,16,.62)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
-                border: '1px solid rgba(85,221,208,.55)',
+                border: 0,
                 fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
               }}>
                 <div style={{
