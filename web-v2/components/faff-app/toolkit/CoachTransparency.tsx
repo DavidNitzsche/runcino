@@ -110,6 +110,41 @@ export function AdaptationCard({
   // (banner surface = "happened in the last day").
   const { rows, state } = useIntents({ limit: 5, initial, unackedOnly: true });
 
+  // 2026-06-04 · per-intent dismiss state, keyed by ts (ISO string ·
+  // unique per coach_intent row).  Stored in localStorage so a runner
+  // who X's a banner doesn't see it again on the next page load.  New
+  // intents (different ts) still show normally · this only suppresses
+  // the SPECIFIC adaptation that was dismissed.  David call: "i think
+  // there shuld be a way to x out of this and dismiss it."
+  const STORAGE_KEY = 'faff.dismissedIntents';
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as string[];
+        if (Array.isArray(arr)) setDismissed(new Set(arr));
+      }
+    } catch {
+      /* swallow · corrupt localStorage just means show everything */
+    }
+  }, []);
+  function dismiss(ts: string) {
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.add(ts);
+      try {
+        // Cap the persisted set at 50 most recent dismissals so it
+        // doesn't grow unbounded.  Sort desc by ts and slice.
+        const trimmed = [...next].sort().slice(-50);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      } catch {
+        /* localStorage full / disabled · in-memory state still works */
+      }
+      return next;
+    });
+  }
+
   // 2026-06-01: return null while loading. Previously this rendered
   // a full COACH-badged skeleton card for the duration of
   // /api/coach/intents (100-500ms), then collapsed to null when
@@ -121,12 +156,20 @@ export function AdaptationCard({
   if (state === 'error' || !rows) return null;
 
   const cutoff = Date.now() - recencyHours * 3600 * 1000;
-  const recent = rows.find((r) => new Date(r.ts).getTime() >= cutoff);
+  const recent = rows.find(
+    (r) => new Date(r.ts).getTime() >= cutoff && !dismissed.has(r.ts),
+  );
   if (!recent) return null;
 
   const isOverride = recent.severity === 'override';
   return (
-    <div className="fa-adapt" style={isOverride ? { borderColor: 'rgba(252,77,100,.4)' } : undefined}>
+    <div
+      className="fa-adapt"
+      style={{
+        position: 'relative',
+        ...(isOverride ? { borderColor: 'rgba(252,77,100,.4)' } : null),
+      }}
+    >
       <span className="badge">{isOverride ? 'COACH · OVERRIDE' : 'COACH · ADAPTED'}</span>
       <div className="adapt-body">
         <p className="ttl">{recent.summary}</p>
@@ -137,6 +180,40 @@ export function AdaptationCard({
           </button>
         ) : null}
       </div>
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onClick={() => dismiss(recent.ts)}
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          width: 28,
+          height: 28,
+          padding: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(255,255,255,.06)',
+          border: '1px solid rgba(255,255,255,.14)',
+          borderRadius: 8,
+          color: 'rgba(255,255,255,.7)',
+          cursor: 'pointer',
+          transition: 'background .12s, color .12s',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,.12)';
+          (e.currentTarget as HTMLButtonElement).style.color = '#fff';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,.06)';
+          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,.7)';
+        }}
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
     </div>
   );
 }
