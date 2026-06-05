@@ -48,7 +48,7 @@ export function TargetsView({
             <div className="wk">Goals &amp; races</div>
           </div>
         </div>
-        <div className="t2card" style={{ padding: '36px 40px', marginTop: 30 }}>
+        <div className="t2card" style={{ padding: '36px 40px' }}>
           <div className="eyebrow">No primary goal</div>
           <div style={{ marginTop: 14, fontSize: 18, lineHeight: 1.5, color: 'rgba(255,255,255,.86)' }}>
             Set a primary race to start tracking your gap to goal.

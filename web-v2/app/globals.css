@@ -90,7 +90,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .me .nm small{display:block;font-size:11px;font-weight:500;opacity:.85;margin-top:1px;}
 .me .gear{margin-left:auto;opacity:.5;}.me .gear svg{width:17px;height:17px;}
 /* main */
-.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:15px 38px 40px;-ms-overflow-style:none;scrollbar-width:none;}
+/* 2026-06-04 · .main is now the dashboard grid for every view.  Bands
+   (week strip, hero, tiles, sections, etc.) become direct grid items
+   and are separated by --grid-gap automatically · no per-band
+   margin-tops anywhere.  Outer padding = the same gutter so cards
+   never sit closer to the screen edge than they do to each other. */
+.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:var(--grid-gap);display:grid;grid-auto-flow:row;grid-auto-rows:auto;gap:var(--grid-gap);align-content:start;-ms-overflow-style:none;scrollbar-width:none;}
 .main::-webkit-scrollbar{display:none;}
 .top{display:flex;align-items:flex-start;justify-content:space-between;}
 .top .date{font-family:'Oswald',sans-serif;font-size:16px;font-weight:500;letter-spacing:1px;opacity:1;text-transform:uppercase;}
@@ -135,7 +140,23 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .phl{font-family:'Oswald',sans-serif;font-size:40px;font-weight:600;text-transform:uppercase;}
 .phs{font-size:13px;font-weight:500;opacity:.8;margin-top:10px;max-width:340px;line-height:1.5;}
 /* hero */
-.hero{display:flex;gap:16px;align-items:flex-start;margin-top:26px;min-height:300px;}
+/* 2026-06-04 · APP-WIDE HERO GRID · was: rest used flex with custom
+   gap, planned/completed used grid with another gap, .hmain widths
+   diverged between variants.  Now: ALL hero variants share the same
+   `1fr 1.6fr 1.1fr` 3-col template, the same --grid-gap, and the
+   same --grid-row top margin.  .hmain always claims col 1 (so the
+   colored card on the left is the SAME WIDTH across rest / planned /
+   completed days).  Rest hero has no middle (no map/session) so its
+   .wcard spans cols 2-3; planned/completed put .mapcol or .session in
+   col 2 and .wcard in col 3.  Anal-left-aligned: every row starts at
+   the same left edge under .main padding, with consistent gaps. */
+.hero,.hero-v2{display:grid;grid-template-columns:1fr 1.6fr 1.1fr;gap:var(--grid-gap);align-items:stretch;min-height:480px;}
+.hero{min-height:300px;}
+.hero > .hmain,.hero-v2 > .hmain{grid-column:1;}
+.hero > .wcard,.hero-v2 > .wcard{grid-column:3;}
+/* Rest-day hero · .wcard is the ONLY non-hmain child; span cols 2-3
+   so it fills the route+recap area instead of leaving col 3 empty. */
+.hero > .wcard:nth-child(2):last-child{grid-column:2 / -1;}
 .hmain{flex:1;min-width:0;}
 /* 2026-06-03 · the .htag eyebrow JSX is gone (David: pure repetition of
    the week strip + title). The CSS rule is kept dormant in case any
@@ -155,7 +176,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    stays the visual focus while the right card claims its 1 share of
    remaining space (after the fixed left column). Min-width keeps the
    tiles inside the card readable on narrower viewports. */
-.wcard{flex:1 1 0;min-width:380px;align-self:stretch;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#F6F7F8;text-shadow:none;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;box-shadow:0 12px 30px -20px rgba(0,0,0,.5);}
+/* 2026-06-04 · .wcard · only the surface look declared here.  Layout
+   (padding, display flex column, gap, height 100%) comes from the
+   UNIVERSAL CARD LAYOUT rule below.  Legacy flex sizing dropped · the
+   card lives in a grid column now (.hero / .hero-v2 grid), not a flex
+   row. */
+.wcard{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#F6F7F8;text-shadow:none;border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 30px -20px rgba(0,0,0,.5);min-width:0;}
 .wcl{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.5);margin-bottom:14px;}
 .shape{display:flex;gap:3px;height:8px;margin-bottom:16px;}
 .shape i{border-radius:3px;}
@@ -191,7 +217,10 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    previously nested inside hmain.hbody, which pushed it below the
    title bar; now it's a sibling so it top-aligns with wcard. hmain
    shrinks to leftstack width. */
-.hero-v2{display:flex;gap:24px;align-items:stretch;margin-top:26px;min-height:480px;}
+/* 2026-06-04 · .hero-v2 grid declaration moved up to the unified
+   `.hero, .hero-v2` rule (see APP-WIDE HERO GRID section earlier).
+   This is left as a comment for orientation when grepping old
+   commits / docs; the unified rule wins via cascade order anyway. */
 /* 2026-06-04 · per-workout-type gradient · David moved the Today page
    mesh to neutral charcoal (matches Targets) so the effort color now
    lives on the hero card itself.  CSS variables --hg-1/2/3 are written
@@ -200,8 +229,24 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    lands top-left and deepest bottom-right · matches the four
    handoff screenshots (recovery teal, easy teal, long amber,
    intervals coral, tempo orange). */
-.hero-v2 .hmain{flex:0 0 296px;min-width:0;display:flex;flex-direction:column;background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);}
-.hero .hmain{background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;padding:24px 26px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);}
+/* overflow:hidden added 2026-06-04 · belt-and-suspenders so a long
+   est-time string (e.g. ~2:30:45 on a marathon) physically cannot
+   escape the colored hero card. */
+/* 2026-06-04 · hero cards · the universal card recipe lives in the
+   `.hero-v2 .hmain,.hero .hmain` rule farther down in this file
+   (UNIVERSAL CARD LAYOUT comment block) · sets flex-column +
+   --card-padding + --card-section-gap.  Here we only declare the
+   card-specific look: gradient bg, border-radius, shadow, overflow,
+   plus min-width:0 for grid shrinking on the .hero-v2 variant. */
+.hero-v2 .hmain{min-width:0;background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;}
+.hero .hmain{background:linear-gradient(135deg,var(--hg-1,#2B2F38) 0%,var(--hg-2,#21242B) 60%,var(--hg-3,#191C22) 100%);border-radius:18px;box-shadow:0 18px 40px -24px rgba(0,0,0,.55);overflow:hidden;}
+/* 2026-06-04 · rest-coach line is FILL content · flex:1 so it grows
+   to fill the slack, pushing the stats row to the bottom (David's
+   spec: "for cards flagged fill, give the primary content flex: 1").
+   `display:flex;align-items:center` centers the copy vertically
+   inside the expanded scrim box so it doesn't look stranded at the
+   top of a tall fill area. */
+.hero .rest-coach{flex:1;display:flex;align-items:center;font-size:15px;font-weight:500;line-height:1.55;color:#fff;background:rgba(10,12,16,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;padding:14px 16px;}
 .hero-v2 .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
 /* 2026-06-03 · margin-top dropped to 0 · the eyebrow above is gone now,
    so the title row anchors at the top of .hmain. Was 8px (clear of the
@@ -227,12 +272,24 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .adaptline .adapt-restore:disabled{opacity:.55;cursor:wait;text-decoration:none;}
 .hero-v2 .adaptline .adapt-restored{color:#FFCE8A;font-weight:600;}
 .hero-v2 .adaptline .adapt-restore-err{color:#FC4D64;font-weight:600;}
-.hero-v2 .leftstack{margin-top:24px;display:flex;flex-direction:column;}
-.hero-v2 .stats{display:flex;gap:30px;margin-top:0;}
-.hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;line-height:.9;}
-.hero-v2 .stats .v small{font-size:14px;opacity:.85;font-weight:400;}
-.hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;margin-top:8px;}
-.hero-v2 .zones{margin-top:28px;}
+/* 2026-06-04 · margin-top stripped · the hmain card is a flex-column
+   with --card-section-gap so leftstack is just a section in that
+   stack.  Spacing comes from the gap, not from this rule. */
+.hero-v2 .leftstack{display:flex;flex-direction:column;}
+/* 2026-06-04 · planned hero stats · v2 · switched from flex+gap to
+   3-col equal-width grid.  flex was leaving dead space on the right
+   of the card after the third stat ("crammed into the left").  Now
+   each stat gets 1fr — distance/pace/est-time spread evenly across
+   the full card width.  Min-width:0 still lets cells shrink under
+   tight columns, white-space:nowrap on .v keeps numbers + times on
+   one line. */
+.hero-v2 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:0;min-width:0;}
+.hero-v2 .stats > div{min-width:0;}
+.hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;line-height:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hero-v2 .stats .v small{font-size:13px;opacity:.85;font-weight:400;}
+.hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* 2026-06-04 · margin-top stripped · spacing from card section gap. */
+.hero-v2 .zones{}
 .hero-v2 .zhead{display:flex;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:10px;opacity:.9;}
 .hero-v2 .zhead b{color:#fff;}
 .hero-v2 .zhead .zmeta{white-space:nowrap;}
@@ -240,7 +297,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .zbar i{height:100%;}
 .hero-v2 .zleg{display:flex;justify-content:space-between;margin-top:10px;font-size:10px;font-weight:600;opacity:.82;}
 .hero-v2 .zleg .zs{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle;}
-.hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 22px;margin-top:30px;}
+/* 2026-06-04 · 4-stat grid (forecast/shoe/fuel/best-window) · margin
+   stripped, vertical spacing comes from --card-section-gap.  Internal
+   gap is intra-section (between forecast and shoe labels) so it stays
+   independent of the card section gap. */
+.hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 16px;min-width:0;}
+.hero-v2 .cond > div{min-width:0;}
 .hero-v2 .cond .kcl{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
 .hero-v2 .cond .kcv{font-size:14px;font-weight:700;margin-top:5px;}
 .hero-v2 .mapcol{flex:1;display:flex;min-height:0;align-self:stretch;}
@@ -257,15 +319,13 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    signal row (repeat(4,1fr)). The 1 / 1.6 / 1.1 share keeps the map
    visually dominant while letting the left stats and right recap card
    grow with width. */
-.hero-v2-done{
-  display:grid;
-  grid-template-columns:1fr 1.6fr 1.1fr;
-  gap:20px;
-  align-items:stretch;
-}
+/* 2026-06-04 · .hero-v2-done grid declaration retired · subsumed by the
+   unified `.hero, .hero-v2` rule that all three variants share.  The
+   per-child sizing (display:flex on .hmain, min-width:0 for grid
+   shrinking) is kept since it's still useful inside .hero-v2-done. */
 .hero-v2-done .hmain{display:flex;flex-direction:column;min-width:0;}
 .hero-v2-done .leftstack{flex:initial;width:auto;display:flex;flex-direction:column;}
-.hero-v2-done .mapcol{align-self:stretch;min-width:0;}
+.hero-v2-done .mapcol{align-self:stretch;min-width:0;grid-column:2;}
 .hero-v2-done .wcard{align-self:stretch;min-width:0;}
 /* Leaflet-hosted route card · Style F+ from designs/route-map-mockups.
    The Leaflet map fills the entire .routemap box · tiles ARE the
@@ -330,7 +390,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
   font-size:9px; font-weight:700; letter-spacing:1.4px;
   color:rgba(255,231,194,0.62);
 }
-.hero-v2 .wcard{flex:0 0 344px;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:24px;display:flex;flex-direction:column;min-height:0;}
+/* 2026-06-04 · per-variant .wcard tweaks · base surface comes from
+   `.wcard` above and layout from the UNIVERSAL CARD LAYOUT rule
+   below.  flex:0 0 344px legacy width dropped (lives in grid col 3
+   now). */
+.hero-v2 .wcard{min-height:0;}
 .hero-v2 .wcl{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:8px;margin-bottom:0;}
 .hero-v2 .wcl .ok{color:#86efa0;display:inline-flex;align-items:center;gap:5px;margin-left:auto;}
 .hero-v2 .wcl .ok svg{width:13px;height:13px;}
@@ -364,7 +428,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .effort-band .emark .ecaret{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #F6F7F8;}
 .hero-v2 .effort-band .ezones{display:flex;justify-content:space-between;font-size:9px;font-weight:600;opacity:.85;margin-top:9px;letter-spacing:1px;}
 
-.hero-v2 .session{flex:1;display:flex;flex-direction:column;border-radius:16px;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);background:rgba(4,14,10,.32);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:22px 24px;min-height:0;}
+/* 2026-06-04 · .session card · surface look only.  flex:1 dropped
+   (lived in legacy flex layout; this is now grid col 2).  Padding,
+   border-radius (16 not the token, kept for design parity),
+   flex-direction etc. come from the universal card recipe applied
+   below to .session. */
+.hero-v2 .session{border-radius:16px;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);background:rgba(4,14,10,.32);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);min-height:0;display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);padding:var(--card-padding);}
 .hero-v2 .session .sh{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.55);}
 .hero-v2 .session .shape{display:flex;gap:3px;height:9px;margin:16px 0 22px;}
 .hero-v2 .session .shape i{border-radius:3px;}
@@ -479,7 +548,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    taller than its neighbors. Strength demoted from text row to
    top-right glyph chip.
    ============================================================ */
-.week.wkstrip-v2{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
+.week.wkstrip-v2{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--grid-gap);}
 .wc{position:relative;height:120px;padding:12px 14px 11px;display:flex;flex-direction:column;text-align:left;cursor:pointer;border-radius:16px;background:rgba(6,26,28,.4);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--txt);transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;font:inherit;text-shadow:none;}
 .wc:hover{background:rgba(8,28,30,.52);}
 .wc.on{background:rgba(8,28,30,.66);border-color:rgba(255,255,255,.42);box-shadow:0 0 0 1px rgba(255,255,255,.12),0 14px 32px -16px rgba(0,0,0,.6);}
@@ -638,14 +707,14 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2 .ghostbtn svg{width:13px;height:13px;}
 
 /* lower dashboard */
-.train2 .lower{display:grid;grid-template-rows:auto auto;gap:16px;}
+.train2 .lower{display:grid;grid-template-rows:auto auto;gap:var(--grid-gap,16px);}
 .train2 .card{background:rgba(8,10,14,.54);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:20px;display:flex;flex-direction:column;min-height:0;}
 .train2 .card .ch{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px;}
 .train2 .card .ch .ct{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.6);}
 .train2 .card .ch .cx{font-size:11px;font-weight:600;color:rgba(255,255,255,.5);}
 
 /* phase breakdown */
-.train2 .phgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.train2 .phgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap,16px);}
 /* 2026-06-04 · Train mesh on neutral charcoal; phase cards carry the
    phase color identity.  Two iterations on the card surface:
      v1 · 135° gradient stops [1]/[3]/[4] of PHASE.mesh — wrong palette,
@@ -772,7 +841,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    distinct from the green/amber/orange pace-hit colors above it. */
 .train2 .mile .minf.madapt{color:#C7B8FF;}
 
-.train2 .arow{display:grid;grid-template-columns:1.15fr 1fr 1.1fr;gap:16px;min-height:0;}
+.train2 .arow{display:grid;grid-template-columns:1.15fr 1fr 1.1fr;gap:var(--grid-gap,16px);min-height:0;}
 
 /* full-plan modal */
 .train2-ov{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(4,8,6,.6);backdrop-filter:blur(6px);color:var(--txt);}
@@ -843,9 +912,15 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2-sheet .cell .cdet{font-size:9px;font-weight:600;opacity:.5;line-height:1.1;}
 .train2-sheet .cell .crest{align-self:flex-start;font-size:9px;font-weight:800;letter-spacing:1px;opacity:.38;margin-top:auto;}
 
-.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:26px;}
-.tile{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;min-height:222px;display:flex;flex-direction:column;}
-.tile .fll{margin-bottom:0;}
+/* 2026-06-04 · tiles row · 4-col grid, gap = --grid-gap.  No margin-top
+   · vertical separation comes from .main's grid row gap above. */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap);}
+/* 2026-06-04 · .tile · only the surface look declared here.
+   Padding, radius, height:100%, display:flex column, gap, align-items
+   stretch all come from the UNIVERSAL CARD LAYOUT rule below.  min-
+   height kept as a floor so a tile with sparse content (e.g., a
+   loading placeholder) doesn't collapse below 222px. */
+.tile{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);min-height:222px;}
 .tile.click{cursor:pointer;transition:.15s;}
 .tile.click:hover{background:rgba(8,10,14,.56);border-color:rgba(255,255,255,.22);}
 .chev{opacity:.55;font-weight:700;}
@@ -890,7 +965,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .gapv-goal::after{content:'GOAL';position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:7px;font-weight:800;letter-spacing:.5px;color:rgba(255,255,255,.8);}
 .gapv-you{position:absolute;left:80%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:#3EBD41;border:2.5px solid #fff;box-shadow:0 0 10px rgba(62,189,65,.6);}
 .gapv-chip{align-self:center;font-size:10px;font-weight:700;letter-spacing:.4px;color:#7be89a;background:rgba(62,189,65,.14);border:1px solid rgba(62,189,65,.32);border-radius:9px;padding:6px 11px;white-space:nowrap;}
-.fll{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;margin-bottom:14px;}
+/* 2026-06-04 · margin-bottom stripped · the grid handles vertical
+   rhythm now.  When .fll is used inside a card the local layout takes
+   over (each card can space its eyebrow internally). */
+.fll{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;}
 .vol{position:relative;display:flex;align-items:flex-end;gap:6px;height:60px;}
 .volavg{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(246,247,248,.45);pointer-events:none;}
 .vol i{flex:1;border-radius:4px 4px 0 0;}
@@ -1803,9 +1881,39 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .win.sb-collapsed .me{justify-content:center;}
 .win.sb-collapsed .me .nm,.win.sb-collapsed .me .gear{display:none;}
 
+/* 2026-06-04 · APP-WIDE LAYOUT TOKENS · per David's spec.  Three
+   independent values, each set in exactly ONE place:
+     --grid-gap         · THE outer gutter · column/row gap between
+                          cards in the dashboard, AND the .main outer
+                          padding.  20px.
+     --card-padding     · interior padding on every card · same on
+                          all four sides.  20px.
+     --card-section-gap · vertical gap between stacked sections
+                          INSIDE a card.  14px · deliberately
+                          different from --grid-gap so the eye can
+                          read "inside-card spacing" vs "between-card
+                          spacing" as distinct rhythms.
+   --card-pad / --card-radius kept as legacy aliases for older rules
+   that already consume them.  Don't introduce new uses · point new
+   rules at --card-padding etc. */
 /* ===================== TWEAKS PANEL ===================== */
-.win{--card-pad:22px;--card-radius:16px;}
-.tile,.wcard{padding:var(--card-pad);border-radius:var(--card-radius);}
+.win{--card-pad:20px;--card-radius:16px;--grid-gap:20px;--card-padding:20px;--card-section-gap:14px;}
+/* 2026-06-04 · UNIVERSAL CARD LAYOUT · per David's spec.
+   - flex-column with --card-padding on all four sides + gap of
+     --card-section-gap between stacked sections inside
+   - align-items: stretch · content fills the inner width (the
+     padding box)
+   - height: 100% · cards in the same row equalize height regardless
+     of content length
+   No child element inside should carry its own margin · vertical
+   spacing comes from the column gap, horizontal alignment comes from
+   the padding box.  If something looks off, fix the token, not the
+   card. */
+.tile,.wcard{padding:var(--card-padding);border-radius:var(--card-radius);height:100%;display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);}
+/* Same recipe applied to the colored hero cards on .hmain (rest,
+   planned, completed variants).  Rest also flags its coach line as
+   "fill" content (see .hero .rest-coach below). */
+.hero-v2 .hmain,.hero .hmain{padding:var(--card-padding);display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);}
 .win[data-mesh="calm"] .mesh{filter:saturate(.7) brightness(.9);}
 .win[data-mesh="vivid"] .mesh{filter:saturate(1.34) brightness(1.07);}
 .win[data-accent="gold"]{--goal:#F5C518;--race:#F5A518;}
@@ -1913,13 +2021,13 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .av-range button{font-family:inherit;font-size:11.5px;font-weight:700;letter-spacing:.6px;color:rgba(255,255,255,.66);background:none;border:none;border-radius:9px;padding:9px 15px;cursor:pointer;transition:.15s;white-space:nowrap;}
 .av-range button:hover{color:#fff;}
 .av-range button.on{background:#fff;color:#10131A;}
-.av-totals{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:24px;}
+.av-totals{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap);}
 .av-tot{background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:15px 16px;}
 .av-tot .k{font-size:10px;font-weight:700;letter-spacing:1.2px;opacity:.55;}
 .av-tot .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;letter-spacing:-1px;margin-top:7px;line-height:.9;}
 .av-tot .v small{font-family:'Inter';font-size:12px;opacity:.65;font-weight:400;}
 
-.av-grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-top:16px;}
+.av-grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:var(--grid-gap);}
 .av-panel{background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:20px 22px;backdrop-filter:blur(12px);}
 .av-ph{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
 .av-ph .t{font-size:13px;font-weight:700;}
@@ -1947,7 +2055,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .av-lg .nm{opacity:.82;}
 .av-lg .pc{margin-left:auto;font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:-.3px;opacity:.92;}
 /* records */
-.av-recs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px;}
+.av-recs{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--grid-gap);}
 .av-rec{background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:15px;padding:15px 16px;position:relative;overflow:hidden;cursor:default;transition:transform .14s,border-color .14s;}
 .av-rec:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.24);}
 .av-rec::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ec,#FF8847);}
@@ -1968,7 +2076,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .av-hkey{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:12px;font-size:9px;font-weight:700;opacity:.5;}
 .av-hkey i{width:10px;height:10px;border-radius:2.5px;}
 /* fun facts */
-.av-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:14px;}
+.av-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--grid-gap);}
 /* 2026-06-04 · Activity mesh moved to charcoal · the old peach-tinted
    .av-fact background (rgba(255,136,71,.12 → .04) + peach border) was
    tuned for the warm-tan view mesh and read as muddy brown on dark
@@ -2259,7 +2367,11 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
   .win:not(.sb-collapsed) .me .nm,.win:not(.sb-collapsed) .me .gear{display:none;}
   .win:not(.sb-collapsed) .sb-recap{justify-content:center;padding:11px 0;}
   .win:not(.sb-collapsed) .sb-recap .tx,.win:not(.sb-collapsed) .sb-recap .arr{display:none;}
-  .main{padding:15px 24px 40px;}
+  /* 2026-06-04 · .main keeps padding:var(--grid-gap) at every breakpoint
+     per David's grid spec.  Removed the old asymmetric override. */
+  /* THREE-BAND RESPONSIVE · main band stacks below 1200 · tiles 2-up */
+  .hero,.hero-v2{grid-template-columns:1fr;}
+  .tiles{grid-template-columns:repeat(2,1fr);}
 }
 
 /* Phone · sidebar becomes a top strip; main views stack */
@@ -2277,10 +2389,12 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
   .me .nm,.me .gear{display:none;}
   .brandmark{display:inline-block!important;font-size:22px;padding:0 8px 0 4px;}
   .sb-toggle{display:none;}
-  .main{padding:14px 18px 36px;}
-  .hero{flex-direction:column;}
-  .wcard{flex:1;width:100%;}
-  .tiles{grid-template-columns:repeat(2,1fr);}
+  /* 2026-06-04 · .main keeps padding:var(--grid-gap) at this breakpoint
+     too · old asymmetric padding removed.  THREE-BAND RESPONSIVE on
+     phone: week wraps 2-up, main stacked, tiles 1-up. */
+  .week.wkstrip-v2{grid-template-columns:repeat(2,1fr);}
+  .hero,.hero-v2{grid-template-columns:1fr;}
+  .tiles{grid-template-columns:1fr;}
   .stats{flex-wrap:wrap;gap:18px 28px;}
   .effort,.heroExtra{max-width:none;}
   .hgrid,.hcols{grid-template-columns:1fr;}
@@ -2509,7 +2623,9 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
    still renders the existing GapPanel).
    ============================================================ */
 .targets2 .eyebrow{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:2.4px;color:#FFCE8A;text-transform:uppercase;}
-.targets2 .eyebrow-sec{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:2.4px;color:rgba(255,255,255,.82);text-transform:uppercase;margin:34px 0 14px;}
+/* 2026-06-04 · margins stripped · vertical rhythm comes from .main
+   grid gap.  Eyebrow + section below are independent grid items. */
+.targets2 .eyebrow-sec{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:2.4px;color:rgba(255,255,255,.82);text-transform:uppercase;}
 .targets2 .t2card{background:rgba(20,22,28,.55);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);border-radius:18px;}
 
 /* === SECTION 1 · THE ANSWER === */
@@ -2646,7 +2762,7 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .anchorline b{color:#fff;font-weight:700;}
 .targets2 .anchorline .gp{color:#FFCE8A;font-weight:700;}
 .targets2 .anchorline.ontrack .gp{color:#86efa0;}
-.targets2 .prgrid2{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+.targets2 .prgrid2{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap,16px);}
 .targets2 .prt2{padding:18px 20px;position:relative;background:rgba(20,22,28,.55);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);border-radius:18px;}
 .targets2 .prt2 .prd{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:1.6px;color:rgba(255,255,255,.74);text-transform:uppercase;}
 .targets2 .prt2 .prv{font-family:'Oswald',sans-serif;font-weight:600;font-size:38px;line-height:.9;letter-spacing:-.5px;margin-top:10px;}

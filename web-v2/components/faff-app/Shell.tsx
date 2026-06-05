@@ -129,6 +129,14 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
           // for no narrative reason.
           : view === 'activity'
             ? MESH.targets
+          // 2026-06-04 · Health joins the charcoal idiom · readiness
+          // numbers, HRV/RHR/sleep tiles, fitness/fatigue chart all
+          // carry their own semantic color (green ready / amber watch /
+          // coral warn).  Bathing the whole page in teal didn't add
+          // information; charcoal lets each tile's status read on its
+          // own terms.
+          : view === 'health'
+            ? MESH.targets
             : MESH[view as Exclude<ViewKey,'today'|'race'|'train'>];
 
   return (

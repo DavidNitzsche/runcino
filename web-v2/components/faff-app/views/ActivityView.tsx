@@ -91,7 +91,7 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
         ))}
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>VOLUME</div>
+      <div className="fll">VOLUME</div>
       <div className="av-grid2">
         <div className="av-panel">
           <div className="av-ph"><div className="t">{d.volT}</div><div className="s">{d.volS}</div></div>
@@ -127,7 +127,7 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
         </div>
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>PERSONAL RECORDS</div>
+      <div className="fll">PERSONAL RECORDS</div>
       <div className="av-recs">
         {d.recs.map(r => (
           <div className="av-rec" key={r.k} style={{ ['--ec' as string]: EC[r.t] } as React.CSSProperties}>
@@ -138,7 +138,7 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
         ))}
       </div>
 
-      <div className="fll" style={{ marginTop: 30, display: 'flex', justifyContent: 'space-between' }}>
+      <div className="fll" style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span>CONSISTENCY</span>
         <span style={{ opacity: 0.55, fontWeight: 700, letterSpacing: '2px' }}>LAST 18 WEEKS</span>
       </div>
@@ -151,7 +151,7 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
         </div>
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>BY THE NUMBERS</div>
+      <div className="fll">BY THE NUMBERS</div>
       <div className="av-facts">
         {d.facts.map((f, i) => (
           <div className="av-fact" key={i}>
@@ -166,7 +166,7 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
         ))}
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>RECENT RUNS</div>
+      <div className="fll">RECENT RUNS</div>
       <div className="log">
         {seed.activity.recent.map((r, i) => (
           <div

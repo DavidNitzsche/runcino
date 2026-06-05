@@ -303,10 +303,19 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
   const [logOpen, setLogOpen] = useState(false);
   const [openTile, setOpenTile] = useState<string | null>(null);
 
-  // Split sleep stage tiles out of BODY into their own SLEEP STAGES grid.
-  const sleepKeys = new Set(['sleep_deep', 'sleep_rem', 'sleep_light', 'sleep_awake']);
+  // Split sleep tiles out of BODY into their own SLEEP STAGES grid.
+  // 2026-06-04 · David: "need a sleep duration here so I can see last
+  // nights sleep but also the bar chart history."  Sleep DURATION
+  // (k:'sleep') moved into the same section as the stages so the runner
+  // sees the total + the 4 stages side by side.  Sorted so DURATION
+  // renders first (leftmost) · it's the headline number, stages are
+  // the breakdown.
+  const sleepKeys = new Set(['sleep', 'sleep_deep', 'sleep_rem', 'sleep_light', 'sleep_awake']);
+  const sleepOrder = ['sleep', 'sleep_deep', 'sleep_rem', 'sleep_light', 'sleep_awake'];
   const bodyTiles = body.filter(m => !sleepKeys.has(m.k));
-  const sleepTiles = body.filter(m => sleepKeys.has(m.k));
+  const sleepTiles = body
+    .filter(m => sleepKeys.has(m.k))
+    .sort((a, b) => sleepOrder.indexOf(a.k) - sleepOrder.indexOf(b.k));
 
   // Band-aware verdict line under the gauge · pulls from readinessBrief
   // when present (richer narration), falls back to readiness.coach.
