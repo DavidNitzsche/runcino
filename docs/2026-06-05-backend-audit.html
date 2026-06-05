@@ -1,0 +1,1618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backend audit · 2026-06-05</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0d10;
+    --card: #16161b;
+    --card2: #1c1c22;
+    --ink: #f2f2f4;
+    --mute: #9a9aa0;
+    --line: #2a2a32;
+    --green: #6FCF97;
+    --amber: #FFCE8A;
+    --red: #FF6B6B;
+    --blue: #5CADE3;
+    --p0: #FF6B6B;
+    --p1: #FFCE8A;
+    --p2: #5CADE3;
+    --p3: #9a9aa0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+  .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--mute);
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+  h1.hero {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 124px;
+    line-height: 0.92;
+    letter-spacing: 0.01em;
+    margin-bottom: 28px;
+  }
+  h1.hero .accent { color: var(--red); }
+  .lede {
+    font-size: 18px;
+    color: var(--ink);
+    max-width: 760px;
+    margin-bottom: 16px;
+  }
+  .lede-sub {
+    font-size: 14px;
+    color: var(--mute);
+    max-width: 760px;
+    margin-bottom: 56px;
+  }
+  h2 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 28px;
+    letter-spacing: 0.02em;
+    margin-top: 72px;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  h3 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 500;
+    font-size: 18px;
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 40px;
+    margin-bottom: 16px;
+  }
+
+  /* severity counts */
+  .sev-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .sev-card {
+    background: var(--card);
+    border-left: 3px solid var(--line);
+    padding: 22px 24px;
+    border-radius: 4px;
+  }
+  .sev-card.p0 { border-left-color: var(--p0); }
+  .sev-card.p1 { border-left-color: var(--p1); }
+  .sev-card.p2 { border-left-color: var(--p2); }
+  .sev-card.p3 { border-left-color: var(--p3); }
+  .sev-card .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .sev-card.p0 .label { color: var(--p0); }
+  .sev-card.p1 .label { color: var(--p1); }
+  .sev-card.p2 .label { color: var(--p2); }
+  .sev-card.p3 .label { color: var(--p3); }
+  .sev-card .count {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 64px;
+    line-height: 1;
+    margin-top: 8px;
+    margin-bottom: 6px;
+  }
+  .sev-card .desc {
+    font-size: 12px;
+    color: var(--mute);
+  }
+
+  /* patterns */
+  .pattern-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .pattern {
+    background: var(--card);
+    padding: 22px 24px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+  }
+  .pattern .num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 38px;
+    line-height: 1;
+    color: var(--amber);
+    margin-bottom: 8px;
+  }
+  .pattern .title {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 17px;
+    margin-bottom: 8px;
+    letter-spacing: 0.01em;
+  }
+  .pattern .body {
+    font-size: 14px;
+    color: var(--mute);
+    line-height: 1.6;
+  }
+  .pattern .body code {
+    background: var(--card2);
+    color: var(--ink);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  /* P0 callouts */
+  .p0-callout {
+    background: linear-gradient(180deg, rgba(255,107,107,0.08) 0%, rgba(255,107,107,0.02) 100%);
+    border: 1px solid rgba(255,107,107,0.35);
+    border-left: 3px solid var(--p0);
+    padding: 20px 24px;
+    margin-bottom: 14px;
+    border-radius: 4px;
+  }
+  .p0-callout .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: var(--p0);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .p0-callout .title {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 19px;
+    margin-bottom: 6px;
+  }
+  .p0-callout .where {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--mute);
+    margin-bottom: 10px;
+  }
+  .p0-callout .summary {
+    font-size: 14px;
+    color: var(--ink);
+    line-height: 1.6;
+  }
+
+  /* by-area */
+  .area-block { margin-bottom: 8px; }
+  .area-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    margin-top: 36px;
+  }
+  .area-head .name {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink);
+  }
+  .area-head .count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 0.08em;
+  }
+  .finding {
+    background: var(--card);
+    border-left: 3px solid var(--line);
+    padding: 18px 22px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+  }
+  .finding.p0 { border-left-color: var(--p0); }
+  .finding.p1 { border-left-color: var(--p1); }
+  .finding.p2 { border-left-color: var(--p2); }
+  .finding.p3 { border-left-color: var(--p3); }
+  .finding-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .finding .sev {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.04);
+  }
+  .finding.p0 .sev { color: var(--p0); }
+  .finding.p1 .sev { color: var(--p1); }
+  .finding.p2 .sev { color: var(--p2); }
+  .finding.p3 .sev { color: var(--p3); }
+  .finding .title {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 500;
+    font-size: 16px;
+    color: var(--ink);
+    flex: 1;
+  }
+  .finding .where {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    margin-bottom: 8px;
+  }
+  .finding .issue {
+    font-size: 13.5px;
+    color: var(--ink);
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  .finding .fix {
+    font-size: 13px;
+    color: var(--mute);
+    line-height: 1.6;
+    padding-top: 8px;
+    border-top: 1px dashed var(--line);
+  }
+  .finding .fix strong {
+    color: var(--green);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .finding code, .finding .issue code, .finding .fix code {
+    background: var(--card2);
+    color: var(--ink);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  /* next moves */
+  .next-list {
+    counter-reset: nextmove;
+  }
+  .next {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 22px 24px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 22px;
+    align-items: flex-start;
+  }
+  .next::before {
+    counter-increment: nextmove;
+    content: counter(nextmove, decimal-leading-zero);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 38px;
+    line-height: 1;
+    color: var(--blue);
+    flex-shrink: 0;
+  }
+  .next .nbody {
+    flex: 1;
+  }
+  .next .ntitle {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 6px;
+    letter-spacing: 0.01em;
+  }
+  .next .ndesc {
+    font-size: 14px;
+    color: var(--mute);
+    line-height: 1.6;
+  }
+  .next .ndesc code {
+    background: var(--card2);
+    color: var(--ink);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 760px) {
+    h1.hero { font-size: 84px; }
+    .sev-grid { grid-template-columns: repeat(2, 1fr); }
+    .pattern-grid { grid-template-columns: 1fr; }
+    .wrap { padding: 40px 20px 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="meta">backend + security · 11 probes · 2026-06-05</div>
+  <h1 class="hero">Backend<br><span class="accent">audit</span></h1>
+  <p class="lede">Eleven parallel probes across the Strava webhook, HK ingest, watch complete, coach state, readiness brief, plan adapter, onboarding, cron jobs, run writes, race projection, and the security perimeter.</p>
+  <p class="lede-sub">Headline: this audit found ten P0 ship blockers. Three are remote code paths an attacker can hit today &mdash; Apple JWT signature isn&rsquo;t verified, Strava OAuth state is the raw user_uuid in cleartext, and the Strava webhook accepts unsigned POSTs. The remaining seven are cross-user data leaks and silent-write losses sitting in the run, cache, race, and cron layers.</p>
+
+  <h2>Severity</h2>
+  <div class="sev-grid">
+    <div class="sev-card p0">
+      <div class="label">P0 · ship blocker</div>
+      <div class="count">10</div>
+      <div class="desc">Auth bypass, cross-user writes, unsigned webhooks</div>
+    </div>
+    <div class="sev-card p1">
+      <div class="label">P1 · user visible</div>
+      <div class="count">29</div>
+      <div class="desc">TZ drift, silent catch, audit-leak vectors</div>
+    </div>
+    <div class="sev-card p2">
+      <div class="label">P2 · code smell</div>
+      <div class="count">36</div>
+      <div class="desc">Dead code, duplication, race windows, any-types</div>
+    </div>
+    <div class="sev-card p3">
+      <div class="label">P3 · cleanup</div>
+      <div class="count">11</div>
+      <div class="desc">Doc drift, table caps, unused exports</div>
+    </div>
+  </div>
+
+  <h2>Cross-cutting patterns</h2>
+  <div class="pattern-grid">
+
+    <div class="pattern">
+      <div class="num">01</div>
+      <div class="title">Server-clock &ldquo;today&rdquo; survives the runner-tz refactor</div>
+      <div class="body">The locked TZ doctrine (every &ldquo;today&rdquo; call uses <code>runnerToday(userId)</code>) was applied unevenly. <strong>13 separate sites</strong> still compute today via <code>new Date(Date.now() - 7 * 3600000)</code>, hardcoding PDT and ignoring DST. Hits readiness-brief, health-state, watch-complete, profile-state, plan-drift, adapt-block, build-watch, snapshot windows, four drift detectors, and the notifications cron. A NY runner gets the &ldquo;race day 05:30&rdquo; push at 22:30 the night before.</div>
+    </div>
+
+    <div class="pattern">
+      <div class="num">02</div>
+      <div class="title">Conflict targets without user_uuid produce cross-user collisions</div>
+      <div class="body">Six write paths (<code>runs</code> via Strava cron + webhook, <code>races</code> via onboarding + API, <code>connector_tokens</code>, <code>coach_proposals</code>) rely on global-uniqueness constraints with <code>ON CONFLICT DO NOTHING/UPDATE</code> targeting columns that don&rsquo;t include user_uuid. When two users hash to the same id, the second write silently no-ops or, worse, overwrites the first user&rsquo;s row.</div>
+    </div>
+
+    <div class="pattern">
+      <div class="num">03</div>
+      <div class="title">Silent <code>.catch(() =&gt; {})</code> swallows DB failures with no telemetry</div>
+      <div class="body">Eight surfaces drop errors on the floor: <code>last_sync_at</code> updates, coach_intents writes, raiseAlert, pullSync post-write hooks, computeYesterdayPillars, four cron alert paths. A Postgres lock timeout produces a green 200 response and zero log signal. The &ldquo;loud server-side write errors&rdquo; doctrine codified in Task #69 was only applied to new paths, not retrofitted.</div>
+    </div>
+
+    <div class="pattern">
+      <div class="num">04</div>
+      <div class="title">No request-perimeter defense in depth</div>
+      <div class="body">Zero rate limiting on auth/ingest, zero CSRF tokens on cookie mutations, zero signature verification on Strava webhook POSTs, no admin gate on <code>/api/admin/*</code>. <code>middleware.ts</code> does not exist. Each layer alone is a P1; together they form the P0 attack surface that pairs with the three auth-bypass bugs.</div>
+    </div>
+
+    <div class="pattern">
+      <div class="num">05</div>
+      <div class="title">Doctrine drift between sibling loaders</div>
+      <div class="body">Three pairs diverge: <code>loadStableBaseline</code> exists verbatim in state-loader and glance-state; activeNiggle reads <code>check_ins</code> in one loader and the <code>niggles</code> table in the other; canonical.ts and pullSync.ts duplicate NEVER_COPY + shoe attribution + tier logic. A future schema change to any one source poisons only half the surfaces.</div>
+    </div>
+
+    <div class="pattern">
+      <div class="num">06</div>
+      <div class="title"><code>?? 0</code> and truthy-checks fabricate signal from absence</div>
+      <div class="body">Same shape as the multi-tenant audit&rsquo;s seed-adapter finding, now found in five more places: <code>executionBufferSec = 30</code> default, <code>rhrRow?.a</code> truthy-checks, <code>findCanonicalRow</code>&rsquo;s COALESCE-distance-to-zero, dynamic sleep target divorced from score, and the lone-HRV story asserting &ldquo;sleep is holding&rdquo; when there&rsquo;s no sleep data. Each one prints a confident number off no real input.</div>
+    </div>
+
+    <div class="pattern">
+      <div class="num">07</div>
+      <div class="title">Dead code and abandoned migrations linger after gut-jobs</div>
+      <div class="body"><code>deriveSplitsFromPhases</code>, <code>loadYesterdaySnapshot</code>, <code>detectRhrSpike</code>, <code>detectSleepCrater</code>, <code>refresh-briefings</code> workflow, the <code>direction</code> ternary in computeMovers, the <code>void goalPacePerMi</code> line, and a manual-route migration that never landed (<code>health_samples</code> unique index). The 2026-05-28 LLM rip and the 2026-06-03 reactive-coach gut left tombstones the audit caught on second pass.</div>
+    </div>
+
+  </div>
+
+  <h2>P0 ship blockers</h2>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · auth bypass</div>
+    <div class="title">Apple Sign-In JWT signature is never verified</div>
+    <div class="where">app/api/auth/apple/route.ts:67-95</div>
+    <div class="summary"><code>verifyAppleToken</code> decodes the JWT and only checks <code>iss</code>, <code>aud</code>, <code>exp</code>. JWS signature verification is explicitly skipped in code with a comment admitting it. An attacker crafts a JWT with the right claims and any <code>sub</code>/<code>email</code> and signs in as any user; the email-bootstrap branch links forged identities to existing rows including David&rsquo;s. <strong>Fix:</strong> install <code>jose</code>, fetch JWKS, <code>jwtVerify</code> with kid match. Until then gate the route on non-prod.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · account takeover</div>
+    <div class="title">Strava OAuth callback trusts <code>state</code> as user_uuid in cleartext</div>
+    <div class="where">app/api/auth/strava/callback/route.ts:80-184</div>
+    <div class="summary">The callback decodes <code>state</code> straight into <code>userId</code> and writes the attacker&rsquo;s Strava tokens into the victim&rsquo;s <code>connector_tokens</code> row. No session check, no signature on state. Anyone who reads a victim&rsquo;s user_uuid (URLs, logs, the connect-action response) can hijack their Strava link. <strong>Fix:</strong> require an authenticated session at callback and bind state to it via signed JWT or a server-side oauth_state table.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · forged ingest</div>
+    <div class="title">Strava webhook POST has no signature verification</div>
+    <div class="where">app/api/strava/webhook/route.ts:65-153</div>
+    <div class="summary"><code>subscription_id</code> is read into a variable but never validated, no IP allowlist, no shared-secret path. An attacker POSTs <code>{ aspect_type: 'create', object_id, owner_id: victimAthleteId }</code> and forces an authenticated activity fetch into the victim&rsquo;s runs. <code>aspect_type: 'delete'</code> hard-DELETEs by id. <strong>Fix:</strong> validate subscription_id against the stored row, or mint a 64-byte secret path component for the webhook URL.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · cross-user write</div>
+    <div class="title">Cron INSERT into runs uses <code>ON CONFLICT (id) DO NOTHING</code> without user_uuid</div>
+    <div class="where">lib/strava/pullSync.ts:447 (+ webhook /api/strava/webhook)</div>
+    <div class="summary"><code>runs.id</code> is the Strava activity id, primary-keyed alone. If user A already wrote that id (from any ingest path), user B&rsquo;s cron insert silently no-ops &mdash; runner sees zero error, activity never lands. <code>findCanonicalRow</code> upstream is user-scoped, so the matcher said &ldquo;new for this user&rdquo; but insert collided with someone else&rsquo;s row. <strong>Fix:</strong> add a unique index on <code>(user_uuid, data->>'id')</code>, surface foreign-owner collisions as hard errors.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · cross-user write</div>
+    <div class="title">Strava webhook DELETE FROM runs missing user_uuid filter</div>
+    <div class="where">app/api/strava/webhook/route.ts:391-395</div>
+    <div class="summary">The pre-INSERT <code>DELETE FROM runs WHERE id = $1::bigint</code> on the upsert path scopes only by id, not user_uuid. If two Faff accounts ever linked to the same Strava athlete (or a future ingest path reuses Strava&rsquo;s id space), a webhook delivered for one runner&rsquo;s activity-update silently deletes another runner&rsquo;s row. <strong>Fix:</strong> add <code>AND user_uuid = $2</code> to the line-392 DELETE.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · cross-user leak</div>
+    <div class="title">race-header race meta lookup is not user-scoped</div>
+    <div class="where">lib/coach/race-header.ts:341</div>
+    <div class="summary">When resolving the active plan&rsquo;s race row for goalLabel + distanceMi + dateLabel, the query selects by <code>slug</code> alone. races.slug is per-user, not globally unique &mdash; two users with the same slug get the wrong row. Bleeds goal and distance into another runner&rsquo;s RaceHeader. <strong>Fix:</strong> add <code>AND user_uuid = $2</code>; mirror the snapshot-projections cron path that has the same bug at route.ts:175.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · cross-user cache leak</div>
+    <div class="title">race-lookup Step-1 trusts planRaceId without user_uuid filter</div>
+    <div class="where">web-v2/lib/coach/race-lookup.ts:59-62</div>
+    <div class="summary"><code>loadNextARace</code> queries <code>SELECT slug, meta FROM races WHERE slug = $1</code> with no user_uuid clause. The 60s memoized cache then promotes whatever row was returned under a per-user key. The Step-2 fallback already passes userId &mdash; only Step-1 is broken. Same global-slug assumption as race-header above. <strong>Fix:</strong> add <code>AND user_uuid = $2</code>.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · cross-user write</div>
+    <div class="title">Onboarding race slug collision allows cross-user race overwrite</div>
+    <div class="where">app/api/onboarding/complete/route.ts:395-411</div>
+    <div class="summary">Race slug is <code>My ${distance}-${date}</code> with no user component, upserted on global slug uniqueness. Two users picking &ldquo;5K&rdquo; on 2026-08-15 collide: second runner overwrites the first&rsquo;s meta, and <code>generatePlan</code> then operates on the wrong user&rsquo;s race. <strong>Fix:</strong> namespace the slug with userId, or make conflict target composite.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · cross-user write</div>
+    <div class="title">Manual-route ON CONFLICT relies on a unique index that no migration creates</div>
+    <div class="where">app/api/health/manual/route.ts:87</div>
+    <div class="summary">UPSERT declares <code>ON CONFLICT (user_id, sample_type, sample_date)</code> but no migration creates that unique index. If missing, every manual entry 500s; if it exists keyed on user_uuid instead of user_id, it silently writes duplicates and never matches. <strong>Fix:</strong> ship the migration, verify it on prod before trusting this route.</div>
+  </div>
+
+  <div class="p0-callout">
+    <div class="tag">P0 · TZ drift on cron</div>
+    <div class="title">Notifications cron uses server clock for all per-user firing decisions</div>
+    <div class="where">web-v2/app/api/cron/notifications/route.ts:193</div>
+    <div class="summary"><code>listActiveUsers</code> hardcodes <code>tz_offset_min: 0</code> and <code>nowInUserTz</code> derives from UTC. Race-day morning, race-eve 21:00, weekly check-in, niggle/sick checks all fire at the wrong wall-clock. Compounds with three <code>today.toISOString().slice(0,10)</code> sites that tip the day key over at the wrong moment &mdash; race pushes silently never trigger after 16:00 PT. <strong>Fix:</strong> join profile.timezone, compute userNow via <code>Intl.DateTimeFormat</code>.</div>
+  </div>
+
+  <h2>Findings by area</h2>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Security perimeter</span>
+      <span class="count">9 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Apple Sign-In JWT signature is NOT verified &mdash; full impersonation</span></div>
+      <div class="where">app/api/auth/apple/route.ts:67-95</div>
+      <div class="issue"><code>verifyAppleToken</code> decodes the JWT and only checks <code>iss</code>, <code>aud</code>, <code>exp</code> &mdash; JWS verification explicitly skipped (the comment block admits it). Email-bootstrap branch links the forged identity to ANY existing users row with that email, including David&rsquo;s.</div>
+      <div class="fix"><strong>Fix</strong>Install <code>jose</code>, fetch JWKS at <code>APPLE_JWKS_URL</code>, pick key by <code>header.kid</code>, <code>jwtVerify(token, key, { issuer, audience })</code>. Until then gate route on <code>NODE_ENV !== 'production'</code>.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Strava OAuth callback trusts <code>state</code> as user_uuid in cleartext</span></div>
+      <div class="where">app/api/auth/strava/callback/route.ts:80-184 + app/api/auth/strava/route.ts:109</div>
+      <div class="issue">No CSRF token, no signature, no nonce. An attacker who knows a target user_uuid completes Strava OAuth against their own account and the victim&rsquo;s connector_tokens row receives the attacker&rsquo;s tokens. Future syncs upload victim&rsquo;s runs to attacker&rsquo;s Strava, webhook deliveries for attacker&rsquo;s activities land in victim&rsquo;s runs.</div>
+      <div class="fix"><strong>Fix</strong>Sign state HMAC over <code>{userUuid, nonce, expiry}</code> with a server secret, OR write state into a server-side oauth_state table keyed by random opaque value. Verify in callback before persisting; require an authenticated session match.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Strava webhook POST has no signature verification</span></div>
+      <div class="where">app/api/strava/webhook/route.ts:65-153</div>
+      <div class="issue">POST accepts any JSON whose <code>owner_id</code> maps to a registered athlete. <code>subscription_id</code> is read but never validated. Forged <code>aspect_type: 'create'</code> triggers an authenticated fetch; forged <code>aspect_type: 'delete'</code> hard-deletes runs by id.</div>
+      <div class="fix"><strong>Fix</strong>Validate <code>subscription_id</code> matches <code>strava_webhook_subscriptions</code> row, or mint a 64-byte secret path component (<code>/api/strava/webhook/&lt;secret&gt;</code>) on subscribe and reject any POST without it.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">No rate limiting on login, OAuth, or ingest surfaces</span></div>
+      <div class="where">app/api/auth/email, app/api/auth/apple, app/api/auth/strava, app/api/ingest/workout, app/api/ingest/health</div>
+      <div class="issue">Zero hits for <code>rateLimit</code> in the repo. No <code>middleware.ts</code>. Email login&rsquo;s only defense is the bcrypt cost factor (12) before pool exhaustion. Ingest endpoints can be hosed by a logged-in attacker to bloat runs/health_samples.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>middleware.ts</code> keyed on (route, IP) using Upstash/Redis or in-memory LRU. 10/min/IP on auth, 30/min/IP on ingest.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">No CSRF protection on cookie-auth mutations</span></div>
+      <div class="where">lib/auth/session.ts:232 + all cookie-authed POST/PATCH/DELETE routes</div>
+      <div class="issue"><code>extractToken</code> accepts <code>faff_session</code> cookie or Bearer. SameSite=Lax allows top-level form-style POSTs from malicious sites. Zero CSRF tokens, zero Origin checks. Settings, plan, race, runs, profile all exposed.</div>
+      <div class="fix"><strong>Fix</strong>Reject cookie-auth requests where <code>Origin</code> != <code>https://www.faff.run</code>, or issue a CSRF token on session creation and require <code>X-Csrf-Token</code>. Bearer iPhone callers exempt.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">/api/admin/* requires only any-authenticated-user, not admin</span></div>
+      <div class="where">app/api/admin/strava-webhook/route.ts:35 + four sibling admin routes</div>
+      <div class="issue"><code>requireUserId</code> only verifies signed-in. Any user can subscribe/unsubscribe the Strava webhook for the entire app, backfill workout specs, re-enrich weather, audit coach intents. The header comment acknowledges this and says &ldquo;when multi-user lands, replace.&rdquo; Multi-user has landed; the migration was never done.</div>
+      <div class="fix"><strong>Fix</strong>Centralize <code>requireAdmin(req)</code> that checks <code>users.is_admin</code> after <code>requireUserId</code>; apply to every /api/admin/* route.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Strava webhook DELETE drops user_uuid filter on the upsert pre-DELETE</span></div>
+      <div class="where">app/api/strava/webhook/route.ts:222-228, 391-395</div>
+      <div class="issue">The explicit-delete branch at 222 IS user-scoped (good). The pre-INSERT DELETE at 391 is not. Combined with webhook forgery (no signature), attacker can force-delete victim runs by id alone.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>AND user_uuid = $2</code> to line-392 DELETE; gate the route on signature verification.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Session cookie not Secure in non-prod</span></div>
+      <div class="where">app/api/auth/apple/route.ts:218, app/api/auth/email/route.ts:107</div>
+      <div class="issue"><code>secure: process.env.NODE_ENV === 'production'</code>. If Railway runs with non-prod NODE_ENV for any reason, the cookie ships without Secure. Session tokens are sha256-hashed (good) and lookups honor expires_at + revoked_at (good).</div>
+      <div class="fix"><strong>Fix</strong>Always-Secure (prod is the only env minting sessions), or move to <code>sameSite: 'strict'</code> with CSRF tokens (#5) closing the cross-origin gap.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">/api/usage exposes global LLM spend without auth</span></div>
+      <div class="where">app/api/usage/route.ts:13-21</div>
+      <div class="issue">GET returns per-day token/cost rollup across the whole <code>coach_usage</code> table &mdash; no auth, no scoping. Anyone hitting the URL sees total system spend.</div>
+      <div class="fix"><strong>Fix</strong>Gate behind <code>requireAdmin</code> or remove the route &mdash; comment block says it&rsquo;s historical-only.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Email login distinguishes deactivated accounts from non-existent ones</span></div>
+      <div class="where">app/api/auth/email/route.ts:57-66</div>
+      <div class="issue">Both "no such email" and "password mismatch" return <code>invalid credentials</code> (good), but suspended accounts return <code>account not active</code> &mdash; username-enumeration leak. Pairs with no rate limit (#4) for wider sweep.</div>
+      <div class="fix"><strong>Fix</strong>Collapse both branches to <code>invalid credentials / 401</code>. Constant-time the bcrypt-compare path (no-password-hash row currently short-circuits).</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Strava sync + webhook</span>
+      <span class="count">15 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Cron INSERT into runs uses ON CONFLICT (id) DO NOTHING without user_uuid in conflict target</span></div>
+      <div class="where">lib/strava/pullSync.ts:447</div>
+      <div class="issue">runs.id alone is the PK. If user A already wrote that id, user B&rsquo;s cron insert silently no-ops. <code>findCanonicalRow</code> upstream is user-scoped but didn&rsquo;t match &mdash; meaning matcher said &ldquo;new for this user,&rdquo; insert collided with someone else&rsquo;s row. Same risk on the webhook insert path.</div>
+      <div class="fix"><strong>Fix</strong>Add unique index on <code>(user_uuid, data->>'id')</code> and conflict on that; surface a hard error in <code>out.errors</code> when the no-op was a foreign user owning the id.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">userIdForAthlete returns first connector_tokens row by connected_at DESC</span></div>
+      <div class="where">lib/strava/webhook.ts:185</div>
+      <div class="issue">Strava athlete_id maps 1:N to Faff users (no UNIQUE constraint). Two Faff accounts connecting the same Strava athlete route events to whichever connected last; the other account silently loses all webhook deliveries.</div>
+      <div class="fix"><strong>Fix</strong>Enforce partial unique <code>(provider, provider_user_id) WHERE disconnected_at IS NULL</code> and fail loudly on collision, OR fan-out events to every Faff user with that athlete_id.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Strava OAuth disconnect handler does NOT touch connector_tokens</span></div>
+      <div class="where">app/api/auth/strava/route.ts:237-246</div>
+      <div class="issue">Disconnect revokes the token Strava-side and UPDATEs only <code>profile.strava_*</code>. <code>connector_tokens</code> &mdash; the documented source of truth &mdash; is never touched. After disconnect: <code>getStravaToken</code> still returns the revoked token, connection status reads &lsquo;connected&rsquo;, next cron pass picks them up again.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>UPDATE connector_tokens SET access_token = NULL, refresh_token = NULL, disconnected_at = NOW() WHERE user_uuid = $1 AND provider = 'strava'</code> in the same transaction.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">pullSyncAllUsers iterates users sequentially with 300s budget per call</span></div>
+      <div class="where">lib/strava/pullSync.ts:502-516</div>
+      <div class="issue">A single slow user with paginated activities (up to 20 pages × 15s = 300s alone) blocks every later user. Errors don&rsquo;t kick the user out &mdash; loop keeps going but time budget is gone. No per-user upper time bound.</div>
+      <div class="fix"><strong>Fix</strong>Add per-user AbortController with 60s total budget; parallelize via <code>Promise.allSettled</code> in small batches or schedule per-user jobs separately.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">connector_tokens UPSERT clobbers expires_at when Strava returns null</span></div>
+      <div class="where">app/api/auth/strava/callback/route.ts:165</div>
+      <div class="issue">Stale future expires_at overwritten with NULL triggers per-request token refresh churn because <code>getStravaToken</code> reads expires_at as 0 when null.</div>
+      <div class="fix"><strong>Fix</strong>Use <code>COALESCE(EXCLUDED.expires_at, connector_tokens.expires_at)</code> in the UPSERT, or treat null Strava expires_at as a hard error during exchange.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">pullSyncOneUser swallows afterRunWrite errors with void await pattern</span></div>
+      <div class="where">lib/strava/pullSync.ts:461-462</div>
+      <div class="issue"><code>void (await import('@/lib/runs/post-write-hooks')).afterRunWrite(...)</code> &mdash; awaits the import then fires-and-forgets the hook. If hook throws synchronously, uncaught rejection in the Node process; calibration / elev enrichment errors never land in <code>out.errors</code>.</div>
+      <div class="fix"><strong>Fix</strong>Await the call and surface results into <code>out</code>, or wrap in <code>.catch(e => console.error(...))</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">findCanonicalRow distance COALESCEs missing distance to 0</span></div>
+      <div class="where">lib/strava/pullSync.ts:244-248</div>
+      <div class="issue">A canonical row with NULL distance COALESCEs to 0, then any short Strava activity matches on distance + ±10min time window. The match path then enhances that bogus row with the wrong Strava data.</div>
+      <div class="fix"><strong>Fix</strong>Require <code>(data->>'distanceMi') IS NOT NULL</code> in the match query so missing-distance rows aren&rsquo;t candidates.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">publicOrigin trusts x-forwarded-host without validation</span></div>
+      <div class="where">app/api/auth/strava/route.ts:65, callback/route.ts:33</div>
+      <div class="issue">When <code>NEXT_PUBLIC_APP_ORIGIN</code> isn&rsquo;t set, <code>publicOrigin</code> uses <code>x-forwarded-host</code> verbatim to build Strava redirect_uri. Host-header injection becomes a token-leak vector if the Strava app uses a wildcard registered domain.</div>
+      <div class="fix"><strong>Fix</strong>Allowlist expected hosts (<code>www.faff.run</code>, <code>faff.run</code>, preview hostnames). Require the env-var override in production.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Cron auth check uses plain !== on CRON_SECRET</span></div>
+      <div class="where">app/api/cron/strava-sync/route.ts:29</div>
+      <div class="issue">Standard string equality, not <code>crypto.timingSafeEqual</code>. Timing leak through V8 string equality is vanishingly small but breaks the codebase convention.</div>
+      <div class="fix"><strong>Fix</strong>Use <code>crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))</code> after length check.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">getStravaToken race: two requests near expiry trigger parallel refreshes, second writes revoked token</span></div>
+      <div class="where">lib/strava/auth.ts:36-71</div>
+      <div class="issue">No locking around read-decide-refresh. Strava rotates refresh_token on each refresh: first wins, second gets <code>invalid_grant</code> AND the stale write can clobber fresh tokens. From then on every refresh fails until re-OAuth.</div>
+      <div class="fix"><strong>Fix</strong>Use <code>pg_advisory_xact_lock(hash_text('strava-token:' || $userId))</code> inside a transaction, or <code>SELECT...FOR UPDATE</code> on connector_tokens to serialize per-user.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Re-OAuth keeps pre-disconnect last_sync_at, making the connection card lie</span></div>
+      <div class="where">app/api/auth/strava/callback/route.ts:152-178</div>
+      <div class="issue">UPSERT updates connected_at, scope, tokens, clears last_sync_error / last_sync_status &mdash; but does NOT touch <code>last_sync_at</code>. After disconnect + reconnect, the new connection inherits the old &ldquo;last synced&rdquo; date, implying syncs that didn&rsquo;t happen.</div>
+      <div class="fix"><strong>Fix</strong>Clear <code>last_sync_at = NULL</code> in the OAuth UPSERT.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">post_run_rpe insert passes different identifier spaces on match vs insert</span></div>
+      <div class="where">lib/strava/pullSync.ts:411-419 (match) vs 467-472 (insert)</div>
+      <div class="issue">Match branch passes <code>match.id</code> (runs.id::text); insert branch passes <code>String(act.id)</code> (Strava activity id). Equal today because pullSync uses Strava id as runs PK, but other ingest paths generate runs.id differently &mdash; a future change fragments RPE lookups.</div>
+      <div class="fix"><strong>Fix</strong>Pick one identifier (runs.id::text) and document it. Update both branches consistently.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">pullSyncAllUsers last_sync_at update silently catches DB write failures</span></div>
+      <div class="where">lib/strava/pullSync.ts:507-515</div>
+      <div class="issue"><code>.catch(() => {})</code> swallows lock timeouts and connection drops. Connection-status reader thinks user hasn&rsquo;t synced, banners stay up.</div>
+      <div class="fix"><strong>Fix</strong>Replace with <code>.catch((e) => console.error('[strava-sync] last_sync update failed', userUuid, e?.message))</code>.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">pullSync.ts header comment claims canonical.ts is companion but pullSync inlines its own logic</span></div>
+      <div class="where">lib/strava/pullSync.ts:14</div>
+      <div class="issue">Header says canonical.ts is the enhancement engine but pullSync defines its own NEVER_COPY / SPECIAL_ROUTE / tierFor. Drift risk between the two NEVER_COPY sets.</div>
+      <div class="fix"><strong>Fix</strong>Delegate enhancement to canonical.ts (importing shared NEVER_COPY/tierFor), or update the comment to be honest.</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">HealthKit ingest</span>
+      <span class="count">12 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Manual route ON CONFLICT relies on unique index no migration creates</span></div>
+      <div class="where">app/api/health/manual/route.ts:87</div>
+      <div class="issue">Upsert says <code>ON CONFLICT (user_id, sample_type, sample_date) DO UPDATE</code>. No migration creates that unique index (126 is non-unique on user_uuid). If absent: 500. If keyed on user_uuid instead of user_id: silent duplicates.</div>
+      <div class="fix"><strong>Fix</strong>Ship <code>CREATE UNIQUE INDEX IF NOT EXISTS health_samples_user_type_date_uq ON health_samples (user_id, sample_type, sample_date);</code>. Verify on prod before trusting this route.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">loadHealthState computes today via -7h UTC slice, not runner TZ</span></div>
+      <div class="where">lib/coach/health-state.ts:187</div>
+      <div class="issue"><code>new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10)</code> hardcodes PT, ignores DST and non-PT runners. The TZ-04 refactor was marked complete but health-state.ts was missed.</div>
+      <div class="fix"><strong>Fix</strong>Replace with <code>const today = await runnerToday(userId);</code>.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">bustBriefingCacheDebounced is a literal no-op</span></div>
+      <div class="where">app/api/ingest/health/route.ts:134, lib/coach/cache.ts:80</div>
+      <div class="issue">Ingest&rsquo;s &ldquo;fresh briefing on signal sample&rdquo; promise calls a function that does nothing &mdash; doesn&rsquo;t even bust the race-lookup memo. New sleep/HRV/RHR sample → no cache invalidation. Manual route on the same module DOES bust via <code>bustBriefingCacheForEvent</code>.</div>
+      <div class="fix"><strong>Fix</strong>Have it call <code>bustBriefingCacheForEvent(userId, 'hk_signal_sample')</code> like the manual route does. Update the route.ts comment to reflect reality.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Ingest dedup ignores HK UUID, dedups on recorded_at allowing duplicate readings</span></div>
+      <div class="where">app/api/ingest/health/route.ts:98</div>
+      <div class="issue">Dedup key is <code>(user_id, sample_type, sample_date, recorded_at)</code>. Resyncs that build the same sample with slightly different recorded_at insert a second row. Daily AVG / SUM queries double-count.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>hk_uuid</code> column, dedup on <code>(user_id, hk_uuid)</code> when present.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Manual route max_hr ratchet uses GREATEST without a window</span></div>
+      <div class="where">app/api/health/manual/route.ts:101</div>
+      <div class="issue">A mistyped 230 becomes permanent ceiling forever. <code>loadEffectiveMaxHr</code>&rsquo;s manual_stored branch returns the bad number any time observed-12mo is absent. Same shape on resting_hr LEAST clause.</div>
+      <div class="fix"><strong>Fix</strong>Skip the ratchet entirely (rolling samples are canonical), or only ratchet when new value is within ±10bpm of existing.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">captureTimezoneFromDevice fires per-sample even when timezone already set</span></div>
+      <div class="where">app/api/ingest/health/route.ts:75-82</div>
+      <div class="issue">Every POST does dynamic import + UPDATE that no-ops on subsequent calls. Per-sync DB write attempt × every user, forever.</div>
+      <div class="fix"><strong>Fix</strong>Hoist import to top of file; short-circuit via runnerTimezone process cache when value is non-UTC.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">HK ingest accepts any sample, skews baselines</span></div>
+      <div class="where">app/api/ingest/health/route.ts:88-110</div>
+      <div class="issue">Only <code>isFinite</code> check. 0-hour sleep, 999bpm max_hr, 1000-kcal active_energy all land and contaminate AVG/MAX queries until purged. Manual route has <code>SAMPLE_RANGES</code> validation; HK ingest doesn&rsquo;t.</div>
+      <div class="fix"><strong>Fix</strong>Promote SAMPLE_RANGES to a shared module; apply on HK ingest too.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Series route silently coerces missing kind to 'hrv'</span></div>
+      <div class="where">app/api/health/series/route.ts:24</div>
+      <div class="issue">Client forgot the param → 30 days of HRV instead of 400. Contract honesty issue.</div>
+      <div class="fix"><strong>Fix</strong>Return 400 when kind missing.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Health series route has no minimum-days floor</span></div>
+      <div class="where">app/api/health/series/route.ts:25</div>
+      <div class="issue"><code>?days=NaN</code> throws Postgres error 500.</div>
+      <div class="fix"><strong>Fix</strong><code>Math.max(1, Math.min(Number(...) || 30, 365))</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">recordedAt fallback fabricates timestamps and enables duplicate-row injection</span></div>
+      <div class="where">app/api/ingest/health/route.ts:91-92</div>
+      <div class="issue">When recorded_at missing, fallback to <code>new Date().toISOString()</code>. Simultaneous retries get different timestamps and both insert. Converts a benign missing field into a duplicate-row vector.</div>
+      <div class="fix"><strong>Fix</strong>Skip the sample with <code>skipped++; continue;</code> instead of fabricating.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">ALLOWED_TYPES on ingest and ALLOWED_KINDS on series have drifted</span></div>
+      <div class="where">app/api/ingest/health/route.ts:34, app/api/health/series/route.ts:13</div>
+      <div class="issue">Ingest 25 types; series 9. iPhone ships sleep-stage minutes nightly but <code>?kind=sleep_deep_minutes</code> returns 400.</div>
+      <div class="fix"><strong>Fix</strong>Export ALLOWED_TYPES from ingest as a shared module; series defaults to any ingestable type.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">samples typed as any[] defeats compile-time guarantees</span></div>
+      <div class="where">app/api/ingest/health/route.ts:69</div>
+      <div class="issue">Adding <code>hk_uuid</code> won&rsquo;t be type-checked at call sites. Violates the audit&rsquo;s "any escape hatches" doctrine.</div>
+      <div class="fix"><strong>Fix</strong>Define <code>HealthSamplePayload</code> interface, type the array.</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Watch workout complete</span>
+      <span class="count">9 findings</span>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">autoMerge fed wrong date when body.startedAt is the only date source</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:207</div>
+      <div class="issue">autoMerge call recomputes date from <code>body.date ?? body.dateLocal</code> &mdash; neither field exists in the payload contract. Falls through to UTC <code>new Date()</code> and runs against the wrong day in PT after 5pm. Dedup pass runs over empty date; actual day&rsquo;s duplicates survive.</div>
+      <div class="fix"><strong>Fix</strong>Reuse the <code>date</code> constant computed at line 83 (which considers <code>body.startedAt</code> + <code>todayPT</code>).</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">todayPT() hardcodes UTC-7 instead of runnerToday</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:242-244</div>
+      <div class="issue">Bakes PDT into server clock; DST + non-PT runners get wrong date. Violates runner-tz doctrine.</div>
+      <div class="fix"><strong>Fix</strong>Replace with <code>await runnerToday(userId)</code>.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Silent .catch(() => {}) on coach_intents writes</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:69-78</div>
+      <div class="issue">Both DELETE + INSERT silently fail. Endpoint returns ok:true; runner thinks the run was recorded. Downstream coach reads <code>coach_intents.value.phases</code> for tempo breakdowns; silent failure produces a row in runs but no phase data.</div>
+      <div class="fix"><strong>Fix</strong>Replace with <code>.catch((e) => console.error(...))</code>; surface a non-fatal flag on the response.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Watch row drops splits intentionally but autoMerge race can lose them forever</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:109-160 + lib/runs/merge.ts:228-237</div>
+      <div class="issue">2026-06-04 comment drops splits expecting HK ingest to absorb in. But watch row is top-tier; autoMerge fires here; if HK arrives milliseconds later (single-row cluster → no merge fires), canonical row stays splits-less forever.</div>
+      <div class="fix"><strong>Fix</strong>Add deferred autoMerge re-run on HK ingest path, or write watch&rsquo;s own per-phase data as a fallback splits field when no HK row exists.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">deriveSplitsFromPhases is dead code &mdash; 60 lines, no callers</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:266-328</div>
+      <div class="issue">Removed from data object but function body retained. Future devs will see a tempting helper.</div>
+      <div class="fix"><strong>Fix</strong>Delete entirely or move to <code>lib/runs/</code> with documented rationale.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Two DELETE+INSERT pairs not wrapped in a transaction</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:69-78, 184-193</div>
+      <div class="issue">Pod death between DELETE and INSERT vanishes the row. coach_intents block has no transaction wrapper; with <code>.catch(() => {})</code> the runner&rsquo;s existing recap is gone.</div>
+      <div class="fix"><strong>Fix</strong>Wrap pairs in <code>BEGIN/COMMIT</code> or rewrite as <code>INSERT ... ON CONFLICT DO UPDATE</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">body: any and data: any defeat compile-time guarantees on a payload with a markdown spec</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:37, 109</div>
+      <div class="issue">A typo in <code>body.kcaL</code> compiles cleanly and produces silent data loss.</div>
+      <div class="fix"><strong>Fix</strong>Define <code>WatchCompletionPayload</code> in <code>lib/watch/contract.ts</code> mirroring the markdown spec; validate with zod on entry.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">void (await import(...)).afterRunWrite(...) blocks the request</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:196-197</div>
+      <div class="issue">Comment says "Best-effort" but await blocks 100-300ms.</div>
+      <div class="fix"><strong>Fix</strong>Drop await, void the promise itself.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">Stable-id collision space is 2^48 with no detection</span></div>
+      <div class="where">app/api/watch/workouts/complete/route.ts:248-251</div>
+      <div class="issue">48-bit namespace from 12 hex chars; birthday-bound 2^24 = 17M. Client-controlled workoutId means cross-user collisions cause unique-constraint violations the runner sees as opaque errors.</div>
+      <div class="fix"><strong>Fix</strong>Hash <code>userId + workoutId</code> so collisions stay within a user&rsquo;s history.</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Coach state loader</span>
+      <span class="count">9 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">race-lookup Step-1 query trusts planRaceId without user_uuid filter</span></div>
+      <div class="where">web-v2/lib/coach/race-lookup.ts:59-62</div>
+      <div class="issue"><code>WHERE slug = $1</code> with no user_uuid. 60s memoized cache then promotes the row under a per-user key. Couples per-user safety to a global-uniqueness convention not documented in canonical doctrine.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>AND user_uuid = $2</code> matching the Step-2 fallback shape.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">loadStableBaseline duplicated verbatim across state-loader and glance-state</span></div>
+      <div class="where">state-loader.ts:231-251 + glance-state.ts:335-353</div>
+      <div class="issue">Comment says "All surfaces on the Health page now share ONE definition" but neither loader imports the canonical version. Next tuning to window math edits only one copy; split-brain reintroduces.</div>
+      <div class="fix"><strong>Fix</strong>Extract to a single exported helper in <code>lib/coach/health-state.ts</code>; have both loaders import it.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">hrRecoveryCurrent uses most-recent value, not today&rsquo;s daily average</span></div>
+      <div class="where">state-loader.ts:273-283 + glance-state.ts:375-385</div>
+      <div class="issue">23-day-old sample becomes "current" if nothing newer exists. RHR/HRV in same file use daily-grouped pattern. The 5% readiness weight runs on a 3-week-stale value with no honesty flag.</div>
+      <div class="fix"><strong>Fix</strong>Gate on staleness floor (≤3 day) and null otherwise, OR aggregate by sample_date and pick today&rsquo;s avg.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Sleep avg/deficit can be computed against arbitrarily old data</span></div>
+      <div class="where">state-loader.ts:197-208 + glance-state.ts:313-320</div>
+      <div class="issue">No lower bound. 7 readings from 6 months ago become "current" 7-night view. <code>watch_list</code> prereq trusts <code>sleep7Avg != null</code> as no-data signal &mdash; currently wrong.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>AND sample_date >= $2::date - interval '14 days'</code>.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">todayRunLong query does not guard pw.distance_mi > 0</span></div>
+      <div class="where">state-loader.ts:398-415</div>
+      <div class="issue">If long-run row has <code>distance_mi = 0</code> (after mark_dirty / downgrade), threshold becomes 0; ANY run flips <code>todayRunLong = true</code>. Recovery-brief picks wrong sleep-target band; iPhone post-run UI swaps to long-run mode after a 1.1mi shakeout.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>AND pw.distance_mi > 0</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">recentRuns dedupe key collapses double-runs on the same day</span></div>
+      <div class="where">state-loader.ts:84</div>
+      <div class="issue">Two 4.0mi sessions collapse to one. Inverse of canonicalMileageByDay&rsquo;s hour-aware clustering; the two views of "what runs happened" disagree.</div>
+      <div class="fix"><strong>Fix</strong>Use canonicalMileageByDay output directly, or key on <code>(date, startLocal-hour, mi)</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">In-process race-lookup cache can serve a stale day across midnight</span></div>
+      <div class="where">race-lookup.ts:35-53, 105-111</div>
+      <div class="issue"><code>days_to_race</code> computed at cache-write time, baked in. Post-midnight + 60s window shows yesterday&rsquo;s narration. LRU eviction is O(n log n) at n=256.</div>
+      <div class="fix"><strong>Fix</strong>Compute <code>days_to_race</code> on READ; replace eviction with insertion-order Map.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">state-loader and glance-state diverge on "what is an active niggle"</span></div>
+      <div class="where">state-loader.ts:298-315 vs glance-state.ts:452-471</div>
+      <div class="issue">state-loader reads check_ins LLM-extracted; glance-state reads the niggles table. Two surfaces, two sources; types disagree on severity (string vs number); glance-state passes null to computeReadiness, silently dropping the pillar.</div>
+      <div class="fix"><strong>Fix</strong>Pick one source (the niggles table is structured); have state-loader read from it too.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">loadAdaptationInfoByPlanIds takes no userId &mdash; relies on caller to pass owned plan ids</span></div>
+      <div class="where">lib/coach/adaptation-info.ts:70-97</div>
+      <div class="issue">Today safe because glance-state passes <code>[plan.id]</code> from <code>loadActivePlan(userId)</code>. But a future caller passing arbitrary plan_id from a URL param leaks adaptation history.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>userUuid</code> param + JOIN training_plans constraint, OR rename to <code>_internal_</code> with ownership-asserting wrapper.</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Readiness brief composition</span>
+      <span class="count">14 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Server-clock fallback for "today" leaks past TZ doctrine</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:300</div>
+      <div class="issue"><code>todayISO ?? new Date(Date.now() - 7 * 3600000).toISOString().slice(0,10)</code>. EST runner at 22:00 sees yesterday&rsquo;s brief; Sydney at noon sees yesterday. <code>loadReadinessHistory</code> DOES use runnerToday &mdash; the dates disagree.</div>
+      <div class="fix"><strong>Fix</strong><code>const date = todayISO ?? await runnerToday(userId);</code></div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Score trend window slides off UTC date</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:820, 793</div>
+      <div class="issue"><code>Date.parse(todayISO + 'T00:00:00Z') - 86400000</code> &mdash; parsing runner-cal date as UTC midnight gives wrong yesterday at DST boundaries. 14-day window's first day shifts off-by-one.</div>
+      <div class="fix"><strong>Fix</strong>Use <code>Date.UTC</code>-based arithmetic or a calendar-day function that operates on the YYYY-MM-DD string and is DST-immune.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">subjective_checkins lookup uses uncoalesced user_uuid; throws are silently swallowed</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:1253</div>
+      <div class="issue">All health_samples reads use <code>COALESCE(user_uuid, user_id)</code>; this one queries only <code>user_uuid = $1::uuid</code>. Legacy user_id-only rows → Saw override never fires. Non-UUID userId throws <code>invalid input syntax</code>; the <code>.catch(() => ({ rows: [] }))</code> swallows it.</div>
+      <div class="fix"><strong>Fix</strong>Confirm schema and either remove the silent catch with strict input validation, or use COALESCE consistently. Audit lines 1506 + 1640 for the same shape.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Wrist temp "today" window is actually 3 days but copy claims 2</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:1582-1588</div>
+      <div class="issue"><code>sample_date >= ($2::date - interval '2 days')</code> with no upper bound. Today + 2 prior = 3-day average labeled "today". Synthesis copy "last day or two" assumes 2.</div>
+      <div class="fix"><strong>Fix</strong>Tighten to <code>sample_date = $2::date</code>, or update copy. Add <code>sample_date <= $2::date</code> regardless to block future-clock-drift.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">breakdownIsEmpty recovery-only gate disagrees with inputToBand</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:670-680 / 1045-1051</div>
+      <div class="issue">Runner with valid LOAD only falls through into full brief path. All recovery pillars mark 'no-data'; envelope band derives from score (BASELINE 70 ± LOAD weight) landing in 'ready'. Strava-only runner gets band='ready' and green-light prescription.</div>
+      <div class="fix"><strong>Fix</strong>Force envelope band to 'no-data' or 'low-confidence' when realCount < 2 reporting recovery pillars; short-circuit composePrescription.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Sleep streak hardcoded 7.5h instead of dynamic target</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:862, 870-873</div>
+      <div class="issue">Brief computes <code>dynamicSleepTarget</code> (8.0/8.5 under high load) but streak detector compares against bare 7.5. Runner whose target is 8.5 sleeping 8h gets no streak; "below 7.5h target" copy lies.</div>
+      <div class="fix"><strong>Fix</strong>Thread dynamicSleepTarget through detectStreaks; update copy.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Plews HRV streak detection misuses SWC threshold</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:955-968</div>
+      <div class="issue">Compares <code>priorRolling - ln[i]</code> (rolling vs single day) against SWC calibrated against rolling distribution&rsquo;s SD. Per-day variance >> rolling-window variance &mdash; streak over-fires nearly every day.</div>
+      <div class="fix"><strong>Fix</strong>Compare <code>priorRolling - rolling</code>, or scale SWC by sqrt(7).</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">loadYesterdaySnapshot is dead code</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:788-811</div>
+      <div class="issue">2026-06-03 comment says replaced by <code>computeYesterdayPillars</code> because snapshot table held stale data. Function still defined; references snapshot table without COALESCE coverage. Future regression magnet.</div>
+      <div class="fix"><strong>Fix</strong>Delete the function.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">computeMovers direction labels are identical for up vs down</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:986-989</div>
+      <div class="issue">Ternary branches return the same template. Either dead refactor leftover or lost design intent for different copy per direction.</div>
+      <div class="fix"><strong>Fix</strong>Collapse to single template (direction variable already differentiates verb), or restore intended copy.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">inputToBand thresholds not derived from cited doctrine</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:1046-1050</div>
+      <div class="issue">Cut-offs at weight 5/0/-5 don&rsquo;t align with the score-level band boundaries that allow weights to -18 for sleep. No citation.</div>
+      <div class="fix"><strong>Fix</strong>Cite Plews / Research/15, or normalize against pillar weight cap.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">computeYesterdayPillars silently catches per-query errors</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:734-764, 783</div>
+      <div class="issue">Each <code>pool.query(...)</code> has <code>.catch(() => ({ rows: [] }))</code> and outer try/catch returns null. Partial failure synthesizes a Frankenstein yesterday-state with HRV missing → fake mover jump.</div>
+      <div class="fix"><strong>Fix</strong>Log a structured warning; return null for whole snapshot on any throw, not piecemeal.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">hrvCv.swcMs field name lies about its units</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:183-187</div>
+      <div class="issue">Name says ms; readiness-history computes <code>0.5 * sd</code> on LnRMSSD (unitless ln). Field name documentation drift.</div>
+      <div class="fix"><strong>Fix</strong>Rename to <code>swcLn</code>, update consumers; re-examine the streak detector&rsquo;s threshold scaling alongside.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Lone-HRV synthesis branch asserts "sleep is holding" with no sleep data</span></div>
+      <div class="where">lib/coach/synthesis.ts:95-97, 181-192</div>
+      <div class="issue"><code>sleepRed</code> computed from <code>weight < threshold</code>; 'no data' pillar weight is 0 &mdash; not < threshold &mdash; so sleepRed=false. Runner with HRV drop + missing sleep reads "HRV is down while sleep and RHR are holding."</div>
+      <div class="fix"><strong>Fix</strong>Compute <code>sleepHolding = sleepPillar?.observedV !== 'no data' && weight >= -3</code>; only print holding when actually reporting.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">recentHardSession distance heuristic flags any 12+ mi run as hard</span></div>
+      <div class="where">lib/coach/readiness-brief.ts:1652-1654</div>
+      <div class="issue">12mi easy run is common for marathon runner. Branch fires almost every morning with "recovering from yesterday&rsquo;s hard session."</div>
+      <div class="fix"><strong>Fix</strong>Tie distance fallback to chronic baseline (<code>dist > 1.5 * chronic28</code>), or drop fallback entirely.</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Plan adapter + drift monitor</span>
+      <span class="count">13 findings</span>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">detectGoalChanged fires phantom adaptation when no active plan exists</span></div>
+      <div class="where">web-v2/lib/plan/adapt.ts:884-925</div>
+      <div class="issue">LEFT JOIN puts plan_authored_at NULL when no plan; <code>Date.parse(null) = NaN</code> → 0. Any profile update in 24h triggers <code>goal_changed</code> against a nonexistent plan; pollutes coach_intents with phantom plan_adapt_other rows.</div>
+      <div class="fix"><strong>Fix</strong>Return null when plan_authored_at null, or change LEFT JOIN to INNER.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">detectMissedKeyWorkout has both false positives and false negatives</span></div>
+      <div class="where">web-v2/lib/plan/adapt.ts:543-581</div>
+      <div class="issue">Counts ANY run ≥4mi within ±1d regardless of type/pace. Easy 5mi on threshold day counts as completed. No type matching despite the aspirational comment.</div>
+      <div class="fix"><strong>Fix</strong>Match on <code>data->>'workoutType'</code> or a planned-run-link field.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">shave action shaves rest days and easy walks instead of long/quality</span></div>
+      <div class="where">web-v2/lib/plan/adapt.ts:1130-1144 + 297-326</div>
+      <div class="issue"><code>volume_overshoot</code> has no type filter. SQL guard skips REST (distance_mi=0) but cuts easy/recovery proportionally to quality/long. Doctrine is to protect long-run aerobic adaptations; this can drop recovery below stimulus floor.</div>
+      <div class="fix"><strong>Fix</strong>Filter to types carrying volume cost; skip recovery+rest explicitly.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">coach_proposals ON CONFLICT DO NOTHING relies on unspecified unique index</span></div>
+      <div class="where">web-v2/lib/plan/adapt.ts:1199-1211, 1223-1234</div>
+      <div class="issue">No conflict target named. If index missing, each cron tick writes fresh pending duplicates. Even with index, fragile to future drops.</div>
+      <div class="fix"><strong>Fix</strong>Pre-check existing pending, or pin conflict target explicitly with partial-unique index.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">drift-monitor.checkStaleness uses server clock against runner-tz authored date</span></div>
+      <div class="where">web-v2/lib/plan/drift-monitor.ts:297-319</div>
+      <div class="issue"><code>ageWeeks = (Date.now() - authoredMs)</code> uses UTC. Pacific runner near 8-week boundary flips signal on/off between cron runs.</div>
+      <div class="fix"><strong>Fix</strong>Anchor with <code>runnerToday(userUuid)</code> like every other detector.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">loadCurrentVdot uses server-clock anchor when runnerToday is available</span></div>
+      <div class="where">web-v2/lib/plan/drift-monitor.ts:402-467</div>
+      <div class="issue">Hard-coded -7h offset in same file that calls runnerToday correctly in neighbors. NY runner&rsquo;s 180-day race window is off by 3+ hours.</div>
+      <div class="fix"><strong>Fix</strong>Replace with <code>await runnerToday(userUuid)</code>.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">adapt-block.detectBlockAdaptations uses server-clock fallback</span></div>
+      <div class="where">web-v2/lib/plan/adapt-block.ts:69</div>
+      <div class="issue">Block layer uses different "today" than wrapped detectAdaptations (which uses runnerToday) → cascade reschedule date can be off by a day.</div>
+      <div class="fix"><strong>Fix</strong>Block wrapper and day-of detector must share one anchor.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">drift-monitor easy/long medians ignore workoutType and use NOW()</span></div>
+      <div class="where">web-v2/lib/plan/drift-monitor.ts:658-712</div>
+      <div class="issue">Selects runs in 3-9 mi band as "easy" with zero type filter; Tuesday threshold 5mi gets counted. NOW() cuts at server midnight contradicting callers&rsquo; runnerToday.</div>
+      <div class="fix"><strong>Fix</strong>Filter <code>data->>'workoutType' = 'easy'</code>; pass <code>today</code> from caller&rsquo;s runnerToday.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">checkQualityDrift double-counts planned median via LEFT JOIN row fanout</span></div>
+      <div class="where">web-v2/lib/plan/drift-monitor.ts:594-656</div>
+      <div class="issue">Runner with 2 runs on quality day fan out to 2 rows; planned value double-counted in median.</div>
+      <div class="fix"><strong>Fix</strong>Pre-aggregate runs per date via LATERAL subquery before computing median.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">writeIntent swallowed-error pattern can poison the open transaction</span></div>
+      <div class="where">web-v2/lib/plan/adapt.ts:385-404</div>
+      <div class="issue">writeIntent fails inside BEGIN/COMMIT block; Postgres aborts the whole transaction; catch hides the failure; subsequent queries fail with "transaction aborted"; COMMIT throws a different error than root cause.</div>
+      <div class="fix"><strong>Fix</strong>Wrap each writeIntent in <code>SAVEPOINT</code>, or move audit writes outside the parent transaction.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">detectAdaptations runs 8 detectors sequentially when they could fan out</span></div>
+      <div class="where">web-v2/lib/plan/adapt.ts:135-188</div>
+      <div class="issue">Each is a separate round-trip; no dependencies between them. ~8x cron latency.</div>
+      <div class="fix"><strong>Fix</strong><code>Promise.all([...detectors])</code> then push non-nulls.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">detectPrBank reads vdot_last_reviewed but never updates it after firing</span></div>
+      <div class="where">web-v2/lib/plan/adapt.ts:932-1002</div>
+      <div class="issue">Every nightly cron sees the same race, computes same delta, re-fires pr_bank, accumulates duplicate plan_adapt_mark_dirty rows.</div>
+      <div class="fix"><strong>Fix</strong>UPDATE users.vdot_last_reviewed after pr_bank succeeds, OR add a look-back-since-last-review gate.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">T-pace inverse table tops out at VDOT 65 despite VDOT-85 doctrine</span></div>
+      <div class="where">web-v2/lib/plan/drift-monitor.ts:370-379</div>
+      <div class="issue">Per project_daniels_vdot_cap memory, canonical table now spans 30-85; this clamp masks real drift for elites + synthetic personas.</div>
+      <div class="fix"><strong>Fix</strong>Extend table to VDOT 85.</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Profile + onboarding</span>
+      <span class="count">11 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Onboarding race-slug collision allows cross-user race overwrite</span></div>
+      <div class="where">app/api/onboarding/complete/route.ts:395-411</div>
+      <div class="issue">Slug is <code>My ${distance}-${date}</code> with no user component. Two users picking 5K on same date collide: second overwrites first&rsquo;s meta; <code>generatePlan</code> operates on wrong user&rsquo;s race when slugs collide.</div>
+      <div class="fix"><strong>Fix</strong>Namespace slug with userId prefix, or composite conflict target with user_uuid in UPDATE clause.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">bustRaceCache() clears ALL users' race-lookup cache on any user&rsquo;s profile edit</span></div>
+      <div class="where">lib/coach/race-lookup.ts:116-118</div>
+      <div class="issue">Implemented as <code>cache.clear()</code>. Every PATCH /api/profile triggers <code>bustBriefingCacheForEvent</code> → all users purged. Pathology compounds with scale. userId argument is thrown away.</div>
+      <div class="fix"><strong>Fix</strong>Add userId arg, delete only entries whose key starts with <code>${userId}|</code>.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Onboarding txn releases connection before COMMIT/ROLLBACK on first error path</span></div>
+      <div class="where">app/api/onboarding/complete/route.ts:272-279 + 354-362</div>
+      <div class="issue">First catch calls <code>client.release()</code> BEFORE returning while txn still in BEGIN state. pg-node may hand the dirty connection to the next request which fails with "current transaction is aborted".</div>
+      <div class="fix"><strong>Fix</strong>Single try/catch/finally; one release in finally only.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">loadProfileState invents today with hardcoded -7h UTC offset</span></div>
+      <div class="where">lib/coach/profile-state.ts:60</div>
+      <div class="issue">180-day race lookup window + 60-day quality-runs window date-shift for non-PT runners. Same Pacific assumption in <code>seed-from-onboarding.ts:91-93</code>.</div>
+      <div class="fix"><strong>Fix</strong>Replace with <code>const today = await runnerToday(userId);</code>.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Profile PATCH writes biological sex outside the transaction</span></div>
+      <div class="where">app/api/profile/route.ts:105-122</div>
+      <div class="issue"><code>setBiologicalSex</code> fires Promise.allSettled (two separate pool.query writes), then route continues to dynamic UPDATE + coach_intents INSERT &mdash; none fused. Partial failure leaves stale users.sex or profile.sex.</div>
+      <div class="fix"><strong>Fix</strong>Move sex write into the same pool.connect() txn as other field updates and audit log; sequential awaits inside the txn.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">GET /api/profile silently masks missing user with {} instead of 404</span></div>
+      <div class="where">app/api/profile/route.ts:64-68</div>
+      <div class="issue">Auth ok + row missing returns 200 {}. iPhone renders blank fields, treats runner as fully onboarded in degraded mode. Pairs with onboarding upsert findings: empty GET hides diagnostic signal.</div>
+      <div class="fix"><strong>Fix</strong>Return <code>{ status: 'pre-onboarding', fields: null }</code> or 404 so client routes to onboarding.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Profile PATCH allows legacy age field that desyncs with birthday</span></div>
+      <div class="where">app/api/profile/route.ts:20 vs onboarding/complete/route.ts:227-236</div>
+      <div class="issue">Both 'age' and 'birthday' in ALLOWED. Runner editing birthday keeps stale age. profile-state reconciles on read but column drift propagates to JOINs.</div>
+      <div class="fix"><strong>Fix</strong>Derive age from birthday on write; reject contradictory pairs.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">experience_level and cross_training_modes accepted with zero validation</span></div>
+      <div class="where">app/api/profile/route.ts:21,28 + lib/coach/profile-state.ts:13</div>
+      <div class="issue">Loader casts <code>as ExperienceLevel | null</code> regardless of input. Client posting <code>experience_level: "elite"</code> writes garbage.</div>
+      <div class="fix"><strong>Fix</strong>Per-field validator table; reject unrecognized enum values before UPDATE.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Notifications PATCH silently drops unknown-shape keys that ARE in ALLOWED_KEYS</span></div>
+      <div class="where">app/api/profile/notifications/route.ts:58-78</div>
+      <div class="issue">Suffix-matching validator. New pref like <code>digest_frequency: 'daily'</code> passes ALLOWED, fails branches, silently dropped, route returns ok:true.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>else { return 400 }</code> after the if/else chain.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Profile-state RHR truthy-check treats 0 as missing</span></div>
+      <div class="where">lib/coach/profile-state.ts:143</div>
+      <div class="issue"><code>rhrRow?.a ? ... : fallback</code> &mdash; truthy check on numeric. Same shape as the seed-adapter <code>?? 0</code> fabrication flagged in the prior audit.</div>
+      <div class="fix"><strong>Fix</strong>Explicit null checks: <code>rhrRow?.a != null ? ... : fallback</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">loadActivePlan LRU eviction is O(n log n) on every hot-path overflow</span></div>
+      <div class="where">lib/plan/lookup.ts:60-63 + race-lookup.ts:108-111</div>
+      <div class="issue">Sorts 256 entries on each overflow write. Reads don&rsquo;t refresh expires; hot recent-but-old evicted before cold just-written.</div>
+      <div class="fix"><strong>Fix</strong>Insertion-order Map: <code>cache.delete(cache.keys().next().value)</code> in O(1).</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Cron jobs + tenancy</span>
+      <span class="count">15 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Notifications cron uses server clock for all per-user firing</span></div>
+      <div class="where">web-v2/app/api/cron/notifications/route.ts:193</div>
+      <div class="issue">Hardcoded <code>tz_offset_min: 0</code> for every user. Race-day, race-eve, weekly check-in, niggle/sick fire at the wrong wall-clock for any non-UTC runner.</div>
+      <div class="fix"><strong>Fix</strong>Join profile.timezone; compute userNow via Intl.DateTimeFormat with timezone.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">today strings derived from UTC tip day key at the wrong moment</span></div>
+      <div class="where">web-v2/app/api/cron/notifications/route.ts:260, 323, 453</div>
+      <div class="issue">Three sites call <code>userNow.toISOString().slice(0,10)</code>. PT runner with 2026-06-15 race compares <code>meta->>'date' = '2026-06-15'</code> against '2026-06-16' from 16:00 PT onward. Race pushes silently never trigger.</div>
+      <div class="fix"><strong>Fix</strong>Compute today via <code>runnerToday(u.user_id)</code> once at top of per-user loop.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">enrich-weather and snapshot-projections both scheduled at 07:30 UTC</span></div>
+      <div class="where">.github/workflows/enrich-weather.yml:14 + snapshot-projections.yml:28</div>
+      <div class="issue">Two GitHub Actions fire at exact same minute. Same for readiness-snapshot + strava-sync at 15:08. Both hammer the Railway free-tier pg pool simultaneously.</div>
+      <div class="fix"><strong>Fix</strong>Stagger by 5-10 min; align with documented dependency ordering.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Notifications drain stamps processed_at even when dispatch threw</span></div>
+      <div class="where">web-v2/app/api/cron/notifications/route.ts:158-165</div>
+      <div class="issue">finally block stamps processed regardless of success. APNs outage = row marked processed, payload never sent. <code>.catch(() => {})</code> on the UPDATE masks any DB issue with the stamp itself.</div>
+      <div class="fix"><strong>Fix</strong>Only stamp processed_at on clean return; add attempts counter + dead-letter cap.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">drainPending limits 200/tick; backlog can outpace 30-min cadence</span></div>
+      <div class="where">web-v2/app/api/cron/notifications/route.ts:133</div>
+      <div class="issue">APNs hour-long outage + event-based enqueues grows the queue past drain rate. No alerting on backlog growth.</div>
+      <div class="fix"><strong>Fix</strong>Return pending_after_drain count; raiseAlert when exceeds LIMIT.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">run-adaptations overwrites proposed count instead of accumulating</span></div>
+      <div class="where">web-v2/app/api/cron/run-adaptations/route.ts:98</div>
+      <div class="issue">Mixed-triggers branch assigns, not <code>+=</code>. Positional alignment of triggers[]/actions[] is fragile.</div>
+      <div class="fix"><strong>Fix</strong>Use <code>+=</code>; tag actions with source trigger kind during detectAdaptations.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">silent-rebuild has no advisory lock; concurrent dispatches double-archive</span></div>
+      <div class="where">web-v2/app/api/cron/silent-rebuild/route.ts:55-103</div>
+      <div class="issue">workflow_dispatch fired twice: first archives prior, second archives the FIRST RUN&rsquo;S NEW PLAN. Orphaned plan_workouts keyed to a plan now archived.</div>
+      <div class="fix"><strong>Fix</strong>Wrap in <code>pg_advisory_xact_lock(hashtext('silent_rebuild:' || $userUuid))</code>.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">dedupe-runs date filter casts text date; skips runs with only startLocal</span></div>
+      <div class="where">web-v2/app/api/cron/dedupe-runs/route.ts:48</div>
+      <div class="issue">Only matches rows with <code>data.date</code> set; HK ingest may set only startLocal. Duplicates among watch-ingested runs survive forever. CURRENT_DATE is server-UTC.</div>
+      <div class="fix"><strong>Fix</strong>Use <code>COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date</code>; compute cutoff per-user against runnerToday.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">notifications scheduleTimeBased queries start_time::date without fallback</span></div>
+      <div class="where">web-v2/app/api/cron/notifications/route.ts:481, 455</div>
+      <div class="issue">Legacy ingest paths leave start_time NULL and put timestamp in <code>data->>'startLocal'</code>. Weekly volume reports under-count silently.</div>
+      <div class="fix"><strong>Fix</strong>Use canonical fallback ladder: <code>COALESCE(start_time::date, (data->>'date')::date, LEFT(data->>'startLocal',10)::date)</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">DEFAULT_USER_ID safety-net forces David&rsquo;s UUID into every cron</span></div>
+      <div class="where">web-v2/app/api/cron/dedupe-runs/route.ts:52-53 (+ 4 sibling crons)</div>
+      <div class="issue">Replicated across 5 cron files. Vestige from pre-multi-tenant cutover. Every cron runs against his UUID even when no active plan or no recent runs.</div>
+      <div class="fix"><strong>Fix</strong>Drop the DEFAULT_USER_ID safety-net; David&rsquo;s UUID is reliably in training_plans now.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">plan-drift caches dynamic imports inside the per-user loop</span></div>
+      <div class="where">web-v2/app/api/cron/plan-drift/route.ts:82, 100, 131, 173, 210</div>
+      <div class="issue">5 <code>await import(...)</code> calls inside <code>for (const u of userIds)</code>. Pattern obscures errors; a single broken import breaks the cron for everyone after the first failing user.</div>
+      <div class="fix"><strong>Fix</strong>Hoist to top of POST. Same for run-adaptations and snapshot-projections.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">snapshot-projections matchRuns reducer short-circuits on empty string</span></div>
+      <div class="where">web-v2/app/api/cron/snapshot-projections/route.ts:65-69</div>
+      <div class="issue"><code>!min || (d && d < min) ? d : min</code> initialized with <code>''</code>. Empty string < any ISO date, test always false, earliest race never wins. matchRuns scans 60 days of runs.</div>
+      <div class="fix"><strong>Fix</strong>Initialize accumulator to null; use <code>min === null || ...</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">refresh-briefings is no-op route still scheduled via GitHub Actions</span></div>
+      <div class="where">web-v2/app/api/cron/refresh-briefings/route.ts + workflow</div>
+      <div class="issue">Route doc-comment marks dead but workflow keeps scheduling. Burns Actions minutes + Railway requests.</div>
+      <div class="fix"><strong>Fix</strong>Delete the workflow and the route.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">run-adaptations catch blocks swallow originating error after writing an alert</span></div>
+      <div class="where">web-v2/app/api/cron/run-adaptations/route.ts:124-130</div>
+      <div class="issue"><code>raiseAlert(...).catch(() => {})</code>. ops_alerts outage = no signal in Railway logs. Same in dedupe-runs and silent-rebuild.</div>
+      <div class="fix"><strong>Fix</strong><code>console.error('[cron/run-adaptations] raiseAlert failed', err)</code> in the catch.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">snapshot-projections workflow checks "failed" but route returns "errors"</span></div>
+      <div class="where">.github/workflows/snapshot-projections.yml:66 vs route.ts:236</div>
+      <div class="issue">Workflow's python parser reads <code>d.get("failed", 0)</code>; route has no failed key. Warning will never fire.</div>
+      <div class="fix"><strong>Fix</strong>Standardize responses on <code>{users, written, errors, results}</code> shape matching readiness-snapshot.</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Run write paths + dedup</span>
+      <span class="count">11 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Strava webhook DELETE FROM runs missing user_uuid filter</span></div>
+      <div class="where">app/api/strava/webhook/route.ts:391-395</div>
+      <div class="issue">Pre-INSERT DELETE on the upsert path scopes only by id, not user_uuid. Cross-user activity-id reuse silently blows away another user&rsquo;s row.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>AND user_uuid = $2</code> to the DELETE.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">pullSync findCanonicalRow can attach Strava run to another user&rsquo;s canonical row</span></div>
+      <div class="where">lib/strava/pullSync.ts:215-253</div>
+      <div class="issue">Per-user scoped match is good, but INSERT path uses Strava act.id with <code>ON CONFLICT (id) DO NOTHING</code>. Two users connected to same Strava-shared activity: second user silently loses it, "reallyInserted" treats as success.</div>
+      <div class="fix"><strong>Fix</strong>Pre-INSERT check whether conflicting row&rsquo;s user_uuid matches; if not, synthetic id or warn-log.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">Cross-user shoe_id assignment on synthetic-id fallback</span></div>
+      <div class="where">app/api/runs/[id]/route.ts:102-115</div>
+      <div class="issue">Trailing-date suffix PATCH matches on user_uuid + date with no LIMIT 1 or distance constraint. Two runs same day, no Strava id: UPDATE walks all same-day rows and stamps the shoe on ALL.</div>
+      <div class="fix"><strong>Fix</strong>Restrict to row that GET resolved; round-trip resolved id from loadRunDetail.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">enhanceCanonicalFromAbsorbed loses prior overwrite cascade chain</span></div>
+      <div class="where">lib/runs/canonical.ts:155-159</div>
+      <div class="issue">Legacy rows pre-2026-05-31 lacking provenance get stamped 'strava' on first match, locking out higher-tier absorptions forever.</div>
+      <div class="fix"><strong>Fix</strong>When canonical value non-null but provenance missing, stamp tier from <code>data.source</code> rather than incoming.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">autoMergeForDate clusterDuplicates breaks on TZ-mixed startLocal</span></div>
+      <div class="where">lib/runs/merge.ts:42-48, 71-126</div>
+      <div class="issue">startMs uses Date.parse on a mix of UTC and wall-time strings (varies by source per normalize-time.ts). Strava webhook (UTC) and Faff watch (wall time) for same run Date.parse-differ by 7h in PDT &mdash; 30-min cluster window misses.</div>
+      <div class="fix"><strong>Fix</strong>Normalize via <code>toUtcIso(s, row.data.source, tz)</code> before parsing.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">autoMergeRecent uses server clock instead of runner-tz today</span></div>
+      <div class="where">lib/runs/merge.ts:251-260</div>
+      <div class="issue">Webhook arriving 9 PM PT Sun = 4 AM UTC Mon, autoMerge called with '2026-06-06'; actual run is '2026-06-05'; zero rows match; duplicate rows persist.</div>
+      <div class="fix"><strong>Fix</strong>Replace with <code>const today = await runnerToday(userId);</code> mirroring lib/runs/volume.ts.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Run recap slices startLocal naively, misses TZ</span></div>
+      <div class="where">app/api/runs/[id]/recap/route.ts:84</div>
+      <div class="issue">Strava webhook&rsquo;s startLocal has Z; slicing first 10 chars returns UTC date. 9 PM PT Sun run shows as Mon; plan_workouts lookup grades against wrong prescription.</div>
+      <div class="fix"><strong>Fix</strong>Use <code>data.date</code> as source of truth, or <code>toLocalWallIso(toUtcIso(...))</code>.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Concurrent ingest race between webhook + pullSync silently double-stamps tier</span></div>
+      <div class="where">lib/strava/pullSync.ts:386-393 vs lib/runs/canonical.ts:209-214</div>
+      <div class="issue">Webhook DELETE+INSERT not in transaction. Webhook wipes a row pullSync just enhanced, then INSERTs leaner payload, losing splits + gear.</div>
+      <div class="fix"><strong>Fix</strong>Wrap webhook upsert in <code>INSERT ... ON CONFLICT DO UPDATE</code> that preserves richer columns, or BEGIN/COMMIT.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">buildWatchToday hardcodes -7h for "today"</span></div>
+      <div class="where">lib/watch/build-workout.ts:270</div>
+      <div class="issue">Watch shows yesterday&rsquo;s or tomorrow&rsquo;s workout for any non-PT runner across parts of the year.</div>
+      <div class="fix"><strong>Fix</strong>Replace with <code>await runnerToday(userId)</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">Shoe attribution races; pullSync auto-attribute doesn&rsquo;t recompute mileage</span></div>
+      <div class="where">lib/runs/canonical.ts:166-182 + lib/strava/pullSync.ts:395-405</div>
+      <div class="issue">Both paths idempotent (good), but pullSync doesn&rsquo;t call <code>recomputeShoeMileage</code> after. Shoe odometer stays stale until runner opens detail and confirms shoes.</div>
+      <div class="fix"><strong>Fix</strong>Call <code>recomputeShoeMileage(userUuid)</code> at end of pullSyncOneUser when shoesAttributed > 0.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">tryAttributeShoe loose-match LIMIT 1 ordering is non-deterministic</span></div>
+      <div class="where">lib/runs/canonical.ts:259-282 + lib/strava/pullSync.ts:265-281</div>
+      <div class="issue">Symmetric substring match: "Pegasus" vs "Pegasus 41". LIMIT 1 picks first-id, non-deterministic across users with stable historical data. Also duplicated body across two files.</div>
+      <div class="fix"><strong>Fix</strong>Extract shared helper; <code>ORDER BY id DESC LIMIT 1</code> for determinism.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">pullSync inserts swallow stable-id collisions with no telemetry</span></div>
+      <div class="where">lib/strava/pullSync.ts:444-456</div>
+      <div class="issue">ON CONFLICT no-op continues silently. Cannot distinguish benign re-sync from cross-user-collision data leak from logs.</div>
+      <div class="fix"><strong>Fix</strong>Before continue, cheap <code>SELECT user_uuid</code>; console.warn on different uuid; increment <code>crossUserCollisions</code> counter.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">normalize-time.ts module header contradicts current source-tier comments</span></div>
+      <div class="where">lib/runs/normalize-time.ts:30-37 vs 65-75</div>
+      <div class="issue">Header says <code>'watch' → UTC</code>; <code>sourceStoresLocal</code> below puts 'watch' in the local set. Future reader trusting header reintroduces the bug.</div>
+      <div class="fix"><strong>Fix</strong>Rewrite header bullet for 'watch' to LOCAL with 2026-06-02 audit-weather citation.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">maybeAutoPush fires-and-forgets without per-run dedup across ingest paths</span></div>
+      <div class="where">lib/strava/auto-push.ts:34-50</div>
+      <div class="issue">Idempotency check filters <code>status='uploaded'</code> only; pending pushes not detected. Two ingest paths within seconds insert two pending rows, both POST to Strava /uploads.</div>
+      <div class="fix"><strong>Fix</strong>Widen to <code>status IN ('uploaded','pending')</code>; treat pending as in-flight, bail out.</div>
+    </div>
+  </div>
+
+  <div class="area-block">
+    <div class="area-head">
+      <span class="name">Race header + projection + targets</span>
+      <span class="count">11 findings</span>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">race-header race meta lookup is not scoped to user_uuid</span></div>
+      <div class="where">lib/coach/race-header.ts:341</div>
+      <div class="issue"><code>WHERE slug = $1</code> alone resolves the plan&rsquo;s anchored race row. Two users with same slug: requester gets whichever row Postgres picks first. Bleeds goalDisplay + distanceMi + dateLabel.</div>
+      <div class="fix"><strong>Fix</strong>Add <code>AND user_uuid = $2</code>; pass userId.</div>
+    </div>
+
+    <div class="finding p0">
+      <div class="finding-head"><span class="sev">P0</span><span class="title">snapshot-projections cron race lookup is not user-scoped</span></div>
+      <div class="where">app/api/cron/snapshot-projections/route.ts:175-177</div>
+      <div class="issue">Same shape as race-header. Wrong race distance&rsquo;s projection gets cached and read back to affected user every day.</div>
+      <div class="fix"><strong>Fix</strong><code>WHERE slug = $1 AND user_uuid = $2</code>, pass userUuid.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">projection-trend lookback uses server UTC, not runner-tz today</span></div>
+      <div class="where">lib/coach/race-header.ts:400-401</div>
+      <div class="issue">Simulator/persona callers don&rsquo;t use runnerToday; 30-day trend anchor snaps to wrong calendar day; runner crossing midnight at 9pm UTC reads stale snapshot. <code>loadProjectionSeries</code> likewise uses <code>Date.now()</code>.</div>
+      <div class="fix"><strong>Fix</strong>Wrap lookback cutoff in <code>await runnerToday(userId)</code> in loadProjectionSeries; audit non-API callers of loadRaceHeader.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">projection API uses server clock for daysAway and CURRENT_DATE for race filter</span></div>
+      <div class="where">app/api/targets/projection/route.ts:127, 138</div>
+      <div class="issue">HNL runner at 11pm Hawaii on race day sees race excluded (UTC rolled to next day); daysAway = -1; status flips from race_week to past-race.</div>
+      <div class="fix"><strong>Fix</strong>Resolve <code>await runnerToday(userId)</code> at top of GET, pass to query, compute daysAway from that ISO.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">goal-projection drift detectors use CURRENT_DATE/NOW</span></div>
+      <div class="where">lib/training/goal-projection.ts:591, 596, 658, 689, 715, 716</div>
+      <div class="issue">Four detectors use server clock; file imports + uses runnerToday in test-points and detectRecentRaceDrift. PT runner crossing midnight at 9pm UTC: 21-day tempo window drops yesterday&rsquo;s tempo; 4-week missed window drops the most recent week.</div>
+      <div class="fix"><strong>Fix</strong>Resolve <code>const today = await runnerToday(userUuid)</code> once per detector; bind as $2; mirror detectRecentRaceDrift shape.</div>
+    </div>
+
+    <div class="finding p1">
+      <div class="finding-head"><span class="sev">P1</span><span class="title">Six DB queries fire even when goalSec is null/zero</span></div>
+      <div class="where">lib/training/goal-projection.ts:142-149</div>
+      <div class="issue">No short-circuit. <code>detectRecentRaceDrift</code> computes <code>goalSec / dist</code> against null goal → NaN comparison; <code>slowdownPct < 5</code> false, swallows the bug; future callers passing goalSec=0 silently get on-track.</div>
+      <div class="fix"><strong>Fix</strong>Top of computeGoalProjection: <code>if (!goalSec || goalSec <= 0) return earlyOnTrackResult</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">status enum mismatch across race-header, goal-projection, projection API</span></div>
+      <div class="where">race-header.ts:35, goal-projection.ts, projection/route.ts:87</div>
+      <div class="issue">Three vocabularies for the same concept: <code>on_track | watch | off</code> vs <code>on-track | watching | off-track</code> vs the API&rsquo;s superset. race-header captures projectionGoalStatus then silently drops it.</div>
+      <div class="fix"><strong>Fix</strong>Pick one canonical enum, export from goal-projection.ts, consume across all three.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">projection_snapshots distance_mi = float equality on numeric column</span></div>
+      <div class="where">lib/training/projection-snapshots.ts:77, 105, 131</div>
+      <div class="issue">Custom anchor distance like 13.10937 won&rsquo;t match stored 13.1; loadProjectionSeries returns empty series with no warning.</div>
+      <div class="fix"><strong>Fix</strong>Round on write (<code>Math.round(distanceMi * 10) / 10</code>), or change reads to <code>ABS(distance_mi - $X) < 0.05</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">goalProj failure silently falls back to VDOT-only projection</span></div>
+      <div class="where">lib/coach/race-header.ts:362-389</div>
+      <div class="issue"><code>computeGoalProjection(...).catch(() => null)</code> with no log. Runner sees VDOT-based projection when the engine just had a bug.</div>
+      <div class="fix"><strong>Fix</strong>Minimum <code>console.error</code> on the catch; surface a diagnostic chip when fallback fires.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">projection API uses ?? 0 default + magic 30s executionBuffer</span></div>
+      <div class="where">app/api/targets/projection/route.ts:174, 247-250</div>
+      <div class="issue">executionBufferSec defaults to 30 magic; cold-start attributes 30s to "execution" from nothing; fitness gap absorbs the rest. Same <code>?? 0</code> fabrication pattern as the seed-adapter audit.</div>
+      <div class="fix"><strong>Fix</strong>Initialize to null; attribute only when pacing is null AND runner has enough history; otherwise drop the chunk.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">detectVdotTrendDrift GROUP BY defeats the windowed comparison</span></div>
+      <div class="where">lib/training/goal-projection.ts:585-597</div>
+      <div class="issue">GROUP BY is no-op (UNIQUE constraint covers it); no distance_mi filter means HM-VDOT today vs marathon-VDOT 4 weeks ago. Wasted bytes, latent noise.</div>
+      <div class="fix"><strong>Fix</strong><code>DISTINCT ON (snapshot_date)</code> + <code>AND distance_mi = 13.1</code>.</div>
+    </div>
+
+    <div class="finding p2">
+      <div class="finding-head"><span class="sev">P2</span><span class="title">nextTestPoints labels show duplicate distance</span></div>
+      <div class="where">lib/training/goal-projection.ts:234-236, 328-330</div>
+      <div class="issue">Composes <code>${distLabel} ${type} · ${sub_label}</code> → "4mi tempo · 4 mi @ T". Distance shown twice.</div>
+      <div class="fix"><strong>Fix</strong>Drop distance prefix when sub_label contains "mi", or use only sub_label when present.</div>
+    </div>
+
+    <div class="finding p3">
+      <div class="finding-head"><span class="sev">P3</span><span class="title">goalPacePerMi computed then explicitly voided</span></div>
+      <div class="where">lib/training/goal-projection.ts:480, 545</div>
+      <div class="issue">Comment says "kept in evidence for diagnostic line" but it&rsquo;s NOT in evidence either. Pure dead code, doc drift.</div>
+      <div class="fix"><strong>Fix</strong>Delete or actually include in evidence.</div>
+    </div>
+  </div>
+
+  <h2>Recommended next moves</h2>
+  <div class="next-list">
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Land the three auth fixes before anything else</div>
+        <div class="ndesc">Install <code>jose</code> and wire JWKS-validated Apple Sign-In, sign Strava OAuth state HMAC over <code>{userUuid, nonce, expiry}</code>, and validate Strava webhook <code>subscription_id</code> against the stored row. These three are remote-attack vectors today. Until JWT verification ships, gate /api/auth/apple on <code>NODE_ENV !== 'production'</code>.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Add a partial-unique index on connector_tokens and runs</div>
+        <div class="ndesc">Two index migrations close five P0/P1 cross-user paths at the database level: <code>CREATE UNIQUE INDEX ... ON connector_tokens (provider, provider_user_id) WHERE disconnected_at IS NULL</code> and <code>CREATE UNIQUE INDEX ... ON runs (user_uuid, data->>'id')</code>. Ship the missing <code>health_samples_user_type_date_uq</code> migration too &mdash; the manual route depends on it.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Sweep all server-clock "today" sites once more</div>
+        <div class="ndesc">Thirteen call sites still hardcode <code>new Date(Date.now() - 7 * 3600000)</code>: readiness-brief, health-state, watch-complete, profile-state, plan-drift, adapt-block, build-watch, four drift detectors, and the notifications cron. Single search-and-replace pass against <code>await runnerToday(userId)</code> with a unit test that fails when a new offender lands. The TZ refactor was 80% done and stalled.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Add a Next.js middleware.ts with rate limiting + Origin check</div>
+        <div class="ndesc">Closes the no-rate-limit and no-CSRF findings in one file. Keyed on (route, IP) using Upstash or in-memory LRU. 10/min/IP on /api/auth/*, 30/min/IP on /api/ingest/*. Reject cookie-auth requests where <code>Origin !== https://www.faff.run</code>; Bearer iPhone callers exempt.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Replace user_uuid lookups in race-lookup, race-header, snapshot-projections, onboarding</div>
+        <div class="ndesc">All four query <code>races WHERE slug = $1</code> with no user filter. Four-line fix per site. Namespace onboarding&rsquo;s slug with userId prefix to prevent collisions on insert. Make the race-cache buster userId-aware while you&rsquo;re in race-lookup.ts.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Centralize <code>requireAdmin(req)</code> and apply to /api/admin/* + /api/usage</div>
+        <div class="ndesc">The <code>users.is_admin</code> column already exists. One helper, six route updates. Solves the privilege-escalation P1 in a single pass.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Audit and remove the silent <code>.catch(() => {})</code> pattern</div>
+        <div class="ndesc">Eight sites swallow DB and dispatch errors with no logging. Replace each with <code>.catch((e) => console.error('[area] failure', e?.message))</code> minimum. Update the notifications drain to NOT stamp <code>processed_at</code> on throw &mdash; the silent retry path is currently a permanent data loss vector.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Extract shared helpers for loadStableBaseline, shoe attribution, NEVER_COPY</div>
+        <div class="ndesc">Three duplicate-code pairs are tripwires waiting for the next refactor. Single-source each: <code>lib/coach/health-state.loadStableBaseline</code>, <code>lib/runs/canonical.attributeShoeFromGear</code>, and one NEVER_COPY/SPECIAL_ROUTE constant imported by both pullSync and canonical.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Delete the dead tombstones from the 2026-05-28 and 2026-06-03 gut-jobs</div>
+        <div class="ndesc">Concrete deletions: <code>deriveSplitsFromPhases</code>, <code>loadYesterdaySnapshot</code>, <code>detectRhrSpike</code>, <code>detectSleepCrater</code>, <code>refresh-briefings.yml</code> + route, the <code>direction</code> ternary in computeMovers, <code>void goalPacePerMi</code>, dead <code>?: number | null</code> drops in coach_intents profile-field-added writes. Update the route doc-comments that promise behaviors no longer wired.</div>
+      </div>
+    </div>
+
+    <div class="next">
+      <div class="nbody">
+        <div class="ntitle">Stagger the colliding GitHub Actions schedules</div>
+        <div class="ndesc">Move <code>snapshot-projections</code> to <code>35 7</code> and <code>readiness-snapshot</code> to <code>25 8</code>. Standardize all cron route responses on <code>{ users, written, errors, results }</code> so workflow parsers stop checking keys that don&rsquo;t exist (snapshot-projections looks for "failed", route returns "errors").</div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>backend audit · 86 findings · 11 probes · 2026-06-05</footer>
+
+</div>
+</body>
+</html>
