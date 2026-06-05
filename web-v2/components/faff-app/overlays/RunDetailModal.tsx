@@ -144,18 +144,18 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                   with research-cited framing. conditions_note + coach_tip
                   earn their own callouts when material. */}
               {recap && (
-                <div style={{ marginTop: 18 }}>
-                  <div className="fll" style={{ marginBottom: 6 }}>HOW IT WENT</div>
+                <div className="band">
+                  <div className="fll">HOW IT WENT</div>
                   <div style={{
                     fontFamily: 'var(--f-display)', fontSize: 22, lineHeight: 1.15,
-                    color: '#fff', marginBottom: 8,
+                    color: '#fff',
                   }}>
                     {recap.verdict}
                   </div>
                   {recap.facts.map((f, i) => (
                     <p key={i} style={{
-                      margin: '0 0 8px', fontSize: 13.5, lineHeight: 1.55,
-                      color: 'rgba(255,255,255,0.86)',
+                      margin: 0, fontSize: 13.5, lineHeight: 1.55,
+                      color: 'var(--fg-muted)',
                     }}>
                       {f}
                     </p>
@@ -211,8 +211,8 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                 const span = Math.max(1, maxFill - minFill);
                 const hasPhase = data.splits.some(s => s.phase && s.phase !== 'unknown');
                 return (
-                  <>
-                    <div className="fll" style={{ marginTop: 8 }}>MILE SPLITS</div>
+                  <div className="band">
+                    <div className="fll">MILE SPLITS</div>
                     <div className="splits">
                       {data.splits.map((s, i) => {
                         const sec = paceToSec(s.pace ?? '');
@@ -237,7 +237,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                     </div>
                     {hasPhase ? (
                       <div style={{
-                        marginTop: 6, display: 'flex', gap: 12,
+                        display: 'flex', gap: 12,
                         fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
                         textTransform: 'uppercase', color: 'var(--fa-mute, #D6DAE2)',
                       }}>
@@ -259,12 +259,12 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                         }} />Cooldown</span>
                       </div>
                     ) : null}
-                  </>
+                  </div>
                 );
               })()}
               {data.hrZonePcts && (
-                <>
-                  <div className="fll" style={{ marginTop: 22 }}>TIME IN ZONES</div>
+                <div className="band">
+                  <div className="fll">TIME IN ZONES</div>
                   <div className="wk-zbar">
                     {([data.hrZonePcts.z1, data.hrZonePcts.z2, data.hrZonePcts.z3, data.hrZonePcts.z4, data.hrZonePcts.z5]).map((p, zi) => (
                       <i key={zi} style={{ width: `${p ?? 0}%`, background: ZC[zi] }} />
@@ -279,25 +279,27 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                       </div>
                     ))}
                   </div>
-                </>
-              )}
-              <div className="fll" style={{ marginTop: 22 }}>CONDITIONS &amp; KIT</div>
-              <div className="wk-grid">
-                <div className="i">
-                  <div className="k">WEATHER</div>
-                  <div className="v">{renderTempRange(data) || '·'}</div>
                 </div>
-                <div className="i"><div className="k">CADENCE</div><div className="v">{data.cadence_avg ? `${Math.round(data.cadence_avg)} spm` : '·'}</div></div>
-                <div className="i"><div className="k">MAX HR</div><div className="v">{data.hr_max ? `${data.hr_max} bpm` : '·'}</div></div>
-                {data.power_avg_w != null && (
-                  <div className="i"><div className="k">AVG POWER</div><div className="v">{data.power_avg_w}<small> W</small></div></div>
-                )}
-                <div className="i"><div className="k">CALORIES</div><div className="v">{data.calories_kcal != null ? `${data.calories_kcal}` : '·'}{data.calories_kcal != null ? <small> kcal</small> : null}</div></div>
-                <div className="i"><div className="k">SHOE</div><div className="v">{currentShoeName(data) || '·'}</div></div>
+              )}
+              <div className="band">
+                <div className="fll">CONDITIONS &amp; KIT</div>
+                <div className="wk-grid">
+                  <div className="i">
+                    <div className="k">WEATHER</div>
+                    <div className="v">{renderTempRange(data) || '·'}</div>
+                  </div>
+                  <div className="i"><div className="k">CADENCE</div><div className="v">{data.cadence_avg ? `${Math.round(data.cadence_avg)} spm` : '·'}</div></div>
+                  <div className="i"><div className="k">MAX HR</div><div className="v">{data.hr_max ? `${data.hr_max} bpm` : '·'}</div></div>
+                  {data.power_avg_w != null && (
+                    <div className="i"><div className="k">AVG POWER</div><div className="v">{data.power_avg_w}<small> W</small></div></div>
+                  )}
+                  <div className="i"><div className="k">CALORIES</div><div className="v">{data.calories_kcal != null ? `${data.calories_kcal}` : '·'}{data.calories_kcal != null ? <small> kcal</small> : null}</div></div>
+                  <div className="i"><div className="k">SHOE</div><div className="v">{currentShoeName(data) || '·'}</div></div>
+                </div>
               </div>
               {data.weather_context && (
                 <div style={{
-                  marginTop: 14, padding: '12px 14px',
+                  padding: 'var(--callout-padding)',
                   background: 'rgba(255,206,138,0.08)', border: '1px solid rgba(255,206,138,0.28)',
                   borderRadius: 10, fontSize: 13, fontWeight: 500, lineHeight: 1.5,
                   color: 'rgba(255,255,255,0.88)',
@@ -314,7 +316,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                   Closes coverage row 1015 ("How it went" heat-aware verdict). */}
               {data.hr_on_pace_delta_bpm != null && Math.abs(data.hr_on_pace_delta_bpm) >= 5 && (
                 <div style={{
-                  marginTop: 10, padding: '12px 14px',
+                  padding: 'var(--callout-padding)',
                   background: data.hr_on_pace_delta_bpm > 0 ? 'rgba(252,77,100,.07)' : 'rgba(123,232,160,.07)',
                   border: data.hr_on_pace_delta_bpm > 0 ? '1px solid rgba(252,77,100,.28)' : '1px solid rgba(123,232,160,.28)',
                   borderRadius: 10, fontSize: 13, fontWeight: 500, lineHeight: 1.5,
@@ -334,15 +336,15 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                   run shows the existing value. Closes coverage row 727
                   ("RPE + post-run notes") + line 787 ("Show prior RPE
                   on re-open"). */}
-              <div className="fll" style={{ marginTop: 22 }}>HOW IT FELT</div>
-              <div style={{ marginTop: 6 }}>
+              <div className="band">
+                <div className="fll">HOW IT FELT</div>
                 <RPEEntryCard runId={data.id} />
               </div>
               {/* Post-run check-in · execution + body chips, canned
                   coach reply from /api/checkin. Closes coverage row 453
                   ("Post-run check-in canned coach reply"). */}
-              <div className="fll" style={{ marginTop: 22 }}>CHECK IN</div>
-              <div style={{ marginTop: 6 }}>
+              <div className="band">
+                <div className="fll">CHECK IN</div>
                 <PostRunCheckinChips runId={data.id} />
               </div>
             </>
@@ -374,8 +376,8 @@ function RouteAndElev({ data }: { data: RunDetail }) {
   return (
     <>
       {route && (
-        <>
-          <div className="fll" style={{ marginTop: 22 }}>ROUTE</div>
+        <div className="band">
+          <div className="fll">ROUTE</div>
           <div className="rdmap">
             <svg viewBox="0 0 700 168" preserveAspectRatio="none">
               <defs>
@@ -397,12 +399,12 @@ function RouteAndElev({ data }: { data: RunDetail }) {
               {data.elev_gain_ft != null && data.elev_gain_ft > 0 && <span>↗ {Math.round(data.elev_gain_ft)} FT</span>}
             </div>
           </div>
-        </>
+        </div>
       )}
       {elev && (
-        <>
-          <div className="fll" style={{ marginTop: 22 }}>ELEVATION</div>
-          <div className="bk-elev" style={{ marginTop: 6 }}>
+        <div className="band">
+          <div className="fll">ELEVATION</div>
+          <div className="bk-elev">
             <svg viewBox="0 0 360 58" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="rdmev" x1="0" y1="0" x2="0" y2="1">
@@ -414,7 +416,7 @@ function RouteAndElev({ data }: { data: RunDetail }) {
               <path d={elev.line} fill="none" stroke="#FF8847" strokeWidth="2" vectorEffect="non-scaling-stroke" />
             </svg>
           </div>
-        </>
+        </div>
       )}
     </>
   );

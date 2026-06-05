@@ -102,38 +102,44 @@ function CompletedBody({ d, dayIdx, seed }: { d: FaffSeed['week'][number]; dayId
         <div><div className="k">GAIN</div>    <div className="v">{det.gain}<small> ft</small></div></div>
       </div>
       <RouteMap dist={d.dist} gain={det.gain} activityId={d.activityId ?? null} />
-      <div className="fll" style={{ marginTop: 22 }}>MILE SPLITS</div>
-      <div className="splits">
-        {det.splits.map((s, i) => (
-          <div className="spr" key={i}>
-            <span className="spm">{s[0]}</span>
-            <div className="sptrk"><div className="spf" style={{ width: `${s[1]}%`, background: s[3] }} /></div>
-            <span className="spp">{s[2]}<small>/mi</small></span>
-          </div>
-        ))}
+      <div className="band">
+        <div className="fll">MILE SPLITS</div>
+        <div className="splits">
+          {det.splits.map((s, i) => (
+            <div className="spr" key={i}>
+              <span className="spm">{s[0]}</span>
+              <div className="sptrk"><div className="spf" style={{ width: `${s[1]}%`, background: s[3] }} /></div>
+              <span className="spp">{s[2]}<small>/mi</small></span>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="fll" style={{ marginTop: 22 }}>TIME IN ZONES</div>
-      <div className="wk-zbar">
-        {det.zones.map((p, zi) => <i key={zi} style={{ width: `${p}%`, background: ZC[zi] }} />)}
+      <div className="band">
+        <div className="fll">TIME IN ZONES</div>
+        <div className="wk-zbar">
+          {det.zones.map((p, zi) => <i key={zi} style={{ width: `${p}%`, background: ZC[zi] }} />)}
+        </div>
+        <div className="wk-zleg">
+          {det.zones.map((p, zi) => (
+            <div key={zi}>
+              <span className="sw" style={{ background: ZC[zi] }} />
+              <span className="zn">Z{zi + 1}</span>
+              <span className="zp">{p}%</span>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="wk-zleg">
-        {det.zones.map((p, zi) => (
-          <div key={zi}>
-            <span className="sw" style={{ background: ZC[zi] }} />
-            <span className="zn">Z{zi + 1}</span>
-            <span className="zp">{p}%</span>
-          </div>
-        ))}
-      </div>
-      <div className="fll" style={{ marginTop: 22 }}>CONDITIONS &amp; KIT</div>
-      <div className="wk-grid">
-        <div className="i"><div className="k">WEATHER</div><div className="v">{det.weather}</div></div>
-        <div className="i"><div className="k">SHOE</div><div className="v">{det.shoe}</div></div>
-        <div className="i"><div className="k">FUEL</div><div className="v">{det.fuel ?? ' · '}</div></div>
-        <div className="i"><div className="k">CALORIES</div><div className="v">{det.cal} kcal</div></div>
+      <div className="band">
+        <div className="fll">CONDITIONS &amp; KIT</div>
+        <div className="wk-grid">
+          <div className="i"><div className="k">WEATHER</div><div className="v">{det.weather}</div></div>
+          <div className="i"><div className="k">SHOE</div><div className="v">{det.shoe}</div></div>
+          <div className="i"><div className="k">FUEL</div><div className="v">{det.fuel ?? ' · '}</div></div>
+          <div className="i"><div className="k">CALORIES</div><div className="v">{det.cal} kcal</div></div>
+        </div>
       </div>
       {det.recap && (
-        <div className="coach" style={{ marginTop: 22 }}>
+        <div className="coach">
           <span className="ct">COACH</span><span className="cx">{det.recap}</span>
         </div>
       )}
@@ -158,7 +164,7 @@ function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
         <div><div className="k">EST TIME</div><div className="v">{d.est.replace('~','')}</div></div>
       </div>
       {sg.length > 0 ? (
-        <>
+        <div className="band">
           <div className="fll">THE SHAPE</div>
           <div className="wk-shape">
             {sg.map((x, i) => <i key={i} style={{ width: `${x.w}%`, background: x.c }} />)}
@@ -167,39 +173,45 @@ function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
             <span>{sg[0].l}</span>
             {sg.length > 1 && <span>{sg[sg.length - 1].l}</span>}
           </div>
-        </>
+        </div>
       ) : null}
-      <div className="fll" style={{ marginTop: 22 }}>THE SESSION</div>
-      <div className="wk-sess">
-        {sg.map((x, i) => (
-          <div className="wk-srow" key={i}>
-            <span className="tick" style={{ background: x.c }} />
-            <div>
-              <div className="sl">{x.l}</div>
-              <div className="sd">{x.sub}</div>
+      <div className="band">
+        <div className="fll">THE SESSION</div>
+        <div className="wk-sess">
+          {sg.map((x, i) => (
+            <div className="wk-srow" key={i}>
+              <span className="tick" style={{ background: x.c }} />
+              <div>
+                <div className="sl">{x.l}</div>
+                <div className="sd">{x.sub}</div>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-      <div className="fll" style={{ marginTop: 22 }}>CONDITIONS &amp; FUEL</div>
-      <div className="wk-grid">
-        <div className="i"><div className="k">WEATHER</div><div className="v">{k.weather}</div></div>
-        <div className="i"><div className="k">SHOE</div>   <div className="v">{k.shoe}</div></div>
-        {pl.fuel.map((f, i) => (
-          <div className="i" key={i}><div className="k">{f[0].toUpperCase()}</div><div className="v">{f[1]}</div></div>
-        ))}
+      <div className="band">
+        <div className="fll">CONDITIONS &amp; FUEL</div>
+        <div className="wk-grid">
+          <div className="i"><div className="k">WEATHER</div><div className="v">{k.weather}</div></div>
+          <div className="i"><div className="k">SHOE</div>   <div className="v">{k.shoe}</div></div>
+          {pl.fuel.map((f, i) => (
+            <div className="i" key={i}><div className="k">{f[0].toUpperCase()}</div><div className="v">{f[1]}</div></div>
+          ))}
+        </div>
       </div>
-      <div className="fll" style={{ marginTop: 22 }}>EXECUTE</div>
-      <ul className="wk-cues">{pl.cues.map((c, i) => <li key={i}>{c}</li>)}</ul>
-      <div className="coach" style={{ marginTop: 20 }}>
+      <div className="band">
+        <div className="fll">EXECUTE</div>
+        <ul className="wk-cues">{pl.cues.map((c, i) => <li key={i}>{c}</li>)}</ul>
+      </div>
+      <div className="coach">
         <span className="ct">COACH</span><span className="cx">{k.coach}</span>
       </div>
       {/* Watch preview · what the watch will buzz you through. Live
           fetch from /api/watch/today?date=. Closes coverage line 689. */}
       {d.iso ? (
         <>
-          <div className="fll" style={{ marginTop: 22 }}>WATCH PREVIEW</div>
-          <div style={{ marginTop: 6 }}>
+          <div className="band">
+            <div className="fll">WATCH PREVIEW</div>
             <WatchPreviewTimeline date={d.iso} />
           </div>
         </>
@@ -237,7 +249,7 @@ function RestBody() {
           <span className="vv">→</span>
         </div>
       </div>
-      <div className="coach" style={{ marginTop: 24 }}>
+      <div className="coach">
         <span className="ct">COACH</span>
         <span className="cx">Rest is training. Sleep, hydrate, mobilize. Let the work land. Feeling antsy? An easy 20-min shakeout is fine, but don&rsquo;t turn it into a session.</span>
       </div>
@@ -274,7 +286,7 @@ function RouteMap({ dist, gain, activityId }: { dist: string; gain: number; acti
 
   return (
     <>
-      <div className="fll" style={{ marginTop: 8 }}>ROUTE</div>
+      <div className="fll">ROUTE</div>
       <div className="rdmap">
         <svg viewBox="0 0 700 168" preserveAspectRatio="none">
           <defs>
@@ -358,22 +370,23 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
         background: 'linear-gradient(135deg, rgba(255,206,138,0.10), rgba(255,206,138,0.02))',
         border: '1px solid rgba(255,206,138,0.35)',
         borderRadius: 12,
-        padding: '12px 14px',
-        marginBottom: 14,
+        padding: 'var(--callout-padding)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--label-gap)',
       }}
       role="region"
       aria-label="How this workout changed"
     >
       <div style={{
         fontSize: 10, letterSpacing: '1.6px', fontWeight: 700,
-        color: '#FFCE8A', marginBottom: 6,
+        color: '#FFCE8A',
       }}>
         HOW IT CHANGED
       </div>
       <div style={{
         fontSize: 14, fontWeight: 600, lineHeight: 1.35,
         color: 'var(--ink, #fff)',
-        marginBottom: a.reason || adaptedAtLabel ? 6 : 0,
       }}>
         {verb}{wasLabel ? <> from <b>{wasLabel}</b></> : null}
         {a.kind === 'downgrade' && d.name ? <> to <b>{d.name}</b></> : null}
@@ -382,7 +395,6 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
       {adaptedAtLabel ? (
         <div style={{
           fontSize: 11, color: 'var(--mute, #8B95A7)',
-          marginBottom: a.reason ? 6 : 0,
         }}>
           {adaptedAtLabel}
         </div>
@@ -402,7 +414,6 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
           chip's "was X" subline clears on next refresh. */}
       {d.planWorkoutId && !restored ? (
         <div style={{
-          marginTop: 12,
           display: 'flex',
           justifyContent: 'flex-end',
         }}>
@@ -465,13 +476,13 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
       ) : null}
 
       {restored ? (
-        <div style={{ marginTop: 10, fontSize: 12, color: '#FFCE8A' }}>
+        <div style={{ fontSize: 12, color: '#FFCE8A' }}>
           Restored to original. Refreshing…
         </div>
       ) : null}
 
       {restoreErr ? (
-        <div style={{ marginTop: 10, fontSize: 12, color: '#FC4D64' }}>
+        <div style={{ fontSize: 12, color: '#FC4D64' }}>
           {restoreErr}
         </div>
       ) : null}

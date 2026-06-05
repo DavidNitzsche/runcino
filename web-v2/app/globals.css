@@ -1882,8 +1882,14 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .wk-win .c{width:18px;height:18px;border-radius:50%;background:#3EBD41;color:#06210a;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .wk-win .c svg{width:11px;height:11px;}
 .wk-win small{font-weight:500;opacity:.8;color:#fff;margin-left:4px;}
-.wk-body{padding:0 34px 34px;}
-.wk-keyrow{display:flex;gap:30px;padding:18px 0 22px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:22px;}
+/* 2026-06-04 · modal body becomes a flex column with --section-gap.
+   Padding sides + bottom on a 4× multiple (28 = 7× base · old 34 was
+   freehand).  Top: 0 because the hero handles that side. */
+.wk-body{padding:0 28px 28px;display:flex;flex-direction:column;gap:var(--section-gap);}
+/* 2026-06-04 · keyrow · gap 30→32 (8× base), padding 18/0/22 →
+   16/0/16 (4× base each), margin-bottom stripped (modal body's
+   flex gap handles separation). */
+.wk-keyrow{display:flex;gap:32px;padding:16px 0;border-bottom:1px solid rgba(255,255,255,.1);}
 .wk-keyrow .k{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
 .wk-keyrow .v{font-family:'Oswald',sans-serif;font-size:26px;font-weight:600;line-height:.9;margin-top:6px;}
 .wk-keyrow .v small{font-family:'Inter';font-size:11px;opacity:.75;font-weight:400;}
