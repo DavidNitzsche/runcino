@@ -2053,16 +2053,17 @@ function CompletedHeroV2({
                 explains the contract. */}
             {recapPayload?.conditions_note ? (
               <div style={{
-                marginTop: 18, padding: '11px 13px', borderRadius: 10,
+                padding: 'var(--callout-padding)', borderRadius: 10,
                 background: 'rgba(10,12,16,.62)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
                 border: 0,
                 fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
+                display: 'flex', flexDirection: 'column', gap: 'var(--label-gap)',
               }}>
                 <div style={{
                   fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
-                  textTransform: 'uppercase', color: '#FFB07A', marginBottom: 5,
+                  textTransform: 'uppercase', color: '#FFB07A',
                 }}>
                   CONDITIONS
                 </div>
@@ -2070,12 +2071,13 @@ function CompletedHeroV2({
               </div>
             ) : runData?.weather_context ? (
               <div style={{
-                marginTop: 18, padding: '11px 13px', borderRadius: 10,
+                padding: 'var(--callout-padding)', borderRadius: 10,
                 background: 'rgba(10,12,16,.62)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
                 border: 0,
                 fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
+                display: 'flex', flexDirection: 'column', gap: 'var(--label-gap)',
               }}>
                 {runData.weather_context.message}
                 {runData.weather_context.hr_bump_bpm > 0 ? (
@@ -2086,16 +2088,17 @@ function CompletedHeroV2({
 
             {recapPayload?.coach_tip ? (
               <div style={{
-                marginTop: 8, padding: '11px 13px', borderRadius: 10,
+                padding: 'var(--callout-padding)', borderRadius: 10,
                 background: 'rgba(10,12,16,.62)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
                 border: 0,
                 fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
+                display: 'flex', flexDirection: 'column', gap: 'var(--label-gap)',
               }}>
                 <div style={{
                   fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
-                  textTransform: 'uppercase', color: '#7BE8DC', marginBottom: 5,
+                  textTransform: 'uppercase', color: '#7BE8DC',
                 }}>
                   COACH TIP
                 </div>

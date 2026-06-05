@@ -165,10 +165,13 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    route + recap card top edges. */
 .hero .htag{font-size:13px;font-weight:700;letter-spacing:3px;opacity:1;}
 .hero .htitle{font-family:'Oswald',sans-serif;font-size:68px;font-weight:600;line-height:.92;margin-top:0;min-height:126px;text-shadow:0 2px 20px rgba(0,0,0,.12);text-transform:uppercase;}
-.stats{display:flex;gap:40px;margin-top:20px;}
+/* Base .stats (rest-day hero variant) · same FIELD/GROUP structure as
+   .hero-v2 .stats above · gap between FIELDS, --label-gap inside each. */
+.stats{display:flex;gap:40px;}
+.stats > div{display:flex;flex-direction:column;gap:var(--label-gap);}
 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:500;line-height:.9;}
 .stats .v small{font-size:14px;opacity:.9;font-weight:400;}
-.stats .k{font-size:11px;font-weight:600;letter-spacing:1.2px;opacity:1;margin-top:7px;}
+.stats .k{font-size:11px;font-weight:600;letter-spacing:1.2px;opacity:1;}
 .effort{margin-top:28px;max-width:380px;padding-top:30px;}
 /* 2026-06-03 · wcard grows with the viewport like the rows above + below
    the hero (week strip / signal row) rather than being locked at a fixed
@@ -246,7 +249,10 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    `display:flex;align-items:center` centers the copy vertically
    inside the expanded scrim box so it doesn't look stranded at the
    top of a tall fill area. */
-.hero .rest-coach{flex:1;display:flex;align-items:center;font-size:15px;font-weight:500;line-height:1.55;color:#fff;background:rgba(10,12,16,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;padding:14px 16px;}
+/* rest-coach is a CALLOUT · uses --callout-padding (the token), and
+   internally it's a single-line copy block so no --label-gap needed.
+   flex:1 + align-items:center positions the copy in the slack. */
+.hero .rest-coach{flex:1;display:flex;align-items:center;font-size:15px;font-weight:500;line-height:1.55;color:#fff;background:rgba(10,12,16,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;padding:var(--callout-padding);}
 .hero-v2 .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
 /* 2026-06-03 · margin-top dropped to 0 · the eyebrow above is gone now,
    so the title row anchors at the top of .hmain. Was 8px (clear of the
@@ -287,11 +293,16 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    the full card width.  Min-width:0 still lets cells shrink under
    tight columns, white-space:nowrap on .v keeps numbers + times on
    one line. */
-.hero-v2 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:0;min-width:0;}
-.hero-v2 .stats > div{min-width:0;}
+/* 2026-06-04 · STATS GROUP · 3 fields laid out horizontally as a
+   1fr-each grid (the GROUP). Each child div is a FIELD · flex column
+   with --label-gap between value and label.  Per the spec: vertical
+   label-to-value spacing comes from --label-gap, never from per-
+   element margin-tops. */
+.hero-v2 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;min-width:0;}
+.hero-v2 .stats > div{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0;}
 .hero-v2 .stats .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;line-height:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .hero-v2 .stats .v small{font-size:13px;opacity:.85;font-weight:400;}
-.hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hero-v2 .stats .k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;opacity:.78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 /* 2026-06-04 · margin-top stripped · spacing from card section gap. */
 .hero-v2 .zones{}
 .hero-v2 .zhead{display:flex;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:10px;opacity:.9;}
@@ -305,10 +316,18 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    stripped, vertical spacing comes from --card-section-gap.  Internal
    gap is intra-section (between forecast and shoe labels) so it stays
    independent of the card section gap. */
+/* 2026-06-04 · COND GROUP · 4 fields in a 2-col 2-row grid.  Each
+   cell is a FIELD · flex column with --label-gap (label above value
+   here · same primitive, just orientation flipped vs .stats).  The
+   row-gap on this grid (18px) is between FIELDS within the group,
+   not between sections.  Section gap to the row above/below is the
+   parent's --section-gap. */
 .hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 16px;min-width:0;}
-.hero-v2 .cond > div{min-width:0;}
+.hero-v2 .cond > div{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0;}
 .hero-v2 .cond .kcl{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
-.hero-v2 .cond .kcv{font-size:14px;font-weight:700;margin-top:5px;}
+/* margin-top stripped · --label-gap on the field flex column handles
+   label→value spacing. */
+.hero-v2 .cond .kcv{font-size:14px;font-weight:700;}
 .hero-v2 .mapcol{flex:1;display:flex;min-height:0;align-self:stretch;}
 /* 2026-05-31: hero-v2-done modifier · three top-aligned columns
    (leftstack column + map + wcard). The route card now starts at the
@@ -1885,23 +1904,40 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .win.sb-collapsed .me{justify-content:center;}
 .win.sb-collapsed .me .nm,.win.sb-collapsed .me .gear{display:none;}
 
-/* 2026-06-04 · APP-WIDE LAYOUT TOKENS · per David's spec.  Three
-   independent values, each set in exactly ONE place:
-     --grid-gap         · THE outer gutter · column/row gap between
-                          cards in the dashboard, AND the .main outer
-                          padding.  20px.
-     --card-padding     · interior padding on every card · same on
-                          all four sides.  20px.
-     --card-section-gap · vertical gap between stacked sections
-                          INSIDE a card.  14px · deliberately
-                          different from --grid-gap so the eye can
-                          read "inside-card spacing" vs "between-card
-                          spacing" as distinct rhythms.
-   --card-pad / --card-radius kept as legacy aliases for older rules
-   that already consume them.  Don't introduce new uses · point new
-   rules at --card-padding etc. */
+/* 2026-06-04 · APP-WIDE LAYOUT TOKENS · structural spacing primitives.
+   Each token defined here exactly once; every consumer reads from var().
+     PRIMITIVES
+       --label-gap   · tight · label↔value INSIDE a field.  6px.
+                       Smallest spaced unit.
+       --section-gap · loose · between SECTIONS inside a card.  16px
+                       ≈ 2.67× --label-gap so fields cluster + sections
+                       separate (proximity carries grouping).  A
+                       "section" is any top-level block in a card body
+                       · a field, a group of fields, a standalone
+                       element (bar/chart/map), or a callout box.
+     CONTAINERS
+       --card-padding    · interior padding on every card · all sides.
+       --callout-padding · interior padding on callouts (CONDITIONS /
+                           COACH TIP / rest-coach).  Slightly tighter
+                           than --card-padding because callouts nest
+                           inside the card.
+       --grid-gap        · outer dashboard gutter · column + row gap
+                           between cards, and .main outer padding.
+   Legacy aliases kept so older rules keep resolving:
+     --card-section-gap → --section-gap
+     --card-pad         → --card-padding
+   Don't introduce new uses of the aliases. */
 /* ===================== TWEAKS PANEL ===================== */
-.win{--card-pad:20px;--card-radius:16px;--grid-gap:20px;--card-padding:20px;--card-section-gap:14px;}
+.win{
+  --label-gap:6px;
+  --section-gap:16px;
+  --card-padding:20px;
+  --callout-padding:14px;
+  --grid-gap:20px;
+  --card-radius:16px;
+  --card-section-gap:var(--section-gap);
+  --card-pad:var(--card-padding);
+}
 /* 2026-06-04 · UNIVERSAL CARD LAYOUT · per David's spec.
    - flex-column with --card-padding on all four sides + gap of
      --card-section-gap between stacked sections inside

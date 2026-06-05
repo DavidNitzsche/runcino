@@ -168,34 +168,36 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                     // secondary text is solid, color the accent not the
                     // sentence.
                     <div style={{
-                      marginTop: 10, padding: '11px 13px', borderRadius: 10,
+                      padding: 'var(--callout-padding)', borderRadius: 10,
                       background: 'rgba(10,12,16,0.62)',
                       border: 0,
                       backdropFilter: 'blur(10px)',
                       WebkitBackdropFilter: 'blur(10px)',
                       fontSize: 13, lineHeight: 1.55, color: '#FFFFFF',
                       fontWeight: 500,
+                      display: 'flex', flexDirection: 'column', gap: 'var(--label-gap)',
                     }}>
                       <div style={{
                         fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
-                        textTransform: 'uppercase', color: '#FFB07A', marginBottom: 5,
+                        textTransform: 'uppercase', color: '#FFB07A',
                       }}>CONDITIONS</div>
                       {recap.conditions_note}
                     </div>
                   )}
                   {recap.coach_tip && (
                     <div style={{
-                      marginTop: 8, padding: '11px 13px', borderRadius: 10,
+                      padding: 'var(--callout-padding)', borderRadius: 10,
                       background: 'rgba(10,12,16,0.62)',
                       border: 0,
                       backdropFilter: 'blur(10px)',
                       WebkitBackdropFilter: 'blur(10px)',
                       fontSize: 13, lineHeight: 1.55, color: '#FFFFFF',
                       fontWeight: 500,
+                      display: 'flex', flexDirection: 'column', gap: 'var(--label-gap)',
                     }}>
                       <div style={{
                         fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
-                        textTransform: 'uppercase', color: '#7BE8DC', marginBottom: 5,
+                        textTransform: 'uppercase', color: '#7BE8DC',
                       }}>COACH TIP</div>
                       {recap.coach_tip}
                     </div>
