@@ -524,6 +524,11 @@ export function TodayView({
                 pure repetition. Title now sits at the top of the column
                 aligned with the route + recap cards' top edges. */}
             <div className="htitle">{workoutTypeTitle(d.type)}</div>
+            {/* 2026-06-04 · rest-day coach line · gives the card real
+                content for its grid-stretched height instead of leaving
+                empty space below the stats.  Pulled from KIT.rest.coach
+                so the copy stays in the canonical effort kit. */}
+            <div className="rest-coach">{KIT.rest.coach}</div>
             <div className="stats">
               {/* 2026-06-03 · subtitles added per David: "not sure what
                   it means for 6:06 hours sleep. Seems wrong." The value
