@@ -140,12 +140,10 @@ export function TodayView({
 
   return (
     <>
-      {/* Reconnect banner · auto-hides when Strava is connected. Closes
-          coverage row 1602 (connections-skipped) when the banner reads
-          the strava status as `disconnected`. */}
-      <div style={{ marginBottom: 12 }}>
-        <ReconnectBanner />
-      </div>
+      {/* Reconnect banner · auto-hides when Strava is connected.  No
+          wrapper div · the banner returns null when not needed and the
+          .main grid gap handles spacing when it IS rendered. */}
+      <ReconnectBanner />
 
       <div className="top">
         <div>
@@ -193,103 +191,80 @@ export function TodayView({
         })()}
       </div>
 
-      {/* Adaptation card row. The ACWR load chip used to ride here; it was
-          removed 2026-06-01 and will live inside readiness once that
-          backend lands. */}
-      <div style={{ marginTop: 10 }}>
-        <AdaptationCard />
-      </div>
+      {/* 2026-06-04 · ALL wrapper divs + inline marginTop removed.
+          Each banner / proposal card renders directly into the .main
+          grid · components return null when they have nothing to
+          show.  .main's --section-gap handles spacing when something
+          IS rendered.  Previously every wrapper div made an empty
+          grid row + carried inline margin = ~60-100px of dead space
+          above THIS WEEK when none of these had content (David: "way
+          too much dead space up here, the rules were either not
+          enforced or too lax"). */}
 
-      {/* Physiology auto-nudge · only after 3+ days post-onboarding
-          with no physiology data + no AppleHealth. Closes coverage row
-          1647 (T2 physiology onboarding signals step) via the
-          "auto-surface a Today nudge" branch (David decision 2026-05-31). */}
+      <AdaptationCard />
+
       {showPhysiologyNudge ? (
-        <div style={{ marginTop: 12 }}>
-          <ProfileGapCard
-            highlight="Tell Faff your LTHR + HRmax"
-            fragment="so the coach can dial in your zones. Takes ~30 seconds."
-            ctaLabel="ADD"
-            ctaHref="/health"
-            onCta={() => {
-              if (typeof localStorage !== 'undefined') {
-                localStorage.setItem('physiologyNudgeDismissed', '1');
-              }
-              setNudgeDismissed(true);
-              setShowPhysiologyNudge(false);
-            }}
-          />
-        </div>
+        <ProfileGapCard
+          highlight="Tell Faff your LTHR + HRmax"
+          fragment="so the coach can dial in your zones. Takes ~30 seconds."
+          ctaLabel="ADD"
+          ctaHref="/health"
+          onCta={() => {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem('physiologyNudgeDismissed', '1');
+            }
+            setNudgeDismissed(true);
+            setShowPhysiologyNudge(false);
+          }}
+        />
       ) : null}
 
-      {/* Missed yesterday pill · three options when last planned day
-          went unrun + unskipped. Closes coverage line 441. */}
       {missedYesterday ? (
-        <div style={{ marginTop: 12 }}>
-          <DayStatePill
-            kind="missed"
-            label={`Yesterday's ${missedYesterday.name.toLowerCase()} · ${missedYesterday.dist} mi`}
-            actions={[
-              {
-                label: 'LOG IT',
-                onClick: () => { onPickDay(seed.todayIdx - 1); },
+        <DayStatePill
+          kind="missed"
+          label={`Yesterday's ${missedYesterday.name.toLowerCase()} · ${missedYesterday.dist} mi`}
+          actions={[
+            {
+              label: 'LOG IT',
+              onClick: () => { onPickDay(seed.todayIdx - 1); },
+            },
+            {
+              label: 'SKIP',
+              onClick: () => {
+                if (!missedYesterday.iso) return;
+                void fetch('/api/today/skip', {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({ date: missedYesterday.iso, skip: true }),
+                }).then(() => { setSkippedFor(missedYesterday.iso, true); });
               },
-              {
-                label: 'SKIP',
-                onClick: () => {
-                  if (!missedYesterday.iso) return;
-                  void fetch('/api/today/skip', {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({ date: missedYesterday.iso, skip: true }),
-                  }).then(() => { setSkippedFor(missedYesterday.iso, true); });
-                },
-              },
-            ]}
-          />
-        </div>
+            },
+          ]}
+        />
       ) : null}
 
-      {/* Card stack · order locked 2026-06-01 (David default):
-          runner-actionable first, then auto-applied notifications.
-            1. seed.pendingProposals · coach_proposals (illness/injury)
-            2. seed.planProposals where status='pending' · drift cards
-            3. seed.planProposals where status='auto_applied' · race-edit
-               rebuild notifications
-          The loader (lib/plan/proposals-state.ts) returns 0-5 items
-          total and filters accepted/dismissed/superseded. */}
-      {seed.pendingProposals.length > 0 ? (
-        <div style={{ marginTop: 8 }}>
-          {seed.pendingProposals.map((p) => (
+      {seed.pendingProposals.length > 0
+        ? seed.pendingProposals.map((p) => (
             <CoachProposalCard key={p.id} proposal={p} />
-          ))}
-        </div>
-      ) : null}
+          ))
+        : null}
 
       {seed.planProposals && seed.planProposals.length > 0 ? (
-        <div style={{ marginTop: 8 }}>
+        <>
           {seed.planProposals
             .filter((p) => p.status === 'pending')
             .map((p) => <PlanProposalCard key={`pp-${p.id}`} proposal={p} />)}
           {seed.planProposals
             .filter((p) => p.status === 'auto_applied')
             .map((p) => <PlanProposalCard key={`pp-${p.id}`} proposal={p} />)}
-        </div>
+        </>
       ) : null}
 
-      {/* 2026-06-04 · per-workout adapter proposals · "we'd swap
-          tomorrow's tempo to easy unless you object." Replaces the
-          silent-overnight-mutation pattern · runner gates the change
-          via the [LET IT HAPPEN] / [KEEP ORIGINAL] buttons. Engine
-          still detects; runner stays in the driver's seat. See
-          lib/plan/workout-proposals.ts. */}
-      {(seed.pendingWorkoutProposals?.length ?? 0) > 0 ? (
-        <div style={{ marginTop: 8 }}>
-          {seed.pendingWorkoutProposals!.map((p) => (
+      {(seed.pendingWorkoutProposals?.length ?? 0) > 0
+        ? seed.pendingWorkoutProposals!.map((p) => (
             <WorkoutProposalBanner key={`wp-${p.id}`} proposal={p} />
-          ))}
-        </div>
-      ) : null}
+          ))
+        : null}
 
       {/* Morning brief content moved 2026-06-01 into the redesigned
           Readiness drawer (overlays/Drawer.tsx). The inline panel that
