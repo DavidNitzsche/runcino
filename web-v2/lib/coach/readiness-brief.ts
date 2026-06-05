@@ -1145,12 +1145,59 @@ function buildHeadline(
       : `Sharp · The system is firing.`;
   }
   if (b.band === 'ready') {
-    return `Ready · All systems in their normal band. Today is whatever the plan says.`;
+    // 2026-06-05 · multi-tenant audit Pattern 5 fix · cite-or-shut-up.
+    // Was: "All systems in their normal band" · a lie for any runner
+    // with partial recovery data (Strava-only-web has zero recovery
+    // pillars reporting · the "ready" score is essentially LOAD-driven).
+    // Now: count actual reporting pillars from the breakdown · only
+    // claim "all systems" when every pillar has a real observation.
+    const realCount = b.inputs.filter(
+      (i) => i.observedV !== 'no data'
+        && i.observedV !== 'building history'
+        && i.weight !== 0,
+    ).length;
+    const totalCount = b.inputs.length;
+    const bodyLine = realCount === totalCount && totalCount >= 4
+      ? 'All systems in their normal band.'
+      : realCount >= 2
+        ? `${realCount} of ${totalCount} systems in their normal band.`
+        : realCount === 1
+          ? 'The one system reporting is in band.'
+          : 'Score is in the ready band.';
+    return `Ready · ${bodyLine} Today is whatever the plan says.`;
   }
   if (b.band === 'moderate') {
-    return `Moderate · One or two pillars dipped. Single-day dips are noise; the next reading clears it up.`;
+    // 2026-06-05 · multi-tenant audit Pattern 5 · pillar-claim honesty.
+    // Was: "One or two pillars dipped" · sometimes only one was real,
+    // sometimes none of the rated pillars were dipping (LOAD-only runner
+    // with a flat LOAD landed here for instance). Now: name what's
+    // actually showing the dip · falls back to a pillar-agnostic line
+    // when nothing crosses the dip threshold.
+    const dipped = b.inputs
+      .filter((i) => i.weight < -3
+        && i.observedV !== 'no data'
+        && i.observedV !== 'building history');
+    if (dipped.length === 0) {
+      return `Moderate · Score sits mid-band · no single pillar is the cause.`;
+    }
+    if (dipped.length === 1) {
+      return `Moderate · ${PILLAR_LABEL[dipped[0].key as PillarKey]} dipped. A single-day dip is noise; the next reading clears it up.`;
+    }
+    return `Moderate · ${dipped.length} pillars dipped. Single-day dips are noise; the next reading clears it up.`;
   }
-  return `Pull back · Multiple pillars are flagging.`;
+  // Pull back · count real flagging pillars so we don't claim "multiple"
+  // when only one (or none) is actually reporting and dropping.
+  const flagging = b.inputs
+    .filter((i) => i.weight < -5
+      && i.observedV !== 'no data'
+      && i.observedV !== 'building history');
+  if (flagging.length === 0) {
+    return `Pull back · Score is low · low confidence on the cause.`;
+  }
+  if (flagging.length === 1) {
+    return `Pull back · ${PILLAR_LABEL[flagging[0].key as PillarKey]} is flagging.`;
+  }
+  return `Pull back · ${flagging.length} pillars are flagging.`;
 }
 
 function buildWatchTomorrow(

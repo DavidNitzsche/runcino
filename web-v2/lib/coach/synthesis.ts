@@ -203,7 +203,26 @@ function buildSharpStory(
     : tsb != null && tsb > 25
       ? ' Training Form is high · fresh but slightly under-trained band.'
       : '';
-  return `All five pillars are in good shape with score ${breakdown.score}.${tsbPart}`;
+  // 2026-06-05 · multi-tenant audit Pattern 5 fix · cite-or-shut-up.
+  // Was: hardcoded "All five pillars" · a lie for any runner without
+  // every recovery source connected (Strava-only-web sees just LOAD).
+  // Now: count actual reporting pillars (any with a real observation,
+  // not 'no data' / 'building history') and only claim "all" when the
+  // full panel of five reports · otherwise name the count honestly.
+  const realPillarCount = breakdown.inputs.filter(
+    (i) => i.observedV !== 'no data'
+      && i.observedV !== 'building history'
+      && i.weight !== 0,
+  ).length;
+  const totalPillars = breakdown.inputs.length;
+  const intro = realPillarCount === totalPillars && totalPillars >= 4
+    ? `All ${totalPillars} pillars are in good shape`
+    : realPillarCount >= 2
+      ? `${realPillarCount} of ${totalPillars} pillars are in good shape`
+      : realPillarCount === 1
+        ? 'The one pillar reporting is in good shape'
+        : 'Score is in the sharp band';
+  return `${intro} with score ${breakdown.score}.${tsbPart}`;
 }
 
 function buildModerateStory(breakdown: ReadinessBreakdown): string {
