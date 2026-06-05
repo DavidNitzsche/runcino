@@ -83,6 +83,40 @@ struct FaffApp: App {
                     }
                     lastImportAt = Date()
 
+                    // 2026-06-05 round 89 · one-time 14-day backfill after
+                    // the sleep-bucketing fix (round 87 / commit bb0671c1)
+                    // + backend UPSERT (97b6f6f0). Per backend brief
+                    // designs/briefs/backend-hk-sleep-upsert-aligned-
+                    // 2026-06-05.md:
+                    //
+                    //   "If you want belt + suspenders: when build 162
+                    //    first launches for a runner, fire one explicit
+                    //    re-import of the last 14 days of sleep + per-
+                    //    stage samples. That guarantees the entire
+                    //    visible 14-day Health chart picks up the
+                    //    corrected bucketing on day one of the new build
+                    //    instead of trickling in night by night."
+                    //
+                    // The default 7-day re-import above only refreshes
+                    // the last week; the SLEEP card's 14-bar history
+                    // shows two weeks. Without this backfill, the older
+                    // half of the chart would keep showing the OLD
+                    // bucketing (sub-night undercounts) until 14 nights
+                    // of new corrected rows naturally cycled through.
+                    //
+                    // Gates on a versioned UserDefaults key so it fires
+                    // exactly once per device after this build installs ·
+                    // not every launch. importIfConnected is idempotent
+                    // server-side (the backend UPSERT means re-running
+                    // is safe), so even if the gate flag misfires the
+                    // worst case is one extra 14-day import.
+                    let backfillKey = "faff.health.bucketing-backfill.v1"
+                    if !UserDefaults.standard.bool(forKey: backfillKey)
+                        && UserDefaults.standard.bool(forKey: key) {
+                        await HealthKitImporter.shared.importIfConnected(daysBack: 14)
+                        UserDefaults.standard.set(true, forKey: backfillKey)
+                    }
+
                     // P35 — boot the HR alerter if the runner previously
                     // enabled phone alerts. Silent if disabled.
                     if HRAlerter.shared.enabled {
