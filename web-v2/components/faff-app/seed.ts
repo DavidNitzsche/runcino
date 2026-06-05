@@ -1143,12 +1143,29 @@ function adaptHealth(
   // a misleading "0" reading. Tiles render an em-dash instead of 0h /
   // 0ms / 0bpm. `current` stays 0 for shape stability · consumers should
   // gate display on noData, not the number.
+  //
+  // 2026-06-05 · multi-tenant audit Pattern 1 · the original `noData`
+  // gates were missing for half the Quick-Win tiles · WRIST TEMP, RESP
+  // RATE, SPO₂, BODY FAT, LEAN MASS, MAX HR all hardcoded `noData=false`,
+  // so an unconnected-source runner saw "0 %" / "0 bpm" / "0 °C" with
+  // a green status chip. Added the has-checks below and threaded
+  // `!hasX` into each tile's noData arg. SpO₂'s `>=96 ? good` check
+  // also flips to `'neutral'` when the source isn't there · was
+  // claiming "good" on a fake zero.
   const hasHrv = health?.hrv.current != null;
   const hasRhr = health?.rhr.current != null;
   const hasSleep = health?.sleep.avg7n != null;
   const hasWeight = health?.weight.current != null;
   const hasVo2 = health?.vo2.current != null;
   const hasCadence = health?.cadence.baseline != null;
+  const hasWristTemp = health?.wristTemp?.current != null;
+  const hasRespRate = health?.respiratoryRate?.current != null;
+  const hasSpo2 = health?.spo2?.current != null;
+  const hasBodyFat = health?.bodyFat?.current != null;
+  const hasLeanMass = health?.leanMass?.current != null;
+  const hasMaxHr = health?.maxHr?.current != null && (health!.maxHr.current as number) > 0;
+  const hasActiveEnergyToday = (health?.activeEnergy?.today ?? 0) > 0;
+  const hasActiveEnergyAvg7 = (health?.activeEnergy?.avg7 ?? 0) > 0;
   const hrvCurrent = health?.hrv.current ?? 0;
   const rhrCurrent = health?.rhr.current ?? 0;
   // 2026-06-05 · SLEEP body tile now shows LAST NIGHT (matches RHR/HRV
@@ -1215,30 +1232,37 @@ function adaptHealth(
     // 2026-06-01 · Health page Quick Wins · 5 new tiles.
     // Wrist temp · Apple Watch nightly skin temp. Doctrine: rises before
     // HRV drops on early illness/overtraining (Research/00b).
+    // 2026-06-05 · noData gate on !hasWristTemp · prevents "0 °C" with
+    // a green chip when the source isn't tracked.
     mk('wrist_temp', 'WRIST TEMP', '°C', wristTempCurrent, wristTempBaseline,
        [Math.max(34, (wristTempCurrent || 36) - 1), (wristTempCurrent || 36) + 1],
        wristTempSeries,
-       wristTempDelta != null && wristTempDelta >= 0.4 ? 'warn'
+       !hasWristTemp ? 'neutral'
+         : wristTempDelta != null && wristTempDelta >= 0.4 ? 'warn'
          : wristTempDelta != null && wristTempDelta <= -0.4 ? 'warn'
-         : 'good', 2, false, false, 'baseline'),
+         : 'good', 2, false, !hasWristTemp, 'baseline'),
     // Respiratory rate · 24-48h early-illness signal per Research/15.
     mk('resp_rate', 'RESP RATE', '/min', rrCurrent, rrBaseline,
        [Math.max(10, (rrCurrent || 16) - 4), (rrCurrent || 16) + 4],
        respiratoryRateSeries,
-       rrDelta != null && rrDelta >= 2 ? 'warn' : 'good', 1, false, false, 'baseline'),
+       !hasRespRate ? 'neutral'
+         : rrDelta != null && rrDelta >= 2 ? 'warn' : 'good',
+       1, false, !hasRespRate, 'baseline'),
     // SpO2 · quiet at sea-level, flags at altitude / when sick.
+    // 2026-06-05 · noData gate · was claiming `good` on a fake 0%.
     mk('spo2', 'SPO₂', '%', spo2Current, spo2Baseline,
        [90, 100], spo2SeriesArr,
-       spo2Current >= 96 ? 'good' : spo2Current >= 93 ? 'warn' : 'warn',
-       0, false, false, 'baseline'),
+       !hasSpo2 ? 'neutral'
+         : spo2Current >= 96 ? 'good' : 'warn',
+       0, false, !hasSpo2, 'baseline'),
     // Body fat % · trend signal for body composition.
     mk('body_fat', 'BODY FAT', '%', bfCurrent, undefined,
        [Math.max(5, (bfCurrent || 15) - 5), (bfCurrent || 15) + 5],
-       bodyFatSeriesArr, 'good', 1),
+       bodyFatSeriesArr, !hasBodyFat ? 'neutral' : 'good', 1, false, !hasBodyFat),
     // Lean mass · maintaining lean mass through build = strength outcome.
     mk('lean_mass', 'LEAN MASS', 'lb', lmCurrentLb, undefined,
        [Math.max(100, (lmCurrentLb || 150) - 10), (lmCurrentLb || 150) + 10],
-       leanMassSeriesLb, 'good', 1),
+       leanMassSeriesLb, !hasLeanMass ? 'neutral' : 'good', 1, false, !hasLeanMass),
   ];
   // 2026-06-01 · HRV CV (Plews coefficient of variation %). Surfaced
   // when readinessBrief carries it · early-overreach signal that fires
