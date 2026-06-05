@@ -1054,10 +1054,37 @@ final class HealthKitImporter: ObservableObject {
             store.execute(q)
         }
 
-        // Bucket by "morning of" date (the date the sleep block ENDED
-        // in PT). awake/inBed segments belong to the same night so
-        // their endDate works too.
-        let cal = Calendar.current
+        // Bucket by "morning of" date · the calendar date the runner
+        // WOKE UP on, not the calendar date each individual sample
+        // ended on.
+        //
+        // 2026-06-05 round 87 fix · was: key = f.string(from: s.endDate)
+        // (PT calendar day of each sample's endDate). That split the
+        // night at midnight: pre-midnight Core/Deep blocks (e.g. the
+        // 10pm-12am block of a 10pm-7am session) bucketed to YESTERDAY's
+        // morning, post-midnight blocks bucketed to today's. iPhone
+        // therefore saw only the post-midnight half of last night's
+        // sleep. David QC 2026-06-05 round 87: HK Time Asleep 7:55,
+        // Faff sleep_hours 6.1h · ~109min gap = exactly the pre-midnight
+        // portion of his Sunday→Monday sleep that was getting attributed
+        // to Sunday's "morning" bucket.
+        //
+        // New rule: attribute each sample by its startDate's wall-clock
+        // hour (in PT):
+        //   · hour >= 18 (6 PM or later) → this sample is part of the
+        //     night ENDING the NEXT morning. Key = startOfDay(startDate)
+        //     + 1 day.
+        //   · hour < 18 → this sample's morning is the same calendar
+        //     day (early-morning continuation, late-morning wake-up,
+        //     afternoon nap).
+        //
+        // Cutoff is 18:00 because almost no one starts their main
+        // overnight sleep before 6 PM, and afternoon naps that end
+        // before 6 PM should stay attributed to the same day. Shift
+        // workers who sleep from 8 AM to 2 PM stay correctly attributed
+        // to the same morning under this rule.
+        var ptCal = Calendar(identifier: .gregorian)
+        ptCal.timeZone = TimeZone(identifier: "America/Los_Angeles") ?? .current
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone(identifier: "America/Los_Angeles")
@@ -1067,12 +1094,24 @@ final class HealthKitImporter: ObservableObject {
             let val = s.value
             let mins = s.endDate.timeIntervalSince(s.startDate) / 60.0
             if mins <= 0 { continue }
-            let key = f.string(from: s.endDate)
+            let startHour = ptCal.component(.hour, from: s.startDate)
+            let morningDate: Date
+            if startHour >= 18 {
+                // Evening sleep · the morning is tomorrow.
+                morningDate = ptCal.date(
+                    byAdding: .day, value: 1,
+                    to: ptCal.startOfDay(for: s.startDate)
+                ) ?? s.startDate
+            } else {
+                // Pre-noon continuation (or afternoon nap) · same morning.
+                morningDate = ptCal.startOfDay(for: s.startDate)
+            }
+            let key = f.string(from: morningDate)
             // Seed the night with the FIRST sample's start as bedtime ·
             // sleep blocks come oldest-first so the first sample for a
             // given night is the bedtime sample.
             var night = byDateKey[key] ?? SleepNight(
-                date: f.date(from: key).map { cal.startOfDay(for: $0) } ?? s.endDate,
+                date: morningDate,
                 bedtime: s.startDate
             )
             switch val {
