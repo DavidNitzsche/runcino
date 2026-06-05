@@ -91,6 +91,7 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
         ))}
       </div>
 
+      <div className="band">
       <div className="fll">VOLUME</div>
       <div className="av-grid2">
         <div className="av-panel">
@@ -126,7 +127,9 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
           </div>
         </div>
       </div>
+      </div>{/* .band */}
 
+      <div className="band">
       <div className="fll">PERSONAL RECORDS</div>
       <div className="av-recs">
         {d.recs.map(r => (
@@ -137,7 +140,9 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
           </div>
         ))}
       </div>
+      </div>{/* .band */}
 
+      <div className="band">
       <div className="fll" style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span>CONSISTENCY</span>
         <span style={{ opacity: 0.55, fontWeight: 700, letterSpacing: '2px' }}>LAST 18 WEEKS</span>
@@ -150,7 +155,9 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
           MORE
         </div>
       </div>
+      </div>{/* .band */}
 
+      <div className="band">
       <div className="fll">BY THE NUMBERS</div>
       <div className="av-facts">
         {d.facts.map((f, i) => (
@@ -165,7 +172,9 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
           </div>
         ))}
       </div>
+      </div>{/* .band */}
 
+      <div className="band">
       <div className="fll">RECENT RUNS</div>
       <div className="log">
         {seed.activity.recent.map((r, i) => (
@@ -186,6 +195,7 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
           </div>
         ))}
       </div>
+      </div>{/* .band */}
     </>
   );
 }

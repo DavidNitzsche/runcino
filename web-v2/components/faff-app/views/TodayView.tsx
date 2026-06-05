@@ -297,6 +297,12 @@ export function TodayView({
           surfaces in one place when the runner taps the readiness ring.
           See designs/from Design agent/readiness-drawer/. */}
 
+      {/* 2026-06-04 · label + week strip wrapped in a .band so the
+          label-to-week distance is the tight --label-gap, while the
+          band-to-next-band distance stays --section-gap from .main's
+          grid.  Same two-tier rhythm spec David defined for inside-card
+          field/section spacing, just applied to the page body. */}
+      <div className="band">
       <div className="weeklab">THIS WEEK</div>
       {/* 2026-06-01 · This Week strip · Direction A redesign per
           designs/from Design agent/week-strip/README.md. Fixed-height
@@ -423,6 +429,7 @@ export function TodayView({
           );
         })}
       </div>
+      </div>{/* .band */}
 
       {/* Strength-recommender reason banner removed 2026-06-01 (David
           call · "why are we making a banner for strength at all"). The
