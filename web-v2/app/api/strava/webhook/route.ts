@@ -98,6 +98,67 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'bad payload' }, { status: 200 });
   }
 
+  // 2026-06-05 · backend audit P0-3 fix · validate the webhook source.
+  //
+  // Was: anyone who POSTs JSON shaped like a Strava webhook would have
+  // their event accepted, audited, and `processWebhookEvent`-ed. The
+  // attacker could force an authenticated activity fetch into a victim's
+  // runs (POST { aspect_type: 'create', object_id: any_strava_activity,
+  // owner_id: victim_athlete_id }) or hard-DELETE rows via aspect_type:
+  // 'delete'. Now defense in depth:
+  //
+  //   Layer 1 · subscription_id must match our stored row. Strava
+  //     issued us a specific subscription_id when we registered the
+  //     webhook URL; forged payloads from other subscriptions (or
+  //     made-up ids) are rejected here.
+  //   Layer 2 · owner_id must match a profile.strava_athlete_id we
+  //     actually have on file. If we don't have that athlete connected,
+  //     this isn't a real event for one of our runners · drop it.
+  //   Layer 3 (follow-up) · optional STRAVA_WEBHOOK_SECRET_PATH env
+  //     var to mint a 64-byte secret path component on the webhook URL.
+  //     Lifted to a separate sweep so subscription re-creation can be
+  //     planned with the runner.
+  //
+  // Failed validation returns 200 (Strava doesn't retry) but skips audit
+  // insert + processing entirely. Cite docs/2026-06-05-backend-audit.html
+  // § P0-3.
+  if (!Number.isFinite(subscriptionId)) {
+    console.warn(`[strava/webhook] missing subscription_id · rejecting`);
+    return NextResponse.json({ ok: false, error: 'missing subscription_id' }, { status: 200 });
+  }
+  let subRow: { user_uuid: string | null } | null = null;
+  try {
+    const s = await pool.query<{ user_uuid: string | null }>(
+      `SELECT user_uuid::text AS user_uuid FROM strava_webhook_subscriptions WHERE subscription_id = $1 LIMIT 1`,
+      [subscriptionId],
+    );
+    subRow = s.rows[0] ?? null;
+  } catch (e: unknown) {
+    console.error(`[strava/webhook] subscription lookup failed: ${e instanceof Error ? e.message : String(e)}`);
+    return NextResponse.json({ ok: false }, { status: 200 });
+  }
+  if (!subRow) {
+    console.warn(`[strava/webhook] unknown subscription_id=${subscriptionId} · ` +
+      `rejecting forged event. owner=${ownerId} object=${objectId} aspect=${aspectType}`);
+    return NextResponse.json({ ok: false, error: 'unknown subscription_id' }, { status: 200 });
+  }
+  // Layer 2 · is this athlete actually one of our runners?
+  let ownerProfile: { user_uuid: string } | null = null;
+  try {
+    const o = await pool.query<{ user_uuid: string }>(
+      `SELECT user_uuid::text AS user_uuid FROM profile WHERE strava_athlete_id = $1 LIMIT 1`,
+      [String(ownerId)],
+    );
+    ownerProfile = o.rows[0] ?? null;
+  } catch (e: unknown) {
+    console.error(`[strava/webhook] owner lookup failed: ${e instanceof Error ? e.message : String(e)}`);
+    return NextResponse.json({ ok: false }, { status: 200 });
+  }
+  if (!ownerProfile) {
+    console.warn(`[strava/webhook] unknown owner_id=${ownerId} · no profile.strava_athlete_id match · rejecting`);
+    return NextResponse.json({ ok: false, error: 'unknown owner_id' }, { status: 200 });
+  }
+
   // 1. Insert audit row first so even if processing crashes we have
   //    a record. Bump events_received on the subscription row.
   let eventRowId: number | null = null;
