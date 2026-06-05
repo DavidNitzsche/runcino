@@ -632,15 +632,45 @@ final class HealthKitImporter: ObservableObject {
     /// Walks workout.workoutEvents in order, pairs each pause with its
     /// matching resume. Edge case: a workout ending while still paused
     /// gets its open range closed at workout.endDate.
+    ///
+    /// 2026-06-05 round 88 · added `.motionPaused` / `.motionResumed`
+    /// handling (backend brief iphone-hk-splits-regression-2026-06-05.md
+    /// confirmed iPhone was producing n_splits=0 across every recent
+    /// apple_watch ingest row — the reconciliation guard was correctly
+    /// dropping splits, but only because the auto-pause time wasn't
+    /// being subtracted).
+    ///
+    /// HKWorkoutEventType has two distinct pause/resume pairs:
+    ///  · `.pause` (rawValue 1) + `.resume` (rawValue 2) · the
+    ///    USER-INITIATED pause (long-press the workout / tap the X).
+    ///  · `.motionPaused` (rawValue 5) + `.motionResumed` (rawValue 6) ·
+    ///    Apple Watch's AUTO-PAUSE (the watch detects you've stopped
+    ///    moving and pauses the workout automatically). Red lights,
+    ///    water stops, traffic — the most common pause source for a
+    ///    runner who never manually touches the watch.
+    ///
+    /// Both pairs subtract paused time from `workout.duration` at the
+    /// whole-workout level, so the per-mile derivation must subtract
+    /// both at the per-mile level too. Without `.motionPaused` David's
+    /// 6mi easy summed-splits showed 52:40 vs actual 50:34 (126s of
+    /// auto-pause time leaking into mile 6's pace, then the guard
+    /// dropped the splits and the canonical row landed with `n_splits=0`).
+    ///
+    /// Both pairs are treated as a single pause "channel" with one
+    /// open-range variable, because the watch never emits a `.pause`
+    /// while a `.motionPaused` is already open (and vice-versa). If
+    /// that assumption ever breaks, the open range gets correctly
+    /// closed by whichever resume fires first, which is still safer
+    /// than tracking two channels and risking double-subtraction.
     nonisolated fileprivate static func pauseRanges(in workout: HKWorkout) -> [(Date, Date)] {
         var ranges: [(Date, Date)] = []
         var pausedAt: Date? = nil
         let events = workout.workoutEvents ?? []
         for ev in events {
             switch ev.type {
-            case .pause:
+            case .pause, .motionPaused:
                 pausedAt = ev.dateInterval.start
-            case .resume:
+            case .resume, .motionResumed:
                 if let start = pausedAt {
                     ranges.append((start, ev.dateInterval.start))
                     pausedAt = nil

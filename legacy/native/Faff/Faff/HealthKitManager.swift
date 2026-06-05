@@ -724,15 +724,24 @@ extension HealthKitManager {
     /// pause + resume markers (per backend brief). Pairs each pause
     /// with its matching resume. Workout-ended-while-paused edge
     /// case closes the open range at workout.endDate.
+    /// 2026-06-05 round 88 · added `.motionPaused` / `.motionResumed`
+    /// alongside `.pause` / `.resume`. Apple Watch's AUTO-PAUSE
+    /// (motion-detected stop at red lights, water stops, etc.) emits
+    /// the motion pair, not the user-initiated pair. Backend audit
+    /// (designs/briefs/iphone-hk-splits-regression-2026-06-05.md)
+    /// confirmed iPhone was producing n_splits=0 across every recent
+    /// apple_watch ingest row because the reconciliation guard
+    /// dropped splits whose sum exceeded duration by 60-315s · that
+    /// 60-315s was auto-pause time the old code wasn't subtracting.
     nonisolated fileprivate static func pauseRanges(in workout: HKWorkout) -> [(Date, Date)] {
         var ranges: [(Date, Date)] = []
         var pausedAt: Date? = nil
         let events = workout.workoutEvents ?? []
         for ev in events {
             switch ev.type {
-            case .pause:
+            case .pause, .motionPaused:
                 pausedAt = ev.dateInterval.start
-            case .resume:
+            case .resume, .motionResumed:
                 if let start = pausedAt {
                     ranges.append((start, ev.dateInterval.start))
                     pausedAt = nil
