@@ -426,7 +426,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
 
       {/* Race week countdown · only renders inside T-7 → T-0 window. */}
       {!r.isPast && r.daysAway >= 0 && r.daysAway <= 7 ? (
-        <div style={{ marginTop: 16 }}>
+        <div className="band">
           <div className="rp-sec">RACE WEEK</div>
           <CountdownLadder entries={MARATHON_COUNTDOWN} today={r.daysAway} />
         </div>
@@ -489,7 +489,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         {(r.courseStartLabel || r.courseFinishLabel || r.courseNotes) ? (
           <div style={{
             display: 'grid', gridTemplateColumns: 'minmax(0, 1.55fr) minmax(0, 1fr)',
-            gap: 16, marginTop: 10, alignItems: 'stretch',
+            gap: 16, alignItems: 'stretch',
           }}>
             <RouteMapBlock
               routeLatLng={r.routeLatLng}
@@ -511,18 +511,16 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             </div>
           </div>
         ) : (
-          <div style={{ marginTop: 10 }}>
-            <RouteMapBlock
-              routeLatLng={r.routeLatLng}
-              height={240}
-              uploadingGpx={uploadingGpx}
-              pickGpx={pickGpx}
-            />
-          </div>
+          <RouteMapBlock
+            routeLatLng={r.routeLatLng}
+            height={240}
+            uploadingGpx={uploadingGpx}
+            pickGpx={pickGpx}
+          />
         )}
       </div>
 
-      <div className="rp-2col" style={{ marginTop: 16 }}>
+      <div className="rp-2col">
         <div className="rp-panel rp-elev">
           <div className="rp-elevhead"><div className="t">Elevation profile</div><div className="s">Start 360 ft → Finish 20 ft</div></div>
           <svg className="rp-elevsvg" viewBox="0 0 640 150" preserveAspectRatio="none">
