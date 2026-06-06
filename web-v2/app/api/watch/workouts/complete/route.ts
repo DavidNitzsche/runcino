@@ -106,6 +106,8 @@ export async function POST(req: NextRequest) {
     console.warn(`[watch/complete] rejected body.source='${requestedSource}' · falling back to 'watch'. Add to ALLOWED_SOURCES if intentional.`);
   }
   const indoor = body.indoor === true;
+  // Fix 4b · derive whole-run avgHr once (null when phases carry no HR).
+  const wholeRunHr = wholeRunAvgHr(body.phases);
   const data: any = {
     id: body.workoutId,
     activityId: body.workoutId,
@@ -124,7 +126,15 @@ export async function POST(req: NextRequest) {
     durationSec: totalSec,
     timeMoving: totalSec > 0 ? formatMmSs(totalSec) : null,
     avgPaceMinPerMi: avgPace,
-    avgHr: body.avgHr ?? null,
+    // Fix 4b · option (A) + labeling. `avgHr` is the CANONICAL read = WHOLE-RUN
+    // (derived from phase samples); `avgHrRaw` preserves the watch's native
+    // value, which is WORK-WEIGHTED; `avgHrKind` records which definition
+    // `avgHr` holds ('whole_run' when derived, else 'work_weighted' fallback)
+    // so a future reader/audit tells the two definitions apart without guessing
+    // — they never become a silent chimera.
+    avgHr: wholeRunHr ?? body.avgHr ?? null,
+    avgHrRaw: body.avgHr ?? null,                       // watch's native value = work-weighted
+    avgHrKind: wholeRunHr != null ? 'whole_run' : (body.avgHr != null ? 'work_weighted' : null),
     maxHr: body.maxHr ?? null,
     avgCadence: body.avgCadence ?? null,
     // Active calories from HKLiveWorkoutBuilder (2026-06-01) ·
@@ -222,7 +232,10 @@ export async function POST(req: NextRequest) {
   // often arrives alongside a HKWorkout import for the same run; this
   // ensures only the richer row is visible to the coach + log.
   try {
-    const date = body.date ?? body.dateLocal ?? new Date().toISOString().slice(0, 10);
+    // Fix 1 · merge on the run's OWN startLocal-derived date (the `date`
+    // written onto the row above) — NOT body.date/body.dateLocal, which the
+    // watch payload never sends → UTC-now fallback → evening-PT runs scanned
+    // the wrong day and stranded a duplicate.
     await autoMergeForDate(userId, date);
   } catch (e: any) {
     console.error('[watch/complete] autoMerge warn:', e?.message);
@@ -271,6 +284,24 @@ function formatPace(secPerMi: number): string {
   const m = Math.floor(secPerMi / 60);
   const s = secPerMi % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Fix 4b · whole-run mean HR from the watch's per-phase samples — the
+ *  canonical avgHr definition. HK can only produce whole-run; the watch's
+ *  top-level avgHr is WORK-weighted (drops recovery jogs → inflates an
+ *  interval run by ~12 bpm). Duration-weighting the per-phase means equals
+ *  the flat mean of all 5-sec hrSamples (verified on a real interval run:
+ *  168 work-weighted → 156 whole-run). Null when phases carry no HR, so the
+ *  caller falls back to body.avgHr. */
+function wholeRunAvgHr(phases: any[] | undefined): number | null {
+  if (!Array.isArray(phases)) return null;
+  let sum = 0, dur = 0;
+  for (const p of phases) {
+    const d = Number(p?.actualDurationSec ?? 0);
+    const hr = Number(p?.avgHr ?? NaN);
+    if (d > 0 && Number.isFinite(hr)) { sum += hr * d; dur += d; }
+  }
+  return dur > 0 ? Math.round(sum / dur) : null;
 }
 
 /** Stable, positive bigint derived from a string (first 12 hex chars of

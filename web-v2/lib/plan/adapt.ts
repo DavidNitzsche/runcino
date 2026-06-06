@@ -35,6 +35,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
 
@@ -560,13 +561,16 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
 
   // Was there a run of distance >= 4mi within the ±1d window with a
   // matching workout type heuristic?
+  // Phase B · one canonical dedup. A dupe in the ±1d window would inflate this
+  // COUNT and wrongly mark a completed key workout as missed.
+  const canonicalIds = await getCanonicalRunIds(userId, isoDaysBefore(r.date, 1), isoDaysBefore(r.date, -1));
   const completed = (await pool.query(
     `SELECT COUNT(*) AS n FROM runs
       WHERE user_uuid = $1
-        AND NOT (data ? 'mergedIntoId')
+        AND id = ANY($3::bigint[])
         AND (data->>'date')::date BETWEEN $2::date - 1 AND $2::date + 1
         AND (data->>'distanceMi')::numeric >= 4`,
-    [userId, r.date]
+    [userId, r.date, canonicalIds]
   )).rows[0];
 
   if (Number(completed.n) === 0) {

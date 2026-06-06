@@ -4,6 +4,7 @@
  * for the HEALTH surface. Reads from health_samples.
  */
 import { pool } from '@/lib/db/pool';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 
 export interface HealthState {
@@ -260,7 +261,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
          SELECT AVG((data->>'avgCadence')::numeric)::numeric AS avg
            FROM runs
           WHERE user_uuid = $1::uuid
-            AND NOT (data ? 'mergedIntoId')
+            AND id = ANY($3::bigint[])
             AND data->>'avgCadence' IS NOT NULL
             AND (data->>'avgCadence')::numeric BETWEEN 130 AND 220
             AND (data->>'date')::date >= ($2::date - interval '60 days')
@@ -273,7 +274,8 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
        )
        SELECT COALESCE(rc.avg, hc.avg) AS avg
          FROM run_cadence rc, hk_cadence hc`,
-      [userId, today]
+      // Phase B · one canonical dedup. A dupe would weight one run's cadence 2×.
+      [userId, today, await getCanonicalRunIds(userId, isoDaysBefore(today, 60), today)]
     ).then((r) => r.rows[0]),
     pool.query(
       `SELECT value FROM health_samples

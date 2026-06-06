@@ -30,6 +30,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 
 export interface PacingDisciplineResult {
   /** Seconds of pacing-buffer for the runner's typical execution. */
@@ -77,6 +78,9 @@ export async function computePacingDiscipline(
   // Pull ALL runs ≥ MIN_DISTANCE_MI with ≥ MIN_SPLITS splits in the
   // window · we sort + filter client-side because jsonb_array_length
   // in a WHERE doesn't index well.
+  // Phase B · one canonical dedup. A dupe of one race/tempo run would otherwise
+  // appear twice in the qualifying set and skew the pace-CV buffer.
+  const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, windowDays), today);
   const rows = (await pool.query<{
     id: string;
     type: string | null;
@@ -100,7 +104,7 @@ export async function computePacingDiscipline(
        FROM runs r
       WHERE r.user_uuid = $1
         AND r.absorbed_into_canonical_at IS NULL
-        AND NOT (data ? 'mergedIntoId')
+        AND r.id = ANY($5::bigint[])
         AND (data->>'distanceMi')::numeric >= $2
         AND COALESCE(
               (data->>'date')::date,
@@ -108,7 +112,7 @@ export async function computePacingDiscipline(
             ) >= $4::date - $3::int
       ORDER BY (data->>'date') DESC
       LIMIT 80`,
-    [userUuid, MIN_DISTANCE_MI, windowDays, today],
+    [userUuid, MIN_DISTANCE_MI, windowDays, today, canonicalIds],
   ).catch(() => ({ rows: [] }))).rows;
 
   const candidates: RunRow[] = rows

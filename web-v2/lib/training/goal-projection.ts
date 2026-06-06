@@ -43,6 +43,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { predictRaceTime, vdotFromRace } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -645,6 +646,11 @@ async function detectTempoPaceDrift(
   if (!hmSec) return null;
   const tPacePerMi = hmSec / 13.1 - 5;
 
+  // Phase B · one canonical dedup. A dupe would inflate COUNT (the ≥3 gate) and
+  // double-weight a tempo/threshold pace in the AVG. 22d slack ⊇ the 21d SQL
+  // window (runner-TZ vs CURRENT_DATE skew); no run dates past today.
+  const projToday = await runnerToday(userUuid);
+  const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(projToday, 22), projToday);
   const r = (await pool.query<{
     avg_pace_s: number | string | null;
     count: number | string;
@@ -653,11 +659,11 @@ async function detectTempoPaceDrift(
             COUNT(*) AS count
        FROM runs
       WHERE user_uuid = $1::uuid
-        AND NOT (data ? 'mergedIntoId')
+        AND id = ANY($2::bigint[])
         AND (data->>'workoutType' = 'tempo' OR data->>'workoutType' = 'threshold')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= (CURRENT_DATE - INTERVAL '21 days')::text
         AND (data->>'distanceMi')::numeric >= 4`,
-    [userUuid],
+    [userUuid, canonicalIds],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!r || !r.avg_pace_s || Number(r.count) < 3) return null;
   const observedPaceSec = Number(r.avg_pace_s);

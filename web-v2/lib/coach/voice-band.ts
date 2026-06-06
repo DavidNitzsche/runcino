@@ -39,6 +39,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import type { CoachState } from '@/lib/topics/types';
 
 /* ────────────────────────── Public types ────────────────────────── */
@@ -305,6 +306,8 @@ function stepDown(band: VoiceBand): VoiceBand {
 async function computeVdotConfidence(userUuid: string): Promise<number> {
   // 2026-06-03 · runner TZ anchors the 180d window.
   const today = await runnerToday(userUuid);
+  // Phase B · one canonical dedup. run_v counts each physical run once.
+  const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, 180), today);
   const rows = (await pool.query<{ kind: string; vdot: number | null }>(
     `WITH race_v AS (
        SELECT 'race' AS kind,
@@ -320,13 +323,13 @@ async function computeVdotConfidence(userUuid: string): Promise<number> {
               NULL::numeric AS vdot
          FROM runs
         WHERE user_uuid = $1::uuid
-          AND NOT (data ? 'mergedIntoId')
+          AND id = ANY($3::bigint[])
           AND (data->>'workoutType') IN ('threshold', 'tempo', 'intervals', 'race')
           AND (data->>'distanceMi')::numeric >= 3
           AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= $2::date - 180
      )
      SELECT * FROM race_v UNION ALL SELECT * FROM run_v`,
-    [userUuid, today],
+    [userUuid, today, canonicalIds],
   ).catch(() => ({ rows: [] as Array<{ kind: string; vdot: number | null }> }))).rows;
 
   const raceCount = rows.filter((r) => r.kind === 'race').length;

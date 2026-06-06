@@ -23,6 +23,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 
 export interface HeatAcclimatization {
   daysInWindow: number;
@@ -47,6 +48,9 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
   // 2026-06-03 · runner TZ anchors the 14d window.
   const today = await runnerToday(userUuid);
   // Pull last 14d of runs with weather + RHR.
+  // Phase B · one canonical dedup. An unflagged watch+HK dupe of one run would
+  // otherwise weight its weather temp 2× in the avg + heat-day count.
+  const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, 14), today);
   const tempRows = await pool.query<{ d: string; temp_f: number | string | null }>(
     `SELECT (data->>'date')::date::text AS d,
             COALESCE(
@@ -56,11 +60,11 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
             ) AS temp_f
        FROM runs
       WHERE user_uuid = $1::uuid
-        AND NOT (data ? 'mergedIntoId')
+        AND id = ANY($3::bigint[])
         AND data->>'weather' IS NOT NULL
         AND (data->>'date')::date >= $2::date - interval '14 days'
       ORDER BY (data->>'date')::date ASC`,
-    [userUuid, today],
+    [userUuid, today, canonicalIds],
   ).then((r) => r.rows).catch(() => []);
 
   const temps = tempRows.map((r) => Number(r.temp_f)).filter((v) => Number.isFinite(v) && v > 0);
