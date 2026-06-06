@@ -50,6 +50,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 
 export type AnchorType = 'race' | 'long' | 'intervals' | 'tempo' | 'threshold';
 
@@ -527,12 +528,13 @@ async function loadMuscleSignals(
                 AND value::numeric BETWEEN 150 AND 400) AS gct
        FROM runs r
       WHERE r.user_uuid = $1::uuid
-        AND NOT (r.data ? 'mergedIntoId')
+        AND r.id = ANY($4::bigint[])
         AND (r.data->>'date')::date > $2::date
         AND (r.data->>'date')::date <= $3::date
         AND COALESCE(r.data->>'type', 'easy') IN ('easy', 'recovery', '', 'shakeout')
       ORDER BY (r.data->>'date')::date DESC LIMIT 3`,
-    [userUuid, anchorDate, today],
+    // Phase B · one canonical dedup (cadence/stride/GCT avg over after-runs).
+    [userUuid, anchorDate, today, await getCanonicalRunIds(userUuid, anchorDate, today)],
   ).then((r) => r.rows).catch(() => []);
 
   // Baseline form metrics from easy runs BEFORE anchor (30d window).
@@ -547,11 +549,11 @@ async function loadMuscleSignals(
                 AND value::numeric BETWEEN 150 AND 400) AS gct
        FROM runs r
       WHERE r.user_uuid = $1::uuid
-        AND NOT (r.data ? 'mergedIntoId')
+        AND r.id = ANY($3::bigint[])
         AND (r.data->>'date')::date >= ($2::date - interval '30 days')
         AND (r.data->>'date')::date < $2::date
         AND COALESCE(r.data->>'type', 'easy') IN ('easy', 'recovery', '', 'shakeout')`,
-    [userUuid, anchorDate],
+    [userUuid, anchorDate, await getCanonicalRunIds(userUuid, isoDaysBefore(anchorDate, 30), anchorDate)],
   ).then((r) => r.rows).catch(() => []);
 
   if (afterRows.length === 0) return null;

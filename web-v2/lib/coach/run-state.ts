@@ -7,6 +7,7 @@
  * the iOS sync + Strava webhook both write.
  */
 import { pool } from '@/lib/db/pool';
+import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
 import { computeZones } from '@/lib/training/zones';
 import { baselineTempF } from '@/lib/weather/lookup';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
@@ -1182,19 +1183,22 @@ async function computeHrOnPaceDelta(args: {
   if (args.paceSPerMi <= 0 || args.avgHr <= 0) return null;
   try {
     const PACE_BUCKET = 10; // ±10 s/mi
+    // Phase B · one canonical dedup. A dupe of a same-type+pace run would put
+    // two identical avgHr into the 4-sample median baseline. LIMIT 4 windows it.
+    const canonicalIds = await getCanonicalRunIds(args.userId, ...ALL_TIME);
     const recent = (await pool.query<{ avg_hr: string }>(
       `SELECT (data->>'avgHr')::numeric AS avg_hr
          FROM runs
         WHERE user_uuid = $1
           AND absorbed_into_canonical_at IS NULL
-          AND NOT (data ? 'mergedIntoId')
+          AND id = ANY($6::bigint[])
           AND id::text <> $2
           AND data->>'type' = $3
           AND (data->>'paceSPerMi')::numeric BETWEEN ($4::numeric - $5) AND ($4::numeric + $5)
           AND (data->>'avgHr')::numeric > 0
         ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC
         LIMIT 4`,
-      [args.userId, args.runIdToExclude, args.type, args.paceSPerMi, PACE_BUCKET],
+      [args.userId, args.runIdToExclude, args.type, args.paceSPerMi, PACE_BUCKET, canonicalIds],
     ).catch(() => ({ rows: [] as Array<{ avg_hr: string }> }))).rows;
 
     if (recent.length < 2) return null;

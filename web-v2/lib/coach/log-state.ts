@@ -7,6 +7,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { loadActivePlan } from '@/lib/plan/lookup';
+import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
 
 export interface LogRun {
   id: string;
@@ -148,6 +149,9 @@ export async function loadLogState(
   // sub-half-mile shakeout from the runner's own log. If the ingest path
   // accepted it, the log should show it. Only filter zero-distance ghost
   // entries (GPS errors, abandoned starts) where the run never happened.
+  // Phase B · one canonical dedup, replacing the bespoke date+distance-bucket
+  // bestByKey below. All-history canonical IDs; the LIMIT windows it.
+  const canonicalIds = await getCanonicalRunIds(userId, ...ALL_TIME);
   const rows = (await pool.query(
     `SELECT sa.data,
             sa.shoe_id,
@@ -156,12 +160,12 @@ export async function loadLogState(
        FROM runs sa
        LEFT JOIN shoes s ON s.id = sa.shoe_id
       WHERE sa.user_uuid = $1
-        AND NOT (sa.data ? 'mergedIntoId')
+        AND sa.id = ANY($3::bigint[])
         AND (sa.data->>'distanceMi')::numeric > 0
       ORDER BY COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) DESC,
                COALESCE(sa.data->>'startLocal','') DESC
       LIMIT $2`,
-    [userId, limit]
+    [userId, limit, canonicalIds]
   )).rows;
 
   // Active plan (memoized — shared across state-loaders)
@@ -243,21 +247,11 @@ export async function loadLogState(
     };
   });
 
-  // Dedupe: same date + distance (within 0.05mi) is the same run captured by
-  // multiple sources (e.g. watch + apple_health import + Strava webhook).
-  // Prefer the source w/ richer data: strava > watch > manual > apple_health.
-  const SOURCE_RANK: Record<string, number> = { strava: 4, watch: 3, manual: 2, apple_health: 1 };
-  const dedupeKey = (r: LogRun) => `${r.date}-${Math.round(r.distance_mi * 20) / 20}`;
-  const bestByKey = new Map<string, LogRun>();
-  for (const r of rawRuns) {
-    const k = dedupeKey(r);
-    const cur = bestByKey.get(k);
-    if (!cur) { bestByKey.set(k, r); continue; }
-    const curRank = SOURCE_RANK[cur.source] ?? 0;
-    const newRank = SOURCE_RANK[r.source] ?? 0;
-    if (newRank > curRank) bestByKey.set(k, r);
-  }
-  const allRuns = [...bestByKey.values()].sort((a, b) => b.date.localeCompare(a.date));
+  // Phase B · one canonical dedup. The query already filtered to canonical run
+  // IDs (identity-deduped — a superset of the old date+distance-bucket dedup
+  // that ALSO catches the divergent-distance dupes the bucket missed), so
+  // rawRuns is already one row per physical run.
+  const allRuns = [...rawRuns].sort((a, b) => b.date.localeCompare(a.date));
 
   // Axes from the UNFILTERED set — chips only render for values that actually
   // appear, so we don't show CROSS when the runner has zero cross-trains.

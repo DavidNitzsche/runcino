@@ -18,6 +18,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import type { RunnerCalibrationLike } from '@/lib/plan/simulator';
 
 export type DataQuality = 'cold-start' | 'building' | 'calibrated';
@@ -195,12 +196,14 @@ export async function refreshRunnerCalibration(userUuid: string): Promise<Runner
        JOIN training_plans tp ON tp.id = pw.plan_id
        JOIN runs r ON r.user_uuid = $1::uuid
             AND (r.data->>'date')::date = pw.date_iso
-            AND NOT (r.data ? 'mergedIntoId')
+            AND r.id = ANY($3::bigint[])
       WHERE tp.user_uuid = $1::uuid
         AND tp.archived_iso IS NULL
         AND pw.date_iso >= $2::date - 14
         AND pw.date_iso <  $2::date`,
-    [userUuid, today],
+    // Phase B · one canonical dedup. A dupe would inflate workoutCount/quality
+    // and trip the calibrated/building data-quality gate early.
+    [userUuid, today, await getCanonicalRunIds(userUuid, isoDaysBefore(today, 14), today)],
   ).catch(() => ({ rows: [{ n: '0', q: '0' }] }))).rows[0];
   const workoutCount = Number(counts?.n ?? 0);
   const qualityCount = Number(counts?.q ?? 0);
@@ -264,19 +267,23 @@ async function medianDailyMi(
   maxMi: number,
   daysBack: number,
 ): Promise<number | null> {
+  // Phase B · one canonical dedup. A dupe would add a second identical distance
+  // into the percentile. +1d slack ⊇ the NOW()-based SQL window.
+  const mToday = await runnerToday(userUuid);
+  const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(mToday, daysBack + 1), mToday);
   const r = (await pool.query<{ med: string | null }>(
     `WITH runs_in_range AS (
        SELECT (data->>'distanceMi')::numeric AS mi
          FROM runs
         WHERE user_uuid = $1::uuid
-          AND NOT (data ? 'mergedIntoId')
+          AND id = ANY($5::bigint[])
           AND (data->>'distanceMi')::numeric BETWEEN $2 AND $3
           AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text
               >= (NOW() - ($4 || ' days')::interval)::date::text
      )
      SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med
        FROM runs_in_range`,
-    [userUuid, minMi, maxMi, daysBack],
+    [userUuid, minMi, maxMi, daysBack, canonicalIds],
   ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
   const m = Number(r?.med);
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;

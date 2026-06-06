@@ -26,6 +26,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { computeAerobicDecoupling } from './aerobic-decoupling';
 
 export interface DecouplingTrend {
@@ -57,16 +58,19 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
   // 2026-06-03 · runner TZ for the 60d window.
   const today = await runnerToday(userUuid);
   // Pull last 60d of long runs (>= 6mi).
+  // Phase B · one canonical dedup. A dupe of one long run would otherwise push
+  // two identical drift points into the first-3 / last-3 means.
+  const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, 60), today);
   const rows = await pool.query<{ id: string; date: string; mi: number | string; splits: unknown }>(
     `SELECT id::text, data->>'date' AS date, (data->>'distanceMi')::numeric AS mi, data->'splits' AS splits
        FROM runs
       WHERE user_uuid = $1::uuid
-        AND NOT (data ? 'mergedIntoId')
+        AND id = ANY($3::bigint[])
         AND (data->>'distanceMi')::numeric >= 6
         AND (data->>'date')::date >= $2::date - interval '60 days'
         AND COALESCE(data->>'type', '') NOT IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek')
       ORDER BY (data->>'date')::date ASC`,
-    [userUuid, today],
+    [userUuid, today, canonicalIds],
   ).then((r) => r.rows).catch(() => []);
 
   const series: { date: string; driftPct: number }[] = [];

@@ -58,6 +58,18 @@ function tierFor(source: string | null | undefined): number {
   return SOURCE_TIER[source] ?? 0;
 }
 
+/** Real per-mile splits = a non-empty array with at least one entry carrying a
+ *  per-mile pace (under any historical key). Drives the Fix-4a tier-independent
+ *  splits absorption: a watch row's whole-run "stub" (or no splits) is NOT real;
+ *  the HK row's per-mile array is. */
+function splitsAreReal(v: unknown): boolean {
+  if (!Array.isArray(v) || v.length === 0) return false;
+  return v.some((s) => s && typeof s === 'object' && (
+    (s as Record<string, unknown>).pace != null
+    || (s as Record<string, unknown>).paceSPerMi != null
+    || (s as Record<string, unknown>).paceSecPerMi != null));
+}
+
 /**
  * Fields that live on the canonical row's `data` jsonb. Order doesn't matter
  * · we walk every key in the absorbed row and decide per key.
@@ -147,35 +159,31 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     const canonicalVal = canonicalData[key];
     const existingTier = tierFor(canonicalProv[key]);
 
-    // 2026-06-04 · stub-splits detection · the watch endpoint used to
-    // write `splits: [{mi:1, ...whole-run-stats}]` for single-phase
-    // runs · key shape (mi/paceSecPerMi) didn't match what the read
-    // normalizer expects (mile/paceSPerMi) so the row looked like
-    // valid splits but rendered as 1 row with null pace.  Treat such
-    // a stub as "missing" so the iPhone HK loser's real per-mile
-    // splits get absorbed in.  Specifically: a single-entry array
-    // whose only row has neither pace nor paceSPerMi nor paceSecPerMi.
-    const canonicalIsStubSplits = (
-      key === 'splits'
-      && Array.isArray(canonicalVal)
-      && canonicalVal.length === 1
-      && canonicalVal[0]
-      && typeof canonicalVal[0] === 'object'
-      && (canonicalVal[0] as Record<string, unknown>).pace == null
-      && (canonicalVal[0] as Record<string, unknown>).paceSPerMi == null
-      && (canonicalVal[0] as Record<string, unknown>).paceSecPerMi == null
-    );
+    // Fix 4a · splits are absorbed whenever the canonical lacks REAL per-mile
+    // splits and the incoming row has them — TIER-INDEPENDENT — so the L7
+    // decoupling / threshold-adherence signals are never silently starved
+    // (a tier-5 watch canonical with no per-mile data takes the tier-2 HK
+    //  row's real splits). Subsumes the old single-entry stub special-case.
+    if (key === 'splits') {
+      if (!splitsAreReal(canonicalVal) && splitsAreReal(incomingVal)) {
+        updatedData[key] = incomingVal;
+        updatedProv[key] = incomingSource;
+        fieldsAdded.push('splits (absorbed real per-mile · tier-independent)');
+      } else {
+        fieldsSkipped.push('splits (canonical already has real per-mile, or incoming has none)');
+      }
+      continue;
+    }
 
     if (
       canonicalVal == null
       || canonicalVal === ''
       || (Array.isArray(canonicalVal) && canonicalVal.length === 0)
-      || canonicalIsStubSplits
     ) {
-      // Canonical field is missing (or stub) · always populate
+      // Canonical field is missing · always populate
       updatedData[key] = incomingVal;
       updatedProv[key] = incomingSource;
-      fieldsAdded.push(key + (canonicalIsStubSplits ? ' (replaced stub)' : ''));
+      fieldsAdded.push(key);
     } else if (incomingTier > existingTier) {
       // Higher tier wins · overwrite
       updatedData[key] = incomingVal;

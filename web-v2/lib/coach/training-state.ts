@@ -9,6 +9,7 @@
  * Lives separately from state-loader so the TODAY load stays light.
  */
 import { pool } from '@/lib/db/pool';
+import { getCanonicalRunIds } from '@/lib/runs/volume';
 import { loadActivePlan } from '@/lib/plan/lookup';
 
 export interface PlanWeek {
@@ -155,9 +156,11 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
                 NULLIF(data->>'avgHr','')::numeric AS avg_hr,
                 data->'splits' AS splits
            FROM runs
-          WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
+          WHERE user_uuid = $1 AND id = ANY($4::bigint[])
             AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text`,
-        [userId, planRangeStart, planRangeEnd]
+        // Phase B · one canonical dedup. A dupe would double the day's actual mi
+        // in actualByDate (cur.mi += r.mi), corrupting plan-vs-actual.
+        [userId, planRangeStart, planRangeEnd, await getCanonicalRunIds(userId, planRangeStart, planRangeEnd)]
       )).rows
     : [];
   function parsePaceStr(s: string | null | undefined): number | null {
