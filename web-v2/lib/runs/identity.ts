@@ -12,7 +12,10 @@
  *
  * isTrustworthy(3) finalized against real per-source shapes (RO, 2026-06-05):
  * only apple_watch + strava_webhook are bare-yet-canonical; everything else
- * carries `Z` → covered by (1).
+ * carries `Z` → covered by (1). NOTE: Strava's start_date_local Z is a
+ * mislabel — it's the athlete's local wall time, not UTC (Strava API quirk).
+ * isTrustworthy still returns true (the timestamp IS pinnable once corrected),
+ * but startUtcMs strips the Z and re-interprets as local PT (2026-06-06).
  */
 import { SOURCE_TIER } from './canonical';
 
@@ -63,8 +66,12 @@ function tzOffsetMs(utcMs: number, tz: string): number {
   return asUtc - utcMs;
 }
 function startUtcMs(r: RunRow): number {
-  const s = String(r.data?.startLocal ?? '');
+  let s = String(r.data?.startLocal ?? '');
   if (!s) return NaN;
+  // Strava's start_date_local carries a spurious Z: it's the athlete's local
+  // wall time, not UTC (Strava API quirk — pullSync.ts:134 stores verbatim).
+  // Strip before interpreting so the pair maps to the same UTC as a bare-PT row.
+  if (String(r.data?.source ?? '') === 'strava' && s.endsWith('Z')) s = s.slice(0, -1);
   if (hasOffset(s)) return Date.parse(s);
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
   if (!m) return Date.parse(s);
@@ -141,6 +148,25 @@ export function pickCanonical(cluster: RunRow[]): { canonical: RunRow; losers: R
         canonical = alt;
         break;
       }
+    }
+  }
+  // Strava-mislabel GPS-divergence preference: Strava's start_date_local Z is
+  // local wall time, not UTC (stripped in startUtcMs above). When the tier-winner
+  // has ≥10% more distance than a strava-mislabel alt (source=strava + Z + no IANA
+  // tz), the tier-winner GPS-overcounted — GPS drift only inflates distance, never
+  // removes it. Prefer the lower (strava) distance as more accurate.
+  // Confirmed on 05-26: apple_watch 7.61mi vs strava 5.91mi — strava is ground truth.
+  const canonDist = distMi(canonical);
+  for (const alt of ranked.slice(1)) {
+    const altDist = distMi(alt);
+    if (
+      String(alt.data?.source ?? '') === 'strava' &&
+      /Z$/.test(String(alt.data?.startLocal ?? '')) &&
+      !isIana(alt.data?.timezone) &&
+      altDist > 0 && canonDist > altDist * 1.10
+    ) {
+      canonical = alt;
+      break;
     }
   }
   return { canonical, losers: cluster.filter((r) => r.id !== canonical.id) };
