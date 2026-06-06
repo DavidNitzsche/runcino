@@ -620,7 +620,14 @@ final class HealthKitImporter: ObservableObject {
             pauses: pauses
         ).rounded())
         let totalAccountedS = splitsSumS + leftoverS
-        if !splits.isEmpty && abs(totalAccountedS - durationS) > 5 {
+        if !splits.isEmpty && abs(totalAccountedS - durationS) > 15 {
+            // Tolerance raised 5→15 (round 91, 2026-06-06):
+            // legitimate noise floor ≤ 10.5s (GPS-window gap 0-7s +
+            // rounding over N+1 terms ≤ 3.5s); real corruption from a
+            // missed auto-pause ≥ 30s. The 5s threshold was inside the
+            // GPS measurement noise band, dropping splits on virtually
+            // every clean fractional-mile run. 15s passes all clean runs
+            // with a 4.5s cushion and still catches any missed pause.
             print("⚠️ [HK] splits don't reconcile · sum=\(splitsSumS)s + leftover=\(leftoverS)s = \(totalAccountedS)s vs duration=\(durationS)s (Δ\(abs(totalAccountedS - durationS))s) · dropping splits")
             splits = []
         }
