@@ -80,7 +80,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     pool.query(
       `SELECT full_name, sex, age, city, height_cm, hrmax, rhr,
               birthday::text AS birthday,
-              lthr, hrmax_observed, experience_level,
+              lthr, experience_level,
               lthr_method, lthr_set_at::text AS lthr_set_at
          FROM profile
         WHERE user_uuid = $1
@@ -339,21 +339,20 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     }
   }
 
-  // True MaxHR: prefer user-entered, then canonical observation
-  // (12-month max via loadEffectiveMaxHr), then derived from LTHR
-  // (LTHR + ~22 bpm), then any stored fallback, then null.
-  // 2026-06-01 · the old `mhrRow` was an all-time MAX from sample_type='hr'
-  // (per-second readings, no time bound) · noisy + ignored race peaks.
-  // Now anchored on the canonical helper.
+  // True MaxHR: loadEffectiveMaxHr is authoritative for every user
+  // (user_override → 12-month observed → manual stored → null).
+  // profile.hrmax_observed no longer bypasses the resolver — any user
+  // who wants to assert a known max should use users.max_hr_override,
+  // which feeds into the resolver at step 1.
+  // See lib/training/max-hr.ts for the full resolution doctrine.
   const max_hr: number | null =
-    p?.hrmax_observed
-    ?? effMaxHr.bpm
+    effMaxHr.bpm
     ?? (lthr != null ? estimateMaxHRFromLTHR(lthr) : null)
     ?? (p?.hrmax ?? null);
   const max_hr_source: ProfileState['physiology']['max_hr_source'] =
-    p?.hrmax_observed ? 'manual' :
     effMaxHr.bpm != null && effMaxHr.source === 'observed_12mo' ? 'observed' :
     effMaxHr.bpm != null && effMaxHr.source === 'user_override' ? 'manual' :
+    effMaxHr.bpm != null && effMaxHr.source === 'manual_stored' ? 'manual' :
     lthr != null ? 'lthr-derived' :
     p?.hrmax ? 'formula' : null;
 

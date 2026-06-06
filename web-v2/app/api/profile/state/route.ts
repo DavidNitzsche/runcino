@@ -37,6 +37,10 @@ export async function GET(req: NextRequest) {
         weight_lb:     state.physiology.weight_lb,
         vdot:          state.physiology.vdot,
         lthr:          state.physiology.lthr,
+        // Cluster 3 · added so web PhysiologyBlock can use this endpoint
+        // instead of /api/profile (which has no vdot / no resolved max_hr).
+        lthr_method:   state.physiology.lthr_method,
+        lthr_set_at:   state.physiology.lthr_set_at,
       },
       connections: state.connections,
     });

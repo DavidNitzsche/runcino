@@ -358,10 +358,27 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   const hrvCurrent = hrvSt.current;
   const hrvBaseline = hrvSt.baseline;
 
-  // Cadence
+  // Cadence 60d baseline. Cluster 3: prefer runs.data.avgCadence over
+  // health_samples.cadence (writing stopped 2026-05-25; falls null ~49d
+  // from now). Same COALESCE pattern as health-state.ts.
   const cad = (await pool.query(
-    `SELECT AVG(value)::numeric AS avg FROM health_samples
-      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'cadence' AND sample_date >= ($2::date - interval '60 days')`,
+    `WITH run_cadence AS (
+       SELECT AVG((data->>'avgCadence')::numeric)::numeric AS avg
+         FROM runs
+        WHERE user_uuid = $1::uuid
+          AND NOT (data ? 'mergedIntoId')
+          AND data->>'avgCadence' IS NOT NULL
+          AND (data->>'avgCadence')::numeric BETWEEN 130 AND 220
+          AND (data->>'date')::date >= ($2::date - interval '60 days')
+     ),
+     hk_cadence AS (
+       SELECT AVG(value)::numeric AS avg FROM health_samples
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND sample_type = 'cadence'
+          AND sample_date >= ($2::date - interval '60 days')
+     )
+     SELECT COALESCE(rc.avg, hc.avg) AS avg
+       FROM run_cadence rc, hk_cadence hc`,
     [userId, today]
   )).rows[0];
   const cadenceBaseline = cad?.avg ? Math.round(Number(cad.avg)) : null;

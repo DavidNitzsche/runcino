@@ -26,6 +26,59 @@ import { autoMergeForDate } from '@/lib/runs/merge';
 import { requireUserId } from '@/lib/auth/session';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 
+// ── WatchCompletionBody · canonical typed contract ───────────────────────
+// Matches the watch-app WatchCompletion + WatchCompletionPhase in
+// legacy/native/Faff/FaffWatch Watch App/WatchWorkoutModels.swift (the
+// sender). iPhone relay passes raw bytes through; treadmill builds its own
+// dict. Both land here — all fields are optional so older payloads decode.
+//
+// Tier-1 telemetry (2026-06-02): paceSamples / hrSamples / tolerance /
+// verdict per phase. Stored raw in coach_intents.value for downstream reads.
+// Tier-2 (2026-06-02, UI rescinded): repRpe / repRpeTag always nil on wire.
+interface WatchCompletionPhaseSample { tSec: number; paceSPerMi?: number | null; distMi?: number; bpm?: number | null; }
+interface WatchCompletionPhaseBody {
+  index?: number;
+  type?: string;
+  label?: string;
+  targetPaceSPerMi?: number | null;
+  actualPaceSPerMi?: number | null;
+  actualDurationSec?: number;
+  actualDistanceMi?: number | null;
+  avgHr?: number | null;
+  maxHr?: number | null;
+  avgCadence?: number | null;
+  completed?: boolean;
+  paceSamples?: WatchCompletionPhaseSample[] | null;
+  hrSamples?: WatchCompletionPhaseSample[] | null;
+  timeInToleranceSec?: number | null;
+  timeOutOfToleranceSec?: number | null;
+  verdict?: string | null;
+  repRpe?: number | null;
+  repRpeTag?: string | null;
+  // Treadmill-only extras (TreadmillView.buildPayload)
+  actualSpeedMph?: number;
+  actualInclinePct?: number;
+}
+interface WatchCompletionBody {
+  workoutId: string;
+  startedAt?: string;
+  completedAt?: string;
+  status?: string;            // 'completed' | 'partial' | 'abandoned'
+  totalDistanceMi?: number | null;
+  totalDurationSec?: number;
+  avgHr?: number | null;
+  maxHr?: number | null;
+  avgCadence?: number | null;
+  kcal?: number | null;
+  source?: string;            // 'watch' | 'treadmill' — backend whitelists
+  indoor?: boolean;           // spliced in by treadmill path
+  timezone?: string;          // spliced in by iPhone relay (WatchSync)
+  phases?: WatchCompletionPhaseBody[];
+  // Legacy fallback fields — older clients; prefer startedAt for date
+  date?: string;
+  dateLocal?: string;
+}
+
 export async function POST(req: NextRequest) {
   // 2026-05-30 user-isolation fix: identity comes from the Bearer token,
   // not from body.user_id. Accepting body.user_id meant any caller could
@@ -34,8 +87,8 @@ export async function POST(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
 
-  let body: any;
-  try { body = await req.json(); }
+  let body: WatchCompletionBody;
+  try { body = await req.json() as WatchCompletionBody; }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   if (!body || typeof body !== 'object' || !body.workoutId) {
@@ -281,66 +334,7 @@ function stableBigintFromString(s: string): number {
   return parseInt(hex, 16);
 }
 
-/** Derive a mile-by-mile splits array from the structured WatchCompletionPhase[].
- *  Each phase becomes one "split" entry; downstream display layers may
- *  re-aggregate. */
-function deriveSplitsFromPhases(phases: any[] | undefined): any[] {
-  if (!Array.isArray(phases)) return [];
-  const populated = phases.filter((p) => p && (p.actualDistanceMi != null || p.actualDurationSec != null));
-  // 2026-06-04 · single-phase runs (most easy / long days) have NO real
-  // mile-by-mile breakdown · the one "phase" IS the whole run.  Storing
-  // that as `splits: [{mi:1, ...whole-run-stats}]` made the post-run
-  // MILE SPLITS panel render a single misleading row with the whole
-  // run's pace (or null, because the key shape didn't match what
-  // loadRunDetail normalizes from).  Empty array → frontend renders
-  // the "No mile splits available" empty state, which is honest about
-  // what the watch actually captured.  Multi-phase (intervals / tempo)
-  // still surface as phase-level rows · those ARE real segments.
-  if (populated.length < 2) return [];
-  return populated
-    .map((p, i) => ({
-      mi: i + 1,
-      label: p.label ?? p.type ?? `Phase ${i + 1}`,
-      distanceMi: p.actualDistanceMi ?? null,
-      durationSec: p.actualDurationSec ?? null,
-      paceSecPerMi: p.actualPaceSPerMi ?? null,
-      avgHr: p.avgHr ?? null,
-      maxHr: p.maxHr ?? null,
-      avgCadence: p.avgCadence ?? null,
-      type: p.type ?? null,
-      completed: p.completed ?? null,
-      // 2026-06-01 · treadmill-only fields. Null on outdoor watch runs.
-      // Drive the iPhone post-run sheet's form grid ("7.0 mph · 1.5%
-      // incline") and the treadmill-aware win-line composer.
-      actualSpeedMph: p.actualSpeedMph ?? null,
-      actualInclinePct: p.actualInclinePct ?? null,
-      // 2026-06-02 · Tier 1 · per-phase pace/HR timelines + derived
-      // verdict + time-in-tolerance. Watch ships these to feed the
-      // pacing-discipline composers (winVerdictHit / winTimeInTolerance).
-      // Doctrine: designs/briefs/watch-tier-2-rpe-shipped-2026-06-02.md
-      paceSamples: p.paceSamples ?? null,
-      hrSamples: p.hrSamples ?? null,
-      timeInToleranceSec: p.timeInToleranceSec ?? null,
-      timeOutOfToleranceSec: p.timeOutOfToleranceSec ?? null,
-      verdict: p.verdict ?? null,
-      // 2026-06-02 · Tier 2 · subjective per-rep RPE (1-5) + optional
-      // qualifier tag ('legs'|'lungs'|'mind'|'pace'). Opt-in honesty ·
-      // null when runner skipped, dismissed, or 30s auto-timeout fired.
-      // Feeds the RPE composers (matched, undershot, mismatch, trajectory).
-      rep_rpe: p.repRpe ?? null,
-      rep_rpe_tag: p.repRpeTag ?? null,
-      // 2026-06-02 · `_raw` passthrough · watch agent confirmed GO.
-      // Every future watch field lands in runs.data with zero backend
-      // ingest change. Composers prefer typed fields (fast path) but
-      // can read _raw.xxx for fields not yet typed.
-      //
-      // Rule of thumb (agreed with watch agent):
-      //   · TYPE when a composer reads it within 1 sprint
-      //   · _raw for exploratory or pre-greenlight fields
-      //
-      // Doctrine:
-      //   designs/briefs/backend-response-recap-engine-not-llm-2026-06-02.md
-      //   designs/briefs/watch-agent-correction-llm-framing-2026-06-02.md
-      _raw: p,
-    }));
-}
+// deriveSplitsFromPhases removed (Cluster 4 · 2026-06-06). The function was
+// dead code — never called after the 2026-06-04 decision to NOT write splits
+// from phases (see comment above at data.splits). Phases live in coach_intents;
+// data.splits is populated from the iPhone HK loser row via absorb-from-richer.

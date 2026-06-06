@@ -313,14 +313,12 @@ async function detectMidBlock(userId: string): Promise<boolean> {
   // avgHr ≥ 85% of effective max HR (Strava/Watch imports rarely tag
   // type · this catches the runner who's been doing real quality work
   // without the import tagging it). Threshold: 85% maxHR ≈ Z3+ effort.
-  const profileRow = await pool.query<{ max_hr: number | null; lthr: number | null }>(
-    `SELECT max_hr, lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
-    [userId]
-  ).then((r) => r.rows[0]).catch(() => undefined);
-  // Effective max from profile if available · else fall back to a
-  // generous default. Without one we can't compute the ratio.
-  const effectiveMax = profileRow?.max_hr
-    ?? (profileRow?.lthr ? Math.round(profileRow.lthr / 0.92) : null);
+  // Canonical max HR via the resolver (user_override → 12-month observed
+  // → manual stored → null). Replaces the old `SELECT max_hr FROM profile`
+  // which queried a non-existent column and silently fell through to a
+  // LTHR-derived approximation (round(lthr/0.92) ≈ 176), producing a gate
+  // threshold ~4 bpm too low for users with real observed data.
+  const effectiveMax = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
   if (effectiveMax && effectiveMax > 100) {
     const hrThreshold = Math.round(effectiveMax * 0.85);
     const r3 = await pool.query<{ n: string }>(
@@ -1458,8 +1456,7 @@ async function persistPlan(args: {
   lthr: number | null;
   /** 2026-06-03 · Rule 16 · maxHR for the easy/long HR cap doctrine
    *  (max of 89% LTHR + 78% maxHR). Optional · null falls back to
-   *  LTHR-only. Plumbed from profile.hrmax_observed at the entry
-   *  point so every plan_workouts row gets a Daniels-grade cap. */
+   *  LTHR-only. Resolved via loadEffectiveMaxHr at the entry point. */
   maxHr: number | null;
 }): Promise<string> {
   const planId = id('pln');

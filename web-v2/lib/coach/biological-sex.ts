@@ -7,8 +7,7 @@
  * (Research/13 §sex-specific training).
  *
  * Schema reality: two tables store sex, unconstrained, inconsistent casing.
- * (runner_profile also has a sex column but its PK is an integer with no
- * FK to users · it's an orphaned single-row legacy table, not per-user.)
+ * (runner_profile is gone — dropped Cluster 2 DDL 2026-06-05.)
  *
  *   users.sex   = "M"     ← legacy column on users table
  *   profile.sex = "Male"  ← rich profile table, edited via web settings
