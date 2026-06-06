@@ -365,9 +365,13 @@ export async function POST(req: NextRequest) {
       };
       (data as any).weather = w;
       (data as any).tempF = hkTempF;
+      // Rule 6 — field-level jsonb merge, not full-replace. autoMergeForDate
+      // (above) writes mergedIntoId directly to the DB; SET data=$1 would
+      // overwrite it with the in-memory payload that has no mergedIntoId.
+      // data || $1::jsonb preserves keys already in the DB that aren't in $1.
       await pool.query(
         `UPDATE runs
-            SET data = $1, weather_enriched_at = NOW()
+            SET data = data || $1::jsonb, weather_enriched_at = NOW()
           WHERE user_uuid = $2
             AND data->>'client_workout_id' = $3`,
         [data, userId, body.client_workout_id]
@@ -393,9 +397,10 @@ export async function POST(req: NextRequest) {
           if (w) {
             (data as any).weather = w;
             (data as any).tempF = w.temp_f ?? (data as any).tempF;
+            // Rule 6 — same as Tier 1: field-level merge preserves mergedIntoId.
             await pool.query(
               `UPDATE runs
-                  SET data = $1, weather_enriched_at = NOW()
+                  SET data = data || $1::jsonb, weather_enriched_at = NOW()
                 WHERE user_uuid = $2
                   AND data->>'client_workout_id' = $3`,
               [data, userId, body.client_workout_id]
