@@ -65,11 +65,13 @@ Update this file at the end of each leg.
 - [~] **`strava_activities` VIEW rename — DEFERRED.** Zero TypeScript code queries `strava_activities` directly (confirmed: all SQL uses `runs`); the view is never hit by the application. Renaming is purely cosmetic — no correctness gain, no runtime impact. Risk: external tools / Railway dashboard queries that name the view would break. Logged as deferred infra cleanup; not worth a superuser write this session.
 - **Falsifiers**: `tsc 0` · `deriveSplitsFromPhases` absent from codebase (grep: 0 call sites, definition deleted) · `runner_profile` comment updated · no live `strava_activities` SQL in application code confirmed.
 
-## Cluster 1b — HK ingest durability (preserve `mergedIntoId`)  [NEW · MAJOR · found in C1 post-deploy smoke 2026-06-06]
+## Cluster 1b — HK ingest durability (preserve `mergedIntoId`)  [AWAITING DAVID'S GO · diff ready · 2026-06-06]
 **HK ingest durability — MAJOR:** HK re-sync does a full-replace of `data` jsonb (Rule 6 violation), wiping `mergedIntoId`. `autoMerge` re-fires on next cron/ingest and re-flags, but this creates a convergence window where fragile readers double-count and coaching signals see inflated run counts. **Durable fix:** HK ingest must do a field-level jsonb update preserving `mergedIntoId` (and any other backfill flags), not full-replace. This eliminates the window entirely. **Acceptance test:** a HK re-sync of a flagged run must leave `mergedIntoId` intact on the re-ingested row.
 - **Severity: MAJOR** — not CRITICAL (the identity reader is correct throughout the window) but a real user-facing wrong-number period between re-sync and cron.
 - **Self-heal confirmed — NO manual backfill (David, 2026-06-06).** The nightly `dedupe-runs` cron re-flags 05-31/06-01/06-02 on its next run with the deployed `isSameRun` + `autoMergeForDate(userId, body.date)` + `jsonb_set` (field-level). The 06-06 02:31 re-sync missed them only because it ran *pre-C1* `isSameRun`. Let it self-heal; the cron is the live test (re-check that fragile rejoins identity at 755.15 after it fires).
 - **Evidence:** the 3 wiped rows all carry `ingestedAt=2026-06-06T02:31`; fragile reader 755.15 → 779.98 (+24.83 mi = 12.36+5.06+7.41), identity reader stayed 755.15 (read-time dedup robust — C1 thesis proven).
+- **Fix (diff ready, awaiting go):** `ingest/workout/route.ts:272` — copy `existing.mergedIntoId` into `data` before DELETE-INSERT, same pattern as `warmupAddedManually`. The `existing` read is already there (line 235). Zero new tsc errors. Falsifier: before=lost, after=preserved, cold-start=null ✓
+- **NEW FINDING — P3-2:** 06-02 apple_watch + watch pair both have `mergedIntoId=null` even after the 15:25 re-ingest's autoMerge call — because `isSameRun` returns false for this pair (apple_watch `startLocal` is bare local time, Node/Railway interprets it as UTC, span is 7h off from watch's real start). Same root cause as P3-1 (Strava-local-as-UTC mislabel) but for apple_watch source instead of strava. P3-1 fix stripped Z from strava rows; P3-2 needs equivalent treatment for apple_watch rows in `startUtcMs`. SEPARATE fix, not in this cluster.
 
 ---
 
@@ -106,7 +108,7 @@ Update this file at the end of each leg.
 
 **WHAT'S LEFT:** nothing for the audit. Fix queue:
 - **[DONE 2026-06-06] — A3+A4+A5 (recap layer):** See section below.
-- **[AWAITING DAVID'S GO — 2026-06-06] — A2 + HR-target-for-intervals:** diff written, falsifiers green. See section below.
+- **[DONE 2026-06-06] — A2 + HR-target-for-intervals:** deployed bead89bb. 9/9 prod smoke ✓. See section below.
 - **DEFERRED — A1:** persist outbound payload for debuggability. Real but not urgent.
 
 ## Audit A — Fixes A3+A4+A5 (recap layer)  [CODE-COMPLETE 2026-06-06 · awaiting David's review + go to deploy]
@@ -138,7 +140,7 @@ Update this file at the end of each leg.
 **Prod smoke checks:** A3 plannedPace=389 non-null ✓ · A4 majority_missed→null (not "5 reps delivered") ✓ · A5 splits_unreliable gated ✓
 **Display (Confirm 3):** TodayView: no MILE SPLITS card — note only: "GPS pacing not shown — splits couldn't be verified for this run." RunDetailModal: section hidden; same note inline. ✓
 
-## Audit A — Fixes A2 + HR-target-for-intervals  [AWAITING DAVID'S GO · 2026-06-06]
+## Audit A — Fixes A2 + HR-target-for-intervals  [DEPLOYED 2026-06-06 · commit bead89bb on main · Railway auto-deploy fired · prod smoke 9/9 ✓]
 
 **A2 — Haptic patch** · `web-v2/lib/watch/build-workout.ts`
 - Was: `haptic: 'start'` unconditionally on every expanded spec phase; patch block only fixed index 0 and last cooldown → all 4 work reps + 3 recoveries shipped `'start'` → watch fired `.start` buzz for every interior transition

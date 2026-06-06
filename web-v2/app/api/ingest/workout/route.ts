@@ -272,6 +272,14 @@ export async function POST(req: NextRequest) {
       console.log('[ingest/workout] preserved warmup bonus across re-ingest for', body.client_workout_id);
     }
 
+    // Rule 6 — preserve dedup flags across re-ingest. mergedIntoId is set
+    // by autoMergeForDate on loser rows of a dupe cluster; the DELETE-then-
+    // INSERT below wipes it, creating a convergence window until autoMerge
+    // re-fires. Copy it forward so the window never exists.
+    if (existing?.mergedIntoId != null) {
+      (data as any).mergedIntoId = existing.mergedIntoId;
+    }
+
     await pool.query(
       `DELETE FROM runs
         WHERE user_uuid = $1
