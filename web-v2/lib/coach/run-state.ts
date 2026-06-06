@@ -142,6 +142,11 @@ export interface RunDetail {
    *  same number the phase verdict uses. 0 when conditions weren't
    *  material. */
   heat_slowdown_pct: number;
+  /** A5 — GPS splits were flagged unreliable at ingest (splits-sum
+   *  exceeded run duration by >5s due to HK pause-event gap). When
+   *  true, MILE SPLITS should not be displayed and split-based
+   *  heuristics (drift, fade) should not fire. */
+  splits_unreliable?: boolean;
   suffer_score: number | null;
   kudos: number | null;
   // P2 #10 (2026-05-30): average running power from HealthKit for the
@@ -691,6 +696,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
 
     has_route: Boolean(r.summaryPolyline || r.routePolyline || r.startLatLng),
     route_polyline: r.summaryPolyline ?? r.routePolyline ?? null,
+    splits_unreliable: r.splits_unreliable === true,
     splits,
     hrZonePcts,
     hr_zones_from_lthr,

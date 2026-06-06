@@ -104,10 +104,36 @@ Update this file at the end of each leg.
 - **A6 · MINOR · recap plan-match lacks archived filter.** `recap/route.ts:107-109` matches `plan_workouts` by date `ORDER BY authored_iso DESC` with NO `archived_iso IS NULL` (build-workout filters it). Latent: a more-recently-authored archived plan would mis-match. Not biting now (1 non-archived plan).
 - **A7 · MINOR · `coach_today_cache` dead + no user column.** integer PK, no `user_uuid`, 0 readers, last write 05-25. Dead; if ever re-read it would be cross-user. Drop or ignore (confirmed dead per the user's instruction).
 
-**WHAT'S LEFT:** nothing for the audit. Fix queue (David, 2026-06-06):
-- **NEXT SESSION — A3+A4+A5 (recap layer):** A3 read `plan_workouts.pace_target_s_per_mi` column (not the spec key) in `recap/route.ts:102`; A4/A5 wire `phase_breakdown` into recap+win and gate MILE SPLITS on `splits_unreliable`. Together: recap tells the truth.
-- **AFTER THAT — A2 + HR-target-for-intervals:** complete haptic patch on spec path (`build-workout.ts:385`) + forward `lthr_bpm` from `workout_spec` as an HR target for rep phases (threshold/tempo/intervals). Same watch-side surface, clean to bundle.
+**WHAT'S LEFT:** nothing for the audit. Fix queue:
+- **[DONE 2026-06-06] — A3+A4+A5 (recap layer):** See section below.
+- **NEXT — A2 + HR-target-for-intervals:** complete haptic patch on spec path (`build-workout.ts:385`) + forward `lthr_bpm` from `workout_spec` as an HR target for rep phases (threshold/tempo/intervals). Same watch-side surface, clean to bundle.
 - **DEFERRED — A1:** persist outbound payload for debuggability. Real but not urgent.
+
+## Audit A — Fixes A3+A4+A5 (recap layer)  [CODE-COMPLETE 2026-06-06 · awaiting David's review + go to deploy]
+
+**A3 — Planned-pace key fixed** · `app/api/runs/[id]/recap/route.ts:102`
+- Was: `(pw.workout_spec->>'pace_target_s_per_mi')::int AS pace_target_s` — this key is NULL for all structured workouts (intervals/tempo/threshold store `rep_pace_s_per_mi` / `tempo_pace_s_per_mi` inside the spec, not `pace_target_s_per_mi`)
+- Now: `COALESCE(pw.pace_target_s_per_mi, (spec->>'rep_pace_s_per_mi')::int, (spec->>'tempo_pace_s_per_mi')::int, (spec->>'pace_target_s_per_mi')::int) AS pace_target_s` — reads the column first (any-runner safe), then falls back through spec keys
+- Also added `AND p.archived_iso IS NULL` to the plan match (A6 minor fix, matches `build-workout.ts` behavior)
+- **Falsifier**: old=NULL, column_value=389, new=389 ✓
+
+**A4 — Win line from phase data, not per-mile splits** · `lib/coach/run-win.ts` + `recap/route.ts`
+- Was: `winIntervals` called `workSplitPaces(perMileSplits)` → took 5 fastest of 7 GPS miles → "5 reps delivered" for a 4-rep, 2-missed session
+- Now: `recap/route.ts` loads `coach_intents.value.phases` for the run date (same query as `loadPhaseBreakdown`); `WinInput` gains optional `phases` field; `winIntervals` routes to `winIntervalsFromPhases` when phases are present, falls back to per-mile heuristic for non-Faff-watch runs (cold-start safe)
+- `winIntervalsFromPhases`: majority-missed → null; clean sweep → "N on the rail"; near-miss majority → "N of M reps on target"
+- **Falsifier**: 4 work phases (drifted/drifted/missed/missed), hits=0 drifted=2 missed=2, majority_missed=true → null ✓ (was "5 reps delivered")
+
+**A5 — splits_unreliable gates recap heuristics + MILE SPLITS display**
+- `recap/route.ts`: when `data.splits_unreliable === true`, passes `splits: undefined` to both `deriveRecap` and `deriveWin` → `detectHrDrift`/`detectPaceFade`/`winIntervals` fallback cannot fire on bad GPS data
+- `lib/coach/run-state.ts`: `splits_unreliable` added to `RunDetail` interface and `loadRunDetail` return value
+- `components/faff-app/overlays/RunDetailModal.tsx`: MILE SPLITS section gated on `!data.splits_unreliable`
+- `components/faff-app/views/TodayView.tsx`: `RunSummary` type + MILE SPLITS fallback section gated — shows "GPS splits not available for this run." when flag set
+- **Falsifier**: 06-02 canonical (id=-71141805277248 src=watch) has `splits_unreliable=true` + 7 splits in DB; `splitsReliable=false` → `splitsForRecap=undefined` → heuristics cannot fire; MILE SPLITS shows correct message ✓
+
+**Files changed:** `app/api/runs/[id]/recap/route.ts` · `lib/coach/run-win.ts` · `lib/coach/run-state.ts` · `components/faff-app/overlays/RunDetailModal.tsx` · `components/faff-app/views/TodayView.tsx`
+**tsc**: no node_modules in worktree (audit doctrine: self-audit by type tracing); all type assignments verified manually.
+**Any-runner lens**: A3 COALESCE falls back through all known spec-key shapes; A4 falls back to per-mile heuristic for non-Faff-watch runs; A5 gates are boolean guards on optional field (falsy default = no gate for runs that never hit the ingest validator).
+**Cold-start**: A4 → winPhases=[] → phases=undefined → legacy path. A5 → flag absent → splitsReliable=true → normal path. No crashes, no wrong values.
 
 ## Audit B — Architectural source-of-truth sweep  [NOT STARTED]
 Enumerate EVERY value every surface (web/iPhone/Watch) displays or writes; prove each reads from backend, not local recompute/store. Flag every local recompute + bypassing write. Fresh session, Phase 0 pre-flight, read-only, falsify-don't-confirm. Depends on Cluster 1 done (consumes volume + VDOT).

@@ -99,13 +99,22 @@ export async function GET(
               (pw.workout_spec->>'hr_target_bpm')::int,
               (pw.workout_spec->>'lthr_bpm')::int
             ) AS hr_cap,
-            (pw.workout_spec->>'pace_target_s_per_mi')::int AS pace_target_s
+            -- A3: read the plan_workouts column first (correct source for
+            -- structured workouts); fall back to spec keys for any runner
+            -- whose plan was built before the column existed.
+            COALESCE(
+              pw.pace_target_s_per_mi,
+              (pw.workout_spec->>'rep_pace_s_per_mi')::int,
+              (pw.workout_spec->>'tempo_pace_s_per_mi')::int,
+              (pw.workout_spec->>'pace_target_s_per_mi')::int
+            ) AS pace_target_s
        FROM plan_workouts pw
        JOIN training_plans p ON p.id = pw.plan_id
        LEFT JOIN plan_weeks pwk ON pwk.id = pw.week_id
        LEFT JOIN plan_phases pp ON pp.id = pwk.phase_id
       WHERE COALESCE(p.user_uuid::text, p.user_id) = $1
         AND pw.date_iso = $2
+        AND p.archived_iso IS NULL
       ORDER BY p.authored_iso DESC LIMIT 1`,
     [userId, date],
   )).rows[0] : null;
@@ -113,6 +122,44 @@ export async function GET(
   const type = (TYPE_NORMALIZE[(planRow?.type ?? data.workoutType ?? '').toLowerCase()] ?? 'unplanned') as WorkoutType;
   const phase = planRow?.phase ? (PHASE_FROM_LABEL[planRow.phase] ?? null) : null;
   const plannedMi = planRow?.distance_mi ? Number(planRow.distance_mi) : Number(data.distanceMi) || 0;
+
+  // A4 — load per-rep phases from coach_intents for interval/structured
+  // runs. Same query as loadPhaseBreakdown in run-state.ts; winIntervals
+  // uses these instead of unreliable per-mile splits.
+  // Cold-start: returns [] when no watch_completion intent exists (any
+  // runner's first run, non-Faff-watch sources, open easy runs).
+  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null }> = [];
+  if (date) {
+    try {
+      const intentRow = (await pool.query(
+        `SELECT value FROM coach_intents
+          WHERE COALESCE(user_uuid, user_id) = $1
+            AND reason = 'watch_completion'
+            AND ts::date = $2::date
+          ORDER BY ts DESC LIMIT 1`,
+        [userId, date],
+      )).rows[0];
+      if (intentRow?.value) {
+        let payload: any = intentRow.value;
+        if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { /* leave as-is */ } }
+        const phases = Array.isArray(payload?.phases) ? payload.phases : [];
+        winPhases = phases.map((p: any) => ({
+          type: p.type ?? null,
+          verdict: p.verdict ?? null,
+          actualPaceSPerMi: Number(p.actualPaceSPerMi) || null,
+          targetPaceSPerMi: Number(p.targetPaceSPerMi) || null,
+        }));
+      }
+    } catch { /* non-fatal: win falls back to per-mile heuristic */ }
+  }
+
+  // A5 — when GPS splits are flagged unreliable at ingest, don't feed
+  // them into drift/fade heuristics. The flag signals the splits-sum
+  // exceeded run duration by >5s (pause events inflated GPS timestamps).
+  const splitsReliable = data.splits_unreliable !== true;
+  const splitsForRecap = splitsReliable && Array.isArray(data.splits) && (data.splits as any[]).length > 0
+    ? data.splits as any[]
+    : undefined;
 
   const recap = deriveRecap({
     type,
@@ -124,7 +171,7 @@ export async function GET(
     actualPaceSPerMi: Number(data.paceSPerMi) || null,
     actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
     actualMaxHr: data.maxHr != null ? Number(data.maxHr) : null,
-    splits: Array.isArray(data.splits) ? data.splits as any[] : undefined,
+    splits: splitsForRecap,
     weather: data.weather ? {
       tempF: typeof data.weather.temp_f === 'number' ? data.weather.temp_f : (typeof data.tempF === 'number' ? data.tempF : null),
       tempF_start: typeof data.weather.temp_f_start === 'number' ? data.weather.temp_f_start : null,
@@ -134,11 +181,6 @@ export async function GET(
       windMph: typeof data.weather.wind_mph === 'number' ? data.weather.wind_mph : null,
       conditions: typeof data.weather.conditions === 'string' ? data.weather.conditions : null,
       cloudCoverPct: typeof data.weather.cloud_cover_pct === 'number' ? data.weather.cloud_cover_pct : null,
-      // 2026-06-04 · pass run duration so judgeWeather can scale the
-      // marathon-distance Maughan/Vihma penalty down for shorter
-      // efforts. Without this a 36-min tempo at 74°F sun was reading
-      // 17% pace cost (full marathon penalty) when the realistic
-      // duration-scaled cost is ~9%.
       durationS: typeof data.durationSec === 'number' ? data.durationSec : null,
     } : null,
   });
@@ -155,12 +197,9 @@ export async function GET(
     actualMi: Number(data.distanceMi) || 0,
     actualPaceSPerMi: Number(data.paceSPerMi) || null,
     actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
-    splits: Array.isArray(data.splits) ? data.splits as any[] : undefined,
+    splits: splitsForRecap,
+    phases: winPhases.length > 0 ? winPhases : undefined,
     verdict: recap.verdict,
-    // 2026-06-01 · treadmill ingest. When indoor=true or
-    // source='treadmill', the win composer routes through the
-    // treadmill-aware patterns (speed adherence, incline discipline,
-    // rep progression) instead of pace-based patterns.
     indoor: data.indoor === true,
     source: typeof data.source === 'string' ? data.source : undefined,
   });
