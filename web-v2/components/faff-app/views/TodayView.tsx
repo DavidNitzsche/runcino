@@ -766,7 +766,6 @@ function CompletedResultCard({ d, fallback, runData, loading }: { d: FaffSeed['w
       </div>
       {splits.length > 0 ? (
         <>
-          <div className="kcl" style={{ margin: '18px 0 9px' }}>MILE SPLITS</div>
           <div className="splits" style={{ marginTop: 4 }}>
             {splits.map((s, i) => {
               const sec = paceToSec(s.pace ?? '');
@@ -2212,10 +2211,6 @@ function CompletedHeroV2({
           </div>
         ) : (
           <>
-            <div className="reshead">
-              <span>MILE SPLITS</span>
-              {resolvedPace && <span className="rs">avg {resolvedPace}<small>/mi</small></span>}
-            </div>
             <div className="splits">
               {splits.length > 0 ? splits.map((s, i) => {
                 // Bar width: inverse-relative — faster splits read fuller. Falls
@@ -2332,14 +2327,6 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
 
   return (
     <>
-      <div className="reshead">
-        <span>THE REPS</span>
-        {goalSec > 0 && (
-          <span className="rs">
-            TARGET <b>{fmtSecAsPace(goalSec)}</b><small>/mi</small>
-          </span>
-        )}
-      </div>
       {/* Axis legend · sits in the same grid column as the rep tracks
           so SLOWER / TARGET / FASTER align with the bar fills. */}
       <div style={{
@@ -2705,15 +2692,6 @@ function EasyPanel({
 
   return (
     <>
-      {/* phead */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        margin: '16px 0 4px',
-      }}>
-        <span style={{
-          fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600, letterSpacing: 0.5,
-        }}>AEROBIC STAMP</span>
-      </div>
 
       {/* KEPT IT EASY gauge */}
       {easyPct != null ? (
@@ -2964,20 +2942,6 @@ function LongPanel({
 
   return (
     <>
-      {/* phead */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        margin: '16px 0 4px',
-      }}>
-        <span style={{
-          fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600, letterSpacing: 0.5,
-        }}>THE LONG</span>
-        <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
-          color: 'rgba(255,255,255,.6)',
-        }}>{n} MI</span>
-      </div>
-
       {/* Thirds cards */}
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 13,
@@ -3201,21 +3165,6 @@ function TempoPanel({
 
   return (
     <>
-      {/* phead */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        margin: '16px 0 4px',
-      }}>
-        <span style={{
-          fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600, letterSpacing: 0.5,
-        }}>THE TEMPO</span>
-        {distLabel ? (
-          <span style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
-            color: 'rgba(255,255,255,.6)',
-          }}>{distLabel}</span>
-        ) : null}
-      </div>
 
       {/* Block header · TEMPO BLOCK [dist] · actual pace */}
       <div style={{ marginTop: 6 }}>
@@ -3322,7 +3271,7 @@ function TempoPanel({
           times. Better than nothing; when phase data has finer granularity
           later this becomes actual sampled thirds. */}
       {work.avg_hr != null ? (
-        <div style={{ marginTop: 18 }}>
+        <div style={{ marginTop: 12 }}>
           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>HR ACROSS THE BLOCK</span>
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 13,
@@ -3523,22 +3472,6 @@ function LongMpPanel({
   return (
     <>
       {/* phead */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        margin: '16px 0 4px',
-      }}>
-        <span style={{
-          fontFamily: FONT_DISP, fontSize: 15, fontWeight: 600, letterSpacing: 0.5,
-        }}>THE BUILD</span>
-        {baseDist > 0 && work.target_distance_mi != null ? (
-          <span style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
-            color: 'rgba(255,255,255,.6)',
-          }}>
-            {Math.round(baseDist + work.target_distance_mi)} MI · {Math.round(baseDist)} + {Math.round(work.target_distance_mi)}
-          </span>
-        ) : null}
-      </div>
 
       {/* Aerobic base block */}
       <div style={{ marginTop: 6 }}>
@@ -3581,7 +3514,7 @@ function LongMpPanel({
 
       {/* MP SHIFT transition */}
       {shiftAvail && shiftDrop != null ? (
-        <div style={{ textAlign: 'center', margin: '16px 0 4px' }}>
+        <div style={{ textAlign: 'center', margin: '8px 0 4px' }}>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
             fontSize: 9, fontWeight: 800, letterSpacing: 1.6, color: ACCENT_MP,
