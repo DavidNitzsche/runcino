@@ -71,7 +71,45 @@ Update this file at the end of each leg.
 - **Self-heal confirmed — NO manual backfill (David, 2026-06-06).** The nightly `dedupe-runs` cron re-flags 05-31/06-01/06-02 on its next run with the deployed `isSameRun` + `autoMergeForDate(userId, body.date)` + `jsonb_set` (field-level). The 06-06 02:31 re-sync missed them only because it ran *pre-C1* `isSameRun`. Let it self-heal; the cron is the live test (re-check that fragile rejoins identity at 755.15 after it fires).
 - **Evidence:** the 3 wiped rows all carry `ingestedAt=2026-06-06T02:31`; fragile reader 755.15 → 779.98 (+24.83 mi = 12.36+5.06+7.41), identity reader stayed 755.15 (read-time dedup robust — C1 thesis proven).
 - **DEPLOYED 2026-06-06.** `ingest/workout/route.ts:272` — copy `existing.mergedIntoId` into `data` before DELETE-INSERT. tsc clean ✓. Live falsifier: SET flag → simulate DELETE+INSERT → verify survived: **PASS ✓** (mergedIntoId=-71141805277248 preserved end-to-end).
-- **P3-2 (NEXT FIX):** apple_watch bare `startLocal` interpreted as UTC on Railway servers → `isSameRun` rejects watch+apple_watch pairs → splits never absorbed onto canonical → every run shows "No mile splits available". Same root cause as P3-1. Higher priority than it looks — affects all runs.
+- **P3-2 (DONE — see below).**
+- **P3-3 (logged — see below).**
+
+## P3-2 — Weather enrichment wipes mergedIntoId (Rule 6 #2)  [DEPLOYED + BACKFILL DONE 2026-06-06 · commit b8ce2ea9]
+
+**Root cause (REVISED — isSameRun is NOT the bug):** `isSameRun(apple_watch, watch)` returns `true` correctly for all pairs. `startUtcMs` uses `Intl.DateTimeFormat` with `DEFAULT_TZ='America/Los_Angeles'` — server timezone (UTC on Railway) is irrelevant. Initial isSameRun hypothesis was wrong.
+
+**Actual bug:** `ingest/workout/route.ts` weather enrichment UPDATEs (Tier 1 line 370, Tier 2 line 398) fire **after** `autoMergeForDate` (line 296) sets `mergedIntoId` in the DB. Both used `SET data = $1` (full-replace) with the in-memory payload (no `mergedIntoId`). Overwrites the just-set flag. Rule 6 violation #2, same route.
+
+**Cross-tab proof:** `weather_enriched=true + is_merged=false` = 7 rows (100% unmerged); `weather_enriched=true + is_merged=true` = 0 rows before fix.
+
+**Fix:** `SET data = data || $1::jsonb` in both weather UPDATEs. `$1` never carries `mergedIntoId` as null (C1b guard ensures it's a valid BIGINT or absent). `||` is idempotent when C1b preserved the flag, and preserves DB-written flag when absent from `$1`. tsc clean ✓. Falsifier: autoMerge→weather||→flag survived PASS ✓.
+
+**Backfill (4 statements, per-statement approved 2026-06-06):**
+| date | loser | canonical | result |
+|---|---|---|---|
+| 06-05 | -2142575830045023 | watch -102539783518325 | merged via falsifier |
+| 06-04 | -1483290537416636 | watch -271531781519189 | mergedIntoId set ✓ |
+| 06-03 | -3858000542489904 | watch -99303583875384 | mergedIntoId set ✓ |
+| 05-31 | -1466010895152803 | watch -16421550262950 | mergedIntoId set ✓ |
+| 05-26 | -573194905917117 | strava 18690124384 | mergedIntoId set ✓ |
+| 05-24 | -2045716995500221 | none | no peer — single-source, no merge |
+| 05-20 | -3363396946462586 | none | no peer — single-source, no merge |
+
+**Final cross-tab:** `weather_enriched=true + is_merged=false` = **2** (05-24, 05-20 — no peer, not a bug). `weather_enriched=true + is_merged=true` = **5**. Cross-tab target "drops 7→0" revised to "drops 7→2" because 2 are single-source runs with no pair to merge.
+
+**Splits absorbed:** 05-31 (12 real GPS splits on watch canonical ✓), 06-03 (6 real splits ✓), 05-26 (1 split absorbed from apple_watch onto strava canonical ✓). 06-04 and 06-05 watch canonicals already had real splits or phase telemetry only — see P3-3.
+
+**Rule 6 grep (post-fix):** `canonical.ts:243` + `pullSync.ts:388` both start with `{ ...canonicalData }` (read-modify-write) — NOT violations. No further Rule 6 instances in ingest paths.
+
+## P3-3 — GPS per-mile splits absent on easy/long/recovery canonical rows  [LOGGED · depends on P3-2 + backfill]
+
+**Symptom:** easy/long runs show "No mile splits available" even after P3-2 fix + backfill. Example: 06-04 canonical (watch) has 3 phase-telemetry splits with no `pace` field; apple_watch loser had 0 splits. Neither row carried real GPS splits.
+
+**Root cause:** the iPhone's HK ingest (`/api/ingest/workout`) carries GPS per-mile splits from HKWorkoutRoute when the iPhone includes `route_polyline` AND the watch completion (`/api/watch/workouts/complete`) carries per-phase telemetry only. For some runs (easy/recovery/single-phase), the apple_watch row was re-ingested without splits (empty `splits: []`). Whether this is a gap in `HealthKitManager.buildRoutePayload` on the iPhone or a splits-validation drop needs investigation.
+
+**What P3-2 fixed:** pairs now correctly merge → `enhanceCanonicalFromAbsorbed` can absorb real GPS splits when the loser has them. P3-3 is the remaining case where the loser also lacks GPS splits.
+
+**Scope after P3-2:** investigate why some apple_watch HK ingest rows have `splits: []`. Is it an iPhone-side gap (buildRoutePayload not called for easy runs), a network/size issue (polyline dropped), or a splits-validation false positive? The `splits_unreliable` flag (A5) may or may not be involved.
 
 ---
 
