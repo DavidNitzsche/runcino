@@ -44,6 +44,11 @@ export interface WatchPhase {
   haptic: WatchHaptic;
   repUnit?: WatchRepUnit;
   distanceMi?: number | null;
+  /** HR target for work phases on quality sessions (intervals/threshold/tempo).
+   *  Sourced from workout_spec.lthr_bpm → profile.lthr → null.
+   *  Null on warmup/recovery/cooldown and on easy/long workouts.
+   *  Watch renders this as a reference; floor/ceiling semantics are a face-display decision. */
+  hrTargetBpm?: number | null;
 }
 
 export interface WatchWorkout {
@@ -372,9 +377,19 @@ export async function buildWatchToday(
         toleranceSec: defaultTolerance,
       })
     : null;
+  // HR target for work phases on quality sessions: prefer spec-embedded lthr_bpm
+  // (snapshot from plan generation) → fall back to live profile lthr → null.
+  // Gated to intervals/threshold/tempo so easy/long work phases never show a
+  // quality HR target (those sessions use hrCeilingBpm at the workout level).
+  const specLthrBpm = wo.workout_spec
+    ? (Number((wo.workout_spec as Record<string, unknown>)?.lthr_bpm) || null)
+    : null;
+  const isQualityWorkout = wo.type === 'intervals' || wo.type === 'threshold' || wo.type === 'tempo';
+  const workHrTargetBpm = isQualityWorkout ? (specLthrBpm ?? lthr ?? null) : null;
+
   if (expanded && expanded.length > 0) {
     // workout_spec drove the phase list · convert ExpandedPhase →
-    // WatchPhase (same shape, just need to add haptic + repUnit).
+    // WatchPhase (same shape, just need to add haptic + repUnit + hrTargetBpm).
     for (const p of expanded) {
       phases.push({
         type: p.type,
@@ -382,9 +397,13 @@ export async function buildWatchToday(
         durationSec: p.durationSec ?? Math.round((p.distanceMi ?? 0) * (p.targetPaceSPerMi ?? 540)),
         targetPaceSPerMi: p.targetPaceSPerMi ?? null,
         tolerancePaceSPerMi: p.tolerancePaceSPerMi ?? null,
-        haptic: 'start',  // patched below
+        haptic: p.type === 'warmup'   ? 'start'
+              : p.type === 'recovery' ? 'transition-recovery'
+              : p.type === 'cooldown' ? 'transition-cooldown'
+              :                         'transition-work',
         repUnit: p.distanceMi != null ? 'distance' : 'time',
         distanceMi: p.distanceMi ?? null,
+        hrTargetBpm: p.type === 'work' ? workHrTargetBpm : null,
       });
     }
   } else {

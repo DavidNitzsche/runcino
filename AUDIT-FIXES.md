@@ -106,7 +106,7 @@ Update this file at the end of each leg.
 
 **WHAT'S LEFT:** nothing for the audit. Fix queue:
 - **[DONE 2026-06-06] — A3+A4+A5 (recap layer):** See section below.
-- **NEXT — A2 + HR-target-for-intervals:** complete haptic patch on spec path (`build-workout.ts:385`) + forward `lthr_bpm` from `workout_spec` as an HR target for rep phases (threshold/tempo/intervals). Same watch-side surface, clean to bundle.
+- **[AWAITING DAVID'S GO — 2026-06-06] — A2 + HR-target-for-intervals:** diff written, falsifiers green. See section below.
 - **DEFERRED — A1:** persist outbound payload for debuggability. Real but not urgent.
 
 ## Audit A — Fixes A3+A4+A5 (recap layer)  [CODE-COMPLETE 2026-06-06 · awaiting David's review + go to deploy]
@@ -137,6 +137,27 @@ Update this file at the end of each leg.
 **DEPLOYED 2026-06-06** · commit `e9486282` on main · Railway auto-deploy fired ✓
 **Prod smoke checks:** A3 plannedPace=389 non-null ✓ · A4 majority_missed→null (not "5 reps delivered") ✓ · A5 splits_unreliable gated ✓
 **Display (Confirm 3):** TodayView: no MILE SPLITS card — note only: "GPS pacing not shown — splits couldn't be verified for this run." RunDetailModal: section hidden; same note inline. ✓
+
+## Audit A — Fixes A2 + HR-target-for-intervals  [AWAITING DAVID'S GO · 2026-06-06]
+
+**A2 — Haptic patch** · `web-v2/lib/watch/build-workout.ts`
+- Was: `haptic: 'start'` unconditionally on every expanded spec phase; patch block only fixed index 0 and last cooldown → all 4 work reps + 3 recoveries shipped `'start'` → watch fired `.start` buzz for every interior transition
+- Now: loop assigns haptic from `p.type` directly — warmup→`'start'`, work→`'transition-work'`, recovery→`'transition-recovery'`, cooldown→`'transition-cooldown'`. Patch block stays as idempotent guard.
+- Fallback path (`stepToPhases`): unaffected — already assigns haptics correctly.
+- **Falsifier:** 06-02 4×1mi session phases[1,3,5,7] (work) = `'transition-work'`; phases[2,4,6] (recovery) = `'transition-recovery'` ✓
+
+**HR target for intervals** · `build-workout.ts` + `WatchWorkoutModels.swift` + `native-v2/Faff/Faff/Models/Watch.swift`
+- Added `hrTargetBpm?: number | null` to `WatchPhase` TypeScript interface
+- For `intervals/threshold/tempo` work phases: `workHrTargetBpm = workout_spec.lthr_bpm ?? profile.lthr ?? null`
+- Easy/long work phases: `workHrTargetBpm = null` (those sessions use workout-level `hrCeilingBpm`)
+- Warmup/recovery/cooldown: always `null`
+- Both Swift structs (watch + iPhone) updated: `hrTargetBpm: Int?`, decodeIfPresent, encodeIfPresent, re-stamp pass-through
+- **Falsifier:** 06-02 workout (DB: `lthr_bpm=162`, `profile.lthr=162`) → work phases `hrTargetBpm=162`; warmup/rec/CD `hrTargetBpm=null` ✓
+- **Cold-start:** `lthr=null`, `spec.lthr_bpm=null` → all phases `hrTargetBpm=null` → nothing shown, no crash ✓
+
+**Files changed:** `web-v2/lib/watch/build-workout.ts` · `legacy/native/Faff/FaffWatch Watch App/WatchWorkoutModels.swift` · `native-v2/Faff/Faff/Models/Watch.swift`
+**tsc:** 0 new errors in changed files (pre-existing `process.env` node-types error on line 25 unchanged)
+**Swift:** backward-compat via `hrTargetBpm: Int? = nil` default + `decodeIfPresent`; all existing fixture call sites unchanged
 
 ## Audit B — Architectural source-of-truth sweep  [NOT STARTED]
 Enumerate EVERY value every surface (web/iPhone/Watch) displays or writes; prove each reads from backend, not local recompute/store. Flag every local recompute + bypassing write. Fresh session, Phase 0 pre-flight, read-only, falsify-don't-confirm. Depends on Cluster 1 done (consumes volume + VDOT).
