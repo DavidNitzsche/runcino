@@ -1623,7 +1623,6 @@ function PlannedHeroV2({
         </div>
         <div className="verdict">{planV}</div>
         <div className="recap">{planR}</div>
-        <div className="divider" />
         <div className="tgts-h">TARGETS</div>
         <div className="tgt">
           <span className="tk">HEART RATE</span>
@@ -2152,11 +2151,6 @@ function CompletedHeroV2({
             three columns balance vertically. The right card now holds
             just the verdict / recap / mile splits. */}
 
-        <div className="divider" />
-        {/* wcard-panel · scrollable inner section. Verdict+recap above
-            stay pinned; this section (THE TEMPO / MILE SPLITS / etc.)
-            scrolls if content is taller than the remaining card height.
-            Tier 4 of the card overflow system. */}
         <div className="wcard-panel">
         {/* 2026-06-02 · for interval workouts WITH per-phase data, swap the
             generic mile-splits panel for THE REPS plan-vs-result card.
