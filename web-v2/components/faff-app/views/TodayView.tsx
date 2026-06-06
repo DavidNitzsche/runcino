@@ -2037,57 +2037,25 @@ function CompletedHeroV2({
                 The "four legibility laws" comment block in RunDetailModal
                 explains the contract. */}
             {recapPayload?.conditions_note ? (
-              <div style={{
-                padding: 'var(--callout-padding)', borderRadius: 10,
-                background: 'rgba(10,12,16,.62)',
-                backdropFilter: 'blur(10px)',
-                WebkitBackdropFilter: 'blur(10px)',
-                border: 0,
-                fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
-                display: 'flex', flexDirection: 'column', gap: 'var(--label-gap)',
-              }}>
-                <div style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
-                  textTransform: 'uppercase', color: '#FFB07A',
-                }}>
-                  CONDITIONS
-                </div>
-                {recapPayload.conditions_note}
+              <div className="hero-callout">
+                <div className="hc-label" style={{ color: '#FFB07A' }}>CONDITIONS</div>
+                <div className="hc-body">{recapPayload.conditions_note}</div>
               </div>
             ) : runData?.weather_context ? (
-              <div style={{
-                padding: 'var(--callout-padding)', borderRadius: 10,
-                background: 'rgba(10,12,16,.62)',
-                backdropFilter: 'blur(10px)',
-                WebkitBackdropFilter: 'blur(10px)',
-                border: 0,
-                fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
-                display: 'flex', flexDirection: 'column', gap: 'var(--label-gap)',
-              }}>
-                {runData.weather_context.message}
-                {runData.weather_context.hr_bump_bpm > 0 ? (
-                  <> · HR +{runData.weather_context.hr_bump_bpm} bpm expected</>
-                ) : null}
+              <div className="hero-callout">
+                <div className="hc-body">
+                  {runData.weather_context.message}
+                  {runData.weather_context.hr_bump_bpm > 0 ? (
+                    <> · HR +{runData.weather_context.hr_bump_bpm} bpm expected</>
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
             {recapPayload?.coach_tip ? (
-              <div style={{
-                padding: 'var(--callout-padding)', borderRadius: 10,
-                background: 'rgba(10,12,16,.62)',
-                backdropFilter: 'blur(10px)',
-                WebkitBackdropFilter: 'blur(10px)',
-                border: 0,
-                fontSize: 13, lineHeight: 1.55, color: '#FFFFFF', fontWeight: 500,
-                display: 'flex', flexDirection: 'column', gap: 'var(--label-gap)',
-              }}>
-                <div style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
-                  textTransform: 'uppercase', color: '#7BE8DC',
-                }}>
-                  COACH TIP
-                </div>
-                {recapPayload.coach_tip}
+              <div className="hero-callout">
+                <div className="hc-label" style={{ color: '#7BE8DC' }}>COACH TIP</div>
+                <div className="hc-body">{recapPayload.coach_tip}</div>
               </div>
             ) : null}
 

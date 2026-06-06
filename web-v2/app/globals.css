@@ -266,6 +266,38 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    internally it's a single-line copy block so no --label-gap needed.
    flex:1 + align-items:center positions the copy in the slack. */
 .hero .rest-coach{flex:1;display:flex;align-items:center;font-size:15px;font-weight:500;line-height:1.55;color:#fff;background:rgba(10,12,16,.42);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;padding:var(--callout-padding);}
+/* .hero-callout · reusable callout box for CONDITIONS / COACH TIP
+   inside the hero left column.  Uses --callout-padding so the hero
+   compression context (12px override on .hmain) propagates without
+   touching this rule.  Font size is 13px (one step below body) to
+   keep prose compact inside dense hero cards.
+   Tier 4 · .hero-callout-body gets overflow-y:auto + max-height so
+   genuinely long tips scroll inside the box rather than pushing the
+   card taller. The max-height of 72px (~3 lines at lh 1.5) keeps the
+   callout from dominating the card when copy is unusually long. */
+.hero-callout{
+  padding:var(--callout-padding);
+  border-radius:10px;
+  background:rgba(10,12,16,.62);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  font-size:13px;line-height:1.5;color:#fff;font-weight:500;
+  display:flex;flex-direction:column;gap:var(--label-gap);
+  min-width:0;
+}
+.hero-callout .hc-label{
+  font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;flex-shrink:0;
+}
+.hero-callout .hc-body{
+  overflow-y:auto;
+  max-height:72px;
+  min-height:0;
+  line-height:1.5;
+}
+/* Scrollbar · minimal, matches the dark surface */
+.hero-callout .hc-body::-webkit-scrollbar{width:3px;}
+.hero-callout .hc-body::-webkit-scrollbar-track{background:transparent;}
+.hero-callout .hc-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:2px;}
 .hero-v2 .htag{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.95;}
 /* 2026-06-03 · margin-top dropped to 0 · the eyebrow above is gone now,
    so the title row anchors at the top of .hmain. Was 8px (clear of the
@@ -2047,11 +2079,38 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    spacing comes from the column gap, horizontal alignment comes from
    the padding box.  If something looks off, fix the token, not the
    card. */
-.tile,.wcard{padding:var(--card-padding);border-radius:var(--card-radius);height:100%;display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);}
+/* TIER 3 · Cards never escape their grid cell.  height:100% equalises
+   siblings in the same row; overflow:hidden clips any content that
+   would otherwise blow past the card boundary and distort row height.
+   Content that genuinely can't fit after compression should use the
+   .inner-scroll helper (Tier 4) — never let the card itself grow. */
+.tile,.wcard{padding:var(--card-padding);border-radius:var(--card-radius);height:100%;display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);overflow:hidden;}
+/* TIER 4 · Opt-in inner-scroll for a sub-region inside a card when
+   content is genuinely too long to compress. The card shape is fixed;
+   only the scrollable sub-region moves. Apply to a wrapper div around
+   the overflowing content, NOT to the card itself. */
+.inner-scroll{overflow-y:auto;min-height:0;}
 /* Same recipe applied to the colored hero cards on .hmain (rest,
    planned, completed variants).  Rest also flags its coach line as
    "fill" content (see .hero .rest-coach below). */
-.hero-v2 .hmain,.hero .hmain{padding:var(--card-padding);display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);}
+/* TIER 1 · Hero grid discipline: row height is set by siblings /
+   min-height, never by one card expanding.  overflow:hidden enforces
+   the boundary so long coach-tip text can't push the row taller.
+   TIER 2 · Compression tokens overridden here so hero cards use tighter
+   spacing than the rest of the dashboard without touching global tokens:
+     --section-gap    16 → 12px  (saves ~12px across 3 inter-section gaps)
+     --callout-padding 16 → 12px  (saves ~8px per callout box)
+   --label-gap stays 8px — compressing label↔value spacing hurts
+   readability more than it saves space. */
+.hero-v2 .hmain,.hero .hmain{
+  padding:var(--card-padding);
+  display:flex;flex-direction:column;align-items:stretch;
+  gap:var(--card-section-gap);
+  overflow:hidden;
+  --section-gap:12px;
+  --card-section-gap:12px;
+  --callout-padding:12px;
+}
 .win[data-mesh="calm"] .mesh{filter:saturate(.7) brightness(.9);}
 .win[data-mesh="vivid"] .mesh{filter:saturate(1.34) brightness(1.07);}
 .win[data-accent="gold"]{--goal:#F5C518;--race:#F5A518;}
