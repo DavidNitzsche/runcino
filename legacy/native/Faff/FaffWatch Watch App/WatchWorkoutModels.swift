@@ -58,6 +58,11 @@ struct WatchPhase: Codable, Identifiable {
     /// is still carried as a time ESTIMATE for distance reps — used for the
     /// total-time estimate and as a fallback.)
     let distanceMi: Double?
+    /// HR target for work phases on quality sessions (intervals/threshold/tempo).
+    /// Sourced from workout_spec.lthr_bpm at plan-generation time.
+    /// nil on warmup/recovery/cooldown and on easy/long sessions.
+    /// Face display semantics (floor/ceiling/reference) are a face-level decision.
+    let hrTargetBpm: Int?
 
     /// The backend payload omits `index` (the phases array is ordered
     /// and the watch walks it with a cursor).  We assign it during
@@ -65,7 +70,7 @@ struct WatchPhase: Codable, Identifiable {
     /// own position for labels + completion reporting.
     init(index: Int, type: WatchPhaseType, label: String, durationSec: Int,
          targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
-         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil) {
+         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil) {
         self.index = index
         self.type = type
         self.label = label
@@ -75,10 +80,11 @@ struct WatchPhase: Codable, Identifiable {
         self.haptic = haptic
         self.repUnit = repUnit
         self.distanceMi = distanceMi
+        self.hrTargetBpm = hrTargetBpm
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi
+        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm
     }
 
     /// Decoding without an index — used only when a phase is decoded in
@@ -94,6 +100,7 @@ struct WatchPhase: Codable, Identifiable {
         self.haptic = try c.decode(WatchHaptic.self, forKey: .haptic)
         self.repUnit = try c.decodeIfPresent(WatchRepUnit.self, forKey: .repUnit) ?? .time
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
+        self.hrTargetBpm = try c.decodeIfPresent(Int.self, forKey: .hrTargetBpm)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -106,6 +113,7 @@ struct WatchPhase: Codable, Identifiable {
         try c.encode(haptic, forKey: .haptic)
         try c.encode(repUnit, forKey: .repUnit)
         try c.encodeIfPresent(distanceMi, forKey: .distanceMi)
+        try c.encodeIfPresent(hrTargetBpm, forKey: .hrTargetBpm)
     }
 }
 
@@ -217,7 +225,7 @@ struct WatchWorkout: Codable {
             WatchPhase(index: i, type: p.type, label: p.label, durationSec: p.durationSec,
                        targetPaceSPerMi: p.targetPaceSPerMi,
                        tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic,
-                       repUnit: p.repUnit, distanceMi: p.distanceMi)
+                       repUnit: p.repUnit, distanceMi: p.distanceMi, hrTargetBpm: p.hrTargetBpm)
         }
     }
 }
