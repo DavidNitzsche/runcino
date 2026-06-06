@@ -18,7 +18,9 @@ import { setBiologicalSex, normalizeSex } from '@/lib/coach/biological-sex';
 
 const ALLOWED = new Set([
   'height_cm', 'sex', 'age', 'city', 'full_name',
-  'birthday', 'lthr', 'hrmax_observed', 'experience_level',
+  'birthday', 'lthr', 'experience_level',
+  // hrmax_observed removed (Cluster 3) — column cleared in Cluster 2 DDL;
+  // sovereign max HR override path is users.max_hr_override, not this column.
   // P29 alias — iPhone settings sheet sends 'gender' for clarity, server
   // still stores as 'sex' for backwards compat. Both accepted.
   'gender',
@@ -52,7 +54,7 @@ export async function GET(req: NextRequest) {
   try {
     const r = await pool.query(
       `SELECT full_name, sex, sex AS gender, age, city, height_cm,
-              birthday::text AS birthday, lthr, hrmax, hrmax_observed,
+              birthday::text AS birthday, lthr, hrmax,
               rhr, experience_level, lthr_method, lthr_set_at,
               strava_connected_at, health_connected_at, onboarded_at,
               cross_training_modes

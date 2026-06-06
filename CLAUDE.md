@@ -240,6 +240,20 @@ The cherry-pick was aborted in an isolated worktree; `main` was never touched. T
 
 **Lesson:** confirm `main` is your base before building, and never transplant a commit across diverged branches without dry-running the merge and reading the conflicts. Building on a stale branch produces work that is redundant (already done better on `main`) or deprecated (already removed from `main`).
 
+## Deployment doctrine — approved fixes go to `main` (locked 2026-06-06)
+
+When a fix is approved (falsifiers passed, David reviewed, explicit go given), **Claude** deploys it — David approves the fix, not the git push:
+
+1. Commit immediately to the working branch with a clear message.
+2. Push the branch to origin.
+3. Merge to `main` and push `origin/main` (fetch first, fast-forward only).
+4. Confirm Railway deploys — the pipeline fires automatically on push to `main`.
+5. Run the cluster's smoke-check falsifiers **against prod** and report results.
+
+"Deploy through the normal pipeline" means *you* (Claude) do steps 1–5, not David. **An approved fix that isn't committed and pushed is not deployed** — it's at risk of loss and prod is running the old code. Never leave approved work uncommitted.
+
+**The only exception:** DDL / data writes (direct DB changes) still require David's explicit per-statement go before execution, as always. **Code changes deploy on approval; data writes need a separate explicit go.**
+
 ---
 
 ## Fully-autonomous mode — no stopping unless mission critical (locked 2026-05-24)

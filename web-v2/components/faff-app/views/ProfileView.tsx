@@ -330,17 +330,19 @@ function ProfileToggleRows() {
 
 /* ============================================================
    PhysiologyBlock · LTHR / HRmax / RHR / VDOT readout with
-   ProvenanceLine sublines. Lazy-fetches /api/profile.
-   Closes coverage row 1480 (HRmax + LTHR provenance).
+   ProvenanceLine sublines. Fetches /api/profile/state (not
+   /api/profile) so max_hr is the RESOLVED value (ratchet +
+   observed) and vdot is computed — both were blank when this
+   read the raw profile table. Cluster 3 fix.
    ============================================================ */
 interface ProfilePhysiology {
-  lthr: number | null;
-  hrmax: number | null;
-  hrmax_observed: number | null;
+  max_hr: number | null;   // resolved via loadEffectiveMaxHr
+  max_hr_source: string | null;
   rhr: number | null;
+  lthr: number | null;
   lthr_method: string | null;
   lthr_set_at: string | null;
-  vdot?: number | null;
+  vdot: number | null;
 }
 
 function PhysiologyBlock() {
@@ -349,18 +351,19 @@ function PhysiologyBlock() {
 
   useEffect(() => {
     let alive = true;
-    fetch('/api/profile')
+    fetch('/api/profile/state')
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (!alive || !j) return;
+        const ph = j?.physiology ?? {};
         setP({
-          lthr: typeof j.lthr === 'number' ? j.lthr : null,
-          hrmax: typeof j.hrmax === 'number' ? j.hrmax : null,
-          hrmax_observed: typeof j.hrmax_observed === 'number' ? j.hrmax_observed : null,
-          rhr: typeof j.rhr === 'number' ? j.rhr : null,
-          lthr_method: typeof j.lthr_method === 'string' ? j.lthr_method : null,
-          lthr_set_at: typeof j.lthr_set_at === 'string' ? j.lthr_set_at : null,
-          vdot: typeof j.vdot === 'number' ? j.vdot : null,
+          max_hr:        typeof ph.max_hr        === 'number' ? ph.max_hr        : null,
+          max_hr_source: typeof ph.max_hr_source === 'string' ? ph.max_hr_source : null,
+          rhr:           typeof ph.rhr           === 'number' ? ph.rhr           : null,
+          lthr:          typeof ph.lthr          === 'number' ? ph.lthr          : null,
+          lthr_method:   typeof ph.lthr_method   === 'string' ? ph.lthr_method   : null,
+          lthr_set_at:   typeof ph.lthr_set_at   === 'string' ? ph.lthr_set_at   : null,
+          vdot:          typeof ph.vdot          === 'number' ? ph.vdot          : null,
         });
       })
       .catch(() => { /* fail soft */ })
@@ -392,7 +395,12 @@ function PhysiologyBlock() {
       default:             return p.lthr_method ?? 'Source unknown';
     }
   })();
-  const hrmaxLabel = p.hrmax_observed ? 'Watch-observed peak' : p.hrmax ? 'Estimated from formula' : 'Not set';
+  const hrmaxLabel =
+    p.max_hr_source === 'observed'     ? 'From Apple Watch data' :
+    p.max_hr_source === 'manual'       ? 'Entered manually' :
+    p.max_hr_source === 'lthr-derived' ? 'Estimated from LTHR' :
+    p.max_hr_source === 'formula'      ? 'Estimated from formula' :
+    'Not set';
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
@@ -405,7 +413,7 @@ function PhysiologyBlock() {
         </div>
       </div>
       <div>
-        <StatTile value={p.hrmax_observed ?? p.hrmax ?? '·'} unit={(p.hrmax_observed || p.hrmax) ? 'bpm' : ''} label="HRmax" />
+        <StatTile value={p.max_hr ?? '·'} unit={p.max_hr ? 'bpm' : ''} label="HRmax" />
         <div style={{ padding: '0 16px 12px' }}>
           <ProvenanceLine method={hrmaxLabel} />
         </div>

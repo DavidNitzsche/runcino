@@ -227,6 +227,30 @@ struct WatchWorkout: Codable {
 }
 
 // MARK: - Outgoing · completion writeback (phase 6)
+//
+// CANONICAL SOURCE: legacy/native/Faff/FaffWatch Watch App/WatchWorkoutModels.swift
+// These iPhone-side structs MUST match the watch structs exactly. The relay
+// path (WatchSync) passes raw bytes through without decoding, so drift is
+// silently invisible in the relay — but it corrupts any iPhone-generated
+// completion (treadmill v2, manual entry) and any future decode.
+//
+// Tier-1 telemetry structs (PaceSample / HRSample) mirror WatchWorkoutModels.swift.
+
+struct WatchPaceSample: Encodable {
+    /// Seconds since the phase began.
+    let tSec: Int
+    /// Instantaneous pace in seconds per mile. `nil` when GPS hadn't locked.
+    let paceSPerMi: Int?
+    /// Cumulative distance covered IN THIS PHASE at the sample instant (miles).
+    let distMi: Double
+}
+
+struct WatchHRSample: Encodable {
+    /// Seconds since the phase began.
+    let tSec: Int
+    /// Heart rate in bpm. `nil` when HR couldn't be read.
+    let bpm: Int?
+}
 
 struct WatchCompletionPhase: Encodable {
     let index: Int
@@ -235,8 +259,24 @@ struct WatchCompletionPhase: Encodable {
     let targetPaceSPerMi: Int?
     let actualPaceSPerMi: Int?
     let actualDurationSec: Int
+    /// GPS-tracked distance covered DURING this phase (miles).
+    let actualDistanceMi: Double?
     let avgHr: Int?
+    /// Peak HR observed during this phase.
+    let maxHr: Int?
+    /// Average cadence (steps/min) across the phase.
+    let avgCadence: Int?
     let completed: Bool
+    // ─── Tier 1 (2026-06-02) ────────────────────────────────────────
+    var paceSamples: [WatchPaceSample]? = nil
+    var hrSamples: [WatchHRSample]? = nil
+    var timeInToleranceSec: Int? = nil
+    var timeOutOfToleranceSec: Int? = nil
+    /// "hit" | "drifted" | "missed" | "incomplete" | nil
+    var verdict: String? = nil
+    // ─── Tier 2 (2026-06-02, UI rescinded — always nil on wire) ─────
+    var repRpe: Int? = nil
+    var repRpeTag: String? = nil
 }
 
 struct WatchCompletion: Encodable {
@@ -249,6 +289,8 @@ struct WatchCompletion: Encodable {
     let avgHr: Int?
     let maxHr: Int?
     var avgCadence: Int? = nil
+    /// Active calories from HKLiveWorkoutBuilder. `nil` → backend estimator fallback.
+    var kcal: Int? = nil
     let phases: [WatchCompletionPhase]
 }
 
