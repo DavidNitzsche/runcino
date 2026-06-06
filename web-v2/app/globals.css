@@ -469,18 +469,43 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 /* 2026-06-04 · per-variant .wcard tweaks · base surface comes from
    `.wcard` above and layout from the UNIVERSAL CARD LAYOUT rule
    below.  flex:0 0 344px legacy width dropped (lives in grid col 3
-   now). */
-.hero-v2 .wcard{min-height:0;}
+   now).
+   2026-06-06 · TIER 2 compression applied to wcard as well as hmain ·
+   wcard is a SIBLING of hmain in the grid (not a child) so it was
+   missing the --section-gap/--callout-padding overrides.  Both cards
+   in the hero row must compress together or one pushes row height.
+   TIER 4 · .wcard in hero gets overflow:hidden (from universal .wcard
+   rule) — the inner panel section (.wcard-panel) scrolls via inner-scroll
+   so verdict/recap stay pinned at top while THE TEMPO / MILE SPLITS /
+   HR section scrolls if too tall.  Card shape stays fixed. */
+.hero-v2 .wcard{
+  min-height:0;
+  --section-gap:12px;
+  --card-section-gap:12px;
+  --callout-padding:12px;
+}
 .hero-v2 .wcl{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:8px;margin-bottom:0;}
 .hero-v2 .wcl .ok{color:#86efa0;display:inline-flex;align-items:center;gap:5px;margin-left:auto;}
 .hero-v2 .wcl .ok svg{width:13px;height:13px;}
-.hero-v2 .verdict{font-family:'Oswald',sans-serif;font-size:23px;font-weight:600;line-height:1.04;margin-top:16px;text-transform:none;}
-.hero-v2 .recap{font-size:13.5px;font-weight:500;line-height:1.6;color:rgba(255,255,255,.9);margin-top:10px;}
-.hero-v2 .divider{height:1px;background:rgba(255,255,255,.1);margin:18px 0 4px;}
+/* margin-top stripped · spacing comes from parent flex gap (--card-section-gap) */
+.hero-v2 .verdict{font-family:'Oswald',sans-serif;font-size:23px;font-weight:600;line-height:1.04;text-transform:none;}
+.hero-v2 .recap{font-size:13px;font-weight:500;line-height:1.55;color:rgba(255,255,255,.9);}
+/* divider · margin drives its visual breathing room.  Use token-scaled
+   values: top=section-gap, bottom=label-gap (4px less = tighter before content) */
+.hero-v2 .divider{height:1px;background:rgba(255,255,255,.1);margin:var(--section-gap) 0 calc(var(--label-gap) / 2);}
 .hero-v2 .reshead{display:flex;justify-content:space-between;align-items:baseline;margin:4px 0 2px;font-family:'Oswald',sans-serif;font-size:15px;font-weight:600;letter-spacing:.4px;}
 .hero-v2 .reshead .rs{opacity:.82;font-size:13px;font-family:'Oswald',sans-serif;}
 .hero-v2 .reshead .rs small{font-family:'Inter',sans-serif;font-size:10px;opacity:.7;font-weight:500;}
 .hero-v2 .splits{margin-top:8px;}
+/* wcard-panel · the scrollable inner section below the divider.
+   verdict+recap stay pinned; the structured panel (TEMPO BLOCK, REPS,
+   MILE SPLITS, TRAINING FORM) scrolls if content is taller than the
+   remaining card space.  min-height:0 is required for flex children
+   to shrink below their content size. */
+.hero-v2 .wcard-panel{overflow-y:auto;min-height:0;flex:1;}
+.hero-v2 .wcard-panel::-webkit-scrollbar{width:3px;}
+.hero-v2 .wcard-panel::-webkit-scrollbar-track{background:transparent;}
+.hero-v2 .wcard-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:2px;}
 .hero-v2 .spr{display:flex;align-items:center;gap:13px;padding:5px 0;}
 .hero-v2 .spm{font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;width:16px;opacity:.85;}
 .hero-v2 .sptrk{flex:1;height:9px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden;}

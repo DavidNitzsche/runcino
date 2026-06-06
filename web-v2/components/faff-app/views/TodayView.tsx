@@ -2154,6 +2154,11 @@ function CompletedHeroV2({
             just the verdict / recap / mile splits. */}
 
         <div className="divider" />
+        {/* wcard-panel · scrollable inner section. Verdict+recap above
+            stay pinned; this section (THE TEMPO / MILE SPLITS / etc.)
+            scrolls if content is taller than the remaining card height.
+            Tier 4 of the card overflow system. */}
+        <div className="wcard-panel">
         {/* 2026-06-02 · for interval workouts WITH per-phase data, swap the
             generic mile-splits panel for THE REPS plan-vs-result card.
             See designs/from Design agent/design_handoff_run_detail_intervals.
@@ -2236,6 +2241,7 @@ function CompletedHeroV2({
             </div>
           </>
         )}
+        </div>
       </aside>
     </div>
   );
