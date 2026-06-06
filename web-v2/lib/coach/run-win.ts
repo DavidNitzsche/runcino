@@ -71,6 +71,16 @@ export interface WinInput {
   /** 2026-06-01 · source · 'treadmill' triggers indoor-specific
    *  framing even when indoor flag was missed by older payloads. */
   source?: string;
+  /** A4 — per-rep phase data from coach_intents watch_completion.
+   *  When present, winIntervals uses these instead of per-mile splits.
+   *  Cold-start: absent on non-Faff-watch runs; winIntervals falls
+   *  through to the per-mile heuristic in that case. */
+  phases?: Array<{
+    type?: string | null;
+    verdict?: string | null;
+    actualPaceSPerMi?: number | null;
+    targetPaceSPerMi?: number | null;
+  }>;
 }
 
 /**
@@ -224,10 +234,18 @@ function winTempo(input: WinInput, splits: NormalSplit[]): string | null {
 }
 
 function winIntervals(input: WinInput, splits: NormalSplit[]): string | null {
-  // Find work-segments · the fastest N splits where N is the rep count
+  // A4 — prefer phase-level data from coach_intents when available.
+  // Per-mile splits are unreliable for intervals (GPS jitter + pause
+  // gaps inflate mile times, mix rep + recovery paces, and can't
+  // distinguish "4 reps" from "5 per-mile segments"). Phase data
+  // carries the watch's own verdict per rep.
+  if (input.phases && input.phases.length > 0) {
+    return winIntervalsFromPhases(input.phases);
+  }
+  // Legacy fallback: per-mile heuristic for non-Faff-watch runs
+  // (Strava, Apple Watch Workouts, older iPhone HK ingests).
   const repPaces = workSplitPaces(splits);
   if (repPaces.length < 3) return null;
-  // Last reps as strong or stronger than first reps?
   const firstHalf = repPaces.slice(0, Math.ceil(repPaces.length / 2));
   const lastHalf = repPaces.slice(Math.ceil(repPaces.length / 2));
   const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
@@ -237,6 +255,53 @@ function winIntervals(input: WinInput, splits: NormalSplit[]): string | null {
     return `${repPaces.length} on the rail · last ${strongCount} the strongest`;
   }
   return `${repPaces.length} reps delivered`;
+}
+
+/**
+ * A4 — intervals win from coach_intents phase data.
+ * Uses the watch's own per-rep verdict (hit/drifted/missed) rather
+ * than per-mile GPS splits that can't distinguish rep from recovery.
+ * Cold-start: returns null when phase list is empty or has no work reps.
+ */
+function winIntervalsFromPhases(
+  phases: NonNullable<WinInput['phases']>,
+): string | null {
+  const work = phases.filter((p) => {
+    const t = String(p.type ?? '').toLowerCase();
+    return t === 'work' || t === 'rep' || t === 'intervals' || t === 'tempo' || t === 'threshold';
+  });
+  if (work.length < 2) return null;
+
+  const hits    = work.filter((p) => p.verdict === 'hit').length;
+  const drifted = work.filter((p) => p.verdict === 'drifted').length;
+  const missed  = work.filter((p) => p.verdict === 'missed').length;
+  const total   = work.length;
+  const nearTarget = hits + drifted;   // hit + close-enough-to-drifted
+
+  // Majority missed → not a win; return null so recap shows truth.
+  if (missed >= Math.ceil(total / 2)) return null;
+
+  // Clean sweep
+  if (hits === total) {
+    return `${total} on the rail · clean set.`;
+  }
+
+  // All near target (every rep hit or drifted)
+  if (nearTarget === total) {
+    const lastHalf = work.slice(Math.ceil(total / 2));
+    const lastNear = lastHalf.filter((p) => p.verdict === 'hit' || p.verdict === 'drifted').length;
+    if (lastNear >= lastHalf.length) {
+      return `${total} on the rail · held form through the set.`;
+    }
+    return `${total} reps near target.`;
+  }
+
+  // Majority near target
+  if (nearTarget > Math.floor(total / 2)) {
+    return `${nearTarget} of ${total} reps on target.`;
+  }
+
+  return null;
 }
 
 function winRace(input: WinInput, splits: NormalSplit[]): string | null {

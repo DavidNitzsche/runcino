@@ -39,6 +39,8 @@ type RunDetail = {
    *  for steady efforts. Null when no comparable baseline. */
   hr_on_pace_delta_bpm?: number | null;
   power_avg_w: number | null;
+  /** A5 — GPS splits unreliable; do not render MILE SPLITS. */
+  splits_unreliable?: boolean;
   splits: Array<{
     mile: number;
     pace: string | null;
@@ -205,7 +207,12 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                 </div>
               )}
 
-              {data.splits?.length > 0 && (() => {
+              {data.splits_unreliable && (
+                <div style={{ fontSize: 11, opacity: 0.5, margin: '12px 0', lineHeight: 1.5 }}>
+                  GPS pacing not shown — splits couldn't be verified for this run.
+                </div>
+              )}
+              {!data.splits_unreliable && data.splits?.length > 0 && (() => {
                 const maxFill = Math.max(...data.splits.map(s => paceToSec(s.pace ?? '') || 0));
                 const minFill = Math.min(...data.splits.filter(s => paceToSec(s.pace ?? '') > 0).map(s => paceToSec(s.pace!) || 0));
                 const span = Math.max(1, maxFill - minFill);

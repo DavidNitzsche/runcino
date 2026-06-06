@@ -597,6 +597,8 @@ type RunSummary = {
   power_avg_w: number | null;
   shoe_id: number | null;
   shoes?: Array<{ id: number; brand: string; model: string }>;
+  /** A5 — GPS splits flagged unreliable at ingest; gate MILE SPLITS display. */
+  splits_unreliable?: boolean;
   splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
   route_polyline?: string | null;
   distance_mi?: number;
@@ -2196,6 +2198,13 @@ function CompletedHeroV2({
             phases={runData.phase_breakdown}
             heatSlowdownPct={runData.heat_slowdown_pct ?? null}
           />
+        ) : runData?.splits_unreliable ? (
+          // A5 — GPS splits flagged unreliable at ingest (splits-time-sum
+          // exceeded run duration; pause events inflated GPS timestamps).
+          // No MILE SPLITS card — just a brief note. No blank framed box.
+          <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8, lineHeight: 1.5 }}>
+            GPS pacing not shown — splits couldn't be verified for this run.
+          </div>
         ) : (
           <>
             <div className="reshead">
