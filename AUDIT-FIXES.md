@@ -106,7 +106,7 @@ Update this file at the end of each leg.
 
 **WHAT'S LEFT:** nothing for the audit. Fix queue:
 - **[DONE 2026-06-06] — A3+A4+A5 (recap layer):** See section below.
-- **[AWAITING DAVID'S GO — 2026-06-06] — A2 + HR-target-for-intervals:** diff written, falsifiers green. See section below.
+- **[DONE 2026-06-06] — A2 + HR-target-for-intervals:** deployed bead89bb. 9/9 prod smoke ✓. See section below.
 - **DEFERRED — A1:** persist outbound payload for debuggability. Real but not urgent.
 
 ## Audit A — Fixes A3+A4+A5 (recap layer)  [CODE-COMPLETE 2026-06-06 · awaiting David's review + go to deploy]
@@ -138,7 +138,7 @@ Update this file at the end of each leg.
 **Prod smoke checks:** A3 plannedPace=389 non-null ✓ · A4 majority_missed→null (not "5 reps delivered") ✓ · A5 splits_unreliable gated ✓
 **Display (Confirm 3):** TodayView: no MILE SPLITS card — note only: "GPS pacing not shown — splits couldn't be verified for this run." RunDetailModal: section hidden; same note inline. ✓
 
-## Audit A — Fixes A2 + HR-target-for-intervals  [AWAITING DAVID'S GO · 2026-06-06]
+## Audit A — Fixes A2 + HR-target-for-intervals  [DEPLOYED 2026-06-06 · commit bead89bb on main · Railway auto-deploy fired · prod smoke 9/9 ✓]
 
 **A2 — Haptic patch** · `web-v2/lib/watch/build-workout.ts`
 - Was: `haptic: 'start'` unconditionally on every expanded spec phase; patch block only fixed index 0 and last cooldown → all 4 work reps + 3 recoveries shipped `'start'` → watch fired `.start` buzz for every interior transition
