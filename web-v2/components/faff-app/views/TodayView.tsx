@@ -2791,65 +2791,71 @@ function EasyPanel({
         </div>
       ) : null}
 
-      {/* MILE PACE footprint */}
+      {/* MILE PACE — per-mile pace label above bar, mile number below.
+          Layout (per column): [pace label] [bar] [mile number]
+          The pace label is the primary read; bar height gives relative
+          feel at a glance. Outlier miles (WU/CD) muted + labeled. */}
       {paceSecs.length >= 3 && avgPaceSec > 0 ? (
         <div style={{ marginTop: 18 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>MILE PACE</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>MILE PACE</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.5)' }}>
+              {fmtSecAsPace(avgPaceSec)} avg
+            </span>
+          </div>
+          {/* Pace label row — sits above the bars */}
+          <div style={{ display: 'flex', gap: 5, paddingRight: 0, marginBottom: 4 }}>
+            {paceSecsAll.map((s, i) => {
+              const isOutlierBar = (warmupHead && i === 0) || (cooldownTail && i === lastIdx);
+              return (
+                <div key={i} style={{
+                  flex: 1, textAlign: 'center',
+                  fontSize: 9.5, fontWeight: 700, letterSpacing: 0,
+                  color: isOutlierBar ? 'rgba(255,255,255,.38)' : 'rgba(255,255,255,.9)',
+                  fontFamily: FONT_DISP,
+                }}>
+                  {fmtSecAsPace(s)}
+                </div>
+              );
+            })}
+          </div>
+          {/* Bar chart with avg dashed line */}
           <div style={{
             position: 'relative', display: 'flex', alignItems: 'flex-end',
-            gap: 5, height: 46, marginTop: 11, paddingRight: 50,
+            gap: 5, height: 40,
           }}>
             <div style={{
-              position: 'absolute', left: 0, right: 50,
+              position: 'absolute', left: 0, right: 0,
               top: `${(100 - fpH(avgPaceSec)).toFixed(1)}%`,
-              borderTop: '1px dashed rgba(255,255,255,.4)', zIndex: 2,
-            }}>
-              <span style={{
-                position: 'absolute', left: 'calc(100% + 7px)', top: -7,
-                whiteSpace: 'nowrap', fontSize: 8.5, fontWeight: 700,
-                color: 'rgba(255,255,255,.8)',
-              }}>{fmtSecAsPace(avgPaceSec)} avg</span>
-            </div>
+              borderTop: '1px dashed rgba(255,255,255,.35)', zIndex: 2,
+              pointerEvents: 'none',
+            }} />
             {paceSecsAll.map((s, i) => {
-              const isWarmupBar = warmupHead && i === 0;
-              const isCooldownBar = cooldownTail && i === lastIdx;
-              const isOutlierBar = isWarmupBar || isCooldownBar;
+              const isOutlierBar = (warmupHead && i === 0) || (cooldownTail && i === lastIdx);
               return (
                 <div key={i} style={{
                   flex: 1, borderRadius: '3px 3px 1px 1px',
-                  // Outlier bars (warm-up head + cool-down tail) get a
-                  // muted gradient so the visual says "this was a jog,
-                  // not a struggle mile."
                   background: isOutlierBar
-                    ? 'linear-gradient(180deg, rgba(255,255,255,.25), rgba(255,255,255,.12))'
+                    ? 'rgba(255,255,255,.18)'
                     : 'linear-gradient(180deg, #5fdba6, #37c98f)',
-                  minHeight: 5, height: `${Math.round(fpH(s))}%`,
+                  minHeight: 4, height: `${Math.round(fpH(s))}%`,
                 }} />
               );
             })}
           </div>
-          <div style={{
-            display: 'flex', gap: 5, marginTop: 6, paddingRight: 50,
-          }}>
+          {/* Mile number row */}
+          <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
             {paceSecsAll.map((_, i) => {
               const isWarmupLabel = warmupHead && i === 0;
               const isCooldownLabel = cooldownTail && i === lastIdx;
-              const isOutlierLabel = isWarmupLabel || isCooldownLabel;
-              const text = isWarmupLabel ? 'WU' : isCooldownLabel ? 'CD' : String(i + 1);
+              const text = isWarmupLabel ? 'WU' : isCooldownLabel ? 'CD' : String(splits[i]?.mile ?? i + 1);
               return (
                 <span key={i} style={{
                   flex: 1, textAlign: 'center', fontSize: 8.5, fontWeight: 600,
-                  color: isOutlierLabel ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.42)',
+                  color: (isWarmupLabel || isCooldownLabel) ? 'rgba(255,255,255,.38)' : 'rgba(255,255,255,.42)',
                 }}>{text}</span>
               );
             })}
-          </div>
-          <div style={{
-            fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,.5)', marginTop: 8,
-          }}>
-            {paceSecs.length} {cooldownTail || warmupHead ? 'work miles' : 'miles'} · fastest {fmtSecAsPace(fastest)} · slowest {fmtSecAsPace(slowest)} · {slowest - fastest}s spread
-            {warmupHead ? ` · first mile warm-up (${fmtSecAsPace(paceSecsAll[0])})` : ''}
-            {cooldownTail ? ` · last mile cooldown jog (${fmtSecAsPace(paceSecsAll[lastIdx])})` : ''}
           </div>
         </div>
       ) : null}

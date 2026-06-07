@@ -166,20 +166,43 @@ export function RouteMap({
     };
   }, [polyline, pointsProp, splits]);
 
+  const hasPaceData = splits.length >= 2 && splits.some(s => s.pace);
+
   return (
-    <div
-      ref={hostRef}
-      className="routemap-leaflet"
-      style={{
-        width: '100%',
-        height: '100%',
-        minHeight: height,
-        borderRadius: 16,
-        overflow: 'hidden',
-        background: '#0a0e16',
-      }}
-      aria-label="Run route map"
-    />
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: height, borderRadius: 16, overflow: 'hidden' }}>
+      <div
+        ref={hostRef}
+        className="routemap-leaflet"
+        style={{
+          width: '100%',
+          height: '100%',
+          minHeight: height,
+          borderRadius: 16,
+          overflow: 'hidden',
+          background: '#0a0e16',
+        }}
+        aria-label="Run route map"
+      />
+      {/* Pace color legend · only when per-mile splits are available */}
+      {hasPaceData && (
+        <div style={{
+          position: 'absolute', bottom: 10, left: 10, zIndex: 1000,
+          display: 'flex', alignItems: 'center', gap: 5,
+          background: 'rgba(8,12,20,.72)', backdropFilter: 'blur(6px)',
+          borderRadius: 6, padding: '4px 8px',
+          fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
+          color: 'rgba(255,255,255,.7)',
+          pointerEvents: 'none',
+        }}>
+          <span>FASTER</span>
+          {/* Color swatches: bucket 0 (fastest) → bucket 4 (slowest) */}
+          {BUCKET_COLORS.map((c, i) => (
+            <div key={i} style={{ width: 8, height: 8, borderRadius: 2, background: c }} />
+          ))}
+          <span>SLOWER</span>
+        </div>
+      )}
+    </div>
   );
 }
 

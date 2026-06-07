@@ -361,7 +361,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .zbar{height:13px;border-radius:7px;overflow:hidden;display:flex;background:rgba(255,255,255,.08);}
 .hero-v2 .zbar i{height:100%;}
 .hero-v2 .zleg{display:flex;justify-content:space-between;margin-top:10px;font-size:10px;font-weight:600;opacity:.82;}
-.hero-v2 .zleg .zs{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+.hero-v2 .zleg .zs{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;}
 /* 2026-06-04 · 4-stat grid (forecast/shoe/fuel/best-window) · margin
    stripped, vertical spacing comes from --card-section-gap.  Internal
    gap is intra-section (between forecast and shoe labels) so it stays
