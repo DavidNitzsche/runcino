@@ -322,16 +322,15 @@ export function TrainView({
 
       // Collect all key workouts for this week.
       //   · intervals + tempo: always key quality sessions.
-      //   · long: only when the sub_label carries a finish prescription
-      //     (name contains "@" — e.g. "LONG · 4mi @ M", "LONG · 7mi @ HM").
-      //     Plain long runs ("Long Run", "12mi long") are not key workouts;
-      //     structured finish-segment longs are equal-weight quality sessions.
-      // Multiple picks per week are allowed (Tuesday intervals + Saturday
-      // structured long both appear). Within a week, quality sessions sort
-      // before long runs so intervals/tempo always lead.
+      //   · long: only when the sub_label carries a specific finish-segment
+      //     prescription: "@ M" (marathon pace) or "@ HM" (half-marathon pace).
+      //     Plain long runs and D1-updated longs without a finish target are
+      //     excluded. We check for "@ M" / "@ HM" specifically, not just "@",
+      //     because D1 may have updated ALL long run sub_labels with a pace
+      //     ("LONG · 14mi @ E") that would falsely match a plain "@" check.
       const keyDays = (days as DayShape[]).filter((d) => {
         if (d.type === 'intervals' || d.type === 'tempo') return true;
-        return d.type === 'long' && d.name.includes('@');
+        return d.type === 'long' && (d.name.includes('@ M') || d.name.includes('@ HM'));
       }).sort((a, b) => {
         const rank = (t: string) => t === 'intervals' ? 0 : t === 'tempo' ? 1 : 2;
         return rank(a.type) - rank(b.type);
@@ -443,7 +442,14 @@ export function TrainView({
         state: 'RACE', raceRow: true,
       });
     }
-    return out;
+    // Rolling 9-row cap: filter to upcoming (not yet done) rows first so
+    // past completed workouts don't fill the window. As workouts are marked
+    // DONE they fall out and future ones roll in. Race row always stays.
+    // Rationale: the old static slice(0,9) from plan week 1 caused July
+    // intervals to never appear because 8+ past DONE weeks ate all 9 slots.
+    const upcoming = out.filter(m => !m.done && !m.raceRow);
+    const race = out.filter(m => m.raceRow);
+    return [...upcoming, ...race].slice(0, 9);
   }, [seed.season.weekDays, nowIdx, raceIdx, goal]);
 
   // Phase-ramp metadata aligned with the REAL plan_phases (for the bottom
@@ -1030,7 +1036,10 @@ function MonthCalendar({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun: (id: st
   const months: Array<{ y: number; m: number; nm: string }> = [];
   const startY = today.getFullYear();
   const startM = today.getMonth();
-  const goalDateRaw = goal?.date ? new Date(goal.date) : null;
+  // Parse goal date as local time (same fix as formatDate — ISO string
+  // "2026-08-16" parsed via new Date() is UTC midnight which shifts back
+  // one day in negative-UTC-offset timezones).
+  const goalDateRaw = goal?.date ? (() => { const p = goal.date.split('-').map(Number); return new Date(p[0], p[1]-1, p[2]); })() : null;
   const goalY = goalDateRaw && Number.isFinite(goalDateRaw.getTime()) ? goalDateRaw.getFullYear() : startY;
   const goalM = goalDateRaw && Number.isFinite(goalDateRaw.getTime()) ? goalDateRaw.getMonth() : startM + 1;
   // Total months from today's month → race month (inclusive). Floor at 2
@@ -1399,7 +1408,12 @@ function shortWhy(why: string): string {
 }
 function formatDate(iso: string): string {
   if (!iso) return '·';
-  const d = new Date(iso);
+  // Parse as LOCAL date, not UTC. new Date("2026-06-28") parses as UTC
+  // midnight which in PDT (UTC-7) renders as Jun 27 — off by one.
+  // Splitting and constructing with new Date(y, m-1, d) uses local time.
+  const parts = iso.split('-').map(Number);
+  if (parts.length < 3) return '·';
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
 }
 
