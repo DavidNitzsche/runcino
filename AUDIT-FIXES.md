@@ -276,6 +276,17 @@ Data IS single-sourced: all three resolve the same active plan (build-workout `:
 
 **GATED — active-plan regeneration (data write):** the fix re-paces only on regeneration. Approach proposed separately for David's explicit per-write go (same gated pattern). Until then prod runs corrected CODE but David's stored plan keeps the old 389 targets.
 
+### C1-1e — exclude race-day Strava runs (deployed `4ba9b0b2`)
+`generate.ts` run-candidate query lacked the race-day exclusion `cron/snapshot-projections` has. Every race is also a Strava activity at GPS-over-measured distance (Disney 13.38mi vs curated 13.109mi → same 5694s → phantom VDOT **49.2** vs 47.9). C1-1d activated the run-path and exposed this. Added `NOT EXISTS (race within ±1 day)`. Any-runner (everyone's races are also Strava runs). Falsifier: bestRecentVdot 49.2→47.9.
+
+### C1-1f — pass per-week tPaceSec through to persistPlan (deployed `35001afb`) · **the keystone bug**
+`generatePlan:1650` mapped `composed.weeks → persistPlan` but **stripped `tPaceSec`**, so `persistPlan:1519` (`weekT = w.tPaceSec ?? args.tPaceSec`) fell back to plan-wide goalT (407) for every week → **flat goal-pace plan**. The Rule 3 ramp was computed in composePlan then discarded at the persist boundary. Added `tPaceSec` to the map + `persistPlan` param type. **Lesson:** composePlan-direct dry-runs showed 412 while stored rows were 389 — they bypassed the broken persist map. **Verify plan generation through the PERSIST PATH (weekT + buildWorkoutSpec), never composePlan-direct.** Two regen writes (`pln_35b2…`, `pln_0968…`) stored flat 389 before this was found; both reversed (archived, not deleted).
+
+### REGENERATED + VERIFIED — active plan `pln_c0ff77ee065b8fe4` (2026-06-07)
+Regenerated from clean worktree @`35001afb` (real node_modules, no symlink), write DB. **8/8 stored-row checks pass:** wk1 interval **412**, wk3 **403**, wk5 **394**; wk1 tempo **442**, wk6 tempo **419**; old plan archived; exactly 1 active; `authored_state.derived_from.bestRecentVdot=47.9`. Plan well-formed (77 workouts, 06-01→08-16, race row 407). Stored ramp real on intervals (412→403→394) AND tempos (442→433→424→419). Past already-run days retain prior bands via Rule 15 sealed-day overlay (06-05 easy 467–517) — pre-existing, past-only, doesn't affect future training.
+
+**C1 CLOSED (1a–1f deployed + plan regenerated).** Remaining follow-ups unchanged: C2 (race-week tune-up), C4 (underperformance-adaptation design), snapshot-projections 1d (race-day exclusion + duration field — same fixes, separate validated change since it shifts canonical VDOT), 36-site −7h `today` sweep, iPhone TF display switches (C3/C6). New minor: Rule-15 sealed-day overlay was inconsistent across past days (06-02 took new pace, 06-05 kept old) — pre-existing, only affects already-run days.
+
 ---
 
 ## Deferred (not in any cluster)
