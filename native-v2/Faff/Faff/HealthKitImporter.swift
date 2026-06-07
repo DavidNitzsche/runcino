@@ -399,6 +399,14 @@ final class HealthKitImporter: ObservableObject {
                     "mile": s.mile,
                     "pace": s.pace,
                     "elev_ft": s.elevDeltaFt,
+                    // 2026-06-06 round 93 · include distanceMi so the
+                    // server validator multiplies pace × distanceMi per
+                    // split. Without it the server defaults to 1.0 for
+                    // every split, undercounting the trailing fraction
+                    // and producing a deltaS that fails the ≤ 5s check.
+                    // Full-mile splits have distanceMi = 1.0; the
+                    // trailing split has distanceMi < 1.0.
+                    "distanceMi": s.distanceMi,
                 ]
                 if let hr = await avgHRInWindow(start: s.startTime, end: s.endTime) {
                     split["hr"] = Int(hr.rounded())
@@ -513,6 +521,15 @@ final class HealthKitImporter: ObservableObject {
             let elevDeltaFt: Int
             let startTime: Date     // for per-split HR/cadence query (P40 enrichment)
             let endTime: Date
+            /// Actual distance this split covers, in miles.
+            /// 1.0 for every full-mile split; < 1.0 for the trailing
+            /// fractional-mile split appended after the main loop.
+            /// The server validator (`validateSplitsAgainstDuration`)
+            /// multiplies pace × distanceMi per split — without this
+            /// field it defaults to 1.0 and undercounts the total time
+            /// by the trailing-fraction amount, producing a deltaS that
+            /// exceeds its ≤ 5s tolerance and drops the splits.
+            let distanceMi: Double
         }
         let splits: [Split]
         let elevGainFt: Int
@@ -569,12 +586,60 @@ final class HealthKitImporter: ObservableObject {
                         pace: pace,
                         elevDeltaFt: elevFt,
                         startTime: mileStartTime,
-                        endTime: locs[i].timestamp
+                        endTime: locs[i].timestamp,
+                        distanceMi: 1.0   // full mile — explicit so server validator
+                                          // uses pace × 1.0 not pace × default-1
                     ))
                 }
                 mileNo += 1
                 mileStartTime = locs[i].timestamp
                 mileStartElev = locs[i].altitude
+            }
+        }
+
+        // 2026-06-06 round 93 · TRAILING-FRACTION SPLIT.
+        // The main loop only emits splits for completed full miles.
+        // Every real run has a fractional tail (e.g. 0.01mi on 6.01mi
+        // or 0.41mi on 7.41mi). Without a trailing split the server
+        // validator sees N miles' worth of pace-time and compares it
+        // against the full run duration, producing a deltaS equal to
+        // the tail time. For 6.01mi that's ~5s (right at the ≤5 edge);
+        // for 7.41mi it's ~200s (way over). The server drops splits.
+        //
+        // Fix: after the loop, mileStartTime is the timestamp at the
+        // last full-mile GPS mark. locs.last is the end of the GPS
+        // recording. distSoFar - lastMileMark is the GPS-measured tail
+        // distance. Emit one trailing split with:
+        //   · pace   = unpaused tail seconds / tail miles, formatted
+        //   · distanceMi = tail miles (< 1.0 for the server to
+        //                 multiply correctly)
+        //
+        // Guard: tail must be > 0m and pace sane (120–3600 s/mi).
+        // "Exactly N miles" → tail = 0 → skip (no float imprecision
+        // risk because we only skip when tailDistM == 0 exactly).
+        if let lastLoc = locs.last, !splits.isEmpty {
+            let tailDistM = distSoFar - lastMileMark
+            if tailDistM > 0 {
+                let tailDistMi = tailDistM / mileMeters
+                let tailSecs = Self.unpaused(
+                    from: mileStartTime,
+                    to: lastLoc.timestamp,
+                    pauses: pauses
+                )
+                let tailPaceSecPerMi = tailSecs / tailDistMi
+                if tailPaceSecPerMi >= 120 && tailPaceSecPerMi <= 3600 {
+                    let ts = Int(tailSecs.rounded())
+                    let pace = "\(ts / 60):\(String(format: "%02d", ts % 60))"
+                    let elevFt = Int(((lastLoc.altitude - mileStartElev) * 3.28084).rounded())
+                    splits.append(.init(
+                        mile: mileNo,
+                        pace: pace,
+                        elevDeltaFt: elevFt,
+                        startTime: mileStartTime,
+                        endTime: lastLoc.timestamp,
+                        distanceMi: tailDistMi
+                    ))
+                }
             }
         }
 
