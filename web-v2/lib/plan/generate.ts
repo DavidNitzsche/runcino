@@ -34,6 +34,7 @@ import { parseRaceTime, tPaceFromVdot, bestRecentVdot as computeBestRecentVdot }
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode } from './goal-tiers';
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
+import { validateComposedPlan } from './validate';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -1634,7 +1635,26 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       : composeMaintenancePlan(nonRaceInput);
   }
 
-  // 3. Archive existing + persist.
+  // 3. Validate composed plan · gate before any DB mutation.
+  // Throws PlanValidationError if doctrine or corruption checks fail.
+  // clearActivePlansFor never runs on a bad plan — runner's active plan untouched.
+  {
+    const priorPeakRow = (await pool.query<{ peak_long: string | null }>(
+      `SELECT MAX(pw.distance_mi)::text AS peak_long
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND pw.type = 'long'`,
+      [userId],
+    ).catch(() => ({ rows: [{ peak_long: null }] }))).rows[0];
+    validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
+      level: inputs.compose.level,
+      isSteppingStoneToMarathon: (inputs.compose.horizonRaces ?? []).some(r => r.distanceMi >= 20),
+      priorPlanPeakLongMi: priorPeakRow?.peak_long != null ? Number(priorPeakRow.peak_long) : null,
+      todayISO,
+    });
+  }
+
+  // 4. Archive existing + persist.
   // 2026-06-03 · Rule 15 · snapshot the prior plan's completed-day
   // prescriptions BEFORE archiving so persistPlan can overlay them
   // onto the new plan's rows. Without this, a rebuild would change
