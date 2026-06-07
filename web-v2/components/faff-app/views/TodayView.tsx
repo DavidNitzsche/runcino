@@ -1773,10 +1773,14 @@ function CompletedHeroV2({
   // 2026-06-04 · David: "The colors in the HR zone bar are really
   // weak/faded/pastel not on brand."  Swapped from the -a (faded
   // 'stacked time-in-zones' set) to the canonical -b brand zone
-  // colors (also used by splits / shoe role chips / etc).
-  // z1 recovery teal · z2 easy green · z3 moderate amber ·
+  // Zone colors. Chosen for legibility on BOTH dark cards (planned/rest)
+  // AND bright-background cards (easy=teal, tempo=orange mesh).
+  // Z1 upgraded from #48B3B5 (same teal as easy-run card = invisible)
+  // to a lighter, higher-contrast blue-white that reads against the
+  // dark bar trough (rgba(0,0,0,.28) background) and the bright card.
+  // z1 recovery blue-white · z2 easy green · z3 moderate amber ·
   // z4 hard orange · z5 max red.
-  const zoneColors = ['#48B3B5', '#3EBD41', '#F3AD38', '#FF8847', '#FC4D64'];
+  const zoneColors = ['#7DD8E0', '#3EBD41', '#F3AD38', '#FF8847', '#FC4D64'];
   const peakHr = runData?.hr_max ?? result?.peak ?? null;
 
   // Render every split the run carries (was capped at 8 · landed
@@ -1962,7 +1966,7 @@ function CompletedHeroV2({
               </div>
               <div className="zleg">
                 {zonePcts.map((p, zi) => (
-                  <div key={zi} style={p === 0 ? { opacity: 0.4 } : undefined}>
+                  <div key={zi} style={p === 0 ? { opacity: 0.5 } : undefined}>
                     <span className="zs" style={{ background: zoneColors[zi] }} />
                     Z{zi + 1} <b>{Math.round(p)}%</b>
                   </div>

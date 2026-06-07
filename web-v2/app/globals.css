@@ -358,10 +358,21 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .zhead{display:flex;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:10px;opacity:.9;}
 .hero-v2 .zhead b{color:#fff;}
 .hero-v2 .zhead .zmeta{white-space:nowrap;}
-.hero-v2 .zbar{height:13px;border-radius:7px;overflow:hidden;display:flex;background:rgba(255,255,255,.08);}
-.hero-v2 .zbar i{height:100%;}
-.hero-v2 .zleg{display:flex;justify-content:space-between;margin-top:10px;font-size:10px;font-weight:600;opacity:.82;}
-.hero-v2 .zleg .zs{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+/* Zone bar · dark scrim so all 5 zone colors pop on BOTH dark hero
+   cards (planned/rest) AND bright colored cards (easy=teal, tempo=
+   orange-mesh). rgba(255,255,255,.08) was near-invisible on bright
+   surfaces. rgba(0,0,0,.28) reads against any card hue. */
+.hero-v2 .zbar{height:14px;border-radius:7px;overflow:hidden;display:flex;background:rgba(0,0,0,.28);}
+/* Hairline border between segments so adjacent tones (Z1→Z2) are
+   separable even when similar in hue. */
+.hero-v2 .zbar i{height:100%;border-right:1px solid rgba(0,0,0,.25);}
+.hero-v2 .zbar i:last-child{border-right:none;}
+/* Zone legend · bump font + opacity so zero-pct zones read at 0.55
+   instead of buried at 0.4×0.82 ≈ 0.33. */
+.hero-v2 .zleg{display:flex;justify-content:space-between;margin-top:10px;font-size:10.5px;font-weight:700;opacity:1;}
+/* Zone dot · dark ring so every color pops on any card background.
+   Z1 teal dot on teal card was invisible without it. */
+.hero-v2 .zleg .zs{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;box-shadow:0 0 0 1.5px rgba(0,0,0,.35),0 0 0 3px rgba(255,255,255,.1);}
 /* 2026-06-04 · 4-stat grid (forecast/shoe/fuel/best-window) · margin
    stripped, vertical spacing comes from --card-section-gap.  Internal
    gap is intra-section (between forecast and shoe labels) so it stays
