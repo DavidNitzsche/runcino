@@ -384,24 +384,40 @@ Watch completions carry per-phase `paceSamples` (cumulative `{tSec, distMi, pace
 
 ---
 
-## Plan generation — HM race-specific doctrine gap · CODE COMPLETE · awaiting David's go to deploy
+## Plan generation — HM race-specific doctrine gap · DEPLOYED + ACTIVE PLAN CORRECTED (2026-06-07)
 
 **Finding:** `generate.ts` line 781 had `cat === 'hm' ? ['threshold', 'tempo']` for the `RACE-SPECIFIC` phase. Research/22 §3 explicitly shows `['threshold', 'intervals']` for HM race-specific — one T session + one I session per week (intermediate sample peak week: Tue WU + 5mi @ T, Thu WU + 4×1200m @ I). The HM advanced plan phases column states "VO2max + race-specific HMP" as the penultimate phase, meaning interval work continues concurrent with HMP work, not before it. The current generator dropped VO2max sharpening entirely in the final build phase, contradicting the doctrine.
 
-**Fix (committed to `claude/elegant-knuth-KJ59b`, NOT yet on main):**
+**Task 1 (code) — DEPLOYED on `main` at commit `9223789`:**
 ```diff
 - : cat === 'hm'   ? ['threshold', 'tempo']
 + : cat === 'hm'   ? ['threshold', 'intervals']
 ```
+Affects future plan regenerations. Active plan unaffected by code change alone.
 
-**Status:** tsc 0 · 351 pass / 0 fail / 3 skipped. Awaiting David's morning go.
+**Task 2 (active-plan data correction) — DONE 2026-06-07 · 3 gated UPDATEs · superuser · verified RO:**
 
-**Impact:** any-runner — affects every HM plan. Takes effect on next plan regeneration (changes workout type, not just paces). The active plan `pln_ca91f252bba50c74` is unaffected until an explicit regen is requested.
+Actual DB state differed from the handoff premise: the RACE-SPECIFIC phase had **6 tempo rows** (both quality days every RS week were tempo — no intervals at all). Fix: converted the **Thursday slot** in each RS week to intervals, matching Research/22 §3 doctrine (Tue @ T + Thu @ I). Tuesday rows unchanged.
 
-**Active-plan investigation (Tasks 2+3 from overnight queue — blocked, see below):**
-The active plan's RACE-SPECIFIC weeks run Jul 13–Aug 2 (weeks 6–8 of the 11-week plan, derived from `sizeBlocks()` with `isMidBlock=true`: BASE=0, QUALITY=6, RACE-SPECIFIC=3, TAPER=2). Each RACE-SPECIFIC week currently has 2 quality days: 1 threshold (correct) + 1 tempo (wrong — should be intervals). Fix approach: UPDATE 3 existing `plan_workouts` rows (the second quality slot each week), changing `type='tempo'` → `type='intervals'` + updating `workout_spec`/`pace_target_s_per_mi`/`sub_label`. Exact row IDs and SQL require `DATABASE_URL_RO` (not set in this container). Once DB access is available: run `lib/runs/circular-merge-repair.audit.test.ts` (it has `describe.skipIf(!RO)` guard), emit the repair SQL, present for per-statement go before any write.
+3 rows updated — `wko_954737275cee4fc8` (Jul 16) · `wko_0f8914eb45371a70` (Jul 23) · `wko_b939d617118c3849` (Jul 30):
+- `type`: `tempo` → `intervals`
+- `pace_target_s_per_mi`: 419 → **389** (weekT=407 − 18; pace-neutral, anchored from existing tempo spec)
+- `distance_mi`: 6.5 / 7.0 / 6.5 → **7.5** (spec-derived: 1.5 WU + 4×1mi + 3×180s jog + 1.0 CD)
+- `sub_label`: continuous-tempo string → **"4×1 mi @ I · 3 min jog"** (matching weeks 1/3/5 of same plan)
+- `workout_spec`: tempo spec → `{kind:'intervals', warmup_mi:1.5, rep_count:4, rep_distance_mi:1, rep_pace_s_per_mi:389, rep_rest_s:180, cooldown_mi:1, lthr_bpm:162}`
+- `original_type` / `original_sub_label` / `original_distance_mi`: **synced to new values** (Option B — prevents phantom wasAdapted badge in adaptation-info.ts + readiness-brief.ts)
 
-**DATABASE_URL_RO needed for Tasks 2+3.** Provide the credential to unlock both investigations.
+**Falsifiers (7/7 PASS, RO, post-write):**
+- Thu rows (3): all intervals ✓ · pace=389 ✓ · sub="4×1 mi @ I · 3 min jog" ✓ · dist=7.5 ✓ · original_type synced ✓
+- Tue rows (3): still tempo ✓ · pace=419 unchanged ✓
+
+**Reversal:** restore `type='tempo', workout_spec=<tempo spec>, pace_target_s_per_mi=419, sub_label=<original tempo label>, distance_mi=<original>` on the 3 row ids above.
+
+**Task 3 (circular-merge repair audit) — DONE 2026-06-07 · NO WRITES NEEDED:**
+
+The CRITICAL #4 circular pairs (05-31..06-04) were **fully self-healed by the nightly dedupe-runs cron** before this session ran. `recentWeeklyMi = 37.5` (≈39 expected — minor window-math difference, not a bug). Circular-pairs test: **PASS (0 A↔B cycles)**. The audit emitted 10 repair statements, but all cover out-of-scope issues:
+- 05-15..05-24: Legacy `?`-source Strava rows (pre-source-field data, Z-mislabel) — the AUDIT-FIXES "side finding." Outside 14-day cron window. Current merged state is correct; running repair would un-merge and inflate volume.
+- 05-26: Proposed repair would reverse the P3-1 fix (strava canonical). Do not apply.
 
 ---
 
