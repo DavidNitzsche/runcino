@@ -778,7 +778,7 @@ function layoutWeek({
       : phase === 'RACE-SPECIFIC'
           ? (cat === '5k'   ? ['intervals', 'intervals']
            : cat === '10k'  ? ['threshold', 'intervals']
-           : cat === 'hm'   ? ['threshold', 'tempo']
+           : cat === 'hm'   ? ['threshold', 'intervals']
            : /* m */          ['tempo', 'threshold'])
       : phase === 'QUALITY'
           ? (cat === '5k'   ? (weekIdx % 2 === 0 ? ['intervals', 'intervals'] : ['intervals', 'threshold'])
