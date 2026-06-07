@@ -318,6 +318,19 @@ Why `recentWeeklyMi` read **27.5 (06-07)** vs **39.1 (06-03)**: NOT a training d
 
 ---
 
+## Read-only investigations (2026-06-07 · no code)
+
+### coach_intents value storage — NO char-by-char issue (RESOLVED)
+Checked all 34 coach_intents rows: **0** use the char-indexed `{"0":..,"1":..}` pattern. Watch-completion bodies store proper JSON (06-05: `{"kcal":734,"status":"completed","totalDistanceMi":6.01,…,"phases":[…]}`). `value` is a TEXT column holding either JSON (structured intents, 20 rows) or plain prose (coach messages, 14 rows); `value::jsonb` fails only on the prose rows, by design. **No fix needed — neither systematic nor isolated; it doesn't occur.**
+
+### Splits via paceSample — CONFIRMED working server-side (proposal · no code)
+Watch completions carry per-phase `paceSamples` (cumulative `{tSec, distMi, paceSPerMi}`, ~every 5s). **Present on EASY runs** (June 5: single phase, **594 samples**), not just intervals. Source: `coach_intents` reason=`watch_completion` → `value.phases[].paceSamples` (NOT on `runs.data`, NOT top-level on the completion).
+**Derivation proven (June 5 easy, RO):** interpolate `tSec` at each integer-mile crossing → per-mile splits **8:28 / 8:10 / 8:15 / 8:13 / 8:26**, final 1.00mi @ 8:34 (6.01mi / 50:12, avg 8:21 — splits bracket correctly). Clean, real-pace.
+**Key structural fact:** per-phase paceSamples are **PHASE-RELATIVE** (each phase resets `tSec:0/distMi:0` — proven on 06-02 intervals: warmup 0→729s, work 0→385s, …). Single-phase (easy) runs derive trivially; **multi-phase (intervals) require concatenation with running tSec/distMi offsets** before mile-crossing.
+**Proposal:** server-side helper (e.g. `lib/coach/derive-mile-splits.ts`): concat phases with offsets → whole-run cumulative series → interpolate mile crossings → per-mile splits + trailing partial. Consumed by run-detail/recap, **replacing the iPhone GPS per-mile splits** — fixes the A4/A5/P3-3 `splits_unreliable` saga at the source (watch GPS+pedometer-fused distance beats raw GPS Haversine; bypasses the iPhone GPS round-trip entirely). Caveats: Faff-watch runs only (Strava/manual/HK → fallback); abandoned runs partial; validate vs `totalDistanceMi`. **No code until reviewed.**
+
+---
+
 ## Deferred (not in any cluster)
 - **Watch-source consolidation + retire `legacy/`** — LAST cutover step, on a Mac that can build/archive a clean `.ipa`. `legacy/` not retirable until then (watch bundle compiles from it via symlink). Preserve `.asc.build`.
 - **P3-1 — Strava-local-as-UTC mislabel · isSameRun fix. DEPLOYED 2026-06-06 (commit 40db83b2 · `identity.ts`).** The 05-26 apple_watch phantom (`-573194905917117`, 7.61mi) cycles on every HK re-sync because isSameRun returned false for the strava+apple_watch pair. Fixed.
