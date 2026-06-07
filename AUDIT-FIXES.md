@@ -109,7 +109,11 @@ Update this file at the end of each leg.
 
 **What P3-2 fixed:** pairs now correctly merge → `enhanceCanonicalFromAbsorbed` can absorb real GPS splits when the loser has them. P3-3 is the remaining case where the loser also lacks GPS splits.
 
-**Scope after P3-2:** investigate why some apple_watch HK ingest rows have `splits: []`. Is it an iPhone-side gap (buildRoutePayload not called for easy runs), a network/size issue (polyline dropped), or a splits-validation false positive? The `splits_unreliable` flag (A5) may or may not be involved.
+**Root cause confirmed 2026-06-06 (rounds 88–92):** The iPhone's `perMileSplits` reconciliation guard was the cause. The guard compared `sum(GPS-derived per-mile times) + leftover` vs `workout.duration`, but these two quantities measure different things: GPS uses `CLLocation.distance(from:)` (Haversine on raw GPS coordinates); the watch uses GPS+pedometer CoreMotion fusion. GPS drift of 1–3% on a 50-min run causes the GPS loop to complete N+1 full miles (e.g., the GPS 6-mile boundary falls at the watch's 5.89mi point), inflating `leftoverS` from ~5s to ~60s and producing a delta of ~55s — far outside any reasonable tolerance. All nine of David's runs from 2026-05-29 → 2026-06-06 landed with `split_count=0` due to this guard.
+
+**Fix applied — round 92 (build 166):** Reconciliation guard removed entirely from `HealthKitImporter.swift:perMileSplits`. Two backstops remain: (1) per-mile pace gate `120s ≤ secs ≤ 3600s` inside the mile-emit loop; (2) server-side `validateSplitsAgainstDuration` in `/api/ingest/workout` which uses parsed pace strings (GPS-distance-independent) rather than raw GPS timestamps.
+
+**Future improvement (not urgent):** GPS-distance normalization — scale `CLLocation.distance` accumulator by `workout.totalDistance / gpsTotal` before mile-marking so GPS drift doesn't shift where mile boundaries fall. This would make `leftoverS` accurate and would allow re-introducing a tighter reconciliation guard if desired. The current per-mile pace gate is sufficient without it.
 
 ---
 
