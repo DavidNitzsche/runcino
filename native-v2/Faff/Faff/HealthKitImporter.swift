@@ -597,49 +597,59 @@ final class HealthKitImporter: ObservableObject {
             }
         }
 
-        // 2026-06-06 round 93 · TRAILING-FRACTION SPLIT.
-        // The main loop only emits splits for completed full miles.
-        // Every real run has a fractional tail (e.g. 0.01mi on 6.01mi
-        // or 0.41mi on 7.41mi). Without a trailing split the server
-        // validator sees N miles' worth of pace-time and compares it
-        // against the full run duration, producing a deltaS equal to
-        // the tail time. For 6.01mi that's ~5s (right at the ≤5 edge);
-        // for 7.41mi it's ~200s (way over). The server drops splits.
+        // 2026-06-07 round 94 · SYNTHETIC TRAILING SPLIT (watch-level fields only).
         //
-        // Fix: after the loop, mileStartTime is the timestamp at the
-        // last full-mile GPS mark. locs.last is the end of the GPS
-        // recording. distSoFar - lastMileMark is the GPS-measured tail
-        // distance. Emit one trailing split with:
-        //   · pace   = unpaused tail seconds / tail miles, formatted
-        //   · distanceMi = tail miles (< 1.0 for the server to
-        //                 multiply correctly)
+        // Round 93's GPS-residual approach (`distSoFar - lastMileMark`) never
+        // fired because for this run GPS completed almost exactly N full miles
+        // with no measurable residual. The real 43s gap is between
+        // `locs.last.timestamp` (GPS stopped recording) and `workout.endDate`
+        // (watch timer stopped). GPS never captured that time; it's invisible
+        // to any locs-based calculation.
         //
-        // Guard: tail must be > 0m and pace sane (120–3600 s/mi).
-        // "Exactly N miles" → tail = 0 → skip (no float imprecision
-        // risk because we only skip when tailDistM == 0 exactly).
-        if let lastLoc = locs.last, !splits.isEmpty {
-            let tailDistM = distSoFar - lastMileMark
-            if tailDistM > 0 {
-                let tailDistMi = tailDistM / mileMeters
-                let tailSecs = Self.unpaused(
-                    from: mileStartTime,
-                    to: lastLoc.timestamp,
-                    pauses: pauses
-                )
-                let tailPaceSecPerMi = tailSecs / tailDistMi
-                if tailPaceSecPerMi >= 120 && tailPaceSecPerMi <= 3600 {
-                    let ts = Int(tailSecs.rounded())
-                    let pace = "\(ts / 60):\(String(format: "%02d", ts % 60))"
-                    let elevFt = Int(((lastLoc.altitude - mileStartElev) * 3.28084).rounded())
-                    splits.append(.init(
-                        mile: mileNo,
-                        pace: pace,
-                        elevDeltaFt: elevFt,
-                        startTime: mileStartTime,
-                        endTime: lastLoc.timestamp,
-                        distanceMi: tailDistMi
-                    ))
-                }
+        // Correct approach: compute the tail entirely from watch-level fields:
+        //
+        //   tailSecs    = Int(workout.duration) - splitsSumS
+        //                 = exact time unaccounted for by the N full-mile splits
+        //
+        //   avgPace     = splitsSumS / splits.count   (seconds per mile)
+        //
+        //   tailDistMi  = Double(tailSecs) / avgPace
+        //                 → ensures pace × distanceMi = tailSecs exactly
+        //                 → server validator: splitsSumS + tailSecs = durationS
+        //                 → deltaS = 0 → reliable = true
+        //
+        //   displayPace = avgPace formatted as "M:SS"
+        //                 (displayed as the trailing split's pace; it's the
+        //                 run's average pace because we have no GPS signal for
+        //                 this period. The web/iPhone renders this split like
+        //                 any other, labelled by mile number only.)
+        //
+        // Guard: tailSecs > 0 AND splits.count > 0.
+        // tailSecs ≤ 0 means GPS covered MORE time than workout.duration
+        // (impossible in normal operation) → skip.
+        // splits.count == 0 means no full miles completed (sub-1mi run) → skip.
+        if !splits.isEmpty {
+            let splitsSumS = splits.reduce(0) { sum, s in
+                let parts = s.pace.split(separator: ":").compactMap { Int($0) }
+                guard parts.count == 2 else { return sum }
+                return sum + parts[0] * 60 + parts[1]
+            }
+            let durationS = Int(workout.duration.rounded())
+            let tailSecs  = durationS - splitsSumS
+            if tailSecs > 0 {
+                let avgPaceSecPerMi = splitsSumS / splits.count
+                let tailDistMi      = Double(tailSecs) / Double(avgPaceSecPerMi)
+                let avgMins         = avgPaceSecPerMi / 60
+                let avgSecs         = avgPaceSecPerMi % 60
+                let tailPace        = "\(avgMins):\(String(format: "%02d", avgSecs))"
+                splits.append(.init(
+                    mile: mileNo,
+                    pace: tailPace,
+                    elevDeltaFt: 0,          // no GPS signal for this period
+                    startTime: mileStartTime, // last full-mile GPS mark
+                    endTime: workout.endDate, // watch stop (not locs.last)
+                    distanceMi: tailDistMi
+                ))
             }
         }
 
