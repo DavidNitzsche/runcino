@@ -452,6 +452,28 @@ function buildWorkoutBreakdown(
     case 'long': {
       // Spec-driven · long-runs ship pace band + fuel checkpoints.
       if (spec && spec.kind === 'long') {
+        // D1 · MP-finish variant: two-phase structure when finish_mi present.
+        // BASE = aerobic build · FINISH = prescribed finish block at race pace.
+        if (spec.finish_mi != null && spec.finish_pace_s_per_mi != null) {
+          const totalMi = today.plannedMi;
+          const baseMi = Math.max(0, totalMi - spec.finish_mi);
+          const finishPaceStr = fmtPace(spec.finish_pace_s_per_mi);
+          const finishLabel = spec.finish_label ? `${spec.finish_label} pace` : 'Finish pace';
+          const easyBand = `${fmtPace(spec.pace_target_s_per_mi_lo)}–${fmtPace(spec.pace_target_s_per_mi_hi)}/mi`;
+          return [
+            {
+              label: 'BASE',
+              body: `${fmtMi(baseMi)} mi easy build`,
+              tail: easyBand,
+            },
+            {
+              label: 'FINISH',
+              body: `${fmtMi(spec.finish_mi)} mi @ ${finishLabel}`,
+              tail: `${finishPaceStr}/mi`,
+            },
+          ];
+        }
+        // Standard long run — single aerobic block.
         const fuelTail = spec.fuel_mi.length > 0
           ? `mi ${spec.fuel_mi.join(' · ')}`
           : 'mi 4 · 8 · 11';

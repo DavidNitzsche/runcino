@@ -88,6 +88,14 @@ export interface WorkoutSpecLong {
   pace_target_s_per_mi_hi: number;
   hr_cap_bpm: number | null;
   fuel_mi: number[];
+  /** D1 · MP-finish segment. Present when the plan-builder authored a
+   *  structured finish block (e.g. 4 mi @ marathon pace). When present
+   *  the detail view renders two segments: BASE (easy build) + FINISH.
+   *  All three fields are written together — if finish_mi exists, the
+   *  others will too. */
+  finish_mi?: number;
+  finish_pace_s_per_mi?: number;
+  finish_label?: string;    // e.g. "M" | "HM" | "Marathon Pace"
 }
 
 export interface WorkoutSpecThreshold {

@@ -648,11 +648,21 @@ export function TrainView({
                   >
                     <span className="tdw">{d.dw}</span>
                     <span className="tdot" style={{ background: col }} />
-                    {/* 2026-06-03 · canonical title per David · was d.name
-                        (sub_label) which rendered as "4×1 mi @ I · 3 min
-                        jog". Now uses workoutTypeTitle for the one-word
-                        type label. */}
+                    {/* Type label + optional sub_label secondary line.
+                        workoutTypeTitle gives the one-word chip (LONG,
+                        TMPO, etc). d.name carries sub_label when the
+                        plan-builder authored a structured prescription
+                        ("LONG · 4mi @ M"). Show it as a small secondary
+                        line only when it adds info beyond the type chip. */}
                     <span className="tnm">{workoutTypeTitle(d.type)}</span>
+                    {d.name && d.name.toLowerCase() !== workoutTypeTitle(d.type).toLowerCase() ? (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: '0.6px',
+                        color: 'rgba(255,255,255,.55)', whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120,
+                        marginLeft: 6,
+                      }}>{d.name}</span>
+                    ) : null}
                     <span className="tmeta">{meta}</span>
                     {d.skipped ? null : d.done ? (
                       <span style={{ marginLeft: 10, display: 'flex', alignItems: 'center' }}>
@@ -1058,9 +1068,6 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
             body = (
               <div className="cwk">
                 <span className="ctag" style={tint(c)}>
-                  {/* 2026-06-03 · canonical title per David · was w.name
-                      (sub_label) which rendered as "4×1 MI @ I · 3 MIN
-                      JOG" in the calendar cells. */}
                   {workoutTypeTitle(w.type)}
                   {adapted ? (
                     <span
@@ -1075,6 +1082,19 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
                     />
                   ) : null}
                 </span>
+                {/* Sub_label secondary line — shows structured prescription
+                    ("LONG · 4mi @ M") when it's more specific than the type.
+                    Same position as the adaptation "was X" subline. */}
+                {w.name && w.name.toLowerCase() !== workoutTypeTitle(w.type).toLowerCase() ? (
+                  <div style={{
+                    marginTop: 2,
+                    fontSize: 8, fontWeight: 700, letterSpacing: '0.5px',
+                    color: 'rgba(255,255,255,.62)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {w.name}
+                  </div>
+                ) : null}
                 <div className="cmeta">{w.mi.toFixed(1)}<small> mi{pace}</small></div>
                 {wasText ? (
                   <div style={{
