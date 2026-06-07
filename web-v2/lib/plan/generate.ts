@@ -1796,6 +1796,17 @@ async function loadGeneratorInputs(
       WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric >= 3
         AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= $2::date - 180
+        -- 2026-06-06 · Audit C C1-1e · exclude race-day runs. Every race is
+        -- also a Strava activity at GPS-over-measured distance (Disney
+        -- 13.38mi vs the curated 13.109mi → same time, phantom-high VDOT
+        -- 49.2 vs 47.9). The curated races row is the source of truth for
+        -- race-day performance. Mirrors cron/snapshot-projections.
+        AND NOT EXISTS (
+          SELECT 1 FROM races rr
+           WHERE rr.user_uuid = $1
+             AND ABS((rr.meta->>'date')::date
+                     - COALESCE(runs.data->>'date', LEFT(runs.data->>'startLocal',10))::date) <= 1
+        )
       ORDER BY date DESC LIMIT 200`,
     [userId, await runnerToday(userId)],
   ).catch(() => ({ rows: [] }))).rows;
