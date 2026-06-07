@@ -427,3 +427,112 @@ The CRITICAL #4 circular pairs (05-31..06-04) were **fully self-healed by the ni
   **Fix:** `bandFor()` reverted to pure slowdown-only classification. Temperature gate removed entirely; `tempF` parameter dropped from signature. The 2026-06-03 gate was well-intentioned (softening the "hot" label for cool-but-humid conditions where pace cost is real but temperature feels mild) but contradicted the documented doctrine. The correct UX fix for unexpected labels is coach-voice explanation, not classification softening — e.g. "65°F but humid: costs you 9% on pace" is honest; labeling it "warm" when the pace tax is in the hot range is not.
 
   **Result:** 351 pass / 0 fail / 3 skipped. Full suite green for the first time since 2026-06-03.
+
+---
+
+## Audit D — Fixes D1 + D2  [DEPLOYED 2026-06-07 · commits 1394addb (D2) + 38cb7a3f (D1) on main · Railway auto-deploy fired]
+
+**D2 (MAJOR) — DEPLOYED 2026-06-07 · commit `1394addb`** — `build-workout.ts` read only `lthr_bpm` for quality HR target; tempo specs store `hr_target_bpm` (=149) and have no `lthr_bpm`, so watch showed 162 (profile LTHR) while iPhone glance/web seed/recap all showed 149. COALESCE `lthr_bpm ?? hr_target_bpm` — watch now matches every other consumer. tsc 0. Any-runner.
+
+**D1 (CRITICAL) — code DEPLOYED 2026-06-07 · commit `38cb7a3f` · 6 DB rows patched 2026-06-07:**
+
+Root cause confirmed: `buildWorkoutSpec` long branch ignored its `prescription` arg; `expandLong` emitted one flat easy phase; the 144 HR ceiling red-alarmed through the HM finish ("coaching the opposite of the prescription"). Three files fixed:
+- `spec-builder.ts` — `extractFinishSegment()` parses `@ HM`/`@ M`/`@ MP`; long branch populates `finish_mi` + `finish_pace_s_per_mi` (HM=T+5, M=T+18) + `finish_label`
+- `expand-spec.ts` — `expandLong` emits `[easy-build, finish]` when `finish_mi` present (finish tol ≤12 s/mi); `subLabelFromSpec` derives `LONG · Nmi @ HM/M` from spec (no more label/spec drift on regen)
+- `build-workout.ts` — `longHasFinish` gate suppresses `hrCeilingBpm` (was 144) + switches `displayHint` `hr→pace`
+
+**12 unit falsifiers: 363/363 pass (0 regressions).**
+
+**6 in-place UPDATEs (per-statement, superuser, jsonb `||` additive — preserves all existing spec fields):**
+
+| date | id | finish_mi | finish_pace | finish_label | sub_label / notes |
+|---|---|---|---|---|---|
+| 2026-06-28 (wk3) | `wko_bfb3e91b38a7d832` | 4 | 434 (M) | M | "LONG · 4mi @ M" / "Steady 10mi, then 4mi at marathon pace." |
+| 2026-07-05 (wk4) | `wko_5995ef36dbe141fe` | 5 | 430 (M) | M | "LONG · 5mi @ M" / "Steady 11mi, then 5mi at marathon pace." |
+| 2026-07-12 (wk5) | `wko_05e1b73b9c42840e` | 4 | 412 (HM) | HM | "LONG · 4mi @ HM" / "Steady 9mi, then 4mi at half-marathon pace." |
+| 2026-07-19 (wk6) | `wko_9dcc3044b166b9a6` | 7 | 412 (HM) | HM | (sub_label/notes already correct) |
+| 2026-07-26 (wk7) | `wko_0ca0d4b97889cbf5` | 8 | 412 (HM) | HM | (sub_label/notes already correct) |
+| 2026-08-02 (wk8) | `wko_6bd64043882cb9c8` | 6 | 412 (HM) | HM | (sub_label/notes already correct) |
+
+**Reversal:** `workout_spec - 'finish_mi' - 'finish_pace_s_per_mi' - 'finish_label'` on all 6 ids; restore `sub_label='LONG', original_sub_label='LONG', notes='Conversational throughout. Build the engine.'` on wk3–5.
+
+**Live falsifiers (prod DB, RO, post-write):**
+- **Jul 19 (HM):** 2 phases `[10.0mi easy @ 8:00, 7.0mi @ HM pace 6:52]` · `hrCeilingBpm=null` · `displayHint='pace'` ✓
+- **Jun 28 (M):** 2 phases `[10.0mi easy @ 8:00, 4.0mi @ M pace 7:14]` · `hrCeilingBpm=null` · `displayHint='pace'` ✓
+- **Jun 14 plain LONG regression:** `finish_mi=null` · single flat phase · backward-compat preserved ✓
+
+---
+
+## OPEN — Generator follow-up: emit M→HMP labels for late-QUALITY long runs (any-runner · logged 2026-06-07)
+
+The 6 in-place UPDATEs above fix the **active plan** for David. But `generate.ts` still emits plain `'LONG'` labels for all QUALITY-phase long runs. `buildWorkoutSpec` now knows how to encode M/HMP finish segments (via the prescription arg), but it can only act when the generator passes a prescription containing `@ M` or `@ HM`. For any new runner or future plan regen, wk3–5 long runs get the old flat easy spec.
+
+**Required `generate.ts` change:** in `layoutWeek`, when phase is QUALITY AND weekIdx is in the late-QUALITY window (the last 2–3 weeks before RACE-SPECIFIC), emit M/HMP-labelled sub_labels for the long run:
+- Late-QUALITY wk (HM, weeks ≥ N−2): `LONG · {round(longMi×0.30)}mi @ M` (M-pace warm-in)
+- Penultimate-QUALITY wk (HM, final QUALITY week): `LONG · {round(longMi×0.30)}mi @ HM`
+- RACE-SPECIFIC already emits `LONG · {round(longMi×0.4)}mi @ HM` (correct)
+
+Requires: (a) define the late-QUALITY window (currently no explicit boundary — add a `weekIdx ≥ RACE_SPECIFIC_start − 2` gate or a per-phase week-count param), (b) the M-pace annotation in `racePaceTag`, (c) any-runner correctness (HM plan only; M plan uses 'MP' already; 5K/10K no long-run inserts). Design this before coding — affects plan regen for all users.
+
+---
+
+## Audit D — Plan Spec Completeness (label ↔ spec ↔ watch-execution)  [AUDIT DONE · read-only 2026-06-07 · `DATABASE_URL_RO` as `faff_readonly` · 0 code/data writes]
+
+**Goal:** for every workout type in the active plan, prove `sub_label` (what the runner sees) == `workout_spec` (what the watch executes) == what `expandSpecToPhases` actually ships to the watch. Falsify, don't confirm.
+
+**Subject:** active plan `pln_ca91f252bba50c74` (single non-archived plan; AFC Half; goal_iso 2026-08-16; 77 workouts; VDOT 47.9; LTHR 162). RO verified: `UPDATE plan_workouts` → permission denied; `current_user=faff_readonly`.
+
+**Headline:** the loop is mostly faithful. **The one structural mismatch is the known LONG/HMP gap — and it is worse than cosmetic: the watch not only omits the HM-pace finish, its HR guardrail (ceiling 144) actively red-alerts during the would-be HM miles, coaching the opposite of the label.** One additional watch-execution bug found (tempo HR target reads the wrong spec field). 1 CRITICAL, 1 MAJOR, 3 MINOR.
+
+### Inventory — every type present (real rows, RO)
+| type | n | sub_label (runner sees) | workout_spec (watch executes) | agree? |
+|---|---|---|---|---|
+| easy | 34 | `EASY` | `{kind:easy, band 467–517, hr_cap 144, fuel[]}` | ✓ (1 past row hr_cap 130) |
+| tempo | 14 | `2 mi WU · 4 mi @ T · 2 mi CD` (+3.5/5mi variants) | `{kind:tempo, wu/tempo/cd, tempo_pace, hr_target_bpm 149}` | structure ✓ · **HR field bug D2** |
+| rest | 11 | `REST` | null (no spec) | ✓ (watch → "Rest day.") |
+| long | 7 | `LONG` | `{kind:long, band 462–497, hr_cap 144, fuel}` | ✓ (flat easy long) |
+| long | 3 | `LONG · 7mi @ HM` / `8mi @ HM` / `6mi @ HM` | **identical flat `{kind:long, band 462–497, hr_cap 144}` — no HMP** | **✗ D1** |
+| intervals | 6 | `4×1 mi @ I · 3 min jog` | `{kind:intervals, rep_count 4, rep_distance_mi 1, rep_rest_s 180, wu 1.5, cd 1, rep_pace, lthr_bpm 162}` | ✓ |
+| race | 1 | `RACE` | `{kind:long (stash), band 397–412, hr_cap 154, fuel}` | ✓ (D5 internal phase label only) |
+| shakeout | 1 | `SHAKEOUT` | `{kind:easy, band 517–547, hr_cap 144}` | ✓ (D5) |
+
+**Types the prompt named but NOT in this plan:** `threshold`, `race_week_tuneup`, `recovery`. Builder (`spec-builder.ts`) + expander (`expand-spec.ts`) fully support all three; they're simply never scheduled by `layoutWeek` for this HM plan. `race_week_tuneup` is dead per Audit C **C2** (race-week branch hardcodes race/shakeout/rest/easy); if wired its spec is exactly the prompt's expected `WU 1.5mi · 2×0.5mi @ T−5 · CD 1mi` (`spec-builder.ts:276-289`). RACE-SPECIFIC Tuesdays are `tempo` not `threshold` — plan-correctness (Audit C / the 2026-06-07 doctrine-gap fix), NOT a label/spec mismatch (label `@ T` + tempo spec agree).
+
+### D1 · CRITICAL · long-run HM-pace finish is in the label + notes but absent from the spec and every execution surface (any HM/M runner)
+Three rows, all RACE-SPECIFIC peak weeks: `2026-07-19` "LONG · 7mi @ HM" (notes "Steady 10mi, then 7mi at half-marathon pace"), `2026-07-26` "8mi @ HM", `2026-08-02` "6mi @ HM". Every long spec — plain AND HMP-labelled — is the **identical flat shape** `{kind:long, pace_target_s_per_mi_lo:462, _hi:497, hr_cap_bpm:144, fuel_mi}`. Band 462–497 = T+55/+90 = the **easy-long** range (7:42–8:17/mi); HM pace ≈ 407 (goal) / 430 (current VDOT). No HMP field exists in the spec.
+- **Watch executes flat:** `expandLong` (`expand-spec.ts:198-215`) reads only `pace_target_s_per_mi_lo/hi` → emits ONE work phase "17.0 mi long run" @ mid 480 (8:00/mi). The watch `name` = `sub_label` = "LONG · 7mi @ HM" (`build-workout.ts:451`) over a single flat phase.
+- **Root cause:** `buildWorkoutSpec` long branch (`spec-builder.ts:173-188`) **ignores its `prescription` argument** (which carries "LONG · 7mi @ HM"); a misleading comment claims it "carries an MP segment · pace_target reflects that mid-effort prescription" — it does not. `subLabelFromSpec` (`expand-spec.ts:298-306`) already documents the gap: "`long · 'LONG · 5mi @ HM' race-pace insert isn't in spec`".
+- **AGGRAVATOR (why CRITICAL, not just a missing phase):** long runs ship `hrCeilingBpm = round(LTHR×0.89) = 144` + `displayHint:'hr'` (`build-workout.ts:443,470`). `WorkoutEngine.swift:608-612` (legacy real build) sets `hrOverCeiling = hr > ceiling` and the face "snaps the guardrail row to a red HR and holds it until HR drops back below." Running 7mi at HM effort (HR ~155–165) > 144 → the watch **red-alerts "too hard" for the entire HM segment** — actively coaching the opposite of the label, for ~40% of the run.
+- **Capability exists but is shadowed:** the fallback `prescriptionFor('long')` (`prescriptions.ts:293-315`) builds `Easy build` + `Marathon-pace finish` (@ Z3) when `weeklyMi ≥ 35`. But the flat `workout_spec` is always present and **wins** (`build-workout.ts:376` prefers spec over prescription). The 2026-06-02 "spec is source of truth" migration silently dropped the fast-finish for long runs because the `long` spec schema has no field to carry it.
+- **Any-runner:** fires for every HM (`racePaceTag='HM'`) and marathon (`'MP'`) plan's race-specific long runs (`generate.ts:756-768`). A watch-reliant runner does the wrong (easier) session and is told to slow down during the one quality block.
+- **Severity note:** workout TYPE, distance, and NAME are correct, so this is readable as MAJOR. Landed CRITICAL because the HR guardrail makes the watch execute *against* the prescription, not merely omit structure. David to recalibrate if desired.
+- **Threatens:** the peak-phase specific-endurance stimulus (the entire point of these 3 sessions) is dropped on every surface; HR guardrail fights the prescription.
+
+### D2 · MAJOR · watch shows the wrong tempo HR target — reads `lthr_bpm`, but tempo writes `hr_target_bpm` (any runner with LTHR)
+All 14 tempo specs store `hr_target_bpm` (=round(LTHR×0.92)=149) and have **no** `lthr_bpm`. The watch payload (`build-workout.ts:389-393`) reads only `lthr_bpm` for `hrTargetBpm`; tempo has none → `specLthrBpm=null` → falls back to `profile.lthr=162`. So the **watch shows 162** for tempo work phases while **iPhone glance** (`glance-adapter.ts:278`), **web seed** (`seed.ts:486`), and **recap** (`recap/route.ts:99`) all read `hr_target_bpm` → **149**. Pace is correct on all surfaces (`tempo_pace_s_per_mi` read fine). Threatens: watch HR reference 13 bpm high (threshold HR vs intended sub-threshold tempo) → cross-surface inconsistency; if the runner chases HR the tempo runs too hard. Fix is one COALESCE in `build-workout.ts` (read `hr_target_bpm ?? lthr_bpm`), matching the other three readers.
+
+### MINOR
+- **D3 · MINOR · one tempo (`2026-06-04`) has `hr_target_bpm:null`** while the other 13 have 149. Past (already-run) row; likely authored before LTHR resolved or via a sealed-day overlay. Cosmetic now. Any-runner if re-authored with null LTHR.
+- **D4 · MINOR · race spec `hr_cap_bpm:154` is dead on the watch.** `build-workout.ts:443` sets workout-level `hrCeilingBpm` only for easy/long → race ships null; the watch recomputes hrCeiling from LTHR (×0.89) and ignores `spec.hr_cap_bpm` entirely (they coincide for easy/long only because both use 89% LTHR). Not a label mismatch (you don't HR-cap a race); phone glance still reads it. Logged for completeness.
+- **D5 · MINOR (cosmetic) · race + shakeout internal phase labels are generic.** `expandLong`/`expandEasy` label the single phase "13.1 mi long run" (race) / "2.0 mi easy" (shakeout). The workout NAME (sub_label) is correct ("RACE"/"SHAKEOUT"); only the internal phase label is generic. Harmless.
+
+### Cold-start (new user, no history) — degrades gracefully ✓
+Every `kind` `buildWorkoutSpec` can emit (easy/recovery/long/tempo/threshold/intervals/long-for-race/easy-for-shakeout/threshold-for-tuneup) is handled by `expandSpecToPhases`; none falls through to the null fallback. With `tPace=480` (C5 fallback), `lthr=null`, `maxHr=null` → specs build with null HR caps + generic pace bands; expanders emit valid phases; no crash, no empty spec; rest → "Rest day."; no plan → "No active plan." The ONE cold-start defect is the same **D1** — a brand-new HM runner in race-specific weeks still gets flat-spec longs under HMP labels (HR guardrail won't fire without LTHR, but the stimulus is still missing).
+
+### Complete list of label/spec mismatches
+1. **D1** — `LONG · {6,7,8}mi @ HM` (3 rows) → flat `kind:long` easy spec, no HM segment; watch executes flat + HR guardrail fights it. **CRITICAL.**
+2. **D2** — tempo (14 rows) → watch HR target 162 vs spec/phone/web 149 (`lthr_bpm` vs `hr_target_bpm` field mismatch). **MAJOR.**
+3. **D3/D4/D5** — minor (one null tempo HR; dead race hr_cap on watch; generic internal phase labels).
+
+### Proposed fix order (NOT executed — audit only)
+1. **D1 (code, highest value):** add an HM/MP-finish field to the `long` spec schema; populate it in `buildWorkoutSpec`'s long branch from the RACE-SPECIFIC prescription (or compute `round(longMi×0.4)` @ T−5 HM / T+18 M); teach `expandLong` to emit `Easy build` + `HM/MP finish` phases with the finish carrying its own (higher) HR reference and the easy portion keeping the 144 ceiling so the guardrail stops firing during the finish. Mirror the threshold→tempo remap already at `generate.ts:807-812`. Affects future regens only; the 3 active rows then need an **in-place re-spec** (gated DB write per PLAN-GEN CRITICAL #1 — never a full regen, which re-rolls distances).
+2. **D2 (code, no data write):** `build-workout.ts:389-393` read `hr_target_bpm ?? lthr_bpm`, matching glance/seed/recap. Any-runner.
+3. **D3/D4/D5:** bundle or defer; D4 = decide whether the watch should honor `spec.hr_cap_bpm` generally vs recompute.
+
+**Falsifiers run (all read-only):** RO write-denied (`UPDATE plan_workouts` → permission denied) ✓ · single active plan = `pln_ca91f252bba50c74` ✓ · 3 HMP long sub_labels carry `@ HM` while all 10 long specs are byte-identical flat `kind:long` band 462–497 ✓ · `expandLong` reads only pace_lo/hi (source) ✓ · `buildWorkoutSpec` long branch ignores `prescription` (source) ✓ · `prescriptionFor('long')` builds MP-finish at weeklyMi≥35 but spec wins (source) ✓ · tempo specs have `hr_target_bpm` not `lthr_bpm`; watch reads `lthr_bpm` → profile.lthr=162 vs spec 149 ✓ · `profile.lthr=162` (RO) ✓ · `WorkoutEngine.swift` red-alerts hr>ceiling (legacy + design-pass) ✓ · intervals/tempo/easy/shakeout/race label↔spec agree ✓ · every emit-able kind handled by `expandSpecToPhases` (cold-start) ✓.
+
+> **SUMMARY**
+> - **WHAT CHANGED** — nothing (read-only audit). AUDIT-FIXES.md updated with Audit D.
+> - **FALSIFIERS** — all green (above); RO write-denied confirmed.
+> - **WHAT'S LEFT IN THIS LEG** — nothing for the audit. Fix queue: D1 (CRITICAL, code + gated in-place re-spec), D2 (MAJOR, code), D3/D4/D5 (minor).
+> - **WHAT I NEED FROM YOU** — review findings; decide D1 severity (CRITICAL vs MAJOR) + whether to proceed to fixes. No fixes applied per instruction.
