@@ -384,15 +384,24 @@ Watch completions carry per-phase `paceSamples` (cumulative `{tSec, distMi, pace
 
 ---
 
-## Plan generation — HM race-specific doctrine gap (logged 2026-06-07, David · DO NOT FIX THIS SESSION)
+## Plan generation — HM race-specific doctrine gap · CODE COMPLETE · awaiting David's go to deploy
 
-**Finding:** `generate.ts` line 781 has `cat === 'hm' ? ['threshold', 'tempo']` for the `RACE-SPECIFIC` phase. Research/22 §3 explicitly shows `['threshold', 'intervals']` for HM race-specific — one T session + one I session per week (intermediate sample peak week: Tue WU + 5mi @ T, Thu WU + 4×1200m @ I). The HM advanced plan phases column states "VO2max + race-specific HMP" as the penultimate phase, meaning interval work continues concurrent with HMP work, not before it. The current generator drops VO2max sharpening entirely in the final build phase, contradicting the doctrine.
+**Finding:** `generate.ts` line 781 had `cat === 'hm' ? ['threshold', 'tempo']` for the `RACE-SPECIFIC` phase. Research/22 §3 explicitly shows `['threshold', 'intervals']` for HM race-specific — one T session + one I session per week (intermediate sample peak week: Tue WU + 5mi @ T, Thu WU + 4×1200m @ I). The HM advanced plan phases column states "VO2max + race-specific HMP" as the penultimate phase, meaning interval work continues concurrent with HMP work, not before it. The current generator dropped VO2max sharpening entirely in the final build phase, contradicting the doctrine.
 
-**Fix:** change `['threshold', 'tempo']` to `['threshold', 'intervals']` for `cat === 'hm'` in the `RACE-SPECIFIC` `qualityTypes` branch.
+**Fix (committed to `claude/elegant-knuth-KJ59b`, NOT yet on main):**
+```diff
+- : cat === 'hm'   ? ['threshold', 'tempo']
++ : cat === 'hm'   ? ['threshold', 'intervals']
+```
 
-**Impact:** any-runner — affects every HM plan. Requires a plan regeneration to take effect (no in-place re-pace; this changes workout type, not just paces). Must be a deliberate, isolated change — not bundled with other generator work.
+**Status:** tsc 0 · 351 pass / 0 fail / 3 skipped. Awaiting David's morning go.
 
-**Do not fix this session.** Logged as a discrete item. Coordinate with CRITICAL #1 (in-place re-pace) and the plan validation gate (P3) before regenerating.
+**Impact:** any-runner — affects every HM plan. Takes effect on next plan regeneration (changes workout type, not just paces). The active plan `pln_ca91f252bba50c74` is unaffected until an explicit regen is requested.
+
+**Active-plan investigation (Tasks 2+3 from overnight queue — blocked, see below):**
+The active plan's RACE-SPECIFIC weeks run Jul 13–Aug 2 (weeks 6–8 of the 11-week plan, derived from `sizeBlocks()` with `isMidBlock=true`: BASE=0, QUALITY=6, RACE-SPECIFIC=3, TAPER=2). Each RACE-SPECIFIC week currently has 2 quality days: 1 threshold (correct) + 1 tempo (wrong — should be intervals). Fix approach: UPDATE 3 existing `plan_workouts` rows (the second quality slot each week), changing `type='tempo'` → `type='intervals'` + updating `workout_spec`/`pace_target_s_per_mi`/`sub_label`. Exact row IDs and SQL require `DATABASE_URL_RO` (not set in this container). Once DB access is available: run `lib/runs/circular-merge-repair.audit.test.ts` (it has `describe.skipIf(!RO)` guard), emit the repair SQL, present for per-statement go before any write.
+
+**DATABASE_URL_RO needed for Tasks 2+3.** Provide the credential to unlock both investigations.
 
 ---
 
