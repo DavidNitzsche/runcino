@@ -367,5 +367,22 @@ Watch completions carry per-phase `paceSamples` (cumulative `{tSec, distMi, pace
 
 ---
 
+## Future audit — Coaching Doctrine Generalization (logged 2026-06-07, David)
+
+**Schedule:** after the current fix queue (Audit C P1–P4) is closed and the system is stable.
+
+**Scope:** a dedicated product + research audit verifying every coaching rule is:
+
+1. **Grounded in exercise science / established training doctrine** (Daniels, Pfitzinger, etc.) — not empirically tuned for one runner. Every rule should cite a source in `Research/`. If a rule has no citation, that is a finding.
+2. **Parameterized correctly for runner type** — beginner vs intermediate vs advanced, 5K vs HM vs marathon, low base vs high base. Rules that work for David (advanced, ~50 mpw, sub-1:30 HM target) must degrade gracefully for a beginner at 15 mpw.
+3. **Tested against cold-start users at different experience levels** — does a beginner get a sane plan (not 12 × 400m at 5:30/mi in week 1)? Does an elite get appropriately aggressive targets? Persona-driven bench tests in `generator-bench.test.ts` are the vehicle for this.
+4. **Documented with source + rationale** so future changes can be evaluated against doctrine, not vibes. Format: each rule in `generate.ts` / `spec-builder.ts` / `goal-tiers.ts` cites the `Research/` section that justifies its threshold. Missing citations = gaps, not style issues.
+
+**Method:** session with coaching logic, `Research/` docs, and real test cases across runner types. Not a code-coverage audit — a doctrine-coverage audit. Output: findings per rule (grounded / ungrounded / needs parameterization / missing citation), fixes for any ungrounded rules, new bench personas for beginner + intermediate + elite.
+
+**AFC→CIM bridge — specific product flow requiring design (logged 2026-06-07):** When a race result is logged: (1) update VDOT from the actual result, (2) archive the completed plan, (3) generate or prompt to generate the next race's plan starting from post-race fitness. The AFC→CIM bridge specifically: after AFC on Aug 16, the CIM plan should start from demonstrated AFC fitness (not the pre-AFC VDOT) and build appropriately for a full marathon over the remaining ~16 weeks. This is a product flow, not just a code fix — needs design. Requirements: (a) race-result trigger → VDOT update, (b) archive-and-propose-next UI surface, (c) CIM plan generation uses post-AFC VDOT as base, (d) HM→M transition adjusts long-run ramp (can't jump from 13-mi HM long to marathon-distance long in one week). Log as a feature requirement in `APP_FEATURE_SPEC.md` under post-race flow.
+
+---
+
 ## Test health — the 5 weather-adjust failures must be FIXED, not excused (logged 2026-06-07, David)
 - [ ] **Investigate + fix the 5 `lib/coach/weather-adjust.test.ts` failures.** Carried as "pre-existing / not in scope" since this audit began — that is NOT an acceptable standing exception going forward. A failing test means either the code is wrong (fix the code) or the test is wrong (fix or delete it); decide which, per doctrine "Done = falsifiers passing." Observed failures are heat-band boundary assertions: e.g. `judgeWeather` at 75°F dry expects `heatBand='hot'` and slowdown ≥12% → escalate to `extreme`, but returns `heatBand='warm'` / slowdown <12% (looks like a boundary-inclusivity or threshold drift between code and test — `expected 'warm' to be 'hot'`, `expected 'hot' to be 'extreme'`). **Not blocking** the plan-gen work (P1–P4); close it as a discrete item, not a standing exception. Full suite today: 336 pass / 5 fail, all 5 in this one file.
