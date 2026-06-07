@@ -287,6 +287,35 @@ Regenerated from clean worktree @`35001afb` (real node_modules, no symlink), wri
 
 **C1 CLOSED (1a–1f deployed + plan regenerated).** Remaining follow-ups unchanged: C2 (race-week tune-up), C4 (underperformance-adaptation design), snapshot-projections 1d (race-day exclusion + duration field — same fixes, separate validated change since it shifts canonical VDOT), 36-site −7h `today` sweep, iPhone TF display switches (C3/C6). New minor: Rule-15 sealed-day overlay was inconsistent across past days (06-02 took new pace, 06-05 kept old) — pre-existing, only affects already-run days.
 
+### OPEN — regeneration re-rolls distances (found 2026-06-07 · gated · NOT fixed)
+Re-pacing via full `generatePlan` ALSO rebuilds the volume curve from *current* inputs, not just paces. The 06-07 regen read `recentWeeklyMi=27.5` vs the original's **39.1** (06-03) — a 30% drop from a 4-week-window shift — scaling every long down: peak **19→15mi**, and a choppy progression (11,11,11,9,11,12,13,11,15,11) vs the original clean build (12→…→19). Both plans still terminate cleanly at AFC 08-16 (77 workouts, nothing past). **Two problems:** (a) a re-pace must NOT re-roll distances → the right tool is an **in-place re-pace** (`UPDATE pace_target_s_per_mi` + `workout_spec` paces on the existing rows, keep distances/structure), NOT a regen; (b) investigate whether `recentWeeklyMi=27.5` is a real training dip or a data/window artifact (dedup / HK-sync) before trusting any volume-derived distance. **Action pending:** reverse to `pln_ca91f252bba50c74` (original — correct distances, wrong-but-easy paces) on David's go; then design the in-place re-pace.
+
+### OPEN — race-calendar awareness (any-runner architectural requirement · logged 2026-06-07)
+The generator must respect a user's FULL race calendar, not just the active race. **Current state:** Rule 11 `horizon_raise` reads only a *subset* of future races (priority A/B, longer distance, within 168 days) and uses them solely to raise the long-run **CAP** (David: CIM Dec 6 marathon → cap 17→22mi in `authored_state.horizon_raise`). It is NOT a bridge plan, does NOT read all races, and here the cap raise was nullified by the volume drop (actual peak 15 < 22). **Requirement:** a plan must either (1) end cleanly at the active race with correct structure, OR (2) recognize a higher-priority/longer race follows (e.g., AFC → CIM) and build the bridge accordingly. A plan that ends mid-air or ignores the calendar is wrong for any runner with >1 goal. **Fix scope:** read all races; decide terminate-vs-bridge from the next race's date/priority/distance; make horizon handling produce real structure, not just a cap.
+
+---
+
+## PLAN GENERATION — CRITICAL architectural requirements (locked 2026-06-07, David)
+Surfaced by the C1 re-pace saga: regen produced a structurally-worse plan (peak 19→15mi, choppy progression) off a corrupted volume signal. Reversed to original `pln_ca91f252bba50c74` (verified: only active plan, June 7 long = 12mi). **Do NOT attempt another regeneration until #1 and #2 are implemented + tested.**
+
+### CRITICAL #1 — PACE-ONLY in-place re-pace (never full generatePlan to re-pace)
+Full `generatePlan` recalculates **distances** from current volume signals, which drift significantly in days (here −30% in 4 days). Re-pacing an existing plan must be an **in-place update**: `UPDATE pace_target_s_per_mi + workout_spec` paces on the existing rows, **preserving distances and structure**. Build this before any future re-pacing. This is THE mechanism going forward.
+
+### CRITICAL #2 — Plan validation layer (gate between generation and persistPlan)
+A validation layer must sit between plan build and `persistPlan` and **throw (never write)** if the plan violates:
+- Long-run distances appropriate for race type (HM peak ≤ ~14mi)
+- Progressive-overload curve sane (no >10% week-over-week spike; monotonic build with cutbacks)
+- Taper structure present + correct
+- Race week structured per doctrine (C2 tune-up present)
+- Volume arc follows expected progression
+Same posture as the falsifier gate: invalid plan → throw, no write. (Would have caught the choppy 11,11,11,9,11,12,13,11,15,11 regen.)
+
+### CRITICAL #3 — Race-calendar awareness, volume-aware (not just cap-aware)
+Generator must read **all** of a user's races and respect the full calendar (AFC Aug 16 → CIM Dec 6). **Correction to earlier finding:** the generator DOES read future races via Rule 11 `horizon_raise` — it raised the long cap 17→22 to bridge toward CIM. Two gaps: **(a) cap-only, not volume-driven** — actual peak = `volume × longShare`, so the cap is irrelevant when `recentWeeklyMi` is low (bridge intent existed, never manifested — peak landed 15, not 22); **(b) subset only** — reads future A/B races within 168 days, not all races / full sequencing. Requirement: Rule 11 must be **volume-aware**; if volume can't support the bridge, the plan should **explain why the bridge isn't firing**, not silently produce a 15mi peak when 22 was intended. Terminate-cleanly vs bridge is an any-runner requirement (>1 goal).
+
+### CRITICAL #4 — Volume signal corruption: CIRCULAR MERGE bug (ROOT CAUSE FOUND, read-only 2026-06-07)
+Why `recentWeeklyMi` read **27.5 (06-07)** vs **39.1 (06-03)**: NOT a training dip — a **dedup data-integrity bug**. The 06-07 03:49–03:52 HK re-sync re-ingested apple_watch dupes for 05-31..06-04, and the merge logic produced **circular `mergedIntoId` pairs**: e.g. 06-02 row `-3558250452245243`→`-71141805277248` AND `-71141805277248`→`-3558250452245243` (each points at the other). Both flagged merged → **no canonical winner** → the day contributes 0 to canonical mileage. Confirmed: only 05-29 + 06-05 have a canonical run in 05-29..06-05; **5 days / ~38.7mi (12.36+5.06+7.41+6.08+7.76) zeroed out**. `recentMileageMi(28d)/4` → 27.5. True recent volume ≈ **39mi/wk** (the original plan's value; the runs exist, they're just circular-merged). **This is a NEW C1b-family failure mode** (over-merge/circular, vs the earlier wipe→double-count). Bug: `autoMerge`/`pickCanonical` can create circular `mergedIntoId` under HK re-sync. Fix needed (separate, gated): merge logic must guarantee exactly one canonical per dupe set (no circular refs); + a DATA fix to un-circular the affected rows (gated DB write — David's per-statement go). Impacts every volume-based signal, not just plan-gen, whenever a circular merge exists. David's plan is on the original (correct distances), so not currently affected.
+
 ---
 
 ## Deferred (not in any cluster)
