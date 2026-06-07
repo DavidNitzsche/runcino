@@ -314,108 +314,126 @@ export function TrainView({
     const verbForKind = (k: string) => k === 'reschedule' ? 'rescheduled' : k === 'downgrade' ? 'eased' : k === 'shave' ? 'shaved' : 'adjusted';
     seed.season.weekDays.forEach((days, i) => {
       if (i >= raceIdx) return;
-      const order = ['intervals', 'tempo', 'long'];
-      const pick = days.find((d) => order.includes(d.type)) as DayShape | undefined;
-      if (!pick) return;
       const isNow = i === nowIdx;
       const isPast = i < nowIdx;
       const isMid = i > nowIdx;
-      // 2026-06-03 · was "WK N" · same week-numbering problem as the
-      // top-of-page pill. Switched to the workout's actual date which
-      // never lies after a rebuild. pick.date can be undefined on
-      // legacy fixture rows · formatDate() returns "·" on empty.
-      const wkLabel = formatDate(pick.date ?? '').toUpperCase();
-      const dot = PHASE_TYPE_COLOR[pick.type] ?? '#8A90A0';
-      // 2026-06-03 · canonical title per David. Was: prefer pick.name
-      // (the sub_label like "4×1 mi @ I · 3 min jog") with the type
-      // string as fallback. Result: KEY WORKOUTS list rendered the
-      // workout-structure detail instead of the type. Now: workoutTypeTitle
-      // wins. The structure detail still lives in plan_workouts.sub_label
-      // for surfaces that need it (e.g. the Today card body).
-      const title = workoutTypeTitle(pick.type);
-      const sub = `${pick.mi.toFixed(1)} mi${pick.paceSec ? ` @ ${Math.floor(pick.paceSec / 60)}:${String(Math.round(pick.paceSec % 60)).padStart(2, '0')}` : ''}`;
-      // 2026-06-03 · dropped 'KEY' state per David: "they're all
-      // literally in a card that says KEY WORKOUTS TO RACE." The card
-      // title already establishes that every row is a key workout ·
-      // tagging the last 3 rows again was redundant. NOW (today's
-      // quality) and DONE (completed) stay because they're distinct
-      // states the runner can act on.
       const state: Mile['state'] = isPast ? 'DONE' : isNow ? 'NOW' : '';
-      // Training trajectory: prefer backend-authored trainingInfluence
-      // (commit 2b7b4889 · names the workout's effect on race trajectory,
-      // not execution mechanics · 5 kinds: on_track / consistent /
-      // working / slipping / compromised). Falls back to the legacy
-      // client-side execution derivation only when backend hasn't
-      // landed a trajectory signal for this row (e.g. composer set
-      // null because data was incomplete, or non-quality type the
-      // composer doesn't grade).
-      let influence: Mile['influence'] = null;
-      if (state === 'DONE' && pick.trainingInfluence) {
-        influence = { kind: pick.trainingInfluence.kind, copy: pick.trainingInfluence.copy };
-      } else if (state === 'DONE' && pick.paceSec) {
-        // Legacy fallback · execution-mechanics signal when backend
-        // didn't ship a trajectory call for this row. Same logic as
-        // before · hit/close/off based on pace delta.
-        let comparePace: number | null = null;
-        let label = 'actual';
-        if (QUALITY_TYPES.has(pick.type)) {
-          comparePace = workPaceForQuality(pick);
-          label = 'work pace';
-        } else {
-          comparePace = pick.donePaceSec ?? null;
-        }
-        if (comparePace) {
-          const delta = comparePace - pick.paceSec;
-          const tol = pick.type === 'long' ? 18 : 12; // s/mi
-          if (Math.abs(delta) <= tol) {
-            influence = { kind: 'hit', copy: `Hit · ${fmtPace(comparePace)} ${label}` };
-          } else if (delta > 0 && delta <= tol * 2) {
-            influence = { kind: 'close', copy: `Just off · ${fmtPace(comparePace)} ${label}` };
-          } else if (delta > 0) {
-            influence = { kind: 'off', copy: `Off pace · ${fmtPace(comparePace)} ${label}` };
+
+      // Collect all key workouts for this week.
+      //   · intervals + tempo: always key quality sessions.
+      //   · long: only when the sub_label carries a finish prescription
+      //     (name contains "@" — e.g. "LONG · 4mi @ M", "LONG · 7mi @ HM").
+      //     Plain long runs ("Long Run", "12mi long") are not key workouts;
+      //     structured finish-segment longs are equal-weight quality sessions.
+      // Multiple picks per week are allowed (Tuesday intervals + Saturday
+      // structured long both appear). Within a week, quality sessions sort
+      // before long runs so intervals/tempo always lead.
+      const keyDays = (days as DayShape[]).filter((d) => {
+        if (d.type === 'intervals' || d.type === 'tempo') return true;
+        return d.type === 'long' && d.name.includes('@');
+      }).sort((a, b) => {
+        const rank = (t: string) => t === 'intervals' ? 0 : t === 'tempo' ? 1 : 2;
+        return rank(a.type) - rank(b.type);
+      });
+      if (keyDays.length === 0) return;
+
+      for (const pick of keyDays) {
+        // 2026-06-03 · was "WK N" · same week-numbering problem as the
+        // top-of-page pill. Switched to the workout's actual date which
+        // never lies after a rebuild. pick.date can be undefined on
+        // legacy fixture rows · formatDate() returns "·" on empty.
+        const wkLabel = formatDate(pick.date ?? '').toUpperCase();
+        const dot = PHASE_TYPE_COLOR[pick.type] ?? '#8A90A0';
+        // 2026-06-03 · canonical title per David. Was: prefer pick.name
+        // (the sub_label like "4×1 mi @ I · 3 min jog") with the type
+        // string as fallback. Result: KEY WORKOUTS list rendered the
+        // workout-structure detail instead of the type. Now: workoutTypeTitle
+        // wins. The structure detail still lives in plan_workouts.sub_label
+        // for surfaces that need it (e.g. the Today card body).
+        const title = workoutTypeTitle(pick.type);
+        const sub = `${pick.mi.toFixed(1)} mi${pick.paceSec ? ` @ ${Math.floor(pick.paceSec / 60)}:${String(Math.round(pick.paceSec % 60)).padStart(2, '0')}` : ''}`;
+        // 2026-06-03 · dropped 'KEY' state per David: "they're all
+        // literally in a card that says KEY WORKOUTS TO RACE." The card
+        // title already establishes that every row is a key workout ·
+        // tagging the last 3 rows again was redundant. NOW (today's
+        // quality) and DONE (completed) stay because they're distinct
+        // states the runner can act on.
+        // Training trajectory: prefer backend-authored trainingInfluence
+        // (commit 2b7b4889 · names the workout's effect on race trajectory,
+        // not execution mechanics · 5 kinds: on_track / consistent /
+        // working / slipping / compromised). Falls back to the legacy
+        // client-side execution derivation only when backend hasn't
+        // landed a trajectory signal for this row (e.g. composer set
+        // null because data was incomplete, or non-quality type the
+        // composer doesn't grade).
+        let influence: Mile['influence'] = null;
+        if (state === 'DONE' && pick.trainingInfluence) {
+          influence = { kind: pick.trainingInfluence.kind, copy: pick.trainingInfluence.copy };
+        } else if (state === 'DONE' && pick.paceSec) {
+          // Legacy fallback · execution-mechanics signal when backend
+          // didn't ship a trajectory call for this row. Same logic as
+          // before · hit/close/off based on pace delta.
+          let comparePace: number | null = null;
+          let label = 'actual';
+          if (QUALITY_TYPES.has(pick.type)) {
+            comparePace = workPaceForQuality(pick);
+            label = 'work pace';
           } else {
-            influence = { kind: 'hit', copy: `Faster · ${fmtPace(comparePace)} ${label}` };
+            comparePace = pick.donePaceSec ?? null;
+          }
+          if (comparePace) {
+            const delta = comparePace - pick.paceSec;
+            const tol = pick.type === 'long' ? 18 : 12; // s/mi
+            if (Math.abs(delta) <= tol) {
+              influence = { kind: 'hit', copy: `Hit · ${fmtPace(comparePace)} ${label}` };
+            } else if (delta > 0 && delta <= tol * 2) {
+              influence = { kind: 'close', copy: `Just off · ${fmtPace(comparePace)} ${label}` };
+            } else if (delta > 0) {
+              influence = { kind: 'off', copy: `Off pace · ${fmtPace(comparePace)} ${label}` };
+            } else {
+              influence = { kind: 'hit', copy: `Faster · ${fmtPace(comparePace)} ${label}` };
+            }
+          }
+          // Quality workout with no usable splits and no backend
+          // trajectory · render nothing rather than the meaningless
+          // "Logged" placeholder David called out.
+        }
+        // Adaptation cross-reference. Two angles:
+        // 1. INCOMING — this week's quality day was itself modified by an
+        //    adapt (coach_intents row targeting pick.id). Render on FUTURE
+        //    rows: "← Adapted: eased, was tempo" so the runner sees the
+        //    plan changed under them.
+        // 2. OUTGOING — this week's DONE workout triggered an adapt that
+        //    modified a LATER week. Render on DONE rows: "→ Triggered:
+        //    Wk N tempo eased" so the runner sees the closed loop.
+        let adapt: Mile['adapt'] = null;
+        if (pick.id) {
+          // Incoming: adapt directly targeting this week's quality workout.
+          const incoming = adapts.find((a) => a.workoutId === pick.id);
+          if (incoming && (isMid || isNow)) {
+            const v = verbForKind(incoming.kind);
+            const noun = incoming.newType ? ` to ${incoming.newType}` : '';
+            adapt = { kind: 'incoming', copy: `Adapted: ${v}${noun} — ${shortWhy(incoming.why)}` };
+          }
+          // Outgoing: any adapt to a LATER week's workout, applied within
+          // 3 days after this DONE workout (treats this week's result as
+          // the trigger). Pick the closest match.
+          if (!adapt && state === 'DONE' && pick.date) {
+            const triggerMs = Date.parse(pick.date + 'T12:00:00Z');
+            const candidates = adapts
+              .filter((a) => a.weekIdx > i)
+              .map((a) => ({ a, dt: Date.parse(a.ts) - triggerMs }))
+              .filter((x) => x.dt >= 0 && x.dt <= 4 * 86400000);
+            if (candidates.length > 0) {
+              candidates.sort((a, b) => a.dt - b.dt);
+              const a = candidates[0].a;
+              const v = verbForKind(a.kind);
+              adapt = { kind: 'outgoing', copy: `Triggered: Wk ${a.weekIdx + 1} ${v}` };
+            }
           }
         }
-        // Quality workout with no usable splits and no backend
-        // trajectory · render nothing rather than the meaningless
-        // "Logged" placeholder David called out.
+        out.push({ wkLabel, dot, title, sub, state, date: pick.date, done: !!pick.done, influence, adapt });
       }
-      // Adaptation cross-reference. Two angles:
-      // 1. INCOMING — this week's quality day was itself modified by an
-      //    adapt (coach_intents row targeting pick.id). Render on FUTURE
-      //    rows: "← Adapted: eased, was tempo" so the runner sees the
-      //    plan changed under them.
-      // 2. OUTGOING — this week's DONE workout triggered an adapt that
-      //    modified a LATER week. Render on DONE rows: "→ Triggered:
-      //    Wk N tempo eased" so the runner sees the closed loop.
-      let adapt: Mile['adapt'] = null;
-      if (pick.id) {
-        // Incoming: adapt directly targeting this week's quality workout.
-        const incoming = adapts.find((a) => a.workoutId === pick.id);
-        if (incoming && (isMid || isNow)) {
-          const v = verbForKind(incoming.kind);
-          const noun = incoming.newType ? ` to ${incoming.newType}` : '';
-          adapt = { kind: 'incoming', copy: `Adapted: ${v}${noun} — ${shortWhy(incoming.why)}` };
-        }
-        // Outgoing: any adapt to a LATER week's workout, applied within
-        // 3 days after this DONE workout (treats this week's result as
-        // the trigger). Pick the closest match.
-        if (!adapt && state === 'DONE' && pick.date) {
-          const triggerMs = Date.parse(pick.date + 'T12:00:00Z');
-          const candidates = adapts
-            .filter((a) => a.weekIdx > i)
-            .map((a) => ({ a, dt: Date.parse(a.ts) - triggerMs }))
-            .filter((x) => x.dt >= 0 && x.dt <= 4 * 86400000);
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => a.dt - b.dt);
-            const a = candidates[0].a;
-            const v = verbForKind(a.kind);
-            adapt = { kind: 'outgoing', copy: `Triggered: Wk ${a.weekIdx + 1} ${v}` };
-          }
-        }
-      }
-      out.push({ wkLabel, dot, title, sub, state, date: pick.date, done: !!pick.done, influence, adapt });
     });
     if (goal) {
       out.push({
@@ -424,7 +442,7 @@ export function TrainView({
         state: 'RACE', raceRow: true,
       });
     }
-    return out.slice(0, 9);
+    return out;
   }, [seed.season.weekDays, nowIdx, raceIdx, goal]);
 
   // Phase-ramp metadata aligned with the REAL plan_phases (for the bottom
