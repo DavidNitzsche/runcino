@@ -15,7 +15,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { enhanceCanonicalFromAbsorbed } from '@/lib/runs/canonical';
-import { clusterRuns, pickCanonical, type RunRow } from '@/lib/runs/identity';
+import { planMergeOps, type RunRow } from '@/lib/runs/identity';
 import { mileageByDay } from '@/lib/runs/volume';
 
 /**
@@ -33,6 +33,10 @@ export async function autoMergeForDate(
 ): Promise<{ changed: number; clusters: number }> {
   const date = dateISO ?? new Date().toISOString().slice(0, 10);
 
+  // Load ALL of the day's rows UNFILTERED (merged + unmerged). planMergeOps
+  // re-derives the canonical state from physical-run identity, so it can heal a
+  // day whose flags are corrupt — a circular A↔B pair, or a row orphaned by a
+  // prior unstable clustering — not just flag fresh dupes.
   const rows = (await pool.query(
     `SELECT id::text AS id, user_uuid::text AS user_uuid, data
        FROM runs
@@ -41,61 +45,56 @@ export async function autoMergeForDate(
     [userId, date],
   )).rows as RunRow[];
 
-  if (rows.length < 2) return { changed: 0, clusters: rows.length };
+  if (rows.length === 0) return { changed: 0, clusters: 0 };
 
-  const clusters = clusterRuns(rows);
+  const { clears, sets, absorptions, clusters } = planMergeOps(rows);
   let changed = 0;
 
-  for (const cluster of clusters) {
-    if (cluster.length < 2) continue;
-    const { canonical, losers } = pickCanonical(cluster);
-    const canonicalId = canonical.id;
+  // ORDER MATTERS · clear canonical/orphan flags FIRST, then point the losers.
+  // A loser is therefore never set to point at a row that still points back, so
+  // no circular mergedIntoId can survive a merge pass (the 2026-06-07 bug class
+  // that zeroed 5 of David's days in volume.ts).
+  for (const id of clears) {
+    await pool.query(`UPDATE runs SET data = data - 'mergedIntoId' WHERE id = $1::BIGINT`, [id]);
+    changed++;
+  }
+  for (const { id, canonicalId } of sets) {
+    await pool.query(
+      `UPDATE runs SET data = jsonb_set(data, '{mergedIntoId}', to_jsonb($1::BIGINT)) WHERE id = $2::BIGINT`,
+      [canonicalId, id],
+    );
+    changed++;
+  }
 
-    // Clear any stale merged flag on the canonical itself (it may have been
-    // flagged earlier, before a better/richer source arrived — e.g. the
-    // trustworthy-startLocal override now promoting it).
-    if (canonical.data?.mergedIntoId != null) {
-      await pool.query(`UPDATE runs SET data = data - 'mergedIntoId' WHERE id = $1::BIGINT`, [canonicalId]);
-      changed++;
-    }
-
-    for (const loser of losers) {
-      const alreadyMerged = String(loser.data?.mergedIntoId) === canonicalId;
-      if (!alreadyMerged) {
-        await pool.query(
-          `UPDATE runs SET data = jsonb_set(data, '{mergedIntoId}', to_jsonb($1::BIGINT)) WHERE id = $2::BIGINT`,
-          [canonicalId, loser.id],
-        );
-        changed++;
-      }
-      // Absorb the loser's unique fields into the canonical. Idempotent;
-      // a single bad row never blocks the rest of the cluster.
-      try {
-        if (loser.user_uuid) {
-          await enhanceCanonicalFromAbsorbed({
-            canonicalId,
-            absorbedRow: { id: loser.id, data: loser.data ?? {}, user_uuid: loser.user_uuid },
-          });
-        }
-      } catch (err) {
-        console.warn('[merge] absorber failed for', loser.id, '→', canonicalId, err);
-      }
+  // Absorb each loser's unique fields into its canonical. Idempotent; a single
+  // bad row never blocks the rest. Runs AFTER the flag writes so the absorber's
+  // read-modify-write of the canonical sees the cleared (no-mergedIntoId) state.
+  for (const { canonicalId, loserId } of absorptions) {
+    const loser = rows.find((r) => r.id === loserId);
+    if (!loser?.user_uuid) continue;
+    try {
+      await enhanceCanonicalFromAbsorbed({
+        canonicalId,
+        absorbedRow: { id: loser.id, data: loser.data ?? {}, user_uuid: loser.user_uuid },
+      });
+    } catch (err) {
+      console.warn('[merge] absorber failed for', loserId, '→', canonicalId, err);
     }
   }
 
-  // Loud log when a >1-row day produced no merge — historically the
+  // Loud log when a >1-row day produced no flag change — historically the
   // parallel-ingest race (each endpoint saw only its own row). Now rarer:
   // Fix 1 fires autoMerge on the correct startLocal-derived date from both
   // ingest paths, so both rows are present when the second one lands.
-  if (rows.length >= 2 && changed === 0) {
+  if (rows.length >= 2 && clears.length === 0 && sets.length === 0) {
     const sources = rows.map((r) => r.data?.source ?? '?').join(',');
     console.warn(
       `[merge] autoMergeForDate · user=${userId.slice(0, 8)} date=${date} · ` +
-      `${rows.length} rows · ${clusters.length} clusters · 0 merges fired · sources=${sources}`,
+      `${rows.length} rows · ${clusters} clusters · 0 merges fired · sources=${sources}`,
     );
   }
 
-  return { changed, clusters: clusters.length };
+  return { changed, clusters };
 }
 
 /**

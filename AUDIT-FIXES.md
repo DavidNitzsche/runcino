@@ -316,6 +316,25 @@ Generator must read **all** of a user's races and respect the full calendar (AFC
 ### CRITICAL #4 — Volume signal corruption: CIRCULAR MERGE bug (ROOT CAUSE FOUND, read-only 2026-06-07)
 Why `recentWeeklyMi` read **27.5 (06-07)** vs **39.1 (06-03)**: NOT a training dip — a **dedup data-integrity bug**. The 06-07 03:49–03:52 HK re-sync re-ingested apple_watch dupes for 05-31..06-04, and the merge logic produced **circular `mergedIntoId` pairs**: e.g. 06-02 row `-3558250452245243`→`-71141805277248` AND `-71141805277248`→`-3558250452245243` (each points at the other). Both flagged merged → **no canonical winner** → the day contributes 0 to canonical mileage. Confirmed: only 05-29 + 06-05 have a canonical run in 05-29..06-05; **5 days / ~38.7mi (12.36+5.06+7.41+6.08+7.76) zeroed out**. `recentMileageMi(28d)/4` → 27.5. True recent volume ≈ **39mi/wk** (the original plan's value; the runs exist, they're just circular-merged). **This is a NEW C1b-family failure mode** (over-merge/circular, vs the earlier wipe→double-count). Bug: `autoMerge`/`pickCanonical` can create circular `mergedIntoId` under HK re-sync. Fix needed (separate, gated): merge logic must guarantee exactly one canonical per dupe set (no circular refs); + a DATA fix to un-circular the affected rows (gated DB write — David's per-statement go). Impacts every volume-based signal, not just plan-gen, whenever a circular merge exists. David's plan is on the original (correct distances), so not currently affected.
 
+#### CRITICAL #4 — FIX (P1 · 2026-06-07 · CODE COMPLETE + UNIT-TESTED · data write GATED)
+**Root cause pinned in code (not just the symptom): the circular ref is created by the ingest WEATHER UPDATE, not by autoMerge.** Sequence on a HK re-sync of an apple_watch row whose canonical flips (the trust-flip, `identity.ts:140`):
+1. C1b copies the existing `mergedIntoId` into the in-memory `data` (`ingest/workout/route.ts:279`).
+2. DELETE+INSERT writes the row.
+3. `autoMergeForDate` flips the canonical to the re-ingested row → correctly CLEARS its flag in the DB and points the other row at it. DB consistent.
+4. The weather UPDATE `SET data = data || $1::jsonb` with `$1 = the full stale in-memory data` **re-applies the just-cleared `mergedIntoId`** → A→B AND B→A → both flagged → `volume.ts` `NOT (data ? 'mergedIntoId')` excludes both → day zeroes.
+
+The trust-flip's Δdist≤0.05 / Δdur≤120 gate equals `isSameRun`'s gate for a watch+apple_watch pair, so these pairs always cluster — i.e. the existing autoMerge would self-heal them once the weather write stops re-breaking them.
+
+**Code fix (3 files + tests · no DB):**
+- `app/api/ingest/workout/route.ts` (ROOT) — both weather UPDATEs (Tier 1 HK-temp + Tier 2 Open-Meteo) now patch ONLY `{weather, tempF}` via `data || $1`, never the full stale `data`. Stops creation; also stops clobbering absorber-merged fields (splits).
+- `lib/runs/identity.ts` — new pure `planMergeOps(rows)`: derives the per-cluster invariant (exactly one canonical, losers→canonical, **canonical/orphan flags cleared FIRST** → cycle-free + self-healing). Single source for runtime + repair.
+- `lib/runs/merge.ts` — `autoMergeForDate` loads rows UNFILTERED and applies `planMergeOps` (clears-before-sets). Now heals circular pairs AND lone orphaned-flag rows on the next cron, not just fresh dupes.
+- `lib/runs/identity.test.ts` — 11 unit tests incl. the circular A↔B → one-canonical falsifier + idempotency. **tsc 0 · identity 11/11 · full suite 336 pass (only the 5 pre-existing `weather-adjust` fails remain).**
+
+**DECISION FLAGGED (any-runner):** `planMergeOps` also clears flags on lone singleton rows (heals orphans left by deleted partners / unstable clustering). Trade-off — if `isSameRun` ever false-negatives a real dupe, this yields a VISIBLE double-count instead of a SILENT zero. Judged visible>silent; say the word to leave singletons untouched.
+
+**Data write (GATED — needs `DATABASE_URL_RO` + per-statement go):** read-only audit `lib/runs/circular-merge-repair.audit.test.ts` (skipped unless `DATABASE_URL_RO` set) imports the real `planMergeOps`, emits the exact repair SQL (clears+sets, byte-identical to `merge.ts`) + before/after canonical mileage per day. For a circular pair the repair is ONE `UPDATE … SET data = data - 'mergedIntoId'` per pair (clear the canonical; the loser already points correctly). Run when creds land → present statements → David's go → write. Falsifier: `recentWeeklyMi` → ~39, each affected day exactly one canonical.
+
 ---
 
 ## Read-only investigations (2026-06-07 · no code)

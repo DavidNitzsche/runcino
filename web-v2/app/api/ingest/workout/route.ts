@@ -365,16 +365,20 @@ export async function POST(req: NextRequest) {
       };
       (data as any).weather = w;
       (data as any).tempF = hkTempF;
-      // Rule 6 — field-level jsonb merge, not full-replace. autoMergeForDate
-      // (above) writes mergedIntoId directly to the DB; SET data=$1 would
-      // overwrite it with the in-memory payload that has no mergedIntoId.
-      // data || $1::jsonb preserves keys already in the DB that aren't in $1.
+      // Rule 6 / 2026-06-07 circular-merge fix — patch ONLY the weather keys,
+      // never the full in-memory `data`. autoMergeForDate (above) may have just
+      // cleared/repointed mergedIntoId in the DB; the in-memory `data` still
+      // carries the PRE-merge flag (C1b copied it forward at :279), so
+      // `data || data` re-applies a now-stale mergedIntoId and forms a circular
+      // A↔B pair that zeroes the day in volume.ts. A scoped patch also avoids
+      // clobbering fields the absorber just merged onto the canonical (splits).
+      const weatherPatch = { weather: w, tempF: hkTempF };
       await pool.query(
         `UPDATE runs
             SET data = data || $1::jsonb, weather_enriched_at = NOW()
           WHERE user_uuid = $2
             AND data->>'client_workout_id' = $3`,
-        [data, userId, body.client_workout_id]
+        [weatherPatch, userId, body.client_workout_id]
       );
     } else if (body.route_polyline) {
       // Tier 2 · Open-Meteo span fetch (forecast host for recent runs,
@@ -397,13 +401,16 @@ export async function POST(req: NextRequest) {
           if (w) {
             (data as any).weather = w;
             (data as any).tempF = w.temp_f ?? (data as any).tempF;
-            // Rule 6 — same as Tier 1: field-level merge preserves mergedIntoId.
+            // Rule 6 / circular-merge fix — same as Tier 1: patch only the
+            // weather keys so a stale in-memory mergedIntoId can't be re-applied
+            // over autoMergeForDate's just-written flag state.
+            const weatherPatch = { weather: w, tempF: (data as any).tempF };
             await pool.query(
               `UPDATE runs
                   SET data = data || $1::jsonb, weather_enriched_at = NOW()
                 WHERE user_uuid = $2
                   AND data->>'client_workout_id' = $3`,
-              [data, userId, body.client_workout_id]
+              [weatherPatch, userId, body.client_workout_id]
             );
           }
         }

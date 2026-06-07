@@ -171,3 +171,51 @@ export function pickCanonical(cluster: RunRow[]): { canonical: RunRow; losers: R
   }
   return { canonical, losers: cluster.filter((r) => r.id !== canonical.id) };
 }
+
+// ── merge-op planning · the write-time invariant as a pure function ─────────
+// Given ALL of a day's rows (merged AND unmerged — pass them unfiltered), compute
+// the mergedIntoId operations that bring the day to the canonical invariant:
+//
+//   for every physical-run cluster, EXACTLY ONE row (the canonical) carries no
+//   mergedIntoId, and every other row's mergedIntoId === canonical.id.
+//
+// Deriving the flags purely from the CURRENT clustering is what makes the merge
+// self-healing and CYCLE-FREE. The canonical's flag is always cleared first, so
+// a loser can never end up pointing at a row that points back — the 2026-06-07
+// circular-merge bug (a stale in-memory mergedIntoId re-applied by the ingest
+// weather UPDATE after autoMerge had legitimately cleared it, leaving A→B AND
+// B→A so neither was canonical and volume.ts zeroed the day). A lone row that
+// still carries a flag (its same-day partner was deleted, or a prior unstable
+// clustering orphaned it) is a singleton cluster → its stale flag is cleared too.
+//
+// Pure + idempotent: apply the ops, re-run, and you get zero ops. The SAME
+// function drives the runtime absorber (merge.ts:autoMergeForDate) and the
+// read-only data-repair audit, so write-time and repair-time can never disagree.
+export type MergeOps = {
+  clears: string[];                                   // ids to drop mergedIntoId from (canonicals + healed singletons)
+  sets: Array<{ id: string; canonicalId: string }>;   // losers to (re)point at their canonical
+  absorptions: Array<{ canonicalId: string; loserId: string }>; // loser→canonical field absorption
+  clusters: number;
+};
+
+export function planMergeOps(rows: RunRow[]): MergeOps {
+  const clears: string[] = [];
+  const sets: Array<{ id: string; canonicalId: string }> = [];
+  const absorptions: Array<{ canonicalId: string; loserId: string }> = [];
+  const clustered = clusterRuns(rows);
+  for (const cluster of clustered) {
+    const { canonical, losers } = pickCanonical(cluster);
+    const canonicalId = canonical.id;
+    // The canonical must NEVER carry a mergedIntoId. Clearing it unconditionally
+    // (cluster-canonical or lone singleton) breaks any inbound cycle and heals
+    // orphaned flags. This clear is sequenced before any set below.
+    if (canonical.data?.mergedIntoId != null) clears.push(canonicalId);
+    for (const loser of losers) {
+      if (String(loser.data?.mergedIntoId ?? '') !== canonicalId) {
+        sets.push({ id: loser.id, canonicalId });
+      }
+      absorptions.push({ canonicalId, loserId: loser.id });
+    }
+  }
+  return { clears, sets, absorptions, clusters: clustered.length };
+}
