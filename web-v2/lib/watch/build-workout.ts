@@ -382,15 +382,20 @@ export async function buildWatchToday(
         toleranceSec: defaultTolerance,
       })
     : null;
-  // HR target for work phases on quality sessions: prefer spec-embedded lthr_bpm
+  // HR target for work phases on quality sessions: prefer spec-embedded HR field
   // (snapshot from plan generation) → fall back to live profile lthr → null.
+  // Field precedence: intervals/threshold → lthr_bpm; tempo → hr_target_bpm.
+  // Both fields are present in the spec depending on type (spec-builder.ts emits
+  // lthr_bpm for threshold/intervals, hr_target_bpm for tempo). COALESCE both
+  // so the watch matches what glance-adapter, seed, and recap already read.
   // Gated to intervals/threshold/tempo so easy/long work phases never show a
   // quality HR target (those sessions use hrCeilingBpm at the workout level).
-  const specLthrBpm = wo.workout_spec
-    ? (Number((wo.workout_spec as Record<string, unknown>)?.lthr_bpm) || null)
+  const specHrBpm = wo.workout_spec
+    ? (Number((wo.workout_spec as Record<string, unknown>)?.lthr_bpm) ||
+       Number((wo.workout_spec as Record<string, unknown>)?.hr_target_bpm) || null)
     : null;
   const isQualityWorkout = wo.type === 'intervals' || wo.type === 'threshold' || wo.type === 'tempo';
-  const workHrTargetBpm = isQualityWorkout ? (specLthrBpm ?? lthr ?? null) : null;
+  const workHrTargetBpm = isQualityWorkout ? (specHrBpm ?? lthr ?? null) : null;
 
   if (expanded && expanded.length > 0) {
     // workout_spec drove the phase list · convert ExpandedPhase →
