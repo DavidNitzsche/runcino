@@ -1770,12 +1770,18 @@ async function loadGeneratorInputs(
   // Assembles races + recent quality runs into candidates; returns the
   // highest VDOT in the 180-day window. Undefined when no signal.
   const todayISO = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-  const raceRows = (await pool.query<{ date: string; distance_mi: string; finish_seconds: string }>(
-    `SELECT date_iso::text AS date, distance_mi::text, finish_seconds::text
-       FROM races
-      WHERE user_uuid = $1 AND finish_seconds IS NOT NULL AND finish_seconds > 0
-      ORDER BY date_iso DESC LIMIT 30`,
-    [userId],
+  // 2026-06-06 · Audit C C1-1a · the prior query referenced columns that
+  // don't exist on `races` (date_iso/distance_mi/finish_seconds) → threw →
+  // caught → empty → bestRecentVdot undefined → plan anchored to GOAL pace
+  // instead of current VDOT. Read meta/actual_result jsonb, mirroring
+  // cron/snapshot-projections (the canonical VDOT pipeline).
+  const raceRows = (await pool.query<{ slug: string; meta: Record<string, unknown> | null; actual_result: Record<string, unknown> | null }>(
+    `SELECT slug, meta, actual_result FROM races
+      WHERE user_uuid = $1
+        AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
+        AND (meta->>'date')::date < $2::date
+        AND meta->>'priority' IN ('A','B')`,
+    [userId, todayISO],
   ).catch(() => ({ rows: [] }))).rows;
   const runRows = (await pool.query<{
     id: string; date: string; workout_type: string | null; distance_mi: string | null; finish_seconds: string | null; avg_hr: string | null;
@@ -1784,7 +1790,7 @@ async function loadGeneratorInputs(
             COALESCE(data->>'date', LEFT(data->>'startLocal',10)) AS date,
             data->>'workoutType' AS workout_type,
             (data->>'distanceMi')::text AS distance_mi,
-            (data->>'movingTimeSec')::text AS finish_seconds,
+            COALESCE((data->>'durationSec')::numeric,(data->>'movingTimeS')::numeric,(data->>'movingSec')::numeric,(data->>'elapsedTimeS')::numeric)::text AS finish_seconds,
             (data->>'avgHr')::text AS avg_hr
        FROM runs
       WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
@@ -1793,20 +1799,34 @@ async function loadGeneratorInputs(
       ORDER BY date DESC LIMIT 200`,
     [userId, await runnerToday(userId)],
   ).catch(() => ({ rows: [] }))).rows;
-  const raceCandidates = raceRows.map((r) => ({
-    slug: r.date,
-    name: r.date,
-    date: r.date,
-    priority: null as 'A'|'B'|'C'|null,
-    distance_mi: Number(r.distance_mi) || null,
-    finish_seconds: Number(r.finish_seconds) || null,
-  }));
+  const raceCandidates = raceRows.map((r) => {
+    const m = (r.meta ?? {}) as Record<string, unknown>;
+    const ar = (r.actual_result ?? {}) as Record<string, unknown>;
+    let finishSec: number | null = ar.finishS != null ? Number(ar.finishS) : null;
+    if (!finishSec) finishSec = parseRaceTime(m.finishTime as string);
+    return {
+      slug: r.slug,
+      name: (m.name as string) ?? r.slug,
+      date: (m.date as string) ?? '',
+      priority: ((m.priority as string) ?? null) as 'A'|'B'|'C'|null,
+      distance_mi: m.distanceMi != null ? Number(m.distanceMi) : distanceMiOf(m),
+      finish_seconds: finishSec,
+    };
+  });
+  // 2026-06-06 · Audit C C1-1c · real max HR for the run-candidate HR gate
+  // (was hardcoded null → vdotFromRun's HR fallback never fired for any user).
+  const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
+  // 2026-06-06 · Audit C C1-1b · runs carry Strava's numeric workout_type
+  // enum (1=race, 3=workout); map to the string taxonomy bestRecentVdot
+  // expects. 0/2/null → non-quality (the HR gate decides those).
+  const STRAVA_WORKOUT_TYPE: Record<string, string> = { '1': 'race', '3': 'tempo' };
   const runCandidates = runRows.map((r) => ({
-    id: r.id, date: r.date, workout_type: r.workout_type,
+    id: r.id, date: r.date,
+    workout_type: r.workout_type != null ? (STRAVA_WORKOUT_TYPE[r.workout_type] ?? r.workout_type) : null,
     distance_mi: r.distance_mi != null ? Number(r.distance_mi) : null,
     finish_seconds: r.finish_seconds != null ? Number(r.finish_seconds) : null,
     avg_hr: r.avg_hr != null ? Number(r.avg_hr) : null,
-    max_hr: null as number | null,
+    max_hr: maxHr,
   }));
   const { best: bestVdotPick } = computeBestRecentVdot(raceCandidates, todayISO, 180, runCandidates);
   const bestRecentVdot = bestVdotPick?.vdot ?? undefined;
@@ -1877,13 +1897,16 @@ async function loadGeneratorInputs(
   //            → hybrid 12-mo observed → users.max_hr → null). Reading
   //            profile.max_hr directly would miss the observed peak ·
   //            per task #141 the profile column is not source of truth.
-  const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi);
+  // 2026-06-06 · Audit C C5 · 480s/mi (8:00) default when no goal time is
+  // set, per spec-builder.tPaceFromGoal's contract. Without it, tPaceSec
+  // stays null → buildWorkoutSpec null-coercion → garbage paces.
+  const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi) ?? 480;
   const lthrRow = (await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
   const lthr = lthrRow?.lthr ?? null;
-  const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
+  // maxHr computed earlier (Audit C C1-1c hoist) for the run-candidate gate.
 
   return {
     ok: true,

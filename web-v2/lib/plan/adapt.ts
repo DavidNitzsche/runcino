@@ -363,12 +363,26 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         }
       }
     }
-    // Stamp adaptation on the plan
+    // Stamp the plan. last_adapted_at = "cron evaluated" (run-adaptations
+    // also bumps it on no-op runs, so it does NOT mean anything changed).
+    // 2026-06-06 · Audit C C3 (Option C) · record an actual change only
+    // when touched > 0 by appending to adaptation_log. Consumers derive
+    // "last changed" = max(adaptation_log.ts); also fixes the empty-log
+    // finding (no schema change).
     await client.query(
       `UPDATE training_plans SET last_adapted_at = NOW()
         WHERE user_uuid = $1 AND archived_iso IS NULL`,
       [userId]
     );
+    if (touched > 0) {
+      await client.query(
+        `UPDATE training_plans
+            SET adaptation_log = COALESCE(adaptation_log, '[]'::jsonb)
+              || jsonb_build_object('ts', NOW(), 'n', $2::int)
+          WHERE user_uuid = $1 AND archived_iso IS NULL`,
+        [userId, touched]
+      );
+    }
     await client.query('COMMIT');
   } catch (e) {
     await client.query('ROLLBACK');

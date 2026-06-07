@@ -29,17 +29,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { requireUserId } from '@/lib/auth/session';
-
-function todayPT(): string {
-  // PT-adjusted "today" — matches buildWatchToday + briefing engine.
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-}
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
-  const dateParam = req.nextUrl.searchParams.get('date') ?? todayPT();
+  // 2026-06-06 · Audit C C6 · runner timezone, not the -7h Pacific hack.
+  // Keeps the iPhone week-strip's "today" consistent with /api/watch/today.
+  const today = await runnerToday(userId);
+  const dateParam = req.nextUrl.searchParams.get('date') ?? today;
 
   // Mon-Sun week containing date.
   const dow = new Date(dateParam + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
@@ -58,7 +57,7 @@ export async function GET(req: NextRequest) {
       plan_id: null,
       week_start_iso: null,
       week_end_iso: null,
-      today_iso: todayPT(),
+      today_iso: today,
       days: [],
       message: 'No active plan.',
     });
@@ -73,7 +72,6 @@ export async function GET(req: NextRequest) {
     [plan.id, dateParam, daysSinceMonday]
   )).rows;
 
-  const today = todayPT();
   const weekStart = (await pool.query(
     `SELECT ($1::date - $2::int)::text AS d`,
     [dateParam, daysSinceMonday]

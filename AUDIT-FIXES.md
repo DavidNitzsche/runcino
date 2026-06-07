@@ -206,8 +206,75 @@ Update this file at the end of each leg.
 ## Audit B — Architectural source-of-truth sweep  [NOT STARTED]
 Enumerate EVERY value every surface (web/iPhone/Watch) displays or writes; prove each reads from backend, not local recompute/store. Flag every local recompute + bypassing write. Fresh session, Phase 0 pre-flight, read-only, falsify-don't-confirm. Depends on Cluster 1 done (consumes volume + VDOT).
 
-## Audit C — Plan generation correctness  [NOT STARTED]
-`training_plans` / `plan_workouts`: pace targets track canonical VDOT? plan adapts correctly to missed/moved workouts? taper lands for CIM Dec 6? "what's today's workout" single-sourced across surfaces?
+## Audit C — Plan generation correctness  [AUDIT DONE · 2026-06-06 · read-only `DATABASE_URL_RO` · on main=2a2b7f42 · 0 code/data writes]
+_(David referred to this as "Audit B" in the session prompt; filed here as Audit C per the doc taxonomy. Doc's old one-liner said "taper lands for CIM Dec 6" — stale; the active goal is AFC Half Aug 16. CIM has no active plan.)_
+
+**Subject:** active plan `pln_ca91f252bba50c74` (race-prep · AFC Half · goal_iso 2026-08-16 · 77 workouts · canonical VDOT 47.9 · goal 1:30). Falsify-don't-confirm; every finding verified against real records.
+
+**Headline:** the loop generates without crashing, the data is single-sourced (one `plan_workouts` table, one active plan, identical plan selectors), and the race anchor date is correct. But **pace prescription is wrong for every user**: the plan is anchored to GOAL pace, not current VDOT, because the current-fitness blend (Rule 3) is fed by two broken VDOT queries and silently no-ops. Six findings: 1 CRITICAL, 5 MAJOR, 3 MINOR.
+
+### C1 · CRITICAL · paces track GOAL pace, not canonical VDOT — Rule 3 blend is structurally inert (any-runner)
+All 77 rows derive from a single `tPaceSec` via fixed offsets (`spec-builder.ts`: easy T+60/+110, long T+55/+90→hdln 480, tempo T+12, threshold T, interval T−18). Every stored pace reconciles **exactly to T=407 = `tPaceFromGoal(1:30 HM)`** (race row 407; interval 389=T−18; tempo 419=T+12; easy 467–517; long 480). Current fitness `tPaceFromVdot(47.9)=430` (HM 1:34:54 → T 7:10) is **never used** → quality days are **~23 s/mi too fast** (interval 6:29 vs current-fit 6:52; tempo 6:59 vs 7:22; threshold 6:47 vs 7:10).
+**Root cause:** `generate.ts` recomputes its OWN `bestRecentVdot` instead of reading canonical 47.9, and both candidate sources are dead:
+- Race query `loadGeneratorInputs`→line 1773 `SELECT date_iso, distance_mi, finish_seconds FROM races` — **those columns don't exist** (races has `meta`/`actual_result` jsonb). Reproduced live: `column "date_iso" does not exist`. Wrapped in `.catch(()=>({rows:[]}))` → silently empty.
+- Run query (line 1780) filters `workoutType IN (QUALITY_RUN_TYPES strings)`, but ingested runs carry **numeric/null** `workoutType` (David: 63×null, 22×'0', 2×'1') → never matches; and `max_hr` hardcoded `null` (line 1809) disables the HR fallback in `vdotFromRun`. Reproduced live: returns `[]`.
+- Net: `bestRecentVdot=undefined` → `currentT=null` → `tPaceForWeek` returns `goalT` for all 11 weeks (proof: week-0 stored interval is 389=goalT−18, not 412=currentT−18 → blend never fired). `generate.ts` reads no other VDOT (no `projection_snapshots`, no `vdot_manual_override`).
+**Contrast:** `cron/snapshot-projections/route.ts:54` reads `SELECT slug, meta, actual_result FROM races` (correct) and calls the SAME `bestRecentVdot()` → 47.9. The generator just feeds it broken inputs.
+**Any-runner:** the broken races query throws for everyone; the numeric/null `workoutType` is what ingest writes for everyone → Rule 3 is inert for ALL users → every plan anchored to goal pace. **Threatens:** systematic over-prescription on every quality day (worse the further a runner is from goal — a beginner targeting an aggressive time gets wildly fast reps), and it manufactures the "missed reps" in C4.
+
+### C2 · MAJOR · race week has no tune-up; last intensity 10 days out (any-runner)
+Doctrine `Research/08 §9.3` HM race-week template prescribes **Tue: 4–5 mi w/ 4×1K @ HMP**; §9.1 "intensity is preserved through the taper"; §18.2 names "cutting all intensity in taper → sluggish legs." But `layoutWeek` race-week branch (`generate.ts:682–707`) hardcodes only race + shakeout + rest + easy ("strides optional"). Race week (Aug 10–16): easy 4/3/4/3 · rest · shakeout 2 · RACE. **Last fast running = Aug 6 tempo (10 days pre-race)** vs the doctrinal ~5. `spec-builder` has a `race_week_tuneup` type (2×0.5mi @ T−5) that `layoutWeek` **never schedules** (dead). Volume taper itself is fine (peak 64 → 54.5 → 46 → 29 incl. race). **Any-runner:** hardcoded → every plan, every distance. **Threatens:** flat legs on race day for a goal race.
+
+### C3 · MAJOR · `last_adapted_at` is a no-op cron stamp — "adapted" doesn't mean changed (any-runner)
+`run-adaptations/route.ts:114–120` stamps `last_adapted_at = NOW()` even when `applied === 0` ("the only cron-fire proof"). Active plan: `last_adapted_at=2026-06-06 06:32` but `adaptation_log=[]`, **zero `plan_mutations`** for its workouts, and all 76 `original_*` equal their authored values (no divergence). So "adapted today" = the cron ran and did nothing. **Threatens:** any surface showing "adapted X ago" misrepresents reactivity; masks adaptation gaps.
+
+### C4 · MAJOR · no adaptation for completed-but-underperformed quality (any-runner)
+The 06-02 `4×1mi @ I` (reps 3,4 missed by ~30s, per Audit A) triggered nothing. `detectMissedKeyWorkout` (`adapt.ts:566–584`) flags a key workout missed **only if no completed ≥4mi run exists within ±1 day** — 06-02 was completed (7.5mi) → not missed. The engine never inspects rep pace; there is no "underperformed" trigger (consistent with the gutted reactive coach layer). The actual 06-02 adaptation activity was for a **different reason**: 2 `plan_proposals`, both `volume_drift` (32.6 vs 20.1 mi/wk) + a goal-time string patch (`drift_cron_auto` / `race_patch_hook`) → superseded → rebuilds. **Consequence:** 06-16 + 06-30 re-prescribe the identical 389 target; the plan is static against repeated underperformance. Combined with C1 this is a closed loop: goal-pace targets → reps missed → no response → same targets re-issued.
+
+### C5 · MAJOR · cold-start (any-runner; 7 real plan-less accounts as falsifiers)
+The 7 non-David accounts: `onboarding_complete=false`, 0 races/runs/profile, level defaults `intermediate`.
+- **With a goal time:** generates without crashing — volume from `max(VOLUME_FLOOR_MPW.intermediate, 0)`, paces at GOAL pace. But `bestRecentVdot` is structurally undefined (no history) and canonical VDOT isn't read → a brand-new runner is prescribed goal race pace blind (C1 at its most dangerous).
+- **Without a goal time (latent, reachable):** `goalSec = parseGoalSeconds(meta.goalDisplay)` only (line 1738); **no 480 fallback** (line 1880), **no missing-goal guard**. `tPaceSec=null` → `buildWorkoutSpec` null-coercion → garbage paces (easy 60–110 s/mi, interval −18, tempo 12, race −10..5). `spec-builder.tPaceFromGoal` doc says callers "should fall back to a default (e.g. 480s/mi)" — `generate.ts` doesn't. Violates the cold-start doctrine (never a wrong value). **Reachability confirmed (2026-06-06 follow-up):** the race save route `app/api/races/route.ts` has **no goal requirement** (zero `goalDisplay`/`goalTime` references → stores client `meta` as-is), so a goal-less race is savable via the API; empirically 0/10 races lack a goal today → latent, reachable, not-yet-triggered.
+
+### C6 · MAJOR · "today's workout" date math diverges across surfaces (any non-Pacific runner)
+Data IS single-sourced: all three resolve the same active plan (build-workout `:280` and `loadActivePlan` use the identical `archived_iso IS NULL ORDER BY authored_iso DESC LIMIT 1`) and the same `plan_workouts` rows; iPhone and Watch share `GET /api/watch/today`. **But "which row is today" is computed two ways:** web (`state-loader`/`glance-state`) uses `runnerToday(userId)` → `profile.timezone` (DST/travel-aware); watch+iPhone (`build-workout.ts:275`) use `Date.now() − 7*3600000` — the **deprecated −7h Pacific hack**. `runner-tz.ts:4–14` documents that exact hack as the bug it fixed (off-by-one recovery/streak/today); web migrated 2026-06-03, build-workout did not. David is Pacific (PDT now) so they agree today; diverges in PST winter (off-by-1h at the date boundary), for any non-Pacific runner (systematic), and during travel (cold-start users with no profile → web=UTC vs watch −7h = 7h apart). **Threatens:** same question, different answer between web and watch/iPhone.
+
+### MINOR
+- **C7 · race anchor verified CLEAN (not a defect):** AFC Half 2026 = Sun **Aug 16** (49th annual, third Sunday; multiple official sources). DB `goal_iso`/`meta.date` = 2026-08-16 ✓.
+- **C8 · iPhone `/api/watch/today` "fabricates phases":** iPhone code (`API.swift:847–899`) acknowledges this and notes an unfinished plan to expose the authored `plannedSpec` on `/api/plan/week`. Tier-2 architectural debt; build-workout currently prefers `workout_spec`, so not a live row divergence.
+- **C9 · hygiene:** 06-04 plan_workout is the lone row of 77 with NULL `original_*` (snapshot gap); `generate.ts:900` comment says VDOT window "60d" but code uses 180d (doc drift).
+
+**Falsifiers run (all read-only):** races-column query throws live ✓ · run-candidate query returns `[]` live ✓ · 77 rows reconcile to T=407=goalT, not 430=VDOT-T ✓ · week-0 interval 389 (goalT) proves blend never fired ✓ · `snapshot-projections` reads correct columns ✓ · AFC date Aug 16 confirmed vs official calendar ✓ · `plan_mutations`=∅ for plan, `adaptation_log`=[], `original_*` zero-divergence ✓ · run-adaptations stamps last_adapted on 0 actions (source) ✓ · `detectMissedKeyWorkout` completed-run guard (source) ✓ · null-tPace → garbage paces (computed) ✓ · web `runnerToday` vs build-workout −7h (source, both confirmed) ✓ · active-plan selectors identical across 3 paths ✓.
+
+**C6 finding — correction (2026-06-06 follow-up):** my first writeup framed C6 as "web TZ-aware vs watch/iPhone −7h hack." That over-credited the web side. The −7h hack (`Date.now() - 7*3600000`) is the **prevailing** "today" implementation — **36 call sites** across web coach modules (`log-state`, `health-state`, `training-state`, `profile-state`, `races-state`, `standing-recommendation`, `strength-status`, …), the plan engine (`generate.ts:62/1592/1772`), and API routes (`/api/plan/week`, `/api/briefing`, `/api/today/*`, …). Only ~10 sites use `runnerToday` (incl. `state-loader`, `glance-state`). So "today" is inconsistent **system-wide**, often interleaved within a single file/flow — not a clean web-vs-watch split.
+
+## Audit C — Fixes C1 / C3 / C5 / C6  [CODE-COMPLETE 2026-06-06 · deploying via normal pipeline · active-plan regeneration GATED, proposed separately]
+
+**C1 (CRITICAL) — `generate.ts` now reads current VDOT; Rule 3 blends current→goal.**
+- **1a** races query → `SELECT slug, meta, actual_result` (was non-existent columns `date_iso/distance_mi/finish_seconds` → threw → empty), mirroring `snapshot-projections`. Reuses `distanceMiOf` + `parseRaceTime`; `meta->>'priority' IN ('A','B')`; window via existing `todayISO`.
+- **1b** run `workoutType` → map Strava numeric enum (`1`→race, `3`→tempo); `0/2/null` non-quality.
+- **1c** run `max_hr` → `loadEffectiveMaxHr(userId)` (hoisted above the candidate map; was hardcoded `null` → HR gate dead).
+- **1d (DISCOVERED during fix-prep)** run duration field → `COALESCE(durationSec, movingTimeS, movingSec, elapsedTimeS)`. The prior `movingTimeSec` (generate) and `movingTimeS` (snapshot) **don't exist** on `runs.data` (real field is `durationSec`) → `finish_seconds` was always null → run candidates never produced VDOT. **generate.ts only** this round (David: races win, no change to his 47.9). **Follow-up:** `snapshot-projections:125` has the same dead field; fixing it there can shift the **canonical** VDOT for run>race runners → separate validated change (logged below).
+- **For David:** load-bearing fix is 1a — Disney Half (5694s/13.109mi) = VDOT 47.9 → `currentT=430` → blend.
+
+**C5 — 480 s/mi fallback.** `generate.ts:1880` `tPaceFromGoal(...) ?? 480` (was null → `buildWorkoutSpec` null-coercion → easy 60–110/interval −18 garbage).
+
+**C6 — runner-TZ for "today's workout" (scoped: 2 sites).** `build-workout.ts:275` and `app/api/plan/week` both → `runnerToday(userId)` (was −7h Pacific hack). Keeps watch + iPhone today-card and week-strip consistent and TZ-correct. **Follow-up:** the remaining ~34 −7h sites are a separate sweep (logged below).
+
+**C3 (Option C — no DDL) — truthful change record.** `adapt.ts applyAdaptations` appends `{ts, n}` to `adaptation_log` only when `touched > 0`. `last_adapted_at` stays "cron evaluated"; "last changed" = `max(adaptation_log.ts)`. Fixes the empty-log finding. **iPhone display switch** (show last-changed, not last-adapted) is queued for TestFlight (sync ledger). Option A (named `last_changed_at` column) deferred to a future schema-cleanup pass.
+
+**Falsifiers (pre-commit, all green):** `tsc 0` · vitest 4/4 Audit-C asserts + **223/223** plan-suite regression · 1a RO query returns Disney/Rose Bowl/LA · `bestRecentVdot([those])=47.9` · `tPaceFromVdot(47.9)=430` · `composePlan` ramp **430→425→421→416→412→407**→RACE-SPECIFIC/TAPER 407 (week-1 interval **412/6:52**, not 389/6:29) · `buildWorkoutSpec('intervals',·,430)=412` vs `(·,407)=389` · `tPaceFromGoal(null,13.1) ?? 480 = 480`, easy 540–590.
+
+**Files:** `web-v2/lib/plan/generate.ts` · `web-v2/lib/watch/build-workout.ts` · `web-v2/app/api/plan/week/route.ts` · `web-v2/lib/plan/adapt.ts`.
+
+**Follow-ups (logged, NOT done this session):**
+- **C2** — race-week tune-up (doctrinal HM Tue 4×1K @ HMP / wire `race_week_tuneup`). Deferred per David: fix C1 first, let the plan rebuild, then address the taper.
+- **C4** — respond to completed-but-underperformed quality. **Feature requirement (needs design before code)** per David; engine currently only reschedules fully-skipped key workouts.
+- **snapshot-projections run-path (1d)** — same dead duration field; fixing changes canonical VDOT for run>race runners → separate validated change.
+- **36-site −7h `today` sweep** — finish the `runnerToday` migration across the remaining ~34 sites.
+- **iPhone (TestFlight)** — switch "adapted" display to last-changed (C3); week-strip already consistent once `/api/plan/week` deploys (C6).
+
+**GATED — active-plan regeneration (data write):** the fix re-paces only on regeneration. Approach proposed separately for David's explicit per-write go (same gated pattern). Until then prod runs corrected CODE but David's stored plan keeps the old 389 targets.
 
 ---
 

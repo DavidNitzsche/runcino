@@ -21,6 +21,7 @@ import { pool } from '@/lib/db/pool';
 import { prescriptionFor, type WorkoutType, type PrescriptionStep } from '@/lib/training/prescriptions';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
 import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -272,7 +273,11 @@ export async function buildWatchToday(
   /** Override "today" for testing/smoke. Defaults to PT-adjusted now. */
   overrideDate?: string,
 ): Promise<WatchTodayResponse> {
-  const today = overrideDate ?? new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  // 2026-06-06 · Audit C C6 · runner timezone (profile.timezone), not the
+  // deprecated -7h Pacific hack. The hack is correct only for Pacific-PDT;
+  // web coach-state migrated to runnerToday on 2026-06-03, watch/iPhone
+  // (this builder) had not. Fixes "today's workout" for every non-Pacific user.
+  const today = overrideDate ?? await runnerToday(userId);
 
   // 1. Find today's plan workout
   const plan = (await pool.query(
