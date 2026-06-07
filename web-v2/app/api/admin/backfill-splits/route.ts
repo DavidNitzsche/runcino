@@ -132,12 +132,12 @@ export async function POST(req: NextRequest) {
        AND (data->>'source') = 'watch'
        AND (data->>'mergedIntoId') IS NULL
        AND (data->>'date')::date >= (CURRENT_DATE - $2 * INTERVAL '1 day')
-       AND (data->'splits' IS NULL
-            OR jsonb_array_length(data->'splits') = 0
-            OR (jsonb_array_length(data->'splits') = 1
-                AND (data->'splits'->0->>'pace') IS NULL
-                AND (data->'splits'->0->>'paceSPerMi') IS NULL
-                AND (data->'splits'->0->>'paceSecPerMi') IS NULL))
+       AND (data->>'distanceMi')::float > 1.5
+       AND (
+         data->'splits' IS NULL
+         OR jsonb_array_length(data->'splits') = 0
+         OR jsonb_array_length(data->'splits') = 1
+       )
      ORDER BY (data->>'date') DESC`,
     [userId, days]
   )).rows;
