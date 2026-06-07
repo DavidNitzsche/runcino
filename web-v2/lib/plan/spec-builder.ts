@@ -110,6 +110,36 @@ function fuelMi(dist: number | null): number[] {
   return out;
 }
 
+// ── Long-run finish segment ───────────────────────────────────────────────
+
+/**
+ * 2026-06-07 · Audit D / D1 · parse a long-run finish segment out of the
+ * prescription (= the generator's sub_label, e.g. "LONG · 7mi @ HM" or
+ * "LONG · 4mi @ M"). Before this, the long branch ignored the prescription
+ * entirely and emitted a flat easy spec, so the watch executed a flat long
+ * run under a label that promised an HM/M finish (the D1 mismatch).
+ *
+ * Doctrine: Research/22 §3 (HM Advanced) — "16 mi LR w/ last 8 mi @ HMP";
+ * Intermediate phases — "LR with HMP segments". HM-pace segment = T+5,
+ * marathon-pace segment = T+18 (Daniels; matches `mp`/`tPaceFromGoal`).
+ *
+ *   "LONG · 7mi @ HM" → { mi: 7, tag: 'HM' }
+ *   "LONG · 4mi @ M"  → { mi: 4, tag: 'M' }   (also accepts "@ MP")
+ *   "LONG"            → null
+ */
+function extractFinishSegment(
+  prescription?: string | null,
+): { mi: number; tag: 'HM' | 'M' } | null {
+  if (!prescription) return null;
+  const m = String(prescription).match(/(\d+(?:\.\d+)?)\s*mi\s*@\s*(HM|MP|M)\b/i);
+  if (!m) return null;
+  const mi = Number(m[1]);
+  if (!Number.isFinite(mi) || mi <= 0) return null;
+  // 'HM' → half-marathon pace; 'M'/'MP' → marathon pace.
+  const tag: 'HM' | 'M' = m[2].toUpperCase().startsWith('H') ? 'HM' : 'M';
+  return { mi, tag };
+}
+
 /**
  * Build a workout_spec + pace_target for a single workout row.
  *
@@ -171,8 +201,19 @@ export function buildWorkoutSpec(
         paceTargetSPerMi: null,
       };
     case 'long': {
-      // Long runs in race-specific phase carry an MP segment ·
-      // pace_target reflects that mid-effort prescription.
+      // 2026-06-07 · Audit D / D1 · when the prescription describes an HM/M
+      // finish segment ("LONG · 7mi @ HM"), encode it so the watch executes
+      // easy-build + finish instead of one flat phase. HM finish = T+5,
+      // M finish = T+18 (Daniels; mirrors `mp` + `tPaceFromGoal`). Absent →
+      // plain flat long (backward-compatible). Cite: Research/22 §3.
+      const finish = extractFinishSegment(prescription);
+      const finishFields = finish
+        ? {
+            finish_mi: finish.mi,
+            finish_pace_s_per_mi: finish.tag === 'HM' ? tPaceSec + 5 : tPaceSec + 18,
+            finish_label: finish.tag,
+          }
+        : {};
       return {
         spec: {
           kind: 'long',
@@ -180,6 +221,7 @@ export function buildWorkoutSpec(
           pace_target_s_per_mi_hi: longHi,
           hr_cap_bpm: hrCapLong(lthr, maxHr),
           fuel_mi: fuelMi(distance_mi),
+          ...finishFields,
         },
         // Long-run "headline" pace is the easy long pace · take the
         // middle of the range.

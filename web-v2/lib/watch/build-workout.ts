@@ -444,8 +444,16 @@ export async function buildWatchToday(
   // 7. Workout-level fields
   const totalSec = phases.reduce((s, p) => s + p.durationSec, 0);
   const totalEstimatedMinutes = Math.round(totalSec / 60);
+  // 2026-06-07 · Audit D / D1 · long runs with an HM/M finish segment
+  // suppress the easy HR ceiling + foreground pace. The finish is run at
+  // race pace (HR well above the 89%-LTHR easy ceiling), so a workout-level
+  // ceiling would red-alert through the entire finish — coaching the
+  // opposite of the prescription. The easy build is run by feel.
+  const longHasFinish = wo.type === 'long'
+    && wo.workout_spec != null
+    && Number((wo.workout_spec as Record<string, unknown>)?.finish_mi) > 0;
   // HR ceiling only for easy/long where staying aerobic is the discipline
-  const hrCeilingBpm = (wo.type === 'easy' || wo.type === 'long') && lthr
+  const hrCeilingBpm = (wo.type === 'easy' || wo.type === 'long') && lthr && !longHasFinish
     ? Math.round(lthr * 0.89)  // top of Z2 in Friel zones
     : null;
 
@@ -472,7 +480,9 @@ export async function buildWatchToday(
     paceLabel: paceLabelFor(wo.type),
     isRace: wo.type === 'race',
     hrCeilingBpm,
-    displayHint: wo.type === 'long' ? 'hr' : null,
+    // Long runs foreground HR (the easy-aerobic discipline) — EXCEPT when
+    // they carry an HM/M finish, where pace is the target (D1).
+    displayHint: wo.type === 'long' ? (longHasFinish ? 'pace' : 'hr') : null,
   };
 
   // P27.5 — populate readiness on the watch payload. Before this the

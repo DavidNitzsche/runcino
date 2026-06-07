@@ -204,13 +204,47 @@ function expandLong(
   const lo = Number(s.pace_target_s_per_mi_lo ?? easyPaceSec - 30) || (easyPaceSec - 30);
   const hi = Number(s.pace_target_s_per_mi_hi ?? easyPaceSec + 30) || (easyPaceSec + 30);
   const mid = Math.round((lo + hi) / 2);
+  const easyTol = Math.max(tolerance, Math.round((hi - lo) / 2));
+
+  // 2026-06-07 · Audit D / D1 · race-specific + LT-phase long runs carry a
+  // faster finish (last N mi @ HM/M pace). Split into easy-build + finish
+  // so the watch executes — and guards — each correctly, instead of one
+  // flat phase under a label that promised the finish. Cite: Research/22 §3.
+  const finishMi = Number(s.finish_mi) || 0;
+  const finishPace = Number(s.finish_pace_s_per_mi) || 0;
+  if (finishMi > 0 && finishPace > 0 && finishMi < totalMi) {
+    const easyMi = Number((totalMi - finishMi).toFixed(1));
+    const finishLabel = String(s.finish_label ?? '').trim();
+    const finishTag = finishLabel ? `@ ${finishLabel} pace` : '@ race pace';
+    return [
+      {
+        type: 'work',
+        label: `${easyMi.toFixed(1)} mi easy`,
+        distanceMi: easyMi,
+        durationSec: Math.round(easyMi * mid),
+        targetPaceSPerMi: mid,
+        tolerancePaceSPerMi: easyTol,
+      },
+      {
+        type: 'work',
+        label: `${finishMi.toFixed(1)} mi ${finishTag}`,
+        distanceMi: Number(finishMi.toFixed(1)),
+        durationSec: Math.round(finishMi * finishPace),
+        targetPaceSPerMi: finishPace,
+        // Finish is race-pace quality work · tighter band than the easy
+        // build (never looser than 12 s/mi, the tempo tolerance).
+        tolerancePaceSPerMi: Math.min(easyTol, 12),
+      },
+    ];
+  }
+
   return [{
     type: 'work',
     label: `${totalMi.toFixed(1)} mi long run`,
     distanceMi: Number(totalMi.toFixed(1)),
     durationSec: Math.round(totalMi * mid),
     targetPaceSPerMi: mid,
-    tolerancePaceSPerMi: Math.max(tolerance, Math.round((hi - lo) / 2)),
+    tolerancePaceSPerMi: easyTol,
   }];
 }
 
@@ -295,15 +329,25 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
       const restLabel = formatRestLabel(restS);
       return `${reps}×${repLabel} ${paceTag} · ${restLabel}`;
     }
-    // 2026-06-03 · easy / recovery / long / race / shakeout · return
-    // null so the caller's existing sub_label sticks. The spec's
-    // `kind` doesn't carry the decorations these labels need:
-    //   · long  · "LONG · 5mi @ HM" race-pace insert isn't in spec
+    // 2026-06-07 · Audit D / D1 · long runs with a finish segment now
+    // carry it IN the spec (finish_mi/finish_label), so the label can be
+    // derived. race rows are also kind:'long' (stash) but carry no
+    // finish_mi → fall through to null and keep the "RACE" label.
+    case 'long': {
+      const finishMi = Number(s.finish_mi) || 0;
+      const finishLabel = String(s.finish_label ?? '').trim();
+      if (finishMi > 0 && finishLabel) {
+        return `LONG · ${formatMi(finishMi)}mi @ ${finishLabel}`;
+      }
+      return null;  // plain long / race · keep generator-time label
+    }
+    // 2026-06-03 · easy / recovery / race / shakeout · return null so the
+    // caller's existing sub_label sticks. The spec's `kind` doesn't carry
+    // the decorations these labels need:
     //   · race  · spec.kind='long' (stash) · would mis-derive as "LONG"
     //   · shakeout · spec.kind='easy' · would mis-derive as "EASY"
-    // Only the rep/tempo shapes (where the drift bug actually
-    // happened) get derived. Everything else keeps generator-time
-    // labels.
+    // Only the rep/tempo/long-finish shapes get derived. Everything else
+    // keeps generator-time labels.
     default:
       return null;
   }
