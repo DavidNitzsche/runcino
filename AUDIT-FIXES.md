@@ -384,5 +384,21 @@ Watch completions carry per-phase `paceSamples` (cumulative `{tSec, distMi, pace
 
 ---
 
-## Test health — the 5 weather-adjust failures must be FIXED, not excused (logged 2026-06-07, David)
-- [ ] **Investigate + fix the 5 `lib/coach/weather-adjust.test.ts` failures.** Carried as "pre-existing / not in scope" since this audit began — that is NOT an acceptable standing exception going forward. A failing test means either the code is wrong (fix the code) or the test is wrong (fix or delete it); decide which, per doctrine "Done = falsifiers passing." Observed failures are heat-band boundary assertions: e.g. `judgeWeather` at 75°F dry expects `heatBand='hot'` and slowdown ≥12% → escalate to `extreme`, but returns `heatBand='warm'` / slowdown <12% (looks like a boundary-inclusivity or threshold drift between code and test — `expected 'warm' to be 'hot'`, `expected 'hot' to be 'extreme'`). **Not blocking** the plan-gen work (P1–P4); close it as a discrete item, not a standing exception. Full suite today: 336 pass / 5 fail, all 5 in this one file.
+## Plan generation — HM race-specific doctrine gap (logged 2026-06-07, David · DO NOT FIX THIS SESSION)
+
+**Finding:** `generate.ts` line 781 has `cat === 'hm' ? ['threshold', 'tempo']` for the `RACE-SPECIFIC` phase. Research/22 §3 explicitly shows `['threshold', 'intervals']` for HM race-specific — one T session + one I session per week (intermediate sample peak week: Tue WU + 5mi @ T, Thu WU + 4×1200m @ I). The HM advanced plan phases column states "VO2max + race-specific HMP" as the penultimate phase, meaning interval work continues concurrent with HMP work, not before it. The current generator drops VO2max sharpening entirely in the final build phase, contradicting the doctrine.
+
+**Fix:** change `['threshold', 'tempo']` to `['threshold', 'intervals']` for `cat === 'hm'` in the `RACE-SPECIFIC` `qualityTypes` branch.
+
+**Impact:** any-runner — affects every HM plan. Requires a plan regeneration to take effect (no in-place re-pace; this changes workout type, not just paces). Must be a deliberate, isolated change — not bundled with other generator work.
+
+**Do not fix this session.** Logged as a discrete item. Coordinate with CRITICAL #1 (in-place re-pace) and the plan validation gate (P3) before regenerating.
+
+---
+
+## Test health — weather-adjust failures FIXED (2026-06-07)
+- [x] **All 5 `lib/coach/weather-adjust.test.ts` failures resolved.** Root cause: `bandFor()` had a temperature gate added 2026-06-03 (`if (tempF < 75) return 'warm'`) that hard-capped the band regardless of slowdown percentage, contradicting the doctrine the tests encode. The tests were written against David's explicitly stated doctrine (documented May 31, test comment: "This is the explicit doctrine the user called out"): pure slowdown-based bands — neutral <2%, warm 2–6%, hot 6–12%, extreme ≥12%. The code drifted from that on June 3.
+
+  **Fix:** `bandFor()` reverted to pure slowdown-only classification. Temperature gate removed entirely; `tempF` parameter dropped from signature. The 2026-06-03 gate was well-intentioned (softening the "hot" label for cool-but-humid conditions where pace cost is real but temperature feels mild) but contradicted the documented doctrine. The correct UX fix for unexpected labels is coach-voice explanation, not classification softening — e.g. "65°F but humid: costs you 9% on pace" is honest; labeling it "warm" when the pace tax is in the hot range is not.
+
+  **Result:** 351 pass / 0 fail / 3 skipped. Full suite green for the first time since 2026-06-03.

@@ -172,32 +172,11 @@ function solarEffectiveBump(c: WeatherInput): number {
   return 0;
 }
 
-/**
- * 2026-06-03 · band assignment now considers BOTH raw temperature AND
- * pace-cost. Was: slowdown% alone drove the verbal band, so a humid
- * 68°F day producing 9% slowdown got labeled "hot" · which doesn't
- * match runner experience or research (Research/06 reserves "hot"
- * for 75°F+).
- *
- * Now: raw temp gates the verbal label.
- *   · tempF < 75 · stays at "warm" max, regardless of pace cost
- *   · tempF 75-85 · "hot" when slowdown ≥ 6%
- *   · tempF >= 85 · "extreme" possible
- *
- * The slowdown % stays honest (Research/06 pace tax math doesn't
- * change) · only the qualitative voice changes. So a runner sees
- * "63°F to 68°F · a bit warm. Costs you about 9% on pace." instead
- * of "That's hot for running" at mild temps.
- *
- * Cite: Research/06-weather-adjustments.md §"Honest heat framing"
- */
-function bandFor(slowdownPct: number, tempF: number = 70): HeatBand {
+// Band assignment from slowdown % only — Research/06 doctrine:
+//   neutral < 2% · warm 2–6% · hot 6–12% · extreme ≥ 12%
+function bandFor(slowdownPct: number): HeatBand {
   if (slowdownPct < 2) return 'neutral';
-  // Raw temperature gates verbal band · "hot" requires real heat,
-  // not just pace cost from humidity at mild temps.
-  if (tempF < 75) return 'warm';
-  if (tempF < 85) return slowdownPct < 6 ? 'warm' : 'hot';
-  // 85°F+ · extreme possible
+  if (slowdownPct < 6) return 'warm';
   if (slowdownPct < 12) return 'hot';
   return 'extreme';
 }
@@ -237,8 +216,7 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   const durMult = durationScalingFactor(input.durationS);
   const slowdownPct = Math.round(baseSlow * dpMult * durMult * 10) / 10;
 
-  // 2026-06-03 · raw temp gates the verbal band (see bandFor docs).
-  const heatBand = bandFor(slowdownPct, t);
+  const heatBand = bandFor(slowdownPct);
   const heatStressF = td != null ? Math.round(t + td) : null;
 
   // Material when slowdown >= 2% or extreme dewpoint, or when sun bumped
