@@ -96,20 +96,17 @@ function deriveSplitsFromPaceSamples(
   return splits.length > 0 ? splits : null;
 }
 
-/** Reconstruct body from either a proper jsonb object or the char-by-char
- *  array storage shape (historical rows where stringify'd string hit jsonb). */
+/** Parse the coach_intents value.
+ *  coach_intents.value is a TEXT column (confirmed 2026-06-06).
+ *  The pg driver returns text columns as JS strings — just JSON.parse.
+ *  Guards: already-object (future schema change), null/empty. */
 function reconstructBody(value: any): any | null {
   if (!value) return null;
-  if (typeof value === 'object' && !Array.isArray(value)) {
-    const keys = Object.keys(value);
-    const isCharArray = keys.length > 10 && keys.every(k => /^\d+$/.test(k));
-    if (isCharArray) {
-      try {
-        const str = keys.sort((a, b) => +a - +b).map(k => value[k]).join('');
-        return JSON.parse(str);
-      } catch { return null; }
-    }
-    return value; // proper jsonb object
+  // Already an object (defensive — column is text today)
+  if (typeof value === 'object') return value;
+  // Normal path: text column → JSON string → parse
+  if (typeof value === 'string') {
+    try { return JSON.parse(value); } catch { return null; }
   }
   return null;
 }
