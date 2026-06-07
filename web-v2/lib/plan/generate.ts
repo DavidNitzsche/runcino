@@ -580,7 +580,7 @@ function volumeCurve(
 
 interface DayPlan {
   dow: DOW;
-  type: 'easy' | 'long' | 'threshold' | 'intervals' | 'tempo' | 'race' | 'rest' | 'shakeout';
+  type: 'easy' | 'long' | 'threshold' | 'intervals' | 'tempo' | 'race' | 'rest' | 'shakeout' | 'race_week_tuneup';
   distanceMi: number;
   isQuality: boolean;
   isLong: boolean;
@@ -774,7 +774,7 @@ function layoutWeek({
     // toward race-specific quality regardless of distance.
     const cat = distanceCategoryOf(raceDistanceMi);
     const qualityTypes: Array<DayPlan['type']> =
-        phase === 'TAPER'         ? ['threshold']                                     // tune-up · same for all distances
+        phase === 'TAPER'         ? ['race_week_tuneup']                               // tune-up · same for all distances
       : phase === 'RACE-SPECIFIC'
           ? (cat === '5k'   ? ['intervals', 'intervals']
            : cat === '10k'  ? ['threshold', 'intervals']
@@ -793,10 +793,11 @@ function layoutWeek({
       if (slots[dow] != null) return; // conflict · skip
       const qt = qualityTypes[i % qualityTypes.length];
       const sub =
-        qt === 'intervals'  ? rx.intervals
-      : qt === 'threshold'  ? rx.threshold
-      : qt === 'tempo'      ? `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`
-      :                       'QUALITY';
+        qt === 'intervals'        ? rx.intervals
+      : qt === 'threshold'        ? rx.threshold
+      : qt === 'tempo'            ? `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`
+      : qt === 'race_week_tuneup' ? 'WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi'
+      :                              'QUALITY';
       // 2026-06-02 · the workout_library uses family='threshold' for
       // BOTH rep-based cruise intervals AND continuous tempos (both
       // are T-pace work in Daniels' taxonomy). When the picked library
@@ -813,10 +814,11 @@ function layoutWeek({
         dow: dow as DOW, type: effectiveType, distanceMi: qualityMiEach, isQuality: true, isLong: false,
         subLabel: sub,
         notes:
-          effectiveType === 'intervals' ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
-        : effectiveType === 'threshold' ? 'WU 1.5mi, threshold reps, CD 1mi. Comfortably hard.'
-        : effectiveType === 'tempo'     ? 'WU, continuous tempo block, CD. Just below threshold.'
-        :                                  '',
+          effectiveType === 'intervals'        ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
+        : effectiveType === 'threshold'        ? 'WU 1.5mi, threshold reps, CD 1mi. Comfortably hard.'
+        : effectiveType === 'tempo'            ? 'WU, continuous tempo block, CD. Just below threshold.'
+        : effectiveType === 'race_week_tuneup' ? 'Two sharp half-mile reps just above T-pace. Keep it brief. Legs stay fresh.'
+        :                                         '',
       };
     });
   }
