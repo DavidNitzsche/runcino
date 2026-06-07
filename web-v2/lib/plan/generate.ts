@@ -1445,7 +1445,7 @@ let sealedSnapshot: Map<string, SealedPrescription> = new Map();
 
 async function persistPlan(args: {
   userId: string; raceSlug: string; raceDateISO: string;
-  blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean }>;
+  blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean; tPaceSec?: number | null }>;
   authoredState: Record<string, unknown>;
   /** Runner's T-pace (s/mi) at generate-time. Used to populate every
    *  quality workout's pace_target_s_per_mi + workout_spec at insert ·
@@ -1648,7 +1648,11 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     raceDateISO: inputs.compose.raceDateISO,
     blocks: composed.blocks,
     weeks: composed.weeks.map((w) => ({
-      startISO: w.startISO, phase: w.phase, days: w.days, isRaceWeek: w.isRaceWeek,
+      // 2026-06-06 · Audit C C1-1f · pass the per-week blended tPaceSec
+      // through to persistPlan. Was stripped here → persistPlan fell back
+      // to plan-wide goalT for every week → flat goal-pace plan (the
+      // Rule 3 ramp was computed in composePlan then discarded at persist).
+      startISO: w.startISO, phase: w.phase, days: w.days, isRaceWeek: w.isRaceWeek, tPaceSec: w.tPaceSec,
     })),
     tPaceSec: inputs.compose.tPaceSec,
     lthr: inputs.compose.lthr,
