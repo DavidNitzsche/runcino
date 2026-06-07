@@ -581,6 +581,8 @@ final class HealthKitImporter: ObservableObject {
                 if secs >= 120 && secs <= 3600 {
                     let pace = "\(secs / 60):\(String(format: "%02d", secs % 60))"
                     let elevFt = Int(((locs[i].altitude - mileStartElev) * 3.28084).rounded())
+                    // diagnostic · remove after splits bug resolved
+                    print("[perMileSplits] mile \(mileNo): \"\(pace)\" = \(secs)s (raw unpaused)")
                     splits.append(.init(
                         mile: mileNo,
                         pace: pace,
@@ -590,6 +592,9 @@ final class HealthKitImporter: ObservableObject {
                         distanceMi: 1.0   // full mile — explicit so server validator
                                           // uses pace × 1.0 not pace × default-1
                     ))
+                } else {
+                    // diagnostic · gate rejection — useful to see if any miles were skipped
+                    print("[perMileSplits] mile \(mileNo): GATE REJECTED secs=\(secs) (must be 120-3600)")
                 }
                 mileNo += 1
                 mileStartTime = locs[i].timestamp
@@ -636,12 +641,32 @@ final class HealthKitImporter: ObservableObject {
             }
             let durationS = Int(workout.duration.rounded())
             let tailSecs  = durationS - splitsSumS
+            // diagnostic · remove after splits bug resolved
+            print("[perMileSplits] --- summary ---")
+            print("[perMileSplits] GPS splits emitted: \(splits.count)")
+            print("[perMileSplits] splitsSumS=\(splitsSumS) (reduce over \(splits.count) pace strings)")
+            print("[perMileSplits] workout.duration=\(workout.duration) → durationS=\(durationS)")
+            print("[perMileSplits] tailSecs=\(tailSecs) (durationS-splitsSumS)")
+            // verify the reduce matched the raw secs values logged above
+            for (idx, s) in splits.enumerated() {
+                let parts = s.pace.split(separator: ":").compactMap { Int($0) }
+                let reparsed = parts.count == 2 ? parts[0]*60+parts[1] : -1
+                print("[perMileSplits] re-parse check mile \(idx+1): \"\(s.pace)\" → \(reparsed)s")
+            }
             if tailSecs > 0 {
                 let avgPaceSecPerMi = splitsSumS / splits.count
                 let tailDistMi      = Double(tailSecs) / Double(avgPaceSecPerMi)
                 let avgMins         = avgPaceSecPerMi / 60
                 let avgSecs         = avgPaceSecPerMi % 60
                 let tailPace        = "\(avgMins):\(String(format: "%02d", avgSecs))"
+                // diagnostic · remove after splits bug resolved
+                print("[perMileSplits] avgPaceSecPerMi=\(avgPaceSecPerMi) (splitsSumS/splits.count = \(splitsSumS)/\(splits.count))")
+                print("[perMileSplits] tailDistMi=\(tailDistMi) (tailSecs/avgPace = \(tailSecs)/\(avgPaceSecPerMi))")
+                print("[perMileSplits] trailing split: pace=\"\(tailPace)\" distanceMi=\(tailDistMi)")
+                // verify server math closes
+                let serverTrailingContrib = Double(avgPaceSecPerMi) * tailDistMi
+                print("[perMileSplits] server check: avgPace×tailDistMi=\(serverTrailingContrib) (should=\(tailSecs))")
+                print("[perMileSplits] server check: splitsSumS+trailing=\(Double(splitsSumS)+serverTrailingContrib) (should=\(durationS))")
                 splits.append(.init(
                     mile: mileNo,
                     pace: tailPace,
@@ -650,7 +675,11 @@ final class HealthKitImporter: ObservableObject {
                     endTime: workout.endDate, // watch stop (not locs.last)
                     distanceMi: tailDistMi
                 ))
+            } else {
+                print("[perMileSplits] tailSecs≤0 — no trailing split emitted")
             }
+        } else {
+            print("[perMileSplits] splits.isEmpty — no full miles, no trailing split")
         }
 
         // 2026-06-06 round 92 · RECONCILIATION GUARD REMOVED.
