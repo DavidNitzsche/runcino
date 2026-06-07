@@ -225,6 +225,7 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
               if (day?.activityId) setOpenOverlay({ type: 'run', id: day.activityId });
               else setOpenOverlay({ type: 'wk', i });
             }}
+            onOpenRun={(id) => setOpenOverlay({ type: 'run', id })}
             onMeshChange={setMeshOverride}
           />
         )}

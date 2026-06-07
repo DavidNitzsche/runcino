@@ -185,11 +185,12 @@ function buildPhaseMeta(
 }
 
 export function TrainView({
-  seed, onOpenDetail, onMeshChange,
+  seed, onOpenDetail, onMeshChange, onOpenRun,
 }: {
   seed: FaffSeed;
   onOpenDetail: (dayIdx: number) => void;
   onMeshChange: (mesh: Mesh | null) => void;
+  onOpenRun?: (id: string) => void;
 }) {
   const { nowIdx, raceIdx, miles, maxMi, phases: realPhases } = seed.season;
   const [focusIdx, setFocusIdx] = useState(nowIdx);
@@ -909,6 +910,7 @@ export function TrainView({
           seed={seed}
           focusIdx={focusIdx}
           setFocusIdx={setFocusIdx}
+          onOpenRun={onOpenRun ?? (() => {})}
         />
       )}
     </div>
@@ -918,7 +920,7 @@ export function TrainView({
 /* ─────────────────────────  Full-plan modal  ───────────────────────── */
 
 function PlanModal({
-  tab, onSetTab, onClose, seed, focusIdx, setFocusIdx,
+  tab, onSetTab, onClose, seed, focusIdx, setFocusIdx, onOpenRun,
 }: {
   tab: 'month' | 'weeks';
   onSetTab: (t: 'month' | 'weeks') => void;
@@ -926,6 +928,7 @@ function PlanModal({
   seed: FaffSeed;
   focusIdx: number;
   setFocusIdx: (i: number) => void;
+  onOpenRun: (id: string) => void;
 }) {
   const goal = seed.goalRace;
   // 2026-06-01 · portal the modal to document.body so position:fixed
@@ -953,8 +956,8 @@ function PlanModal({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div className="sheet-body">
-          {tab === 'month' ? <MonthCalendar seed={seed} /> : (
+        <div className={`sheet-body${tab === 'month' ? ' cal-mode' : ''}`}>
+          {tab === 'month' ? <MonthCalendar seed={seed} onOpenRun={onOpenRun} /> : (
             <WeeksList seed={seed} focusIdx={focusIdx} onPick={(i) => { setFocusIdx(i); onClose(); }} />
           )}
         </div>
@@ -964,9 +967,10 @@ function PlanModal({
   return createPortal(modal, document.body);
 }
 
-function MonthCalendar({ seed }: { seed: FaffSeed }) {
+function MonthCalendar({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun: (id: string) => void }) {
   const goal = seed.goalRace;
   const today = new Date();
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   // Auto-scroll the calendar to today's row when the modal opens. Each
   // today cell is tagged id="cal-today"; on mount we walk up to its
   // calmonth row and scroll it to the top of the visible viewport.
@@ -986,6 +990,8 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
     mi: number;
     paceSec: number | null;
     adaptation: NonNullable<typeof seed.season.weekDays>[number][number]['adaptation'] | null;
+    activityId?: string | null;
+    workoutSpec?: unknown;
   };
   const planMap = new Map<string, PlanCell>();
   // weekDays now carry `date` directly (fixed 2026-05-31 · the seed
@@ -994,6 +1000,7 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
   // workouts). Calendar now anchors each workout to its real slot.
   // 2026-06-01: planMap also carries adaptation so the cell can render
   // the small downgrade glyph + "was X" subline.
+  // 2026-06-07: also carries activityId + workoutSpec for the day-detail panel.
   seed.season.weekDays.forEach((wkDays) => {
     wkDays.forEach((d) => {
       if (d.date) planMap.set(d.date, {
@@ -1002,6 +1009,8 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
         mi: d.mi,
         paceSec: d.paceSec,
         adaptation: d.adaptation ?? null,
+        activityId: d.activityId ?? null,
+        workoutSpec: (d as { workoutSpec?: unknown }).workoutSpec ?? null,
       });
     });
   });
@@ -1039,9 +1048,11 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
   }
   const DOW_LBL = ['M','T','W','T','F','S','S'];
   const tint = (c: string) => ({ background: `${c}38`, color: c });
+  const selectedDay = selectedDate ? planMap.get(selectedDate) ?? null : null;
 
   return (
-    <div className="cal" ref={calRef}>
+    <div className="cal-layout">
+      <div className="cal" ref={calRef}>
       {months.map((mo) => {
         const first = new Date(mo.y, mo.m, 1);
         const lead = (first.getDay() + 6) % 7;
@@ -1056,7 +1067,9 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
           const isRace = goal && goal.date.slice(0, 10) === iso;
           const past = date < today && !isToday;
           const w = planMap.get(iso);
-          const cls = `cell${isToday ? ' today' : ''}${isRace ? ' race' : ''}${past ? ' past' : ''}`;
+          const isSelected = selectedDate === iso;
+          const clickable = !!(w && w.type !== 'rest') || !!isRace;
+          const cls = `cell${isToday ? ' today' : ''}${isRace ? ' race' : ''}${past ? ' past' : ''}${isSelected ? ' cal-selected' : ''}${clickable ? ' cal-clickable' : ''}`;
           let body: React.ReactNode = null;
           if (isRace) {
             body = (
@@ -1128,7 +1141,12 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
             );
           }
           cells.push(
-            <div key={`d-${dd}`} className={cls} id={isToday ? 'cal-today' : undefined}>
+            <div
+              key={`d-${dd}`}
+              className={cls}
+              id={isToday ? 'cal-today' : undefined}
+              onClick={clickable ? () => setSelectedDate(iso === selectedDate ? null : iso) : undefined}
+            >
               <div className="cd">{dd}</div>
               {body}
             </div>
@@ -1141,6 +1159,164 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
           </div>
         );
       })}
+      </div>
+      {selectedDate && selectedDay ? (
+        <PlanDayPanel
+          iso={selectedDate}
+          day={selectedDay}
+          onClose={() => setSelectedDate(null)}
+          onOpenRun={onOpenRun}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** Detail panel shown to the right of the calendar when a day is tapped. */
+function PlanDayPanel({
+  iso, day, onClose, onOpenRun,
+}: {
+  iso: string;
+  day: {
+    type: string; name: string; mi: number; paceSec: number | null;
+    activityId?: string | null; workoutSpec?: unknown;
+  };
+  onClose: () => void;
+  onOpenRun: (id: string) => void;
+}) {
+  const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
+  const c = PHASE_TYPE_COLOR[day.type] ?? '#8A90A0';
+  const tint = { background: `${c}38`, color: c };
+  const spec = day.workoutSpec as Record<string, unknown> | null | undefined;
+  const paceStr = day.paceSec ? fmtPace(day.paceSec) : null;
+
+  // Build segment rows from workout_spec when available.
+  // Covers long (BASE/FINISH), tempo (WARMUP/TEMPO/COOLDOWN),
+  // intervals, threshold, easy, progression.
+  type Seg = { label: string; body: string; tail?: string };
+  const segments: Seg[] = [];
+  if (spec) {
+    const kind = spec.kind as string | undefined;
+    if (kind === 'long') {
+      const lo = spec.pace_target_s_per_mi_lo as number | undefined;
+      const hi = spec.pace_target_s_per_mi_hi as number | undefined;
+      const fuelMi = spec.fuel_mi as number[] | undefined;
+      const finishMi = spec.finish_mi as number | undefined;
+      const finishPace = spec.finish_pace_s_per_mi as number | undefined;
+      const finishLabel = spec.finish_label as string | undefined;
+      if (finishMi && finishPace) {
+        const baseMi = Math.max(0, day.mi - finishMi);
+        segments.push({ label: 'BASE', body: `${baseMi.toFixed(1)} mi easy`, tail: lo && hi ? `${fmtPace(lo)}–${fmtPace(hi)}/mi` : 'Easy' });
+        segments.push({ label: 'FINISH', body: `${finishMi.toFixed(1)} mi @ ${finishLabel ?? 'finish pace'}`, tail: `${fmtPace(finishPace)}/mi` });
+      } else {
+        if (lo && hi) segments.push({ label: 'PACE', body: 'Aerobic build', tail: `${fmtPace(lo)}–${fmtPace(hi)}/mi` });
+        if (spec.hr_cap_bpm) segments.push({ label: 'HR CAP', body: 'Stay aerobic', tail: `${spec.hr_cap_bpm} bpm` });
+        if (fuelMi && fuelMi.length > 0) segments.push({ label: 'FUEL', body: 'Gel · water · gel', tail: `mi ${fuelMi.join(' · ')}` });
+      }
+    } else if (kind === 'tempo' || kind === 'threshold') {
+      const wu = spec.warmup_mi as number | undefined;
+      const cd = spec.cooldown_mi as number | undefined;
+      const repPace = spec.rep_pace_s_per_mi as number | undefined;
+      const tempoPace = spec.tempo_pace_s_per_mi as number | undefined;
+      const workPace = repPace ?? tempoPace;
+      const workDist = spec.work_distance_mi as number | undefined;
+      if (wu) segments.push({ label: 'WARMUP', body: `${wu.toFixed(1)} mi easy` });
+      if (workDist && workPace) segments.push({ label: kind === 'tempo' ? 'TEMPO' : 'WORK', body: `${workDist.toFixed(1)} mi`, tail: `${fmtPace(workPace)}/mi` });
+      else if (workPace) segments.push({ label: kind === 'tempo' ? 'TEMPO' : 'WORK', body: 'Work block', tail: `${fmtPace(workPace)}/mi` });
+      if (cd) segments.push({ label: 'COOLDOWN', body: `${cd.toFixed(1)} mi easy` });
+    } else if (kind === 'intervals') {
+      const wu = spec.warmup_mi as number | undefined;
+      const reps = spec.rep_count as number | undefined;
+      const repPace = spec.rep_pace_s_per_mi as number | undefined;
+      const recov = spec.recovery_mi as number | undefined;
+      const cd = spec.cooldown_mi as number | undefined;
+      if (wu) segments.push({ label: 'WARMUP', body: `${wu.toFixed(1)} mi easy` });
+      if (reps && repPace) segments.push({ label: 'REPS', body: `${reps}×`, tail: `${fmtPace(repPace)}/mi` });
+      if (recov) segments.push({ label: 'RECOVERY', body: `${recov.toFixed(1)} mi jog between` });
+      if (cd) segments.push({ label: 'COOLDOWN', body: `${cd.toFixed(1)} mi easy` });
+    } else if (kind === 'easy') {
+      const lo = spec.pace_target_s_per_mi_lo as number | undefined;
+      const hi = spec.pace_target_s_per_mi_hi as number | undefined;
+      if (lo && hi) segments.push({ label: 'PACE', body: 'Easy · conversational', tail: `${fmtPace(lo)}–${fmtPace(hi)}/mi` });
+    } else if (kind === 'progression') {
+      const wu = spec.warmup_mi as number | undefined;
+      const start = spec.prog_start_s_per_mi as number | undefined;
+      const end = spec.prog_end_s_per_mi as number | undefined;
+      const cd = spec.cooldown_mi as number | undefined;
+      if (wu) segments.push({ label: 'WARMUP', body: `${wu.toFixed(1)} mi easy` });
+      if (start && end) segments.push({ label: 'PROGRESSION', body: 'Build easy → tempo', tail: `${fmtPace(start)} → ${fmtPace(end)}` });
+      if (cd) segments.push({ label: 'COOLDOWN', body: `${cd.toFixed(1)} mi easy` });
+    }
+  }
+
+  const niceDate = (() => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  })();
+
+  return (
+    <div className="cal-detail">
+      <div className="cal-detail-top">
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,.45)', textTransform: 'uppercase', marginBottom: 4 }}>{niceDate}</div>
+          <span className="ctag" style={tint}>{workoutTypeTitle(day.type)}</span>
+          {day.name && day.name.toLowerCase() !== workoutTypeTitle(day.type).toLowerCase() ? (
+            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,.8)' }}>{day.name}</div>
+          ) : null}
+        </div>
+        <button className="sheet-x" onClick={onClose} aria-label="Close day detail">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      {/* Distance + pace headline */}
+      <div style={{ display: 'flex', gap: 24, marginTop: 16 }}>
+        <div>
+          <div style={{ fontFamily: FONT_DISP, fontSize: 28, fontWeight: 600, lineHeight: 1 }}>{day.mi.toFixed(1)}<small style={{ fontSize: 13, fontWeight: 400, marginLeft: 3, opacity: 0.6 }}>mi</small></div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,.45)', marginTop: 4 }}>DISTANCE</div>
+        </div>
+        {paceStr ? (
+          <div>
+            <div style={{ fontFamily: FONT_DISP, fontSize: 28, fontWeight: 600, lineHeight: 1 }}>{paceStr}<small style={{ fontSize: 13, fontWeight: 400, marginLeft: 3, opacity: 0.6 }}>/mi</small></div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,.45)', marginTop: 4 }}>TARGET PACE</div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Segment breakdown */}
+      {segments.length > 0 ? (
+        <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {segments.map((seg, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,.05)' }}>
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1.4, color: 'rgba(255,255,255,.42)', marginBottom: 3 }}>{seg.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.88)' }}>{seg.body}</div>
+              </div>
+              {seg.tail ? <div style={{ fontSize: 13, fontWeight: 700, color: c, whiteSpace: 'nowrap' }}>{seg.tail}</div> : null}
+            </div>
+          ))}
+        </div>
+      ) : day.type !== 'rest' ? (
+        <div style={{ marginTop: 16, fontSize: 13, color: 'rgba(255,255,255,.45)' }}>
+          {day.type === 'easy' || day.type === 'recovery' ? 'Easy aerobic run. Conversational pace throughout.' : 'See full plan for session detail.'}
+        </div>
+      ) : null}
+
+      {/* View completed run button */}
+      {day.activityId ? (
+        <button
+          onClick={() => onOpenRun(day.activityId!)}
+          style={{
+            marginTop: 20, width: '100%', padding: '11px 16px',
+            background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.14)',
+            borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700,
+            cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}
+        >
+          <span>View completed run</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      ) : null}
     </div>
   );
 }
