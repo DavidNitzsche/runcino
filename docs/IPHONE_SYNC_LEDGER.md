@@ -75,6 +75,7 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 | Commit (web side) | Item | Notes |
 |--------|------|-------|
 | 25281ea7 | Prescription card (NEW) | Not yet authored as an iPhone brief · DEFERRED, gutted from web reactive layer @ b4a059e1. |
+| 94fedd72 (native) | THIS WEEK chip · done not planned | Today readiness "THIS WEEK" stat chip now sums `done_mi` (32 mi for wk of 2026-06-01) instead of planned `distance_mi` (was 45). `PlanDay.done_mi` already decoded; `weeklyMi` (planned) still feeds `fetchPrescriptionWeather`. Train tab "MI PLANNED" card unchanged. `xcodebuild -scheme Faff` BUILD SUCCEEDED. Needs TF build to reach devices. |
 
 ## WATCH TF QUEUE · sitting on David's clearance
 
