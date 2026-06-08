@@ -10,8 +10,8 @@
  * 2026-05-30 P2 #9: added HR Recovery 5% pillar from Apple Watch post-workout
  * 60s drop):
  *   - Sleep        28%  → 7-night avg vs 7.5h target. ±2 per 0.25h.
- *   - HRV          28%  → last night vs 30-day baseline. ±1 per 2%.
- *   - RHR          24%  → 3-day avg vs 60-day baseline. −2 per bpm above.
+ *   - HRV          28%  → 7-day rolling avg vs 30-day baseline. ±1 per 2%.
+ *   - RHR          24%  → 3-day rolling avg vs 30-day baseline. −2 per bpm above.
  *   - Load         15%  → A:C ratio (7d:28d). >1.5 = -8 per Gabbett.
  *   - HR Recovery   5%  → most recent vs 30d baseline. ±1 per 2 bpm delta.
  */
@@ -98,7 +98,7 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
             : `Well below baseline. Pull back today and check rest.`) + lutealNote;
     inputs.push({
       key: 'hrv', label: 'HRV · 28%', weight: w,
-      observedV: `${state.hrvCurrent}ms`,
+      observedV: `${state.hrvCurrent}ms · 7d avg`,
       // State both numbers, no delta. Same rule the coach voice follows.
       observedSub: state.cyclePhase === 'luteal'
         ? `baseline ${state.hrvBaseline}ms · luteal-adjusted ${lutealAdjusted}ms`
@@ -124,7 +124,7 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
           : `Notably elevated. Sleep, illness brewing, dehydration, or overreach. If it stays up 3+ days, ease the load.`;
     inputs.push({
       key: 'rhr', label: 'RHR · 24%', weight: w,
-      observedV: `${state.rhrCurrent} bpm`,
+      observedV: `${state.rhrCurrent} bpm · 3d avg`,
       observedSub: `baseline ${state.rhrBaseline} bpm`,
       meaning,
     });

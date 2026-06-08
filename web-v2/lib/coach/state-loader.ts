@@ -228,7 +228,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // Helper · groups daily values by sample_date (last 30 days),
   // returns current (today's reading) + baseline (mean of all
   // EXCEPT the last 7).
-  const loadStableBaseline = async (sampleType: string): Promise<{ current: number | null; baseline: number | null }> => {
+  const loadStableBaseline = async (sampleType: string, currentWindow = 1): Promise<{ current: number | null; baseline: number | null }> => {
     const rows = (await pool.query<{ d: string; v: number | string }>(
       `SELECT recorded_at::date::text AS d, AVG(value)::numeric AS v
          FROM health_samples
@@ -241,7 +241,8 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     ).catch(() => ({ rows: [] as Array<{ d: string; v: number | string }> }))).rows;
     const vals = rows.slice(-30).map((r) => Math.round(Number(r.v))).filter((v) => v > 0);
     if (vals.length === 0) return { current: null, baseline: null };
-    const current = vals.at(-1) ?? null;
+    const w = Math.min(currentWindow, vals.length);
+    const current = w > 0 ? Math.round(vals.slice(-w).reduce((s, x) => s + x, 0) / w) : null;
     // Stable baseline · mean of all-EXCEPT-last-7. Need ≥ 14 to be honest;
     // cold-start uses the whole-window mean as fallback.
     const baseline = vals.length >= 14
@@ -250,11 +251,11 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     return { current, baseline };
   };
 
-  const hrvSt = await loadStableBaseline('hrv');
+  const hrvSt = await loadStableBaseline('hrv', 7);
   const hrvCurrent = hrvSt.current;
   const hrvBaseline = hrvSt.baseline;
 
-  const rhrSt = await loadStableBaseline('resting_hr');
+  const rhrSt = await loadStableBaseline('resting_hr', 3);
   const rhrCurrent = rhrSt.current;
   const rhrBaseline = rhrSt.baseline;
 

@@ -430,7 +430,8 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     bpm: Math.round(Number(r.v)),
   })).slice(-30);
   const rhrAll = rhrSeries.map((r) => r.bpm);
-  const rhrCurrent = rhrAll.at(-1) ?? null;
+  const rhr3 = rhrAll.slice(-3);
+  const rhrCurrent = rhr3.length ? Math.round(rhr3.reduce((s, x) => s + x, 0) / rhr3.length) : null;
   const rhrBaseline = rhrAll.length >= 14
     ? Math.round(rhrAll.slice(0, -7).reduce((s, x) => s + x, 0) / Math.max(1, rhrAll.length - 7))
     : (rhrAll.length ? Math.round(rhrAll.reduce((s, x) => s + x, 0) / rhrAll.length) : null);
@@ -442,7 +443,8 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     ms: Math.round(Number(r.v)),
   })).slice(-30);
   const hrvAll = hrvSeries.map((r) => r.ms);
-  const hrvCurrent = hrvAll.at(-1) ?? null;
+  const hrv7 = hrvAll.slice(-7);
+  const hrvCurrent = hrv7.length ? Math.round(hrv7.reduce((s, x) => s + x, 0) / hrv7.length) : null;
   // 2026-06-04 · stable baseline · mean of last 30d EXCLUDING last 7
   // (the runner's "settled" state, not drifting with a recent streak).
   // Matches state-loader.ts loadStableBaseline + glance-state.ts +
