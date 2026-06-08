@@ -49,6 +49,7 @@ return Number(ph.actualPaceSPerMi) > effTarget + 10;   // "missed" only past the
 ### Related follow-up (out of this item's scope)
 The **recap win line** (`run-win.ts` `winTempo`/`winLong`, used by E3's `deriveWin`) is also weather-unaware — a raw delta vs the target. It isn't mis-firing on these specific runs (winTempo gets the whole-run avg, which is far from the segment target, so it returns null), but for full consistency it should heat-adjust too. Logged, not implemented.
 
-### Status
-- E3 + E5: **deployed** to `main` (raw, heat-unaware E5 verdict live now).
-- Heat-adjustment fix: **code-complete, committed to branch `claude/sweet-carson-b36ea7` (pushed), NOT on `main`.** Persisted so it survives overnight; pushing the branch does not trigger Railway (only `main` does). The deployed E5 currently mislabels heat-honest runs (Jun 2, Jun 4, any future hot run) as "short" until this ships. **Awaiting GO to fast-forward `main` (commit `<branch tip>`) → Railway.**
+### Status — DEPLOYED 2026-06-08 (commit `e0381c0f`)
+- E3 + E5: deployed to `main`.
+- Heat-adjustment fix: **DEPLOYED** (David's GO) — `main` fast-forwarded to `e0381c0f`, Railway fired. **Post-deploy prod confirm (RO):** Jun 2 (11.4% slowdown) + Jun 4 (7.9%) → **nailed** (were short); Jun 5/7 unchanged. ✅ ALL PASS.
+- Follow-up logged in `AUDIT-FIXES.md`: the recap win line (`winTempo`/`winLong`) is also weather-unaware — latent (not mis-firing today), needs its own fix session.
