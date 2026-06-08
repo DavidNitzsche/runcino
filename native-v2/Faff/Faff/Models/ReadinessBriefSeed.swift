@@ -48,11 +48,16 @@ struct ReadinessBriefSeed: Decodable {
     let trendNote: String?
     let composition: Composition?
     let watchTomorrow: [String]
+    // 2026-06-08 · WHAT TO DO · server already emits these (readiness-brief.ts
+    // :226/:233 via buildHealthActions); the model just wasn't decoding them.
+    let actions: [HealthAction]
+    let actionsThreshold: String
 
     enum CodingKeys: String, CodingKey {
         case date, score, band, label, headline, oneLineMover,
              scoreTrend, pillars, streaks, movers,
-             subjectiveOverride, coldStart, trendNote, composition, watchTomorrow
+             subjectiveOverride, coldStart, trendNote, composition, watchTomorrow,
+             actions, actionsThreshold
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -71,6 +76,28 @@ struct ReadinessBriefSeed: Decodable {
         self.trendNote = try c.decodeIfPresent(String.self, forKey: .trendNote)
         self.composition = try c.decodeIfPresent(Composition.self, forKey: .composition)
         self.watchTomorrow = (try? c.decode([String].self, forKey: .watchTomorrow)) ?? []
+        self.actions = (try? c.decode([HealthAction].self, forKey: .actions)) ?? []
+        self.actionsThreshold = try c.decodeIfPresent(String.self, forKey: .actionsThreshold) ?? ""
+    }
+}
+
+// MARK: - Health action (WHAT TO DO)
+
+/// One data-grounded action from buildHealthActions (health-actions.ts).
+/// {signal, priority, action, cite} · priority drives the chip color.
+struct HealthAction: Decodable, Identifiable {
+    let signal: String
+    let priority: String      // urgent | high | medium | low | on-course
+    let action: String
+    let cite: String
+    var id: String { signal + "·" + String(action.prefix(24)) }
+    enum CodingKeys: String, CodingKey { case signal, priority, action, cite }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.signal   = try c.decodeIfPresent(String.self, forKey: .signal) ?? ""
+        self.priority = try c.decodeIfPresent(String.self, forKey: .priority) ?? "low"
+        self.action   = try c.decodeIfPresent(String.self, forKey: .action) ?? ""
+        self.cite     = try c.decodeIfPresent(String.self, forKey: .cite) ?? ""
     }
 }
 

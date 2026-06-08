@@ -1,19 +1,21 @@
 //
 //  HealthSeed.swift
 //
-//  Composes HealthMetric values for the BODY / SLEEP / FORM sections.
-//  Wires backend-available signals (ReadinessSnapshot inputs, HealthState
-//  trends) into the bar-card shape, falling back to plausible
-//  placeholder series for metrics the backend doesn't ship yet (run
-//  power, vertical oscillation, ground contact, L/R balance, sleep
-//  stages broken out, body/wrist temp, resp rate).
+//  Composes HealthMetric values for the BODY / SLEEP / FORM sections
+//  from REAL backend data only. When a signal is absent, the tile
+//  renders an honest em-dash ("—") with no chart — never a fabricated
+//  placeholder value or a synthesized trend.
 //
-//  Per the brief: "treat the numbers as representative, not literal."
-//  Once backend ships a /api/health/v2 endpoint with the full driver
-//  shape, swap the placeholder helpers for real fields without
-//  touching the section views.
+//  2026-06-08 · de-fabrication pass (UI-HEALTH-REPORT 1.2 / 1.3).
+//  Removed the `?? <plausible literal>` value fallbacks, the
+//  drift()/chartFromHistory()/preferRealOrPad() chart synthesis, and the
+//  hardcoded directional coach lines. Coach copy is now derived from the
+//  ACTUAL delta via coachForDelta(). Added WEIGHT / SPO₂ / BODY FAT /
+//  LEAN MASS / MAX HR / ACTIVE ENERGY / HRV CV tiles (data already on
+//  HealthState — server ships it, the model now decodes it). Removed the
+//  phantom BODY TEMP tile (no `body_temp` source exists).
 //
-//  Created 2026-06-03 round 72.
+//  Created 2026-06-03 round 72 · de-fabricated 2026-06-08.
 //
 
 import Foundation
@@ -24,388 +26,366 @@ enum HealthSeed {
 
     static func bodyMetrics(readiness: ReadinessSnapshot?,
                             healthState: HealthState?) -> [HealthMetric] {
-        let hrvCur = readiness?.hrvCurrent ?? 52
-        let hrvBase = readiness?.hrvBaseline ?? 58
-        let rhrCur = readiness?.rhrCurrent ?? 49
-        let rhrBase = readiness?.rhrBaseline ?? 50
-        let vo2 = healthState?.vo2.current ?? 61.4
-        // 2026-06-03 round 77 · bodyTemp wires when backend ships it,
-        // placeholder when nil. currentC = current body temp (°C).
-        let bodyTempC = healthState?.bodyTemp?.currentC
-        let bodyTempBaseline = healthState?.bodyTemp?.baselineC ?? 36.5
-        let bodyTempSeries30 = healthState?.bodyTemp?.series30d ?? []
+        var out: [HealthMetric] = []
 
-        // 2026-06-03 round 79 · chart consistency · the line chart in
-        // the expanded sheet now derives from the same history array
-        // as the collapsed bar chart, padded at the FRONT with drift
-        // when the real history is < 28 days. Trends in both views
-        // are now identical (no more "bar going up, chart going down").
-        //
-        // 2026-06-03 round 80 · PREFER real backend series when present.
-        // hrvSeries / rhrSeries are top-level HealthState arrays of
-        // {date, ms/bpm} that backend has been shipping all along ·
-        // iPhone now reads them. vo2.series28d / respRate / wristTemp
-        // are new fields (lenient · empty falls back to fabrication).
-        let hrvHistory: [Double] = {
-            let real = healthState?.hrvSeries ?? []
-            if !real.isEmpty {
-                return real.suffix(14).map { Double($0.ms) }
-            }
-            return drift(from: Double(hrvBase) - 2, to: Double(hrvCur), n: 14, seed: 42)
-        }()
-        let rhrHistory: [Double] = {
-            let real = healthState?.rhrSeries ?? []
-            if !real.isEmpty {
-                return real.suffix(14).map { Double($0.bpm) }
-            }
-            return drift(from: Double(rhrBase) + 1, to: Double(rhrCur), n: 14, seed: 7)
-        }()
-        let vo2History: [Double] = {
-            let real = healthState?.vo2.series28d ?? []
-            if !real.isEmpty {
-                return Array(real.suffix(14))
-            }
-            return drift(from: vo2 - 1.0, to: vo2, n: 14, seed: 33)
-        }()
-        return [
-            metric(
-                id: "hrv", label: "HRV",
-                value: "\(hrvCur)", unit: " ms",
-                history: hrvHistory,
-                chart28: preferRealOrPad(
-                    realFull: (healthState?.hrvSeries ?? []).map { Double($0.ms) },
-                    history: hrvHistory,
-                    priorAvg: Double(hrvBase) + 1, seed: 142
-                ),
-                target: Double(hrvBase),
-                status: hrvCur < hrvBase - 4 ? .warn : (hrvCur < hrvBase - 8 ? .bad : .good),
-                direction: hrvCur < hrvBase ? .down : .up,
-                caption: "baseline \(hrvBase)",
-                coach: "Down \(max(0, hrvBase - hrvCur)) ms across recent nights · tracks short sleep, not a fade."
-            ),
-            metric(
-                id: "rhr", label: "RESTING HR",
-                value: "\(rhrCur)", unit: " bpm",
-                history: rhrHistory,
-                chart28: preferRealOrPad(
-                    realFull: (healthState?.rhrSeries ?? []).map { Double($0.bpm) },
-                    history: rhrHistory,
-                    priorAvg: Double(rhrBase) + 2, seed: 107
-                ),
-                target: Double(rhrBase),
-                status: rhrCur <= rhrBase ? .good : .warn,
-                direction: rhrCur < rhrBase ? .down : .flat,
-                caption: "baseline \(rhrBase)",
-                coach: "Sitting near baseline · cardiovascular load is low."
-            ),
-            metric(
-                id: "vo2", label: "VO₂ MAX",
-                value: String(format: "%.1f", vo2), unit: nil,
-                history: vo2History,
-                chart28: preferRealOrPad(
-                    realFull: healthState?.vo2.series28d ?? [],
-                    history: vo2History,
-                    priorAvg: vo2 - 1.4, seed: 133
-                ),
+        // HRV
+        if let cur = readiness?.hrvCurrent {
+            let base = readiness?.hrvBaseline
+            out.append(metric(
+                id: "hrv", label: "HRV", value: "\(cur)", unit: " ms",
+                history: (healthState?.hrvSeries ?? []).suffix(14).map { Double($0.ms) },
+                chart28: realChart((healthState?.hrvSeries ?? []).map { Double($0.ms) }),
+                target: base.map(Double.init),
+                status: cur >= (base ?? cur) ? .good : .warn,
+                direction: trendDir(cur: Double(cur), base: base.map(Double.init)),
+                caption: base.map { "baseline \($0)" } ?? "baseline forming",
+                coach: coachForDelta(noun: "HRV", cur: Double(cur), base: base.map(Double.init),
+                                     unit: "ms", higherIsBetter: true)))
+        } else {
+            out.append(noDataMetric(id: "hrv", label: "HRV", unit: " ms"))
+        }
+
+        // RESTING HR
+        if let cur = readiness?.rhrCurrent {
+            let base = readiness?.rhrBaseline
+            out.append(metric(
+                id: "rhr", label: "RESTING HR", value: "\(cur)", unit: " bpm",
+                history: (healthState?.rhrSeries ?? []).suffix(14).map { Double($0.bpm) },
+                chart28: realChart((healthState?.rhrSeries ?? []).map { Double($0.bpm) }),
+                target: base.map(Double.init),
+                status: cur <= (base ?? cur) ? .good : .warn,
+                direction: trendDir(cur: Double(cur), base: base.map(Double.init)),
+                caption: base.map { "baseline \($0)" } ?? "baseline forming",
+                coach: coachForDelta(noun: "Resting HR", cur: Double(cur), base: base.map(Double.init),
+                                     unit: "bpm", higherIsBetter: false)))
+        } else {
+            out.append(noDataMetric(id: "rhr", label: "RESTING HR", unit: " bpm"))
+        }
+
+        // VO₂ MAX · no baseline in payload · coach derived from the real series trend
+        if let cur = healthState?.vo2.current {
+            let s = healthState?.vo2.series28d ?? []
+            let coach: String = {
+                guard s.count >= 2, let f = s.first, let l = s.last else {
+                    return "VO₂ trend builds with more test-day readings."
+                }
+                let d = l - f
+                if abs(d) < 0.3 { return "Holding steady over the last month." }
+                return d > 0 ? "Up \(String(format: "%.1f", d)) over the last month."
+                             : "Down \(String(format: "%.1f", abs(d))) over the last month."
+            }()
+            out.append(metric(
+                id: "vo2", label: "VO₂ MAX", value: String(format: "%.1f", cur), unit: nil,
+                history: Array(s.suffix(14)), chart28: realChart(s),
+                target: nil, status: .good,
+                direction: trendDir(cur: cur, base: s.first),
+                caption: "30-day", coach: coach))
+        } else {
+            out.append(noDataMetric(id: "vo2", label: "VO₂ MAX", unit: nil))
+        }
+
+        // RESP RATE
+        if let cur = healthState?.respiratoryRate?.current {
+            let base = healthState?.respiratoryRate?.baseline
+            let delta = healthState?.respiratoryRate?.delta
+            let s = (healthState?.respiratoryRateSeries ?? []).map { $0.bpm }
+            out.append(metric(
+                id: "resp", label: "RESP RATE", value: String(format: "%.1f", cur), unit: " /min",
+                history: Array(s.suffix(14)), chart28: realChart(s),
                 target: nil,
-                status: .good, direction: .up,
+                status: (delta ?? 0) >= 2 ? .warn : .good,
+                direction: trendDir(cur: cur, base: base),
+                caption: base.map { "baseline \(String(format: "%.1f", $0))" } ?? "nightly",
+                coach: coachForDelta(noun: "Breathing rate", cur: cur, base: base,
+                                     unit: "/min", higherIsBetter: false, decimals: 1)))
+        } else {
+            out.append(noDataMetric(id: "resp", label: "RESP RATE", unit: " /min"))
+        }
+
+        // WRIST TEMP
+        if let cur = healthState?.wristTemp?.current {
+            let base = healthState?.wristTemp?.baseline
+            let delta = healthState?.wristTemp?.delta
+            let s = (healthState?.wristTempSeries ?? []).map { $0.tempC }
+            out.append(metric(
+                id: "wtemp", label: "WRIST TEMP", value: String(format: "%.2f", cur), unit: " °C",
+                history: Array(s.suffix(14)), chart28: realChart(s),
+                target: nil,
+                status: abs(delta ?? 0) >= 0.4 ? .warn : .good,
+                direction: trendDir(cur: cur, base: base),
+                caption: base.map { "baseline \(String(format: "%.2f", $0))" } ?? "30-day",
+                coach: coachForDelta(noun: "Skin temp", cur: cur, base: base,
+                                     unit: "°C", higherIsBetter: false, decimals: 2)))
+        } else {
+            out.append(noDataMetric(id: "wtemp", label: "WRIST TEMP", unit: " °C"))
+        }
+
+        // WEIGHT
+        if let cur = healthState?.weight.current {
+            let s = (healthState?.weightSeries ?? []).map { $0.lb }
+            out.append(metric(
+                id: "weight", label: "WEIGHT", value: String(format: "%.1f", cur), unit: " lb",
+                history: Array(s.suffix(14)), chart28: realChart(s),
+                target: nil, status: .good, direction: trendDir(cur: cur, base: s.first),
                 caption: "30-day",
-                coach: "Up across the block · aerobic engine is climbing."
-            ),
-            metric(
-                id: "resp", label: "RESP RATE",
-                value: healthState?.respiratoryRate?.current.map { String(format: "%.1f", $0) } ?? "15.1",
-                unit: " /min",
-                history: {
-                    let real = healthState?.respiratoryRateSeries ?? []
-                    return real.isEmpty
-                        ? drift(from: 15.0, to: 15.1, n: 14, seed: 61)
-                        : Array(real.suffix(14))
-                }(),
-                chart28: preferRealOrPad(
-                    realFull: healthState?.respiratoryRateSeries ?? [],
-                    history: {
-                        let real = healthState?.respiratoryRateSeries ?? []
-                        return real.isEmpty
-                            ? drift(from: 15.0, to: 15.1, n: 14, seed: 61)
-                            : Array(real.suffix(14))
-                    }(),
-                    priorAvg: 15.2, seed: 161
-                ),
-                target: nil,
-                status: .neutral, direction: .flat,
-                caption: healthState?.respiratoryRate?.baseline.map { "baseline \(String(format: "%.1f", $0))" } ?? "nightly",
-                coach: "Steady and normal · no illness signal in breathing rate."
-            ),
-            metric(
-                id: "btemp", label: "BODY TEMP",
-                value: bodyTempC.map { String(format: "%.1f", $0) } ?? "—",
-                unit: " °C",
-                history: {
-                    if bodyTempSeries30.isEmpty {
-                        return drift(from: 36.5, to: 36.6, n: 14, seed: 71)
-                    }
-                    return Array(bodyTempSeries30.suffix(14))
-                }(),
-                chart28: bodyTempSeries30.isEmpty
-                    ? chartFromHistory(
-                        history: drift(from: 36.5, to: 36.6, n: 14, seed: 71),
-                        priorAvg: 36.5, seed: 171)
-                    : bodyTempSeries30,
-                target: nil,
-                status: .neutral, direction: .flat,
-                caption: bodyTempC.map { _ in "baseline \(String(format: "%.1f", bodyTempBaseline))" } ?? "30-day",
-                coach: "Within your normal band · nothing flagged."
-            ),
-            metric(
-                id: "wtemp", label: "WRIST TEMP",
-                value: healthState?.wristTemp?.current.map { String(format: "%.2f", $0) } ?? "35.78",
-                unit: " °C",
-                history: {
-                    let real = healthState?.wristTempSeries ?? []
-                    return real.isEmpty
-                        ? drift(from: 35.74, to: 35.78, n: 14, seed: 51)
-                        : Array(real.suffix(14))
-                }(),
-                chart28: preferRealOrPad(
-                    realFull: healthState?.wristTempSeries ?? [],
-                    history: {
-                        let real = healthState?.wristTempSeries ?? []
-                        return real.isEmpty
-                            ? drift(from: 35.74, to: 35.78, n: 14, seed: 51)
-                            : Array(real.suffix(14))
-                    }(),
-                    priorAvg: 35.74, seed: 151
-                ),
-                target: nil,
-                status: .neutral, direction: .flat,
-                caption: healthState?.wristTemp?.baseline.map { "baseline \(String(format: "%.2f", $0))" } ?? "30-day",
-                coach: "Skin temperature is stable overnight · no deviation."
-            ),
-        ]
+                coach: coachForDelta(noun: "Weight", cur: cur, base: s.first,
+                                     unit: "lb", higherIsBetter: false, decimals: 1)))
+        } else {
+            out.append(noDataMetric(id: "weight", label: "WEIGHT", unit: " lb"))
+        }
+
+        // SPO₂
+        if let cur = healthState?.spo2?.current {
+            let base = healthState?.spo2?.baseline
+            let s = (healthState?.spo2Series ?? []).map { Double($0.pct) }
+            out.append(metric(
+                id: "spo2", label: "SPO₂", value: "\(cur)", unit: " %",
+                history: Array(s.suffix(14)), chart28: realChart(s),
+                target: nil, status: cur >= 96 ? .good : .warn,
+                direction: trendDir(cur: Double(cur), base: base.map(Double.init)),
+                caption: base.map { "baseline \($0)" } ?? "nightly",
+                coach: cur >= 96 ? "In the normal overnight range."
+                                 : "Below your usual overnight range · worth watching."))
+        } else {
+            out.append(noDataMetric(id: "spo2", label: "SPO₂", unit: " %"))
+        }
+
+        // BODY FAT
+        if let cur = healthState?.bodyFat?.current {
+            let s = (healthState?.bodyFatSeries ?? []).map { $0.pct }
+            out.append(metric(
+                id: "body_fat", label: "BODY FAT", value: String(format: "%.1f", cur), unit: " %",
+                history: Array(s.suffix(14)), chart28: realChart(s),
+                target: nil, status: .good, direction: trendDir(cur: cur, base: s.first),
+                caption: "trend",
+                coach: coachForDelta(noun: "Body fat", cur: cur, base: s.first,
+                                     unit: "%", higherIsBetter: false, decimals: 1)))
+        } else {
+            out.append(noDataMetric(id: "body_fat", label: "BODY FAT", unit: " %"))
+        }
+
+        // LEAN MASS · kg → lb to match the weight tile convention
+        if let kg = healthState?.leanMass?.current {
+            let cur = kg * 2.20462
+            let s = (healthState?.leanMassSeries ?? []).map { $0.kg * 2.20462 }
+            out.append(metric(
+                id: "lean_mass", label: "LEAN MASS", value: String(format: "%.1f", cur), unit: " lb",
+                history: Array(s.suffix(14)), chart28: realChart(s),
+                target: nil, status: .good, direction: trendDir(cur: cur, base: s.first),
+                caption: "trend",
+                coach: coachForDelta(noun: "Lean mass", cur: cur, base: s.first,
+                                     unit: "lb", higherIsBetter: true, decimals: 1)))
+        } else {
+            out.append(noDataMetric(id: "lean_mass", label: "LEAN MASS", unit: " lb"))
+        }
+
+        // HRV CV · derived client-side from the REAL hrv series (Plews CV).
+        // Value-only · no on-device band (the research-grounded destabilizing
+        // threshold lives server-side and we won't invent one here).
+        if let cv = hrvCV(healthState?.hrvSeries ?? []) {
+            out.append(metric(
+                id: "hrv_cv", label: "HRV CV", value: String(format: "%.1f", cv), unit: " %",
+                history: [], chart28: [],
+                target: nil, status: .neutral, direction: .flat,
+                caption: "variability · 14-day",
+                coach: "Night-to-night HRV spread. A rising spread can precede an HRV drop."))
+        }
+
+        // MAX HR · current-only · render only when real (> 0)
+        if let cur = healthState?.maxHr?.current, cur > 0 {
+            out.append(metric(
+                id: "max_hr", label: "MAX HR", value: "\(cur)", unit: " bpm",
+                history: [], chart28: [],
+                target: nil, status: .good, direction: .flat,
+                caption: "observed ceiling",
+                coach: "Highest HR seen recently · anchors your zones."))
+        }
+
+        // ACTIVE ENERGY · mirror the web partial-day / ingest-noise handling
+        let aeToday = healthState?.activeEnergy?.today ?? 0
+        let aeAvg7  = healthState?.activeEnergy?.avg7 ?? 0
+        if aeToday > 0 || aeAvg7 > 0 {
+            let ingestBroken = aeToday < 100 && aeAvg7 < 100
+            if ingestBroken {
+                out.append(noDataMetric(id: "active_energy", label: "ACTIVE ENERGY", unit: " kcal"))
+            } else {
+                let partialDay = aeToday > 0 && aeToday < 100 && aeAvg7 >= 500
+                let display = partialDay ? aeAvg7 : (aeToday > 0 ? aeToday : aeAvg7)
+                let s = (healthState?.activeEnergy?.series ?? []).map { Double($0.kcal) }
+                out.append(metric(
+                    id: "active_energy", label: "ACTIVE ENERGY", value: "\(display)", unit: " kcal",
+                    history: Array(s.suffix(14)), chart28: realChart(s),
+                    target: nil,
+                    status: partialDay ? .warn : (aeAvg7 > 0 && aeToday >= aeAvg7 / 2 ? .good : .warn),
+                    direction: .flat,
+                    caption: aeAvg7 > 0 ? "7-day avg \(aeAvg7)" : "today",
+                    coach: partialDay ? "Today is still syncing · showing your 7-day average."
+                                      : "Daily movement energy from your watch."))
+            }
+        }
+
+        return out
     }
 
     // MARK: - SLEEP section metrics (4 stages, clock-formatted values)
 
     static func sleepMetrics(readiness: ReadinessSnapshot?,
                               healthState: HealthState? = nil) -> [HealthMetric] {
-        // 2026-06-03 round 77 · prefer real sleep stages from backend
-        // (HealthState.sleepStages · backend aa45d543). Falls back to
-        // typical 18/22/52/8 ratios when stages aren't populated yet
-        // (cold start / non-watch night / older snapshot).
-        let stages = healthState?.sleepStages
-        let deep: Int
-        let rem: Int
-        let light: Int
-        let awake: Int
-        if let s = stages,
-           let d = s.deepMin, let r = s.remMin,
-           let l = s.lightMin, let a = s.awakeMin {
-            deep = d; rem = r; light = l; awake = a
-        } else {
-            let totalH = readiness?.sleep7Avg ?? 6.5
-            let totalMin = Int(totalH * 60)
-            deep = Int(Double(totalMin) * 0.18)
-            rem = Int(Double(totalMin) * 0.22)
-            light = Int(Double(totalMin) * 0.52)
-            awake = max(8, Int(Double(totalMin) * 0.05))
+        // Real stages or honest "—" · no more 18/22/52/8 ratio fabrication
+        // and no drift series for cold-start / non-watch nights.
+        guard let s = healthState?.sleepStages else {
+            return [ noDataMetric(id: "deep",  label: "DEEP",  unit: nil),
+                     noDataMetric(id: "rem",   label: "REM",   unit: nil),
+                     noDataMetric(id: "light", label: "LIGHT", unit: nil),
+                     noDataMetric(id: "awake", label: "AWAKE", unit: nil) ]
         }
-        // Series for the mini-bars · real backend series when available,
-        // else fabricated drift around the current value.
-        let deepSeries = (stages?.deepSeries.isEmpty == false)
-            ? stages!.deepSeries.suffix(14).map(Double.init)
-            : drift(from: 78, to: Double(deep), n: 14, seed: 101)
-        let remSeries = (stages?.remSeries.isEmpty == false)
-            ? stages!.remSeries.suffix(14).map(Double.init)
-            : drift(from: 96, to: Double(rem), n: 14, seed: 111)
-        let lightSeries = (stages?.lightSeries.isEmpty == false)
-            ? stages!.lightSeries.suffix(14).map(Double.init)
-            : drift(from: 200, to: Double(light), n: 14, seed: 121)
-        let awakeSeries = (stages?.awakeSeries.isEmpty == false)
-            ? stages!.awakeSeries.suffix(14).map(Double.init)
-            : drift(from: 18, to: Double(awake), n: 14, seed: 131)
-
+        func tile(_ id: String, _ label: String, _ minutes: Int?, _ series: [Int],
+                  target: Double?, warnBelow: Int?, captionTarget: String, coach: String) -> HealthMetric {
+            guard let m = minutes else { return noDataMetric(id: id, label: label, unit: nil) }
+            return metric(
+                id: id, label: label, value: clock(m), unit: nil,
+                history: series.suffix(14).map(Double.init),
+                chart28: realChart(series.map(Double.init)),
+                target: target,
+                status: warnBelow.map { m < $0 ? .warn : .good } ?? .neutral,
+                direction: target.map { Double(m) < $0 ? .down : .flat } ?? .flat,
+                caption: captionTarget, coach: coach)
+        }
         return [
-            // 2026-06-03 round 80 · sleep stages also use preferRealOrPad
-            // so that when backend extends deepSeries/etc to 28 days
-            // the line chart goes straight to the real history.
-            metric(
-                id: "deep", label: "DEEP",
-                value: clock(deep), unit: nil,
-                history: deepSeries,
-                chart28: preferRealOrPad(
-                    realFull: (stages?.deepSeries ?? []).map(Double.init),
-                    history: deepSeries, priorAvg: 80, seed: 201),
-                target: 75,
-                status: deep < 70 ? .warn : .good,
-                direction: deep < 75 ? .down : .flat,
-                caption: "target 1:15",
-                coach: "A little light on deep sleep · earlier bedtime usually fixes it."
-            ),
-            metric(
-                id: "rem", label: "REM",
-                value: clock(rem), unit: nil,
-                history: remSeries,
-                chart28: preferRealOrPad(
-                    realFull: (stages?.remSeries ?? []).map(Double.init),
-                    history: remSeries, priorAvg: 98, seed: 211),
-                target: 100,
-                status: rem < 90 ? .warn : .good,
-                direction: rem < 100 ? .down : .flat,
-                caption: "target 1:40",
-                coach: "REM follows total sleep · it returns when hours do."
-            ),
-            metric(
-                id: "light", label: "LIGHT",
-                value: clock(light), unit: nil,
-                history: lightSeries,
-                chart28: preferRealOrPad(
-                    realFull: (stages?.lightSeries ?? []).map(Double.init),
-                    history: lightSeries, priorAvg: 205, seed: 221),
-                target: nil,
-                status: .neutral, direction: .flat,
-                caption: "context",
-                coach: "Light sleep is in its normal range · nothing to action."
-            ),
-            metric(
-                id: "awake", label: "AWAKE",
-                value: clock(awake), unit: nil,
-                history: awakeSeries,
-                chart28: preferRealOrPad(
-                    realFull: (stages?.awakeSeries ?? []).map(Double.init),
-                    history: awakeSeries, priorAvg: 16, seed: 231),
-                target: nil,
-                status: .neutral, direction: .flat,
-                caption: "context",
-                coach: "A couple of brief wake-ups · well within normal."
-            ),
+            tile("deep", "DEEP", s.deepMin, s.deepSeries, target: 75, warnBelow: 70,
+                 captionTarget: "target 1:15",
+                 coach: (s.deepMin ?? 99) < 75 ? "Light on deep sleep · an earlier night usually helps."
+                                               : "Deep sleep on target."),
+            tile("rem", "REM", s.remMin, s.remSeries, target: 100, warnBelow: 90,
+                 captionTarget: "target 1:40",
+                 coach: (s.remMin ?? 999) < 100 ? "REM tracks total sleep · it returns when hours do."
+                                                : "REM in a healthy range."),
+            tile("light", "LIGHT", s.lightMin, s.lightSeries, target: nil, warnBelow: nil,
+                 captionTarget: "context", coach: "Light sleep in its normal range."),
+            tile("awake", "AWAKE", s.awakeMin, s.awakeSeries, target: nil, warnBelow: nil,
+                 captionTarget: "context", coach: "Brief wake-ups · within normal."),
         ]
     }
 
     // MARK: - FORM section metrics (cadence, power, stride, vert osc, GCT, L/R)
 
+    enum FormPreference { case higher, lower, neutral }
+
     static func formMetrics(healthState: HealthState?) -> [HealthMetric] {
-        // 2026-06-03 round 77 · wire to backend's runForm block
-        // (HealthState.runForm · backend aa45d543). Each metric's
-        // current / avg14d / avg28d feeds value + caption + status.
-        // Falls back to plausible placeholders when backend hasn't
-        // populated yet · lrBalance stays placeholder until ingest
-        // carries avgLrBalancePct.
+        // Each metric gates on a real `current` · no placeholder values, no
+        // drift series. Coach derived from the real cur-vs-30d-avg delta.
         let form = healthState?.runForm
         return [
-            formMetric(
-                m: form?.cadenceSpm,
-                id: "cad", label: "CADENCE", unit: " spm", decimals: 0,
-                target: 172, lower: 130, upper: 220, prefer: .higher,
-                fallback: (cur: 168, avg: 164),
-                coach: "Creeping up toward target · quick feet on easy days helps most."
-            ),
-            formMetric(
-                m: form?.runPowerW,
-                id: "pow", label: "RUN POWER", unit: " W", decimals: 0,
-                target: nil, lower: 50, upper: 600, prefer: .higher,
-                fallback: (cur: 268, avg: 262),
-                coach: "Holding more power at the same heart rate · efficiency is up."
-            ),
-            formMetric(
-                m: form?.strideLengthM,
-                id: "stride", label: "STRIDE", unit: " m", decimals: 2,
-                target: nil, lower: 0.8, upper: 2.0, prefer: .higher,
-                fallback: (cur: 1.17, avg: 1.13),
-                coach: "Opening slightly as fitness builds · no overstriding signal."
-            ),
-            formMetric(
-                m: form?.vertOscCm,
-                id: "vosc", label: "VERT OSC", unit: " cm", decimals: 1,
-                target: 8.5, lower: 4, upper: 14, prefer: .lower,
-                fallback: (cur: 9.8, avg: 10.2),
-                coach: "A touch bouncy · cadence work brings this down with it."
-            ),
-            formMetric(
-                m: form?.groundContactMs,
-                id: "gct", label: "GROUND CONTACT", unit: " ms", decimals: 0,
-                target: 235, lower: 180, upper: 350, prefer: .lower,
-                fallback: (cur: 244, avg: 250),
-                coach: "Trending the right way · faster turnover shortens it further."
-            ),
-            formMetric(
-                m: form?.lrBalancePct,
-                id: "bal", label: "L / R BALANCE", unit: nil, decimals: 1,
-                target: nil, lower: 40, upper: 60, prefer: .neutral,
-                fallback: (cur: 49.4, avg: 49.2),
-                coach: "Within a point of even · no meaningful asymmetry."
-            ),
+            formMetric(m: form?.cadenceSpm,      id: "cad",    label: "CADENCE",        unit: " spm", decimals: 0, target: 172, lower: 130, upper: 220, prefer: .higher,  noun: "Cadence"),
+            formMetric(m: form?.runPowerW,       id: "pow",    label: "RUN POWER",      unit: " W",   decimals: 0, target: nil, lower: 50,  upper: 600, prefer: .higher,  noun: "Power"),
+            formMetric(m: form?.strideLengthM,   id: "stride", label: "STRIDE",         unit: " m",   decimals: 2, target: nil, lower: 0.8, upper: 2.0, prefer: .higher,  noun: "Stride"),
+            formMetric(m: form?.vertOscCm,       id: "vosc",   label: "VERT OSC",       unit: " cm",  decimals: 1, target: 8.5, lower: 4,   upper: 14,  prefer: .lower,   noun: "Vertical oscillation"),
+            formMetric(m: form?.groundContactMs, id: "gct",    label: "GROUND CONTACT", unit: " ms",  decimals: 0, target: 235, lower: 180, upper: 350, prefer: .lower,   noun: "Ground contact"),
+            formMetric(m: form?.lrBalancePct,    id: "bal",    label: "L / R BALANCE",  unit: nil,    decimals: 1, target: nil, lower: 40,  upper: 60,  prefer: .neutral, noun: "L/R balance"),
         ]
     }
 
-    enum FormPreference { case higher, lower, neutral }
-
-    /// Compose a HealthMetric from a backend RunFormMetric. When current
-    /// is nil, falls back to placeholder values. Decimals + units stay
-    /// metric-specific. Direction derives from current vs avg14d.
+    /// Compose a HealthMetric from a backend RunFormMetric. nil current →
+    /// honest no-data tile. Real series only; coach derived from the delta.
     private static func formMetric(
         m: RunFormMetric?,
         id: String, label: String, unit: String?, decimals: Int,
         target: Double?, lower: Double, upper: Double,
-        prefer: FormPreference,
-        fallback: (cur: Double, avg: Double),
-        coach: String
+        prefer: FormPreference, noun: String
     ) -> HealthMetric {
-        let cur = m?.current ?? fallback.cur
-        let avg14 = m?.avg14d ?? fallback.avg
-        let avg28 = m?.avg28d ?? fallback.avg
-        // Compose value display
+        guard let cur = m?.current else { return noDataMetric(id: id, label: label, unit: unit) }
+        let avg14 = m?.avg14d
+        let avg28 = m?.avg28d
         let valueStr = decimals == 0
             ? "\(Int(cur.rounded()))"
             : String(format: "%.\(decimals)f", cur)
-        // Direction · current vs 14d avg
         let direction: HealthMetric.Direction = {
-            if abs(cur - avg14) < (upper - lower) * 0.01 { return .flat }
-            return cur > avg14 ? .up : .down
+            guard let a = avg14 else { return .flat }
+            return abs(cur - a) < (upper - lower) * 0.01 ? .flat : (cur > a ? .up : .down)
         }()
-        // Status vs target (only when target present)
         let status: HealthMetric.Status = {
             guard let t = target else { return .good }
             switch prefer {
-            case .higher:
-                return cur >= t ? .good : (cur >= t * 0.95 ? .warn : .bad)
-            case .lower:
-                return cur <= t ? .good : (cur <= t * 1.05 ? .warn : .bad)
-            case .neutral:
-                return .good
+            case .higher: return cur >= t ? .good : (cur >= t * 0.95 ? .warn : .bad)
+            case .lower:  return cur <= t ? .good : (cur <= t * 1.05 ? .warn : .bad)
+            case .neutral: return .good
             }
         }()
-        // Caption
         let caption: String = {
             if let t = target {
                 return decimals == 0 ? "target \(Int(t))" : "aim \(String(format: "%.1f", t))"
             }
-            return "30-day avg \(decimals == 0 ? "\(Int(avg28.rounded()))" : String(format: "%.\(decimals)f", avg28))"
+            if let a = avg28 {
+                return "30-day avg \(decimals == 0 ? "\(Int(a.rounded()))" : String(format: "%.\(decimals)f", a))"
+            }
+            return "30-day"
         }()
-        // 2026-06-03 round 80 · prefer real series28d when backend ships
-        // it (per brief reply, optional field on each RunFormMetric).
-        // Falls back to history-padded fabrication when empty (cold
-        // start / non-watch session / backend hasn't deployed yet).
         let realSeries = m?.series28d ?? []
-        let history: [Double]
-        let chart28: [Double]
-        if !realSeries.isEmpty {
-            history = Array(realSeries.suffix(14))
-            chart28 = realSeries.count >= 28 ? Array(realSeries.suffix(28)) : realSeries
-        } else {
-            history = drift(from: avg28, to: cur, n: 14, seed: id.hashValue & 0xFFFF)
-            chart28 = chartFromHistory(history: history, priorAvg: avg28 * 0.97,
-                                       seed: (id + "28").hashValue & 0xFFFF)
-        }
+        let coach: String = (prefer == .neutral)
+            ? "Within a normal range · no action."
+            : coachForDelta(noun: noun, cur: cur, base: avg28,
+                            unit: (unit ?? "").trimmingCharacters(in: .whitespaces),
+                            higherIsBetter: prefer == .higher, decimals: decimals)
         return HealthMetric(
             id: id, label: label, value: valueStr, unit: unit,
-            history: history, chart28: chart28,
+            history: Array(realSeries.suffix(14)), chart28: realChart(realSeries),
             target: target, status: status, direction: direction,
-            caption: caption, coach: coach
-        )
+            caption: caption, coach: coach)
     }
 
-    // MARK: - Helpers
+    // MARK: - Honest helpers (2026-06-08 de-fabrication)
+
+    /// A tile with no real data · em-dash, no bars, neutral. Mirrors web `noData`.
+    private static func noDataMetric(id: String, label: String, unit: String?,
+                                     caption: String = "no data yet") -> HealthMetric {
+        HealthMetric(
+            id: id, label: label, value: "—", unit: unit,
+            history: [], chart28: [],
+            target: nil, status: .neutral, direction: .flat,
+            caption: caption, coach: "Trend builds with daily syncs.")
+    }
+
+    /// Real series only · last 28 if we have them, else whatever is real. No padding/drift.
+    private static func realChart(_ full: [Double]) -> [Double] {
+        full.count >= 28 ? Array(full.suffix(28)) : full
+    }
+
+    /// Literal trend arrow · cur vs base. .flat when no baseline or no movement.
+    private static func trendDir(cur: Double, base: Double?) -> HealthMetric.Direction {
+        guard let base = base else { return .flat }
+        if abs(cur - base) < 0.0001 { return .flat }
+        return cur > base ? .up : .down
+    }
+
+    /// Coach line derived from the ACTUAL delta · never asserts a direction
+    /// the data doesn't show. nil baseline → "still forming"; on-baseline →
+    /// "right on baseline"; otherwise states the real move + whether it's favorable.
+    private static func coachForDelta(noun: String, cur: Double, base: Double?,
+                                      unit: String, higherIsBetter: Bool, decimals: Int = 0) -> String {
+        guard let base = base else { return "\(noun) baseline still forming · keep syncing." }
+        let mag = abs(cur - base)
+        let onBaseline = (decimals == 0)
+            ? Int(mag.rounded()) == 0
+            : mag < pow(10.0, -Double(decimals))
+        if onBaseline { return "Sitting right on baseline." }
+        let magStr = decimals == 0 ? "\(Int(mag.rounded()))" : String(format: "%.\(decimals)f", mag)
+        let unitPart = unit.isEmpty ? "" : " \(unit)"
+        let favorable = ((cur - base) > 0) == higherIsBetter
+        return "\((cur - base) > 0 ? "Up" : "Down") \(magStr)\(unitPart) vs baseline · \(favorable ? "trending the right way" : "worth watching")."
+    }
+
+    /// HRV coefficient of variation (Plews) from the REAL hrv series ·
+    /// stdev/mean × 100 over the last 7-14 nights (sample stdev). nil when
+    /// fewer than 7 real nights. SDNN, not RMSSD — same metric-identity
+    /// caveat as readiness 2.5; the value is honest, no band judged here.
+    private static func hrvCV(_ series: [HealthDayMs]) -> Double? {
+        let vals = series.suffix(14).map { Double($0.ms) }
+        guard vals.count >= 7 else { return nil }
+        let mean = vals.reduce(0, +) / Double(vals.count)
+        guard mean > 0 else { return nil }
+        let variance = vals.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(vals.count - 1)
+        return (variance.squareRoot() / mean) * 100
+    }
 
     private static func metric(
         id: String, label: String, value: String, unit: String?,
@@ -421,69 +401,9 @@ enum HealthSeed {
         )
     }
 
-    /// 2026-06-03 round 80 · single switch for the "use backend's real
-    /// 28-day series when shipped; else pad the visible 14-day history
-    /// with drift" decision. `realFull` is whatever the backend handed
-    /// us (may be 0/14/28+ entries); `history` is the 14 we already
-    /// committed to display in the bar chart so the line chart's END
-    /// always matches the last bar.
-    private static func preferRealOrPad(
-        realFull: [Double], history: [Double], priorAvg: Double, seed: Int
-    ) -> [Double] {
-        if realFull.count >= 28 { return Array(realFull.suffix(28)) }
-        return chartFromHistory(history: history, priorAvg: priorAvg, seed: seed)
-    }
-
-    /// 2026-06-03 round 79 · chart consistency · build a 28-day series
-    /// that ENDS with the real history so the expanded sheet's line
-    /// chart trends to the same current value as the collapsed bar
-    /// chart. When the real history is < 28 days, pads the FRONT with
-    /// a stable drift from `priorAvg` toward the oldest real value.
-    /// When ≥ 28, just returns the last 28 of history.
-    private static func chartFromHistory(
-        history: [Double], priorAvg: Double, seed: Int
-    ) -> [Double] {
-        if history.count >= 28 { return Array(history.suffix(28)) }
-        let needed = 28 - history.count
-        guard let firstReal = history.first else {
-            // No history at all · synthesize 28 from priorAvg → priorAvg
-            return drift(from: priorAvg, to: priorAvg, n: 28, seed: seed)
-        }
-        // Pad front · drift from priorAvg → firstReal, then concat real.
-        let pad = drift(from: priorAvg, to: firstReal, n: needed, seed: seed)
-        return pad + history
-    }
-
-    /// Stable pseudo-random drift from `start` → `end` over `n` samples
-    /// with small per-point jitter. Same seed always returns the same
-    /// series so charts don't flicker across renders.
-    private static func drift(from start: Double, to end: Double, n: Int, seed: Int) -> [Double] {
-        var rng = SeededRNG(seed: UInt64(seed))
-        var result: [Double] = []
-        for i in 0..<n {
-            let t = Double(i) / Double(max(1, n - 1))
-            let base = start + (end - start) * t
-            let jitter = (Double(rng.next() % 1000) / 1000.0 - 0.5) * abs(end - start) * 0.18
-            result.append(base + jitter)
-        }
-        return result
-    }
-
     private static func clock(_ minutes: Int) -> String {
         let h = minutes / 60
         let m = minutes % 60
         return "\(h):\(String(format: "%02d", m))"
-    }
-}
-
-/// xorshift PRNG · seedable so series stays stable across re-renders.
-private struct SeededRNG {
-    var state: UInt64
-    init(seed: UInt64) { self.state = seed == 0 ? 0xDEAD_BEEF : seed }
-    mutating func next() -> UInt64 {
-        state ^= state << 13
-        state ^= state >> 7
-        state ^= state << 17
-        return state
     }
 }

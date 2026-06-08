@@ -38,6 +38,9 @@ struct HealthView: View {
     /// 2026-06-03 round 78 · tapped bar-card opens this metric in a
     /// bottom sheet (HealthMetricSheet). nil = no sheet open.
     @State private var selectedMetric: HealthMetric? = nil
+    /// 2026-06-08 · WHAT TO DO actions · same /api/readiness/brief the Today
+    /// panel uses. Replaces the deprecated overview.watchingTomorrow shape.
+    @State private var brief: ReadinessBriefSeed? = nil
     /// 2026-06-05 round 85 · observe the HK importer so the SLEEP
     /// architecture "last night" number updates the moment a re-sync
     /// lands. The importer republishes `lastNightHours` whenever the
@@ -216,9 +219,8 @@ struct HealthView: View {
         if let story = state?.overview?.story, story.paragraph?.isEmpty == false {
             storyCard(story).padding(.top, 14)
         }
-        if let watch = state?.overview?.watchingTomorrow,
-           !(watch.bullets.isEmpty && watch.forecastChips.isEmpty) {
-            watchingTomorrowCard(watch).padding(.top, 14)
+        if let b = brief, !b.actions.isEmpty {
+            whatToDoCard(b.actions, threshold: b.actionsThreshold).padding(.top, 14)
         }
         if let rec = state?.overview?.recoveryPhase, rec.anchor?.isEmpty == false {
             recoveryPhaseCard(rec).padding(.top, 14)
@@ -267,22 +269,43 @@ struct HealthView: View {
         )
     }
 
-    private func watchingTomorrowCard(_ w: OverviewWatchingTomorrow) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("WATCHING TOMORROW")
+    // 2026-06-08 · WHAT TO DO · replaces WATCHING TOMORROW. Renders the
+    // server's data-grounded `brief.actions` (each tied to a real trigger in
+    // health-actions.ts) + the transparency `actionsThreshold` line. No
+    // client extrapolation · the phone just paints what the engine sent.
+    private func whatToDoCard(_ actions: [HealthAction], threshold: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("WHAT TO DO")
                 .font(.body(9.5, weight: .extraBold)).tracking(0.8)
                 .foregroundStyle(Color(hex: 0x5BBFB0))
-            ForEach(Array(w.bullets.enumerated()), id: \.offset) { _, b in
-                HStack(alignment: .top, spacing: 8) {
-                    Circle().fill(Color(hex: 0x5BBFB0)).frame(width: 4, height: 4).padding(.top, 7)
-                    Text(b)
-                        .font(.body(12.5, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.82))
-                        .fixedSize(horizontal: false, vertical: true)
+            ForEach(actions) { a in
+                HStack(alignment: .top, spacing: 10) {
+                    Text(priorityLabel(a.priority))
+                        .font(.body(8, weight: .extraBold)).tracking(0.5)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(priorityColor(a.priority).opacity(0.18), in: Capsule())
+                        .foregroundStyle(priorityColor(a.priority))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(a.action)
+                            .font(.body(12.5, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.90))
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !a.cite.isEmpty {
+                            Text(a.cite)
+                                .font(.body(10.5, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.58))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
             }
-            if !w.forecastChips.isEmpty {
-                HealthForecastFlow(chips: w.forecastChips).padding(.top, 4)
+            if !threshold.isEmpty {
+                Text(threshold)
+                    .font(.body(11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
             }
         }
         .padding(14)
@@ -301,49 +324,38 @@ struct HealthView: View {
         )
     }
 
+    private func priorityColor(_ p: String) -> Color {
+        switch p {
+        case "urgent":    return Color(hex: 0xFC4D64)
+        case "high":      return Color(hex: 0xF3AD38)
+        case "medium":    return Color(hex: 0xE7C24A)
+        case "on-course": return Color(hex: 0x5fd06a)
+        default:          return Color(hex: 0x8A90A0)
+        }
+    }
+    private func priorityLabel(_ p: String) -> String {
+        p == "on-course" ? "ON COURSE" : p.uppercased()
+    }
+
+    // 2026-06-08 · slimmed (UI-HEALTH-REPORT 1.4). Removed the per-pillar
+    // %-grid (one time-based number copied into all 4 pillars · fake
+    // precision) and the EARLIEST QUALITY countdown (violated the locked
+    // no-reactive-coach doctrine). Keeps only the honest descriptive read:
+    // what the hard session was + where you are in the recovery window.
     private func recoveryPhaseCard(_ r: OverviewRecoveryPhase) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("RECOVERY PHASE")
                 .font(.body(9.5, weight: .extraBold)).tracking(0.8)
                 .foregroundStyle(Color.white.opacity(0.55))
             if let a = r.anchor {
                 Text(a)
-                    .font(.body(12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.78))
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(r.percentRecovered ?? 0)%")
-                    .font(.display(28, weight: .bold))
+                    .font(.body(13, weight: .semibold))
                     .foregroundStyle(.white)
-                if let d = r.dayOf {
-                    Text(d.uppercased())
-                        .font(.body(10, weight: .extraBold)).tracking(0.8)
-                        .foregroundStyle(Color.white.opacity(0.55))
-                }
             }
-            // Pillar grid · 2 columns
-            if !r.pillars.isEmpty {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
-                                    GridItem(.flexible(), spacing: 10)],
-                          spacing: 10) {
-                    ForEach(r.pillars) { p in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(p.label.uppercased())
-                                .font(.body(9, weight: .extraBold)).tracking(0.6)
-                                .foregroundStyle(Color.white.opacity(0.55))
-                            Text("\(p.percentBack ?? 0)%")
-                                .font(.display(18, weight: .semibold))
-                                .foregroundStyle(statusColor(p.status))
-                        }
-                    }
-                }
-                .padding(.top, 4)
-            }
-            if let next = r.earliestQualitySession {
-                Text("EARLIEST QUALITY · \(next.uppercased())")
-                    .font(.body(9.5, weight: .extraBold)).tracking(0.8)
-                    .foregroundStyle(Color(hex: 0x5fd06a))
-                    .padding(.top, 4)
+            if let d = r.dayOf {
+                Text(d.uppercased())
+                    .font(.body(10.5, weight: .extraBold)).tracking(0.8)
+                    .foregroundStyle(Color.white.opacity(0.62))
             }
         }
         .padding(14)
@@ -356,15 +368,6 @@ struct HealthView: View {
                         .stroke(Color.white.opacity(0.09), lineWidth: 1)
                 )
         )
-    }
-
-    private func statusColor(_ raw: String?) -> Color {
-        switch (raw ?? "").lowercased() {
-        case "good":    return Color(hex: 0x5fd06a)
-        case "warn":    return Color(hex: 0xF3AD38)
-        case "bad":     return Color(hex: 0xFC4D64)
-        default:        return Color.white.opacity(0.78)
-        }
     }
 
     private func aerobicCard(vo2: Double) -> some View {
@@ -632,9 +635,11 @@ struct HealthView: View {
             await HealthKitImporter.shared.importIfConnected(daysBack: 3)
         }
         async let r = (try? await API.fetchReadiness())
+        async let b = (try? await API.fetchReadinessBrief())
         do {
             let st = try await API.fetchHealthState()
             let rd = await r
+            let bd = await b
             await MainActor.run {
                 if let st {
                     self.state = st
@@ -643,77 +648,14 @@ struct HealthView: View {
                 if let rd {
                     self.readiness = rd
                 }
+                if let bd {
+                    self.brief = bd
+                }
             }
         } catch {
             await MainActor.run {
                 self.loadState = .failed("Couldn't read health data.")
             }
-        }
-    }
-}
-
-// MARK: - HealthForecastFlow
-
-/// Wrapping chip layout for forecast strings · single row that wraps
-/// to additional rows when chips overflow available width.
-/// Named-with-Health prefix to avoid colliding with the Toolkit's
-/// FlowChips component.
-private struct HealthForecastFlow: View {
-    let chips: [String]
-
-    var body: some View {
-        HealthFlowLayout(alignment: .leading, spacing: 6) {
-            ForEach(Array(chips.enumerated()), id: \.offset) { _, c in
-                Text(c)
-                    .font(.body(10, weight: .extraBold)).tracking(0.6)
-                    .foregroundStyle(Color.white.opacity(0.82))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color.white.opacity(0.08), in: Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
-            }
-        }
-    }
-}
-
-/// Simple flow/wrap layout · arranges children horizontally and wraps
-/// to the next row when they overflow. iOS 16+ Layout API.
-private struct HealthFlowLayout: Layout {
-    var alignment: HorizontalAlignment = .leading
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var lineH: CGFloat = 0
-        var totalH: CGFloat = 0
-        for s in subviews {
-            let sz = s.sizeThatFits(.unspecified)
-            if x + sz.width > maxWidth, x > 0 {
-                totalH += lineH + spacing
-                x = 0; lineH = 0
-            }
-            x += sz.width + spacing
-            lineH = max(lineH, sz.height)
-            y = totalH + lineH
-        }
-        return CGSize(width: maxWidth == .infinity ? x : maxWidth, height: y)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var lineH: CGFloat = 0
-        for s in subviews {
-            let sz = s.sizeThatFits(.unspecified)
-            if x + sz.width > bounds.maxX, x > bounds.minX {
-                y += lineH + spacing
-                x = bounds.minX
-                lineH = 0
-            }
-            s.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
-            x += sz.width + spacing
-            lineH = max(lineH, sz.height)
         }
     }
 }

@@ -81,21 +81,35 @@ struct HealthMetricSheet: View {
                         .padding(.top, 4)
                 }
 
-                // 28-day area + line chart
-                MetricChart(values: metric.chart28, target: metric.target, color: metric.status.color)
-                    .frame(height: 180)
-                    .padding(.top, 4)
+                // 28-day area + line chart · or honest empty state
+                if metric.chart28.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("No history yet")
+                            .font(.body(14, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.78))
+                        Text("Trend builds with daily syncs.")
+                            .font(.body(12.5, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                    }
+                    .frame(height: 180, alignment: .center)
+                    .frame(maxWidth: .infinity)
+                } else {
+                    // 28-day area + line chart
+                    MetricChart(values: metric.chart28, target: metric.target, color: metric.status.color)
+                        .frame(height: 180)
+                        .padding(.top, 4)
 
-                // X-axis labels
-                HStack {
-                    Text("4 WEEKS AGO")
-                    Spacer()
-                    Text("2W")
-                    Spacer()
-                    Text("TODAY")
+                    // X-axis labels
+                    HStack {
+                        Text("4 WEEKS AGO")
+                        Spacer()
+                        Text("2W")
+                        Spacer()
+                        Text("TODAY")
+                    }
+                    .font(.body(9.5, weight: .extraBold)).tracking(0.8)
+                    .foregroundStyle(Color.white.opacity(0.42))
                 }
-                .font(.body(9.5, weight: .extraBold)).tracking(0.8)
-                .foregroundStyle(Color.white.opacity(0.42))
 
                 // Coach line
                 Text(metric.coach)

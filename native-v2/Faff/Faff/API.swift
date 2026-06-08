@@ -1529,15 +1529,27 @@ struct HealthState: Decodable {
     /// All nullable · iPhone reads when present, falls back to
     /// existing fabrication when absent.
     let respiratoryRate: RespRateSummary?
-    let respiratoryRateSeries: [Double]
+    let respiratoryRateSeries: [HealthDayRespBpm]
     let wristTemp: WristTempSummary?
-    let wristTempSeries: [Double]
+    let wristTempSeries: [HealthDayTempC]
+    // 2026-06-08 · 1.3 tiles · the server already ships these
+    // (health-state.ts:738-747); the model just wasn't decoding them.
+    // All lenient · nil/empty when absent → tile renders "—".
+    let spo2: Spo2Summary?
+    let spo2Series: [HealthDayPctInt]
+    let bodyFat: BodyCompSummary?
+    let bodyFatSeries: [HealthDayPctDouble]
+    let leanMass: BodyCompSummary?
+    let leanMassSeries: [HealthDayKg]
+    let maxHr: MaxHrSummary?
+    let activeEnergy: ActiveEnergySummary?
 
     enum CodingKeys: String, CodingKey {
         case today, sleepSeries, rhrSeries, hrvSeries, weightSeries
         case sleep, rhr, hrv, weight, cadence, vo2, watchMode, watchItems
         case sleepStages, runForm, dailyReadiness, bodyTemp, vo2Trend, insights, overview
         case respiratoryRate, respiratoryRateSeries, wristTemp, wristTempSeries
+        case spo2, spo2Series, bodyFat, bodyFatSeries, leanMass, leanMassSeries, maxHr, activeEnergy
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1568,9 +1580,17 @@ struct HealthState: Decodable {
         self.insights = (try? c.decode([HealthInsight].self, forKey: .insights)) ?? []
         self.overview = try? c.decode(HealthOverviewBlock.self, forKey: .overview)
         self.respiratoryRate = try? c.decode(RespRateSummary.self, forKey: .respiratoryRate)
-        self.respiratoryRateSeries = (try? c.decode([Double].self, forKey: .respiratoryRateSeries)) ?? []
+        self.respiratoryRateSeries = (try? c.decode([HealthDayRespBpm].self, forKey: .respiratoryRateSeries)) ?? []
         self.wristTemp = try? c.decode(WristTempSummary.self, forKey: .wristTemp)
-        self.wristTempSeries = (try? c.decode([Double].self, forKey: .wristTempSeries)) ?? []
+        self.wristTempSeries = (try? c.decode([HealthDayTempC].self, forKey: .wristTempSeries)) ?? []
+        self.spo2 = try? c.decode(Spo2Summary.self, forKey: .spo2)
+        self.spo2Series = (try? c.decode([HealthDayPctInt].self, forKey: .spo2Series)) ?? []
+        self.bodyFat = try? c.decode(BodyCompSummary.self, forKey: .bodyFat)
+        self.bodyFatSeries = (try? c.decode([HealthDayPctDouble].self, forKey: .bodyFatSeries)) ?? []
+        self.leanMass = try? c.decode(BodyCompSummary.self, forKey: .leanMass)
+        self.leanMassSeries = (try? c.decode([HealthDayKg].self, forKey: .leanMassSeries)) ?? []
+        self.maxHr = try? c.decode(MaxHrSummary.self, forKey: .maxHr)
+        self.activeEnergy = try? c.decode(ActiveEnergySummary.self, forKey: .activeEnergy)
     }
 }
 
@@ -1780,6 +1800,100 @@ struct HealthDayLb: Decodable {
     }
 }
 
+// MARK: - 2026-06-08 · 1.3 BODY tiles · row + summary shapes (server already ships them)
+
+struct HealthDayTempC: Decodable {
+    let date: String; let tempC: Double
+    enum CodingKeys: String, CodingKey { case date, tempC }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.tempC = try c.decodeIfPresent(Double.self, forKey: .tempC) ?? 0
+    }
+}
+struct HealthDayRespBpm: Decodable {
+    let date: String; let bpm: Double
+    enum CodingKeys: String, CodingKey { case date, bpm }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.bpm = try c.decodeIfPresent(Double.self, forKey: .bpm) ?? 0
+    }
+}
+struct HealthDayPctInt: Decodable {
+    let date: String; let pct: Int
+    enum CodingKeys: String, CodingKey { case date, pct }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.pct = c.decodeFlexInt(forKey: .pct) ?? 0
+    }
+}
+struct HealthDayPctDouble: Decodable {
+    let date: String; let pct: Double
+    enum CodingKeys: String, CodingKey { case date, pct }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.pct = try c.decodeIfPresent(Double.self, forKey: .pct) ?? 0
+    }
+}
+struct HealthDayKg: Decodable {
+    let date: String; let kg: Double
+    enum CodingKeys: String, CodingKey { case date, kg }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.kg = try c.decodeIfPresent(Double.self, forKey: .kg) ?? 0
+    }
+}
+struct HealthDayKcal: Decodable {
+    let date: String; let kcal: Int
+    enum CodingKeys: String, CodingKey { case date, kcal }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.kcal = c.decodeFlexInt(forKey: .kcal) ?? 0
+    }
+}
+
+struct Spo2Summary: Decodable {
+    let current: Int?; let baseline: Int?
+    enum CodingKeys: String, CodingKey { case current, baseline }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = c.decodeFlexInt(forKey: .current)
+        self.baseline = c.decodeFlexInt(forKey: .baseline)
+    }
+}
+struct BodyCompSummary: Decodable {
+    let current: Double?; let delta30: Double?
+    enum CodingKeys: String, CodingKey { case current, delta30 }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = try c.decodeIfPresent(Double.self, forKey: .current)
+        self.delta30 = try c.decodeIfPresent(Double.self, forKey: .delta30)
+    }
+}
+struct MaxHrSummary: Decodable {
+    let current: Int?
+    enum CodingKeys: String, CodingKey { case current }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = c.decodeFlexInt(forKey: .current)
+    }
+}
+struct ActiveEnergySummary: Decodable {
+    let today: Int?; let avg7: Int?; let series: [HealthDayKcal]
+    enum CodingKeys: String, CodingKey { case today, avg7, series }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.today = c.decodeFlexInt(forKey: .today)
+        self.avg7 = c.decodeFlexInt(forKey: .avg7)
+        self.series = (try? c.decode([HealthDayKcal].self, forKey: .series)) ?? []
+    }
+}
+
 struct SleepSummary: Decodable {
     let avg7n: Double?; let avg30n: Double?; let deficit7: Double
     init(avg7n: Double?, avg30n: Double?, deficit7: Double) {
@@ -1849,7 +1963,10 @@ struct Vo2Summary: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.current = try c.decodeIfPresent(Double.self, forKey: .current)
-        self.series28d = (try? c.decode([Double].self, forKey: .series28d)) ?? []
+        // 2026-06-08 · server type is (number|null)[] · a leading null used
+        // to fail the whole [Double] decode → empty → fabricated chart.
+        let raw = (try? c.decode([Double?].self, forKey: .series28d)) ?? []
+        self.series28d = raw.compactMap { $0 }
     }
 }
 
@@ -1876,7 +1993,9 @@ struct WristTempSummary: Decodable {
     let current: Double?
     let baseline: Double?
     let delta: Double?
-    enum CodingKeys: String, CodingKey { case current, baseline, delta }
+    // 2026-06-08 · server sends `deltaC` (health-state.ts:736), not `delta` ·
+    // the old key never matched so the wrist-temp warn signal was always nil.
+    enum CodingKeys: String, CodingKey { case current, baseline, delta = "deltaC" }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.current = try c.decodeIfPresent(Double.self, forKey: .current)
