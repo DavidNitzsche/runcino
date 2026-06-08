@@ -36,6 +36,10 @@ export interface ExpandedPhase {
   targetPaceSPerMi?: number | null;
   /** Tolerance band around target · pace ± this still counts as "on pace". */
   tolerancePaceSPerMi?: number | null;
+  /** 2026-06-08 · True only on the closing HM/M pace segment of a long run
+   *  (set by expandLong when the spec carries finish_mi). Consumers route it
+   *  to a FINISH face instead of the rep face. Absent/false everywhere else. */
+  isFinishSegment?: boolean;
 }
 
 export interface ExpandSpecInput {
@@ -240,6 +244,7 @@ function expandLong(
         // Finish is race-pace quality work · tighter band than the easy
         // build (never looser than 12 s/mi, the tempo tolerance).
         tolerancePaceSPerMi: Math.min(easyTol, 12),
+        isFinishSegment: true,
       },
     ];
   }

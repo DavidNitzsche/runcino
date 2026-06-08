@@ -50,6 +50,10 @@ export interface WatchPhase {
    *  Null on warmup/recovery/cooldown and on easy/long workouts.
    *  Watch renders this as a reference; floor/ceiling semantics are a face-display decision. */
   hrTargetBpm?: number | null;
+  /** 2026-06-08 · True on the long-run HM/M finish segment. Optional on the
+   *  wire — old watch builds omit/ignore it (field defaults to false there);
+   *  new builds route it to the FINISH face instead of the rep face. */
+  isFinishSegment?: boolean;
 }
 
 export interface WatchWorkout {
@@ -417,6 +421,9 @@ export async function buildWatchToday(
         repUnit: p.distanceMi != null ? 'distance' : 'time',
         distanceMi: p.distanceMi ?? null,
         hrTargetBpm: p.type === 'work' ? workHrTargetBpm : null,
+        // Emit ONLY when true so non-finish phases omit it on the wire
+        // (JSON.stringify drops undefined) — keeps the optional-field contract.
+        isFinishSegment: p.isFinishSegment ? true : undefined,
       });
     }
   } else {
