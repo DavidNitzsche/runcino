@@ -725,20 +725,16 @@ export async function emitStrengthCoachIntent(
   rec: StrengthRecommendation,
 ): Promise<void> {
   if (!rec.coachIntent) return;
-  const recent = (await pool.query<{ id: number }>(
-    `SELECT id FROM coach_intents
-      WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
-        AND reason = 'strength_recommend'
-        AND ts >= NOW() - interval '14 days'
-      LIMIT 1`,
-    [userUuid],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (recent) return;
-  // coach_intents.user_id is NOT NULL · always write both columns.
-  // No swallow · constraint violations should be loud, not silent.
+  // Atomic INSERT...SELECT...WHERE NOT EXISTS — idempotent per 14-day window.
   await pool.query(
     `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
-     VALUES ($1::uuid, $1::uuid, NOW(), 'strength_recommend', $2, $3)`,
+     SELECT $1::uuid, $1::uuid, NOW(), 'strength_recommend', $2, $3
+     WHERE NOT EXISTS (
+       SELECT 1 FROM coach_intents
+       WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
+         AND reason = 'strength_recommend'
+         AND ts >= NOW() - interval '14 days'
+     )`,
     [userUuid, rec.coachIntent.severity, rec.coachIntent.body],
   ).catch((e) => { console.warn('[strength-recommender] emitStrengthCoachIntent failed:', e?.message ?? e); });
 }
@@ -775,21 +771,18 @@ export async function emitStrengthSkipIntent(
 
   // 2026-06-03 · runner TZ for idempotency-per-day · was using server UTC.
   const today = await runnerToday(userUuid);
-  const recent = (await pool.query<{ id: number }>(
-    `SELECT id FROM coach_intents
-      WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
-        AND reason = 'strength_skip'
-        AND field = $2
-        AND ts::date = $3::date
-      LIMIT 1`,
-    [userUuid, kind, today],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (recent) return;
-
+  // Atomic INSERT...SELECT...WHERE NOT EXISTS — idempotent per (user, kind, day).
   await pool.query(
     `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
-     VALUES ($1::uuid, $1::uuid, NOW(), 'strength_skip', $2, $3)`,
-    [userUuid, kind, gate.reason],
+     SELECT $1::uuid, $1::uuid, NOW(), 'strength_skip', $2, $3
+     WHERE NOT EXISTS (
+       SELECT 1 FROM coach_intents
+       WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
+         AND reason = 'strength_skip'
+         AND field = $2
+         AND ts::date = $4::date
+     )`,
+    [userUuid, kind, gate.reason, today],
   ).catch((e) => { console.warn('[strength-recommender] emitStrengthSkipIntent failed:', e?.message ?? e); });
 }
 
@@ -828,17 +821,6 @@ export async function emitStrengthResumeIntent(
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!lastSkip) return;
 
-  // Was a strength_resume already written SINCE that skip? If so we
-  // already announced the recovery · stay quiet.
-  const alreadyResumed = (await pool.query<{ id: number }>(
-    `SELECT id FROM coach_intents
-      WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
-        AND reason = 'strength_resume'
-        AND ts > $2`,
-    [userUuid, lastSkip.ts],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (alreadyResumed) return;
-
   const skipDate = lastSkip.ts.toISOString().slice(0, 10);
   const wasSuppress = lastSkip.field === 'suppress';
   const body = wasSuppress
@@ -847,9 +829,16 @@ export async function emitStrengthResumeIntent(
     : `Strength was capped to 1 session earlier this week (active streak). ` +
       `The streak has cleared · Full strength rotation resumes.`;
 
+  // Atomic INSERT...SELECT...WHERE NOT EXISTS — idempotent per skip cycle ($4 = lastSkip.ts).
   await pool.query(
     `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
-     VALUES ($1::uuid, $1::uuid, NOW(), 'strength_resume', $2, $3)`,
-    [userUuid, skipDate, body],
+     SELECT $1::uuid, $1::uuid, NOW(), 'strength_resume', $2, $3
+     WHERE NOT EXISTS (
+       SELECT 1 FROM coach_intents
+       WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
+         AND reason = 'strength_resume'
+         AND ts > $4
+     )`,
+    [userUuid, skipDate, body, lastSkip.ts],
   ).catch((e) => { console.warn('[strength-recommender] emitStrengthResumeIntent failed:', e?.message ?? e); });
 }
