@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
       }
       return {
         splits: splitsCheck.reliable ? rawSplits : [],
-        splits_unreliable: !splitsCheck.reliable && rawSplits.length > 0,
+        splits_unreliable: rawSplits.length > 0 ? !splitsCheck.reliable : false,
         splits_validation: splitsCheck.reliable ? null : {
           splitsSumS: splitsCheck.splitsSumS,
           durationS: splitsCheck.durationS,

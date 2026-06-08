@@ -165,7 +165,7 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
   const tsbSeries: number[] = [];
   for (const r of rows) {
     const mi = Number(r.mi) || 0;
-    const type = r.inferred_type ?? 'easy';
+    const type = r.inferred_type ?? (mi >= 10 ? 'long' : 'easy');
     const ifct = INTENSITY_FACTOR[type] ?? 0.85;
     const stress = mi * ifct;
     // EWMA update · today = yesterday × (1 - α) + stress × α

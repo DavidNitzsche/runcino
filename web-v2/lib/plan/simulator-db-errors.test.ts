@@ -53,14 +53,16 @@ const WEEK_ROW = {
 };
 
 function baseRouteQuery(sql: string): Promise<{ rows: unknown[] }> {
+  // plan_workouts must be checked before training_plans — the aggregation
+  // query JOINs training_plans, so it contains both substrings.
+  if (sql.includes('plan_workouts')) {
+    return Promise.resolve({ rows: [WEEK_ROW] });
+  }
   if (sql.includes('training_plans')) {
     return Promise.resolve({ rows: [{ id: 'plan-1', race_id: 'bq-2027' }] });
   }
   if (sql.includes('FROM races')) {
     return Promise.resolve({ rows: [{ meta: { distanceMi: 26.2 } }] });
-  }
-  if (sql.includes('plan_workouts')) {
-    return Promise.resolve({ rows: [WEEK_ROW] });
   }
   return Promise.resolve({ rows: [] });
 }
