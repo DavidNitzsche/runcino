@@ -146,7 +146,9 @@ function detectPaceFade(splits: RecapInput['splits']): number | null {
 }
 
 export function deriveRecap(input: RecapInput): RecapPayload {
-  const weather = input.weather ? judgeWeather(input.weather) : null;
+  // E6: pass the workout type so the conditions copy reframes around effort
+  // for easy/long/recovery/shakeout (pace-cost framing only for quality/race).
+  const weather = input.weather ? judgeWeather({ ...input.weather, workoutType: input.type }) : null;
   const drift = detectHrDrift(input.splits);
   const fade = detectPaceFade(input.splits);
   const paceStr = paceLabel(input.actualPaceSPerMi);

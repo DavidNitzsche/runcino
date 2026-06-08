@@ -25,6 +25,8 @@
  * carries an environmental adjustment so consumers can show the doctrine.
  */
 
+import type { WorkoutType } from './run-purpose';
+
 export const CITATION_WEATHER = {
   slug: 'research-06-weather-adjustments',
   label: 'Research/06 · Weather Adjustments',
@@ -57,6 +59,16 @@ export interface WeatherInput {
    * full marathon-distance penalty when null.
    */
   durationS?: number | null;
+  /**
+   * E6: the run's workout type, when known. The heat slowdown is a pace
+   * fact and is unaffected by this field · but for easy/long/recovery/
+   * shakeout runs pace is not the axis the runner trains on (effort/HR is),
+   * so the runner-facing `summary` + `coachTipForNextTime` reframe around
+   * effort instead of "costs you X% on pace". Omitted/null preserves the
+   * pace framing · the back-compat default and the right read for quality +
+   * race, where pace IS the axis. Any runner.
+   */
+  workoutType?: WorkoutType | null;
 }
 
 export type HeatBand = 'neutral' | 'warm' | 'hot' | 'extreme';
@@ -181,6 +193,15 @@ function bandFor(slowdownPct: number): HeatBand {
   return 'extreme';
 }
 
+// E6: easy / long / recovery / shakeout are run by effort or HR, not by the
+// clock · heat makes those paces drift slower by design, so the "costs you
+// X% on pace" framing miscoaches them (the runner reads a pace tax on a run
+// where pace isn't the target). Quality + race — and unknown, for back-compat
+// — keep the pace framing because pace IS the training axis there.
+function isEffortRun(t: WorkoutType | null | undefined): boolean {
+  return t === 'easy' || t === 'long' || t === 'recovery' || t === 'shakeout';
+}
+
 export function judgeWeather(input: WeatherInput): WeatherJudgment {
   // Prefer the PEAK temperature the run actually fought through. The
   // legacy `tempF` field is the start-line snapshot · adequate for short
@@ -253,19 +274,33 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
       ? `${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F · good conditions.`
       : `${Math.round(t)}°F · good conditions.`;
   }
-  // Trailing "Costs you about X% on pace" framing only when material.
+  // Trailing framing only when material. E6: pace-cost for quality/race
+  // (pace is the axis); effort framing for easy/long/recovery/shakeout
+  // (pace drifts slower by design · the runner trains those by feel/HR).
   if (slowdownPct >= 2) {
-    summary += ` Costs you about ${Math.round(slowdownPct)}% on pace.`;
+    summary += isEffortRun(input.workoutType)
+      ? ` Your pace will sit slower in this · that's the heat, not lost fitness. Hold the effort.`
+      : ` Costs you about ${Math.round(slowdownPct)}% on pace.`;
   }
 
   // Coach tip · what to do next time. Runner-to-runner, no jargon.
+  // E6: easy/long/recovery/shakeout get effort/HR-first advice (chasing a
+  // pace number in heat just turns an easy run hard); quality/race keep the
+  // pace-aware advice because the workout is defined by pace.
   let coachTipForNextTime: string | null = null;
+  const effort = isEffortRun(input.workoutType);
   if (heatBand === 'warm') {
-    coachTipForNextTime = `Try to start earlier next time when it's warm like this. Drink something with salt in it before long ones.`;
+    coachTipForNextTime = effort
+      ? `Run these by effort, not the watch · let the pace drift slower and keep it truly easy. A little salt before the long ones helps.`
+      : `Try to start earlier next time when it's warm like this. Drink something with salt in it before long ones.`;
   } else if (heatBand === 'hot') {
-    coachTipForNextTime = `Start earlier next time. Heat like this is rough on the body · drink 16-24 oz with salt the hour before, and don't chase pace in the first miles.`;
+    coachTipForNextTime = effort
+      ? `Go by effort and HR, not pace · heat like this makes the watch lie. Start earlier when you can, and drink 16-24 oz with salt the hour before.`
+      : `Start earlier next time. Heat like this is rough on the body · drink 16-24 oz with salt the hour before, and don't chase pace in the first miles.`;
   } else if (heatBand === 'extreme') {
-    coachTipForNextTime = `Move hard runs out of this window. Pace targets don't really work when it's this hot. If you're racing somewhere warm, give yourself 10-14 days running in the heat to get used to it.`;
+    coachTipForNextTime = effort
+      ? `Forget the pace in this · run by effort and cut it short if your HR won't settle. Move the run earlier next time.`
+      : `Move hard runs out of this window. Pace targets don't really work when it's this hot. If you're racing somewhere warm, give yourself 10-14 days running in the heat to get used to it.`;
   }
 
   return {

@@ -386,3 +386,53 @@ describe('judgeWeather · citation contract', () => {
     }
   });
 });
+
+describe('judgeWeather · E6 workout-type-aware framing', () => {
+  // Same hot conditions, two workout types. The slowdown NUMBER is a
+  // physiological fact (type-independent); only the runner-facing copy
+  // reframes: pace-cost for quality, effort for easy/long/recovery.
+  const hot = { tempF: 72, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80 } as const;
+
+  it('slowdown % is identical regardless of workout type', () => {
+    const easy = judgeWeather({ ...hot, workoutType: 'easy' });
+    const tempo = judgeWeather({ ...hot, workoutType: 'tempo' });
+    expect(easy.slowdownPct).toBe(tempo.slowdownPct);
+    expect(easy.heatBand).toBe(tempo.heatBand);
+  });
+
+  it('quality run keeps the pace-cost framing', () => {
+    const tempo = judgeWeather({ ...hot, workoutType: 'tempo' });
+    expect(tempo.summary).toMatch(/Costs you about \d+% on pace/);
+    expect(tempo.coachTipForNextTime).toMatch(/chase pace|start earlier/i);
+  });
+
+  it('easy/long/recovery reframe around effort, not pace cost', () => {
+    for (const t of ['easy', 'long', 'recovery', 'shakeout'] as const) {
+      const j = judgeWeather({ ...hot, workoutType: t });
+      expect(j.summary).not.toMatch(/Costs you about \d+% on pace/);
+      expect(j.summary).toMatch(/sit slower|Hold the effort/);
+      expect(j.coachTipForNextTime).toMatch(/by effort|by feel/i);
+    }
+  });
+
+  it('omitted workoutType preserves the legacy pace framing (back-compat)', () => {
+    const j = judgeWeather(hot);
+    expect(j.summary).toMatch(/Costs you about \d+% on pace/);
+  });
+
+  it('effort framing stays plain English across all bands (no jargon, incl. "ely"/"Ely")', () => {
+    // 'ely' guards the researcher-name substring check used by the recap
+    // voice-doctrine test — copy must avoid entirely/genuinely/etc.
+    const jargon = ['mitochondrial', 'lactate', 'vo2', 'evaporative cooling', 'thermoregulation', 'maughan', 'ely'];
+    const bands = [
+      { tempF: 60, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80 }, // warm
+      hot,
+      { tempF: 88, humidityPct: 70, conditions: 'clear', cloudCoverPct: 10 },  // extreme
+    ];
+    for (const cond of bands) {
+      const j = judgeWeather({ ...cond, workoutType: 'easy' });
+      const lower = (j.summary + ' ' + (j.coachTipForNextTime ?? '')).toLowerCase();
+      for (const w of jargon) expect(lower).not.toContain(w);
+    }
+  });
+});
