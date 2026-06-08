@@ -212,6 +212,7 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
               if (slug) router.push(`/races/${slug}`);
               else router.push('/races');
             }}
+            onOpenRun={(id) => setOpenOverlay({ type: 'run', id })}
           />
         )}
         {view === 'train'    && (

@@ -39,12 +39,13 @@ import {
 } from '../toolkit';
 
 export function TodayView({
-  seed, curDay, onPickDay, onOpenDrawer, onOpenRace,
+  seed, curDay, onPickDay, onOpenDrawer, onOpenRace, onOpenRun,
 }: {
   seed: FaffSeed; curDay: number;
   onPickDay: (i: number) => void;
   onOpenDrawer: () => void;
   onOpenRace: () => void;
+  onOpenRun?: (id: string) => void;
 }) {
   // 2026-06-01 · router refresh path · used by StandingRecAdvisory's
   // Accept handler so a successful POST to /accept-standing reloads
@@ -55,6 +56,10 @@ export function TodayView({
   // mutated optimistically by the PlannedHeroV2 Skip/Restore button so
   // the change reflects in the week strip AND the hero without a reload.
   const [skipOverrides, setSkipOverrides] = useState<Record<string, boolean>>({});
+  // Week strip navigation. 0 = current week (seed.week). -1 = last week,
+  // -2 = two weeks ago, etc. Uses season.weekDays for past/future weeks
+  // so no extra API call is needed.
+  const [weekOffset, setWeekOffset] = useState(0);
   const isSkipped = (day: typeof seed.week[number]) =>
     (day.iso && day.iso in skipOverrides) ? skipOverrides[day.iso!] : !!day.skipped;
   const setSkippedFor = (iso: string | undefined, next: boolean) => {
@@ -278,7 +283,45 @@ export function TodayView({
           grid.  Same two-tier rhythm spec David defined for inside-card
           field/section spacing, just applied to the page body. */}
       <div className="band">
-      <div className="weeklab">THIS WEEK</div>
+      {/* Week label + prev/next navigation arrows */}
+      {(() => {
+        const nowIdx = seed.season.nowIdx;
+        const totalWeeks = seed.season.weekDays.length;
+        const canBack = weekOffset > -(nowIdx);
+        const canFwd  = weekOffset < (totalWeeks - 1 - nowIdx);
+        // Derive a readable week label for offset weeks
+        let stripLabel = 'THIS WEEK';
+        if (weekOffset !== 0) {
+          const offsetDays = seed.season.weekDays[nowIdx + weekOffset];
+          if (offsetDays && offsetDays.length > 0) {
+            const first = offsetDays[0];
+            const last  = offsetDays[offsetDays.length - 1];
+            const fmt = (iso: string | undefined) => {
+              if (!iso) return '';
+              const p = iso.split('-').map(Number);
+              return new Date(p[0], p[1]-1, p[2]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            };
+            stripLabel = `${fmt(first.date)} – ${fmt(last.date)}`;
+          }
+        }
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="weeklab" style={{ flex: 1 }}>{stripLabel}</div>
+            <button
+              onClick={() => { setWeekOffset(o => o - 1); }}
+              disabled={!canBack}
+              style={{ background: 'none', border: 'none', cursor: canBack ? 'pointer' : 'default', opacity: canBack ? 1 : 0.25, color: 'rgba(255,255,255,.7)', padding: '2px 6px', fontSize: 16, lineHeight: 1 }}
+              aria-label="Previous week"
+            >‹</button>
+            <button
+              onClick={() => { setWeekOffset(o => o + 1); }}
+              disabled={!canFwd}
+              style={{ background: 'none', border: 'none', cursor: canFwd ? 'pointer' : 'default', opacity: canFwd ? 1 : 0.25, color: 'rgba(255,255,255,.7)', padding: '2px 6px', fontSize: 16, lineHeight: 1 }}
+              aria-label="Next week"
+            >›</button>
+          </div>
+        );
+      })()}
       {/* 2026-06-01 · This Week strip · Direction A redesign per
           designs/from Design agent/week-strip/README.md. Fixed-height
           card (152px) with reserved 16px meta row at the bottom so
@@ -287,9 +330,13 @@ export function TodayView({
           row is demoted from a separate text line to a top-right
           dumbbell glyph in the icon cluster. Adaptation line lives
           in the bottom meta row · only renders when original label
-          actually differs from current (no-op suppression per spec). */}
+          actually differs from current (no-op suppression per spec).
+          2026-06-07 · weekOffset navigation: offset 0 = current week
+          (seed.week, full fidelity). Other offsets use season.weekDays
+          entries — same plan data, slimmer shape — done days show the
+          green check and clicking opens the RunDetailModal. */}
       <div className="week wkstrip-v2">
-        {seed.week.map((day, i) => {
+        {weekOffset === 0 ? seed.week.map((day, i) => {
           const skipped = isSkipped(day);
           const isRest = day.type === 'rest';
 
@@ -402,7 +449,55 @@ export function TodayView({
               </div>
             </button>
           );
-        })}
+        }) : (() => {
+          // Past / future week from season.weekDays
+          const nowIdx = seed.season.nowIdx;
+          const offsetDays = seed.season.weekDays[nowIdx + weekOffset] ?? [];
+          const DOW_SHORT = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+          return offsetDays.map((day, i) => {
+            const t = day.type;
+            const isRest = t === 'rest';
+            const isDone = !!day.done;
+            const mi = day.mi > 0 ? day.mi.toFixed(1) : null;
+            const ps = day.paceSec;
+            const paceStr = ps ? `${Math.floor(ps/60)}:${String(Math.round(ps%60)).padStart(2,'0')}` : null;
+            const dn = day.date ? (() => { const p = (day.date as string).split('-').map(Number); return new Date(p[0],p[1]-1,p[2]).getDate(); })() : i + 1;
+            return (
+              <button
+                key={i}
+                className={`wc${isRest ? ' rest' : ''}`}
+                type="button"
+                onClick={() => {
+                  if (isDone && day.activityId && onOpenRun) onOpenRun(day.activityId as string);
+                }}
+                style={{ cursor: isDone && day.activityId ? 'pointer' : 'default' }}
+              >
+                <div className="wc-top">
+                  <span className="wc-day">
+                    <span className="wc-dw">{DOW_SHORT[i] ?? ''}</span>
+                    <b className="wc-dn">{dn}</b>
+                  </span>
+                  <span className="wc-ic">
+                    {isDone ? (
+                      <span className="gly done" aria-label="Done">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+                <div className="wc-name">
+                  {isRest ? null : <span className="effdot" style={{ background: EFF[t]?.dot ?? '#8A90A0' }} aria-hidden="true" />}
+                  <span className="wc-nm">{isRest ? 'Rest' : toTitleCase(workoutTypeTitle(t))}</span>
+                </div>
+                <div className="wc-met">
+                  {isRest ? null : (mi && paceStr) ? `${mi} mi · ${paceStr}` : mi ? `${mi} mi` : null}
+                </div>
+                <div className="wc-grow" />
+                <div className="wc-meta" />
+              </button>
+            );
+          });
+        })()}
       </div>
       </div>{/* .band */}
 
