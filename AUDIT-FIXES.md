@@ -463,16 +463,36 @@ Root cause confirmed: `buildWorkoutSpec` long branch ignored its `prescription` 
 
 ---
 
-## OPEN — Generator follow-up: emit M→HMP labels for late-QUALITY long runs (any-runner · logged 2026-06-07)
+## Generator follow-up: emit M→HMP labels for late-QUALITY long runs  [CODE-COMPLETE 2026-06-07 · awaiting David's deploy go · falsifiers green]
 
-The 6 in-place UPDATEs above fix the **active plan** for David. But `generate.ts` still emits plain `'LONG'` labels for all QUALITY-phase long runs. `buildWorkoutSpec` now knows how to encode M/HMP finish segments (via the prescription arg), but it can only act when the generator passes a prescription containing `@ M` or `@ HM`. For any new runner or future plan regen, wk3–5 long runs get the old flat easy spec.
+The 6 in-place UPDATEs above fixed the **active plan** for David. This closes the generator side: `layoutWeek` now emits M/HMP finish labels for late-QUALITY long runs, so `buildWorkoutSpec`'s `extractFinishSegment` encodes the finish for every future regen + new runner — not just David's hand-patched rows. Before this, `generate.ts` emitted plain `'LONG'` for all QUALITY-phase longs → flat easy spec under a label that promised nothing → no specific-endurance stimulus (the D1 gap, generator side).
 
-**Required `generate.ts` change:** in `layoutWeek`, when phase is QUALITY AND weekIdx is in the late-QUALITY window (the last 2–3 weeks before RACE-SPECIFIC), emit M/HMP-labelled sub_labels for the long run:
-- Late-QUALITY wk (HM, weeks ≥ N−2): `LONG · {round(longMi×0.30)}mi @ M` (M-pace warm-in)
-- Penultimate-QUALITY wk (HM, final QUALITY week): `LONG · {round(longMi×0.30)}mi @ HM`
-- RACE-SPECIFIC already emits `LONG · {round(longMi×0.4)}mi @ HM` (correct)
+**Implemented (`web-v2/lib/plan/generate.ts`, code-only, no data write):**
+- New pure helper `longFinishSegment(phase, weeksToPhaseEnd, racePaceTag)` → `{pct, tag}` | null. Derived from **phase position** (weeks from the end of the phase), NOT absolute week number, so it holds for any plan length:
+  - RACE-SPECIFIC (every wk): 40% @ {HM|MP} — byte-identical to the prior inline code (routed through the helper now)
+  - QUALITY last wk: 33% @ {HM|MP}  (HMP step for HM)
+  - QUALITY 2nd-from-last: 33% @ {M|MP}  (M-pace warm-in for HM)
+  - QUALITY 3rd-from-last: 30% @ {M|MP}
+  - earlier QUALITY / BASE / TAPER: null (plain long)
+  - 5K/10K (`racePaceTag` null): null everywhere — no long-run pace insert (per David's scope)
+- Plumbed `weeksToPhaseEnd = phaseWkRemaining - 1` from the composePlan loop into `layoutWeek` (0 = last week of the phase).
+- Long-run slot routes BOTH RACE-SPECIFIC and QUALITY through the helper (single doctrine source); `hasFinish` guard mirrors `expandLong`'s `finishMi < totalMi`.
+- Cite: Research/22 §3 (HM "LR with HMP segments" → "race-specific HMP"; M "LR w/ last N @ M").
 
-Requires: (a) define the late-QUALITY window (currently no explicit boundary — add a `weekIdx ≥ RACE_SPECIFIC_start − 2` gate or a per-phase week-count param), (b) the M-pace annotation in `racePaceTag`, (c) any-runner correctness (HM plan only; M plan uses 'MP' already; 5K/10K no long-run inserts). Design this before coding — affects plan regen for all users.
+**Falsifiers (all green; run via node_modules symlinked from the main checkout, on `main`-current base):**
+- `tsc --noEmit` → **0 errors** (0 in changed files).
+- Plan suite → **249/249** (6 files): generator-bench (incl. new assertion), spec-completeness 12/12, plan-engine, adapter-bench, adaptive-ramp, validate.
+- New bench assertion `late-QUALITY HM long runs carry the M→HMP finish progression` runs for all 5 HM personas (early-returns for 5K/M/ultra) — asserts last-3 QUALITY longs = `@ M` / `@ M` / `@ HM` and earlier QUALITY longs stay plain.
+- Live `composePlan` label dump (4 plan shapes · the concrete any-runner falsifier):
+  - David 11wk HM (QUALITY 6): wk3/4/5 = `@ M`/`@ M`/`@ HM`; wk6-8 RS `@ HM`; earlier QUALITY + taper plain → matches the approved patch structure.
+  - Advanced 8wk HM (QUALITY 4): last 3 = `@ M`/`@ M`/`@ HM`.
+  - Beginner 16wk HM (QUALITY 6): ONLY wk8/9/10 (last 3) get finishes; earlier QUALITY plain → phase-position derivation confirmed (not hardcoded weeks).
+  - Advanced 16wk Marathon (QUALITY 5): `@ MP` throughout late-QUALITY + RS (race pace == marathon pace).
+
+**Scope:** future generations only. Does NOT regenerate David's active plan (regen re-rolls distances — separate gated issue, logged above). Deploys via the normal pipeline on David's go.
+
+### Follow-up (logged, deferred per David — out of scope this session)
+- **10K long-run M-pace finish gap.** Research/22 §2 (10K Intermediate) prescribes "9-10 mi E w/ last 2 mi @ M", but the generator gives 10K plans plain long runs: `racePaceTag` is null for `<12`mi (`generate.ts:756`), so `longFinishSegment` correctly returns null and no finish is emitted. Intentional for this fix (David scoped 5K/10K out: "no long-run inserts"), but the 10K doctrine does support a short M-pace finish. To wire later: extend `racePaceTag` to return `'M'` for the 10K band (≈6-11mi) and add a 10K branch to `longFinishSegment` (smaller pct, `@ M`). Deferred.
 
 ---
 

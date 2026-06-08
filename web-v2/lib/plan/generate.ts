@@ -655,10 +655,56 @@ async function resolvePrescriptions(
   };
 }
 
+/**
+ * 2026-06-07 · Audit D follow-up · long-run race-pace finish for the late
+ * build. Returns {pct, tag} or null (plain easy long). Derived from PHASE
+ * POSITION (weeks from the end of the phase), so it holds for any plan
+ * length — an 8-week and a 16-week build both get the finish in their last
+ * three QUALITY weeks, never by a hardcoded absolute week number.
+ *
+ * Doctrine · Research/22 §3:
+ *   HM "endurance build → LT + LR with HMP segments → race-specific HMP":
+ *       marathon-pace warm-in through the last QUALITY weeks, stepping to
+ *       HMP at the QUALITY→RACE-SPECIFIC seam, then HMP through race-specific.
+ *   M  "long run w/ last N @ M": race pace IS marathon pace → every finish @ MP.
+ *
+ *   RACE-SPECIFIC (every wk):       40% @ {HM | MP}
+ *   QUALITY last wk:                33% @ {HM | MP}   (HMP step for HM)
+ *   QUALITY 2nd-from-last:          33% @ {M  | MP}   (M-pace warm-in for HM)
+ *   QUALITY 3rd-from-last:          30% @ {M  | MP}
+ *   earlier QUALITY / BASE / TAPER: null
+ *
+ * 5K/10K (racePaceTag null) → null everywhere · they train via reps, not
+ * long-run pace inserts.
+ */
+function longFinishSegment(
+  phase: string,
+  weeksToPhaseEnd: number,
+  racePaceTag: 'HM' | 'MP' | null,
+): { pct: number; tag: 'HM' | 'M' | 'MP' } | null {
+  if (!racePaceTag) return null;
+  if (phase === 'RACE-SPECIFIC') return { pct: 0.40, tag: racePaceTag };
+  if (phase !== 'QUALITY') return null;
+  // Last three QUALITY weeks build toward race pace. HM ramps M → M → HMP;
+  // M holds MP throughout (race pace == marathon pace).
+  const mTag: 'M' | 'MP' = racePaceTag === 'HM' ? 'M' : 'MP';
+  switch (weeksToPhaseEnd) {
+    case 0:  return { pct: 0.33, tag: racePaceTag };  // last QUALITY wk · HMP step / MP
+    case 1:  return { pct: 0.33, tag: mTag };
+    case 2:  return { pct: 0.30, tag: mTag };
+    default: return null;                             // earlier QUALITY · plain long
+  }
+}
+
 function layoutWeek({
-  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget,
 }: {
-  phase: string; weekIdx: number; totalWeeks: number;
+  phase: string; weekIdx: number;
+  /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
+   *  phase ends (0 = last week of the phase). Drives the late-QUALITY
+   *  long-run finish window in a plan-length-independent way. */
+  weeksToPhaseEnd: number;
+  totalWeeks: number;
   weeklyMi: number; longRunDow: DOW; qualityDows: DOW[]; restDow: DOW;
   isRaceWeek: boolean; raceDow: DOW | null; raceDistanceMi: number;
   rx: ResolvedPrescriptions;
@@ -756,13 +802,21 @@ function layoutWeek({
   const racePaceTag = raceDistanceMi >= 25 ? 'MP'
                     : raceDistanceMi >= 12 ? 'HM'
                     : null;
+  // 2026-06-07 · Audit D follow-up · race-pace finish for late-build longs.
+  // RACE-SPECIFIC keeps its 40% finish; the last three QUALITY weeks now
+  // also carry the M→HMP warm-in (Research/22 §3). Encoded into the
+  // sub_label ("LONG · 4mi @ M") so buildWorkoutSpec's extractFinishSegment
+  // picks it up and the watch executes easy-build + finish — closing the
+  // generator side of the D1 gap (in-place row patches fixed the active
+  // plan; this fixes every future regen + new runner).
+  const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag);
+  const finishMi = finishSeg ? Math.round(longMi * finishSeg.pct) : 0;
+  const hasFinish = finishSeg != null && finishMi > 0 && finishMi < longMi;
   slots[longRunDow] = {
     dow: longRunDow, type: 'long', distanceMi: longMi, isQuality: false, isLong: true,
-    subLabel: phase === 'RACE-SPECIFIC' && racePaceTag
-      ? `LONG · ${Math.round(longMi * 0.4)}mi @ ${racePaceTag}`
-      : 'LONG',
-    notes: phase === 'RACE-SPECIFIC' && racePaceTag
-      ? `Steady ${longMi - Math.round(longMi * 0.4)}mi, then ${Math.round(longMi * 0.4)}mi at ${racePaceTag === 'MP' ? 'marathon pace' : 'half-marathon pace'}.`
+    subLabel: hasFinish ? `LONG · ${finishMi}mi @ ${finishSeg!.tag}` : 'LONG',
+    notes: hasFinish
+      ? `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${finishSeg!.tag === 'HM' ? 'half-marathon pace' : 'marathon pace'}.`
       : phase === 'TAPER' ? 'Easy long, hold pace. Quality lives in the race itself.'
       : 'Conversational throughout. Build the engine.',
   };
@@ -1104,6 +1158,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     const days = layoutWeek({
       phase: phaseLabel,
       weekIdx: wi,
+      // 2026-06-07 · Audit D follow-up · 0 = last week of this phase.
+      // phaseWkRemaining is decremented after this call, so it currently
+      // holds weeks-left-including-this-one → minus 1 = weeks-to-phase-end.
+      weeksToPhaseEnd: phaseWkRemaining - 1,
       totalWeeks,
       weeklyMi: vols[wi],
       longRunDow: input.longRunDow,

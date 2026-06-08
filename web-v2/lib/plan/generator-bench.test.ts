@@ -247,6 +247,35 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
         }
       });
 
+      it('late-QUALITY HM long runs carry the M→HMP finish progression (Audit D follow-up)', () => {
+        // 2026-06-07 · the generator must emit M/HMP finish labels on the
+        // last three QUALITY-phase long runs for HM plans (Research/22 §3),
+        // so buildWorkoutSpec encodes the finish and the watch executes it.
+        // Before this fix QUALITY longs were plain "LONG" → flat easy spec
+        // under a label that promised nothing → no specific-endurance
+        // stimulus. Phase-position derived (last 3 QUALITY weeks), not by
+        // hardcoded week number, so it holds across plan lengths.
+        if (!(p.race.distanceMi >= 12 && p.race.distanceMi < 25)) return; // HM only
+        const qWeeks = result.weeks.filter((w) => w.phase === 'QUALITY');
+        if (qWeeks.length < 3) return; // need the full last-3 window
+        const longLabel = (w: { days: { type: string; subLabel?: string | null }[] }) =>
+          w.days.find((d) => d.type === 'long')?.subLabel ?? '';
+        const [thirdLast, secondLast, last] = qWeeks.slice(-3).map(longLabel);
+        // 3rd- + 2nd-from-last QUALITY weeks · marathon-pace warm-in (@ M)
+        expect(thirdLast).toContain('@ M');
+        expect(thirdLast).not.toContain('@ HM');
+        expect(secondLast).toContain('@ M');
+        expect(secondLast).not.toContain('@ HM');
+        // last QUALITY week · steps up to HMP (@ HM), seam into RACE-SPECIFIC
+        expect(last).toContain('@ HM');
+        // earlier QUALITY weeks stay plain easy longs · no premature race pace
+        for (const w of qWeeks.slice(0, -3)) {
+          const label = longLabel(w);
+          expect(label).not.toContain('@ HM');
+          expect(label).not.toContain('@ M');
+        }
+      });
+
       it('volume ramps · peak weekly exceeds start-week weekly', () => {
         // Peak should be strictly greater than week-0 (otherwise the
         // ramp math is broken · the plan is flat).
