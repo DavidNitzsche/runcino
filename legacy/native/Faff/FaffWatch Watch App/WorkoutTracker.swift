@@ -29,6 +29,11 @@ final class WorkoutTracker: NSObject, ObservableObject {
     private var builder: HKLiveWorkoutBuilder?
     private var routeBuilder: HKWorkoutRouteBuilder?
     private let locationManager = CLLocationManager()
+    /// In-memory GPS coordinate accumulator for the completion polyline.
+    /// Stores (lat, lng) pairs — lightweight vs full CLLocation — for all
+    /// accurate fixes received during the run.  Read by buildCompletion
+    /// BEFORE tracker.end() is called; cleared when a new workout starts.
+    private(set) var gpsCoords: [(Double, Double)] = []
     /// Live running cadence (steps/min). CMPedometer gives `currentCadence`
     /// directly, which is far more reliable than differencing HealthKit's
     /// batched cumulative step count over wall-clock time.
@@ -134,6 +139,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
             session = s
             builder = b
             routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
+            gpsCoords = []   // reset accumulator for the new run
 
             // GPS route
             locationManager.delegate = self
@@ -224,6 +230,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         self.session = nil
         self.builder = nil
         self.routeBuilder = nil
+        self.gpsCoords = []   // coords already consumed by buildCompletion; free memory
 
         // Workout's over — tear down the audio session so the watch's
         // regular silent-mode behavior comes back when the user is just
@@ -258,6 +265,13 @@ final class WorkoutTracker: NSObject, ObservableObject {
         // Route only — pace comes from HealthKit runningSpeed in apply(), NOT
         // from raw GPS speed here (having both write paceSPerMi made it jitter).
         routeBuilder?.insertRouteData(locs) { _, _ in }
+        // Accumulate coordinates for the completion polyline that ships with
+        // the watch completion payload.  Storing (lat, lng) only (~16 bytes
+        // each) rather than full CLLocation objects keeps memory overhead
+        // negligible for a 12+ mile run (~4000 pts at 5 m filter = ~64 KB).
+        for loc in locs {
+            gpsCoords.append((loc.coordinate.latitude, loc.coordinate.longitude))
+        }
     }
 
     // MARK: - Simulator mock

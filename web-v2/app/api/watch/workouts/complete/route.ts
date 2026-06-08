@@ -76,6 +76,9 @@ interface WatchCompletionBody {
   indoor?: boolean;           // spliced in by treadmill path
   timezone?: string;          // spliced in by iPhone relay (WatchSync)
   phases?: WatchCompletionPhaseBody[];
+  // GPS polyline shipped directly by the watch app (build 172+). Eliminates
+  // the separate iPhone HK import hop that was the sole GPS source.
+  route_polyline?: string | null;
   // Legacy fallback fields — older clients; prefer startedAt for date
   date?: string;
   dateLocal?: string;
@@ -228,6 +231,10 @@ export async function POST(req: NextRequest) {
     // Reference to the full per-phase blob for any downstream consumer
     // that wants the structured detail.
     watchCompletionRef: body.workoutId,
+    // GPS polyline shipped directly by watch app (build 172+). Older clients
+    // omit the field; falls back to null and the HK import path fills it via
+    // the apple_watch sibling row + enhanceCanonicalFromAbsorbed as before.
+    routePolyline: body.route_polyline ?? null,
   };
   // 2026-06-03 · auto-populate profile.timezone from the device's TZ on
   // first sync. Silent · only writes when profile.timezone is currently

@@ -374,6 +374,11 @@ struct WatchCompletion: Encodable {
     /// (2026-06-01).
     var kcal: Int? = nil
     let phases: [WatchCompletionPhase]
+    /// Google-encoded polyline (precision 5), downsampled to ≤600 points.
+    /// Sent so the watch completion row gets GPS immediately — no separate
+    /// iPhone HK import hop required.  nil when GPS was unavailable (indoor,
+    /// simulator, or <2 accurate fixes recorded).
+    var routePolyline: String? = nil
 }
 
 // MARK: - Training fueling (time-anchored gel plan)

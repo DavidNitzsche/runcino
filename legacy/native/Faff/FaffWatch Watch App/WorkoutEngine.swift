@@ -1003,6 +1003,29 @@ final class WorkoutEngine: ObservableObject {
         pendingRpeResultsIndex = nil
     }
 
+    // MARK: - GPS polyline encoder
+
+    /// Google precision-5 polyline encoding.  Matches the decoder in the
+    /// web map renderer and the identical encoder in HealthKitImporter.swift.
+    private static func encodePolyline(_ coords: [(Double, Double)]) -> String {
+        var result = ""
+        var prevLat = 0, prevLng = 0
+        func enc(_ v: Int) {
+            var value = v < 0 ? ~(v << 1) : (v << 1)
+            while value >= 0x20 {
+                result.append(Character(UnicodeScalar(UInt8((0x20 | (value & 0x1f)) + 63))))
+                value >>= 5
+            }
+            result.append(Character(UnicodeScalar(UInt8(value + 63))))
+        }
+        for (lat, lng) in coords {
+            let iLat = Int((lat * 1e5).rounded()), iLng = Int((lng * 1e5).rounded())
+            enc(iLat - prevLat); enc(iLng - prevLng)
+            prevLat = iLat; prevLng = iLng
+        }
+        return result
+    }
+
     private func finish(status: String) {
         stopTimer()
         // Build the completion BEFORE flipping state, so anything observing the
@@ -1083,6 +1106,22 @@ final class WorkoutEngine: ObservableObject {
             return Int((Double(totalCadSec) / Double(totalSec)).rounded())
         }()
 
+        // GPS polyline — encode BEFORE tracker.end() tears down the session.
+        // Downsample to ≤600 points; precision-5 Google encoding ~800 bytes
+        // for a 12mi run.  nil when fewer than 2 coordinates were collected
+        // (indoor, very short tap-test, simulator).
+        let routePolyline: String? = {
+            guard let coords = tracker?.gpsCoords, coords.count >= 2 else { return nil }
+            let step = max(1, coords.count / 600)
+            var sampled: [(Double, Double)] = stride(from: 0, to: coords.count, by: step)
+                .map { coords[$0] }
+            if let last = coords.last,
+               sampled.last.map({ $0.0 != last.0 || $0.1 != last.1 }) ?? true {
+                sampled.append(last)
+            }
+            return Self.encodePolyline(sampled)
+        }()
+
         return WatchCompletion(
             workoutId: workout.workoutId,
             startedAt: iso.string(from: workoutStart),
@@ -1094,7 +1133,8 @@ final class WorkoutEngine: ObservableObject {
             maxHr: maxHr > 0 ? maxHr : nil,
             avgCadence: derivedAvgCadence,
             kcal: kcal > 0 ? kcal : nil,
-            phases: results
+            phases: results,
+            routePolyline: routePolyline
         )
     }
 }
