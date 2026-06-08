@@ -25,6 +25,7 @@ function meshGradient(type: EffortKey): React.CSSProperties {
 }
 import { buildAdaptText } from '../adapt-text';
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
+import { heatAwareDrift, type DriftBand } from '@/lib/coach/heat-band';
 import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type BlueprintData, type BlueprintSegment } from '../session-shape';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
@@ -707,6 +708,10 @@ type RunSummary = {
    *  the conditions" vs honestly off. Same value drives the heat-
    *  adjusted phase verdict. 0 when conditions weren't material. */
   heat_slowdown_pct?: number | null;
+  /** 2026-06-08 · heat-adjusted KEPT-IT-EASY share (Z1+Z2 %) · non-null only
+   *  on hot runs (heat_slowdown_pct >= 6). The easy gauge prefers it over the
+   *  raw share so thermoregulation isn't scored as a failure. */
+  easy_share_heat_adj?: number | null;
   /** Phase-by-phase breakdown from coach_intents watch_completion payload.
    *  Drives THE REPS card for intervals · warmup/cooldown/recovery rows
    *  + per-rep plan-vs-result bars. Empty array for Strava/HK runs that
@@ -2284,6 +2289,8 @@ function CompletedHeroV2({
             // paceToSec parses it back to integer seconds. Falls back
             // to per-mile mean inside EasyPanel when null.
             runAvgPaceSec={runData?.pace ? paceToSec(runData.pace) : null}
+            heatSlowdownPct={runData?.heat_slowdown_pct ?? null}
+            easyShareHeatAdj={runData?.easy_share_heat_adj ?? null}
           />
         ) : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 &&
             (d.workoutSpec as { finish_mi?: number | null } | null)?.finish_mi != null ? (
@@ -2291,7 +2298,7 @@ function CompletedHeroV2({
           // Plain longs (single work phase, no finish_mi) fall through to LongPanel.
           <LongMpPanel phases={runData.phase_breakdown} splits={splits} />
         ) : d.type === 'long' && splits.length >= 3 ? (
-          <LongPanel splits={splits} avgPace={resolvedPace ?? null} />
+          <LongPanel splits={splits} avgPace={resolvedPace ?? null} heatSlowdownPct={runData?.heat_slowdown_pct ?? null} />
         ) : d.type === 'tempo' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
           <TempoPanel
             phases={runData.phase_breakdown}
@@ -2659,7 +2666,7 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
  * missing the panel renders just the section header.
  */
 function EasyPanel({
-  hrZonePcts, splits, hrAvg, paceInBand, runAvgPaceSec,
+  hrZonePcts, splits, hrAvg, paceInBand, runAvgPaceSec, heatSlowdownPct, easyShareHeatAdj,
 }: {
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null | undefined;
   splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
@@ -2674,11 +2681,19 @@ function EasyPanel({
   // uses this instead of the mean of per-mile paces · the per-mile
   // mean misrepresents the run when the last split is a partial mile.
   runAvgPaceSec?: number | null;
+  // 2026-06-08 · heat context · slowdownPct relabels the drift band (>=2)
+  // and selects the heat-adjusted easy share (>=6). Both null on cool runs.
+  heatSlowdownPct: number | null;
+  easyShareHeatAdj: number | null;
 }) {
-  // KEPT IT EASY · Z1+Z2 share.
-  const easyPct = hrZonePcts
+  // KEPT IT EASY · Z1+Z2 share. On a HOT day (heatSlowdownPct >= 6) prefer the
+  // heat-adjusted share (zones shifted up by the expected heat bump, computed
+  // server-side) so the gauge judges effort, not thermoregulation.
+  const rawEasyPct = hrZonePcts
     ? Math.round((hrZonePcts.z1 ?? 0) + (hrZonePcts.z2 ?? 0))
     : null;
+  const useHeatEasy = (heatSlowdownPct ?? 0) >= 6 && easyShareHeatAdj != null;
+  const easyPct = useHeatEasy ? easyShareHeatAdj : rawEasyPct;
   // 2026-06-03 · Rule 17 · thresholds depend on whether pace was the
   // authoritative easy signal. When pace was in band, HR-zone share
   // is informational · drift into Z3 from heat/fatigue is honest
@@ -2705,11 +2720,14 @@ function EasyPanel({
     ? Math.round(splitsWithHr.slice(mid).reduce((a, b) => a + (b.hr ?? 0), 0) / splitsWithHr.slice(mid).length)
     : null;
   const hrDelta = firstHalfHr != null && secondHalfHr != null ? secondHalfHr - firstHalfHr : null;
-  const driftBand: { text: string; color: string } | null = hrDelta == null
+  const rawDriftBand: DriftBand | null = hrDelta == null
     ? null
     : Math.abs(hrDelta) <= 4 ? { text: 'STAYED FLAT', color: '#3ED06a' }
     : Math.abs(hrDelta) <= 8 ? { text: 'SOME DRIFT', color: '#ffb24d' }
     : { text: 'LATE FADE', color: '#ff6a6a' };
+  // 2026-06-08 · heat-aware relabel · a back-half HR rise on a warm+ day
+  // (slowdownPct >= 2) is thermoregulation, not decoupling · show HEAT DRIFT.
+  const driftBand = rawDriftBand ? heatAwareDrift(rawDriftBand, heatSlowdownPct ?? 0) : null;
 
   // Mile pace footprint · per-mile pace in seconds.
   const paceSecsAll = splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0);
@@ -2812,9 +2830,11 @@ function EasyPanel({
                 The Z1-Z2 share is descriptive, not a fault. Was: just
                 "Z1-Z2 share of moving time" with a 50% bar reading like
                 a failure next to the ON PLAN badge above. */}
-            {paceInBand && easyPct != null && easyPct < 70
-              ? 'Pace held the easy band · HR was descriptive, not the gate'
-              : 'Z1–Z2 share of moving time'}
+            {useHeatEasy
+              ? 'Heat-adjusted · your easy ceiling rises when it is hot'
+              : paceInBand && easyPct != null && easyPct < 70
+                ? 'Pace held the easy band · HR was descriptive, not the gate'
+                : 'Z1–Z2 share of moving time'}
           </div>
         </div>
       ) : null}
@@ -2884,9 +2904,10 @@ function EasyPanel({
                 fontFamily: FONT_DISP, fontWeight: 600, fontSize: 13, color: driftBand.color,
               }}>{(hrDelta ?? 0) >= 0 ? '+' : ''}{hrDelta} bpm</b>
               {(hrDelta ?? 0) >= 0 ? ' faster in the back half. ' : ' lower in the back half. '}
-              {driftBand.text === 'STAYED FLAT' && 'The engine stayed flat · a genuinely easy run.'}
-              {driftBand.text === 'SOME DRIFT' && 'Some late drift · keep the back half honest next time.'}
-              {driftBand.text === 'LATE FADE' && 'The engine worked harder to hold the same pace by the back half.'}
+              {driftBand.heatExpected && 'Hot out there. Your heart runs higher to shed heat at the same pace. Expected in the conditions, not lost fitness.'}
+              {!driftBand.heatExpected && driftBand.text === 'STAYED FLAT' && 'The engine stayed flat · a genuinely easy run.'}
+              {!driftBand.heatExpected && driftBand.text === 'SOME DRIFT' && 'Some late drift · keep the back half honest next time.'}
+              {!driftBand.heatExpected && driftBand.text === 'LATE FADE' && 'The engine worked harder to hold the same pace by the back half.'}
             </div>
           </div>
         </div>
@@ -2995,10 +3016,11 @@ function EasyPanel({
  * Answers "did the engine hold for the whole distance?"
  */
 function LongPanel({
-  splits, avgPace,
+  splits, avgPace, heatSlowdownPct,
 }: {
   splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
   avgPace: string | null;
+  heatSlowdownPct: number | null;
 }) {
   const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
 
@@ -3024,11 +3046,12 @@ function LongPanel({
   const hrDelta = firstThirdHr != null && finalThirdHr != null ? finalThirdHr - firstThirdHr : null;
   const finalThirdWarn = hrDelta != null && hrDelta > 8;
 
-  const driftBand: { text: string; color: string } | null = hrDelta == null
+  const rawDriftBand: DriftBand | null = hrDelta == null
     ? null
     : hrDelta <= 4 ? { text: 'HELD STEADY', color: '#3ED06a' }
     : hrDelta <= 8 ? { text: 'SOME DRIFT', color: '#ffb24d' }
     : { text: 'LATE FADE', color: '#ff6a6a' };
+  const driftBand = rawDriftBand ? heatAwareDrift(rawDriftBand, heatSlowdownPct ?? 0) : null;
 
   // Find the mile where HR drift crossed +8 bpm vs first third · for the
   // summary's "held to mi N" caption.
@@ -3126,9 +3149,10 @@ function LongPanel({
                 fontFamily: FONT_DISP, fontWeight: 600, fontSize: 13, color: driftBand.color,
               }}>{(hrDelta ?? 0) >= 0 ? '+' : ''}{hrDelta} bpm</b>
               {' '}from the first third to the last.
-              {driftBand.text === 'HELD STEADY' && ' The engine held all the way through.'}
-              {driftBand.text === 'SOME DRIFT' && ' Normal late-run rise · the engine worked harder to hold the same pace.'}
-              {driftBand.text === 'LATE FADE' && ' Normal late-run fade · fuel a touch earlier next time.'}
+              {driftBand.heatExpected && ' Hot out there. Your heart runs higher to shed heat at the same pace. Expected in the conditions, not lost fitness.'}
+              {!driftBand.heatExpected && driftBand.text === 'HELD STEADY' && ' The engine held all the way through.'}
+              {!driftBand.heatExpected && driftBand.text === 'SOME DRIFT' && ' Normal late-run rise · the engine worked harder to hold the same pace.'}
+              {!driftBand.heatExpected && driftBand.text === 'LATE FADE' && ' Normal late-run fade · fuel a touch earlier next time.'}
             </div>
           </div>
         </div>

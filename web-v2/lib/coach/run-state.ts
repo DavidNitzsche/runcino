@@ -144,6 +144,12 @@ export interface RunDetail {
    *  same number the phase verdict uses. 0 when conditions weren't
    *  material. */
   heat_slowdown_pct: number;
+  /** 2026-06-08 · heat-adjusted KEPT-IT-EASY share (Z1+Z2 %) · the easy
+   *  share recomputed against zones shifted up by the expected heat HR-bump.
+   *  Non-null only on HOT runs (heat_slowdown_pct >= 6) with a known bump ·
+   *  the gauge prefers this over the raw share so a hot easy run isn't
+   *  scored as a failure. Null otherwise → fall back to raw Z1+Z2. */
+  easy_share_heat_adj: number | null;
   /** A5 — GPS splits were flagged unreliable at ingest (splits-sum
    *  exceeded run duration by >5s due to HK pause-event gap). When
    *  true, MILE SPLITS should not be displayed and split-based
@@ -529,6 +535,28 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // The judgeWeather output is the canonical heat penalty · same
   // duration-scaled value the recap voice uses.
   const heatSlowdownPct = await computeHeatSlowdownForRun(r).catch(() => 0);
+  // 2026-06-08 · heat-adjusted easy share · on a HOT day (slowdownPct >= 6)
+  // the same easy effort runs a higher HR, so the raw Z1+Z2 share punishes
+  // the runner for thermoregulation. Recompute the share against zones
+  // shifted up by the expected heat HR-bump — the HR analog of heat-band.ts
+  // widening the slow side for pace. Null unless hot + a known bump · the
+  // panel falls back to the raw share.
+  let easyShareHeatAdj: number | null = null;
+  if (heatSlowdownPct >= 6) {
+    // Heat HR-elevation to shift the easy zones up by. Prefer the baseline-
+    // relative bump (weatherCtx) when present, else derive from absolute temp
+    // vs a ~60°F thermoneutral reference — the cited Maughan rule (~1 bpm/°F
+    // above 60°F, capped 10 · Research/06-weather-adjustments.md §1). Watch
+    // rows are polyline-only (no flat startLat/startLng), so weatherCtx is
+    // usually null and the absolute-temp path is what actually carries this.
+    const heatBumpBpm = (weatherCtx && weatherCtx.hr_bump_bpm > 0)
+      ? weatherCtx.hr_bump_bpm
+      : (actualTempF != null ? Math.max(0, Math.min(10, Math.round(actualTempF - 60))) : 0);
+    if (heatBumpBpm > 0) {
+      const adj = await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, heatBumpBpm);
+      easyShareHeatAdj = Math.round((adj.z1 ?? 0) + (adj.z2 ?? 0));
+    }
+  }
   const phaseBreakdown = await loadPhaseBreakdown(userId, day, heatSlowdownPct);
 
   // Per-split phase tagging · walks the phaseBreakdown's cumulative
@@ -708,6 +736,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     splits_unreliable: r.splits_unreliable === true,
     splits,
     hrZonePcts,
+    easy_share_heat_adj: easyShareHeatAdj,
     hr_zones_from_lthr,
     form,
     phase_breakdown: phaseBreakdown,
@@ -1270,6 +1299,7 @@ async function deriveHrZones(
   userId: string,
   avgHr: number | string | null,
   splits: RunSplit[],
+  hrOffsetBpm = 0,
 ): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number }> {
   const empty = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
   const hr = Number(avgHr);
@@ -1310,7 +1340,7 @@ async function deriveHrZones(
     for (const s of splits) {
       if (!s.hr) continue;
       total++;
-      const zone = classify(s.hr);
+      const zone = classify(s.hr - hrOffsetBpm);
       const k = `z${zone.idx}` as keyof typeof counts;
       counts[k]++;
     }
@@ -1324,7 +1354,7 @@ async function deriveHrZones(
   }
 
   // No splits — assign 100% to the band the avg HR falls in.
-  const zone = classify(hr);
+  const zone = classify(hr - hrOffsetBpm);
   const k = `z${zone.idx}` as keyof typeof empty;
   return { ...empty, [k]: 100 };
 }
@@ -1347,6 +1377,7 @@ async function deriveHrZonesFromSamples(
   rawSplits: unknown,
   avgHr: number | string | null,
   splits: RunSplit[],
+  hrOffsetBpm = 0,
 ): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number }> {
   const empty = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
   const { bucketHrSamplesByZone, hasHrSamples } = await import('./hr-zone-bucket');
@@ -1354,7 +1385,7 @@ async function deriveHrZonesFromSamples(
     ? rawSplits as Parameters<typeof bucketHrSamplesByZone>[0]
     : [];
   if (rawArr.length === 0 || !hasHrSamples(rawArr)) {
-    return deriveHrZones(userId, avgHr, splits);
+    return deriveHrZones(userId, avgHr, splits, hrOffsetBpm);
   }
   // Load LTHR once · build the zone table · bucket every sample.
   const lthrRow = await pool.query(
@@ -1365,5 +1396,5 @@ async function deriveHrZonesFromSamples(
   if (!lthr) return empty;
   const table = computeZones({ lthr });
   if (!table) return empty;
-  return bucketHrSamplesByZone(rawArr, table);
+  return bucketHrSamplesByZone(rawArr, table, hrOffsetBpm);
 }

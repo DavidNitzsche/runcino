@@ -98,6 +98,11 @@ function classify(bpm: number, table: ZoneTable): number {
 export function bucketHrSamplesByZone(
   splits: RawSplit[],
   table: ZoneTable | null,
+  // 2026-06-08 · optional heat offset · subtract the expected heat HR-bump
+  // from each reading before classifying, so a hot-day easy run is judged
+  // against zones shifted up by the bump (the HR analog of heat-band.ts
+  // widening the pace band). Default 0 = no change for every existing caller.
+  hrOffsetBpm = 0,
 ): ZonePcts {
   if (!table) return EMPTY;
   const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -107,7 +112,7 @@ export function bucketHrSamplesByZone(
     for (const samp of samples) {
       const bpm = Number(samp?.bpm) || 0;
       if (bpm < 40 || bpm > 230) continue;
-      const idx = classify(bpm, table);
+      const idx = classify(bpm - hrOffsetBpm, table);
       counts[idx] = (counts[idx] ?? 0) + 1;
       total++;
     }

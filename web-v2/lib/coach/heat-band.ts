@@ -40,3 +40,26 @@ export function heatAdjustedStatus(
   if (actualSPerMi > effectiveTarget + tolerance) return 'slow';
   return 'on';
 }
+
+/** Raw HR-drift band shape (chip text + color) shared by the run-detail
+ *  panels. `heatExpected` is set once heatAwareDrift relabels it. */
+export type DriftBand = { text: string; color: string; heatExpected?: boolean };
+
+/**
+ * Heat-aware HR-drift label. On a warm-or-hotter day (slowdownPct >= 2 — the
+ * same gate heatAdjustedStatus uses to start widening the pace band) a
+ * back-half HR rise is thermoregulation, not aerobic decoupling. Relabel the
+ * verdict to HEAT DRIFT so the runner still sees the magnitude with the right
+ * cause, instead of a red "LATE FADE" that reads as lost fitness.
+ *
+ * Only the two RISE verdicts are rewritten ('SOME DRIFT', 'LATE FADE'); a
+ * flat/steady run (STAYED FLAT / HELD STEADY) and every band on a cool day
+ * pass through unchanged. Don't suppress — the magnitude line still renders.
+ */
+export function heatAwareDrift(raw: DriftBand, slowdownPct: number): DriftBand {
+  const isRise = raw.text === 'SOME DRIFT' || raw.text === 'LATE FADE';
+  if (slowdownPct >= 2 && isRise) {
+    return { text: 'HEAT DRIFT', color: '#ffb24d', heatExpected: true };
+  }
+  return raw;
+}
