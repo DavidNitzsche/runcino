@@ -690,7 +690,7 @@ First-shipped E5 trusted the watch's on-device (weather-unaware) `verdict`, so a
 
 ---
 
-## Item 16 — Shoe tracking · MINIMAL FIX  [CODE COMPLETE 2026-06-08 · tsc 0 · awaiting David's go to deploy]
+## Item 16 — Shoe tracking · MINIMAL FIX  [DEPLOYED 2026-06-08 · origin/main e2f8f615 (carries shoe fix 7059205b) · Railway SUCCESS · tsc 0]
 
 **The break (Overnight Item 16 + RO ground truth 2026-06-08):** auto-assign had never once fired in prod (`shoe_auto_assigned_at IS NOT NULL` = 0 / 138 runs); watch/HK runs — the dominant source — never got a shoe (gear-only assigners, and watch/HK carry no gear); the `/today` ShoePicker wrote `day_actions(action='shoe')` which **no code ever read** (David's two picks — 06-04 shoe 6, 05-31 shoe 1 — landed on runs that stayed `shoe_id=null`); stored mileage was fictional (Zoom Fly 150 stored / 0 tracked; 7/7 shoes' stored ≠ run-sum) and only recomputed on the manual modal PATCH.
 
@@ -700,6 +700,8 @@ First-shipped E5 trusted the watch's on-device (weather-unaware) `verdict`, so a
 - **On-read mileage** — new `lib/shoe/mileage.ts computeShoeMileage` (MAX-per-day-per-shoe dedupe, mergedIntoId excluded); read sites repointed (`/api/shoe` GET, `run-state.ts` modal inventory, `profile-state.ts` → feeds `fact-reciter` + pctUsed). Deleted `recomputeShoeMileage` + its PATCH call; modal PATCH now clears `shoe_auto_assigned_at` (marks manual). Stored `shoes.mileage` column left in place but no longer read/written (vestigial; the baseline fast-follow may repurpose it).
 
 **Falsifiers (run post-deploy):** a watch-completed run lands with `shoe_id` = run-type-recommended shoe + `shoe_auto_assigned_at` non-null; whole-DB auto-assigned count > 0; a /today pick shows on the run-detail modal + same-day run; `/api/shoe` mileage == canonical run-sum for every shoe (no more 150-mi fiction).
+
+**Post-deploy verification (2026-06-08):** #3 mileage == canonical-run-sum **PASS** (Zoom Fly 150→0; all 7 shoes now serve run-sum). #1 resolver **verified by read-only sim** (`web-v2/scripts/_falsify_shoe.mjs`) — each null watch run resolves to a correct shoe; day_actions picks now consumed (06-07 long → #6 SC Trainer; 06-04 → #6 via /today pick). #2 whole-DB auto count = **0, pending** — flips on the next watch/HK ingest (the hook fires only on new runs; re-run the falsifier to confirm). **16-B backfill** (~10 historical null watch runs) HELD until #2 confirms, then UPDATE statements shown for per-statement approval.
 
 ### Item 16 — Separate follow-ups (logged, NOT built per David)
 - **16-A · Manual starting-mileage field** — add a one-field "starting mileage" input to the shoe edit UI (web + iPhone) so pre-app miles add on top of on-read tracked miles (`display = baseline_mi + tracked`). Needs a `baseline_mi` column (or repurpose the now-vestigial `mileage` column) + the form. Fast-follow; not blocking v1. The on-read v1 reads worn shoes near-0 until runs tag onto them — this closes that gap.
