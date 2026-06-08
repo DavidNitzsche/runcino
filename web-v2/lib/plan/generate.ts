@@ -1741,6 +1741,14 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       ...composed.authoredState,
       mode,
       generated_at: new Date().toISOString(),
+      // When runway is < 14 weeks (e.g. AFC → CIM compressed block), flag it
+      // so the coach briefing layer can surface the context. Base phase
+      // condenses; race-specific and taper are preserved intact.
+      // Cite: Research/22-plan-templates.md §11 "Two Marathons (spring + fall)"
+      ...(composed.totalWeeks < 14 ? {
+        compressed_timeline: true,
+        compressed_note: `${composed.totalWeeks}-week build — base phase condensed; race-specific phase and taper preserved intact.`,
+      } : {}),
     },
   });
 
