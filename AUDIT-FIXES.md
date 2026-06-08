@@ -558,3 +558,109 @@ Every `kind` `buildWorkoutSpec` can emit (easy/recovery/long/tempo/threshold/int
 > - **FALSIFIERS** — all green (above); RO write-denied confirmed.
 > - **WHAT'S LEFT IN THIS LEG** — nothing for the audit. Fix queue: D1 (CRITICAL, code + gated in-place re-spec), D2 (MAJOR, code), D3/D4/D5 (minor).
 > - **WHAT I NEED FROM YOU** — review findings; decide D1 severity (CRITICAL vs MAJOR) + whether to proceed to fixes. No fixes applied per instruction.
+
+---
+
+## Audit E — Post-Run Experience  [AUDIT DONE · read-only 2026-06-08 · `DATABASE_URL_RO` as `faff_readonly` · on `7d70e074` (=origin/main) · 0 code/data writes]
+
+**Subject:** the full post-run display layer for 4 completed run types — easy (Jun 5, 6.0mi), interval (Jun 2, 7.5mi 4×1mi @ I), tempo (Jun 4, 8.0mi), long (Jun 7, 12.6mi). Falsify-don't-confirm; every finding verified against real rows. RO write-denied confirmed (`has_table_privilege(faff_readonly,'runs','UPDATE')=false`).
+
+**Headline:** the run-detail data layer is largely sound (distance/pace/HR/zones/splits read from the canonical row correctly), **but the per-phase recap layer is fed by a broken date key**. `loadPhaseBreakdown` + the recap route match watch completions on `ts::date` (evaluated in **UTC**, session TZ=`Etc/UTC`) instead of the run's date. Evening-PT runs roll to the next UTC day, and late-posted completions (the new background-URLSession backlog) carry a post-time `ts`, not a run-time one — so **the Jun 7 long run is served the Jun 5 easy run's phases**. That, plus a `LongMpPanel` gate that misfires on plain longs, is the root cause of "MARATHON SHIFT / AEROBIC BASE 0 MI." 2 CRITICAL, 5 MAJOR, 3 MINOR.
+
+**The known bug, root-caused (2 compounding defects):**
+- **E1 (CRITICAL):** `coach_intents` read queries key on `ts::date=$date`. Session TZ is `Etc/UTC`. Reproduced live: query `2026-06-07` → intent **id=207** (`field=…2026-06-05`, dist **6.01**, single `work` phase "6.0 mi easy") = **the Jun 5 easy run**. The real Jun 7 long (id 209, 12.55mi, 1151 paceSamples) has `ts` 23:53 PT → `ts::date`=**Jun 8 UTC** → excluded. The Jun 5 easy was posted **two days late** (`ts` Jun 7 15:36 PT, via the background-sync backlog) → `ts::date`=Jun 7 → collides with the long. The payload `field` (`<uuid>-YYYY-MM-DD`) and `startedAt`/`completedAt` carry the true run date but are ignored. **Affects every surface reading phase_breakdown by date (web TodayView panels, web RunDetailModal, iPhone RunDetailView, work-averages, recap winPhases).** Any-runner: systematic for anyone behind UTC running in the evening, or any late-posted completion.
+- **E2 (CRITICAL):** `TodayView.tsx:2193` selects `LongMpPanel` when `d.type==='long' && phase_breakdown.some(p=>p.type==='work')`. The watch emits a **single `type=work` phase even for a plain long** (real id 209 = "12.0 mi long run", `type=work`). `LongMpPanel:3418-3422` does `basePhases=phases.slice(0,workIdx)` → `workIdx=0` → `basePhases=[]` → **AEROBIC BASE 0 MI**, single work phase → **MARATHON SHIFT**. Independent of E1: even with correct attribution, every plain Faff-watch long misfires this. Gate should require an easy/warmup phase *preceding* the work phase (`basePhases.length>0`) or read the plan's `finish_mi`.
+
+**Training form (35 / 59 / -24) — CORRECT, not double-counting.** Reproduced `computeTrainingForm` against the real 60-day series: today=Jun7 → CTL=**35** ATL=**59** TSB=**-24** (exact match), label **LOADED** (correct per recalibrated bands, not OVERREACH). Every day in the window shows exactly **one** non-merged run row → MAX-per-day dedupe works, **no double-count**. -24 is the honest Banister output for a genuine load week (4 quality/long efforts + easies, 1 rest day). On Jun 8 it reads -18 as ATL decays. (MINOR E9: intensity factor defaults to `easy` 0.85 for unplanned/long-as-easy days — 05-31 12.36mi long counted at 0.85 not 0.95; slight undercount, not the question.)
+
+**Leads, answered:**
+- **(a) workoutType null → wrong recap default — FALSIFIED.** `workoutType` IS null on all 4 runs (confirmed), BUT the recap classifier is **plan-first** (`recap/route.ts:122` `planRow?.type ?? data.workoutType ?? 'unplanned'`), so it resolves to `long` via the plan match — the recap *text* verdict is correct ("Long run done."). MARATHON SHIFT is **not** caused by workoutType null; it's E1+E2. (Latent: null workoutType only bites for off-plan runs with no plan_workouts match → recap falls to `unplanned`/"Logged.")
+- **(b) Jun 7 GPS/paceSamples after HK re-sync — populates automatically.** Jun 7 canonical (watch-only, no pair yet): `route_polyline=null`, `elevGainFt=null`, `weather=null`. The other 3 runs' canonical=apple_watch carry all three. When the iPhone HealthKit sync delivers the apple_watch sibling, `autoMergeForDate`→`enhanceCanonicalFromAbsorbed` (canonical.ts:178-186) copies every field the canonical lacks (route/elev/weather), or canonical flips to apple_watch (as on Jun 2/4/5). Automatic on next HK ingest — no manual trigger. paceSamples (1151) are already in `coach_intents` id 209 but **date-mis-bucketed (E1)** — HK sync fixes GPS/elev/weather but NOT the phase attribution. (MINOR E7-caveat: `weather_enriched_at` was stamped Jun 8 with no GPS → no weather; the lazy-enrich guard `!weather_enriched_at` won't retry → relies on absorb/canonical-flip or a nightly version bump.)
+- **(c) Jun 2 splits_unreliable=true — phases still accessible.** `splits_validation={deltaS:+315, splitsSumS:3940 > durationS:3625}` → per-mile GPS sum exceeds run duration by 315s (recovery-jog GPS distance inflates mile times) → flag set, correctly. **The 9 per-rep phases are fully accessible** (id 180, ts Jun 2 → matches): `splits_unreliable` only gates per-MILE splits + drift/fade heuristics (A5), NOT `phase_breakdown`. The interval routes to `RepsRail` (TodayView:2165, first branch) with all 9 phases. Lead answered: phases are independent of the GPS-splits gate.
+
+| # | Finding | Sev | Evidence | Threatens | Any-runner |
+|---|---|---|---|---|---|
+| **E1** | Phase data keyed on `ts::date` (UTC), not run date → Jun 7 long shows Jun 5 easy's phases | **CRITICAL** | `run-state.ts:807`, `recap/route.ts:137`; session TZ `Etc/UTC`; query Jun7→id207(6.01,easy); real long id209 at Jun8 UTC | Wrong run's per-rep/phase data on every phase-reading surface | Systematic: anyone behind UTC running PM, or any late-posted completion |
+| **E2** | `LongMpPanel` fires for plain longs (single `work` phase) → AEROBIC BASE 0 MI | **CRITICAL** | `TodayView.tsx:2193` gate + `:3418-3422`; real long id209 single `type=work` phase | Plain aerobic long shown as a marathon-pace workout with 0 base | Every Faff-watch plain long, any distance |
+| **E3** | Plan-vs-actual uses two divergent targets; per-rep "missed" computed vs a stale frozen target | MAJOR | Jun2 phase tgt **389** vs plan_workouts **412**; Jun4 phase **419** vs plan **442**; recap reads plan row, RepsRail reads frozen phase; loadPhaseBreakdown also re-derives heat-adjusted `status` vs frozen tgt | Runner told they missed reps they hit vs the live plan; cross-surface contradictions | Any plan re-pace/re-author after a completed quality run |
+| **E4** | `/recap` drops pace + pace-gated wins — reads `data.paceSPerMi` (null), not `avgPaceMinPerMi` | MAJOR | `recap/route.ts:171`; all 4 runs `paceSPerMi=null`, only string set; run-state.ts:614 falls back, recap doesn't | Recap facts lose pace; winTempo/winLong can't fire | Every watch/HK run (the dominant pace shape) |
+| **E5** | iPhone /today done-state hardcodes "NAILED IT / ✓ PLAN HIT" for every completed run | MAJOR | `glance-adapter.ts:90-95`; Jun2 (2/4 reps missed) + Jun4 (abandoned) both → done_nailed | Missed/abandoned session reads as a clean hit on the daily companion | Every completed run on the iPhone glance |
+| **E6** | Conditions tip is pace-centric + workout-type-blind | MAJOR | `weather-adjust.ts` judgeWeather takes no type; summary always "Costs you ~X% on pace"; tip "don't chase pace" | Easy-run heat coaching frames pace cost where HR/effort is the axis | Every easy/recovery run flagged warm+ |
+| **E7** | Jun 7 long detail: no GPS track, no elevation, no weather (watch-only, HK pair unsynced) | MAJOR | dump: `has_route_poly=false`, `elevGainFt=null`, `weather=null`; others (apple_watch) have all 3 | Run-detail card blank on GPS/elev/weather until HK sync | Every watch-direct run before its HK pair lands (PM runs especially) |
+| **E8** | `splits_unreliable` not validated on watch-direct rows (Jun 7 = null) | MINOR | Jun7 `splits_unreliable=null`, no `splits_validation`; Jun2=true, Jun4/5=false | Watch-direct splits render ungated until the HK row validates | Watch-direct runs pre-HK-pair |
+| **E9** | training-form intensity factor defaults to `easy` (0.85) on no-plan-match days | MINOR | `training-form.ts:168` `?? 'easy'` (no distance inference despite comment); 05-31 12.36mi long @ 0.85 | Slight CTL/ATL undercount on unplanned long/quality days | Any day with a run but no matching plan_workouts row |
+| **E10** | Tempo Jun 4 payload `status='abandoned'` (cooldown cut short) | MINOR | id191 `status=abandoned`, cooldown `completed=false`; work phase completed | If any surface reads `status`, a completed tempo mislabels as abandoned (none does prominently today) | Any run where the runner ends during cooldown |
+
+**Per-run × per-question coverage (compact):**
+- **Q1 Run Detail Card:** Jun5/4/2 correct (dist/pace/HR/cadence/zones/weather/elev/route all from canonical row, barometric elev sanity OK: Jun2 543ft/7.41mi=73ft/mi). Jun7 missing GPS/elev/weather (**E7**). Shoe unassigned on all 4 (cosmetic). Pace numeric absent everywhere but the string renders on detail (**E4** only bites /recap).
+- **Q2 Recap Panel:** Jun2→RepsRail (correct per-rep). Jun4→TempoPanel (phases id191). Jun5→EasyPanel (KEPT IT EASY + HR drift from splits; its 594 paceSamples orphaned to Jun7 by E1). Jun7→**LongMpPanel wrong** (E1+E2). Recap TEXT verdict plan-correct on all.
+- **Q3 Mile Splits:** present on all; Jun2 per-mile gated off (unreliable, correct) but per-rep phases shown; no standalone `derive-mile-splits.ts` exists — splits read from `runs.data.splits` (watch/HK per-mile), not paceSample-derived. `splits_unreliable` NOT false on all (Jun2=true, Jun7=null — **E8**).
+- **Q4 Plan Comparison:** plan match works for all 4 (active plan `pln_ca91f252bba50c74`). Completion/"done" keyed on `run.data.date` (correct) — day marked done with right mileage. BUT target source diverges (**E3**) and iPhone done-state is always "nailed" (**E5**).
+- **Q5 Conditions Tip:** pace-centric + type-blind (**E6**). Jun7 has no weather → no tip.
+- **Q6 Training Form:** 35/59/-24 reproduced exactly, no double-count (**correct**); MINOR E9.
+
+**Falsifiers run (all read-only):** RO write-denied ✓ · `loadPhaseBreakdown` query reproduced: Jun7→id207(Jun5 easy 6.01) WRONG, Jun5→empty, Jun4→id191 OK, Jun2→id180 OK ✓ · session TZ `Etc/UTC` ✓ · real Jun7 long = id209 (12.55, single `type=work`, 1151 paceSamples) ✓ · `computeTrainingForm` → 35/59/-24 + every day rows=1 (no double-count) ✓ · `LongMpPanel` `basePhases=slice(0,0)=[]`→0 MI for single-work-phase (source) ✓ · recap reads `data.paceSPerMi`=null for all 4 (source + dump) ✓ · glance `done_nailed` unconditional (source) ✓ · `judgeWeather` type-less, pace-framed (source) ✓ · `enhanceCanonicalFromAbsorbed` populates missing route/elev/weather (source) ✓ · Jun2 `splits_unreliable=true` + 9 phases intact (dump) ✓.
+
+> **SUMMARY (audit only)**
+> - **WHAT CHANGED** — nothing (read-only audit). AUDIT-FIXES.md updated with Audit E. RO harness scripts left in the worktree (`web-v2/scripts/_e_*.mjs`, untracked).
+> - **FALSIFIERS** — all green (above); RO write-denied confirmed.
+> - **WHAT'S LEFT IN THIS LEG** — nothing for the audit. Fix queue logged below.
+
+## Audit E — Fixes E1 + E2  [CODE COMPLETE 2026-06-08 · tsc 0 · 371/371 · awaiting David's go to deploy]
+
+**E1 — Phase reads keyed on field-date, not `ts::date` (UTC)**
+
+**Root cause:** `loadPhaseBreakdown` (`run-state.ts:806`) and the recap route's winPhases query (`recap/route.ts:134`) both matched watch completions on `ts::date` evaluated in session TZ `Etc/UTC`. Evening-PT runs roll to the next UTC day; late-posted background-sync completions carry a post-time `ts` that may be days after the run. The `field` column encodes the run's local date as `<user_uuid>-YYYY-MM-DD` (set by the iPhone relay when it posts the watch completion) — reliable, TZ-safe, delay-immune.
+
+**Fix (same change in both files):**
+```diff
+- AND ts::date = $2::date
++ AND (
++   CASE WHEN field LIKE '%-____-__-__'
++        THEN RIGHT(field, 10) = $2
++        ELSE ts::date = $2::date
++   END
++ )
+```
+- Modern entries (all post-May 2026): matched on `RIGHT(field, 10)` = the runner's local run date. TZ-safe for any runner, any posting delay.
+- Legacy hex entries (e.g. `862980CB58`): fall back to `ts::date` (same as before — acceptable for historical data).
+- **Files changed:** `lib/coach/run-state.ts` · `app/api/runs/[id]/recap/route.ts`
+
+**E2 — `LongMpPanel` gated on `spec.finish_mi`, not phase presence**
+
+**Root cause:** `TodayView.tsx:2193` selected `LongMpPanel` whenever `phase_breakdown.some(p.type==='work')`. The watch emits a single `type=work` phase for plain longs → `basePhases=[]` → AEROBIC BASE 0 MI + MARATHON SHIFT on every plain long. `WorkoutSpecLong.finish_mi` is only set on spec-authored HMP/M-finish longs.
+
+**Fix:**
+```diff
+- } : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.some(p => p.type === 'work') ? (
+-   // Long-run WITH a work phase = MP-finish variant · "THE BUILD".
++ } : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 &&
++     (d.workoutSpec as { finish_mi?: number | null } | null)?.finish_mi != null ? (
++   // Long-run with a spec finish segment (HMP/M-pace finish in workout_spec).
++   // Plain longs (single work phase, no finish_mi) fall through to LongPanel.
+```
+- **File changed:** `components/faff-app/views/TodayView.tsx`
+
+**tsc:** 0 errors · **vitest:** 371 pass / 3 skipped (pre-existing) / 0 fail
+
+**Post-deploy falsifiers (run RO against prod after Railway auto-deploy):**
+1. `loadPhaseBreakdown` query for `2026-06-07` → returns id 209 (12.55mi, plain long phases) — not id 207 (Jun5 easy)
+2. `loadPhaseBreakdown` query for `2026-06-05` → returns id 207 (Jun5 easy, 6.01mi) — previously returned nothing
+3. Jun 7 web display: `LongPanel` (not `LongMpPanel`), correct long-run coaching, no MARATHON SHIFT, no AEROBIC BASE 0 MI
+4. Jul 19 HMP-finish long (`finish_mi=7` in spec): still routes to `LongMpPanel` ✓
+
+---
+
+## Audit E — Fix Queue (logged 2026-06-08)
+
+### MAJOR — own session after E1+E2 (E3–E6)
+- **E3** — Plan-vs-actual uses two divergent targets: `RepsRail`/`loadPhaseBreakdown` reads the frozen phase target (from the watch completion at time of run), while `recap/route.ts` reads the live `plan_workouts` row. After a plan re-pace, a runner sees "missed" on reps they hit vs the live plan and "hit" against a stale target. Fix: decide canonical source (live plan row wins; phase target is stored execution context only, not the evaluation criterion). Files: `run-state.ts:loadPhaseBreakdown`, `TodayView.tsx:RepsRail`.
+- **E4** — `/recap` drops pace for watch/HK runs. `recap/route.ts:171` reads `data.paceSPerMi` (null on all watch/HK rows); `avgPaceMinPerMi` string is always set. COALESCE both fields: `Number(data.paceSPerMi) || parseAvgPaceMinPerMi(data.avgPaceMinPerMi)`. Files: `app/api/runs/[id]/recap/route.ts`.
+- **E5** — iPhone /today done-state hardcodes "NAILED IT / ✓ PLAN HIT" for every completed run regardless of execution. `glance-adapter.ts:90-95` ease_off heuristic explicitly deferred ("v1 routes all completed runs to nailed"). Fix: compare `doneMi vs plannedMi` and check `phase_breakdown` verdict distribution (majority missed → `done_ease_off`). Files: `lib/faff/glance-adapter.ts`.
+- **E6** — Conditions tip is pace-centric + type-blind. `judgeWeather` returns a single `summary`/`coachTipForNextTime` regardless of workout type. Easy runs in heat should reference HR/effort, not pace cost. Add `workoutType?: WorkoutType` to `WeatherInput`; branch summary/tip copy on easy/recovery vs quality. Files: `lib/coach/weather-adjust.ts`, all callers.
+
+### MINOR — bundle when convenient (E7–E10)
+- **E7** — Jun 7 long (watch-only pre-HK-sync): no GPS route, no elevation, no weather. Resolves automatically on HK re-sync via `enhanceCanonicalFromAbsorbed`. One latent issue: `weather_enriched_at` stamped pre-GPS means lazy-enrich won't retry without a version bump. Tracked; self-heals on nightly version bump or next absorb.
+- **E8** — `splits_unreliable` is null (not false) on watch-direct rows pre-HK-pair (e.g. Jun 7). Gate reads `=== true` so null rows pass through unvalidated. Fix: add `splits_unreliable` validation at watch completion ingest path (or treat null as "needs validation" at display layer).
+- **E9** — `computeTrainingForm` intensity factor defaults to `easy` (0.85) when `inferred_type` is null (no matching `plan_workouts` row). A 12mi long run on a no-plan day gets 0.85 not 0.95 — slight CTL/ATL undercount. Fix: infer type from distance (≥ 8mi → `long`). Files: `lib/coach/training-form.ts`.
+- **E10** — Tempo Jun 4 payload `status='abandoned'` (cooldown cut short, work phase completed). No surface reads `status` prominently today, but if a future surface exposes it a completed tempo would mislabel. Fix: treat `status='abandoned'` as completed when the work phase(s) completed. Files: `app/api/watch/workouts/complete/route.ts` or display layer.

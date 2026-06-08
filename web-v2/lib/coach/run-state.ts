@@ -807,7 +807,12 @@ async function loadPhaseBreakdown(
     `SELECT value FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1
         AND reason = 'watch_completion'
-        AND ts::date = $2::date
+        AND (
+          CASE WHEN field LIKE '%-____-__-__'
+               THEN RIGHT(field, 10) = $2
+               ELSE ts::date = $2::date
+          END
+        )
       ORDER BY ts DESC LIMIT 1`,
     [userId, date]
   ).catch(() => ({ rows: [] }))).rows[0];
