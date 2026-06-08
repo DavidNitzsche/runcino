@@ -224,6 +224,21 @@ export async function GET(
   const livePlanTargetSPerMi = planRow?.pace_target_s ?? null;
   const evalPlannedPaceSPerMi = frozenTargetSPerMi ?? livePlanTargetSPerMi;
 
+  // Single weather object · fed to both deriveRecap and deriveWin so the
+  // recap verdict, the win line, and the phase bars all judge against the
+  // same heat number (no surface shows a different heat % than another).
+  const weatherInput = data.weather ? {
+    tempF: typeof data.weather.temp_f === 'number' ? data.weather.temp_f : (typeof data.tempF === 'number' ? data.tempF : null),
+    tempF_start: typeof data.weather.temp_f_start === 'number' ? data.weather.temp_f_start : null,
+    tempF_end: typeof data.weather.temp_f_end === 'number' ? data.weather.temp_f_end : null,
+    tempF_peak: typeof data.weather.temp_f_peak === 'number' ? data.weather.temp_f_peak : null,
+    humidityPct: typeof data.weather.humidity_pct === 'number' ? data.weather.humidity_pct : null,
+    windMph: typeof data.weather.wind_mph === 'number' ? data.weather.wind_mph : null,
+    conditions: typeof data.weather.conditions === 'string' ? data.weather.conditions : null,
+    cloudCoverPct: typeof data.weather.cloud_cover_pct === 'number' ? data.weather.cloud_cover_pct : null,
+    durationS: typeof data.durationSec === 'number' ? data.durationSec : null,
+  } : null;
+
   const recap = deriveRecap({
     type,
     phase,
@@ -235,17 +250,7 @@ export async function GET(
     actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
     actualMaxHr: data.maxHr != null ? Number(data.maxHr) : null,
     splits: splitsForRecap,
-    weather: data.weather ? {
-      tempF: typeof data.weather.temp_f === 'number' ? data.weather.temp_f : (typeof data.tempF === 'number' ? data.tempF : null),
-      tempF_start: typeof data.weather.temp_f_start === 'number' ? data.weather.temp_f_start : null,
-      tempF_end: typeof data.weather.temp_f_end === 'number' ? data.weather.temp_f_end : null,
-      tempF_peak: typeof data.weather.temp_f_peak === 'number' ? data.weather.temp_f_peak : null,
-      humidityPct: typeof data.weather.humidity_pct === 'number' ? data.weather.humidity_pct : null,
-      windMph: typeof data.weather.wind_mph === 'number' ? data.weather.wind_mph : null,
-      conditions: typeof data.weather.conditions === 'string' ? data.weather.conditions : null,
-      cloudCoverPct: typeof data.weather.cloud_cover_pct === 'number' ? data.weather.cloud_cover_pct : null,
-      durationS: typeof data.durationSec === 'number' ? data.durationSec : null,
-    } : null,
+    weather: weatherInput,
   });
 
   // E3: light secondary reconciliation note. The verdict above stays anchored
@@ -279,6 +284,7 @@ export async function GET(
     splits: splitsForRecap,
     phases: winPhases.length > 0 ? winPhases : undefined,
     verdict: recap.verdict,
+    weather: weatherInput,
     indoor: data.indoor === true,
     source: typeof data.source === 'string' ? data.source : undefined,
   });

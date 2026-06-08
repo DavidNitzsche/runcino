@@ -22,6 +22,8 @@
  */
 
 import type { WorkoutType, Phase } from './run-purpose';
+import { judgeWeather, type WeatherInput } from './weather-adjust';
+import { heatAdjustedStatus } from './heat-band';
 
 export interface WinInput {
   type: WorkoutType;
@@ -81,6 +83,11 @@ export interface WinInput {
     actualPaceSPerMi?: number | null;
     targetPaceSPerMi?: number | null;
   }>;
+  /** 2026-06-08 · weather for the run · deriveWin derives the heat
+   *  slowdown % from this (same judgeWeather call as deriveRecap) so the
+   *  win line's pace band matches the heat-adjusted phase bars. Absent on
+   *  manual / cold-start runs → slowdown 0 → symmetric band. */
+  weather?: WeatherInput | null;
 }
 
 /**
@@ -96,6 +103,14 @@ export function deriveWin(input: WinInput): string | null {
 
   // Need at least pace data to call most wins.
   const splits = normalizeSplits(input.splits);
+
+  // 2026-06-08 · heat slowdown % · same judgeWeather call deriveRecap +
+  // loadPhaseBreakdown use. Widens winTempo's slow-side band so a tempo
+  // executed for the heat reads as a win (matches the phase bars +
+  // done-state) instead of returning null.
+  const slowdownPct = input.weather
+    ? (judgeWeather({ ...input.weather, workoutType: input.type }).slowdownPct ?? 0)
+    : 0;
 
   // 2026-06-01 · treadmill route · take over when indoor=true or
   // source='treadmill'. Falls back to null when no treadmill pattern
@@ -137,7 +152,7 @@ export function deriveWin(input: WinInput): string | null {
       return winLong(input, splits);
     case 'tempo':
     case 'threshold':
-      return winTempo(input, splits);
+      return winTempo(input, splits, slowdownPct);
     case 'intervals':
       return winIntervals(input, splits);
     case 'race':
@@ -216,21 +231,21 @@ function winLong(input: WinInput, splits: NormalSplit[]): string | null {
   return null;
 }
 
-function winTempo(input: WinInput, splits: NormalSplit[]): string | null {
-  // "Held the line" = pace held within ±5 s/mi of target
+function winTempo(input: WinInput, splits: NormalSplit[], slowdownPct: number): string | null {
   if (!input.actualPaceSPerMi || !input.plannedPaceSPerMi) return null;
+  // Same heat-adjusted band as the phase bars (loadPhaseBreakdown) and the
+  // done-state (computeTodayExecution). 'slow' = a real miss even after the
+  // heat allowance → no win. 'on' / 'fast' → a win, worded by how it landed.
+  const status = heatAdjustedStatus(input.plannedPaceSPerMi, input.actualPaceSPerMi, slowdownPct);
+  if (status === 'slow') return null;
   const delta = input.actualPaceSPerMi - input.plannedPaceSPerMi;
   const paceStr = formatPace(input.actualPaceSPerMi);
-  if (Math.abs(delta) <= 5) {
-    return `Held the line · ${paceStr} dead even`;
-  }
-  if (delta < -5 && delta >= -15) {
-    return `Held the line · ${paceStr} slightly under target`;
-  }
-  if (delta > 5 && delta <= 12) {
-    return `Held form · ${paceStr} just off target`;
-  }
-  return null;
+  if (Math.abs(delta) <= 5) return `Held the line · ${paceStr} dead even`;
+  if (status === 'fast')    return `Held the line · ${paceStr} slightly under target`;
+  // 'on' but slower than the raw target · executed inside the band.
+  return slowdownPct >= 2
+    ? `Held the line · ${paceStr} honest for the heat`
+    : `Held form · ${paceStr} just off target`;
 }
 
 function winIntervals(input: WinInput, splits: NormalSplit[]): string | null {

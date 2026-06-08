@@ -47,6 +47,7 @@ import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { predictRaceTime, vdotFromRace } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { heatAdjustedStatus } from '@/lib/coach/heat-band';
 
 export type GoalStatus = 'on-track' | 'watching' | 'off-track';
 export type DriftWeight = 'strong' | 'medium' | 'weak';
@@ -346,7 +347,7 @@ async function loadRecentTestPoints(
       ? `${Math.floor(actualS / 60)}:${String(actualS % 60).padStart(2, '0')}`
       : null;
 
-    // Heat-adjusted verdict · same band as run-state.ts.
+    // Heat-adjusted verdict · shared band (heatAdjustedStatus).
     let verdict: 'on' | 'fast' | 'slow' | null = null;
     if (targetS && targetS > 0 && actualS && actualS > 0) {
       const w = (r.weather && typeof r.weather === 'object') ? r.weather as Record<string, unknown> : null;
@@ -367,15 +368,7 @@ async function loadRecentTestPoints(
           heatSlowdownPct = j.slowdownPct ?? 0;
         } catch { /* leave 0 · band collapses to symmetric */ }
       }
-      const effectiveTarget = heatSlowdownPct >= 2
-        ? Math.round(targetS * (1 + heatSlowdownPct / 100))
-        : targetS;
-      const TOLERANCE = 10;
-      const lo = targetS - TOLERANCE;
-      const hi = effectiveTarget + TOLERANCE;
-      if (actualS >= lo && actualS <= hi) verdict = 'on';
-      else if (actualS < lo) verdict = 'fast';
-      else verdict = 'slow';
+      verdict = heatAdjustedStatus(targetS, actualS, heatSlowdownPct);
     }
 
     return {

@@ -16,6 +16,7 @@ import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { WorkoutSpec } from '@/lib/faff/types';
+import { heatAdjustedStatus } from './heat-band';
 
 export interface GlanceWeekDay {
   date: string;            // ISO YYYY-MM-DD
@@ -242,12 +243,10 @@ async function computeTodayExecution(
     const workPhases = (Array.isArray(p?.phases) ? p!.phases : []).filter((ph) => ph.type === 'work');
     const workCutShort = workPhases.some((ph) => ph.completed === false);
     const ranWork = workPhases.filter((ph) => Number(ph.targetPaceSPerMi) > 0 && Number(ph.actualPaceSPerMi) > 0);
-    const missed = ranWork.filter((ph) => {
-      const tgt = Number(ph.targetPaceSPerMi);
-      // Heat-honest target + 10 s/mi tolerance (mirrors loadPhaseBreakdown).
-      const effTarget = slowdownPct >= 2 ? Math.round(tgt * (1 + slowdownPct / 100)) : tgt;
-      return Number(ph.actualPaceSPerMi) > effTarget + 10;
-    }).length;
+    // Heat-honest miss · mirrors loadPhaseBreakdown's band (shared helper).
+    const missed = ranWork.filter((ph) =>
+      heatAdjustedStatus(Number(ph.targetPaceSPerMi), Number(ph.actualPaceSPerMi), slowdownPct) === 'slow'
+    ).length;
     if (workCutShort || (ranWork.length > 0 && missed / ranWork.length >= 0.34)) return 'short';
   }
   // No negative signal from the phases → overreach (volume) or a clean hit.
