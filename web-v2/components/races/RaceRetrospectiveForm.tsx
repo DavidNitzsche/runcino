@@ -4,29 +4,92 @@
  * RaceRetrospectiveForm — post-race form for finish time + subjective notes.
  * Lives on /races/[slug] when proximity === 'post-race'.
  *
- * Writes through to PATCH /api/race so retro lands in races.meta:
- *   finishTime, pb, retroFelt, retroExecution, retroNotes
+ * Two-step save:
+ *   1. POST /api/race/result — canonical actual_result write when finishTime
+ *      is set. Returns VDOT delta + marathon projection for the ack toast.
+ *   2. PATCH /api/race — retrospective fields (felt, execution, notes, pb)
+ *      that live in races.meta.
  */
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+
+function parseFinishTime(s: string): number | null {
+  const t = s.trim();
+  if (!t) return null;
+  if (/^\d+$/.test(t)) return Number(t) > 0 ? Number(t) : null;
+  const parts = t.split(':').map(Number);
+  if (parts.some(isNaN) || parts.length < 2 || parts.length > 3) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return parts[0] * 60 + parts[1];
+}
+
+function fmtSec(secs: number | null | undefined): string {
+  if (!secs || secs <= 0) return '·';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.round(secs % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+interface SaveAck {
+  text: string;
+  vdot?: { before: number | null; after: number | null };
+  mProj?: number | null;
+  planArchived?: boolean;
+}
 
 export function RaceRetrospectiveForm({ slug, existing }: {
   slug: string;
-  existing: { finishTime?: string | null; pb?: boolean | null; retroFelt?: string | null; retroExecution?: string | null; retroNotes?: string | null };
+  existing: {
+    finishTime?: string | null;
+    pb?: boolean | null;
+    avgHrBpm?: number | null;
+    retroFelt?: string | null;
+    retroExecution?: string | null;
+    retroNotes?: string | null;
+  };
 }) {
   const router = useRouter();
   const [finishTime, setFinishTime] = useState(existing.finishTime ?? '');
   const [pb, setPb] = useState(existing.pb ?? false);
+  const [avgHrBpm, setAvgHrBpm] = useState(existing.avgHrBpm ? String(existing.avgHrBpm) : '');
   const [felt, setFelt] = useState(existing.retroFelt ?? '');
   const [execution, setExecution] = useState(existing.retroExecution ?? '');
   const [notes, setNotes] = useState(existing.retroNotes ?? '');
   const [pending, startTransition] = useTransition();
-  const [ack, setAck] = useState<string | null>(null);
+  const [ack, setAck] = useState<SaveAck | null>(null);
 
-  async function submit() {
+  const submit = useCallback(async () => {
     setAck(null);
     try {
-      const r = await fetch('/api/race', {
+      const finishS = parseFinishTime(finishTime);
+      let vdotBefore: number | null = null;
+      let vdotAfter: number | null = null;
+      let mProjAfter: number | null = null;
+      let planArchived = false;
+
+      // Step 1 — canonical result write (only when a finish time is entered).
+      if (finishS) {
+        const rr = await fetch('/api/race/result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            slug,
+            finishS,
+            avgHrBpm: avgHrBpm ? Number(avgHrBpm) : undefined,
+          }),
+        });
+        const rj = await rr.json();
+        if (!rr.ok) throw new Error(rj.error ?? 'result save failed');
+        vdotBefore = rj.vdotBefore ?? null;
+        vdotAfter = rj.vdotAfter ?? null;
+        mProjAfter = rj.marathonProjectionSec ?? null;
+        planArchived = rj.planArchived ?? false;
+      }
+
+      // Step 2 — retrospective fields land in meta.
+      const pr = await fetch('/api/race', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -38,14 +101,20 @@ export function RaceRetrospectiveForm({ slug, existing }: {
           retroNotes: notes || null,
         }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? 'save failed');
-      setAck('Saved. Coach will reference this in next race talk.');
+      const pj = await pr.json();
+      if (!pr.ok) throw new Error(pj.error ?? 'retro save failed');
+
+      setAck({
+        text: finishS ? 'Result locked in.' : 'Saved.',
+        vdot: finishS ? { before: vdotBefore, after: vdotAfter } : undefined,
+        mProj: mProjAfter,
+        planArchived,
+      });
       startTransition(() => router.refresh());
-    } catch (e: any) {
-      setAck(`Failed: ${e.message}`);
+    } catch (e: unknown) {
+      setAck({ text: `Failed: ${e instanceof Error ? e.message : String(e)}` });
     }
-  }
+  }, [slug, finishTime, avgHrBpm, pb, felt, execution, notes, router]);
 
   return (
     <div style={{ marginTop: 18 }}>
@@ -74,6 +143,15 @@ export function RaceRetrospectiveForm({ slug, existing }: {
           </div>
         </Field>
       </div>
+
+      <Field label="Avg heart rate (optional)">
+        <input
+          value={avgHrBpm} onChange={(e) => setAvgHrBpm(e.target.value)}
+          placeholder="162"
+          type="number"
+          style={{ ...inputStyle(), width: 120 }}
+        />
+      </Field>
 
       <Field label="How did it feel?">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -117,16 +195,37 @@ export function RaceRetrospectiveForm({ slug, existing }: {
         />
       </Field>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 14 }}>
         <button onClick={submit} disabled={pending}
           style={{
             background: 'var(--green)', color: '#001', border: 'none', borderRadius: 8,
             padding: '10px 20px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
-            cursor: pending ? 'default' : 'pointer',
+            cursor: pending ? 'default' : 'pointer', flexShrink: 0,
           }}>
           {pending ? 'SAVING…' : 'SAVE RETROSPECTIVE'}
         </button>
-        {ack && <span style={{ fontSize: 12, color: 'var(--mute)' }}>{ack}</span>}
+        {ack && (
+          <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+            <span style={{ color: 'var(--ink)' }}>{ack.text}</span>
+            {ack.vdot?.after != null && (
+              <span style={{ marginLeft: 10, color: 'var(--ink)' }}>
+                {'VDOT '}
+                {ack.vdot.before != null
+                  ? <>{ack.vdot.before.toFixed(1)} <span style={{ color: 'var(--mute)' }}>→</span> </>
+                  : null}
+                <strong>{ack.vdot.after.toFixed(1)}</strong>
+                {ack.mProj != null && (
+                  <span style={{ color: 'var(--mute)' }}>
+                    {' · Marathon '}{fmtSec(ack.mProj)}
+                  </span>
+                )}
+              </span>
+            )}
+            {ack.planArchived && (
+              <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· Plan archived.</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
