@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
       } catch { /* best-effort */ }
     }
 
-    await bustBriefingCacheForEvent(userId, 'race_result_logged');
+    await bustBriefingCacheForEvent(userId, 'race_crud');
 
     return NextResponse.json({
       ok: true,
