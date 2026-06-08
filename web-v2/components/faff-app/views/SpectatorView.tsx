@@ -71,5 +71,6 @@ export function SpectatorView({ seed, onExit }: { seed: FaffSeed; onExit: () => 
 }
 
 function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(iso));
+  // noon-UTC anchor on the date part so the label never shifts a day by timezone.
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(iso.slice(0, 10) + 'T12:00:00Z'));
 }

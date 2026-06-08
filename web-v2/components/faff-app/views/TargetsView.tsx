@@ -526,8 +526,9 @@ function SheetOverlay({ children, onDismiss }: { children: React.ReactNode; onDi
 // ============================ HELPERS ============================
 
 function formatDate(iso: string) {
-  const d = new Date(iso);
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+  // noon-UTC anchor on the date part so the label never shifts a day by timezone.
+  const d = new Date(iso.slice(0, 10) + 'T12:00:00Z');
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(d);
 }
 
 function formatTestDate(iso: string): string {

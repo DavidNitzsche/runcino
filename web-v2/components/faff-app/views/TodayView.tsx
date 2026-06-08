@@ -4248,6 +4248,7 @@ function formatSleep(hours: number | undefined): React.ReactNode {
   return <>{h}:{String(m).padStart(2, '0')}<small> hrs</small></>;
 }
 function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+  // noon-UTC anchor on the date part so the label never shifts a day by timezone.
+  const d = new Date(iso.slice(0, 10) + 'T12:00:00Z');
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(d);
 }
