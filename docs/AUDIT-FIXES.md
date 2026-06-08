@@ -30,17 +30,15 @@ Completed fixes and their follow-up queue. Add new items at the top of each sect
 
 **Where:** `computeConfidenceInterval` has the documented hooks in its header comment. Symmetric band is the honest default until the anchor metadata is threaded.
 
-### CI-followup-2 — iPhone confidence band + label render (next TestFlight bundle)
+### CI-followup-2 — iPhone confidence band + label render — DONE (ed8cdeac, 2026-06-08)
 
-**Context:** the seed already exposes `goalRace.confidenceInterval` + `goalRace.confidenceLabel` (one server number, all surfaces). **iPhone gets the data for free; it just needs the Swift render.**
+**Server:** `route.ts` now emits `confidenceInterval` + `confidenceLabel` via `computeConfidenceInterval` / `computeConfidenceLabel`. `toGoalStatus()` maps the endpoint's `on_track/watch/off` to `GoalStatus` for the helper signatures. Deployed to Railway (origin/main ed8cdeac).
 
-**Fix:** in `native-v2/Faff/Faff/Components/Toolkit/K_TargetsProjection.swift` —
-- render the CI as an explicit band around the projection (the panel already has a Conditions/Execution variance decomposition; surface the `confidenceInterval.lo`–`.hi` range as the headline band rather than a bare point).
-- render `confidenceLabel.word` + `.descriptor` (HIGH/MEDIUM/LOW · "doable, not banked") on the projection header, mirroring the web `.goalconf`.
+**Model:** `ProjectionConfidenceInterval` + `ProjectionConfidenceLabel` structs added to `ToolkitPayloads.swift`; both decoded as Optional on `ProjectionSummary`.
 
-**Decode:** add `confidenceInterval` + `confidenceLabel` to the Swift model that decodes the targets/projection payload. Cross-ref `docs/IPHONE_SYNC_LEDGER.md`.
+**View:** `confidenceBand` view inserted between `truthHeadline` and `metaPills` in `K_TargetsProjection.swift` — renders `"1:31:56 – 1:37:52 · MEDIUM · doable, not banked"` when both fields are present; `ciTint()` colours tier green/goal/over. Cold-start and no-CI cases collapse.
 
-**Falsifier:** iPhone Targets shows "1:31:56 – 1:37:52" band + "MEDIUM · doable, not banked" for David, matching web.
+**Falsifier:** iPhone Targets (next TF bundle) should show the range + label for David matching web.
 
 ### E8-followup — HR-based intensity inference in training-form (low urgency)
 
