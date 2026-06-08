@@ -165,7 +165,7 @@ function dewpointMultiplier(dewpointF: number): number {
  * Returns 1.0 when durationS is unknown · keeps the published table
  * intent as the safe default.
  *
- * Cite: Research/06-weather-adjustments.md §"Distance scaling"
+ * Cite: Research/06-weather-adjustments.md §"Distance scaling"  // TODO: no matching heading in Research/06 — duration-scaling logic is engine-internal, not a Research section
  * (annotation 2026-06-04, David's QC).
  */
 function durationScalingFactor(durationS: number | null | undefined): number {

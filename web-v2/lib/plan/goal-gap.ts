@@ -21,7 +21,7 @@
  * when they're not.
  *
  * Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.1
- * Cite: Research/22-plan-templates.md §projection-feedback-loop
+ * Cite: Research/22-plan-templates.md §projection-feedback-loop  // TODO: no matching heading in Research/22 — content exists but heading not anchored
  */
 
 import { pool } from '@/lib/db/pool';

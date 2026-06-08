@@ -72,7 +72,7 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
 
   // HRV (30%)
   if (state.hrvCurrent != null && state.hrvBaseline != null && state.hrvBaseline > 0) {
-    // 2026-06-01 · Luteal-phase adjustment (Research/13 §sex-specific).
+    // 2026-06-01 · Luteal-phase adjustment (Research/13 §1-Menstrual-Cycle-and-Training).  // was §sex-specific · heading: ## 1. The Menstrual Cycle and Training
     // Luteal HRV runs 5-10ms lower regardless of fitness · subtract 5ms
     // from the baseline so the runner isn't penalized for biology. Only
     // applies when biologicalSex === 'female' AND cyclePhase === 'luteal'.

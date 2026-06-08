@@ -216,7 +216,7 @@ export interface RunDetail {
    *  distance" axis when the spec ships rep-only structures. */
   planned_distance_mi: number | null;
   /** 2026-06-01 · Aerobic decoupling on long, steady-state runs. The
-   *  pace-to-HR drift signal · Research/15 §cardiac decoupling. Joel
+   *  pace-to-HR drift signal · Research/15 §cardiac decoupling. Joel  // TODO: no matching heading in Research/15 — content exists but heading not anchored
    *  Friel bands: <5% race-ready, 5-7% building, >7% poor. Null when
    *  the run is too short (<6mi) or wasn't steady-state (intervals,
    *  progression, race effort). Renderer shows a chip on the long-run
@@ -231,7 +231,7 @@ export interface RunDetail {
   } | null;
   /** 2026-06-01 · Cadence under fatigue · neuromuscular durability
    *  signal on long, steady-state runs. H2 vs H1 cadence delta.
-   *  Research/16 §form. Null when run isn't long enough, splits
+   *  Research/16 §1-Running-Gait-Cycle. Null when run isn't long enough, splits  // was §form · heading: ## 1. The Running Gait Cycle
    *  missing cadence, or pace wasn't steady. */
   cadence_fatigue: {
     delta_spm: number;
@@ -849,7 +849,7 @@ async function loadPhaseBreakdown(
     //
     // When heat is < 2% (cool conditions), effectiveTarget collapses
     // to the original target and the band stays symmetric ±10s.
-    // Cite: Research/06-weather-adjustments.md §"heat-aware verdict".
+    // Cite: Research/06-weather-adjustments.md §"heat-aware verdict".  // TODO: no matching heading in Research/06 — concept is engine-internal, not a Research section
     let status: 'on' | 'fast' | 'slow' | null = null;
     if (targetSPerMi && actualSPerMi && p.type !== 'recovery' && p.type !== 'rest') {
       const effectiveTarget = heatSlowdownPct >= 2

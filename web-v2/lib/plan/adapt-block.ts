@@ -23,8 +23,8 @@
  * applies in a single transaction.
  *
  * Doctrine:
- *   · Research/04-workouts-and-progressions.md §hard-easy-rule (48h)
- *   · Research/15-wearable-data.md §recovery-after-quality
+ *   · Research/04-workout-vocabulary.md §1-Recovery-Runs (hard-easy spacing · 48h)
+ *   · Research/15-wearable-data.md §recovery-after-quality  // TODO: no matching heading — content exists but heading not anchored
  *   · docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.3
  */
 
@@ -109,7 +109,7 @@ async function wrapWithBlockReasoning(
     if (nextQuality) {
       const daysToNext = daysBetween(todayISO, nextQuality.dateISO);
 
-      // Hard-easy spacing rule (Research/04 §hard-easy-rule)
+      // Hard-easy spacing rule (Research/04-workout-vocabulary.md §1-Recovery-Runs)
       // After a downgrade-due-to-fatigue, you need ≥48h before next quality.
       // If the next quality is <48h out (which means tomorrow, given today
       // already had a downgrade), shift it.
@@ -120,7 +120,7 @@ async function wrapWithBlockReasoning(
           newDate: addDays(nextQuality.dateISO, 1),
           why: `Shifted to preserve 48h hard-easy spacing after today's downgrade.`,
         });
-        citations.push('Research/04-workouts-and-progressions.md §hard-easy-rule');
+        citations.push('Research/04-workout-vocabulary.md §hard-easy-rule');
         rationale += ` · Cascade: shifted next quality day to preserve 48h spacing.`;
       }
     }

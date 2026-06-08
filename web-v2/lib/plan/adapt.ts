@@ -10,24 +10,24 @@
  *   1. MISSED_KEY_WORKOUT — planned threshold/intervals not completed
  *      within ±1d. → Reschedule that workout 2-3d forward; downgrade
  *      next quality day to recovery (avoid stacking).
- *      Cite: Research/00a-distance-running-training.md §missed-workout-policy
+ *      Cite: Research/00a-distance-running-training.md §missed-workout-policy  // TODO: no matching heading — content exists but heading not anchored
  *
  *   2. RHR_SPIKE — 3-day avg RHR > 7 bpm above 14-day baseline.
  *      → Convert next quality day to easy; flag readiness.
- *      Cite: Research/15-wearable-data.md §RHR-Recovery-Indicators
+ *      Cite: Research/15-wearable-data.md §RHR  // was §RHR-Recovery-Indicators · heading: ## Resting Heart Rate (RHR)
  *
  *   3. SLEEP_CRATER — 2+ nights < 5h.
  *      → Convert next quality day to easy.
- *      Cite: Research/00b-recovery-protocols.md §sleep-as-recovery
+ *      Cite: Research/00b-recovery-protocols.md §Sleep  // was §sleep-as-recovery · heading: ### Sleep — The Highest-ROI Recovery Tool
  *
  *   4. VOLUME_OVERSHOOT — last 7d running volume > 25% above current
  *      experience-level cap (P33).
  *      → Shave next 7d by 15-20% (proportional).
- *      Cite: Research/00a-distance-running-training.md §progressive-overload (ACWR + 10% rule)
+ *      Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  *
  *   5. PR_BANK — recent race finish that implies VDOT jump > 1.5 pts.
  *      → Recompute paces; mark plan_workouts as needing prescription refresh.
- *      Cite: Research/01-pace-zones-vdot.md §VDOT-recalibrate
+ *      Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces  // was §VDOT-recalibrate · heading: ## How to recalibrate paces
  *
  * Output: array of `AdaptationAction`s. The caller applies them in
  * a single DB transaction, then bumps the plan's `last_adapted_at` so
@@ -606,7 +606,7 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
  * persistence) and fires ONLY when:
  *
  *   · band === 'pull-back' (composite score < 50 · multiple pillars
- *     simultaneously degraded · per Research/15 §interpretation)
+ *     simultaneously degraded · per Research/15 §Recovery-Scores)  // was §interpretation · heading: ## Recovery Scores > ### Interpretation rules
  *
  *   OR
  *
@@ -783,12 +783,12 @@ async function detectSleepCrater(userId: string): Promise<AdaptationTrigger | nu
 /**
  * Q-04 default · NIGGLE_REPORTED triggers when an active niggle (cleared_at
  * IS NULL) crosses severity thresholds. Graduated response per
- * Research/05-injury-return-protocols.md §Pain-Stop-Rules:
+ * Research/05-injury-return-protocols.md §1.2-Pain-Monitoring-Rules:  // was §Pain-Stop-Rules · heading: ### 1.2 Pain Monitoring Rules
  *   - severity 5-6 → 'warn' · downgrade next quality day to easy
  *   - severity ≥ 7 → 'override' · suspend running for ~48h
  *
- * Cite: Research/05-injury-return-protocols.md §Pain-Stop-Rules (5/10
- *       interrupts the planned session; 7/10 rests the area).
+ * Cite: Research/05-injury-return-protocols.md §1.2-Pain-Monitoring-Rules (5/10
+ *       interrupts the planned session; 7/10 rests the area).  // was §Pain-Stop-Rules · heading: ### 1.2 Pain Monitoring Rules
  */
 async function detectNiggleReported(userId: string): Promise<AdaptationTrigger | null> {
   // Post-126: niggles uses canonical user_uuid. user_id (also uuid) kept
@@ -821,6 +821,7 @@ async function detectNiggleReported(userId: string): Promise<AdaptationTrigger |
  *
  * Cite: Research/05-injury-return-protocols.md §illness-return (above-the-
  *       neck cold = run easy; below-the-neck OR fever = no running).
+ *       // TODO: no matching heading in Research/05 — illness protocol content not anchored
  */
 async function detectSickEpisodeActive(userId: string): Promise<AdaptationTrigger | null> {
   // Post-126: sick_episodes uses canonical user_uuid.
@@ -896,7 +897,7 @@ async function detectInjuryActive(userId: string): Promise<AdaptationTrigger | n
  *
  * Action: mark next 14d plan_workouts as paces-stale (same as PR_BANK).
  *
- * Cite: Research/01-pace-zones-vdot.md §VDOT-recalibrate (pace derivation
+ * Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces  // was §VDOT-recalibrate · heading: ## How to recalibrate paces (pace derivation
  *       from goal time / VDOT changes invalidate prior prescriptions).
  */
 async function detectGoalChanged(userId: string): Promise<AdaptationTrigger | null> {
@@ -946,7 +947,7 @@ async function detectGoalChanged(userId: string): Promise<AdaptationTrigger | nu
  * PR_BANK · recent race finish whose VDOT exceeds users.vdot_last_reviewed
  * by > 1.5 pts. Action: mark next 14d plan_workouts as paces-stale so the
  * runner's prescription gets recomputed off the new VDOT before the next
- * quality session. Cite: Research/01-pace-zones-vdot.md §VDOT-recalibrate.
+ * quality session. Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces  // was §VDOT-recalibrate · heading: ## How to recalibrate paces.
  */
 async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
   const r = (await pool.query<{

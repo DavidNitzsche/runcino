@@ -4,7 +4,7 @@
  * Pa:Hr decoupling on long, steady-state runs. The single best
  * aerobic-fitness signal we can extract from per-mile splits.
  *
- * Doctrine: Research/15 §cardiac decoupling.
+ * Doctrine: Research/15 §cardiac decoupling.  // TODO: no matching heading in Research/15 — content exists but heading not anchored
  *
  *   The relationship between pace and HR is stable when the runner is
  *   aerobically fit. When HR climbs while pace stays constant (or pace

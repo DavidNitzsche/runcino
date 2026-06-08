@@ -380,6 +380,9 @@ export async function buildWatchToday(
         easyPaceSec: easyPaceFallback,
         recoveryPaceSec: 540,
         toleranceSec: defaultTolerance,
+        workPhaseLabel: wo.type === 'race'     ? 'Race effort'
+                      : wo.type === 'shakeout' ? 'Shakeout'
+                      : undefined,
       })
     : null;
   // HR target for work phases on quality sessions: prefer spec-embedded HR field

@@ -50,6 +50,11 @@ export interface ExpandSpecInput {
   recoveryPaceSec?: number;
   /** Default tolerance per phase type · in seconds/mi. */
   toleranceSec?: number;
+  /** Optional phase-label override for types that need a name other than
+   *  the generic "N mi long run" / "N mi easy". Pass "Race effort" for
+   *  race workouts and "Shakeout" for shakeout workouts. Internal label
+   *  only — no behavior change. */
+  workPhaseLabel?: string;
 }
 
 /**
@@ -86,10 +91,10 @@ export function expandSpecToPhases(input: ExpandSpecInput): ExpandedPhase[] | nu
     case 'intervals':
       return expandReps(s, easyPaceSec, recoveryPace, defaultTolerance);
     case 'long':
-      return expandLong(s, totalMi, easyPaceSec, defaultTolerance);
+      return expandLong(s, totalMi, easyPaceSec, defaultTolerance, input.workPhaseLabel);
     case 'easy':
     case 'shakeout':
-      return expandEasy(s, totalMi, easyPaceSec, defaultTolerance);
+      return expandEasy(s, totalMi, easyPaceSec, defaultTolerance, input.workPhaseLabel);
     case 'recovery':
       return expandRecovery(s, totalMi, recoveryPace, defaultTolerance);
     default:
@@ -200,6 +205,7 @@ function expandLong(
   totalMi: number,
   easyPaceSec: number,
   tolerance: number,
+  workPhaseLabel?: string,
 ): ExpandedPhase[] {
   const lo = Number(s.pace_target_s_per_mi_lo ?? easyPaceSec - 30) || (easyPaceSec - 30);
   const hi = Number(s.pace_target_s_per_mi_hi ?? easyPaceSec + 30) || (easyPaceSec + 30);
@@ -240,7 +246,7 @@ function expandLong(
 
   return [{
     type: 'work',
-    label: `${totalMi.toFixed(1)} mi long run`,
+    label: workPhaseLabel ?? `${totalMi.toFixed(1)} mi long run`,
     distanceMi: Number(totalMi.toFixed(1)),
     durationSec: Math.round(totalMi * mid),
     targetPaceSPerMi: mid,
@@ -253,13 +259,14 @@ function expandEasy(
   totalMi: number,
   easyPaceSec: number,
   tolerance: number,
+  workPhaseLabel?: string,
 ): ExpandedPhase[] {
   const lo = Number(s.pace_target_s_per_mi_lo ?? easyPaceSec - 30) || (easyPaceSec - 30);
   const hi = Number(s.pace_target_s_per_mi_hi ?? easyPaceSec + 60) || (easyPaceSec + 60);
   const mid = Math.round((lo + hi) / 2);
   return [{
     type: 'work',
-    label: `${totalMi.toFixed(1)} mi easy`,
+    label: workPhaseLabel ?? `${totalMi.toFixed(1)} mi easy`,
     distanceMi: Number(totalMi.toFixed(1)),
     durationSec: Math.round(totalMi * mid),
     targetPaceSPerMi: mid,

@@ -33,7 +33,7 @@
  * Cite: Daniels Running Formula §13 · "Periodization" — maintenance
  * weeks hold flat at the runner-stated target with a 0.82× cutback
  * every third week.
- * Cite: Research/00a §"The 10% rule, reconsidered" — long-run floor
+ * Cite: Research/00a §Volume-Progression-Rules — long-run floor  // was §"The 10% rule, reconsidered" · heading: ### Volume progression rules
  * is 50% of the recent longest training run (or historical longest
  * when no recent data exists).
  */

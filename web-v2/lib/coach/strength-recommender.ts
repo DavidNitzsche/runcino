@@ -287,7 +287,7 @@ async function loadPhaseContext(userUuid: string, weekStartISO: string): Promise
   };
 }
 
-/** Per-phase frequency cap per Rule 14 doctrine + Research/07 §"Periodization". */
+/** Per-phase frequency cap per Rule 14 doctrine + Research/07 §2-Phase-by-Phase-Programming. */  // was §"Periodization" · heading: ## 2. Phase-by-phase programming
 function phaseFrequencyCap(phaseCtx: PhaseContext, raceCtx: RaceContext): number {
   // Race week trumps everything · 0 (already handled upstream, defensive)
   if (raceCtx.kind === 'race_week') return 0;

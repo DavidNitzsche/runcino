@@ -110,7 +110,7 @@ export async function loadReadinessHistory(userId: string): Promise<ReadinessHis
       [userId],
     ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; value: number }>),
     // 2026-06-01 · wrist temp 30d for the wrist-temp forecaster.
-    // Research/15 §wrist temp · rises 24-48h pre-illness · the
+    // Research/15 §Spotting-Illness-Early · rises 24-48h pre-illness · the  // was §wrist temp · heading: ## Spotting Illness Early
     // forecaster surfaces the trajectory before the runner feels it.
     pool.query(
       `SELECT sample_date::date AS d, AVG(value::numeric) AS v

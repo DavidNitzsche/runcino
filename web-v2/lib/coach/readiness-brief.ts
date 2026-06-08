@@ -16,7 +16,7 @@
  *   · Research/15 §RHR (60d baseline · nocturnal preferred)
  *   · Research/00b §Sleep (7-9h healthy band · 8h+ under high load)
  *   · Research/15 §ACWR (directional, NOT deterministic per Impellizzeri critique)
- *   · Research/15 §Subjective Measures (Saw et al. · subjective beats objective when they disagree)
+ *   · Research/15 §When-Wearable-Disagrees-Subjective (Saw et al. · subjective beats objective when they disagree)  // was §Subjective Measures · heading: ## When Wearable Data Agrees vs. Disagrees with Subjective State
  *
  * Generic mechanism · works for any user. No hardcoded baselines.
  *

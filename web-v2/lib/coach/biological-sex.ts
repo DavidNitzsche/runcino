@@ -4,7 +4,7 @@
  * Single source of truth so iPhone, web, and watch all see the same
  * value for the same user. Gates menstrual cycle ingest, cycle-phase
  * tile rendering, and any future sex-specific physiological adjustment
- * (Research/13 §sex-specific training).
+ * (Research/13 §1-Menstrual-Cycle-and-Training).  // was §sex-specific training · heading: ## 1. The Menstrual Cycle and Training
  *
  * Schema reality: two tables store sex, unconstrained, inconsistent casing.
  * (runner_profile is gone — dropped Cluster 2 DDL 2026-06-05.)

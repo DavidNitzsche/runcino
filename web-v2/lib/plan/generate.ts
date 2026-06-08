@@ -17,7 +17,7 @@
  *   - Base:         everything before, easy aerobic + long
  *
  *   Cite: Research/00a-distance-running-training.md §periodization
- *   Cite: Research/04-workout-vocabulary.md §quality-types
+ *   Cite: Research/04-workout-vocabulary.md §5-Threshold §6-VO2max  // was §quality-types · headings: ## 5. Threshold workouts · ## 6. VO2max workouts
  *   Cite: Research/08-pacing-and-race-week.md §taper
  */
 import { pool } from '@/lib/db/pool';
@@ -352,7 +352,7 @@ export interface BlockPlan {
  * size, and quality-mix (see qualityMixFor below).
  *
  * Cite: Research/22-plan-templates.md (per-distance template tables);
- *       Research/00a §race-specific-prep (taper length by distance).
+ *       Research/00a §7-Race-Specific (taper length by distance).  // was §race-specific-prep · heading: ### 7. Race-specific (inside ## The Seven Workout Categories)
  */
 export type DistCategory = '5k' | '10k' | 'hm' | 'm';
 export function distanceCategoryOfPublic(raceDistanceMi: number): DistCategory {
@@ -443,8 +443,8 @@ function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBlock: bool
  * over the 10% rule. With these, each level has a sensible floor that
  * matches research-grounded base mileage by experience.
  *
- * Cite: Research/00a-distance-running-training.md §volume-by-experience
- * Cite: Research/22-plan-templates.md §minimum-base-by-level
+ * Cite: Research/00a-distance-running-training.md §Volume-Guidelines-by-Experience  // was §volume-by-experience · heading: ## Volume Guidelines by Experience and Distance
+ * Cite: Research/22-plan-templates.md §minimum-base-by-level  // TODO: no matching heading in Research/22 — content exists but heading not anchored
  */
 type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
 const VOLUME_FLOOR_MPW: Record<Exclude<LevelKey, null>, number> = {
@@ -468,12 +468,12 @@ const RAMP_PCT: Record<Exclude<LevelKey, null>, number> = {
  *   · cutback every 4th non-taper week to 85% of last peak
  *   · taper math unchanged
  *
- * The geometric ramp respects Research/00a §progressive-overload's
+ * The geometric ramp respects Research/00a §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  * 10%/wk cap: when (peak/base)^(1/buildWeeks) > 1.10, we cap the
  * per-week growth at 10% and accept that the peak target won't be
  * fully reached. Honest about what's achievable in the runway.
  *
- * Cite: Research/00a-distance-running-training.md §progressive-overload
+ * Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  * Cite: Research/22-plan-templates.md (tier targets via TIER_TARGETS)
  * Cite: Research/08-pacing-and-race-week.md §taper
  */

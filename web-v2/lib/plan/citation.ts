@@ -32,27 +32,27 @@ import { pool } from '@/lib/db/pool';
  */
 export type ResearchCitation =
   // === Plan generation ===
-  | 'Research/00a-distance-running-training.md §progressive-overload'
-  | 'Research/00a-distance-running-training.md §missed-workout-policy'
-  | 'Research/00a-distance-running-training.md §volume-by-experience'
-  | 'Research/00b-recovery-protocols.md §sleep-as-recovery'
-  | 'Research/00b-recovery-protocols.md §recovery-load-scaling'
-  | 'Research/01-pace-zones-vdot.md §VDOT-recalibrate'
-  | 'Research/01-pace-zones-vdot.md §T-pace-derivation'
-  | 'Research/04-workouts-and-progressions.md §hard-easy-rule'
-  | 'Research/04-workouts-and-progressions.md §quality-density'
-  | 'Research/04-workouts-and-progressions.md §long-run-progression'
+  | 'Research/00a-distance-running-training.md §Volume-Progression-Rules'     // was §progressive-overload · heading: ### Volume progression rules
+  | 'Research/00a-distance-running-training.md §missed-workout-policy'        // TODO: no matching heading in Research/00a — content exists but heading not anchored
+  | 'Research/00a-distance-running-training.md §Volume-Guidelines-by-Experience' // was §volume-by-experience · heading: ## Volume Guidelines by Experience and Distance
+  | 'Research/00b-recovery-protocols.md §Sleep'                               // was §sleep-as-recovery · heading: ### Sleep — The Highest-ROI Recovery Tool
+  | 'Research/00b-recovery-protocols.md §recovery-load-scaling'               // TODO: no matching heading in Research/00b — content exists but heading not anchored
+  | 'Research/01-pace-zones-vdot.md §Recalibrate-Paces'                      // was §VDOT-recalibrate · heading: ## How to recalibrate paces
+  | 'Research/01-pace-zones-vdot.md §T-pace-derivation'                      // TODO: no matching heading in Research/01 — content exists but heading not anchored
+  | 'Research/04-workout-vocabulary.md §hard-easy-rule'                      // fixed filename: was 04-workouts-and-progressions.md (file does not exist)
+  | 'Research/04-workout-vocabulary.md §quality-density'                     // fixed filename: was 04-workouts-and-progressions.md (file does not exist)
+  | 'Research/04-workout-vocabulary.md §long-run-progression'                // fixed filename: was 04-workouts-and-progressions.md (file does not exist)
   | 'Research/08-pacing-and-race-week.md §taper'
-  | 'Research/08-pacing-and-race-week.md §race-week-execution'
+  | 'Research/08-pacing-and-race-week.md §9.3-Race-Week-Templates'           // was §race-week-execution · heading: ### 9.3 Day-by-day race week templates
   | 'Research/15-wearable-data.md §HRV'
-  | 'Research/15-wearable-data.md §RHR-Recovery-Indicators'
+  | 'Research/15-wearable-data.md §RHR'                                      // was §RHR-Recovery-Indicators · heading: ## Resting Heart Rate (RHR)
   | 'Research/15-wearable-data.md §ACWR'
-  | 'Research/15-wearable-data.md §HR-Recovery'
-  | 'Research/15-wearable-data.md §Subjective-Measures'
-  | 'Research/15-wearable-data.md §recovery-after-quality'
-  | 'Research/22-plan-templates.md §quality-mix-by-distance'
-  | 'Research/22-plan-templates.md §minimum-base-by-level'
-  | 'Research/22-plan-templates.md §projection-feedback-loop'
+  | 'Research/15-wearable-data.md §HR-Recovery'                              // TODO: no matching heading in Research/15 — content exists but heading not anchored
+  | 'Research/15-wearable-data.md §When-Wearable-Disagrees-Subjective'       // was §Subjective-Measures · heading: ## When Wearable Data Agrees vs. Disagrees with Subjective State
+  | 'Research/15-wearable-data.md §recovery-after-quality'                   // TODO: no matching heading in Research/15 — content exists but heading not anchored
+  | 'Research/22-plan-templates.md §quality-mix-by-distance'                 // TODO: no matching heading in Research/22 — content exists but heading not anchored
+  | 'Research/22-plan-templates.md §minimum-base-by-level'                   // TODO: no matching heading in Research/22 — content exists but heading not anchored
+  | 'Research/22-plan-templates.md §projection-feedback-loop'                // TODO: no matching heading in Research/22 — content exists but heading not anchored
 
   // === Doctrine docs ===
   | 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.1'   // goal-gap

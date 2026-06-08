@@ -278,7 +278,7 @@ export async function planUpgrade(opp: RampOpportunity): Promise<UpgradePlan | n
   ).catch(() => ({ rows: [] as Array<{ user_uuid: string }> }))).rows[0];
   const today = userRow?.user_uuid
     ? await runnerToday(userRow.user_uuid)
-    : new Intl.DateTimeFormat('en-CA').format(new Date());
+    : new Date().toISOString().slice(0, 10);
   // Pull next 7 days of rows on the active plan.
   const rows = await pool.query<{
     id: string; type: string; distance_mi: number; date_iso: string;

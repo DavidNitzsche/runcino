@@ -62,7 +62,7 @@ function computeInsight(series: DowPatterns['sleep'], metric: string, isLowerBet
   // 2026-06-03 · reframed HRV + RHR insights as pure observation. The
   // old copy attributed cause to the prior day ("likely a SAT recovery
   // problem", "pattern points at SAT stress or sleep") which the engine
-  // can't actually verify · per Research/15 §autonomic patterning, the
+  // can't actually verify · per Research/15 §HRV, the  // was §autonomic patterning · heading: ## Heart Rate Variability (HRV)
   // morning reading reflects the prior 24h but the *cause* could be
   // training load, sleep, alcohol, stress, or any combination. The
   // runner reads the pattern and decides what to investigate.

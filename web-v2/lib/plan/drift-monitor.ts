@@ -28,10 +28,10 @@
  * Writes happen in the cron route (lib/plan/drift-cron.ts).
  *
  * Doctrine:
- *   · Research/00a §plan-adaptation · plans need re-authoring when
+ *   · Research/00a §plan-adaptation · plans need re-authoring when  // TODO: no matching heading in Research/00a — content exists but heading not anchored
  *     "training conditions diverge materially from authored state."
- *   · Research/00a § VDOT re-rating · ~2 VDOT drift = "materially."
- *   · Research/04 § volume progression · sustained baseline drift
+ *   · Research/01-pace-zones-vdot.md §Recalibrate-Paces · ~2 VDOT drift = "materially."  // was Research/00a §VDOT re-rating (wrong file + phantom); heading: ## How to recalibrate paces
+ *   · Research/00a-distance-running-training.md §Volume-Progression-Rules · sustained baseline drift  // was Research/04 §volume progression (wrong file + phantom); heading: ### Volume progression rules
  *     >40% means the runner is training a different fitness than
  *     the plan was built for.
  */
@@ -75,7 +75,7 @@ export interface DriftReport {
 // ─── Tuning constants · doctrine-derived ────────────────────────────────
 
 /** Volume drift threshold · % delta vs authored 4-week avg.
- *  Research/04 §progression notes >40% sustained shift = different
+ *  Research/00a-distance-running-training.md §Volume-Progression-Rules notes >40% sustained shift = different  // was Research/04 §progression (wrong file + phantom)
  *  fitness · the plan's volume curve is no longer right.
  *
  *  2026-06-01 · Phase 1.2 · this stays at 40% as the BLUNT system-

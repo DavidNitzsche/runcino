@@ -7,7 +7,7 @@
  * effort indicators (VDOT-equivalent, perceived effort) over the last
  * 90 days.
  *
- * Doctrine: Research/13 § sex-specific · "peak power efforts land best
+ * Doctrine: Research/13 §1-Menstrual-Cycle-and-Training · "peak power efforts land best  // was §sex-specific · heading: ## 1. The Menstrual Cycle and Training
  * in ovulation week · luteal endurance is solid · adjust accordingly."
  *
  * Returns null when:

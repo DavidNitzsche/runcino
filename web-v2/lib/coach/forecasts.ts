@@ -17,7 +17,7 @@
  *
  * Returns empty array when there isn't enough signal for any pillar.
  *
- * Doctrine: Research/15 § monitoring · "a single low reading is
+ * Doctrine: Research/15 §Recovery-Scores · "a single low reading is  // was §monitoring · heading: ## Recovery Scores (interpretation of wearable monitoring)
  * noise; a 3-day persistent trend is signal." We surface predictions
  * only when the trend is persistent.
  */
@@ -253,7 +253,7 @@ function forecastRhr(history: ReadinessHistory): Forecast | null {
 }
 
 function forecastWristTemp(history: ReadinessHistory): Forecast | null {
-  // Research/15 §wrist temp · rises 24-48h pre-illness · the
+  // Research/15 §Spotting-Illness-Early · rises 24-48h pre-illness · the  // was §wrist temp · heading: ## Spotting Illness Early
   // forecaster surfaces the trajectory before the runner feels it.
   // This is HIGH-VALUE · wrist temp moves earlier than HRV.
   //
