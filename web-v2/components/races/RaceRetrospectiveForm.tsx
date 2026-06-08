@@ -32,11 +32,21 @@ function fmtSec(secs: number | null | undefined): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+interface NextPlanAck {
+  ok: boolean;
+  raceSlug: string;
+  raceName: string;
+  weeks_generated?: number;
+  compressed?: boolean;
+  reason?: string;
+}
+
 interface SaveAck {
   text: string;
   vdot?: { before: number | null; after: number | null };
   mProj?: number | null;
   planArchived?: boolean;
+  nextPlan?: NextPlanAck | null;
 }
 
 export function RaceRetrospectiveForm({ slug, existing }: {
@@ -68,6 +78,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
       let vdotAfter: number | null = null;
       let mProjAfter: number | null = null;
       let planArchived = false;
+      let nextPlanResult: NextPlanAck | null = null;
 
       // Step 1 — canonical result write (only when a finish time is entered).
       if (finishS) {
@@ -86,6 +97,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
         vdotAfter = rj.vdotAfter ?? null;
         mProjAfter = rj.marathonProjectionSec ?? null;
         planArchived = rj.planArchived ?? false;
+        nextPlanResult = (rj.nextPlan ?? null) as NextPlanAck | null;
       }
 
       // Step 2 — retrospective fields land in meta.
@@ -109,6 +121,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
         vdot: finishS ? { before: vdotBefore, after: vdotAfter } : undefined,
         mProj: mProjAfter,
         planArchived,
+        nextPlan: finishS ? nextPlanResult : null,
       });
       startTransition(() => router.refresh());
     } catch (e: unknown) {
@@ -223,6 +236,23 @@ export function RaceRetrospectiveForm({ slug, existing }: {
             )}
             {ack.planArchived && (
               <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· Plan archived.</span>
+            )}
+            {ack.nextPlan?.ok && (
+              <span style={{ marginLeft: 8, color: 'var(--ink)' }}>
+                {`· ${ack.nextPlan.raceName} plan ready`}
+                {ack.nextPlan.weeks_generated
+                  ? ` (${ack.nextPlan.weeks_generated} weeks${ack.nextPlan.compressed ? ' · compressed' : ''})`
+                  : ''}.
+              </span>
+            )}
+            {ack.nextPlan && !ack.nextPlan.ok && (
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--over)' }}>
+                {`${ack.nextPlan.raceName || ack.nextPlan.raceSlug || 'Next'} plan generation failed.`}
+                {ack.nextPlan.reason ? ` ${ack.nextPlan.reason}` : ''}
+                {ack.nextPlan.raceSlug && (
+                  <>{' '}<a href={`/races/${ack.nextPlan.raceSlug}`} style={{ color: 'var(--over)', textDecoration: 'underline' }}>Open race to retry.</a></>
+                )}
+              </div>
             )}
           </div>
         )}

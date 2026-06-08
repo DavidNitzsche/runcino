@@ -8,13 +8,17 @@
 // writes can't wipe the chip time, and the chip time can't wipe fields
 // that future writers add to actual_result.
 //
-// After writing:
-//   1. Immediately fires projection snapshots for the race distance + 26.2M
-//      (no waiting for midnight cron — the runner sees the VDOT delta now).
+// Steps after writing:
+//   1. Immediately fires projection snapshots for the race distance + 26.2M.
 //   2. Logs a vdot_auto_recalc coach_intent (briefing layer signal).
 //   3. Archives the active plan if this race is its goal race.
+//   4. Auto-generates a plan for the next A/B race (if any).
+//      generatePlan reads races.actual_result directly — not projection_snapshots —
+//      so the finishS written in step 1 is visible here with no race condition.
+//      No .catch on the nextRaceRow query: DB errors surface in nextPlan.reason
+//      rather than silently returning null (runner must know why generation skipped).
 //
-// Returns vdotBefore / vdotAfter / projectionSec for client VDOT-delta toast.
+// Returns vdotBefore / vdotAfter / projectionSec / nextPlan for client toast.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
@@ -39,6 +43,16 @@ function distFromLabel(label: string | null | undefined): number | null {
   if (l.includes('10k')) return 6.2;
   if (l.includes('5k')) return 3.1;
   return null;
+}
+
+interface NextPlanResult {
+  ok: boolean;
+  raceSlug: string;
+  raceName: string;
+  plan_id?: string;
+  weeks_generated?: number;
+  compressed?: boolean;
+  reason?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -125,8 +139,7 @@ export async function POST(req: NextRequest) {
 
     // ── 3. Archive active plan if this was its goal race ───────────────────
     // Two-attempt fallback: archive_reason column may not exist yet if the
-    // migration hasn't run. archived_iso is the load-bearing field; the
-    // reason column is informational.
+    // migration hasn't run. archived_iso is the load-bearing field.
     let planArchived = false;
     try {
       const r = await pool.query(
@@ -149,6 +162,57 @@ export async function POST(req: NextRequest) {
       } catch { /* best-effort */ }
     }
 
+    // ── 4. Auto-generate plan for the next A/B race ────────────────────────
+    // Inner try/catch: step 4 failures surface in nextPlan.reason, not as 500.
+    // null = no future A/B race found (generation not attempted).
+    // { ok: false } = generation was attempted but failed (DB error or plan error).
+    let nextPlan: NextPlanResult | null = null;
+    try {
+      // No .catch here — DB errors throw to the inner catch below so the runner
+      // sees the failure reason rather than a silent null.
+      const nextRaceRow = (await pool.query<{ slug: string; name: string }>(
+        `SELECT slug, meta->>'name' AS name FROM races
+          WHERE user_uuid = $1
+            AND (meta->>'date')::date > $2::date
+            AND meta->>'priority' IN ('A', 'B')
+          ORDER BY (meta->>'date')::date
+          LIMIT 1`,
+        [userId, (meta.date as string) ?? '9999-99-99'],
+      )).rows[0];
+
+      if (nextRaceRow) {
+        const { generatePlan } = await import('@/lib/plan/generate');
+        const gen = await generatePlan({ userId, raceSlug: nextRaceRow.slug });
+
+        let compressed = false;
+        if (gen.ok && gen.plan_id) {
+          const stRow = (await pool.query<{ authored_state: Record<string, unknown> | null }>(
+            `SELECT authored_state FROM training_plans WHERE id = $1`,
+            [gen.plan_id],
+          ).catch(() => ({ rows: [] }))).rows[0];
+          compressed = Boolean(stRow?.authored_state?.compressed_timeline);
+        }
+
+        if (!gen.ok) {
+          console.error('[race/result] next-plan generation failed:', nextRaceRow.slug, gen.reason);
+        }
+        nextPlan = {
+          ok: gen.ok,
+          raceSlug: nextRaceRow.slug,
+          raceName: nextRaceRow.name ?? nextRaceRow.slug,
+          plan_id: gen.plan_id,
+          weeks_generated: gen.weeks_generated,
+          compressed,
+          reason: gen.reason,
+        };
+      }
+      // nextRaceRow undefined → no future A/B race → nextPlan stays null
+    } catch (genErr: unknown) {
+      const msg = genErr instanceof Error ? genErr.message : String(genErr);
+      console.error('[race/result] next-plan step failed:', msg);
+      nextPlan = { ok: false, raceSlug: '', raceName: '', reason: msg };
+    }
+
     await bustBriefingCacheForEvent(userId, 'race_crud');
 
     return NextResponse.json({
@@ -160,6 +224,7 @@ export async function POST(req: NextRequest) {
       projectionSec: projSec,
       marathonProjectionSec: mProjSec,
       planArchived,
+      nextPlan,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

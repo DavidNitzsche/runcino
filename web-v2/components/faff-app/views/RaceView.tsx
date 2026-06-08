@@ -851,11 +851,11 @@ function monDay(iso: string): string {
 }
 
 /**
- * RacePlanHandoff — post-race "WHAT'S NEXT" block.
+ * RacePlanHandoff — post-race "WHAT'S NEXT" informational block.
  *
  * Shows when: isPast && finishTime is set && there's a future A race.
- * Displays recovery / bridge / training timeline and a "Generate CIM plan"
- * button (manual trigger only — recovery varies, runner decides when ready).
+ * Displays recovery / bridge / training timeline. Plan generation happens
+ * automatically in POST /api/race/result (step 4) — no button here.
  */
 function RacePlanHandoff({
   raceDate,
@@ -866,10 +866,6 @@ function RacePlanHandoff({
   nextARace: { slug: string; name: string; date: string; distanceMi: number | null };
   bridgeRaces: Array<{ name: string; date: string; daysBeforeNextA: number }>;
 }) {
-  const router = useRouter();
-  const [generating, setGenerating] = useState(false);
-  const [genResult, setGenResult] = useState<'ok' | 'error' | null>(null);
-
   const recoveryEnd = addDaysISO(raceDate, 14);
   const bridgeEnd   = addDaysISO(raceDate, 28);
   const trainWeeks  = Math.round(
@@ -878,25 +874,6 @@ function RacePlanHandoff({
 
   // Tune-up race: nearest bridgeRace within 14–35 days of next A race.
   const tuneUp = bridgeRaces.find(r => r.daysBeforeNextA >= 14 && r.daysBeforeNextA <= 35);
-
-  async function generatePlan() {
-    setGenerating(true);
-    setGenResult(null);
-    try {
-      const res = await fetch('/api/plan/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ raceSlug: nextARace.slug }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? 'generate failed');
-      setGenResult('ok');
-      setTimeout(() => router.push(`/races/${nextARace.slug}`), 1200);
-    } catch {
-      setGenerating(false);
-      setGenResult('error');
-    }
-  }
 
   return (
     <>
@@ -911,9 +888,9 @@ function RacePlanHandoff({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 18 }}>
         {[
-          { label: 'Recovery',  dates: `${monDay(raceDate)} – ${monDay(recoveryEnd)}`, note: '14 days easy only, no quality' },
-          { label: 'Bridge',    dates: `${monDay(recoveryEnd)} – ${monDay(bridgeEnd)}`,  note: 'aerobic base, strides, fartlek' },
-          { label: 'Training',  dates: `${monDay(bridgeEnd)} – ${monDay(nextARace.date)}`, note: `${trainWeeks} weeks specific prep` },
+          { label: 'Recovery', dates: `${monDay(raceDate)} – ${monDay(recoveryEnd)}`, note: '14 days easy only, no quality' },
+          { label: 'Bridge',   dates: `${monDay(recoveryEnd)} – ${monDay(bridgeEnd)}`, note: 'aerobic base, strides, fartlek' },
+          { label: 'Training', dates: `${monDay(bridgeEnd)} – ${monDay(nextARace.date)}`, note: `${trainWeeks} weeks specific prep` },
         ].map(row => (
           <div key={row.label} style={{
             display: 'grid', gridTemplateColumns: '80px 1fr 1fr',
@@ -930,34 +907,10 @@ function RacePlanHandoff({
       </div>
 
       {tuneUp && (
-        <div style={{ fontSize: 12, color: 'var(--mute)', marginBottom: 16 }}>
+        <div style={{ fontSize: 12, color: 'var(--mute)' }}>
           {tuneUp.name} ({monDay(tuneUp.date)}) is a natural tune-up {tuneUp.daysBeforeNextA} days out from {nextARace.name}.
         </div>
       )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button
-          type="button"
-          onClick={generatePlan}
-          disabled={generating || genResult === 'ok'}
-          style={{
-            background: genResult === 'ok' ? 'var(--recovery)' : 'var(--ink)',
-            color: genResult === 'ok' ? '#001' : 'var(--bg)',
-            border: 'none', borderRadius: 8,
-            padding: '10px 20px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
-            cursor: generating || genResult === 'ok' ? 'default' : 'pointer',
-            opacity: generating ? 0.7 : 1,
-          }}
-        >
-          {generating ? 'GENERATING…' : genResult === 'ok' ? 'PLAN GENERATED' : `GENERATE ${nextARace.name.split(' ').slice(0, 1)[0].toUpperCase()} PLAN`}
-        </button>
-        {genResult === 'error' && (
-          <span style={{ fontSize: 12, color: 'var(--over)' }}>Generation failed — try again.</span>
-        )}
-        {genResult === 'ok' && (
-          <span style={{ fontSize: 12, color: 'var(--mute)' }}>Opening {nextARace.name}…</span>
-        )}
-      </div>
     </>
   );
 }
