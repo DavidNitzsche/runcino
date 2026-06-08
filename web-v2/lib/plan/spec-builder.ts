@@ -169,10 +169,16 @@ export function buildWorkoutSpec(
   // (e.g. "continuous tempo") · branches fall back to historical
   // defaults.
   const parsed = parsePrescription(prescription);
-  const easyLo = tPaceSec + 60, easyHi = tPaceSec + 110;
+  // Research/01 §VDOT-50 table: E = T+104 to T+156. T+80 floor lands within 7s of
+  // Daniels' E minimum, moving easy runs out of GA/steady-state territory.
+  const easyLo = tPaceSec + 80, easyHi = tPaceSec + 120;
   const longLo = tPaceSec + 55, longHi = tPaceSec + 90;
   const tempo  = tPaceSec + 12;         // mid of T+5 to T+18
-  const interval = tPaceSec - 18;       // ~10K pace
+  // Daniels I = T−33 (95-100% VO2max, ~3K-5K pace). T−18 is a deliberate
+  // conservative deviation: ~10-12K pace, yielding more sub-VO2max ceiling work
+  // rather than true VO2max intervals. Appropriate for a 40-50 mpw runner who
+  // cannot absorb full Daniels I volume without injury risk. Cite: Research/01 §Daniels-I.
+  const interval = tPaceSec - 18;
   const recovery = tPaceSec + 100;      // very easy
   const mp = tPaceSec + 18;             // marathon pace
 

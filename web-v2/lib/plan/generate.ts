@@ -552,7 +552,10 @@ function volumeCurve(
   if (taperPhase) {
     for (let w = 0; w < taperPhase.weeks; w++) {
       const wksLeft = taperPhase.weeks - w;
-      const taperFactor = wksLeft === 1 ? 0.45 : wksLeft === 2 ? 0.60 : 0.75;
+      // Research/08 §9.2: marathon 3-week taper targets 80-90% → 60-70% → 40-50% of peak.
+      // 0.82 = midpoint of the 80-90% band for week -3; 0.60 and 0.45 are within their bands.
+      // HM taper is 2 weeks (taperWeeks=2), so the wksLeft===3 branch never fires for HM.
+      const taperFactor = wksLeft === 1 ? 0.45 : wksLeft === 2 ? 0.60 : 0.82;
       vols.push(Math.round(lastPeak * taperFactor));
     }
   }
@@ -679,7 +682,11 @@ function longFinishSegment(
   racePaceTag: 'HM' | 'MP' | null,
 ): { pct: number; tag: 'HM' | 'M' | 'MP' } | null {
   if (!racePaceTag) return null;
-  if (phase === 'RACE-SPECIFIC') return { pct: 0.40, tag: racePaceTag };
+  // Research/22 §3 Advanced peak week: "16mi LR w/ last 8mi @ HMP" = 50%.
+  // §4 Marathon peaks at 64-70%; Research/00a §fast-finish says 10-25% (general principle).
+  // 0.50 targets the §22 minimum for the race-specific phase; QUALITY ramp (0.30→0.33→0.33)
+  // builds toward it progressively.
+  if (phase === 'RACE-SPECIFIC') return { pct: 0.50, tag: racePaceTag };
   if (phase !== 'QUALITY') return null;
   // Last three QUALITY weeks build toward race pace. HM ramps M → M → HMP;
   // M holds MP throughout (race pace == marathon pace).
