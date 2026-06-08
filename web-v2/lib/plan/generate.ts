@@ -1866,7 +1866,7 @@ async function loadGeneratorInputs(
         AND (meta->>'date')::date < $2::date
         AND meta->>'priority' IN ('A','B')`,
     [userId, todayISO],
-  ).catch(() => ({ rows: [] }))).rows;
+  )).rows;
   const runRows = (await pool.query<{
     id: string; date: string; workout_type: string | null; distance_mi: string | null; finish_seconds: string | null; avg_hr: string | null;
   }>(
@@ -1893,7 +1893,7 @@ async function loadGeneratorInputs(
         )
       ORDER BY date DESC LIMIT 200`,
     [userId, await runnerToday(userId)],
-  ).catch(() => ({ rows: [] }))).rows;
+  )).rows;
   const raceCandidates = raceRows.map((r) => {
     const m = (r.meta ?? {}) as Record<string, unknown>;
     const ar = (r.actual_result ?? {}) as Record<string, unknown>;

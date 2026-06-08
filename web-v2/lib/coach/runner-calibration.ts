@@ -115,7 +115,7 @@ export async function loadRunnerCalibration(
       WHERE user_uuid = $1::uuid
       ORDER BY as_of DESC LIMIT 1`,
     [userUuid],
-  ).catch(() => ({ rows: [] }))).rows[0];
+  )).rows[0];
 
   if (row) {
     return {

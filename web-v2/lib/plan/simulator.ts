@@ -267,17 +267,20 @@ export async function simulateActivePlan(userUuid: string): Promise<SimulatorRes
     longRunMi: Number(w.long_run_mi),
   }));
 
-  // 4. Start VDOT from latest projection snapshot
-  const snap = (await pool.query<{ vdot: number | null }>(
+  // 4. Start VDOT from latest projection snapshot — DB error returns null
+  // (refuse to simulate rather than defaulting to VDOT 45 for a 55-VDOT runner).
+  const snap = await pool.query<{ vdot: number | null }>(
     `SELECT vdot::float FROM projection_snapshots
       WHERE user_uuid = $1::uuid AND distance_mi = $2
       ORDER BY snapshot_date DESC LIMIT 1`,
     [userUuid, raceDistanceMi],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  const startVdot = snap?.vdot ?? 45;  // intermediate-runner default
+  ).then(r => r.rows[0]).catch(() => null);
+  const startVdot = snap?.vdot ?? null;
+  if (startVdot == null) return null;
 
   // 5. Calibration · Phase 2.2 will replace this with loadRunnerCalibration
-  const calibration = await loadRunnerCalibration(userUuid).catch(() => COLD_START_CALIBRATION);
+  const calibration = await loadRunnerCalibration(userUuid).catch(() => null);
+  if (!calibration) return null;
 
   return simulate({
     weeks,
