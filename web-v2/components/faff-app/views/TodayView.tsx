@@ -2190,8 +2190,10 @@ function CompletedHeroV2({
             // to per-mile mean inside EasyPanel when null.
             runAvgPaceSec={runData?.pace ? paceToSec(runData.pace) : null}
           />
-        ) : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.some(p => p.type === 'work') ? (
-          // Long-run WITH a work phase = MP-finish variant · "THE BUILD".
+        ) : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 &&
+            (d.workoutSpec as { finish_mi?: number | null } | null)?.finish_mi != null ? (
+          // Long-run with a spec finish segment (HMP/M-pace finish in workout_spec).
+          // Plain longs (single work phase, no finish_mi) fall through to LongPanel.
           <LongMpPanel phases={runData.phase_breakdown} splits={splits} />
         ) : d.type === 'long' && splits.length >= 3 ? (
           <LongPanel splits={splits} avgPace={resolvedPace ?? null} />
