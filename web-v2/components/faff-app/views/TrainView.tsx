@@ -268,6 +268,9 @@ export function TrainView({
       | 'on_track' | 'consistent' | 'working' | 'slipping' | 'compromised';
     type Mile = {
       wkLabel: string; dot: string; title: string; sub: string;
+      /** 2026-06-07 · D1 · structured long-run label ("LONG · 7mi @ HM") when
+       *  it carries more than the one-word title — shown as a secondary line. */
+      structLabel?: string;
       state: 'DONE' | 'NOW' | 'KEY' | '' | 'RACE';
       raceRow?: boolean;
       date?: string;
@@ -432,7 +435,16 @@ export function TrainView({
             }
           }
         }
-        out.push({ wkLabel, dot, title, sub, state, date: pick.date, done: !!pick.done, influence, adapt });
+        // Same guard as calendar tiles / week-strip: show pick.name (= sub_label)
+        // as secondary text when it's more specific than the one-word title.
+        const structLabel =
+          pick.type === 'long' &&
+          pick.name &&
+          pick.name.toLowerCase() !== title.toLowerCase() &&
+          pick.name.toUpperCase().startsWith(title)
+            ? pick.name
+            : undefined;
+        out.push({ wkLabel, dot, title, sub, structLabel, state, date: pick.date, done: !!pick.done, influence, adapt });
       }
     });
     if (goal) {
@@ -858,6 +870,7 @@ export function TrainView({
                   <span className="mdot" style={{ background: m.dot }} />
                   <div className="mtx">
                     <div className="mtt">{m.title}</div>
+                    {m.structLabel && <div className="mstruct">{m.structLabel}</div>}
                     <div className="mss">{m.sub}</div>
                     {m.influence && (
                       <div className="minf" style={{

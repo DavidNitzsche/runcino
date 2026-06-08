@@ -944,6 +944,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2 .mile .mdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;margin-top:4px;}
 .train2 .mile .mtx{flex:1;}
 .train2 .mile .mtt{font-size:13.5px;font-weight:600;line-height:1.25;}
+.train2 .mile .mstruct{font-size:11px;font-weight:500;opacity:.78;margin-top:1px;letter-spacing:.2px;}
 .train2 .mile .mss{font-size:11.5px;font-weight:500;opacity:.62;margin-top:2px;}
 .train2 .mile .mst{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.5px;opacity:.5;padding-top:2px;}
 .train2 .mile.done .mtt{opacity:.6;}
