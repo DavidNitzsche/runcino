@@ -40,6 +40,7 @@
 
 import { randomBytes } from 'crypto';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import {
   HIST_AVG_MIDPOINTS,
   HIST_LONG_MIDPOINTS,
@@ -86,10 +87,6 @@ const T_SOLO_PCT  = 0.18;      // Threshold (1 quality/wk · maintenance).
 
 function id(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString('hex')}`;
-}
-
-function todayPT(): string {
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 }
 
 function addDays(iso: string, days: number): string {
@@ -422,7 +419,7 @@ export async function seedMaintenancePlanFromOnboarding(
   const layout = defaultLayout(goals.weeklyFrequency);
   const curve = maintenanceCurve(peakWeeklyMi);
 
-  const startMonday = mondayOf(todayPT());
+  const startMonday = mondayOf(await runnerToday(userId));
   // 16 weeks · last day = startMonday + 16*7 - 1.
   const goalISO = addDays(startMonday, TOTAL_WEEKS * 7 - 1);
 

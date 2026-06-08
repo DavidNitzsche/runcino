@@ -25,6 +25,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { randomBytes } from 'crypto';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface InjuryBuildInput {
   userId: string;
@@ -40,10 +41,6 @@ export interface InjuryBuildResult {
 
 function id(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString('hex')}`;
-}
-
-function todayPT(): string {
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 }
 
 function addDays(iso: string, days: number): string {
@@ -151,7 +148,7 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
 
   // Create the new INJURY plan.
   const planId = id('pln');
-  const today = todayPT();
+  const today = await runnerToday(userId);
   const startMonday = mondayOf(today);
   const goalISO = addDays(startMonday, totalWeeks * 7 - 1); // end-of-plan date
 

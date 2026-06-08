@@ -16,14 +16,6 @@ export function id(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString('hex')}`;
 }
 
-/** Today in Pacific time as YYYY-MM-DD.
- *  (Faff is anchored on America/Los_Angeles for the founder; per-user
- *  tz comes from users.timezone for the briefing layer, but plan-builder
- *  internals just need a consistent "today" boundary.) */
-export function todayPT(): string {
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-}
-
 /** Add (possibly negative) days to a YYYY-MM-DD string. */
 export function addDays(iso: string, days: number): string {
   return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000).toISOString().slice(0, 10);

@@ -59,10 +59,6 @@ function id(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString('hex')}`;
 }
 
-function today(): string {
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-}
-
 function addDays(iso: string, days: number): string {
   return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 }
@@ -1650,7 +1646,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   // race-prep: race is within build window
   // maintenance: race is too far out · hold aerobic base
   // recovery: another race finished recently · 1-2 week light-running
-  const todayISO = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const todayISO = await runnerToday(userId);
   const { lastRaceFinished, lastRaceDistanceMi } = await loadLastRaceFinished(userId, todayISO);
   const mode: PlanMode = pickPlanMode(
     todayISO,
@@ -1813,8 +1809,9 @@ async function loadGeneratorInputs(
   const meta = raceRow.meta ?? {};
   const raceDateISO: string | undefined = meta.date;
   if (!raceDateISO) return { ok: false, reason: 'race missing date' };
+  const todayISO = await runnerToday(userId);
 
-  const totalDays = daysBetween(today(), raceDateISO);
+  const totalDays = daysBetween(todayISO, raceDateISO);
   if (totalDays < 14) return { ok: false, reason: 'race < 2 weeks away; use race-week briefing only' };
   if (totalDays > 365) return { ok: false, reason: 'race > 1 year out; plan only when within a year' };
 
@@ -1839,7 +1836,7 @@ async function loadGeneratorInputs(
     ? ctRow.cross_training_modes : [];
 
   // 4. Plan-shape inputs
-  const startMondayISO = mondayOf(today());
+  const startMondayISO = mondayOf(todayISO);
   const totalWeeks = daysBetween(startMondayISO, mondayOf(raceDateISO)) / 7 + 1;
   if (totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 
@@ -1853,7 +1850,6 @@ async function loadGeneratorInputs(
   // bestRecentVdot · use the canonical reader from lib/training/vdot.
   // Assembles races + recent quality runs into candidates; returns the
   // highest VDOT in the 180-day window. Undefined when no signal.
-  const todayISO = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
   // 2026-06-06 · Audit C C1-1a · the prior query referenced columns that
   // don't exist on `races` (date_iso/distance_mi/finish_seconds) → threw →
   // caught → empty → bestRecentVdot undefined → plan anchored to GOAL pace

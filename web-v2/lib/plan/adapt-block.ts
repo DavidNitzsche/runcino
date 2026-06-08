@@ -29,6 +29,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { detectAdaptations, type AdaptationAction } from './adapt';
 import { computeGoalGap, type GoalGap } from './goal-gap';
 
@@ -66,7 +67,7 @@ export async function detectBlockAdaptations(
   userUuid: string,
   todayISO?: string,
 ): Promise<BlockAdaptation[]> {
-  const today = todayISO ?? new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = todayISO ?? await runnerToday(userUuid);
 
   // 1. Day-of adapter does its thing
   const dayOf = await detectAdaptations(userUuid);

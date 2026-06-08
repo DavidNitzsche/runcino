@@ -402,7 +402,7 @@ function inverseTPaceToVdot(tPaceSec: number): number | null {
 async function loadCurrentVdot(userUuid: string): Promise<number | null> {
   // Pull recent A/B races (60d window) + recent quality runs (60d window),
   // hand off to bestRecentVdot. Same path the projection snapshot cron uses.
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userUuid);
 
   const raceRows = (await pool.query<{
     slug: string; meta: Record<string, unknown>; actual_result: Record<string, unknown> | null;
