@@ -44,6 +44,7 @@ import { computeCourseImpact } from '@/lib/training/course-impact';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { computePacingDiscipline } from '@/lib/coach/pacing-discipline';
 import { computeProjectionLevers } from '@/lib/coach/projection-levers';
+import { computeConfidenceInterval, computeConfidenceLabel } from '@/lib/training/goal-projection';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,6 +83,12 @@ function heldDays(
     count++;
   }
   return count;
+}
+
+function toGoalStatus(s: string): 'on-track' | 'watching' | 'off-track' {
+  if (s === 'off') return 'off-track';
+  if (s === 'watch') return 'watching';
+  return 'on-track';
 }
 
 function statusFor(projSec: number | null, goalSec: number | null, daysAway: number | null) {
@@ -272,6 +279,22 @@ export async function GET(req: NextRequest) {
     }
 
     const status = statusFor(projectionSec, goalSec, daysAway);
+    const goalStatus = toGoalStatus(status);
+    const confidenceInterval = computeConfidenceInterval({
+      centerSec: projectionSec,
+      raceDistanceMi: distanceMi,
+      status: goalStatus,
+      pacing: { cv: executionCV, source: executionSource },
+    });
+    const confidenceLabel = (vdot != null && goalSec != null)
+      ? computeConfidenceLabel({
+          goalSec,
+          raceDistanceMi: distanceMi,
+          vdot,
+          daysToRace: daysAway,
+          status: goalStatus,
+        })
+      : null;
     const lastMove = lastMoveFromSeries(series);
     const held = heldDays(series, vdot);
 
@@ -317,6 +340,8 @@ export async function GET(req: NextRequest) {
       heldDays: held,
       lastMove,
       raceProjections,
+      confidenceInterval,
+      confidenceLabel,
     });
   } catch (err: any) {
     console.error('[api/targets/projection] failed:', err);

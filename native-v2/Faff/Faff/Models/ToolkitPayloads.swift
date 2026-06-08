@@ -351,6 +351,36 @@ struct RaceProjectionEntry: Decodable {
     let time: String       // "19:42" / "1:34:59"
 }
 
+struct ProjectionConfidenceInterval: Decodable {
+    let lo: Int
+    let hi: Int
+    let pct: Double
+    let method: String
+    enum CodingKeys: String, CodingKey { case lo, hi, pct, method }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.lo     = try c.decodeIfPresent(Int.self,    forKey: .lo)     ?? 0
+        self.hi     = try c.decodeIfPresent(Int.self,    forKey: .hi)     ?? 0
+        self.pct    = try c.decodeIfPresent(Double.self, forKey: .pct)    ?? 0
+        self.method = try c.decodeIfPresent(String.self, forKey: .method) ?? ""
+    }
+}
+
+struct ProjectionConfidenceLabel: Decodable {
+    let tier: String        // "high" | "medium" | "low"
+    let word: String        // "HIGH" | "MEDIUM" | "LOW"
+    let descriptor: String  // "tracking to hit it" | "doable, not banked" | "behind on this runway"
+    let detail: String
+    enum CodingKeys: String, CodingKey { case tier, word, descriptor, detail }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.tier       = try c.decodeIfPresent(String.self, forKey: .tier)       ?? ""
+        self.word       = try c.decodeIfPresent(String.self, forKey: .word)       ?? ""
+        self.descriptor = try c.decodeIfPresent(String.self, forKey: .descriptor) ?? ""
+        self.detail     = try c.decodeIfPresent(String.self, forKey: .detail)     ?? ""
+    }
+}
+
 struct ProjectionSummary: Decodable {
     let ok: Bool
     let status: String     // "on_track" | "watch" | "off" | "race_week" | "cold"
@@ -396,6 +426,10 @@ struct ProjectionSummary: Decodable {
     // Formatted strings ("1:34:59") — zero local race-time math on device.
     let raceProjections: [RaceProjectionEntry]?
 
+    // §2.5 Confidence interval + label (2026-06-08)
+    let confidenceInterval: ProjectionConfidenceInterval?
+    let confidenceLabel: ProjectionConfidenceLabel?
+
     enum CodingKeys: String, CodingKey {
         case ok, status, vdot, projectionSec, goalSec,
              raceSlug, raceName, raceDate, daysAway, distanceMi, location,
@@ -403,7 +437,8 @@ struct ProjectionSummary: Decodable {
              courseImpactSec, courseSource, courseElevGainFtPerMi,
              conditionsImpactSec, conditionsSource,
              executionBufferSec, executionSource, executionCV, executionN,
-             levers, heldDays, lastMove, raceProjections
+             levers, heldDays, lastMove, raceProjections,
+             confidenceInterval, confidenceLabel
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -439,6 +474,8 @@ struct ProjectionSummary: Decodable {
 
         self.heldDays = try c.decodeIfPresent(Int.self, forKey: .heldDays) ?? 0
         self.lastMove = try c.decodeIfPresent(ProjectionLastMove.self, forKey: .lastMove)
-        self.raceProjections = try? c.decode([RaceProjectionEntry].self, forKey: .raceProjections)
+        self.raceProjections    = try? c.decode([RaceProjectionEntry].self,            forKey: .raceProjections)
+        self.confidenceInterval = try? c.decode(ProjectionConfidenceInterval.self,     forKey: .confidenceInterval)
+        self.confidenceLabel    = try? c.decode(ProjectionConfidenceLabel.self,        forKey: .confidenceLabel)
     }
 }

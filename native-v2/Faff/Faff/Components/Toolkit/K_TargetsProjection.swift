@@ -361,6 +361,7 @@ struct TargetsProjectionPanel: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             truthHeadline
+            confidenceBand
             metaPills
             if summary.totalGapSec > 0 {
                 gapBlock
@@ -388,7 +389,7 @@ struct TargetsProjectionPanel: View {
         }
     }
 
-    // 2 — Truth headline
+    // 2 — Truth headline + confidence band (range · tier label)
 
     private var truthHeadline: some View {
         Text(headlineText)
@@ -396,6 +397,27 @@ struct TargetsProjectionPanel: View {
             .foregroundStyle(Theme.ink)
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func ciTint(_ tier: String) -> Color {
+        tier == "high" ? Theme.green : tier == "medium" ? Theme.goal : Theme.over
+    }
+
+    @ViewBuilder
+    private var confidenceBand: some View {
+        if let ci = summary.confidenceInterval, let cl = summary.confidenceLabel {
+            HStack(spacing: 8) {
+                Text("\(formatTime(ci.lo)) – \(formatTime(ci.hi))")
+                    .font(.body(13, weight: .extraBold))
+                    .foregroundStyle(Theme.ink)
+                Text("·")
+                    .font(.body(12, weight: .regular))
+                    .foregroundStyle(Theme.mute)
+                Text("\(cl.word) · \(cl.descriptor)")
+                    .font(.body(11, weight: .medium))
+                    .foregroundStyle(ciTint(cl.tier))
+            }
+        }
     }
 
     private var headlineText: String {
