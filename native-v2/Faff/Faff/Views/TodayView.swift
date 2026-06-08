@@ -1942,6 +1942,10 @@ struct TodayView: View {
         // WatchWorkout doesn't carry a type field directly.
         let todayType = planWeek?.days.first(where: { $0.is_today })?.type.lowercased() ?? "easy"
         let weeklyMi = Int(planWeek?.days.reduce(0.0) { $0 + $1.distance_mi } ?? 30)
+        // weeklyMi (planned) feeds the weather prescription's load context.
+        // The THIS WEEK chip, by contrast, shows ACTUAL completed miles:
+        // sum done_mi (canonical, server-deduped); days not yet run contribute 0.
+        let weekDoneMi = planWeek?.days.reduce(0.0) { $0 + ($1.done_mi ?? 0) } ?? 0
         let wx = try? await API.fetchPrescriptionWeather(type: todayType, weeklyMi: weeklyMi)
         await MainActor.run {
             // Only overwrite cached state if the network call returned
@@ -2043,10 +2047,12 @@ struct TodayView: View {
             // automatically when the importer publishes a new value
             // (background→fg triggered import lands). No write here.
             //
-            // THIS WEEK · sum of plan days, already computed above. The
-            // Train tab does the same calculation; both surfaces stay in
-            // sync.
-            self.thisWeekMiles = Double(weeklyMi)
+            // THIS WEEK · ACTUAL completed miles this week (done_mi, canonical
+            // /server-deduped), computed above as weekDoneMi. Was previously
+            // summing planned distance_mi, which disagreed with the web (~done)
+            // and read as 44 vs 32 done. The Train tab's "MI PLANNED" card keeps
+            // planned; this readiness chip intentionally shows done, not planned.
+            self.thisWeekMiles = weekDoneMi
             // Re-pick the time-of-day in case the runner has been in the
             // app across an hour boundary (5am / noon / 5pm / 9pm). Cheap.
             self.timeOfDay = TimeOfDay.current()
