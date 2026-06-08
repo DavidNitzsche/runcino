@@ -57,6 +57,25 @@ function parsePaceToSec(v: unknown): number | null {
   return sec > 0 ? sec : null;
 }
 
+/** Most common value in a list (ties resolve to the first seen). Picks the
+ *  representative frozen work-phase target across reps (E3). */
+function modePace(xs: number[]): number {
+  const counts = new Map<number, number>();
+  let best = xs[0];
+  let bestN = 0;
+  for (const x of xs) {
+    const n = (counts.get(x) ?? 0) + 1;
+    counts.set(x, n);
+    if (n > bestN) { bestN = n; best = x; }
+  }
+  return best;
+}
+
+/** seconds-per-mile → "M:SS/mi". */
+function fmtPaceSlash(s: number): string {
+  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}/mi`;
+}
+
 const TYPE_NORMALIZE: Record<string, WorkoutType> = {
   easy: 'easy',
   long: 'long',
@@ -190,11 +209,26 @@ export async function GET(
   // string (watch/HK rows). Single source for both deriveRecap + deriveWin.
   const actualPaceSPerMi = Number(data.paceSPerMi) || parsePaceToSec(data.avgPaceMinPerMi);
 
+  // E3: evaluate a completed run against what it was PRESCRIBED AT THE TIME
+  // (the frozen phase target baked into the watch completion), not the live
+  // plan_workouts row. A later in-place re-pace must not retroactively flip a
+  // missed rep into a hit (Jun 2 reps ran 6:58 vs the prescribed 6:29 = a real
+  // miss; the plan was later re-paced to 6:52, against which they'd read "on").
+  // The phase panel already judges vs the frozen target (loadPhaseBreakdown);
+  // this aligns the recap/win to the same contract. Fall back to the live plan
+  // only when no frozen phase exists (non-watch runs, manual entries, cold-start).
+  const frozenWorkTargets = winPhases
+    .filter((p) => p.type === 'work' && p.targetPaceSPerMi)
+    .map((p) => p.targetPaceSPerMi as number);
+  const frozenTargetSPerMi = frozenWorkTargets.length > 0 ? modePace(frozenWorkTargets) : null;
+  const livePlanTargetSPerMi = planRow?.pace_target_s ?? null;
+  const evalPlannedPaceSPerMi = frozenTargetSPerMi ?? livePlanTargetSPerMi;
+
   const recap = deriveRecap({
     type,
     phase,
     plannedMi,
-    plannedPaceSPerMi: planRow?.pace_target_s ?? null,
+    plannedPaceSPerMi: evalPlannedPaceSPerMi,
     plannedHrCap: planRow?.hr_cap ?? null,
     actualMi: Number(data.distanceMi) || 0,
     actualPaceSPerMi,
@@ -214,6 +248,22 @@ export async function GET(
     } : null,
   });
 
+  // E3: light secondary reconciliation note. The verdict above stays anchored
+  // to the frozen prescribed target; this only surfaces the current-plan number
+  // when an in-place re-pace moved it ≥10 s/mi away, so it isn't a mystery
+  // ("why does the plan say 6:52 when this reads against 6:29"). Appended as a
+  // muted trailing fact so every recap surface shows it with no renderer change.
+  if (
+    frozenTargetSPerMi != null &&
+    livePlanTargetSPerMi != null &&
+    Math.abs(frozenTargetSPerMi - livePlanTargetSPerMi) >= 10
+  ) {
+    recap.facts = [
+      ...recap.facts,
+      `Plan now reads ${fmtPaceSlash(livePlanTargetSPerMi)} for this one · it was re-paced after you ran.`,
+    ];
+  }
+
   // 2026-06-01 · iPhone brief · synthesized win line.
   // 4-10 word coach-voice sentence summarizing how the run went.
   // Returns null when off-plan / DNF / no usable signal.
@@ -221,7 +271,7 @@ export async function GET(
     type,
     phase,
     plannedMi,
-    plannedPaceSPerMi: planRow?.pace_target_s ?? null,
+    plannedPaceSPerMi: evalPlannedPaceSPerMi,
     plannedHrCap: planRow?.hr_cap ?? null,
     actualMi: Number(data.distanceMi) || 0,
     actualPaceSPerMi,
@@ -241,5 +291,11 @@ export async function GET(
     phase,
     ...recap,
     win,
+    // E3: the target the verdict was judged against (frozen prescribed when a
+    // watch completion exists, else the live plan) + the current plan target,
+    // so consumers/falsifiers can see which contract was used and the divergence.
+    prescribed_pace_s_per_mi: frozenTargetSPerMi,
+    plan_now_pace_s_per_mi: livePlanTargetSPerMi,
+    evaluated_pace_s_per_mi: evalPlannedPaceSPerMi ?? null,
   });
 }
