@@ -32,6 +32,7 @@ import { parseRaceTime, tPaceFromVdot, bestRecentVdot as computeBestRecentVdot }
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode } from './goal-tiers';
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 import { validateComposedPlan } from './validate';
@@ -1862,80 +1863,16 @@ async function loadGeneratorInputs(
   // 2026-06-03 · mid-block doctrine carriers (Rules 2, 3, 5, 8).
   const recentQualityDist = await recentQualityDistanceMi(userId);
   const recentQualityPW = await recentQualityPerWeek(userId);
-  // bestRecentVdot · use the canonical reader from lib/training/vdot.
-  // Assembles races + recent quality runs into candidates; returns the
-  // highest VDOT in the 180-day window. Undefined when no signal.
-  // 2026-06-06 · Audit C C1-1a · the prior query referenced columns that
-  // don't exist on `races` (date_iso/distance_mi/finish_seconds) → threw →
-  // caught → empty → bestRecentVdot undefined → plan anchored to GOAL pace
-  // instead of current VDOT. Read meta/actual_result jsonb, mirroring
-  // cron/snapshot-projections (the canonical VDOT pipeline).
-  const raceRows = (await pool.query<{ slug: string; meta: Record<string, unknown> | null; actual_result: Record<string, unknown> | null }>(
-    `SELECT slug, meta, actual_result FROM races
-      WHERE user_uuid = $1
-        AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
-        AND (meta->>'date')::date < $2::date
-        AND meta->>'priority' IN ('A','B')`,
-    [userId, todayISO],
-  )).rows;
-  const runRows = (await pool.query<{
-    id: string; date: string; workout_type: string | null; distance_mi: string | null; finish_seconds: string | null; avg_hr: string | null;
-  }>(
-    `SELECT id::text,
-            COALESCE(data->>'date', LEFT(data->>'startLocal',10)) AS date,
-            data->>'workoutType' AS workout_type,
-            (data->>'distanceMi')::text AS distance_mi,
-            COALESCE((data->>'durationSec')::numeric,(data->>'movingTimeS')::numeric,(data->>'movingSec')::numeric,(data->>'elapsedTimeS')::numeric)::text AS finish_seconds,
-            (data->>'avgHr')::text AS avg_hr
-       FROM runs
-      WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
-        AND (data->>'distanceMi')::numeric >= 3
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date >= $2::date - 180
-        -- 2026-06-06 · Audit C C1-1e · exclude race-day runs. Every race is
-        -- also a Strava activity at GPS-over-measured distance (Disney
-        -- 13.38mi vs the curated 13.109mi → same time, phantom-high VDOT
-        -- 49.2 vs 47.9). The curated races row is the source of truth for
-        -- race-day performance. Mirrors cron/snapshot-projections.
-        AND NOT EXISTS (
-          SELECT 1 FROM races rr
-           WHERE rr.user_uuid = $1
-             AND ABS((rr.meta->>'date')::date
-                     - COALESCE(runs.data->>'date', LEFT(runs.data->>'startLocal',10))::date) <= 1
-        )
-      ORDER BY date DESC LIMIT 200`,
-    [userId, await runnerToday(userId)],
-  )).rows;
-  const raceCandidates = raceRows.map((r) => {
-    const m = (r.meta ?? {}) as Record<string, unknown>;
-    const ar = (r.actual_result ?? {}) as Record<string, unknown>;
-    let finishSec: number | null = ar.finishS != null ? Number(ar.finishS) : null;
-    if (!finishSec) finishSec = parseRaceTime(m.finishTime as string);
-    return {
-      slug: r.slug,
-      name: (m.name as string) ?? r.slug,
-      date: (m.date as string) ?? '',
-      priority: ((m.priority as string) ?? null) as 'A'|'B'|'C'|null,
-      distance_mi: m.distanceMi != null ? Number(m.distanceMi) : distanceMiOf(m),
-      finish_seconds: finishSec,
-    };
-  });
-  // 2026-06-06 · Audit C C1-1c · real max HR for the run-candidate HR gate
-  // (was hardcoded null → vdotFromRun's HR fallback never fired for any user).
-  const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
-  // 2026-06-06 · Audit C C1-1b · runs carry Strava's numeric workout_type
-  // enum (1=race, 3=workout); map to the string taxonomy bestRecentVdot
-  // expects. 0/2/null → non-quality (the HR gate decides those).
-  const STRAVA_WORKOUT_TYPE: Record<string, string> = { '1': 'race', '3': 'tempo' };
-  const runCandidates = runRows.map((r) => ({
-    id: r.id, date: r.date,
-    workout_type: r.workout_type != null ? (STRAVA_WORKOUT_TYPE[r.workout_type] ?? r.workout_type) : null,
-    distance_mi: r.distance_mi != null ? Number(r.distance_mi) : null,
-    finish_seconds: r.finish_seconds != null ? Number(r.finish_seconds) : null,
-    avg_hr: r.avg_hr != null ? Number(r.avg_hr) : null,
-    max_hr: maxHr,
-  }));
+  // bestRecentVdot — assembled by the canonical shared loader (B2).
+  // A fix to the race/run query now propagates to all call sites automatically.
+  // Throws on DB error; generatePlan propagates up (refuses to plan rather than
+  // producing a goal-pace plan from undefined VDOT — the C1 bug class).
+  const { raceCandidates, runCandidates } = await loadVdotInputs(userId, todayISO);
   const { best: bestVdotPick } = computeBestRecentVdot(raceCandidates, todayISO, 180, runCandidates);
   const bestRecentVdot = bestVdotPick?.vdot ?? undefined;
+  // maxHr for Rule 16 (easy/long HR cap). loadVdotInputs resolves it
+  // internally for the run-candidate gate; hoist separately for composePlan.
+  const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
   // Banister TSB · drives Rule 8 cutback frequency. Pull from training
   // form helper which already EWMAs CTL/ATL from runs.
   const tsbAtStart = await (async () => {
@@ -2012,7 +1949,7 @@ async function loadGeneratorInputs(
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
   const lthr = lthrRow?.lthr ?? null;
-  // maxHr computed earlier (Audit C C1-1c hoist) for the run-candidate gate.
+  // maxHr resolved above alongside loadVdotInputs; used here for Rule 16.
 
   return {
     ok: true,

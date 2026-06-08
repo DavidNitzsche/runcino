@@ -39,6 +39,7 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bestRecentVdot } from '@/lib/training/vdot';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 
 export type DriftKind =
   | 'volume_drift'
@@ -400,68 +401,8 @@ function inverseTPaceToVdot(tPaceSec: number): number | null {
 }
 
 async function loadCurrentVdot(userUuid: string): Promise<number | null> {
-  // Pull recent A/B races (60d window) + recent quality runs (60d window),
-  // hand off to bestRecentVdot. Same path the projection snapshot cron uses.
   const today = await runnerToday(userUuid);
-
-  const raceRows = (await pool.query<{
-    slug: string; meta: Record<string, unknown>; actual_result: Record<string, unknown> | null;
-  }>(
-    `SELECT slug, meta, actual_result FROM races
-      WHERE user_uuid = $1
-        AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
-        AND (meta->>'date')::date < $2::date
-        AND meta->>'priority' IN ('A', 'B')`,
-    [userUuid, today],
-  ).catch(() => ({ rows: [] }))).rows;
-
-  const raceCandidates = raceRows.map((r) => {
-    const m = r.meta ?? {};
-    const ar = r.actual_result ?? {};
-    const distMi = m.distanceMi ? Number(m.distanceMi) : null;
-    const finishSec = (ar as { finishS?: number }).finishS != null
-      ? Number((ar as { finishS: number }).finishS)
-      : null;
-    return {
-      slug: r.slug,
-      name: (m.name as string) ?? r.slug,
-      date: (m.date as string) ?? '',
-      priority: ((m.priority as string) ?? null) as 'A' | 'B' | 'C' | null,
-      distance_mi: distMi,
-      finish_seconds: finishSec,
-    };
-  });
-
-  const runRows = (await pool.query<{
-    id: string; date: string; workout_type: string | null;
-    distance_mi: string | null; finish_seconds: string | null; avg_hr: string | null;
-  }>(
-    `SELECT sa.id::text AS id,
-            COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) AS date,
-            sa.data->>'workoutType' AS workout_type,
-            (sa.data->>'distanceMi')::numeric AS distance_mi,
-            (sa.data->>'movingTimeS')::numeric AS finish_seconds,
-            (sa.data->>'avgHr')::numeric AS avg_hr
-       FROM runs sa
-      WHERE sa.user_uuid = $1
-        AND NOT (sa.data ? 'mergedIntoId')
-        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
-            >= ($2::date - interval '60 days')::date
-        AND (sa.data->>'distanceMi')::numeric >= 4
-        AND (sa.data->>'movingTimeS')::numeric > 60`,
-    [userUuid, today],
-  ).catch(() => ({ rows: [] }))).rows;
-
-  const runCandidates = runRows.map((r) => ({
-    id: r.id,
-    date: r.date,
-    workout_type: r.workout_type,
-    distance_mi: r.distance_mi != null ? Number(r.distance_mi) : null,
-    finish_seconds: r.finish_seconds != null ? Number(r.finish_seconds) : null,
-    avg_hr: r.avg_hr != null ? Number(r.avg_hr) : null,
-    max_hr: null,
-  }));
-
+  const { raceCandidates, runCandidates } = await loadVdotInputs(userUuid, today);
   const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates);
   return best?.vdot ?? null;
 }

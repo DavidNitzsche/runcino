@@ -21,24 +21,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import {
-  bestRecentVdot, predictRaceTime, parseRaceTime,
+  bestRecentVdot, predictRaceTime,
 } from '@/lib/training/vdot';
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 
 export const maxDuration = 60;
 
 const CANONICAL_DISTANCES = [13.1, 26.2]; // HM + M; race-anchored distance added per user
-
-interface RaceRow {
-  slug: string;
-  meta?: Record<string, unknown>;
-  actual_result?: Record<string, unknown>;
-}
-interface RunRow {
-  id: string;
-  data: Record<string, unknown>;
-}
 
 function distFromLabel(label: string | null | undefined): number | null {
   const l = String(label ?? '').toLowerCase();
@@ -50,115 +41,18 @@ function distFromLabel(label: string | null | undefined): number | null {
 }
 
 async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }> }> {
-  // Pull race rows (180d window, A/B only).
-  const raceRows = (await pool.query<RaceRow>(
-    `SELECT slug, meta, actual_result FROM races
-      WHERE user_uuid = $1
-        AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
-        AND (meta->>'date')::date < $2::date
-        AND meta->>'priority' IN ('A', 'B')`,
-    [userUuid, today],
-  ).catch(() => ({ rows: [] }))).rows;
-
-  // Strava match-fallback runs (window-wide).
-  const earliestDate = raceRows.length
-    ? raceRows.reduce((min: string, r) => {
-        const d = (r.meta?.date as string) ?? '';
-        return !min || (d && d < min) ? d : min;
-      }, '')
-    : '';
-  const matchRuns = earliestDate
-    ? (await pool.query<RunRow>(
-        `SELECT id::text AS id, data FROM runs
-          WHERE user_uuid = $1
-            AND NOT (data ? 'mergedIntoId')
-            AND (data->>'distanceMi')::numeric > 2.5
-            AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2
-            AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) <= $3`,
-        [userUuid, earliestDate, today],
-      ).catch(() => ({ rows: [] }))).rows
-    : [];
-
-  const raceCandidates = raceRows.map((r) => {
-    const m = (r.meta ?? {}) as Record<string, unknown>;
-    const ar = (r.actual_result ?? {}) as Record<string, unknown>;
-    const distMi = m.distanceMi ? Number(m.distanceMi) : distFromLabel(m.distanceLabel as string);
-    let finishSec: number | null = ar.finishS != null ? Number(ar.finishS) : null;
-    if (!finishSec) finishSec = parseRaceTime(m.finishTime as string);
-    if (!finishSec && distMi && m.date) {
-      let best: Record<string, unknown> | null = null;
-      let bestScore = Infinity;
-      for (const c of matchRuns) {
-        const d = c.data;
-        const day = (d.date as string) || String(d.startLocal ?? '').slice(0, 10);
-        if (!day) continue;
-        const dayDelta = Math.abs((Date.parse(day + 'T12:00:00Z') - Date.parse((m.date as string) + 'T12:00:00Z')) / 86400000);
-        if (dayDelta > 1) continue;
-        const miDelta = Math.abs(Number(d.distanceMi) - distMi);
-        if (miDelta > 2.0) continue;
-        const score = dayDelta * 10 + miDelta;
-        if (score < bestScore) { best = d; bestScore = score; }
-      }
-      if (best) finishSec = Number(best.movingTimeS) || Number(best.elapsedTimeS) || null;
-    }
-    return {
-      slug: r.slug,
-      name: (m.name as string) ?? r.slug,
-      date: (m.date as string) ?? '',
-      priority: ((m.priority as string) ?? null) as 'A' | 'B' | 'C' | null,
-      distance_mi: distMi,
-      finish_seconds: finishSec,
-    };
-  });
-
-  // Recent quality runs (last 60d) for training-derived VDOT.
-  // Excludes runs on race days (race effort belongs in the races ladder).
-  const qualityCutoff = new Date(Date.parse(today + 'T12:00:00Z') - 60 * 86400000).toISOString().slice(0, 10);
-  const recentRuns = (await pool.query<{
-    id: string; date: string; workout_type: string | null;
-    distance_mi: string | null; finish_seconds: string | null; avg_hr: string | null;
-  }>(
-    `SELECT sa.id::text AS id,
-            COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) AS date,
-            sa.data->>'workoutType' AS workout_type,
-            (sa.data->>'distanceMi')::numeric AS distance_mi,
-            (sa.data->>'movingTimeS')::numeric AS finish_seconds,
-            (sa.data->>'avgHr')::numeric AS avg_hr
-       FROM runs sa
-      WHERE sa.user_uuid = $1
-        AND NOT (sa.data ? 'mergedIntoId')
-        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2
-        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) < $3
-        AND (sa.data->>'distanceMi')::numeric >= 4
-        AND (sa.data->>'movingTimeS')::numeric > 60
-        AND NOT EXISTS (
-          SELECT 1 FROM races r
-           WHERE r.user_uuid = $1
-             AND ABS((r.meta->>'date')::date - COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date) <= 1
-        )`,
-    [userUuid, qualityCutoff, today],
-  ).catch(() => ({ rows: [] }))).rows;
-
-  // 2026-06-01 · canonical max HR · 12-month observed ceiling beats
-  // any stale users.max_hr field. While we're at it, ratchet the
-  // stored users.max_hr to the observed value so legacy raw-SQL
-  // readers see the updated number too.
+  // Ratchet stored max_hr if a new ceiling was observed this year.
+  // loadVdotInputs calls loadEffectiveMaxHr internally for the run-candidate
+  // HR gate; we call it separately here for the ratchet side effect only.
   const effMaxHr = await loadEffectiveMaxHr(userUuid, today);
   if (effMaxHr.source === 'observed_12mo') {
     await ratchetUsersMaxHr(userUuid, today).catch(() => null);
   }
-  const maxHrValue = effMaxHr.bpm;
 
-  const runCandidates = recentRuns.map((r) => ({
-    id: String(r.id),
-    date: r.date,
-    workout_type: r.workout_type,
-    distance_mi: r.distance_mi != null ? Number(r.distance_mi) : null,
-    finish_seconds: r.finish_seconds != null ? Number(r.finish_seconds) : null,
-    avg_hr: r.avg_hr != null ? Number(r.avg_hr) : null,
-    max_hr: maxHrValue,
-  }));
-
+  // Race + run candidates via the shared canonical loader.
+  // Throws on DB error — the outer loop catches per-user, logs, and continues
+  // rather than storing VDOT=null from a transient failure.
+  const { raceCandidates, runCandidates } = await loadVdotInputs(userUuid, today);
   const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates);
   const vdot = best?.vdot ?? null;
 
