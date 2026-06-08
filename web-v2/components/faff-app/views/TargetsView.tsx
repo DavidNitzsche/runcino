@@ -253,6 +253,27 @@ export function TargetsView({
       {/* ============ SECTION 5 · RACES ============ */}
       <div className="band">
       <div className="eyebrow-sec">Races</div>
+      {seed.unloggedRaceAlert && (
+        <div
+          onClick={() => onOpenRace(seed.unloggedRaceAlert!.slug)}
+          role="button"
+          tabIndex={0}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 14px', marginBottom: 8, borderRadius: 8,
+            border: '1px solid var(--goal)', background: 'rgba(243,173,56,0.08)',
+            cursor: 'pointer',
+          }}
+        >
+          <span style={{ fontSize: 13, color: 'var(--ink)' }}>
+            <strong>{seed.unloggedRaceAlert.name}</strong>
+            {` was ${seed.unloggedRaceAlert.daysSince} day${seed.unloggedRaceAlert.daysSince === 1 ? '' : 's'} ago — log your result.`}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--goal)', fontFamily: 'var(--f-label)', letterSpacing: '1px' }}>
+            LOG →
+          </span>
+        </div>
+      )}
       <div className="racelist">
         {seed.races.map((r, i) => (
           <div

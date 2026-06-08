@@ -1562,6 +1562,19 @@ function adaptRaces(races: Races | null): RaceLite[] {
   }));
 }
 
+function adaptUnloggedRaceAlert(races: Races | null): FaffSeed['unloggedRaceAlert'] {
+  if (!races) return null;
+  const candidate = races.past.find(
+    r => !r.finishTime && (r.priority === 'A' || r.priority === 'B'),
+  );
+  if (!candidate?.date) return null;
+  const daysSince = Math.round(
+    (Date.now() - Date.parse(candidate.date + 'T12:00:00Z')) / 86_400_000,
+  );
+  if (daysSince > 30) return null;
+  return { slug: candidate.slug, name: candidate.name, daysSince };
+}
+
 function adaptActivity(log: LogT | null): ActivityData {
   const recent: RecentRun[] = (log?.weeks.flatMap(w => w.runs) ?? []).slice(0, 8).map(r => {
     const eff = mapType(r.type);
@@ -1977,6 +1990,7 @@ function emptySeed(): FaffSeed {
     health: { readiness, body: [], form: [], sleepArchitectureVerdict: null },
     prs: [],
     races: [],
+    unloggedRaceAlert: null,
     projectionTrend: [],
     activity: {
       ranges: {
@@ -2414,6 +2428,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     health: healthSnapshot,
     prs,
     races: racesList,
+    unloggedRaceAlert: adaptUnloggedRaceAlert(races),
     projectionTrend,
     activity,
     shoes,

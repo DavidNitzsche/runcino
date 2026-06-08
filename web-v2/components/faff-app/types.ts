@@ -214,6 +214,9 @@ export type FaffSeed = {
   // targets view
   prs: PR[];
   races: RaceLite[];
+  // Past A/B race with no logged result, surfaced for up to 30 days post-race.
+  // Drives the "AFC was 3 days ago — log your result" callout in TargetsView.
+  unloggedRaceAlert: { slug: string; name: string; daysSince: number } | null;
   // 2026-05-31: projection trend for the goal race's distance — daily
   // snapshots from projection_snapshots written by the 00:30 cron. Empty
   // array when no goal race / no snapshots recorded yet. Oldest -> newest.
