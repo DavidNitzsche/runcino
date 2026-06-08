@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { loadCoachState } from '@/lib/coach/state-loader';
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     );
   }
   const notes = typeof body.notes === 'string' ? body.notes : null;
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
 
   // Upsert · runner can correct a tap-mistake within the day.
   await pool.query(
@@ -95,7 +96,7 @@ export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
   const row = (await pool.query<{ rating: number; created_at: Date; updated_at: Date }>(
     `SELECT rating, created_at, updated_at
        FROM subjective_checkins

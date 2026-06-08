@@ -20,13 +20,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
-
-function todayPT(): string {
-  // Match state-loader / tools.ts — PDT-shifted ISO date.
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-}
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -45,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'proposal missing required fields' }, { status: 400 });
   }
 
-  const today = todayPT();
+  const today = await runnerToday(userId);
 
   if (body.action === 'decline') {
     // Just persist the decline + bust cache. The coach reads pendingIntents

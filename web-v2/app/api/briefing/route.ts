@@ -38,6 +38,7 @@ import {
 import { buildPoster, resolveDayState } from '@/lib/faff/glance-adapter';
 import type { PosterBreakdownRow } from '@/lib/faff/types';
 import { requireUserId } from '@/lib/auth/session';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 // Pure DB reads now — no LLM tail latency. 15s is more than enough.
 export const maxDuration = 15;
@@ -68,8 +69,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const todayISO = await runnerToday(userId);
     const { block, workoutBreakdown } = await buildBlock(userId, surface, raceSlug);
-    return NextResponse.json(legacyEnvelopeOf(block, surfaceParam, userId, workoutBreakdown));
+    return NextResponse.json(legacyEnvelopeOf(block, surfaceParam, userId, workoutBreakdown, todayISO));
   } catch (err: any) {
     return NextResponse.json({
       error: err?.message ?? String(err),
@@ -142,7 +144,8 @@ function legacyEnvelopeOf(
   block: CoachFactBlock,
   surfaceParam: string,
   userId: string,
-  workoutBreakdown?: PosterBreakdownRow[] | null,
+  workoutBreakdown: PosterBreakdownRow[] | null | undefined,
+  todayISO: string,
 ): {
   surface: string;
   mode: string;
@@ -158,7 +161,6 @@ function legacyEnvelopeOf(
   const [first, ...rest] = block.facts;
   const lead = first ? fmt(first) : '';
   const voice = rest.map(fmt);
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
   return {
     surface: surfaceParam,
     mode: block.state ?? 'facts',
@@ -167,6 +169,6 @@ function legacyEnvelopeOf(
     topics: [],
     workout_breakdown: workoutBreakdown ?? null,
     block,
-    _state: { user_id: userId, today },
+    _state: { user_id: userId, today: todayISO },
   };
 }

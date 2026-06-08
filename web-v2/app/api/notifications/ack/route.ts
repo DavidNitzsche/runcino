@@ -31,6 +31,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { requireUserId } from '@/lib/auth/session';
 
 type Category =
@@ -134,10 +135,6 @@ async function stampLogAck(body: AckBody, action: string): Promise<void> {
 // skip_recovery
 // ──────────────────────────────────────────────────────────────
 
-function todayIso(): string {
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-}
-
 /**
  * READY          → DELETE the skip row for YESTERDAY (the day that was
  *                  skipped). This re-opens the workout in the day-state
@@ -149,8 +146,8 @@ function todayIso(): string {
  *                  re-fires tomorrow morning (it sees yesterday=missed).
  */
 async function ackSkipRecovery(userId: string, action: string): Promise<Record<string, unknown>> {
-  const today = todayIso();
-  const yesterday = new Date(Date.now() - (7 + 24) * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
+  const yesterday = new Date(Date.parse(today + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
   if (action === 'ready') {
     await pool.query(
       `DELETE FROM day_actions WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip'`,

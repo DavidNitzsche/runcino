@@ -12,6 +12,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   const date = typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
     ? body.date
-    : new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+    : await runnerToday(userId);
   const modality = typeof body.modality === 'string' ? body.modality.trim().toLowerCase() : '';
   if (!modality) return NextResponse.json({ ok: false, error: 'modality required' }, { status: 400 });
 

@@ -20,15 +20,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { derivePurpose, type Phase, type WorkoutType } from '@/lib/coach/run-purpose';
 import { composeCue } from '@/lib/coach/session-cue';
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
 
 export const dynamic = 'force-dynamic';
-
-function todayPT(): string {
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-}
 
 const PHASE_FROM_LABEL: Record<string, Phase> = {
   BASE: 'BASE', base: 'BASE',
@@ -189,7 +186,7 @@ export async function GET(req: NextRequest) {
   const userId = auth;
 
   const url = new URL(req.url);
-  const date = (url.searchParams.get('date') || todayPT()).slice(0, 10);
+  const date = (url.searchParams.get('date') || await runnerToday(userId)).slice(0, 10);
 
   try {
     // 2026-06-02 · rewrite per iPhone brief.

@@ -15,6 +15,7 @@ import {
   type WorkoutFuelingType,
 } from '@/lib/training/fueling';
 import { requireUserId } from '@/lib/auth/session';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 const VALID: WorkoutType[] = ['easy','long','tempo','threshold','intervals','race','shakeout','rest','unplanned'];
 
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
   const lthr = profRow?.lthr ?? null;
 
   // Race goal: closest upcoming A-race with a goal time
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
   const raceRow = (await pool.query(
     `SELECT meta FROM races
       WHERE user_uuid = $1

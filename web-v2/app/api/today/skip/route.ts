@@ -21,20 +21,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { enqueueNotification, nextMorning0715 } from '@/lib/notifications/enqueue';
 import { renderSkipRecovery } from '@/lib/notifications/templates';
 import { requireUserId } from '@/lib/auth/session';
 
 interface SkipBody {
   date?: string;
-}
-
-function todayIso(): string {
-  // Matches lib/coach/glance-state.ts:56 — the runner's local "today" lags
-  // UTC by up to 7h, so we anchor the date to a 7h shifted clock. Keeps
-  // the early-morning runner from seeing yesterday's surface flip to today
-  // mid-stride.
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 }
 
 async function readBody(req: NextRequest): Promise<SkipBody> {
@@ -55,7 +48,7 @@ export async function GET(req: NextRequest) {
   // shape). Defaults to today using the same -7h offset as
   // lib/coach/glance-state.ts:56 so iPhone and web agree on "today".
   const dateParam = req.nextUrl.searchParams.get('date');
-  const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayIso();
+  const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : await runnerToday(userId);
 
   try {
     const row = await pool.query(
@@ -76,7 +69,7 @@ export async function POST(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const body = await readBody(req);
-  const date = body.date ?? todayIso();
+  const date = body.date ?? await runnerToday(userId);
 
   try {
     await pool.query(
@@ -148,7 +141,7 @@ export async function DELETE(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const body = await readBody(req);
-  const date = body.date ?? todayIso();
+  const date = body.date ?? await runnerToday(userId);
 
   try {
     await pool.query(
