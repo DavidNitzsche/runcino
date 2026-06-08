@@ -31,6 +31,17 @@ final class NotificationsAppDelegate: NSObject, UIApplicationDelegate, UNUserNot
         // Set ourselves as the notification center delegate so we own
         // foreground-presentation + action-tap dispatch.
         UNUserNotificationCenter.current().delegate = self
+
+        // Activate WatchConnectivity as early as possible — here, NOT in
+        // FaffApp's SwiftUI .task. iOS background-launches the app to deliver
+        // queued watch completions (transferUserInfo), and only an app that
+        // has activated its WCSession in didFinishLaunching receives them while
+        // backgrounded. Activating in .task (foreground only) left a finished
+        // run sitting in the queue until the runner next opened the app —
+        // minutes if they checked soon, days if they didn't (e.g. a 06-05 run
+        // that didn't land for 54h). UIApplicationDelegate is @MainActor, so
+        // this main-thread call into the @MainActor WatchSync is synchronous.
+        WatchSync.shared.start()
         return true
     }
 

@@ -30,17 +30,18 @@ struct FaffApp: App {
                 // the system canvas under the mesh stays black.
                 .preferredColorScheme(.dark)
                 .background(Theme.bg.ignoresSafeArea())
-                // Wire the WatchConnectivity bridge + kick the HealthKit
-                // importer in ONE .task — build 78 had two stacked .task
-                // modifiers and SwiftUI silently dropped the second one
-                // (the HK side), so no permission prompt and no import
-                // ever fired. One .task block, sequential setup.
+                // Kick the HealthKit importer + the rest of app setup in ONE
+                // .task — build 78 had two stacked .task modifiers and SwiftUI
+                // silently dropped the second one (the HK side), so no
+                // permission prompt and no import ever fired. One .task block,
+                // sequential setup.
                 //
-                // WatchSync.shared is @MainActor; .task already runs in
-                // a MainActor context, so direct .start() is safe.
+                // WatchConnectivity activation moved OUT of this .task into
+                // NotificationsAppDelegate.didFinishLaunchingWithOptions so iOS
+                // can background-launch the app to deliver queued watch
+                // completions. A foreground-only .task stranded finished runs
+                // until the app was next opened.
                 .task {
-                    WatchSync.shared.start()
-
                     // Notifications v1 (2026-05-28 deck) — register
                     // categories so the OS knows the rich-action button
                     // sets, request permission once, kick the remote
