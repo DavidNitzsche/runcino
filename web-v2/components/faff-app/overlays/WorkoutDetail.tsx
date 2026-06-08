@@ -8,6 +8,47 @@ import { deriveSessionSegs, fallbackSessionSegs } from '../session-shape';
 import { decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
 import { WatchPreviewTimeline } from '../toolkit';
 
+// ── forecast helpers (mirrors TodayView · same /api/forecast/${date} source) ──
+type DayForecast = {
+  date: string;
+  temp_min_f: number | null;
+  temp_max_f: number | null;
+  conditions: string | null;
+  range_label?: string | null;
+};
+function useDayForecast(dateIso: string | null | undefined): DayForecast | null {
+  const [data, setData] = useState<DayForecast | null>(null);
+  useEffect(() => {
+    if (!dateIso) { setData(null); return; }
+    let cancelled = false;
+    fetch(`/api/forecast/${dateIso}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((j: DayForecast | null) => { if (!cancelled && j) setData(j); })
+      .catch(() => { /* swallow — static fallback covers it */ });
+    return () => { cancelled = true; };
+  }, [dateIso]);
+  return data;
+}
+function prettyCondition(c: string): string {
+  const map: Record<string, string> = {
+    clear: 'Clear', mostly_clear: 'Mostly clear', cloudy: 'Cloudy',
+    fog: 'Fog', rain: 'Rain', snow: 'Snow',
+    rain_shower: 'Showers', snow_shower: 'Snow showers', thunderstorm: 'Storm',
+  };
+  return map[c] ?? c;
+}
+function formatForecast(f: DayForecast | null): string | null {
+  if (!f) return null;
+  if (f.range_label != null) return f.range_label;
+  const lo = f.temp_min_f != null ? Math.round(f.temp_min_f) : null;
+  const hi = f.temp_max_f != null ? Math.round(f.temp_max_f) : null;
+  const range = lo != null && hi != null && lo !== hi
+    ? `${lo}-${hi}°` : (hi != null ? `${hi}°` : (lo != null ? `${lo}°` : null));
+  if (!range) return null;
+  const cond = f.conditions ? prettyCondition(f.conditions) : null;
+  return cond ? `${range} · ${cond}` : range;
+}
+
 const Check = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
 );
@@ -44,7 +85,7 @@ export function WorkoutDetail({ open, onClose, dayIdx, seed }: {
         <div className="wk-body">
           {d.done ? <CompletedBody d={d} dayIdx={dayIdx} seed={seed} /> :
            d.type === 'rest' ? <RestBody /> :
-           <PlannedBody d={d} />}
+           <PlannedBody d={d} seed={seed} />}
         </div>
       </div>
     </div>
@@ -147,7 +188,7 @@ function CompletedBody({ d, dayIdx, seed }: { d: FaffSeed['week'][number]; dayId
   );
 }
 
-function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
+function PlannedBody({ d, seed }: { d: FaffSeed['week'][number]; seed: FaffSeed }) {
   // 2026-06-02 · spec-driven session shape (was SEGS prototype data)
   const totalMi = parseFloat(d.dist || '0') || 0;
   const sg = deriveSessionSegs(d.workoutSpec ?? null, totalMi, d.type, d.pace)
@@ -155,6 +196,12 @@ function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
     ?? [];
   const k = KIT[d.type];
   const pl = PLAN_CUES[d.type] ?? PLAN_CUES.easy;
+  // Live forecast + shoe — same sources as the primary TodayView card.
+  const forecast = useDayForecast(d.iso ?? null);
+  const weatherLabel = formatForecast(forecast) ?? k.weather;
+  const shoeLabel = (d.today && seed.todayShoeId != null
+    ? seed.shoes.find((s) => s.id === seed.todayShoeId)?.nm
+    : null) ?? (seed.shoeRecByType[d.type] || k.shoe);
   return (
     <>
       <AdaptationBlock d={d} />
@@ -192,8 +239,8 @@ function PlannedBody({ d }: { d: FaffSeed['week'][number] }) {
       <div className="band">
         <div className="fll">CONDITIONS &amp; FUEL</div>
         <div className="wk-grid">
-          <div className="i"><div className="k">WEATHER</div><div className="v">{k.weather}</div></div>
-          <div className="i"><div className="k">SHOE</div>   <div className="v">{k.shoe}</div></div>
+          <div className="i"><div className="k">WEATHER</div><div className="v">{weatherLabel}</div></div>
+          <div className="i"><div className="k">SHOE</div>   <div className="v">{shoeLabel}</div></div>
           {pl.fuel.map((f, i) => (
             <div className="i" key={i}><div className="k">{f[0].toUpperCase()}</div><div className="v">{f[1]}</div></div>
           ))}
