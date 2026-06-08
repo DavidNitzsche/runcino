@@ -53,6 +53,14 @@ struct ReadinessGlanceView: View {
             Text(sub).font(WatchTheme.body(13, .semibold)).foregroundStyle(WatchTheme.C.t2)
                 .padding(.top, 4)
         }
+        if !r.recommendation.isEmpty {
+            Text(r.recommendation)
+                .font(WatchTheme.body(12, .regular))
+                .foregroundStyle(WatchTheme.C.t2)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+        }
         if let race = r.nextRace {
             Text("\(race.name.uppercased()) · \(race.daysAway) DAYS")
                 .font(WatchTheme.body(11, .semibold)).tracking(0.4)
