@@ -23,6 +23,9 @@ import { getStravaToken } from '@/lib/strava/auth';
 import { SOURCE_TIER } from '@/lib/runs/canonical';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { isSubThresholdRun } from '@/lib/runs/length-guard';
+// Shared gear matcher · also used by the ingest-time auto-assign hook
+// (lib/shoe/auto-assign.ts) so there is ONE gear-match source, not two.
+import { matchShoeByGear as tryShoeFromGear } from '@/lib/shoe/gear-match';
 
 const STRAVA_API = 'https://www.strava.com/api/v3';
 const M_PER_MILE = 1609.344;
@@ -250,35 +253,6 @@ async function findCanonicalRow(args: {
     [userUuid, startIso, MATCH_WINDOW_SEC, distMi, MATCH_DIST_MI],
   );
   return r.rows[0] ?? null;
-}
-
-async function tryShoeFromGear(args: {
-  userUuid: string;
-  gear: unknown;
-}): Promise<number | null> {
-  const { userUuid, gear } = args;
-  if (!gear || typeof gear !== 'object') return null;
-  const g = gear as Record<string, unknown>;
-  const brand = String(g.brand_name ?? g.brand ?? '').trim();
-  const model = String(g.model_name ?? g.model ?? g.name ?? '').trim();
-  if (!brand && !model) return null;
-  if (brand && model) {
-    const exact = (await pool.query<{ id: number }>(
-      `SELECT id FROM shoes WHERE user_uuid = $1 AND retired = false
-         AND LOWER(brand) = LOWER($2) AND LOWER(model) = LOWER($3) LIMIT 1`,
-      [userUuid, brand, model],
-    )).rows[0];
-    if (exact) return exact.id;
-    const loose = (await pool.query<{ id: number }>(
-      `SELECT id FROM shoes WHERE user_uuid = $1 AND retired = false
-         AND LOWER(brand) = LOWER($2)
-         AND (LOWER(model) LIKE '%' || LOWER($3) || '%' OR LOWER($3) LIKE '%' || LOWER(model) || '%')
-         LIMIT 1`,
-      [userUuid, brand, model],
-    )).rows[0];
-    if (loose) return loose.id;
-  }
-  return null;
 }
 
 export interface SyncOneResult {

@@ -9,10 +9,14 @@
  *   { shoe_id: number | null }   // assign / unassign a shoe (P32)
  *
  * On shoe_id change the server:
- *   1. Sets strava_activities.shoe_id
- *   2. Recomputes shoes.mileage_mi from SUM(distance) of all assigned runs
- *      (idempotent: re-running yields the same total regardless of history)
- *   3. Busts the briefing cache so the next /today reflects it
+ *   1. Sets runs.shoe_id and clears shoe_auto_assigned_at — a per-run modal
+ *      pick is the most-specific, MANUAL signal; the NULL stamp marks it so
+ *      a day-level /today pick never overrides it (auto/day-pick assigns
+ *      carry a non-null stamp and remain overridable).
+ *   2. Busts the briefing cache so the next /today reflects it
+ *
+ * Mileage is NOT stored/recomputed here — it is computed ON READ from
+ * canonical runs (lib/shoe/mileage.ts), the single source.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { loadRunDetail } from '@/lib/coach/run-state';
@@ -64,7 +68,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // data.activityId, or the table's row id).
       let updated = await pool.query(
         `UPDATE runs
-            SET shoe_id = $1::int
+            SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
           WHERE user_uuid = $2
             AND (data->>'id' = $3 OR data->>'activityId' = $3 OR id::text = $3)
        RETURNING id, shoe_id`,
@@ -82,7 +86,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           const [, date, mi] = m;
           updated = await pool.query(
             `UPDATE runs
-                SET shoe_id = $1::int
+                SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
               WHERE user_uuid = $2
                 AND NOT (data ? 'mergedIntoId')
                 AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
@@ -104,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (dateMatch) {
           updated = await pool.query(
             `UPDATE runs
-                SET shoe_id = $1::int
+                SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
               WHERE user_uuid = $2
                 AND NOT (data ? 'mergedIntoId')
                 AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
@@ -116,9 +120,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (updated.rowCount === 0) {
         return NextResponse.json({ error: 'run not found' }, { status: 404 });
       }
-      // Recompute mileage for affected shoes (old + new).
-      await recomputeShoeMileage(userId);
-      // Shoe re-assignment on an existing run; same event as direct shoe CRUD.
+      // Mileage is computed on read (lib/shoe/mileage.ts) — nothing to
+      // recompute or store here. Bust the briefing cache so the next
+      // /today reflects the (re)assignment; same event as direct shoe CRUD.
       await bustBriefingCacheForEvent(userId, 'shoe_crud');
       return NextResponse.json({ ok: true, shoe_id: shoeId });
     } catch (e: any) {
@@ -128,38 +132,4 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   return NextResponse.json({ error: 'no recognized fields' }, { status: 400 });
-}
-
-/**
- * Recompute `shoes.mileage_mi` from sum of distances of assigned runs.
- * Idempotent — re-running yields the same total. Run after any
- * shoe_id mutation on strava_activities.
- */
-async function recomputeShoeMileage(userId: string): Promise<void> {
-  await pool.query(
-    // 2026-06-01 - MAX-per-day-per-shoe dedupe defends against absorber
-    // gaps (see lib/plan/generate.ts comment). Pick the max-distance
-    // row per (day, shoe) so duplicate source rows for the same run
-    // dont double-count shoe mileage.
-    `UPDATE shoes s
-        SET mileage = COALESCE(t.total_mi, 0)
-       FROM (
-         WITH per_day_shoe AS (
-           SELECT shoe_id,
-                  COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date AS d,
-                  MAX((data->>'distanceMi')::numeric) AS mi
-             FROM runs
-            WHERE user_uuid = $1
-              AND shoe_id IS NOT NULL
-              AND NOT (data ? 'mergedIntoId')
-            GROUP BY shoe_id, 2
-         )
-         SELECT shoe_id, SUM(mi) AS total_mi
-           FROM per_day_shoe
-          GROUP BY shoe_id
-       ) t
-      WHERE s.id = t.shoe_id
-        AND s.user_uuid = $1`,
-    [userId]
-  );
 }

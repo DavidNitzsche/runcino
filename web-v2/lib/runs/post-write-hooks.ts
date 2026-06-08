@@ -26,6 +26,7 @@
 import { completeCalibrationSession } from '@/lib/coach/calibration';
 import { pool } from '@/lib/db/pool';
 import { elevFromPolyline } from './elev-from-gps';
+import { assignShoeIfMissing } from '@/lib/shoe/auto-assign';
 
 export interface AfterRunWriteInput {
   userUuid: string;
@@ -46,6 +47,7 @@ export interface AfterRunWriteInput {
 export async function afterRunWrite(input: AfterRunWriteInput): Promise<{
   calibration: 'fired' | 'skipped' | 'failed';
   elev: 'fired' | 'skipped' | 'failed' | 'present';
+  shoe: 'fired' | 'skipped' | 'failed';
   reason?: string;
 }> {
   // 1. Calibration auto-fire
@@ -79,7 +81,25 @@ export async function afterRunWrite(input: AfterRunWriteInput): Promise<{
     return 'failed' as const;
   });
 
-  return { calibration, elev, reason };
+  // 3. Shoe auto-assign · fill shoe_id when the run landed without one.
+  //    THE fix for watch/HK runs (gear-only assigners never matched them).
+  //    Best-effort · a failure here must never block the run write.
+  let shoe: 'fired' | 'skipped' | 'failed' = 'skipped';
+  try {
+    const r = await assignShoeIfMissing(input.userUuid, input.runId);
+    shoe = r.status === 'fired' ? 'fired' : 'skipped';
+    if (r.status === 'fired') {
+      console.log(`[afterRunWrite] shoe ${r.shoeId} assigned via ${r.via} ·`,
+        input.source ?? 'unknown', input.runId);
+    }
+  } catch (e) {
+    shoe = 'failed';
+    console.error('[afterRunWrite] shoe auto-assign failed:',
+      input.source ?? 'unknown', input.runId,
+      e instanceof Error ? e.message : String(e));
+  }
+
+  return { calibration, elev, shoe, reason };
 }
 
 /**

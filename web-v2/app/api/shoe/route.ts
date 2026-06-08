@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { computeShoeMileage } from '@/lib/shoe/mileage';
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -26,18 +27,28 @@ export async function GET(req: NextRequest) {
   // descending so the main shoe appears at the top of the picker.
   // Retired shoes included so /profile can show them; the picker filters
   // them client-side.
-  const rows = (await pool.query(
-    `SELECT id, brand, model, color, color2, run_types,
-            mileage::numeric AS mileage,
-            mileage_cap::numeric AS mileage_cap,
-            COALESCE(retired, false) AS retired,
-            COALESCE(preferred, false) AS preferred,
-            notes
-       FROM shoes
-      WHERE user_uuid = $1
-      ORDER BY retired ASC, preferred DESC, mileage DESC NULLS LAST`,
-    [userId]
-  ).catch(() => ({ rows: [] }))).rows;
+  // Mileage is computed ON READ from canonical runs (lib/shoe/mileage.ts),
+  // not read from the stale stored column. Order in JS afterward so the
+  // mileage-desc sort uses the live value.
+  const [rawRows, miles] = await Promise.all([
+    pool.query(
+      `SELECT id, brand, model, color, color2, run_types,
+              mileage_cap::numeric AS mileage_cap,
+              COALESCE(retired, false) AS retired,
+              COALESCE(preferred, false) AS preferred,
+              notes
+         FROM shoes
+        WHERE user_uuid = $1`,
+      [userId]
+    ).then((r) => r.rows).catch(() => [] as any[]),
+    computeShoeMileage(userId),
+  ]);
+  const rows = rawRows
+    .map((s: any) => ({ ...s, _mi: miles.get(Number(s.id)) ?? 0 }))
+    .sort((a: any, b: any) =>
+      (a.retired === b.retired ? 0 : a.retired ? 1 : -1) ||
+      (b.preferred === a.preferred ? 0 : b.preferred ? 1 : -1) ||
+      b._mi - a._mi);
   return NextResponse.json({
     shoes: rows.map((s: any) => ({
       id: s.id,
@@ -46,7 +57,7 @@ export async function GET(req: NextRequest) {
       color: s.color,
       color2: s.color2,
       run_types: s.run_types ?? [],
-      mileage: s.mileage == null ? null : Number(s.mileage),
+      mileage: s._mi,
       mileage_cap: s.mileage_cap == null ? null : Number(s.mileage_cap),
       retired: Boolean(s.retired),
       preferred: Boolean(s.preferred),

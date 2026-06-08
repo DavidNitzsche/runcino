@@ -14,6 +14,8 @@ import { weatherContext } from '@/lib/weather/heat-adjustment';
 import { enrichOneActivity, WEATHER_VERSION_CURRENT } from '@/lib/weather/openmeteo';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
+import { heatAdjustedStatus } from './heat-band';
+import { computeShoeMileage } from '@/lib/shoe/mileage';
 
 export interface RunSplit {
   mile: number;
@@ -568,39 +570,46 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     ? Number(plannedRow.distance_mi)
     : null;
 
-  // Inline shoe inventory — same query as GET /api/shoe but bundled here
-  // so the modal opens with no second round-trip.
-  const shoesRows = (await pool.query(
-    `SELECT id, brand, model, color, color2, run_types,
-            mileage::numeric AS mileage,
-            mileage_cap::numeric AS mileage_cap,
-            COALESCE(retired, false) AS retired,
-            COALESCE(preferred, false) AS preferred,
-            notes
-       FROM shoes
-      WHERE user_uuid = $1
-        AND COALESCE(retired, false) = false
-      ORDER BY preferred DESC, mileage DESC NULLS LAST`,
-    [userId]
-  ).catch(() => ({ rows: [] }))).rows;
-  const shoes: RunDetailShoe[] = shoesRows.map((s: any) => ({
-    // 2026-05-27: coerce id to number. node-postgres returns bigint
-    // columns as strings by default, but RunDetailShoe.id is typed
-    // as number and the ShoePicker uses strict `value === s.id` to
-    // know which row is selected — string vs number broke the
-    // post-save selection display ("assigned shoes are not saving").
-    id: Number(s.id),
-    brand: s.brand,
-    model: s.model,
-    color: s.color,
-    color2: s.color2,
-    run_types: s.run_types ?? [],
-    mileage: s.mileage == null ? null : Number(s.mileage),
-    mileage_cap: s.mileage_cap == null ? null : Number(s.mileage_cap),
-    retired: Boolean(s.retired),
-    preferred: Boolean(s.preferred),
-    notes: s.notes,
-  }));
+  // Inline shoe inventory — same shape as GET /api/shoe but bundled here
+  // so the modal opens with no second round-trip. Mileage is computed
+  // ON READ from canonical runs (lib/shoe/mileage.ts), not the stale
+  // stored column; sort by the live value afterward.
+  const [shoesRaw, shoeMiles] = await Promise.all([
+    pool.query(
+      `SELECT id, brand, model, color, color2, run_types,
+              mileage_cap::numeric AS mileage_cap,
+              COALESCE(retired, false) AS retired,
+              COALESCE(preferred, false) AS preferred,
+              notes
+         FROM shoes
+        WHERE user_uuid = $1
+          AND COALESCE(retired, false) = false`,
+      [userId]
+    ).then((r) => r.rows).catch(() => [] as any[]),
+    computeShoeMileage(userId),
+  ]);
+  const shoes: RunDetailShoe[] = shoesRaw
+    .map((s: any) => ({ s, mi: shoeMiles.get(Number(s.id)) ?? 0 }))
+    .sort((a, b) =>
+      (b.s.preferred === a.s.preferred ? 0 : b.s.preferred ? 1 : -1) || b.mi - a.mi)
+    .map(({ s, mi }) => ({
+      // 2026-05-27: coerce id to number. node-postgres returns bigint
+      // columns as strings by default, but RunDetailShoe.id is typed
+      // as number and the ShoePicker uses strict `value === s.id` to
+      // know which row is selected — string vs number broke the
+      // post-save selection display ("assigned shoes are not saving").
+      id: Number(s.id),
+      brand: s.brand,
+      model: s.model,
+      color: s.color,
+      color2: s.color2,
+      run_types: s.run_types ?? [],
+      mileage: mi,
+      mileage_cap: s.mileage_cap == null ? null : Number(s.mileage_cap),
+      retired: Boolean(s.retired),
+      preferred: Boolean(s.preferred),
+      notes: s.notes,
+    }));
 
   return {
     id: r.id ?? r.activityId ?? activityId,
@@ -852,15 +861,7 @@ async function loadPhaseBreakdown(
     // Cite: Research/06-weather-adjustments.md §"heat-aware verdict".  // TODO: no matching heading in Research/06 — concept is engine-internal, not a Research section
     let status: 'on' | 'fast' | 'slow' | null = null;
     if (targetSPerMi && actualSPerMi && p.type !== 'recovery' && p.type !== 'rest') {
-      const effectiveTarget = heatSlowdownPct >= 2
-        ? Math.round(targetSPerMi * (1 + heatSlowdownPct / 100))
-        : targetSPerMi;
-      const TOLERANCE = 10;
-      const lo = targetSPerMi - TOLERANCE;
-      const hi = effectiveTarget + TOLERANCE;
-      if (actualSPerMi >= lo && actualSPerMi <= hi) status = 'on';
-      else if (actualSPerMi < lo) status = 'fast';
-      else status = 'slow';
+      status = heatAdjustedStatus(targetSPerMi, actualSPerMi, heatSlowdownPct);
     }
 
     const typeRaw = String(p.type ?? 'unknown').toLowerCase();

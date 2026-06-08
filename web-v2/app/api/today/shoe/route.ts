@@ -56,6 +56,28 @@ export async function POST(req: NextRequest) {
                      user_uuid = COALESCE(day_actions.user_uuid, EXCLUDED.user_uuid)`,
       [userId, dateIso, String(body.shoe_id)]
     );
+
+    // Reconcile · the /today pick is the runner's explicit choice for the
+    // day, so apply it to any run ALREADY logged that day. The day_actions
+    // row was previously a dead write (no reader) — proven by David's two
+    // picks landing on runs that stayed shoe_id=null. Now it also lands on
+    // runs.shoe_id, the canonical field the modal + mileage read.
+    //
+    // Guard: fill empties and override prior AUTO assigns
+    // (shoe_auto_assigned_at IS NOT NULL), but never clobber a per-run
+    // modal pick (modal leaves the stamp NULL → most-specific signal wins).
+    // For a run that lands LATER, the ingest hook re-reads this day_actions
+    // row as its top-priority input — so the pick applies either way.
+    await pool.query(
+      `UPDATE runs
+          SET shoe_id = $1::int, shoe_auto_assigned_at = NOW()
+        WHERE user_uuid = $2
+          AND NOT (data ? 'mergedIntoId')
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) = $3
+          AND (shoe_id IS NULL OR shoe_auto_assigned_at IS NOT NULL)`,
+      [Number(body.shoe_id), userId, dateIso]
+    );
+
     // shoe_crud is the canonical regen event for any shoe-row mutation.
     await bustBriefingCacheForEvent(userId, 'shoe_crud');
     return NextResponse.json({ ok: true, date_iso: dateIso, shoe_id: body.shoe_id });

@@ -10,6 +10,7 @@ import { loadLatestVdotForUser } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadNextARace } from './race-lookup';
 import { loadActivePlan } from '@/lib/plan/lookup';
+import { computeShoeMileage } from '@/lib/shoe/mileage';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
@@ -146,8 +147,12 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   const weight_lb = wRow?.value ? +(Number(wRow.value) * 2.20462).toFixed(1) : null;
   const preferences = preferencesResolved;
 
+  // Mileage computed ON READ from canonical runs (lib/shoe/mileage.ts) ·
+  // the stored `shoes.mileage` column is stale/fictional and no longer
+  // trusted. pctUsed therefore reflects real tracked miles.
+  const shoeMiles = await computeShoeMileage(userId);
   const shoes = shoesRows.map((s: any) => {
-    const m = Number(s.mileage) || 0;
+    const m = shoeMiles.get(Number(s.id)) ?? 0;
     const cap = Number(s.mileage_cap) || 400;
     return {
       id: String(s.id),
