@@ -1196,7 +1196,7 @@ function PlanDayPanel({
   const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
   const c = PHASE_TYPE_COLOR[day.type] ?? '#8A90A0';
   const tint = { background: `${c}38`, color: c };
-  const spec = day.workoutSpec as Record<string, unknown> | null | undefined;
+  const spec = (day.workoutSpec ?? null) as Record<string, unknown> | null;
   const paceStr = day.paceSec ? fmtPace(day.paceSec) : null;
 
   // Build segment rows from workout_spec when available.

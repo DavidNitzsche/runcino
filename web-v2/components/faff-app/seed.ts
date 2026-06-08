@@ -1036,6 +1036,12 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
       // non-quality days. Composer reads pace deltas + HR-on-pace +
       // same-type streak + adapter state to pick a kind.
       trainingInfluence: composeTrainingInfluenceForDay(d, t, lastOverrideTs, sameTypeStreakById, raceDistanceMi),
+      // 2026-06-07 · pass workout_spec through so the FULL PLAN day-detail
+      // panel can render the real segment breakdown (BASE/FINISH for D1
+      // long runs, WARMUP/TEMPO/COOLDOWN for tempo, REPS for intervals).
+      // Without this every calendar day-detail showed "See full plan for
+      // session detail." because spec was null on every season weekDay entry.
+      workoutSpec: (d as { spec?: import('@/lib/faff/types').WorkoutSpec | null }).spec ?? null,
     };
   }));
   // Real plan_phases rows so TrainView can render the actual phase shape

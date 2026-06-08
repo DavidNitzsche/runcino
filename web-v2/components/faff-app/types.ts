@@ -168,6 +168,11 @@ export type FaffSeed = {
         kind: 'on_track' | 'consistent' | 'working' | 'slipping' | 'compromised';
         copy: string;
       } | null;
+      /** 2026-06-07 · workout_spec passed through so the FULL PLAN calendar
+       *  day-detail panel can render real segment breakdowns (BASE/FINISH
+       *  for D1 long runs, WARMUP/TEMPO for quality, etc.) without needing
+       *  a separate API call. Null on rest days and pre-backfill rows. */
+      workoutSpec?: import('@/lib/faff/types').WorkoutSpec | null;
     }>>;
     /** Closed-loop plan adaptations from coach_intents (P1 #8 — written by
      *  applyAdaptations whenever a readiness/volume signal forced a plan
