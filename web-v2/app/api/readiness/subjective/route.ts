@@ -75,9 +75,11 @@ export async function POST(req: NextRequest) {
     const state = await loadCoachState(userId);
     const breakdown = computeReadiness(state);
     objectiveScore = breakdown.score;
-    const subjective100 = Math.round(rating * 10);
-    if (Math.abs(objectiveScore - subjective100) >= SUBJECTIVE_OVERRIDE_THRESHOLD) {
-      willTriggerOverride = true;
+    if (objectiveScore != null) {
+      const subjective100 = Math.round(rating * 10);
+      if (Math.abs(objectiveScore - subjective100) >= SUBJECTIVE_OVERRIDE_THRESHOLD) {
+        willTriggerOverride = true;
+      }
     }
   } catch { /* fall through · override flag stays false */ }
 

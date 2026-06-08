@@ -23,17 +23,17 @@
 import type { ReadinessBreakdown as RB, ReadinessInput } from '@/lib/coach/readiness';
 
 export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdown: RB; compact?: boolean }) {
-  const color = breakdown.band === 'sharp'      ? 'var(--green)'
-    : breakdown.band === 'ready'     ? 'var(--green)'
-    : breakdown.band === 'moderate'  ? 'var(--goal)'
-                                     : 'var(--over)';
+  const color = breakdown.band === 'sharp' || breakdown.band === 'ready' ? 'var(--green)'
+    : breakdown.band === 'moderate' ? 'var(--goal)'
+    : breakdown.band === 'unknown'  ? 'var(--mute)'
+                                    : 'var(--over)';
 
   return (
     <div>
       {!compact && (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18 }}>
           <span style={{ fontFamily: 'var(--f-display)', fontSize: 56, color, lineHeight: 1, letterSpacing: '0.5px' }}>
-            {breakdown.score}
+            {breakdown.score ?? '—'}
           </span>
           <span style={{ fontFamily: 'var(--f-label)', fontSize: 16, color, letterSpacing: '1.4px' }}>
             {breakdown.label}

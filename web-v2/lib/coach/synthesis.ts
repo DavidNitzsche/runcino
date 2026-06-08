@@ -50,6 +50,7 @@ export function buildSynthesis(inputs: SynthesisInputs): string | null {
   // Cold start guard.
   if (!breakdown.inputs || breakdown.inputs.length === 0) return null;
   if (breakdown.inputs.every((i) => i.observedV === 'no data' || i.observedV === 'building history')) return null;
+  if (breakdown.score == null) return null;
 
   // ─── illness watch (highest priority · pre-empts everything else) ──
   // Research/15: wrist temp +0.3-0.5°C combined with RR +2-3 bpm in

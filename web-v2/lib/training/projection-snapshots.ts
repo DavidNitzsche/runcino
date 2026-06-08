@@ -135,3 +135,24 @@ export async function loadProjectionSeries(
   ).catch(() => ({ rows: [] }));
   return r.rows.map((row) => ({ date: row.d, projectionSec: row.ps, vdot: row.v }));
 }
+
+/**
+ * Latest VDOT for a user, regardless of race distance. Used by profile-state
+ * so the display reads the cron-written snapshot rather than re-running the
+ * full race-candidate chain on every /profile load.
+ *
+ * Returns null on error — callers treat null as "no VDOT yet"
+ * (cold-start), not as a failure that should block generation.
+ */
+export async function loadLatestVdotForUser(userUuid: string): Promise<number | null> {
+  const r = await pool.query<{ vdot: number }>(
+    `SELECT vdot::float AS vdot
+       FROM projection_snapshots
+      WHERE user_uuid = $1
+        AND vdot IS NOT NULL
+      ORDER BY snapshot_date DESC
+      LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] }));
+  return r.rows[0]?.vdot ?? null;
+}

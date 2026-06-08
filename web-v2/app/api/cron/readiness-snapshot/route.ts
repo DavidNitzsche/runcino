@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   const DEFAULT = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
   if (!userIds.includes(DEFAULT)) userIds.push(DEFAULT);
 
-  const results = [] as Array<{ userUuid: string; date: string; score: number; band: string; written: boolean; reason?: string; error?: string }>;
+  const results = [] as Array<{ userUuid: string; date: string; score: number | null; band: string; written: boolean; reason?: string; error?: string }>;
 
   for (const u of userIds) {
     let perUserToday = '';

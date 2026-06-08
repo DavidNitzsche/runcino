@@ -11,12 +11,13 @@ export function ReadinessChipTrigger({ breakdown, size = 'sm' }: { breakdown: RB
   const [open, setOpen] = useState(false);
   const color = breakdown.band === 'sharp' || breakdown.band === 'ready' ? 'var(--green)'
     : breakdown.band === 'moderate' ? 'var(--goal)'
+    : breakdown.band === 'unknown'  ? 'var(--mute)'
                                     : 'var(--over)';
   const dim = size === 'lg' ? 156 : 64;
   const stroke = size === 'lg' ? 8 : 4;
   const r = (dim / 2) - stroke;
   const C = 2 * Math.PI * r;
-  const off = C * (1 - breakdown.score / 100);
+  const off = breakdown.score != null ? C * (1 - breakdown.score / 100) : C;
   const numSize = size === 'lg' ? 56 : 26;
 
   return (
@@ -28,7 +29,7 @@ export function ReadinessChipTrigger({ breakdown, size = 'sm' }: { breakdown: RB
           background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
-        aria-label={`Readiness ${breakdown.score} (${breakdown.label}) — tap for breakdown`}
+        aria-label={`Readiness ${breakdown.score ?? '—'} (${breakdown.label}) — tap for breakdown`}
       >
         <svg viewBox={`0 0 ${dim} ${dim}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
           <circle cx={dim / 2} cy={dim / 2} r={r} fill="none" stroke="var(--line)" strokeWidth={stroke} />
@@ -36,7 +37,7 @@ export function ReadinessChipTrigger({ breakdown, size = 'sm' }: { breakdown: RB
         </svg>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1, position: 'relative' }}>
           <span style={{ fontFamily: 'var(--f-display)', fontSize: numSize, color, letterSpacing: '0.5px', fontWeight: 800 }}>
-            {breakdown.score}
+            {breakdown.score ?? '—'}
           </span>
           {size === 'lg' && (
             <span style={{

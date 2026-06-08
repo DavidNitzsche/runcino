@@ -820,7 +820,7 @@ function adaptReadiness(glance: Glance | null, health: Health | null): Readiness
     return { name: (i.label.split(' ·')[0] || i.key).toUpperCase(), why: `${i.observedV} · ${i.observedSub}`.trim(), pct, pts: i.weight, dir };
   });
   return {
-    score: r.score, label, baseline,
+    score: r.score ?? 0, label, baseline,
     trend, trendDays: trendDays.length === 7 ? trendDays : ['MON','TUE','WED','THU','FRI','SAT','SUN'],
     drivers,
     coach: (r.inputs[0]?.meaning) || 'Readiness derived from sleep, HRV, RHR, and load.',

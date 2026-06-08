@@ -398,7 +398,7 @@ export type PR = { k: string; v: string; date: string };
 export type ReadinessBriefSeed = {
   date: string;                 // YYYY-MM-DD
   score: number;
-  band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
+  band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data' | 'unknown';
   label: string;                // 'READY'
   headline: string;             // one-line plain-language framing
   oneLineMover: string | null;  // "HRV down 8 pts vs yesterday"
@@ -424,7 +424,7 @@ export type ReadinessBriefSeed = {
     observedValue: string;
     observedSub: string;
     baseline: string;
-    band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
+    band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data' | 'unknown';
     weightContribution: number;
     meaning: string;
     confounders: Array<{ pillar: string; explanation: string; likely: boolean; categoryTag?: string }>;

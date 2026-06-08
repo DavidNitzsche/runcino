@@ -35,7 +35,7 @@ import { computeTrainingForm } from './training-form';
 import { buildHealthActions, buildThresholdLine, type HealthAction } from './health-actions';
 
 export type PillarKey = 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
-export type PillarBand = 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
+export type PillarBand = 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data' | 'unknown';
 export type StreakDirection = 'above' | 'below';
 
 export interface ReadinessStreak {
@@ -399,11 +399,11 @@ export async function loadReadinessBrief(
 
   // 2026-06-01 · trendNote (web agent brief §4). Authored coach copy
   // for the 14-day chart · references streaks + movers + trajectory.
-  const trendNote = buildTrendNote(scoreTrend, breakdown.score, streaks, movers);
+  const trendNote = buildTrendNote(scoreTrend, breakdown.score ?? 0, streaks, movers);
 
   // 2026-06-01 · composition (web agent brief §5). Single source of
   // truth for BASELINE / NET / TODAY math row.
-  const composition = buildComposition(scoreTrend, breakdown.score);
+  const composition = buildComposition(scoreTrend, breakdown.score ?? 0);
 
   // 2026-06-01 · HRV CV surface. Plews early-overreach signal already
   // computed in readiness-history · expose it here as a top-level field
@@ -501,7 +501,7 @@ export async function loadReadinessBrief(
 
   return {
     date,
-    score: breakdown.score,
+    score: breakdown.score ?? 0,
     band: breakdown.band as PillarBand,
     label: breakdown.label,
     headline,
@@ -779,7 +779,7 @@ async function computeYesterdayPillars(
     const yesterdayBreakdown = computeReadiness(yesterdayState);
     const pillars: Record<string, number> = {};
     for (const i of yesterdayBreakdown.inputs) pillars[i.key] = i.weight;
-    return { score: yesterdayBreakdown.score, pillars };
+    return { score: yesterdayBreakdown.score ?? 0, pillars };
   } catch {
     return null;
   }
@@ -832,10 +832,10 @@ async function loadScoreTrend(
     }));
     // Always include today (even if not yet snapshotted) so the trend has
     // a "now" data point regardless of cron timing.
-    trend.push({ date: todayISO, score: todayBreakdown.score, band: todayBreakdown.band as PillarBand });
+    trend.push({ date: todayISO, score: todayBreakdown.score ?? 0, band: todayBreakdown.band as PillarBand });
     return trend;
   } catch {
-    return [{ date: todayISO, score: todayBreakdown.score, band: todayBreakdown.band as PillarBand }];
+    return [{ date: todayISO, score: todayBreakdown.score ?? 0, band: todayBreakdown.band as PillarBand }];
   }
 }
 
@@ -1281,6 +1281,7 @@ function computeSubjectiveOverride(
   advice: string;
 } | null {
   if (!checkin.answered || checkin.rating == null) return null;
+  if (breakdown.score == null) return null;
   const subjective100 = Math.round(checkin.rating * 10);
   const objective = breakdown.score;
   const deltaAbs = Math.abs(objective - subjective100);

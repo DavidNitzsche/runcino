@@ -21,7 +21,7 @@ import { loadReadinessHistory } from './readiness-history';
 export interface SnapshotResult {
   userUuid: string;
   date: string;
-  score: number;
+  score: number | null;
   band: string;
   written: boolean;
   reason?: string;

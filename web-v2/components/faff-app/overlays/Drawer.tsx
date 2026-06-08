@@ -50,6 +50,7 @@ const BAND_COLOR: Record<Band, string> = {
   moderate:    '#F3AD38',
   'pull-back': '#FC4D64',
   'no-data':   '#8A90A0',
+  'unknown':   '#8A90A0',
 };
 
 /** Per-pillar band → color. The README documents pillar colors as
@@ -62,6 +63,7 @@ const PILLAR_BAND_COLOR: Record<Band, string> = {
   moderate:    '#F3AD38',
   'pull-back': '#FC4D64',
   'no-data':   '#8A90A0',
+  'unknown':   '#8A90A0',
 };
 
 /** Strip any internal-doctrine citation from backend-authored coach-voice

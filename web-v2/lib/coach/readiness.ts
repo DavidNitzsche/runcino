@@ -18,9 +18,9 @@
 import type { CoachState } from '@/lib/topics/types';
 
 export interface ReadinessBreakdown {
-  score: number;                // 0-100
-  band: 'sharp' | 'ready' | 'moderate' | 'pull-back';
-  label: string;                // 'SHARP' / 'READY' / 'MODERATE' / 'PULL BACK'
+  score: number | null;         // 0-100; null when all pillar inputs have no signal (cold start)
+  band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'unknown';
+  label: string;                // 'SHARP' / 'READY' / 'MODERATE' / 'PULL BACK' / 'UNKNOWN'
   inputs: ReadinessInput[];
 }
 
@@ -216,6 +216,13 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
       observedSub: '',
       meaning: 'HR recovery comes from Apple Watch post-workout. Will appear once a few sessions are in.',
     });
+  }
+
+  // Item 14: when every pillar has no real signal (brand-new user, Health
+  // data not yet synced), return null score + 'unknown' band so the UI can
+  // show "—" instead of 70/READY which reads as a confident endorsement.
+  if (inputs.every((i) => i.observedV === 'no data' || i.observedV === 'building history')) {
+    return { score: null, band: 'unknown', label: 'UNKNOWN', inputs };
   }
 
   score = Math.max(0, Math.min(100, score));
