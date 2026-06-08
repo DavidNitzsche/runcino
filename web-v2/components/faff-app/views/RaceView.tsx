@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { FaffSeed } from '../types';
 import { CountdownLadder, CourseAnnotations, MARATHON_COUNTDOWN, StateChangeToast } from '../toolkit';
 import { RouteMap } from '../RouteMap';
+import { RaceRetrospectiveForm } from '@/components/races/RaceRetrospectiveForm';
 
 interface RecalcResult {
   vdotBefore?: number | null;
@@ -108,6 +109,15 @@ export type RaceDetailSeed = {
   courseStartLabel?: string | null;
   courseFinishLabel?: string | null;
   courseNotes?: string | null;
+  // Retrospective fields (past races) — persisted to races.meta via PATCH /api/race.
+  avgHrBpm?: number | null;
+  retroFelt?: string | null;
+  retroExecution?: string | null;
+  retroNotes?: string | null;
+  // Post-race handoff: next upcoming A race after this one + any B/C tune-ups
+  // between this race and that next A race. Drives the WHAT'S NEXT block.
+  nextARace?: { slug: string; name: string; date: string; distanceMi: number | null } | null;
+  bridgeRaces?: Array<{ name: string; date: string; daysBeforeNextA: number }>;
 };
 
 const FALLBACK: RaceDetailSeed = {
@@ -135,6 +145,8 @@ const FALLBACK: RaceDetailSeed = {
   routeLatLng: null,
   courseSource: null,
   contributorCount: 0,
+  avgHrBpm: null, retroFelt: null, retroExecution: null, retroNotes: null,
+  nextARace: null, bridgeRaces: [],
 };
 
 export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?: RaceDetailSeed; onBack: () => void }) {
@@ -424,6 +436,25 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         <div className="rp-ss"><div className="k">GOAL PACE</div><div className="v">{goalPace}<small>/mi</small></div></div>
       </div>
 
+      {/* Retrospective form · past races only. Writes actual_result.finishS via
+          POST /api/race/result (canonical) and retro fields via PATCH /api/race. */}
+      {r.isPast && (
+        <div className="band">
+          <div className="rp-sec">RETROSPECTIVE</div>
+          <RaceRetrospectiveForm
+            slug={r.slug}
+            existing={{
+              finishTime: finishTime || null,
+              pb,
+              avgHrBpm: r.avgHrBpm ?? null,
+              retroFelt: r.retroFelt ?? null,
+              retroExecution: r.retroExecution ?? null,
+              retroNotes: r.retroNotes ?? null,
+            }}
+          />
+        </div>
+      )}
+
       {/* Race week countdown · only renders inside T-7 → T-0 window. */}
       {!r.isPast && r.daysAway >= 0 && r.daysAway <= 7 ? (
         <div className="band">
@@ -603,6 +634,14 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
           Past results &amp; weather history
         </div>
       </div>
+
+      {/* Post-race plan handoff · shows when result is logged + there's a
+          future A race. Manual trigger only — runner decides when ready. */}
+      {r.isPast && finishTime && r.nextARace && (
+        <div className="band">
+          <RacePlanHandoff raceDate={r.date} nextARace={r.nextARace} bridgeRaces={r.bridgeRaces ?? []} />
+        </div>
+      )}
 
       {/* Race retro recalc toast · auto-dismisses after ~5s. Closes
           coverage line 1228. */}
@@ -799,4 +838,126 @@ function sec2pace(sec: number): string {
   let s = Math.round(per % 60);
   if (s === 60) { m++; s = 0; }
   return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+/** Adds `days` calendar days to an ISO date string ("2026-08-16" → "2026-08-30"). */
+function addDaysISO(iso: string, days: number): string {
+  return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86_400_000).toISOString().slice(0, 10);
+}
+/** "2026-08-16" → "Aug 16" */
+function monDay(iso: string): string {
+  const d = new Date(iso + 'T12:00:00Z');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * RacePlanHandoff — post-race "WHAT'S NEXT" block.
+ *
+ * Shows when: isPast && finishTime is set && there's a future A race.
+ * Displays recovery / bridge / training timeline and a "Generate CIM plan"
+ * button (manual trigger only — recovery varies, runner decides when ready).
+ */
+function RacePlanHandoff({
+  raceDate,
+  nextARace,
+  bridgeRaces,
+}: {
+  raceDate: string;
+  nextARace: { slug: string; name: string; date: string; distanceMi: number | null };
+  bridgeRaces: Array<{ name: string; date: string; daysBeforeNextA: number }>;
+}) {
+  const router = useRouter();
+  const [generating, setGenerating] = useState(false);
+  const [genResult, setGenResult] = useState<'ok' | 'error' | null>(null);
+
+  const recoveryEnd = addDaysISO(raceDate, 14);
+  const bridgeEnd   = addDaysISO(raceDate, 28);
+  const trainWeeks  = Math.round(
+    (Date.parse(nextARace.date + 'T12:00:00Z') - Date.parse(bridgeEnd + 'T12:00:00Z')) / (7 * 86_400_000),
+  );
+
+  // Tune-up race: nearest bridgeRace within 14–35 days of next A race.
+  const tuneUp = bridgeRaces.find(r => r.daysBeforeNextA >= 14 && r.daysBeforeNextA <= 35);
+
+  async function generatePlan() {
+    setGenerating(true);
+    setGenResult(null);
+    try {
+      const res = await fetch('/api/plan/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raceSlug: nextARace.slug }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? 'generate failed');
+      setGenResult('ok');
+      setTimeout(() => router.push(`/races/${nextARace.slug}`), 1200);
+    } catch {
+      setGenerating(false);
+      setGenResult('error');
+    }
+  }
+
+  return (
+    <>
+      <div className="rp-sec">WHAT&apos;S NEXT</div>
+      <div style={{ marginBottom: 14 }}>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>{nextARace.name}</span>
+        <span style={{ fontSize: 13, color: 'var(--mute)', marginLeft: 8 }}>
+          {monDay(nextARace.date)}
+          {nextARace.distanceMi === 26.2 ? ' · Marathon' : nextARace.distanceMi === 13.1 ? ' · Half' : ''}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 18 }}>
+        {[
+          { label: 'Recovery',  dates: `${monDay(raceDate)} – ${monDay(recoveryEnd)}`, note: '14 days easy only, no quality' },
+          { label: 'Bridge',    dates: `${monDay(recoveryEnd)} – ${monDay(bridgeEnd)}`,  note: 'aerobic base, strides, fartlek' },
+          { label: 'Training',  dates: `${monDay(bridgeEnd)} – ${monDay(nextARace.date)}`, note: `${trainWeeks} weeks specific prep` },
+        ].map(row => (
+          <div key={row.label} style={{
+            display: 'grid', gridTemplateColumns: '80px 1fr 1fr',
+            gap: 8, padding: '8px 0', borderBottom: '1px solid var(--line)',
+            alignItems: 'center',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--mute)', textTransform: 'uppercase' }}>
+              {row.label}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--ink)' }}>{row.dates}</div>
+            <div style={{ fontSize: 11, color: 'var(--mute)' }}>{row.note}</div>
+          </div>
+        ))}
+      </div>
+
+      {tuneUp && (
+        <div style={{ fontSize: 12, color: 'var(--mute)', marginBottom: 16 }}>
+          {tuneUp.name} ({monDay(tuneUp.date)}) is a natural tune-up {tuneUp.daysBeforeNextA} days out from {nextARace.name}.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          type="button"
+          onClick={generatePlan}
+          disabled={generating || genResult === 'ok'}
+          style={{
+            background: genResult === 'ok' ? 'var(--recovery)' : 'var(--ink)',
+            color: genResult === 'ok' ? '#001' : 'var(--bg)',
+            border: 'none', borderRadius: 8,
+            padding: '10px 20px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
+            cursor: generating || genResult === 'ok' ? 'default' : 'pointer',
+            opacity: generating ? 0.7 : 1,
+          }}
+        >
+          {generating ? 'GENERATING…' : genResult === 'ok' ? 'PLAN GENERATED' : `GENERATE ${nextARace.name.split(' ').slice(0, 1)[0].toUpperCase()} PLAN`}
+        </button>
+        {genResult === 'error' && (
+          <span style={{ fontSize: 12, color: 'var(--over)' }}>Generation failed — try again.</span>
+        )}
+        {genResult === 'ok' && (
+          <span style={{ fontSize: 12, color: 'var(--mute)' }}>Opening {nextARace.name}…</span>
+        )}
+      </div>
+    </>
+  );
 }

@@ -372,6 +372,27 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       courseStartLabel,
       courseFinishLabel,
       courseNotes,
+      // Retrospective fields — persisted to races.meta.
+      avgHrBpm: (meta as { avgHrBpm?: unknown }).avgHrBpm != null ? Number((meta as { avgHrBpm?: unknown }).avgHrBpm) : null,
+      retroFelt: (meta as { retroFelt?: string }).retroFelt ?? null,
+      retroExecution: (meta as { retroExecution?: string }).retroExecution ?? null,
+      retroNotes: (meta as { retroNotes?: string }).retroNotes ?? null,
+      // Post-race handoff — next A race after this one + B races between.
+      ...(() => {
+        if (!isPast) return { nextARace: null, bridgeRaces: [] };
+        const futureAs = races.aRaces.filter(r => r.date > race.date).sort((a, b) => a.date.localeCompare(b.date));
+        const nextA = futureAs[0] ?? null;
+        if (!nextA) return { nextARace: null, bridgeRaces: [] };
+        const nextARace = { slug: nextA.slug, name: nextA.name, date: nextA.date, distanceMi: nextA.distance_mi ?? null };
+        const bRaces = [...races.upcomingBs, ...races.upcomingCs]
+          .filter(r => r.date > race.date && r.date < nextA.date)
+          .map(r => ({
+            name: r.name, date: r.date,
+            daysBeforeNextA: Math.round((Date.parse(nextA.date + 'T12:00:00Z') - Date.parse(r.date + 'T12:00:00Z')) / 86_400_000),
+          }))
+          .sort((a, b) => a.daysBeforeNextA - b.daysBeforeNextA);
+        return { nextARace, bridgeRaces: bRaces };
+      })(),
     };
   } catch {
     return null;
