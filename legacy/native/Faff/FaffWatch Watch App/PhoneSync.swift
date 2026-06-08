@@ -47,6 +47,33 @@ final class PhoneSync: NSObject, ObservableObject {
     private let tokenKey = "faff.watch.authToken.v1"
     private let pendingKey = "faff.watch.pendingDirect.v1"
 
+    /// Background URLSession identifier. A background session lets watchOS run
+    /// the POST out-of-process, so a completion uploaded as the runner taps
+    /// Done survives the app being suspended seconds later — the old
+    /// URLSession.shared data task was killed on suspension and only retried
+    /// the next time the watch app was opened.
+    static let bgSessionId = "run.faff.watch.completions.v1"
+
+    /// Created exactly once per process for this identifier. On relaunch,
+    /// recreating it reconnects to transfers the system finished while we were
+    /// suspended. Delegate callbacks arrive on a background queue, so the
+    /// handlers hop to the main actor before touching state.
+    private lazy var bgSession: URLSession = {
+        let cfg = URLSessionConfiguration.background(withIdentifier: Self.bgSessionId)
+        cfg.isDiscretionary = false           // send ASAP
+        cfg.sessionSendsLaunchEvents = true   // wake the app to deliver completion events
+        return URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
+    }()
+
+    /// workoutIds with an upload in flight, so overlapping flushes don't
+    /// double-schedule. Backend is idempotent on workoutId, so this is
+    /// tidiness, not correctness.
+    private var inFlight: Set<String> = []
+
+    /// Instantiate the lazy background session (call at launch + on relaunch
+    /// so it reconnects to finished transfers and delivers their delegate events).
+    func ensureBackgroundSession() { _ = bgSession }
+
     /// Auth token the iPhone shares via application context. Persisted so it
     /// survives watch-app restarts (the iPhone may not be reachable later).
     private var authToken: String? {
@@ -74,33 +101,50 @@ final class PhoneSync: NSObject, ObservableObject {
         pendingDirect = q
     }
 
-    /// POST every queued completion straight to the backend; drop the ones
-    /// the server accepts, keep the rest for the next attempt. No-op without
-    /// a token (the iPhone hasn't shared one yet — the transferUserInfo path
-    /// still covers the run).
+    /// Schedule a background upload for every queued completion the backend
+    /// hasn't accepted yet. No-op without a token. Returns immediately — the
+    /// uploads run out-of-process and survive app suspension;
+    /// urlSession(_:task:didCompleteWithError:) drops accepted items.
     func flushDirectCompletions() async {
         guard let token = authToken else { return }
-        let q = pendingDirect
-        guard !q.isEmpty else { return }
         let url = apiBase.appendingPathComponent("api/watch/workouts/complete")
-        var remaining: [Data] = []
-        for data in q {
+        for data in pendingDirect {
+            guard let id = Self.workoutId(from: data), !inFlight.contains(id) else { continue }
+            guard let fileURL = Self.writeTempBody(data, id: id) else { continue }
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            req.httpBody = data
-            do {
-                let (_, resp) = try await URLSession.shared.data(for: req)
-                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                if (200...299).contains(code) { continue }       // accepted → drop
-                if code == 401 || code == 403 { authToken = nil } // stale token → stop using it
-                remaining.append(data)                            // retry later
-            } catch {
-                remaining.append(data)
-            }
+            // Background sessions require a file-based upload task (the Data
+            // variant + async/completion-handler API aren't supported).
+            let task = bgSession.uploadTask(with: req, fromFile: fileURL)
+            task.taskDescription = id   // correlate completion → queue entry
+            inFlight.insert(id)
+            task.resume()
         }
-        pendingDirect = remaining
+    }
+
+    private func removePending(workoutId id: String) {
+        pendingDirect = pendingDirect.filter { Self.workoutId(from: $0) != id }
+    }
+
+    // MARK: temp-file + decode helpers (background uploads read body from a file)
+    private struct WorkoutIdProbe: Decodable { let workoutId: String }
+    private static func workoutId(from data: Data) -> String? {
+        (try? JSONDecoder().decode(WorkoutIdProbe.self, from: data))?.workoutId
+    }
+    private static func tempBodyURL(id: String) -> URL {
+        let safe = id.replacingOccurrences(of: "/", with: "_")
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("faff-completion-\(safe).json")
+    }
+    private static func writeTempBody(_ data: Data, id: String) -> URL? {
+        let url = tempBodyURL(id: id)
+        do { try data.write(to: url, options: .atomic); return url } catch { return nil }
+    }
+    private static func cleanTempBody(id: String?) {
+        guard let id else { return }
+        try? FileManager.default.removeItem(at: tempBodyURL(id: id))
     }
 
     func activate() {
@@ -211,6 +255,33 @@ extension PhoneSync: WCSessionDelegate {
             }
         default:
             replyHandler(["status": "unknown"])
+        }
+    }
+}
+
+// MARK: - Background upload delegate (out-of-process completion POSTs)
+//
+// PhoneSync is @MainActor, but URLSession delegate callbacks arrive on the
+// session's background delegateQueue, so these are nonisolated and hop to the
+// main actor before touching authToken / pendingDirect / inFlight.
+extension PhoneSync: URLSessionDataDelegate {
+    nonisolated func urlSession(_ session: URLSession,
+                                task: URLSessionTask,
+                                didCompleteWithError error: Error?) {
+        let id = task.taskDescription
+        let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+        let failed = (error != nil)
+        Task { @MainActor in
+            if let id { self.inFlight.remove(id) }
+            if !failed, (200...299).contains(status) {
+                if let id { self.removePending(workoutId: id) }   // accepted → drop from durable queue
+                Self.cleanTempBody(id: id)
+            } else if status == 401 || status == 403 {
+                self.authToken = nil                               // stale token → stop; iPhone re-shares one
+                Self.cleanTempBody(id: id)
+            }
+            // Network errors / 5xx: leave queued + temp file in place; next
+            // activate()/sendCompletion() flush retries it.
         }
     }
 }

@@ -23,5 +23,11 @@ struct FaffWatch_Watch_AppApp: App {
         WindowGroup {
             ContentView()
         }
+        // System woke us to finish a background completion upload — recreate
+        // the session so its delegate receives the queued events and the
+        // durable queue gets drained. (watchOS 9+; target is 10.0.)
+        .backgroundTask(.urlSession(PhoneSync.bgSessionId)) {
+            await PhoneSync.shared.ensureBackgroundSession()
+        }
     }
 }
