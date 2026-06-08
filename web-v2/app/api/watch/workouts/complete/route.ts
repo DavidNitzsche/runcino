@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
+import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { requireUserId } from '@/lib/auth/session';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 import { runnerTimezone, runnerToday } from '@/lib/runtime/runner-tz';
@@ -84,6 +85,11 @@ interface WatchCompletionBody {
   // both shapes; the read site prefers camel and falls back to snake.
   routePolyline?: string | null;
   route_polyline?: string | null;
+  // Device-measured elevation GAIN in feet, from the watch's barometer-fused
+  // altitude (build 17x+). camelCase — same wire-contract lesson as
+  // routePolyline (the Encodable struct emits camelCase; a snake_case read
+  // silently dropped GPS for a day). Preferred over the GPS-polyline estimate.
+  elevGainFt?: number | null;
   // Legacy fallback fields — older clients; prefer startedAt for date
   date?: string;
   dateLocal?: string;
@@ -244,6 +250,21 @@ export async function POST(req: NextRequest) {
     // enhanceCanonicalFromAbsorbed as before.
     routePolyline: body.routePolyline ?? body.route_polyline ?? null,
   };
+  // Elevation gain · device-measured from the watch's barometer-fused altitude
+  // (build 17x+). Read camelCase body.elevGainFt (same wire lesson as
+  // routePolyline). Route through elev-sanity so an absurd barometric value
+  // gets clamped, and stamp provenance 'watch' so the GPS-estimate fallback
+  // (post-write-hooks enrichElevIfMissing) defers to the device value — it
+  // only fires when elevGainFt is null or elevGainSource is 'absent'.
+  const elevSane = sanitizeElevGain({
+    elevGainFt: body.elevGainFt ?? null,
+    distanceMi: totalMi,
+    splits: Array.isArray(data.splits) ? data.splits : [],
+  });
+  if (elevSane.value != null) {
+    data.elevGainFt = elevSane.value;
+    data.elevGainSource = 'watch';
+  }
   // 2026-06-03 · auto-populate profile.timezone from the device's TZ on
   // first sync. Silent · only writes when profile.timezone is currently
   // null, so manual overrides stay sticky. See lib/runtime/runner-tz.ts

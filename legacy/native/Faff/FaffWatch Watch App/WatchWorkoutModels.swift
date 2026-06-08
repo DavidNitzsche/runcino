@@ -389,6 +389,12 @@ struct WatchCompletion: Encodable {
     /// iPhone HK import hop required.  nil when GPS was unavailable (indoor,
     /// simulator, or <2 accurate fixes recorded).
     var routePolyline: String? = nil
+    /// Total elevation GAIN in feet, summed from positive barometer-fused
+    /// CLLocation.altitude deltas during the run (build 17x+). Sent so the
+    /// watch row gets device-measured climb immediately — preferred over the
+    /// coarse Open-Meteo polyline estimate (lib/runs/elev-from-gps.ts). nil
+    /// when no valid vertical fixes were collected (indoor, simulator).
+    var elevGainFt: Double? = nil
 }
 
 // MARK: - Training fueling (time-anchored gel plan)

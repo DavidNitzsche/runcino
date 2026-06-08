@@ -34,6 +34,12 @@ final class WorkoutTracker: NSObject, ObservableObject {
     /// accurate fixes received during the run.  Read by buildCompletion
     /// BEFORE tracker.end() is called; cleared when a new workout starts.
     private(set) var gpsCoords: [(Double, Double)] = []
+    /// Cumulative elevation GAIN in meters, summed from positive barometer-
+    /// fused CLLocation.altitude deltas during the run. Read by buildCompletion
+    /// BEFORE tracker.end(); cleared when a new workout starts. `lastAltitudeM`
+    /// holds the previous fix's altitude for the per-fix delta.
+    private(set) var elevGainM: Double = 0
+    private var lastAltitudeM: Double? = nil
     /// Live running cadence (steps/min). CMPedometer gives `currentCadence`
     /// directly, which is far more reliable than differencing HealthKit's
     /// batched cumulative step count over wall-clock time.
@@ -140,6 +146,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
             builder = b
             routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
             gpsCoords = []   // reset accumulator for the new run
+            elevGainM = 0; lastAltitudeM = nil   // reset elevation accumulator
 
             // GPS route
             locationManager.delegate = self
@@ -231,6 +238,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         self.builder = nil
         self.routeBuilder = nil
         self.gpsCoords = []   // coords already consumed by buildCompletion; free memory
+        self.elevGainM = 0; self.lastAltitudeM = nil   // elevation consumed too
 
         // Workout's over — tear down the audio session so the watch's
         // regular silent-mode behavior comes back when the user is just
@@ -271,6 +279,17 @@ final class WorkoutTracker: NSObject, ObservableObject {
         // negligible for a 12+ mile run (~4000 pts at 5 m filter = ~64 KB).
         for loc in locs {
             gpsCoords.append((loc.coordinate.latitude, loc.coordinate.longitude))
+            // Elevation GAIN from the barometer-fused altitude · sum positive
+            // deltas only (net climb), and only when the vertical solution is
+            // valid (verticalAccuracy >= 0; negative means altitude is junk).
+            // CLLocation.altitude on Apple Watch fuses the barometric altimeter,
+            // so this needs no separate CMAltimeter session.
+            if loc.verticalAccuracy >= 0 {
+                if let last = lastAltitudeM, loc.altitude - last > 0 {
+                    elevGainM += loc.altitude - last
+                }
+                lastAltitudeM = loc.altitude
+            }
         }
     }
 
