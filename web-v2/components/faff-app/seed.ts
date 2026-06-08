@@ -23,6 +23,7 @@ import type {
 import type { PlannedDay, CompletedRun, EffortKey } from './constants';
 import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { redirect } from 'next/navigation';
 
 /* ─────────────────────────  Pure helpers  ───────────────────────── */
@@ -903,19 +904,26 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
   return null;
 }
 
-function adaptVolumeBars(log: LogT | null, training: Training | null): { bars: VolumeBar[]; thisWeek: number; avg: number } {
+function adaptVolumeBars(log: LogT | null, training: Training | null, today: string): { bars: VolumeBar[]; thisWeek: number; avg: number } {
   // Prefer real Strava-driven weeks (log-state) for trailing-8 volume —
   // they reflect ACTUAL run mileage and span back well before the active
   // plan started. Fall back to training weeks (plan_workouts.distance_mi
   // + done miles) when there is no Strava history.
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  const dow = (now.getDay() + 6) % 7;
-  const monday = new Date(now); monday.setDate(now.getDate() - dow);
+  // 2026-06-08 · anchor the 8-week window on the RUNNER's local "today"
+  // (runnerToday), not `new Date()` in server-UTC. The server runs in UTC,
+  // so the old anchor rolled the current week forward at 17:00 Pacific on
+  // Sundays — a Sun-evening long run fell into next week's (empty) bar,
+  // showing ~0 while the real week read a day stale. Noon-UTC anchoring
+  // keeps toISOString().slice(0,10) stable through the date math and lines
+  // up with log-state's mondayOf() keys. Affects all non-UTC runners.
+  const anchor = new Date(today + 'T12:00:00Z');
+  const dow = (anchor.getUTCDay() + 6) % 7;            // 0=Mon … 6=Sun
+  const monday = new Date(anchor); monday.setUTCDate(anchor.getUTCDate() - dow);
 
   // Build 8 contiguous Mon-Sun buckets ending on the current week.
   const weeks: { monday: Date; mi: number; isCurrent: boolean }[] = [];
   for (let i = 7; i >= 0; i--) {
-    const m = new Date(monday); m.setDate(monday.getDate() - i * 7);
+    const m = new Date(monday); m.setUTCDate(monday.getUTCDate() - i * 7);
     weeks.push({ monday: m, mi: 0, isCurrent: i === 0 });
   }
 
@@ -2220,7 +2228,8 @@ export async function buildSeed(): Promise<FaffSeed> {
       // placeholders when these fields are absent.
     }
   }
-  const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);
+  const volumeToday = await runnerToday(userId);
+  const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training, volumeToday);
   // Load plan adapts AFTER training so we have plan_id to scope the query.
   const planAdapts = await loadPlanAdapts(userId, training?.plan_id ?? null);
   const season = adaptSeason(training, planAdapts.value, goalRace?.distanceMi ?? null);

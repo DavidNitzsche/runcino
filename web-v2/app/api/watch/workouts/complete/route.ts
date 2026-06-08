@@ -25,6 +25,8 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { requireUserId } from '@/lib/auth/session';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
+import { runnerTimezone, runnerToday } from '@/lib/runtime/runner-tz';
+import { toUtcIso, toLocalWallIso } from '@/lib/runs/normalize-time';
 
 // ── WatchCompletionBody · canonical typed contract ───────────────────────
 // Matches the watch-app WatchCompletion + WatchCompletionPhase in
@@ -133,31 +135,41 @@ export async function POST(req: NextRequest) {
   // ── 2. strava_activities-shaped row so non-coach consumers see the run ──
   // Shape mirrors /api/ingest/workout — keeps a single canonical activity
   // shape across watch, Strava, HealthKit, and manual entry sources.
-  const date = (body.startedAt ?? '').slice(0, 10) || todayPT();
-  // 2026-06-02 · keep the timezone marker if the client sent one.
-  // toUtcIso uses hasTzMarker to short-circuit safely; stripping the Z
-  // collapsed UTC-tagged values into the no-marker bucket and forced
-  // toUtcIso to guess from `source` (which had source='watch' wrongly
-  // classed as UTC · audit/admin/audit-weather caught this). Today the
-  // watch app sends PDT wall time without a marker; future builds that
-  // send `2026-06-02T19:16:14Z` will Just Work via the hasTzMarker
-  // branch. Only the fractional-seconds strip is kept (Postgres-friendly).
-  const startLocal = (body.startedAt ?? '').replace(/\.\d+(?=Z?$)/, '');
-  const totalSec = Number(body.totalDurationSec) || 0;
-  const totalMi = Number(body.totalDistanceMi) || 0;
-  const avgPace = totalSec > 0 && totalMi > 0
-    ? formatPace(Math.round(totalSec / totalMi))
-    : null;
+
   // 2026-06-01 · treadmill ingest (iPhone build 136).
   // Respect body.source · whitelist 'watch' | 'treadmill'. Anything
   // else falls back to 'watch' so a future iPhone bug shows up in the
-  // server logs instead of silently mis-sourcing.
+  // server logs instead of silently mis-sourcing. Resolved BEFORE the
+  // date below · toUtcIso reads `source` to interpret no-marker times.
   const ALLOWED_SOURCES = new Set(['watch', 'treadmill']);
   const requestedSource = typeof body.source === 'string' ? body.source : 'watch';
   const source = ALLOWED_SOURCES.has(requestedSource) ? requestedSource : 'watch';
   if (requestedSource !== source) {
     console.warn(`[watch/complete] rejected body.source='${requestedSource}' · falling back to 'watch'. Add to ALLOWED_SOURCES if intentional.`);
   }
+
+  // Derive the runner-LOCAL calendar date + wall-clock start.
+  // 2026-06-08 · body.startedAt arrives either UTC-tagged ("…Z", newer
+  // watch/iPhone builds) or PDT wall time with no marker (older builds).
+  // The prior `(startedAt).slice(0,10)` took the UTC date verbatim, which
+  // rolls a day forward for evening-Pacific runs (Sun 17:xx PDT = Mon
+  // 00:xx UTC) — stranding the run in the wrong ISO week and off its plan
+  // slot (David's 2026-06-07 long run landed on 06-08). Route BOTH wire
+  // formats through the canonical TZ helpers so the stored date is always
+  // the runner's local calendar day. No-marker payloads are unchanged
+  // (toUtcIso treats them as local wall time for watch/treadmill sources).
+  // Affects any runner west of UTC who runs after local 17:00.
+  const tz = await runnerTimezone(userId);
+  const startUtc = toUtcIso(body.startedAt, source, tz);
+  const startLocalWall = toLocalWallIso(startUtc, tz);
+  const date = (startLocalWall ?? '').slice(0, 10) || await runnerToday(userId);
+  // Wall-time ISO with no Z, fractional seconds stripped (Postgres-friendly).
+  const startLocal = (startLocalWall ?? '').replace(/\.\d+$/, '');
+  const totalSec = Number(body.totalDurationSec) || 0;
+  const totalMi = Number(body.totalDistanceMi) || 0;
+  const avgPace = totalSec > 0 && totalMi > 0
+    ? formatPace(Math.round(totalSec / totalMi))
+    : null;
   const indoor = body.indoor === true;
   // Fix 4b · derive whole-run avgHr once (null when phases carry no HR).
   const wholeRunHr = wholeRunAvgHr(body.phases);
@@ -318,10 +330,6 @@ export async function POST(req: NextRequest) {
 }
 
 // ── helpers ──
-
-function todayPT(): string {
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-}
 
 function formatMmSs(secs: number): string {
   const m = Math.floor(secs / 60);
