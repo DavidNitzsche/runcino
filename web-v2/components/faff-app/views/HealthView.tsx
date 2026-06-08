@@ -757,7 +757,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 <div className="hins-what">
                   Form = Fitness − Fatigue. Negative is normal in a build.
                   <br />
-                  <b>&gt;+25</b> fresh · <b>+5/+25</b> race-ready · <b>−5/+5</b> productive · <b>−5/−15</b> loaded · <b>&lt;−15</b> overreach.
+                  <b>&gt;+25</b> detraining · <b>+10/+25</b> race-ready · <b>−10/+10</b> productive · <b>−30/−10</b> loaded · <b>&lt;−30</b> overreach.
                 </div>
               </div>
             ) : null}

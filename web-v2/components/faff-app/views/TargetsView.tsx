@@ -603,7 +603,11 @@ function bandCaption(goal: GoalRace, gapSec: number | null, status: 'on-track' |
     return (
       <>
         The plan still targets <b>{goal.goal}</b> · execution is on pace.
-        {fit ? <> Raw fitness reads <b>{fit}</b> · ahead of the target.</> : null}
+        {fit && gapSec != null ? (
+          gapSec <= 0
+            ? <> Raw fitness reads <b>{fit}</b> · ahead of the target.</>
+            : <> Raw fitness reads <b>{fit}</b> · still {formatGap(gapSec)} back · the build is written to close it.</>
+        ) : null}
       </>
     );
   }

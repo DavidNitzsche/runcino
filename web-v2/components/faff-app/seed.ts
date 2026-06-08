@@ -1576,7 +1576,7 @@ function adaptUnloggedRaceAlert(races: Races | null): FaffSeed['unloggedRaceAler
 
 function adaptActivity(log: LogT | null): ActivityData {
   const recent: RecentRun[] = (log?.weeks.flatMap(w => w.runs) ?? []).slice(0, 8).map(r => {
-    const eff = mapType(r.type);
+    const eff = mapType(r.workoutType ?? r.type);
     const niceDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(r.date + 'T12:00:00Z')).toUpperCase();
     const meta = `${r.distance_mi.toFixed(1)} mi${r.pace ? ' · ' + r.pace : ''}`;
     let badge: RecentRun['badge'] | undefined;
@@ -1678,7 +1678,7 @@ function effortMix(runs: LogRun[]): [string, string, number][] {
   const buckets: Record<EffortKey, number> = { recovery:0, easy:0, long:0, tempo:0, intervals:0, rest:0 };
   let total = 0;
   for (const r of runs) {
-    const e = mapType(r.type);
+    const e = mapType(r.workoutType ?? r.type);
     buckets[e] += r.distance_mi;
     total += r.distance_mi;
   }
@@ -1693,7 +1693,7 @@ function heatGrid(runs: LogRun[], weeks = 18): import('./types').HeatCell[][] {
   const byDay: Record<string, DayBucket> = {};
   for (const r of runs) {
     const cur = byDay[r.date];
-    if (!cur) byDay[r.date] = { mi: r.distance_mi, name: r.name || 'Run', type: r.type ?? null, id: r.id };
+    if (!cur) byDay[r.date] = { mi: r.distance_mi, name: r.name || 'Run', type: r.workoutType ?? r.type ?? null, id: r.id };
     else { cur.mi += r.distance_mi; }
   }
   const fmtDay = (d: Date) => {
