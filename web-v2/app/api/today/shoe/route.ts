@@ -14,6 +14,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
 
@@ -35,12 +36,6 @@ async function ensureShoeAction(): Promise<void> {
   constraintEnsured = true;
 }
 
-function todayIso(): string {
-  // PDT-shifted ISO date — same offset every other coach loader uses
-  // (state-loader.ts §state.today) so day boundaries line up.
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-}
-
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
@@ -49,7 +44,7 @@ export async function POST(req: NextRequest) {
   if (!body?.shoe_id) {
     return NextResponse.json({ error: 'shoe_id required' }, { status: 400 });
   }
-  const dateIso = body.date_iso || todayIso();
+  const dateIso = body.date_iso || await runnerToday(userId);
 
   try {
     await ensureShoeAction();
@@ -75,7 +70,7 @@ export async function DELETE(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const body = await req.json().catch(() => null) as { date_iso?: string } | null;
-  const dateIso = body?.date_iso || todayIso();
+  const dateIso = body?.date_iso || await runnerToday(userId);
   try {
     await pool.query(
       `DELETE FROM day_actions
