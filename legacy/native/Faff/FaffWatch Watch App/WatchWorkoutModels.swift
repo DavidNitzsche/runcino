@@ -63,6 +63,11 @@ struct WatchPhase: Codable, Identifiable {
     /// nil on warmup/recovery/cooldown and on easy/long sessions.
     /// Face display semantics (floor/ceiling/reference) are a face-level decision.
     let hrTargetBpm: Int?
+    /// 2026-06-08 · True on the closing HM/M pace segment of a long run.
+    /// Server sets it when workout_spec.finish_mi is present. Old payloads
+    /// omit it → false. The router shows the FINISH face (not the rep face)
+    /// and the engine fires a FINISH boundary cue instead of "REP n/m".
+    let isFinishSegment: Bool
 
     /// The backend payload omits `index` (the phases array is ordered
     /// and the watch walks it with a cursor).  We assign it during
@@ -70,7 +75,8 @@ struct WatchPhase: Codable, Identifiable {
     /// own position for labels + completion reporting.
     init(index: Int, type: WatchPhaseType, label: String, durationSec: Int,
          targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
-         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil) {
+         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil,
+         isFinishSegment: Bool = false) {
         self.index = index
         self.type = type
         self.label = label
@@ -81,10 +87,11 @@ struct WatchPhase: Codable, Identifiable {
         self.repUnit = repUnit
         self.distanceMi = distanceMi
         self.hrTargetBpm = hrTargetBpm
+        self.isFinishSegment = isFinishSegment
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm
+        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, isFinishSegment
     }
 
     /// Decoding without an index — used only when a phase is decoded in
@@ -101,6 +108,7 @@ struct WatchPhase: Codable, Identifiable {
         self.repUnit = try c.decodeIfPresent(WatchRepUnit.self, forKey: .repUnit) ?? .time
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
         self.hrTargetBpm = try c.decodeIfPresent(Int.self, forKey: .hrTargetBpm)
+        self.isFinishSegment = try c.decodeIfPresent(Bool.self, forKey: .isFinishSegment) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -114,6 +122,7 @@ struct WatchPhase: Codable, Identifiable {
         try c.encode(repUnit, forKey: .repUnit)
         try c.encodeIfPresent(distanceMi, forKey: .distanceMi)
         try c.encodeIfPresent(hrTargetBpm, forKey: .hrTargetBpm)
+        try c.encode(isFinishSegment, forKey: .isFinishSegment)
     }
 }
 
@@ -225,7 +234,8 @@ struct WatchWorkout: Codable {
             WatchPhase(index: i, type: p.type, label: p.label, durationSec: p.durationSec,
                        targetPaceSPerMi: p.targetPaceSPerMi,
                        tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic,
-                       repUnit: p.repUnit, distanceMi: p.distanceMi, hrTargetBpm: p.hrTargetBpm)
+                       repUnit: p.repUnit, distanceMi: p.distanceMi, hrTargetBpm: p.hrTargetBpm,
+                       isFinishSegment: p.isFinishSegment)
         }
     }
 }
@@ -558,6 +568,40 @@ extension WatchWorkout {
             readinessLabel: "Primed",
             distanceMi: 7.9,
             paceLabel: "T"
+        )
+    }
+
+    /// Long run with an HM/M finish segment — the marquee marathon/HM session
+    /// ("17 mi · last 9 @ HMP"). Two distance WORK phases; the SECOND is flagged
+    /// `isFinishSegment` so the router shows the FINISH face (not the rep face)
+    /// and the engine fires a "FINISH" boundary cue instead of "REP 2/2".
+    /// Mirrors what /api/watch/today emits for a long-with-finish day:
+    /// displayHint "pace", no HR ceiling (the easy build runs by feel · D1).
+    /// Launch in the sim with `-face finish`.
+    static var sampleLongFinish: WatchWorkout {
+        let easy = WatchPhase(index: 0, type: .work, label: "8.0 mi easy",
+                              durationSec: 8 * 480, targetPaceSPerMi: 480,
+                              tolerancePaceSPerMi: 20, haptic: .start,
+                              repUnit: .distance, distanceMi: 8.0)
+        let finish = WatchPhase(index: 1, type: .work, label: "9.0 mi @ HM pace",
+                                durationSec: 9 * 412, targetPaceSPerMi: 412,
+                                tolerancePaceSPerMi: 12, haptic: .transitionWork,
+                                repUnit: .distance, distanceMi: 9.0,
+                                isFinishSegment: true)
+        let total = easy.durationSec + finish.durationSec
+        return WatchWorkout(
+            workoutId: "sample-long-finish",
+            name: "LONG · 9mi @ HM",
+            summary: "17.0 mi · last 9 @ HM pace",
+            totalEstimatedMinutes: total / 60,
+            phases: [easy, finish],
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2099-01-01T00:00:00Z",
+            readinessScore: 80,
+            readinessLabel: "Primed",
+            distanceMi: 17.0,
+            paceLabel: "L",
+            displayHint: "pace"
         )
     }
 

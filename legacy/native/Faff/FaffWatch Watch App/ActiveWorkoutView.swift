@@ -107,31 +107,42 @@ struct ActiveWorkoutView: View {
             } else {
                 switch phase.type {
                 case .work:
-                    // displayHint takes precedence — backend signal that
-                    // this workout wants a specialised face (HR-governed,
-                    // progression, strides). Falls back to the phase-driven
-                    // defaults below when nil/unknown.
-                    switch engine.workout.displayHint {
-                    case "hr":
-                        LiveHR(engine: engine, tracker: tracker, phase: phase)
-                    case "progression":
-                        LiveProgression(engine: engine, tracker: tracker, phase: phase)
-                    case "strides":
-                        LiveStrides(engine: engine, tracker: tracker, phase: phase)
-                    default:
-                        // A workout with exactly one .work phase is an easy /
-                        // long / steady run — route to EasyFace (rotating
-                        // HR/cadence guardrail) or SteadyRunFace (no target).
-                        // Multi-work-phase sessions (intervals, threshold
-                        // blocks) get the rep-work face with strip + counter.
-                        if isSingleWorkSession(engine) {
-                            if phase.targetPaceSPerMi != nil {
-                                LiveEasy(engine: engine, tracker: tracker, phase: phase)
+                    if phase.isFinishSegment {
+                        // Long-run HM/M finish segment — pace-target FINISH
+                        // face (no rep counter, no strip). One push to the end.
+                        LiveFinish(engine: engine, tracker: tracker, phase: phase)
+                    } else if isLongWithFinish(engine) {
+                        // The easy BUILD of a long-with-finish: easy face, not
+                        // the rep face — it's an easy run, not an interval set.
+                        // Distance row counts the build down to the lift point.
+                        LiveEasy(engine: engine, tracker: tracker, phase: phase)
+                    } else {
+                        // displayHint takes precedence — backend signal that
+                        // this workout wants a specialised face (HR-governed,
+                        // progression, strides). Falls back to the phase-driven
+                        // defaults below when nil/unknown.
+                        switch engine.workout.displayHint {
+                        case "hr":
+                            LiveHR(engine: engine, tracker: tracker, phase: phase)
+                        case "progression":
+                            LiveProgression(engine: engine, tracker: tracker, phase: phase)
+                        case "strides":
+                            LiveStrides(engine: engine, tracker: tracker, phase: phase)
+                        default:
+                            // A workout with exactly one .work phase is an easy /
+                            // long / steady run — route to EasyFace (rotating
+                            // HR/cadence guardrail) or SteadyRunFace (no target).
+                            // Multi-work-phase sessions (intervals, threshold
+                            // blocks) get the rep-work face with strip + counter.
+                            if isSingleWorkSession(engine) {
+                                if phase.targetPaceSPerMi != nil {
+                                    LiveEasy(engine: engine, tracker: tracker, phase: phase)
+                                } else {
+                                    LiveSteady(engine: engine, tracker: tracker, phase: phase, role: .neutral)
+                                }
                             } else {
-                                LiveSteady(engine: engine, tracker: tracker, phase: phase, role: .neutral)
+                                LiveWorkInterval(engine: engine, tracker: tracker, phase: phase)
                             }
-                        } else {
-                            LiveWorkInterval(engine: engine, tracker: tracker, phase: phase)
                         }
                     }
                 case .warmup:
@@ -151,6 +162,13 @@ struct ActiveWorkoutView: View {
 /// (they're framing, not work).
 private func isSingleWorkSession(_ e: WorkoutEngine) -> Bool {
     e.workout.phases.filter { $0.type == .work }.count == 1
+}
+
+/// True when any phase is a long-run finish segment — so the workout is a
+/// long run with an HM/M finish, and the non-finish work phase is the easy
+/// build (route it to the easy face, not the rep face).
+private func isLongWithFinish(_ e: WorkoutEngine) -> Bool {
+    e.workout.phases.contains { $0.isFinishSegment }
 }
 
 // MARK: - Helpers shared by adapters
@@ -381,6 +399,32 @@ private struct LiveProgression: View {
             stepTarget:    stepTarget,
             totalDistance: distText(tracker.distanceMi),
             toNextStep:    toNextStep
+        )
+    }
+}
+
+/// Long-run HM/M finish segment — the closing miles at race pace. Reuses
+/// ProgressionFace (live · target · total · miles-to-go) under a FINISH
+/// label: no rep counter, no strip — one continuous push to the end. The
+/// "to go" row counts the finish segment's OWN miles down to zero, so the
+/// runner sees exactly how far is left at race pace.
+/// Routed when phase.isFinishSegment (long run with an HM/M finish).
+private struct LiveFinish: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    let phase: WatchPhase
+
+    private var milesToGo: String {
+        engine.phaseRemainingMi.map { String(format: "%.2f", $0) } ?? "—"
+    }
+    var body: some View {
+        ProgressionFace(
+            livePace:      paceText(tracker),
+            paceRole:      paceRole(engine: engine, tracker: tracker),
+            stepTarget:    phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
+            totalDistance: distText(tracker.distanceMi),
+            toNextStep:    milesToGo,
+            topLabel:      "FINISH"
         )
     }
 }

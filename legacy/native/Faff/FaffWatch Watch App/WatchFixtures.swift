@@ -297,6 +297,19 @@ struct WatchFixtureView: View {
                           distance: "12.0", elapsed: "1:47",
                           distanceRole: .bonus,
                           topLabel: "OVERTIME")
+        case "finish":
+            // Long-run FINISH segment face — ProgressionFace under a FINISH
+            // label (no rep counter, no strip). 9.0 mi @ HM (6:52), 5.20 mi
+            // left in the segment. This is what LiveFinish renders for an
+            // isFinishSegment phase.
+            ProgressionFace(livePace: "6:54", paceRole: .live, stepTarget: "6:52",
+                            totalDistance: "12.8", toNextStep: "5.20",
+                            topLabel: "FINISH")
+        case "finish-decode":
+            // Round-trip: decode the exact long-with-finish payload
+            // /api/watch/today emits and assert isFinishSegment survives the
+            // WatchWorkout re-stamp (phase[1] true, phase[0] omitted → false).
+            LongFinishDecodeTestView()
         default:
             // Default fixture: rep-work face — the canonical reference.
             WorkIntervalFace(livePace: "6:33", paceRole: .live, targetPace: "6:31",
@@ -388,6 +401,93 @@ private struct CruiseDecodeTestView: View {
                     Text("total    \(Self.result.distanceTotal) mi")
                     Text("rep 1    \(Self.result.firstRepDistance) mi")
                     Text("last     \(Self.result.lastPhaseType)")
+                }
+                .font(.custom("HelveticaNeue-Bold", size: h * 0.055))
+                .foregroundStyle(Color(hex: 0xCFD2D8))
+                if let err = Self.result.error {
+                    Text(err)
+                        .font(.custom("HelveticaNeue", size: h * 0.045))
+                        .foregroundStyle(Faff.over)
+                        .lineLimit(4)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, h * 0.06)
+            .padding(.top, h * 0.05)
+        }
+        .background(Color.black)
+    }
+}
+
+// MARK: - Long-run finish decode round-trip (isFinishSegment wire + re-stamp)
+//
+// Decodes the exact long-with-finish payload /api/watch/today emits and
+// asserts the optional isFinishSegment field survives WatchWorkout's re-stamp
+// init: phase[1] must be true (decoded + carried through the re-stamp), phase[0]
+// must be false (field omitted on the wire → decodeIfPresent default). This is
+// the guard for the highest-risk spot — a dropped field in the re-stamp would
+// silently route the finish to the rep face. Launch: -face finish-decode.
+private struct LongFinishDecodeTestView: View {
+    private static let payload = """
+{
+  "workoutId": "0645f40c-951d-4ccc-b86e-9979cd26c795-2026-07-19",
+  "name": "LONG · 9mi @ HM",
+  "summary": "17.0 mi · last 9 @ HM pace",
+  "totalEstimatedMinutes": 126,
+  "phases": [
+    { "type": "work", "label": "8.0 mi easy",      "durationSec": 3840, "targetPaceSPerMi": 480, "tolerancePaceSPerMi": 20, "haptic": "start",           "repUnit": "distance", "distanceMi": 8 },
+    { "type": "work", "label": "9.0 mi @ HM pace", "durationSec": 3708, "targetPaceSPerMi": 412, "tolerancePaceSPerMi": 12, "haptic": "transition-work", "repUnit": "distance", "distanceMi": 9, "isFinishSegment": true }
+  ],
+  "completionEndpoint": "https://www.faff.run/api/watch/workouts/complete",
+  "expiresAt": "2026-07-19T23:59:59.000Z",
+  "distanceMi": 17,
+  "paceLabel": "L",
+  "isRace": false,
+  "hrCeilingBpm": null,
+  "displayHint": "pace"
+}
+"""
+
+    private struct Result {
+        let ok: Bool
+        let phaseCount: Int
+        let buildFinish: String    // phase[0].isFinishSegment (expect false)
+        let finishFinish: String   // phase[1].isFinishSegment (expect true)
+        let hint: String
+        let error: String?
+    }
+
+    private static let result: Result = {
+        guard let data = payload.data(using: .utf8) else {
+            return Result(ok: false, phaseCount: 0, buildFinish: "—",
+                          finishFinish: "—", hint: "—", error: "UTF8")
+        }
+        do {
+            let w = try JSONDecoder().decode(WatchWorkout.self, from: data)
+            let p0 = w.phases.indices.contains(0) ? w.phases[0].isFinishSegment : false
+            let p1 = w.phases.indices.contains(1) ? w.phases[1].isFinishSegment : false
+            let pass = w.phases.count == 2 && p1 == true && p0 == false && w.displayHint == "pace"
+            return Result(ok: pass, phaseCount: w.phases.count,
+                          buildFinish: "\(p0)", finishFinish: "\(p1)",
+                          hint: w.displayHint ?? "nil", error: nil)
+        } catch {
+            return Result(ok: false, phaseCount: 0, buildFinish: "—",
+                          finishFinish: "—", hint: "—", error: String(describing: error))
+        }
+    }()
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            VStack(alignment: .leading, spacing: h * 0.025) {
+                Text(Self.result.ok ? "FINISH OK" : "FINISH FAIL")
+                    .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
+                    .foregroundStyle(Self.result.ok ? Faff.live : Faff.over)
+                Group {
+                    Text("phases   \(Self.result.phaseCount) / 2")
+                    Text("build    isFinish=\(Self.result.buildFinish)")
+                    Text("finish   isFinish=\(Self.result.finishFinish)")
+                    Text("hint     \(Self.result.hint)")
                 }
                 .font(.custom("HelveticaNeue-Bold", size: h * 0.055))
                 .foregroundStyle(Color(hex: 0xCFD2D8))

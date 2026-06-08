@@ -844,6 +844,12 @@ final class WorkoutEngine: ObservableObject {
                 // flip with the new target + a two-word cue.
                 let sub = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi · hold effort" }
                 flash(.phase(title: p.label, sub: sub), for: 1.8)
+            } else if p.isFinishSegment {
+                // Long-run HM/M finish: announce the lift to race pace, NOT
+                // "REP n/m". Reuses the .phase takeover (PhaseChangeFace) —
+                // title uppercases to "FINISH"; sub carries the segment + pace.
+                let target = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi" } ?? "—:—"
+                flash(.phase(title: "Finish", sub: "\(p.label) · \(target)"), for: 2.2)
             } else if p.type == .work {
                 // Entering a work rep — brief 1.5 s GO card. Two reads:
                 // which rep ("REP 2 / 4") + target pace ("6:47"). No

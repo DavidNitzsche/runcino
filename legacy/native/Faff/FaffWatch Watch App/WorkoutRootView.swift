@@ -194,6 +194,10 @@ struct WorkoutRootView: View {
         //          structured-workout payload correctly.
         if args.contains("-race") { return .sampleRace }
         if args.contains("-cruise") { return .sampleCruise }
+        // -finish → long run with an HM/M finish segment, to verify the
+        // engine + router show the EASY face on the build and the FINISH
+        // face on the finish phase (not the rep face), with a FINISH cue.
+        if args.contains("-finish") { return .sampleLongFinish }
         return .sample
         #else
         return nil
