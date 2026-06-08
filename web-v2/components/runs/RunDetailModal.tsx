@@ -14,6 +14,7 @@ import type { RunDetail, PhaseBreakdown } from '@/lib/coach/run-state';
 import { RouteSparkline } from './RouteSparkline';
 import { FormStatButton } from './FormTipModal';
 import { StravaPushButton } from './StravaPushButton';
+import { recommendShoe, shoeDisplayName, planTypeToShoeType } from '@/lib/shoe/recommend';
 
 export function RunDetailTrigger({
   activityId,
@@ -313,7 +314,7 @@ export function RunDetailBody({
       {shoes.length > 0 && (
         <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: 'var(--card-2)' }}>
           <div className="card-eyebrow" style={{ color: 'var(--green)', marginBottom: 8 }}>SHOES</div>
-          <ShoePicker shoes={shoes} value={d.shoe_id ?? null} onChange={onPickShoe} />
+          <ShoePicker shoes={shoes} value={d.shoe_id ?? null} onChange={onPickShoe} runType={d.type} />
         </div>
       )}
 
@@ -678,10 +679,14 @@ function ShoePicker({
   shoes,
   value,
   onChange,
+  runType,
 }: {
   shoes: Array<any>;
   value: number | null;
   onChange: (id: number | null) => void;
+  /** The run's workout type ('easy'/'long'/…) — drives the recommended-shoe
+   *  placeholder shown when nothing is assigned yet. */
+  runType?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -719,6 +724,23 @@ function ShoePicker({
   const selectedId = value != null ? Number(value) : null;
   const selected = selectedId != null ? shoes.find((s: any) => Number(s.id) === selectedId) : null;
 
+  // No shoe assigned → surface the run-type recommendation as the placeholder.
+  // Self-computed from the same recommendShoe the seed's shoeRecByType uses,
+  // so the result matches and it works on /runs/[id] too (no seed there).
+  // Hint only — the runner still taps to commit a shoe_id.
+  const recName = selected == null
+    ? shoeDisplayName(
+        recommendShoe(
+          shoes.map((s: any) => ({
+            id: s.id, brand: s.brand, model: s.model,
+            runTypes: s.run_types ?? [], mileage: s.mileage ?? 0,
+            cap: s.mileage_cap, preferred: s.preferred, retired: s.retired,
+          })),
+          planTypeToShoeType(runType),
+        ),
+      )
+    : null;
+
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
       <button
@@ -740,7 +762,10 @@ function ShoePicker({
       >
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {selected ? shoeLabel(selected) : <span style={{ color: 'var(--mute)' }}>— No shoe assigned —</span>}
+            {selected ? shoeLabel(selected)
+              : recName
+                ? <span style={{ color: 'var(--mute)' }}>{recName} · recommended</span>
+                : <span style={{ color: 'var(--mute)' }}>— No shoe assigned —</span>}
           </span>
           {selected && shoeMileage(selected) && (
             <span style={{ color: 'var(--mute)', fontSize: 11, flexShrink: 0 }}>{shoeMileage(selected)}</span>

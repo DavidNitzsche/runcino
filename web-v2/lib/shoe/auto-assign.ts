@@ -22,34 +22,7 @@
 import { pool } from '@/lib/db/pool';
 import { matchShoeByGear } from './gear-match';
 import { computeShoeMileage } from './mileage';
-import { recommendShoe, type GarageShoe, type ShoeRunType } from './recommend';
-
-/**
- * Map a plan_workouts.type to a ShoeRunType. The plan vocabulary is wider
- * and inconsistent (`interval` vs `intervals`, `threshold`, `shakeout`,
- * `race_week_tuneup`) — a naive pass-through fails recommendShoe's exact
- * run_types match and silently dumps everything into `as_needed`. No
- * planned workout (unplanned/rest-day run) → 'easy', the modal class of
- * run; the runner can always override in the modal.
- */
-const PLAN_TO_SHOE: Record<string, ShoeRunType> = {
-  easy: 'easy',
-  recovery: 'recovery',
-  shakeout: 'recovery',
-  long: 'long',
-  tempo: 'tempo',
-  threshold: 'tempo',
-  race_week_tuneup: 'tempo',
-  interval: 'intervals',
-  intervals: 'intervals',
-  vo2max: 'intervals',
-  race: 'race',
-};
-
-export function planTypeToShoeType(t: string | null | undefined): ShoeRunType {
-  if (!t) return 'easy';
-  return PLAN_TO_SHOE[t.trim().toLowerCase()] ?? 'easy';
-}
+import { recommendShoe, planTypeToShoeType, type GarageShoe } from './recommend';
 
 export type ShoeAssignResult =
   | { status: 'skipped'; reason: string }
