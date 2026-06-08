@@ -37,6 +37,26 @@ const PHASE_FROM_LABEL: Record<string, Phase> = {
   RECOVERY: 'RECOVERY', recovery: 'RECOVERY',
 };
 
+/**
+ * Parse an "M:SS" / "MM:SS" pace string to seconds-per-mile.
+ *
+ * E4: watch + Apple-Health runs store the human-readable pace in
+ * `data.avgPaceMinPerMi` ("8:09") and leave the numeric `data.paceSPerMi`
+ * null. The recap previously read only `paceSPerMi`, so `actualPaceSPerMi`
+ * was null on every watch/HK run — the dominant pace shape — dropping pace
+ * from the recap facts and disabling the pace-gated wins (winTempo/winLong,
+ * which both bail when `actualPaceSPerMi` is null). Any runner, any
+ * watch/HK-sourced run. Returns null on absent/garbage input (cold-start
+ * safe; numeric `paceSPerMi` still wins when present).
+ */
+function parsePaceToSec(v: unknown): number | null {
+  if (typeof v !== 'string') return null;
+  const m = v.trim().match(/^(\d+):([0-5]?\d)$/);
+  if (!m) return null;
+  const sec = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  return sec > 0 ? sec : null;
+}
+
 const TYPE_NORMALIZE: Record<string, WorkoutType> = {
   easy: 'easy',
   long: 'long',
@@ -166,6 +186,10 @@ export async function GET(
     ? data.splits as any[]
     : undefined;
 
+  // E4: numeric pace wins when present; else recover it from the "M:SS"
+  // string (watch/HK rows). Single source for both deriveRecap + deriveWin.
+  const actualPaceSPerMi = Number(data.paceSPerMi) || parsePaceToSec(data.avgPaceMinPerMi);
+
   const recap = deriveRecap({
     type,
     phase,
@@ -173,7 +197,7 @@ export async function GET(
     plannedPaceSPerMi: planRow?.pace_target_s ?? null,
     plannedHrCap: planRow?.hr_cap ?? null,
     actualMi: Number(data.distanceMi) || 0,
-    actualPaceSPerMi: Number(data.paceSPerMi) || null,
+    actualPaceSPerMi,
     actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
     actualMaxHr: data.maxHr != null ? Number(data.maxHr) : null,
     splits: splitsForRecap,
@@ -200,7 +224,7 @@ export async function GET(
     plannedPaceSPerMi: planRow?.pace_target_s ?? null,
     plannedHrCap: planRow?.hr_cap ?? null,
     actualMi: Number(data.distanceMi) || 0,
-    actualPaceSPerMi: Number(data.paceSPerMi) || null,
+    actualPaceSPerMi,
     actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
     splits: splitsForRecap,
     phases: winPhases.length > 0 ? winPhases : undefined,
