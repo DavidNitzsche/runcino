@@ -30,7 +30,7 @@
  * are solid, distance is up or even a bit over the ramp can be pretty
  * aggressive."
  * Cite: Pfitzinger Faster Road Racing · adaptive load progression
- * Cite: Research/00a-distance-running-training.md §progressive-overload
+ * Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  */
 
 import { pool } from '@/lib/db/pool';
@@ -278,7 +278,7 @@ export async function planUpgrade(opp: RampOpportunity): Promise<UpgradePlan | n
   ).catch(() => ({ rows: [] as Array<{ user_uuid: string }> }))).rows[0];
   const today = userRow?.user_uuid
     ? await runnerToday(userRow.user_uuid)
-    : new Date().toISOString().slice(0, 10);
+    : new Intl.DateTimeFormat('en-CA').format(new Date());
   // Pull next 7 days of rows on the active plan.
   const rows = await pool.query<{
     id: string; type: string; distance_mi: number; date_iso: string;

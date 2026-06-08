@@ -335,7 +335,7 @@ const CROSS_MODALITIES = ['bike', 'swim', 'hike', 'row', 'ski'];
 export function LogNonRunSheet({ onSaved, onClose }: { onSaved?: () => void; onClose?: () => void }) {
   const [mode, setMode] = useState<'strength' | 'cross'>('strength');
   const [subtype, setSubtype] = useState<string | null>(null);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(new Intl.DateTimeFormat('en-CA').format(new Date()));
   const [durationMin, setDurationMin] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
@@ -484,7 +484,7 @@ export function SymptomReportSheet({ onSaved, onClose }: { onSaved?: () => void;
         const r = await fetch('/api/sick', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ symptoms, fever, started_date: new Date().toISOString().slice(0, 10) }),
+          body: JSON.stringify({ symptoms, fever, started_date: new Intl.DateTimeFormat('en-CA').format(new Date()) }),
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
       }

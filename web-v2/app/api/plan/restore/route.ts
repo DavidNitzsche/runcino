@@ -31,6 +31,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildWorkoutSpec, tPaceFromGoal } from '@/lib/plan/spec-builder';
 
 export const dynamic = 'force-dynamic';
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Reject past workouts · already happened, restoration is meaningless.
-    const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+    const today = await runnerToday(userId);
     if (row.date_iso < today) {
       await client.query('ROLLBACK');
       return NextResponse.json(

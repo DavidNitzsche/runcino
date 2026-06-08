@@ -14,6 +14,7 @@
  * never disagree. Idempotent.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { enhanceCanonicalFromAbsorbed } from '@/lib/runs/canonical';
 import { planMergeOps, type RunRow } from '@/lib/runs/identity';
 import { mileageByDay } from '@/lib/runs/volume';
@@ -31,7 +32,7 @@ export async function autoMergeForDate(
   userId: string,
   dateISO?: string,
 ): Promise<{ changed: number; clusters: number }> {
-  const date = dateISO ?? new Date().toISOString().slice(0, 10);
+  const date = dateISO ?? await runnerToday(userId);
 
   // Load ALL of the day's rows UNFILTERED (merged + unmerged). planMergeOps
   // re-derives the canonical state from physical-run identity, so it can heal a

@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 export function ManualRunButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [date, setDate] = useState(() => new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => new Intl.DateTimeFormat('en-CA').format(new Date()));
   const [mi, setMi] = useState('');
   const [min, setMin] = useState('');
   const [avgHr, setAvgHr] = useState('');

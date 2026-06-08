@@ -27,6 +27,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { dispatchNotification } from '@/lib/notifications/dispatch';
 import {
   renderRaceEve,
@@ -503,7 +504,7 @@ async function nextARace(
 
 async function shakeoutDoneToday(userId: string): Promise<boolean> {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = await runnerToday(userId);
     const r = await pool.query(
       `SELECT 1 FROM runs WHERE user_uuid = $1 AND start_time::date = $2::date LIMIT 1`,
       [userId, today],

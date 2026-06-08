@@ -23,6 +23,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   const sampleDate = typeof body.sample_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.sample_date)
     ? body.sample_date
-    : new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+    : await runnerToday(userId);
 
   try {
     const r = await pool.query(

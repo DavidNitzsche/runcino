@@ -314,7 +314,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: results.every((r) => !r.error),
-    today: new Date().toISOString().slice(0, 10),
+    today: new Intl.DateTimeFormat('en-CA').format(new Date()),
     users: results.length,
     written: results.reduce((s, r) => s + r.proposals_written, 0),
     skipped: results.reduce((s, r) => s + r.signals_skipped, 0),

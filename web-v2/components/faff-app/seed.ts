@@ -291,12 +291,12 @@ type Form = Awaited<ReturnType<typeof loadFormMetrics>>;
 async function loadWeekSkips(uid: string): Promise<{ ok: true; value: Set<string> }> {
   try {
     const { pool } = await import('@/lib/db/pool');
-    // Same -7h offset as state-loader, so Monday-of-this-week matches.
-    const today = new Date(Date.now() - 7 * 3600000);
-    const dow = today.getUTCDay();
+    const todayISO = await runnerToday(uid);
+    const todayMs = Date.parse(todayISO + 'T12:00:00Z');
+    const dow = new Date(todayMs).getUTCDay();
     const shift = dow === 0 ? -6 : 1 - dow;
-    const monday = new Date(today.getTime() + shift * 86400000).toISOString().slice(0, 10);
-    const sundayDt = new Date(today.getTime() + shift * 86400000 + 6 * 86400000);
+    const monday = new Date(todayMs + shift * 86400000).toISOString().slice(0, 10);
+    const sundayDt = new Date(todayMs + (shift + 6) * 86400000);
     const sunday = sundayDt.toISOString().slice(0, 10);
     const r = await pool.query(
       `SELECT date_iso FROM day_actions
@@ -354,8 +354,7 @@ async function loadPlanAdapts(uid: string, planId: string | null): Promise<{ ok:
 async function loadTodayShoe(uid: string): Promise<{ ok: true; value: number | null }> {
   try {
     const { pool } = await import('@/lib/db/pool');
-    // Same PDT-shifted today computation as state-loader.ts §state.today.
-    const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+    const today = await runnerToday(uid);
     const r = await pool.query(
       `SELECT note FROM day_actions
         WHERE user_id = $1 AND date_iso = $2 AND action = 'shoe'
@@ -583,7 +582,7 @@ async function enrichWeekWithStandingRecommendations(
   // can recommend against. Past + non-quality days return null fast
   // inside the composer anyway, but skipping them upfront saves a
   // brief load when there's nothing to recommend.
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
   const QUALITY = new Set(['intervals', 'tempo', 'threshold', 'long']);
   const candidates = week.filter((d) =>
     d.planWorkoutId && d.iso && d.iso >= today && QUALITY.has(d.type),

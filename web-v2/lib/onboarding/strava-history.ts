@@ -18,6 +18,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 
 export interface StravaOnboardingHistory {
@@ -36,8 +37,8 @@ const LOOKBACK_DAYS = 56;
 export async function loadStravaHistoryForOnboarding(
   userUuid: string,
 ): Promise<StravaOnboardingHistory | null> {
-  const todayISO = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
-  const startISO = new Date(Date.now() - LOOKBACK_DAYS * 86400000 - 7 * 3600000)
+  const todayISO = await runnerToday(userUuid);
+  const startISO = new Date(Date.parse(todayISO + 'T12:00:00Z') - LOOKBACK_DAYS * 86400000)
     .toISOString().slice(0, 10);
 
   // Count distinct run days · dedupe-aware via canonicalMileageByDay.

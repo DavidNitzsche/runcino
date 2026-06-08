@@ -55,8 +55,8 @@ export function WorkoutProposalBanner({ proposal }: { proposal: Proposal }) {
   const [resolved, setResolved] = useState<'accepted' | 'dismissed' | null>(null);
   const router = useRouter();
 
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const tomorrowISO = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const todayISO = new Intl.DateTimeFormat('en-CA').format(new Date());
+  const tomorrowISO = new Intl.DateTimeFormat('en-CA').format(new Date(Date.now() + 86400000));
   const dayLabel = dayLabelFor(proposal.workoutDateISO, todayISO, tomorrowISO);
   const phrase = actionPhrase(proposal);
 

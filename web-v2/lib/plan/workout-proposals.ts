@@ -19,6 +19,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { AdaptationAction, AdaptationTrigger } from './adapt';
 
 export interface PendingProposal {
@@ -81,7 +82,7 @@ export async function writeWorkoutProposals(
         // Don't propose for a date that's already past · the runner
         // either did the workout or didn't, and either way swapping
         // it is a no-op.
-        const today = new Date().toISOString().slice(0, 10);
+        const today = await runnerToday(userUuid);
         if (row.date_iso < today) continue;
 
         // Dedupe · skip if a pending proposal already exists for this
