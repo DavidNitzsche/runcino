@@ -203,8 +203,14 @@ Update this file at the end of each leg.
 **tsc:** 0 new errors in changed files (pre-existing `process.env` node-types error on line 25 unchanged)
 **Swift:** backward-compat via `hrTargetBpm: Int? = nil` default + `decodeIfPresent`; all existing fixture call sites unchanged
 
-## Audit B — Architectural source-of-truth sweep  [NOT STARTED]
+## Audit B — Architectural source-of-truth sweep  [DONE · 2026-06-08 · read-only; B1 FIXED + DEPLOYED 2026-06-08 · commit 47d38608]
 Enumerate EVERY value every surface (web/iPhone/Watch) displays or writes; prove each reads from backend, not local recompute/store. Flag every local recompute + bypassing write. Fresh session, Phase 0 pre-flight, read-only, falsify-don't-confirm. Depends on Cluster 1 done (consumes volume + VDOT).
+
+**RESULT:** thesis holds for 5/7 values — backend math is single-sourced; volume/form/zones/paces clean; watch + iPhone are thin clients EXCEPT one break. 1 CRITICAL, 2 MAJOR, 1 MINOR:
+- **B1 · CRITICAL** — iPhone `RaceDayView.swift vdotPredictionRows()` (lines 611–639) recomputed Daniels race times locally with a broken quadratic (inverted VO2-velocity relation instead of time→VDOT→time). At VDOT 47.9: Half = **2:29** (correct 1:34:59), Marathon = **5:19** (correct 3:17:40). **FIXED 2026-06-08:** deleted `vdotPredictionRows()` + `formatSecondsTime()` entirely. Backend `/api/targets/projection` now returns `raceProjections[]` (5K/10K/Half/Marathon via `predictRaceTime` binary-search + `formatRaceTime`). RaceDayView fetches projection in `load()` in parallel and renders `VDOTPredictionTable` directly from backend strings. Zero local race-time math on any client surface. `rg "0.000104" native-v2 → 0 hits` ✓ · Half@VDOT47.9=1:34:59 ✓ · Marathon=3:17:40 ✓ · tsc clean ✓. Awaiting TF build 171 (CURRENT_PROJECT_VERSION already bumped).
+- **B2 · MAJOR** — VDOT compute input-assembly duplicated across 5 sites (profile-state, snapshot-projections cron, generate.ts, simulator.ts, race-header.ts) → proven to diverge (C1). Fix: one `loadVdotInputs`. Deferred.
+- **B3 · MAJOR** — "today" resolved 46 ways (36-site sweep expanded to 46). Cross-ref C6. Deferred.
+- **B4 · MINOR** — VDOT store vs live recompute can disagree if cron lags. Deferred.
 
 ## Audit C — Plan generation correctness  [AUDIT DONE · 2026-06-06 · read-only `DATABASE_URL_RO` · on main=2a2b7f42 · 0 code/data writes]
 _(David referred to this as "Audit B" in the session prompt; filed here as Audit C per the doc taxonomy. Doc's old one-liner said "taper lands for CIM Dec 6" — stale; the active goal is AFC Half Aug 16. CIM has no active plan.)_
