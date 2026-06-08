@@ -109,6 +109,13 @@ export function TargetsView({
         <div className="goalblock">
           <div className="eyebrow">Primary goal</div>
           <div className="goaltime">{goal.goal}</div>
+          {goal.confidenceLabel ? (
+            <div className="goalconf">
+              <span className={`confword ${goal.confidenceLabel.tier}`}>{goal.confidenceLabel.word}</span>
+              <span className="confdesc">{goal.confidenceLabel.descriptor}</span>
+              <span className="confdetail">{goal.confidenceLabel.detail}</span>
+            </div>
+          ) : null}
           <div className="goalmeta">
             <b>{goal.name}</b>
             {goal.location ? <> · {goal.location}</> : null}
@@ -132,6 +139,8 @@ export function TargetsView({
           <ProjectionBand
             goalSec={goalSec}
             fitSec={fitSec}
+            loSec={goal.confidenceInterval?.lo ?? null}
+            hiSec={goal.confidenceInterval?.hi ?? null}
             status={status}
             gapText={gapText(gapSec, status)}
           />
@@ -336,10 +345,12 @@ function StatusPill({ status }: { status: 'on-track' | 'watching' | 'off-track' 
  * stay inside the band.
  */
 function ProjectionBand({
-  goalSec, fitSec, status, gapText,
+  goalSec, fitSec, loSec, hiSec, status, gapText,
 }: {
   goalSec: number | null;
   fitSec: number | null;
+  loSec?: number | null;
+  hiSec?: number | null;
   status: 'on-track' | 'watching' | 'off-track';
   gapText: string;
 }) {
@@ -357,6 +368,11 @@ function ProjectionBand({
   };
   const goalPct = pos(goalSec);
   const fitPct = fitSec != null ? pos(fitSec) : null;
+  // 2026-06-08 · CI edges · hi (slower) sits left of lo (faster) on the
+  // slower→faster track. Renders as a shaded zone behind the fit marker.
+  const loPct = loSec != null ? pos(loSec) : null;
+  const hiPct = hiSec != null ? pos(hiSec) : null;
+  const hasCI = loPct != null && hiPct != null;
   const gapClass =
     status === 'on-track' ? 'ontrack'
     : status === 'off-track' ? 'off'
@@ -364,6 +380,9 @@ function ProjectionBand({
   return (
     <div className="pband">
       <div className="btrack" />
+      {hasCI ? (
+        <div className="bci" style={{ left: `${hiPct}%`, width: `${loPct! - hiPct!}%` }} />
+      ) : null}
       {fitPct != null && fitPct < goalPct ? (
         <>
           <div className="bgap" style={{ left: `${fitPct}%`, width: `${goalPct - fitPct}%` }} />
@@ -373,11 +392,15 @@ function ProjectionBand({
         </>
       ) : null}
       {fitPct != null ? (
-        <div className="bpt fit" style={{ left: `${fitPct}%` }}>
+        <div className={`bpt fit${hasCI ? ' range' : ''}`} style={{ left: `${fitPct}%` }}>
           <div className="dot" />
           <div className="cap">
-            <span className="v">{formatRaceTime(fitSec!) ?? '·'}</span>
-            <span className="k">Current fitness</span>
+            <span className="v">
+              {hasCI
+                ? `${formatRaceTime(loSec!)} – ${formatRaceTime(hiSec!)}`
+                : (formatRaceTime(fitSec!) ?? '·')}
+            </span>
+            <span className="k">{hasCI ? 'where today’s fitness lands' : 'Current fitness'}</span>
           </div>
         </div>
       ) : null}

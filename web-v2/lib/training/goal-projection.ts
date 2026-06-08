@@ -62,6 +62,30 @@ export interface DriftSignal {
   evidence: Record<string, number | string | null>;
 }
 
+export interface ConfidenceInterval {
+  /** Faster edge · seconds. */
+  lo: number;
+  /** Slower edge · seconds. */
+  hi: number;
+  /** Final half-width %, after status scaling · for display/diagnostics. */
+  pct: number;
+  /** Provenance · 'observed-cv' when sized off the runner's own pacing CV,
+   *  'research-span' when off the Research/02 §13.7 table. */
+  method: 'observed-cv' | 'research-span';
+}
+
+export interface ConfidenceLabel {
+  tier: 'high' | 'medium' | 'low';
+  word: 'HIGH' | 'MEDIUM' | 'LOW';
+  /** Plain-English read · "doable, not banked". */
+  descriptor: string;
+  /** Supporting line in time terms (no VDOT jargon) · "4:54 to find · 10
+   *  weeks to do it". */
+  detail: string;
+  /** Raw inputs for diagnostic surfaces. */
+  evidence: Record<string, number | string>;
+}
+
 export interface GoalProjection {
   status: GoalStatus;
   /** What we tell the runner: goal when ON TRACK / WATCHING, VDOT-derived
@@ -115,6 +139,12 @@ export interface GoalProjection {
      *  already at the bottom (OFF TRACK). */
     toWorse: string | null;
   };
+  /** 2026-06-08 · statistical band around the current-fitness projection
+   *  (vdotProjectionSec). Null at cold-start. See computeConfidenceInterval. */
+  confidenceInterval: ConfidenceInterval | null;
+  /** 2026-06-08 · goal-attainment confidence (HIGH/MEDIUM/LOW). Null at
+   *  cold-start. See computeConfidenceLabel. */
+  confidenceLabel: ConfidenceLabel | null;
 }
 
 export async function computeGoalProjection(args: {
@@ -122,8 +152,15 @@ export async function computeGoalProjection(args: {
   goalSec: number;
   raceDistanceMi: number;
   vdot: number | null;
+  /** 2026-06-08 · days until race day · runway axis for the confidence
+   *  label. Null when the race date is unknown. */
+  daysToRace?: number | null;
+  /** 2026-06-08 · pacing-discipline result · sizes the CI off observed split
+   *  CV when source='observed'. Computed once in the seed, shared with
+   *  executionBufferSec. */
+  pacing?: { cv: number | null; source: 'observed' | 'default' } | null;
 }): Promise<GoalProjection> {
-  const { userUuid, goalSec, raceDistanceMi, vdot } = args;
+  const { userUuid, goalSec, raceDistanceMi, vdot, daysToRace, pacing } = args;
 
   const vdotProjectionSec = vdot != null
     ? predictRaceTime(vdot, raceDistanceMi) ?? null
@@ -174,6 +211,24 @@ export async function computeGoalProjection(args: {
   ]);
   const transitions = composeTransitions(status, driftSignals);
 
+  // 2026-06-08 · confidence band (on the current-fitness projection) +
+  // confidence label (on the goal). Computed once here so web / iPhone /
+  // watch all read one number. See computeConfidenceInterval /
+  // computeConfidenceLabel.
+  const confidenceInterval = computeConfidenceInterval({
+    centerSec: vdotProjectionSec,
+    raceDistanceMi,
+    status,
+    pacing: pacing ?? null,
+  });
+  const confidenceLabel = computeConfidenceLabel({
+    goalSec,
+    raceDistanceMi,
+    vdot,
+    daysToRace: daysToRace ?? null,
+    status,
+  });
+
   return {
     status,
     projectionSec,
@@ -184,6 +239,8 @@ export async function computeGoalProjection(args: {
     nextTestPoints,
     recentTestPoints,
     transitions,
+    confidenceInterval,
+    confidenceLabel,
   };
 }
 
@@ -770,6 +827,138 @@ function composeSummary(
   // off-track · the signals get listed as chips below so this stays
   // a one-liner framing the moment.
   return 'The math is honest · time to look at what the plan can still close, and what it can\'t.';
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Confidence interval + label
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Statistical band around the CURRENT-FITNESS projection (vdotProjectionSec),
+ * NOT the goal. The honest "if you raced today, here's the spread."
+ *
+ * Base half-width · Research/02 §13.7 ("Confidence intervals to report with
+ * predictions") + §4.3 (Daniels same-distance prediction error 1-3% in
+ * well-trained runners) + §11.1 (single-input race noise ±1-3%). Keyed on
+ * the TARGET race span:
+ *    ≤10K        → ±2.0%   (§13.7 "5K→10K recent ±1.5%" + input-noise margin)
+ *    HM (≤16mi)  → ±2.5%   (§13.7 "10K→half, recent input ±2.5%")
+ *    marathon+   → ±3.0%   (§13.7 "half→marathon, marathon-trained ±3%")
+ *
+ * Observed-CV upgrade · once the runner has demonstrated pacing consistency
+ * (pacing-discipline source='observed'), size off their own median split CV
+ * instead of the table default. Same 0.02 / 0.04 buckets as
+ * lib/coach/pacing-discipline.ts, floored at 2.0% — never claim tighter than
+ * the §4.3 fundamental error even for a metronome pacer.
+ *
+ * Status scaling · drift signals add uncertainty (faff overlay on §13.7):
+ *    on-track ×1.0 · watching ×1.25 · off-track ×1.5
+ *
+ * Symmetric today. Two §13.7 refinements are deferred (see docs/AUDIT-FIXES.md):
+ * marathon-without-a-block one-sided pessimism (§13.1 / §13.7 "±10% one-sided")
+ * and the >6-month-old-input → ±8% override both need the VDOT anchor's
+ * distance + age + a marathon-block signal, which aren't threaded yet.
+ */
+export function computeConfidenceInterval(args: {
+  centerSec: number | null;
+  raceDistanceMi: number;
+  status: GoalStatus;
+  pacing?: { cv: number | null; source: 'observed' | 'default' } | null;
+}): ConfidenceInterval | null {
+  const { centerSec, raceDistanceMi, status, pacing } = args;
+  if (centerSec == null || centerSec <= 0) return null; // cold-start · no band
+
+  let basePct: number;
+  let method: ConfidenceInterval['method'];
+  if (pacing?.source === 'observed' && pacing.cv != null) {
+    // Observed split-CV buckets (mirror pacing-discipline thresholds), floored
+    // at the §4.3 minimum.
+    basePct = pacing.cv < 0.02 ? 2.0 : pacing.cv < 0.04 ? 2.5 : 3.5;
+    method = 'observed-cv';
+  } else {
+    // Research/02 §13.7 span table, keyed on target distance.
+    basePct = raceDistanceMi <= 6.5 ? 2.0 : raceDistanceMi <= 16 ? 2.5 : 3.0;
+    method = 'research-span';
+  }
+
+  const mult = status === 'off-track' ? 1.5 : status === 'watching' ? 1.25 : 1.0;
+  const half = Math.round((centerSec * basePct * mult) / 100);
+  const pct = Math.round(basePct * mult * 10) / 10;
+
+  return { lo: centerSec - half, hi: centerSec + half, pct, method };
+}
+
+/**
+ * Goal-attainment confidence (the LABEL on the goal, distinct from the band).
+ * Answers "solidly on track or barely?" by comparing the fitness gap to what
+ * the runway can plausibly close, then gating by drift status.
+ *
+ * Build rate · a focused block typically moves ~3-5 VDOT over 12-16 weeks
+ * (≈0.25-0.4 pts/wk · Research/00a periodization). 0.35 is the tunable
+ * midpoint, calibrated so a 3-point gap over a 10-week runway reads MEDIUM.
+ */
+const BUILD_RATE_VDOT_PER_WEEK = 0.35;
+
+export function computeConfidenceLabel(args: {
+  goalSec: number;
+  raceDistanceMi: number;
+  vdot: number | null; // current
+  daysToRace: number | null;
+  status: GoalStatus;
+}): ConfidenceLabel | null {
+  const { goalSec, raceDistanceMi, vdot, daysToRace, status } = args;
+  if (vdot == null) return null; // cold-start · no honest read
+  const goalVdot = vdotFromRace(goalSec, raceDistanceMi);
+  if (goalVdot == null) return null;
+
+  const gapVdot = goalVdot - vdot; // +ve = behind the goal
+  const gapSec = (predictRaceTime(vdot, raceDistanceMi) ?? goalSec) - goalSec;
+  const runwayWeeks = daysToRace != null ? daysToRace / 7 : null;
+
+  // Base tier · gap vs what the runway can close.
+  let tier: ConfidenceLabel['tier'];
+  if (gapVdot <= 0) {
+    tier = 'high'; // already at or ahead of the goal's fitness
+  } else if (runwayWeeks == null) {
+    tier = 'medium'; // gap exists, runway unknown → middling
+  } else if (runwayWeeks < 2) {
+    tier = 'low'; // no time left to close it
+  } else {
+    const closable = runwayWeeks * BUILD_RATE_VDOT_PER_WEEK;
+    const ratio = gapVdot / Math.max(closable, 0.1);
+    tier = ratio <= 0.5 ? 'high' : ratio <= 1.0 ? 'medium' : 'low';
+  }
+
+  // Drift-status cap · soft/hard signals can't co-exist with high confidence.
+  if (status === 'off-track' && tier !== 'low') tier = 'low';
+  if (status === 'watching' && tier === 'high') tier = 'medium';
+
+  const word: ConfidenceLabel['word'] =
+    tier === 'high' ? 'HIGH' : tier === 'medium' ? 'MEDIUM' : 'LOW';
+  const descriptor =
+    tier === 'high' ? 'tracking to hit it'
+    : tier === 'medium' ? 'doable, not banked'
+    : 'behind on this runway';
+  const detail = gapVdot <= 0
+    ? 'ahead of the number · hold the plan'
+    : runwayWeeks != null
+      ? `${formatGoalTime(Math.round(gapSec))} to find · ${Math.round(runwayWeeks)} weeks to do it`
+      : `${formatGoalTime(Math.round(gapSec))} to find`;
+
+  return {
+    tier,
+    word,
+    descriptor,
+    detail,
+    evidence: {
+      gapVdot: Number(gapVdot.toFixed(1)),
+      gapSec: Math.round(gapSec),
+      currentVdot: vdot,
+      goalVdot: Number(goalVdot.toFixed(1)),
+      runwayWeeks: runwayWeeks != null ? Number(runwayWeeks.toFixed(1)) : 'unknown',
+      status,
+    },
+  };
 }
 
 /** Format helper · seconds → "1:30:00" or "30:00". */

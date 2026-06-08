@@ -2923,6 +2923,20 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .bgaplab.off{background:#ff9aa8;color:#1a0606;}
 .targets2 .bandcap{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.82);margin-top:8px;line-height:1.5;}
 .targets2 .bandcap b{color:#fff;font-weight:700;}
+/* 2026-06-08 · confidence-interval zone on the current-fitness marker.
+   Research/02 §13.7 band, status-scaled. Sits behind the dots; shaded
+   span from the slower (hi) edge to the faster (lo) edge. */
+.targets2 .bci{position:absolute;top:50%;height:22px;transform:translateY(-50%);border-radius:8px;background:rgba(252,77,100,.14);border:1px solid rgba(252,77,100,.28);}
+.targets2 .bpt.fit.range .cap .v{font-size:16px;letter-spacing:-.3px;}
+/* 2026-06-08 · goal-attainment confidence label · "MEDIUM · doable, not
+   banked" · answers solidly-vs-barely right under the goal time. */
+.targets2 .goalconf{margin-top:13px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+.targets2 .goalconf .confword{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;padding:3px 9px;border-radius:6px;}
+.targets2 .goalconf .confword.high{background:#86efa0;color:#06210f;}
+.targets2 .goalconf .confword.medium{background:#FFCE8A;color:#1a1206;}
+.targets2 .goalconf .confword.low{background:#ff9aa8;color:#1a0606;}
+.targets2 .goalconf .confdesc{font-size:14px;font-weight:600;color:rgba(255,255,255,.9);}
+.targets2 .goalconf .confdetail{flex-basis:100%;font-size:12px;font-weight:500;color:rgba(255,255,255,.62);margin-top:2px;}
 
 /* === SECTION 2 · THE PATH === */
 .targets2 .pathcard{padding:24px 26px;}

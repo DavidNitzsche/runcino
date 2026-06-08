@@ -288,6 +288,25 @@ export type GoalRace = {
    *  is targeting · transparency without prescription. Null when no
    *  recent race / VDOT-yielding run. */
   vdotProjectionSec?: number | null;
+  /** 2026-06-08 · statistical band around the current-fitness projection
+   *  (vdotProjectionSec) · Research/02 §13.7, status-scaled. lo = faster
+   *  edge, hi = slower edge, both seconds. Null at cold-start. Renders as
+   *  a range on the ProjectionBand current-fitness marker. */
+  confidenceInterval?: {
+    lo: number;
+    hi: number;
+    pct: number;
+    method: 'observed-cv' | 'research-span';
+  } | null;
+  /** 2026-06-08 · goal-attainment confidence (HIGH/MEDIUM/LOW) · answers
+   *  "solidly or barely." Renders under the goal time. Null at cold-start. */
+  confidenceLabel?: {
+    tier: 'high' | 'medium' | 'low';
+    word: 'HIGH' | 'MEDIUM' | 'LOW';
+    descriptor: string;
+    detail: string;
+    evidence: Record<string, number | string>;
+  } | null;
   /** One-line plain-English summary of the projection state · renders
    *  under the gauge. */
   projectionSummary?: string;

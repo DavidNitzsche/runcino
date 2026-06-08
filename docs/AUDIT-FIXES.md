@@ -17,6 +17,31 @@ Completed fixes and their follow-up queue. Add new items at the top of each sect
 
 ## Follow-up queue
 
+### CI-followup-1 — §13.7 band refinements deferred (marathon one-sided + aged input)
+
+**Context:** `computeConfidenceInterval` (`lib/training/goal-projection.ts`) ships a **symmetric** band sized off Research/02 §13.7 keyed on target distance (≤10K ±2.0% · HM ±2.5% · marathon+ ±3.0%), status-scaled (on-track ×1.0 · watching ×1.25 · off-track ×1.5). Correct for David's HM→HM case (same-distance, advanced, recent anchor).
+
+**Two §13.7 refinements are NOT yet wired** — both need data the function isn't passed today:
+
+1. **Marathon-without-a-block → one-sided pessimism.** §13.1 / §13.7 say a marathon predicted from a sub-half input with no marathon-specific block runs **±10% one-sided slow** (optimistic bias). Needs: the VDOT anchor's distance + a "marathon-specific block present" signal (long-run volume / MP work in the last 8-12 wk). The band would become `{ lo: center − smallHalf, hi: center + bigHalf }`.
+2. **>6-month-old anchor → ±8% override.** §13.7 "cross-prediction with >6-month-old input → ±8%." Needs: the anchoring race/run **date**. `bestRecentVdot` already returns the winning candidate with its `date` + `distance_mi` — thread those through `computeGoalProjection` (add `vdotAnchorDistanceMi` + `vdotAnchorDateISO` args) and the override is a few lines.
+
+**Also deferred:** §13.5 novice widening (+2pp for `experience_level` novice/beginner) — David is advanced so it's a no-op today; add when a beginner user lands.
+
+**Where:** `computeConfidenceInterval` has the documented hooks in its header comment. Symmetric band is the honest default until the anchor metadata is threaded.
+
+### CI-followup-2 — iPhone confidence band + label render (next TestFlight bundle)
+
+**Context:** the seed already exposes `goalRace.confidenceInterval` + `goalRace.confidenceLabel` (one server number, all surfaces). **iPhone gets the data for free; it just needs the Swift render.**
+
+**Fix:** in `native-v2/Faff/Faff/Components/Toolkit/K_TargetsProjection.swift` —
+- render the CI as an explicit band around the projection (the panel already has a Conditions/Execution variance decomposition; surface the `confidenceInterval.lo`–`.hi` range as the headline band rather than a bare point).
+- render `confidenceLabel.word` + `.descriptor` (HIGH/MEDIUM/LOW · "doable, not banked") on the projection header, mirroring the web `.goalconf`.
+
+**Decode:** add `confidenceInterval` + `confidenceLabel` to the Swift model that decodes the targets/projection payload. Cross-ref `docs/IPHONE_SYNC_LEDGER.md`.
+
+**Falsifier:** iPhone Targets shows "1:31:56 – 1:37:52" band + "MEDIUM · doable, not banked" for David, matching web.
+
 ### E8-followup — HR-based intensity inference in training-form (low urgency)
 
 **What:** The training-form query only has `d`, `mi`, and `inferred_type` (from `plan_workouts`). When `inferred_type` is null (no plan row match), we currently fall back to distance only (`mi >= 10 → 'long'`). We can't distinguish a 7mi easy from a 7mi workout without a quality signal.

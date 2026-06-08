@@ -2087,6 +2087,14 @@ export async function buildSeed(): Promise<FaffSeed> {
   }
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
+  // 2026-06-08 · pacing-discipline computed ONCE · feeds both the
+  // confidence-interval band (computeGoalProjection) and the
+  // executionBufferSec GapPanel chunk below. Hoisted to avoid a
+  // duplicate 90-day query.
+  const { computePacingDiscipline } = await import('@/lib/coach/pacing-discipline');
+  const pacing = goalRace && goalRace.slug && goalRace.distanceMi
+    ? await computePacingDiscipline(userId, 90).catch(() => null)
+    : null;
   // 2026-06-04 · plan-trusts-itself doctrine (David's call). Replace
   // the raw VDOT-derived projection with the goalProjection output ·
   // PROJECTION = GOAL until drift signals fire. See
@@ -2101,6 +2109,8 @@ export async function buildSeed(): Promise<FaffSeed> {
           goalSec: goalSecForGP,
           raceDistanceMi: goalRace.distanceMi,
           vdot: profile?.physiology.vdot ?? null,
+          daysToRace: goalRace.daysAway ?? null,
+          pacing: pacing ? { cv: pacing.cv, source: pacing.source } : null,
         });
         // Override projection with plan-trusts-itself value.
         goalRace.projected = formatGoalTime(gp.projectionSec) ?? goalRace.projected;
@@ -2114,6 +2124,8 @@ export async function buildSeed(): Promise<FaffSeed> {
         (goalRace as { nextTestPoints?: unknown }).nextTestPoints = gp.nextTestPoints;
         (goalRace as { recentTestPoints?: unknown }).recentTestPoints = gp.recentTestPoints;
         (goalRace as { transitions?: unknown }).transitions = gp.transitions;
+        (goalRace as { confidenceInterval?: unknown }).confidenceInterval = gp.confidenceInterval;
+        (goalRace as { confidenceLabel?: unknown }).confidenceLabel = gp.confidenceLabel;
         // Recompute onTrack/delta against the new projection.
         const newProjSec = gp.projectionSec;
         const diff = goalSecForGP - newProjSec;
@@ -2193,11 +2205,12 @@ export async function buildSeed(): Promise<FaffSeed> {
 
       // §2.3 · Execution chunk · per-runner pacing buffer (CV-based).
       // Always populated · 30s default when fewer than 2 typed
-      // race/tempo/threshold runs in the 90-day window.
-      const { computePacingDiscipline } = await import('@/lib/coach/pacing-discipline');
-      const pacing = await computePacingDiscipline(userId, 90);
-      goalRace.executionBufferSec = pacing.bufferSec;
-      goalRace.executionSource = pacing.source;
+      // race/tempo/threshold runs in the 90-day window. Reuses the
+      // pacing computed once above (shared with the CI band).
+      if (pacing) {
+        goalRace.executionBufferSec = pacing.bufferSec;
+        goalRace.executionSource = pacing.source;
+      }
 
       // §2.4 · Hit list · cheapest 2-3 levers to move the projection.
       // Composes per-runner tune-up race candidates, plan-adjacent
