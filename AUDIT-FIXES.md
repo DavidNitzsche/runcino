@@ -463,7 +463,7 @@ Root cause confirmed: `buildWorkoutSpec` long branch ignored its `prescription` 
 
 ---
 
-## Generator follow-up: emit M→HMP labels for late-QUALITY long runs  [CODE-COMPLETE 2026-06-07 · awaiting David's deploy go · falsifiers green]
+## Generator follow-up: emit M→HMP labels for late-QUALITY long runs  [DEPLOYED 2026-06-07 · commit `3c691d91` on main · Railway auto-deploy fired · post-deploy smoke PASS · CLOSED]
 
 The 6 in-place UPDATEs above fixed the **active plan** for David. This closes the generator side: `layoutWeek` now emits M/HMP finish labels for late-QUALITY long runs, so `buildWorkoutSpec`'s `extractFinishSegment` encodes the finish for every future regen + new runner — not just David's hand-patched rows. Before this, `generate.ts` emitted plain `'LONG'` for all QUALITY-phase longs → flat easy spec under a label that promised nothing → no specific-endurance stimulus (the D1 gap, generator side).
 
@@ -489,7 +489,9 @@ The 6 in-place UPDATEs above fixed the **active plan** for David. This closes th
   - Beginner 16wk HM (QUALITY 6): ONLY wk8/9/10 (last 3) get finishes; earlier QUALITY plain → phase-position derivation confirmed (not hardcoded weeks).
   - Advanced 16wk Marathon (QUALITY 5): `@ MP` throughout late-QUALITY + RS (race pace == marathon pace).
 
-**Scope:** future generations only. Does NOT regenerate David's active plan (regen re-rolls distances — separate gated issue, logged above). Deploys via the normal pipeline on David's go.
+**Scope:** future generations only. Does NOT regenerate David's active plan (regen re-rolls distances — separate gated issue, logged above).
+
+**DEPLOYED 2026-06-07** · commit `3c691d91` on `main` (cherry-picked onto `c0f2bb33` after a concurrent main push; clean, no overlap — frontend-only date-helper change). Railway auto-deploy fired on push. **Post-deploy smoke (read-only, composePlan only, no regen):** fresh HM plan against deployed `3c691d91` → QUALITY(6)/RACE-SPECIFIC(3)/TAPER(2); last-3 QUALITY longs = `LONG · 3mi @ M` / `LONG · 4mi @ M` / `LONG · 4mi @ HM`; RACE-SPECIFIC all `@ HM`; early QUALITY + TAPER plain. PASS. Site live (HTTP 307 auth redirect). **Generator follow-up CLOSED.**
 
 ### Follow-up (logged, deferred per David — out of scope this session)
 - **10K long-run M-pace finish gap.** Research/22 §2 (10K Intermediate) prescribes "9-10 mi E w/ last 2 mi @ M", but the generator gives 10K plans plain long runs: `racePaceTag` is null for `<12`mi (`generate.ts:756`), so `longFinishSegment` correctly returns null and no finish is emitted. Intentional for this fix (David scoped 5K/10K out: "no long-run inserts"), but the 10K doctrine does support a short M-pace finish. To wire later: extend `racePaceTag` to return `'M'` for the 10K band (≈6-11mi) and add a 10K branch to `longFinishSegment` (smaller pct, `@ M`). Deferred.
