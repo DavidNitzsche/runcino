@@ -23,6 +23,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface StrengthDay {
   date: string;                  // ISO YYYY-MM-DD
@@ -62,7 +63,7 @@ export async function loadStrengthWeekStatus(
   recommendedDays: string[],
 ): Promise<StrengthWeekStatus> {
   const weekEndISO = addDaysISO(weekStartISO, 6);
-  const todayISO = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const todayISO = await runnerToday(userUuid);
 
   const rows = (await pool.query<{
     id: number;

@@ -3,6 +3,7 @@
  * Loads the season-of-races view: the A-race amplified, upcoming Bs/Cs, past races.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface RaceRow {
   slug: string;
@@ -39,7 +40,7 @@ export interface RacesState {
 }
 
 export async function loadRacesState(userId: string): Promise<RacesState> {
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
 
   const rows = (await pool.query(
     `SELECT slug, meta, actual_result FROM races

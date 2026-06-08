@@ -13,6 +13,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadCoachState } from '@/lib/coach/state-loader';
 import { computeReadiness } from './readiness';
 import { loadReadinessHistory } from './readiness-history';
@@ -30,7 +31,7 @@ export async function writeReadinessSnapshot(
   userUuid: string,
   todayISO?: string,
 ): Promise<SnapshotResult> {
-  const date = todayISO ?? new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const date = todayISO ?? await runnerToday(userUuid);
 
   const state = await loadCoachState(userUuid).catch(() => null);
   if (!state) {

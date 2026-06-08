@@ -32,6 +32,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { CoachState } from '@/lib/topics/types';
 import { computeTrainingForm, type TrainingFormLabel } from './training-form';
 import { loadTrainingState } from './training-state';
@@ -201,7 +202,7 @@ export async function loadRecoveryBrief(
   mode: RecoveryMode = 'standard',
   todayISO?: string,
 ): Promise<RecoveryBrief | null> {
-  const today = todayISO ?? new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = todayISO ?? await runnerToday(userId);
 
   // 1. Today's run timing · drives fueling window + post-run TSS estimate.
   const runTiming = await loadTodayRunTiming(userId, today);

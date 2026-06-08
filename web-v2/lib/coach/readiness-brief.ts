@@ -297,7 +297,7 @@ export async function loadReadinessBrief(
   state: CoachState,
   todayISO?: string,
 ): Promise<ReadinessBrief | null> {
-  const date = todayISO ?? new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const date = todayISO ?? await runnerToday(userId);
   const history = await loadReadinessHistory(userId);
 
   // Score today with the (existing) computeReadiness function · scale

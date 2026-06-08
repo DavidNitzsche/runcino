@@ -4,6 +4,7 @@
  * for the HEALTH surface. Reads from health_samples.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 
@@ -185,7 +186,7 @@ export interface HealthState {
 }
 
 export async function loadHealthState(userId: string): Promise<HealthState> {
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
 
   // 2026-05-27: was 6 sequential awaits = 6× round-trip latency. Now all
   // six health_samples queries fire in parallel via Promise.all — they

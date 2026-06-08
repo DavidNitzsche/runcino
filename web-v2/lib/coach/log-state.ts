@@ -6,6 +6,7 @@
  * groups by week, surfaces per-week totals.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
 
@@ -132,7 +133,7 @@ export async function loadLogState(
   userId: string,
   opts?: { limit?: number; filters?: Partial<LogFilters> }
 ): Promise<LogState> {
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
   const limit = opts?.limit ?? 200; // ~6 months of running
 
   const filters: LogFilters = {

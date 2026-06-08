@@ -30,6 +30,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { ReadinessBrief } from './readiness-brief';
 
 export type StandingRecommendationKind =
@@ -91,7 +92,7 @@ export async function composeStandingRecommendation(
   if (!brief) return null;
 
   // Workout already past · no recommendation needed.
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userUuid);
   if (workout.date_iso < today) return null;
 
   // Only quality workouts get recommendations · easy/recovery/rest

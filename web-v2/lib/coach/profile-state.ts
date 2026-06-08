@@ -3,6 +3,7 @@
  * Identity + physiology (derived) + connections + preferences + shoes.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings, type UserSettings } from '@/lib/coach/settings';
 import { computeZones, estimateLTHR, estimateMaxHRFromLTHR, type ZoneTable } from '@/lib/training/zones';
 import { bestRecentVdot, parseRaceTime } from '@/lib/training/vdot';
@@ -57,7 +58,7 @@ function ageFromBirthday(iso: string | null): number | null {
 }
 
 export async function loadProfileState(userId: string): Promise<ProfileState> {
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
 
   // Audit 2026-05-27: most of /profile's data sources are independent.
   // Parallelize the 11-query first batch with Promise.all so /profile FCP

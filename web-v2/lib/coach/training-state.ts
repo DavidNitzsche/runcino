@@ -9,6 +9,7 @@
  * Lives separately from state-loader so the TODAY load stays light.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds } from '@/lib/runs/volume';
 import { loadActivePlan } from '@/lib/plan/lookup';
 
@@ -96,7 +97,7 @@ export interface TrainingState {
 }
 
 export async function loadTrainingState(userId: string): Promise<TrainingState> {
-  const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+  const today = await runnerToday(userId);
 
   const plan = await loadActivePlan(userId);
 
