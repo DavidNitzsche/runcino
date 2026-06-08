@@ -401,8 +401,12 @@ export async function buildWatchToday(
     ? (Number((wo.workout_spec as Record<string, unknown>)?.lthr_bpm) ||
        Number((wo.workout_spec as Record<string, unknown>)?.hr_target_bpm) || null)
     : null;
-  const isQualityWorkout = wo.type === 'intervals' || wo.type === 'threshold' || wo.type === 'tempo';
-  const workHrTargetBpm = isQualityWorkout ? (specHrBpm ?? lthr ?? null) : null;
+  const isQualityWorkout = wo.type === 'intervals' || wo.type === 'vo2max' || wo.type === 'threshold' || wo.type === 'tempo';
+  const isIntervalWorkout = wo.type === 'intervals' || wo.type === 'vo2max';
+  const rawHrTarget = isQualityWorkout ? (specHrBpm ?? lthr ?? null) : null;
+  const workHrTargetBpm = rawHrTarget != null && isIntervalWorkout
+    ? Math.round(rawHrTarget * 1.05)
+    : rawHrTarget;
 
   if (expanded && expanded.length > 0) {
     // workout_spec drove the phase list · convert ExpandedPhase →
