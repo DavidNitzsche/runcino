@@ -705,3 +705,19 @@ First-shipped E5 trusted the watch's on-device (weather-unaware) `verdict`, so a
 - **16-A · Manual starting-mileage field** — add a one-field "starting mileage" input to the shoe edit UI (web + iPhone) so pre-app miles add on top of on-read tracked miles (`display = baseline_mi + tracked`). Needs a `baseline_mi` column (or repurpose the now-vestigial `mileage` column) + the form. Fast-follow; not blocking v1. The on-read v1 reads worn shoes near-0 until runs tag onto them — this closes that gap.
 - **16-B · Backfill `shoe_id` on historical null watch runs** — ~10 recent watch/HK runs predate the ingest hook and have `shoe_id=null` (the hook only fires on new ingests). One-time gated DATA WRITE: run the same resolver over them (day_actions pick → run-type recommend). Needs David's explicit per-statement go (DDL/data-write rule).
 - **16-C · Strava gear-shape fix** — low value for David (0 gear-tagged runs). `matchShoeByGear` already reads `name`/`nickname`/`brand_name`/`model_name`, so the shape is handled; the remaining gap is only for Strava-import users whose gear names don't match their garage brand/model. Defer until a gear-sourced user exists.
+
+---
+
+## Watch HR-on-quality follow-up — intervals should emit a VO2max-floor HR, not raw LTHR  [LOGGED 2026-06-08 · backend · OWN SESSION · NOT built (do not block the watch render)]
+
+**Context.** The watch now renders `hrTargetBpm` as an HR **floor** on quality work phases (`WorkIntervalFace` — `legacy/native/Faff/FaffWatch Watch App/Faces.swift` + the `LiveWorkInterval` adapter in `ActiveWorkoutView.swift`): intervals show `♥162+` (floor framing — HR keeps climbing past LTHR on VO2max reps), threshold shows `♥149` (target framing — run AT LTHR). Green once live HR reaches the carried value, neutral below, no red. This consumes the previously-dead field A2 plumbed (Item 9 / Item 19 #1).
+
+**The value gap.** `spec-builder.ts:297` (the `intervals`/`vo2max` case) emits `lthr_bpm: hrLthrBpm(lthr)` = **raw LTHR** — i.e. the *threshold* HR. But Daniels I-pace is run at **95–100% VO2max** (`Research/22-plan-templates.md:12`), where HR climbs ~10–12% HRmax (≈15–22 bpm) **above** LTHR. So the interval floor we render is the threshold number, ~15–22 bpm low. (Threshold at `:275` is correctly raw LTHR — run AT threshold. This note is intervals-only. Sibling to **D2** above, which fixed tempo reading `lthr_bpm` instead of `hr_target_bpm`.)
+
+**Fix (own session).** In `spec-builder.ts:297` (intervals/vo2max), emit `round(LTHR × 1.05)` instead of raw `lthr_bpm` as a closer VO2max-floor approximation. Threshold (`:275`) stays raw LTHR.
+
+**Caveat — don't silently pollute `lthr_bpm`.** `lthr_bpm` is read by `build-workout.ts` (the COALESCE), and the glance/seed/recap readers (per D2) treat it as true LTHR. Scaling it for intervals changes what *those* surfaces show too. Decide one: (a) a dedicated field (e.g. `vo2max_floor_bpm`) that the watch reads for intervals, leaving `lthr_bpm` meaning LTHR everywhere; or (b) accept the scaled value as the intervals HR reference across all surfaces. Prefer (a) — keep `lthr_bpm` honest.
+
+**Forward-compatible with the render.** The watch is value-agnostic: the `♥N+` floor framing holds whatever number arrives, and the `+` is keyed off the zone tag (`paceLabel == "I"`), not the value. No Swift change is needed when this lands.
+
+**Falsifier.** After the fix, an intervals workout's phase `hrTargetBpm` ≈ `round(LTHR×1.05)` (LTHR 162 → ~170); a threshold workout stays at LTHR (162); the watch interval face reads `♥170+`, threshold `♥162`.

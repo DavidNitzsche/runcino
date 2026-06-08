@@ -200,6 +200,27 @@ private struct LiveWorkInterval: View {
             : PaceFormat.clock(engine.phaseRemainingSec)
     }
 
+    /// Live HR string · nil when the phase carries no HR target (cold-start /
+    /// no LTHR) so the face falls back to total distance. "—" until the
+    /// first reading.
+    private var hrText: String? {
+        guard phase.hrTargetBpm != nil else { return nil }
+        return tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—"
+    }
+    /// Floor semantics · green once live HR reaches the carried value,
+    /// neutral below, mute before the first reading.
+    private var hrRole: Role {
+        guard let target = phase.hrTargetBpm, tracker.heartRate > 0 else { return .mute }
+        return tracker.heartRate >= target ? .live : .neutral
+    }
+    /// Top-label reference · "♥162+" for intervals (floor), "♥149" for
+    /// threshold (target). Zone tag distinguishes them (I vs T).
+    private var hrReference: String? {
+        guard let target = phase.hrTargetBpm else { return nil }
+        let isInterval = engine.workout.paceLabel == "I"
+        return "♥\(target)\(isInterval ? "+" : "")"
+    }
+
     var body: some View {
         WorkIntervalFace(
             livePace:      paceText(tracker),
@@ -207,7 +228,10 @@ private struct LiveWorkInterval: View {
             targetPace:    phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
             totalDistance: distText(tracker.distanceMi),
             repCounter:    repCounter,
-            stripStates:   sessionStripStates(engine)
+            stripStates:   sessionStripStates(engine),
+            hr:            hrText,
+            hrRole:        hrRole,
+            hrReference:   hrReference
         )
     }
 }

@@ -56,20 +56,48 @@ struct WorkIntervalFace: View {
     /// "REP 2/4" style label. Computed from stripStates by default so
     /// callers don't have to do it.
     var topLabel: String? = nil
+    /// Live HR for quality work (intervals/threshold). When non-nil the
+    /// third row shows HR (♥) coloured by `hrRole` INSTEAD of total
+    /// distance — HR is the effort read on a quality rep, and total
+    /// distance is the least load-bearing number mid-rep (the strip +
+    /// rep counter already convey progress). Nil (cold-start / no LTHR)
+    /// falls back to the distance row.
+    var hr: String? = nil
+    /// .live once live HR reaches the carried floor, .neutral below,
+    /// .mute before the first reading. No .over — quality work has no
+    /// HR ceiling, so HR never reads as an error.
+    var hrRole: Role = .neutral
+    /// Small reference appended to the top label: "♥162+" (intervals ·
+    /// floor — HR keeps climbing past LTHR on VO2max reps) or "♥149"
+    /// (threshold · target — run AT LTHR). Nil hides it.
+    var hrReference: String? = nil
 
     private var derivedLabel: String {
-        if let t = topLabel { return t }
-        let nowIdx = stripStates.firstIndex(where: { $0 == 2 }) ?? 0
-        return "REP \(nowIdx + 1)/\(stripStates.count)"
+        let base: String
+        if let t = topLabel {
+            base = t
+        } else {
+            let nowIdx = stripStates.firstIndex(where: { $0 == 2 }) ?? 0
+            base = "REP \(nowIdx + 1)/\(stripStates.count)"
+        }
+        if let ref = hrReference { return "\(base) · \(ref)" }
+        return base
+    }
+
+    /// Third row · live HR (♥) when a quality HR floor is present, else
+    /// the canonical total-distance read.
+    private var thirdRow: NumRow {
+        if let hr = hr { return NumRow(hr, hrRole, icon: "heart.fill") }
+        return NumRow(totalDistance, .dist)
     }
 
     var body: some View {
         NumberFace(
             rows: [
-                NumRow(livePace,      paceRole),
-                NumRow(targetPace,    .neutral),
-                NumRow(totalDistance, .dist),
-                NumRow(repCounter,    .neutral)
+                NumRow(livePace,   paceRole),
+                NumRow(targetPace, .neutral),
+                thirdRow,
+                NumRow(repCounter, .neutral)
             ],
             topLabel: derivedLabel,
             strip: Strip(states: stripStates)

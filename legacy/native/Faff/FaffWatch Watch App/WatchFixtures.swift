@@ -86,6 +86,15 @@ struct WatchFixtureView: View {
             WorkIntervalFace(livePace: "6:33", paceRole: .live, targetPace: "6:31",
                              totalDistance: "3.78", repCounter: "0:24",
                              stripStates: [1, 1, 1, 2, 0, 0])
+        case "rep-hr":
+            // Threshold rep with the live-HR floor row (♥ replaces total
+            // distance). Live 164 ≥ target 149 → green; label "♥149" (no +,
+            // threshold target). Swap to hr "151"/.neutral + "♥162+" to
+            // preview the intervals floor (below-floor) state.
+            WorkIntervalFace(livePace: "6:33", paceRole: .live, targetPace: "6:31",
+                             totalDistance: "3.78", repCounter: "0:24",
+                             stripStates: [1, 1, 1, 2, 0, 0],
+                             hr: "164", hrRole: .live, hrReference: "♥149")
         // ── Cruise Intervals (4 × 1 mi) audit fixtures ────────────────────
         // Each renders the .sampleCruise workout frozen at a specific phase
         // index so we can verify the right face shows for every phase
