@@ -96,8 +96,10 @@ export interface GlanceState {
    * mileage but missed 2 of 4 reps, invisible to a distance check.
    *   · 'nailed' — ran today, hit the work (or no negative signal / non-watch)
    *   · 'short'  — the WORK (quality) block was cut short (a work phase didn't
-   *               complete) or missed pace. Cutting only a warmup/cooldown
-   *               short does NOT count — the quality is what defines the session
+   *               complete) or missed pace vs the HEAT-ADJUSTED target. Cutting
+   *               only a warmup/cooldown short does NOT count, and a run done
+   *               correctly for the heat is not "short" (weather-adjusted like
+   *               the phase panel) — the quality is what defines the session
    *   · 'over'   — ran ≥1.25× the planned distance (the deferred ease-off case)
    *   · null     — no run logged today (the done-state isn't active)
    * Optional: loadGlanceState always sets it for real data; minimal fixtures
@@ -174,11 +176,15 @@ export interface GlanceState {
  * runs default to 'nailed' (a logged run with no negative signal). Returns
  * null when there's no run today, so the done-state simply isn't active.
  *
+ * Targets are HEAT-ADJUSTED before judging (mirrors loadPhaseBreakdown), so a
+ * run executed correctly for the conditions isn't called short — the watch's
+ * on-device verdict is weather-unaware and is NOT trusted here.
+ *
  * Only WORK phases count — cutting a warmup/cooldown short (status='abandoned'
  * during the CD) is not "coming up short" on the session. Threshold (tunable
  * coach judgment): 'short' when a work phase didn't complete, or ≥ ~1/3 of the
- * ran work phases missed pace — flags Jun 2 (2 of 4) while leaving a single
- * off-rep in a long set as still "nailed".
+ * ran work phases missed the heat-honest target — leaving a single off-rep in a
+ * long set as still "nailed".
  */
 async function computeTodayExecution(
   userId: string,
@@ -201,18 +207,46 @@ async function computeTodayExecution(
     let payload: unknown = row.value;
     if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
     const p = payload as { phases?: Array<Record<string, unknown>> } | null;
+
+    // Heat-adjust the target before judging, exactly as loadPhaseBreakdown
+    // (the phase panel) does — otherwise a run executed correctly for the heat
+    // reads "short" on the done-state while the panel shows it "on" (Jun 2/Jun 4
+    // both flip under ~8-11% slowdown). The watch's on-device `verdict` is
+    // weather-unaware, so we recompute from target/actual + the run's slowdown.
+    let slowdownPct = 0;
+    const wr = (await pool.query(
+      `SELECT data->'weather' AS weather, (data->>'durationSec')::int AS dur
+         FROM runs WHERE user_uuid = $1 AND data->>'date' = $2
+           AND absorbed_into_canonical_at IS NULL AND (data ? 'mergedIntoId') = false
+         LIMIT 1`,
+      [userId, today],
+    ).catch(() => ({ rows: [] }))).rows[0] as { weather?: Record<string, unknown> | null; dur?: number | null } | undefined;
+    if (wr?.weather) {
+      const w = wr.weather;
+      const { judgeWeather } = await import('./weather-adjust');
+      slowdownPct = judgeWeather({
+        tempF: typeof w.temp_f === 'number' ? w.temp_f : null,
+        tempF_peak: typeof w.temp_f_peak === 'number' ? w.temp_f_peak : null,
+        humidityPct: typeof w.humidity_pct === 'number' ? w.humidity_pct : null,
+        conditions: typeof w.conditions === 'string' ? w.conditions : null,
+        cloudCoverPct: typeof w.cloud_cover_pct === 'number' ? w.cloud_cover_pct : null,
+        windMph: typeof w.wind_mph === 'number' ? w.wind_mph : null,
+        durationS: typeof wr.dur === 'number' ? wr.dur : null,
+      }).slowdownPct ?? 0;
+    }
+
     // Only the WORK (quality) phases define the session. Cutting a warmup or
-    // cooldown short (status='abandoned' during the CD) is NOT "coming up
-    // short" — David's call. 'short' fires when the quality block itself was
-    // cut short (a work phase didn't complete) or missed pace.
+    // cooldown short is NOT "coming up short" — David's call. 'short' fires when
+    // the quality block was cut short (a work phase didn't complete) or missed
+    // pace AFTER the heat allowance.
     const workPhases = (Array.isArray(p?.phases) ? p!.phases : []).filter((ph) => ph.type === 'work');
     const workCutShort = workPhases.some((ph) => ph.completed === false);
     const ranWork = workPhases.filter((ph) => Number(ph.targetPaceSPerMi) > 0 && Number(ph.actualPaceSPerMi) > 0);
     const missed = ranWork.filter((ph) => {
-      const v = String(ph.verdict ?? '').toLowerCase();
-      if (v === 'missed' || v === 'slow') return true;
-      // Verdict-absent fallback: actual slower than target + 12 s/mi.
-      return Number(ph.actualPaceSPerMi) > Number(ph.targetPaceSPerMi) + 12;
+      const tgt = Number(ph.targetPaceSPerMi);
+      // Heat-honest target + 10 s/mi tolerance (mirrors loadPhaseBreakdown).
+      const effTarget = slowdownPct >= 2 ? Math.round(tgt * (1 + slowdownPct / 100)) : tgt;
+      return Number(ph.actualPaceSPerMi) > effTarget + 10;
     }).length;
     if (workCutShort || (ranWork.length > 0 && missed / ranWork.length >= 0.34)) return 'short';
   }
