@@ -38,6 +38,7 @@ When a row moves states (e.g. iPhone wires the field), update the status inline.
 
 | Commit | What changed | Why iPhone doesn't need to touch |
 |--------|--------------|----------------------------------|
+| 14868806 / 17a0b733 (watch TF 174, 2026-06-08) | `WatchPhase.isFinishSegment: boolean` (optional · emitted only on the long-run HM/M finish phase) on `/api/watch/today` | **WATCH** consumes it (shipped TestFlight 174): routes the long-with-finish build phase to the EASY face and the finish to a FINISH face, with a FINISH boundary cue instead of "REP 2/2". **iPhone** WorkoutDetailModal decoder (`native-v2/.../Models/Watch.swift` WatchPhase) has its own `CodingKeys` *without* this key → Swift ignores the unknown field, no break, modal renders exactly as before. OPTIONAL future enhancement: iPhone modal could label the finish segment off this flag (not required). |
 | 030bfbe7 | `runForm.*.series28d`, `sleepStages.{light,awake}Series`, `vo2.series28d` | iPhone agent confirmed wired 2026-06-03 PM. Length-≥14 trigger fires reliably. |
 | 25281ea7 | Mover math · `oneLineMover` string regenerated correctly | iPhone reads the string; engine recomputes it. |
 | 25281ea7 | Mover label framing · "X pulled the score down 7 pts" | iPhone reads the authored label · no change to read path. |
