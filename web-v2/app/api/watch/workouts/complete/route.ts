@@ -78,6 +78,11 @@ interface WatchCompletionBody {
   phases?: WatchCompletionPhaseBody[];
   // GPS polyline shipped directly by the watch app (build 172+). Eliminates
   // the separate iPhone HK import hop that was the sole GPS source.
+  // 2026-06-08 · the watch's WatchCompletion (Encodable, no CodingKeys)
+  // emits CAMELCASE `routePolyline` on the wire; the original `route_polyline`
+  // read silently dropped every watch GPS track (Jun 8 regression). Declare
+  // both shapes; the read site prefers camel and falls back to snake.
+  routePolyline?: string | null;
   route_polyline?: string | null;
   // Legacy fallback fields — older clients; prefer startedAt for date
   date?: string;
@@ -231,10 +236,13 @@ export async function POST(req: NextRequest) {
     // Reference to the full per-phase blob for any downstream consumer
     // that wants the structured detail.
     watchCompletionRef: body.workoutId,
-    // GPS polyline shipped directly by watch app (build 172+). Older clients
-    // omit the field; falls back to null and the HK import path fills it via
-    // the apple_watch sibling row + enhanceCanonicalFromAbsorbed as before.
-    routePolyline: body.route_polyline ?? null,
+    // GPS polyline shipped directly by watch app (build 172+). The watch
+    // emits camelCase `routePolyline` (Encodable default, no CodingKeys); the
+    // prior snake_case-only read silently dropped a valid 1486-char polyline
+    // on Jun 8. Prefer camel, accept snake; older clients omit both → null and
+    // the HK import path fills it via the apple_watch sibling row +
+    // enhanceCanonicalFromAbsorbed as before.
+    routePolyline: body.routePolyline ?? body.route_polyline ?? null,
   };
   // 2026-06-03 · auto-populate profile.timezone from the device's TZ on
   // first sync. Silent · only writes when profile.timezone is currently
