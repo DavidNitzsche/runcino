@@ -12,10 +12,7 @@ struct RaceDayView: View {
 
     @State private var detail: RaceDetailResponse?
     @State private var raceFacts: CoachFactsBlock?
-    /// ProfileState · used to read VDOT for the prediction table when the
-    /// runner has a fitness baseline. Loaded in parallel with /api/race.
-    @State private var profile: ProfileState? =
-        AppCache.read(.profileState, as: ProfileState.self)
+    @State private var projection: ProjectionSummary?
     /// Watch workout payload for the race date · carries gelsMi for the
     /// fueling strip on race-week. nil when no workout is scheduled or
     /// the race is past.
@@ -112,13 +109,13 @@ struct RaceDayView: View {
                         .padding(.top, 26)
                     }
 
-                    // VDOTPredictionTable · Daniels predicted times across
-                    // distances when we have a VDOT. Reads profile.physiology
-                    // (already in the cached profile state). Toolkit · Family B.
-                    if let vdot = profileVdot, vdot > 0,
+                    if let pRows = projection?.raceProjections, !pRows.isEmpty,
                        detail?.race.is_past != true {
-                        section(title: "WHAT VDOT \(Int(vdot)) PREDICTS", right: nil) {
-                            VDOTPredictionTable(rows: vdotPredictionRows(for: vdot))
+                        let vdotN = projection?.vdot.map { "\(Int($0))" } ?? "·"
+                        section(title: "WHAT VDOT \(vdotN) PREDICTS", right: nil) {
+                            VDOTPredictionTable(rows: pRows.map {
+                                VDOTPredictionRow(distance: $0.distance, time: $0.time)
+                            })
                         }
                         .padding(.top, 26)
                     }
@@ -513,11 +510,10 @@ struct RaceDayView: View {
     private func load() async {
         async let r = (try? await API.fetchRaceDetail(slug: raceSlug))
         async let f = (try? await API.fetchCoachFacts(surface: "race_detail", raceSlug: raceSlug))
-        async let p = (try? await API.fetchProfileState())
-        let (rd, fc, pr) = await (r, f, p)
+        async let proj = (try? await API.fetchTargetsProjection(raceSlug: raceSlug))
+        let (rd, fc, pj) = await (r, f, proj)
         await MainActor.run {
-            self.detail = rd; self.raceFacts = fc
-            if let pr { self.profile = pr }
+            self.detail = rd; self.raceFacts = fc; self.projection = pj
         }
         // Pull the watch workout for the race date so we can read
         // gelsMi for GelMileMarkers. Fires only when the race is
@@ -574,11 +570,6 @@ struct RaceDayView: View {
     }
 
 
-    /// VDOT from the cached profile state. Used to drive the prediction
-    /// table when known; the section is hidden otherwise so we never
-    /// guess fitness.
-    private var profileVdot: Double? { profile?.physiology.vdot }
-
     /// Build the 5 rungs of the race-week countdown (T-7 / T-5 / T-3 /
     /// T-1 / Race). Today's rung glows; everything earlier renders as
     /// past, everything later renders as upcoming. Matches the push
@@ -604,44 +595,4 @@ struct RaceDayView: View {
         }
     }
 
-    /// Daniels prediction rows for 5K / 10K / Half / Marathon at the
-    /// runner's VDOT. The formulas mirror lib/vdot.ts predictRaceTime;
-    /// we keep the math in-line (small enough · no need to round-trip a
-    /// new endpoint just for this table).
-    private func vdotPredictionRows(for vdot: Double) -> [VDOTPredictionRow] {
-        // Daniels approximation: race velocity (m/min) = VDOT × intensityFraction
-        // where intensityFraction = 0.8 + 0.1894393·e^(-0.012778·t)
-        //                            + 0.2989558·e^(-0.1932605·t)
-        // For each distance we iterate on t (minutes) until residual settles.
-        // Distances in meters.
-        let distances: [(label: String, meters: Double)] = [
-            ("5K", 5000), ("10K", 10000),
-            ("Half", 21097.5), ("Marathon", 42195),
-        ]
-        return distances.map { d in
-            var t = d.meters / 250.0  // minutes seed
-            for _ in 0..<8 {
-                let fI = 0.8
-                    + 0.1894393 * exp(-0.012778  * t)
-                    + 0.2989558 * exp(-0.1932605 * t)
-                let v_mPerMin = vdot * fI / (-4.6 + 0.182258 * pow(vdot, 0) + 1)  // simplified
-                // Simpler velocity from VDOT-to-pace mapping: use the canonical
-                // VO2-velocity inverse. Daniels' actual lookup is a table;
-                // approximate by inverting the relation: v = (-4.6 + sqrt(4.6^2 + 4·0.000104·VDOT·1000)) / (2·0.000104)
-                _ = v_mPerMin
-                let v = (-4.6 + (4.6 * 4.6 + 4 * 0.000104 * vdot * 1000).squareRoot()) / (2 * 0.000104)
-                // v is m/min · time = meters / v · iterate using the intensity
-                // fraction to refine.
-                let tRefined = d.meters / (v * fI)
-                t = (t + tRefined) / 2
-            }
-            return VDOTPredictionRow(distance: d.label, time: formatSecondsTime(Int(t * 60)))
-        }
-    }
-
-    private func formatSecondsTime(_ s: Int) -> String {
-        let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
-        if h > 0 { return String(format: "%d:%02d:%02d", h, m, sec) }
-        return String(format: "%d:%02d", m, sec)
-    }
 }

@@ -38,7 +38,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadProjectionSeries } from '@/lib/training/projection-snapshots';
-import { predictRaceTime, parseRaceTime } from '@/lib/training/vdot';
+import { predictRaceTime, parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
@@ -275,6 +275,21 @@ export async function GET(req: NextRequest) {
     const lastMove = lastMoveFromSeries(series);
     const held = heldDays(series, vdot);
 
+    // All four standard Daniels distances via the canonical predictRaceTime
+    // (binary-search on rawVdot). iPhone renders these directly — no local
+    // race-time math on any client surface.
+    const STANDARD_RACES: Array<{ distance: string; mi: number }> = [
+      { distance: '5K', mi: 3.10686 },
+      { distance: '10K', mi: 6.21371 },
+      { distance: 'Half', mi: 13.1094 },
+      { distance: 'Marathon', mi: 26.2188 },
+    ];
+    const raceProjections = vdot != null
+      ? STANDARD_RACES
+          .map(r => ({ distance: r.distance, time: formatRaceTime(predictRaceTime(vdot, r.mi)) }))
+          .filter((r): r is { distance: string; time: string } => r.time != null)
+      : null;
+
     return NextResponse.json({
       ok: true,
       status,
@@ -301,6 +316,7 @@ export async function GET(req: NextRequest) {
       levers,
       heldDays: held,
       lastMove,
+      raceProjections,
     });
   } catch (err: any) {
     console.error('[api/targets/projection] failed:', err);

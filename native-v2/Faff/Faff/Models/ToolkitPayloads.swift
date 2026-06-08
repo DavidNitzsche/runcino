@@ -346,6 +346,11 @@ struct ProjectionLastMove: Decodable {
     }
 }
 
+struct RaceProjectionEntry: Decodable {
+    let distance: String   // "5K" / "10K" / "Half" / "Marathon"
+    let time: String       // "19:42" / "1:34:59"
+}
+
 struct ProjectionSummary: Decodable {
     let ok: Bool
     let status: String     // "on_track" | "watch" | "off" | "race_week" | "cold"
@@ -387,6 +392,10 @@ struct ProjectionSummary: Decodable {
     let heldDays: Int
     let lastMove: ProjectionLastMove?
 
+    // Backend-computed Daniels predictions for 5K / 10K / Half / Marathon.
+    // Formatted strings ("1:34:59") — zero local race-time math on device.
+    let raceProjections: [RaceProjectionEntry]?
+
     enum CodingKeys: String, CodingKey {
         case ok, status, vdot, projectionSec, goalSec,
              raceSlug, raceName, raceDate, daysAway, distanceMi, location,
@@ -394,7 +403,7 @@ struct ProjectionSummary: Decodable {
              courseImpactSec, courseSource, courseElevGainFtPerMi,
              conditionsImpactSec, conditionsSource,
              executionBufferSec, executionSource, executionCV, executionN,
-             levers, heldDays, lastMove
+             levers, heldDays, lastMove, raceProjections
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -430,5 +439,6 @@ struct ProjectionSummary: Decodable {
 
         self.heldDays = try c.decodeIfPresent(Int.self, forKey: .heldDays) ?? 0
         self.lastMove = try c.decodeIfPresent(ProjectionLastMove.self, forKey: .lastMove)
+        self.raceProjections = try? c.decode([RaceProjectionEntry].self, forKey: .raceProjections)
     }
 }
