@@ -89,8 +89,13 @@ export function resolveDayState(glance: GlanceState | null): DayState {
   // 3. done · ran today
   const ran = today.doneMi >= 0.5;
   if (ran) {
-    // ease_off heuristic deferred — v1 routes all completed runs to nailed.
-    // Future: compare doneMi vs plannedMi (>=125% = ease_off) + HR drift.
+    // E5: route by how the run ACTUALLY went (glance.todayExecution, derived
+    // from the frozen watch-completion phases). Overreach → done_ease_off (its
+    // real "went big" purpose, finally wired). 'nailed' and 'short' both stay
+    // done_nailed at the STATE level — the verb / prose / stat-tile copy
+    // branches on todayExecution in the poster + sibling builders, so there's
+    // no new DayState and no iPhone FaffDayState enum change (E5-1).
+    if (glance.todayExecution === 'over') return 'done_ease_off';
     return 'done_nailed';
   }
 
@@ -134,7 +139,7 @@ const GRADIENT_BY_STATE: Record<DayState, string> = {
  * matching what the Faff fixtures emit (per design/pages/today.md hero
  * table).
  */
-function heroVerb(state: DayState, today: GlanceWeekDay | null): string {
+function heroVerb(state: DayState, today: GlanceWeekDay | null, exec: GlanceState['todayExecution'] = null): string {
   switch (state) {
     case 'easy':
       return today ? `EASY ${formatMi(today.plannedMi)}.` : 'EASY.';
@@ -145,7 +150,8 @@ function heroVerb(state: DayState, today: GlanceWeekDay | null): string {
     case 'rest':
       return 'REST.';
     case 'done_nailed':
-      return 'NAILED IT.';
+      // E5: honest verb when the run came up short instead of "NAILED IT".
+      return exec === 'short' ? 'CAME UP SHORT.' : 'NAILED IT.';
     case 'done_ease_off':
       return 'EASE OFF TOMORROW.';
     case 'niggle':
@@ -174,7 +180,7 @@ export function buildPoster(glance: GlanceState, state: DayState): PosterPayload
   const eyebrow = composeEyebrow(glance);
   const phaseTag = glance.phaseLabel ? glance.phaseLabel.toUpperCase() : null;
 
-  const verb = heroVerb(state, today);
+  const verb = heroVerb(state, today, glance.todayExecution);
 
   // Stat trio · varies per state per Direction A3 deck. easy keeps the
   // body-context trio (WEEK · RHR · SLEEP); quality/long switch to
@@ -325,7 +331,11 @@ function buildStatTrio(
       return [
         { value: today.doneMi.toFixed(1), label: 'BANKED MI' },
         { value: glance.weekDone.toFixed(1), label: 'WEEK MI' },
-        { value: '✓', label: 'PLAN HIT', valueColor: 'green' },
+        // E5: a short session must not claim "✓ PLAN HIT". Overreach
+        // (done_ease_off) and clean hits keep the green check.
+        glance.todayExecution === 'short'
+          ? { value: '◑', label: 'PARTIAL', valueColor: 'amber' }
+          : { value: '✓', label: 'PLAN HIT', valueColor: 'green' },
       ];
     case 'rest':
       return [
@@ -757,13 +767,19 @@ export function buildSibling(glance: GlanceState, state: DayState): SiblingPaylo
       };
     case 'rest':
       return { state, title, tiles };
-    case 'done_nailed':
+    case 'done_nailed': {
+      // E5: a session that came up short gets honest, non-punishing copy
+      // instead of "BANKED IT / In the books".
+      const short = glance.todayExecution === 'short';
       return {
         state,
-        title,
+        title: short ? { main: 'CAME UP SHORT', suffix: 'NO DRAMA' } : title,
         tiles,
-        prose: 'In the books. Refuel within the hour, sleep early.',
+        prose: short
+          ? "Came up short. That's data · note what was hard and bring it to the next one."
+          : 'In the books. Refuel within the hour, sleep early.',
       };
+    }
     case 'done_ease_off':
       return {
         state,

@@ -87,6 +87,23 @@ export interface GlanceState {
   raceGoalSeconds: number | null;
   raceGoalDistanceMi: number | null;
   readiness: ReadinessBreakdown;
+  /**
+   * E5 · how TODAY's completed run actually went vs what was prescribed.
+   * Drives the done-state copy in glance-adapter (resolveDayState +
+   * poster/sibling) so a missed or abandoned session no longer reads
+   * "NAILED IT". Derived from the frozen watch-completion phases (same
+   * source as loadPhaseBreakdown), not doneMi alone — Jun 2 ran the planned
+   * mileage but missed 2 of 4 reps, invisible to a distance check.
+   *   · 'nailed' — ran today, hit the work (or no negative signal / non-watch)
+   *   · 'short'  — the WORK (quality) block was cut short (a work phase didn't
+   *               complete) or missed pace. Cutting only a warmup/cooldown
+   *               short does NOT count — the quality is what defines the session
+   *   · 'over'   — ran ≥1.25× the planned distance (the deferred ease-off case)
+   *   · null     — no run logged today (the done-state isn't active)
+   * Optional: loadGlanceState always sets it for real data; minimal fixtures
+   * (personas) omit it and consumers treat absent as "no signal" (→ nailed).
+   */
+  todayExecution?: 'nailed' | 'short' | 'over' | null;
   // Skip Today (P-SKIP, 2026-05-28): runner explicitly tapped SKIP on the
   // poster. Row lives in `day_actions` (migration 114). Distinct from rest
   // (planned), missed (passive), sick/niggle (health). Drives the `skipped`
@@ -147,6 +164,60 @@ export interface GlanceState {
     }>;
     summary: string;
   } | null;
+}
+
+/**
+ * E5 · classify how TODAY's completed run went vs the prescription.
+ * Reads the frozen watch-completion phases (same field-date query as
+ * loadPhaseBreakdown / the recap route) so a missed-rep session is caught
+ * even when total mileage matched the plan. Cold-start / non-watch / no-phase
+ * runs default to 'nailed' (a logged run with no negative signal). Returns
+ * null when there's no run today, so the done-state simply isn't active.
+ *
+ * Only WORK phases count — cutting a warmup/cooldown short (status='abandoned'
+ * during the CD) is not "coming up short" on the session. Threshold (tunable
+ * coach judgment): 'short' when a work phase didn't complete, or ≥ ~1/3 of the
+ * ran work phases missed pace — flags Jun 2 (2 of 4) while leaving a single
+ * off-rep in a long set as still "nailed".
+ */
+async function computeTodayExecution(
+  userId: string,
+  today: string,
+  todayRow: GlanceWeekDay | undefined,
+): Promise<'nailed' | 'short' | 'over' | null> {
+  if (!todayRow || todayRow.doneMi < 0.5) return null; // no run today
+  const row = (await pool.query(
+    `SELECT value FROM coach_intents
+      WHERE COALESCE(user_uuid, user_id) = $1
+        AND reason = 'watch_completion'
+        AND (CASE WHEN field LIKE '%-____-__-__' THEN RIGHT(field, 10) = $2 ELSE ts::date = $2::date END)
+      ORDER BY ts DESC LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] }))).rows[0];
+
+  const overreach = todayRow.plannedMi > 0 && todayRow.doneMi >= todayRow.plannedMi * 1.25;
+
+  if (row?.value) {
+    let payload: unknown = row.value;
+    if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
+    const p = payload as { phases?: Array<Record<string, unknown>> } | null;
+    // Only the WORK (quality) phases define the session. Cutting a warmup or
+    // cooldown short (status='abandoned' during the CD) is NOT "coming up
+    // short" — David's call. 'short' fires when the quality block itself was
+    // cut short (a work phase didn't complete) or missed pace.
+    const workPhases = (Array.isArray(p?.phases) ? p!.phases : []).filter((ph) => ph.type === 'work');
+    const workCutShort = workPhases.some((ph) => ph.completed === false);
+    const ranWork = workPhases.filter((ph) => Number(ph.targetPaceSPerMi) > 0 && Number(ph.actualPaceSPerMi) > 0);
+    const missed = ranWork.filter((ph) => {
+      const v = String(ph.verdict ?? '').toLowerCase();
+      if (v === 'missed' || v === 'slow') return true;
+      // Verdict-absent fallback: actual slower than target + 12 s/mi.
+      return Number(ph.actualPaceSPerMi) > Number(ph.targetPaceSPerMi) + 12;
+    }).length;
+    if (workCutShort || (ranWork.length > 0 && missed / ranWork.length >= 0.34)) return 'short';
+  }
+  // No negative signal from the phases → overreach (volume) or a clean hit.
+  return overreach ? 'over' : 'nailed';
 }
 
 export async function loadGlanceState(userId: string): Promise<GlanceState> {
@@ -631,6 +702,9 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     console.warn('[glance-state] strength-recommender failed:', e instanceof Error ? e.message : String(e));
   }
 
+  // E5 · classify how today's run went (frozen phases) → done-state copy.
+  const todayExecution = await computeTodayExecution(userId, today, weekDays.find((d) => d.isToday));
+
   return {
     today,
     greetingName: prof?.full_name?.split(/\s+/)[0] ?? 'David',
@@ -643,6 +717,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     daysToARace, nextARaceName,
     lthr, raceGoalSeconds, raceGoalDistanceMi,
     readiness,
+    todayExecution,
     todaySkipped,
     activeNiggle,
     activeSick,
