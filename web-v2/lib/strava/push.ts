@@ -122,6 +122,7 @@ export async function pushRunToStrava(
     avgCadenceSpm: run.avgCadence ?? null,
     routePolyline: run.routePolyline ?? null,
     elevGainFt: run.elevGainFt ?? null,
+    splits: normalizeSplits(run.splits),
     phases: extractPhasesForTcx(run),
   });
 
@@ -419,6 +420,25 @@ function autoDescription(run: any): string {
     }
   }
   return parts.length > 0 ? parts.join(' · ') : '';
+}
+
+/**
+ * Normalize a run's per-mile splits to { mile, durationSec } for the TCX
+ * per-mile time grid. durationSec for a 1-mile split is its pace in seconds
+ * — read paceSecPerMi (watch) or pace_s_per_mi (RunSplit type) or a
+ * Strava-style moving_time. Returns null when there's nothing usable, so
+ * build-tcx falls back to even distribution.
+ */
+function normalizeSplits(splits: any): Array<{ mile: number; durationSec: number }> | null {
+  if (!Array.isArray(splits) || splits.length === 0) return null;
+  const out = splits
+    .map((s: any) => ({
+      mile: Number(s.mile ?? s.split ?? s.index ?? 0),
+      durationSec: Number(s.paceSecPerMi ?? s.pace_s_per_mi ?? s.moving_time ?? s.elapsed_time ?? 0),
+    }))
+    .filter((s) => s.mile > 0 && s.durationSec > 0)
+    .sort((a, b) => a.mile - b.mile);
+  return out.length > 0 ? out : null;
 }
 
 /** Pull phases array from the run row in the shape buildTcx expects. */

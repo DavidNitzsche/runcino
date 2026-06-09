@@ -22,11 +22,12 @@
  *   elevation, and Strava's DEM on the sparse summary polyline spiked to
  *   600-1400ft on a flat (56ft) run — so we hand Strava a clean profile
  *   with the correct total gain instead of letting it DEM the sparse track.
- * - Pace/splits are SYNTHESIZED too: trackpoint times are distributed
- *   evenly along the polyline (proportional to distance), so Strava derives
- *   a ~constant pace (e.g. 8:01/mi). Real per-mile variation would need the
- *   watch's per-split timing, which isn't threaded through here (known
- *   limitation, accepted 2026-06-09).
+ * - Pace comes from the run's per-mile splits when present: trackpoint
+ *   times are laid on a per-mile grid so each mile runs at its real split
+ *   pace, and Strava renders the true profile (e.g. a tempo's fast block).
+ *   Falls back to even distribution (constant pace) when no splits exist.
+ *   A monotonic-time guard prevents Strava speed spikes from near-duplicate
+ *   polyline points.
  */
 import { decodePolyline } from '@/lib/route/polyline';
 
@@ -40,6 +41,8 @@ interface BuildOpts {
   avgCadenceSpm?: number | null;
   routePolyline?: string | null;
   elevGainFt?: number | null;
+  /** Per-mile splits ({mile, durationSec}) → per-mile pace on the track. */
+  splits?: Array<{ mile: number; durationSec: number }> | null;
   phases?: Array<{
     type: string;
     label?: string | null;
@@ -80,7 +83,7 @@ export function buildTcx(opts: BuildOpts): string {
   // (feet → meters). null when unknown → trackpoints omit altitude → DEM.
   const gainMeters = opts.elevGainFt != null ? opts.elevGainFt * 0.3048 : null;
   const track = opts.routePolyline
-    ? trackpointsFromPolyline(opts.routePolyline, firstStartMs, lastEndMs, totalMeters, gainMeters)
+    ? trackpointsFromPolyline(opts.routePolyline, firstStartMs, lastEndMs, totalMeters, gainMeters, opts.splits ?? null, opts.durationSec)
     : [];
 
   const lapXml = laps.map((lap, i) => {
@@ -223,6 +226,8 @@ function trackpointsFromPolyline(
   endMs: number,
   totalMeters: number,
   gainMeters: number | null,
+  splits: Array<{ mile: number; durationSec: number }> | null,
+  durationSec: number,
 ): Array<{ timeMs: number; lat: number; lng: number; cumDistM: number; altitudeM: number | null }> {
   const pts = decodePolyline(encoded);
   if (pts.length < 2) return [];
@@ -231,13 +236,47 @@ function trackpointsFromPolyline(
   const polyTotal = cum[cum.length - 1] || 1;
   const span = Math.max(1, endMs - startMs);
   const distScale = totalMeters > 0 ? totalMeters / polyTotal : 1;
-  return pts.map((p, i) => {
+
+  // Time grid → time fraction [0,1] at a given cumulative distance d (m).
+  // With per-mile splits we lay a per-mile grid so each mile runs at its
+  // real split pace (Strava shows the true profile, e.g. a tempo). Assumes
+  // contiguous 1-mile splits (watch data). The tail beyond the last split
+  // takes the remaining time (durationSec − Σsplits). Without usable splits
+  // we fall back to even distribution (time ∝ distance → constant pace).
+  const MILE_M = 1609.344;
+  let timeFrac: (d: number) => number;
+  if (Array.isArray(splits) && splits.length > 0 && durationSec > 0 && totalMeters > 0) {
+    const dur = splits.map((s) => Math.max(0, Number(s.durationSec) || 0));
+    const nS = dur.length;
+    const cumSec: number[] = [0];
+    for (let m = 0; m < nS; m++) cumSec.push(cumSec[m] + dur[m]);
+    const splitSum = cumSec[nS];
+    const tailDist = Math.max(0, totalMeters - nS * MILE_M);
+    const tailDur = Math.max(0, durationSec - splitSum);
+    timeFrac = (d: number) => {
+      let sec: number;
+      if (tailDist <= 0 || d <= nS * MILE_M) {
+        const mi = Math.min(nS - 1, Math.max(0, Math.floor(d / MILE_M)));
+        const within = Math.max(0, Math.min(1, (d - mi * MILE_M) / MILE_M));
+        sec = cumSec[mi] + within * dur[mi];
+      } else {
+        const within = Math.min(1, (d - nS * MILE_M) / tailDist);
+        sec = splitSum + within * tailDur;
+      }
+      return Math.min(1, sec / durationSec);
+    };
+  } else {
+    timeFrac = (d: number) => (totalMeters > 0 ? Math.min(1, d / totalMeters) : 0);
+  }
+
+  const out = pts.map((p, i) => {
+    const cumScaled = cum[i] * distScale;
     const progress = Math.min(1, cum[i] / polyTotal);
     return {
-      timeMs: startMs + progress * span,
+      timeMs: startMs + timeFrac(cumScaled) * span,
       lat: p[0],
       lng: p[1],
-      cumDistM: cum[i] * distScale,
+      cumDistM: cumScaled,
       // Option C: smooth half-sine profile. sin(π·progress) rises to the
       // peak at the midpoint and returns to 0, so the total positive climb
       // equals gainMeters — no spikes, correct total gain. null → omit
@@ -245,4 +284,13 @@ function trackpointsFromPolyline(
       altitudeM: gainMeters != null ? gainMeters * Math.sin(Math.PI * progress) : null,
     };
   });
+
+  // Monotonic-time guard: near-duplicate polyline points yield equal (or
+  // out-of-order) times → Strava renders speed spikes. Force a small
+  // strictly-increasing minimum step.
+  const MIN_STEP_MS = 100;
+  for (let i = 1; i < out.length; i++) {
+    if (out[i].timeMs <= out[i - 1].timeMs) out[i].timeMs = out[i - 1].timeMs + MIN_STEP_MS;
+  }
+  return out;
 }
