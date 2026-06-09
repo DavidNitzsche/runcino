@@ -65,6 +65,8 @@ struct TodayView: View {
     @State private var adaptationIntent: CoachIntent?
     /// Active niggle row · drives DailyCheckChip + niggle-aware copy.
     @State private var activeNiggle: NiggleRow?
+    /// Active sick episode · drives ReturnGateCard. Nil when no active episode.
+    @State private var activeSick: SickRow?
     /// Daily check selection (better/same/worse/gone). Local · POSTs
     /// to /api/niggle/recovery on tap.
     @State private var niggleCheck: NiggleStatus? = nil
@@ -330,6 +332,20 @@ struct TodayView: View {
                                    onSelect: { handleNiggleCheck($0) })
                         .padding(.horizontal, 22)
                         .padding(.top, 10)
+                }
+
+                // ReturnGateCard · shown while a sick episode is active.
+                // "Yes, ease me back" posts recovered → clears the episode.
+                // "Still resting" posts same → episode stays open.
+                if let s = activeSick {
+                    ReturnGateCard(
+                        pausedDaysAgo: s.daysActive,
+                        symptoms: s.symptoms,
+                        onReturn: { Task { await handleSickReturn() } },
+                        onStillResting: { Task { await handleStillResting() } }
+                    )
+                    .padding(.horizontal, 22)
+                    .padding(.top, 10)
                 }
 
                 // 2026-06-02 round 58 · Today screen post-run pivot
@@ -1982,6 +1998,7 @@ struct TodayView: View {
         // pending coach proposals.
         async let ai = (try? await API.fetchCoachIntents(limit: 1, reasonLike: "plan_adapt_%"))
         async let an = (try? await API.fetchActiveNiggle())
+        async let asc = (try? await API.fetchActiveSick())
         async let pp2 = (try? await API.fetchPendingProposals())
 
         // Primary fetch · plan drives the hero + week strip + drag sheet.
@@ -2003,6 +2020,7 @@ struct TodayView: View {
         let recBrief = await rb
         let adaptList = (await ai) ?? []
         let activeN   = await an
+        let activeSickRow = await asc
         let proposals = (await pp2) ?? []
         // Weather baseline runs second-pass — it needs the workout type
         // and weekly mileage from the plan/workout. Fire-and-forget; the
@@ -2105,6 +2123,7 @@ struct TodayView: View {
             self.skipped = skip
             self.adaptationIntent = adaptList.first
             self.activeNiggle = activeN
+            self.activeSick = activeSickRow
             self.pendingProposals = proposals
             let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
             if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }
@@ -2188,6 +2207,21 @@ struct TodayView: View {
                 await MainActor.run { self.activeNiggle = nil }
             }
         }
+    }
+
+    /// "Yes, ease me back" on ReturnGateCard · posts recovered, clears
+    /// the local sick state immediately so the card disappears, then
+    /// reloads so the rest of Today reflects the resumed plan.
+    private func handleSickReturn() async {
+        _ = try? await API.postSickRecovery(trend: "recovered")
+        await MainActor.run { self.activeSick = nil }
+        await loadAll()
+    }
+
+    /// "Still resting" on ReturnGateCard · logs a same-trend check-in
+    /// without clearing the episode. Card stays visible tomorrow.
+    private func handleStillResting() async {
+        _ = try? await API.postSickRecovery(trend: "same")
     }
 }
 

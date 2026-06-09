@@ -137,12 +137,14 @@ extension API {
         return (200..<300).contains(http.statusCode)
     }
 
+    /// `trend` must be one of: recovered | better | same | worse.
+    /// Defaults to "recovered" — the "Yes, ease me back" CTA on ReturnGateCard.
     @discardableResult
-    static func postSickRecovery() async throws -> Bool {
+    static func postSickRecovery(trend: String = "recovered") async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/sick/recovery"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: [:] as [String: Any])
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["today": trend])
         let (_, http) = try await API.authedSend(req)
         return (200..<300).contains(http.statusCode)
     }

@@ -45,20 +45,27 @@ struct NiggleEnvelope: Decodable {
 struct SickRow: Decodable, Identifiable {
     let id: Int
     let symptoms: [String]
-    let fever: Bool
-    let started_at: String
-    let cleared_at: String?
+    let hasFever: Bool
+    let loggedAt: String   // ISO-8601 · used to compute daysActive
 
     enum CodingKeys: String, CodingKey {
-        case id, symptoms, fever, started_at, cleared_at
+        case id, symptoms
+        case hasFever = "has_fever"
+        case loggedAt = "logged_at"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try c.decodeIfPresent(Int.self, forKey: .id) ?? 0
         self.symptoms = (try? c.decode([String].self, forKey: .symptoms)) ?? []
-        self.fever = try c.decodeIfPresent(Bool.self, forKey: .fever) ?? false
-        self.started_at = try c.decodeIfPresent(String.self, forKey: .started_at) ?? ""
-        self.cleared_at = try c.decodeIfPresent(String.self, forKey: .cleared_at)
+        self.hasFever = try c.decodeIfPresent(Bool.self, forKey: .hasFever) ?? false
+        self.loggedAt = try c.decodeIfPresent(String.self, forKey: .loggedAt) ?? ""
+    }
+
+    /// Calendar days since the episode was logged.
+    var daysActive: Int {
+        let fmt = ISO8601DateFormatter()
+        guard let d = fmt.date(from: loggedAt) else { return 0 }
+        return max(0, Calendar.current.dateComponents([.day], from: d, to: Date()).day ?? 0)
     }
 }
 
