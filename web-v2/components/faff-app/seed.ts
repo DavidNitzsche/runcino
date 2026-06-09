@@ -18,7 +18,7 @@
 import type {
   FaffSeed, Readiness, GoalRace, VolumeBar, PR, RaceLite,
   ShoeRec, ConnectionRow, HealthSnapshot, HealthMetric,
-  ActivityData, RecentRun,
+  ActivityData, RecentRun, EfficiencyTrend,
 } from './types';
 import type { PlannedDay, CompletedRun, EffortKey } from './constants';
 import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
@@ -1656,6 +1656,7 @@ function buildRange(runs: LogRun[], range: 'month'|'year'|'all'): ActivityData['
   return {
     eyebrow, big, sub, totals, volT, volS, vol,
     mix: effortMix(subset),
+    efficiencyTrend: buildEfficiencyTrend(subset),
     recs: recordsFromRuns(subset),
     heat: heatGrid(subset, 18),
     heatLabels: monthLabelsFromHeat(),
@@ -1789,6 +1790,78 @@ function paceToSec(p: string): number {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   return 9999;
+}
+// Handles both "M:SS" formatted strings ("8:15" → 495) and decimal
+// min/mi strings from the DB ("7.96" → 478). Returns 0 for missing data.
+function parsePaceToSec(p: string | null): number {
+  if (!p) return 0;
+  if (p.includes(':')) {
+    const parts = p.split(':').map(Number);
+    const sec = parts[0] * 60 + (parts[1] || 0);
+    return sec > 0 ? sec : 0;
+  }
+  const n = parseFloat(p);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 60) : 0;
+}
+function buildEfficiencyTrend(runs: LogRun[]): EfficiencyTrend | null {
+  const NEEDED = 4;
+  // Filter to easy/recovery runs that have both pace and HR data.
+  const eligible = runs
+    .map(r => {
+      const wt = (r.workoutType ?? r.type ?? '').toLowerCase();
+      const isEasy = wt === 'easy' || wt === 'recovery' || wt.includes('easy') || wt.includes('recovery');
+      if (!isEasy) return null;
+      const paceSec = parsePaceToSec(r.pace);
+      if (paceSec <= 0 || !r.avg_hr || r.avg_hr <= 0) return null;
+      return { date: r.date, paceSec, hrBpm: r.avg_hr };
+    })
+    .filter((x): x is { date: string; paceSec: number; hrBpm: number } => x !== null)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  if (eligible.length < NEEDED) {
+    return {
+      direction: 'flat',
+      paceChangeSec: 0,
+      hrAvgBpm: 0,
+      hrChangeBpm: 0,
+      runsUsed: eligible.length,
+      runsNeeded: NEEDED,
+      periodWeeks: 0,
+      points: eligible,
+    };
+  }
+
+  // Compare first-third vs last-third means to derive direction + delta.
+  const third = Math.max(1, Math.floor(eligible.length / 3));
+  const first = eligible.slice(0, third);
+  const last = eligible.slice(-third);
+  const avgPaceFirst = first.reduce((s, p) => s + p.paceSec, 0) / first.length;
+  const avgPaceLast  = last.reduce((s, p) => s + p.paceSec, 0) / last.length;
+  const avgHrFirst   = first.reduce((s, p) => s + p.hrBpm, 0) / first.length;
+  const avgHrLast    = last.reduce((s, p) => s + p.hrBpm, 0) / last.length;
+
+  const paceChangeSec = Math.round(avgPaceLast - avgPaceFirst); // negative = faster
+  const hrChangeBpm   = Math.round(avgHrLast - avgHrFirst);
+  const hrAvgBpm      = Math.round(eligible.reduce((s, p) => s + p.hrBpm, 0) / eligible.length);
+
+  // 5 s/mi threshold: below that the signal is within normal run-to-run variance.
+  const direction: EfficiencyTrend['direction'] =
+    paceChangeSec < -5 ? 'improving' : paceChangeSec > 5 ? 'declining' : 'flat';
+
+  const firstDate = new Date(eligible[0].date);
+  const lastDate  = new Date(eligible[eligible.length - 1].date);
+  const periodWeeks = Math.max(1, Math.round((lastDate.getTime() - firstDate.getTime()) / (7 * 86_400_000)));
+
+  return {
+    direction,
+    paceChangeSec,
+    hrAvgBpm,
+    hrChangeBpm,
+    runsUsed: eligible.length,
+    runsNeeded: NEEDED,
+    periodWeeks,
+    points: eligible.slice(-12), // last 12 for the sparkline
+  };
 }
 function factsFromRuns(runs: LogRun[], miles: number, elev: number): ActivityData['ranges']['year']['facts'] {
   // Real moving time: sum each run's pace × distance when available, else
@@ -2012,9 +2085,9 @@ function emptySeed(): FaffSeed {
     projectionTrend: [],
     activity: {
       ranges: {
-        month: { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], recs: [], heat: [], heatLabels: [], facts: [] },
-        year:  { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], recs: [], heat: [], heatLabels: [], facts: [] },
-        all:   { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], recs: [], heat: [], heatLabels: [], facts: [] },
+        month: { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], efficiencyTrend: null, recs: [], heat: [], heatLabels: [], facts: [] },
+        year:  { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], efficiencyTrend: null, recs: [], heat: [], heatLabels: [], facts: [] },
+        all:   { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], efficiencyTrend: null, recs: [], heat: [], heatLabels: [], facts: [] },
       },
       recent: [],
     },

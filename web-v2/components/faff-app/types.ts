@@ -755,12 +755,27 @@ export type HeatCell = {
   label: string;                   // friendly label e.g. "12.0 mi · Tempo Run" or "Rest"
   runId?: string;                  // first run on that day (for click → modal)
 };
+export type EfficiencyTrend = {
+  direction: 'improving' | 'flat' | 'declining';
+  /** Negative = faster (improving). e.g. –18 = 18 s/mi faster. */
+  paceChangeSec: number;
+  /** Average HR across all qualifying easy runs. */
+  hrAvgBpm: number;
+  /** HR change first-third vs last-third. Negative = lower HR. */
+  hrChangeBpm: number;
+  runsUsed: number;
+  runsNeeded: number;
+  periodWeeks: number;
+  /** Up to last 12 qualifying runs for sparkline, ordered oldest → newest. */
+  points: { date: string; paceSec: number; hrBpm: number }[];
+};
 export type ActivityRange = {
   eyebrow: string; big: string; sub: string;
   totals: [string,string][];
   volT: string; volS: string;
   vol: { l: string; v: number }[];
   mix: [string, string, number][];   // ['easy','Easy',48]
+  efficiencyTrend: EfficiencyTrend | null;
   recs: { k: string; v: string; c: string; t: string }[];
   heat: HeatCell[][];                // 18 cols × 7 rows
   heatLabels: string[];              // ['JAN','FEB','MAR','APR','MAY']

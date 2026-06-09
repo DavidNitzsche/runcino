@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { FaffSeed, HeatCell } from '../types';
+import type { FaffSeed, HeatCell, EfficiencyTrend } from '../types';
 import { StreakPill } from '../toolkit';
 
 const EC: Record<string,string> = {
@@ -130,6 +130,31 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
       </div>{/* .band */}
 
       <div className="band">
+      <div className="fll" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>EFFICIENCY TREND</span>
+        {d.efficiencyTrend && d.efficiencyTrend.runsUsed >= 4 && (
+          <span className={`av-et-chip av-et-chip--${d.efficiencyTrend.direction}`}>
+            {d.efficiencyTrend.direction === 'improving' ? 'IMPROVING ↑'
+              : d.efficiencyTrend.direction === 'declining' ? 'DECLINING ↓'
+              : 'FLAT →'}
+          </span>
+        )}
+      </div>
+      <div className="av-panel">
+        {d.efficiencyTrend && d.efficiencyTrend.runsUsed >= 4 ? (
+          <EfficiencyTrendCard trend={d.efficiencyTrend} />
+        ) : (
+          <div className="av-et-empty">
+            <div className="av-et-emptytitle">Not enough data yet.</div>
+            <div className="av-et-emptysub">
+              Easy runs with heart rate logged: {d.efficiencyTrend?.runsUsed ?? 0} of 4 needed.
+            </div>
+          </div>
+        )}
+      </div>
+      </div>{/* .band */}
+
+      <div className="band">
       <div className="fll">PERSONAL RECORDS</div>
       <div className="av-recs">
         {d.recs.map(r => (
@@ -197,6 +222,102 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
       </div>
       </div>{/* .band */}
     </>
+  );
+}
+
+function fmtPaceDelta(sec: number): string {
+  const m = Math.floor(Math.abs(sec) / 60);
+  const s = Math.abs(sec) % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function EfficiencyTrendCard({ trend }: { trend: EfficiencyTrend }) {
+  const deltaColor =
+    trend.direction === 'improving' ? '#F3AD38'
+    : trend.direction === 'declining' ? '#FC4D64'
+    : 'rgba(255,255,255,.55)';
+
+  const deltaLabel =
+    trend.paceChangeSec === 0 ? 'no change'
+    : trend.paceChangeSec < 0 ? `−${fmtPaceDelta(trend.paceChangeSec)}/mi`
+    : `+${fmtPaceDelta(trend.paceChangeSec)}/mi`;
+
+  const hrDeltaLabel =
+    trend.hrChangeBpm === 0 ? '—'
+    : trend.hrChangeBpm < 0 ? `−${Math.abs(trend.hrChangeBpm)} bpm`
+    : `+${trend.hrChangeBpm} bpm`;
+
+  return (
+    <>
+      <div className="av-et-top">
+        <div>
+          <div className="av-et-delta" style={{ color: deltaColor }}>{deltaLabel}</div>
+          <div className="av-et-label">
+            pace change · {trend.periodWeeks} wk{trend.periodWeeks === 1 ? '' : 's'} · {trend.runsUsed} easy runs
+          </div>
+        </div>
+        <div className="av-et-stats">
+          <div className="av-et-stat">
+            <span className="k">HR AVG</span>
+            <span className="v">{trend.hrAvgBpm} bpm</span>
+          </div>
+          <div className="av-et-stat">
+            <span className="k">HR CHANGE</span>
+            <span className="v">{hrDeltaLabel}</span>
+          </div>
+        </div>
+      </div>
+      <div className="av-et-chart">
+        <EfficiencySparkline points={trend.points} direction={trend.direction} />
+      </div>
+      <div className="av-et-footer">
+        Pace at aerobic HR — a downward line means your engine is getting more efficient.
+      </div>
+    </>
+  );
+}
+
+function EfficiencySparkline({ points, direction }: {
+  points: { date: string; paceSec: number; hrBpm: number }[];
+  direction: 'improving' | 'flat' | 'declining';
+}) {
+  if (points.length < 2) return null;
+  const W = 400, H = 80, PAD = 12;
+  const paces = points.map(p => p.paceSec);
+  const minP = Math.min(...paces);
+  const maxP = Math.max(...paces);
+  const range = maxP - minP || 30;
+
+  // Y inverted: fast (low sec) → low y (top of chart). Up = faster = better.
+  const xOf = (i: number) => PAD + (i / (points.length - 1)) * (W - 2 * PAD);
+  const yOf = (sec: number) => PAD + ((sec - minP) / range) * (H - 2 * PAD);
+
+  // Linear regression on y-coordinates vs index.
+  const n = points.length;
+  const ys = points.map(p => yOf(p.paceSec));
+  const sumX = (n * (n - 1)) / 2;
+  const sumXX = (n * (n - 1) * (2 * n - 1)) / 6;
+  const sumY = ys.reduce((s, y) => s + y, 0);
+  const sumXY = ys.reduce((s, y, i) => s + i * y, 0);
+  const denom = n * sumXX - sumX * sumX;
+  const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+  const intercept = (sumY - slope * sumX) / n;
+  const regY0 = Math.max(PAD, Math.min(H - PAD, intercept));
+  const regY1 = Math.max(PAD, Math.min(H - PAD, slope * (n - 1) + intercept));
+
+  const dotColor = direction === 'declining' ? '#FC4D64' : '#14C08C';
+  const lineColor = direction === 'declining' ? 'rgba(252,77,100,.4)' : 'rgba(20,192,140,.4)';
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: '100%' }} preserveAspectRatio="none">
+      <line
+        x1={xOf(0)} y1={regY0} x2={xOf(n - 1)} y2={regY1}
+        stroke={lineColor} strokeWidth="2.5" strokeLinecap="round" strokeDasharray="6 4"
+      />
+      {points.map((p, i) => (
+        <circle key={i} cx={xOf(i)} cy={yOf(p.paceSec)} r="5" fill={dotColor} opacity="0.85" />
+      ))}
+    </svg>
   );
 }
 
