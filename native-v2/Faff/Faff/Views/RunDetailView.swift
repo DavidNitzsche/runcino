@@ -255,10 +255,15 @@ struct RunDetailView: View {
                     }
                     .padding(.top, 12)
 
-                    section(title: "SHARE", right: nil) {
-                        stravaPushButton
+                    // SHARE · hidden for Strava-origin runs — pushing a run
+                    // that already came FROM Strava back to Strava is a no-op
+                    // at best and confusing at worst.
+                    if run?.source != "strava" {
+                        section(title: "SHARE", right: nil) {
+                            stravaPushButton
+                        }
+                        .padding(.top, 18)
                     }
-                    .padding(.top, 18)
 
                     Spacer(minLength: 60)
                 }
@@ -269,16 +274,35 @@ struct RunDetailView: View {
     }
 
     @State private var stravaPushState: StravaPushState = .idle
-    enum StravaPushState { case idle, pushing, done, failed }
+    /// Push state machine — matches the server's status vocabulary.
+    /// idle    → not yet attempted (or run just opened)
+    /// pushing → POST in flight
+    /// pending → Strava accepted the upload; polling for confirmation
+    /// done    → "uploaded" — successfully on Strava
+    /// dup     → "duplicate" — was already on Strava before this tap
+    /// failed  → error; tap again to retry
+    enum StravaPushState { case idle, pushing, pending, done, dup, failed }
 
     private var stravaPushButton: some View {
         Button {
-            guard stravaPushState != .pushing && stravaPushState != .done else { return }
+            // Only allow taps from idle or failed — all other states are
+            // either in-flight (pushing/pending) or terminal (done/dup).
+            guard stravaPushState == .idle || stravaPushState == .failed else { return }
             stravaPushState = .pushing
             Task {
-                let ok = (try? await API.pushRunToStrava(runId: runId)) ?? false
-                await MainActor.run {
-                    stravaPushState = ok ? .done : .failed
+                if let s = try? await API.pushRunToStrava(runId: runId) {
+                    await MainActor.run {
+                        switch s.status {
+                        case "uploaded":  stravaPushState = .done
+                        case "duplicate": stravaPushState = .dup
+                        case "pending":
+                            stravaPushState = .pending
+                            Task { await pollStravaPush() }
+                        default:          stravaPushState = .failed
+                        }
+                    }
+                } else {
+                    await MainActor.run { stravaPushState = .failed }
                 }
             }
         } label: {
@@ -291,19 +315,25 @@ struct RunDetailView: View {
             }
             .foregroundStyle(Theme.txt)
             .frame(maxWidth: .infinity, minHeight: 46)
-            .background(Color(hex: 0xFC4D24).opacity(stravaPushState == .done ? 0.18 : 0.32),
-                        in: RoundedRectangle(cornerRadius: 14))
+            .background(
+                Color(hex: 0xFC4D24).opacity(
+                    (stravaPushState == .done || stravaPushState == .dup) ? 0.18 : 0.32
+                ),
+                in: RoundedRectangle(cornerRadius: 14)
+            )
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xFC4D24).opacity(0.6), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .disabled(stravaPushState == .pushing || stravaPushState == .done)
+        .disabled([.pushing, .pending, .done, .dup].contains(stravaPushState))
     }
 
     private var stravaIcon: String {
         switch stravaPushState {
         case .idle:    return "arrow.up.right.square.fill"
         case .pushing: return "ellipsis"
+        case .pending: return "clock.fill"
         case .done:    return "checkmark"
+        case .dup:     return "checkmark.circle.fill"
         case .failed:  return "exclamationmark.triangle.fill"
         }
     }
@@ -311,8 +341,31 @@ struct RunDetailView: View {
         switch stravaPushState {
         case .idle:    return "PUSH TO STRAVA"
         case .pushing: return "PUSHING..."
+        case .pending: return "PROCESSING..."
         case .done:    return "PUSHED"
+        case .dup:     return "ALREADY ON STRAVA"
         case .failed:  return "PUSH FAILED · TAP TO RETRY"
+        }
+    }
+
+    /// Poll GET /api/strava/push/[runId] every 5 s, up to 8 attempts
+    /// (~40 s), until Strava confirms the upload. Matches the web
+    /// StravaPushButton's poll loop. Drops silently after 8 misses — the
+    /// nightly cron will complete the push regardless.
+    private func pollStravaPush(attempt: Int = 0) async {
+        guard attempt < 8 else { return }
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        guard let s = try? await API.fetchStravaPushStatus(runId: runId) else {
+            await pollStravaPush(attempt: attempt + 1)
+            return
+        }
+        await MainActor.run {
+            switch s.status {
+            case "uploaded":  stravaPushState = .done
+            case "duplicate": stravaPushState = .dup
+            case "failed":    stravaPushState = .failed
+            default:          Task { await pollStravaPush(attempt: attempt + 1) }
+            }
         }
     }
 
@@ -800,6 +853,25 @@ struct RunDetailView: View {
                     loadState = .loaded
                 } else {
                     loadState = .failed("Couldn't load this run.")
+                }
+            }
+            // Seed push state from the server so reopening a run that was
+            // already pushed shows "PUSHED" / "ALREADY ON STRAVA" instead of
+            // the default "PUSH TO STRAVA". Skip for Strava-origin runs (the
+            // button is hidden for those anyway). Only overwrite .idle so a
+            // mid-push tap doesn't get clobbered by a stale fetch race.
+            if let r, r.source != "strava",
+               let s = try? await API.fetchStravaPushStatus(runId: runId) {
+                await MainActor.run {
+                    guard stravaPushState == .idle else { return }
+                    switch s.status {
+                    case "uploaded":  stravaPushState = .done
+                    case "duplicate": stravaPushState = .dup
+                    case "pending":
+                        stravaPushState = .pending
+                        Task { await pollStravaPush() }
+                    default: break   // "never" / "failed" — stay idle
+                    }
                 }
             }
         } catch {

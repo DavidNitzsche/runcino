@@ -524,17 +524,44 @@ enum API {
         return true
     }
 
+    // MARK: - Strava push
+
+    /// Wire-shape for both the GET (status check) and POST (push) responses
+    /// from /api/strava/push/[runId].
+    /// status = "never" | "pending" | "uploaded" | "duplicate" | "failed"
+    struct StravaPushStatus: Decodable {
+        let status: String
+        let stravaActivityId: String?
+        let error: String?
+    }
+
+    /// GET /api/strava/push/[runId] · current push status for a run.
+    /// Returns "never" when no push has been attempted, "pending" while
+    /// Strava is processing, "uploaded"/"duplicate" on success, "failed"
+    /// if the push errored out.
+    static func fetchStravaPushStatus(runId: String) async throws -> StravaPushStatus {
+        let url = baseURL.appendingPathComponent("api/strava/push/\(runId)")
+        let req = URLRequest(url: url)
+        let (data, _): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        return try JSONDecoder().decode(StravaPushStatus.self, from: data)
+    }
+
     /// POST /api/strava/push/[runId] · manually push a completed run to
-    /// Strava. Idempotent: a second push of the same runId is a no-op.
-    /// Returns true on a 2xx response; false on any failure.
-    static func pushRunToStrava(runId: String) async throws -> Bool {
+    /// Strava. Idempotent: duplicate push returns status "duplicate".
+    /// Returns the server's status object; falls back to a synthetic
+    /// "uploaded" on a 2xx whose body can't be decoded.
+    static func pushRunToStrava(runId: String) async throws -> StravaPushStatus {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/strava/push/\(runId)"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = "{}".data(using: .utf8)
-        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
-        guard (200..<300).contains(http.statusCode) else { return false }
-        return true
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            return StravaPushStatus(status: "failed", stravaActivityId: nil,
+                                    error: "HTTP \(http.statusCode)")
+        }
+        return (try? JSONDecoder().decode(StravaPushStatus.self, from: data))
+            ?? StravaPushStatus(status: "uploaded", stravaActivityId: nil, error: nil)
     }
 
     /// POST /api/coach/proposal · accept or decline a coach swap proposal.
