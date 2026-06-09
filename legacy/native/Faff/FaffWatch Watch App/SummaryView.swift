@@ -21,16 +21,22 @@ struct SummaryView: View {
     let onDone: () -> Void
 
     var body: some View {
-        ResponsiveFace {
-            if workout.isRace {
-                raceSummary
-            } else {
-                workoutSummary
+        if workout.isRace {
+            ResponsiveFace { raceSummary }
+        } else if isIntervalCompletion, let c = completion {
+            // Interval: page 1 = summary + avg HR, page 2 = per-rep ladder.
+            // indexDisplayMode .never avoids dot overlap with the Done button.
+            TabView {
+                ResponsiveFace { workoutSummary }.tag(0)
+                ResponsiveFace { RepLadderView(phases: c.phases, onDone: onDone) }.tag(1)
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+        } else {
+            ResponsiveFace { workoutSummary }
         }
     }
 
-    // MARK: - Workout summary (avg pace · miles · elapsed)
+    // MARK: - Workout summary (avg pace · miles · elapsed · avg HR)
 
     @ViewBuilder
     private var workoutSummary: some View {
@@ -39,6 +45,7 @@ struct SummaryView: View {
             pace:     avgPaceText,
             distance: milesText,
             elapsed:  elapsedText,
+            hr:       avgHrText,
             onDone:   onDone
         )
     }
@@ -82,6 +89,13 @@ struct SummaryView: View {
     private var elapsedText: String {
         let s = completion?.totalDurationSec ?? 0
         return s >= 3600 ? PaceFormat.hms(s) : PaceFormat.clock(s)
+    }
+    private var avgHrText: String? {
+        completion?.avgHr.map { "\($0)" }
+    }
+    private var isIntervalCompletion: Bool {
+        guard let c = completion else { return false }
+        return c.phases.filter { $0.type == "work" }.count > 1
     }
 
     // MARK: - Race summary (finish time · goal delta · miles)
@@ -155,5 +169,105 @@ private struct RaceFinishCard: View {
                 .padding(.bottom, h * 0.085)
             }
         }
+    }
+}
+
+// MARK: - Rep ladder — interval post-run breakdown
+
+/// Page 2 of the interval SummaryView. Scrollable list of work phases:
+/// each row shows rep number · avg pace · avg HR · verdict glyph.
+struct RepLadderView: View {
+    let phases: [WatchCompletionPhase]
+    var onDone: () -> Void = {}
+
+    private var workPhases: [WatchCompletionPhase] {
+        phases.filter { $0.type == "work" }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            ZStack(alignment: .bottom) {
+                Color(hex: 0x0C2A14).ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 0) {
+                    FaceLabel(text: "REPS", color: Faff.live, size: h * 0.06)
+                        .topTagInset(h)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(workPhases.enumerated()), id: \.offset) { i, phase in
+                                RepLadderRow(number: i + 1, phase: phase, h: h)
+                            }
+                        }
+                        .padding(.horizontal, h * 0.048)
+                        .padding(.bottom, h * 0.22)   // clear the Done button
+                    }
+                    .padding(.top, h * 0.024)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // Done button — same proportions as CompleteFace
+                Button(action: onDone) {
+                    Text("Done")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                        .foregroundStyle(Color(hex: 0x06210C))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, h * 0.016)
+                        .background(Capsule().fill(Faff.live))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.020)
+            }
+        }
+    }
+}
+
+private struct RepLadderRow: View {
+    let number: Int
+    let phase: WatchCompletionPhase
+    let h: CGFloat
+
+    private var paceText: String {
+        phase.actualPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
+    }
+    private var hrText: String {
+        phase.avgHr.map { "♥\($0)" } ?? "—"
+    }
+    private var verdictGlyph: String {
+        switch phase.verdict {
+        case "hit":     return "✓"
+        case "drifted": return "~"
+        case "missed":  return "✗"
+        default:        return "—"
+        }
+    }
+    private var verdictColor: Color {
+        switch phase.verdict {
+        case "hit":     return Faff.live
+        case "drifted": return Color(hex: 0xF3AD38)
+        case "missed":  return Faff.over
+        default:        return Faff.mute
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: h * 0.016) {
+            Text("R\(number)")
+                .font(.custom("HelveticaNeue-Bold", size: h * 0.040))
+                .foregroundStyle(Faff.mute)
+                .frame(width: h * 0.072, alignment: .leading)
+            Text(paceText)
+                .font(.custom("HelveticaNeue-Bold", size: h * 0.056))
+                .foregroundStyle(Faff.live)
+                .frame(width: h * 0.160, alignment: .leading)
+            Text(hrText)
+                .font(.custom("HelveticaNeue-Bold", size: h * 0.044))
+                .foregroundStyle(.white.opacity(0.65))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(verdictGlyph)
+                .font(.custom("HelveticaNeue-Bold", size: h * 0.056))
+                .foregroundStyle(verdictColor)
+                .frame(width: h * 0.064, alignment: .trailing)
+        }
+        .padding(.vertical, h * 0.020)
     }
 }

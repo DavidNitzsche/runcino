@@ -748,13 +748,27 @@ struct LobbyFace: View {
 // SUMMARY / END FACES
 // =====================================================================
 
-/// Complete — session readout: type label · pace · distance · elapsed · Done.
+/// Complete — session readout: type label · pace · distance · elapsed · avg HR · Done.
+/// `hr` is optional — when present (tracker had HR samples) a 4th row appears with a
+/// heart icon; when nil the face shows the original 3 rows unchanged.
 struct CompleteFace: View {
     let label: String       // "Threshold" / "Easy run" / "Big Sur"
     let pace: String        // "8:48"
     let distance: String    // "9.6"
     let elapsed: String     // "1:24"
+    var hr: String? = nil   // avg HR bpm — appended as 4th row when sampled
     var onDone: () -> Void = {}
+
+    private var rows: [NumRow] {
+        var r: [NumRow] = [
+            NumRow(pace,     .live),
+            NumRow(distance, .dist),
+            NumRow(elapsed,  .neutral)
+        ]
+        if let h = hr { r.append(NumRow(h, .neutral, icon: "heart.fill")) }
+        return r
+    }
+
     var body: some View {
         // Converted to NumberFace: workout-type tag rides the OS clock
         // baseline (green for completion), three big data rows flex
@@ -762,11 +776,7 @@ struct CompleteFace: View {
         // big rows reserve clearance for it via the strip slot.
         ZStack(alignment: .bottom) {
             NumberFace(
-                rows: [
-                    NumRow(pace,     .live),
-                    NumRow(distance, .dist),
-                    NumRow(elapsed,  .neutral)
-                ],
+                rows: rows,
                 topLabel: label.uppercased(),
                 topLabelColor: Faff.live,
                 bottomReservation: 0.20,   // Done button area
