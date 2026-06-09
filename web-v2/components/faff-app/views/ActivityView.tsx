@@ -129,30 +129,13 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
       </div>
       </div>{/* .band */}
 
-      <div className="band">
-      <div className="fll" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>EFFICIENCY TREND</span>
-        {d.efficiencyTrend && d.efficiencyTrend.runsUsed >= 4 && (
-          <span className={`av-et-chip av-et-chip--${d.efficiencyTrend.direction}`}>
-            {d.efficiencyTrend.direction === 'improving' ? 'IMPROVING ↑'
-              : d.efficiencyTrend.direction === 'declining' ? 'DECLINING ↓'
-              : 'FLAT →'}
-          </span>
-        )}
-      </div>
-      <div className="av-panel">
-        {d.efficiencyTrend && d.efficiencyTrend.runsUsed >= 4 ? (
-          <EfficiencyTrendCard trend={d.efficiencyTrend} />
-        ) : (
-          <div className="av-et-empty">
-            <div className="av-et-emptytitle">Not enough data yet.</div>
-            <div className="av-et-emptysub">
-              Easy runs with heart rate logged: {d.efficiencyTrend?.runsUsed ?? 0} of 4 needed.
-            </div>
-          </div>
-        )}
-      </div>
-      </div>{/* .band */}
+      {/* EFFICIENCY TREND band hidden — easy pace is intentionally slow,
+          making the pace-at-HR signal always read DECLINING for a runner
+          executing correctly. Redesign pending: use tempo/threshold pace
+          vs HR as the efficiency signal for the CIM block. All supporting
+          code (buildEfficiencyTrend, EfficiencyTrendCard, EfficiencySparkline,
+          EfficiencyTrend type, .av-et-* CSS) is preserved for the rewrite. */}
+      {false && d.efficiencyTrend && <EfficiencyTrendBand et={d.efficiencyTrend as EfficiencyTrend} />}
 
       <div className="band">
       <div className="fll">PERSONAL RECORDS</div>
@@ -222,6 +205,35 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
       </div>
       </div>{/* .band */}
     </>
+  );
+}
+
+function EfficiencyTrendBand({ et }: { et: EfficiencyTrend }) {
+  return (
+    <div className="band">
+    <div className="fll" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span>EFFICIENCY TREND</span>
+      {et.runsUsed >= 4 && (
+        <span className={`av-et-chip av-et-chip--${et.direction}`}>
+          {et.direction === 'improving' ? 'IMPROVING ↑'
+            : et.direction === 'declining' ? 'DECLINING ↓'
+            : 'FLAT →'}
+        </span>
+      )}
+    </div>
+    <div className="av-panel">
+      {et.runsUsed >= 4 ? (
+        <EfficiencyTrendCard trend={et} />
+      ) : (
+        <div className="av-et-empty">
+          <div className="av-et-emptytitle">Not enough data yet.</div>
+          <div className="av-et-emptysub">
+            Easy runs with heart rate logged: {et.runsUsed} of 4 needed.
+          </div>
+        </div>
+      )}
+    </div>
+    </div>
   );
 }
 
