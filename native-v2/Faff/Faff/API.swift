@@ -954,6 +954,11 @@ struct ReadinessSnapshot: Decodable {
     /// Powers NudgeSheet's "WHY" + "COACH" sections so the Morning Check
     /// stops rendering placeholder values. Added 2026-05-31.
     let inputs: [ReadinessInput]?
+    /// TSB training-form caption from /api/readiness · e.g. "Form +8 · fresh"
+    /// or "Form −12 · loaded". Null on cold start (no run history). Rendered
+    /// as a small muted line between the WHY strip and stat chips in
+    /// TodayReadinessPanel. Added 2026-06-08.
+    let formLine: String?
 }
 
 /// One contribution to the readiness score · mirrors ReadinessBreakdown
@@ -1444,6 +1449,21 @@ struct TrainingPlanWeek: Decodable, Identifiable {
     }
 }
 
+/// Training trajectory signal per quality/long workout.
+/// Mirrors `trainingInfluence` in web-v2 weekDays shape (types.ts).
+/// kind: on_track | consistent | working | slipping | compromised
+struct TrainingInfluence: Decodable {
+    let kind: String
+    let copy: String
+
+    enum CodingKeys: String, CodingKey { case kind, copy }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        self.copy = try c.decodeIfPresent(String.self, forKey: .copy) ?? ""
+    }
+}
+
 struct TrainingPlanDay: Decodable, Identifiable {
     let date: String
     let dow: Int
@@ -1452,9 +1472,12 @@ struct TrainingPlanDay: Decodable, Identifiable {
     let label: String?
     let doneMi: Double
     let activityId: String?
+    /// Trajectory signal for done quality/long days. Nil on rest, undone,
+    /// or pre-backfill rows. Non-breaking: absent key silently → nil.
+    let trainingInfluence: TrainingInfluence?
     var id: String { date }
 
-    enum CodingKeys: String, CodingKey { case date, dow, type, mi, label, doneMi, activityId }
+    enum CodingKeys: String, CodingKey { case date, dow, type, mi, label, doneMi, activityId, trainingInfluence }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
@@ -1464,6 +1487,7 @@ struct TrainingPlanDay: Decodable, Identifiable {
         self.label = try c.decodeIfPresent(String.self, forKey: .label)
         self.doneMi = try c.decodeIfPresent(Double.self, forKey: .doneMi) ?? 0
         self.activityId = try c.decodeIfPresent(String.self, forKey: .activityId)
+        self.trainingInfluence = try? c.decode(TrainingInfluence.self, forKey: .trainingInfluence)
     }
 }
 

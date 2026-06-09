@@ -24,17 +24,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadCoachState } from '@/lib/coach/state-loader';
 import { computeReadiness } from '@/lib/coach/readiness';
+import { computeTrainingForm, type TrainingFormLabel } from '@/lib/coach/training-form';
 import { requireUserId } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
+
+function formLabelWord(label: TrainingFormLabel): string {
+  switch (label) {
+    case 'DETRAINING': return 'stale';
+    case 'RACE-READY': return 'fresh';
+    case 'PRODUCTIVE': return 'productive';
+    case 'LOADED':     return 'loaded';
+    case 'OVERREACH':  return 'overreach';
+    case 'BUILDING':   return 'building';
+    default:           return (label as string).toLowerCase();
+  }
+}
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   try {
-    const state = await loadCoachState(userId);
+    const [state, form] = await Promise.all([
+      loadCoachState(userId),
+      computeTrainingForm(userId).catch(() => null),
+    ]);
     const r = computeReadiness(state);
+    const formLine: string | null = form
+      ? `Form ${form.tsb >= 0 ? '+' : '−'}${Math.abs(form.tsb)} · ${formLabelWord(form.label)}`
+      : null;
     return NextResponse.json({
       score: r.score,
       band: r.band,
@@ -60,6 +79,9 @@ export async function GET(req: NextRequest) {
       hrvCurrent: state.hrvCurrent ?? null,
       hrvBaseline: state.hrvBaseline ?? null,
       loadAcwr: state.loadAcwr ?? null,
+      // TSB training-form signal for the iPhone readiness panel caption.
+      // e.g. "Form +8 · fresh" / "Form −12 · loaded" / null on cold start.
+      formLine,
     });
   } catch (err: any) {
     console.error('[api/readiness] failed:', err);

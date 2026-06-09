@@ -134,7 +134,10 @@ struct TodayReadinessPanel: View {
     /// scheduled, etc.).
     var bestWindow: String? = nil      // "Before 7 AM" from forecast.best_window
     var weeksToRace: Int? = nil        // purpose.weeksToRace
+    var daysToRace: Int? = nil         // profile.nextARace.days_to_race; used when <14
     var nextHardLabel: String? = nil   // e.g. "TUE · TEMPO"
+    /// TSB caption from /api/readiness · e.g. "Form +8 · fresh". Null on cold start.
+    var formLine: String? = nil
     /// Tap target · routes to the "full readiness brief" surface.
     let onTap: () -> Void
 
@@ -193,7 +196,12 @@ struct TodayReadinessPanel: View {
             VStack(alignment: .leading, spacing: 22) {
                 ringPlusWords
                 whyStrip
-                statChips
+                // formLine + chips sit together; when formLine is nil
+                // the chips render at the same 22pt spacing as before.
+                VStack(alignment: .leading, spacing: 8) {
+                    formCaption
+                    statChips
+                }
             }
         }
         .buttonStyle(.plain)
@@ -250,6 +258,19 @@ struct TodayReadinessPanel: View {
         }
     }
 
+    // MARK: 2.5 · form caption (TSB)
+
+    @ViewBuilder
+    private var formCaption: some View {
+        if let line = formLine {
+            Text(line)
+                .font(.body(11, weight: .semibold))
+                .tracking(0.2)
+                .foregroundStyle(Color.white.opacity(0.55))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     // MARK: 3 · stat chips
 
     private var statChips: some View {
@@ -292,6 +313,10 @@ struct TodayReadinessPanel: View {
     }
 
     private var toRaceDisplay: String {
+        // Final stretch: show exact days when <14 out ("9D", "3D", "1D").
+        if let d = daysToRace, d > 0, d < 14 {
+            return "\(d)D"
+        }
         guard let w = weeksToRace, w > 0 else { return "—" }
         return w == 1 ? "1 WK" : "\(w) WK"
     }

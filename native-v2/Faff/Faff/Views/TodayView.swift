@@ -458,7 +458,9 @@ struct TodayView: View {
                             vo2: profile?.physiology.vo2,
                             bestWindow: forecast?.best_window,
                             weeksToRace: weeksToRaceValue,
+                            daysToRace: daysToRaceValue,
                             nextHardLabel: nextHardLabel,
+                            formLine: readiness?.formLine,
                             onTap: { onReadinessTap() }
                         )
                         .padding(.horizontal, 22)
@@ -1529,6 +1531,16 @@ struct TodayView: View {
         if let d = raceFallback?.days_to_race, d > 0 {
             return max(1, Int(ceil(Double(d) / 7.0)))
         }
+        return nil
+    }
+
+    /// Exact days to the next A-race · used by the TO RACE chip when <14
+    /// days out so the chip shows "9D" instead of "1 WK". Prefers the
+    /// live profile.nextARace value (updated nightly) over the raceFallback
+    /// which may lag by one session.
+    private var daysToRaceValue: Int? {
+        if let d = profile?.nextARace?.days_to_race, d > 0 { return d }
+        if let d = raceFallback?.days_to_race, d > 0 { return d }
         return nil
     }
 
