@@ -27,7 +27,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
+import { parseRaceTime, tPaceFromVdot, vdotFromRace, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -1119,10 +1119,39 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // 2026-06-03 · mid-block doctrine RULE 3 (pace anchor blend).
   // When bestRecentVdot implies a T-pace slower than goal-T, anchor
   // early-week paces to currentT and blend toward goalT by mid-build.
-  // Returns null when no recent VDOT signal or runner already at goal.
   // Cite: §Rule 3.
   const goalT = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? input.tPaceSec;
-  const currentT = tPaceFromVdot(input.bestRecentVdot);
+
+  // Cold-start VDOT floor: when no measured fitness signal exists, estimate
+  // conservatively from weekly mileage rather than defaulting to the goal.
+  // A 28-min 5K runner entering sub-20 at 15 mpw is assumed VDOT 32
+  // (~10:45 easy), not VDOT 50 (~8:12 easy). Deliberate underestimate.
+  // Cite: Daniels Running Formula §"VDOT and Training" — mileage-band heuristic.
+  function conservativeVdotFromMileage(weeklyMi: number): number {
+    if (weeklyMi >= 45) return 47;
+    if (weeklyMi >= 40) return 45;
+    if (weeklyMi >= 35) return 43;
+    if (weeklyMi >= 30) return 40;
+    if (weeklyMi >= 25) return 38;
+    if (weeklyMi >= 20) return 35;
+    if (weeklyMi >= 15) return 32;
+    return 30; // Daniels VDOT floor; sub-30 is indistinguishable from no-data
+  }
+  const estimatedCurrentVdot = input.bestRecentVdot
+    ?? conservativeVdotFromMileage(input.recentWeeklyMi);
+  const currentT = tPaceFromVdot(estimatedCurrentVdot);
+
+  // Goal-realism guard: flag when the entered goal implies a VDOT >15% above
+  // the conservative current estimate. Written to authoredState for the plan
+  // UI to surface; does not block generation.
+  const goalVdot = input.goalSec != null
+    ? vdotFromRace(input.goalSec, input.raceDistanceMi)
+    : null;
+  const goalRealism: { flag: boolean; goalVdot?: number; estimatedCurrentVdot?: number } =
+    goalVdot != null && goalVdot > estimatedCurrentVdot * 1.15
+      ? { flag: true, goalVdot, estimatedCurrentVdot }
+      : { flag: false };
+
   function tPaceForWeek(weekIdx: number, phase: string): number | null {
     if (goalT == null) return null;
     if (currentT == null || currentT <= goalT) return goalT; // at/above goal
@@ -1233,6 +1262,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         easyDayMedianMi: input.easyDayMedianMi,
         tsbAtStart: input.tsbAtStart ?? null,
       },
+      goal_realism: goalRealism,
       citations: blocks.phases.map((p) => p.citation),
     },
   };
