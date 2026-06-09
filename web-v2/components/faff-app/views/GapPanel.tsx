@@ -150,12 +150,11 @@ function deriveSegs(goalSec: number, projSec: number, goal: GoalRace): GapSeg[] 
     : 24;
   const courseHasReal = goal.courseImpactSec != null;
   // 2026-05-31 · Conditions chunk now reads goal.conditionsImpactSec
-  // (Maughan model · forecast or climate normals). Falls back to a
-  // 1.8% goalSec placeholder when null (no forecast + no climate
-  // match · e.g. race in a country we haven't editorialized).
+  // (Maughan model · forecast or climate normals). Falls back to 0
+  // (neutral) when null — no data means no penalty assumed.
   const PARTLY_COND = goal.conditionsImpactSec != null
     ? Math.max(0, Math.round(goal.conditionsImpactSec))
-    : Math.min(90, Math.round(goalSec * 0.018));
+    : 0;
   const conditionsHasReal = goal.conditionsImpactSec != null;
   // 2026-05-31 · Execution chunk reads goal.executionBufferSec
   // (CV across the runner's race-effort splits). Always populated
