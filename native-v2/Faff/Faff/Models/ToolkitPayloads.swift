@@ -400,6 +400,7 @@ struct ProjectionSummary: Decodable {
     let vdot: Double?
     let projectionSec: Int?
     let goalSec: Int?
+    let goalSafeSec: Int?           // B-goal (safe target) · meta.goalSafeDisplay
     let raceSlug: String?
     let raceName: String?
     let raceDate: String?
@@ -442,7 +443,7 @@ struct ProjectionSummary: Decodable {
     let confidenceLabel: ProjectionConfidenceLabel?
 
     enum CodingKeys: String, CodingKey {
-        case ok, status, vdot, projectionSec, goalSec,
+        case ok, status, vdot, projectionSec, goalSec, goalSafeSec,
              raceSlug, raceName, raceDate, daysAway, distanceMi, location,
              totalGapSec, fitnessSec,
              courseImpactSec, courseSource, courseElevGainFtPerMi,
@@ -458,7 +459,8 @@ struct ProjectionSummary: Decodable {
 
         self.vdot = try c.decodeIfPresent(Double.self, forKey: .vdot)
         self.projectionSec = try c.decodeIfPresent(Int.self, forKey: .projectionSec)
-        self.goalSec = try c.decodeIfPresent(Int.self, forKey: .goalSec)
+        self.goalSec     = try c.decodeIfPresent(Int.self, forKey: .goalSec)
+        self.goalSafeSec = try c.decodeIfPresent(Int.self, forKey: .goalSafeSec)
         self.raceSlug = try c.decodeIfPresent(String.self, forKey: .raceSlug)
         self.raceName = try c.decodeIfPresent(String.self, forKey: .raceName)
         self.raceDate = try c.decodeIfPresent(String.self, forKey: .raceDate)

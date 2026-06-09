@@ -116,8 +116,10 @@ export async function GET(req: NextRequest) {
           slug: string; name: string; date: string; goal: string | null;
           distance_mi: number | null; location: string | null;
           course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null;
+          goal_safe: string | null;
         }>(
-          `SELECT slug, name, date::text AS date, goal, distance_mi, location, course_geometry
+          `SELECT slug, name, date::text AS date, goal, distance_mi, location, course_geometry,
+                  meta->>'goalSafeDisplay' AS goal_safe
              FROM races
             WHERE slug = $1 AND user_uuid = $2`,
           [slugQ, userId],
@@ -126,8 +128,10 @@ export async function GET(req: NextRequest) {
           slug: string; name: string; date: string; goal: string | null;
           distance_mi: number | null; location: string | null;
           course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null;
+          goal_safe: string | null;
         }>(
-          `SELECT slug, name, date::text AS date, goal, distance_mi, location, course_geometry
+          `SELECT slug, name, date::text AS date, goal, distance_mi, location, course_geometry,
+                  meta->>'goalSafeDisplay' AS goal_safe
              FROM races
             WHERE user_uuid = $1
               AND priority = 'A'
@@ -141,6 +145,7 @@ export async function GET(req: NextRequest) {
     // query-param distance (iPhone might ask before a race is set).
     const distanceMi = race?.distance_mi ?? distanceQ;
     const goalSec = race?.goal ? parseRaceTime(race.goal) : null;
+    const goalSafeSec = race?.goal_safe ? parseRaceTime(race.goal_safe) : null;
     const daysAway = race?.date
       ? Math.round((new Date(race.date + 'T12:00:00Z').getTime() - Date.now()) / 86400000)
       : null;
@@ -319,6 +324,7 @@ export async function GET(req: NextRequest) {
       vdot,
       projectionSec,
       goalSec,
+      goalSafeSec: goalSafeSec ?? null,
       raceSlug: race?.slug ?? null,
       raceName: race?.name ?? null,
       raceDate: race?.date ?? null,

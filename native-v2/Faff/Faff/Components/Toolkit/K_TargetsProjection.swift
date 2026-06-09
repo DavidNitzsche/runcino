@@ -455,6 +455,9 @@ struct TargetsProjectionPanel: View {
             if let goalV = summary.confidenceLabel?.evidence?.goalVdot {
                 VdotMetaPill(key: "GOAL", value: formatVdot(goalV))
             }
+            if let bSec = summary.goalSafeSec, bSec > 0 {
+                VdotMetaPill(key: "B", value: formatTime(bSec))
+            }
             if summary.heldDays > 0 {
                 VdotMetaPill(key: "HELD", value: "\(summary.heldDays)d")
             }
