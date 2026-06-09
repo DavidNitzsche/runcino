@@ -221,7 +221,7 @@ struct TodayView: View {
                     // moved to the Run-tab action menu where they
                     // belong (centralized run actions). No more menu
                     // wrap · single-purpose button.
-                    Button { showInbox = true } label: {
+                    Button { if hasNudge { showNudge = true } else { showInbox = true } } label: {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: "bell.fill")
                                 .font(.system(size: 14, weight: .bold))
@@ -265,38 +265,30 @@ struct TodayView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
 
+                HStack(spacing: 8) {
+                    Text("THIS WEEK")
+                        .font(.body(11, weight: .extraBold))
+                        .tracking(1.4)
+                        .foregroundStyle(Color.white.opacity(0.55))
+                    Spacer(minLength: 8)
+                    NavigationLink(value: FaffRoute.activity) {
+                        HStack(spacing: 4) {
+                            Text("ALL RUNS")
+                                .font(.body(11, weight: .extraBold))
+                                .tracking(1.4)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(Color.white.opacity(0.85))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 14)
+
                 if let week = plan {
                     let days = makeStripDays(from: week)
-                    // Strip header · "THIS WEEK" eyebrow + a tappable
-                    // "ALL RUNS ›" entry into the full run log
-                    // (ActivityView). Activity is intentionally NOT a tab
-                    // (the bar stays at 4 + center RUN per RootTabView), so
-                    // this is its primary entry point from Today — the
-                    // history axis reads as "this week → all runs". Pushes
-                    // via the shared FaffRoute.activity destination already
-                    // registered on every tab's NavigationStack.
-                    HStack(spacing: 8) {
-                        Text("THIS WEEK")
-                            .font(.body(11, weight: .extraBold))
-                            .tracking(1.4)
-                            .foregroundStyle(Color.white.opacity(0.55))
-                        Spacer(minLength: 8)
-                        NavigationLink(value: FaffRoute.activity) {
-                            HStack(spacing: 4) {
-                                Text("ALL RUNS")
-                                    .font(.body(11, weight: .extraBold))
-                                    .tracking(1.4)
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 9, weight: .bold))
-                            }
-                            .foregroundStyle(Color.white.opacity(0.85))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 14)
-
                     WeekStrip(days: days, selectedID: $selectedDayID)
                         .padding(.horizontal, 22)
                         .padding(.top, 10)

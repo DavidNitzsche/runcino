@@ -66,7 +66,7 @@ struct WatchMirrorView: View {
         HStack(spacing: 9) {
             LivePulseDot(color: liveOk ? Color(hex: 0x9AF0BF) : Color(hex: 0xFF5A52), size: 8)
                 .frame(width: 12, height: 12)
-            Text(workout != nil ? "FOLLOWING APPLE WATCH · MIRRORED" : "STANDING BY")
+            Text(workout != nil ? "TODAY'S PLAN · START ON YOUR WATCH" : "STANDING BY")
                 .font(.label(11)).tracking(1.5)
                 .foregroundStyle(Theme.txt)
         }

@@ -428,12 +428,13 @@ enum TrainPhase: String, CaseIterable, Hashable {
         }
     }
 
-    // "quality" is a server-side alias for the build phase.
+    // "quality" and "race-specific" are server-side aliases.
     init(phaseKey key: String) {
         let k = key.lowercased()
         switch k {
-        case "quality": self = .build
-        default:        self = TrainPhase(rawValue: k) ?? .base
+        case "quality":                        self = .build
+        case "race-specific", "race_specific": self = .peak
+        default:                               self = TrainPhase(rawValue: k) ?? .base
         }
     }
 }
