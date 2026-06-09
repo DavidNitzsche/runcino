@@ -9,6 +9,7 @@ struct ShoesView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var shoes: [Shoe] = []
     @State private var loaded = false
+    @State private var showAddShoe = false
 
     private let mesh = FaffMesh(
         c1: 0x7A3A18, c2: 0x1F5A64, c3: 0x5E2F12,
@@ -54,9 +55,19 @@ struct ShoesView: View {
         .task {
             if !loaded {
                 loaded = true
-                let resp = try? await API.fetchShoes()
-                shoes = resp?.shoes ?? []
+                await reloadShoes()
             }
+        }
+        .sheet(isPresented: $showAddShoe) {
+            AddShoeSheet {
+                Task { await reloadShoes() }
+            }
+        }
+    }
+
+    private func reloadShoes() async {
+        if let resp = try? await API.fetchShoes() {
+            shoes = resp.shoes ?? []
         }
     }
 
@@ -116,7 +127,8 @@ struct ShoesView: View {
                 ShoeDetail(shoe: toFaffShoe(shoe))
             }
             if active.isEmpty {
-                ShoeDetail(shoe: placeholderShoe(role: "EASY", name: "Add your first shoe", mi: 0, life: 450, ec: Theme.Shoe.easy))
+                ShoeDetail(shoe: FaffShoe(id: "ph", brand: "", name: "Add your first shoe",
+                                         roles: ["EASY"], miles: 0, lifeMi: 450))
                     .opacity(0.4)
             }
         }
@@ -124,7 +136,7 @@ struct ShoesView: View {
 
     private var addShoeButton: some View {
         Button {
-            // Add-shoe flow not wired in v3 yet · placeholder.
+            showAddShoe = true
         } label: {
             Text("+ ADD A SHOE")
                 .font(.body(13, weight: .extraBold))
@@ -152,12 +164,13 @@ struct ShoesView: View {
     }
 
     private func toFaffShoe(_ s: Shoe, retired: Bool = false) -> FaffShoe {
-        let role = inferRole(brand: s.brand, model: s.model, mileage: s.mileage ?? 0, cap: s.mileage_cap ?? 450)
+        let rawRoles = s.run_types ?? []
+        let roles = rawRoles.isEmpty ? ["EASY"] : rawRoles.map { $0.uppercased() }
         return FaffShoe(
             id: "\(s.id)",
             brand: s.brand ?? "",
             name: s.displayName.isEmpty ? "Shoe \(s.id)" : s.displayName,
-            role: role,
+            roles: roles,
             miles: s.mileage ?? 0,
             lifeMi: s.mileage_cap ?? 450,
             retired: retired,
@@ -165,23 +178,184 @@ struct ShoesView: View {
         )
     }
 
-    private func placeholderShoe(role: String, name: String, mi: Double, life: Double, ec: Color) -> FaffShoe {
-        FaffShoe(id: "ph", brand: "", name: name, role: role, miles: mi, lifeMi: life, retired: false, note: nil)
-    }
-
-    private func inferRole(brand: String?, model: String?, mileage: Double, cap: Double) -> String {
-        let name = "\(brand ?? "") \(model ?? "")".lowercased()
-        if name.contains("vapor") || name.contains("alpha") || name.contains("metaspeed") { return "RACE" }
-        if name.contains("tempo") || name.contains("zoom fly") { return "TEMPO" }
-        if name.contains("long") || name.contains("superblast") { return "LONG" }
-        if name.contains("recovery") || name.contains("nova") { return "RECOVERY" }
-        return "EASY"
-    }
-
     private func formatMileage(_ mi: Double) -> String {
         let v = Int(mi.rounded())
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         return formatter.string(from: NSNumber(value: v)) ?? "\(v)"
+    }
+}
+
+// MARK: - Add Shoe Sheet
+
+struct AddShoeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var onSaved: () -> Void
+
+    @State private var brand = ""
+    @State private var model = ""
+    @State private var selectedRoles: Set<String> = ["EASY"]
+    @State private var mileageCap: String = "400"
+    @State private var baselineMi: String = "0"
+    @State private var saving = false
+    @State private var errorMsg: String? = nil
+
+    private let allRoles = ["EASY", "LONG", "TEMPO", "INTERVALS", "RACE", "RECOVERY"]
+
+    var body: some View {
+        ZStack {
+            Color(hex: 0x16110D).ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+
+                    // Header
+                    HStack {
+                        SpecLabel(text: "ADD A SHOE", size: 13, tracking: 2.5, color: Theme.txt)
+                        Spacer()
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Theme.txt.opacity(0.6))
+                                .padding(10)
+                        }
+                    }
+                    .padding(.top, 20)
+
+                    // Brand
+                    fieldGroup(label: "BRAND") {
+                        styledTextField("e.g. Nike", text: $brand)
+                    }
+
+                    // Model
+                    fieldGroup(label: "MODEL") {
+                        styledTextField("e.g. Vaporfly 3", text: $model)
+                    }
+
+                    // Roles multi-select
+                    VStack(alignment: .leading, spacing: 10) {
+                        SpecLabel(text: "ROLES", size: 9, tracking: 1.5, color: Theme.txt.opacity(0.55))
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(allRoles, id: \.self) { role in
+                                roleChip(role)
+                            }
+                        }
+                    }
+
+                    // Mileage cap
+                    fieldGroup(label: "SHOE LIFE (MI)") {
+                        styledTextField("400", text: $mileageCap)
+                            .keyboardType(.decimalPad)
+                    }
+
+                    // Baseline miles
+                    fieldGroup(label: "MILES BEFORE APP") {
+                        styledTextField("0", text: $baselineMi)
+                            .keyboardType(.decimalPad)
+                    }
+
+                    // Save button
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        Text(saving ? "SAVING…" : "ADD SHOE")
+                            .font(.body(14, weight: .extraBold))
+                            .tracking(0.5)
+                            .foregroundStyle(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty
+                                             ? Theme.txt.opacity(0.4) : Theme.txt)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color.white.opacity(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty ? 0.05 : 0.12))
+                            )
+                    }
+                    .disabled(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .buttonStyle(.plain)
+
+                    if let err = errorMsg {
+                        Text(err)
+                            .font(.display(12, weight: .semibold))
+                            .foregroundStyle(Color(hex: 0xFF6B6B))
+                    }
+
+                    Spacer(minLength: 40)
+                }
+                .padding(.horizontal, 22)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fieldGroup<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SpecLabel(text: label, size: 9, tracking: 1.5, color: Theme.txt.opacity(0.55))
+            content()
+        }
+    }
+
+    private func styledTextField(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .font(.body(15, weight: .semibold))
+            .foregroundStyle(Theme.txt)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func roleChip(_ role: String) -> some View {
+        let on = selectedRoles.contains(role)
+        let eff = FaffEffort.fromType(role)
+        Button { toggleRole(role) } label: {
+            Text(role)
+                .font(.body(11, weight: .extraBold))
+                .tracking(0.3)
+                .foregroundStyle(on ? eff.dot : Theme.txt.opacity(0.5))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(on ? eff.dot.opacity(0.18) : Color.white.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(on ? eff.dot.opacity(0.5) : Color.white.opacity(0.12), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleRole(_ role: String) {
+        if selectedRoles.contains(role) {
+            // Keep at least one selected
+            if selectedRoles.count > 1 { selectedRoles.remove(role) }
+        } else {
+            selectedRoles.insert(role)
+        }
+    }
+
+    private func save() async {
+        saving = true
+        errorMsg = nil
+        let runTypes = allRoles.filter { selectedRoles.contains($0) }.map { $0.lowercased() }
+        let cap = Double(mileageCap) ?? 400
+        let baseline = Double(baselineMi) ?? 0
+        do {
+            try await API.createShoe(
+                brand: brand.trimmingCharacters(in: .whitespaces),
+                model: model.trimmingCharacters(in: .whitespaces),
+                runTypes: runTypes,
+                mileageCap: cap,
+                baselineMi: baseline
+            )
+            onSaved()
+            dismiss()
+        } catch {
+            errorMsg = "Failed to save. Check your connection and try again."
+            saving = false
+        }
     }
 }

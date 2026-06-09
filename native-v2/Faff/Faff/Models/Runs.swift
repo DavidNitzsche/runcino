@@ -354,6 +354,8 @@ struct Shoe: Decodable, Identifiable {
     let color: String?
     let mileage: Double?
     let mileage_cap: Double?
+    let run_types: [String]?
+    let baseline_mi: Double?
     let retired: Bool?
     let preferred: Bool?
     let notes: String?

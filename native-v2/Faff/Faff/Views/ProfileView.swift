@@ -402,7 +402,7 @@ struct ProfileView: View {
                             id: s.id,
                             brand: s.brand ?? "",
                             name: s.name ?? [s.brand, s.model].compactMap { $0 }.joined(separator: " "),
-                            role: roleFor(s),
+                            roles: roleFor(s),
                             miles: s.mileage ?? 0,
                             lifeMi: s.cap ?? 450,
                             retired: s.retired ?? false
@@ -414,9 +414,11 @@ struct ProfileView: View {
             .padding(.horizontal, 22)
         }
     }
-    private func roleFor(_ s: ProfileShoe) -> String {
-        if s.preferred ?? false { return "RACE" }
-        return "EASY"
+    private func roleFor(_ s: ProfileShoe) -> [String] {
+        let types = (s.runTypes ?? []).map { $0.uppercased() }
+        if !types.isEmpty { return types }
+        if s.preferred ?? false { return ["RACE"] }
+        return ["EASY"]
     }
 
     private var connectionsCard: some View {

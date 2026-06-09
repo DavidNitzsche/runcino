@@ -992,6 +992,8 @@ struct TodayView: View {
                 color: ps.color,
                 mileage: ps.mileage,
                 mileage_cap: ps.cap,
+                run_types: ps.runTypes,
+                baseline_mi: nil,
                 retired: ps.retired,
                 preferred: ps.preferred,
                 notes: nil

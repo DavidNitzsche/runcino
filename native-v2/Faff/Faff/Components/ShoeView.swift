@@ -12,21 +12,23 @@ struct FaffShoe: Identifiable, Hashable {
     let id: String
     let brand: String
     let name: String
-    let role: String          // RACE / TEMPO / LONG / EASY / RECOVERY
+    let roles: [String]         // e.g. ["EASY", "LONG"]; uppercased; non-empty
     let miles: Double
     let lifeMi: Double
     var retired: Bool = false
-    var note: String? = nil   // e.g. "Confirmed for CIM"
+    var note: String? = nil
 }
 
 extension FaffShoe {
+    var primaryRole: String { roles.first ?? "EASY" }
     var effort: FaffEffort {
-        switch role.uppercased() {
+        switch primaryRole.uppercased() {
         case "RACE":      return .race
         case "TEMPO":     return .tempo
         case "LONG":      return .long
         case "EASY":      return .easy
         case "RECOVERY":  return .recovery
+        case "INTERVALS": return .intervals
         default:          return .easy
         }
     }
@@ -45,7 +47,7 @@ struct ShoeCompact: View {
                     .frame(width: 4)
                     .frame(maxHeight: .infinity)
                 VStack(alignment: .leading, spacing: 3) {
-                    SpecLabel(text: shoe.role, size: 9, tracking: 1, color: shoe.roleColor)
+                    SpecLabel(text: shoe.primaryRole, size: 9, tracking: 1, color: shoe.roleColor)
                     Text(shoe.name)
                         .font(.body(14, weight: .extraBold))
                         .foregroundStyle(Theme.txt)
@@ -72,8 +74,16 @@ struct ShoeDetail: View {
             Rectangle().fill(shoe.roleColor).frame(width: 5)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        SpecLabel(text: shoe.role, size: 9, tracking: 1.5, color: shoe.roleColor)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            ForEach(shoe.roles, id: \.self) { r in
+                                let eff = FaffEffort.fromType(r)
+                                SpecLabel(text: r.uppercased(), size: 8, tracking: 1.2, color: eff.dot)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(eff.dot.opacity(0.15), in: Capsule())
+                            }
+                        }
                         Text(shoe.name)
                             .font(.body(18, weight: .extraBold))
                             .foregroundStyle(Theme.txt)
@@ -137,7 +147,7 @@ struct ShoePickerRow: View {
                         .font(.body(15, weight: .extraBold))
                         .foregroundStyle(Theme.txt)
                     HStack(spacing: 8) {
-                        SpecLabel(text: shoe.role, size: 9, tracking: 1, color: shoe.roleColor)
+                        SpecLabel(text: shoe.primaryRole, size: 9, tracking: 1, color: shoe.roleColor)
                         Text("\(Int(shoe.miles)) mi")
                             .font(.display(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.6))

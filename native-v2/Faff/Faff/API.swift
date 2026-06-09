@@ -308,6 +308,24 @@ enum API {
         return try? JSONDecoder().decode(ShoesResponse.self, from: data)
     }
 
+    static func createShoe(brand: String, model: String, runTypes: [String], mileageCap: Double, baselineMi: Double) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/shoe"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "brand": brand,
+            "model": model,
+            "run_types": runTypes,
+            "mileage_cap": mileageCap,
+            "baseline_mi": baselineMi
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+    }
+
     // MARK: - Coach purpose + recap (2026-05-31)
     //
     // Backend doctrine: lib/coach/run-purpose.ts + lib/coach/run-recap.ts.
@@ -1263,9 +1281,10 @@ struct ProfileShoe: Decodable, Identifiable {
     let pctUsed: Double?
     let preferred: Bool?
     let retired: Bool?
+    let runTypes: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, brand, model, color, mileage, cap, pctUsed, preferred, retired
+        case id, name, brand, model, color, mileage, cap, pctUsed, preferred, retired, runTypes
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1279,6 +1298,7 @@ struct ProfileShoe: Decodable, Identifiable {
         self.pctUsed = try c.decodeIfPresent(Double.self, forKey: .pctUsed)
         self.preferred = try c.decodeIfPresent(Bool.self, forKey: .preferred)
         self.retired = try c.decodeIfPresent(Bool.self, forKey: .retired)
+        self.runTypes = try c.decodeIfPresent([String].self, forKey: .runTypes)
     }
 }
 
