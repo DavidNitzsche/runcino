@@ -80,6 +80,26 @@ describe('isSameRun', () => {
     const pm = row('PM', 'apple_watch', { start: '2026-06-02T18:00:00', dist: 3, dur: 1500 });
     expect(isSameRun(am, pm)).toBe(false);
   });
+
+  // 2026-06-09 dedup audit · apple_health/null rows carry the same spurious-Z
+  // local-as-UTC mislabel as Strava (Z is the runner's PT wall clock, not UTC).
+  // Without the broadened Z-strip these clustered 7h apart from their bare-PT
+  // apple_watch twin → false negative → uncounted dupe.
+  it('clusters an apple_health spurious-Z dupe with its bare-PT apple_watch twin', () => {
+    const ah = row('AH', 'apple_health', { start: '2026-06-02T10:00:31Z', dist: 7.78, dur: 4096 });
+    const aw = row('AW', 'apple_watch', { start: '2026-06-02T10:00:31', dist: 7.78, dur: 4096 });
+    expect(isSameRun(ah, aw)).toBe(true);
+  });
+  it('clusters a null-source spurious-Z dupe with its bare-PT apple_watch twin', () => {
+    const nul = row('N', '', { start: '2026-06-02T16:53:53Z', dist: 5.08, dur: 2684 });
+    const aw = row('AW', 'apple_watch', { start: '2026-06-02T16:53:53', dist: 5.08, dur: 2685 });
+    expect(isSameRun(nul, aw)).toBe(true);
+  });
+  it('does NOT over-merge two distinct same-day apple_health runs (strip ≠ collapse)', () => {
+    const am = row('AM', 'apple_health', { start: '2026-06-02T07:00:00Z', dist: 5, dur: 2400 });
+    const pm = row('PM', 'apple_health', { start: '2026-06-02T18:00:00Z', dist: 3, dur: 1500 });
+    expect(isSameRun(am, pm)).toBe(false);
+  });
 });
 
 // ── pickCanonical · lock the trust-flip behavior (refactor regression guard) ──
