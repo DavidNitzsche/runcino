@@ -631,7 +631,7 @@ function composePrescription(args: {
 
   if (band === 'ready') {
     if (isQuality) return rx('Plan stands. Execute the workout.', 'READY band · system is recovered.', 'plan');
-    if (isLong)    return rx('Long as planned. Optional fast finish if it feels right.', 'READY band · take the long honestly.', 'plan');
+    if (isLong)    return rx('Long as planned. Optional fast finish if it feels right.', 'READY band · take the long as planned.', 'plan');
     if (isEasy)    return rx('Plan stands. Easy as scheduled.', 'READY band · easy days build the base.', 'plan');
     return rx('Plan stands.', 'READY band · run as scheduled.', 'plan');
   }

@@ -2905,7 +2905,7 @@ function EasyPanel({
               }}>{(hrDelta ?? 0) >= 0 ? '+' : ''}{hrDelta} bpm</b>
               {(hrDelta ?? 0) >= 0 ? ' faster in the back half. ' : ' lower in the back half. '}
               {driftBand.heatExpected && 'Hot out there. Your heart runs higher to shed heat at the same pace. Expected in the conditions, not lost fitness.'}
-              {!driftBand.heatExpected && driftBand.text === 'STAYED FLAT' && 'The engine stayed flat · a genuinely easy run.'}
+              {!driftBand.heatExpected && driftBand.text === 'STAYED FLAT' && 'The engine stayed flat · an easy run.'}
               {!driftBand.heatExpected && driftBand.text === 'SOME DRIFT' && 'Some late drift · keep the back half honest next time.'}
               {!driftBand.heatExpected && driftBand.text === 'LATE FADE' && 'The engine worked harder to hold the same pace by the back half.'}
             </div>

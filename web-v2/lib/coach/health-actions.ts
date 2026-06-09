@@ -197,7 +197,7 @@ export function buildThresholdLine(args: {
   if (parts.length === 0) return '';
 
   const softLine = `Adapter triggers at: ${parts.join(' · ')}.`;
-  const hardLine = 'Hard rules always on: illness, flare, wrist temp +0.4°C, ACWR > 2.0, TSB ≤ −30.';
+  const hardLine = 'Hard rules always on: illness, flare, wrist temp +0.4°C, weekly load ratio > 2.0, form score ≤ −30.';
   return `${softLine} ${hardLine}`;
 }
 
@@ -355,9 +355,9 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         signal: 'tsb_overreach',
         priority: 'urgent',
         action: isInformational
-          ? `TSB ${trainingForm.tsb} · overreach band.`
+          ? `Form score ${trainingForm.tsb} · overreach band.`
           : 'Two easy days before the next quality session · you\'re deep in overreach.',
-        cite: `TSB ${trainingForm.tsb} · overreach band.`,
+        cite: `Form score ${trainingForm.tsb} · overreach band.`,
       });
     }
 
@@ -511,9 +511,9 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         signal: 'tsb_race_ready',
         priority: 'low',
         action: isInformational
-          ? `TSB +${trainingForm.tsb} · race-ready band.`
+          ? `Form score +${trainingForm.tsb} · race-ready band.`
           : 'You\'re sharp · don\'t add volume this week.',
-        cite: `TSB +${trainingForm.tsb} · race-ready band.`,
+        cite: `Form score +${trainingForm.tsb} · race-ready band.`,
       });
     }
 

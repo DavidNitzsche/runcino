@@ -749,7 +749,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 </div>
                 <div className="hins-m">
                   Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}.
-                  {seed.form.acwr != null ? ` ACWR ${seed.form.acwr.toFixed(2)}.` : ''}
+                  {seed.form.acwr != null ? ` ACWR ${seed.form.acwr.toFixed(2)} (weekly load vs monthly base).` : ''}
                 </div>
                 {/* 2026-06-03 · trimmed per David's "way too wordy" QC.
                     Keeps the band reference (the most actionable info)

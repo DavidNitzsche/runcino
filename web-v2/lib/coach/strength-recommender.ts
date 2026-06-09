@@ -501,7 +501,7 @@ async function loadReadinessGate(userUuid: string): Promise<ReadinessGate> {
       return {
         suppressAll: true,
         capAtOne: false,
-        reason: `Strength suppressed this week · Composite readiness in pull-back band${streakDesc}. Heavy lifting under multi-pillar fatigue is injury risk.`,
+        reason: `Strength suppressed this week · Readiness low${streakDesc}. Heavy lifting when sleep and recovery are both down is injury risk.`,
       };
     }
     if (streaks.length >= 1) {

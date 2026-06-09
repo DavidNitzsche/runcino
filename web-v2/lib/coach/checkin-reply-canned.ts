@@ -73,10 +73,10 @@ export function pickCannedReply(
   // Race.
   if (k === 'race') {
     if (e === 'crushed_goal' && b === 'fresh')  return "Goal crushed and body says ready for more. That's a level shift.";
-    if (e === 'crushed_goal' && b === 'worked') return 'Goal crushed, body honestly worked. Earned it.';
+    if (e === 'crushed_goal' && b === 'worked') return 'Goal crushed, body worked for it. Earned.';
     if (e === 'crushed_goal' && b === 'cooked') return 'Crushed it and gave everything. Honor the recovery now.';
     if (e === 'on_goal' && b === 'fresh')  return 'On goal, body fresh. Race execution dialed.';
-    if (e === 'on_goal' && b === 'worked') return "Hit the goal honestly. Body worked. That's a quality day.";
+    if (e === 'on_goal' && b === 'worked') return "Hit the goal. Body worked. That's a quality day.";
     if (e === 'on_goal' && b === 'cooked') return "On goal but emptied the tank. That's what race day takes.";
     if (e === 'missed_goal' && b === 'fresh')  return "Missed the time, body felt fine. Pacing or course noise · let's debrief.";
     if (e === 'missed_goal' && b === 'worked') return "Missed it, body worked hard. Didn't go the way you wanted.";

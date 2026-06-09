@@ -404,7 +404,7 @@ function PhysiologyBlock() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
       <div>
-        <StatTile value={p.lthr ?? '·'} unit={p.lthr ? 'bpm' : ''} label="LTHR" />
+        <StatTile value={p.lthr ?? '·'} unit={p.lthr ? 'bpm' : ''} label="LTHR (threshold HR)" />
         <div style={{ padding: '0 16px 12px' }}>
           {p.lthr
             ? <ProvenanceLine set={lthrSetLabel ?? undefined} method={lthrMethodLabel} stale={lthrStale} />

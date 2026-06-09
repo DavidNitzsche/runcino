@@ -169,8 +169,8 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     score += w;
     inputs.push({
       key: 'load', label: 'LOAD · 15%', weight: w,
-      observedV: `${r.toFixed(2)} ACWR`,
-      observedSub: `acute ${state.loadAcute7.toFixed(1)} · chronic ${state.loadChronic28.toFixed(1)} mi/day`,
+      observedV: `${r.toFixed(2)} ACWR (this week vs last 4 weeks)`,
+      observedSub: `this week ${state.loadAcute7.toFixed(1)} · month avg ${state.loadChronic28.toFixed(1)} mi/day`,
       meaning,
     });
   } else {

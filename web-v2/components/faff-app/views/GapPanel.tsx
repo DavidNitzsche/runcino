@@ -263,7 +263,7 @@ function courseDoctrineCopy(sec: number, goal: GoalRace): string {
   const grossDesc = gpm < 25 ? 'essentially flat'
                   : gpm < 60 ? 'rolling'
                   : gpm < 100 ? 'hilly'
-                  : 'genuinely mountainous';
+                  : 'mountainous';
   return `${goal.name}'s profile (${gpm.toFixed(0)} ft/mi gross · ${grossDesc}) ` +
     `adds about ${fmtDelta(sec)} to a flat-reference projection. Daniels' ` +
     `correction · ~+10 s/mi per 100 ft/mi net climb, ~−7 s/mi per 100 ft/mi ` +
