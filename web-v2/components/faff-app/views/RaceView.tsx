@@ -159,6 +159,8 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
   const [aGoal, setAGoal] = useState(normalizeGoalTime(r.aGoal));
   const [bGoal, setBGoal] = useState(normalizeGoalTime(r.bGoal));
   const [bib, setBib] = useState(r.bib);
+  const [wave, setWave] = useState(r.wave);
+  const [startTime, setStartTime] = useState(r.startTime);
   const [goalPace, setGoalPace] = useState(r.goalPace);
   // 2026-06-02 · priority editor. A/B/C drives the eyebrow label and PATCH
   // /api/race fires the auto-rebuild hook when this changes (A↔B/C).
@@ -236,6 +238,16 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
     setBib(next);
     void patchRace(r.slug, { bib: next });
   }
+  function commitWave(text: string) {
+    const next = (text || '').trim() || r.wave;
+    setWave(next);
+    void patchRace(r.slug, { wave: next });
+  }
+  function commitStartTime(text: string) {
+    const next = (text || '').trim() || r.startTime;
+    setStartTime(next);
+    void patchRace(r.slug, { startTime: next });
+  }
   // Recalc deltas returned by the race PATCH (when finishTime + avgHrBpm
   // were both set, the backend auto-recalcs VDOT + LTHR). Surfaced via
   // StateChangeToast for ~5s after a save lands. Closes line 1228.
@@ -294,7 +306,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
           <div className="rp-eyebrow">{r.isPast ? 'PAST RACE' : `${priority} RACE`} · {distLabel(r.distanceMi)}</div>
           <div className="rp-title">{r.name.split(' ').map((w, i) => <span key={i}>{w}<br/></span>)}</div>
           <div className="rp-meta">
-            <span><b>{formatDateFull(r.date)}</b>{r.isPast ? '' : ' · ' + r.startTime}</span>
+            <span><b>{formatDateFull(r.date)}</b>{r.isPast ? '' : ' · ' + startTime}</span>
             <span>{r.course}</span>
             <span>{r.certification}</span>
           </div>
@@ -356,7 +368,31 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                 >{bib}</span>
               </div>
             )}
-            {!r.isPast && <div className="rp-chip">{r.wave}</div>}
+            {!r.isPast && (
+              <div className="rp-chip">
+                Wave{' '}
+                <span
+                  className="chip-edit"
+                  contentEditable
+                  suppressContentEditableWarning
+                  spellCheck={false}
+                  onBlur={(e) => commitWave(e.currentTarget.textContent || '')}
+                >{wave}</span>
+              </div>
+            )}
+            {!r.isPast && (
+              <div className="rp-chip">
+                Gun{' '}
+                <span
+                  className="chip-edit"
+                  contentEditable
+                  suppressContentEditableWarning
+                  spellCheck={false}
+                  onBlur={(e) => commitStartTime(e.currentTarget.textContent || '')}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
+                >{startTime}</span>
+              </div>
+            )}
           </div>
         </div>
         <div>
