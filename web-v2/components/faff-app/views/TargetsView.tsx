@@ -148,14 +148,12 @@ export function TargetsView({
         </div>
       </div>
 
-      {/* off-track keeps the legacy GapPanel until the off-track redesign
-          lands · the new ON THE PATH narrative is for on-track + watching. */}
-      {status === 'off-track' ? (
-        <div className="band">
-          <div className="eyebrow-sec">Closing the gap</div>
-          <GapPanel goal={goal} series={seed.projectionTrend} />
-        </div>
-      ) : (
+      <div className="band">
+        <div className="eyebrow-sec">Closing the gap</div>
+        <GapPanel goal={goal} series={seed.projectionTrend} />
+      </div>
+
+      {status !== 'off-track' ? (
         <>
           {/* ============ SECTION 2 · THE PATH ============ */}
           <div className="band">
@@ -226,7 +224,7 @@ export function TargetsView({
             </div>
           ) : null}
         </>
-      )}
+      ) : null}
 
       {/* ============ SECTION 4 · PRs ANCHORED ============ */}
       <div className="band">
