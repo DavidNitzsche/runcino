@@ -44,7 +44,7 @@ export function TargetsView({
       <div className="targets2">
         <div className="top">
           <div>
-            <div className="date">Targets</div>
+            <div className="date">Goal</div>
             <div className="wk">Goals &amp; races</div>
           </div>
         </div>
@@ -99,7 +99,7 @@ export function TargetsView({
     <div className="targets2">
       <div className="top">
         <div>
-          <div className="date">Targets</div>
+          <div className="date">Race</div>
           <div className="wk">Goals &amp; races</div>
         </div>
       </div>

@@ -353,33 +353,6 @@ struct TargetsView: View {
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.14)))
     }
 
-    private func goalTile(title: String, detail: String, start: String, now: String, goal: String, progress: Double) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(title).font(.body(17, weight: .extraBold)).tracking(-0.3).foregroundStyle(Theme.txt)
-                    Text(detail).font(.body(11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.62))
-                }
-                Spacer()
-                Text("CUT")
-                    .font(.display(11, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0xFFCE8A))
-            }
-            GapBeam(progress: progress, height: 10)
-                .padding(.top, 5)
-            HStack {
-                Text("WAS \(start)").font(.display(10, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.5))
-                Spacer()
-                Text("PR \(now)").font(.display(10, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.95))
-                Spacer()
-                Text("GOAL \(goal)").font(.display(10, weight: .semibold)).foregroundStyle(Color(hex: 0xFFCE8A))
-            }
-        }
-        .padding(15)
-        .background(Color(hex: 0x140610).opacity(0.46), in: RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.14)))
-    }
-
     private func section<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 13) {
             SpecLabel(text: title, size: 11, tracking: 2, color: Theme.txt.opacity(0.6))

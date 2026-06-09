@@ -32,7 +32,7 @@ enum FaffTab: String, CaseIterable, Identifiable {
         case .today:    return "Today"
         case .train:    return "Train"
         case .health:   return "Health"
-        case .targets:  return "Targets"
+        case .targets:  return "Goal"
         }
     }
     var icon: String {
