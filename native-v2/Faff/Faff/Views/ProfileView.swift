@@ -128,12 +128,14 @@ struct ProfileView: View {
         }
         .task { await reload() }
         .refreshable { await reload() }
+        .sheet(item: $glossaryEntry) { e in GlossarySheet(entry: e) }
     }
 
     /// 2026-06-02 · Sign-out button shipped to ProfileView's bottom.
     /// Mirrors SettingsView.signOutButton (same destructive styling,
     /// same confirm dialog, same gate-reset notification) so the two
     /// surfaces' sign-out paths stay symmetric.
+    @State private var glossaryEntry: GlossaryEntry? = nil
     @State private var showSignOutConfirm: Bool = false
     private var signOutButton: some View {
         Button {
@@ -210,9 +212,15 @@ struct ProfileView: View {
         let mhrSource = profile?.physiology.max_hr_source
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                StatTile(value: lthr.map(String.init) ?? "—", label: "LTHR")
-                StatTile(value: mhr.map(String.init) ?? "—", label: "MAX HR")
-                StatTile(value: vdot.map { String(Int($0)) } ?? "—", label: "VDOT")
+                StatTile(value: lthr.map(String.init) ?? "—", label: "LTHR",
+                         explainText: "WHY ▾",
+                         onExplain: { glossaryEntry = GlossaryEntry.entry(for: "lthr") })
+                StatTile(value: mhr.map(String.init) ?? "—", label: "MAX HR",
+                         explainText: "WHY ▾",
+                         onExplain: { glossaryEntry = GlossaryEntry.entry(for: "hrmax") })
+                StatTile(value: vdot.map { String(Int($0)) } ?? "—", label: "VDOT",
+                         explainText: "WHY ▾",
+                         onExplain: { glossaryEntry = GlossaryEntry.entry(for: "vdot") })
             }
             if let kind = provenanceKindForLTHR(value: lthr, source: lthrSource) {
                 ProvenanceLine(kind: kind).frame(maxWidth: .infinity, alignment: .leading)

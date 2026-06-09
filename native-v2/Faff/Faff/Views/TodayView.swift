@@ -118,6 +118,7 @@ struct TodayView: View {
     /// readiness panel hero presents this. Sheet hydrates from
     /// /api/readiness/brief inside its own .task.
     @State private var showReadinessBrief: Bool = false
+    @State private var glossaryEntry: GlossaryEntry? = nil
     /// Post-run RunDetail · hydrated when the selected day has a
     /// completedRunId. Drives the Today v2 post-run sheet body
     /// (designs/from Design agent/Today page v2/).
@@ -427,7 +428,8 @@ struct TodayView: View {
                     ScrollView(showsIndicators: false) {
                         TodayRecoveryPanel(
                             brief: recoveryBrief,
-                            onTapRecoveryCard: { onReadinessTap() }
+                            onTapRecoveryCard: { onReadinessTap() },
+                            onExplainACWR: { glossaryEntry = GlossaryEntry.entry(for: "acwr") }
                         )
                         .padding(.horizontal, 22)
                         .padding(.top, 22)
@@ -637,6 +639,7 @@ struct TodayView: View {
                 .presentationBackground(.clear)
                 .presentationDragIndicator(.hidden)   // sheet draws its own grabber
         }
+        .sheet(item: $glossaryEntry) { e in GlossarySheet(entry: e) }
     }
 
     // MARK: - Coach proposal card

@@ -30,6 +30,7 @@ import SwiftUI
 struct TodayRecoveryPanel: View {
     let brief: RecoveryBrief?
     var onTapRecoveryCard: () -> Void = {}
+    var onExplainACWR: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 18) {
@@ -449,6 +450,20 @@ private extension TodayRecoveryPanel {
                 .foregroundStyle(Color.white)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(badge.color, in: Capsule())
+            if let explain = onExplainACWR {
+                Button(action: explain) {
+                    HStack(spacing: 3) {
+                        Text("WHY")
+                            .font(.body(9.5, weight: .semibold))
+                            .foregroundStyle(Theme.dist)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Theme.dist)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 13).padding(.vertical, 13)
