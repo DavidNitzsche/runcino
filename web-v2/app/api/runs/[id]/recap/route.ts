@@ -167,7 +167,7 @@ export async function GET(
   // uses these instead of unreliable per-mile splits.
   // Cold-start: returns [] when no watch_completion intent exists (any
   // runner's first run, non-Faff-watch sources, open easy runs).
-  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null }> = [];
+  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null; isFinishSegment?: boolean }> = [];
   if (date) {
     try {
       const intentRow = (await pool.query(
@@ -193,6 +193,7 @@ export async function GET(
           actualPaceSPerMi: Number(p.actualPaceSPerMi) || null,
           targetPaceSPerMi: Number(p.targetPaceSPerMi) || null,
           actualDistanceMi: Number(p.actualDistanceMi) || null,
+          isFinishSegment: p.isFinishSegment === true,
         }));
       }
     } catch { /* non-fatal: win falls back to per-mile heuristic */ }
@@ -235,6 +236,17 @@ export async function GET(
   const workDistanceMi: number | null = workDistMiRaw > 0 ? workDistMiRaw : null;
   const repCount: number | null = workPhases.length > 0 ? workPhases.length : null;
 
+  // Finish-segment spec fields for the long-run structured recap copy.
+  // finish_mi / finish_pace_s_per_mi / finish_label live in workout_spec
+  // for long runs that carry an HM/M finish segment. Actual finish pace
+  // prefers the isFinishSegment phase from the watch completion; falls back
+  // to the spec target when no watch phases are present (Strava / cold-start).
+  const finishMiSpec = type === 'long' ? (Number((planRow?.workout_spec as any)?.finish_mi) || null) : null;
+  const finishPaceSpec = type === 'long' ? (Number((planRow?.workout_spec as any)?.finish_pace_s_per_mi) || null) : null;
+  const finishLabelRaw = type === 'long' ? (String((planRow?.workout_spec as any)?.finish_label ?? '').trim() || null) : null;
+  const finishPhase = winPhases.find((p) => p.isFinishSegment === true && p.actualPaceSPerMi != null);
+  const finishPaceSPerMi = finishPhase?.actualPaceSPerMi ?? finishPaceSpec;
+
   // Single weather object · fed to both deriveRecap and deriveWin so the
   // recap verdict, the win line, and the phase bars all judge against the
   // same heat number (no surface shows a different heat % than another).
@@ -261,6 +273,9 @@ export async function GET(
     workPaceSPerMi,
     workDistanceMi,
     repCount,
+    finishMi: finishMiSpec,
+    finishPaceSPerMi,
+    finishLabel: finishLabelRaw,
     actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
     actualMaxHr: data.maxHr != null ? Number(data.maxHr) : null,
     splits: splitsForRecap,

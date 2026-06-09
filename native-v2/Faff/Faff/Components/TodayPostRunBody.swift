@@ -107,11 +107,12 @@ struct TodayPostRunBody: View {
                decodePolyline(poly).count >= 2 {
                 routeMap(polyline: poly)
             }
-            // 2026-06-02 round 49 · per the post-run-panels handoff,
-            // mile splits surface ONLY for long + tempo. Easy/recovery
-            // are covered by AEROBIC STAMP's mile-pace footprint;
-            // intervals are covered by THE REPS rail.
-            if hiwEffort == .long || hiwEffort == .tempo {
+            // 2026-06-09 · mile splits open to all non-rest run types.
+            // Easy/recovery previously relied on AEROBIC STAMP's mile-pace
+            // footprint, but that footprint is inside the recap-gated block
+            // and often doesn't fire for easy runs with sparse recap data.
+            // Every GPS run benefits from seeing its pace distribution.
+            if hiwEffort != .rest {
                 mileSplits
             }
             formGrid
@@ -302,13 +303,31 @@ struct TodayPostRunBody: View {
         return w
     }
 
-    // MARK: - 2. Stats trio · Distance / Avg pace / Moving time
+    // MARK: - 2. Stats trio · Distance / Pace / Moving time
+
+    /// True when the run type is tempo / threshold / progression /
+    /// intervals — sessions where the work-phase pace is the key
+    /// number and the overall avg is diluted by warmup + cooldown.
+    private var isQualityRun: Bool {
+        hiwEffort == .tempo || hiwEffort == .intervals
+    }
+
+    /// Work-phase pace string ("{M:SS}/mi") for quality sessions,
+    /// or nil when unavailable (easy/long/rest) or when pace_work
+    /// isn't populated (non-Faff-watch sources).
+    private var workPaceDisplay: String? {
+        guard isQualityRun,
+              let wp = detail?.pace_work, !wp.isEmpty else { return nil }
+        return "\(wp)/mi"
+    }
 
     private var statsTrio: some View {
-        HStack(spacing: 0) {
+        let paceLabel = workPaceDisplay != nil ? "WORK PACE" : "AVG PACE"
+        let paceValue = workPaceDisplay ?? paceText
+        return HStack(spacing: 0) {
             statColumn(key: "DISTANCE", value: distanceText)
             divider
-            statColumn(key: "AVG PACE", value: paceText)
+            statColumn(key: paceLabel, value: paceValue)
             divider
             statColumn(key: "MOVING", value: movingText)
         }
@@ -580,14 +599,32 @@ struct TodayPostRunBody: View {
                         }
                     }
                 }
-                // 2026-06-02 round 49 · per-run-type analysis panel
-                // (design_handoff_iphone_postrun). Swaps body by effort:
+                // 2026-06-09 · conditions note (heat adjustment context).
+                // recap.conditions_note carries the web's "Heat slowdown:
+                // 14.5% · adjusted verdict" copy when the engine applied a
+                // heat penalty. Previously only surfaced in RunDetailView;
+                // added here so the Today post-run view shows it inline.
+                if let cn = recap.conditions_note, !cn.isEmpty {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "thermometer.medium")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(subtleText)
+                            .padding(.top, 2)
+                        Text(cn)
+                            .font(.body(12))
+                            .foregroundStyle(mutedText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(3)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(chipBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                // Per-run-type analysis panel (design_handoff_iphone_postrun).
+                // Swaps body by effort:
                 //   easy/recovery → AEROBIC STAMP
                 //   long          → THE LONG
                 //   tempo         → THE TEMPO
                 //   intervals     → THE REPS
-                // Renders the canonical surface, not the generic
-                // comparisonRows triplet (which is now dead).
                 HowItWentPanel(
                     effort: hiwEffort,
                     detail: detail,

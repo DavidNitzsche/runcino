@@ -56,6 +56,13 @@ export interface RecapInput {
    *  When present, used in intervals lead line: "4 reps @ 6:52".
    *  Absent on Strava/cold-start runs (falls back to total-distance block). */
   repCount?: number | null;
+  /** Finish-segment distance (mi) from workout_spec (long runs with HM/M finish). */
+  finishMi?: number | null;
+  /** Actual finish-segment pace (s/mi). Prefer the isFinishSegment phase's
+   *  actualPaceSPerMi; falls back to workout_spec finish_pace_s_per_mi. */
+  finishPaceSPerMi?: number | null;
+  /** 'HM' | 'M' from the spec — rendered as 'HMP' / 'MP'. */
+  finishLabel?: string | null;
   actualAvgHr: number | null;
   actualMaxHr: number | null;
   /**
@@ -186,9 +193,23 @@ export function deriveRecap(input: RecapInput): RecapPayload {
   // The science still drives the rules · just not the words.
   switch (input.type) {
     case 'long': {
-      facts.push(
-        `Long run done · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}. The miles you put in matter way more than how the last one felt.`,
-      );
+      const finishMi = input.finishMi ?? 0;
+      const hasFinish = finishMi > 0 && input.finishPaceSPerMi != null;
+      if (hasFinish) {
+        const easyMi = Math.round(input.plannedMi - finishMi);
+        const fPaceStr = paceLabel(input.finishPaceSPerMi!)?.replace('/mi', '') ?? '';
+        const rawLabel = String(input.finishLabel ?? '').trim().toUpperCase();
+        const label = rawLabel === 'HM' ? 'HMP' : rawLabel === 'M' ? 'MP' : rawLabel || 'HMP';
+        const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+        facts.push(
+          `Long run done · ${easyMi}mi easy + ${Math.round(finishMi)}mi @ ${label} ${fPaceStr}${hrPart}.`,
+        );
+      } else {
+        const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+        facts.push(
+          `Long run done · ${input.actualMi.toFixed(1)} mi${hrPart} · kept it aerobic.`,
+        );
+      }
       if (drift && drift.drift >= 8) {
         if (heatExplainsDrift) {
           facts.push(
