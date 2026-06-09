@@ -3,6 +3,7 @@ import type { EffortKey, PlannedDay, CompletedRun, ViewKey } from './constants';
 export type DriverRow = { name: string; why: string; pct: number; pts: number; dir: 'pos'|'neg' };
 export type Readiness = {
   score: number;
+  band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'unknown';
   label: string;        // PRIMED / TUNED / EASY ONLY etc.
   baseline: number;
   trend: number[];      // last 7 values 0..100
@@ -364,6 +365,7 @@ export type GoalRace = {
   // (e.g. foreign race we haven't editorialized). Panel hides the chunk.
   conditionsImpactSec?: number | null;
   conditionsSource?: 'forecast' | 'climate' | null;
+  conditionsSafetyMessage?: string | null;
 
   // 2.3 · Execution chunk · runner-specific pacing buffer in seconds.
   // Always populated · 30s default when fewer than 2 qualifying runs

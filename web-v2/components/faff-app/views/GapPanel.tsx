@@ -238,17 +238,22 @@ function conditionsDoctrineCopy(sec: number, goal: GoalRace): string {
   const src = goal.conditionsSource === 'forecast'
     ? "the actual race-day forecast"
     : "typical race-morning climate for this location";
+  let copy: string;
   if (sec === 0) {
-    return `Based on ${src}, ${goal.name} sits in a neutral heat band · ` +
+    copy = `Based on ${src}, ${goal.name} sits in a neutral heat band · ` +
       `Conditions add no time at this distance. The day is not the bottleneck.`;
-  }
-  if (sec <= 60) {
-    return `Based on ${src}, expect Maughan to add about ${fmtDelta(sec)} · ` +
+  } else if (sec <= 60) {
+    copy = `Based on ${src}, expect Maughan to add about ${fmtDelta(sec)} · ` +
       `workable. Execute the day, don't fight it.`;
+  } else {
+    copy = `Based on ${src}, Maughan adds about ${fmtDelta(sec)} at ` +
+      `${goal.name}'s expected temp. An earlier corral or cooler shoulder ` +
+      `race claws some of that back.`;
   }
-  return `Based on ${src}, Maughan adds about ${fmtDelta(sec)} at ` +
-    `${goal.name}'s expected temp. An earlier corral or cooler shoulder ` +
-    `race claws some of that back.`;
+  if (goal.conditionsSafetyMessage) {
+    copy += ` ${goal.conditionsSafetyMessage}`;
+  }
+  return copy;
 }
 
 /** Doctrine copy when courseImpactSec is real (per-race). */
@@ -502,7 +507,7 @@ export function GapPanel({ goal, series }: GapPanelProps) {
           <div className="gaphd" style={{ marginBottom: 6 }}><span className="l">Race-morning focus</span></div>
           <div className="cue"><span className="n">1</span><span className="x">Bank <b>nothing</b> in the first 5K. Goal pace should feel almost too easy early.</span></div>
           <div className="cue"><span className="n">2</span><span className="x">Hold your <b>B-line</b> through halfway. Move to A only if the middle miles feel honest.</span></div>
-          <div className="cue"><span className="n">3</span><span className="x">Take gels early and on the clock. Heat is the variable, not your legs.</span></div>
+          <div className="cue"><span className="n">3</span><span className="x">{goal.conditionsSafetyMessage ?? 'Take gels early and on the clock. Heat is the variable, not your legs.'}</span></div>
         </div>
       </div>
     );

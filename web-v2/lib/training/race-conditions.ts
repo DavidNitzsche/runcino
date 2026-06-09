@@ -52,6 +52,9 @@ export interface RaceConditionsResult {
   heatBand: 'neutral' | 'warm' | 'hot' | 'extreme';
   tempF: number | null;
   summary: string;
+  /** Non-null when tempF > 85°F — heat illness is a real risk above that
+   *  threshold regardless of predicted pace impact. */
+  safetyMessage: string | null;
 }
 
 /** Maximum days ahead Open-Meteo's forecast API covers (~16d). Beyond
@@ -134,6 +137,7 @@ export async function computeRaceConditions(
       heatBand: 'neutral',
       tempF: null,
       summary: 'No race-day weather signal · Conditions chunk hidden.',
+      safetyMessage: null,
     };
   }
 
@@ -153,8 +157,11 @@ export async function computeRaceConditions(
   // 4 · summary copy
   const heatBand = heatBandFor(tempF);
   const summary = buildSummary(seconds, tempF, source, heatBand);
+  const safetyMessage = tempF > 85
+    ? 'At this temperature, heat illness is a real risk. Run early, carry water, back off effort if you feel dizzy or stop sweating.'
+    : null;
 
-  return { seconds, source, heatBand, tempF: Math.round(tempF), summary };
+  return { seconds, source, heatBand, tempF: Math.round(tempF), summary, safetyMessage };
 }
 
 function buildSummary(

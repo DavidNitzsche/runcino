@@ -182,6 +182,7 @@ export async function GET(req: NextRequest) {
 
     let conditionsImpactSec: number | null = null;
     let conditionsSource: 'forecast' | 'climate' | null = null;
+    let conditionsSafetyMessage: string | null = null;
 
     let executionBufferSec = 30;
     let executionSource: 'observed' | 'default' = 'default';
@@ -237,6 +238,7 @@ export async function GET(req: NextRequest) {
         if (conditions) {
           conditionsImpactSec = conditions.seconds;
           conditionsSource = conditions.source;
+          conditionsSafetyMessage = conditions.safetyMessage;
         }
       }
     }
@@ -338,6 +340,7 @@ export async function GET(req: NextRequest) {
       courseElevGainFtPerMi,
       conditionsImpactSec,
       conditionsSource,
+      conditionsSafetyMessage,
       executionBufferSec,
       executionSource,
       executionCV,
