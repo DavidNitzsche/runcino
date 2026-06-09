@@ -44,6 +44,18 @@ export interface RecapInput {
   /** Actual canonical-row execution. */
   actualMi: number;
   actualPaceSPerMi: number | null;
+  /** Work-phase avg pace (s/mi) derived from watch completion phases.
+   *  When present, replaces whole-run avg in tempo/threshold copy.
+   *  Absent on Strava/cold-start runs — falls back to actualPaceSPerMi. */
+  workPaceSPerMi?: number | null;
+  /** Sum of work-phase actualDistanceMi from watch completion phases.
+   *  When present alongside workPaceSPerMi, formats as "4.0 mi @ 7:18".
+   *  Absent when phases carry no distance (falls back to pace-only block). */
+  workDistanceMi?: number | null;
+  /** Count of completed work phases (reps) from watch completion.
+   *  When present, used in intervals lead line: "4 reps @ 6:52".
+   *  Absent on Strava/cold-start runs (falls back to total-distance block). */
+  repCount?: number | null;
   actualAvgHr: number | null;
   actualMaxHr: number | null;
   /**
@@ -220,9 +232,14 @@ export function deriveRecap(input: RecapInput): RecapPayload {
 
     case 'tempo':
     case 'threshold': {
-      facts.push(
-        `Tempo done · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}. These build up over weeks · one alone doesn't change much, but the bank pays off.`,
-      );
+      const workPaceStr = paceLabel(input.workPaceSPerMi);
+      const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+      const leadLine = workPaceStr && input.workDistanceMi
+        ? `Tempo done · ${input.workDistanceMi.toFixed(1)} mi @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
+        : workPaceStr
+          ? `Tempo done · ${workPaceStr} tempo block${hrPart}.`
+          : `Tempo done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
+      facts.push(`${leadLine} These build up over weeks · one alone doesn't change much, but the bank pays off.`);
       // 2026-06-04 · don't repeat the heat percentage here · the
       // CONDITIONS card already owns the "Got from 69°F to 74°F ·
       // Costs you about X% on pace" quantitative read. Recap keeps
@@ -241,9 +258,17 @@ export function deriveRecap(input: RecapInput): RecapPayload {
     }
 
     case 'intervals': {
-      facts.push(
-        `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualMaxHr ? ', peak HR ' + input.actualMaxHr : ''}. Pushed the work bouts, jogged the recoveries.`,
-      );
+      const workPaceStr = paceLabel(input.workPaceSPerMi);
+      const repStr = input.repCount ? `${input.repCount} rep${input.repCount !== 1 ? 's' : ''}` : null;
+      const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+      const leadLine = repStr && workPaceStr
+        ? `Reps done · ${repStr} @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
+        : repStr
+          ? `Reps done · ${repStr}${hrPart}.`
+          : workPaceStr
+            ? `Reps done · ${workPaceStr} work avg${hrPart}.`
+            : `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
+      facts.push(`${leadLine} Building the top end · these stack.`);
       if (heatExplainsDrift) {
         facts.push(`Heat makes interval pace harder. Go by feel and HR · the workout still counted.`);
       }

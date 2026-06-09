@@ -167,7 +167,7 @@ export async function GET(
   // uses these instead of unreliable per-mile splits.
   // Cold-start: returns [] when no watch_completion intent exists (any
   // runner's first run, non-Faff-watch sources, open easy runs).
-  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null }> = [];
+  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null }> = [];
   if (date) {
     try {
       const intentRow = (await pool.query(
@@ -192,6 +192,7 @@ export async function GET(
           verdict: p.verdict ?? null,
           actualPaceSPerMi: Number(p.actualPaceSPerMi) || null,
           targetPaceSPerMi: Number(p.targetPaceSPerMi) || null,
+          actualDistanceMi: Number(p.actualDistanceMi) || null,
         }));
       }
     } catch { /* non-fatal: win falls back to per-mile heuristic */ }
@@ -224,6 +225,16 @@ export async function GET(
   const livePlanTargetSPerMi = planRow?.pace_target_s ?? null;
   const evalPlannedPaceSPerMi = frozenTargetSPerMi ?? livePlanTargetSPerMi;
 
+  // Work-phase pace + distance for tempo recap copy. Both derived from the
+  // same work-phase filter so the "4.0 mi @ 7:18" pair is always consistent.
+  const workPhases = winPhases.filter((p) => p.type === 'work' && p.actualPaceSPerMi);
+  const workPaceSPerMi: number | null = workPhases.length > 0
+    ? workPhases.reduce((s, p) => s + (p.actualPaceSPerMi as number), 0) / workPhases.length
+    : null;
+  const workDistMiRaw = workPhases.reduce((s, p) => s + (p.actualDistanceMi ?? 0), 0);
+  const workDistanceMi: number | null = workDistMiRaw > 0 ? workDistMiRaw : null;
+  const repCount: number | null = workPhases.length > 0 ? workPhases.length : null;
+
   // Single weather object · fed to both deriveRecap and deriveWin so the
   // recap verdict, the win line, and the phase bars all judge against the
   // same heat number (no surface shows a different heat % than another).
@@ -247,6 +258,9 @@ export async function GET(
     plannedHrCap: planRow?.hr_cap ?? null,
     actualMi: Number(data.distanceMi) || 0,
     actualPaceSPerMi,
+    workPaceSPerMi,
+    workDistanceMi,
+    repCount,
     actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
     actualMaxHr: data.maxHr != null ? Number(data.maxHr) : null,
     splits: splitsForRecap,

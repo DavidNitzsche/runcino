@@ -232,14 +232,22 @@ function winLong(input: WinInput, splits: NormalSplit[]): string | null {
 }
 
 function winTempo(input: WinInput, splits: NormalSplit[], slowdownPct: number): string | null {
-  if (!input.actualPaceSPerMi || !input.plannedPaceSPerMi) return null;
+  // Prefer work-phase avg over whole-run avg (which is diluted by warmup/cooldown).
+  const workPhases = (input.phases ?? []).filter(
+    (p) => (p.type === 'work' || p.type === 'tempo' || p.type === 'threshold') && p.actualPaceSPerMi,
+  );
+  const paceForJudge = workPhases.length > 0
+    ? workPhases.reduce((s, p) => s + (p.actualPaceSPerMi as number), 0) / workPhases.length
+    : input.actualPaceSPerMi;
+
+  if (!paceForJudge || !input.plannedPaceSPerMi) return null;
   // Same heat-adjusted band as the phase bars (loadPhaseBreakdown) and the
   // done-state (computeTodayExecution). 'slow' = a real miss even after the
   // heat allowance → no win. 'on' / 'fast' → a win, worded by how it landed.
-  const status = heatAdjustedStatus(input.plannedPaceSPerMi, input.actualPaceSPerMi, slowdownPct);
+  const status = heatAdjustedStatus(input.plannedPaceSPerMi, paceForJudge, slowdownPct);
   if (status === 'slow') return null;
-  const delta = input.actualPaceSPerMi - input.plannedPaceSPerMi;
-  const paceStr = formatPace(input.actualPaceSPerMi);
+  const delta = paceForJudge - input.plannedPaceSPerMi;
+  const paceStr = formatPace(paceForJudge);
   if (Math.abs(delta) <= 5) return `Held the line · ${paceStr} dead even`;
   if (status === 'fast')    return `Held the line · ${paceStr} slightly under target`;
   // 'on' but slower than the raw target · executed inside the band.
