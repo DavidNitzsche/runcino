@@ -417,40 +417,13 @@ struct RunDetailView: View {
     }
 
     private var routePanel: some View {
-        ZStack {
-            RadialGradient(
-                colors: [Color.black.opacity(0.34), Color.black.opacity(0)],
-                center: .center, startRadius: 0, endRadius: 200
-            )
-            Path { p in
-                p.move(to: .init(x: 52, y: 92))
-                p.addCurve(to: .init(x: 110, y: 44), control1: .init(x: 40, y: 60), control2: .init(x: 70, y: 40))
-                p.addCurve(to: .init(x: 192, y: 86), control1: .init(x: 150, y: 48), control2: .init(x: 150, y: 84))
-                p.addCurve(to: .init(x: 292, y: 50), control1: .init(x: 236, y: 88), control2: .init(x: 250, y: 56))
-                p.addCurve(to: .init(x: 286, y: 86), control1: .init(x: 320, y: 46), control2: .init(x: 318, y: 78))
-            }
-            .stroke(
-                LinearGradient(colors: [Color(hex: 0xFFCE8A), Color(hex: 0xFF5A3C)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                style: StrokeStyle(lineWidth: 3.4, lineCap: .round)
-            )
-
-            // Start/finish marker
-            VStack {
-                Spacer()
-                HStack {
-                    HStack(spacing: 8) {
-                        Circle().fill(Color(hex: 0x9AF0BF)).frame(width: 10, height: 10)
-                        Text("START / FINISH")
-                            .font(.display(8.5, weight: .bold))
-                            .foregroundStyle(Color(hex: 0x9AF0BF))
-                    }
-                    Spacer()
-                }
-                .padding(.bottom, 12).padding(.leading, 50)
-            }
-        }
-        .frame(height: 120)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        RoutePolylineCard(
+            polyline: run?.route_polyline ?? "",
+            accent: effort.dot,
+            distanceMi: run?.distance_mi ?? 0,
+            elevGainFt: run?.elev_gain_ft ?? 0
+        )
+        .frame(height: 196)
     }
 
     private var detailsTile: some View {

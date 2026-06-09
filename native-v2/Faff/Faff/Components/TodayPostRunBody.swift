@@ -779,11 +779,11 @@ private let PACE_BUCKETS: [Color] = [
     Color(hex: 0x48B3B5),  // teal
     Color(hex: 0x27B4E0),  // slowest · blue
 ]
-private let START_RING_COLOR = Color(hex: 0x14C08C)
-private let FINISH_FILL_COLOR = Color(hex: 0xFC4D64)
-private let BASELINE_UNDER_COLOR = Color(hex: 0xFC4D64)
+let START_RING_COLOR = Color(hex: 0x14C08C)
+let FINISH_FILL_COLOR = Color(hex: 0xFC4D64)
+let BASELINE_UNDER_COLOR = Color(hex: 0xFC4D64)
 
-private struct RoutePolylineCard: View {
+struct RoutePolylineCard: View {
     let polyline: String
     let accent: Color
     let distanceMi: Double
@@ -957,7 +957,7 @@ private func haversineMi(lat1: Double, lon1: Double, lat2: Double, lon2: Double)
 }
 
 /// Decode a Google polyline (precision 5) into an array of (lat, lon).
-private func decodePolyline(_ encoded: String) -> [(Double, Double)] {
+func decodePolyline(_ encoded: String) -> [(Double, Double)] {
     var out: [(Double, Double)] = []
     var index = encoded.startIndex
     var lat = 0, lon = 0
