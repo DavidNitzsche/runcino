@@ -16,5 +16,4 @@ export * from './DayDetail';
 export * from './RaceSurfaces';
 export * from './Settings';
 export * from './sheets';
-export * from './HealthProfile';
 export * from './GlossaryDrawer';
