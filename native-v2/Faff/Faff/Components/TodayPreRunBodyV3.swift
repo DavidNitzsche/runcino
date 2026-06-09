@@ -626,10 +626,22 @@ struct TodayPreRunBodyV3: View {
     private var heartRateTarget: String {
         switch effort {
         case .recovery:  return "<125 bpm · Z1"
-        case .easy:      return "<140 bpm · Z2"
-        case .long:      return "140-155 · Z2 to MP"
-        case .tempo:     return "160-168 · Z4"
-        case .intervals: return "175+ · Z5"
+        case .easy:
+            if let bpm = workout?.hrCeilingBpm { return "<\(bpm) bpm · Z2" }
+            return "<140 bpm · Z2"
+        case .long:
+            if let bpm = workout?.hrCeilingBpm { return "<\(bpm) bpm · Z2" }
+            return "140-155 · Z2 to MP"
+        case .tempo:
+            if let bpm = workout?.phases.first(where: { $0.type == .work })?.hrTargetBpm {
+                return "~\(bpm) bpm · threshold"
+            }
+            return "160-168 · Z4"
+        case .intervals:
+            if let bpm = workout?.phases.first(where: { $0.type == .work })?.hrTargetBpm {
+                return "\(bpm)+ bpm · VO2max"
+            }
+            return "175+ · Z5"
         case .rest:      return "—"
         case .race:      return "Race effort"
         }
