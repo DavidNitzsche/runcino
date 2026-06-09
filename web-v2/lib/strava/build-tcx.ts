@@ -18,6 +18,7 @@
  * - HR + cadence per-lap averages (not per-second; Strava re-derives).
  * - GPS track from route_polyline when present.
  */
+import { decodePolyline } from '@/lib/route/polyline';
 
 interface BuildOpts {
   runId: string;
@@ -58,13 +59,28 @@ export function buildTcx(opts: BuildOpts): string {
         notes: null as string | null,
       }];
 
-  // For now we skip embedding per-trackpoint coordinates in TCX. Strava
-  // accepts TCX without trackpoints and re-derives distance from laps.
-  // The route polyline will be missing — that's the one trade-off vs GPX.
-  // Future: decode polyline + emit <Trackpoint> blocks per coord with
-  // synthesized time stamps; or fall back to GPX upload when route present.
+  // GPS track from the route polyline, distributed across the lap timeline.
+  // No polyline → empty track → no <Track> emitted (byte-identical to the
+  // laps-only output we shipped before).
+  const firstStartMs = Date.parse(laps[0].startUtc);
+  const lastEndMs = Date.parse(laps[laps.length - 1].startUtc)
+    + laps[laps.length - 1].durationSec * 1000;
+  const track = opts.routePolyline
+    ? trackpointsFromPolyline(opts.routePolyline, firstStartMs, lastEndMs, totalMeters)
+    : [];
 
-  const lapXml = laps.map((lap, i) => `
+  const lapXml = laps.map((lap, i) => {
+    const isLast = i === laps.length - 1;
+    const lapStartMs = Date.parse(lap.startUtc);
+    const lapEndMs = lapStartMs + lap.durationSec * 1000;
+    const lapTps = track.filter((tp) =>
+      tp.timeMs >= lapStartMs && (isLast ? tp.timeMs <= lapEndMs : tp.timeMs < lapEndMs));
+    const trackXml = lapTps.length > 0
+      ? `\n      <Track>${lapTps.map((tp) => `
+        <Trackpoint><Time>${new Date(tp.timeMs).toISOString()}</Time><Position><LatitudeDegrees>${tp.lat.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${tp.lng.toFixed(6)}</LongitudeDegrees></Position><DistanceMeters>${tp.cumDistM.toFixed(1)}</DistanceMeters></Trackpoint>`).join('')}
+      </Track>`
+      : '';
+    return `
     <Lap StartTime="${lap.startUtc}">
       <TotalTimeSeconds>${lap.durationSec.toFixed(1)}</TotalTimeSeconds>
       <DistanceMeters>${lap.distanceMeters.toFixed(2)}</DistanceMeters>
@@ -73,9 +89,10 @@ export function buildTcx(opts: BuildOpts): string {
       ${lap.maxHr != null ? `<MaximumHeartRateBpm><Value>${Math.round(lap.maxHr)}</Value></MaximumHeartRateBpm>` : ''}
       <Intensity>${lap.intensity}</Intensity>
       ${lap.avgCadence != null ? `<Cadence>${Math.round(lap.avgCadence)}</Cadence>` : ''}
-      <TriggerMethod>Manual</TriggerMethod>
+      <TriggerMethod>Manual</TriggerMethod>${trackXml}
       ${lap.notes ? `<Notes>${xmlEsc(lap.notes)}</Notes>` : ''}
-    </Lap>`).join('');
+    </Lap>`;
+  }).join('');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <TrainingCenterDatabase
@@ -164,4 +181,45 @@ function toUtcIso(localIso: string): string {
 function xmlEsc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+const EARTH_M = 6371008.8; // mean Earth radius, meters
+
+function haversineMeters(a: [number, number], b: [number, number]): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const x = Math.sin(dLat / 2) ** 2
+    + Math.sin(dLng / 2) ** 2 * Math.cos(toRad(a[0])) * Math.cos(toRad(b[0]));
+  return 2 * EARTH_M * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+
+/**
+ * Decode a Google-encoded polyline into TCX trackpoints. The polyline has
+ * no timestamps, so we synthesize a time + cumulative distance per point,
+ * distributed proportional to along-track (haversine) distance and scaled
+ * to the run's [startMs, endMs] window. Cumulative distance is rescaled to
+ * the run's reported total so the track ends exactly at the activity
+ * distance. Gives Strava a correct route map; pace re-derives from the
+ * synthesized time/distance (no per-point speed to do better).
+ */
+function trackpointsFromPolyline(
+  encoded: string,
+  startMs: number,
+  endMs: number,
+  totalMeters: number,
+): Array<{ timeMs: number; lat: number; lng: number; cumDistM: number }> {
+  const pts = decodePolyline(encoded);
+  if (pts.length < 2) return [];
+  const cum: number[] = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + haversineMeters(pts[i - 1], pts[i]));
+  const polyTotal = cum[cum.length - 1] || 1;
+  const span = Math.max(1, endMs - startMs);
+  const distScale = totalMeters > 0 ? totalMeters / polyTotal : 1;
+  return pts.map((p, i) => ({
+    timeMs: startMs + (cum[i] / polyTotal) * span,
+    lat: p[0],
+    lng: p[1],
+    cumDistM: cum[i] * distScale,
+  }));
 }
