@@ -154,19 +154,17 @@ struct OnboardingView: View {
         let id: String
         let name: String
         let sub: String
-        let miles: Int
-        let runs: Int
         let glyph: String
         let tint: Color
     }
 
     private let sources: [SrcRow] = [
         SrcRow(id: "health", name: "Apple Health", sub: "Workouts, heart, sleep",
-               miles: 642, runs: 78, glyph: "heart.fill", tint: Color(hex: 0xFF2D55)),
+               glyph: "heart.fill", tint: Color(hex: 0xFF2D55)),
         SrcRow(id: "strava", name: "Strava", sub: "Activity history",
-               miles: 1184, runs: 142, glyph: "triangle.fill", tint: Color(hex: 0xFC4C02)),
+               glyph: "triangle.fill", tint: Color(hex: 0xFC4C02)),
         SrcRow(id: "garmin", name: "Garmin", sub: "Watch & metrics",
-               miles: 980, runs: 120, glyph: "g.circle.fill", tint: Color(hex: 0x0A66A8))
+               glyph: "g.circle.fill", tint: Color(hex: 0x0A66A8))
     ]
 
     private var connectPanel: some View {
@@ -256,32 +254,15 @@ struct OnboardingView: View {
     }
 
     private var importBlock: some View {
-        let totalMi = sources
-            .filter { connected.contains($0.id) }
-            .map(\.miles).max() ?? 0
-        let totalRuns = sources
-            .filter { connected.contains($0.id) }
-            .map(\.runs).max() ?? 0
-        let mergedSuffix = connected.count > 1
-            ? "\nMERGED ACROSS \(connected.count) SOURCES · DUPLICATES REMOVED"
-            : ""
-        return VStack(spacing: 8) {
-            Text("HISTORY IMPORTED")
+        VStack(spacing: 8) {
+            Text("NEXT")
                 .font(.label(12)).tracking(1)
                 .foregroundStyle(Color(hex: 0x7BE8A0))
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("\(totalMi)")
-                    .font(.display(40, weight: .bold))
-                    .tracking(-2)
-                    .foregroundStyle(Theme.txt)
-                Text("mi")
-                    .font(.body(16, weight: .extraBold))
-                    .foregroundStyle(Theme.txt.opacity(0.7))
-            }
-            Text("\(totalRuns) RUNS · SINCE 2024" + mergedSuffix)
-                .font(.display(11, weight: .bold))
-                .foregroundStyle(Theme.txt.opacity(0.7))
+            Text("We'll pull your runs in after setup.")
+                .font(.body(15, weight: .semibold))
+                .foregroundStyle(Theme.txt.opacity(0.84))
                 .multilineTextAlignment(.center)
+                .lineSpacing(3)
         }
         .frame(maxWidth: .infinity)
         .padding(18)
@@ -437,8 +418,6 @@ struct OnboardingView: View {
     // MARK: projection panel
 
     private var projectionPanel: some View {
-        let proj = fitnessProjection(for: distance)
-        let gap = proj - goalSec
         return VStack(alignment: .leading, spacing: 0) {
             Text(mode == .just ? "YOU'RE ALL SET" : "YOUR STARTING LINE")
                 .font(.label(11)).tracking(3)
@@ -457,9 +436,9 @@ struct OnboardingView: View {
                     .lineSpacing(3)
                     .padding(.top, 14)
             } else {
-                projectionBeam(proj: proj, gap: gap)
+                goalBlock
                     .padding(.top, 26)
-                Text(gap > 0 ? "Now let's start running and close it." : "Keep this as a comfortable target.")
+                Text("Projection starts after your first runs. Log a few and we'll show where you stand.")
                     .font(.body(15, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.92))
                     .lineSpacing(3)
@@ -485,55 +464,16 @@ struct OnboardingView: View {
         .padding(.bottom, 30)
     }
 
-    private func projectionBeam(proj: Int, gap: Int) -> some View {
-        let ahead = gap <= 0
-        let gapAbs = abs(gap)
-        return VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("PROJECTED TODAY")
-                    .font(.label(10)).tracking(1.5)
-                    .foregroundStyle(Theme.txt.opacity(0.55))
-                Text(formatTime(proj))
-                    .font(.display(42, weight: .bold))
-                    .tracking(-2)
-                    .foregroundStyle(ahead ? Theme.txt : Theme.txt.opacity(0.86))
-                Text(connected.isEmpty
-                     ? "modeled from your starting point"
-                     : "modeled from your imported history")
-                    .font(.display(10, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.5))
-            }
-            HStack(spacing: 18) {
-                Rectangle()
-                    .fill(LinearGradient(
-                        colors: ahead
-                        ? [Color(hex: 0x7BE8A0), Color(hex: 0xAEF0C2), Color.white]
-                        : [Color(hex: 0xFF9A55), Color(hex: 0xFFD27A), Color.white],
-                        startPoint: .top, endPoint: .bottom
-                    ))
-                    .frame(width: 4, height: 60)
-                    .clipShape(Capsule())
-                    .shadow(color: ahead ? Color(hex: 0x7BE8A0).opacity(0.5) : Color(hex: 0xFFB45A).opacity(0.6), radius: 20)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(shortClock(gapAbs))
-                        .font(.display(34, weight: .bold))
-                        .tracking(-1)
-                        .foregroundStyle(ahead ? Color(hex: 0x7BE8A0) : Color(hex: 0xFFCE8A))
-                    Text(ahead ? "AHEAD BY" : "THE GAP")
-                        .font(.label(10)).tracking(2)
-                        .foregroundStyle(Theme.txt.opacity(0.55))
-                }
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("YOUR GOAL")
-                    .font(.label(10)).tracking(1.5)
-                    .foregroundStyle(Theme.txt.opacity(0.55))
-                Text(formatTime(goalSec))
-                    .font(.display(42, weight: .bold))
-                    .tracking(-2)
-                    .foregroundStyle(Color.white)
-                    .shadow(color: Color(hex: 0xFFD2A0).opacity(0.5), radius: 26)
-            }
+    private var goalBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("YOUR GOAL")
+                .font(.label(10)).tracking(1.5)
+                .foregroundStyle(Theme.txt.opacity(0.55))
+            Text(formatTime(goalSec))
+                .font(.display(42, weight: .bold))
+                .tracking(-2)
+                .foregroundStyle(Color.white)
+                .shadow(color: Color(hex: 0xFFD2A0).opacity(0.5), radius: 26)
         }
     }
 
@@ -581,15 +521,6 @@ struct OnboardingView: View {
         }
     }
 
-    private func fitnessProjection(for d: Distance) -> Int {
-        switch d {
-        case .k5: return 1600
-        case .k10: return 3360
-        case .half: return 7560
-        case .marathon: return 15300
-        }
-    }
-
     private func formatTime(_ s: Int) -> String {
         let h = s / 3600
         let m = (s % 3600) / 60
@@ -597,12 +528,6 @@ struct OnboardingView: View {
         if h > 0 {
             return String(format: "%d:%02d:%02d", h, m, x)
         }
-        return String(format: "%d:%02d", m, x)
-    }
-
-    private func shortClock(_ s: Int) -> String {
-        let m = s / 60
-        let x = s % 60
         return String(format: "%d:%02d", m, x)
     }
 }
