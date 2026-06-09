@@ -254,7 +254,9 @@ export function RunDetailBody({
           {/* Hero stats — 4 most important numbers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
             <BigStat v={d.distance_mi.toFixed(2)} u="miles" color="var(--dist)" />
-            {d.pace        && <BigStat v={d.pace}              u="avg pace" color="var(--green)" />}
+            {hasMeaningfulWorkAverages(d) && isQualityRun(d.type) && d.pace_work != null
+              ? <BigStat v={d.pace_work} u="work pace" color="var(--green)" />
+              : d.pace && <BigStat v={d.pace} u="avg pace" color="var(--green)" />}
             {d.time_moving && <BigStat v={d.time_moving}       u="moving"   color="var(--ink)" />}
             {d.hr_avg != null && <BigStat v={String(d.hr_avg)} u="avg hr"   color="var(--over)" />}
           </div>
@@ -269,6 +271,8 @@ export function RunDetailBody({
 
       {/* Secondary stats row — what didn't fit above */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+        {hasMeaningfulWorkAverages(d) && isQualityRun(d.type) && d.pace_work != null && d.pace &&
+          <SmallStat v={d.pace} u="avg pace" />}
         {d.hr_max != null      && <SmallStat v={String(d.hr_max)}            u="max hr" />}
         {d.cadence_avg != null && <SmallStat v={String(d.cadence_avg)}       u="cadence" />}
         {d.elev_gain_ft != null&& <SmallStat v={`${d.elev_gain_ft}`}         u="elev ft" />}
@@ -294,7 +298,7 @@ export function RunDetailBody({
             WORK-PHASE AVERAGES · RECOVERIES EXCLUDED
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            {d.pace_work != null && <SmallStat v={d.pace_work} u="work pace" />}
+            {d.pace_work != null && !(hasMeaningfulWorkAverages(d) && isQualityRun(d.type)) && <SmallStat v={d.pace_work} u="work pace" />}
             {d.hr_avg_work != null && <SmallStat v={String(d.hr_avg_work)} u="avg hr" />}
             {d.cadence_avg_work != null && <SmallStat v={String(d.cadence_avg_work)} u="cadence" />}
             {d.work_seconds != null && <SmallStat v={`${Math.round(d.work_seconds / 60)}m`} u="work time" />}
@@ -1659,4 +1663,8 @@ function hasMeaningfulWorkAverages(d: RunDetail): boolean {
   if (d.cadence_avg != null && d.cadence_avg_work != null && Math.abs(d.cadence_avg - d.cadence_avg_work) >= 3) return true;
 
   return false;
+}
+
+function isQualityRun(type: string | null | undefined): boolean {
+  return ['tempo', 'threshold', 'intervals'].includes((type ?? '').toLowerCase());
 }

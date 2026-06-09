@@ -4519,17 +4519,23 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
         <div className="fll">WEEKLY VOLUME</div>
         <div className="tbody vfill">
           <div className="vol">
-            {seed.volumeBars.map((b, i) => (
-              <i
-                key={i}
-                onMouseEnter={() => setHoverBar(i)}
-                onMouseLeave={() => setHoverBar(null)}
-                style={{
-                  height: `${(b.mi / Math.max(...seed.volumeBars.map(x => x.mi))) * 100}%`,
-                  background: b.current ? '#FFFFFF' : 'rgba(255,255,255,.30)',
-                }}
-              />
-            ))}
+            {(() => {
+              const maxMi = Math.max(...seed.volumeBars.map(x => x.mi), 1);
+              return seed.volumeBars.map((b, i) => {
+                const pct = b.mi > 0 ? (b.mi / maxMi) * 100 : 0;
+                return (
+                  <i
+                    key={i}
+                    onMouseEnter={() => setHoverBar(i)}
+                    onMouseLeave={() => setHoverBar(null)}
+                    style={{
+                      height: b.mi > 0 ? `${pct}%` : '3px',
+                      background: b.current ? '#FFFFFF' : 'rgba(255,255,255,.55)',
+                    }}
+                  />
+                );
+              });
+            })()}
           </div>
           <div className="volnum">{num}<small>{sub}</small></div>
         </div>
