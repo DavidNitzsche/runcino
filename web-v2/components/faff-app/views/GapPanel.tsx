@@ -379,7 +379,10 @@ function Icon({ kind }: { kind: Hit['icon'] }) {
 /* ─────── the panel ─────── */
 export function GapPanel({ goal, series }: GapPanelProps) {
   const goalSec = useMemo(() => parseClockToSec(goal.goal), [goal.goal]);
-  const projSec = useMemo(() => parseClockToSec(goal.projected), [goal.projected]);
+  const projSec = useMemo(
+    () => goal.vdotProjectionSec ?? null,
+    [goal.vdotProjectionSec],
+  );
   const latest = useMemo(() => {
     const pts = series.filter((s) => s.projectionSec != null);
     return pts.length > 0 ? pts[pts.length - 1] : null;
