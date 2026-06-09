@@ -225,11 +225,22 @@ struct TrainView: View {
                 }
                 VStack(spacing: 0) {
                     ForEach(Array(curWeek.days.enumerated()), id: \.offset) { idx, day in
-                        TrainWeekRow(
-                            day: day,
-                            isFirst: idx == 0,
-                            isToday: day.date == (state?.today ?? "")
-                        )
+                        if day.type.lowercased() == "rest" {
+                            TrainWeekRow(
+                                day: day,
+                                isFirst: idx == 0,
+                                isToday: day.date == (state?.today ?? "")
+                            )
+                        } else {
+                            NavigationLink(value: FaffRoute.planned(date: day.date)) {
+                                TrainWeekRow(
+                                    day: day,
+                                    isFirst: idx == 0,
+                                    isToday: day.date == (state?.today ?? "")
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
             }
@@ -503,27 +514,40 @@ struct TrainView: View {
         // .wexp-in layout. Reads real day types from the plan.
         HStack(spacing: 5) {
             ForEach(week.days, id: \.id) { day in
-                VStack(spacing: 5) {
-                    Text(dayLetter(day))
-                        .font(.body(8.5, weight: .extraBold))
-                        .foregroundStyle(Theme.txt.opacity(0.5))
-                    Group {
-                        if day.type.lowercased() == "rest" {
-                            Capsule().fill(Color.white.opacity(0.4))
-                                .frame(width: 8, height: 2)
-                        } else {
-                            Circle().fill(FaffEffort.fromType(day.type).dot)
-                                .frame(width: 7, height: 7)
-                        }
+                if day.type.lowercased() == "rest" {
+                    peekCell(day: day)
+                } else {
+                    NavigationLink(value: FaffRoute.planned(date: day.date)) {
+                        peekCell(day: day)
                     }
-                    Text(day.type.lowercased() == "rest" ? "—" : "\(Int(day.mi.rounded()))")
-                        .font(.body(11, weight: .extraBold))
-                        .foregroundStyle(Theme.txt)
+                    .buttonStyle(.plain)
                 }
-                .frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 12)
+    }
+
+    @ViewBuilder
+    private func peekCell(day: TrainingPlanDay) -> some View {
+        let isRest = day.type.lowercased() == "rest"
+        VStack(spacing: 5) {
+            Text(dayLetter(day))
+                .font(.body(8.5, weight: .extraBold))
+                .foregroundStyle(Theme.txt.opacity(0.5))
+            Group {
+                if isRest {
+                    Capsule().fill(Color.white.opacity(0.4))
+                        .frame(width: 8, height: 2)
+                } else {
+                    Circle().fill(FaffEffort.fromType(day.type).dot)
+                        .frame(width: 7, height: 7)
+                }
+            }
+            Text(isRest ? "—" : "\(Int(day.mi.rounded()))")
+                .font(.body(11, weight: .extraBold))
+                .foregroundStyle(Theme.txt)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -734,26 +758,16 @@ struct TrainView: View {
         VStack(spacing: 0) {
             Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1)
                 .padding(.bottom, 13)
-            if let sel = selected {
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(sel.isRace ? Color(hex: 0xFFCE8A) : FaffEffort.fromType(sel.day.type).dot)
-                        .frame(width: 11, height: 11)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(sel.dateHeader)
-                            .font(.body(10, weight: .extraBold)).tracking(0.6)
-                            .foregroundStyle(Theme.txt.opacity(0.55))
-                        Text(sel.title)
-                            .font(.body(15, weight: .extraBold))
-                            .foregroundStyle(Theme.txt)
-                            .lineLimit(1)
+            if let sel = selected, let iso = selectedCalDate {
+                let isRest = sel.day.type.lowercased() == "rest"
+                if isRest || sel.isRace {
+                    calSelectionRow(sel)
+                } else {
+                    NavigationLink(value: FaffRoute.planned(date: iso)) {
+                        calSelectionRow(sel)
                     }
-                    Spacer(minLength: 0)
-                    Text(sel.meta)
-                        .font(.display(13, weight: .bold))
-                        .foregroundStyle(Theme.txt.opacity(0.82))
+                    .buttonStyle(.plain)
                 }
-                .frame(minHeight: 46)
             } else {
                 Text("Tap a day to see its session")
                     .font(.body(12.5, weight: .semibold))
@@ -762,6 +776,29 @@ struct TrainView: View {
                     .frame(minHeight: 46)
             }
         }
+    }
+
+    @ViewBuilder
+    private func calSelectionRow(_ sel: CalSelected) -> some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(sel.isRace ? Color(hex: 0xFFCE8A) : FaffEffort.fromType(sel.day.type).dot)
+                .frame(width: 11, height: 11)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(sel.dateHeader)
+                    .font(.body(10, weight: .extraBold)).tracking(0.6)
+                    .foregroundStyle(Theme.txt.opacity(0.55))
+                Text(sel.title)
+                    .font(.body(15, weight: .extraBold))
+                    .foregroundStyle(Theme.txt)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Text(sel.meta)
+                .font(.display(13, weight: .bold))
+                .foregroundStyle(Theme.txt.opacity(0.82))
+        }
+        .frame(minHeight: 46)
     }
 
     // MARK: Loaders
