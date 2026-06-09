@@ -199,6 +199,7 @@ export function TargetsView({
                     <span className="big">{latestVdot.toFixed(1)}</span>
                     {vdotDelta != null ? <VdotDelta delta={vdotDelta} /> : null}
                   </div>
+                  <VdotSparkline trend={trend} goalVdot={goalVdot} />
                 </div>
                 <div className="vdotaside">
                   <div className="vdotsub">{vdotReadCopy(latestVdot, vdotDelta, vdotHeldDays)}</div>
@@ -526,6 +527,70 @@ function StatusLadder({
         </span>
       </div>
     </div>
+  );
+}
+
+// ============================ VDOT SPARKLINE ============================
+function VdotSparkline({
+  trend,
+  goalVdot,
+}: {
+  trend: Array<{ date: string; vdot: number | null }>;
+  goalVdot: number | null;
+}) {
+  const pts = trend.filter((t): t is { date: string; vdot: number } => t.vdot != null);
+  if (pts.length < 2) return null;
+
+  const W = 120;
+  const H = 40;
+  const PAD = 4; // inner padding so dots/line don't clip the edge
+
+  const vdots = pts.map(p => p.vdot);
+  const candidates = goalVdot != null ? [...vdots, goalVdot] : vdots;
+  const rawMin = Math.min(...candidates);
+  const rawMax = Math.max(...candidates);
+  // Add a small margin so the line doesn't sit flush against the SVG edges.
+  const margin = Math.max((rawMax - rawMin) * 0.15, 0.5);
+  const yMin = rawMin - margin;
+  const yMax = rawMax + margin;
+  const yRange = yMax - yMin || 1;
+
+  const xOf = (i: number) => PAD + ((i / (pts.length - 1)) * (W - PAD * 2));
+  const yOf = (v: number) => PAD + ((1 - (v - yMin) / yRange) * (H - PAD * 2));
+
+  const polyline = pts.map((p, i) => `${xOf(i)},${yOf(p.vdot)}`).join(' ');
+  const last = pts[pts.length - 1];
+  const cx = xOf(pts.length - 1);
+  const cy = yOf(last.vdot);
+
+  const goalY = goalVdot != null ? yOf(goalVdot) : null;
+
+  return (
+    <svg
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      style={{ display: 'block', marginTop: 8, overflow: 'visible' }}
+      aria-hidden="true"
+    >
+      {goalY != null ? (
+        <line
+          x1={PAD} y1={goalY} x2={W - PAD} y2={goalY}
+          stroke="rgba(255,255,255,0.22)"
+          strokeWidth="1"
+          strokeDasharray="3 3"
+        />
+      ) : null}
+      <polyline
+        points={polyline}
+        fill="none"
+        stroke="rgba(255,255,255,0.55)"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <circle cx={cx} cy={cy} r="3" fill="rgba(255,255,255,0.9)" />
+    </svg>
   );
 }
 
