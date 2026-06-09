@@ -203,6 +203,9 @@ struct HealthView: View {
         SectionLabel(title: "WHAT IS DRIVING IT")
             .padding(.bottom, 10)
         HealthDriversList(inputs: readiness?.inputs ?? [])
+        if let b = brief, !b.actions.isEmpty {
+            whatToDoCard(b.actions, threshold: b.actionsThreshold).padding(.top, 14)
+        }
         SectionLabel(title: "7-DAY READINESS")
             .padding(.top, 22).padding(.bottom, 10)
         HealthWeekBars(snapshot: readiness, state: state)
@@ -211,16 +214,8 @@ struct HealthView: View {
             aerobicCard(vo2: vo2)
                 .padding(.top, 18)
         }
-        // 2026-06-03 round 77 · OVERVIEW bottom cards now wired to
-        // HealthState.overview (backend aa45d543). Each block is
-        // individually nullable on the backend · we only render the
-        // ones with data, the rest stay hidden (matches the design's
-        // "null = don't render" philosophy).
         if let story = state?.overview?.story, story.paragraph?.isEmpty == false {
             storyCard(story).padding(.top, 14)
-        }
-        if let b = brief, !b.actions.isEmpty {
-            whatToDoCard(b.actions, threshold: b.actionsThreshold).padding(.top, 14)
         }
         if let rec = state?.overview?.recoveryPhase, rec.anchor?.isEmpty == false {
             recoveryPhaseCard(rec).padding(.top, 14)
