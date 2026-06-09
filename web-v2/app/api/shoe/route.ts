@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const ALLOWED_PATCH = new Set(['mileage', 'mileage_cap', 'baseline_mi', 'run_types', 'retired', 'preferred', 'color', 'color2', 'notes']);
+const ALLOWED_PATCH = new Set(['brand', 'model', 'mileage', 'mileage_cap', 'baseline_mi', 'run_types', 'retired', 'preferred', 'color', 'color2', 'notes']);
 
 export async function PATCH(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -120,7 +120,7 @@ export async function PATCH(req: NextRequest) {
     cols.push(`${k} = $${vals.length + 1}`);
     vals.push(body[k]);
   }
-  if (cols.length === 2) {
+  if (cols.length === 0) {
     return NextResponse.json({ error: 'no allowed fields in body' }, { status: 400 });
   }
 

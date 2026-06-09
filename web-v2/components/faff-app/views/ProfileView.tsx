@@ -59,6 +59,8 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: rec.id,
+          brand: rec.nm.trim().split(/\s+/)[0] || 'Brand',
+          model: rec.nm.trim().split(/\s+/).slice(1).join(' ') || rec.nm.trim(),
           mileage_cap: rec.max,
           baseline_mi: rec.baseline_mi ?? 0,
           run_types: rec.roles.map(r => r.toLowerCase()),
