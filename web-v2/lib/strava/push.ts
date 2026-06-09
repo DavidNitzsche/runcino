@@ -16,6 +16,7 @@
 import { pool } from '@/lib/db/pool';
 import { getStravaToken } from './auth';
 import { buildTcx } from './build-tcx';
+import { toUtcIso as resolveStartUtc } from '@/lib/runs/normalize-time';
 import { enqueueNotification } from '@/lib/notifications/enqueue';
 import { renderStravaReconnect } from '@/lib/notifications/templates';
 
@@ -88,8 +89,20 @@ export async function pushRunToStrava(
     [userId]
   )).rows[0];
 
+  // Resolve the workout type for the title. Watch ingest doesn't stamp
+  // data.type, so fall back to the planned workout's type for this date
+  // (same join /runs/[id] uses) — otherwise titleFor renders a bare "Run".
+  let runType: string | null = run.type ?? null;
+  if (!runType && run.date) {
+    runType = (await pool.query(
+      `SELECT pw.type FROM plan_workouts pw JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND pw.date_iso = $2 LIMIT 1`,
+      [userId, run.date],
+    )).rows[0]?.type ?? null;
+  }
+
   // 3. Build title + description.
-  const title = opts.title ?? titleFor(run, prefs?.strava_push_title_format ?? 'type_phases');
+  const title = opts.title ?? titleFor({ ...run, type: runType ?? run.type }, prefs?.strava_push_title_format ?? 'type_phases');
   const description = (opts.description ?? autoDescription(run))
     + '\n\nvia Faff';
   const privacy = opts.privacy ?? prefs?.strava_push_privacy ?? 'private';
@@ -97,13 +110,18 @@ export async function pushRunToStrava(
   // 4. Build TCX.
   const tcx = buildTcx({
     runId,
-    startLocalIso: run.startLocal ?? `${run.date}T08:00:00`,
+    // tz-correct UTC via the canonical normalize-time helper (watch rows
+    // store startLocal as local wall time without an offset). build-tcx's
+    // own toUtcIso then round-trips this Z-marked string unchanged.
+    startLocalIso: resolveStartUtc(run.startLocal, run.source, run.timezone)
+      ?? run.startLocal ?? `${run.date}T08:00:00`,
     durationSec: Number(run.durationSec ?? run.movingSec ?? 0),
     distanceMi: Number(run.distanceMi ?? 0),
     avgHr: run.avgHr ?? null,
     maxHr: run.maxHr ?? null,
     avgCadenceSpm: run.avgCadence ?? null,
     routePolyline: run.routePolyline ?? null,
+    elevGainFt: run.elevGainFt ?? null,
     phases: extractPhasesForTcx(run),
   });
 

@@ -17,6 +17,16 @@
  * - Single-lap when no phases (Apple Watch Workouts, manual).
  * - HR + cadence per-lap averages (not per-second; Strava re-derives).
  * - GPS track from route_polyline when present.
+ * - Altitude is SYNTHESIZED (Option C): a smooth half-sine profile whose
+ *   total climb equals the run's real elevGainFt. A polyline carries no
+ *   elevation, and Strava's DEM on the sparse summary polyline spiked to
+ *   600-1400ft on a flat (56ft) run — so we hand Strava a clean profile
+ *   with the correct total gain instead of letting it DEM the sparse track.
+ * - Pace/splits are SYNTHESIZED too: trackpoint times are distributed
+ *   evenly along the polyline (proportional to distance), so Strava derives
+ *   a ~constant pace (e.g. 8:01/mi). Real per-mile variation would need the
+ *   watch's per-split timing, which isn't threaded through here (known
+ *   limitation, accepted 2026-06-09).
  */
 import { decodePolyline } from '@/lib/route/polyline';
 
@@ -29,6 +39,7 @@ interface BuildOpts {
   maxHr?: number | null;
   avgCadenceSpm?: number | null;
   routePolyline?: string | null;
+  elevGainFt?: number | null;
   phases?: Array<{
     type: string;
     label?: string | null;
@@ -65,8 +76,11 @@ export function buildTcx(opts: BuildOpts): string {
   const firstStartMs = Date.parse(laps[0].startUtc);
   const lastEndMs = Date.parse(laps[laps.length - 1].startUtc)
     + laps[laps.length - 1].durationSec * 1000;
+  // Option C elevation: synthesize altitude from the run's real total gain
+  // (feet → meters). null when unknown → trackpoints omit altitude → DEM.
+  const gainMeters = opts.elevGainFt != null ? opts.elevGainFt * 0.3048 : null;
   const track = opts.routePolyline
-    ? trackpointsFromPolyline(opts.routePolyline, firstStartMs, lastEndMs, totalMeters)
+    ? trackpointsFromPolyline(opts.routePolyline, firstStartMs, lastEndMs, totalMeters, gainMeters)
     : [];
 
   const lapXml = laps.map((lap, i) => {
@@ -77,7 +91,7 @@ export function buildTcx(opts: BuildOpts): string {
       tp.timeMs >= lapStartMs && (isLast ? tp.timeMs <= lapEndMs : tp.timeMs < lapEndMs));
     const trackXml = lapTps.length > 0
       ? `\n      <Track>${lapTps.map((tp) => `
-        <Trackpoint><Time>${new Date(tp.timeMs).toISOString()}</Time><Position><LatitudeDegrees>${tp.lat.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${tp.lng.toFixed(6)}</LongitudeDegrees></Position><DistanceMeters>${tp.cumDistM.toFixed(1)}</DistanceMeters></Trackpoint>`).join('')}
+        <Trackpoint><Time>${new Date(tp.timeMs).toISOString()}</Time><Position><LatitudeDegrees>${tp.lat.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${tp.lng.toFixed(6)}</LongitudeDegrees></Position>${tp.altitudeM != null ? `<AltitudeMeters>${tp.altitudeM.toFixed(1)}</AltitudeMeters>` : ''}<DistanceMeters>${tp.cumDistM.toFixed(1)}</DistanceMeters></Trackpoint>`).join('')}
       </Track>`
       : '';
     return `
@@ -208,7 +222,8 @@ function trackpointsFromPolyline(
   startMs: number,
   endMs: number,
   totalMeters: number,
-): Array<{ timeMs: number; lat: number; lng: number; cumDistM: number }> {
+  gainMeters: number | null,
+): Array<{ timeMs: number; lat: number; lng: number; cumDistM: number; altitudeM: number | null }> {
   const pts = decodePolyline(encoded);
   if (pts.length < 2) return [];
   const cum: number[] = [0];
@@ -216,10 +231,18 @@ function trackpointsFromPolyline(
   const polyTotal = cum[cum.length - 1] || 1;
   const span = Math.max(1, endMs - startMs);
   const distScale = totalMeters > 0 ? totalMeters / polyTotal : 1;
-  return pts.map((p, i) => ({
-    timeMs: startMs + (cum[i] / polyTotal) * span,
-    lat: p[0],
-    lng: p[1],
-    cumDistM: cum[i] * distScale,
-  }));
+  return pts.map((p, i) => {
+    const progress = Math.min(1, cum[i] / polyTotal);
+    return {
+      timeMs: startMs + progress * span,
+      lat: p[0],
+      lng: p[1],
+      cumDistM: cum[i] * distScale,
+      // Option C: smooth half-sine profile. sin(π·progress) rises to the
+      // peak at the midpoint and returns to 0, so the total positive climb
+      // equals gainMeters — no spikes, correct total gain. null → omit
+      // altitude (let Strava DEM) when the run's gain is unknown.
+      altitudeM: gainMeters != null ? gainMeters * Math.sin(Math.PI * progress) : null,
+    };
+  });
 }
