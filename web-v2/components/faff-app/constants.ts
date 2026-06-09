@@ -5,7 +5,7 @@
  * real runtime data overrides demo arrays where the backend has it.
  */
 
-export type EffortKey = 'recovery' | 'easy' | 'long' | 'tempo' | 'intervals' | 'rest';
+export type EffortKey = 'recovery' | 'easy' | 'long' | 'tempo' | 'intervals' | 'rest' | 'race';
 export type Mesh = [string, string, string, string, string, string]; // c1, c2, c3, c4, c5, base
 export type ViewKey =
   | 'today' | 'train' | 'health' | 'targets' | 'race' | 'activity' | 'profile' | 'spectator';
@@ -30,6 +30,12 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   tempo:     { mesh: ['#F5C297','#F18847','#E15F30','#D04525','#C2303E','#8A1E30'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
   intervals: { mesh: ['#F2C878','#F07A48','#EB4560','#CD2540','#A91A3E','#6D1129'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
   rest:      { mesh: ['#C4C8D2','#9CA2B0','#787E8E','#58606E','#3E4350','#252935'], dot: '#8A90A0', mark: 4,  lbl: 'OFF' },
+  // 2026-06-08 · race effort · the brand's race-orange mesh (same palette as
+  // MESH.race / the Targets→race page surface). Dot is the canonical --race
+  // accent (#FF5722). Max effort mark. Wires the long-orphaned race surface:
+  // before this, EffortKey had no 'race' and mapType('race') laundered to
+  // 'easy', so race morning rendered a cyan EASY hero. See TodayView RaceDayHero.
+  race:      { mesh: ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'], dot: '#FF5722', mark: 100, lbl: 'RACE' },
 };
 
 // View meshes · canonical "you" green for personal surfaces (health/profile),
@@ -64,6 +70,7 @@ export const KIT: Record<EffortKey, { weather: string; shoe: string; fuel: strin
   recovery:  { weather: '66° · Calm', shoe: 'Vomero Plus',   fuel: ' · ',            coach: 'Shake the legs out. Slower than feels right is correct.' },
   long:      { weather: '64° · Calm', shoe: 'Superblast 3',  fuel: 'PF 30 @ 5·10·15',coach: 'Easy first 10, then squeeze the last 4 to marathon pace.' },
   rest:      { weather: ' · ',        shoe: ' · ',           fuel: ' · ',            coach: 'Rest is training. Sleep, hydrate, mobilize. Let the work land.' },
+  race:      { weather: ' · ',        shoe: 'SC Trainer v3', fuel: 'Race fuel plan',  coach: 'Trust the work. Settle into goal effort early, hold the line, finish strong.' },
 };
 
 export const ZC = ['#14C08C','#3EBD41','#F3AD38','#FF8847','#FC4D64'];
@@ -184,6 +191,10 @@ export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: strin
   rest: {
     fuel: [['Before',' · '],['Carry',' · '],['During',' · ']],
     cues: ['Sleep is the goal.','Hydrate, mobilize, eat well.','An easy 20-min walk is fine. Not a session.'],
+  },
+  race: {
+    fuel: [['Before','Race-morning carbs + fluid'],['Carry','Gels per plan'],['During','Fuel early, fuel often']],
+    cues: ['Settle into goal effort. Don’t chase the start.','Hold your line through the middle miles.','Empty the tank over the final stretch.'],
   },
 };
 

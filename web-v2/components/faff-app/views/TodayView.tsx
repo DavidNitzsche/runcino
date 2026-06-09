@@ -72,6 +72,17 @@ export function TodayView({
   const e = EFF[d.type];
   const isRest = d.type === 'rest';
   const dSkipped = isSkipped(d);
+
+  // 2026-06-08 · race-day takeover gate. The brief: "Race day. The race
+  // takes the page." The reliable signal is the goal race itself, NOT
+  // d.type — mapType now returns 'race', but the date+countdown is the
+  // authoritative "this is race morning" test and survives any plan-row
+  // type drift. Fires only when: the goal race is today (daysAway clamps
+  // to 0 the morning of), the SELECTED day is the race date (so tapping
+  // back to a prior day in the strip shows that day, not the race), and
+  // the race isn't logged yet (once done, Today pivots to the recap).
+  const goal = seed.goalRace;
+  const isRaceDay = goal != null && goal.daysAway === 0 && !!d.iso && d.iso === goal.date && !d.done;
   const result = d.done ? (seed.results[curDay] ?? seed.results[0]) : undefined;
   // 2026-05-30: lazy-fetch the real run summary for past days so the hero
   // stats grid + heroExtra row don't render seed.results placeholder "·"
@@ -533,7 +544,9 @@ export function TodayView({
           Detail (Easy)), planned-and-not-rest days use PlannedHeroV2
           (Run Detail Planned (Easy)). Rest days keep the simple Recovery
           panel below for now. */}
-      {d.done && !isRest ? (
+      {isRaceDay ? (
+        <RaceDayHero goal={goal!} onOpenRace={onOpenRace} />
+      ) : d.done && !isRest ? (
         <CompletedHeroV2
           d={d}
           result={result}
@@ -675,7 +688,10 @@ export function TodayView({
         </div>
       )}
 
-      <Tiles seed={seed} onOpenRace={onOpenRace} />
+      {/* 2026-06-08 · tiles recede on race morning · the race takes the
+          page. GAP/RACE-DAY/VOLUME/FORM all live one tap away in the full
+          race plan (and on Targets); on the day, they're noise. */}
+      {isRaceDay ? null : <Tiles seed={seed} onOpenRace={onOpenRace} />}
     </>
   );
 }
@@ -4202,6 +4218,144 @@ function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes
         <span style={{ fontSize: 9, opacity: 0.55 }}>▾</span>
       </div>
       {menu}
+    </div>
+  );
+}
+
+/* ─────────────── RaceDayHero · race-morning takeover ───────────────
+ * 2026-06-08 · The brief is categorical: "Race day. The race takes the
+ * page." / "Race day morning is reverent." Before this, web Today had no
+ * race composition — mapType laundered type=race → 'easy' and the morning
+ * rendered a cyan EASY hero. This renders ONLY on race morning (gated in
+ * TodayView: goalRace.daysAway===0 AND the selected day is the race date
+ * AND the race isn't logged yet).
+ *
+ * Surface = the one sanctioned filled-accent surface (design brief §Surface):
+ * the race-orange gradient (160deg #FF8A3D → #FF5722 → #E03E00). Countdown
+ * collapses to TODAY. Goal time + goal pace + B-goal (the canonical A+7:00
+ * derivation, matching raceDetail.ts). Projection vs goal. Logistics,
+ * pacing splits, fueling and course stay one tap away via "Full race plan"
+ * → onOpenRace (RaceView), which already owns that depth. */
+function parseHMSToSec(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const parts = s.split(':').map(Number);
+  if (parts.some((n) => !Number.isFinite(n))) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return null;
+}
+function fmtHMS(sec: number): string {
+  const s = Math.round(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+    : `${m}:${String(ss).padStart(2, '0')}`;
+}
+function fmtMMSS(sec: number): string {
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function RaceDayHero({
+  goal, onOpenRace,
+}: {
+  goal: NonNullable<FaffSeed['goalRace']>;
+  onOpenRace: () => void;
+}) {
+  const goalSec = parseHMSToSec(goal.goal);
+  const goalPace = goalSec && goal.distanceMi ? fmtMMSS(goalSec / goal.distanceMi) : null;
+  // Canonical B-goal · A + 7:00, the same +420s derivation raceDetail.ts
+  // uses for the RaceView B·SAFE row. Derived, never stored.
+  const bGoal = goalSec ? fmtHMS(goalSec + 420) : null;
+  const showProjection = !!goal.projected && goal.projected !== goal.goal;
+  const eyebrow = goal.location ? `RACE DAY · ${goal.location.toUpperCase()}` : 'RACE DAY';
+
+  return (
+    <div
+      className="raceday-hero"
+      style={{
+        position: 'relative',
+        borderRadius: 22,
+        overflow: 'hidden',
+        background: 'linear-gradient(160deg, #FF8A3D 0%, #FF5722 55%, #E03E00 100%)',
+        color: '#FFFFFF',
+        padding: '34px 32px 30px',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,.20)',
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.16em', opacity: 0.82 }}>
+        {eyebrow}
+      </div>
+      <div
+        style={{
+          fontFamily: 'Oswald, sans-serif',
+          fontWeight: 700,
+          // Fluid so the hero numeral never clips on narrow viewports
+          // (the web command-center renders down to phone width).
+          fontSize: 'clamp(64px, 17vw, 112px)',
+          lineHeight: 0.9,
+          letterSpacing: '-0.04em',
+          marginTop: 8,
+        }}
+      >
+        TODAY
+      </div>
+      <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '0.01em', marginTop: 6, textTransform: 'uppercase' }}>
+        {goal.name}
+      </div>
+
+      {/* Goal block · A goal + pace · B safe */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'clamp(18px, 6vw, 44px)', marginTop: 28 }}>
+        <div>
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.14em', opacity: 0.8 }}>GOAL</div>
+          <div style={{ fontFamily: 'Oswald, sans-serif', fontWeight: 700, fontSize: 'clamp(34px, 9vw, 46px)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {goal.goal}
+          </div>
+          {goalPace ? (
+            <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.88, marginTop: 4 }}>{goalPace}/mi</div>
+          ) : null}
+        </div>
+        {bGoal ? (
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.14em', opacity: 0.8 }}>B · SAFE</div>
+            <div style={{ fontFamily: 'Oswald, sans-serif', fontWeight: 700, fontSize: 'clamp(34px, 9vw, 46px)', lineHeight: 1, fontVariantNumeric: 'tabular-nums', opacity: 0.9 }}>
+              {bGoal}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {showProjection ? (
+        <div style={{ fontSize: 13, fontWeight: 600, marginTop: 22, opacity: 0.92 }}>
+          Fitness reads {goal.projected}{goal.delta ? ` · ${goal.delta}` : ''}
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={onOpenRace}
+        style={{
+          marginTop: 26,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          background: 'rgba(255,255,255,.16)',
+          color: '#FFFFFF',
+          border: '1px solid rgba(255,255,255,.30)',
+          borderRadius: 12,
+          padding: '11px 18px',
+          fontSize: 13,
+          fontWeight: 700,
+          letterSpacing: '0.02em',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        Full race plan
+        <span aria-hidden="true">›</span>
+      </button>
     </div>
   );
 }

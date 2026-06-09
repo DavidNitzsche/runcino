@@ -19,7 +19,7 @@
  */
 import React from 'react';
 
-type EffortKey = 'recovery' | 'easy' | 'long' | 'tempo' | 'intervals' | 'rest';
+type EffortKey = 'recovery' | 'easy' | 'long' | 'tempo' | 'intervals' | 'rest' | 'race';
 
 /* ============================================================
    A · EffortDot — single source of effort color across surfaces.
@@ -41,6 +41,7 @@ export function EffortDot({
     tempo: 'TEMPO',
     intervals: 'INTERVALS',
     rest: 'REST',
+    race: 'RACE',
   };
   return (
     <span className={`fa-effort fa-eff-${effort} ${className}`.trim()}>

@@ -42,6 +42,12 @@ function niceLong(iso: string) {
 function mapType(t: string | null | undefined): EffortKey {
   const low = (t ?? '').toLowerCase();
   if (low.includes('rest')) return 'rest';
+  // 2026-06-08 · race must resolve BEFORE the easy fallback. Previously
+  // 'race' fell through to 'easy', so race morning rendered a cyan EASY
+  // hero (the orange MESH.race + 'RACE' title were unreachable). Guard the
+  // 'race_pace'/'race_simulation' quality subtypes so they DON'T match
+  // here — only a true race-effort row ('race', 'race_a'…) maps to 'race'.
+  if (low === 'race' || low.startsWith('race_a') || low.startsWith('race_b') || low.startsWith('race_c')) return 'race';
   if (low.includes('long')) return 'long';
   if (low.includes('tempo') || low.includes('threshold')) return 'tempo';
   if (low.includes('interval') || low.includes('vo2') || low.includes('track')) return 'intervals';
@@ -55,6 +61,7 @@ function humanName(eff: EffortKey, distMi: number): string {
   // the layout. plan_workouts.sub_label can still override when the
   // plan-builder authored a more specific name.
   if (eff === 'rest') return 'Rest';
+  if (eff === 'race') return 'Race';
   if (eff === 'long') return distMi >= 14 ? 'Long' : 'Long';
   if (eff === 'tempo') return 'Tempo';
   if (eff === 'intervals') return 'Intervals';
@@ -62,7 +69,7 @@ function humanName(eff: EffortKey, distMi: number): string {
   return 'Easy';
 }
 const EFFORT_COLOR: Record<EffortKey, string> = {
-  recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38', tempo: '#FF8847', intervals: '#FC4D64', rest: '#8A90A0',
+  recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38', tempo: '#FF8847', intervals: '#FC4D64', rest: '#8A90A0', race: '#FF5722',
 };
 
 /* ─────────────────────────  Fallbacks  ───────────────────────── */
@@ -456,7 +463,7 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>, cadenceBaseline
   // workout has NO workout_spec (migration 120) AND no paceTargetSPerMi.
   // After the P0 #4 backfill these should rarely fire for an active plan.
   const PACE_DEFAULT: Record<EffortKey, number | null> = {
-    easy: 525, recovery: 570, long: 460, tempo: 398, intervals: 365, rest: null,
+    easy: 525, recovery: 570, long: 460, tempo: 398, intervals: 365, rest: null, race: null,
   };
   const week: PlannedDay[] = glance.weekDays.map((d): PlannedDay => {
     const eff = mapType(d.plannedType);
@@ -1676,7 +1683,7 @@ function avgPerBucket(runs: LogRun[], range: 'month'|'year'|'all'): number {
 }
 function effortMix(runs: LogRun[]): [string, string, number][] {
   if (!runs.length) return [['easy','Easy',0]];
-  const buckets: Record<EffortKey, number> = { recovery:0, easy:0, long:0, tempo:0, intervals:0, rest:0 };
+  const buckets: Record<EffortKey, number> = { recovery:0, easy:0, long:0, tempo:0, intervals:0, rest:0, race:0 };
   let total = 0;
   for (const r of runs) {
     const e = mapType(r.workoutType ?? r.type);
@@ -1684,7 +1691,9 @@ function effortMix(runs: LogRun[]): [string, string, number][] {
     total += r.distance_mi;
   }
   if (total <= 0) return [['easy','Easy',0]];
-  const order: EffortKey[] = ['easy','long','tempo','intervals','recovery'];
+  // 'race' included so race miles render as their own slice (EC['race']
+  // already maps to #D6263C) and the shown shares stay normalized to 100.
+  const order: EffortKey[] = ['easy','long','tempo','intervals','recovery','race'];
   return order.map(k => [k, k[0].toUpperCase() + k.slice(1), Math.round(buckets[k] / total * 100)] as [string, string, number]);
 }
 function heatGrid(runs: LogRun[], weeks = 18): import('./types').HeatCell[][] {
