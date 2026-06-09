@@ -50,7 +50,6 @@ enum FaffTab: String, CaseIterable, Identifiable {
 enum FaffRoute: Hashable {
     case runDetail(id: String)
     case planned(date: String?)
-    case completed(runId: String)
     case watchMirror
     case treadmill
     case raceDay(slug: String)
@@ -192,7 +191,6 @@ struct RootTabView: View {
         switch route {
         case .runDetail(let id):   RunDetailView(runId: id).navigationBarHidden(true)
         case .planned(let d):      PlannedView(date: d).navigationBarHidden(true)
-        case .completed(let id):   CompletedView(runId: id).navigationBarHidden(true)
         case .watchMirror:         WatchMirrorView().navigationBarHidden(true)
         case .treadmill:           TreadmillView().navigationBarHidden(true)
         case .raceDay(let slug):   RaceDayView(raceSlug: slug).navigationBarHidden(true)

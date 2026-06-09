@@ -51,11 +51,9 @@ struct DragSheet<Header: View, Body: View>: View {
     /// 0 = fully expanded (rests at top), 1 = fully collapsed (rests at peek).
     @Binding var progress: Double
     /// 2026-06-01 · Today v2 brief: "the whole peek (grab + peek) is filled
-    /// with the run's effort color." Defaults to .clear so existing callers
-    /// (CompletedView) keep the original cream-on-cream peek look until
-    /// they opt in. When non-clear, the grab + handle + caller header all
-    /// render on this color, the divider hides, and the body still uses
-    /// the standard cream background.
+    /// with the run's effort color." Defaults to .clear. When non-clear,
+    /// the grab + handle + caller header all render on this color,
+    /// the divider hides, and the body still uses the standard cream background.
     var peekBackground: Color = .clear
     /// 2026-06-02 round 54 · sheet body background color. Defaults to
     /// the brand cream (#FAF7F1) so existing callers keep their look.

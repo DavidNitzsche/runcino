@@ -21,7 +21,6 @@
 		14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */; };
 		14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81938656B7079C01BB12693C /* ColdStartView.swift */; };
 		16105FF9F23FE470CECECD32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 139264554EDD5A64F64E384F /* Assets.xcassets */; };
-		2189B652FD2C7FD8E493C601 /* WeeklySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53011C0480C6AA66CB9D2FA8 /* WeeklySheet.swift */; };
 		21BAA9938430A3B59A7DA1FF /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */; };
 		22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232F9F14460F13DDC369F512 /* Brandmark.swift */; };
 		241CFCD0626CE2C875BE32F2 /* Oswald-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 014129C189442D8193785F35 /* Oswald-Variable.ttf */; };
@@ -29,7 +28,6 @@
 		2919F201CE287CAF6B172EED /* Inter-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 37F523B1198BDF2C15E626B2 /* Inter-SemiBold.ttf */; };
 		2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
-		317B8EDA830CCC1FE06624A4 /* CompletedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1E512B91F90E427F7D89B1 /* CompletedView.swift */; };
 		33B4FF295A8A74B4CFA43AEF /* IdleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BEBF7952F4B1AC4D8682B9 /* IdleView.swift */; };
 		36B9DFECC527B9516F2E9D87 /* AppCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = E642C82A6F2C85D02FB33076 /* AppCache.swift */; };
 		389B0803B48A9E1E69A77F7E /* GlossarySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81788CFF9C25B33E02A88C61 /* GlossarySheet.swift */; };
@@ -80,7 +78,6 @@
 		961FBF4DEC67B3CAD676A523 /* ReadinessGlanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 590886F21D4DD966A37DE610 /* ReadinessGlanceView.swift */; };
 		96AB4DF9DC78C005205930DA /* ResponsiveFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D23DD51213DA16F555FCAA /* ResponsiveFace.swift */; };
 		97C0A9C35C5B8D867ADBB661 /* F_Sheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8887459C81D2BD8B503FAFE /* F_Sheets.swift */; };
-		97F6314BE17C17CC34AF015A /* SpectatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DEC80E858984418A4E7C61A /* SpectatorView.swift */; };
 		97FF3141FF9E86C28E4B824B /* WorkoutTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2B28F9C8F4604550364F9BC /* WorkoutTracker.swift */; };
 		98B67F36D5862F5F11AEE994 /* Heatmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFCB78F95CAC1B19C758D37 /* Heatmap.swift */; };
 		9A0782D74045550D150EBBC2 /* MIGRATION_PLAN.md in Resources */ = {isa = PBXBuildFile; fileRef = BFA85E15978E6315D144D85E /* MIGRATION_PLAN.md */; };
@@ -223,12 +220,10 @@
 		48BEBF7952F4B1AC4D8682B9 /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
 		4E27550579AE4BDFA95531DD /* Fonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fonts.swift; sourceTree = "<group>"; };
 		516DCD5B946ABCCE017F3F40 /* CoachIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachIntents.swift; sourceTree = "<group>"; };
-		53011C0480C6AA66CB9D2FA8 /* WeeklySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklySheet.swift; sourceTree = "<group>"; };
 		54968706EA108BCE1A16D9A6 /* TodayShoeOverrideSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayShoeOverrideSheet.swift; sourceTree = "<group>"; };
 		563BE14031D81E39DC6ED1EB /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fonts; path = Faff/Faff/Resources/Fonts; sourceTree = SOURCE_ROOT; };
 		58ADF42EDED4C71FB0AD2CDD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		590886F21D4DD966A37DE610 /* ReadinessGlanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessGlanceView.swift; sourceTree = "<group>"; };
-		5A1E512B91F90E427F7D89B1 /* CompletedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletedView.swift; sourceTree = "<group>"; };
 		5A39B98C5EC62375867B3D43 /* Faff.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Faff.entitlements; sourceTree = "<group>"; };
 		5AD01DD17592B8872CD72B36 /* C_CoachTransparency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = C_CoachTransparency.swift; sourceTree = "<group>"; };
 		5D626345B3F0B0BDED8857D3 /* WatchFaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFaces.swift; sourceTree = "<group>"; };
@@ -266,7 +261,6 @@
 		8A7AF53AC1B5DF3231932FB6 /* HealthCompactGauge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCompactGauge.swift; sourceTree = "<group>"; };
 		8B2D7420891F1F0024E3D933 /* PhoneSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSync.swift; sourceTree = "<group>"; };
 		8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWorkoutModels.swift; sourceTree = "<group>"; };
-		8DEC80E858984418A4E7C61A /* SpectatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectatorView.swift; sourceTree = "<group>"; };
 		8FCD25057781DAE979CCDBFC /* ShoesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoesView.swift; sourceTree = "<group>"; };
 		91FC1DB4EC397EFC1B67BFE9 /* WatchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTheme.swift; sourceTree = "<group>"; };
 		944DFB34C4D7EF128D8D0F0E /* PRSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PRSheet.swift; sourceTree = "<group>"; };
@@ -486,7 +480,6 @@
 			children = (
 				E94BF41A96C49C2F0DFE896D /* ActivityView.swift */,
 				81938656B7079C01BB12693C /* ColdStartView.swift */,
-				5A1E512B91F90E427F7D89B1 /* CompletedView.swift */,
 				7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */,
 				A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */,
 				2D2748856DA0BE8CFF0A0E62 /* LearnArticleSheet.swift */,
@@ -505,7 +498,6 @@
 				743648B82E2A21410A13F000 /* SettingsView.swift */,
 				8FCD25057781DAE979CCDBFC /* ShoesView.swift */,
 				7A2DDEC15725161C4032FEC9 /* SignInView.swift */,
-				8DEC80E858984418A4E7C61A /* SpectatorView.swift */,
 				E2F298DBE5A4654D6A3396C9 /* StravaPushHistorySheet.swift */,
 				89D7554D68355339D82D6F51 /* TargetsView.swift */,
 				54968706EA108BCE1A16D9A6 /* TodayShoeOverrideSheet.swift */,
@@ -515,7 +507,6 @@
 				6F56782BD960562D69ADDCB4 /* UsageSheet.swift */,
 				C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */,
 				AB6429EC123205552CF65614 /* WeekAheadView.swift */,
-				53011C0480C6AA66CB9D2FA8 /* WeeklySheet.swift */,
 				444251779F1CDC004513FAD8 /* WithinReachSheet.swift */,
 			);
 			path = Views;
@@ -765,7 +756,6 @@
 				4167E13357AE78F92DB3AB54 /* CoachNote.swift in Sources */,
 				8207DC567E0A8DE57DBFB58B /* CoachPayloads.swift in Sources */,
 				14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */,
-				317B8EDA830CCC1FE06624A4 /* CompletedView.swift in Sources */,
 				DFF432A5660C9F03C222442B /* D_Disclosure.swift in Sources */,
 				A4BFA53D2EB8255A25E154AD /* DragSheet.swift in Sources */,
 				9AE98D4A316A6880817CB236 /* E_Nudges.swift in Sources */,
@@ -825,7 +815,6 @@
 				39609C4FA97B179028535FD4 /* ShoesView.swift in Sources */,
 				CF1C1E572DC1A191D8D58977 /* SignInView.swift in Sources */,
 				EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */,
-				97F6314BE17C17CC34AF015A /* SpectatorView.swift in Sources */,
 				ED8A185C9C02773FFC2E41D6 /* StickyCTABar.swift in Sources */,
 				BE1AE0E4AC08E6B55B1B87D7 /* StravaOAuthSession.swift in Sources */,
 				82583B8BEA1A55C53A47687D /* StravaPushHistorySheet.swift in Sources */,
@@ -851,7 +840,6 @@
 				0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */,
 				0FE433223DC5369A657B77E7 /* WeekAheadView.swift in Sources */,
 				3BA6B12FCF16C3B5BD62797B /* WeekStrip.swift in Sources */,
-				2189B652FD2C7FD8E493C601 /* WeeklySheet.swift in Sources */,
 				7380AA0621D427003EE43F2E /* WithinReachSheet.swift in Sources */,
 				60441969D5FB3C1127CFCFF3 /* ZoneBar.swift in Sources */,
 			);

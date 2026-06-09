@@ -11,7 +11,6 @@
 //    · /api/goals                       · NewGoalSheet
 //    · /api/runs/[id]/rpe GET/POST      · RPEEntryCard
 //    · /api/profile/notifications GET/PATCH · NotificationPrefsList
-//    · /api/checkin POST                · PostRunCheckinChips
 //
 //  Every method goes through API.authedSend so the bearer attach +
 //  401-auto-bounce stays consistent.
