@@ -501,15 +501,12 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
     .filter(m => sleepKeys.has(m.k))
     .sort((a, b) => sleepOrder.indexOf(a.k) - sleepOrder.indexOf(b.k));
 
-  // Band-aware verdict line under the gauge · pulls from readinessBrief
-  // when present (richer narration), falls back to readiness.coach.
-  const verdictText = brief?.headline ?? readiness.coach;
-  const band = brief?.band ?? (
-    readiness.score >= 85 ? 'sharp'
-    : readiness.score >= 70 ? 'ready'
-    : readiness.score >= 55 ? 'moderate'
-    : 'pull-back'
-  );
+  const band = brief?.band ?? readiness.band;
+  // Unknown band = cold-start, no data yet. Show neutral label rather than
+  // falling through to coach copy that implies a real reading exists.
+  const verdictText = band === 'unknown'
+    ? 'BUILDING BASELINE'
+    : (brief?.headline ?? readiness.coach);
   const baseline = brief?.composition?.baseline ?? readiness.baseline;
   const todayScore = brief?.composition?.today ?? readiness.score;
   const net = brief?.composition?.net ?? (todayScore - baseline);
