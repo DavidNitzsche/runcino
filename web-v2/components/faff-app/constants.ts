@@ -206,6 +206,7 @@ export const SHOES_DEFAULT = [
 
 export const ROLECOL: Record<string,string> = {
   RACE: '#FC4D64', TEMPO: '#FF8847', LONG: '#F3AD38', EASY: '#14C08C', RECOVERY: '#27B4E0',
+  INTERVALS: '#FC4D64',
 };
 
 export type PhaseKey = 'base'|'build'|'peak'|'taper'|'race'|'maintenance'|'recovery';

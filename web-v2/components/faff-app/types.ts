@@ -134,6 +134,10 @@ export type FaffSeed = {
       type: import('./constants').EffortKey;
       name: string;
       mi: number;
+      /** Actual miles logged for this day (0 when not completed). Threaded
+       *  from training-state PlanWeek.days.doneMi so the TrainView execution
+       *  strip can compute per-week actual totals without a new API call. */
+      doneMi?: number;
       paceSec: number | null;
       done: boolean;
       activityId?: string | null;
@@ -768,6 +772,6 @@ export type RecentRun = {
   slug?: string;
 };
 
-export type ShoeRec = { id?: number; brand?: string; model?: string; nm: string; role: string; mi: number; max: number };
+export type ShoeRec = { id?: number; brand?: string; model?: string; nm: string; role: string; roles: string[]; preferred: boolean; mi: number; max: number };
 export type ConnectionRow = { id: string; nm: string; sub: string; bg: string; gl: string; on: boolean; lastSyncIso?: string | null };
 export type { ViewKey, EffortKey, PlannedDay, CompletedRun };

@@ -14,7 +14,7 @@ import {
 } from '../toolkit';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 
-const ROLES = ['RACE','TEMPO','LONG','EASY','RECOVERY'];
+const ROLES = ['EASY','LONG','TEMPO','INTERVALS','RACE','RECOVERY'];
 
 export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed; onOpenPro: () => void; onOpenPaywall: () => void }) {
   const router = useRouter();
@@ -38,8 +38,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           brand, model,
-          run_types: [rec.role.toLowerCase()],
-          mileage: rec.mi,
+          run_types: rec.roles.map(r => r.toLowerCase()),
           mileage_cap: rec.max,
         }),
       });
@@ -58,9 +57,9 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: rec.id,
-          mileage: rec.mi,
           mileage_cap: rec.max,
-          run_types: [rec.role.toLowerCase()],
+          run_types: rec.roles.map(r => r.toLowerCase()),
+          preferred: rec.preferred,
         }),
       });
       if (!res.ok) throw new Error(`PATCH /api/shoe ${res.status}`);
@@ -456,14 +455,30 @@ function ShoeEditor({
   onDelete: () => void;
 }) {
   const isAdd = editing === -1;
-  const initial: ShoeRec = editing != null && editing >= 0 ? garage[editing] : { nm: '', role: 'EASY', mi: 0, max: 400 };
-  const [nm, setNm]   = useState(initial.nm);
-  const [role, setRole] = useState(initial.role);
-  const [mi, setMi]   = useState(initial.mi);
-  const [max, setMax] = useState(initial.max);
+  const initial: ShoeRec = editing != null && editing >= 0
+    ? garage[editing]
+    : { nm: '', role: 'EASY', roles: ['EASY'], preferred: true, mi: 0, max: 400 };
+  const [nm, setNm]               = useState(initial.nm);
+  const [roles, setRoles]         = useState<string[]>(initial.roles);
+  const [preferred, setPreferred] = useState(initial.preferred);
+  const [max, setMax]             = useState(initial.max);
+
+  /** Toggle a role on/off. Prevents deselecting the last one. */
+  function toggleRole(r: string) {
+    setRoles(cur => cur.includes(r)
+      ? (cur.length > 1 ? cur.filter(x => x !== r) : cur)
+      : [...cur, r]
+    );
+  }
 
   useEffect(() => {
-    setNm(initial.nm); setRole(initial.role); setMi(initial.mi); setMax(initial.max);
+    const cur = editing != null && editing >= 0
+      ? garage[editing]
+      : { nm: '', role: 'EASY', roles: ['EASY'], preferred: true, mi: 0, max: 400 };
+    setNm(cur.nm);
+    setRoles(cur.roles ?? [cur.role ?? 'EASY']);  // fallback: build from role if roles absent
+    setPreferred(cur.preferred ?? true);
+    setMax(cur.max);
   }, [editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (editing == null) return null;
@@ -477,23 +492,34 @@ function ShoeEditor({
         <div className="se-title">{isAdd ? 'Add a shoe' : 'Edit shoe'}</div>
         <div className="se-lbl">SHOE NAME</div>
         <input className="se-input" value={nm} placeholder="e.g. Vaporfly 3" onChange={(e) => setNm(e.target.value)} spellCheck={false} />
-        <div className="se-lbl">ROLE</div>
+        <div className="se-lbl">FOR THESE RUN TYPES</div>
         <div className="se-roles">
           {ROLES.map(r => (
             <button
               key={r}
-              className={`se-role${role === r ? ' on' : ''}`}
-              style={{ borderColor: role === r ? ROLECOL[r] : 'transparent' }}
-              onClick={() => setRole(r)}
+              className={`se-role${roles.includes(r) ? ' on' : ''}`}
+              style={{ borderColor: roles.includes(r) ? ROLECOL[r] ?? '#14C08C' : 'transparent' }}
+              onClick={() => toggleRole(r)}
             >
-              <span className="sd" style={{ background: ROLECOL[r] }} />{r}
+              <span className="sd" style={{ background: ROLECOL[r] ?? '#14C08C' }} />{r}
             </button>
           ))}
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 4px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={preferred}
+            onChange={(e) => setPreferred(e.target.checked)}
+            style={{ width: 14, height: 14, accentColor: '#14C08C', cursor: 'pointer' }}
+          />
+          <span className="se-lbl" style={{ margin: 0, color: preferred ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.28)' }}>
+            PRIMARY SHOE FOR THESE TYPES
+          </span>
+        </label>
         <div className="se-two">
           <div>
             <div className="se-lbl">MILES ON THEM</div>
-            <input className="se-input" type="number" inputMode="numeric" min={0} value={mi} onChange={(e) => setMi(parseInt(e.target.value || '0', 10))} />
+            <div style={{ fontSize: 13, padding: '6px 0', opacity: 0.4 }}>{initial.mi} mi</div>
           </div>
           <div>
             <div className="se-lbl">RETIRE AT</div>
@@ -502,7 +528,7 @@ function ShoeEditor({
         </div>
         <div className="se-acts">
           {!isAdd && <button className="se-del" onClick={onDelete} disabled={pending}>Remove shoe</button>}
-          <button className="se-save" disabled={pending} onClick={() => onSave({ nm: nm.trim() || 'New shoe', role, mi: Math.max(0, mi), max: Math.max(50, max) })}>{pending ? 'Saving…' : 'Save'}</button>
+          <button className="se-save" disabled={pending} onClick={() => onSave({ nm: nm.trim() || 'New shoe', role: roles[0] ?? 'EASY', roles, preferred, mi: initial.mi, max: Math.max(50, max) })}>{pending ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </div>

@@ -1029,6 +1029,7 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
       name: d.label || humanName(t, d.mi),
       mi: d.mi || 0,
       paceSec: specPace ?? PACE_DEFAULT[t] ?? null,
+      doneMi: d.doneMi || 0,
       done: !!d.activityId,
       activityId: d.activityId,
       donePaceSec: anyD.donePaceSec ?? null,
@@ -1842,15 +1843,23 @@ function packVo2Series(series: Array<{ date: string; v: number }>, current: numb
 
 function adaptShoes(profile: Profile | null): ShoeRec[] {
   if (!profile?.shoes?.length) return [];
-  return profile.shoes.filter(s => !s.retired).map(s => ({
-    id: Number(s.id),
-    brand: s.brand,
-    model: s.model,
-    nm: s.name || `${s.brand} ${s.model}`.trim(),
-    role: (s.runTypes?.[0] ?? 'easy').toString().toUpperCase().replace(/[^A-Z]/g, ''),
-    mi: Math.round(s.mileage || 0),
-    max: Math.round(s.cap || 400),
-  }));
+  return profile.shoes.filter(s => !s.retired).map(s => {
+    const rawTypes = Array.isArray(s.runTypes) ? s.runTypes : [];
+    const roles = rawTypes.length > 0
+      ? rawTypes.map((r: string) => r.toString().toUpperCase().replace(/[^A-Z]/g, ''))
+      : ['EASY'];
+    return {
+      id: Number(s.id),
+      brand: s.brand,
+      model: s.model,
+      nm: s.name || `${s.brand} ${s.model}`.trim(),
+      role: roles[0],        // primary role — used for card label + ROLECOL stripe
+      roles,                 // full set — editor populates all checkboxes from this
+      preferred: s.preferred ?? true,
+      mi: Math.round(s.mileage || 0),
+      max: Math.round(s.cap || 400),
+    };
+  });
 }
 
 /** Coach shoe recommendation per effort type. Pulls from the runner's
