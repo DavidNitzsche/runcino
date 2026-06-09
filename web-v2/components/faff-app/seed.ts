@@ -1858,6 +1858,7 @@ function adaptShoes(profile: Profile | null): ShoeRec[] {
       preferred: s.preferred ?? true,
       mi: Math.round(s.mileage || 0),
       max: Math.round(s.cap || 400),
+      baseline_mi: Math.round(s.baseline_mi ?? 0),
     };
   });
 }
@@ -2120,6 +2121,8 @@ export async function buildSeed(): Promise<FaffSeed> {
           vdot: profile?.physiology.vdot ?? null,
           daysToRace: goalRace.daysAway ?? null,
           pacing: pacing ? { cv: pacing.cv, source: pacing.source } : null,
+          vdotAnchorDateISO: profile?.physiology.vdot_anchor_date ?? null,
+          vdotAnchorDistanceMi: profile?.physiology.vdot_anchor_distance_mi ?? null,
         });
         // Override projection with plan-trusts-itself value.
         goalRace.projected = formatGoalTime(gp.projectionSec) ?? goalRace.projected;

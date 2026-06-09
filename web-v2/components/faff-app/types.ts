@@ -772,6 +772,6 @@ export type RecentRun = {
   slug?: string;
 };
 
-export type ShoeRec = { id?: number; brand?: string; model?: string; nm: string; role: string; roles: string[]; preferred: boolean; mi: number; max: number };
+export type ShoeRec = { id?: number; brand?: string; model?: string; nm: string; role: string; roles: string[]; preferred: boolean; mi: number; max: number; baseline_mi?: number };
 export type ConnectionRow = { id: string; nm: string; sub: string; bg: string; gl: string; on: boolean; lastSyncIso?: string | null };
 export type { ViewKey, EffortKey, PlannedDay, CompletedRun };

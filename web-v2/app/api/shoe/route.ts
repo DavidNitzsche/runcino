@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     pool.query(
       `SELECT id, brand, model, color, color2, run_types,
               mileage_cap::numeric AS mileage_cap,
+              COALESCE(baseline_mi, 0)::numeric AS baseline_mi,
               COALESCE(retired, false) AS retired,
               COALESCE(preferred, false) AS preferred,
               notes
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
     computeShoeMileage(userId),
   ]);
   const rows = rawRows
-    .map((s: any) => ({ ...s, _mi: miles.get(Number(s.id)) ?? 0 }))
+    .map((s: any) => ({ ...s, _mi: (miles.get(Number(s.id)) ?? 0) + Number(s.baseline_mi ?? 0) }))
     .sort((a: any, b: any) =>
       (a.retired === b.retired ? 0 : a.retired ? 1 : -1) ||
       (b.preferred === a.preferred ? 0 : b.preferred ? 1 : -1) ||
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
       run_types: s.run_types ?? [],
       mileage: s._mi,
       mileage_cap: s.mileage_cap == null ? null : Number(s.mileage_cap),
+      baseline_mi: Number(s.baseline_mi ?? 0),
       retired: Boolean(s.retired),
       preferred: Boolean(s.preferred),
       notes: s.notes,
@@ -80,8 +82,8 @@ export async function POST(req: NextRequest) {
   }
   try {
     const r = await pool.query(
-      `INSERT INTO shoes (brand, model, color, run_types, mileage, mileage_cap, retired, preferred, user_uuid)
-       VALUES ($1, $2, $3, $4, COALESCE($5, 0), COALESCE($6, 400), false, false, $7)
+      `INSERT INTO shoes (brand, model, color, run_types, mileage, mileage_cap, baseline_mi, retired, preferred, user_uuid)
+       VALUES ($1, $2, $3, $4, COALESCE($5, 0), COALESCE($6, 400), COALESCE($7, 0), false, false, $8)
        RETURNING id`,
       [
         body.brand,
@@ -90,6 +92,7 @@ export async function POST(req: NextRequest) {
         body.run_types ?? [],
         body.mileage ?? 0,
         body.mileage_cap ?? 400,
+        body.baseline_mi ?? 0,
         userId,
       ]
     );
@@ -100,7 +103,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const ALLOWED_PATCH = new Set(['mileage', 'mileage_cap', 'run_types', 'retired', 'preferred', 'color', 'color2', 'notes']);
+const ALLOWED_PATCH = new Set(['mileage', 'mileage_cap', 'baseline_mi', 'run_types', 'retired', 'preferred', 'color', 'color2', 'notes']);
 
 export async function PATCH(req: NextRequest) {
   const auth = await requireUserId(req);

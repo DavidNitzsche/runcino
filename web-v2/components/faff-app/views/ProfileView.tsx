@@ -40,6 +40,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           brand, model,
           run_types: rec.roles.map(r => r.toLowerCase()),
           mileage_cap: rec.max,
+          baseline_mi: rec.baseline_mi ?? 0,
         }),
       });
       if (!res.ok) throw new Error(`POST /api/shoe ${res.status}`);
@@ -58,6 +59,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         body: JSON.stringify({
           id: rec.id,
           mileage_cap: rec.max,
+          baseline_mi: rec.baseline_mi ?? 0,
           run_types: rec.roles.map(r => r.toLowerCase()),
           preferred: rec.preferred,
         }),
@@ -462,6 +464,7 @@ function ShoeEditor({
   const [roles, setRoles]         = useState<string[]>(initial.roles);
   const [preferred, setPreferred] = useState(initial.preferred);
   const [max, setMax]             = useState(initial.max);
+  const [baselineMi, setBaselineMi] = useState(initial.baseline_mi ?? 0);
 
   /** Toggle a role on/off. Prevents deselecting the last one. */
   function toggleRole(r: string) {
@@ -479,6 +482,7 @@ function ShoeEditor({
     setRoles(cur.roles ?? [cur.role ?? 'EASY']);  // fallback: build from role if roles absent
     setPreferred(cur.preferred ?? true);
     setMax(cur.max);
+    setBaselineMi(cur.baseline_mi ?? 0);
   }, [editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (editing == null) return null;
@@ -518,8 +522,8 @@ function ShoeEditor({
         </label>
         <div className="se-two">
           <div>
-            <div className="se-lbl">MILES ON THEM</div>
-            <div style={{ fontSize: 13, padding: '6px 0', opacity: 0.4 }}>{initial.mi} mi</div>
+            <div className="se-lbl">MILES BEFORE APP</div>
+            <input className="se-input" type="number" inputMode="numeric" min={0} value={baselineMi} onChange={(e) => setBaselineMi(Math.max(0, parseInt(e.target.value || '0', 10)))} />
           </div>
           <div>
             <div className="se-lbl">RETIRE AT</div>
@@ -528,7 +532,7 @@ function ShoeEditor({
         </div>
         <div className="se-acts">
           {!isAdd && <button className="se-del" onClick={onDelete} disabled={pending}>Remove shoe</button>}
-          <button className="se-save" disabled={pending} onClick={() => onSave({ nm: nm.trim() || 'New shoe', role: roles[0] ?? 'EASY', roles, preferred, mi: initial.mi, max: Math.max(50, max) })}>{pending ? 'Saving…' : 'Save'}</button>
+          <button className="se-save" disabled={pending} onClick={() => onSave({ nm: nm.trim() || 'New shoe', role: roles[0] ?? 'EASY', roles, preferred, mi: initial.mi, max: Math.max(50, max), baseline_mi: baselineMi })}>{pending ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </div>

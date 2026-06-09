@@ -6,7 +6,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings, type UserSettings } from '@/lib/coach/settings';
 import { computeZones, estimateLTHR, estimateMaxHRFromLTHR, type ZoneTable } from '@/lib/training/zones';
-import { loadLatestVdotForUser } from '@/lib/training/projection-snapshots';
+import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadNextARace } from './race-lookup';
 import { loadActivePlan } from '@/lib/plan/lookup';
@@ -31,12 +31,16 @@ export interface ProfileState {
     vo2: number | null;
     weight_lb: number | null;
     vdot: number | null;
+    /** ISO date of the race/run that produced vdot. Null pre-migration-125. */
+    vdot_anchor_date: string | null;
+    /** Distance (miles) of that race/run. Null pre-migration-125. */
+    vdot_anchor_distance_mi: number | null;
     lthr: number | null;
     lthr_method: string | null;      // how it was set
     lthr_set_at: string | null;      // ISO timestamp
     zones: ZoneTable | null;         // computed zones (LTHR-based if available, else %MHR)
   };
-  shoes: { id: string; name: string; brand: string; model: string; color: string | null; color2: string | null; notes: string | null; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean }[];
+  shoes: { id: string; name: string; brand: string; model: string; color: string | null; color2: string | null; notes: string | null; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean; baseline_mi: number }[];
   nextARace: { slug: string; name: string; date: string; goal: string | null; days_to_race: number } | null;
   connections: {
     strava:       { connected: boolean; lastSync: string | null; note: string };
@@ -110,7 +114,8 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       [userId]
     ).then((r) => r.rows[0]),
     pool.query(
-      `SELECT id, brand, model, color, color2, notes, run_types, mileage, mileage_cap, retired, preferred
+      `SELECT id, brand, model, color, color2, notes, run_types, mileage, mileage_cap, retired, preferred,
+              COALESCE(baseline_mi, 0)::numeric AS baseline_mi
          FROM shoes
         WHERE user_uuid = $1
         ORDER BY id`,
@@ -152,7 +157,9 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   // trusted. pctUsed therefore reflects real tracked miles.
   const shoeMiles = await computeShoeMileage(userId);
   const shoes = shoesRows.map((s: any) => {
-    const m = shoeMiles.get(Number(s.id)) ?? 0;
+    const tracked = shoeMiles.get(Number(s.id)) ?? 0;
+    const baseline = Number(s.baseline_mi ?? 0);
+    const m = tracked + baseline;
     const cap = Number(s.mileage_cap) || 400;
     return {
       id: String(s.id),
@@ -166,6 +173,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       cap, pctUsed: Math.round((m / cap) * 100),
       preferred: s.preferred,
       retired: !!s.retired,
+      baseline_mi: baseline,
     };
   });
 
@@ -193,7 +201,8 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   // the full race-candidate chain. Falls back to null for cold-start users
   // who haven't had a cron run yet — display reads null as "no VDOT yet".
   const effMaxHr = await loadEffectiveMaxHr(userId, today);
-  const vdot = await loadLatestVdotForUser(userId);
+  const { vdot, anchorDateISO: vdotAnchorDate, anchorDistanceMi: vdotAnchorDistMi } =
+    await loadLatestVdotWithAnchor(userId);
 
   // === LTHR + true MaxHR ===
   // Prefer user-entered values; fall back to derived-from-race if we have race meta.
@@ -264,6 +273,8 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     physiology: {
       max_hr, max_hr_source,
       rhr, vo2, weight_lb, vdot,
+      vdot_anchor_date: vdotAnchorDate ?? null,
+      vdot_anchor_distance_mi: vdotAnchorDistMi ?? null,
       lthr,
       lthr_method: lthrMethod,
       lthr_set_at: p?.lthr_set_at ?? null,
