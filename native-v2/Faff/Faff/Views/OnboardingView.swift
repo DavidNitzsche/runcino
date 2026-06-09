@@ -1,6 +1,11 @@
 //
 //  OnboardingView.swift
-//  Welcome → connect → target → projection. Mesh migrates cool → hot.
+//  Welcome → connect → target → profile → confirm. Mesh migrates cool → hot.
+//
+//  Connect is real: Apple Health drives HealthKitImporter.requestAuthAndImport
+//  (genuine permission prompt + import, shows the real imported count), Strava
+//  drives the live StravaOAuthSession. Garmin is honestly disabled — there's
+//  no Garmin integration yet. Nothing fabricates a count or a projection.
 //
 
 import SwiftUI
@@ -9,19 +14,35 @@ struct OnboardingView: View {
     let onComplete: () -> Void
 
     @State private var step: Int = 0
-    @State private var connected: Set<String> = []
     @State private var mode: TargetMode = .race
     @State private var distance: Distance = .marathon
     @State private var goalSec: Int = 14400
     @State private var raceName: String = ""
+    @State private var raceDate: Date = Calendar.current.date(byAdding: .day, value: 112, to: Date()) ?? Date()
     @State private var submitting: Bool = false
 
-    /// Builds the /api/onboarding/complete payload from the UI state.
-    /// Most fields are required by the server; we fill nullable ones with
-    /// sensible defaults until a future iteration collects them properly.
+    // Profile (physiology) — age + sex persist via /onboarding/complete;
+    // LTHR (optional, advanced) persists via PATCH /api/profile. RHR is
+    // HealthKit-derived (no manual entry), HRmax is estimated from age /
+    // set later in Settings (users.max_hr_override) — neither is asked here.
+    @State private var birthday: Date = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date()
+    @State private var birthdaySet: Bool = false
+    @State private var sex: String? = nil          // "M" | "F"
+    @State private var lthrText: String = ""
+
+    // Connect state. Apple Health reflects the shared importer; Strava is
+    // driven locally off the OAuth round-trip.
+    @ObservedObject private var hk: HealthKitImporter = .shared
+    @State private var healthTapped: Bool = false
+    @State private var stravaState: ConnState = .idle
+    @State private var stravaConnecting: Bool = false
+
+    enum ConnState: Equatable { case idle, connecting, connected(String?), failed(String) }
+
+    /// Builds the /api/onboarding/complete payload from the UI state. Only
+    /// fields the runner actually set are sent — no defaulted age, no
+    /// fabricated history. Nullable fields stay null.
     private var onboardingPayload: [String: Any] {
-        let raceDateOffset = 112 // days; matches the OnboardingView default
-        let date = Calendar.current.date(byAdding: .day, value: raceDateOffset, to: Date())
         let isoF = DateFormatter(); isoF.dateFormat = "yyyy-MM-dd"
         let tz = TimeZone.current.identifier
 
@@ -41,7 +62,7 @@ struct OnboardingView: View {
 
         return [
             "distance": mode == .just ? "none" : distanceCode,
-            "date": mode == .race ? (date.map { isoF.string(from: $0) } as Any? ?? NSNull()) : NSNull(),
+            "date": mode == .race ? isoF.string(from: raceDate) : NSNull(),
             "time": mode == .race ? goalTime : NSNull(),
             "ttDistance": NSNull(),
             "ttTime": NSNull(),
@@ -52,23 +73,39 @@ struct OnboardingView: View {
             "histYears": NSNull(),
             "name": raceName.isEmpty ? "Goal Race" : raceName,
             "timezone": tz,
-            "connected": Array(connected)
+            // Physiology — only sent when the runner actually picked them.
+            "birthday": birthdaySet ? isoF.string(from: birthday) as Any : NSNull(),
+            "sex": sex as Any? ?? NSNull(),
+            // Honest connection state: skipped == nothing connected.
+            "connectionsSkipped": !anyConnected
         ]
+    }
+
+    /// LTHR parsed from the optional field, clamped to a sane HR band.
+    private var parsedLthr: Int? {
+        guard let v = Int(lthrText.trimmingCharacters(in: .whitespaces)),
+              (120...210).contains(v) else { return nil }
+        return v
     }
 
     enum TargetMode: String, CaseIterable { case race, goal, just }
     enum Distance: String, CaseIterable { case k5 = "5K", k10 = "10K", half = "HALF", marathon = "MARATHON" }
 
+    // Five-step mesh: cool → hot. A lime stage bridges green → amber for
+    // the added profile step.
     private let palettes: [FaffMesh] = [
         FaffMesh(c1: 0x7FE6D6, c2: 0x5AA9D6, c3: 0x2F7FAE, c4: 0x1F6A8A, c5: 0x1A5A7A, base: 0x08222E),
         FaffMesh(c1: 0x8EF0B0, c2: 0x34C194, c3: 0x1F8A8A, c4: 0x128A64, c5: 0x137259, base: 0x06382E),
+        FaffMesh(c1: 0xE6E89A, c2: 0xC9C45E, c3: 0xA8B048, c4: 0x8E9A3C, c5: 0x7A8836, base: 0x3A3E14),
         FaffMesh(c1: 0xFFE0A0, c2: 0xF8B85F, c3: 0xE08A36, c4: 0xC96E2A, c5: 0xB46026, base: 0x5E2F12),
         FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xD6263C, c4: 0x9E1733, c5: 0xC01030, base: 0x420A1E)
     ]
 
+    private let stepCount = 5
+
     var body: some View {
         ZStack {
-            FaffMeshView(mesh: palettes[step], transition: 0.9)
+            FaffMeshView(mesh: palettes[min(step, palettes.count - 1)], transition: 0.9)
 
             VStack(spacing: 0) {
                 topBar
@@ -79,7 +116,8 @@ struct OnboardingView: View {
                     welcomePanel.opacity(step == 0 ? 1 : 0)
                     connectPanel.opacity(step == 1 ? 1 : 0)
                     targetPanel.opacity(step == 2 ? 1 : 0)
-                    projectionPanel.opacity(step == 3 ? 1 : 0)
+                    profilePanel.opacity(step == 3 ? 1 : 0)
+                    confirmPanel.opacity(step == 4 ? 1 : 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(Theme.Motion.smooth, value: step)
@@ -99,7 +137,7 @@ struct OnboardingView: View {
                 Spacer()
             }
             HStack(spacing: 7) {
-                ForEach(0..<4, id: \.self) { i in
+                ForEach(0..<stepCount, id: \.self) { i in
                     Capsule()
                         .fill(i == step ? Color.white : Color.white.opacity(0.25))
                         .frame(width: i == step ? 30 : 22, height: 4)
@@ -163,9 +201,35 @@ struct OnboardingView: View {
                glyph: "heart.fill", tint: Color(hex: 0xFF2D55)),
         SrcRow(id: "strava", name: "Strava", sub: "Activity history",
                glyph: "triangle.fill", tint: Color(hex: 0xFC4C02)),
-        SrcRow(id: "garmin", name: "Garmin", sub: "Watch & metrics",
+        SrcRow(id: "garmin", name: "Garmin", sub: "Coming soon",
                glyph: "g.circle.fill", tint: Color(hex: 0x0A66A8))
     ]
+
+    /// Apple Health connection state, derived from the shared importer once
+    /// the runner has tapped Connect (so a background sync can't flip the
+    /// row before they ask for it).
+    private var healthState: ConnState {
+        guard healthTapped else { return .idle }
+        switch hk.status {
+        case .requesting, .importing, .idle: return .connecting
+        case .done: return .connected(hk.lastMessage)
+        case .error: return .failed(hk.lastMessage ?? "Health didn't connect")
+        }
+    }
+
+    private var anyConnected: Bool {
+        if case .connected = healthState { return true }
+        if case .connected = stravaState { return true }
+        return false
+    }
+
+    private func state(for id: String) -> ConnState {
+        switch id {
+        case "health": return healthState
+        case "strava": return stravaState
+        default: return .idle             // garmin — not wired
+        }
+    }
 
     private var connectPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -190,14 +254,9 @@ struct OnboardingView: View {
             }
             .padding(.top, 18)
 
-            if !connected.isEmpty {
-                importBlock
-                    .padding(.top, 20)
-            }
-
             Spacer(minLength: 0)
 
-            ctaButton(title: "Continue", enabled: !connected.isEmpty) {
+            ctaButton(title: "Continue", enabled: anyConnected) {
                 withAnimation(Theme.Motion.smooth) { step = 2 }
             }
             Button {
@@ -217,59 +276,124 @@ struct OnboardingView: View {
     }
 
     private func srcRow(_ src: SrcRow) -> some View {
-        let isOn = connected.contains(src.id)
+        let st = state(for: src.id)
+        let isGarmin = src.id == "garmin"
+        let isConnected: Bool = { if case .connected = st { return true }; return false }()
+        let isConnecting: Bool = { if case .connecting = st { return true }; return false }()
+
         return Button {
-            withAnimation(Theme.Motion.smooth) {
-                if isOn { connected.remove(src.id) } else { connected.insert(src.id) }
-            }
+            connectTapped(src.id)
         } label: {
-            HStack(spacing: 14) {
-                Image(systemName: src.glyph)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Color.white)
-                    .frame(width: 42, height: 42)
-                    .background(src.tint, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(src.name)
-                        .font(.body(16, weight: .extraBold))
-                        .foregroundStyle(Theme.txt)
-                    Text(src.sub)
-                        .font(.body(11, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.6))
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    Image(systemName: src.glyph)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 42, height: 42)
+                        .background(src.tint.opacity(isGarmin ? 0.4 : 1.0),
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(src.name)
+                            .font(.body(16, weight: .extraBold))
+                            .foregroundStyle(Theme.txt.opacity(isGarmin ? 0.55 : 1.0))
+                        Text(srcSubtitle(src, state: st))
+                            .font(.body(11, weight: .semibold))
+                            .foregroundStyle(srcSubtitleColor(st, isGarmin: isGarmin))
+                    }
+                    Spacer()
+                    trailingLabel(st, isGarmin: isGarmin, isConnected: isConnected, isConnecting: isConnecting)
                 }
-                Spacer()
-                Text(isOn ? "Connected" : "Connect")
-                    .font(.display(12, weight: .bold))
-                    .foregroundStyle(isOn ? Color(hex: 0x7BE8A0) : Theme.txt.opacity(0.8))
             }
             .padding(EdgeInsets(top: 15, leading: 16, bottom: 15, trailing: 16))
             .background(
-                Color.white.opacity(isOn ? 0.14 : 0.08),
+                Color.white.opacity(isConnected ? 0.14 : 0.08),
                 in: RoundedRectangle(cornerRadius: 18, style: .continuous)
             )
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isOn ? Color(hex: 0x7BE8A0).opacity(0.5) : Color.white.opacity(0.16), lineWidth: 1))
+                .stroke(isConnected ? Color(hex: 0x7BE8A0).opacity(0.5) : Color.white.opacity(0.16), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .disabled(isGarmin || isConnecting)
     }
 
-    private var importBlock: some View {
-        VStack(spacing: 8) {
-            Text("NEXT")
-                .font(.label(12)).tracking(1)
-                .foregroundStyle(Color(hex: 0x7BE8A0))
-            Text("We'll pull your runs in after setup.")
-                .font(.body(15, weight: .semibold))
-                .foregroundStyle(Theme.txt.opacity(0.84))
-                .multilineTextAlignment(.center)
-                .lineSpacing(3)
+    /// Row subtitle: the real imported summary when connected, the failure
+    /// reason when it failed, otherwise the source's tagline.
+    private func srcSubtitle(_ src: SrcRow, state st: ConnState) -> String {
+        switch st {
+        case .connected(let detail):
+            if let d = detail, !d.isEmpty { return d }   // "12 runs · 340 vitals"
+            return "Connected"
+        case .failed(let reason):
+            return reason
+        default:
+            return src.sub
         }
-        .frame(maxWidth: .infinity)
-        .padding(18)
-        .background(Color(hex: 0x7BE8A0).opacity(0.1),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .stroke(Color(hex: 0x7BE8A0).opacity(0.32), lineWidth: 1))
+    }
+
+    private func srcSubtitleColor(_ st: ConnState, isGarmin: Bool) -> Color {
+        switch st {
+        case .connected: return Color(hex: 0x7BE8A0)
+        case .failed:    return Color(hex: 0xFFB4A0)
+        default:         return Theme.txt.opacity(isGarmin ? 0.4 : 0.6)
+        }
+    }
+
+    @ViewBuilder
+    private func trailingLabel(_ st: ConnState, isGarmin: Bool, isConnected: Bool, isConnecting: Bool) -> some View {
+        if isGarmin {
+            Text("Soon")
+                .font(.display(12, weight: .bold))
+                .foregroundStyle(Theme.txt.opacity(0.35))
+        } else if isConnecting {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small).tint(Theme.txt)
+                Text("Connecting")
+                    .font(.display(12, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.8))
+            }
+        } else if isConnected {
+            Text("Connected")
+                .font(.display(12, weight: .bold))
+                .foregroundStyle(Color(hex: 0x7BE8A0))
+        } else if case .failed = st {
+            Text("Retry")
+                .font(.display(12, weight: .bold))
+                .foregroundStyle(Color(hex: 0xFFCE8A))
+        } else {
+            Text("Connect")
+                .font(.display(12, weight: .bold))
+                .foregroundStyle(Theme.txt.opacity(0.8))
+        }
+    }
+
+    /// Real connect actions. Apple Health fires the HealthKit auth + import;
+    /// Strava opens the live OAuth flow. Garmin is a no-op (disabled).
+    private func connectTapped(_ id: String) {
+        switch id {
+        case "health":
+            healthTapped = true
+            Task { await HealthKitImporter.shared.requestAuthAndImport(daysBack: 180) }
+        case "strava":
+            guard !stravaConnecting else { return }
+            stravaConnecting = true
+            stravaState = .connecting
+            Task {
+                let outcome = await StravaOAuthSession.shared.start()
+                await MainActor.run {
+                    switch outcome {
+                    case .connected:
+                        stravaState = .connected(nil)
+                    case .failed(let reason):
+                        stravaState = .failed(reason)
+                    case .canceled:
+                        stravaState = .idle
+                    }
+                    stravaConnecting = false
+                }
+            }
+        default:
+            break
+        }
     }
 
     // MARK: target panel
@@ -301,6 +425,27 @@ struct OnboardingView: View {
                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(Color.white.opacity(0.2), lineWidth: 1))
                     .padding(.top, 6)
+
+                fieldLabel("RACE DATE")
+                HStack {
+                    Text("When's the gun?")
+                        .font(.body(14, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.7))
+                    Spacer()
+                    DatePicker("", selection: $raceDate,
+                               in: Date()...,
+                               displayedComponents: .date)
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                        .colorScheme(.dark)
+                        .tint(.white)
+                }
+                .padding(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
+                .background(Color.white.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1))
+                .padding(.top, 6)
             }
 
             if mode != .just {
@@ -326,6 +471,97 @@ struct OnboardingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
         .padding(.bottom, 30)
+    }
+
+    // MARK: profile panel
+
+    private var profilePanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("STEP 3")
+                .font(.label(11)).tracking(3)
+                .foregroundStyle(Theme.txt.opacity(0.66))
+            Text("A bit about\nyou.")
+                .font(.display(38, weight: .bold))
+                .tracking(-1.5)
+                .foregroundStyle(Theme.txt)
+                .lineSpacing(-4)
+                .padding(.top, 12)
+            Text("This calibrates your heart-rate zones and paces. Skip anything you'd rather not share.")
+                .font(.body(15, weight: .semibold))
+                .foregroundStyle(Theme.txt.opacity(0.84))
+                .lineSpacing(3)
+                .padding(.top, 14)
+
+            fieldLabel("DATE OF BIRTH")
+            HStack {
+                Text(birthdaySet ? "Sets your age" : "Tap to set")
+                    .font(.body(14, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.7))
+                Spacer()
+                DatePicker("", selection: $birthday,
+                           in: dobRange,
+                           displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .colorScheme(.dark)
+                    .tint(.white)
+                    .onChange(of: birthday) { _, _ in birthdaySet = true }
+            }
+            .padding(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
+            .background(Color.white.opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1))
+            .padding(.top, 6)
+
+            fieldLabel("SEX")
+            HStack(spacing: 8) {
+                chip(text: "Male", on: sex == "M") {
+                    withAnimation(Theme.Motion.smooth) { sex = "M" }
+                }
+                chip(text: "Female", on: sex == "F") {
+                    withAnimation(Theme.Motion.smooth) { sex = "F" }
+                }
+                Spacer()
+            }
+            .padding(.top, 6)
+
+            fieldLabel("THRESHOLD HR · OPTIONAL")
+            HStack(spacing: 10) {
+                TextField("", text: $lthrText, prompt: Text("e.g. 162")
+                    .foregroundColor(Color.white.opacity(0.4)))
+                    .font(.body(16, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+                    .keyboardType(.numberPad)
+                    .frame(width: 96)
+                    .padding(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+                    .background(Color.white.opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1))
+                Text("bpm · only if you know it from a test")
+                    .font(.body(12, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.55))
+            }
+            .padding(.top, 6)
+
+            Spacer(minLength: 0)
+            ctaButton(title: "Continue") {
+                withAnimation(Theme.Motion.smooth) { step = 4 }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 26)
+        .padding(.bottom, 30)
+    }
+
+    /// DOB bounds — age 13 to 100, matching the backend's accepted range.
+    private var dobRange: ClosedRange<Date> {
+        let cal = Calendar.current
+        let now = Date()
+        let oldest = cal.date(byAdding: .year, value: -100, to: now) ?? now
+        let youngest = cal.date(byAdding: .year, value: -13, to: now) ?? now
+        return oldest...youngest
     }
 
     private func fieldLabel(_ text: String) -> some View {
@@ -415,9 +651,9 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: projection panel
+    // MARK: confirm panel
 
-    private var projectionPanel: some View {
+    private var confirmPanel: some View {
         return VStack(alignment: .leading, spacing: 0) {
             Text(mode == .just ? "YOU'RE ALL SET" : "YOUR STARTING LINE")
                 .font(.label(11)).tracking(3)
@@ -452,6 +688,15 @@ struct OnboardingView: View {
                 submitting = true
                 Task {
                     _ = try? await API.completeOnboarding(payload: onboardingPayload)
+                    // Optional advanced fields that ride the profile PATCH
+                    // (not part of the onboarding/complete contract).
+                    var patch: [String: Any] = [:]
+                    if let lthr = parsedLthr { patch["lthr"] = lthr }
+                    if case .connected = healthState {
+                        let iso = ISO8601DateFormatter().string(from: Date())
+                        patch["health_connected_at"] = iso
+                    }
+                    if !patch.isEmpty { try? await API.updateProfile(patch) }
                     await MainActor.run {
                         submitting = false
                         onComplete()

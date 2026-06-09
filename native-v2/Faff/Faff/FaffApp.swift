@@ -73,14 +73,19 @@ struct FaffApp: App {
                         await API.prefetchAllOnLaunch()
                     }
 
-                    // First open: prompt for Health auth + initial 7-day
-                    // pull (workouts + samples). On subsequent opens:
-                    // quiet re-sync, never prompts.
+                    // Health auth policy: a runner who's already connected
+                    // gets a quiet re-sync (never prompts). A RETURNING runner
+                    // (onboarded) who hasn't connected yet gets the prompt +
+                    // initial 7-day pull. A brand-new runner mid-onboarding is
+                    // NOT surprise-prompted here — OnboardingView's "Connect
+                    // Apple Health" step drives the first HK auth so the
+                    // permission dialog has context instead of popping over the
+                    // sign-in screen.
                     let key = "faff.health.connected.v2"
-                    if !UserDefaults.standard.bool(forKey: key) {
-                        await HealthKitImporter.shared.requestAuthAndImport(daysBack: 7)
-                    } else {
+                    if UserDefaults.standard.bool(forKey: key) {
                         await HealthKitImporter.shared.importIfConnected(daysBack: 7)
+                    } else if UserDefaults.standard.bool(forKey: "faff.onboarded") {
+                        await HealthKitImporter.shared.requestAuthAndImport(daysBack: 7)
                     }
                     lastImportAt = Date()
 
