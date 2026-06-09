@@ -29,9 +29,10 @@ export async function GET(
   const userId = auth;
   const { runId } = await params;
 
-  const row = (await pool.query(
-    `SELECT id, status, strava_activity_id, title, privacy,
-            error_message, pushed_at, completed_at
+  let row = (await pool.query(
+    `SELECT id, status, strava_activity_id, strava_upload_id, title, privacy,
+            error_message, pushed_at, completed_at,
+            EXTRACT(EPOCH FROM (NOW() - pushed_at)) AS age_sec
        FROM strava_pushes
       WHERE user_uuid = $1 AND run_id = $2
       ORDER BY pushed_at DESC LIMIT 1`,
@@ -41,8 +42,24 @@ export async function GET(
   if (!row) {
     return NextResponse.json({ pushed: false, status: 'never' });
   }
+
+  // Live truth: if still pending and Strava has had >30s to process,
+  // re-poll once before answering so the button reflects reality, not a
+  // stale row. (<24h: Strava drops the upload id after that.)
+  if (row.status === 'pending' && row.strava_upload_id
+      && Number(row.age_sec) > 30 && Number(row.age_sec) < 86400) {
+    const { resolvePendingPush } = await import('@/lib/strava/push');
+    await resolvePendingPush(userId, row).catch(() => {});
+    row = (await pool.query(
+      `SELECT id, status, strava_activity_id, title, privacy,
+              error_message, pushed_at, completed_at
+         FROM strava_pushes WHERE id = $1`,
+      [row.id],
+    )).rows[0];
+  }
+
   return NextResponse.json({
-    pushed: row.status === 'uploaded' || row.status === 'pending',
+    pushed: row.status === 'uploaded' || row.status === 'duplicate',
     pushId: row.id,
     status: row.status,
     stravaActivityId: row.strava_activity_id,

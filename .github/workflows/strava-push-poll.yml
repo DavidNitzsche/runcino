@@ -1,0 +1,59 @@
+# Re-poll pending Strava uploads → terminal status.
+#
+# Backstop for the async /uploads pipeline: lib/strava/push.ts uploads a
+# TCX and polls once ~2s later, but Strava processes asynchronously so the
+# strava_pushes row usually lands 'pending'. /api/cron/strava-push-poll
+# re-polls every pending push in the 30s-24h window and writes the terminal
+# state (uploaded + activity_id, duplicate, or failed + Strava's error).
+# Pending rows older than 24h are swept to failed (the upload id has expired).
+#
+# This is NOT the pull cron — that's strava-sync, daily. This is a tiny DB +
+# Strava-status poll, costs ~0, no Anthropic calls.
+#
+# Schedule: every 15 min, 14:00-06:00 UTC = 7am-11pm PT (+ overnight tail).
+#
+# Manual trigger: Actions tab > "Strava push poll" > Run workflow.
+
+name: Strava push poll
+
+on:
+  schedule:
+    - cron: '*/15 14-23 * * *'
+    - cron: '*/15 0-6 * * *'
+  workflow_dispatch: {}  # manual trigger
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit /api/cron/strava-push-poll
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 60 \
+            https://www.faff.run/api/cron/strava-push-poll)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          # 401 = broken secret → fail loudly. Transient 5xx → warn only;
+          # the next 15-min tick retries, and pending rows are durable.
+          if [ "$status" = "401" ]; then
+            echo "::error::Unauthorized — CRON_SECRET may be stale"
+            exit 1
+          fi
+          if [ "$status" -ge "500" ] 2>/dev/null; then
+            echo "::warning::Server returned $status"
+          fi

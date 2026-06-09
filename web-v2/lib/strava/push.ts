@@ -167,21 +167,7 @@ export async function pushRunToStrava(
       // reconnect so the connection card on /settings reflects truth.
       if (resp.status === 401) {
         await markFailed(pushId, `401 (likely missing activity:write scope): ${txt.slice(0, 400)}`);
-        await pool.query(
-          `UPDATE connector_tokens
-              SET last_sync_status = 'error',
-                  last_sync_error  = 'PUSH_401_REAUTH_REQUIRED',
-                  user_uuid        = COALESCE(user_uuid, $1),
-                  updated_at       = NOW()
-            WHERE COALESCE(user_uuid, user_id) = $1 AND provider = 'strava'`,
-          [userId]
-        ).catch(() => {});
-        // Notifications v1 §G — fire the reconnect push on the 3rd consecutive
-        // 401. Counted off the latest failed strava_pushes rows. Anything
-        // less than 3 avoids a transient-flake notification. The dedup key
-        // is per-day so the runner gets at most one per 24h (deck §G
-        // RATE LIMIT).
-        await maybeFireStravaReconnect(userId);
+        await flagReauth(userId);
         return { pushId, status: 'failed', error: 'REAUTH_REQUIRED' };
       }
       await markFailed(pushId, `${resp.status}: ${txt.slice(0, 500)}`);
@@ -199,33 +185,16 @@ export async function pushRunToStrava(
     return { pushId, status: 'failed', error: e?.message };
   }
 
-  // 7. Poll once for terminal state. Strava processes async; if not ready
-  //    yet, we return 'pending' and rely on a follow-up poll (cron or
-  //    user-triggered refresh) to update.
-  try {
-    await new Promise((r) => setTimeout(r, 2000));
-    const statusResp = await fetch(`https://www.strava.com/api/v3/uploads/${uploadId}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (statusResp.ok) {
-      const j: any = await statusResp.json();
-      if (j.activity_id) {
-        await pool.query(
-          `UPDATE strava_pushes SET status = 'uploaded', strava_activity_id = $1, completed_at = NOW()
-            WHERE id = $2`,
-          [j.activity_id, pushId]
-        );
-        return { pushId, status: 'uploaded', stravaActivityId: j.activity_id, stravaUploadId: uploadId };
-      }
-      if (j.error) {
-        await markFailed(pushId, j.error);
-        return { pushId, status: 'failed', error: j.error };
-      }
-    }
-  } catch { /* pending stays pending */ }
-
-  return { pushId, status: 'pending', stravaUploadId: uploadId };
+  // 7. Resolve once now. Strava processes async; it's usually still
+  //    pending 2s after upload. If so, the GET /api/strava/push/[runId]
+  //    re-poll and the strava-push-poll cron finish it. resolvePendingPush
+  //    writes the terminal row + applies RPE on success — one shared path
+  //    for the inline poll, the GET re-poll, and the cron backstop.
+  await new Promise((r) => setTimeout(r, 2000));
+  const resolved = await resolvePendingPush(userId, { id: pushId, run_id: runId, strava_upload_id: uploadId });
+  return resolved.status === 'pending'
+    ? { pushId, status: 'pending', stravaUploadId: uploadId }
+    : resolved;
 }
 
 async function markFailed(pushId: number, message: string) {
@@ -234,6 +203,136 @@ async function markFailed(pushId: number, message: string) {
       WHERE id = $2`,
     [message.slice(0, 500), pushId]
   ).catch(() => {});
+}
+
+/**
+ * Resolve a pending push: poll Strava /uploads/{id} once and write the
+ * terminal state. Shared by (a) the inline poll right after upload,
+ * (b) the GET /api/strava/push/[runId] re-poll, (c) the strava-push-poll
+ * cron backstop.
+ *
+ * Terminal transitions:
+ *   activity_id present        → 'uploaded' (+ apply RPE via PUT)
+ *   error mentions 'duplicate' → 'duplicate'
+ *   error present              → 'failed'   (Strava's actual message)
+ *   still processing           → stays 'pending' (caller re-polls later)
+ *
+ * Transient conditions (token blip, network, non-terminal HTTP) leave the
+ * row 'pending' so the next pass retries; only a real Strava verdict (or a
+ * 401 / 404-expired) writes a terminal row.
+ */
+export async function resolvePendingPush(
+  userId: string,
+  push: { id: number; run_id: string; strava_upload_id: number | string | null },
+): Promise<PushResult> {
+  const pushId = push.id;
+  if (!push.strava_upload_id) return { pushId, status: 'pending' };
+
+  let token: string;
+  try {
+    token = await getStravaToken(userId);
+  } catch (e: any) {
+    // Transient token error — leave pending for the next pass.
+    return { pushId, status: 'pending', error: e?.message };
+  }
+
+  let j: any;
+  try {
+    const resp = await fetch(`https://www.strava.com/api/v3/uploads/${push.strava_upload_id}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (resp.status === 401) {
+      await markFailed(pushId, '401 on upload status (missing activity:write or revoked)');
+      await flagReauth(userId);
+      return { pushId, status: 'failed', error: 'REAUTH_REQUIRED' };
+    }
+    if (resp.status === 404) {
+      // Strava no longer retains this upload id (expired before it
+      // resolved). Terminal — stop polling a dead id.
+      await markFailed(pushId, 'upload id no longer found on Strava (expired before it resolved)');
+      return { pushId, status: 'failed', error: 'upload expired' };
+    }
+    if (!resp.ok) return { pushId, status: 'pending' }; // transient — retry next pass
+    j = await resp.json();
+  } catch {
+    return { pushId, status: 'pending' }; // network blip — retry next pass
+  }
+
+  if (j.activity_id) {
+    await pool.query(
+      `UPDATE strava_pushes SET status = 'uploaded', strava_activity_id = $1, completed_at = NOW(), error_message = NULL
+        WHERE id = $2`,
+      [j.activity_id, pushId]
+    );
+    // RPE rides up on success — best-effort, never fails the push.
+    await applyRpeToStrava(userId, push.run_id, j.activity_id, token).catch(() => {});
+    return { pushId, status: 'uploaded', stravaActivityId: j.activity_id };
+  }
+
+  const err: string = typeof j.error === 'string' ? j.error : '';
+  if (err) {
+    if (/duplicate/i.test(err)) {
+      await pool.query(
+        `UPDATE strava_pushes SET status = 'duplicate', completed_at = NOW(), error_message = $1 WHERE id = $2`,
+        [err.slice(0, 500), pushId]
+      );
+      return { pushId, status: 'duplicate' };
+    }
+    await markFailed(pushId, err);
+    return { pushId, status: 'failed', error: err };
+  }
+
+  return { pushId, status: 'pending' }; // still processing
+}
+
+/**
+ * After a push resolves to an activity, push the runner's logged RPE up to
+ * Strava (perceived_exertion 1-10, Borg CR10). Best-effort — a failed PUT
+ * never fails the push. Only fires when an RPE row exists for the run.
+ */
+async function applyRpeToStrava(
+  userId: string,
+  runId: string,
+  stravaActivityId: number,
+  token: string,
+): Promise<void> {
+  const row = (await pool.query(
+    `SELECT rpe FROM post_run_rpe
+      WHERE (user_uuid = $1 OR user_id::text = $1::text) AND activity_id = $2
+      ORDER BY (user_uuid = $1) DESC LIMIT 1`,
+    [userId, runId],
+  )).rows[0];
+  const rpe = row?.rpe == null ? null : Number(row.rpe);
+  if (!rpe || rpe < 1 || rpe > 10) return;
+  await fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ perceived_exertion: rpe, prefer_perceived_exertion: true }),
+    signal: AbortSignal.timeout(8000),
+  });
+}
+
+/**
+ * Mark the connector_tokens row as needing reconnect (so the connection
+ * card on /profile reflects truth) and fire the gated reconnect push.
+ * Shared by the upload-time 401 and the resolve-time 401.
+ */
+async function flagReauth(userId: string): Promise<void> {
+  await pool.query(
+    `UPDATE connector_tokens
+        SET last_sync_status = 'error',
+            last_sync_error  = 'PUSH_401_REAUTH_REQUIRED',
+            user_uuid        = COALESCE(user_uuid, $1),
+            updated_at       = NOW()
+      WHERE COALESCE(user_uuid, user_id) = $1 AND provider = 'strava'`,
+    [userId]
+  ).catch(() => {});
+  // Notifications v1 §G — fire the reconnect push on the 3rd consecutive
+  // 401. Counted off the latest failed strava_pushes rows. Anything less
+  // than 3 avoids a transient-flake notification. The dedup key is per-day
+  // so the runner gets at most one per 24h (deck §G RATE LIMIT).
+  await maybeFireStravaReconnect(userId);
 }
 
 /**

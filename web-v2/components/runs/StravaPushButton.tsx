@@ -22,11 +22,12 @@
  * Hidden entirely when the run's source IS Strava — pushing a Strava
  * run back to Strava is nonsense.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type State =
   | { kind: 'idle' }
   | { kind: 'busy' }
+  | { kind: 'pending' }                          // uploaded to Strava, awaiting async processing
   | { kind: 'ok'; stravaActivityId?: string }
   | { kind: 'dup' }
   | { kind: 'error'; message: string };
@@ -41,6 +42,43 @@ export function StravaPushButton({
   isRace?: boolean;
 }) {
   const [state, setState] = useState<State>({ kind: 'idle' });
+
+  // Poll the push-status endpoint while a push is processing on Strava's
+  // side. The GET endpoint re-polls Strava itself; we just refresh until
+  // the row goes terminal (or give up after ~40s and let the cron finish).
+  async function poll(attempt = 0): Promise<void> {
+    if (attempt >= 8) return;                    // ~8 × 5s = 40s
+    await new Promise((r) => setTimeout(r, 5000));
+    try {
+      const r = await fetch(`/api/strava/push/${encodeURIComponent(runId)}`);
+      const j = await r.json().catch(() => ({}));
+      if (j.status === 'uploaded') { setState({ kind: 'ok', stravaActivityId: j.stravaActivityId }); return; }
+      if (j.status === 'duplicate') { setState({ kind: 'dup' }); return; }
+      if (j.status === 'failed') { setState({ kind: 'error', message: j.error ?? 'failed' }); return; }
+      poll(attempt + 1);                         // still pending
+    } catch { poll(attempt + 1); }
+  }
+
+  // Reflect persisted push state on mount, so a reopened run shows "On
+  // Strava" / "Failed" / "Processing…" instead of resetting to idle.
+  useEffect(() => {
+    if (source === 'strava') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/strava/push/${encodeURIComponent(runId)}`);
+        const j = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        if (j.status === 'uploaded') setState({ kind: 'ok', stravaActivityId: j.stravaActivityId });
+        else if (j.status === 'duplicate') setState({ kind: 'dup' });
+        else if (j.status === 'failed') setState({ kind: 'error', message: j.error ?? 'failed' });
+        else if (j.status === 'pending') { setState({ kind: 'pending' }); poll(); }
+        // 'never' → stay idle
+      } catch { /* stay idle */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, source]);
 
   if (source === 'strava') return null;
 
@@ -59,8 +97,11 @@ export function StravaPushButton({
       }
       if (j.status === 'duplicate') {
         setState({ kind: 'dup' });
-      } else if (j.status === 'uploaded' || j.status === 'pending') {
+      } else if (j.status === 'uploaded') {
         setState({ kind: 'ok', stravaActivityId: j.stravaActivityId });
+      } else if (j.status === 'pending') {
+        setState({ kind: 'pending' });
+        poll();
       } else {
         setState({ kind: 'ok', stravaActivityId: j.stravaActivityId });
       }
@@ -89,6 +130,7 @@ export function StravaPushButton({
   }
 
   const busy = state.kind === 'busy';
+  const pending = state.kind === 'pending';
   const success = state.kind === 'ok' || state.kind === 'dup';
   const errored = state.kind === 'error';
   // 2026-05-27 P-STRAVA-401: typed reauth error from push.ts. Surface
@@ -98,11 +140,12 @@ export function StravaPushButton({
   const needsReauth = errored && (state as { message: string }).message === 'REAUTH_REQUIRED';
 
   const label =
-    state.kind === 'busy'  ? 'Pushing…'
-    : state.kind === 'ok'  ? 'On Strava'
-    : state.kind === 'dup' ? 'On Strava'
+    state.kind === 'busy'    ? 'Pushing…'
+    : state.kind === 'pending' ? 'Processing…'
+    : state.kind === 'ok'    ? 'On Strava'
+    : state.kind === 'dup'   ? 'On Strava'
     : needsReauth ? 'Reconnect Strava'
-    : state.kind === 'error' ? 'Retry'
+    : state.kind === 'error' ? 'Failed · retry?'
     : 'Strava';
 
   // 2026-05-27: David flagged the previous styling as "weird ass semi
@@ -127,7 +170,7 @@ export function StravaPushButton({
       <button
         type="button"
         onClick={needsReauth ? reconnect : push}
-        disabled={busy || success}
+        disabled={busy || pending || success}
         title={needsReauth
           ? "Strava revoked or missing 'activity:write' scope — reconnect to push"
           : "Push run to Strava"}
@@ -141,15 +184,15 @@ export function StravaPushButton({
           fontSize: 12,
           fontWeight: 600,
           letterSpacing: '0.1px',
-          cursor: busy || success ? 'default' : 'pointer',
-          opacity: busy ? 0.7 : 1,
+          cursor: busy || pending || success ? 'default' : 'pointer',
+          opacity: busy || pending ? 0.7 : 1,
           display: 'inline-flex', alignItems: 'center', gap: 6,
           transition: 'background .12s',
           height: 30,
           lineHeight: 1,
         }}
-        onMouseEnter={(e) => { if (!busy && !success && !errored) e.currentTarget.style.background = STRAVA_HOVER; }}
-        onMouseLeave={(e) => { if (!busy && !success && !errored) e.currentTarget.style.background = bg; }}
+        onMouseEnter={(e) => { if (!busy && !pending && !success && !errored) e.currentTarget.style.background = STRAVA_HOVER; }}
+        onMouseLeave={(e) => { if (!busy && !pending && !success && !errored) e.currentTarget.style.background = bg; }}
       >
         {/* Strava chevron logo (mark-only, no wordmark). 2 stacked chevrons. */}
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }} aria-label="Strava">
