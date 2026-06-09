@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, KIT, ROLECOL, type EffortKey } from '../constants';
+import { useGlossaryDrawer } from '../toolkit/GlossaryDrawer';
 
 /**
  * 2026-06-04 · per-workout-type gradient for the .hmain hero card.
@@ -69,6 +70,7 @@ export function TodayView({
   };
 
   const d = seed.week[curDay] ?? seed.week[seed.todayIdx];
+  const { openTerm: openGlossary, drawerEl: glossaryDrawer } = useGlossaryDrawer();
   const e = EFF[d.type];
   const isRest = d.type === 'rest';
   const dSkipped = isSkipped(d);
@@ -612,6 +614,7 @@ export function TodayView({
                     <div>
                       <div className="v">{Math.round(hrvCur ?? 0) || '·'}<small> ms</small></div>
                       <div className="k">HRV</div>
+                      <button type="button" className="fa-term-explain" style={{ display: 'block', marginTop: 3 }} onClick={() => openGlossary('HRV')}>WHY</button>
                       {hrvBase != null && hrvCur != null && (
                         <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
                           baseline {Math.round(hrvBase)} · {Math.round((hrvCur - hrvBase) / hrvBase * 100) >= 0 ? '+' : ''}{Math.round((hrvCur - hrvBase) / hrvBase * 100)}%
@@ -743,6 +746,7 @@ export function TodayView({
                     <div>
                       <div className="v">{Math.round(hrvCur ?? 0) || '·'}<small> ms</small></div>
                       <div className="k">HRV</div>
+                      <button type="button" className="fa-term-explain" style={{ display: 'block', marginTop: 3 }} onClick={() => openGlossary('HRV')}>WHY</button>
                       {hrvBase != null && hrvCur != null && (
                         <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
                           baseline {Math.round(hrvBase)} · {Math.round((hrvCur - hrvBase) / hrvBase * 100) >= 0 ? '+' : ''}{Math.round((hrvCur - hrvBase) / hrvBase * 100)}%
@@ -774,6 +778,7 @@ export function TodayView({
           page. GAP/RACE-DAY/VOLUME/FORM all live one tap away in the full
           race plan (and on Targets); on the day, they're noise. */}
       {isRaceDay ? null : <Tiles seed={seed} onOpenRace={onOpenRace} />}
+      {glossaryDrawer}
     </>
   );
 }

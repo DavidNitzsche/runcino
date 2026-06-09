@@ -608,3 +608,45 @@
   .fa-gappanel .hitrow .delta .to { font-size: 15px; }
 }
 
+/* ============================================================
+   G · GLOSSARY DRAWER — bottom sheet for term definitions
+   ============================================================ */
+.fa-gloss-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(0,0,0,0);
+  pointer-events: none;
+  transition: background .2s;
+}
+.fa-gloss-overlay.open {
+  background: rgba(0,0,0,.55);
+  pointer-events: auto;
+}
+.fa-gloss-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 901;
+  max-width: 520px; margin: 0 auto;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-line); border-bottom: 0;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  box-shadow: var(--shadow-sheet);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  padding: 0 0 calc(env(safe-area-inset-bottom, 0px) + 20px);
+  transform: translateY(100%);
+  transition: transform .28s cubic-bezier(.32,0,.67,0);
+  pointer-events: none;
+}
+.fa-gloss-sheet.open {
+  transform: translateY(0);
+  pointer-events: auto;
+  transition-timing-function: cubic-bezier(.33,1,.68,1);
+}
+.fa-gloss-grab { display: flex; justify-content: center; padding: 12px 0 8px; }
+.fa-gloss-grab .bar { width: 40px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.28); }
+.fa-gloss-term { font: 700 11px/1 var(--font-body); letter-spacing: 1.5px; text-transform: uppercase; color: var(--fa-mute); padding: 0 20px; margin-bottom: 10px; }
+.fa-gloss-def { font: 500 15px/1.55 var(--font-body); color: var(--txt); padding: 0 20px; margin: 0 0 14px; }
+.fa-gloss-cite { font: 500 11px/1 var(--font-body); color: var(--fa-mute); opacity: .65; padding: 0 20px; margin-bottom: 16px; }
+.fa-gloss-close { display: block; width: calc(100% - 40px); margin: 6px 20px 0; font: 700 14px/1 var(--font-body); color: var(--txt); background: rgba(255,255,255,.09); border: 1px solid var(--glass-line); border-radius: var(--r-chip); padding: 13px; cursor: pointer; }
+.fa-gloss-close:hover { background: rgba(255,255,255,.15); }
+
+/* Inline glossary trigger — for use outside .fa-stat (e.g. raw label divs, inline text) */
+.fa-term-explain { font: 600 10px/1 var(--font-body); letter-spacing: .4px; color: var(--dist); background: transparent; border: 0; padding: 0; cursor: pointer; }
+

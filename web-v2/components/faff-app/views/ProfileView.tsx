@@ -11,6 +11,7 @@ import {
   ProvenanceLine,
   StatTile,
   ToggleRow,
+  useGlossaryDrawer,
 } from '../toolkit';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 
@@ -349,6 +350,7 @@ interface ProfilePhysiology {
 function PhysiologyBlock() {
   const [p, setP] = useState<ProfilePhysiology | null>(null);
   const [loading, setLoading] = useState(true);
+  const { openTerm, drawerEl } = useGlossaryDrawer();
 
   useEffect(() => {
     let alive = true;
@@ -404,34 +406,37 @@ function PhysiologyBlock() {
     'Not set';
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-      <div>
-        <StatTile value={p.lthr ?? '·'} unit={p.lthr ? 'bpm' : ''} label="LTHR (threshold HR)" />
-        <div style={{ padding: '0 16px 12px' }}>
-          {p.lthr
-            ? <ProvenanceLine set={lthrSetLabel ?? undefined} method={lthrMethodLabel} stale={lthrStale} />
-            : <ProvenanceLine method="Run a half or marathon to anchor this." />}
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        <div>
+          <StatTile value={p.lthr ?? '·'} unit={p.lthr ? 'bpm' : ''} label="LTHR (threshold HR)" onExplain={() => openTerm('LTHR')} />
+          <div style={{ padding: '0 16px 12px' }}>
+            {p.lthr
+              ? <ProvenanceLine set={lthrSetLabel ?? undefined} method={lthrMethodLabel} stale={lthrStale} />
+              : <ProvenanceLine method="Run a half or marathon to anchor this." />}
+          </div>
+        </div>
+        <div>
+          <StatTile value={p.max_hr ?? '·'} unit={p.max_hr ? 'bpm' : ''} label="HRmax" onExplain={() => openTerm('HRmax')} />
+          <div style={{ padding: '0 16px 12px' }}>
+            <ProvenanceLine method={hrmaxLabel} />
+          </div>
+        </div>
+        <div>
+          <StatTile value={p.rhr ?? '·'} unit={p.rhr ? 'bpm' : ''} label="RHR" onExplain={() => openTerm('RHR')} />
+          <div style={{ padding: '0 16px 12px' }}>
+            <ProvenanceLine method={p.rhr ? 'Daily from Apple Health' : 'Connect a source for daily RHR.'} />
+          </div>
+        </div>
+        <div>
+          <StatTile value={p.vdot ?? '·'} label="VDOT" onExplain={() => openTerm('VDOT')} />
+          <div style={{ padding: '0 16px 12px' }}>
+            <ProvenanceLine method={p.vdot ? 'Daniels formula · derived from your best recent race' : 'Run a race to anchor this.'} />
+          </div>
         </div>
       </div>
-      <div>
-        <StatTile value={p.max_hr ?? '·'} unit={p.max_hr ? 'bpm' : ''} label="HRmax" />
-        <div style={{ padding: '0 16px 12px' }}>
-          <ProvenanceLine method={hrmaxLabel} />
-        </div>
-      </div>
-      <div>
-        <StatTile value={p.rhr ?? '·'} unit={p.rhr ? 'bpm' : ''} label="RHR" />
-        <div style={{ padding: '0 16px 12px' }}>
-          <ProvenanceLine method={p.rhr ? 'Daily from Apple Health' : 'Connect a source for daily RHR.'} />
-        </div>
-      </div>
-      <div>
-        <StatTile value={p.vdot ?? '·'} label="VDOT" />
-        <div style={{ padding: '0 16px 12px' }}>
-          <ProvenanceLine method={p.vdot ? 'Daniels formula · derived from your best recent race' : 'Run a race to anchor this.'} />
-        </div>
-      </div>
-    </div>
+      {drawerEl}
+    </>
   );
 }
 

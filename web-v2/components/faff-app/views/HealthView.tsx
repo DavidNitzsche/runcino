@@ -29,7 +29,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FaffSeed, HealthMetric, DriverRow } from '../types';
-import { ManualHealthSheet, SymptomReportSheet } from '../toolkit';
+import { ManualHealthSheet, SymptomReportSheet, useGlossaryDrawer } from '../toolkit';
 
 // ── Niggle history types (Phase 1 · no training-load join) ──────────────
 interface BodyPartSummary {
@@ -485,6 +485,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
   const [logOpen, setLogOpen] = useState(false);
   const [niggleOpen, setNiggleOpen] = useState(false);
   const [openTile, setOpenTile] = useState<string | null>(null);
+  const { openTerm: openGlossary, drawerEl: glossaryDrawer } = useGlossaryDrawer();
 
   // Split sleep tiles out of BODY into their own SLEEP STAGES grid.
   // 2026-06-04 · David: "need a sleep duration here so I can see last
@@ -944,7 +945,9 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 </div>
                 <div className="hins-m">
                   Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}.
-                  {seed.form.acwr != null ? ` ACWR ${seed.form.acwr.toFixed(2)} (weekly load vs monthly base).` : ''}
+                  {seed.form.acwr != null ? (
+                    <>{' '}<button type="button" className="fa-term-explain" style={{ display: 'inline' }} onClick={() => openGlossary('ACWR')}>ACWR</button>{` ${seed.form.acwr.toFixed(2)} (weekly load vs monthly base).`}</>
+                  ) : null}
                 </div>
                 {/* 2026-06-03 · trimmed per David's "way too wordy" QC.
                     Keeps the band reference (the most actionable info)
@@ -1070,6 +1073,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
           </div>
         </div>
       ) : null}
+      {glossaryDrawer}
     </>
   );
 }
