@@ -308,12 +308,13 @@ export async function buildWatchToday(
 
   // 2. Pull profile inputs for the prescription (LTHR + race goal)
   const prof = (await pool.query(
-    `SELECT lthr FROM profile
+    `SELECT lthr, hrmax FROM profile
       WHERE user_uuid = $1
       ORDER BY (user_uuid=$1) DESC LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] }))).rows[0];
   const lthr = prof?.lthr ?? null;
+  const maxHr = prof?.hrmax ? Number(prof.hrmax) : null;
 
   const raceRow = (await pool.query(
     `SELECT meta FROM races
@@ -404,9 +405,16 @@ export async function buildWatchToday(
   const isQualityWorkout = wo.type === 'intervals' || wo.type === 'vo2max' || wo.type === 'threshold' || wo.type === 'tempo';
   const isIntervalWorkout = wo.type === 'intervals' || wo.type === 'vo2max';
   const rawHrTarget = isQualityWorkout ? (specHrBpm ?? lthr ?? null) : null;
-  const workHrTargetBpm = rawHrTarget != null && isIntervalWorkout
-    ? Math.round(rawHrTarget * 1.05)
-    : rawHrTarget;
+  // %HRmax fallback when LTHR absent (Friel conservative). Already the final
+  // target — must NOT receive the 1.05× interval uplift that LTHR sources use.
+  const maxHrFallback: number | null = !rawHrTarget && isQualityWorkout && maxHr
+    ? isIntervalWorkout   ? Math.round(maxHr * 0.95)
+    : wo.type === 'tempo' ? Math.round(maxHr * 0.87)
+    : null
+    : null;
+  const workHrTargetBpm = rawHrTarget != null
+    ? (isIntervalWorkout ? Math.round(rawHrTarget * 1.05) : rawHrTarget)
+    : maxHrFallback;
 
   if (expanded && expanded.length > 0) {
     // workout_spec drove the phase list · convert ExpandedPhase →
@@ -467,8 +475,10 @@ export async function buildWatchToday(
     && wo.workout_spec != null
     && Number((wo.workout_spec as Record<string, unknown>)?.finish_mi) > 0;
   // HR ceiling only for easy/long where staying aerobic is the discipline
-  const hrCeilingBpm = (wo.type === 'easy' || wo.type === 'long') && lthr && !longHasFinish
-    ? Math.round(lthr * 0.89)  // top of Z2 in Friel zones
+  const hrCeilingBpm = (wo.type === 'easy' || wo.type === 'long') && !longHasFinish
+    ? lthr  ? Math.round(lthr * 0.89)   // top of Z2 in Friel zones
+    : maxHr ? Math.round(maxHr * 0.78)  // %HRmax fallback when LTHR absent
+    : null
     : null;
 
   const summary = `${distanceMi.toFixed(1)} mi · ${prescription.headline}`;
