@@ -83,6 +83,8 @@ export function TodayView({
   // the race isn't logged yet (once done, Today pivots to the recap).
   const goal = seed.goalRace;
   const isRaceDay = goal != null && goal.daysAway === 0 && !!d.iso && d.iso === goal.date && !d.done;
+  const band = seed.readinessBrief?.band ?? null;
+  const isPullBack = band === 'pull-back' && !d.done && (d.type === 'easy' || d.type === 'recovery');
   const result = d.done ? (seed.results[curDay] ?? seed.results[0]) : undefined;
   // 2026-05-30: lazy-fetch the real run summary for past days so the hero
   // stats grid + heroExtra row don't render seed.results placeholder "·"
@@ -565,6 +567,86 @@ export function TodayView({
             : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
           persistShoe={curDay === seed.todayIdx}
         />
+      ) : isPullBack ? (
+        <div className="hero">
+          <div className="hmain" style={meshGradient('recovery')}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <div className="htitle">{seed.readinessBrief!.score}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.08em', opacity: 0.75 }}>{seed.readinessBrief!.label}</div>
+            </div>
+            {seed.readinessBrief!.oneLineMover && (
+              <div className="rest-coach">{seed.readinessBrief!.oneLineMover}</div>
+            )}
+            <div className="stats">
+              {(() => {
+                const sleepTile = seed.health.body.find(m => m.k === 'sleep');
+                const sleepSeries = sleepTile?.series ?? [];
+                const lastNight = sleepSeries.length ? sleepSeries[sleepSeries.length - 1] : null;
+                const avg7 = sleepTile?.current ?? null;
+                const rhrTile = seed.health.body.find(m => m.k === 'rhr');
+                const rhrCur = rhrTile?.current ?? null;
+                const rhrBase = rhrTile?.target ?? null;
+                const hrvTile = seed.health.body.find(m => m.k === 'hrv');
+                const hrvCur = hrvTile?.current ?? null;
+                const hrvBase = hrvTile?.target ?? null;
+                return (
+                  <>
+                    <div>
+                      <div className="v">{formatSleep(lastNight ?? avg7 ?? undefined)}</div>
+                      <div className="k">LAST NIGHT</div>
+                      {avg7 != null && (
+                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
+                          {avg7.toFixed(1)}h · 7-night avg
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="v">{Math.round(rhrCur ?? 0) || '·'}<small> bpm</small></div>
+                      <div className="k">RESTING HR</div>
+                      {rhrBase != null && rhrCur != null && (
+                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
+                          baseline {Math.round(rhrBase)} · {rhrCur - rhrBase >= 0 ? '+' : ''}{Math.round(rhrCur - rhrBase)}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="v">{Math.round(hrvCur ?? 0) || '·'}<small> ms</small></div>
+                      <div className="k">HRV</div>
+                      {hrvBase != null && hrvCur != null && (
+                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
+                          baseline {Math.round(hrvBase)} · {Math.round((hrvCur - hrvBase) / hrvBase * 100) >= 0 ? '+' : ''}{Math.round((hrvCur - hrvBase) / hrvBase * 100)}%
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+          {(() => {
+            const mover = seed.readinessBrief!.oneLineMover ?? seed.readinessBrief!.headline;
+            const cap = d.hrCap;
+            const capPart = cap ? ` (${cap} bpm)` : '';
+            return (
+              <div style={{ fontSize: 12, opacity: 0.6, padding: '10px 0 2px', lineHeight: 1.5 }}>
+                {mover} — run this by the HR cap{capPart}, not pace.
+              </div>
+            );
+          })()}
+          <WorkoutCard
+            d={d}
+            done={false}
+            result={result}
+            runData={runData}
+            runLoading={runLoading}
+            shoes={seed.shoes}
+            seedShoe={(seed.todayShoeId != null
+              ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
+              : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
+            persistShoe={curDay === seed.todayIdx}
+            seed={seed}
+          />
+        </div>
       ) : !isRest ? (
         <>
           <PlannedHeroV2
