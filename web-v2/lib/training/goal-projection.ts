@@ -70,8 +70,10 @@ export interface ConfidenceInterval {
   /** Final half-width %, after status scaling · for display/diagnostics. */
   pct: number;
   /** Provenance · 'observed-cv' when sized off the runner's own pacing CV,
-   *  'research-span' when off the Research/02 §13.7 table. */
-  method: 'observed-cv' | 'research-span';
+   *  'research-span' when off the Research/02 §13.7 table,
+   *  'research-span-stale' when the §13.7 ±8% stale-input override fires
+   *  (anchor >180 days old). */
+  method: 'observed-cv' | 'research-span' | 'research-span-stale';
 }
 
 export interface ConfidenceLabel {
@@ -159,8 +161,17 @@ export async function computeGoalProjection(args: {
    *  CV when source='observed'. Computed once in the seed, shared with
    *  executionBufferSec. */
   pacing?: { cv: number | null; source: 'observed' | 'default' } | null;
+  /** 2026-06-08 · ISO date of the race/run that produced vdot. Null when
+   *  the snapshot predates migration 125. Used for the §13.7 stale-input
+   *  ±8% override in computeConfidenceInterval. */
+  vdotAnchorDateISO?: string | null;
+  /** 2026-06-08 · distance (miles) of that anchor race/run. Null when
+   *  unknown. Threaded for Case 1 (marathon one-sided pessimism); not yet
+   *  read by computeConfidenceInterval — see docs/AUDIT-FIXES.md CI-followup-1. */
+  vdotAnchorDistanceMi?: number | null;
 }): Promise<GoalProjection> {
-  const { userUuid, goalSec, raceDistanceMi, vdot, daysToRace, pacing } = args;
+  const { userUuid, goalSec, raceDistanceMi, vdot, daysToRace, pacing,
+          vdotAnchorDateISO, vdotAnchorDistanceMi } = args;
 
   const vdotProjectionSec = vdot != null
     ? predictRaceTime(vdot, raceDistanceMi) ?? null
@@ -220,6 +231,8 @@ export async function computeGoalProjection(args: {
     raceDistanceMi,
     status,
     pacing: pacing ?? null,
+    vdotAnchorDateISO: vdotAnchorDateISO ?? null,
+    vdotAnchorDistanceMi: vdotAnchorDistanceMi ?? null,
   });
   const confidenceLabel = computeConfidenceLabel({
     goalSec,
@@ -864,9 +877,34 @@ export function computeConfidenceInterval(args: {
   raceDistanceMi: number;
   status: GoalStatus;
   pacing?: { cv: number | null; source: 'observed' | 'default' } | null;
+  /** ISO date of the VDOT anchor race/run. When supplied and >180 days before
+   *  today, the §13.7 stale-input override fires: basePct → 8.0%, symmetric,
+   *  superseding both observed-CV and the standard distance table. */
+  vdotAnchorDateISO?: string | null;
+  /** Distance (miles) of the anchor race/run. Threaded for Case 1 (marathon
+   *  one-sided pessimism); not yet consumed here — see AUDIT-FIXES CI-followup-1. */
+  vdotAnchorDistanceMi?: number | null;
 }): ConfidenceInterval | null {
-  const { centerSec, raceDistanceMi, status, pacing } = args;
+  const { centerSec, raceDistanceMi, status, pacing, vdotAnchorDateISO } = args;
   if (centerSec == null || centerSec <= 0) return null; // cold-start · no band
+
+  // Research/02 §13.7 "cross-prediction with >6-month-old input → ±8%".
+  // 180 days matches the bestRecentVdot lookback window so a VDOT that just
+  // barely survives the freshness cut can still trigger the wider band if
+  // the anchor race itself is older.
+  const STALE_DAYS = 180;
+  if (vdotAnchorDateISO) {
+    const anchorMs = Date.parse(vdotAnchorDateISO + 'T12:00:00Z');
+    if (!isNaN(anchorMs)) {
+      const ageDays = (Date.now() - anchorMs) / 86_400_000;
+      if (ageDays > STALE_DAYS) {
+        const mult = status === 'off-track' ? 1.5 : status === 'watching' ? 1.25 : 1.0;
+        const half = Math.round((centerSec * 8.0 * mult) / 100);
+        const pct = Math.round(8.0 * mult * 10) / 10;
+        return { lo: centerSec - half, hi: centerSec + half, pct, method: 'research-span-stale' };
+      }
+    }
+  }
 
   let basePct: number;
   let method: ConfidenceInterval['method'];

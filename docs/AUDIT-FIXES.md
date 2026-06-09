@@ -87,18 +87,17 @@ READY 78 · AFC 38d
 
 ---
 
-### CI-followup-1 — §13.7 band refinements deferred (marathon one-sided + aged input)
+### CI-followup-1 — §13.7 band refinements: Case 2 DONE · Case 1 pending
 
-**Context:** `computeConfidenceInterval` (`lib/training/goal-projection.ts`) ships a **symmetric** band sized off Research/02 §13.7 keyed on target distance (≤10K ±2.0% · HM ±2.5% · marathon+ ±3.0%), status-scaled (on-track ×1.0 · watching ×1.25 · off-track ×1.5). Correct for David's HM→HM case (same-distance, advanced, recent anchor).
+**Case 2 — >6-month-old anchor → ±8% override — DONE (2026-06-08)**
 
-**Two §13.7 refinements are NOT yet wired** — both need data the function isn't passed today:
+`vdot_anchor_date` + `vdot_anchor_distance_mi` added to `projection_snapshots` (migration 125). Cron writes `best.date` + `best.distance_mi` via updated `recordProjectionSnapshot`. `loadLatestVdotWithAnchor` reads them back. Both fields thread through `profile-state.ts → physiology → computeGoalProjection → computeConfidenceInterval`. In `computeConfidenceInterval`: if `vdotAnchorDateISO` is >180 days old, `basePct → 8.0`, `method → 'research-span-stale'` — supersedes both observed-CV and the standard distance table. Symmetric (§13.7 says ±8% for stale input, not one-sided).
 
-1. **Marathon-without-a-block → one-sided pessimism.** §13.1 / §13.7 say a marathon predicted from a sub-half input with no marathon-specific block runs **±10% one-sided slow** (optimistic bias). Needs: the VDOT anchor's distance + a "marathon-specific block present" signal (long-run volume / MP work in the last 8-12 wk). The band would become `{ lo: center − smallHalf, hi: center + bigHalf }`.
-2. **>6-month-old anchor → ±8% override.** §13.7 "cross-prediction with >6-month-old input → ±8%." Needs: the anchoring race/run **date**. `bestRecentVdot` already returns the winning candidate with its `date` + `distance_mi` — thread those through `computeGoalProjection` (add `vdotAnchorDistanceMi` + `vdotAnchorDateISO` args) and the override is a few lines.
+**Case 1 — marathon-without-a-block → one-sided pessimism — PENDING**
+
+§13.1 / §13.7: a marathon predicted from a sub-half anchor with no marathon-specific block runs **±10% one-sided slow** (wider hi, narrower lo). The anchor columns are now threaded — `vdotAnchorDistanceMi` arrives in `computeConfidenceInterval` but is not yet consumed. Remaining open question: the **marathon-block signal** (long-run volume + MP-pace work in the last 8-12 wk) — needs a training-form query, likely computed alongside the drift detectors in `computeGoalProjection` and passed in as a boolean arg. The asymmetric band logic is: `lo = center − (center × smallPct / 100)`, `hi = center + (center × 10.0 × mult / 100)`.
 
 **Also deferred:** §13.5 novice widening (+2pp for `experience_level` novice/beginner) — David is advanced so it's a no-op today; add when a beginner user lands.
-
-**Where:** `computeConfidenceInterval` has the documented hooks in its header comment. Symmetric band is the honest default until the anchor metadata is threaded.
 
 ### CI-followup-2 — iPhone confidence band + label render — DONE (ed8cdeac, 2026-06-08)
 

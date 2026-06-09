@@ -26,6 +26,10 @@ export interface ProjectionSnapshot {
   projection_sec: number | null;
   race_slug: string | null;
   source: string;
+  /** ISO date of the race/run that produced the stored VDOT. Null pre-migration-125. */
+  vdot_anchor_date: string | null;
+  /** Distance (miles) of that race/run. Null pre-migration-125. */
+  vdot_anchor_distance_mi: number | null;
 }
 
 /**
@@ -39,19 +43,25 @@ export async function recordProjectionSnapshot(
   vdot: number | null,
   projectionSec: number | null,
   raceSlug: string | null,
+  anchorDateISO: string | null = null,
+  anchorDistanceMi: number | null = null,
   source = 'cron',
 ): Promise<void> {
   await pool.query(
     `INSERT INTO projection_snapshots
-       (user_uuid, snapshot_date, distance_mi, vdot, projection_sec, race_slug, source)
-     VALUES ($1, $2::date, $3, $4, $5, $6, $7)
+       (user_uuid, snapshot_date, distance_mi, vdot, projection_sec, race_slug,
+        vdot_anchor_date, vdot_anchor_distance_mi, source)
+     VALUES ($1, $2::date, $3, $4, $5, $6, $7::date, $8, $9)
      ON CONFLICT (user_uuid, snapshot_date, distance_mi)
      DO UPDATE SET
        vdot = EXCLUDED.vdot,
        projection_sec = EXCLUDED.projection_sec,
        race_slug = EXCLUDED.race_slug,
+       vdot_anchor_date = EXCLUDED.vdot_anchor_date,
+       vdot_anchor_distance_mi = EXCLUDED.vdot_anchor_distance_mi,
        source = EXCLUDED.source`,
-    [userUuid, snapshotDateISO, distanceMi, vdot, projectionSec, raceSlug, source],
+    [userUuid, snapshotDateISO, distanceMi, vdot, projectionSec, raceSlug,
+     anchorDateISO, anchorDistanceMi, source],
   );
 }
 
@@ -155,4 +165,35 @@ export async function loadLatestVdotForUser(userUuid: string): Promise<number | 
     [userUuid],
   ).catch(() => ({ rows: [] }));
   return r.rows[0]?.vdot ?? null;
+}
+
+/**
+ * Latest VDOT for a user, plus the anchor race/run metadata that produced it.
+ * Used by profile-state so computeConfidenceInterval can apply §13.7
+ * cross-prediction penalties (stale input, cross-distance) without re-running
+ * the full VDOT chain on every load.
+ *
+ * anchorDateISO / anchorDistanceMi are null when the snapshot was written
+ * before migration 125 or when no race/run anchor was available.
+ */
+export async function loadLatestVdotWithAnchor(
+  userUuid: string,
+): Promise<{ vdot: number | null; anchorDateISO: string | null; anchorDistanceMi: number | null }> {
+  const r = await pool.query<{ vdot: number; anchor_date: string | null; anchor_dist: number | null }>(
+    `SELECT vdot::float AS vdot,
+            vdot_anchor_date::text AS anchor_date,
+            vdot_anchor_distance_mi::float AS anchor_dist
+       FROM projection_snapshots
+      WHERE user_uuid = $1
+        AND vdot IS NOT NULL
+      ORDER BY snapshot_date DESC
+      LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] }));
+  const row = r.rows[0];
+  return {
+    vdot: row?.vdot ?? null,
+    anchorDateISO: row?.anchor_date ?? null,
+    anchorDistanceMi: row?.anchor_dist ?? null,
+  };
 }

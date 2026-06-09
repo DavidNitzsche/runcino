@@ -84,7 +84,10 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
   const snapshots: Array<{ distance: number; sec: number | null }> = [];
   for (const d of distancesToSnapshot) {
     const projSec = vdot != null ? predictRaceTime(vdot, d) : null;
-    await recordProjectionSnapshot(userUuid, today, d, vdot, projSec, anchorSlug, 'cron-daily');
+    await recordProjectionSnapshot(
+      userUuid, today, d, vdot, projSec, anchorSlug,
+      best?.date ?? null, best?.distance_mi ?? null, 'cron-daily',
+    );
     snapshots.push({ distance: d, sec: projSec });
   }
   return { vdot, snapshots };
