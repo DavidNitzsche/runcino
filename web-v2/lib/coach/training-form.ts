@@ -104,12 +104,23 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
   // CTL / ATL / TSB calculated against the runner's calendar day so
   // the 60-day window doesn't shift at UTC-midnight.
   const today = await runnerToday(userUuid);
-  // Pull all runs in the 60-day window with their (date, distance, type-hint).
-  // Use type from plan_workouts when matched, else infer from distance.
+
+  // LTHR for HR-based intensity inference (E8-followup).
+  // Friel zone boundaries: Z4 ≥ 0.88×LTHR → tempo; Z3 ≥ 0.78×LTHR → progression.
+  // Cite: Friel, The Triathlete's Training Bible, zone table.
+  const lthrRow = await pool.query<{ lthr: number | null }>(
+    `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] }));
+  const lthr: number | null = lthrRow.rows[0]?.lthr ?? null;
+
+  // Pull all runs in the 60-day window with their (date, distance, avgHr, type-hint).
+  // Use type from plan_workouts when matched, else infer from HR then distance.
   const rows = (await pool.query<{
     d: string;
     mi: string;
     inferred_type: string | null;
+    avg_hr: string | null;
   }>(
     `WITH all_days AS (
        SELECT generate_series(
@@ -131,7 +142,8 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
      -- absorber fire reliably at ingest, tracked separately.
      daily_runs AS (
        SELECT (data->>'date')::date AS d,
-              MAX((data->>'distanceMi')::numeric)::numeric AS mi
+              MAX((data->>'distanceMi')::numeric)::numeric AS mi,
+              MAX((data->>'avgHr')::numeric)::numeric AS avg_hr
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
@@ -149,6 +161,7 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
      )
      SELECT a.d::text AS d,
             COALESCE(r.mi, 0)::text AS mi,
+            r.avg_hr::text AS avg_hr,
             p.type AS inferred_type
        FROM all_days a
        LEFT JOIN daily_runs r ON r.d = a.d
@@ -165,7 +178,12 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
   const tsbSeries: number[] = [];
   for (const r of rows) {
     const mi = Number(r.mi) || 0;
-    const type = r.inferred_type ?? (mi >= 10 ? 'long' : 'easy');
+    const avgHr = r.avg_hr ? Number(r.avg_hr) : null;
+    const type = r.inferred_type
+      ?? (mi >= 10 ? 'long'
+        : avgHr && lthr && avgHr >= lthr * 0.88 ? 'tempo'
+        : avgHr && lthr && avgHr >= lthr * 0.78 ? 'progression'
+        : 'easy');
     const ifct = INTENSITY_FACTOR[type] ?? 0.85;
     const stress = mi * ifct;
     // EWMA update · today = yesterday × (1 - α) + stress × α
