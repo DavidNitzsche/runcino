@@ -57,7 +57,8 @@ export async function GET(req: NextRequest) {
               birthday::text AS birthday, lthr, hrmax,
               rhr, experience_level, lthr_method, lthr_set_at,
               strava_connected_at, health_connected_at, onboarded_at,
-              cross_training_modes
+              cross_training_modes,
+              strava_auto_push, strava_push_privacy, strava_push_title_format
          FROM profile
         WHERE user_uuid = $1
         LIMIT 1`,
