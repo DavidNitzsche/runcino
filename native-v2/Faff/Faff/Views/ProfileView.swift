@@ -20,6 +20,11 @@ struct ProfileView: View {
     /// the NotificationPrefsList exposes alongside the 7 categories. Plus
     /// the LTHR / HRmax / VDOT physiology values for the PHYSIOLOGY block.
     @State private var profileFields: ProfileFields?
+    /// Strava reconnect in-flight — disables the row to prevent double-taps
+    /// while the OAuth browser is open. Reset when the session returns.
+    @State private var stravaReconnecting: Bool = false
+    /// Outcome banner shown under the Connections card. Auto-clears after 6s.
+    @State private var stravaToast: String? = nil
     // 2026-06-02 round 17 · showStravaPushes / showUsage state retired
     // along with the dev pills that triggered them. The sheets +
     // devButton helper below are also dropped · their state was the
@@ -129,6 +134,7 @@ struct ProfileView: View {
         .task { await reload() }
         .refreshable { await reload() }
         .sheet(item: $glossaryEntry) { e in GlossarySheet(entry: e) }
+        .sheet(isPresented: $showWeeklyMiPicker) { weeklyMiSheet }
     }
 
     /// 2026-06-02 · Sign-out button shipped to ProfileView's bottom.
@@ -137,6 +143,8 @@ struct ProfileView: View {
     /// surfaces' sign-out paths stay symmetric.
     @State private var glossaryEntry: GlossaryEntry? = nil
     @State private var showSignOutConfirm: Bool = false
+    @State private var showWeeklyMiPicker = false
+    @State private var weeklyMiDraft: Int = 30
     private var signOutButton: some View {
         Button {
             showSignOutConfirm = true
@@ -268,17 +276,28 @@ struct ProfileView: View {
             SettingValueRow(label: "Daily briefing",
                             value: briefingTimeLabel,
                             sub: nil,
-                            onTap: { /* picker presentation deferred · row visible now */ })
+                            onTap: { },
+                            interactive: false)
             Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
             SettingValueRow(label: "Long run day",
                             value: longRunDayLabel,
                             sub: "Affects your plan layout · changing it redistributes the week",
-                            onTap: { })
+                            onTap: { },
+                            interactive: false)
             Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
             SettingValueRow(label: "Rest day",
                             value: restDayLabel,
                             sub: nil,
-                            onTap: { })
+                            onTap: { },
+                            interactive: false)
+            Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
+            SettingValueRow(label: "Weekly mileage",
+                            value: weeklyMiLabel,
+                            sub: "Coach calibrates training load against this",
+                            onTap: {
+                                weeklyMiDraft = profileFields?.weekly_mileage_target ?? 30
+                                showWeeklyMiPicker = true
+                            })
         }
         .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
@@ -287,6 +306,83 @@ struct ProfileView: View {
     private var briefingTimeLabel: String { "07:00" }   // placeholder until user_settings exposes briefing_time on profile.
     private var longRunDayLabel: String { "Saturday" }
     private var restDayLabel: String { "Monday" }
+    private var weeklyMiLabel: String {
+        if let v = profileFields?.weekly_mileage_target { return "\(v) mi/wk" }
+        return "—"
+    }
+
+    @ViewBuilder
+    private var weeklyMiSheet: some View {
+        VStack(spacing: 0) {
+            // handle
+            Capsule()
+                .fill(Theme.txt.opacity(0.2))
+                .frame(width: 36, height: 4)
+                .padding(.top, 12)
+
+            Text("WEEKLY MILEAGE")
+                .font(.body(11, weight: .extraBold))
+                .foregroundStyle(Theme.txt.opacity(0.5))
+                .tracking(2)
+                .padding(.top, 24)
+
+            Text("\(weeklyMiDraft) mi")
+                .font(.display(56, weight: .bold))
+                .foregroundStyle(Theme.txt)
+                .padding(.top, 8)
+
+            Text("per week")
+                .font(.body(13, weight: .medium))
+                .foregroundStyle(Theme.txt.opacity(0.5))
+                .padding(.top, 2)
+
+            HStack(spacing: 40) {
+                Button {
+                    if weeklyMiDraft > 5 { weeklyMiDraft -= 5 }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(weeklyMiDraft > 5 ? Theme.txt : Theme.txt.opacity(0.25))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    if weeklyMiDraft < 120 { weeklyMiDraft += 5 }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(weeklyMiDraft < 120 ? Theme.txt : Theme.txt.opacity(0.25))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 32)
+
+            Button {
+                let v = weeklyMiDraft
+                profileFields?.weekly_mileage_target = v
+                Task { _ = try? await API.updateProfile(["weekly_mileage_target": v]) }
+                showWeeklyMiPicker = false
+            } label: {
+                Text("Save")
+                    .font(.body(16, weight: .extraBold))
+                    .foregroundStyle(Theme.txt)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Theme.race.opacity(0.18),
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Theme.race.opacity(0.35), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 24)
+            .padding(.top, 36)
+
+            Spacer()
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
+        .background(Theme.bg)
+    }
 
     private var coachStats: [CoachFact] {
         meFacts?.facts ?? []
@@ -426,20 +522,30 @@ struct ProfileView: View {
             VStack(spacing: 0) {
                 connectionRow("Apple Health", state: profile?.connections.appleHealth)
                 Divider().background(Color.white.opacity(0.08))
-                connectionRow("Strava", state: profile?.connections.strava)
+                Button { Task { await startStravaConnect() } } label: {
+                    connectionRow("Strava",
+                                  state: profile?.connections.strava,
+                                  reconnecting: stravaReconnecting)
+                }
+                .buttonStyle(.plain)
+                .disabled(stravaReconnecting)
+                if let toast = stravaToast {
+                    Text(toast)
+                        .font(.body(12, weight: .medium))
+                        .foregroundStyle(Theme.txt.opacity(0.7))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 Divider().background(Color.white.opacity(0.08))
                 connectionRow("Apple Watch", state: profile?.connections.appleWatch)
             }
         }
     }
 
-    /// One connection row · renders the server-supplied note (e.g.
-    /// "Last sync 4h ago" / "Connect for auto-sync") instead of the
-    /// previous static "workouts · heart · sleep" copy. State pill on
-    /// the right flips green/SYNCED for connected, muted/CONNECT for
-    /// not. lastSync ISO timestamp could power a stale-warning later;
-    /// today we just trust the server's `note` string.
-    private func connectionRow(_ name: String, state: ProfileConnectionState?) -> some View {
+    private func connectionRow(_ name: String,
+                                state: ProfileConnectionState?,
+                                reconnecting: Bool = false) -> some View {
         let on = state?.connected ?? false
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
@@ -450,11 +556,39 @@ struct ProfileView: View {
                     .lineLimit(1)
             }
             Spacer()
-            Text(on ? "SYNCED" : "CONNECT")
+            Text(reconnecting ? "Opening…" : (on ? "SYNCED" : "CONNECT"))
                 .font(.display(12, weight: .semibold))
                 .foregroundStyle(on ? Color(hex: 0x9AF0BF) : Theme.txt.opacity(0.7))
         }
         .padding(14)
+    }
+
+    /// Launch the Strava OAuth flow. Mirrors SettingsView.startStravaConnect —
+    /// ProfileView is the most-discoverable surface so it needs the same action.
+    @MainActor
+    private func startStravaConnect() async {
+        guard !stravaReconnecting else { return }
+        stravaReconnecting = true
+        stravaToast = nil
+        let outcome = await StravaOAuthSession.shared.start()
+        switch outcome {
+        case .connected:
+            stravaToast = "Strava connected · refreshing…"
+            if let p = try? await API.fetchProfileState() { self.profile = p }
+            stravaToast = "Strava connected"
+        case .failed(let reason):
+            stravaToast = "Couldn't connect Strava: \(reason)"
+        case .canceled:
+            stravaToast = nil
+        }
+        stravaReconnecting = false
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            if stravaToast?.contains("Strava connected") == true ||
+               stravaToast?.contains("Couldn't") == true {
+                stravaToast = nil
+            }
+        }
     }
 
     private var settingsCard: some View {
@@ -466,7 +600,7 @@ struct ProfileView: View {
                 Divider().background(Color.white.opacity(0.08))
                 settingsRow("Shoe garage", value: nil, route: .shoes)
                 Divider().background(Color.white.opacity(0.08))
-                settingsRow("Faff Pro", value: "Active", route: .pro)
+                settingsRow("Faff Pro", value: nil, route: .pro)
             }
         }
     }

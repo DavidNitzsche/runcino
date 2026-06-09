@@ -1049,6 +1049,7 @@ struct ProfileFields: Decodable {
     /// /api/profile lives at the call site.
     var strava_auto_push: Bool?
     var phone_hr_alerts: Bool?
+    var weekly_mileage_target: Int?
 }
 
 // MARK: - ProfileState (full /profile rendering)

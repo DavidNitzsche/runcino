@@ -181,7 +181,7 @@ struct SettingsView: View {
                     section("ACCOUNT") {
                         VStack(spacing: 0) {
                             navRow(title: "david@workprint.la", value: "")
-                            navRow(title: "Faff Pro", subtitle: "annual · renews Dec 2026", value: "Active", good: true)
+                            navRow(title: "Faff Pro", value: "")
                             navRow(title: "Privacy & data", value: "")
                         }
                     }

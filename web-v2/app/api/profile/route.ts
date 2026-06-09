@@ -30,6 +30,8 @@ const ALLOWED = new Set([
   'cross_training_modes',
   // P35 — per-user toggles.
   'strava_auto_push', 'phone_hr_alerts',
+  // P36 — editable from iPhone Profile settings.
+  'weekly_mileage_target',
 ]);
 
 // When LTHR is set manually, also stamp lthr_set_at + lthr_method.
@@ -58,7 +60,8 @@ export async function GET(req: NextRequest) {
               rhr, experience_level, lthr_method, lthr_set_at,
               strava_connected_at, health_connected_at, onboarded_at,
               cross_training_modes,
-              strava_auto_push, strava_push_privacy, strava_push_title_format
+              strava_auto_push, strava_push_privacy, strava_push_title_format,
+              weekly_mileage_target
          FROM profile
         WHERE user_uuid = $1
         LIMIT 1`,

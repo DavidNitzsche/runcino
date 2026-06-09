@@ -297,40 +297,51 @@ struct ConnectionRow: View {
 
 // MARK: - SettingValueRow
 //
-// Right-aligned value row that opens a picker (caller handles the picker
-// presentation). Carries an optional caveat note for schedule rows that
-// affect plan layout.
+// Right-aligned value row. When `interactive` is true (default) it renders
+// as a Button with a disclosure chevron — the caller handles the picker.
+// When `interactive` is false it renders the label+value as display-only
+// (no chevron, no button affordance) — used for rows whose pickers are
+// not yet wired so the runner doesn't tap and get silence.
 
 struct SettingValueRow: View {
     let label: String
     let value: String
     let sub: String?
     let onTap: () -> Void
+    var interactive: Bool = true
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.body(13.5, weight: .semibold))
-                        .foregroundStyle(Theme.txt)
-                    if let s = sub, !s.isEmpty {
-                        Text(s)
-                            .font(.body(11.5, weight: .medium))
-                            .foregroundStyle(Theme.mute)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Spacer(minLength: 8)
-                Text(value)
-                    .font(.body(13, weight: .extraBold))
+        if interactive {
+            Button(action: onTap) { rowContent }
+                .buttonStyle(.plain)
+        } else {
+            rowContent
+        }
+    }
+
+    private var rowContent: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.body(13.5, weight: .semibold))
                     .foregroundStyle(Theme.txt)
+                if let s = sub, !s.isEmpty {
+                    Text(s)
+                        .font(.body(11.5, weight: .medium))
+                        .foregroundStyle(Theme.mute)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.body(13, weight: .extraBold))
+                .foregroundStyle(Theme.txt)
+            if interactive {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Theme.mute)
             }
-            .padding(.horizontal, 16).padding(.vertical, 12)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16).padding(.vertical, 12)
     }
 }
