@@ -54,18 +54,6 @@ const distMi = (r: RunRow): number => Number(r.data?.distanceMi ?? 0);
 // offset lookup is exact except inside the 1h DST-transition window (a 2 a.m.
 // run start — vanishingly rare).
 const DEFAULT_TZ = 'America/Los_Angeles';
-// Sources whose `Z`-suffixed startLocal is a spurious local-as-UTC mislabel:
-// the value is the runner's wall clock with a wrongly-appended Z, not real UTC.
-// Strip the Z and interpret as local so the row maps to the same instant as a
-// bare-PT twin from a local-stamping source (apple_watch).
-//   · strava        — API quirk (start_date_local stored verbatim, pullSync.ts)
-//   · apple_health  — 2026-06-09 dedup audit: apple_health "10:00:31Z" == its
-//                     apple_watch bare-PT twin "10:00:31" → the Z is PT, not UTC
-//   · '' (null)     — legacy pre-source-field rows (old Strava) share the quirk
-// apple_watch/watch stamp bare local (no Z) so they never hit this strip.
-// Dedup-internal only (startUtcMs is not exported); display/weather time is
-// owned by lib/runs/normalize-time.ts and is unaffected.
-const Z_IS_LOCAL_WALLCLOCK = new Set(['strava', 'apple_health', '']);
 function tzOffsetMs(utcMs: number, tz: string): number {
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone: tz, hourCycle: 'h23',
@@ -80,12 +68,10 @@ function tzOffsetMs(utcMs: number, tz: string): number {
 function startUtcMs(r: RunRow): number {
   let s = String(r.data?.startLocal ?? '');
   if (!s) return NaN;
-  // A spurious-Z source (see Z_IS_LOCAL_WALLCLOCK) stamped local wall time with
-  // a wrongly-appended Z. Strip it before interpreting so the pair maps to the
-  // same UTC as a bare-PT row.
-  if (Z_IS_LOCAL_WALLCLOCK.has(String(r.data?.source ?? '')) && s.endsWith('Z')) {
-    s = s.slice(0, -1);
-  }
+  // Strava's start_date_local carries a spurious Z: it's the athlete's local
+  // wall time, not UTC (Strava API quirk — pullSync.ts:134 stores verbatim).
+  // Strip before interpreting so the pair maps to the same UTC as a bare-PT row.
+  if (String(r.data?.source ?? '') === 'strava' && s.endsWith('Z')) s = s.slice(0, -1);
   if (hasOffset(s)) return Date.parse(s);
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
   if (!m) return Date.parse(s);
