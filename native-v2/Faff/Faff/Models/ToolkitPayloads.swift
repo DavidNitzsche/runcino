@@ -366,18 +366,29 @@ struct ProjectionConfidenceInterval: Decodable {
     }
 }
 
+struct ConfidenceLabelEvidence: Decodable {
+    let goalVdot: Double?
+    enum CodingKeys: String, CodingKey { case goalVdot }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.goalVdot = try c.decodeIfPresent(Double.self, forKey: .goalVdot)
+    }
+}
+
 struct ProjectionConfidenceLabel: Decodable {
     let tier: String        // "high" | "medium" | "low"
     let word: String        // "HIGH" | "MEDIUM" | "LOW"
     let descriptor: String  // "tracking to hit it" | "doable, not banked" | "behind on this runway"
     let detail: String
-    enum CodingKeys: String, CodingKey { case tier, word, descriptor, detail }
+    let evidence: ConfidenceLabelEvidence?
+    enum CodingKeys: String, CodingKey { case tier, word, descriptor, detail, evidence }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.tier       = try c.decodeIfPresent(String.self, forKey: .tier)       ?? ""
         self.word       = try c.decodeIfPresent(String.self, forKey: .word)       ?? ""
         self.descriptor = try c.decodeIfPresent(String.self, forKey: .descriptor) ?? ""
         self.detail     = try c.decodeIfPresent(String.self, forKey: .detail)     ?? ""
+        self.evidence   = try? c.decode(ConfidenceLabelEvidence.self, forKey: .evidence)
     }
 }
 

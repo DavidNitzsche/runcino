@@ -375,8 +375,7 @@ struct HealthView: View {
         // line when backend ships it (HealthState.vo2Trend · aa45d543).
         // Falls back to a generic coaching line when absent.
         let pct = state?.vo2Trend?.pctChange30d
-        let coach = state?.vo2Trend?.coach
-            ?? "Aerobic engine still climbing · the long blocks are landing."
+        let coach: String? = state?.vo2Trend?.coach
         return VStack(alignment: .leading, spacing: 6) {
             Text("AEROBIC FITNESS")
                 .font(.body(9.5, weight: .extraBold)).tracking(0.8)
@@ -391,10 +390,12 @@ struct HealthView: View {
                         .foregroundStyle(p >= 0 ? Color(hex: 0x5fd06a) : Color(hex: 0xFC4D64))
                 }
             }
-            Text(coach)
-                .font(.body(12, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.78))
-                .lineSpacing(2)
+            if let coach {
+                Text(coach)
+                    .font(.body(12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.78))
+                    .lineSpacing(2)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -603,8 +604,10 @@ struct HealthView: View {
     /// Baseline / today / delta line. Delta colored: green for positive,
     /// coral for negative, per the brief.
     private var baselineAttr: Text? {
-        guard let score = readiness?.score else { return nil }
-        let baseline = score + 3
+        guard let score = readiness?.score,
+              let comp = brief?.composition,
+              comp.baseline > 0 else { return nil }
+        let baseline = comp.baseline
         let delta = score - baseline
         let sign = delta >= 0 ? "+" : ""
         let deltaColor: Color = delta >= 0 ? Color(hex: 0x5fd06a) : Color(hex: 0xFC4D64)
@@ -846,8 +849,8 @@ struct HealthWeekBars: View {
         if let s = state?.sleepSeries.suffix(7), s.count == 7 {
             return s.map { min(100, max(0, $0.hours * 12)) }
         }
-        let score = Double(snapshot?.score ?? 70)
-        return (0..<7).map { _ in score + Double.random(in: -8...4) }
+        let score = Double(snapshot?.score ?? 0)
+        return (0..<6).map { _ in 0.0 } + [score]
     }
 
     private func sevenDayLabels() -> [String] {

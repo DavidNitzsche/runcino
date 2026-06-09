@@ -452,6 +452,9 @@ struct TargetsProjectionPanel: View {
     private var metaPills: some View {
         HStack(spacing: 6) {
             VdotMetaPill(key: "VDOT", value: formatVdot(summary.vdot))
+            if let goalV = summary.confidenceLabel?.evidence?.goalVdot {
+                VdotMetaPill(key: "GOAL", value: formatVdot(goalV))
+            }
             if summary.heldDays > 0 {
                 VdotMetaPill(key: "HELD", value: "\(summary.heldDays)d")
             }
