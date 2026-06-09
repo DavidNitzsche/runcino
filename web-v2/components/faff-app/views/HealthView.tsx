@@ -26,10 +26,38 @@
  * dowPatterns, qualityPredictors, heatAcclim, cycle) simply don't render
  * for the current data shape.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FaffSeed, HealthMetric, DriverRow } from '../types';
-import { ManualHealthSheet } from '../toolkit';
+import { ManualHealthSheet, SymptomReportSheet } from '../toolkit';
+
+// ── Niggle history types (Phase 1 · no training-load join) ──────────────
+interface BodyPartSummary {
+  body_part: string;
+  side: string | null;
+  total_episodes: number;
+  last_flare_at: string;
+  avg_severity: number;
+  avg_days_active: number;
+  days_since_last_flare: number;
+}
+interface RecoveryEntry {
+  response: 'better' | 'same' | 'worse' | 'gone';
+  logged_at: string;
+}
+interface EpisodeRow {
+  id: number;
+  body_part: string;
+  side: string | null;
+  severity: number;
+  status: 'just_started' | 'few_days' | 'weeks';
+  note: string | null;
+  logged_at: string;
+  cleared_at: string | null;
+  days_active: number;
+  check_in_count: number;
+  recovery_trend: RecoveryEntry[];
+}
 
 // Status palette · matches the design tokens. HealthMetric.status uses
 // 'warn' (not 'watch') so the keys align with that union; 'bad' is kept
@@ -296,11 +324,166 @@ function StreakSparkline({
   );
 }
 
+// ── NiggleHistory ────────────────────────────────────────────────────────
+// Client-fetched · below FORM · before DEEPER INSIGHTS.
+function NiggleHistory({ onLogNiggle }: { onLogNiggle: () => void }) {
+  const [summary, setSummary] = useState<BodyPartSummary[] | null>(null);
+  const [episodes, setEpisodes] = useState<EpisodeRow[] | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [fetchErr, setFetchErr] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/niggle/history')
+      .then(r => r.json())
+      .then(d => {
+        setSummary(d.summary ?? []);
+        setEpisodes(d.episodes ?? []);
+      })
+      .catch(() => setFetchErr(true));
+  }, []);
+
+  const sevColor = (s: number) =>
+    s <= 3 ? '#5fd06a' : s <= 6 ? '#F3AD38' : '#FC4D64';
+
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const labelPart = (bp: string, side: string | null) => {
+    const cleaned = bp.replace(/_/g, ' ');
+    return side ? `${side} ${cleaned}` : cleaned;
+  };
+
+  const TREND_COLOR: Record<string, string> = {
+    better: '#5fd06a', same: 'rgba(255,255,255,.5)',
+    worse: '#F3AD38', gone: '#5bbfb0',
+  };
+
+  return (
+    <div className="band">
+      {/* Section header + Log Niggle inline button */}
+      <div className="nhis-hdr">
+        <div className="hseclbl2 nhis-lbl">
+          <span className="t">INJURY HISTORY</span>
+          <span className="ln" />
+        </div>
+        <button type="button" className="nhis-logbtn" onClick={onLogNiggle}>
+          + Log Niggle
+        </button>
+      </div>
+
+      {fetchErr ? (
+        <div className="nhis-empty">Could not load history.</div>
+      ) : summary === null ? (
+        <div className="nhis-empty">Loading…</div>
+      ) : episodes?.length === 0 ? (
+        <div className="nhis-empty">
+          No injury history yet. Use the button above to start tracking.
+        </div>
+      ) : (
+        <>
+          {/* Body-part frequency summary */}
+          {summary.length > 0 ? (
+            <div className="nhis-summary">
+              {summary.map((s, i) => (
+                <div key={i} className="nhis-sumrow">
+                  <span className="nhis-sumpart">{labelPart(s.body_part, s.side)}</span>
+                  <span className="nhis-summeta">
+                    <span className="nhis-cnt">
+                      {s.total_episodes} {s.total_episodes === 1 ? 'episode' : 'episodes'}
+                    </span>
+                    <span className="nhis-sep">·</span>
+                    <span className="nhis-days">
+                      {s.days_since_last_flare === 0
+                        ? 'active now'
+                        : `${s.days_since_last_flare}d since last flare`}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Episode log */}
+          <div className="nhis-eps">
+            {episodes?.map(ep => {
+              const isOpen = expanded === ep.id;
+              const isActive = !ep.cleared_at;
+              const label = labelPart(ep.body_part, ep.side);
+              const start = fmtDate(ep.logged_at);
+              const end = ep.cleared_at ? fmtDate(ep.cleared_at) : 'ongoing';
+              const statusLabel =
+                ep.status === 'just_started' ? 'just started'
+                : ep.status === 'few_days' ? 'few days in'
+                : 'weeks in';
+              return (
+                <div key={ep.id} className={`nhis-ep${isOpen ? ' open' : ''}`}>
+                  <button
+                    type="button"
+                    className="nhis-ep-hdr"
+                    onClick={() => setExpanded(isOpen ? null : ep.id)}
+                    aria-expanded={isOpen}
+                  >
+                    <span
+                      className="nhis-sev"
+                      style={{ background: sevColor(ep.severity) }}
+                    >
+                      {ep.severity}
+                    </span>
+                    <span className="nhis-ep-label">{label}</span>
+                    {isActive ? <span className="nhis-active-pip" /> : null}
+                    <span className="nhis-ep-range">
+                      {start}{ep.cleared_at ? ` – ${end}` : ''}
+                    </span>
+                    {!isActive ? (
+                      <span className="nhis-ep-dur">{ep.days_active}d</span>
+                    ) : null}
+                    <span className="nhis-ep-chev">{isOpen ? '▴' : '▾'}</span>
+                  </button>
+
+                  {isOpen ? (
+                    <div className="nhis-ep-body">
+                      {ep.note ? (
+                        <div className="nhis-note">{ep.note}</div>
+                      ) : null}
+                      {ep.recovery_trend.length > 0 ? (
+                        <div className="nhis-trend">
+                          {ep.recovery_trend.map((t, i) => (
+                            <span
+                              key={i}
+                              className="nhis-tpill"
+                              style={{ color: TREND_COLOR[t.response] ?? 'rgba(255,255,255,.6)' }}
+                            >
+                              {t.response}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="nhis-no-trend">No daily check-ins recorded.</div>
+                      )}
+                      <div className="nhis-ep-meta">
+                        {statusLabel} when logged.
+                        {ep.check_in_count > 0
+                          ? ` ${ep.check_in_count} check-in${ep.check_in_count > 1 ? 's' : ''}.`
+                          : ''}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function HealthView({ seed }: { seed: FaffSeed }) {
   const router = useRouter();
   const { readiness, body, form, sleepArchitectureVerdict } = seed.health;
   const brief = seed.readinessBrief;
   const [logOpen, setLogOpen] = useState(false);
+  const [niggleOpen, setNiggleOpen] = useState(false);
   const [openTile, setOpenTile] = useState<string | null>(null);
 
   // Split sleep tiles out of BODY into their own SLEEP STAGES grid.
@@ -357,13 +540,22 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
           <div className="date">Health</div>
           <div className="wk">Recovery &amp; form · {todayShort()}</div>
         </div>
-        <button
-          type="button"
-          onClick={() => setLogOpen(true)}
-          className="hview-logbtn"
-        >
-          + Log measurement
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setNiggleOpen(true)}
+            className="nhis-logbtn"
+          >
+            + Log Niggle
+          </button>
+          <button
+            type="button"
+            onClick={() => setLogOpen(true)}
+            className="hview-logbtn"
+          >
+            + Log measurement
+          </button>
+        </div>
       </div>
 
       {/* ===== HERO ===== */}
@@ -726,6 +918,9 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
         </div>
       ) : null}
 
+      {/* ===== INJURY HISTORY ===== */}
+      <NiggleHistory onLogNiggle={() => setNiggleOpen(true)} />
+
       {/* ===== DEEPER INSIGHTS ===== */}
       {(trainingForm
         || seed.health.heatAcclim
@@ -850,6 +1045,27 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             <ManualHealthSheet
               onSaved={() => router.refresh()}
               onClose={() => setLogOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* Niggle / sick log sheet */}
+      {niggleOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 50,
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            background: 'rgba(0,0,0,.55)',
+          }}
+          onClick={() => setNiggleOpen(false)}
+        >
+          <div style={{ width: '100%', maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <SymptomReportSheet
+              onSaved={() => { router.refresh(); setNiggleOpen(false); }}
+              onClose={() => setNiggleOpen(false)}
             />
           </div>
         </div>
