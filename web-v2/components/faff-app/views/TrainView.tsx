@@ -19,7 +19,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { FaffSeed } from '../types';
+import type { FaffSeed, GoalRace } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { buildAdaptText } from '../adapt-text';
 import { formatRaceTime } from '@/lib/training/vdot';
@@ -79,6 +79,15 @@ interface PhaseMeta {
 const PHASE_TYPE_COLOR: Record<string, string> = {
   easy: '#2faf7c', long: '#F3AD38', tempo: '#FF8847', threshold: '#FF8847',
   intervals: '#FC4D64', recovery: '#27B4E0', rest: '#8A90A0',
+};
+
+// Execution strip + WeeksList: influence kind → display color and sort rank.
+const EXEC_INF_COLOR: Record<string, string> = {
+  on_track: '#86efa0', consistent: '#86efa0', working: '#48B3B5',
+  slipping: '#FFCE8A', compromised: '#8A90A0',
+};
+const EXEC_INF_RANK: Record<string, number> = {
+  compromised: 0, slipping: 1, working: 2, consistent: 3, on_track: 4,
 };
 
 /** Resolve the PHASE constant key from a plan_phases.label string. */
@@ -246,7 +255,58 @@ export function TrainView({
     return () => onMeshChange(null);
   }, [onMeshChange]);
 
-  // Key workouts pulled from real plan: pick the QUALITY day in each future
+  // ── Execution strip: per-week planned vs actual for the last 5 weeks ──────
+  // Computes summary rows for the last 4 past weeks + the current week.
+  // Data comes from seed.season.weekDays[i][j].doneMi (threaded from
+  // training-state in adaptSeason). No extra API call needed.
+  const execWeeks = useMemo(() => {
+    type ExecRow = {
+      i: number; startDate: string; plannedMi: number; actualMi: number;
+      sessTotal: number; sessDone: number;
+      influence: { kind: string; color: string } | null;
+      hasAdapt: boolean; isCurrent: boolean;
+    };
+    const rows: ExecRow[] = [];
+    for (let i = 0; i <= nowIdx && i < seed.season.weekDays.length; i++) {
+      const days = seed.season.weekDays[i] ?? [];
+      const plannedMi = miles[i] ?? 0;
+      const actualMi = Math.round(
+        days.reduce((s, d) => s + (d.doneMi ?? 0), 0) * 10,
+      ) / 10;
+      const nonRest = days.filter((d) => d.type !== 'rest');
+      const sessDone = nonRest.filter((d) => d.done).length;
+      const qualityDone = days.filter(
+        (d) => ['intervals', 'tempo', 'long'].includes(d.type) && d.done,
+      );
+      const influences = qualityDone
+        .map((d) => d.trainingInfluence)
+        .filter((x): x is NonNullable<typeof x> => x != null);
+      const worstInf = influences.reduce<typeof influences[0] | null>(
+        (worst, inf) =>
+          !worst || (EXEC_INF_RANK[inf.kind] ?? 5) < (EXEC_INF_RANK[worst.kind] ?? 5)
+            ? inf
+            : worst,
+        null,
+      );
+      rows.push({
+        i,
+        startDate: days[0]?.date ?? '',
+        plannedMi,
+        actualMi,
+        sessTotal: nonRest.length,
+        sessDone,
+        influence: worstInf
+          ? { kind: worstInf.kind, color: EXEC_INF_COLOR[worstInf.kind] ?? '#8A90A0' }
+          : null,
+        hasAdapt: days.some((d) => d.adaptation?.wasAdapted),
+        isCurrent: i === nowIdx,
+      });
+    }
+    // Last 4 past weeks + current week (max 5 rows).
+    return rows.slice(Math.max(0, rows.length - 5));
+  }, [seed.season.weekDays, miles, nowIdx]);
+
+  // ── Key workouts pulled from real plan: pick the QUALITY day in each future
   // week + label by type. Done past weeks marked done; current week tagged NOW.
   // 2026-05-31: done rows also carry actual pace + influence (hit/miss vs
   // planned target) so the runner can see what each workout did.
@@ -480,6 +540,32 @@ export function TrainView({
     return out;
   }, [raceIdx, realPhases]);
 
+  // Peak = highest-mileage non-race, non-taper week. Derived from miles[]
+  // at render time — no DB field needed (is_peak is never written by persistPlan).
+  const peakIdx = useMemo(() => {
+    let best = 0; let idx = -1;
+    for (let i = 0; i < raceIdx; i++) {
+      const ph = phaseOfWeek(i, raceIdx, realPhases);
+      if (ph !== 'taper' && ph !== 'race' && miles[i] > best) {
+        best = miles[i]; idx = i;
+      }
+    }
+    return idx;
+  }, [miles, raceIdx, realPhases]);
+
+  // Cutback = pre-taper week where volume drops vs the prior week.
+  // Derived from miles[] — same source as the volumeCurve deloadMask.
+  const cutbackSet = useMemo(() => {
+    const s = new Set<number>();
+    for (let i = 1; i < raceIdx; i++) {
+      const ph = phaseOfWeek(i, raceIdx, realPhases);
+      if (ph !== 'taper' && ph !== 'race' && miles[i] > 0 && miles[i - 1] > 0 && miles[i] < miles[i - 1]) {
+        s.add(i);
+      }
+    }
+    return s;
+  }, [miles, raceIdx, realPhases]);
+
   function openPlan(tab: 'month' | 'weeks' = 'month') {
     setPlanTab(tab);
     setPlanOpen(true);
@@ -565,17 +651,37 @@ export function TrainView({
             const ph = phaseOfWeek(i, raceIdx, realPhases);
             const isCur = i === focusIdx;
             const isPast = i < nowIdx;
+            const isPeak = i === peakIdx;
+            const isCutback = cutbackSet.has(i);
             return (
               <div
                 key={i}
                 className={`bar${isCur ? ' cur' : ''}`}
                 style={{ height: `${h}%`, background: phaseColor(ph), opacity: isPast && !isCur ? 0.62 : 1 }}
-                title={`${mi} mi`}
+                title={`${mi} mi${isPeak ? ' · peak week' : isCutback ? ' · cutback' : ''}`}
                 onClick={() => setFocusIdx(i)}
                 role="button"
                 tabIndex={0}
               >
                 <span className="bmi">{mi}</span>
+                {isPeak && (
+                  <span style={{
+                    position: 'absolute', top: 6, left: '50%',
+                    transform: 'translateX(-50%)',
+                    fontSize: 7.5, fontWeight: 800, letterSpacing: '0.9px',
+                    color: 'rgba(255,255,255,.92)', whiteSpace: 'nowrap',
+                    pointerEvents: 'none', fontFamily: 'Inter,-apple-system,sans-serif',
+                  }}>PEAK</span>
+                )}
+                {!isPeak && isCutback && (
+                  <span style={{
+                    position: 'absolute', top: 5, left: '50%',
+                    transform: 'translateX(-50%)',
+                    fontSize: 10, fontWeight: 700,
+                    color: 'rgba(255,255,255,.45)', whiteSpace: 'nowrap',
+                    pointerEvents: 'none', lineHeight: 1,
+                  }}>↓</span>
+                )}
               </div>
             );
           })}
@@ -624,6 +730,65 @@ export function TrainView({
           );
         })()}
       </div>
+
+      {/* Execution strip — last 4 past weeks + current week */}
+      {execWeeks.length > 0 && (
+        <div className="wkexec">
+          <div className="wkexec-hd">
+            <span className="wkexec-title">EXECUTION</span>
+            <span className="wkexec-sub">
+              last {execWeeks.filter((r) => !r.isCurrent).length} weeks
+            </span>
+          </div>
+          {execWeeks.map((r) => {
+            const pct = r.plannedMi > 0
+              ? Math.min(100, Math.round((r.actualMi / r.plannedMi) * 100))
+              : 0;
+            const barColor = r.isCurrent
+              ? '#FFCE8A88'
+              : pct >= 95 ? '#56E0B0'
+              : pct >= 80 ? '#FFCE8A'
+              : '#FF8870';
+            const dateLabel = r.isCurrent
+              ? 'THIS WEEK'
+              : formatDate(r.startDate).toUpperCase();
+            const sessRemain = r.sessTotal - r.sessDone;
+            return (
+              <div key={r.i} className={`wkexec-row${r.isCurrent ? ' current' : ''}`}>
+                <span className="wkexec-date">{dateLabel}</span>
+                <span className="wkexec-bar">
+                  <span className="wkexec-done" style={{ width: `${pct}%`, background: barColor }} />
+                </span>
+                <span className="wkexec-mi">
+                  {r.actualMi.toFixed(1)}
+                  <small>/{r.plannedMi} mi</small>
+                </span>
+                <span className="wkexec-sess">
+                  {r.isCurrent
+                    ? sessRemain > 0 ? `${sessRemain} left` : 'done'
+                    : `${r.sessDone}/${r.sessTotal}`}
+                </span>
+                {r.influence && !r.isCurrent ? (
+                  <span
+                    className="wkexec-inf"
+                    style={{ background: r.influence.color }}
+                    title={r.influence.kind.replace('_', ' ')}
+                  />
+                ) : (
+                  <span className="wkexec-inf" style={{ background: 'transparent' }} />
+                )}
+                <span
+                  className="wkexec-adapt"
+                  title={r.hasAdapt ? 'plan adapted this week' : undefined}
+                  style={{ opacity: r.hasAdapt ? 1 : 0 }}
+                >
+                  ·A
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Lower dashboard */}
       <div className="lower">
@@ -1186,6 +1351,7 @@ function MonthCalendar({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun: (id: st
         <PlanDayPanel
           iso={selectedDate}
           day={selectedDay}
+          goalRace={goal}
           onClose={() => setSelectedDate(null)}
           onOpenRun={onOpenRun}
         />
@@ -1194,15 +1360,54 @@ function MonthCalendar({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun: (id: st
   );
 }
 
+function workoutPurpose(
+  type: string,
+  spec: Record<string, unknown> | null,
+  goalRace: GoalRace | null,
+): string | null {
+  const kind = (spec?.kind as string | undefined) ?? type;
+
+  const racePaceStr = (() => {
+    if (!goalRace?.goal || !goalRace?.distanceMi) return null;
+    const parts = goalRace.goal.split(':').map(Number);
+    const totalSec = parts.length === 3
+      ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+      : parts.length === 2
+      ? parts[0] * 60 + parts[1]
+      : null;
+    if (totalSec == null) return null;
+    return fmtPace(totalSec / goalRace.distanceMi);
+  })();
+
+  if (kind === 'intervals' || type === 'intervals')
+    return 'VO2max stimulus · raises the ceiling your tempo pace pulls from';
+  if (kind === 'tempo' || kind === 'threshold' || type === 'tempo' || type === 'threshold')
+    return racePaceStr
+      ? `Threshold work · builds the lactate ceiling you'll need to hold ${racePaceStr}/mi pace`
+      : "Threshold work · builds the lactate ceiling for race pace";
+  if (kind === 'long' || type === 'long')
+    return spec?.finish_mi
+      ? "Aerobic base with race-pace finish · teaches your legs to shift gears late"
+      : "Aerobic base · builds mitochondrial density and fat economy";
+  if (kind === 'progression' || type === 'progression')
+    return "Aerobic build · bridges easy and threshold pace, trains your engine to accelerate";
+  if (type === 'easy') return "Recovery · let yesterday's work absorb";
+  if (type === 'recovery') return "Active recovery · flush accumulated fatigue, protect the aerobic stimulus";
+  if (type === 'race') return "Race day · execute the plan";
+  if (type === 'shakeout') return "Shake out the legs · arrive fresh";
+  return null;
+}
+
 /** Detail panel shown to the right of the calendar when a day is tapped. */
 function PlanDayPanel({
-  iso, day, onClose, onOpenRun,
+  iso, day, goalRace, onClose, onOpenRun,
 }: {
   iso: string;
   day: {
     type: string; name: string; mi: number; paceSec: number | null;
     activityId?: string | null; workoutSpec?: unknown;
   };
+  goalRace: GoalRace | null;
   onClose: () => void;
   onOpenRun: (id: string) => void;
 }) {
@@ -1211,6 +1416,7 @@ function PlanDayPanel({
   const tint = { background: `${c}38`, color: c };
   const spec = (day.workoutSpec ?? null) as Record<string, unknown> | null;
   const paceStr = day.paceSec ? fmtPace(day.paceSec) : null;
+  const purpose = workoutPurpose(day.type, spec, goalRace);
 
   // Build segment rows from workout_spec when available.
   // Covers long (BASE/FINISH), tempo (WARMUP/TEMPO/COOLDOWN),
@@ -1291,8 +1497,12 @@ function PlanDayPanel({
         </button>
       </div>
 
+      {purpose ? (
+        <div style={{ marginTop: 10, fontSize: 12, color: 'rgba(255,255,255,0.52)', lineHeight: 1.4 }}>{purpose}</div>
+      ) : null}
+
       {/* Distance + pace headline */}
-      <div style={{ display: 'flex', gap: 24, marginTop: 16 }}>
+      <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
         <div>
           <div style={{ fontFamily: FONT_DISP, fontSize: 28, fontWeight: 600, lineHeight: 1 }}>{day.mi.toFixed(1)}<small style={{ fontSize: 13, fontWeight: 400, marginLeft: 3, opacity: 0.6 }}>mi</small></div>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,.45)', marginTop: 4 }}>DISTANCE</div>
@@ -1345,8 +1555,10 @@ function PlanDayPanel({
 
 function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: number; onPick: (i: number) => void }) {
   const { miles, maxMi, raceIdx, phases } = seed.season;
+  const nowIdx = seed.season.nowIdx;
   const groups = phaseGroups(raceIdx, phases);
   const goal = seed.goalRace;
+
   return (
     <div className="weeklist">
       {groups.map((g) => (
@@ -1359,10 +1571,47 @@ function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: numbe
             const i = g.from + k;
             const mi = miles[i] ?? 0;
             const dayList = seed.season.weekDays[i] ?? [];
-            const quality = dayList.find((d) => ['intervals','tempo','long'].includes(d.type));
-            const key = quality
+            const isPast = i < nowIdx;
+            const isCurrent = i === nowIdx;
+
+            // Key workout description (unchanged for all week states)
+            const quality = dayList.find((d) => ['intervals', 'tempo', 'long'].includes(d.type));
+            const keyLabel = quality
               ? `${quality.type === 'intervals' ? 'Intervals' : quality.type === 'tempo' ? 'Tempo' : 'Long run'} · ${quality.mi.toFixed(1)} mi`
               : 'Easy week';
+
+            // Actual data (past + current weeks only)
+            const actualMi = Math.round(
+              dayList.reduce((s, d) => s + (d.doneMi ?? 0), 0) * 10,
+            ) / 10;
+            const nonRest = dayList.filter((d) => d.type !== 'rest');
+            const sessDone = nonRest.filter((d) => d.done).length;
+
+            // Worst quality-session trainingInfluence for the week
+            const qualityDone = dayList.filter(
+              (d) => ['intervals', 'tempo', 'long'].includes(d.type) && d.done,
+            );
+            const influences = qualityDone
+              .map((d) => d.trainingInfluence)
+              .filter((x): x is NonNullable<typeof x> => x != null);
+            const worstInf = influences.reduce<typeof influences[0] | null>(
+              (w, inf) =>
+                !w || (EXEC_INF_RANK[inf.kind] ?? 5) < (EXEC_INF_RANK[w.kind] ?? 5) ? inf : w,
+              null,
+            );
+
+            // Bar: planned track at phase color + actual fill when available.
+            const planPct = Math.round((mi / Math.max(maxMi, 1)) * 100);
+            const actPct = (isPast || isCurrent)
+              ? Math.round((actualMi / Math.max(maxMi, 1)) * 100)
+              : 0;
+            const completionPct = mi > 0 ? actualMi / mi : 0;
+            const fillColor = isCurrent
+              ? '#FFCE8A88'
+              : completionPct >= 0.95 ? '#56E0B0'
+              : completionPct >= 0.80 ? '#FFCE8A'
+              : '#FF8870';
+
             return (
               <div
                 key={i}
@@ -1372,9 +1621,44 @@ function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: numbe
                 tabIndex={0}
               >
                 <span className="wn">{i + 1}</span>
-                <span className="wbar"><i style={{ width: `${Math.round((mi / Math.max(maxMi, 1)) * 100)}%`, background: phaseColor(g.phase) }} /></span>
-                <span className="wkey">{key}</span>
-                <span className="wmi">{mi} mi</span>
+                {/* Bar: planned tint as background track, actual as fill */}
+                <span className="wbar" style={{ position: 'relative', overflow: 'hidden' }}>
+                  <i style={{ position: 'absolute', left: 0, top: 0, width: `${planPct}%`, height: '100%', background: `${phaseColor(g.phase)}40`, borderRadius: 5 }} />
+                  {(isPast || isCurrent) && (
+                    <i style={{ position: 'absolute', left: 0, top: 0, width: `${Math.min(planPct, actPct)}%`, height: '100%', background: fillColor, borderRadius: 5, zIndex: 1 }} />
+                  )}
+                </span>
+                <span className="wkey">{keyLabel}</span>
+                {/* Mi column: actual/planned for past+current, planned-only for future */}
+                <span className="wmi">
+                  {isPast || isCurrent ? (
+                    <>
+                      {actualMi.toFixed(1)}
+                      <small style={{ fontFamily: 'Inter,sans-serif', fontSize: 10, fontWeight: 600, opacity: 0.5, marginLeft: 1 }}>
+                        /{mi}
+                      </small>
+                    </>
+                  ) : (
+                    <>{mi} mi</>
+                  )}
+                </span>
+                {/* Session ratio for past; in-progress badge for current */}
+                {isCurrent && (
+                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, color: '#FFCE8A', flexShrink: 0, marginLeft: -4 }}>
+                    {sessDone}/{nonRest.length}
+                  </span>
+                )}
+                {isPast && (
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.3, opacity: 0.6, flexShrink: 0, marginLeft: -4 }}>
+                    {sessDone}/{nonRest.length}
+                  </span>
+                )}
+                {/* Influence dot for past weeks */}
+                {isPast && worstInf ? (
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: EXEC_INF_COLOR[worstInf.kind] ?? '#8A90A0', flexShrink: 0 }} title={worstInf.kind.replace('_', ' ')} />
+                ) : (isPast || isCurrent) ? (
+                  <span style={{ width: 7, height: 7, flexShrink: 0 }} />
+                ) : null}
               </div>
             );
           })}
