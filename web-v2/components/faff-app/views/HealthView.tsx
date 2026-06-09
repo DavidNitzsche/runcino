@@ -40,6 +40,7 @@ interface BodyPartSummary {
   avg_severity: number;
   avg_days_active: number;
   days_since_last_flare: number;
+  recent_flare_count: number;
 }
 interface RecoveryEntry {
   response: 'better' | 'same' | 'worse' | 'gone';
@@ -57,6 +58,7 @@ interface EpisodeRow {
   days_active: number;
   check_in_count: number;
   recovery_trend: RecoveryEntry[];
+  acwr_at_log: number | null;
 }
 
 // Status palette · matches the design tokens. HealthMetric.status uses
@@ -398,6 +400,11 @@ function NiggleHistory({ onLogNiggle }: { onLogNiggle: () => void }) {
                         : `${s.days_since_last_flare}d since last flare`}
                     </span>
                   </span>
+                  {s.recent_flare_count >= 2 ? (
+                    <span className="nhis-flare-warn" style={{ color: '#F3AD38', fontSize: 11 }}>
+                      Flared {s.recent_flare_count} times recently
+                    </span>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -466,6 +473,11 @@ function NiggleHistory({ onLogNiggle }: { onLogNiggle: () => void }) {
                           ? ` ${ep.check_in_count} check-in${ep.check_in_count > 1 ? 's' : ''}.`
                           : ''}
                       </div>
+                      {ep.acwr_at_log != null && ep.acwr_at_log > 1.15 ? (
+                        <div className="nhis-acwr-warn" style={{ color: '#F3AD38', fontSize: 11, marginTop: 4 }}>
+                          Logged during a loaded week (ACWR {ep.acwr_at_log.toFixed(2)})
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
