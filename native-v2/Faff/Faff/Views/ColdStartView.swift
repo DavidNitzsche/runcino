@@ -7,13 +7,17 @@ import SwiftUI
 
 struct ColdStartView: View {
     let mode: Mode
+    var onStartRun: (() -> Void)? = nil
+    var onConnect: (() -> Void)? = nil
 
     enum Mode: String, CaseIterable { case activity, health }
 
     @State private var current: Mode
 
-    init(mode: Mode) {
+    init(mode: Mode, onStartRun: (() -> Void)? = nil, onConnect: (() -> Void)? = nil) {
         self.mode = mode
+        self.onStartRun = onStartRun
+        self.onConnect = onConnect
         _current = State(initialValue: mode)
     }
 
@@ -168,7 +172,7 @@ struct ColdStartView: View {
                 .multilineTextAlignment(.center)
                 .padding(.top, 4)
             Button {
-                // Start run hook lands later.
+                onStartRun?()
             } label: {
                 Text("Start a run")
                     .font(.body(15, weight: .extraBold))
@@ -180,7 +184,7 @@ struct ColdStartView: View {
             .buttonStyle(.plain)
             .padding(.top, 16)
             Button {
-                // Connect flow hook lands later.
+                onConnect?()
             } label: {
                 Text(secondary)
                     .font(.body(13, weight: .bold))

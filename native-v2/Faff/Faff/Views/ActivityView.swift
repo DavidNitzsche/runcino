@@ -38,7 +38,22 @@ struct ActivityView: View {
         var label: String { rawValue.uppercased() == "ALL" ? "ALL TIME" : rawValue.uppercased() }
     }
 
+    private var isEmptyState: Bool {
+        loadState == .loaded && (log?.weeks ?? []).isEmpty
+    }
+
     var body: some View {
+        if isEmptyState {
+            ColdStartView(
+                mode: .activity,
+                onStartRun: { NotificationCenter.default.post(name: .faffShowRunMenu, object: nil) },
+                onConnect: { Task { await HealthKitImporter.shared.requestAuthAndImport() } }
+            )
+            .task { await reload(); await loadStreak() }
+            .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
+                Task { await reload() }
+            }
+        } else {
         ZStack {
             FaffMeshView(mesh: FaffMesh.forView(.activity))
 
@@ -76,6 +91,7 @@ struct ActivityView: View {
             // to "connected" and the reconnect banner clears.
             Task { await reload() }
         }
+        }  // closes else
     }
 
     private func loadStreak() async {

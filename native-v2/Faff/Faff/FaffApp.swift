@@ -163,6 +163,7 @@ extension Notification.Name {
     /// completing Strava OAuth in Safari (which has no callback hook back
     /// into the app · this is the iPhone equivalent of a callback).
     static let faffForegroundRefresh = Notification.Name("faff.foreground.refresh")
+    static let faffShowRunMenu = Notification.Name("faff.show.run.menu")
 }
 
 /// Routes the user between the auth/onboarding gate and the main app.

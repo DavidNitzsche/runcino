@@ -90,6 +90,27 @@ struct RunDetailView: View {
                         .padding(.top, 22)
                     }
 
+                    // Per-type HOW IT WENT panel · AEROBIC STAMP / THE
+                    // LONG / THE TEMPO / THE REPS. The same component
+                    // Today's post-run sheet mounts (TodayPostRunBody) ·
+                    // brings the rep ladder, tempo target-vs-actual block,
+                    // long thirds, and easy kept-it-easy gauge to a run
+                    // reviewed from history, so the depth is the same
+                    // whether the runner opens it now or three days later.
+                    // Reads from `run`, not the recap, so it renders even
+                    // when the coach recap 404s. Its own HIWHead is the
+                    // section header — no section() wrapper.
+                    if hasHowItWentPanel {
+                        HowItWentPanel(
+                            effort: hiwEffort,
+                            detail: run,
+                            accent: hiwEffort.dot,
+                            onMesh: true
+                        )
+                        .padding(.horizontal, 22)
+                        .padding(.top, 26)
+                    }
+
                     if !splitBars.isEmpty {
                         section(title: "MILE SPLITS", right: fastestSplitLabel) {
                             VStack(alignment: .leading, spacing: 8) {
@@ -109,7 +130,7 @@ struct RunDetailView: View {
                     // rows with target pace / actual pace / status. For a
                     // long run with a marathon-pace finish, this is the
                     // most valuable single chart on the page.
-                    if let phases = run?.phase_breakdown, !phases.isEmpty {
+                    if let phases = run?.phase_breakdown, !phases.isEmpty, !panelCoversWork {
                         section(title: "PLAN VS ACTUAL", right: nil) {
                             VStack(spacing: 10) {
                                 ForEach(phases) { ph in
@@ -183,7 +204,7 @@ struct RunDetailView: View {
                     // matter, not the whole-run averages. Backend supplies
                     // pace_work / hr_avg_work / cadence_avg_work / work_seconds;
                     // hidden when none populated (recovery / easy runs).
-                    if hasWorkSegmentData {
+                    if hasWorkSegmentData && !panelCoversWork {
                         section(title: "WORK SEGMENTS", right: workSecondsLabel) {
                             workSegmentTile
                         }
@@ -315,7 +336,7 @@ struct RunDetailView: View {
             HStack(alignment: .top, spacing: 24) {
                 heroStat(value: distanceValue, key: "MILES")
                 heroStat(value: timeValue, key: "TIME")
-                heroStat(value: paceValue, key: "AVG /MI")
+                heroStat(value: heroPaceValue, key: heroPaceKey)
             }
             .padding(.top, 20)
 
@@ -476,6 +497,65 @@ struct RunDetailView: View {
     // MARK: - Data
 
     private var effort: FaffEffort { FaffEffort.fromType(run?.type ?? "tempo") }
+
+    /// Effort for the per-type HOW IT WENT panel + the hero work-pace
+    /// swap. Planned-kind-first · a watch run typed "Run" resolves to
+    /// .easy via `effort` above, which would route a planned tempo /
+    /// interval session to the wrong panel. The planned spec's kind is
+    /// the reliable signal (mirrors TodayPostRunBody.hiwEffort).
+    private var hiwEffort: FaffEffort {
+        FaffEffort.fromType(run?.planned_spec?.kind ?? run?.type ?? "")
+    }
+
+    /// Quality session · the work-phase pace is the headline number, not
+    /// the warmup + cooldown-diluted blended average.
+    private var isQualityRun: Bool {
+        hiwEffort == .tempo || hiwEffort == .intervals
+    }
+
+    /// Work-phase pace (bare "M:SS") for quality sessions when pace_work
+    /// is populated · nil for easy / long / rest or non-Faff-watch
+    /// sources. Mirrors TodayPostRunBody.workPaceDisplay (unit lives in
+    /// the hero key here, so no "/mi" suffix).
+    private var workPaceDisplay: String? {
+        guard isQualityRun, let wp = run?.pace_work, !wp.isEmpty else { return nil }
+        return wp
+    }
+
+    /// Hero third-stat · WORK pace for quality runs (the blended average
+    /// misreads a tempo / 5×1mi at the top of the page), else the
+    /// blended average.
+    private var heroPaceValue: String { workPaceDisplay ?? paceValue }
+    private var heroPaceKey: String { workPaceDisplay != nil ? "WORK /MI" : "AVG /MI" }
+
+    /// True when the per-type panel has enough data to render
+    /// meaningfully. Easy / long lean on splits (footprint, thirds,
+    /// drift); tempo / intervals need phase_breakdown (tempo block, rep
+    /// rail). Gating per-type avoids rendering a bare "THE TEMPO" header
+    /// with nothing under it.
+    private var hasHowItWentPanel: Bool {
+        switch hiwEffort {
+        case .easy, .recovery:
+            return run?.hrZonePcts != nil || !(run?.splits.isEmpty ?? true)
+        case .long:
+            return (run?.splits.count ?? 0) >= 3
+        case .tempo, .intervals:
+            return !(run?.phase_breakdown?.isEmpty ?? true)
+        case .race, .rest:
+            return false
+        }
+    }
+
+    /// True when the per-type panel is rendering AND already presents the
+    /// work-phase breakdown (THE TEMPO block / THE REPS rail). Suppresses
+    /// the now-redundant generic WORK SEGMENTS tile + PLAN VS ACTUAL list
+    /// for tempo / intervals. PLAN VS ACTUAL is kept for long runs (THE
+    /// LONG shows thirds, not the MP-finish phase rows). Falls back to
+    /// showing the generics when the panel isn't rendering (e.g. a tempo
+    /// with no phase_breakdown), so no data is ever lost.
+    private var panelCoversWork: Bool {
+        hasHowItWentPanel && (hiwEffort == .tempo || hiwEffort == .intervals)
+    }
 
     private var eyebrowText: String {
         guard let r = run else { return "RUN DETAIL" }

@@ -154,6 +154,9 @@ struct RootTabView: View {
             LogNonRunSheet(onSubmitted: { showLogNonRunSheet = false })
                 .presentationDetents([.medium])
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faffShowRunMenu)) { _ in
+            showRunMenu = true
+        }
     }
 
     // MARK: - Content
