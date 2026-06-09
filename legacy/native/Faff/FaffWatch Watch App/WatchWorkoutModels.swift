@@ -163,6 +163,7 @@ struct WatchWorkout: Codable {
     //   · "hr"           → HRFace (HR is the hero, pace below as reference)
     //   · "progression"  → ProgressionFace (current step target + miles to next)
     //   · "strides"      → StridesFace (burst countdown + strip)
+    //   · "tempo"        → TempoFace (live · target · steady HR · miles-to-go)
     // The phase-driven default rules (single-work-phase + target → EasyFace
     // etc.) still apply when this is nil, so older payloads keep working.
     let displayHint: String?

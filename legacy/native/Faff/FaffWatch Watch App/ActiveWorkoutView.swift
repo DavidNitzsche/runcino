@@ -128,6 +128,8 @@ struct ActiveWorkoutView: View {
                             LiveProgression(engine: engine, tracker: tracker, phase: phase)
                         case "strides":
                             LiveStrides(engine: engine, tracker: tracker, phase: phase)
+                        case "tempo":
+                            LiveTempo(engine: engine, tracker: tracker, phase: phase)
                         default:
                             // A workout with exactly one .work phase is an easy /
                             // long / steady run — route to EasyFace (rotating
@@ -450,6 +452,46 @@ private struct LiveStrides: View {
             livePace:        paceText(tracker),
             burstCountdown:  burstCountdown,
             stripStates:     sessionStripStates(engine)
+        )
+    }
+}
+
+/// Tempo face adapter — single-work-phase quality run (tempo / continuous-threshold).
+/// Shows live pace + target pace + steady HR vs threshold + miles remaining in the
+/// tempo block. Routed when workout.displayHint == "tempo".
+private struct LiveTempo: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    let phase: WatchPhase
+
+    /// Green once live HR reaches the threshold target; neutral below; mute pre-HR.
+    private var hrRole: Role {
+        guard let target = phase.hrTargetBpm, tracker.heartRate > 0 else { return .mute }
+        return tracker.heartRate >= target ? .live : .neutral
+    }
+    /// "TEMPO · ♥149" — the threshold reference lives in the top label so it's
+    /// always visible even when HR fills the third row.
+    private var topLabel: String {
+        if let target = phase.hrTargetBpm { return "TEMPO · ♥\(target)" }
+        return "TEMPO"
+    }
+    /// Miles remaining in the tempo block (distance-based) or m:ss (time-based).
+    private var toGo: String {
+        if let remaining = engine.phaseRemainingMi {
+            return String(format: "%.2f", remaining)
+        }
+        return PaceFormat.clock(engine.phaseRemainingSec)
+    }
+
+    var body: some View {
+        TempoFace(
+            livePace:   paceText(tracker),
+            paceRole:   paceRole(engine: engine, tracker: tracker),
+            targetPace: phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
+            hr:         tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
+            hrRole:     hrRole,
+            topLabel:   topLabel,
+            toGo:       toGo
         )
     }
 }

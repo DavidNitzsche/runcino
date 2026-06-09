@@ -206,6 +206,34 @@ struct ProgressionFace: View {
     }
 }
 
+/// Tempo face — live pace + target + steady HR + miles to go. Four rows, no strip.
+/// Unlike EasyFace the HR row is always visible (no rotation with cadence) and
+/// the target pace is permanently shown — exactly what's needed mid-tempo.
+/// Routed when workout.displayHint == "tempo".
+struct TempoFace: View {
+    let livePace: String         // "7:28"
+    let paceRole: Role           // drift-zone color
+    let targetPace: String       // "7:17"
+    let hr: String               // "148" or "—"
+    /// .live once live HR reaches the threshold target, .neutral below, .mute pre-HR.
+    let hrRole: Role
+    /// Small top-label reference: "TEMPO · ♥149" — the threshold to hold.
+    var topLabel: String = "TEMPO"
+    let toGo: String             // "2.22" (miles remaining) or "m:ss"
+
+    var body: some View {
+        NumberFace(
+            rows: [
+                NumRow(livePace,   paceRole),
+                NumRow(targetPace, .neutral),
+                NumRow(hr,         hrRole, icon: "heart.fill"),
+                NumRow(toGo,       .neutral)
+            ],
+            topLabel: topLabel
+        )
+    }
+}
+
 /// HR-governed face (MAF / Z2 / heat flag) — same row order as Easy, but green
 /// highlight on HR (the guardrail you're holding), neutral on pace below it.
 struct HRFace: View {

@@ -496,7 +496,9 @@ export async function buildWatchToday(
     hrCeilingBpm,
     // Long runs foreground HR (the easy-aerobic discipline) — EXCEPT when
     // they carry an HM/M finish, where pace is the target (D1).
-    displayHint: wo.type === 'long' ? (longHasFinish ? 'pace' : 'hr') : null,
+    displayHint: wo.type === 'long'  ? (longHasFinish ? 'pace' : 'hr')
+             : wo.type === 'tempo' ? 'tempo'
+             : null,
   };
 
   // P27.5 — populate readiness on the watch payload. Before this the
