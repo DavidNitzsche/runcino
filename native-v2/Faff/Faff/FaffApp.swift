@@ -178,8 +178,11 @@ extension Notification.Name {
 ///     surface data, treat as a returning user and drop straight into
 ///     RootTabView. This preserves every existing TestFlight install (David,
 ///     internal testers) so a new build never strands them on a SignIn page.
-///   · Else show SignIn → RolePick → Onboarding → mark onboarded → main app.
+///   · Else show SignIn → Onboarding → mark onboarded → main app.
 ///     New TestFlight installs that have never opened the app see this flow.
+///   · RolePick is removed from the gate — the spectator product does not
+///     exist yet and showing a role picker that routes both choices to runner
+///     onboarding adds a confusing dead step to cold start.
 ///
 /// `TokenStore.isSignedIn` exists as a real session-token signal but isn't
 /// enforced as a gate today (beta uses DEFAULT_USER_ID fallback server-side).
@@ -189,7 +192,6 @@ struct RootContainer: View {
     enum GateStep: Equatable {
         case checking
         case signIn
-        case rolePick
         case onboarding
         case main
     }
@@ -205,16 +207,14 @@ struct RootContainer: View {
                 // when their session expires. The auth response carries a
                 // `redirect` of "/today" for that case; we forward it via the
                 // skipOnboarding flag so they don't get re-routed through
-                // RolePick + Onboarding. New sign-ups still walk the gate.
+                // Onboarding. New sign-ups still walk the gate.
                 SignInView(onSignedIn: { skipOnboarding in
                     if skipOnboarding {
                         complete()
                     } else {
-                        advance(.rolePick)
+                        advance(.onboarding)
                     }
                 })
-            case .rolePick:
-                RolePickView(onPick: { _ in advance(.onboarding) })
             case .onboarding:
                 OnboardingView(onComplete: { complete() })
             case .main:
