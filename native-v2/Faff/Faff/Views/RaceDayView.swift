@@ -39,6 +39,33 @@ struct RaceDayView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 18)
 
+                    // RACE MORNING — gun time + wave + location.
+                    // Only on the day itself (days == 0, not past).
+                    if detail?.race.days == 0, detail?.race.is_past != true {
+                        section(title: "RACE MORNING", right: nil) {
+                            raceMorningCard
+                        }
+                        .padding(.top, 26)
+                    }
+
+                    // RACE PLAN — A-goal and B-goal paces. Visible whenever
+                    // a goal is set and the race is upcoming (not just day-of).
+                    if bGoalTime != nil, detail?.race.is_past != true {
+                        section(title: "RACE PLAN", right: nil) {
+                            racePlanCard
+                        }
+                        .padding(.top, 26)
+                    }
+
+                    // SPLITS — 5K / 10K / FINISH ladder derived client-side
+                    // from goal time and distance. No backend call needed.
+                    if !raceSplits.isEmpty, detail?.race.is_past != true {
+                        section(title: "SPLITS", right: nil) {
+                            splitsCard
+                        }
+                        .padding(.top, 26)
+                    }
+
                     // THE COURSE — only render when we actually have course
                     // geometry from /api/race/[slug]. The old "mapPlaceholder"
                     // + "elevationPlaceholder" + "366 ft / 26 ft / THE ROLLERS"
@@ -526,11 +553,180 @@ struct RaceDayView: View {
         }
     }
 
+    // MARK: - Race-morning + plan helpers
+
+    /// Parse goal string ("1:30:00" / "45:00") → total seconds. Used by
+    /// B-goal, splits, and fuel computations so we only decode once.
+    private var parsedGoalSec: Int? {
+        guard let g = detail?.race.goal else { return nil }
+        let parts = g.split(separator: ":").compactMap { Int($0) }
+        switch parts.count {
+        case 3: return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        case 2: return parts[0] * 60 + parts[1]
+        default: return nil
+        }
+    }
+
+    private func fmtRaceTime(_ secs: Int) -> String {
+        let h = secs / 3600
+        let m = (secs % 3600) / 60
+        let s = secs % 60
+        return h > 0
+            ? String(format: "%d:%02d:%02d", h, m, s)
+            : String(format: "%d:%02d", m, s)
+    }
+
+    private func fmtPaceSec(_ secPerMile: Double) -> String {
+        let total = Int(secPerMile.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    /// B-goal = A-goal + 7 minutes. Mirrors web raceDetail.ts:283.
+    private var bGoalTime: String? {
+        guard let gs = parsedGoalSec else { return nil }
+        return fmtRaceTime(gs + 420)
+    }
+
+    private var bGoalPace: String? {
+        guard let gs = parsedGoalSec,
+              let dist = detail?.race.distance_mi, dist > 0 else { return nil }
+        return fmtPaceSec(Double(gs + 420) / dist)
+    }
+
+    /// Cumulative split times at standard checkpoints. Mirrors web
+    /// raceDetail.ts:buildSplits — same ladder, same filter rule.
+    private var raceSplits: [(label: String, time: String)] {
+        guard let gs = parsedGoalSec,
+              let dist = detail?.race.distance_mi, dist > 0 else { return [] }
+        let rungs: [(label: String, mi: Double)] = [
+            ("5K", 3.1069), ("10K", 6.2137), ("HALF", 13.1094),
+            ("30K", 18.641), ("40K", 24.855),
+        ]
+        var out = rungs
+            .filter { $0.mi < dist - 0.1 }
+            .map { r -> (label: String, time: String) in
+                let cum = Int((r.mi / dist * Double(gs)).rounded())
+                return (r.label, fmtRaceTime(cum))
+            }
+        out.append(("FINISH", fmtRaceTime(gs)))
+        return out
+    }
+
+    // MARK: - Race-morning card (days == 0)
+
+    private var raceMorningRows: [(label: String, value: String, dim: Bool)] {
+        var rows: [(label: String, value: String, dim: Bool)] = [
+            ("GUN TIME", detail?.race.gun_time ?? "—", detail?.race.gun_time == nil)
+        ]
+        if let w = detail?.race.wave     { rows.append(("WAVE",     w, false)) }
+        if let loc = detail?.race.location { rows.append(("LOCATION", loc, false)) }
+        return rows
+    }
+
+    private var raceMorningCard: some View {
+        let rows = raceMorningRows
+        return VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
+                HStack {
+                    SpecLabel(text: row.label, size: 10, tracking: 1.5,
+                              color: Theme.txt.opacity(0.55))
+                    Spacer(minLength: 12)
+                    Text(row.value)
+                        .font(.display(15, weight: .bold))
+                        .foregroundStyle(row.dim ? Theme.txt.opacity(0.35) : Theme.txt)
+                        .multilineTextAlignment(.trailing)
+                }
+                .padding(14)
+                if i < rows.count - 1 {
+                    Divider().background(Color.white.opacity(0.08))
+                }
+            }
+        }
+        .background(Theme.Glass.fill,
+                    in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous)
+            .stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    // MARK: - Race plan card (A + B goal)
+
+    private var racePlanCard: some View {
+        let aTime  = goalTime   // existing computed property
+        let aPace  = goalPace   // existing computed property
+        let bTime  = bGoalTime ?? "—"
+        let bPace  = bGoalPace ?? "—"
+        return VStack(spacing: 0) {
+            HStack {
+                SpecLabel(text: "A GOAL", size: 10, tracking: 1.5,
+                          color: Theme.txt.opacity(0.55))
+                Spacer(minLength: 12)
+                Text("\(aTime)  ·  \(aPace)/mi")
+                    .font(.display(14, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+            }
+            .padding(14)
+            Divider().background(Color.white.opacity(0.08))
+            HStack {
+                SpecLabel(text: "B GOAL", size: 10, tracking: 1.5,
+                          color: Theme.txt.opacity(0.55))
+                Spacer(minLength: 12)
+                Text("\(bTime)  ·  \(bPace)/mi")
+                    .font(.display(14, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.65))
+            }
+            .padding(14)
+        }
+        .background(Theme.Glass.fill,
+                    in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous)
+            .stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    // MARK: - Splits card
+
+    private var splitsCard: some View {
+        let splits = raceSplits
+        return VStack(spacing: 0) {
+            ForEach(Array(splits.enumerated()), id: \.offset) { i, row in
+                HStack {
+                    SpecLabel(text: row.label, size: 10, tracking: 1.5,
+                              color: Theme.txt.opacity(0.55))
+                    Spacer(minLength: 12)
+                    Text(row.time)
+                        .font(.display(15, weight: .bold))
+                        .foregroundStyle(i == splits.count - 1 ? Theme.race : Theme.txt)
+                }
+                .padding(14)
+                if i < splits.count - 1 {
+                    Divider().background(Color.white.opacity(0.08))
+                }
+            }
+        }
+        .background(Theme.Glass.fill,
+                    in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous)
+            .stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
     // MARK: - Toolkit helpers (CountdownLadder + VDOTPredictionTable + GelMileMarkers)
 
-    /// Gel mile points from the watch workout payload · race-only fueling
-    /// hint. `nil` when no race-week workout has loaded yet.
-    private var raceGelsMi: [Double]? { raceWatchWorkout?.gelsMi }
+    /// Client-side gel schedule when the watch workout payload doesn't carry
+    /// gelsMi. ~1.7 gels/hr, evenly spaced, last two are caffeine.
+    /// Mirrors web raceDetail.ts:buildGels.
+    private var computedGelsMi: [Double]? {
+        guard let gs = parsedGoalSec,
+              let dist = detail?.race.distance_mi, dist > 0,
+              detail?.race.is_past != true else { return nil }
+        let hours = Double(gs) / 3600.0
+        let total = max(1, Int((hours * 1.7).rounded()))
+        return (1...total).map { i in Double(i) / Double(total + 1) * dist }
+    }
+
+    /// Gel mile points — watch payload first, computed schedule as fallback.
+    private var raceGelsMi: [Double]? {
+        if let gels = raceWatchWorkout?.gelsMi, !gels.isEmpty { return gels }
+        return computedGelsMi
+    }
 
     // MARK: - Race header status (RaceStatusDot)
 

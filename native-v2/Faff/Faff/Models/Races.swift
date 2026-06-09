@@ -56,6 +56,9 @@ struct RaceDetail: Decodable {
     let finishTime: String?
     let pb: Bool?
     let matchedRun: RaceMatchedRun?
+    // Race-morning logistics — nil until the runner enters them on the web.
+    let gun_time: String?
+    let wave: String?
 
     /// Empty fallback used by RaceDetailResponse when the wire emits a
     /// null race object (rare but seen during race-CRUD overlap windows).
@@ -63,23 +66,27 @@ struct RaceDetail: Decodable {
         slug: "", name: "", date: "",
         priority: nil, goal: nil, distance_label: nil, distance_mi: nil,
         location: nil, is_past: nil, days: nil,
-        finishTime: nil, pb: nil, matchedRun: nil
+        finishTime: nil, pb: nil, matchedRun: nil,
+        gun_time: nil, wave: nil
     )
 
     init(slug: String, name: String, date: String,
          priority: String?, goal: String?, distance_label: String?, distance_mi: Double?,
          location: String?, is_past: Bool?, days: Int?,
-         finishTime: String?, pb: Bool?, matchedRun: RaceMatchedRun?) {
+         finishTime: String?, pb: Bool?, matchedRun: RaceMatchedRun?,
+         gun_time: String? = nil, wave: String? = nil) {
         self.slug = slug; self.name = name; self.date = date
         self.priority = priority; self.goal = goal
         self.distance_label = distance_label; self.distance_mi = distance_mi
         self.location = location; self.is_past = is_past; self.days = days
         self.finishTime = finishTime; self.pb = pb; self.matchedRun = matchedRun
+        self.gun_time = gun_time; self.wave = wave
     }
 
     enum CodingKeys: String, CodingKey {
         case slug, name, date, priority, goal, distance_label, distance_mi
         case location, is_past, days, finishTime, pb, matchedRun
+        case gun_time, wave
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -96,6 +103,8 @@ struct RaceDetail: Decodable {
         self.finishTime = try c.decodeIfPresent(String.self, forKey: .finishTime)
         self.pb = try c.decodeIfPresent(Bool.self, forKey: .pb)
         self.matchedRun = try c.decodeIfPresent(RaceMatchedRun.self, forKey: .matchedRun)
+        self.gun_time = try c.decodeIfPresent(String.self, forKey: .gun_time)
+        self.wave = try c.decodeIfPresent(String.self, forKey: .wave)
     }
 }
 

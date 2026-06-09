@@ -18,6 +18,10 @@ export interface RaceRow {
   days: number;          // negative if past
   finishTime: string | null;
   pb: boolean | null;
+  // Race-morning logistics — read from races.meta (camelCase writer) with
+  // snake_case fallbacks for older rows written before the naming settled.
+  gun_time: string | null;   // '7:00 AM' / '7:00' / null if not entered
+  wave: string | null;       // 'Wave A' / 'Corral 1' / null
   // Past-race enrichment from the matching run in the log:
   matchedRun?: {
     activity_id: string;
@@ -85,6 +89,8 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       days,
       finishTime,
       pb: m.pb ?? null,
+      gun_time: m.startTime ?? m.gun_time ?? m.start_time ?? null,
+      wave: m.wave ?? null,
     };
   });
 
