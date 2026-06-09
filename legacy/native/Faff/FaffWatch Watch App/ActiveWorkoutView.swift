@@ -233,14 +233,6 @@ private struct LiveWorkInterval: View {
         guard let target = phase.hrTargetBpm, tracker.heartRate > 0 else { return .mute }
         return tracker.heartRate >= target ? .live : .neutral
     }
-    /// Top-label reference · "♥162+" for intervals (floor), "♥149" for
-    /// threshold (target). Zone tag distinguishes them (I vs T).
-    private var hrReference: String? {
-        guard let target = phase.hrTargetBpm else { return nil }
-        let isInterval = engine.workout.paceLabel == "I"
-        return "♥\(target)\(isInterval ? "+" : "")"
-    }
-
     var body: some View {
         WorkIntervalFace(
             livePace:      paceText(tracker),
@@ -250,8 +242,7 @@ private struct LiveWorkInterval: View {
             repCounter:    repCounter,
             stripStates:   sessionStripStates(engine),
             hr:            hrText,
-            hrRole:        hrRole,
-            hrReference:   hrReference
+            hrRole:        hrRole
         )
     }
 }
@@ -469,12 +460,7 @@ private struct LiveTempo: View {
         guard let target = phase.hrTargetBpm, tracker.heartRate > 0 else { return .mute }
         return tracker.heartRate >= target ? .live : .neutral
     }
-    /// "TEMPO · ♥149" — the threshold reference lives in the top label so it's
-    /// always visible even when HR fills the third row.
-    private var topLabel: String {
-        if let target = phase.hrTargetBpm { return "TEMPO · ♥\(target)" }
-        return "TEMPO"
-    }
+    private var topLabel: String { "TEMPO" }
     /// Miles remaining in the tempo block (distance-based) or m:ss (time-based).
     private var toGo: String {
         if let remaining = engine.phaseRemainingMi {
