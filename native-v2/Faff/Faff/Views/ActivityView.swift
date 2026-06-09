@@ -509,37 +509,8 @@ struct ActivityView: View {
         .padding(.horizontal, 22).padding(.top, 22).padding(.bottom, 12)
     }
 
-    /// SF Symbol per LogRun.source · gives the runner a quick read on
-    /// where each row came from (watch live vs HK import vs Strava
-    /// webhook vs manual entry vs treadmill).
-    private func sourceIcon(_ source: String) -> String {
-        switch source.lowercased() {
-        case "watch", "apple_watch":  return "applewatch"
-        case "apple_health":          return "heart.fill"
-        case "strava", "strava_webhook": return "arrow.up.right.square"
-        case "manual":                return "pencil"
-        // 2026-06-01 · treadmill = indoor session POSTed by TreadmillView.
-        // figure.indoor.run is the canonical SF Symbol for "running on
-        // a treadmill" and reads distinctly from the outdoor watch glyph.
-        case "treadmill":             return "figure.indoor.run"
-        default:                      return "circle.fill"
-        }
-    }
-
-    private func sourceTint(_ source: String) -> Color {
-        switch source.lowercased() {
-        case "watch", "apple_watch":  return Theme.txt.opacity(0.75)
-        case "apple_health":          return Color(hex: 0xFC4D64)
-        case "strava", "strava_webhook": return Color(hex: 0xFC4D24)
-        case "manual":                return Color(hex: 0x9AF0BF)
-        // Amber/ember mid-tone matches the RunSourceBadge color for
-        // treadmill · indoor + mechanical feel, distinct from green watch.
-        case "treadmill":             return Color(hex: 0xF3AD38)
-        default:                      return Theme.txt.opacity(0.5)
-        }
-    }
-
     private func runRow(_ run: LogRun) -> some View {
+        let hasType = (run.workoutType ?? run.type) != nil
         let effort = FaffEffort.fromType(run.workoutType ?? run.type)
         return NavigationLink(value: FaffRoute.runDetail(id: run.id)) {
             HStack(spacing: 0) {
@@ -553,15 +524,10 @@ struct ActivityView: View {
                 }
                 .frame(width: 38)
                 VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Image(systemName: sourceIcon(run.source))
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(sourceTint(run.source))
-                        Text(run.name)
-                            .font(.body(16, weight: .extraBold))
-                            .tracking(-0.3)
-                            .foregroundStyle(Theme.txt)
-                    }
+                    Text(hasType ? effort.title.uppercased() : "RUN")
+                        .font(.body(16, weight: .extraBold))
+                        .tracking(0.5)
+                        .foregroundStyle(hasType ? effort.dot : Theme.txt.opacity(0.4))
                     HStack(spacing: 5) {
                         Text("\(run.pace ?? "—") /mi")
                             .font(.display(11, weight: .semibold))
@@ -572,12 +538,14 @@ struct ActivityView: View {
                         Text(run.time_moving ?? "—")
                             .font(.display(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.66))
-                        Text("·")
-                            .font(.body(11, weight: .bold))
-                            .foregroundStyle(Theme.txt.opacity(0.5))
-                        Text(effort.title)
-                            .font(.display(11, weight: .semibold))
-                            .foregroundStyle(effort.dot)
+                        if let hr = run.avg_hr {
+                            Text("·")
+                                .font(.body(11, weight: .bold))
+                                .foregroundStyle(Theme.txt.opacity(0.5))
+                            Text("\(hr) bpm")
+                                .font(.display(11, weight: .semibold))
+                                .foregroundStyle(Theme.txt.opacity(0.66))
+                        }
                     }
                 }
                 Spacer()

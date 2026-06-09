@@ -19,9 +19,9 @@
     },
     {
       "name": "faff.run web",
-      "runtimeExecutable": "/Volumes/WP/06 Claude Code/Runcino/web/node_modules/.bin/next",
-      "runtimeArgs": ["dev", "--turbopack"],
-      "cwd": "/Volumes/WP/06 Claude Code/Runcino/web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "/Volumes/WP/06 Claude Code/Runcino/web-v2",
       "port": 3000,
       "autoPort": true
     }
