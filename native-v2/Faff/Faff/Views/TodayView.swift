@@ -126,6 +126,37 @@ struct TodayView: View {
     @State private var completedRecap: RunRecap?
 
     var body: some View {
+        // 2026-06-08 · race-morning takeover. The brief is categorical:
+        // "Race day. The race takes the page." When today's plan workout is
+        // the A-race and it's actually today (and not yet logged), the whole
+        // Today surface becomes RaceDayView — the same component Targets
+        // pushes to, now auto-promoted here so race morning stops rendering
+        // the generic .race-styled pre-run sheet. Every other day falls
+        // through to the normal readiness / pre-run / recovery body.
+        if let slug = raceDayRouteSlug {
+            RaceDayView(raceSlug: slug)
+        } else {
+            mainBody
+        }
+    }
+
+    /// Slug to route Today into RaceDayView on race morning, else nil.
+    /// Mirrors the web gate (daysAway===0 && the selected day is the race
+    /// date && not yet logged): the selected day is today, today's plan
+    /// workout resolves to the race effort, the profile's A-race is actually
+    /// today, and the run isn't logged yet (once done, Today shows the
+    /// recap). nil on every other day, so the normal body renders unchanged.
+    private var raceDayRouteSlug: String? {
+        guard selectedIsToday, !isDone, selectedEffort == .race else { return nil }
+        guard let nr = profile?.nextARace, !nr.slug.isEmpty else { return nil }
+        guard nr.days_to_race == 0 || nr.date == todayISO else { return nil }
+        return nr.slug
+    }
+
+    // @ViewBuilder restores what the `body` protocol requirement carried
+    // implicitly (multi-statement body: `let mesh = …` then the ZStack).
+    @ViewBuilder
+    private var mainBody: some View {
         // Time-of-day mesh (2026-06-01) · no longer recolors by run.
         // Per-run accent still tints the week dot · peek/session ticks ·
         // Start button dot · but the background is hour-bound.
