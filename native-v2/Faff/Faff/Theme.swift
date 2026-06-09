@@ -427,6 +427,15 @@ enum TrainPhase: String, CaseIterable, Hashable {
         case .race:  return "RACE"
         }
     }
+
+    // "quality" is a server-side alias for the build phase.
+    init(phaseKey key: String) {
+        let k = key.lowercased()
+        switch k {
+        case "quality": self = .build
+        default:        self = TrainPhase(rawValue: k) ?? .base
+        }
+    }
 }
 
 // MARK: - Color hex init + RGBA decompose

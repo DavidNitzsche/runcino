@@ -61,7 +61,13 @@ struct TrainView: View {
                     header
                         .padding(.horizontal, 22)
                         .padding(.top, 18)
+                    phaseContextCard
+                        .padding(.horizontal, 22)
+                        .padding(.top, 16)
                     thisWeekCard
+                        .padding(.horizontal, 22)
+                        .padding(.top, 16)
+                    execStripCard
                         .padding(.horizontal, 22)
                         .padding(.top, 16)
                     adjustmentsBlock
@@ -141,7 +147,7 @@ struct TrainView: View {
         let curWeek = state?.weeks.first(where: { $0.isCurrent })
         let weekMi = Int((curWeek?.plannedMi ?? 0).rounded())
         let phaseKey = (state?.currentPhase ?? "base").lowercased()
-        let phase = TrainPhase(rawValue: phaseKey) ?? .base
+        let phase = TrainPhase(phaseKey: phaseKey)
         let phaseLabel = phase.label
         let phaseSub = phaseSubtitle(for: phase, totalWeeks: totalWks)
         let phaseColor = accent(for: phase)
@@ -224,6 +230,129 @@ struct TrainView: View {
                             isFirst: idx == 0,
                             isToday: day.date == (state?.today ?? "")
                         )
+                    }
+                }
+            }
+            .padding(15)
+            .background(Color(hex: 0x0C1416).opacity(0.32),
+                        in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: Phase context
+
+    @ViewBuilder
+    private var phaseContextCard: some View {
+        let phaseKey = (state?.currentPhase ?? "base").lowercased()
+        let phase = TrainPhase(phaseKey: phaseKey)
+        let totalWks = state?.weeks.count ?? 13
+        let weeks = state?.weeks ?? []
+        let range = phaseWeekRange(phaseKey: phaseKey, weeks: weeks)
+        let phaseColor = accent(for: phase)
+
+        HStack(alignment: .top, spacing: 12) {
+            Capsule()
+                .fill(phaseColor)
+                .shadow(color: phaseColor.opacity(0.6), radius: 4)
+                .frame(width: 4)
+                .padding(.vertical, 2)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(phase.label) PHASE · WK \(range.0)–\(range.1) OF \(totalWks)")
+                    .font(.body(10.5, weight: .extraBold))
+                    .tracking(1.4)
+                    .foregroundStyle(phaseColor)
+
+                Text(phaseContextBody(for: phase))
+                    .font(.body(13, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.78))
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(15)
+        .background(Color(hex: 0x0C1416).opacity(0.32),
+                    in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(phaseColor.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    // MARK: Execution strip
+
+    /// Last 4 completed weeks + current week, newest first (current at top).
+    /// Computes actualMi by summing day.doneMi — no extra API call needed.
+    private var execRows: [ExecRow] {
+        guard let weeks = state?.weeks, let curIdx = state?.currentWeekIdx else { return [] }
+        let infRank: [String: Int] = [
+            "compromised": 0, "slipping": 1, "working": 2, "consistent": 3, "on_track": 4,
+        ]
+        let infColor: [String: Color] = [
+            "on_track":   Color(hex: 0x86EFA0),
+            "consistent": Color(hex: 0x86EFA0),
+            "working":    Color(hex: 0x48B3B5),
+            "slipping":   Color(hex: 0xFFCE8A),
+            "compromised":Color(hex: 0x8A90A0),
+        ]
+        var rows: [ExecRow] = []
+        for (i, week) in weeks.enumerated() {
+            guard i <= curIdx else { break }
+            let actualMi = (week.days.reduce(0.0) { $0 + $1.doneMi } * 10).rounded() / 10
+            let nonRest = week.days.filter { $0.type.lowercased() != "rest" }
+            let sessDone = nonRest.filter { $0.doneMi > 0.1 }.count
+            // Worst-ranked trainingInfluence across quality done sessions.
+            var worstRank = Int.max
+            var worstInf: (kind: String, color: Color)? = nil
+            for d in week.days
+            where ["intervals","tempo","long"].contains(d.type.lowercased()) && d.doneMi > 0.1 {
+                guard let ti = d.trainingInfluence, !ti.kind.isEmpty,
+                      let color = infColor[ti.kind] else { continue }
+                let rank = infRank[ti.kind] ?? 5
+                if rank < worstRank { worstRank = rank; worstInf = (ti.kind, color) }
+            }
+            rows.append(ExecRow(
+                weekIdx: i,
+                startDate: week.startDate,
+                plannedMi: week.plannedMi,
+                actualMi: actualMi,
+                sessTotal: nonRest.count,
+                sessDone: sessDone,
+                influence: worstInf,
+                isCurrent: week.isCurrent
+            ))
+        }
+        // Current week first, then last 4 completed in reverse chronological order.
+        // Take suffix(5) to give last 4 past + current, then reverse so current is top.
+        return Array(rows.suffix(5).reversed())
+    }
+
+    @ViewBuilder
+    private var execStripCard: some View {
+        let rows = execRows
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("EXECUTION")
+                        .font(.body(10.5, weight: .extraBold))
+                        .tracking(1.4)
+                        .foregroundStyle(Theme.txt.opacity(0.66))
+                    Spacer()
+                    let pastCount = rows.filter { !$0.isCurrent }.count
+                    if pastCount > 0 {
+                        Text("LAST \(pastCount) WEEKS")
+                            .font(.display(11, weight: .bold))
+                            .tracking(0.3)
+                            .foregroundStyle(Theme.txt.opacity(0.78))
+                    }
+                }
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { idx, row in
+                        ExecStripRow(row: row, isFirst: idx == 0)
                     }
                 }
             }
@@ -355,7 +484,7 @@ struct TrainView: View {
 
     @ViewBuilder
     private func phaseDivider(phaseKey: String, weeks: [TrainingPlanWeek]) -> some View {
-        let phase = TrainPhase(rawValue: phaseKey.lowercased()) ?? .base
+        let phase = TrainPhase(phaseKey: phaseKey)
         let range = phaseWeekRange(phaseKey: phaseKey, weeks: weeks)
         HStack(spacing: 10) {
             Text("\(phase.label) · WK \(range.0)–\(range.1)")
@@ -656,7 +785,7 @@ struct TrainView: View {
     private func syncDisplayPhase() {
         guard expandedWeekIdx == nil else { return }
         let key = (state?.currentPhase ?? "base").lowercased()
-        displayPhase = TrainPhase(rawValue: key) ?? .base
+        displayPhase = TrainPhase(phaseKey: key)
     }
 
     private func tapWeek(_ idx: Int) {
@@ -667,8 +796,7 @@ struct TrainView: View {
             } else {
                 expandedWeekIdx = idx
                 if let week = state?.weeks[safe: idx] {
-                    let p = TrainPhase(rawValue: week.phase.lowercased()) ?? .base
-                    displayPhase = p
+                    displayPhase = TrainPhase(phaseKey: week.phase)
                 }
             }
         }
@@ -676,11 +804,26 @@ struct TrainView: View {
 
     private func phaseSubtitle(for phase: TrainPhase, totalWeeks: Int) -> String {
         switch phase {
-        case .base:  return "Phase 1 · Aerobic foundation"
-        case .build: return "Phase 2 · Race-specific work"
-        case .peak:  return "Phase 3 · Top-end sharpening"
-        case .taper: return "Phase 4 · Bank the fitness"
-        case .race:  return "Race week · Trust the work"
+        case .base:  return "Building your aerobic engine."
+        case .build: return "Building race-specific fitness."
+        case .peak:  return "Sharpening for race day."
+        case .taper: return "Banking the fitness."
+        case .race:  return "Trust the work."
+        }
+    }
+
+    private func phaseContextBody(for phase: TrainPhase) -> String {
+        switch phase {
+        case .base:
+            return "Easy mileage and long runs growing the base week to week. Strides at the end of easy days keep the legs sharp."
+        case .build:
+            return "Tempos and intervals sharpening your lactate threshold and VO2max. Long runs adding HMP finish miles."
+        case .peak:
+            return "Race-pace intervals and quality long runs at peak volume. Intensity holds while volume starts to trim."
+        case .taper:
+            return "Volume drops while intensity holds. Your body is absorbing the work — you will feel sharp by race morning."
+        case .race:
+            return "Light activation keeps the legs fresh. Race-pace strides Thursday, rest Friday, start line race day."
         }
     }
 
@@ -832,9 +975,9 @@ struct TrainView: View {
         let phasesInMonth = weeks.compactMap { wk -> TrainPhase? in
             guard let wd = Self.isoDate(wk.startDate),
                   let mi = monthInterval, mi.contains(wd) else { return nil }
-            return TrainPhase(rawValue: wk.phase.lowercased())
+            return TrainPhase(phaseKey: wk.phase)
         }
-        let chosen = phasesInMonth.first ?? (TrainPhase(rawValue: state?.currentPhase?.lowercased() ?? "base") ?? .base)
+        let chosen = phasesInMonth.first ?? TrainPhase(phaseKey: state?.currentPhase ?? "base")
         displayPhase = chosen
     }
 
@@ -1096,7 +1239,7 @@ private struct TrainWeekRowSummary: View {
     let onTap: () -> Void
 
     var body: some View {
-        let phase = TrainPhase(rawValue: week.phase.lowercased()) ?? .base
+        let phase = TrainPhase(phaseKey: week.phase)
         let phaseAccent: Color = {
             switch phase {
             case .base:  return Color(hex: 0x3FB6B0)
@@ -1152,6 +1295,121 @@ private struct TrainWeekRowSummary: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Execution strip row data + view
+
+private struct ExecRow: Identifiable {
+    let weekIdx: Int
+    let startDate: String
+    let plannedMi: Double
+    let actualMi: Double
+    let sessTotal: Int
+    let sessDone: Int
+    /// Worst-ranked trainingInfluence across quality done sessions this week.
+    /// Nil when no quality workouts were completed or no influence signal exists.
+    let influence: (kind: String, color: Color)?
+    let isCurrent: Bool
+    var id: Int { weekIdx }
+}
+
+private struct ExecStripRow: View {
+    let row: ExecRow
+    let isFirst: Bool
+
+    var body: some View {
+        let pct: Double = row.plannedMi > 0
+            ? min(1.0, row.actualMi / row.plannedMi)
+            : 0
+        let barFill: Color = {
+            if row.isCurrent { return Color(hex: 0xFFCE8A).opacity(0.55) }
+            if pct >= 0.95 { return Color(hex: 0x56E0B0) }  // green
+            if pct >= 0.80 { return Color(hex: 0xFFCE8A) }  // amber
+            return Color(hex: 0xFF8870)                       // red
+        }()
+        let dateLabel: String = {
+            if row.isCurrent { return "THIS WEEK" }
+            let parts = row.startDate.split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3 else { return row.startDate }
+            var c = DateComponents()
+            c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
+            guard let d = Calendar.current.date(from: c) else { return row.startDate }
+            let f = DateFormatter(); f.dateFormat = "MMM d"
+            return f.string(from: d).uppercased()
+        }()
+        let sessLabel: String = {
+            if row.isCurrent {
+                let remain = max(0, row.sessTotal - row.sessDone)
+                return remain == 0 ? "done" : "\(remain) left"
+            }
+            return "\(row.sessDone)/\(row.sessTotal)"
+        }()
+
+        return VStack(spacing: 0) {
+            if !isFirst {
+                Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+            }
+            HStack(alignment: .center, spacing: 8) {
+                // Date label
+                Text(dateLabel)
+                    .font(.body(10, weight: .extraBold))
+                    .tracking(row.isCurrent ? 0.5 : 0.3)
+                    .foregroundStyle(row.isCurrent
+                                     ? Color(hex: 0xFFCE8A)
+                                     : Theme.txt.opacity(0.65))
+                    .frame(width: 66, alignment: .leading)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+
+                // Progress bar (flex)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.white.opacity(0.10))
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(barFill)
+                            .frame(width: max(0, geo.size.width * pct))
+                    }
+                }
+                .frame(height: 5)
+
+                // Actual / planned mi
+                (
+                    Text(String(format: "%.1f", row.actualMi))
+                        .font(.display(12, weight: .bold))
+                        .foregroundStyle(Theme.txt)
+                    +
+                    Text("/\(Int(row.plannedMi.rounded()))mi")
+                        .font(.display(10, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.44))
+                )
+                .frame(width: 68, alignment: .trailing)
+                .lineLimit(1)
+
+                // Session ratio
+                Text(sessLabel)
+                    .font(.body(10, weight: .extraBold))
+                    .tracking(0.2)
+                    .foregroundStyle(Theme.txt.opacity(0.58))
+                    .frame(width: 36, alignment: .trailing)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                // Influence dot (past weeks only; hidden slot preserves column alignment)
+                Group {
+                    if let inf = row.influence, !row.isCurrent {
+                        Circle()
+                            .fill(inf.color)
+                            .shadow(color: inf.color.opacity(0.65), radius: 3)
+                    } else {
+                        Circle().fill(Color.clear)
+                    }
+                }
+                .frame(width: 8, height: 8)
+            }
+            .padding(.vertical, 9)
+        }
     }
 }
 
