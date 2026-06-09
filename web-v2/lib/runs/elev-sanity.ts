@@ -88,7 +88,12 @@ export function sanitizeElevGain(input: ElevSanityInput): ElevSanityResult {
     return s + (c > 0 ? c : 0);
   }, 0);
   if (splitsPositive <= 0) {
-    return { value: Math.round(raw), source: 'raw' };
+    // Splits exist with sufficient coverage but carry no elevation data (e.g.
+    // watch splits with only hr/pace fields) OR all splits are flat/downhill.
+    // Either way, we cannot corroborate a suspicious raw value. Return absent
+    // so the caller's GPS/DEM fallback fires rather than persisting a
+    // potentially 10× inflated barometric reading.
+    return { value: null, source: 'absent' };
   }
   // Only swap when splits-positive is meaningfully smaller · otherwise
   // we'd be substituting one inflated number for another. 60% cutoff.
