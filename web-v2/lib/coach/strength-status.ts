@@ -134,7 +134,7 @@ export async function loadStrengthWeekStatus(
   // not yet skipped.
   const skipped: string[] = [];
   for (const date of recommendedDays) {
-    if (date > todayISO) continue;            // future · not skipped yet
+    if (date >= todayISO) continue;            // today or future · not skipped yet
     if (byDate.has(date)) continue;            // logged · not skipped
     skipped.push(date);
   }
