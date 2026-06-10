@@ -98,7 +98,7 @@ export function TweaksPanel() {
         <div className="fft-row col">
           <span>Accent</span>
           <div className="fft-swatches">
-            {[['ember','#FF8847'],['gold','#F5C518'],['violet','#A78BFA'],['cool','#27B4E0']].map(([v,c]) => (
+            {[['ember','#FF5722'],['gold','#F5C518'],['violet','#A78BFA'],['cool','#27B4E0']].map(([v,c]) => (
               <button key={v} title={cap(v)} style={{ background: c }} className={t.accent === v ? 'on' : ''} onClick={() => set('accent', v as Tweaks['accent'])} />
             ))}
           </div>

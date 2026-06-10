@@ -252,7 +252,7 @@ struct WatchPreviewTimeline: View {
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
                 if let pace = p.pace {
-                    Text(pace).font(.display(13, weight: .bold)).monospacedDigit().foregroundStyle(Theme.txt)
+                    Text(pace).font(.body(13, weight: .bold)).monospacedDigit().foregroundStyle(Theme.txt)
                 }
                 Text(p.duration).font(.body(10, weight: .semibold)).foregroundStyle(Theme.mute)
             }

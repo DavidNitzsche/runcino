@@ -50,7 +50,7 @@ struct WatchMirrorView: View {
                 Spacer(minLength: 0)
 
                 Text("PAUSE · LAP · END ON YOUR WATCH")
-                    .font(.display(10, weight: .bold))
+                    .font(.body(10, weight: .bold))
                     .tracking(0.5)
                     .foregroundStyle(Theme.txt.opacity(0.5))
                     .padding(.bottom, 28)
@@ -123,7 +123,7 @@ struct WatchMirrorView: View {
                             .tracking(-0.2)
                             .foregroundStyle(Theme.txt)
                         Text(phaseSubtitle(p))
-                            .font(.display(11, weight: .semibold))
+                            .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.66))
                     }
                     Spacer(minLength: 0)
@@ -148,7 +148,7 @@ struct WatchMirrorView: View {
     private func phaseColor(_ type: WatchPhaseType) -> Color {
         switch type {
         case .warmup:   return Color(hex: 0x34C194)
-        case .work:     return Color(hex: 0xFF8847)
+        case .work:     return Color(hex: 0xFF5722)
         case .recovery: return Color(hex: 0x27B4E0)
         case .cooldown: return Color(hex: 0x14C08C)
         default:        return Theme.mute

@@ -183,7 +183,7 @@ struct RaceLogisticsTile: View {
                 .font(.body(9, weight: .extraBold)).tracking(1.4)
                 .foregroundStyle(Theme.mute)
             Text(v)
-                .font(.display(15, weight: .bold)).monospacedDigit()
+                .font(.body(15, weight: .bold)).monospacedDigit()
                 .foregroundStyle(Theme.txt)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -238,7 +238,7 @@ struct CountdownLadder: View {
                                 .frame(width: 36, height: 36)
                         }
                         Text(r.label)
-                            .font(.display(10.5, weight: .bold)).monospacedDigit()
+                            .font(.body(10.5, weight: .bold)).monospacedDigit()
                             .foregroundStyle(rungTextColor(r))
                     }
                     Text(r.title)
@@ -322,10 +322,10 @@ struct GelMileMarkers: View {
             .frame(height: 80)
             HStack(spacing: 0) {
                 Text("Gels at mile ")
-                    .font(.display(12, weight: .semibold))
+                    .font(.body(12, weight: .semibold))
                     .foregroundStyle(Theme.txt)
                 Text(gelsMi.map { String(format: "%.1f", $0) }.joined(separator: " · "))
-                    .font(.display(12, weight: .semibold))
+                    .font(.body(12, weight: .semibold))
                     .foregroundStyle(Theme.Accent.amberGold)
             }
         }

@@ -322,6 +322,10 @@ export type GoalRace = {
     type: string;
     label: string;
     distanceMi: number | null;
+    /** 2026-06-09 Phase 2 (3.3) · the named test: same thresholds the
+     *  drift detectors judge by (work pace ≤ T+10 · avgHr ≤ 0.975×LTHR).
+     *  Null for non-T-pace points or when VDOT/LTHR unknown. */
+    passCriteria?: { paceMaxSPerMi: number; hrMaxBpm: number | null } | null;
   }>;
   /** 2026-06-04 · past 1-3 completed quality runs · "recent test
    *  points" with heat-adjusted verdict so the runner can see what
@@ -505,7 +509,6 @@ export type ReadinessBriefSeed = {
       | 'sleep_deficit' | 'hrv_cv_destabilizing' | 'wrist_temp_elevated'
       | 'load_spike' | 'load_caution' | 'load_detraining'
       | 'tsb_overreach' | 'tsb_race_ready' | 'plan_adapted'
-      // 2026-06-09 · race-killer F4 · race-morning execute line + taper note.
       | 'race_day' | 'race_week' | 'on_course';
     priority: 'urgent' | 'high' | 'medium' | 'low' | 'on-course';
     action: string;
@@ -613,6 +616,48 @@ export type HealthSnapshot = {
     currentZone?: 'race-ready' | 'building' | 'developing' | 'early-base';
     /** 2026-06-03 · static explanation of what aerobic decoupling IS. */
     whatItIs?: string;
+  } | null;
+  /** 2026-06-09 state-audit · provenance of the VDOT every projection
+   *  hangs off. ageDays counts from the anchor race/run date; the CI
+   *  band widens to ±8% at 180 days (Research/02 §13.7), so the page
+   *  warns from 120 days. Taper math should never be the first place
+   *  the runner learns the number went stale. Null when snapshots
+   *  predate migration 125 (no anchor columns populated yet). */
+  vdotAnchor?: {
+    vdot: number;
+    anchorDateISO: string;
+    anchorDistanceMi: number | null;
+    /** Best-effort name of the source race (date-matched). Null when
+     *  the anchor came from a training run or no race row matches. */
+    anchorRaceName: string | null;
+    ageDays: number;
+    /** fresh < 56d (Daniels 8-week window) · aging 56-119 · stale ≥ 120. */
+    tier: 'fresh' | 'aging' | 'stale';
+  } | null;
+  /** 2026-06-09 Phase 2 (3.4) · standing sleep flag + race-week sleep
+   *  banking (lib/coach/sleep-coaching.ts). flag escalates chronic
+   *  short sleep (≥10-night streak < 7h or two weeks < 6.5h avg);
+   *  banking activates T-7 → race for the next A-race. Both null when
+   *  nothing fires — the card simply doesn't render. */
+  sleepCoaching?: {
+    flag: {
+      active: true;
+      kind: 'streak' | 'trend';
+      streakNights: number;
+      avg7: number;
+      avg14: number;
+      headline: string;
+      detail: string;
+      qualityForwardLine: string | null;
+    } | null;
+    banking: {
+      active: true;
+      raceName: string;
+      raceDateISO: string;
+      daysToRace: number;
+      targetLine: string;
+      keyNightLine: string;
+    } | null;
   } | null;
   // Power moves Wave 2 · heat acclimatization.
   heatAcclim?: {

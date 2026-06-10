@@ -45,7 +45,7 @@ import type { FaffSeed, ReadinessBriefSeed } from '../types';
 type Band = ReadinessBriefSeed['band'];
 
 const BAND_COLOR: Record<Band, string> = {
-  sharp:       '#34D058',
+  sharp:       '#3EBD41',
   ready:       '#3EBD41',
   moderate:    '#F3AD38',
   'pull-back': '#FC4D64',
@@ -854,7 +854,7 @@ function ColdStart({ coldStart, onConnect }: {
             <circle
               cx="60" cy="60" r={r}
               fill="none"
-              stroke="#48B3B5"
+              stroke="#27B4E0"
               strokeWidth="8"
               strokeLinecap="round"
               strokeDasharray={circ}

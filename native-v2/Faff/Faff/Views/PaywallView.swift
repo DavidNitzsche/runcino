@@ -122,7 +122,7 @@ struct PaywallView: View {
                             .tracking(-1)
                             .foregroundStyle(Theme.txt)
                         Text(unit)
-                            .font(.display(11, weight: .semibold))
+                            .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.6))
                     }
                     .padding(.top, 8)
@@ -176,7 +176,7 @@ struct PaywallView: View {
 
     private var fine: some View {
         Text("Then $69.99/yr. Cancel anytime. · Restore · Terms")
-            .font(.display(10, weight: .semibold))
+            .font(.body(10, weight: .semibold))
             .foregroundStyle(Theme.txt.opacity(0.55))
             .frame(maxWidth: .infinity)
     }

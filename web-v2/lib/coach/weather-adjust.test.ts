@@ -1,15 +1,19 @@
 /**
  * Tests for lib/coach/weather-adjust.ts
  *
- * Doctrine boundaries the coach engine MUST honor (Research/06):
- *   · neutral  = slowdownPct < 2
- *   · warm     = 2 ≤ slowdownPct < 6
- *   · hot      = 6 ≤ slowdownPct < 12
- *   · extreme  = slowdownPct ≥ 12
+ * 2026-06-09 state-audit fix: expectations re-derived against the
+ * VERBATIM Research/06 §1 mid-pack table (via lib/training/heat-model.ts):
+ *   60°F → 1.5% · 65°F → 2.5% · 70°F → 4.0% · 75°F → 5.5%
+ *   80°F → 7.5% · 85°F → 10%  · 90°F → 13%
+ * plus the §12 additive dewpoint surcharge (+1% per 10°F Td above 60°F)
+ * and the ~5°F solar bump on clear sky / cloudCover<25%. The previous
+ * test file documented a piecewise curve ~2× the cited doctrine.
  *
- *   · Maughan/Ely/Vihma temperature slowdown (table-derived piecewise)
- *   · RunnersConnect dewpoint multiplier (≥55°F dewpoint starts to bite)
- *   · ~5°F solar bump on clear sky / cloudCover<25%
+ * UX bands, recalibrated with the table (engine bands, not Research):
+ *   · neutral  = slowdownPct < 2
+ *   · warm     = 2 ≤ slowdownPct < 4
+ *   · hot      = 4 ≤ slowdownPct < 8
+ *   · extreme  = slowdownPct ≥ 8
  *
  * Voice doctrine (David, 2026-05-31): summary and coachTipForNextTime
  * speak runner-English. No "Maughan/Ely model", no "evaporative cooling
@@ -95,9 +99,8 @@ describe('judgeWeather · neutral band (50°F)', () => {
 
 describe('judgeWeather · solar bump pushes 65°F clear → hot band', () => {
   it('65°F + clear sky becomes 70°F effective, lands in hot band', () => {
-    // Doctrine: 65°F base raw is 5% slow (warm). Clear adds +5°F → 70°F
-    // effective which is 8% (hot). This is the explicit doctrine the
-    // user called out.
+    // Doctrine: 65°F base is 2.5% (warm). Clear adds +5°F → 70°F
+    // effective = 4.0% per the Research/06 mid-pack column → hot band.
     const j = judgeWeather({
       tempF: 65,
       humidityPct: 40,
@@ -105,8 +108,8 @@ describe('judgeWeather · solar bump pushes 65°F clear → hot band', () => {
       cloudCoverPct: 10,
     });
     expect(j.heatBand).toBe('hot');
-    expect(j.slowdownPct).toBeGreaterThanOrEqual(6);
-    expect(j.slowdownPct).toBeLessThan(12);
+    expect(j.slowdownPct).toBeGreaterThanOrEqual(4);
+    expect(j.slowdownPct).toBeLessThan(8);
     expect(j.shouldFlagInRecap).toBe(true);
     expect(j.coachTipForNextTime).not.toBeNull();
     // Hot tip leads with "Start earlier next time".
@@ -114,7 +117,7 @@ describe('judgeWeather · solar bump pushes 65°F clear → hot band', () => {
   });
 
   it('65°F overcast stays in warm (no solar bump)', () => {
-    // Same temp, cloudy → no +5°F bump, slowdown stays ~5% (warm).
+    // Same temp, cloudy → no +5°F bump, slowdown stays 2.5% (warm).
     const j = judgeWeather({
       tempF: 65,
       humidityPct: 40,
@@ -122,7 +125,7 @@ describe('judgeWeather · solar bump pushes 65°F clear → hot band', () => {
       cloudCoverPct: 80,
     });
     expect(j.heatBand).toBe('warm');
-    expect(j.slowdownPct).toBeLessThan(6);
+    expect(j.slowdownPct).toBeLessThan(4);
     expect(j.slowdownPct).toBeGreaterThanOrEqual(2);
   });
 
@@ -146,9 +149,9 @@ describe('judgeWeather · solar bump pushes 65°F clear → hot band', () => {
 });
 
 describe('judgeWeather · extreme band (78°F humid)', () => {
-  it('78°F at 80% RH is extreme (slowdown ≥ 12%)', () => {
-    // High humidity → dewpoint ~71°F → ~1.50× dewpoint multiplier.
-    // Base slowdown at 78°F ~14%. With multiplier well over 12%.
+  it('78°F at 80% RH is extreme (slowdown ≥ 8%)', () => {
+    // Partly cloudy +2°F → 80°F effective = 7.5% base; dewpoint ~71°F
+    // → +1.1% surcharge (§12: +1%/10°F above 60) → ~8.6% → extreme.
     const j = judgeWeather({
       tempF: 78,
       humidityPct: 80,
@@ -156,7 +159,7 @@ describe('judgeWeather · extreme band (78°F humid)', () => {
       cloudCoverPct: 50,
     });
     expect(j.heatBand).toBe('extreme');
-    expect(j.slowdownPct).toBeGreaterThanOrEqual(12);
+    expect(j.slowdownPct).toBeGreaterThanOrEqual(8);
     expect(j.shouldFlagInRecap).toBe(true);
     // Extreme summary uses plain English: "seriously hot".
     expect(j.summary).toMatch(/seriously hot/);
@@ -238,27 +241,27 @@ describe('judgeWeather · confirmed-Z input (peak-temp + thermal arc)', () => {
 
 describe('judgeWeather · doctrine band boundaries', () => {
   it('warm band lower bound: ~2% slowdown', () => {
-    // ~57°F cloudy → ~2% slowdown → warm.
+    // ~63°F cloudy → ~2.1% slowdown → warm (doctrine: 60°F=1.5, 65°F=2.5).
     const j = judgeWeather({
-      tempF: 57, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
+      tempF: 63, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
     });
     expect(j.slowdownPct).toBeGreaterThanOrEqual(2);
     expect(j.heatBand).toBe('warm');
   });
 
-  it('hot/extreme transition: <12% is hot, ≥12% is extreme', () => {
-    // Just below 12% should still be hot. 70°F dry → 8% slowdown.
+  it('hot/extreme transition: <8% is hot, ≥8% is extreme', () => {
+    // 72°F dry cloudy → ~4.6% → hot.
     const jHot = judgeWeather({
-      tempF: 70, humidityPct: 30, conditions: 'cloudy', cloudCoverPct: 80,
+      tempF: 72, humidityPct: 30, conditions: 'cloudy', cloudCoverPct: 80,
     });
-    expect(jHot.slowdownPct).toBeLessThan(12);
+    expect(jHot.slowdownPct).toBeLessThan(8);
     expect(jHot.heatBand).toBe('hot');
 
-    // At/over 12% should be extreme. 75°F dry → 12.0% exactly → extreme.
+    // 82°F at 70% RH cloudy → 8.5% base + ~1.1% dewpoint → extreme.
     const jExtreme = judgeWeather({
-      tempF: 75, humidityPct: 30, conditions: 'cloudy', cloudCoverPct: 80,
+      tempF: 82, humidityPct: 70, conditions: 'cloudy', cloudCoverPct: 80,
     });
-    expect(jExtreme.slowdownPct).toBeGreaterThanOrEqual(12);
+    expect(jExtreme.slowdownPct).toBeGreaterThanOrEqual(8);
     expect(jExtreme.heatBand).toBe('extreme');
   });
 
@@ -282,13 +285,13 @@ describe('judgeWeather · doctrine band boundaries', () => {
 
   it('coach tip escalates: warm → hot → extreme', () => {
     const jWarm = judgeWeather({
-      tempF: 60, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
+      tempF: 64, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
     });
     const jHot = judgeWeather({
       tempF: 72, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
     });
     const jExtreme = judgeWeather({
-      tempF: 82, humidityPct: 70, conditions: 'cloudy', cloudCoverPct: 80,
+      tempF: 85, humidityPct: 70, conditions: 'cloudy', cloudCoverPct: 80,
     });
     expect(jWarm.heatBand).toBe('warm');
     expect(jHot.heatBand).toBe('hot');
@@ -340,7 +343,7 @@ describe('judgeWeather · plain-English voice doctrine', () => {
 
   it('warm summary + tip use plain English', () => {
     const j = judgeWeather({
-      tempF: 60, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
+      tempF: 64, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
     });
     assertNoJargon(j.summary + ' ' + (j.coachTipForNextTime ?? ''));
   });

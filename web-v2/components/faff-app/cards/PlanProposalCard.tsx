@@ -108,8 +108,8 @@ export function PlanProposalCard({ proposal }: { proposal: PlanProposalSeed }) {
     : {
         bgGrad: 'linear-gradient(135deg, rgba(72,179,181,0.12), rgba(72,179,181,0.03))',
         border: 'rgba(72,179,181,0.32)',
-        eyebrow: '#48B3B5',
-        accept: '#48B3B5',
+        eyebrow: '#27B4E0',
+        accept: '#27B4E0',
       };
 
   return (

@@ -746,7 +746,26 @@ function layoutWeek({
           days.push({ dow, type: 'shakeout', distanceMi: 2, isQuality: false, isLong: false, subLabel: 'SHAKEOUT', notes: '2 mi + 4×20s strides. Loosen the legs.' });
         } else if (daysBeforeRace === 2) {
           days.push({ dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off feet. Hydrate.' });
-        } else if (daysBeforeRace >= 3 && daysBeforeRace <= 5) {
+        } else if (daysBeforeRace === 5) {
+          // 2026-06-09 state-audit Tier 2.2 · the race-week tune-up.
+          // Research/08 §9.3: the race-prep session sits ~5 days out —
+          // HM/M: 4×1km at race pace w/ 90s jog; 5K/10K keep the
+          // shorter 2×0.5mi @ T primer. The audit found race week
+          // carried ZERO quality (last touch 10 days out) · legs go
+          // flat into the gun. This is also the WATCHING test point:
+          // hold race pace at honest HR here and the race plan is
+          // confirmed.
+          const isLongRace = raceDistanceMi >= 12;
+          days.push({
+            dow, type: 'race_week_tuneup',
+            distanceMi: isLongRace ? 5 : 4,
+            isQuality: true, isLong: false,
+            subLabel: isLongRace ? '4×1km @ race pace · 90s jog' : '2×0.5mi @ T · 60s jog',
+            notes: isLongRace
+              ? 'Race-pace primer, 5 days out. Hold goal pace, even reps, stop at 4. Confidence check, not a workout.'
+              : 'Two sharp half-mile reps just above T-pace. Keep it brief. Legs stay fresh.',
+          });
+        } else if (daysBeforeRace >= 3 && daysBeforeRace <= 4) {
           // Easy 3-4mi w/ light strides midweek
           days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Strides optional.' });
         } else {
@@ -1553,6 +1572,12 @@ async function persistPlan(args: {
    *  (max of 89% LTHR + 78% maxHR). Optional · null falls back to
    *  LTHR-only. Resolved via loadEffectiveMaxHr at the entry point. */
   maxHr: number | null;
+  /** 2026-06-09 state-audit fix · the runner's GOAL pace (s/mi) for
+   *  the race-day row. Race day was inheriting T-pace (goal − 5 for an
+   *  HM) · a 66s over-commitment at the gun. Null when the race has no
+   *  goal time · spec-builder falls back to an inverse-offset
+   *  derivation from T. */
+  goalPaceSec: number | null;
 }): Promise<string> {
   const planId = id('pln');
   await pool.query(
@@ -1619,7 +1644,11 @@ async function persistPlan(args: {
         // produced 5×1km specs under "4×1 mi @ I" labels.
         // 2026-06-03 · Rule 16 · pass maxHr alongside LTHR so easy/long
         // HR caps use max(89% LTHR, 78% maxHR) instead of LTHR-only.
-        const built = buildWorkoutSpec(d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null);
+        const built = buildWorkoutSpec(
+          d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null,
+          // 2026-06-09 · goal pace · only the race branch reads it.
+          args.goalPaceSec ?? null,
+        );
         paceTargetSPerMi = built.paceTargetSPerMi;
         workoutSpec = built.spec;
       }
@@ -1775,6 +1804,8 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     // LTHR-only. profile.max_hr already loaded in inputs.compose.maxHr
     // via the planInputs reader.
     maxHr: inputs.compose.maxHr,
+    // 2026-06-09 state-audit fix · goal pace for the race-day target.
+    goalPaceSec: inputs.compose.goalPaceSec,
     authoredState: {
       ...composed.authoredState,
       mode,

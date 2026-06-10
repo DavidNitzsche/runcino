@@ -110,11 +110,10 @@ struct TodayView: View {
     /// This-week mileage · drives the THIS WEEK readiness stat chip.
     /// Hydrated from /api/training/state inside loadAll().
     @State private var thisWeekMiles: Double?
-    /// VO₂ max · drives the VO₂ MAX readiness stat chip.
-    /// Comes from profile.physiology.vo2.
     /// Toggles the full readiness brief sheet (2026-06-01) · tap on the
     /// readiness panel hero presents this. Sheet hydrates from
     /// /api/readiness/brief inside its own .task.
+    /// (VO₂ MAX chip removed from the panel · AFC fix 10 · VO₂ lives on Health.)
     @State private var showReadinessBrief: Bool = false
     @State private var glossaryEntry: GlossaryEntry? = nil
     /// Post-run RunDetail · hydrated when the selected day has a
@@ -156,10 +155,14 @@ struct TodayView: View {
     // implicitly (multi-statement body: `let mesh = …` then the ZStack).
     @ViewBuilder
     private var mainBody: some View {
-        // Time-of-day mesh (2026-06-01) · no longer recolors by run.
-        // Per-run accent still tints the week dot · peek/session ticks ·
-        // Start button dot · but the background is hour-bound.
-        let mesh = FaffMesh.forTimeOfDay(timeOfDay)
+        // AFC task 8 + brief v2 §8 (2026-06-09) · Today's default canvas is
+        // CHARCOAL NEUTRAL. The time-of-day mesh (2026-06-01) is retired
+        // from the background · the hour still drives the greeting eyebrow
+        // (TimeOfDay.greeting) and per-run accents still tint the week dot
+        // · peek/session ticks · Start dot. Race morning never reaches
+        // this body (raceDayRouteSlug routes to RaceDayView, which carries
+        // the dedicated race mesh via FaffEffort.race.mesh).
+        let mesh = FaffMesh.neutral
         ZStack {
             FaffMeshView(mesh: mesh)
 
@@ -248,7 +251,7 @@ struct TodayView: View {
                         Group {
                             if !avatarInitials.isEmpty {
                                 Text(avatarInitials)
-                                    .font(.display(12, weight: .bold))
+                                    .font(.body(12, weight: .bold))
                             } else {
                                 Image(systemName: "person.fill")
                                     .font(.system(size: 13, weight: .bold))
@@ -461,7 +464,6 @@ struct TodayView: View {
                             snapshot: readiness,
                             lastNightHours: lastNightHours,
                             thisWeekMiles: thisWeekMiles,
-                            vo2: profile?.physiology.vo2,
                             bestWindow: forecast?.best_window,
                             weeksToRace: weeksToRaceValue,
                             daysToRace: daysToRaceValue,

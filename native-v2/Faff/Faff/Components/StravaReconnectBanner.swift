@@ -29,7 +29,7 @@ struct StravaReconnectBanner: View {
                             .font(.body(13, weight: .extraBold))
                             .foregroundStyle(Theme.txt)
                         Text(subtitle(for: s))
-                            .font(.display(10, weight: .semibold))
+                            .font(.body(10, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.7))
                             .lineLimit(1)
                     }

@@ -438,13 +438,25 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   const rhrDelta = (rhrCurrent != null && rhrBaseline != null) ? rhrCurrent - rhrBaseline : null;
 
   // HRV
+  const median = (xs: number[]): number => {
+    const s = [...xs].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  };
   const hrvSeries = hrvRows.map((r: any) => ({
     date: r.d.toISOString().slice(0, 10),
     ms: Math.round(Number(r.v)),
   })).slice(-30);
   const hrvAll = hrvSeries.map((r) => r.ms);
   const hrv7 = hrvAll.slice(-7);
-  const hrvCurrent = hrv7.length ? Math.round(hrv7.reduce((s, x) => s + x, 0) / hrv7.length) : null;
+  // 2026-06-09 · regression-audit G3 · MEDIAN, not mean. A single
+  // partial-night artifact dragged the 7-day mean hard in production
+  // (2026-06-08: a 29 ms read — corrected to 46 on re-sync — scored
+  // readiness 38 PULL-BACK and fired pull-back advice). 29 ms is inside
+  // any sane hard bounds, so the ingest clamp can't catch it; the median
+  // ignores one outlier completely once ≥3 days exist. Sub-3-day windows
+  // keep the residual risk — that's data scarcity, not windowing.
+  const hrvCurrent = hrv7.length ? Math.round(median(hrv7)) : null;
   // 2026-06-04 · stable baseline · mean of last 30d EXCLUDING last 7
   // (the runner's "settled" state, not drifting with a recent streak).
   // Matches state-loader.ts loadStableBaseline + glance-state.ts +

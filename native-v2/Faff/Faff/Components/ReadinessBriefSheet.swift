@@ -30,7 +30,7 @@ import SwiftUI
 private enum BriefBand {
     static func tint(_ raw: String) -> Color {
         switch raw.lowercased() {
-        case "sharp":     return Color(hex: 0x34D058)
+        case "sharp":     return Color(hex: 0x3EBD41)
         case "ready":     return Color(hex: 0x3EBD41)
         case "moderate":  return Color(hex: 0xF3AD38)
         case "pull-back", "pullback", "pull_back":

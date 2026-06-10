@@ -126,8 +126,8 @@ struct TodayReadinessPanel: View {
     let lastNightHours: Double?
     /// Weekly mileage so far (current ISO week). Drives the THIS WEEK chip.
     let thisWeekMiles: Double?
-    /// VO₂ max from profile.physiology. Drives the VO₂ MAX chip.
-    let vo2: Double?
+    // VO₂ MAX chip removed (AFC fix 10) · a monthly-moving number has no
+    // place on the daily glance. VO₂ lives on the Health tab.
     /// 2026-06-02 round 39 · second-row chips: BEST WINDOW / TO RACE /
     /// NEXT HARD. All optional · render "—" when their backing data
     /// isn't loaded yet (no GPS home base for forecast, no race
@@ -272,57 +272,79 @@ struct TodayReadinessPanel: View {
     }
 
     // MARK: 3 · stat chips
+    //
+    // AFC fix 10 (2026-06-09) ·
+    //   · ordered by daily relevance: TO RACE (the top motivator, was
+    //     buried at slot 5) → NEXT HARD → BEST WINDOW → LAST NIGHT →
+    //     THIS WEEK.
+    //   · VO₂ MAX dropped · it moves monthly at best and has no business
+    //     on a daily glance surface (it lives on Health).
+    //   · chips with no backing data don't render at all (the grid
+    //     reflows) · per the brief, don't render empty versions of beats
+    //     with nothing to say. A fresh install previously showed a grid
+    //     of six "—" chips.
 
+    private var presentChips: [(label: String, value: String)] {
+        let all: [(String, String?)] = [
+            ("TO RACE",     toRaceDisplay),
+            ("NEXT HARD",   nextHardDisplay),
+            ("BEST WINDOW", bestWindowDisplay),
+            ("LAST NIGHT",  lastNightDisplay),
+            ("THIS WEEK",   thisWeekDisplay),
+        ]
+        return all.compactMap { label, value in
+            value.map { (label: label, value: $0) }
+        }
+    }
+
+    @ViewBuilder
     private var statChips: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                StatChip(label: "LAST NIGHT", value: lastNightDisplay)
-                StatChip(label: "THIS WEEK", value: thisWeekDisplay)
-                StatChip(label: "VO₂ MAX",   value: vo2Display)
+        let chips = presentChips
+        if !chips.isEmpty {
+            let rows: [[(label: String, value: String)]] = stride(from: 0, to: chips.count, by: 3).map {
+                Array(chips[$0..<min($0 + 3, chips.count)])
             }
-            HStack(spacing: 8) {
-                StatChip(label: "BEST WINDOW", value: bestWindowDisplay)
-                StatChip(label: "TO RACE",     value: toRaceDisplay)
-                StatChip(label: "NEXT HARD",   value: nextHardDisplay)
+            VStack(spacing: 8) {
+                ForEach(rows.indices, id: \.self) { r in
+                    HStack(spacing: 8) {
+                        ForEach(rows[r].indices, id: \.self) { i in
+                            StatChip(label: rows[r][i].label, value: rows[r][i].value)
+                        }
+                    }
+                }
             }
         }
     }
 
-    private var lastNightDisplay: String {
-        guard let h = lastNightHours, h > 0 else { return "—" }
+    private var lastNightDisplay: String? {
+        guard let h = lastNightHours, h > 0 else { return nil }
         let hours = Int(h)
         let mins = Int((h - Double(hours)) * 60)
         return mins > 0 ? "\(hours)h \(mins)m" : "\(hours)h"
     }
 
-    private var thisWeekDisplay: String {
-        guard let m = thisWeekMiles, m > 0 else { return "—" }
+    private var thisWeekDisplay: String? {
+        guard let m = thisWeekMiles, m > 0 else { return nil }
         let rounded = Int(m.rounded())
         return "\(rounded) mi"
     }
 
-    private var vo2Display: String {
-        guard let v = vo2, v > 0 else { return "—" }
-        if v >= 60 { return String(Int(v.rounded())) }
-        return String(format: "%.1f", v)
-    }
-
-    private var bestWindowDisplay: String {
-        guard let s = bestWindow, !s.isEmpty else { return "—" }
+    private var bestWindowDisplay: String? {
+        guard let s = bestWindow, !s.isEmpty else { return nil }
         return s
     }
 
-    private var toRaceDisplay: String {
+    private var toRaceDisplay: String? {
         // Final stretch: show exact days when <14 out ("9D", "3D", "1D").
         if let d = daysToRace, d > 0, d < 14 {
             return "\(d)D"
         }
-        guard let w = weeksToRace, w > 0 else { return "—" }
+        guard let w = weeksToRace, w > 0 else { return nil }
         return w == 1 ? "1 WK" : "\(w) WK"
     }
 
-    private var nextHardDisplay: String {
-        guard let s = nextHardLabel, !s.isEmpty else { return "—" }
+    private var nextHardDisplay: String? {
+        guard let s = nextHardLabel, !s.isEmpty else { return nil }
         return s
     }
 }

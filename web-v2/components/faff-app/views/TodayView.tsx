@@ -162,11 +162,6 @@ export function TodayView({
 
   return (
     <>
-      {/* Reconnect banner · auto-hides when Strava is connected.  No
-          wrapper div · the banner returns null when not needed and the
-          .main grid gap handles spacing when it IS rendered. */}
-      <ReconnectBanner />
-
       <div className="top">
         <div>
           <div className="date">{d.full}</div>
@@ -185,8 +180,11 @@ export function TodayView({
           const score = seed.readinessBrief?.score ?? seed.readiness.score;
           const label = seed.readinessBrief?.label ?? seed.readiness.label;
           const band = seed.readinessBrief?.band ?? null;
+          // AFC fix 2 · sharp + ready collapse to the single good-state
+          // green from the locked palette. #34D058 was a one-off green
+          // visually indistinguishable from #3EBD41 at ring size.
           const ringColor =
-            band === 'sharp' ? '#34D058' :
+            band === 'sharp' ? '#3EBD41' :
             band === 'ready' ? '#3EBD41' :
             band === 'moderate' ? '#F3AD38' :
             band === 'pull-back' ? '#FC4D64' :
@@ -221,8 +219,22 @@ export function TodayView({
           grid row + carried inline margin = ~60-100px of dead space
           above THIS WEEK when none of these had content (David: "way
           too much dead space up here, the rules were either not
-          enforced or too lax"). */}
+          enforced or too lax").
 
+          Brief v2 §6 (queued task 3, 2026-06-09) · ONE-BANNER CAP.
+          The .prehero-stack wrapper is display:contents (children stay
+          direct grid items) and CSS hides every element after the
+          first, so at most ONE interruption renders above the hero
+          regardless of how many components have content. DOM order =
+          priority: reconnect → adaptation → physiology nudge → missed
+          yesterday → coach proposals → plan proposals → workout
+          proposals. Null-rendering components contribute no element,
+          so :first-child is always the highest-priority banner that
+          actually fired. ReconnectBanner moved inside the stack (it
+          was above the header and outside any cap). */}
+
+      <div className="prehero-stack">
+      <ReconnectBanner />
       <AdaptationCard />
 
       {showPhysiologyNudge ? (
@@ -287,6 +299,7 @@ export function TodayView({
             <WorkoutProposalBanner key={`wp-${p.id}`} proposal={p} />
           ))
         : null}
+      </div>{/* .prehero-stack · brief v2 §6 one-banner cap */}
 
       {/* Morning brief content moved 2026-06-01 into the redesigned
           Readiness drawer (overlays/Drawer.tsx). The inline panel that
@@ -298,7 +311,13 @@ export function TodayView({
           label-to-week distance is the tight --label-gap, while the
           band-to-next-band distance stays --section-gap from .main's
           grid.  Same two-tier rhythm spec David defined for inside-card
-          field/section spacing, just applied to the page body. */}
+          field/section spacing, just applied to the page body.
+
+          Brief v2 §6 (queued task 3) · race morning hides the week
+          strip entirely — "the race takes the page" means no secondary
+          week context above the hero. Every other day renders the
+          strip unchanged. */}
+      {isRaceDay ? null : (
       <div className="band">
       {/* Week label + prev/next navigation arrows */}
       {(() => {
@@ -405,7 +424,7 @@ export function TodayView({
                             matched this date. Dumbbell + check overlay. */}
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/>
-                          <circle cx="18" cy="18" r="5" fill="#34C194" stroke="none"/>
+                          <circle cx="18" cy="18" r="5" fill="#3EBD41" stroke="none"/>
                           <path d="M16 18l1.5 1.5L20 17" stroke="#fff" strokeWidth="2.2"/>
                         </svg>
                       </span>
@@ -516,7 +535,8 @@ export function TodayView({
           });
         })()}
       </div>
-      </div>{/* .band */}
+      </div>
+      )}{/* .band · hidden on race morning per brief v2 §6 */}
 
       {/* Strength-recommender reason banner removed 2026-06-01 (David
           call · "why are we making a banner for strength at all"). The
@@ -534,7 +554,7 @@ export function TodayView({
           empty or no days were recommended (race weeks). This is a
           reconciliation read-out, not a marketing nudge · "2/2 this
           week + 1 bonus" / "1/2 · 1 skipped" — pure status. */}
-      {seed.strengthWeekStatus?.summary && seed.strengthWeekStatus.recommended.length > 0 ? (
+      {!isRaceDay && seed.strengthWeekStatus?.summary && seed.strengthWeekStatus.recommended.length > 0 ? (
         <div className="strstatus">
           <span className="strstatus-icn" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -947,7 +967,7 @@ function CompletedResultCard({ d, fallback, runData, loading }: { d: FaffSeed['w
   })();
   return (
     <div className="wcard">
-      <div className="wcl">RESULT <span style={{ color: '#7BE8A0', marginLeft: 6 }}>✓ COMPLETED</span></div>
+      <div className="wcl">RESULT <span style={{ color: '#3EBD41', marginLeft: 6 }}>✓ COMPLETED</span></div>
       {!data && loading && <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>Loading run…</div>}
       {elev && (
         <div className="bk-elev" style={{ marginTop: 10 }}>
@@ -1098,7 +1118,7 @@ function SessionBlueprintChart({ data }: { data: BlueprintData }) {
     }
     lanes.push(<line key={`zl-${zz}`} x1={x0} y1={ly} x2={x1} y2={ly} stroke="rgba(255,255,255,.12)" strokeWidth={1} />);
     lanes.push(
-      <text key={`zt-${zz}`} x={x0 - 8} y={ly - laneH / 2 + 3} textAnchor="end" fontFamily="Oswald" fontSize="9" fill="rgba(255,255,255,.5)">
+      <text key={`zt-${zz}`} x={x0 - 8} y={ly - laneH / 2 + 3} textAnchor="end" fontFamily="Inter" fontSize="9" fill="rgba(255,255,255,.5)">
         Z{zz}
       </text>
     );
@@ -1121,7 +1141,9 @@ function SessionBlueprintChart({ data }: { data: BlueprintData }) {
       const repBy = y0 - repBh;
       const floBh = 1.3 * laneH;
       const floBy = y0 - floBh;
-      const floCol = '#48B3B5';
+      // AFC fix 2 · float/jog recovery bars take the recovery blue from
+      // the locked palette (#48B3B5 deleted).
+      const floCol = '#27B4E0';
       let cxp = bx;
       for (let r = 0; r < n; r++) {
         const rw = 2 * uW;
@@ -1156,7 +1178,9 @@ function SessionBlueprintChart({ data }: { data: BlueprintData }) {
         >
           {seg.label}
           {seg.pace ? (
-            <tspan fontFamily="Oswald" fontWeight={700} fill="rgba(255,255,255,.82)">
+            // Oswald-below-16 sweep (brief v2 typography) · inherits the
+            // bracket label's Inter 11.5 instead of forcing Oswald small.
+            <tspan fontWeight={700} fill="rgba(255,255,255,.82)">
               {' '}@ {seg.pace}
               {seg.repDistanceLabel ? ` /${seg.repDistanceLabel.replace(/\s+/g, '')}` : ''}
             </tspan>
@@ -1183,14 +1207,15 @@ function SessionBlueprintChart({ data }: { data: BlueprintData }) {
       blocks.push(
         <text key={`bp-${segIdx}`} x={tx} y={by + 41} fontFamily="Oswald" fontSize="20" fontWeight={700} fill="#fff">
           {seg.pace}
-          <tspan fontSize="11" fill="rgba(255,255,255,.72)"> /mi</tspan>
+          {/* /mi unit at 11px → Inter per the Oswald-below-16 rule */}
+          <tspan fontFamily="Inter" fontSize="11" fontWeight={600} fill="rgba(255,255,255,.72)"> /mi</tspan>
         </text>
       );
     }
     if (bh > 62) {
       const segMi = (seg.to - seg.from);
       blocks.push(
-        <text key={`bm-${segIdx}`} x={tx} y={by + bh - 11} fontFamily="Oswald" fontSize="11" fontWeight={600} fill="rgba(255,255,255,.7)">
+        <text key={`bm-${segIdx}`} x={tx} y={by + bh - 11} fontFamily="Inter" fontSize="11" fontWeight={600} fill="rgba(255,255,255,.7)">
           {segMi.toFixed(segMi === Math.round(segMi) ? 0 : 1)} mi · {seg.zn}
         </text>
       );
@@ -1207,13 +1232,13 @@ function SessionBlueprintChart({ data }: { data: BlueprintData }) {
     const rx2 = xOf(t);
     ruler.push(
       <line key={`rt-${t}`} x1={rx2} y1={y0} x2={rx2} y2={y0 + 4} stroke="rgba(255,255,255,.45)" strokeWidth={1.2} />,
-      <text key={`rl-${t}`} x={rx2} y={y0 + 16} textAnchor="middle" fontFamily="Oswald" fontSize="9.5" fill="rgba(255,255,255,.55)">
+      <text key={`rl-${t}`} x={rx2} y={y0 + 16} textAnchor="middle" fontFamily="Inter" fontSize="9.5" fill="rgba(255,255,255,.55)">
         {t}
       </text>
     );
   }
   ruler.push(
-    <text key="r-end" x={x1} y={y0 + 16} textAnchor="end" fontFamily="Oswald" fontSize="9.5" fill="rgba(255,255,255,.5)">MI</text>
+    <text key="r-end" x={x1} y={y0 + 16} textAnchor="end" fontFamily="Inter" fontSize="9.5" fill="rgba(255,255,255,.5)">MI</text>
   );
 
   // Fuel pins · dashed line starting BELOW the GEL label, drop icon
@@ -1228,7 +1253,7 @@ function SessionBlueprintChart({ data }: { data: BlueprintData }) {
         d={`M${fx} ${y1 + 5 - 8} C${fx + 5} ${y1 + 5 - 2} ${fx + 4.5} ${y1 + 5 + 4} ${fx} ${y1 + 5 + 4} C${fx - 4.5} ${y1 + 5 + 4} ${fx - 5} ${y1 + 5 - 2} ${fx} ${y1 + 5 - 8} Z`}
         fill="rgba(255,255,255,.92)"
       />,
-      <text key={`f-${i}-lbl`} x={fx} y={y1 + 22} textAnchor="middle" fontFamily="Oswald" fontSize="8" fontWeight={700} fill="rgba(255,255,255,.78)">GEL</text>
+      <text key={`f-${i}-lbl`} x={fx} y={y1 + 22} textAnchor="middle" fontFamily="Inter" fontSize="8" fontWeight={700} fill="rgba(255,255,255,.78)">GEL</text>
     );
   });
 
@@ -1979,12 +2004,17 @@ function CompletedHeroV2({
   // 'stacked time-in-zones' set) to the canonical -b brand zone
   // Zone colors. Chosen for legibility on BOTH dark cards (planned/rest)
   // AND bright-background cards (easy=teal, tempo=orange mesh).
-  // Z1 upgraded from #48B3B5 (same teal as easy-run card = invisible)
+  // Z1 upgraded from the retired #48B3B5 (same teal as easy-run card = invisible)
   // to a lighter, higher-contrast blue-white that reads against the
   // dark bar trough (rgba(0,0,0,.28) background) and the bright card.
-  // z1 recovery blue-white · z2 easy green · z3 moderate amber ·
-  // z4 hard orange · z5 max red.
-  const zoneColors = ['#7DD8E0', '#3EBD41', '#F3AD38', '#FF8847', '#FC4D64'];
+  // AFC fix 2 (2026-06-09) · synced to the ONE canonical zone ladder
+  // (= effort temperature scale · constants.ts ZC · Theme.swift ZoneSplit
+  // · RunDetailModal ZONE_COLOR): z1 recovery blue · z2 easy teal ·
+  // z3 long amber · z4 tempo ember · z5 intervals rose. The previous
+  // local set used the good-state green as Z2 and a one-off #7DD8E0 as
+  // Z1 · if #27B4E0 proves too dim against the dark bar trough, raise it
+  // in the palette, not per-site.
+  const zoneColors = ['#27B4E0', '#14C08C', '#F3AD38', '#FF5722', '#F43F5E'];
   const peakHr = runData?.hr_max ?? result?.peak ?? null;
 
   // Render every split the run carries (was capped at 8 · landed
@@ -4457,23 +4487,32 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
 
   return (
     <div className="tiles">
-      <div className="tile">
+      <div
+        className={`tile${goal ? '' : ' click'}`}
+        onClick={goal ? undefined : onOpenRace}
+        role={goal ? undefined : 'button'}
+        tabIndex={goal ? undefined : 0}
+      >
         <div className="fll">THE GAP{goal ? ` · ${goal.name.toUpperCase().replace(' MARATHON','').slice(0,12)}` : ''}</div>
         <div className="tbody cd">
           {/* 2026-05-30: when projection hasn't computed (no recent race result
               yet → no VDOT seed), show the goal as the big number so the tile
               doesn't read as broken. Bottom row explains why.
 
-              2026-06-04: 3-state color · 'watching' status gets amber
-              (was: rendered green because onTrack is true when projection
-              equals goal · matched the headline contradiction David
-              flagged). */}
+              AFC fix 2 (2026-06-09) · off-track is the warn color #FC4D64,
+              never race orange. The retired #FF8847 here made the brand's celebration
+              hue double as the failure hue on the same page. On-track
+              footer drops the out-of-palette mint for the good-state green.
+
+              AFC fix 9 · the no-goal state is a real affordance now: the
+              tile is clickable (routes to the Goal page) and the copy says
+              what tapping does instead of quoting a URL path. */}
           <div className="cdbig" style={{
             color: !goal?.projected ? '#9099A8'
-              : goal?.goalStatus === 'off-track' ? '#FF8847'
+              : goal?.goalStatus === 'off-track' ? '#FC4D64'
               : goal?.goalStatus === 'watching' ? '#FFCE8A'
               : goal.onTrack ? '#3EBD41'
-              : '#FF8847',
+              : '#FC4D64',
           }}>
             {goal?.projected ?? goal?.goal ?? '—'}
           </div>
@@ -4482,18 +4521,18 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
             ? (goal.goalStatus === 'watching'
                 ? <div className="cdsub">Goal {goal.goal} · watching</div>
                 : <div className="cdsub">Goal {goal.goal} · {goal.delta}</div>)
-            : (goal ? <div className="cdsub" style={{ opacity: 0.7 }}>Log a recent race to project</div> : <div className="cdsub" style={{ opacity: 0.7 }}>Pick a primary race on /races</div>)}
+            : (goal ? <div className="cdsub" style={{ opacity: 0.7 }}>Log a recent race to project</div> : <div className="cdsub" style={{ opacity: 0.7 }}>Pick a goal race ›</div>)}
           <div className="cdbar"><div className="cdfill" style={{
             width: `${goal?.goalPct ?? 0}%`,
-            background: goal?.goalStatus === 'off-track' ? '#FF8847'
+            background: goal?.goalStatus === 'off-track' ? '#FC4D64'
               : goal?.goalStatus === 'watching' ? '#FFCE8A'
               : goal?.onTrack ? '#3EBD41'
-              : '#FF8847',
+              : '#FC4D64',
           }} /></div>
           <div className="cdwk" style={{
-            color: goal?.goalStatus === 'off-track' ? '#FF8847'
+            color: goal?.goalStatus === 'off-track' ? '#FC4D64'
               : goal?.goalStatus === 'watching' ? '#FFCE8A'
-              : goal?.onTrack ? '#7BE8A0'
+              : goal?.onTrack ? '#3EBD41'
               : '#FFCE8A',
             opacity: 1,
           }}>
@@ -4514,7 +4553,7 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           <div className="cdbig">{goal?.daysAway ?? '—'}</div>
           <div className="cdlab">{goal ? 'DAYS TO GO' : 'NO GOAL SET'}</div>
           <div className="cdsub" style={{ opacity: goal ? 1 : 0.7 }}>
-            {goal ? `${formatDate(goal.date)}${goal.location ? ' · ' + goal.location : ''}` : 'Pick a primary race on /races'}
+            {goal ? `${formatDate(goal.date)}${goal.location ? ' · ' + goal.location : ''}` : 'Pick a goal race ›'}
           </div>
           <div className="cdbar"><div className="cdfill" style={{ width: `${goal?.goalPct ?? 0}%` }} /></div>
           <div className="cdwk">{goal?.phaseLabel ?? (goal ? 'Building' : '—')}</div>
@@ -4554,12 +4593,19 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
         // Ring fill now proportional to |delta| (clamped 0-50, the
         // typical band a year-round runner traverses) · was previously
         // a hardcoded 50% offset and ignored seed.form.delta entirely.
+        // AFC fix 2 · every form state gets a DISTINCT in-palette color.
+        // LOADED and DETRAINING previously shared the same amber even
+        // though they demand opposite corrections (back off vs build up),
+        // and color is this ring's only encoding since the text label was
+        // dropped. DETRAINING → recovery blue per the locked table
+        // ("Recovery #27B4E0 · detraining signal"). RACE-READY → PR gold
+        // (primed is the milestone state, distinct from everyday good).
         const FORM_COLOR: Record<string, string> = {
-          OVERREACH:    '#FC4D64',  // critical red · sustained negative load
+          OVERREACH:    '#FC4D64',  // off/warn · sustained negative load
           LOADED:       '#F3AD38',  // amber · high stress but productive
-          PRODUCTIVE:   '#48B3B5',  // neutral teal · balanced
-          'RACE-READY': '#3EBD41',  // green · post-taper primed
-          DETRAINING:   '#F3AD38',  // amber · too fresh too long
+          PRODUCTIVE:   '#3EBD41',  // good state · balanced
+          'RACE-READY': '#F5C518',  // gold · post-taper primed
+          DETRAINING:   '#27B4E0',  // recovery blue · too fresh too long
           BUILDING:     '#8A90A0',  // neutral grey · cold-start
         };
         // Sentence-case after the middot separator per

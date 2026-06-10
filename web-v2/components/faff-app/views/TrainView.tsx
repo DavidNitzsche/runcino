@@ -18,6 +18,7 @@
  *   - full-plan modal (Month ↔ Weeks toggle)
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import type { FaffSeed, GoalRace } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
@@ -76,14 +77,17 @@ interface PhaseMeta {
   vol: string;
 }
 
+// AFC fix 2 · effort colors come from the locked ten-color palette.
+// easy was a fourth one-off green (#2faf7c) found nowhere else.
 const PHASE_TYPE_COLOR: Record<string, string> = {
-  easy: '#2faf7c', long: '#F3AD38', tempo: '#FF8847', threshold: '#FF8847',
-  intervals: '#FC4D64', recovery: '#27B4E0', rest: '#8A90A0',
+  easy: '#14C08C', long: '#F3AD38', tempo: '#FF5722', threshold: '#FF5722',
+  intervals: '#F43F5E', recovery: '#27B4E0', rest: '#8A90A0',
 };
 
 // Execution strip + WeeksList: influence kind → display color and sort rank.
+// AFC fix 2 · good = #3EBD41 (was out-of-palette mint), working = #F3AD38.
 const EXEC_INF_COLOR: Record<string, string> = {
-  on_track: '#86efa0', consistent: '#86efa0', working: '#48B3B5',
+  on_track: '#3EBD41', consistent: '#3EBD41', working: '#F3AD38',
   slipping: '#FFCE8A', compromised: '#8A90A0',
 };
 const EXEC_INF_RANK: Record<string, number> = {
@@ -116,7 +120,7 @@ function phaseColor(p: PhaseKey): string {
   if (p === 'base')  return '#5BD8D2';
   if (p === 'build') return '#FFCB47';
   // 2026-06-03 · PEAK was peach (#FF9866) · David flagged off-brand.
-  // Brand orange (--race in globals) is #FF8847; using a slightly more
+  // Brand orange (--race in globals) is #FF5722; using a slightly more
   // saturated cousin #FF7733 so PEAK reads as "peak intensity" and
   // stays distinct from the race-day peach #FFCE8A.
   if (p === 'peak')  return '#FF7733';
@@ -744,11 +748,13 @@ export function TrainView({
             const pct = r.plannedMi > 0
               ? Math.min(100, Math.round((r.actualMi / r.plannedMi) * 100))
               : 0;
+            // AFC fix 2 · ≥95% = good-state green, <80% = warn. The old
+            // #FF8870 was a near-race-orange signaling failure.
             const barColor = r.isCurrent
               ? '#FFCE8A88'
-              : pct >= 95 ? '#56E0B0'
+              : pct >= 95 ? '#3EBD41'
               : pct >= 80 ? '#FFCE8A'
-              : '#FF8870';
+              : '#FC4D64';
             const dateLabel = r.isCurrent
               ? 'THIS WEEK'
               : formatDate(r.startDate).toUpperCase();
@@ -1020,7 +1026,11 @@ export function TrainView({
               <>
                 <div className="pjbig" style={{ opacity: 0.55 }}>—</div>
                 <div className="pjlab">NO RACE GOAL SET</div>
-                <div className="pjnote">Pick a primary race on /races to see the projection.</div>
+                {/* AFC fix 9 · a real affordance instead of quoting a URL
+                    path at the runner. Routes to the Goal page. */}
+                <Link href="/races" className="pjnote" style={{ display: 'inline-block', color: '#FFCE8A', textDecoration: 'none', cursor: 'pointer' }}>
+                  Pick a goal race to see the projection ›
+                </Link>
               </>
             )}
           </div>
@@ -1047,7 +1057,7 @@ export function TrainView({
                         color:
                           m.influence.kind === 'on_track'   ? '#86efa0' :
                           m.influence.kind === 'consistent' ? '#86efa0' :
-                          m.influence.kind === 'working'    ? '#48B3B5' :  // teal · sharper signal
+                          m.influence.kind === 'working'    ? '#F3AD38' :  // amber · matches EXEC_INF working
                           m.influence.kind === 'slipping'   ? '#FFCE8A' :
                           m.influence.kind === 'compromised'? '#8A90A0' :
                           m.influence.kind === 'hit'        ? '#86efa0' :
@@ -1603,11 +1613,12 @@ function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: numbe
               ? Math.round((actualMi / Math.max(maxMi, 1)) * 100)
               : 0;
             const completionPct = mi > 0 ? actualMi / mi : 0;
+            // AFC fix 2 · same palette thresholds as the EXECUTION strip.
             const fillColor = isCurrent
               ? '#FFCE8A88'
-              : completionPct >= 0.95 ? '#56E0B0'
+              : completionPct >= 0.95 ? '#3EBD41'
               : completionPct >= 0.80 ? '#FFCE8A'
-              : '#FF8870';
+              : '#FC4D64';
 
             return (
               <div

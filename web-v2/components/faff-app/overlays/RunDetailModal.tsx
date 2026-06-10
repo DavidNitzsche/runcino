@@ -253,7 +253,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                           borderRadius: 2, marginRight: 5, verticalAlign: 'middle',
                         }} />Warmup</span>
                         <span><i style={{
-                          display: 'inline-block', width: 8, height: 8, background: 'var(--eff-tempo, #FF8847)',
+                          display: 'inline-block', width: 8, height: 8, background: 'var(--eff-tempo, #FF5722)',
                           borderRadius: 2, marginRight: 5, verticalAlign: 'middle',
                         }} />Work</span>
                         <span><i style={{
@@ -395,9 +395,9 @@ function RouteAndElev({ data }: { data: RunDetail }) {
               <rect width="700" height="168" fill="url(#rdm-rdmodal)" />
             </svg>
             <svg viewBox="0 0 700 168" preserveAspectRatio="xMidYMid meet">
-              <path d={route.path} fill="none" stroke="#FF8847" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d={route.path} fill="none" stroke="#FF5722" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
               {route.endpoints && <circle cx={route.endpoints.start[0]} cy={route.endpoints.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
-              {route.endpoints && <circle cx={route.endpoints.end[0]} cy={route.endpoints.end[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />}
+              {route.endpoints && <circle cx={route.endpoints.end[0]} cy={route.endpoints.end[1]} r="6" fill="#FF5722" stroke="#fff" strokeWidth="2" />}
             </svg>
             <span className="rdmaptag start">START</span>
             <span className="rdmaptag end">FINISH</span>
@@ -415,12 +415,12 @@ function RouteAndElev({ data }: { data: RunDetail }) {
             <svg viewBox="0 0 360 58" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="rdmev" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#FF8847" stopOpacity=".42" />
-                  <stop offset="1" stopColor="#FF8847" stopOpacity="0" />
+                  <stop offset="0" stopColor="#FF5722" stopOpacity=".42" />
+                  <stop offset="1" stopColor="#FF5722" stopOpacity="0" />
                 </linearGradient>
               </defs>
               <path d={elev.area} fill="url(#rdmev)" />
-              <path d={elev.line} fill="none" stroke="#FF8847" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+              <path d={elev.line} fill="none" stroke="#FF5722" strokeWidth="2" vectorEffect="non-scaling-stroke" />
             </svg>
           </div>
         </div>
@@ -468,7 +468,7 @@ function formatHeroDate(iso: string): string {
 function phaseColorFor(phase: string | null | undefined): string | null {
   switch (phase) {
     case 'warmup':   return 'var(--eff-easy, #14C08C)';
-    case 'work':     return 'var(--eff-tempo, #FF8847)';
+    case 'work':     return 'var(--eff-tempo, #FF5722)';
     case 'recovery': return 'var(--eff-recovery, #27B4E0)';
     case 'cooldown': return 'rgba(255,255,255,.3)';
     default:         return null;

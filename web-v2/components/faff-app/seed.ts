@@ -69,7 +69,7 @@ function humanName(eff: EffortKey, distMi: number): string {
   return 'Easy';
 }
 const EFFORT_COLOR: Record<EffortKey, string> = {
-  recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38', tempo: '#FF8847', intervals: '#FC4D64', rest: '#8A90A0', race: '#FF5722',
+  recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38', tempo: '#FF5722', intervals: '#F43F5E', rest: '#8A90A0', race: '#FF5722',
 };
 
 /* ─────────────────────────  Fallbacks  ───────────────────────── */
@@ -2249,13 +2249,18 @@ export async function buildSeed(): Promise<FaffSeed> {
           [goalRace.slug],
         ).catch(() => ({ rows: [] as Array<{ source: string | null; elevation_gain_ft: number | null; net_elevation_ft: number | null }> })),
         _pool.query(
-          `SELECT course_geometry
+          // Gun time: meta.startTime is the inline-editable Gun chip on
+          // the race detail page (the canonical field · races-state.ts
+          // reads the same COALESCE chain).
+          `SELECT course_geometry,
+                  COALESCE(meta->>'startTime', meta->>'gun_time', meta->>'start_time') AS start_time_local
              FROM races
             WHERE slug = $1 AND user_uuid = $2 LIMIT 1`,
           [goalRace.slug, userId],
-        ).catch(() => ({ rows: [] as Array<{ course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null }> })),
+        ).catch(() => ({ rows: [] as Array<{ course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null; start_time_local: string | null }> })),
       ]);
       const courseLibRow = courseLibRes.rows[0];
+      const raceStartTimeLocal = (raceRowRes.rows[0] as { start_time_local?: string | null } | undefined)?.start_time_local ?? null;
       const bbox = raceRowRes.rows[0]?.course_geometry?.bbox ?? null;
       const raceLat = bbox?.minLat != null && bbox?.maxLat != null
         ? (Number(bbox.minLat) + Number(bbox.maxLat)) / 2 : null;
@@ -2291,6 +2296,7 @@ export async function buildSeed(): Promise<FaffSeed> {
             distanceMi: goalRace.distanceMi,
             goalSec: goalSecLocal,
             vdot: profile?.physiology.vdot ?? null,
+            startTimeLocal: raceStartTimeLocal,
           });
           goalRace.conditionsImpactSec = conditions.seconds;
           goalRace.conditionsSource = conditions.source;
@@ -2405,7 +2411,8 @@ export async function buildSeed(): Promise<FaffSeed> {
   // null when not enough signal exists. Fired in parallel.
   const [
     aerobicFitness, heatAcclim, recoveryPhase, blockComparison,
-    dowPatterns, cyclePerformance, qualityPredictors,
+    dowPatterns, cyclePerformance, qualityPredictors, vdotAnchor,
+    sleepCoaching,
   ] = await Promise.all([
     (async () => { try { const { computeDecouplingTrend } = await import('@/lib/training/decoupling-trend');
       return await computeDecouplingTrend(userId); } catch { return null; } })(),
@@ -2425,11 +2432,61 @@ export async function buildSeed(): Promise<FaffSeed> {
     })(),
     (async () => { try { const { computeQualityPredictors } = await import('@/lib/coach/quality-predictors');
       return await computeQualityPredictors(userId); } catch { return null; } })(),
+    // 2026-06-09 state-audit · VDOT-anchor provenance for the Health
+    // page staleness warning. Reads the newest snapshot that carries
+    // anchor columns (migration 125 populates them going forward) and
+    // date-matches a races row for the display name. CURRENT_DATE is
+    // server UTC · ±1 day of skew is immaterial at a 120-day threshold.
+    (async () => {
+      try {
+        const { pool: _p } = await import('@/lib/db/pool');
+        const row = (await _p.query<{
+          vdot: string; anchor_date: string; anchor_dist: string | null;
+          race_name: string | null; age_days: string;
+        }>(
+          `SELECT ps.vdot::text,
+                  ps.vdot_anchor_date::text AS anchor_date,
+                  ps.vdot_anchor_distance_mi::text AS anchor_dist,
+                  (SELECT r.meta->>'name' FROM races r
+                    WHERE r.user_uuid = ps.user_uuid
+                      AND r.meta->>'date' = ps.vdot_anchor_date::text
+                    LIMIT 1) AS race_name,
+                  (CURRENT_DATE - ps.vdot_anchor_date)::text AS age_days
+             FROM projection_snapshots ps
+            WHERE ps.user_uuid = $1::uuid
+              AND ps.vdot IS NOT NULL
+              AND ps.vdot_anchor_date IS NOT NULL
+            ORDER BY ps.snapshot_date DESC
+            LIMIT 1`,
+          [userId],
+        )).rows[0];
+        if (!row) return null;
+        const ageDays = Number(row.age_days);
+        if (!Number.isFinite(ageDays)) return null;
+        return {
+          vdot: Number(row.vdot),
+          anchorDateISO: row.anchor_date,
+          anchorDistanceMi: row.anchor_dist != null ? Number(row.anchor_dist) : null,
+          anchorRaceName: row.race_name,
+          ageDays,
+          tier: (ageDays < 56 ? 'fresh' : ageDays < 120 ? 'aging' : 'stale') as 'fresh' | 'aging' | 'stale',
+        };
+      } catch { return null; }
+    })(),
+    // 2026-06-09 Phase 2 (3.4) · standing sleep flag + race-week banking.
+    (async () => {
+      try {
+        const { computeSleepCoaching } = await import('@/lib/coach/sleep-coaching');
+        return await computeSleepCoaching(userId);
+      } catch { return null; }
+    })(),
   ]);
   // 2026-06-01 · Power moves sidecar fields · HealthSnapshot carries
   // proper optional types for all 7 (components/faff-app/types.ts).
   // Design agent reads seed.health.<field> per the v2 brief.
   healthSnapshot.aerobicFitness = aerobicFitness;
+  healthSnapshot.vdotAnchor = vdotAnchor;
+  healthSnapshot.sleepCoaching = sleepCoaching;
   healthSnapshot.heatAcclim = heatAcclim;
   healthSnapshot.recoveryPhase = recoveryPhase;
   healthSnapshot.blockComparison = blockComparison;

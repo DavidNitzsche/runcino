@@ -73,3 +73,29 @@ export function nextMorning0715(now: Date = new Date()): Date {
   if (next <= now) next.setDate(next.getDate() + 1);
   return next;
 }
+
+/** 2026-06-09 Phase 2 (3.4) · "today at HH:MM in the RUNNER'S timezone"
+ *  as an absolute Date. Unlike nextMorning0715 (server-local), this is
+ *  tz-correct: builds the wall-clock instant in `tz` via the
+ *  formatToParts offset trick (same approach as lib/runs/identity.ts).
+ *  If that instant already passed, returns it anyway — the dispatcher
+ *  fires past-due rows on its next pass, which for a 21:00 bedtime
+ *  nudge enqueued by the 01:15 cron is never the case. */
+export function todayAtHourLocal(tz: string, hour: number, minute = 0, now: Date = new Date()): Date {
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const [y, m, d] = dtf.format(now).split('-').map((x) => parseInt(x, 10));
+  // First guess: treat the target wall-clock as UTC, then correct by the
+  // zone's offset at that instant.
+  const guess = Date.UTC(y, m - 1, d, hour, minute, 0);
+  const offsetProbe = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const p: Record<string, string> = {};
+  for (const part of offsetProbe.formatToParts(new Date(guess))) p[part.type] = part.value;
+  const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  return new Date(guess - (asUtc - guess));
+}

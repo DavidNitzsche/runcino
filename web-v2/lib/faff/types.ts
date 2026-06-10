@@ -63,7 +63,7 @@ export type WorkoutSubLabel =
 // from-data when the runner has 14d of HR+pace.
 // ──────────────────────────────────────────────────────────────────────
 
-export type WorkoutSpec =
+export type WorkoutSpec = (
   | WorkoutSpecEasy
   | WorkoutSpecLong
   | WorkoutSpecThreshold
@@ -72,7 +72,32 @@ export type WorkoutSpec =
   | WorkoutSpecFartlek
   | WorkoutSpecProgression
   | WorkoutSpecRecovery
-  | WorkoutSpecMP;
+  | WorkoutSpecMP
+) & {
+  /** 2026-06-09 Phase 2 (3.2) · machine-checkable contingency rules.
+   *  Optional + additive on every spec kind — old rows simply lack it.
+   *    pass  · post-run confirmation criteria ("Pass: avgHr ≤ 158")
+   *    bail  · mid-run cutout the watch may OFFER on breach (never
+   *            enforced · runner chooses CONTINUE / TAKE THE BAIL)
+   *    abort · race-day checkpoint (mile-5 B-goal switch)
+   *  Cite: Research/08 §18.2 execution costs · §6.1 HR ceilings;
+   *  composed in lib/plan/spec-builder.ts composeContingencyRules. */
+  rules?: ContingencyRule[];
+};
+
+export interface ContingencyRule {
+  kind: 'pass' | 'bail' | 'abort';
+  metric: 'hr' | 'pace';
+  op: '<=' | '>';
+  value: number;
+  /** What the value applies to · work phases, the long-run finish
+   *  segment, the whole run, or a race checkpoint mile. */
+  scope: 'work' | 'finish' | 'overall' | 'mile-5';
+  /** Machine action token for the watch sheet · null for pass rules. */
+  action: 'drop_to_easy' | 'cut_finish_half' | 'switch_to_b_goal' | null;
+  /** One-line runner-facing label. */
+  label: string;
+}
 
 export interface WorkoutSpecEasy {
   kind: 'easy';

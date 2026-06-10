@@ -124,7 +124,7 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
   }>(
     `WITH all_days AS (
        SELECT generate_series(
-         ($2::date - INTERVAL '60 days')::date,
+         ($2::date - INTERVAL '120 days')::date,
          $2::date,
          '1 day'::interval
        )::date AS d
@@ -147,7 +147,7 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
-          AND (data->>'date')::date >= $2::date - 60
+          AND (data->>'date')::date >= $2::date - 120
         GROUP BY 1
      ),
      daily_plan AS (
@@ -157,7 +157,7 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1::uuid
           AND tp.archived_iso IS NULL
-          AND pw.date_iso::date >= $2::date - 60
+          AND pw.date_iso::date >= $2::date - 120
      )
      SELECT a.d::text AS d,
             COALESCE(r.mi, 0)::text AS mi,

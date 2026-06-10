@@ -397,14 +397,14 @@ struct ProfileView: View {
                             SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
                             if let meta = f.meta, !meta.isEmpty {
                                 Text(meta)
-                                    .font(.display(11, weight: .semibold))
+                                    .font(.body(11, weight: .semibold))
                                     .foregroundStyle(Theme.txt.opacity(0.6))
                                     .lineLimit(2)
                             }
                         }
                         Spacer(minLength: 12)
                         Text(f.value)
-                            .font(.display(15, weight: .bold))
+                            .font(.body(15, weight: .bold))
                             .foregroundStyle(factColor(f.valueColor))
                             .multilineTextAlignment(.trailing)
                     }
@@ -551,13 +551,13 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).font(.body(15, weight: .extraBold)).foregroundStyle(Theme.txt)
                 Text(state?.note ?? "—")
-                    .font(.display(11, weight: .semibold))
+                    .font(.body(11, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.6))
                     .lineLimit(1)
             }
             Spacer()
             Text(reconnecting ? "Opening…" : (on ? "SYNCED" : "CONNECT"))
-                .font(.display(12, weight: .semibold))
+                .font(.body(12, weight: .semibold))
                 .foregroundStyle(on ? Color(hex: 0x9AF0BF) : Theme.txt.opacity(0.7))
         }
         .padding(14)
@@ -609,7 +609,7 @@ struct ProfileView: View {
             HStack {
                 Text(title).font(.body(15, weight: .extraBold)).foregroundStyle(Theme.txt)
                 Spacer()
-                if let v = value { Text(v).font(.display(12, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.7)) }
+                if let v = value { Text(v).font(.body(12, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.7)) }
                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.5))
             }
             .padding(14)

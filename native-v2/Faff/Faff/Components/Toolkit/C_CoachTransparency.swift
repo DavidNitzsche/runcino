@@ -146,7 +146,7 @@ struct WhatChangedExpander: View {
                 HStack(spacing: 11) {
                     if let count = intents?.count {
                         Text("\(count)")
-                            .font(.display(13, weight: .bold)).monospacedDigit()
+                            .font(.body(13, weight: .bold)).monospacedDigit()
                             .foregroundStyle(Theme.txt)
                             .frame(width: 24, height: 24)
                             .background(Theme.Accent.mintReady.opacity(0.18), in: Circle())

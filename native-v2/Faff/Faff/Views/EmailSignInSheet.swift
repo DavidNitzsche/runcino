@@ -55,7 +55,7 @@ struct EmailSignInSheet: View {
                     .padding(.top, 18)
 
                 Text("Apple sign-in is the primary path. Email is here as a fallback while that's being fixed.")
-                    .font(.display(10, weight: .semibold))
+                    .font(.body(10, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.5))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)

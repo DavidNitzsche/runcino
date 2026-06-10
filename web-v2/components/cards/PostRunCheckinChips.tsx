@@ -16,10 +16,10 @@
  *   → coach reads on next render
  *
  * Workout-type-aware chip sets per the design locked with David:
- *   quality (threshold/tempo/intervals): NAILED IT / GRINDED IT OUT / COULDN'T HOLD
+ *   quality (threshold/tempo/intervals): ON TARGET / GRINDED IT OUT / COULDN'T HOLD
  *   easy / shakeout:                     CHATTY EASY / CONTROLLED, NOT CHATTY / HAD TO PUSH
  *   long:                                STRONG THROUGHOUT / FADED LATE / HIT THE WALL
- *   race:                                CRUSHED GOAL / ON GOAL / MISSED GOAL
+ *   race:                                GOAL MET / ON GOAL / MISSED GOAL
  *   recovery (no exec target):           skip Row 1 entirely
  *
  * Body row is the same on every workout type.
@@ -260,7 +260,10 @@ function executionOptionsFor(kind: WorkoutKind): Array<{ value: Execution; label
   switch (kind) {
     case 'quality':
       return [
-        { value: 'nailed',  label: 'NAILED IT',       tone: 'green' },
+        // AFC fix 8 · "NAILED IT" → disciplined register per the task
+        // brief's own example ("YOU NAILED IT" → "ON GOAL"). Wire value
+        // 'nailed' unchanged · backend enum.
+        { value: 'nailed',  label: 'ON TARGET',       tone: 'green' },
         { value: 'grinded', label: 'GRINDED IT OUT',  tone: 'goal' },
         { value: 'missed',  label: "COULDN'T HOLD",   tone: 'over' },
       ];
@@ -277,10 +280,13 @@ function executionOptionsFor(kind: WorkoutKind): Array<{ value: Execution; label
         { value: 'walled', label: 'HIT THE WALL',       tone: 'over' },
       ];
     case 'race':
+      // AFC fix 8 · "CRUSHED" violated the voice contract (no hype).
+      // The wire value `crushed_goal` is a backend enum read by
+      // /api/checkin + canned replies · label-only change here.
       return [
-        { value: 'crushed_goal', label: 'CRUSHED GOAL', tone: 'green' },
-        { value: 'on_goal',      label: 'ON GOAL',      tone: 'goal' },
-        { value: 'missed_goal',  label: 'MISSED GOAL',  tone: 'over' },
+        { value: 'crushed_goal', label: 'GOAL MET',    tone: 'green' },
+        { value: 'on_goal',      label: 'ON GOAL',     tone: 'goal' },
+        { value: 'missed_goal',  label: 'MISSED GOAL', tone: 'over' },
       ];
     case 'recovery':
       return null;

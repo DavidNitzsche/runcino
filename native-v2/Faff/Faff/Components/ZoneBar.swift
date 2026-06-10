@@ -41,7 +41,7 @@ struct ZoneBar: View {
                                 .font(.label(9.5)).tracking(0.5)
                                 .foregroundStyle(Theme.txt.opacity(0.65))
                             Text(z.timeLabel)
-                                .font(.display(10, weight: .semibold))
+                                .font(.body(10, weight: .semibold))
                                 .foregroundStyle(Theme.txt.opacity(0.55))
                         }
                     }

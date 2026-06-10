@@ -30,13 +30,16 @@ enum Theme {
     static let mute   = Color(hex: 0x8A90A0)        // secondary text
     static let dim    = Color(hex: 0x4B505E)        // tertiary text
 
-    // ───── Semantic accents ─────
-    static let green = Color(hex: 0x3EBD41)         // success / on-plan / READY
-    static let goal  = Color(hex: 0xF3AD38)         // goal markers / TODAY badge
-    static let over  = Color(hex: 0xFC4D64)         // over budget / warning
-    static let dist  = Color(hex: 0x27B4E0)         // distance / info
-    static let rest  = Color(hex: 0x008FEC)         // rest day (legacy alias)
-    static let race  = Color(hex: 0xFF8847)         // race day / ember accent
+    // ───── Semantic accents · LOCKED TEN-COLOR PALETTE (brief v2, AFC 2026-06-09) ─────
+    // Byte-for-byte identical with web globals.css :root and the watch
+    // (WatchTheme.swift + FaceKit.swift). Do not add an eleventh color.
+    static let green     = Color(hex: 0x3EBD41)     // good state / on-plan / READY
+    static let goal      = Color(hex: 0xF3AD38)     // long / goal markers / attention
+    static let over      = Color(hex: 0xFC4D64)     // off / warn
+    static let dist      = Color(hex: 0x27B4E0)     // distance / recovery / info
+    static let rest      = Color(hex: 0x27B4E0)     // rest chrome (= recovery blue · corporate #008FEC deleted)
+    static let race      = Color(hex: 0xFF5722)     // race day / tempo (the brand hero color)
+    static let intervals = Color(hex: 0xF43F5E)     // intervals / max-quality effort
 
     // ───── Shape · matches colors_and_type.css --r-* ─────
     static let rChip:  CGFloat = 14
@@ -104,20 +107,26 @@ enum Theme {
     }
 
     // ───── HR zones · split bars / pacing segments palette ─────
+    // AFC fix 2 · the canonical zone ladder = the effort temperature scale
+    // (recovery → easy → long → tempo → intervals). Synced byte-for-byte
+    // with web ZC (constants.ts) + RunDetailModal ZONE_COLOR.
     enum ZoneSplit {
-        static let z1 = Color(hex: 0x48B3B5)
-        static let z2 = Color(hex: 0x3EBD41)
+        static let z1 = Color(hex: 0x27B4E0)
+        static let z2 = Color(hex: 0x14C08C)
         static let z3 = Color(hex: 0xF3AD38)
-        static let z4 = Color(hex: 0xFF8847)
-        static let z5 = Color(hex: 0xFC4D64)
+        static let z4 = Color(hex: 0xFF5722)
+        static let z5 = Color(hex: 0xF43F5E)
     }
 
     // ───── Shoe role colors (Garage chips, picker dots) ─────
+    // AFC fix 2 · per the locked palette RACE and TEMPO share #FF5722
+    // (one semantic slot) · the two role chips are color-identical and
+    // differentiated by their text label. Synced with web ROLECOL.
     enum Shoe {
-        static let race      = Color(hex: 0xFC4D64)
-        static let tempo     = Color(hex: 0xFF8847)
+        static let race      = Color(hex: 0xFF5722)
+        static let tempo     = Color(hex: 0xFF5722)
         static let long      = Color(hex: 0xF3AD38)
-        static let easy      = Color(hex: 0x48B3B5)
+        static let easy      = Color(hex: 0x14C08C)
         static let recovery  = Color(hex: 0x27B4E0)
     }
 
@@ -151,7 +160,10 @@ enum Theme {
         }
         var race: Color {
             switch self {
-            case .ember:  return Color(hex: 0xFF8847)
+            // AFC fix 2 · the DEFAULT (ember) tweak now returns the locked
+            // race hex. gold/violet/cool remain opt-in recolors via the
+            // Tweaks panel (out-of-palette by design · flagged in recap).
+            case .ember:  return Color(hex: 0xFF5722)
             case .gold:   return Color(hex: 0xF5A518)
             case .violet: return Color(hex: 0xB794F4)
             case .cool:   return Color(hex: 0x3AA0E0)
@@ -202,14 +214,15 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
     /// Dot color for chips, week strip dots, splits · the registration mark.
     /// Authoritative source: colors_and_type.css (wins over app/tokens.css).
     var dot: Color {
+        // AFC fix 2 · = web constants.ts EFF[*].dot, byte-for-byte.
         switch self {
         case .recovery:  return Color(hex: 0x27B4E0)
-        case .easy:      return Color(hex: 0x14C08C)  // teal-green per --eff-easy
+        case .easy:      return Color(hex: 0x14C08C)  // per --eff-easy
         case .long:      return Color(hex: 0xF3AD38)
-        case .tempo:     return Color(hex: 0xFF8847)
-        case .intervals: return Color(hex: 0xFC4D64)
+        case .tempo:     return Color(hex: 0xFF5722)
+        case .intervals: return Color(hex: 0xF43F5E)
         case .rest:      return Color(hex: 0x8A90A0)
-        case .race:      return Color(hex: 0xD63E4E)  // per --eff-race
+        case .race:      return Color(hex: 0xFF5722)  // per --eff-race
         }
     }
 
@@ -223,21 +236,25 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
     /// differ only by accent dot). Race tracks Intervals (no separate
     /// race-only mesh in the spec).
     var mesh: FaffMesh {
+        // AFC fix 6 (2026-06-09) · stops synced byte-for-byte with web
+        // constants.ts EFF[*].mesh. tempo + intervals were still the
+        // retired v1 palettes (web moved to v3 on 2026-06-03: same
+        // saturation, brightest mid stops ~6-8% down so cards stay
+        // legible). race gets the dedicated race mesh the web shipped
+        // 2026-06-08 instead of tracking intervals.
         switch self {
         case .recovery, .easy:
             return FaffMesh(c1: 0x8FF0E0, c2: 0x46CFC6, c3: 0x2FC0E6, c4: 0x23A98E, c5: 0x1B8C7C, base: 0x0E5A54)
         case .long:
             return FaffMesh(c1: 0xFFE7B0, c2: 0xF8BC4E, c3: 0xF0A638, c4: 0xEC8C2A, c5: 0xD9791C, base: 0xA85A14)
         case .tempo:
-            return FaffMesh(c1: 0xFFD2A4, c2: 0xFF9A54, c3: 0xFB6E3C, c4: 0xF4502F, c5: 0xE23A47, base: 0x9E2438)
+            return FaffMesh(c1: 0xF5C297, c2: 0xF18847, c3: 0xE15F30, c4: 0xD04525, c5: 0xC2303E, base: 0x8A1E30)
         case .intervals:
-            return FaffMesh(c1: 0xFFDA84, c2: 0xFF8A54, c3: 0xFF526C, c4: 0xE82B49, c5: 0xC61E46, base: 0x7E1432)
+            return FaffMesh(c1: 0xF2C878, c2: 0xF07A48, c3: 0xEB4560, c4: 0xCD2540, c5: 0xA91A3E, base: 0x6D1129)
         case .rest:
             return FaffMesh(c1: 0xC4C8D2, c2: 0x9CA2B0, c3: 0x787E8E, c4: 0x58606E, c5: 0x3E4350, base: 0x252935)
         case .race:
-            // No separate race mesh in the spec. Track Intervals so race
-            // day reads as the highest-intensity backdrop the runner sees.
-            return FaffMesh(c1: 0xFFDA84, c2: 0xFF8A54, c3: 0xFF526C, c4: 0xE82B49, c5: 0xC61E46, base: 0x7E1432)
+            return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
         }
     }
 
@@ -284,6 +301,11 @@ struct FaffMesh: Equatable {
         self.c1 = c1; self.c2 = c2; self.c3 = c3; self.c4 = c4; self.c5 = c5; self.base = base
     }
 
+    /// Charcoal neutral · the calm default canvas (brief v2 §8 · AFC task 8).
+    /// Byte-for-byte the web MESH.targets stops. Today (default state) and
+    /// Targets both read this; semantic color lives on the data, not the page.
+    static let neutral = FaffMesh(c1: 0x363B45, c2: 0x2B2F38, c3: 0x21242B, c4: 0x191C22, c5: 0x121419, base: 0x0C0D11)
+
     /// View mesh for a tab that isn't dictated by an active workout.
     static func forView(_ v: ViewMesh) -> FaffMesh {
         switch v {
@@ -294,10 +316,19 @@ struct FaffMesh: Equatable {
         // stay in sync with the effort palette when the runner cycles
         // from a teal effort day into the Health tab.
         case .health:    return FaffMesh(c1: 0x8FF0E0, c2: 0x46CFC6, c3: 0x2FC0E6, c4: 0x23A98E, c5: 0x1B8C7C, base: 0x0E5A54)
-        case .targets:   return FaffMesh(c1: 0xFFDA84, c2: 0xFF8A54, c3: 0xFF526C, c4: 0xE82B49, c5: 0xC61E46, base: 0x7E1432)
+        // AFC fix 5 (2026-06-09) · Targets goes NEUTRAL CHARCOAL (shared
+        // FaffMesh.neutral · = web MESH.targets). The old red intervals
+        // mesh fought every on-track-green status surface · green-on-red
+        // is the worst contrast pair. Same rationale as the web's
+        // 2026-06-04 Targets rebuild: semantic color is reserved for the
+        // data (green on-track / amber watching / warn off-track), the
+        // page itself stays calm.
+        case .targets:   return neutral
         case .profile:   return FaffMesh(c1: 0x6B6358, c2: 0x4E4840, c3: 0x3A352E, c4: 0x2A2723, c5: 0x1E1C19, base: 0x121110)
         case .spectator: return FaffMesh(c1: 0x8FF0E0, c2: 0x46CFC6, c3: 0x2FC0E6, c4: 0x23A98E, c5: 0x1B8C7C, base: 0x0E5A54)
-        case .race:      return FaffMesh(c1: 0xFFDA84, c2: 0xFF8A54, c3: 0xFF526C, c4: 0xE82B49, c5: 0xC61E46, base: 0x7E1432)
+        // AFC fix 6 · dedicated race mesh (= web MESH.race), no longer
+        // borrowing the intervals stops.
+        case .race:      return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
         }
     }
 

@@ -258,7 +258,7 @@ private extension TodayRecoveryPanel {
     func inputCell(value: String, label: String, tone: Color) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.display(15, weight: .bold))
+                .font(.body(15, weight: .bold))
                 .foregroundStyle(tone)
             Text(label)
                 .font(.body(8.5, weight: .extraBold)).tracking(0.8)

@@ -174,12 +174,12 @@ struct ProView: View {
                             .tracking(-1)
                             .foregroundStyle(Theme.txt)
                         Text(unit)
-                            .font(.display(12, weight: .semibold))
+                            .font(.body(12, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.6))
                     }
                     .padding(.top, 8)
                     Text(note)
-                        .font(.display(10, weight: .bold))
+                        .font(.body(10, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.55))
                         .padding(.top, 5)
                 }
@@ -226,14 +226,14 @@ struct ProView: View {
 
     private var trialLine: some View {
         Text(plan == .annual ? "Then $69.99/yr · cancel anytime" : "Then $9.99/mo · cancel anytime")
-            .font(.display(11, weight: .semibold))
+            .font(.body(11, weight: .semibold))
             .foregroundStyle(Theme.txt.opacity(0.6))
             .frame(maxWidth: .infinity)
     }
 
     private var fine: some View {
         Text("Payment charged to your App Store account. Auto-renews unless canceled 24h before period ends. Terms · Privacy · Restore")
-            .font(.display(9.5, weight: .semibold))
+            .font(.body(9.5, weight: .semibold))
             .foregroundStyle(Theme.txt.opacity(0.4))
             .multilineTextAlignment(.center)
             .lineSpacing(3)

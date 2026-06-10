@@ -19,7 +19,7 @@ export function SpectatorView({ seed, onExit }: { seed: FaffSeed; onExit: () => 
           <div className="fll">TODAY</div>
           <div className="hcb">
             <div className="specnext">
-              <span className="tdot" style={{ background: '#FF8847' }} />
+              <span className="tdot" style={{ background: '#FF5722' }} />
               <div>
                 <div className="snn">Tempo Run</div>
                 <div className="snm">8 mi · 6:38 target</div>

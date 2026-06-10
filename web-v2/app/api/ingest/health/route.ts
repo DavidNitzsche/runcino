@@ -31,6 +31,18 @@ const READINESS_SIGNAL_TYPES = new Set([
   'sleep_hours', 'resting_hr', 'hrv', 'hr_recovery',
 ]);
 
+/** 2026-06-09 · regression-audit G3 · hard physiological bounds for the
+ *  readiness-pillar streams. Reject-only-the-impossible: wide enough that
+ *  no real human reading is dropped (elite resting HRs reach the high 20s;
+ *  rMSSD above 200 ms is sensor noise), narrow enough that a unit-confused
+ *  or partial-night artifact can't poison a baseline. Everything else on
+ *  the whitelist stays unbounded — only these two feed the readiness score
+ *  directly. */
+const SAMPLE_BOUNDS: Record<string, { lo: number; hi: number }> = {
+  hrv: { lo: 10, hi: 200 },          // ms · rMSSD
+  resting_hr: { lo: 25, hi: 110 },   // bpm
+};
+
 const ALLOWED_TYPES = new Set([
   'sleep_hours', 'hrv', 'resting_hr', 'vo2_max', 'body_mass',
   'body_fat_pct', 'lean_mass', 'hr', 'max_hr', 'cadence',
@@ -88,6 +100,23 @@ export async function POST(req: NextRequest) {
   for (const s of samples) {
     if (!s?.sample_type || !ALLOWED_TYPES.has(s.sample_type)) { skipped++; continue; }
     if (typeof s.value !== 'number' || !isFinite(s.value)) { skipped++; continue; }
+    // 2026-06-09 · regression-audit G3 · physiological bounds on the two
+    // pillar-critical streams. `isFinite()` was the only gate, and a
+    // 102 ms HRV sample (vs 55 baseline) sailed into the 7-day window in
+    // production. Bounds reject only the physiologically impossible —
+    // in-bounds garbage (the Jun 8 29 ms partial-night read) is handled
+    // by the median window in health-state.ts, not here, because a real
+    // brutal night can legitimately sit far below baseline and the
+    // corrected re-sync value must be able to land on the same date row.
+    const bounds = SAMPLE_BOUNDS[s.sample_type];
+    if (bounds && (s.value < bounds.lo || s.value > bounds.hi)) {
+      console.warn(
+        `[ingest/health] rejected out-of-bounds ${s.sample_type}=${s.value} ` +
+        `(allowed ${bounds.lo}-${bounds.hi}) user=${userId}`,
+      );
+      skipped++;
+      continue;
+    }
     const sampleDate = s.sample_date ?? (s.recorded_at ?? new Date().toISOString()).slice(0, 10);
     const recordedAt = s.recorded_at ?? new Date().toISOString();
 

@@ -12,7 +12,7 @@ struct MileBar: Identifiable, Hashable {
     let value: Double      // pace seconds or mileage
     let label: String      // "6:33" or "48"
     var subLabel: String? = nil  // "146 bpm"
-    var color: Color = Color(hex: 0xFF8847)
+    var color: Color = Color(hex: 0xFF5722)
     var isHighlight: Bool = false
 }
 

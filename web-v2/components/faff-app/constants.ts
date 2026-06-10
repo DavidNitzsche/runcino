@@ -16,8 +16,11 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   // intentionally share the teal mesh; they differ only by the accent
   // dot. Spec: light to deep [c1, c2, c3, c4, c5, base]. Per-day
   // re-theme cross-fades all 6 stops over 0.7s (handled in CSS).
+  // Dots resync'd to the LOCKED TEN-COLOR PALETTE (brief v2, AFC fix 2).
+  // easy was #48B3B5 here while iPhone shipped #14C08C "per --eff-easy" ·
+  // both surfaces now read #14C08C, byte-for-byte with Theme.swift.
   recovery:  { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
-  easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#48B3B5', mark: 26, lbl: 'EASY' },
+  easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#14C08C', mark: 26, lbl: 'EASY' },
   long:      { mesh: ['#FFE7B0','#F8BC4E','#F0A638','#EC8C2A','#D9791C','#A85A14'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
   // 2026-06-03 · tempo + intervals meshes · second iteration.
   //   v1 (#FFD2A4 / #FF9A54 / …) was too bright · washed cards out.
@@ -27,8 +30,8 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   // it because the base only fills the void around blobs, not the
   // foreground. Result: still clearly orange-red / pink-red and alive,
   // just the brightest peak isn't blasting through anymore.
-  tempo:     { mesh: ['#F5C297','#F18847','#E15F30','#D04525','#C2303E','#8A1E30'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
-  intervals: { mesh: ['#F2C878','#F07A48','#EB4560','#CD2540','#A91A3E','#6D1129'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
+  tempo:     { mesh: ['#F5C297','#F18847','#E15F30','#D04525','#C2303E','#8A1E30'], dot: '#FF5722', mark: 80, lbl: 'HARD' },
+  intervals: { mesh: ['#F2C878','#F07A48','#EB4560','#CD2540','#A91A3E','#6D1129'], dot: '#F43F5E', mark: 94, lbl: 'MAX' },
   rest:      { mesh: ['#C4C8D2','#9CA2B0','#787E8E','#58606E','#3E4350','#252935'], dot: '#8A90A0', mark: 4,  lbl: 'OFF' },
   // 2026-06-08 · race effort · the brand's race-orange mesh (same palette as
   // MESH.race / the Targets→race page surface). Dot is the canonical --race
@@ -73,7 +76,11 @@ export const KIT: Record<EffortKey, { weather: string; shoe: string; fuel: strin
   race:      { weather: ' · ',        shoe: 'SC Trainer v3', fuel: 'Race fuel plan',  coach: 'Trust the work. Settle into goal effort early, hold the line, finish strong.' },
 };
 
-export const ZC = ['#14C08C','#3EBD41','#F3AD38','#FF8847','#FC4D64'];
+// Z1–Z5 ladder = the effort temperature scale (recovery → easy → long →
+// tempo → intervals). One zone palette app-wide (AFC fix 2) · replaces the
+// old ladder that used the good-state green (#3EBD41) as Z2 and is synced
+// byte-for-byte with Theme.swift ZoneSplit + RunDetailModal ZONE_COLORS.
+export const ZC = ['#27B4E0','#14C08C','#F3AD38','#FF5722','#F43F5E'];
 
 export type PlannedDay = {
   dw: string; dn: number; full: string;
@@ -208,16 +215,19 @@ export type CompletedRun = {
 };
 
 export const SHOES_DEFAULT = [
-  { nm: 'SC Trainer v3', role: 'RACE',     col: '#FC4D64', mi: 142, max: 400 },
+  { nm: 'SC Trainer v3', role: 'RACE',     col: '#FF5722', mi: 142, max: 400 },
   { nm: 'Superblast 3',  role: 'LONG',     col: '#F3AD38', mi: 210, max: 400 },
-  { nm: 'Zoom Fly 6',    role: 'TEMPO',    col: '#FF8847', mi: 88,  max: 350 },
+  { nm: 'Zoom Fly 6',    role: 'TEMPO',    col: '#FF5722', mi: 88,  max: 350 },
   { nm: 'Novablast 5',   role: 'RECOVERY', col: '#27B4E0', mi: 64,  max: 400 },
   { nm: 'Vomero Plus',   role: 'EASY',     col: '#14C08C', mi: 120, max: 400 },
 ];
 
+// Per the locked palette, RACE and TEMPO share #FF5722 (one semantic slot).
+// Shoe chips for the two roles are now color-identical · differentiated by
+// their text label. Flagged in the AFC recap for David's review.
 export const ROLECOL: Record<string,string> = {
-  RACE: '#FC4D64', TEMPO: '#FF8847', LONG: '#F3AD38', EASY: '#14C08C', RECOVERY: '#27B4E0',
-  INTERVALS: '#FC4D64',
+  RACE: '#FF5722', TEMPO: '#FF5722', LONG: '#F3AD38', EASY: '#14C08C', RECOVERY: '#27B4E0',
+  INTERVALS: '#F43F5E',
 };
 
 export type PhaseKey = 'base'|'build'|'peak'|'taper'|'race'|'maintenance'|'recovery';
@@ -250,8 +260,8 @@ export const PHASE: Record<PhaseKey, { lab: string; name: string; sub: string; f
 
 export type SeasonType = 'easy'|'recovery'|'intervals'|'tempo'|'mp'|'long'|'vo2'|'sharp'|'rest';
 export const SEASON_TYPE_COLOR: Record<SeasonType, string | null> = {
-  easy: '#14C08C', recovery: '#27B4E0', intervals: '#FC4D64', tempo: '#FF8847',
-  mp: '#F3AD38',   long: '#F3AD38',     vo2: '#FC4D64',       sharp: '#3EBD41',
+  easy: '#14C08C', recovery: '#27B4E0', intervals: '#F43F5E', tempo: '#FF5722',
+  mp: '#F3AD38',   long: '#F3AD38',     vo2: '#F43F5E',       sharp: '#3EBD41',
   rest: null,
 };
 export const SEASON_TYPE_NAME: Record<SeasonType, [string,string]> = {

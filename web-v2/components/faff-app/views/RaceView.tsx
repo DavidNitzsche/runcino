@@ -592,9 +592,9 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         <div className="rp-panel rp-elev">
           <div className="rp-elevhead"><div className="t">Elevation profile</div><div className="s">Start 360 ft → Finish 20 ft</div></div>
           <svg className="rp-elevsvg" viewBox="0 0 640 150" preserveAspectRatio="none">
-            <defs><linearGradient id="elevfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FF8847" stopOpacity=".42"/><stop offset="1" stopColor="#FF8847" stopOpacity="0"/></linearGradient></defs>
+            <defs><linearGradient id="elevfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FF5722" stopOpacity=".42"/><stop offset="1" stopColor="#FF5722" stopOpacity="0"/></linearGradient></defs>
             <path d={`${r.elevPath} L640,150 L0,150 Z`} fill="url(#elevfill)" />
-            <path d={r.elevPath} fill="none" stroke="#FF8847" strokeWidth="2.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            <path d={r.elevPath} fill="none" stroke="#FF5722" strokeWidth="2.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             <line x1="320" y1="0" x2="320" y2="150" stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="3 4" />
           </svg>
           <div className="rp-elevx"><span>START</span><span>10K</span><span>HALF · 13.1</span><span>30K</span><span>FINISH</span></div>
@@ -735,7 +735,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
           }}>
             <div style={{
               fontSize: 10, letterSpacing: '1.6px', fontWeight: 700,
-              color: '#48B3B5',
+              color: '#27B4E0',
             }}>
               PLAN · REBUILT
             </div>

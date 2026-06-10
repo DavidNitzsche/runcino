@@ -41,13 +41,42 @@ struct SummaryView: View {
     @ViewBuilder
     private var workoutSummary: some View {
         CompleteFace(
-            label:    labelText,
-            pace:     avgPaceText,
-            distance: milesText,
-            elapsed:  elapsedText,
-            hr:       avgHrText,
-            onDone:   onDone
+            label:       labelText,
+            pace:        avgPaceText,
+            distance:    milesText,
+            elapsed:     elapsedText,
+            hr:          avgHrText,
+            verdict:     verdictInfo?.text,
+            verdictRole: verdictInfo?.role ?? .neutral,
+            onDone:      onDone
         )
+    }
+
+    /// Brief v2 §9 verdict row · state (on-pace / under / over) + one-word
+    /// verdict, role-colored (on-pace green · under amber · over red).
+    ///
+    /// Derivation (all on-device, from the plan the watch already carries):
+    ///   state   = avg pace vs the first work phase's target ± tolerance
+    ///             (phase tolerance when shipped, else 15 s/mi)
+    ///   word    = GOOD (on-pace) · SHARP (under = faster than target) ·
+    ///             LOADED (over + avg HR above the phase HR target) ·
+    ///             STEADY (over, HR fine or unknown)
+    /// Nil (row hidden) when there's no target to judge against — free
+    /// runs and unstructured sessions stay a plain receipt.
+    private var verdictInfo: (text: String, role: Role)? {
+        guard let c = completion,
+              let mi = c.totalDistanceMi, mi > 0.05,
+              let work = workout.phases.first(where: { $0.type == .work }),
+              let target = work.targetPaceSPerMi, target > 0 else { return nil }
+        let avg = Int(Double(c.totalDurationSec) / mi)
+        let tol = work.tolerancePaceSPerMi ?? 15
+        let d = avg - target
+        if abs(d) <= tol { return ("GOOD · ON-PACE", .live) }
+        if d < 0 { return ("SHARP · UNDER", .goal) }
+        if let hrTarget = work.hrTargetBpm, let hr = c.avgHr, hr > hrTarget {
+            return ("LOADED · OVER", .over)
+        }
+        return ("STEADY · OVER", .over)
     }
 
     private var labelText: String {

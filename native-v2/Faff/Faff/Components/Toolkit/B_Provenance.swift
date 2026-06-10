@@ -217,7 +217,7 @@ struct ConditionsLine: View {
                 Image(systemName: "sun.max")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.mute)
-                Text("\(t)°F").font(.display(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.txt)
+                Text("\(t)°F").font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.txt)
                 if let f = feels { sep(); Text("feels \(f)").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute) }
                 if let w = wind { sep(); Text("wind \(w) mph").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute) }
             }
@@ -226,7 +226,7 @@ struct ConditionsLine: View {
                 Image(systemName: "sun.max.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.race)
-                Text("\(t)°F").font(.display(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.race)
+                Text("\(t)°F").font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.race)
                 if let f = feels { Text(" · feels \(f)").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.race) }
                 if let h = hum { sep(); Text("\(h)% RH").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute) }
             }
@@ -235,9 +235,9 @@ struct ConditionsLine: View {
                 Image(systemName: "sun.max")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.mute)
-                Text("\(s)°F").font(.display(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.txt)
+                Text("\(s)°F").font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.txt)
                 Text("→").font(.body(11.5)).foregroundStyle(Theme.mute)
-                Text("\(p)°F").font(.display(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.race)
+                Text("\(p)°F").font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.race)
                 sep()
                 Text("peak \(p)°F").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute)
             }
@@ -299,7 +299,7 @@ struct HRTargetPill: View {
                     .font(.body(10, weight: .extraBold)).tracking(1.4)
                     .foregroundStyle(Theme.mute)
                 Text("\(lo)–\(hi) bpm")
-                    .font(.display(13, weight: .semibold)).monospacedDigit()
+                    .font(.body(13, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(Theme.txt)
                 Text("·").font(.body(11.5)).foregroundStyle(Theme.dim)
                 Text(label)
@@ -315,7 +315,7 @@ struct HRTargetPill: View {
                     .font(.body(10, weight: .extraBold)).tracking(1.4)
                     .foregroundStyle(Theme.over)
                 Text("\(bpm) bpm")
-                    .font(.display(13, weight: .semibold)).monospacedDigit()
+                    .font(.body(13, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(Theme.over)
                 Text("·").font(.body(11.5)).foregroundStyle(Theme.dim)
                 Text(note)

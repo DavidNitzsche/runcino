@@ -727,7 +727,7 @@ private struct SplitRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text("\(split.mile)")
-                .font(.display(14, weight: .bold))
+                .font(.body(14, weight: .bold))
                 .foregroundStyle(mutedText)
                 .frame(width: 22, alignment: .leading)
             GeometryReader { geo in
@@ -774,9 +774,9 @@ private struct SplitRow: View {
 
 private let PACE_BUCKETS: [Color] = [
     Color(hex: 0xFC4D64),  // fastest · coral
-    Color(hex: 0xFF8847),  // orange
+    Color(hex: 0xFF5722),  // orange
     Color(hex: 0xF3AD38),  // amber
-    Color(hex: 0x48B3B5),  // teal
+    Color(hex: 0x14C08C),  // easy teal
     Color(hex: 0x27B4E0),  // slowest · blue
 ]
 let START_RING_COLOR = Color(hex: 0x14C08C)

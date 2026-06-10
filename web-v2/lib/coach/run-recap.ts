@@ -82,6 +82,14 @@ export interface RecapInput {
     hr?: number | null;
   }>;
   weather?: WeatherInput | null;
+  /** 2026-06-09 Phase 2 (3.2) · contingency-rule outcomes recorded by the
+   *  watch (runs.data.ruleOutcomes). A taken bail is a decision, not a
+   *  failure — the recap says so explicitly instead of grading the
+   *  shortened session as a miss. */
+  ruleOutcomes?: Array<{
+    kind?: string; label?: string; breached?: boolean;
+    actionTaken?: boolean; atMi?: number | null;
+  }> | null;
 }
 
 export interface RecapPayload {
@@ -187,6 +195,26 @@ export function deriveRecap(input: RecapInput): RecapPayload {
   // Heat-aware judgment on HR drift + pace fade.
   const heatExplainsDrift =
     conditionsMaterial && (weather?.heatBand === 'warm' || weather?.heatBand === 'hot' || weather?.heatBand === 'extreme');
+
+  // 2026-06-09 Phase 2 (3.2) · a TAKEN bail leads the facts. The runner
+  // made the smart call mid-run; the recap must say so before any
+  // pace/distance copy reads like a miss. Breached-but-continued gets a
+  // quieter note · the engine saw it, the runner chose, both stand.
+  const takenBail = (input.ruleOutcomes ?? []).find(
+    (o) => (o.kind === 'bail' || o.kind === 'abort') && o.breached === true && o.actionTaken === true,
+  );
+  const declinedBail = (input.ruleOutcomes ?? []).find(
+    (o) => o.kind === 'bail' && o.breached === true && o.actionTaken !== true,
+  );
+  if (takenBail) {
+    facts.push(
+      takenBail.kind === 'abort'
+        ? `You took the B plan at the checkpoint · that's execution, not surrender. Even splits from there beat a blow-up chasing A.`
+        : `You took the bail${takenBail.atMi != null ? ` at mile ${Number(takenBail.atMi).toFixed(0)}` : ''} · smart, not a fail. The stimulus was already banked; forcing the rest buys fatigue, not fitness.`,
+    );
+  } else if (declinedBail) {
+    facts.push(`The ${String(declinedBail.label ?? 'bail line').toLowerCase()} tripped and you pushed through · noted, not judged. Watch tomorrow's readiness.`);
+  }
 
   // Voice doctrine (David, 2026-05-31): plain English. No PhD jargon.
   // "mitochondrial / lactate / VO2 / cardiovascular drift" all gone.

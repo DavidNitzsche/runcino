@@ -113,7 +113,9 @@ struct RootTabView: View {
             // dim + scale-in animation.
             RunActionMenu(
                 isOpen: $showRunMenu,
-                accent: Color(hex: 0xEE6038),
+                // AFC fix 2 · was a hardcoded one-off orange (#EE6038) ·
+                // the run accent is the race/tempo slot of the locked palette.
+                accent: Theme.race,
                 onOutdoor: { pendingRoute = .watchMirror },
                 onTreadmill: { pendingRoute = .treadmill },
                 onNiggle: { showSymptomSheet = true },
@@ -216,18 +218,17 @@ struct RootTabView: View {
         }
         .padding(6)
         .frame(height: 62)
-        .background(
-            ZStack {
-                Color(red: 14/255, green: 20/255, blue: 32/255, opacity: 0.72)
-                Color.clear.background(.ultraThinMaterial)
-            }
-        )
+        // Brief v2 §3 · glass is retired on chrome (queued task 1).
+        // Was: 72%-opacity navy + .ultraThinMaterial + a 38pt drop
+        // shadow. Now: solid dark neutral (Theme.card) + the standard
+        // hairline. Contrast on the solid fill: active label #F6F7F8 on
+        // #11141A ≈ 15.9:1 (AAA) · inactive 50% white ≈ 5.0:1 (AA).
+        .background(Theme.card)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                .stroke(Theme.line, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.55), radius: 38, y: 16)
     }
 
     private func tabButton(_ tab: FaffTab) -> some View {
@@ -259,7 +260,6 @@ struct RootTabView: View {
             VStack(spacing: 4) {
                 Image(systemName: "figure.run")
                     .font(.system(size: 22, weight: .bold))
-                    .shadow(color: .black.opacity(0.4), radius: 8, y: 2)
                 Text("RUN")
                     .font(.body(9, weight: .extraBold)).tracking(0.4)
             }

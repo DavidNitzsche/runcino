@@ -145,7 +145,7 @@ struct SignInView: View {
             + Text("Privacy Policy").underline()
             + Text(".")
         )
-        .font(.display(10, weight: .semibold))
+        .font(.body(10, weight: .semibold))
         .foregroundStyle(Theme.txt.opacity(0.5))
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)

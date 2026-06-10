@@ -376,7 +376,7 @@ struct SettingsView: View {
             Spacer()
             if !value.isEmpty {
                 Text(value)
-                    .font(.display(12, weight: .bold))
+                    .font(.body(12, weight: .bold))
                     .foregroundStyle(good ? Color(hex: 0x9AF0BF) : Theme.txt.opacity(0.7))
             }
             Image(systemName: "chevron.right")
@@ -393,7 +393,7 @@ struct SettingsView: View {
             ForEach(options, id: \.self) { opt in
                 Button { choose(opt) } label: {
                     Text(opt)
-                        .font(.display(11, weight: .bold))
+                        .font(.body(11, weight: .bold))
                         .foregroundStyle(opt == on ? Color(hex: 0x06302E) : Theme.txt.opacity(0.6))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -457,7 +457,7 @@ struct SettingsView: View {
 
     private var footer: some View {
         Text("Faff 3.0.0 · made for runners")
-            .font(.display(10, weight: .semibold))
+            .font(.body(10, weight: .semibold))
             .foregroundStyle(Theme.txt.opacity(0.4))
             .frame(maxWidth: .infinity)
     }

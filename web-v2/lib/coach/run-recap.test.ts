@@ -193,13 +193,15 @@ describe('deriveRecap · heat-aware drift attribution · LONG type', () => {
       ...baseLongRun,
       splits: driftingSplits,
       weather: {
-        tempF: 60,
+        tempF: 65,
         humidityPct: 50,
         conditions: 'cloudy',
         cloudCoverPct: 80,
       },
     });
-    // 60°F cloudy = warm band (~3% slowdown).
+    // 65°F cloudy = 2.5% per the Research/06 mid-pack table → warm band.
+    // (2026-06-09 heat re-base: 60°F is 1.5% = neutral under doctrine ·
+    // the old 60°F fixture relied on the inflated pre-audit curve.)
     expect(r.facts.join(' ')).toMatch(/normal in heat|cool itself|not because you're slowing down/i);
   });
 });
@@ -349,7 +351,12 @@ describe('deriveRecap · type=intervals', () => {
       actualMaxHr: 184,
     });
     expect(r.verdict).toBe('Reps done.');
-    expect(r.facts.join(' ')).toMatch(/Pushed the work bouts|jogged the recoveries/);
+    // 2026-06-09 · pre-existing stale expectation: the recap rework
+    // (216f76c7 / 203358ad) replaced the "Pushed the work bouts /
+    // jogged the recoveries" copy with the structured lead line +
+    // "Building the top end · these stack." and updated the tempo
+    // tests but missed this one. Aligned to the committed copy.
+    expect(r.facts.join(' ')).toMatch(/Building the top end|Reps done ·/);
   });
 
   it('intervals in hot weather adds "go by feel and HR" fact', () => {

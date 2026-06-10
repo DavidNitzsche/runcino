@@ -69,7 +69,7 @@ struct PhaseBreakdownList: View {
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
                 Text(p.actual_pace ?? "—")
-                    .font(.display(14, weight: .bold)).monospacedDigit()
+                    .font(.body(14, weight: .bold)).monospacedDigit()
                     .foregroundStyle(Theme.txt)
                 Text(s.label)
                     .font(.body(10, weight: .extraBold)).tracking(0.8)
@@ -240,7 +240,7 @@ struct RPEEntryCard: View {
             ForEach(1...10, id: \.self) { n in
                 Button { rpe = n } label: {
                     Text("\(n)")
-                        .font(.display(13, weight: .bold)).monospacedDigit()
+                        .font(.body(13, weight: .bold)).monospacedDigit()
                         .foregroundStyle(rpe == n ? Theme.bg : Theme.txt)
                         .frame(maxWidth: .infinity, minHeight: 30)
                         .background(rpe == n ? rpeColor(n) : Theme.Glass.fill, in: RoundedRectangle(cornerRadius: 8))
@@ -452,7 +452,7 @@ struct StreakPill: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(isMilestone ? Theme.Accent.amberGold : Theme.race)
             Text("\(current)")
-                .font(.display(13, weight: .bold)).monospacedDigit()
+                .font(.body(13, weight: .bold)).monospacedDigit()
                 .foregroundStyle(isMilestone ? Theme.Accent.amberGold : Theme.txt)
             Text(isMilestone ? "days · milestone" : "day streak")
                 .font(.body(11, weight: .extraBold)).tracking(0.5)

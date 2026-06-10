@@ -11,7 +11,7 @@
  */
 import { pool } from '@/lib/db/pool';
 
-export type AlertKind = 'cron_fail' | 'regen_fail' | 'asc_stall' | 'crash' | 'briefing_failure' | 'webhook_failure' | 'unknown';
+export type AlertKind = 'cron_fail' | 'regen_fail' | 'asc_stall' | 'crash' | 'briefing_failure' | 'webhook_failure' | 'dedup_flag_census' | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 
 export interface RaiseAlertInput {

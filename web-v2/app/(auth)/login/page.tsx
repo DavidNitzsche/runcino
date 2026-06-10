@@ -159,13 +159,13 @@ const styles = `
   font-size:74px;margin-top:14px;text-shadow:0 3px 28px rgba(0,0,0,.28);
 }
 .login-shell .gate-h .accent{
-  background:linear-gradient(120deg,#FFE7C2,#FF8847);
+  background:linear-gradient(120deg,#FFE7C2,#FF5722);
   -webkit-background-clip:text;background-clip:text;color:transparent;
 }
 .login-shell .gate-sub{font-size:17px;font-weight:500;line-height:1.5;opacity:.86;margin-top:18px;max-width:420px;}
 .login-shell .gate-tempbar{
   height:10px;border-radius:6px;margin-top:26px;max-width:420px;
-  background:linear-gradient(90deg,#27B4E0,#14C08C,#F3AD38,#FF8847,#FC4D64);
+  background:linear-gradient(90deg,#27B4E0,#14C08C,#F3AD38,#FF5722,#F43F5E);
   box-shadow:0 6px 22px -8px rgba(0,0,0,.4);
 }
 .login-shell .gate-railfoot{font-size:12px;font-weight:600;opacity:.66;line-height:1.6;}

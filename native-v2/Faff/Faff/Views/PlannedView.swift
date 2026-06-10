@@ -240,7 +240,7 @@ struct PlannedView: View {
                         VStack {
                             Spacer(minLength: 0)
                             Text(s.tag)
-                                .font(.display(8, weight: .bold))
+                                .font(.body(8, weight: .bold))
                                 .foregroundStyle(Color.black.opacity(0.55))
                                 .padding(.bottom, 5)
                         }
@@ -255,7 +255,7 @@ struct PlannedView: View {
                 ForEach(Array(segs.enumerated()), id: \.offset) { idx, s in
                     let align: Alignment = idx == 0 ? .leading : (idx == segs.count - 1 ? .trailing : .center)
                     Text(s.subLabel)
-                        .font(.display(9, weight: .bold))
+                        .font(.body(9, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.55))
                         .frame(maxWidth: .infinity, alignment: align)
                 }
@@ -273,7 +273,7 @@ struct PlannedView: View {
                             .font(.body(15, weight: .extraBold))
                             .foregroundStyle(Theme.txt)
                         Text(r.subtitle)
-                            .font(.display(11, weight: .bold))
+                            .font(.body(11, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.62))
                             .lineSpacing(2)
                     }
@@ -304,7 +304,7 @@ struct PlannedView: View {
         HStack {
             Text(k).font(.body(13, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.66))
             Spacer()
-            Text(v).font(.display(12, weight: .bold)).foregroundStyle(Theme.txt)
+            Text(v).font(.body(12, weight: .bold)).foregroundStyle(Theme.txt)
         }
         .padding(.vertical, 11)
         .padding(.horizontal, 10)

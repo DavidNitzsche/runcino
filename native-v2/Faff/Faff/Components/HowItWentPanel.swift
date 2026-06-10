@@ -151,7 +151,7 @@ private struct HIWHead: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .font(.display(15, weight: .bold)).tracking(0.4)
+                .font(.body(15, weight: .bold)).tracking(0.4)
                 .foregroundStyle(primaryText)
             Spacer(minLength: 8)
             if let m = meta, !m.isEmpty {
@@ -519,7 +519,7 @@ private struct AerobicStampPanel: View {
                             .font(.body(12, weight: .medium))
                             .foregroundStyle(mutedText)
                         Text("\(sign) bpm")
-                            .font(.display(13, weight: .bold))
+                            .font(.body(13, weight: .bold))
                             .foregroundStyle(tone.color)
                         Text(" across the run.")
                             .font(.body(12, weight: .medium))
@@ -835,7 +835,7 @@ private struct TempoPostPanel: View {
                             Text("·")
                                 .foregroundStyle(subtleText)
                             Text(w.actual_pace ?? "—")
-                                .font(.display(13, weight: .bold))
+                                .font(.body(13, weight: .bold))
                                 .foregroundStyle(primaryText)
                         }
                     }
@@ -853,7 +853,7 @@ private struct TempoPostPanel: View {
                             Text("·")
                                 .foregroundStyle(subtleText)
                             Text(c.actual_pace ?? "—")
-                                .font(.display(13, weight: .bold))
+                                .font(.body(13, weight: .bold))
                                 .foregroundStyle(primaryText)
                         }
                     }
@@ -991,7 +991,7 @@ private struct RepsPostPanel: View {
             if let pace = phase.actual_pace {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(pace)
-                        .font(.display(13, weight: .bold))
+                        .font(.body(13, weight: .bold))
                         .foregroundStyle(primaryText)
                     Text("/mi")
                         .font(.body(9, weight: .semibold))
@@ -1035,7 +1035,7 @@ private struct RepsPostPanel: View {
         return HStack(spacing: 10) {
             VStack(spacing: 0) {
                 Text("\(idx + 1)")
-                    .font(.display(15, weight: .bold))
+                    .font(.body(15, weight: .bold))
                     .foregroundStyle(primaryText)
                 Text("REP")
                     .font(.body(7.5, weight: .extraBold)).tracking(0.6)
@@ -1067,7 +1067,7 @@ private struct RepsPostPanel: View {
             .frame(height: 16)
             VStack(alignment: .trailing, spacing: 1) {
                 Text(rep.actual_pace ?? "—")
-                    .font(.display(13, weight: .bold))
+                    .font(.body(13, weight: .bold))
                     .foregroundStyle(primaryText)
                 Text(deltaStr)
                     .font(.body(10, weight: .extraBold))

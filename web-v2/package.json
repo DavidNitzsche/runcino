@@ -5,6 +5,7 @@
   "description": "faff.run v2 — coaching-app rewrite against deck-v1-2026-05-25.html. Replaces legacy/web on cutover.",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "bash ../scripts/check-palette-sync.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

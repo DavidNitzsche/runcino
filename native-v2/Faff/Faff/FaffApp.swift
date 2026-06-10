@@ -200,7 +200,18 @@ struct RootContainer: View {
         ZStack {
             switch step {
             case .checking:
-                Color.clear.task { await decideInitialStep() }
+                // AFC fix 11 (2026-06-09) · the first frame of every launch
+                // was a bare void while the gate decided (Color.clear over
+                // the dark window). Now: brand canvas + the animated
+                // FAFF·RUN sweep, reusing the canonical Brandmark component
+                // (Anton, skew −9°, 6s rainbow sweep · Components/Brandmark
+                // .swift). The .task stays on this view so gate timing is
+                // unchanged · the brandmark simply fills the decision gap.
+                ZStack {
+                    Theme.bg.ignoresSafeArea()
+                    Brandmark(size: 40)
+                }
+                .task { await decideInitialStep() }
             case .signIn:
                 // Returning users (David, anyone with onboarding_complete=true
                 // on their `users` row) come back through SignIn occasionally
@@ -250,9 +261,12 @@ struct RootContainer: View {
     }
 
     private func decideInitialStep() async {
+        // AFC task 13 · route every exit through advance() so the brandmark
+        // gate FADES into the destination (0.32s easeInOut) instead of
+        // hard-cutting. Was three bare `step =` assignments.
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: "faff.onboarded") {
-            step = .main; return
+            advance(.main); return
         }
         // Returning user heuristic: any cached surface bytes means they've
         // launched the app before and got real data back. Mark onboarded so
@@ -262,9 +276,9 @@ struct RootContainer: View {
             || AppCache.read(.logState, as: LogState.self) != nil
         if hasCachedSurfaces || TokenStore.shared.isSignedIn {
             defaults.set(true, forKey: "faff.onboarded")
-            step = .main; return
+            advance(.main); return
         }
-        step = .signIn
+        advance(.signIn)
     }
 
     private func advance(_ next: GateStep) {

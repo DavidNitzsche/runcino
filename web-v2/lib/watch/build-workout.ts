@@ -55,6 +55,13 @@ export interface WatchPhase {
    *  wire — old watch builds omit/ignore it (field defaults to false there);
    *  new builds route it to the FINISH face instead of the rep face. */
   isFinishSegment?: boolean;
+  /** 2026-06-09 Phase 2 (3.2) · one-line contingency label for this phase
+   *  ("HR over 167 and climbing · finish easy, the stimulus is banked").
+   *  Optional on the wire — old builds ignore it; new builds render it in
+   *  gray under the phase target and use the workout-level `rules` array
+   *  for breach detection. Never an instruction to stop · the watch
+   *  OFFERS, the runner chooses. */
+  ruleLabel?: string | null;
 }
 
 export interface WatchWorkout {
@@ -76,6 +83,14 @@ export interface WatchWorkout {
   fueling?: { needed: boolean; gels: number; atMins: number[]; gPerHr: number; totalCarbsG: number; isRehearsal: boolean; heatAdjusted: boolean; shortLine: string; why: string } | null;
   hrCeilingBpm?: number | null;
   displayHint?: string | null;
+  /** 2026-06-09 Phase 2 (3.2) · contingency rules from workout_spec.rules
+   *  (spec-builder composeContingencyRules). Optional + additive on the
+   *  wire. Shape: {kind: 'pass'|'bail'|'abort', metric: 'hr'|'pace',
+   *  op: '<='|'>', value, scope: 'work'|'finish'|'overall'|'mile-5',
+   *  action: string|null, label}. The watch detects breaches and offers
+   *  CONTINUE / TAKE THE BAIL; outcomes ride the completion payload's
+   *  optional `rule_outcomes`. */
+  rules?: Array<Record<string, unknown>> | null;
 }
 
 export type WatchTodayResponse =
@@ -522,6 +537,27 @@ export async function buildWatchToday(
              : wo.type === 'tempo' ? 'tempo'
              : null,
   };
+
+  // 2026-06-09 Phase 2 (3.2) · thread contingency rules from the spec.
+  // Workout-level array for breach detection + the bail label pinned on
+  // the phases it scopes to (work phases for quality, the finish segment
+  // for longs). Optional + additive on the wire · old builds ignore both.
+  const specRules = Array.isArray((wo.workout_spec as Record<string, unknown> | null)?.rules)
+    ? ((wo.workout_spec as Record<string, unknown>).rules as Array<Record<string, unknown>>)
+    : null;
+  if (specRules && specRules.length > 0) {
+    workout.rules = specRules;
+    const bail = specRules.find((r) => r.kind === 'bail');
+    if (bail) {
+      for (const p of workout.phases) {
+        if (bail.scope === 'work' && p.type === 'work' && !p.isFinishSegment) {
+          p.ruleLabel = String(bail.label);
+        } else if (bail.scope === 'finish' && p.isFinishSegment) {
+          p.ruleLabel = String(bail.label);
+        }
+      }
+    }
+  }
 
   // 2026-06-09 · race-killers F3 + F16 — make the race payload race-ready.
   if (wo.type === 'race') {

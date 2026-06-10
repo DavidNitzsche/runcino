@@ -50,6 +50,54 @@ export async function POST(req: NextRequest) {
       perUserToday = await runnerToday(u);
       const r = await writeReadinessSnapshot(u, perUserToday);
       results.push(r);
+
+      // 2026-06-09 Phase 2 (3.4) · race-week sleep-banking nudge.
+      // When the runner's next A-race is 2-7 days out, queue tonight's
+      // 21:00-local bedtime nudge (Research/08 §sleep-banking · the
+      // night two-out is the one that counts; race-eve itself stays the
+      // existing race_eve template's job, so the window stops at T-2).
+      // Rides the race_eve category + prefs toggle; the per-night dedup
+      // key makes cron re-runs no-ops. Best-effort · a nudge must never
+      // fail the snapshot cron.
+      try {
+        const aRace = (await pool.query<{ slug: string; name: string | null; date: string }>(
+          `SELECT slug, meta->>'name' AS name, meta->>'date' AS date
+             FROM races
+            WHERE user_uuid = $1::uuid
+              AND meta->>'priority' = 'A'
+              AND (meta->>'date')::date > $2::date + 1
+              AND (meta->>'date')::date <= $2::date + 7
+            ORDER BY meta->>'date' ASC LIMIT 1`,
+          [u, perUserToday],
+        ).catch(() => ({ rows: [] }))).rows[0];
+        if (aRace?.date) {
+          const { loadNotificationPrefs, categoryEnabled } = await import('@/lib/notifications/prefs');
+          const prefs = await loadNotificationPrefs(u);
+          if (categoryEnabled(prefs, 'race_eve')) {
+            const daysToRace = Math.round(
+              (Date.parse(aRace.date + 'T12:00:00Z') - Date.parse(perUserToday + 'T12:00:00Z')) / 86400000,
+            );
+            const { renderSleepBanking } = await import('@/lib/notifications/templates');
+            const { enqueueNotification, todayAtHourLocal } = await import('@/lib/notifications/enqueue');
+            const { runnerTimezone } = await import('@/lib/runtime/runner-tz');
+            const tz = await runnerTimezone(u);
+            await enqueueNotification(
+              u,
+              renderSleepBanking({
+                race_id: aRace.slug,
+                race_slug: aRace.slug,
+                race_name: aRace.name ?? aRace.slug,
+                days_to_race: daysToRace,
+                tonight_iso: perUserToday,
+              }),
+              todayAtHourLocal(tz, 21, 0),
+            );
+          }
+        }
+      } catch (nudgeErr: unknown) {
+        console.warn('[cron/readiness-snapshot] sleep-banking nudge skipped:',
+          nudgeErr instanceof Error ? nudgeErr.message : String(nudgeErr));
+      }
     } catch (e: unknown) {
       results.push({
         userUuid: u,

@@ -182,7 +182,7 @@ struct ActivityView: View {
                     .tracking(4)
                     .foregroundStyle(Theme.txt.opacity(0.9))
                 Text(rangeLabel)
-                    .font(.display(12, weight: .semibold))
+                    .font(.body(12, weight: .semibold))
                     .tracking(1)
                     .foregroundStyle(Theme.txt.opacity(0.6))
                     .padding(.top, 10)
@@ -219,11 +219,11 @@ struct ActivityView: View {
                 .padding(.horizontal, 22).padding(.top, 26)
             HStack {
                 Text("21-DAY RUN STREAK")
-                    .font(.display(12, weight: .semibold))
+                    .font(.body(12, weight: .semibold))
                     .foregroundStyle(Color(hex: 0xFFCE8A))
                 Spacer()
                 Text("LAST 18 WEEKS")
-                    .font(.display(10, weight: .semibold))
+                    .font(.body(10, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.5))
             }
             .padding(.horizontal, 22).padding(.top, 4)
@@ -235,7 +235,7 @@ struct ActivityView: View {
             HStack {
                 ForEach(["JAN","FEB","MAR","APR","MAY"], id: \.self) { m in
                     Text(m)
-                        .font(.display(9, weight: .semibold))
+                        .font(.body(9, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.4))
                         .frame(maxWidth: .infinity)
                 }
@@ -370,12 +370,12 @@ struct ActivityView: View {
         }
         if let t = temposLast, let p = t.pace {
             prs.append(PR(key: "LAST THRESHOLD", value: p,
-                          caption: shortDate(t.date), color: Color(hex: 0xFF8847), unit: "/mi"))
+                          caption: shortDate(t.date), color: Color(hex: 0xFF5722), unit: "/mi"))
         }
         let rangeTotalMi = runs.reduce(0.0) { $0 + $1.distance_mi }
         if rangeTotalMi > 0 {
             prs.append(PR(key: "RANGE TOTAL", value: String(format: "%.0f", rangeTotalMi),
-                          caption: rangeLabel.capitalized, color: Color(hex: 0xFF8847), unit: "mi"))
+                          caption: rangeLabel.capitalized, color: Color(hex: 0xFF5722), unit: "mi"))
         }
         return prs
     }
@@ -420,7 +420,7 @@ struct ActivityView: View {
                     if let u = unit { Text(u).font(.body(12, weight: .extraBold)).foregroundStyle(Theme.txt.opacity(0.6)) }
                 }
                 Text(caption)
-                    .font(.display(9.5, weight: .semibold))
+                    .font(.body(9.5, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.55))
             }
             .padding(14)
@@ -519,7 +519,7 @@ struct ActivityView: View {
             SpecLabel(text: week.label, size: 11, tracking: 2, color: Theme.txt.opacity(0.6))
             Spacer()
             Text(String(format: "%.1f mi", week.totalMi))
-                .font(.display(12, weight: .semibold))
+                .font(.body(12, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.85))
         }
         .padding(.horizontal, 22).padding(.top, 22).padding(.bottom, 12)
@@ -535,7 +535,7 @@ struct ActivityView: View {
                 VStack(spacing: 2) {
                     SpecLabel(text: dowName(run.dow), size: 11, tracking: 0.5, color: Theme.txt.opacity(0.7))
                     Text(shortDate(run.date))
-                        .font(.display(13, weight: .semibold))
+                        .font(.body(13, weight: .semibold))
                         .foregroundStyle(Theme.txt)
                 }
                 .frame(width: 38)
@@ -546,20 +546,20 @@ struct ActivityView: View {
                         .foregroundStyle(hasType ? effort.dot : Theme.txt.opacity(0.4))
                     HStack(spacing: 5) {
                         Text("\(run.pace ?? "—") /mi")
-                            .font(.display(11, weight: .semibold))
+                            .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.66))
                         Text("·")
                             .font(.body(11, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.5))
                         Text(run.time_moving ?? "—")
-                            .font(.display(11, weight: .semibold))
+                            .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.66))
                         if let hr = run.avg_hr {
                             Text("·")
                                 .font(.body(11, weight: .bold))
                                 .foregroundStyle(Theme.txt.opacity(0.5))
                             Text("\(hr) bpm")
-                                .font(.display(11, weight: .semibold))
+                                .font(.body(11, weight: .semibold))
                                 .foregroundStyle(Theme.txt.opacity(0.66))
                         }
                     }
@@ -643,7 +643,7 @@ struct ActivityView: View {
                             .font(.body(10, weight: .extraBold)).tracking(1)
                             .foregroundStyle(Theme.txt)
                         Text("\(entry.count) · \(Int(round(100 * Double(entry.count) / Double(total))))%")
-                            .font(.display(11, weight: .bold)).monospacedDigit()
+                            .font(.body(11, weight: .bold)).monospacedDigit()
                             .foregroundStyle(Theme.mute)
                     }
                 }

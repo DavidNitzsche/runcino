@@ -81,12 +81,22 @@ export async function loadNextARace(
     }
   }
 
-  // Step 2: fallback to soonest upcoming A-race
+  // Step 2: fallback to soonest upcoming A/B race.
+  //
+  // 2026-06-09 · regression-audit G3 · was A-only, which left a hole in
+  // the race-week readiness guard (health-actions.ts keys on
+  // nextARace.days_to_race): a runner whose next race is priority B and
+  // who has no active plan got no guard, no countdown, no race-day mode.
+  // Step 1 (plan-anchored) never filtered by priority — a plan targeting
+  // a B race already flowed through here — so widening Step 2 to A/B
+  // makes the no-plan fallback consistent with the plan path rather than
+  // introducing a new semantic. C races stay out: tune-ups shouldn't
+  // flip race-day takeovers or suppress training advice for a week.
   if (!race) {
     const row = (await pool.query(
       `SELECT slug, meta FROM races
         WHERE user_uuid = $1
-          AND meta->>'priority' = 'A'
+          AND meta->>'priority' IN ('A','B')
           AND (meta->>'date')::date >= $2::date
         ORDER BY (meta->>'date') ASC LIMIT 1`,
       [userId, today]

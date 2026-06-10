@@ -415,6 +415,13 @@ function ProjectionBand({
 }
 
 // ============================ TEST POINTS GRID ============================
+/** "430 → 7:10" · local to the test-points grid. */
+function fmtPaceShort(sPerMi: number): string {
+  const m = Math.floor(sPerMi / 60);
+  const s = Math.round(sPerMi % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function TestPointsGrid({
   recent, next,
 }: {
@@ -458,7 +465,18 @@ function TestPointsGrid({
           {next.map((tp, i) => (
             <div className="trow next" key={'n' + i}>
               <span className="td">{formatTestDate(tp.dateISO)}</span>
-              <span className="tl">{splitLabel(tp.label)}</span>
+              <span className="tl">
+                {splitLabel(tp.label)}
+                {/* 2026-06-09 Phase 2 (3.3) · the named test. Same
+                    thresholds the drift detectors judge by, stated
+                    before the run instead of after. */}
+                {tp.passCriteria ? (
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--mute, #8B909C)', marginTop: 2 }}>
+                    passes at ≤ {fmtPaceShort(tp.passCriteria.paceMaxSPerMi)}/mi
+                    {tp.passCriteria.hrMaxBpm != null ? ` · avgHr ≤ ${tp.passCriteria.hrMaxBpm}` : ''}
+                  </span>
+                ) : null}
+              </span>
             </div>
           ))}
         </div>

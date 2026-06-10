@@ -83,14 +83,14 @@ export interface BlueprintData {
 
 const COL = {
   easy:      '#14C08C',   // Warm-up / Cool-down / single bar for easy
-  tempo:     '#FF8847',   // Tempo block
+  tempo:     '#FF5722',   // Tempo block
   threshold: '#F3AD38',   // Threshold reps
   intervals: '#FC4D64',   // Interval reps
   long:      '#F3AD38',   // Long-run amber
   recovery:  '#27B4E0',   // Recovery cyan
   shakeout:  '#27B4E0',   // Shakeout cyan
   race:      '#FC4D64',   // Race-day red
-  progression: '#FF8847', // Progression core
+  progression: '#FF5722', // Progression core
   fartlek:   '#FC4D64',   // Fartlek surges
   mp:        '#F3AD38',   // Marathon pace
 } as const;
@@ -262,7 +262,7 @@ export function fallbackSessionSegs(type: string, totalMi: number, paceStr: stri
 
 /** Z1-Z5 colour ramp · matches the design's ZC array. */
 const ZONE_COLOR: Record<1 | 2 | 3 | 4 | 5, string> = {
-  1: '#48B3B5', 2: '#3EBD41', 3: '#F3AD38', 4: '#FF8847', 5: '#FC4D64',
+  1: '#27B4E0', 2: '#14C08C', 3: '#F3AD38', 4: '#FF5722', 5: '#F43F5E',
 };
 
 /** Default zone per spec kind · used by the blueprint to place each

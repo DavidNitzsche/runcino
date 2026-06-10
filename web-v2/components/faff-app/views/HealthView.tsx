@@ -77,7 +77,7 @@ const COLOR_WATCH = '#F3AD38';
 const COLOR_TEAL = '#5bbfb0';
 // Readiness band colors · also from the design
 const BAND: Record<string, string> = {
-  sharp: '#34D058', ready: '#3EBD41', moderate: '#F3AD38',
+  sharp: '#3EBD41', ready: '#3EBD41', moderate: '#F3AD38',
   'pull-back': '#FC4D64', 'no-data': '#8A90A0',
 };
 
@@ -633,6 +633,28 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 </div>
               );
             })() : null}
+            {/* 2026-06-09 state-audit · VDOT-anchor staleness. Quiet
+                provenance line from 56 days (aging), warning tone from
+                120 (stale) — the CI silently widens to ±8% at 180 days
+                (Research/02 §13.7) and that must never surprise the
+                runner mid-taper. Fresh anchors render nothing. */}
+            {seed.health.vdotAnchor && seed.health.vdotAnchor.tier !== 'fresh' ? (() => {
+              const va = seed.health.vdotAnchor;
+              const sourceLabel = va.anchorRaceName
+                ?? (va.anchorDistanceMi != null ? `a ${va.anchorDistanceMi.toFixed(1)} mi effort` : 'an effort');
+              const line = va.tier === 'stale'
+                ? `VDOT ${va.vdot.toFixed(1)} reads from ${sourceLabel}, ${va.ageDays} days old. At 180 days the projection band widens to ±8%. A tune-up race or a hard watch tempo refreshes it.`
+                : `VDOT ${va.vdot.toFixed(1)} reads from ${sourceLabel}, ${va.ageDays} days old.`;
+              return (
+                <div
+                  className="haero-what"
+                  style={va.tier === 'stale' ? { color: 'var(--warn, #F43F5E)' } : undefined}
+                  data-testid="vdot-anchor-staleness"
+                >
+                  {line}
+                </div>
+              );
+            })() : null}
             <div className="hh-wk-head">
               {/* 2026-06-03 · honest about coverage. The label said
                   "7-DAY READINESS" even when only 3 days of trend data
@@ -667,6 +689,51 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
           </div>
         </div>
       </div>
+
+      {/* ===== SLEEP COACHING (Phase 2 · 3.4) · standing flag + race-week
+           banking. Renders ONLY when the detector fires — chronic short
+           sleep (≥10-night streak < 7h / two weeks < 6.5h) or T-7 race
+           banking. Absent otherwise per the no-empty-beats doctrine. */}
+      {seed.health.sleepCoaching?.flag || seed.health.sleepCoaching?.banking ? (() => {
+        const sc = seed.health.sleepCoaching!;
+        return (
+          <div
+            data-testid="sleep-coaching-card"
+            style={{
+              margin: '14px 0 0',
+              padding: '14px 18px',
+              border: `1px solid ${sc.flag ? 'rgba(244,63,94,.45)' : 'var(--line, #262C39)'}`,
+              borderRadius: 12,
+              background: 'var(--surface, #141923)',
+            }}
+          >
+            {sc.flag ? (
+              <>
+                <div style={{ fontSize: 11, letterSpacing: '0.12em', color: COLOR_BAD, fontWeight: 600 }}>
+                  SLEEP · {sc.flag.kind === 'streak' ? `${sc.flag.streakNights}-NIGHT STREAK` : 'TWO-WEEK TREND'}
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 600, marginTop: 4 }}>{sc.flag.headline}</div>
+                <div style={{ fontSize: 13, color: 'var(--mute, #8B909C)', marginTop: 4 }}>{sc.flag.detail}</div>
+                {sc.flag.qualityForwardLine ? (
+                  <div style={{ fontSize: 13, marginTop: 6 }}>{sc.flag.qualityForwardLine}</div>
+                ) : null}
+                <div style={{ fontSize: 11, color: 'var(--mute, #8B909C)', marginTop: 8 }}>
+                  7-night {sc.flag.avg7}h · 14-night {sc.flag.avg14}h · clears after 5 nights at 7+
+                </div>
+              </>
+            ) : null}
+            {sc.banking ? (
+              <div style={{ marginTop: sc.flag ? 12 : 0 }}>
+                <div style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--race, #FF5722)', fontWeight: 600 }}>
+                  SLEEP BANKING · {sc.banking.raceName.toUpperCase()} · {sc.banking.daysToRace}d
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{sc.banking.targetLine}</div>
+                <div style={{ fontSize: 13, color: 'var(--mute, #8B909C)', marginTop: 4 }}>{sc.banking.keyNightLine}</div>
+              </div>
+            ) : null}
+          </div>
+        );
+      })() : null}
 
       {/* ===== STORY + WATCHING (only when brief is present) ===== */}
       {brief ? (

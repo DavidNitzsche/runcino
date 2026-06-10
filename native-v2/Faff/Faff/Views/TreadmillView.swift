@@ -402,7 +402,7 @@ struct TreadmillView: View {
                     Text(unit).font(.display(valueFontSize * 0.27, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.85))
                 }
                 Text(sub)
-                    .font(.display(10, weight: .bold))
+                    .font(.body(10, weight: .bold))
                     .tracking(0.8)
                     .foregroundStyle(Theme.txt.opacity(0.72))
                     .frame(height: 12)
@@ -458,10 +458,10 @@ struct TreadmillView: View {
                         Text(next.map { String(format: "%.1f", $0.mph) } ?? "—")
                             .font(.display(32, weight: .bold)).tracking(-1)
                         Text(next != nil ? "mph" : "")
-                            .font(.display(13, weight: .bold))
+                            .font(.body(13, weight: .bold))
                     }
                     Text(next.map { "\(String(format: "%.1f", $0.inc))% · \(formatClock($0.dur))" } ?? "complete")
-                        .font(.display(11, weight: .bold))
+                        .font(.body(11, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.78))
                 }
             }

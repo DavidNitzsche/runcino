@@ -86,7 +86,7 @@ struct PRSheet: View {
                 .font(.system(size: 13, weight: .heavy))
                 .foregroundStyle(Color(hex: 0x9AF0BF))
             Text("2:22 faster · first sub-1:30")
-                .font(.display(14, weight: .bold))
+                .font(.body(14, weight: .bold))
                 .foregroundStyle(Color(hex: 0x9AF0BF))
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
@@ -97,7 +97,7 @@ struct PRSheet: View {
     private var compareRow: some View {
         HStack(spacing: 16) {
             Text("WAS 1:32:10")
-                .font(.display(13, weight: .bold))
+                .font(.body(13, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(0.55))
                 .strikethrough(true, color: Theme.txt.opacity(0.55))
             Image(systemName: "arrow.right")

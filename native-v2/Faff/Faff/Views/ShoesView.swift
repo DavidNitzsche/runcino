@@ -275,7 +275,7 @@ struct AddShoeSheet: View {
 
                     if let err = errorMsg {
                         Text(err)
-                            .font(.display(12, weight: .semibold))
+                            .font(.body(12, weight: .semibold))
                             .foregroundStyle(Color(hex: 0xFF6B6B))
                     }
 

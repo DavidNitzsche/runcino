@@ -115,6 +115,51 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 2026-06-09 state-audit fix · stamp workoutType from the matched plan
+  // day. Watch/HK ingests never carried a workout type, so every
+  // type-gated consumer was blind: vdotFromRun's quality gate
+  // (lib/training/vdot.ts QUALITY_RUN_TYPES), the tempo-pace-drift
+  // detector (goal-projection.ts), and the decoupling steady-state
+  // filter (decoupling-trend.ts) all read data->>'workoutType' and
+  // found null. Strava rows keep their numeric enum ('0'/'1'/'3' ·
+  // mapped in vdot-inputs.ts); this stamps the PLAN's string type on
+  // device-ingested runs.
+  //
+  // Guard: only stamp when the run's distance is within ±30% of the
+  // planned distance — a 2 mi bail on a tempo day (or an unplanned
+  // jog on a rest day) must not inherit a quality label and pollute
+  // the type-gated readers. workoutTypeSource records provenance.
+  let plannedWorkoutType: string | null = null;
+  try {
+    const planDay = (await pool.query<{ type: string; distance_mi: string | null }>(
+      `SELECT pw.type, pw.distance_mi::text
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1::uuid
+          AND tp.archived_iso IS NULL
+          AND pw.date_iso = $2
+          AND pw.type NOT IN ('rest')
+        LIMIT 1`,
+      [userId, body.date],
+    )).rows[0];
+    if (planDay) {
+      const plannedMi = planDay.distance_mi != null ? Number(planDay.distance_mi) : null;
+      const actualMi = Number(body.distance_mi);
+      const distanceMatches = plannedMi == null || plannedMi <= 0
+        ? true
+        : actualMi >= plannedMi * 0.7 && actualMi <= plannedMi * 1.3;
+      if (distanceMatches) {
+        // race_week_tuneup is T-pace work · stamp as threshold so the
+        // quality-type readers treat it as the T-effort it is.
+        plannedWorkoutType = planDay.type === 'race_week_tuneup' ? 'threshold' : planDay.type;
+      }
+    }
+  } catch (e: unknown) {
+    // Non-fatal · an unstamped run is the pre-fix status quo.
+    console.warn('[ingest/workout] workoutType stamp failed:',
+      e instanceof Error ? e.message : String(e));
+  }
+
   // Build the data payload matching the strava_activities.data shape.
   const data = {
     id: slug,                            // synthetic id (no Strava id yet)
@@ -211,6 +256,11 @@ export async function POST(req: NextRequest) {
     // at Z5's lower bound. Per-sample bucketing fixes both.
     hrZonePcts: computedHrZonePcts ?? body.hr_zone_pcts ?? null,
     routePolyline: body.route_polyline ?? null,
+    // 2026-06-09 · plan-stamped workout type (see lookup above). Null
+    // when no plan day matched · readers treat null as untyped, the
+    // pre-fix behavior.
+    workoutType: plannedWorkoutType,
+    ...(plannedWorkoutType ? { workoutTypeSource: 'plan' } : {}),
     ingestedAt: new Date().toISOString(),
   };
 

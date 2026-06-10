@@ -37,7 +37,7 @@ struct WeekStrip: View {
                             .font(.label(10)).tracking(0.5).textCase(.uppercase)
                             .foregroundStyle(Theme.txt.opacity(isSelected || d.isToday ? 1 : 0.65))
                         Text("\(d.date)")
-                            .font(.display(15, weight: .semibold))
+                            .font(.body(15, weight: .semibold))
                             .tracking(-0.3)
                             .foregroundStyle(Theme.txt.opacity(isSelected || d.isToday ? 1 : 0.8))
                         if d.effort == .rest {

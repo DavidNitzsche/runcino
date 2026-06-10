@@ -46,9 +46,9 @@ export function pickCannedReply(
 
   // Quality (threshold / tempo / intervals).
   if (k === 'quality') {
-    if (e === 'nailed' && b === 'fresh')  return "Workout in the bag and body holding. That's the green light.";
+    if (e === 'nailed' && b === 'fresh')  return "Targets hit and the body's holding. That's the green light.";
     if (e === 'nailed' && b === 'worked') return 'Reps landed clean. Body felt it, normal after quality.';
-    if (e === 'nailed' && b === 'cooked') return "Nailed the splits but the body's smoked. Recovery matters tomorrow.";
+    if (e === 'nailed' && b === 'cooked') return "Hit the splits but the body's emptied. Recovery matters tomorrow.";
     if (e === 'grinded' && b === 'fresh')  return 'Grinded through it. Body bouncing back, strong sign.';
     if (e === 'grinded' && b === 'worked') return 'Hard work, body knows it. The session got done.';
     if (e === 'grinded' && b === 'cooked') return 'Grinded and emptied the tank. Honor that tomorrow.';
@@ -72,9 +72,9 @@ export function pickCannedReply(
 
   // Race.
   if (k === 'race') {
-    if (e === 'crushed_goal' && b === 'fresh')  return "Goal crushed and body says ready for more. That's a level shift.";
-    if (e === 'crushed_goal' && b === 'worked') return 'Goal crushed, body worked for it. Earned.';
-    if (e === 'crushed_goal' && b === 'cooked') return 'Crushed it and gave everything. Honor the recovery now.';
+    if (e === 'crushed_goal' && b === 'fresh')  return "Goal beaten and the body says ready for more. That's a level shift.";
+    if (e === 'crushed_goal' && b === 'worked') return 'Goal beaten, body worked for it. Earned.';
+    if (e === 'crushed_goal' && b === 'cooked') return 'Beat the goal and gave everything. Honor the recovery now.';
     if (e === 'on_goal' && b === 'fresh')  return 'On goal, body fresh. Race execution dialed.';
     if (e === 'on_goal' && b === 'worked') return "Hit the goal. Body worked. That's a quality day.";
     if (e === 'on_goal' && b === 'cooked') return "On goal but emptied the tank. That's what race day takes.";

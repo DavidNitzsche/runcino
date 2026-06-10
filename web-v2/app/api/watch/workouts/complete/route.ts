@@ -77,6 +77,17 @@ interface WatchCompletionBody {
   indoor?: boolean;           // spliced in by treadmill path
   timezone?: string;          // spliced in by iPhone relay (WatchSync)
   phases?: WatchCompletionPhaseBody[];
+  // 2026-06-09 Phase 2 (3.2) · contingency-rule outcomes. Optional ·
+  // camelCase per the wire contract (the watch's Encodable emits camel;
+  // the route_polyline snake-case lesson). Each entry records a breach
+  // the watch detected + what the runner CHOSE — taking the bail is a
+  // decision, not a failure, and the recap reasons about it that way.
+  // Shape: {kind: 'pass'|'bail'|'abort', label, breached: bool,
+  //         actionTaken: bool, atMi?: number}.
+  ruleOutcomes?: Array<{
+    kind?: string; label?: string; breached?: boolean;
+    actionTaken?: boolean; atMi?: number | null;
+  }> | null;
   // GPS polyline shipped directly by the watch app (build 172+). Eliminates
   // the separate iPhone HK import hop that was the sole GPS source.
   // 2026-06-08 · the watch's WatchCompletion (Encodable, no CodingKeys)
@@ -187,6 +198,47 @@ export async function POST(req: NextRequest) {
   const indoor = body.indoor === true;
   // Fix 4b · derive whole-run avgHr once (null when phases carry no HR).
   const wholeRunHr = wholeRunAvgHr(body.phases);
+
+  // 2026-06-09 · regression-audit G5 · stamp workoutType from the matched
+  // plan day — the EXACT mirror of /api/ingest/workout's stamp (landed the
+  // same day). Without this the field was source-asymmetric: HK-ingested
+  // rows carried plan types while watch-completed rows (the PRIMARY source
+  // — watch is tier-5 and wins canonical selection) stayed null, so the
+  // type-gated readers (vdotFromRun quality gate, decoupling steady-state
+  // filter) saw a label on roughly half the canonical rows depending on
+  // which sibling won the merge. Same ±30% distance guard: a 2 mi bail on
+  // a tempo day, or an unplanned jog on a rest day, must not inherit a
+  // quality label. workoutTypeSource records provenance.
+  let plannedWorkoutType: string | null = null;
+  try {
+    const planDay = (await pool.query<{ type: string; distance_mi: string | null }>(
+      `SELECT pw.type, pw.distance_mi::text
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1::uuid
+          AND tp.archived_iso IS NULL
+          AND pw.date_iso = $2
+          AND pw.type NOT IN ('rest')
+        LIMIT 1`,
+      [userId, date],
+    )).rows[0];
+    if (planDay) {
+      const plannedMi = planDay.distance_mi != null ? Number(planDay.distance_mi) : null;
+      const distanceMatches = plannedMi == null || plannedMi <= 0
+        ? true
+        : totalMi >= plannedMi * 0.7 && totalMi <= plannedMi * 1.3;
+      if (distanceMatches) {
+        // race_week_tuneup is T-pace work · stamp as threshold so the
+        // quality-type readers treat it as the T-effort it is.
+        plannedWorkoutType = planDay.type === 'race_week_tuneup' ? 'threshold' : planDay.type;
+      }
+    }
+  } catch (e: unknown) {
+    // Non-fatal · an unstamped run is the pre-fix status quo.
+    console.warn('[watch/complete] workoutType stamp failed:',
+      e instanceof Error ? e.message : String(e));
+  }
+
   const data: any = {
     id: body.workoutId,
     activityId: body.workoutId,
@@ -223,6 +275,13 @@ export async function POST(req: NextRequest) {
     // omitted by older watch builds. Doctrine:
     // designs/briefs/iphone-calories-and-absorption-brief.md.
     kcal: body.kcal ?? null,
+    // 2026-06-09 Phase 2 (3.2) · contingency-rule outcomes, verbatim.
+    // "Took the bail" is a recorded DECISION the recap reasons about
+    // (bail ≠ fail) · run-recap reads data.ruleOutcomes. Omitted by
+    // old builds → key absent → all readers fall through.
+    ...(Array.isArray(body.ruleOutcomes) && body.ruleOutcomes.length > 0
+      ? { ruleOutcomes: body.ruleOutcomes }
+      : {}),
     // 2026-06-06 · derive genuine per-mile splits from the watch's
     // paceSamples stream.  Each phase ships ~5s-cadence samples with
     // cumulative distMi + tSec.  Walking those to find mile crossings
@@ -233,6 +292,10 @@ export async function POST(req: NextRequest) {
     // Null result (no paceSamples, or <1 full mile) writes nothing —
     // the iPhone HK path is still the fallback.
     splits: deriveSplitsFromPaceSamples(body.phases ?? []) ?? undefined,
+    // 2026-06-09 · G5 · plan-stamped workout type (lookup above). Null when
+    // no plan day matched · readers treat null as untyped (pre-fix behavior).
+    workoutType: plannedWorkoutType,
+    ...(plannedWorkoutType ? { workoutTypeSource: 'plan' } : {}),
     ingestedAt: new Date().toISOString(),
     // 2026-06-03 · per-run TZ capture · stored on the run row so the
     // recovery anchor + activity feed read the TZ that was in effect

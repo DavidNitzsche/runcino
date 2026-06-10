@@ -67,12 +67,66 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 2026-06-09 state-audit Tier 2.3 · load-bearing-flag tripwire.
+  // 8 legacy flags carry ~49.6 mi of would-be double-count for the
+  // default user, all OUTSIDE this cron's 14-day repair window — if a
+  // full-replace writer wipes one, nothing self-heals and volume/TSB
+  // silently inflate. Census each swept user nightly; alert on a DROP
+  // vs the last stored census the same night it happens.
+  const censusOut: Array<{ user_uuid: string; loadBearing: number; alerted: boolean }> = [];
+  try {
+    const { computeFlagCensus } = await import('@/lib/runs/flag-census');
+    const { raiseAlert } = await import('@/lib/ops/alerts');
+    for (const u of users) {
+      try {
+        const census = await computeFlagCensus(u);
+        const prev = (await pool.query<{ metadata: { loadBearing?: number; loadBearingIds?: string[] } | null }>(
+          `SELECT metadata FROM ops_alerts
+            WHERE kind = 'dedup_flag_census' AND metadata->>'userUuid' = $1
+            ORDER BY created_at DESC LIMIT 1`,
+          [u],
+        ).catch(() => ({ rows: [] }))).rows[0]?.metadata ?? null;
+
+        const prevCount = prev?.loadBearing ?? null;
+        const dropped = prevCount != null && census.loadBearing < prevCount;
+        if (dropped) {
+          const lostIds = (prev?.loadBearingIds ?? []).filter((id) => !census.loadBearingIds.includes(id));
+          await raiseAlert({
+            kind: 'dedup_flag_census',
+            severity: 'error',
+            source: 'cron/dedupe-runs',
+            message: `Load-bearing dedup flags DROPPED ${prevCount} → ${census.loadBearing} for ${u.slice(0, 8)}… · ${census.loadBearingMi} mi still protected · wiped flags double-count outside the 14d repair window. Lost ids: ${lostIds.join(', ') || 'unknown'}.`,
+            metadata: { ...census, previous: prevCount, lostIds },
+          });
+        } else if (prevCount == null || prevCount !== census.loadBearing) {
+          // Baseline (first run) or a count CHANGE upward (new legacy
+          // flags created) · store as the new comparison point, info-only.
+          await raiseAlert({
+            kind: 'dedup_flag_census',
+            severity: 'info',
+            source: 'cron/dedupe-runs',
+            message: `Dedup flag census for ${u.slice(0, 8)}… · ${census.loadBearing} load-bearing flags (${census.loadBearingMi} mi protected) of ${census.flaggedTotal} total.`,
+            metadata: { ...census },
+          });
+        }
+        censusOut.push({ user_uuid: u, loadBearing: census.loadBearing, alerted: dropped });
+      } catch (err: unknown) {
+        console.warn('[cron/dedupe-runs] flag census failed for', u,
+          err instanceof Error ? err.message : String(err));
+      }
+    }
+  } catch (err: unknown) {
+    console.warn('[cron/dedupe-runs] flag census unavailable:',
+      err instanceof Error ? err.message : String(err));
+  }
+
   return NextResponse.json({
     ok: results.every((r) => !r.error),
     users: users.length,
     totalChanged,
     errors: results.filter((r) => r.error).length,
     results,
+    flag_census: censusOut,
   });
 }
 

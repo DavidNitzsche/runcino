@@ -450,12 +450,34 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     // Sleep deficit · chronic 7-night avg below tier floor OR acute
     // 3-night deficit ≥ 3h. Sleep is a behavioral lever everyone CAN
     // pull · keep this even for advanced.
+    //
+    // 2026-06-09 Phase 2 (3.4) · streak ESCALATION on top: when the
+    // shortness is a standing pattern (≥10 consecutive nights < 7h ·
+    // mirrors lib/coach/sleep-coaching.ts STREAK_NIGHTS), the line
+    // stops being a tip and starts being the limiter · priority HIGH
+    // and the copy names the streak. A coach would have escalated this
+    // two weeks ago (state-audit Part 5 #1 · Research/00b §sleep is the
+    // #1 recovery lever). Same history series already in scope.
     if (history.sleep.length >= 3) {
       const last3 = history.sleep.slice(-3);
       const deficit3 = last3.reduce((s, p) => s + Math.max(0, 7.5 - p.value), 0);
       const acuteTrip = deficit3 >= 3;
       const chronicTrip = state.sleep7Avg != null && state.sleep7Avg < rules.sleep7AvgFloor;
-      if (acuteTrip || chronicTrip) {
+      let streakNights = 0;
+      for (let i = history.sleep.length - 1; i >= 0; i--) {
+        if (history.sleep[i].value < 7.0) streakNights++;
+        else break;
+      }
+      if (streakNights >= 10) {
+        out.push({
+          signal: 'sleep_deficit',
+          priority: 'high',
+          action: isInformational
+            ? `Night ${streakNights} under 7 hours · this is the limiter now.`
+            : `Night ${streakNights} under 7 hours. This is the limiter now, not fitness. In bed for 7:30 tonight · protect it like a workout.`,
+          cite: `${streakNights} consecutive nights < 7h · 7-night avg ${state.sleep7Avg ?? '?'}h.`,
+        });
+      } else if (acuteTrip || chronicTrip) {
         const cite = acuteTrip
           ? `${deficit3.toFixed(1)}h short over the last 3 nights.`
           : `7-night avg ${state.sleep7Avg}h vs 7.5h target.`;

@@ -27,7 +27,7 @@ struct RunActionMenu: View {
     @Binding var isOpen: Bool
     /// Accent color · current run's effort tint, lights the toast dot
     /// and the dock fill in the parent. Defaults to the design's orange.
-    var accent: Color = Color(hex: 0xEE6038)
+    var accent: Color = Theme.race
     /// Tap handlers for the four action rows. Parent wires these to
     /// route pushes (Outdoor → WatchMirror, Treadmill → TreadmillView)
     /// or sheet presentations (niggle → SymptomSheet, non-run → LogNonRunSheet).

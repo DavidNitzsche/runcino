@@ -107,7 +107,7 @@ private struct ScaleRow: View {
                 ForEach(1...max, id: \.self) { n in
                     Button { selection = n } label: {
                         Text("\(n)")
-                            .font(.display(13, weight: .bold)).monospacedDigit()
+                            .font(.body(13, weight: .bold)).monospacedDigit()
                             .foregroundStyle(selection == n ? Theme.bg : Theme.txt)
                             .frame(width: 30, height: 30)
                             .background(

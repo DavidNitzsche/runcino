@@ -26,6 +26,7 @@
  */
 
 import type { WorkoutType } from './run-purpose';
+import { effortSlowdownPct } from '@/lib/training/heat-model';
 
 export const CITATION_WEATHER = {
   slug: 'research-06-weather-adjustments',
@@ -106,76 +107,19 @@ export function estimateDewpointF(tempF: number, humidityPct: number): number {
 }
 
 /**
- * Maughan / Ely / Vihma temperature-only slowdown for a mid-pack
- * marathoner. Returns % slower than 50°F reference. Approximated from
- * the lookup table in Research/06.
- */
-function slowdownFromTemp(tempF: number): number {
-  if (tempF <= 50) return 0;
-  // Piecewise linear synthesis of the Research/06 table, mid-pack column:
-  //   55°F → ~1.5%   ·   60°F → 3%    ·   65°F → 5%
-  //   70°F → 8%      ·   75°F → 12%   ·   80°F → 17%
-  //   85°F → 23%     ·   90°F → 30%
-  if (tempF <= 55) return ((tempF - 50) / 5) * 1.5;
-  if (tempF <= 60) return 1.5 + ((tempF - 55) / 5) * 1.5;
-  if (tempF <= 65) return 3.0 + ((tempF - 60) / 5) * 2.0;
-  if (tempF <= 70) return 5.0 + ((tempF - 65) / 5) * 3.0;
-  if (tempF <= 75) return 8.0 + ((tempF - 70) / 5) * 4.0;
-  if (tempF <= 80) return 12.0 + ((tempF - 75) / 5) * 5.0;
-  if (tempF <= 85) return 17.0 + ((tempF - 80) / 5) * 6.0;
-  if (tempF <= 90) return 23.0 + ((tempF - 85) / 5) * 7.0;
-  return 30.0 + (tempF - 90) * 1.4;  // open-ended above 90
-}
-
-/**
- * Dewpoint multiplier · evaporative-cooling impairment. Anchored at the
- * RunnersConnect / Otani table. Multiplies temperature slowdown.
- */
-function dewpointMultiplier(dewpointF: number): number {
-  if (dewpointF < 55) return 1.0;
-  if (dewpointF < 60) return 1.05;
-  if (dewpointF < 65) return 1.15;
-  if (dewpointF < 70) return 1.30;
-  if (dewpointF < 75) return 1.50;
-  return 1.75;  // >=75°F dewpoint: hostile to evaporation
-}
-
-/**
  * Solar / sun adjustment. Direct sun on cloudless days adds ~5°F to the
  * effective temperature in trained runners (Sources 7 & 17 in Research/06).
+ *
+ * 2026-06-09 state-audit fix: the temp→slowdown curve that used to live
+ * here sat ~2× above the cited Research/06 mid-pack column (70°F → 8%
+ * vs doctrine 4%; 80°F → 17% vs 7.5%), and the dewpoint multiplier
+ * (≤1.75×) compounded on top — verdict bands were forgiving warm-day
+ * quality misses by 3-4× what the research supports. The slowdown now
+ * comes from lib/training/heat-model.ts (the verbatim doctrine table +
+ * additive §12 dewpoint surcharge + the documented duration scale),
+ * shared with applyHeatToPace so post-run verdicts and the race
+ * projection price the same physics identically.
  */
-/**
- * 2026-06-04 · scale the marathon-distance pace tax down for shorter
- * efforts. The Maughan/Vihma table represents 26.2-mile race-pace
- * degradation · most of that comes from cumulative dehydration,
- * core-temp rise, and accelerated glycogen depletion · effects that
- * accumulate over hours.
- *
- * For a 36-minute tempo at 79°F effective the table says ~16% but
- * the actual cost is closer to 8-9% · the runner doesn't accumulate
- * the full thermal debt. Linear ramp from 40% of the table at very
- * short efforts up to 100% at marathon-distance duration.
- *
- *   sub-30min  → 0.45   (mostly direct-heat effect, little accumulation)
- *   30 min     → 0.55
- *   60 min     → 0.70
- *   90 min     → 0.85
- *   120+ min   → 1.00   (full marathon-distance penalty)
- *
- * Returns 1.0 when durationS is unknown · keeps the published table
- * intent as the safe default.
- *
- * Cite: Research/06-weather-adjustments.md §"Distance scaling"  // TODO: no matching heading in Research/06 — duration-scaling logic is engine-internal, not a Research section
- * (annotation 2026-06-04, David's QC).
- */
-function durationScalingFactor(durationS: number | null | undefined): number {
-  if (!durationS || durationS <= 0) return 1.0;
-  const TWO_HOURS = 7200;
-  const t = Math.min(1, durationS / TWO_HOURS);
-  // Anchored ramp: factor(0s) → 0.40, factor(2hr+) → 1.00.
-  return Math.max(0.40, Math.min(1.0, 0.40 + 0.60 * t));
-}
-
 function solarEffectiveBump(c: WeatherInput): number {
   const cloud = c.cloudCoverPct ?? null;
   const cond = (c.conditions ?? '').toLowerCase();
@@ -184,12 +128,15 @@ function solarEffectiveBump(c: WeatherInput): number {
   return 0;
 }
 
-// Band assignment from slowdown % only — Research/06 doctrine:
-//   neutral < 2% · warm 2–6% · hot 6–12% · extreme ≥ 12%
+// Band assignment from slowdown % only. UX bands, recalibrated
+// 2026-06-09 to the doctrine table so the felt labels land where they
+// used to (70°F dry still reads "hot"): the % thresholds halved with
+// the table (old 2/6/12 over a ~2× curve ≈ new 2/4/8 over doctrine).
+//   neutral < 2% · warm 2–4% · hot 4–8% · extreme ≥ 8%
 function bandFor(slowdownPct: number): HeatBand {
   if (slowdownPct < 2) return 'neutral';
-  if (slowdownPct < 6) return 'warm';
-  if (slowdownPct < 12) return 'hot';
+  if (slowdownPct < 4) return 'warm';
+  if (slowdownPct < 8) return 'hot';
   return 'extreme';
 }
 
@@ -226,16 +173,19 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   // Effective temperature accounts for sun load.
   const tEff = t + solarEffectiveBump(input);
 
-  // Base slowdown from temp, scaled by evaporative-cooling impairment.
-  // 2026-06-04 · also scaled by run duration · the Maughan/Vihma table
-  // is anchored to marathon-distance pace tax (cumulative dehydration +
-  // core-temp + glycogen effects accumulate over hours). For a tempo
-  // or shorter run the actual cost is much smaller. See
-  // durationScalingFactor() header.
-  const baseSlow = slowdownFromTemp(tEff);
-  const dpMult = td != null ? dewpointMultiplier(td) : 1.0;
-  const durMult = durationScalingFactor(input.durationS);
-  const slowdownPct = Math.round(baseSlow * dpMult * durMult * 10) / 10;
+  // Base slowdown from the doctrine table (mid-pack column — post-run
+  // judgments don't carry the runner's tier; mid-pack is the honest
+  // population default), plus the §12 dewpoint surcharge, scaled by run
+  // duration. One shared formula with applyHeatToPace — see
+  // lib/training/heat-model.ts.
+  const slowdownPct = Math.round(
+    effortSlowdownPct({
+      tempF: tEff,
+      dewpointF: td,
+      durationS: input.durationS,
+      tier: 'mid_pack',
+    }) * 10,
+  ) / 10;
 
   const heatBand = bandFor(slowdownPct);
   const heatStressF = td != null ? Math.round(t + td) : null;

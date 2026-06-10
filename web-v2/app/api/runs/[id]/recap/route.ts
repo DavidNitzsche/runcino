@@ -280,6 +280,8 @@ export async function GET(
     actualMaxHr: data.maxHr != null ? Number(data.maxHr) : null,
     splits: splitsForRecap,
     weather: weatherInput,
+    // 2026-06-09 Phase 2 (3.2) · taken bail leads the recap (bail ≠ fail).
+    ruleOutcomes: Array.isArray(data.ruleOutcomes) ? data.ruleOutcomes : null,
   });
 
   // E3: light secondary reconciliation note. The verdict above stays anchored

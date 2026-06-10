@@ -32,18 +32,22 @@ extension Color {
     }
 }
 
+// LOCKED TEN-COLOR PALETTE (brief v2, AFC fix 4) · byte-for-byte with
+// WatchTheme.C, iPhone Theme.swift, and web globals.css :root.
 enum Faff {
-    static let live   = Color(hex: 0x3EBD41) // Success — on-pace / governed
-    static let goal   = Color(hex: 0xF3AD38) // Attention — target / "act now" (fuel)
-    static let dist   = Color(hex: 0x27B4E0) // Light Blue — DISTANCE, always
-    static let over   = Color(hex: 0xFC4D64) // Warning — off / behind / over ceiling (LIVE DATA)
-    static let redish = Color(hex: 0xD03F3F) // Destructive-action red (BUTTONS — matches web --color-phase-2)
-    static let rest   = Color(hex: 0x008FEC) // Corporate blue — recovery / landmark chrome
+    static let live   = Color(hex: 0x3EBD41) // Good state — on-pace / governed
+    static let goal   = Color(hex: 0xF3AD38) // Watch attention — target / "act now" (fuel)
+    static let dist   = Color(hex: 0x27B4E0) // Recovery blue — DISTANCE, always
+    static let over   = Color(hex: 0xFC4D64) // Off/warn — behind / over ceiling (LIVE DATA)
+    static let redish = Color(hex: 0xFC4D64) // Destructive-action red (= warn slot · #D03F3F deleted)
+    static let rest   = Color(hex: 0x27B4E0) // Recovery blue — rest / landmark chrome (corporate #008FEC deleted)
     static let ink    = Color(hex: 0xF6F7F8) // neutral readout (white)
     static let mute   = Color(hex: 0x8A90A0)
     static let dim    = Color(hex: 0x646464)
-    static let brand  = Color(hex: 0x008FEC)
-    static let bonus  = Color(hex: 0xA78BFA) // purple — distance gone past the plan (counts up)
+    static let brand  = Color(hex: 0x27B4E0) // (= rest · corporate blue deleted)
+    static let bonus  = Color(hex: 0xF5C518) // PR gold — distance gone past the plan (counts up ·
+                                             // was an out-of-palette purple; overtime is the small
+                                             // milestone state, gold per the locked table)
 }
 
 // MARK: - A number's role decides its colour
@@ -132,6 +136,9 @@ struct NumberFace: View {
     /// Optional small label at the bottom of the face (above bezel safety).
     /// Same alignment + font as topLabel.
     var bottomLabel: String? = nil
+    /// Color for the bottom label. Defaults to the muted gray; the post-run
+    /// verdict row (brief v2 §9) passes its state role color here.
+    var bottomLabelColor: Color = Faff.mute
     /// Optional bottom progress strip (reps / phases). Replaces the
     /// symmetric bottom margin when present.
     var strip: Strip? = nil
@@ -462,7 +469,7 @@ struct NumberFace: View {
                     let lsb = NumberFace.firstCharLSB(bottomLabel.uppercased(), fontSize: labelSize)
                     Text(bottomLabel.uppercased())
                         .font(.custom("HelveticaNeue-Bold", size: labelSize))
-                        .foregroundStyle(Faff.mute)
+                        .foregroundStyle(bottomLabelColor)
                         .padding(.vertical, -labelSize * cropK)
                         .fixedSize()
                         .offset(x: alignmentX - lsb, y: H * bottomLabelTop - labelCorrection)

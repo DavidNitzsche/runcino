@@ -117,7 +117,7 @@ struct RunDetailView: View {
                                 MileBars(bars: splitBars, target: Double(splitTargetSecs), readout: $splitReadout)
                                     .frame(height: 150)
                                 Text(splitReadout ?? "Tap a mile to read its pace · HR · effort")
-                                    .font(.display(11, weight: .bold))
+                                    .font(.body(11, weight: .bold))
                                     .foregroundStyle(Theme.txt.opacity(0.72))
                                     .padding(.top, 4)
                             }
@@ -158,7 +158,7 @@ struct RunDetailView: View {
                                 )
                                 .frame(height: 120)
                                 Text(traceReadout ?? "drag the trace to read any point")
-                                    .font(.display(11, weight: .bold))
+                                    .font(.body(11, weight: .bold))
                                     .foregroundStyle(Theme.txt.opacity(0.72))
                             }
                         }
@@ -240,7 +240,7 @@ struct RunDetailView: View {
                                         .foregroundStyle(Theme.txt)
                                     if let r = run?.planned_distance_mi {
                                         Text("planned \(String(format: "%.1f", r)) mi · ran \(String(format: "%.1f", run?.distance_mi ?? 0)) mi")
-                                            .font(.display(11, weight: .bold))
+                                            .font(.body(11, weight: .bold))
                                             .foregroundStyle(Theme.txt.opacity(0.6))
                                     }
                                 }
@@ -477,7 +477,7 @@ struct RunDetailView: View {
                     }
                 } label: {
                     Text(m.label)
-                        .font(.display(10, weight: .bold))
+                        .font(.body(10, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(on ? Color(hex: 0x5A1606) : Theme.txt)
                         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -520,7 +520,7 @@ struct RunDetailView: View {
             Spacer()
             HStack(spacing: 7) {
                 Text(v)
-                    .font(.display(13, weight: .bold))
+                    .font(.body(13, weight: .bold))
                     .foregroundStyle(good ? Color(hex: 0x9AF0BF) : Theme.txt)
                 if chev {
                     Image(systemName: "chevron.down")
@@ -539,7 +539,7 @@ struct RunDetailView: View {
                 SpecLabel(text: title, size: 11, tracking: 2, color: Theme.txt.opacity(0.6))
                 Spacer()
                 if let r = right {
-                    Text(r).font(.display(11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.85))
+                    Text(r).font(.body(11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.85))
                 }
             }
             content()
@@ -888,7 +888,7 @@ struct RunDetailView: View {
     private func coachCallout(label: String, body: String, bg: Color, stroke: Color, chip: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.display(10, weight: .bold))
+                .font(.body(10, weight: .bold))
                 .foregroundStyle(chip)
                 .kerning(1.2)
             Text(body)
@@ -917,7 +917,7 @@ struct RunDetailView: View {
                     .font(.label(11)).tracking(1.2)
                     .foregroundStyle(Theme.txt.opacity(0.85))
                 Text(phaseSubLabel(ph))
-                    .font(.display(11, weight: .bold))
+                    .font(.body(11, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.62))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -925,7 +925,7 @@ struct RunDetailView: View {
             Spacer(minLength: 12)
             VStack(alignment: .trailing, spacing: 2) {
                 Text(ph.actual_pace ?? "—")
-                    .font(.display(15, weight: .bold))
+                    .font(.body(15, weight: .bold))
                     .tracking(-0.3)
                     .foregroundStyle(Theme.txt)
                 Text("/MI")
@@ -1034,7 +1034,7 @@ struct RunDetailView: View {
                         .foregroundStyle(value == nil ? Theme.txt.opacity(0.45) : Theme.txt)
                     if value != nil {
                         Text(unit)
-                            .font(.display(10, weight: .bold))
+                            .font(.body(10, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.55))
                     }
                 }

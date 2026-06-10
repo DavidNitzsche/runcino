@@ -93,7 +93,7 @@ struct TrainView: View {
             Button { onProfile() } label: {
                 Group {
                     if !avatarInitials.isEmpty {
-                        Text(avatarInitials).font(.display(12, weight: .bold))
+                        Text(avatarInitials).font(.body(12, weight: .bold))
                     } else {
                         Image(systemName: "person.fill")
                             .font(.system(size: 13, weight: .bold))
@@ -166,7 +166,7 @@ struct TrainView: View {
                 Spacer()
                 if days > 0 {
                     Text("\(days)d")
-                        .font(.display(12, weight: .bold))
+                        .font(.body(12, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.85))
                         .padding(.horizontal, 11).padding(.vertical, 4)
                         .background(Theme.Glass.fill, in: Capsule())
@@ -195,7 +195,7 @@ struct TrainView: View {
                     .frame(width: 7, height: 7)
                     .shadow(color: phaseColor.opacity(0.9), radius: 4)
                 Text("WK \(curIdx + 1) OF \(totalWks) · \(weekMi) MI")
-                    .font(.display(12.5, weight: .bold))
+                    .font(.body(12.5, weight: .bold))
                     .foregroundStyle(Theme.txt)
             }
             .padding(.horizontal, 13).padding(.vertical, 6)
@@ -219,7 +219,7 @@ struct TrainView: View {
                         .foregroundStyle(Theme.txt.opacity(0.66))
                     Spacer()
                     Text("\(Int(curWeek.plannedMi.rounded())) MI PLANNED")
-                        .font(.display(11, weight: .bold))
+                        .font(.body(11, weight: .bold))
                         .tracking(0.3)
                         .foregroundStyle(Theme.txt.opacity(0.78))
                 }
@@ -306,7 +306,7 @@ struct TrainView: View {
         let infColor: [String: Color] = [
             "on_track":   Color(hex: 0x86EFA0),
             "consistent": Color(hex: 0x86EFA0),
-            "working":    Color(hex: 0x48B3B5),
+            "working":    Color(hex: 0xF3AD38),
             "slipping":   Color(hex: 0xFFCE8A),
             "compromised":Color(hex: 0x8A90A0),
         ]
@@ -356,7 +356,7 @@ struct TrainView: View {
                     let pastCount = rows.filter { !$0.isCurrent }.count
                     if pastCount > 0 {
                         Text("LAST \(pastCount) WEEKS")
-                            .font(.display(11, weight: .bold))
+                            .font(.body(11, weight: .bold))
                             .tracking(0.3)
                             .foregroundStyle(Theme.txt.opacity(0.78))
                     }
@@ -398,7 +398,7 @@ struct TrainView: View {
                     .foregroundStyle(Theme.txt.opacity(0.66))
                 Spacer()
                 Text(lens == .weeks ? "★ KEY" : monthHeaderTrailingLabel())
-                    .font(.display(11, weight: .bold))
+                    .font(.body(11, weight: .bold))
                     .tracking(0.3)
                     .foregroundStyle(Theme.txt.opacity(0.78))
             }
@@ -565,7 +565,7 @@ struct TrainView: View {
 
         HStack(spacing: 11) {
             Text("★")
-                .font(.display(14, weight: .bold))
+                .font(.body(14, weight: .bold))
                 .foregroundStyle(gold)
                 .frame(width: 20, alignment: .center)
             ZStack(alignment: .leading) {
@@ -795,7 +795,7 @@ struct TrainView: View {
             }
             Spacer(minLength: 0)
             Text(sel.meta)
-                .font(.display(13, weight: .bold))
+                .font(.body(13, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(0.82))
         }
         .frame(minHeight: 46)
@@ -1198,7 +1198,7 @@ private struct TrainWeekRow: View {
                 // right edge · before, the optional check pushed "mi"
                 // left by ~14pt on done rows.
                 Text(metaLabel())
-                    .font(.display(12.5, weight: .bold))
+                    .font(.body(12.5, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.82))
                     .frame(width: 44, alignment: .trailing)
                 // Status indicator gets its own fixed-width slot · same
@@ -1291,7 +1291,7 @@ private struct TrainWeekRowSummary: View {
         return Button(action: onTap) {
             HStack(spacing: 11) {
                 Text("\(idx + 1)")
-                    .font(.display(14, weight: .bold))
+                    .font(.body(14, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.75))
                     .frame(width: 20, alignment: .center)
                 ZStack(alignment: .leading) {
@@ -1316,7 +1316,7 @@ private struct TrainWeekRowSummary: View {
                         .foregroundStyle(Color(hex: 0xFFCE8A))
                 } else {
                     Text("\(Int(week.plannedMi.rounded()))")
-                        .font(.display(12.5, weight: .bold))
+                        .font(.body(12.5, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.78))
                 }
             }
@@ -1361,9 +1361,9 @@ private struct ExecStripRow: View {
             : 0
         let barFill: Color = {
             if row.isCurrent { return Color(hex: 0xFFCE8A).opacity(0.55) }
-            if pct >= 0.95 { return Color(hex: 0x56E0B0) }  // green
+            if pct >= 0.95 { return Color(hex: 0x3EBD41) }  // good state
             if pct >= 0.80 { return Color(hex: 0xFFCE8A) }  // amber
-            return Color(hex: 0xFF8870)                       // red
+            return Color(hex: 0xFC4D64)                       // off/warn
         }()
         let dateLabel: String = {
             if row.isCurrent { return "THIS WEEK" }
@@ -1414,11 +1414,11 @@ private struct ExecStripRow: View {
                 // Actual / planned mi
                 (
                     Text(String(format: "%.1f", row.actualMi))
-                        .font(.display(12, weight: .bold))
+                        .font(.body(12, weight: .bold))
                         .foregroundStyle(Theme.txt)
                     +
                     Text("/\(Int(row.plannedMi.rounded()))mi")
-                        .font(.display(10, weight: .semibold))
+                        .font(.body(10, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.44))
                 )
                 .frame(width: 68, alignment: .trailing)

@@ -20,7 +20,7 @@ struct PageHeader: View {
             if let avatar = avatarInitials {
                 Button { onAvatarTap?() } label: {
                     Text(avatar)
-                        .font(.display(12, weight: .bold))
+                        .font(.body(12, weight: .bold))
                         .foregroundStyle(Theme.txt)
                         .frame(width: 32, height: 32)
                         .background(
@@ -32,7 +32,7 @@ struct PageHeader: View {
                 .buttonStyle(.plain)
             } else if let r = rightLabel {
                 Text(r)
-                    .font(.display(11, weight: .semibold))
+                    .font(.body(11, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.78))
             }
         }

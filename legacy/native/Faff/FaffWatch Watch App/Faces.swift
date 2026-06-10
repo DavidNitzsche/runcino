@@ -206,30 +206,51 @@ struct ProgressionFace: View {
     }
 }
 
-/// Tempo face — live pace + target + steady HR + miles to go. Four rows, no strip.
-/// Unlike EasyFace the HR row is always visible (no rotation with cadence) and
-/// the target pace is permanently shown — exactly what's needed mid-tempo.
-/// Routed when workout.displayHint == "tempo".
+/// Tempo face — live pace + signed delta vs target + steady HR + miles to go.
+/// Four rows, no strip. Unlike EasyFace the HR row is always visible (no
+/// rotation with cadence). Routed when workout.displayHint == "tempo".
+///
+/// AFC fix 7 (2026-06-09) · the second row is now the SIGNED DELTA to the
+/// target ("+0:11" = 11 s/mi slow, "-0:04" = 4 s/mi fast) instead of the
+/// raw target pace. At 7:28 vs 7:17 the old face made the runner subtract
+/// two mm:ss numbers mid-threshold to learn the magnitude; the drift color
+/// said only THAT they were off, not by how much. The target itself moves
+/// into the top label ("TEMPO · 7:17") so no information is lost.
 struct TempoFace: View {
     let livePace: String         // "7:28"
     let paceRole: Role           // drift-zone color
-    let targetPace: String       // "7:17"
+    let targetPace: String       // "7:17" · rendered in the top label
+    let paceDelta: String        // "+0:11" / "-0:04" / "—" (no GPS or no target)
     let hr: String               // "148" or "—"
     /// .live once live HR reaches the threshold target, .neutral below, .mute pre-HR.
     let hrRole: Role
-    /// Small top-label reference: "TEMPO · ♥149" — the threshold to hold.
+    /// Small top-label reference: "TEMPO" — target pace is appended here.
     var topLabel: String = "TEMPO"
     let toGo: String             // "2.22" (miles remaining) or "m:ss"
+
+    /// "TEMPO · 7:17" — keeps the chased number on screen without
+    /// spending a big row on it. Placeholder targets stay bare.
+    private var derivedLabel: String {
+        targetPace == "—:—" || targetPace.isEmpty
+            ? topLabel
+            : "\(topLabel) · \(targetPace)"
+    }
+
+    /// Delta row rides the same drift-zone color as the live row so the
+    /// two reads reinforce one signal; mute until a real delta exists.
+    private var deltaRole: Role {
+        paceDelta == "—" ? .mute : paceRole
+    }
 
     var body: some View {
         NumberFace(
             rows: [
-                NumRow(livePace,   paceRole),
-                NumRow(targetPace, .neutral),
-                NumRow(hr,         hrRole, icon: "heart.fill"),
-                NumRow(toGo,       .neutral)
+                NumRow(livePace,  paceRole),
+                NumRow(paceDelta, deltaRole),
+                NumRow(hr,        hrRole, icon: "heart.fill"),
+                NumRow(toGo,      .neutral)
             ],
-            topLabel: topLabel
+            topLabel: derivedLabel
         )
     }
 }
@@ -757,6 +778,12 @@ struct CompleteFace: View {
     let distance: String    // "9.6"
     let elapsed: String     // "1:24"
     var hr: String? = nil   // avg HR bpm — appended as 4th row when sampled
+    /// Brief v2 §9 verdict row · "GOOD · ON-PACE" / "SHARP · UNDER" /
+    /// "STEADY · OVER" / "LOADED · OVER". Renders in the small bottom-label
+    /// slot (after the metrics, above Done) so the locked shared-glyph row
+    /// math is untouched. Nil hides the row (no target to judge against).
+    var verdict: String? = nil
+    var verdictRole: Role = .neutral
     var onDone: () -> Void = {}
 
     private var rows: [NumRow] {
@@ -779,6 +806,8 @@ struct CompleteFace: View {
                 rows: rows,
                 topLabel: label.uppercased(),
                 topLabelColor: Faff.live,
+                bottomLabel: verdict,
+                bottomLabelColor: verdictRole.color,
                 bottomReservation: 0.20,   // Done button area
                 faceBackground: Color(hex: 0x0C2A14)
             )

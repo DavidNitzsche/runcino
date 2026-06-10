@@ -61,15 +61,38 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
   // Phase B · one canonical dedup. A dupe of one long run would otherwise push
   // two identical drift points into the first-3 / last-3 means.
   const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, 60), today);
+  // 2026-06-09 state-audit fix · the steady-state filter read
+  // data->>'type', a field runs never carried, so EVERY run ≥ 6mi
+  // passed — including tempo days, whose deliberate negative-split
+  // structure (HR climbing into the work block) registers as
+  // double-digit fake "decoupling" and can single-handedly flip the
+  // goal status to WATCHING. Two-layer exclusion now:
+  //   1. data->>'workoutType' · stamped from the plan at ingest going
+  //      forward (api/ingest/workout).
+  //   2. plan-day join · any plan (active OR archived · historical
+  //      runs matched plans that have since been re-authored) that
+  //      prescribed quality on that date excludes the run. Catches
+  //      every pre-stamp historical row.
+  // Over-exclusion (a quality day run easy) is the safe direction for
+  // this signal — a contaminated point is worse than a missing one.
   const rows = await pool.query<{ id: string; date: string; mi: number | string; splits: unknown }>(
-    `SELECT id::text, data->>'date' AS date, (data->>'distanceMi')::numeric AS mi, data->'splits' AS splits
-       FROM runs
-      WHERE user_uuid = $1::uuid
-        AND id = ANY($3::bigint[])
-        AND (data->>'distanceMi')::numeric >= 6
-        AND (data->>'date')::date >= $2::date - interval '60 days'
-        AND COALESCE(data->>'type', '') NOT IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek')
-      ORDER BY (data->>'date')::date ASC`,
+    `SELECT r.id::text, r.data->>'date' AS date, (r.data->>'distanceMi')::numeric AS mi, r.data->'splits' AS splits
+       FROM runs r
+      WHERE r.user_uuid = $1::uuid
+        AND r.id = ANY($3::bigint[])
+        AND (r.data->>'distanceMi')::numeric >= 6
+        AND (r.data->>'date')::date >= $2::date - interval '60 days'
+        AND COALESCE(r.data->>'workoutType', r.data->>'type', '')
+              NOT IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek')
+        AND NOT EXISTS (
+          SELECT 1
+            FROM plan_workouts pw
+            JOIN training_plans tp ON tp.id = pw.plan_id
+           WHERE tp.user_uuid = $1::uuid
+             AND pw.date_iso = COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10))
+             AND pw.type IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek', 'race_week_tuneup')
+        )
+      ORDER BY (r.data->>'date')::date ASC`,
     [userUuid, today, canonicalIds],
   ).then((r) => r.rows).catch(() => []);
 

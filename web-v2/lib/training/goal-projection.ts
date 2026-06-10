@@ -43,8 +43,8 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
-import { predictRaceTime, vdotFromRace } from './vdot';
+import { isoDaysBefore } from '@/lib/runs/volume';
+import { predictRaceTime, vdotFromRace, tPaceFromVdot } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
@@ -111,6 +111,13 @@ export interface GoalProjection {
     type: string;
     label: string;             // e.g. "4mi tempo"
     distanceMi: number | null;
+    /** 2026-06-09 Phase 2 (3.3) · the named test. The SAME numbers the
+     *  drift detectors will judge the run by, stated before the run
+     *  instead of after: work-phase pace ≤ T+10 (detectTempoPaceDrift's
+     *  trigger edge) and avgHr ≤ 0.975×LTHR (the Friel Z4/5a seam — at
+     *  or under threshold). Null for non-T-pace test points (long/race)
+     *  or when VDOT/LTHR are unknown — never invented. */
+    passCriteria: { paceMaxSPerMi: number; hrMaxBpm: number | null } | null;
   }>;
   /** 2026-06-04 · the past 1-3 completed quality runs · "recent test
    *  points." Same shape + verdict from the heat-adjusted phase band.
@@ -217,7 +224,7 @@ export async function computeGoalProjection(args: {
 
   const summary = composeSummary(status, driftSignals, goalSec, vdotProjectionSec);
   const [nextTestPoints, recentTestPoints] = await Promise.all([
-    loadNextTestPoints(userUuid).catch(() => []),
+    loadNextTestPoints(userUuid, vdot).catch(() => []),
     loadRecentTestPoints(userUuid).catch(() => []),
   ]);
   const transitions = composeTransitions(status, driftSignals);
@@ -270,8 +277,27 @@ export async function computeGoalProjection(args: {
  *  shake-out doesn't accidentally clear a planned tempo. */
 async function loadNextTestPoints(
   userUuid: string,
+  /** Current VDOT · drives the pass-criteria T-pace. Null → no criteria. */
+  vdot: number | null = null,
 ): Promise<GoalProjection['nextTestPoints']> {
   const today = await runnerToday(userUuid);
+  // 2026-06-09 Phase 2 (3.3) · pass criteria for T-pace test points.
+  // paceMax = T + 10 (the exact slow edge detectTempoPaceDrift tolerates
+  // before counting drift); hrMax = 0.975 × LTHR (at-or-under threshold ·
+  // same line the tune-up's pass note uses). Computed once per call.
+  const tPace = tPaceFromVdot(vdot);
+  const lthr = (await pool.query<{ lthr: number | null }>(
+    `SELECT lthr FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] }))).rows[0]?.lthr ?? null;
+  const T_PACE_CRITERIA_TYPES = new Set(['tempo', 'threshold', 'race_week_tuneup']);
+  const criteriaFor = (type: string): { paceMaxSPerMi: number; hrMaxBpm: number | null } | null => {
+    if (tPace == null || !T_PACE_CRITERIA_TYPES.has(type)) return null;
+    return {
+      paceMaxSPerMi: Math.round(tPace + 10),
+      hrMaxBpm: lthr != null ? Math.round(lthr * 0.975) : null,
+    };
+  };
   const rows = (await pool.query<{
     date_iso: string;
     type: string;
@@ -311,6 +337,7 @@ async function loadNextTestPoints(
       type: r.type,
       label,
       distanceMi: dist,
+      passCriteria: criteriaFor(r.type),
     };
   });
 }
@@ -697,7 +724,21 @@ async function detectAerobicDecouplingDrift(userUuid: string): Promise<DriftSign
 }
 
 /** MEDIUM · recent tempo/threshold paces drifting slower than the
- *  VDOT-implied T-pace by ≥ 10 s/mi for 3+ weeks. */
+ *  VDOT-implied T-pace by ≥ 10 s/mi for 3+ sessions in 21 days.
+ *
+ *  2026-06-09 state-audit fix · the old query was dead twice over:
+ *  it filtered on data->>'workoutType' (a field no device-ingested run
+ *  carried until the ingest stamp landed the same day) and averaged
+ *  data->>'avgPaceSecPerMi' (a field NO run row carries · AVG was
+ *  always null). And even alive it would have been dishonest ·
+ *  overall pace on a WU + 4mi T + CD session reads ~30-50 s/mi slower
+ *  than the tempo block, so comparing overall pace to T-pace fires on
+ *  every well-executed tempo. Now mirrors loadRecentTestPoints: walk
+ *  the PLAN's tempo/threshold days and read the watch_completion
+ *  work-phase pace for each · the same number the Targets test-point
+ *  verdicts use. Sessions without a watch payload contribute nothing
+ *  (no watch → no signal, same net behavior as the dead detector ·
+ *  honest absence beats a fabricated average). */
 async function detectTempoPaceDrift(
   userUuid: string,
   vdot: number | null,
@@ -709,24 +750,39 @@ async function detectTempoPaceDrift(
   if (!hmSec) return null;
   const tPacePerMi = hmSec / 13.1 - 5;
 
-  // Phase B · one canonical dedup. A dupe would inflate COUNT (the ≥3 gate) and
-  // double-weight a tempo/threshold pace in the AVG. 22d slack ⊇ the 21d SQL
-  // window (runner-TZ vs CURRENT_DATE skew); no run dates past today.
   const projToday = await runnerToday(userUuid);
-  const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(projToday, 22), projToday);
   const r = (await pool.query<{
     avg_pace_s: number | string | null;
     count: number | string;
   }>(
-    `SELECT AVG((data->>'avgPaceSecPerMi')::numeric) AS avg_pace_s,
-            COUNT(*) AS count
-       FROM runs
-      WHERE user_uuid = $1::uuid
-        AND id = ANY($2::bigint[])
-        AND (data->>'workoutType' = 'tempo' OR data->>'workoutType' = 'threshold')
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= (CURRENT_DATE - INTERVAL '21 days')::text
-        AND (data->>'distanceMi')::numeric >= 4`,
-    [userUuid, canonicalIds],
+    `SELECT AVG(t.work_pace) AS avg_pace_s, COUNT(*) AS count
+       FROM (
+         SELECT pw.date_iso,
+                (
+                  SELECT AVG((phase->>'actualPaceSPerMi')::numeric)
+                    FROM coach_intents ci,
+                         jsonb_array_elements(
+                           CASE jsonb_typeof(ci.value::jsonb)
+                             WHEN 'object' THEN ci.value::jsonb->'phases'
+                             ELSE '[]'::jsonb
+                           END
+                         ) AS phase
+                   WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
+                     AND ci.reason = 'watch_completion'
+                     AND ci.ts::date = pw.date_iso::date
+                     AND phase->>'type' = 'work'
+                     AND (phase->>'actualPaceSPerMi')::numeric > 0
+                ) AS work_pace
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+          WHERE tp.user_uuid = $1::uuid
+            AND tp.archived_iso IS NULL
+            AND pw.type IN ('tempo','threshold')
+            AND pw.date_iso >= $3
+            AND pw.date_iso <= $2
+       ) t
+      WHERE t.work_pace IS NOT NULL`,
+    [userUuid, projToday, isoDaysBefore(projToday, 21)],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!r || !r.avg_pace_s || Number(r.count) < 3) return null;
   const observedPaceSec = Number(r.avg_pace_s);

@@ -160,6 +160,11 @@ export function buildWorkoutSpec(
   // thread maxHr fall back to lthr-only (89% LTHR · still honest
   // Friel Z2 ceiling, just no Daniels cross-check).
   maxHr: number | null = null,
+  // 2026-06-09 state-audit fix · the runner's GOAL pace (s/mi) for the
+  // race-day row. Only the 'race' branch reads it. Optional so legacy
+  // callers (restore, adapt) keep compiling · they fall back to the
+  // inverse-of-tPaceFromGoal derivation inside the race case.
+  goalPaceSPerMi: number | null = null,
 ): SpecBuildResult {
   // 2026-06-02 · parse the prescription up front (e.g. "6×800m @ I
   // pace · 90s jog" → {reps:6, repDistanceMi:0.497, restS:90}). When
@@ -169,6 +174,45 @@ export function buildWorkoutSpec(
   // (e.g. "continuous tempo") · branches fall back to historical
   // defaults.
   const parsed = parsePrescription(prescription);
+  // 2026-06-09 Phase 2 (3.2) · contingency rules per type. The watch
+  // OFFERS the bail on breach (CONTINUE / TAKE THE BAIL · never
+  // enforces); pass rules are post-run confirmation criteria (the same
+  // numbers the WATCHING test reads); the race abort mirrors the
+  // execution plan's mile-5 checkpoint (lib/race/execution-plan.ts —
+  // LTHR+3 / goal+23 · keep in sync). Null-LTHR runners get pace rules
+  // only · never an invented HR number.
+  const contingencyRules = ((): Array<Record<string, unknown>> | null => {
+    const rules: Array<Record<string, unknown>> = [];
+    const passHr = lthr != null ? Math.round(lthr * 0.975) : null;
+    const bailHr = lthr != null ? lthr + 5 : null;
+    if (type === 'threshold' || type === 'tempo' || type === 'intervals' || type === 'race_week_tuneup') {
+      if (passHr != null) {
+        rules.push({ kind: 'pass', metric: 'hr', op: '<=', value: passHr, scope: 'work', action: null,
+          label: `Pass: avgHr ≤ ${passHr} on the work` });
+      }
+      if (bailHr != null) {
+        rules.push({ kind: 'bail', metric: 'hr', op: '>', value: bailHr, scope: 'work', action: 'drop_to_easy',
+          label: `HR over ${bailHr} and climbing · finish easy, the stimulus is banked` });
+      }
+    } else if (type === 'long') {
+      if (bailHr != null && extractFinishSegment(prescription)) {
+        rules.push({ kind: 'bail', metric: 'hr', op: '>', value: bailHr, scope: 'finish', action: 'cut_finish_half',
+          label: `HR over ${bailHr} mid-finish · cut the finish in half, jog home` });
+      }
+    } else if (type === 'race') {
+      const abortHr = lthr != null ? lthr + 3 : (maxHr != null ? Math.round(maxHr * 0.91) : null);
+      if (abortHr != null) {
+        rules.push({ kind: 'abort', metric: 'hr', op: '>', value: abortHr, scope: 'mile-5', action: 'switch_to_b_goal',
+          label: `Mile 5 check: avgHr over ${abortHr} · switch to the B plan` });
+      }
+      if (goalPaceSPerMi != null) {
+        rules.push({ kind: 'abort', metric: 'pace', op: '>', value: goalPaceSPerMi + 23, scope: 'mile-5', action: 'switch_to_b_goal',
+          label: `Mile 5 check: pace slower than goal +23s · switch to the B plan` });
+      }
+    }
+    return rules.length > 0 ? rules : null;
+  })();
+  const withRules = contingencyRules ? { rules: contingencyRules } : {};
   // Research/01 §VDOT-50 table: E = T+104 to T+156. T+80 floor lands within 7s of
   // Daniels' E minimum, moving easy runs out of GA/steady-state territory.
   const easyLo = tPaceSec + 80, easyHi = tPaceSec + 120;
@@ -228,6 +272,7 @@ export function buildWorkoutSpec(
           hr_cap_bpm: hrCapLong(lthr, maxHr),
           fuel_mi: fuelMi(distance_mi),
           ...finishFields,
+          ...withRules,
         },
         // Long-run "headline" pace is the easy long pace · take the
         // middle of the range.
@@ -252,6 +297,7 @@ export function buildWorkoutSpec(
           tempo_pace_s_per_mi: tempo,
           cooldown_mi: Number(cd.toFixed(1)),
           hr_target_bpm: lthr ? Math.round(lthr * 0.92) : null,
+          ...withRules,
         },
         paceTargetSPerMi: tempo,
       };
@@ -273,6 +319,7 @@ export function buildWorkoutSpec(
           rep_rest_s: restS,
           cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
+          ...withRules,
         },
         paceTargetSPerMi: tPaceSec,
       };
@@ -295,21 +342,44 @@ export function buildWorkoutSpec(
           rep_rest_s: restS,
           cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
+          ...withRules,
         },
         paceTargetSPerMi: interval,
       };
     }
-    case 'race':
+    case 'race': {
+      // 2026-06-09 state-audit fix · race day targets GOAL pace, not
+      // T-pace. The old `paceTargetSPerMi: tPaceSec` handed the runner
+      // a number 5 s/mi hot for an HM (1:30:00 goal → 6:52/mi goal
+      // pace, but T = goal − 5 = 6:47/mi landed on the watch · a 66s
+      // over-commitment at the gun · the canonical HM blow-up per
+      // Research/08 §3.4 + §18.2). When the caller doesn't thread the
+      // goal pace (legacy restore/adapt paths), invert tPaceFromGoal's
+      // distance offsets to recover it from T.
+      const dMi = distance_mi ?? 13.1;
+      const inverseOffset = dMi >= 25 ? 18 : dMi >= 12 ? 5 : dMi >= 5 ? -8 : -15;
+      const racePace = goalPaceSPerMi ?? (tPaceSec + inverseOffset);
       return {
         spec: {
           kind: 'long',  // no 'race' kind in WorkoutSpec union · stash as long
-          pace_target_s_per_mi_lo: tPaceSec - 10,
-          pace_target_s_per_mi_hi: tPaceSec + 5,
-          hr_cap_bpm: lthr ? Math.round(lthr * 0.95) : null,
+          // −5 (controlled push, back half) to +5. The first-mile
+          // allowance is structural (watch settle phase + execution
+          // plan), not baked into the band.
+          pace_target_s_per_mi_lo: racePace - 5,
+          pace_target_s_per_mi_hi: racePace + 5,
+          // Race-effort HR ceiling per Research/08 §6.1: an HM races at
+          // 96-100% of LTHR · the old 0.95× cap sat BELOW honest HM
+          // effort and would alarm the entire race. Marathon+ → 92%.
+          // Sub-HM races run above LTHR · a ceiling is wrong there.
+          hr_cap_bpm: lthr
+            ? (dMi >= 25 ? Math.round(lthr * 0.92) : dMi >= 12 ? lthr : null)
+            : null,
           fuel_mi: fuelMi(distance_mi),
+          ...withRules,
         },
-        paceTargetSPerMi: tPaceSec,  // race pace ≈ T-pace for HM, slightly slower for M
+        paceTargetSPerMi: racePace,
       };
+    }
     case 'shakeout':
       return {
         spec: {
@@ -321,20 +391,43 @@ export function buildWorkoutSpec(
         },
         paceTargetSPerMi: null,
       };
-    case 'race_week_tuneup':
+    case 'race_week_tuneup': {
+      // 2026-06-09 state-audit Tier 2.2 · honor the prescription. The
+      // generator now schedules the doctrinal HM/M tune-up ("4×1km @
+      // race pace · 90s jog" · Research/08 §9.3) at T-5; this branch
+      // was hardcoded to 2×0.5mi @ T−5 and would have silently built
+      // a different workout than the label promised. Reps/rest come
+      // from parsePrescription when present; pace anchors to RACE pace
+      // when the label says so (goal pace when threaded, else the
+      // inverse-offset derivation from T — same mapping as the race
+      // branch), else stays at the T−5 primer.
+      const repCount = parsed?.reps ?? 2;
+      const repMi = parsed?.repDistanceMi ?? 0.5;
+      const restS = parsed?.restS ?? 60;
+      const wantsRacePace = /race\s*pace|@\s*(?:HM|M)P?\b/i.test(String(prescription ?? ''));
+      // NOTE: distance_mi here is the WORKOUT's distance (~5mi), not the
+      // race's, so the race branch's inverse-offset trick is unavailable.
+      // Race pace comes from the threaded goal pace; the no-goal fallback
+      // is plain T — an honest race-week primer for any distance, never
+      // hotter than the runner's threshold.
+      const repPace = wantsRacePace
+        ? (goalPaceSPerMi ?? tPaceSec)
+        : tPaceSec - 5;
       return {
         spec: {
           kind: 'threshold',
           warmup_mi: 1.5,
-          rep_count: 2,
-          rep_distance_mi: 0.5,
-          rep_pace_s_per_mi: tPaceSec - 5,  // slightly faster than T · primes the system
-          rep_rest_s: 60,
+          rep_count: repCount,
+          rep_distance_mi: repMi,
+          rep_pace_s_per_mi: repPace,
+          rep_rest_s: restS,
           cooldown_mi: 1.0,
           lthr_bpm: hrLthrBpm(lthr),
+          ...withRules,
         },
-        paceTargetSPerMi: tPaceSec - 5,
+        paceTargetSPerMi: repPace,
       };
+    }
     case 'rest':
     case 'cross':
     case 'strength':

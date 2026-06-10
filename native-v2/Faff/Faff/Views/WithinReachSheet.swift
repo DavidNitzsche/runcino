@@ -55,7 +55,7 @@ struct WithinReachSheet: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 9) {
                 Text("YOU'RE")
-                    .font(.display(14, weight: .bold))
+                    .font(.body(14, weight: .bold))
                     .tracking(1)
                     .foregroundStyle(Theme.txt.opacity(0.85))
                 Text("8 seconds")
@@ -63,7 +63,7 @@ struct WithinReachSheet: View {
                     .tracking(-0.5)
                     .foregroundStyle(Color(hex: 0xFFE9B0))
                 Text("AWAY")
-                    .font(.display(14, weight: .bold))
+                    .font(.body(14, weight: .bold))
                     .tracking(1)
                     .foregroundStyle(Theme.txt.opacity(0.85))
             }
@@ -84,11 +84,11 @@ struct WithinReachSheet: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Text("RECENT 20:24")
-                    .font(.display(10, weight: .bold))
+                    .font(.body(10, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.7))
                 Spacer()
                 Text("5K PR · 20:16")
-                    .font(.display(10, weight: .bold))
+                    .font(.body(10, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.7))
             }
             GapBeam(
@@ -133,7 +133,7 @@ struct WithinReachSheet: View {
                     .font(.body(17, weight: .extraBold))
                     .foregroundStyle(Theme.txt)
                 Text("~3–4 weeks · one focused effort")
-                    .font(.display(10.5, weight: .bold))
+                    .font(.body(10.5, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.6))
             }
             Spacer()

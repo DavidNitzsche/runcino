@@ -74,6 +74,17 @@ export interface StrengthPick {
   timing: StrengthTiming;
   /** True when paired same-day with a quality/long run (hard-with-hard). */
   pairedWithRun: boolean;
+  /** 2026-06-09 Phase 2 (3.7) · the actual 20-minute session. The
+   *  recommender used to pick DAY + INTENSITY and stop — "what do I
+   *  actually do" was the missing half (audit Part 5 #5 · 17 skips in
+   *  28 days while the chip stayed advisory wallpaper). Content per
+   *  Research/07 §runner maintenance dose: 2 movements × 3 sets +
+   *  one optional finisher, 20 minutes, no gym required. */
+  session: {
+    title: string;
+    durationMin: number;
+    exercises: Array<{ name: string; sets: number; reps: string }>;
+  };
 }
 
 export interface StrengthRecommendation {
@@ -114,6 +125,46 @@ const ACWR_HIGH_SPIKE_THRESHOLD = 1.5;
 const RACE_WEEK_WINDOW_DAYS = 7;
 const TAPER_WINDOW_DAYS = 14;
 const DORMANT_THRESHOLD_DAYS = 21;
+
+// ─── Session content (Phase 2 · 3.7) ───────────────────────────────────
+//
+// Research/07 §2x/week maintenance dose + §concurrent placement. Three
+// fixed templates keyed on the intensity the picker already derives ·
+// deliberately boring: the dose that gets DONE beats the program that
+// gets skipped. Bodyweight/band variants so travel weeks don't zero it.
+function sessionFor(intensity: StrengthIntensity): StrengthPick['session'] {
+  if (intensity === 'heavy') {
+    return {
+      title: 'Session A · hips + posterior',
+      durationMin: 20,
+      exercises: [
+        { name: 'Goblet squat (or rear-foot split squat)', sets: 3, reps: '6-8 heavy' },
+        { name: 'Hip thrust (or single-leg bridge)', sets: 3, reps: '8-10' },
+        { name: 'Calf raise, straight knee', sets: 2, reps: '12-15' },
+      ],
+    };
+  }
+  if (intensity === 'maintenance') {
+    return {
+      title: 'Session B · single-leg + core',
+      durationMin: 20,
+      exercises: [
+        { name: 'Walking lunge (or step-up)', sets: 3, reps: '8/leg' },
+        { name: 'Side plank + leg lift', sets: 3, reps: '30s/side' },
+        { name: 'Soleus raise, bent knee', sets: 2, reps: '12-15' },
+      ],
+    };
+  }
+  return {
+    title: 'Mobility · 15 quiet minutes',
+    durationMin: 15,
+    exercises: [
+      { name: 'Hip flexor + couch stretch', sets: 2, reps: '60s/side' },
+      { name: 'Band walks, lateral', sets: 2, reps: '15/side' },
+      { name: 'Ankle rocks + toe yoga', sets: 1, reps: '2 min' },
+    ],
+  };
+}
 
 // ─── Top-level entry ────────────────────────────────────────────────────
 
@@ -242,6 +293,7 @@ export async function recommendStrengthDays(
       intensity,
       timing: cand.timing,
       pairedWithRun: cand.pairedWithRun,
+      session: sessionFor(intensity),
     };
   });
 

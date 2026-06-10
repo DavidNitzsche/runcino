@@ -244,7 +244,7 @@ struct TargetsView: View {
                         SpecLabel(text: "DAYS OUT", size: 9, tracking: 1.5, color: Theme.txt.opacity(0.6))
                     } else {
                         Text("OPEN")
-                            .font(.display(15, weight: .semibold))
+                            .font(.body(15, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.8))
                         SpecLabel(text: "NO DATE SET", size: 9, tracking: 1.5, color: Theme.txt.opacity(0.6))
                     }
@@ -258,7 +258,7 @@ struct TargetsView: View {
                     .foregroundStyle(Theme.txt)
                     .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
                 Text("GOAL TIME\(h.pace.map { " · \($0)" } ?? "")")
-                    .font(.display(14, weight: .semibold))
+                    .font(.body(14, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.8))
             }
             .padding(.top, 12)
@@ -313,12 +313,12 @@ struct TargetsView: View {
                         .tracking(-0.3)
                         .foregroundStyle(Theme.txt)
                     Text(race.distance_label ?? "")
-                        .font(.display(11, weight: .semibold))
+                        .font(.body(11, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
                 }
                 Spacer()
                 Text("\(days)d")
-                    .font(.display(11, weight: .semibold))
+                    .font(.body(11, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.7))
             }
             .padding(15)
@@ -340,7 +340,7 @@ struct TargetsView: View {
                 }
                 if !g.sub.isEmpty {
                     Text(g.sub)
-                        .font(.display(11, weight: .semibold))
+                        .font(.body(11, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
                         .lineLimit(1)
                 }

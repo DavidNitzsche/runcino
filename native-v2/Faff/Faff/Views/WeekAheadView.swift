@@ -44,7 +44,7 @@ struct WeekAheadView: View {
                             .padding(.top, 24)
 
                         Text("Tap any session for the full plan · paces, fuel & why")
-                            .font(.display(10, weight: .bold))
+                            .font(.body(10, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.45))
                             .padding(.horizontal, 24)
                             .padding(.vertical, 6)
@@ -75,14 +75,14 @@ struct WeekAheadView: View {
                                 SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
                                 if let meta = f.meta, !meta.isEmpty {
                                     Text(meta)
-                                        .font(.display(11, weight: .semibold))
+                                        .font(.body(11, weight: .semibold))
                                         .foregroundStyle(Theme.txt.opacity(0.62))
                                         .lineLimit(2)
                                 }
                             }
                             Spacer(minLength: 12)
                             Text(f.value)
-                                .font(.display(14, weight: .bold))
+                                .font(.body(14, weight: .bold))
                                 .foregroundStyle(factTint(f.valueColor))
                                 .multilineTextAlignment(.trailing)
                         }
@@ -119,7 +119,7 @@ struct WeekAheadView: View {
                 .padding(.top, 9)
             if !dateRangeLabel.isEmpty {
                 Text(dateRangeLabel)
-                    .font(.display(11, weight: .bold))
+                    .font(.body(11, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.7))
                     .padding(.top, 10)
             }
@@ -138,7 +138,7 @@ struct WeekAheadView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .lastTextBaseline, spacing: 2) {
                 Text(value).font(.display(26, weight: .bold)).tracking(-1).foregroundStyle(Theme.txt)
-                if let u = unit { Text(u).font(.display(13, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.7)) }
+                if let u = unit { Text(u).font(.body(13, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.7)) }
             }
             SpecLabel(text: key, size: 9, tracking: 1.5, color: Theme.txt.opacity(0.6))
         }
@@ -169,10 +169,10 @@ struct WeekAheadView: View {
     private var emptyAgenda: some View {
         VStack(spacing: 10) {
             Text("Plan loading…")
-                .font(.display(14, weight: .bold))
+                .font(.body(14, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(0.7))
             Text("If this stays empty, sign out and back in to refresh your session.")
-                .font(.display(11, weight: .semibold))
+                .font(.body(11, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.5))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280)
@@ -313,7 +313,7 @@ private struct AgendaRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(day.name).font(.body(16, weight: .extraBold)).tracking(-0.3).foregroundStyle(Theme.txt)
-                Text(day.detail).font(.display(11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.6))
+                Text(day.detail).font(.body(11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.6))
             }
 
             Spacer(minLength: 0)

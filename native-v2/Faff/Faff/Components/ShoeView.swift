@@ -89,7 +89,7 @@ struct ShoeDetail: View {
                             .foregroundStyle(Theme.txt)
                         if let note = shoe.note {
                             Text(note)
-                                .font(.display(10, weight: .semibold))
+                                .font(.body(10, weight: .semibold))
                                 .foregroundStyle(Theme.txt.opacity(0.62))
                         }
                     }
@@ -116,11 +116,11 @@ struct ShoeDetail: View {
                 .frame(height: 7)
                 HStack {
                     Text("\(Int(shoe.lifePct * 100))% of \(Int(shoe.lifeMi)) mi life")
-                        .font(.display(9.5, weight: .semibold))
+                        .font(.body(9.5, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
                     Spacer()
                     Text("\(Int(shoe.lifeMi - shoe.miles)) mi left")
-                        .font(.display(9.5, weight: .semibold))
+                        .font(.body(9.5, weight: .semibold))
                         .foregroundStyle(shoe.warn ? Color(hex: 0xFFB24D) : Theme.txt.opacity(0.6))
                 }
             }
@@ -149,7 +149,7 @@ struct ShoePickerRow: View {
                     HStack(spacing: 8) {
                         SpecLabel(text: shoe.primaryRole, size: 9, tracking: 1, color: shoe.roleColor)
                         Text("\(Int(shoe.miles)) mi")
-                            .font(.display(11, weight: .semibold))
+                            .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.6))
                     }
                 }

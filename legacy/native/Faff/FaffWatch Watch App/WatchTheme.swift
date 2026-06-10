@@ -13,17 +13,21 @@ import CoreText
 
 enum WatchTheme {
 
-    // MARK: Semantic colours (v4 dark variant — match watch-app.html)
+    // MARK: Semantic colours · LOCKED TEN-COLOR PALETTE (brief v2, AFC fix 4)
+    // Byte-for-byte with FaceKit's Faff roles, iPhone Theme.swift, and web
+    // globals.css. The old values (#2CA82F / #D4900A / #E85D26) were a
+    // second, divergent palette on the same wrist · on-pace green differed
+    // between the glance surfaces and the in-run faces for the same metric.
     enum C {
         static let bg      = Color.black            // true-black surface
         static let ink     = Color.white            // --wink
         static let t2      = Color.white.opacity(0.62) // --wt2 secondary
         static let t3      = Color.white.opacity(0.40) // dim labels / eyebrows
         static let track   = Color.white.opacity(0.14) // progress track
-        static let green   = Color(red: 0.173, green: 0.659, blue: 0.184) // #2CA82F on-pace
-        static let amber   = Color(red: 0.831, green: 0.565, blue: 0.039) // #D4900A drift
-        static let orange  = Color(red: 0.910, green: 0.365, blue: 0.149) // #E85D26 race/now
-        static let warn    = Color(red: 0.957, green: 0.247, blue: 0.369) // #F43F5E over
+        static let green   = Color(hex: 0x3EBD41)   // on-pace / good state
+        static let amber   = Color(hex: 0xF3AD38)   // drift / watch attention
+        static let orange  = Color(hex: 0xFF5722)   // race / now (brand hero)
+        static let warn    = Color(hex: 0xFC4D64)   // over / off
     }
 
     // MARK: Type — Bebas (display), Inter (body), Oswald (sub)

@@ -98,7 +98,9 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
             : `Well below baseline. Pull back today and check rest.`) + lutealNote;
     inputs.push({
       key: 'hrv', label: 'HRV · 28%', weight: w,
-      observedV: `${state.hrvCurrent}ms · 7d avg`,
+      // G3 (2026-06-09) · health-state now feeds the 7-day MEDIAN
+      // (outlier-immune after the Jun 8 partial-night incident).
+      observedV: `${state.hrvCurrent}ms · 7d median`,
       // State both numbers, no delta. Same rule the coach voice follows.
       observedSub: state.cyclePhase === 'luteal'
         ? `baseline ${state.hrvBaseline}ms · luteal-adjusted ${lutealAdjusted}ms`

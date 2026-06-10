@@ -342,26 +342,26 @@ struct OnboardingView: View {
     private func trailingLabel(_ st: ConnState, isGarmin: Bool, isConnected: Bool, isConnecting: Bool) -> some View {
         if isGarmin {
             Text("Soon")
-                .font(.display(12, weight: .bold))
+                .font(.body(12, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(0.35))
         } else if isConnecting {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small).tint(Theme.txt)
                 Text("Connecting")
-                    .font(.display(12, weight: .bold))
+                    .font(.body(12, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.8))
             }
         } else if isConnected {
             Text("Connected")
-                .font(.display(12, weight: .bold))
+                .font(.body(12, weight: .bold))
                 .foregroundStyle(Color(hex: 0x7BE8A0))
         } else if case .failed = st {
             Text("Retry")
-                .font(.display(12, weight: .bold))
+                .font(.body(12, weight: .bold))
                 .foregroundStyle(Color(hex: 0xFFCE8A))
         } else {
             Text("Connect")
-                .font(.display(12, weight: .bold))
+                .font(.body(12, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(0.8))
         }
     }

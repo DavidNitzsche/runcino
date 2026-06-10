@@ -106,7 +106,7 @@ struct LearnArticleSheet: View {
                     ForEach(Array(cites.enumerated()), id: \.offset) { i, c in
                         VStack(alignment: .leading, spacing: 4) {
                             Text("\(c.author) (\(c.year))")
-                                .font(.display(12, weight: .semibold))
+                                .font(.body(12, weight: .semibold))
                                 .foregroundStyle(Theme.txt.opacity(0.85))
                             Text(c.title)
                                 .font(.body(13, weight: .regular))

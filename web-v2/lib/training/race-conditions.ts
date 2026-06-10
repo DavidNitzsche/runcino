@@ -44,6 +44,15 @@ export interface RaceConditionsInput {
   distanceMi: number;
   goalSec: number;
   vdot: number | null | undefined;
+  /** 2026-06-09 · race gun time, local (races.meta.startTime · the
+   *  inline-editable Gun chip on the race detail page · free text like
+   *  "7:00 AM"). When present, the forecast path prices the temps the
+   *  runner will actually race through (start → finish window) instead
+   *  of the day's max — a 7 AM start in August is ~10°F cooler than the
+   *  daily high, and the old daily-max read produced a phantom heat
+   *  jump the moment a race crossed into the 14-day forecast horizon.
+   *  Null → daily max (conservative legacy behavior). */
+  startTimeLocal?: string | null;
 }
 
 export interface RaceConditionsResult {
@@ -67,6 +76,25 @@ function heatBandFor(tempF: number | null): RaceConditionsResult['heatBand'] {
   if (tempF < 70) return 'warm';
   if (tempF < 80) return 'hot';
   return 'extreme';
+}
+
+/** Parse a local race start time → fractional hour 0-23.99.
+ *  Accepts the shapes the race-detail Gun chip stores (free text ·
+ *  races.meta.startTime): "07:00", "7:00", "7:00 AM", "7am", "6:53AM".
+ *  Null on anything unparseable so callers fall back to daily max. */
+export function parseStartHour(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const t = String(s).trim().toLowerCase();
+  const m = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?$/.exec(t);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = m[2] != null ? parseInt(m[2], 10) : 0;
+  const mer = m[3]?.[0] ?? null; // 'a' | 'p' | null
+  if (!Number.isFinite(h) || !Number.isFinite(min) || min < 0 || min > 59) return null;
+  if (mer === 'p' && h < 12) h += 12;
+  if (mer === 'a' && h === 12) h = 0;
+  if (h < 0 || h > 23) return null;
+  return h + min / 60;
 }
 
 function daysBetween(fromISO: string, toISO: string): number {
@@ -105,14 +133,25 @@ export async function computeRaceConditions(
   let tempF: number | null = null;
   let source: 'forecast' | 'climate' | null = null;
 
-  // 1a · forecast path
+  // 1a · forecast path. With a known start time, price the race window
+  // (start → projected finish) and take its hotter edge; without one,
+  // fall back to the day's max (conservative).
   if (
     daysUntil >= 0 && daysUntil <= FORECAST_HORIZON_DAYS &&
     input.raceLat != null && input.raceLng != null
   ) {
     try {
-      const forecast = await fetchDayForecast(input.raceLat, input.raceLng, input.raceDateISO);
-      if (forecast?.temp_max_f != null) {
+      const startHour = parseStartHour(input.startTimeLocal);
+      const raceWindow = startHour != null && input.goalSec > 0
+        ? { durationMin: Math.ceil(input.goalSec / 60), startHourOverride: startHour }
+        : null;
+      const forecast = await fetchDayForecast(
+        input.raceLat, input.raceLng, input.raceDateISO, raceWindow,
+      );
+      if (raceWindow && (forecast?.temp_start_f != null || forecast?.temp_end_f != null)) {
+        tempF = Math.max(forecast.temp_start_f ?? -Infinity, forecast.temp_end_f ?? -Infinity);
+        source = 'forecast';
+      } else if (forecast?.temp_max_f != null) {
         tempF = forecast.temp_max_f;
         source = 'forecast';
       }

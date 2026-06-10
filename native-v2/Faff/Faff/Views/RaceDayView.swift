@@ -81,7 +81,7 @@ struct RaceDayView: View {
                                     .frame(height: 118)
                                 if let prov = courseProvenanceLabel {
                                     Text(prov)
-                                        .font(.display(10, weight: .bold))
+                                        .font(.body(10, weight: .bold))
                                         .tracking(0.5)
                                         .foregroundStyle(Theme.txt.opacity(0.55))
                                         .padding(.top, 2)
@@ -172,14 +172,14 @@ struct RaceDayView: View {
                                             SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
                                             if let meta = f.meta, !meta.isEmpty {
                                                 Text(meta)
-                                                    .font(.display(11, weight: .semibold))
+                                                    .font(.body(11, weight: .semibold))
                                                     .foregroundStyle(Theme.txt.opacity(0.62))
                                                     .lineLimit(2)
                                             }
                                         }
                                         Spacer(minLength: 12)
                                         Text(f.value)
-                                            .font(.display(15, weight: .bold))
+                                            .font(.body(15, weight: .bold))
                                             .foregroundStyle(factTint(f.valueColor))
                                             .multilineTextAlignment(.trailing)
                                     }
@@ -331,7 +331,7 @@ struct RaceDayView: View {
                                 Image(systemName: "arrow.up.right")
                                     .font(.system(size: 11, weight: .bold))
                                 Text(matchedRunMetaLine(mr))
-                                    .font(.display(11, weight: .semibold))
+                                    .font(.body(11, weight: .semibold))
                             }
                             .foregroundStyle(Theme.txt.opacity(0.82))
                         }
@@ -348,11 +348,11 @@ struct RaceDayView: View {
                         .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
                     if goalPace != "—" {
                         Text("GOAL TIME  ·  \(goalPace) /mi")
-                            .font(.display(13, weight: .bold))
+                            .font(.body(13, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.78))
                     } else {
                         Text("GOAL TIME")
-                            .font(.display(13, weight: .bold))
+                            .font(.body(13, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.78))
                     }
                 }
@@ -362,12 +362,12 @@ struct RaceDayView: View {
             if let chip = daysChip {
                 HStack {
                     Text(chip)
-                        .font(.display(11, weight: .bold))
+                        .font(.body(11, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.85))
                     Spacer()
                     if let pr = pbChip {
                         Text(pr)
-                            .font(.display(11, weight: .bold))
+                            .font(.body(11, weight: .bold))
                             .foregroundStyle(Color(hex: 0x9AF0BF))
                     }
                 }
@@ -460,7 +460,7 @@ struct RaceDayView: View {
                 SpecLabel(text: title, size: 11, tracking: 2, color: Theme.txt.opacity(0.6))
                 Spacer()
                 if let r = right {
-                    Text(r).font(.display(11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.85))
+                    Text(r).font(.body(11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.85))
                 }
             }
             content()
@@ -634,7 +634,7 @@ struct RaceDayView: View {
                               color: Theme.txt.opacity(0.55))
                     Spacer(minLength: 12)
                     Text(row.value)
-                        .font(.display(15, weight: .bold))
+                        .font(.body(15, weight: .bold))
                         .foregroundStyle(row.dim ? Theme.txt.opacity(0.35) : Theme.txt)
                         .multilineTextAlignment(.trailing)
                 }
@@ -663,7 +663,7 @@ struct RaceDayView: View {
                           color: Theme.txt.opacity(0.55))
                 Spacer(minLength: 12)
                 Text("\(aTime)  ·  \(aPace)/mi")
-                    .font(.display(14, weight: .bold))
+                    .font(.body(14, weight: .bold))
                     .foregroundStyle(Theme.txt)
             }
             .padding(14)
@@ -673,7 +673,7 @@ struct RaceDayView: View {
                           color: Theme.txt.opacity(0.55))
                 Spacer(minLength: 12)
                 Text("\(bTime)  ·  \(bPace)/mi")
-                    .font(.display(14, weight: .bold))
+                    .font(.body(14, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.65))
             }
             .padding(14)
@@ -695,7 +695,7 @@ struct RaceDayView: View {
                               color: Theme.txt.opacity(0.55))
                     Spacer(minLength: 12)
                     Text(row.time)
-                        .font(.display(15, weight: .bold))
+                        .font(.body(15, weight: .bold))
                         .foregroundStyle(i == splits.count - 1 ? Theme.race : Theme.txt)
                 }
                 .padding(14)

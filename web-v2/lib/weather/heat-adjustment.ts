@@ -1,9 +1,6 @@
 /**
  * Heat adjustment · Research/06 (Maughan / Ely / Vihma).
  *
- * Ports the slim subset of legacy/web/lib/weather-slowdown.ts that the
- * v2 plan-builder + post-run surface need:
- *
  *   - applyHeatToPace(paceSPerMi, tempF, raceDistanceMi, abilityTier)
  *       → adjusted seconds per mile for upcoming/race workouts when
  *         forecast/historical temp is known.
@@ -16,77 +13,29 @@
  * Cite: Research/06-weather-adjustments.md §1 Heat Adjustment by Air
  *       Temperature (Maughan / Ely / Vihma marathon-slowdown synthesis).
  *
- * What this DOES NOT do (deferred): dewpoint / humidity, wind, altitude,
- * AQI, race-day bail triggers. Those live in legacy/web/lib/weather-
- * slowdown.ts and will port when the post-run surface needs them.
+ * 2026-06-09 state-audit fix: the temp→slowdown table + modifiers now
+ * live in lib/training/heat-model.ts, shared with judgeWeather so the
+ * race projection and the post-run verdicts price the same physics
+ * identically. The old per-distance step scale (HM = 0.5×, 5K = 0.2×)
+ * was an uncited engine invention that halved the doctrine table for
+ * race projections — replaced by the documented duration scale
+ * (effort time = pace × distance), HM ≈ 0.85×.
  */
+import {
+  maughanSlowdownPct,
+  durationHeatScale,
+  abilityTierFromVdot,
+  type AbilityTier,
+} from '@/lib/training/heat-model';
 
-/** Marathon slowdown by Tair, by runner ability tier. Slowdown % vs
- *  50°F baseline. Same canonical table as legacy doctrine. */
-const MAUGHAN_HEAT_SLOWDOWN: ReadonlyArray<{
-  tairF: number;
-  elitePct: number;
-  midPaceMarathonerPct: number;
-  slowMarathonerPct: number;
-}> = [
-  { tairF: 40, elitePct: 0,    midPaceMarathonerPct: 0,    slowMarathonerPct: 0    },
-  { tairF: 50, elitePct: 0,    midPaceMarathonerPct: 0,    slowMarathonerPct: 0    },
-  { tairF: 60, elitePct: 0.5,  midPaceMarathonerPct: 1.5,  slowMarathonerPct: 2.5  },
-  { tairF: 65, elitePct: 1.0,  midPaceMarathonerPct: 2.5,  slowMarathonerPct: 4.0  },
-  { tairF: 70, elitePct: 1.5,  midPaceMarathonerPct: 4.0,  slowMarathonerPct: 6.0  },
-  { tairF: 75, elitePct: 2.5,  midPaceMarathonerPct: 5.5,  slowMarathonerPct: 8.5  },
-  { tairF: 80, elitePct: 3.5,  midPaceMarathonerPct: 7.5,  slowMarathonerPct: 11.5 },
-  { tairF: 85, elitePct: 4.5,  midPaceMarathonerPct: 10.0, slowMarathonerPct: 15.0 },
-  { tairF: 90, elitePct: 6.0,  midPaceMarathonerPct: 13.0, slowMarathonerPct: 19.0 },
-];
-
-export type AbilityTier = 'elite' | 'mid_pack' | 'slow';
-
-/**
- * Distance scaling. Maughan is marathon-calibrated; heat impact scales
- * with race duration (cumulative heat load). Half ≈ 0.5×, 5K ≈ 0.2×,
- * ultras compound the other way.
- */
-function distanceScale(raceDistanceMi: number): number {
-  if (raceDistanceMi >= 50) return 1.5;
-  if (raceDistanceMi >= 22) return 1.0;
-  if (raceDistanceMi >= 11) return 0.5;
-  if (raceDistanceMi >= 5)  return 0.3;
-  return 0.2;
-}
-
-/**
- * Infer ability tier from VDOT. Daniels: VDOT ≥ 60 ~ elite marathon
- * (sub-3:00); 45-60 ~ mid-pack (3:00-4:30); below 45 ~ slow.
- */
-export function abilityTierFromVdot(vdot: number | null | undefined): AbilityTier {
-  const v = vdot ?? 50;
-  if (v >= 60) return 'elite';
-  if (v >= 45) return 'mid_pack';
-  return 'slow';
-}
-
-/** Linear interpolation between Maughan bracket points. */
-function interpolatePct(tempF: number, key: 'elitePct' | 'midPaceMarathonerPct' | 'slowMarathonerPct'): number {
-  if (tempF <= 50) return 0;
-  if (tempF >= 90) return MAUGHAN_HEAT_SLOWDOWN[MAUGHAN_HEAT_SLOWDOWN.length - 1][key];
-  for (let i = 0; i < MAUGHAN_HEAT_SLOWDOWN.length - 1; i++) {
-    const lo = MAUGHAN_HEAT_SLOWDOWN[i];
-    const hi = MAUGHAN_HEAT_SLOWDOWN[i + 1];
-    if (tempF >= lo.tairF && tempF <= hi.tairF) {
-      const t = (tempF - lo.tairF) / (hi.tairF - lo.tairF);
-      return lo[key] + (hi[key] - lo[key]) * t;
-    }
-  }
-  return 0;
-}
+export { abilityTierFromVdot, type AbilityTier };
 
 /**
  * Apply heat slowdown to a planned pace. Returns the adjusted seconds-
  * per-mile. Returns input unchanged when tempF is null/unknown.
  *
- * Cite: Research/06 §1 Heat Adjustment. Distance-scaled per
- *       cumulative-heat-load principle.
+ * Cite: Research/06 §1 Heat Adjustment, duration-scaled per
+ *       lib/training/heat-model.ts (engine-documented modifier).
  */
 export function applyHeatToPace(
   paceSPerMi: number,
@@ -95,11 +44,13 @@ export function applyHeatToPace(
   abilityTier: AbilityTier = 'mid_pack',
 ): number {
   if (tempF == null || !isFinite(tempF)) return paceSPerMi;
-  const key = abilityTier === 'elite' ? 'elitePct'
-            : abilityTier === 'slow'  ? 'slowMarathonerPct'
-            :                           'midPaceMarathonerPct';
-  const rawPct = interpolatePct(tempF, key);
-  const scaled = rawPct * distanceScale(raceDistanceMi);
+  const rawPct = maughanSlowdownPct(tempF, abilityTier);
+  // Effort duration estimated from the pace being adjusted · the
+  // marathon-anchored table applies in full at 2h+, scaled below.
+  const estDurationS = paceSPerMi > 0 && raceDistanceMi > 0
+    ? paceSPerMi * raceDistanceMi
+    : null;
+  const scaled = rawPct * durationHeatScale(estDurationS);
   return Math.round(paceSPerMi * (1 + scaled / 100));
 }
 

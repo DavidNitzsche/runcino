@@ -105,6 +105,44 @@ export function renderRaceEve(s: RaceEveSlots): RenderedTemplate {
 }
 
 // ──────────────────────────────────────────────────────────────
+// B2 · SLEEP BANKING (Phase 2 · 3.4 · Research/08 §sleep-banking)
+//
+// Race-week bedtime nudge, T-7 → T-2 at ~21:00 runner-local. Rides
+// the existing `race_eve` category deliberately: it is race-week
+// evening messaging, the iOS app already registers FAFF_RACE_EVE,
+// and the runner's race_eve toggle governs it — no new prefs column,
+// no unregistered-category fallback. Dedup per night.
+// ──────────────────────────────────────────────────────────────
+
+export interface SleepBankingSlots {
+  race_id: string;
+  race_slug: string;
+  race_name: string;
+  days_to_race: number;
+  /** YYYY-MM-DD of tonight (runner-local) · dedup key component. */
+  tonight_iso: string;
+}
+
+export function renderSleepBanking(s: SleepBankingSlots): RenderedTemplate {
+  const body = s.days_to_race === 2
+    ? `Tonight is the night that counts. 8.5 hours · race-eve sleep matters less than this one.`
+    : `${s.days_to_race} days out. Target 8 to 8.5 hours · sleep is the only training left that works now.`;
+  return {
+    category: 'race_eve',
+    title: 'SLEEP BANKING',
+    body,
+    interruption_level: 'active',
+    dedup_key: `sleep-banking:${s.race_id}:${s.tonight_iso}`,
+    thread_id: `race-${s.race_id}`,
+    action_buttons: [],
+    data: {
+      deeplink: `faff://health`,
+      race_id: s.race_id,
+    },
+  };
+}
+
+// ──────────────────────────────────────────────────────────────
 // C · SKIP RECOVERY (deck §C)
 // ──────────────────────────────────────────────────────────────
 

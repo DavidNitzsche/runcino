@@ -860,7 +860,7 @@ struct HealthWeekBars: View {
 
     private var bandColor: Color {
         switch (snapshot?.band ?? "").lowercased() {
-        case "sharp":     return Color(hex: 0x34D058)
+        case "sharp":     return Color(hex: 0x3EBD41)
         case "ready":     return Color(hex: 0x3EBD41)
         case "moderate":  return Color(hex: 0xF3AD38)
         case "pullback":  return Color(hex: 0xFC4D64)

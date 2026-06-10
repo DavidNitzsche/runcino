@@ -33,7 +33,7 @@ import SwiftUI
 
 private enum GapColor {
     static let fitness    = Color(hex: 0xF3AD38)   // Theme.goal · trainable yellow
-    static let conditions = Color(hex: 0xFF8847)   // Theme.race · partly orange
+    static let conditions = Theme.race                 // race/tempo slot · partly orange
     static let course     = Color(hex: 0xD6263C)   // fixed red
     static let execution  = Color(hex: 0x8A90A0)   // Theme.mute · neutral grey
 
@@ -268,7 +268,7 @@ private struct LeverRow: View {
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     Text(deltaText)
-                        .font(.display(14, weight: .bold))
+                        .font(.body(14, weight: .bold))
                         .foregroundStyle(deltaTint)
                 }
                 Text(lever.detail)

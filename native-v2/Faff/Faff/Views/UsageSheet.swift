@@ -69,7 +69,7 @@ struct UsageSheet: View {
     private func row(_ d: UsageDayRow) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Text(d.date)
-                .font(.display(12, weight: .bold)).monospacedDigit()
+                .font(.body(12, weight: .bold)).monospacedDigit()
                 .foregroundStyle(Theme.mute)
                 .frame(width: 86, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
@@ -80,7 +80,7 @@ struct UsageSheet: View {
             }
             Spacer(minLength: 4)
             Text(String(format: "$%.2f", d.cost_usd))
-                .font(.display(13, weight: .bold)).monospacedDigit()
+                .font(.body(13, weight: .bold)).monospacedDigit()
                 .foregroundStyle(Theme.Accent.amberGold)
         }
         .padding(12)
@@ -90,7 +90,7 @@ struct UsageSheet: View {
 
     private func metric(_ v: String, unit: String, color: Color) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
-            Text(v).font(.display(14, weight: .bold)).monospacedDigit().foregroundStyle(color)
+            Text(v).font(.body(14, weight: .bold)).monospacedDigit().foregroundStyle(color)
             Text(unit).font(.body(10, weight: .semibold)).foregroundStyle(Theme.mute)
         }
     }

@@ -468,12 +468,24 @@ private struct LiveTempo: View {
         }
         return PaceFormat.clock(engine.phaseRemainingSec)
     }
+    /// AFC fix 7 · signed live-vs-target delta. Positive = slower than
+    /// target ("+0:11"), negative = faster ("-0:04"). "—" until both the
+    /// GPS pace and the phase target exist (mute on the face).
+    private var paceDelta: String {
+        guard let target = phase.targetPaceSPerMi, target > 0,
+              tracker.paceSPerMi > 0 else { return "—" }
+        let d = tracker.paceSPerMi - target
+        let sign = d < 0 ? "-" : "+"
+        let a = abs(d)
+        return String(format: "%@%d:%02d", sign, a / 60, a % 60)
+    }
 
     var body: some View {
         TempoFace(
             livePace:   paceText(tracker),
             paceRole:   paceRole(engine: engine, tracker: tracker),
             targetPace: phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
+            paceDelta:  paceDelta,
             hr:         tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
             hrRole:     hrRole,
             topLabel:   topLabel,
@@ -663,7 +675,7 @@ struct ControlsFace: View {
                 tint: paused ? WP.green : WP.amber, filled: true, action: onPrimary)
             // End filled to match Pause's weight — they're both primary
             // actions on this page, no reason End should read as secondary.
-            // Uses Faff.redish (#D03F3F, the approved destructive-action red)
+            // Uses Faff.redish (the warn-slot destructive red)
             // — distinct from WP.warn/Faff.over (#FC4D64, the pinker red used
             // on live-data alerts like off-pace / HR-over). Buttons + data
             // states get different reds so they read as different meanings.

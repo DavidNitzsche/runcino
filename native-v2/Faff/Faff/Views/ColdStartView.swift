@@ -166,7 +166,7 @@ struct ColdStartView: View {
                 .lineSpacing(4)
                 .frame(maxWidth: 280)
             Text(note)
-                .font(.display(10.5, weight: .bold))
+                .font(.body(10.5, weight: .bold))
                 .tracking(0.3)
                 .foregroundStyle(Theme.txt.opacity(0.5))
                 .multilineTextAlignment(.center)

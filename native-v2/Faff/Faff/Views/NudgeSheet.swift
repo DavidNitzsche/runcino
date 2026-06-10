@@ -173,7 +173,7 @@ struct NudgeSheet: View {
         let magnitude = min(1.0, Double(abs(r.weight)) / 25.0)
         HStack(spacing: 12) {
             Text(r.key.uppercased())
-                .font(.display(11, weight: .bold))
+                .font(.body(11, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(0.7))
                 .frame(width: 52, alignment: .leading)
             GeometryReader { geo in
@@ -195,7 +195,7 @@ struct NudgeSheet: View {
             }
             .frame(height: 8)
             Text(r.observedV ?? "—")
-                .font(.display(11, weight: .bold))
+                .font(.body(11, weight: .bold))
                 .foregroundStyle(bad ? Color(hex: 0xFFCE8A) : Theme.txt)
                 .frame(width: 80, alignment: .trailing)
                 .lineLimit(1)
