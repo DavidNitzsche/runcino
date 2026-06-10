@@ -56,6 +56,12 @@ struct WorkIntervalFace: View {
     /// "REP 2/4" style label. Computed from stripStates by default so
     /// callers don't have to do it.
     var topLabel: String? = nil
+    /// Work-phase ordinal (1-based) and total work-phase count, supplied by
+    /// the caller when the strip contains non-work phases (warmup/recovery/
+    /// cooldown). When set, these take precedence over the strip-derived count
+    /// so the face reads "REP 2/4" instead of "REP 4/9" (W-0b, 2026-06-09).
+    var repNo: Int? = nil
+    var totalReps: Int? = nil
     /// Live HR for quality work (intervals/threshold). When non-nil the
     /// third row shows HR (♥) coloured by `hrRole` INSTEAD of total
     /// distance — HR is the effort read on a quality rep, and total
@@ -76,6 +82,8 @@ struct WorkIntervalFace: View {
         let base: String
         if let t = topLabel {
             base = t
+        } else if let n = repNo, let total = totalReps {
+            base = "REP \(n)/\(total)"
         } else {
             let nowIdx = stripStates.firstIndex(where: { $0 == 2 }) ?? 0
             base = "REP \(nowIdx + 1)/\(stripStates.count)"

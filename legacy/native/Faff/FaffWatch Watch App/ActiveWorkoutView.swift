@@ -85,10 +85,12 @@ struct ActiveWorkoutView: View {
                     )
             }
         }
-        // Long-press anywhere → manual pause. 0.6s is firm enough to never
-        // mis-fire from a wrist nudge, fast enough to catch on at a stoplight.
+        // Long-press anywhere → manual pause. Disabled during races (W-3,
+        // 2026-06-09): gloves/jacket cuff at an aid station shouldn't corrupt
+        // chip-time-derived duration — chip time never pauses, so a missed
+        // resume would skew projected-finish math and the completion timestamp.
         .onLongPressGesture(minimumDuration: 0.6) {
-            if !engine.isPaused { engine.pause() }
+            if !engine.isRace, !engine.isPaused { engine.pause() }
         }
         .animation(.easeInOut(duration: 0.18), value: engine.transition)
         .animation(.easeInOut(duration: 0.18), value: engine.isPaused)
@@ -220,6 +222,17 @@ private struct LiveWorkInterval: View {
             : PaceFormat.clock(engine.phaseRemainingSec)
     }
 
+    /// Work-phase ordinal for the "REP n/m" label. Counts only .work phases
+    /// (not warmup/recovery/cooldown) matching the GO takeover wording (W-0b,
+    /// 2026-06-09: strip-derived index counted all phases → "REP 4/9" on
+    /// a 4-rep session instead of "REP 2/4").
+    private var repNo: Int {
+        engine.workout.phases.prefix(engine.currentIndex + 1).filter { $0.type == .work }.count
+    }
+    private var totalReps: Int {
+        engine.workout.phases.filter { $0.type == .work }.count
+    }
+
     /// Live HR string · nil when the phase carries no HR target (cold-start /
     /// no LTHR) so the face falls back to total distance. "—" until the
     /// first reading.
@@ -241,6 +254,8 @@ private struct LiveWorkInterval: View {
             totalDistance: distText(tracker.distanceMi),
             repCounter:    repCounter,
             stripStates:   sessionStripStates(engine),
+            repNo:         repNo,
+            totalReps:     totalReps,
             hr:            hrText,
             hrRole:        hrRole
         )
@@ -716,7 +731,8 @@ private struct SplitsPage: View {
     @ObservedObject var engine: WorkoutEngine
     var body: some View {
         SplitsFace(rows: engine.splits.map {
-            SplitsFace.Row(repNo: $0.repNo,
+            SplitsFace.Row(id: $0.repNo,
+                           repNo: $0.repNo,
                            pace: $0.paceSPerMi.map { p in PaceFormat.mmss(p) } ?? "—",
                            role: paceRole($0))
         })
@@ -743,7 +759,7 @@ private struct SplitsPage: View {
 /// is the only reliable way to clear the clock.
 struct SplitsFace: View {
     struct Row: Identifiable {
-        let id = UUID()
+        let id: Int  // repNo — stable across ticks (UUID() re-minted per render → full SwiftUI diffing churn at 1 Hz)
         let repNo: Int
         let pace: String
         let role: Role
@@ -800,28 +816,30 @@ private struct SessionMapPage: View {
         var out: [SessionMapFace.Row] = []
 
         if let wu = phases.first(where: { $0.type == .warmup }) {
-            out.append(.init(label: "Warmup",
+            out.append(.init(id: "warmup", label: "Warmup",
                              value: cur > wu.index ? "✓" : PaceFormat.clock(cur == wu.index ? engine.phaseRemainingSec : wu.durationSec),
                              state: seg(wu.index)))
         }
         if doneReps > 0 {
-            out.append(.init(label: doneReps == 1 ? "Rep 1" : "Reps 1–\(doneReps)", value: "✓", state: .done))
+            let lbl = doneReps == 1 ? "Rep 1" : "Reps 1–\(doneReps)"
+            out.append(.init(id: "done-\(doneReps)", label: lbl, value: "✓", state: .done))
         }
         if let cp = curPhase, cp.type == .work {
-            out.append(.init(label: "Rep \(doneReps + 1) · now",
+            out.append(.init(id: "rep-\(doneReps + 1)-now", label: "Rep \(doneReps + 1) · now",
                              value: cp.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? PaceFormat.clock(engine.phaseRemainingSec),
                              state: .current))
         } else if let cp = curPhase, cp.type == .recovery {
-            out.append(.init(label: "Recovery · now", value: PaceFormat.clock(engine.phaseRemainingSec), state: .current))
+            out.append(.init(id: "recovery-now", label: "Recovery · now", value: PaceFormat.clock(engine.phaseRemainingSec), state: .current))
         }
         let curIsWork = curPhase?.type == .work
         let upcoming = totalReps - doneReps - (curIsWork ? 1 : 0)
         if upcoming > 0 {
             let first = totalReps - upcoming + 1
-            out.append(.init(label: upcoming == 1 ? "Rep \(first)" : "Reps \(first)–\(totalReps)", value: "\(upcoming)×", state: .upcoming))
+            let lbl = upcoming == 1 ? "Rep \(first)" : "Reps \(first)–\(totalReps)"
+            out.append(.init(id: "upcoming-\(first)", label: lbl, value: "\(upcoming)×", state: .upcoming))
         }
         if let cd = phases.first(where: { $0.type == .cooldown }) {
-            out.append(.init(label: "Cooldown",
+            out.append(.init(id: "cooldown", label: "Cooldown",
                              value: cur > cd.index ? "✓" : PaceFormat.clock(cd.durationSec),
                              state: seg(cd.index)))
         }
@@ -836,7 +854,7 @@ private struct SessionMapPage: View {
 /// throughout. List scrolls if a long workout overflows.
 struct SessionMapFace: View {
     struct Row: Identifiable {
-        let id = UUID()
+        let id: String  // label — stable across ticks (UUID() re-minted per render → full SwiftUI diffing churn)
         let label: String
         let value: String
         let state: SegState
