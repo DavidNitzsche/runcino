@@ -179,20 +179,20 @@ struct WatchFixtureView: View {
             InRunStatsFace(elapsed: "24:18", distance: "3.2", avgPace: "6:42", calories: "412")
         case "splits":
             SplitsFace(rows: [
-                .init(repNo: 1, pace: "6:29", role: .live),
-                .init(repNo: 2, pace: "6:30", role: .live),
-                .init(repNo: 3, pace: "6:33", role: .neutral),   // current
-                .init(repNo: 4, pace: "—",    role: .mute),
-                .init(repNo: 5, pace: "—",    role: .mute),
-                .init(repNo: 6, pace: "—",    role: .mute)
+                .init(id: 1, repNo: 1, pace: "6:29", role: .live),
+                .init(id: 2, repNo: 2, pace: "6:30", role: .live),
+                .init(id: 3, repNo: 3, pace: "6:33", role: .neutral),   // current
+                .init(id: 4, repNo: 4, pace: "—",    role: .mute),
+                .init(id: 5, repNo: 5, pace: "—",    role: .mute),
+                .init(id: 6, repNo: 6, pace: "—",    role: .mute)
             ])
         case "session-map":
             SessionMapFace(rows: [
-                .init(label: "Warmup",     value: "10:00", state: .done),
-                .init(label: "Reps 1–2",   value: "✓",     state: .done),
-                .init(label: "Rep 3 · now", value: "6:31", state: .current),
-                .init(label: "Reps 4–6",   value: "3×",    state: .upcoming),
-                .init(label: "Cooldown",   value: "10:00", state: .upcoming)
+                .init(id: "warmup",  label: "Warmup",     value: "10:00", state: .done),
+                .init(id: "reps12",  label: "Reps 1–2",   value: "✓",     state: .done),
+                .init(id: "rep3",    label: "Rep 3 · now", value: "6:31", state: .current),
+                .init(id: "reps46",  label: "Reps 4–6",   value: "3×",    state: .upcoming),
+                .init(id: "cool",    label: "Cooldown",   value: "10:00", state: .upcoming)
             ])
         case "justrun", "just-run":
             JustRunFace(onStart: {})

@@ -41,7 +41,11 @@ struct PaceDriftEvaluator {
         self.targetPaceSPerMi = targetPaceSPerMi
         // A zero/negative tolerance would make every sample "drift";
         // clamp to a sane floor.
-        self.toleranceSPerMi = max(1, toleranceSPerMi)
+        let clampedTol = max(1, toleranceSPerMi)
+        self.toleranceSPerMi = clampedTol
+        // Ensure the drifting band is always at least 5 s/mi wide.
+        // With tolerance=20 s/mi, hardDrift=25; with tolerance=8, hardDrift=15.
+        self.hardDriftSPerMi = max(15, clampedTol + 5)
     }
 
     struct Result: Equatable {

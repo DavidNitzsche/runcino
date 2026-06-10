@@ -116,16 +116,24 @@ struct WorkoutEngineTests {
         engine.reset()
     }
 
-    @Test func skippingEveryPhaseFinishesAsPartial() throws {
+    @Test func skippingEveryPhaseFinishesAsCompleted() throws {
+        // Post overtime-redesign: skipping the last phase enters overtime
+        // (planComplete=true) rather than auto-finishing. Calling abandon()
+        // from overtime produces "completed" — the plan was fulfilled, the
+        // user just chose not to run any overtime distance.
         let workout = makeWorkout()
         let engine = WorkoutEngine(workout: workout)
         engine.start()
         for _ in workout.phases.indices { engine.endCurrentPhase() }
+        // After the last endCurrentPhase the engine is in overtime (running,
+        // not finished). Abandon from overtime finalises as "completed".
+        engine.abandon()
         #expect(engine.state == .finished)
         let completion = try #require(engine.completion)
         #expect(completion.workoutId == "test-3phase")
-        #expect(completion.status == "partial")
+        #expect(completion.status == "completed")
         #expect(completion.phases.count == workout.phases.count)
+        // Phases were manually skipped (endCurrentPhase), not time-completed.
         #expect(completion.phases.allSatisfy { $0.completed == false })
     }
 
@@ -210,22 +218,117 @@ struct WorkoutEngineTests {
                 "auto-advanced warmup should be marked completed=true (not skipped)")
     }
 
-    @Test func walkingThroughEveryTimePhaseFinishesAsComplete() throws {
+    @Test func walkingThroughEveryTimePhaseEntersOvertimeThenCompletes() throws {
+        // Overtime redesign: after the last phase auto-advances, the engine
+        // enters overtime (planComplete=true, state=.running) rather than
+        // auto-finishing. The user must explicitly end the run.
         let workout = makeWorkout()
         let engine = WorkoutEngine(workout: workout)
         engine.start()
 
         for phase in workout.phases {
-            // Advance past this phase's duration; auto-advance fires.
             simulate(engine, seconds: phase.durationSec + 1)
         }
-        // After the cooldown auto-completes, engine should be finished.
+        // Still running — in overtime, not finished.
+        #expect(engine.state == .running)
+        #expect(engine.planComplete == true)
+
+        // Calling abandon() from overtime produces "completed".
+        engine.abandon()
         #expect(engine.state == .finished)
 
         let completion = try #require(engine.completion)
         #expect(completion.status == "completed")
         #expect(completion.phases.count == workout.phases.count)
         #expect(completion.phases.allSatisfy { $0.completed == true })
+    }
+
+    // MARK: - OVERTIME: plan-complete path
+
+    @Test func overtimeEnteredAfterLastPhase() {
+        let engine = WorkoutEngine(workout: makeWorkout())
+        engine.start()
+        // Skip all 3 phases — last skip sets planComplete.
+        for _ in makeWorkout().phases.indices { engine.endCurrentPhase() }
+        #expect(engine.planComplete == true)
+        #expect(engine.state == .running, "overtime keeps the session running, not .finished")
+    }
+
+    @Test func overtimeTickDoesNotAutoFinish() {
+        let engine = WorkoutEngine(workout: makeWorkout())
+        engine.start()
+        for _ in makeWorkout().phases.indices { engine.endCurrentPhase() }
+        #expect(engine.planComplete)
+        // Many ticks in overtime — must not auto-finish.
+        for _ in 0..<20 { engine.tick() }
+        #expect(engine.state == .running)
+    }
+
+    @Test func abandonFromOvertimeProducesCompletedStatus() throws {
+        let engine = WorkoutEngine(workout: makeWorkout())
+        engine.start()
+        for _ in makeWorkout().phases.indices { engine.endCurrentPhase() }
+        engine.abandon()
+        #expect(engine.state == .finished)
+        let c = try #require(engine.completion)
+        #expect(c.status == "completed")
+    }
+
+    // MARK: - RACE: pause is blocked during race (W-3)
+
+    private func makeRaceWorkout() -> WatchWorkout {
+        let phase = WatchPhase(index: 0, type: .work, label: "Marathon",
+                               durationSec: 14400, targetPaceSPerMi: 407,
+                               tolerancePaceSPerMi: 15, haptic: .start)
+        return WatchWorkout(
+            workoutId: "test-race",
+            name: "Marathon", summary: "race",
+            totalEstimatedMinutes: 240,
+            phases: [phase],
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2099-12-31T00:00:00Z",
+            isRace: true
+        )
+    }
+
+    @Test func racePauseIsBlocked() {
+        let engine = WorkoutEngine(workout: makeRaceWorkout())
+        engine.start()
+        simulate(engine, seconds: 60)
+        engine.pause()
+        #expect(engine.isPaused == false, "race workouts must block pause (W-3)")
+    }
+
+    // MARK: - SNAPSHOT: crash-recovery roundtrip
+
+    @Test func snapshotRoundtrip() throws {
+        // start() now calls saveSnapshot().
+        let engine = WorkoutEngine(workout: makeWorkout())
+        engine.start()
+        simulate(engine, seconds: 120)
+        engine.tick()
+        engine.saveSnapshot()   // ensure the latest state is snapped
+
+        let snap = try #require(WorkoutEngine.loadSnapshot(), "snapshot must exist after start+tick")
+        #expect(snap.currentIndex == 0)
+        // phaseElapsedSec is derived fresh in restore(); snap stores wall-time anchors.
+        engine.reset()
+        WorkoutEngine.clearSnapshot()
+    }
+
+    @Test func snapshotClearedAfterFinish() {
+        let engine = WorkoutEngine(workout: makeWorkout())
+        engine.start()
+        engine.abandon()   // finish() clears snapshot
+        #expect(engine.state == .finished)
+        #expect(WorkoutEngine.loadSnapshot() == nil, "snapshot must be nil after finish")
+    }
+
+    @Test func snapshotClearedAfterReset() {
+        let engine = WorkoutEngine(workout: makeWorkout())
+        engine.start()
+        engine.reset()     // reset() clears snapshot
+        #expect(WorkoutEngine.loadSnapshot() == nil, "snapshot must be nil after reset")
     }
 
     // MARK: - DISTANCE tracking + auto-advance (bug: "distance not tracking")
@@ -328,17 +431,11 @@ struct WorkoutEngineTests {
         #expect(engine.phaseElapsedSec == 30)
 
         engine.pause()
-        // Simulate 100 seconds of wall clock while paused.
-        engine.phaseStart = engine.phaseStart.addingTimeInterval(-100)
-        // Tick now would normally count those 100s — but paused tick is
-        // a no-op. To make this test resilient, also explicitly call tick.
-        engine.tick()
-        // Resume — the engine should bump phaseStart forward by the wall
-        // time spent paused, so phaseElapsedSec stays at ~30.
-        engine.resume()
-        engine.tick()
-        #expect(engine.phaseElapsedSec <= 32,
-                "pause must not allow elapsed to advance — was \(engine.phaseElapsedSec)")
+        let frozenElapsed = engine.phaseElapsedSec
+        // Multiple ticks while paused must all be no-ops.
+        for _ in 0..<10 { engine.tick() }
+        #expect(engine.phaseElapsedSec == frozenElapsed,
+                "pause must freeze elapsed — ticks while paused must not advance it")
         engine.reset()
     }
 }

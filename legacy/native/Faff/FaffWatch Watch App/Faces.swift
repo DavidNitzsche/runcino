@@ -825,14 +825,21 @@ struct CompleteFace: View {
             )
             GeometryReader { geo in
                 let h = geo.size.height
-                Button(action: onDone) {
-                    Text("Done")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
-                        .foregroundStyle(Color(hex: 0x06210C))
-                        .frame(maxWidth: .infinity).padding(.vertical, h * 0.016)
-                        .background(Capsule().fill(Faff.live))
+                VStack(spacing: h * 0.010) {
+                    if let status = syncStatus {
+                        Text(status)
+                            .font(.custom("HelveticaNeue", size: h * 0.052))
+                            .foregroundStyle(syncRole.color)
+                    }
+                    Button(action: onDone) {
+                        Text("Done")
+                            .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                            .foregroundStyle(Color(hex: 0x06210C))
+                            .frame(maxWidth: .infinity).padding(.vertical, h * 0.016)
+                            .background(Capsule().fill(Faff.live))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 .padding(.horizontal, h * 0.075)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, h * 0.020)
