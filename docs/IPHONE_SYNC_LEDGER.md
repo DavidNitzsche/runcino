@@ -126,3 +126,14 @@ _(empty — populate after next archive lands in TestFlight)_
 ## Operating principle
 
 When in doubt: backend ships, iPhone reads. If iPhone needs to opt in, the contract is **lenient** · new fields are optional, old fields stay. Breaking changes get an explicit brief.
+
+## 2026-06-09 · wave-1 race-killer landing (commits fb22124b + 9bc85d68)
+
+| Change | Surface | iPhone/watch action |
+|---|---|---|
+| Watch race payload now carries `goalSec`, `gelsMi`, race-day `expiresAt` (end-of-day+8h), work-phase target = goal pace 412 | `/api/watch/today` (server-built) | **Free** — `WatchWorkoutModels.swift` already decodes all three as optionals; goal-delta row + gel alerts light up on the next phone relay, no build needed |
+| Readiness brief actions: new `race_day` / `race_week` signal values (F4 guard) | `/api/readiness/brief` | **Free** — `ReadinessBriefSeed.swift:89` decodes `signal` as `String` |
+| HRV pillar label "7d avg" → "7d median" | same payload, string only | Free (display string flows through) |
+| `RaceClock` shared parser (F2), ten-color palette lock, cold-start brandmark, chip grid | iPhone Swift | **Needs next TF build + David installs before Aug 9** (T3) |
+| TempoFace signed-delta row, WatchTheme palette | Watch Swift | **Needs watch build** — rides the same `ship-testflight-v2.sh` ipa |
+| Stored race row re-paced 407→412 (M2), Aug 11 → race_week_tuneup (M4) | DB | Free — all surfaces read the row; watch payload re-expands at next relay |

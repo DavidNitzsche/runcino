@@ -1,6 +1,10 @@
-# REGRESSION FIXES — RECAP FOR GO
+# REGRESSION FIXES — RECAP (EXECUTED)
 
-**Date:** 2026-06-09 (night) · **Status:** all 8 guards in the working tree, **T1 green** (`tsc --noEmit` 0 errors · vitest **449 passed / 10 skipped / 0 failed**, suite grew 376 → 449). **Nothing committed — waiting on your GO.**
+**Date:** 2026-06-09 (night) · **GO given and executed the same night.**
+**Deployed:** wave-1 landed as `fb22124b` + `9bc85d68` on `origin/main` (pre-push tsc green both times; local `next build` green). Railway deploy **confirmed serving** (new `/api/race/[slug]/execution-plan` route answers 401-auth, was 404 pre-deploy).
+**Migrations executed (1 row each, after-state verified):** M1 `goalSafeDisplay` → "1:37:00" (`goalDisplay` was already normalized via the PATCH flow) · M2 race row → **412 (6:52), band 407–417, HR cap 162, gels [5,9]** — *scope call per "your call": race row only; Aug 4/6 tempos (419) and easy bands left as trained — no mid-taper prescription surprises* · M4 Aug 11 easy 3 → **race_week_tuneup 5.5 mi · 4×1km @ race pace · 90s jog** (`wko_3898bfaaee531f97`; inverse = restore `type:'easy', distance_mi:3, pace_target:null, sub_label:'EASY', is_quality:false, notes:'Conversational. Strides optional.', spec {kind:easy, hr_cap 144, lo 467, hi 517, fuel []}`).
+**T1 was green pre-commit** (`tsc --noEmit` 0 errors · vitest **449 passed / 10 skipped / 0 failed**, suite grew 376 → 449).
+**Still open:** T2 snapshot-cron check after the next cron tick (expect vdot 47.9 + anchor cols under the fade code — RO query) · T3 TF build + install before Aug 9 · M3 start time (David, before Aug 2) · Conditions ≈ +105s and possible WATCHING-clear visible on next Targets load (expected changes, see T4 note).
 **Context:** two sessions converged on this work in the shared checkout: the batch-fix session landed G0/G1/G2/G4/G8-generate plus tests while this session audited, then this session landed G3/G5/G8-verification plus the median falsifier and cross-audited everything below. Every guard has been verified in the tree regardless of which session wrote it.
 
 ---
