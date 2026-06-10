@@ -43,7 +43,8 @@ extension KeyedDecodingContainer {
     /// null/missing/type-mismatch. Mirrors the server's `Number(x) || null`.
     func decodeFlexInt(forKey key: Key) -> Int? {
         if let i = try? decode(Int.self, forKey: key) { return i }
-        if let d = try? decode(Double.self, forKey: key), d.isFinite { return Int(d.rounded()) }
+        if let d = try? decode(Double.self, forKey: key), d.isFinite,
+           d >= Double(Int.min), d <= Double(Int.max) { return Int(d.rounded()) }
         return nil
     }
 }
@@ -67,11 +68,26 @@ enum API {
     /// what to do with the body / status.
     static func authedSend(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var req = request
+        // Snapshot the token before the request (nonisolated keychain read — no
+        // main-actor hop). Used below to guard against two spurious-expiry vectors:
+        // (1) Pre-first-unlock background wake: keychain is locked → no Bearer
+        //     attached → server 401s → without this guard we'd wipe a valid token.
+        // (2) Late-401 clobber: prefetch sends 13 parallel requests; after a
+        //     genuine expiry + re-sign-in, a still-in-flight old-token request 401s
+        //     and would clobber the new token. Compare confirms it's still the same.
+        let tokenAtSend = TokenStore.shared.readToken()
         TokenStore.shared.authorize(&req)
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APIError.badStatus(-1) }
         if http.statusCode == 401 {
-            NotificationCenter.default.post(name: .faffSessionExpired, object: nil)
+            let tokenNow = TokenStore.shared.readToken()
+            if let snap = tokenAtSend, snap == tokenNow {
+                // Post on main: the notification handler updates @Published props +
+                // triggers SwiftUI. URLSession completions run on the pool thread.
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .faffSessionExpired, object: nil)
+                }
+            }
             throw APIAuthError.unauthorized
         }
         return (data, http)
@@ -136,7 +152,8 @@ enum API {
             "briefing_id": briefingId ?? NSNull(),
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        _ = try await API.authedSend(req)
+        let (_, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { throw APIError.badStatus(http.statusCode) }
     }
 
     /// Closed loop §8.6 — submit a profile gap input (height, weight, etc.).
@@ -145,7 +162,8 @@ enum API {
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: patch)
-        _ = try await API.authedSend(req)
+        let (_, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { throw APIError.badStatus(http.statusCode) }
     }
 
     // MARK: - Email + password (fallback while Apple flow is being fixed)

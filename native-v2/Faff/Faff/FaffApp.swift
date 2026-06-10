@@ -239,23 +239,19 @@ struct RootContainer: View {
         .onReceive(NotificationCenter.default.publisher(for: .faffSessionExpired)) { _ in
             // Auth contract changed 2026-05-30 — /api/* no longer falls back
             // to DEFAULT_USER_ID, so a 401 from any read means the session
-            // token expired (or never existed on this install). Clear local
-            // state and bounce to SignIn so the user can mint a fresh one.
+            // token expired. Clear the token + onboarded flag and bounce to
+            // SignIn so the user can mint a fresh one.
             //
-            // We don't await here — the notification fires from the fetch
-            // helper's hot path. The view layer keeps whatever stale data
-            // it had until the user re-auths and the cache repopulates.
+            // RK-4 2026-06-10: AppCache is NOT cleared here any more. The
+            // spurious-trigger vectors (pre-unlock background 401, late-arrival
+            // 401 after re-auth) mean this handler can fire on a perfectly valid
+            // session — wiping the cache in those cases erases run history and
+            // offline state. Explicit sign-out still calls AppCache.clearAll()
+            // (both sign-out paths already do this correctly). For a genuine
+            // expiry the cache data stays stale until the network refresh lands
+            // after re-auth — a small visual glitch, not a data-loss risk.
             TokenStore.shared.clear()
             UserDefaults.standard.removeObject(forKey: "faff.onboarded")
-            // 2026-05-31 audit: also nuke the local surface cache. Without
-            // this, when User A's session expires and User B signs in on
-            // the same device, decideInitialStep() sees the prior cached
-            // todayWorkout / planWeek / logState bytes and treats it as a
-            // "returning user" · bypasses sign-in entirely AND first paint
-            // shows User A's runs before the network refresh lands. Even
-            // for a single user, stale cache from an expired session can
-            // mislead the runner. Wipe it.
-            AppCache.clearAll()
             withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
         }
     }

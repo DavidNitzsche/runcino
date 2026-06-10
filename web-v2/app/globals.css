@@ -1577,8 +1577,13 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-04 · margins + freehand stripped · was margin-top:18 (4.5×
    base) adding to .main's --section-gap = uneven band rhythm David
    flagged.  Internal col gap 14 → --section-gap (16). */
+/* hstoryrow kept for legacy reference · WHAT TO DO promoted into hhero2-grid col 3 */
 .hstoryrow{display:grid;grid-template-columns:1.35fr 1fr;gap:var(--section-gap);align-items:start;}
 @media (max-width: 980px){.hstoryrow{grid-template-columns:1fr;}}
+/* hsynth-full · story card is now full-width (single-col) */
+.hsynth-full{max-width:100%;}
+/* haero-section · aerobic fitness + VDOT anchor below hero band */
+.haero-section{display:flex;flex-direction:column;gap:12px;padding:18px 20px;background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-radius:14px;}
 /* 2026-06-04 · cards · padding 18/22 freehand → var(--card-padding)
    (20 all sides), flex-column with --label-gap so internal tag→tx
    stacking inherits the system rhythm (no inline margin-tops). */

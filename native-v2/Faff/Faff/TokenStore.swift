@@ -75,6 +75,12 @@ final class TokenStore: ObservableObject {
 
     func clear() { set(token: nil, expiresAt: nil, userUuid: nil) }
 
+    /// Read the current session token directly from Keychain. Safe to call
+    /// from any context (nonisolated) — used by `authedSend` to snapshot the
+    /// token before an in-flight request so a late 401 can compare against the
+    /// current token and avoid clobbering a freshly-minted replacement.
+    nonisolated func readToken() -> String? { TokenStore.keychainRead(K.token) }
+
     /// Augment a request with `Authorization: Bearer` when a token is set.
     /// Called from API helpers (authedGET/authedSend) on every outbound
     /// request. Reads the keychain directly (nonisolated) so background-

@@ -78,7 +78,8 @@ private func rowsFromInputs(_ inputs: [ReadinessInput]?) -> [PillarRow] {
     // every render.
     let order: [String] = ["sleep", "hrv", "rhr", "load", "rpe"]
     let byKey: [String: ReadinessInput] = Dictionary(
-        uniqueKeysWithValues: inputs.map { ($0.key.lowercased(), $0) }
+        inputs.map { ($0.key.lowercased(), $0) },
+        uniquingKeysWith: { a, _ in a }
     )
     return order.compactMap { key in
         guard let row = byKey[key] else { return nil }

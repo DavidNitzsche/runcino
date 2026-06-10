@@ -571,7 +571,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
       {/* ===== HERO ===== */}
       <div className="hhero2">
         <div className="hhero2-grid">
-          {/* Score column */}
+          {/* Score column · gauge + verdict + 7-day trend (trend is the score's own history) */}
           <div className="hh-score">
             <HeroGauge score={todayScore} band={band} />
             <div className="hh-verdict">{verdictText}</div>
@@ -582,85 +582,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 {net >= 0 ? '+' : '−'}{Math.abs(Math.round(net))}
               </b>
             </div>
-          </div>
-
-          {/* Drivers column */}
-          <div className="hh-drivers">
-            <div className="hh-lbl">WHAT IS DRIVING IT</div>
-            <div className="hh-drvlist">
-              {readiness.drivers.map(d => (
-                <DriverRowEl key={d.name} d={d} />
-              ))}
-            </div>
-          </div>
-
-          {/* Right column · aerobic fitness (when present) above 7-day trend */}
-          <div className="hh-week">
-            {seed.health.aerobicFitness ? (() => {
-              const af = seed.health.aerobicFitness;
-              const delta = af.currentDriftPct - af.blockStartDriftPct;
-              const absDelta = Math.abs(delta);
-              // 2026-06-03 · zone chip stays (David's "you can leave the
-              // BUILDING" · it tells him where his number lands) but the
-              // bands "key" reference is dropped (he didn't need the
-              // taxonomy).
-              const arrow = delta < -0.1 ? '↓' : delta > 0.1 ? '↑' : '→';
-              const arrowClass = delta < -0.1 ? 'good' : delta > 0.1 ? 'bad' : 'flat';
-              const deltaLabel = absDelta < 0.1
-                ? 'holding steady'
-                : `${arrow} ${absDelta.toFixed(1)}pp ${delta < 0 ? 'better' : 'worse'} over ${af.weeksTracked} week${af.weeksTracked === 1 ? '' : 's'}`;
-              return (
-                <div className="haero">
-                  <div className="haero-k">AEROBIC FITNESS · LOWER IS BETTER</div>
-                  <div className="haero-v">
-                    {af.blockStartDriftPct.toFixed(1)}%
-                    {' → '}
-                    {af.currentDriftPct.toFixed(1)}%
-                  </div>
-                  <div className={`haero-delta haero-delta-${arrowClass}`}>{deltaLabel}</div>
-                  {af.currentZone ? (
-                    <span className={`haero-chip haero-chip-${af.currentZone}`}>
-                      {af.currentZone === 'race-ready' ? 'RACE-READY'
-                        : af.currentZone === 'building' ? 'BUILDING'
-                        : af.currentZone === 'developing' ? 'DEVELOPING'
-                        : 'EARLY BASE'}
-                    </span>
-                  ) : null}
-                  <div className="haero-m">{af.summary}</div>
-                  {af.whatItIs ? (
-                    <div className="haero-what">{af.whatItIs}</div>
-                  ) : null}
-                </div>
-              );
-            })() : null}
-            {/* 2026-06-09 state-audit · VDOT-anchor staleness. Quiet
-                provenance line from 56 days (aging), warning tone from
-                120 (stale) — the CI silently widens to ±8% at 180 days
-                (Research/02 §13.7) and that must never surprise the
-                runner mid-taper. Fresh anchors render nothing. */}
-            {seed.health.vdotAnchor && seed.health.vdotAnchor.tier !== 'fresh' ? (() => {
-              const va = seed.health.vdotAnchor;
-              const sourceLabel = va.anchorRaceName
-                ?? (va.anchorDistanceMi != null ? `a ${va.anchorDistanceMi.toFixed(1)} mi effort` : 'an effort');
-              const line = va.tier === 'stale'
-                ? `VDOT ${va.vdot.toFixed(1)} reads from ${sourceLabel}, ${va.ageDays} days old. At 180 days the projection band widens to ±8%. A tune-up race or a hard watch tempo refreshes it.`
-                : `VDOT ${va.vdot.toFixed(1)} reads from ${sourceLabel}, ${va.ageDays} days old.`;
-              return (
-                <div
-                  className="haero-what"
-                  style={va.tier === 'stale' ? { color: 'var(--warn, #F43F5E)' } : undefined}
-                  data-testid="vdot-anchor-staleness"
-                >
-                  {line}
-                </div>
-              );
-            })() : null}
-            <div className="hh-wk-head">
-              {/* 2026-06-03 · honest about coverage. The label said
-                  "7-DAY READINESS" even when only 3 days of trend data
-                  existed (cold-start / partial backfill). Reflect actual
-                  coverage so the runner doesn't read 3 bars as 7 days
-                  of evidence. */}
+            <div className="hh-wk-head" style={{ marginTop: 18 }}>
               <span className="l">{weekScores.length === 7 ? '7-DAY' : `${weekScores.length}-DAY`} READINESS</span>
               <span className="r">
                 NOW <b>{Math.round(todayScore)}</b> &nbsp;·&nbsp; AVG <b>{Math.round(avg(weekScores))}</b>
@@ -687,8 +609,113 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               {weekDays.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
+
+          {/* Drivers column */}
+          <div className="hh-drivers">
+            <div className="hh-lbl">WHAT IS DRIVING IT</div>
+            <div className="hh-drvlist">
+              {readiness.drivers.map(d => (
+                <DriverRowEl key={d.name} d={d} />
+              ))}
+            </div>
+          </div>
+
+          {/* Right column · WHAT TO DO (actions lead; score answers "how am I", actions answer "what do I do") */}
+          <div className="hh-week">
+            {brief ? (
+              <>
+                <div className="hh-lbl">WHAT TO DO</div>
+                <div className="hwatch-list">
+                  {(brief.actions ?? []).map((a, i) => {
+                    const priorityClass =
+                      a.priority === 'urgent' ? 'hact-pri-urgent' :
+                      a.priority === 'high' ? 'hact-pri-high' :
+                      a.priority === 'medium' ? 'hact-pri-medium' :
+                      a.priority === 'on-course' ? 'hact-pri-on-course' :
+                      'hact-pri-low';
+                    const priorityLabel =
+                      a.priority === 'on-course' ? 'ON COURSE' :
+                      a.priority.toUpperCase();
+                    return (
+                      <div key={i} className="hwatch-row hact-row">
+                        <span className={`hact-pri ${priorityClass}`}>{priorityLabel}</span>
+                        <div className="hact-body">
+                          <div className="hact-action">{a.action}</div>
+                          <div className="hact-cite">{a.cite}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!brief.actions?.length ? (
+                    <div className="hwatch-empty">Building your picture · keep syncing.</div>
+                  ) : null}
+                </div>
+                {brief.actionsThreshold ? (
+                  <div className="hact-threshold">{brief.actionsThreshold}</div>
+                ) : null}
+              </>
+            ) : (
+              <div className="hwatch-empty">Syncing readiness data…</div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* ===== AEROBIC FITNESS + VDOT ANCHOR (standalone · below hero) ===== */}
+      {(seed.health.aerobicFitness || (seed.health.vdotAnchor && seed.health.vdotAnchor.tier !== 'fresh')) ? (
+        <div className="haero-section">
+          {seed.health.aerobicFitness ? (() => {
+            const af = seed.health.aerobicFitness;
+            const delta = af.currentDriftPct - af.blockStartDriftPct;
+            const absDelta = Math.abs(delta);
+            const arrow = delta < -0.1 ? '↓' : delta > 0.1 ? '↑' : '→';
+            const arrowClass = delta < -0.1 ? 'good' : delta > 0.1 ? 'bad' : 'flat';
+            const deltaLabel = absDelta < 0.1
+              ? 'holding steady'
+              : `${arrow} ${absDelta.toFixed(1)}pp ${delta < 0 ? 'better' : 'worse'} over ${af.weeksTracked} week${af.weeksTracked === 1 ? '' : 's'}`;
+            return (
+              <div className="haero">
+                <div className="haero-k">AEROBIC FITNESS · LOWER IS BETTER</div>
+                <div className="haero-v">
+                  {af.blockStartDriftPct.toFixed(1)}%
+                  {' → '}
+                  {af.currentDriftPct.toFixed(1)}%
+                </div>
+                <div className={`haero-delta haero-delta-${arrowClass}`}>{deltaLabel}</div>
+                {af.currentZone ? (
+                  <span className={`haero-chip haero-chip-${af.currentZone}`}>
+                    {af.currentZone === 'race-ready' ? 'RACE-READY'
+                      : af.currentZone === 'building' ? 'BUILDING'
+                      : af.currentZone === 'developing' ? 'DEVELOPING'
+                      : 'EARLY BASE'}
+                  </span>
+                ) : null}
+                <div className="haero-m">{af.summary}</div>
+                {af.whatItIs ? (
+                  <div className="haero-what">{af.whatItIs}</div>
+                ) : null}
+              </div>
+            );
+          })() : null}
+          {seed.health.vdotAnchor && seed.health.vdotAnchor.tier !== 'fresh' ? (() => {
+            const va = seed.health.vdotAnchor;
+            const sourceLabel = va.anchorRaceName
+              ?? (va.anchorDistanceMi != null ? `a ${va.anchorDistanceMi.toFixed(1)} mi effort` : 'an effort');
+            const line = va.tier === 'stale'
+              ? `VDOT ${va.vdot.toFixed(1)} reads from ${sourceLabel}, ${va.ageDays} days old. At 180 days the projection band widens to ±8%. A tune-up race or a hard watch tempo refreshes it.`
+              : `VDOT ${va.vdot.toFixed(1)} reads from ${sourceLabel}, ${va.ageDays} days old.`;
+            return (
+              <div
+                className="haero-what"
+                style={va.tier === 'stale' ? { color: 'var(--warn, #F43F5E)' } : undefined}
+                data-testid="vdot-anchor-staleness"
+              >
+                {line}
+              </div>
+            );
+          })() : null}
+        </div>
+      ) : null}
 
       {/* ===== SLEEP COACHING (Phase 2 · 3.4) · standing flag + race-week
            banking. Renders ONLY when the detector fires — chronic short
@@ -735,81 +762,30 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
         );
       })() : null}
 
-      {/* ===== STORY + WATCHING (only when brief is present) ===== */}
+      {/* ===== STORY (full-width · WHAT TO DO is now in the hero band right col) ===== */}
       {brief ? (
-        <div className="hstoryrow">
-          <div className="hsynth">
-            <span className="hsynth-tag">THE STORY</span>
-            <p className="hsynth-tx">{brief.synthesis ?? brief.trendNote ?? brief.headline}</p>
-            {streakRows.length > 0 ? (
-              <div className="hstreaks">
-                {streakRows.map((s, i) => {
-                  const pillar = pillarTrends.get(s.pillar as 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery');
-                  const series = pillar?.trend.map(t => t.value) ?? [];
-                  const baselineNum = parseFloat(pillar?.baseline?.match(/[\d.]+/)?.[0] ?? '0') || null;
-                  return (
-                    <StreakSparkline
-                      key={`${s.pillar}-${i}`}
-                      pillar={s.pillar}
-                      days={s.days}
-                      baseline={baselineNum}
-                      series={series}
-                      note={s.short}
-                    />
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-          <div className="hwatch">
-            {/* 2026-06-03 · WHAT TO DO replaces WATCHING TOMORROW per
-                David's ask: "instead of watching tomorrow · can we
-                surface something about actions to take? Run slower,
-                sleep more, etc whatever it is based on data."
-
-                Each action is tied to a real trigger in
-                lib/coach/health-actions.ts. The frontend just renders
-                · no extrapolation. Priority chip color: urgent=red,
-                high=amber, medium=yellow, low=neutral, on-course=green. */}
-            <span className="hsynth-tag watch-tag">WHAT TO DO</span>
-            <div className="hwatch-list">
-              {(brief.actions ?? []).map((a, i) => {
-                const priorityClass =
-                  a.priority === 'urgent' ? 'hact-pri-urgent' :
-                  a.priority === 'high' ? 'hact-pri-high' :
-                  a.priority === 'medium' ? 'hact-pri-medium' :
-                  a.priority === 'on-course' ? 'hact-pri-on-course' :
-                  'hact-pri-low';
-                const priorityLabel =
-                  a.priority === 'on-course' ? 'ON COURSE' :
-                  a.priority.toUpperCase();
+        <div className="hsynth hsynth-full">
+          <span className="hsynth-tag">THE STORY</span>
+          <p className="hsynth-tx">{brief.synthesis ?? brief.trendNote ?? brief.headline}</p>
+          {streakRows.length > 0 ? (
+            <div className="hstreaks">
+              {streakRows.map((s, i) => {
+                const pillar = pillarTrends.get(s.pillar as 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery');
+                const series = pillar?.trend.map(t => t.value) ?? [];
+                const baselineNum = parseFloat(pillar?.baseline?.match(/[\d.]+/)?.[0] ?? '0') || null;
                 return (
-                  <div key={i} className="hwatch-row hact-row">
-                    <span className={`hact-pri ${priorityClass}`}>{priorityLabel}</span>
-                    <div className="hact-body">
-                      <div className="hact-action">{a.action}</div>
-                      <div className="hact-cite">{a.cite}</div>
-                    </div>
-                  </div>
+                  <StreakSparkline
+                    key={`${s.pillar}-${i}`}
+                    pillar={s.pillar}
+                    days={s.days}
+                    baseline={baselineNum}
+                    series={series}
+                    note={s.short}
+                  />
                 );
               })}
-              {/* Defensive empty state · should never fire (the actions
-                  builder always returns at least an ON COURSE entry)
-                  but keeps the panel honest if the envelope is stale. */}
-              {!brief.actions?.length ? (
-                <div className="hwatch-empty">Building your picture · keep syncing.</div>
-              ) : null}
             </div>
-            {/* 2026-06-03 · transparency line ("option C" per David) · what
-                the engine is watching for and how close the runner is to
-                each trigger. Tier-aware · advanced runners see 5-day
-                streak thresholds, beginners see 3-day. Empty string when
-                all soft rules are already at threshold (panel above
-                already fired). */}
-            {brief.actionsThreshold ? (
-              <div className="hact-threshold">{brief.actionsThreshold}</div>
-            ) : null}
-          </div>
+          ) : null}
         </div>
       ) : null}
 

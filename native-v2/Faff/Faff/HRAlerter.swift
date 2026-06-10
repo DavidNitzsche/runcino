@@ -23,6 +23,7 @@ final class HRAlerter: ObservableObject {
     /// HKHealthStore is thread-safe. Reads happen via callbacks; we
     /// don't await on the store directly.
     nonisolated private let store = HKHealthStore()
+    private var observerQuery: HKObserverQuery?
     private var observerActive = false
     private var anchor: HKQueryAnchor?
     private var lastAlertAt: Date?
@@ -50,18 +51,38 @@ final class HRAlerter: ObservableObject {
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
 
         let hrType = HKQuantityType(.heartRate)
-        let q = HKObserverQuery(sampleType: hrType, predicate: nil) { [weak self] _, _, _ in
-            // Fire the drain on a Task so we can hop back to MainActor.
-            Task { await self?.flushNewSamples() }
+        // P-1a: capture the completion handler and call it after the drain so iOS
+        // does not throttle (then stop) background delivery for missed completions.
+        // P-1b: bound the first flush to now so anchor==nil doesn't drain the
+        // entire HR history — that caused a spurious ceiling alert off a historic
+        // max and a memory spike equal to years of watch-wear HR samples.
+        if anchor == nil {
+            // Set a synthetic anchor at "now" so the first flush only sees future samples.
+            let startPred = HKQuery.predicateForSamples(withStart: Date(), end: nil, options: .strictStartDate)
+            let primer: HKAnchoredObjectQuery = HKAnchoredObjectQuery(
+                type: hrType, predicate: startPred, anchor: nil, limit: 0
+            ) { [weak self] _, _, _, newAnchor, _ in
+                Task { @MainActor [weak self] in self?.anchor = newAnchor }
+            }
+            store.execute(primer)
+        }
+        let q = HKObserverQuery(sampleType: hrType, predicate: nil) { [weak self] _, completionHandler, _ in
+            Task { await self?.flushNewSamples(); completionHandler() }
         }
         store.execute(q)
+        observerQuery = q
         observerActive = true
+        // Background delivery requires com.apple.developer.healthkit.background-delivery
+        // entitlement (missing from Faff.entitlements as of 2026-06-10 — add before
+        // enabling this in prod). Called here so the plumbing is ready; foreground
+        // delivery still works without the entitlement.
         store.enableBackgroundDelivery(for: hrType, frequency: .immediate) { _, _ in }
     }
 
     func stop() {
-        // Leaving the query attached is fine; we just guard at flush time.
         observerActive = false
+        if let q = observerQuery { store.stop(q); observerQuery = nil }
+        store.disableBackgroundDelivery(for: HKQuantityType(.heartRate)) { _, _ in }
     }
 
     /// Drain new HR samples since the anchor; if any exceed the ceiling,

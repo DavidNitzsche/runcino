@@ -1393,7 +1393,11 @@ final class HealthKitImporter: ObservableObject {
     /// UserDefaults key holding the set of HKWorkout.uuid strings we've
     /// successfully POSTed in the most recent 28-day window. Compared
     /// against the fresh HK set each sync to detect deletions.
-    private let strengthUUIDCacheKey = "faff.health.strength.uuids.v1"
+    private let strengthUUIDCacheKey  = "faff.health.strength.uuids.v1"
+    /// UUID → HKWorkout startDate (TimeInterval since reference date). Lets
+    /// the delete-diff guard against silently deleting sessions that merely
+    /// aged out of the 28-day query window (P-7, 2026-06-10).
+    private let strengthDateCacheKey  = "faff.health.strength.dates.v2"
 
     /// Per-sync rollup returned to the parent importRecent so it can
     /// shape the user-facing status string.
@@ -1407,10 +1411,15 @@ final class HealthKitImporter: ObservableObject {
         var result = StrengthSyncResult()
         let workouts = await fetchStrengthWorkouts(daysBack: 28)
 
+        // Build UUID set + start-date map from the fresh HK query results.
+        // The date map is persisted below so the delete-diff can distinguish
+        // "deleted in Apple Fitness" from "aged out of the 28-day window".
         var freshUUIDs = Set<String>()
+        var freshStartTimes: [String: Double] = [:]
         for w in workouts {
             let uuid = w.uuid.uuidString
             freshUUIDs.insert(uuid)
+            freshStartTimes[uuid] = w.startDate.timeIntervalSinceReferenceDate
             guard let payload = buildStrengthPayload(for: w) else { continue }
             do {
                 try await API.postStrengthFromHK(
@@ -1427,8 +1436,19 @@ final class HealthKitImporter: ObservableObject {
         }
 
         // Delete diffing · cached uuids no longer in HK → DELETE.
+        // P-7 guard: only delete if the session's date was still inside the
+        // 28-day window — a session that merely aged out is indistinguishable
+        // from "deleted in Apple Fitness" without the stored date check.
+        // Legacy entries without a stored date fall through to attempt delete
+        // (safe: the server is idempotent; worst case is a spurious DELETE
+        // before the guard is populated for those UUIDs).
         let cached = Set(UserDefaults.standard.stringArray(forKey: strengthUUIDCacheKey) ?? [])
-        let toDelete = cached.subtracting(freshUUIDs)
+        let cachedDates = (UserDefaults.standard.dictionary(forKey: strengthDateCacheKey) as? [String: Double]) ?? [:]
+        let windowStart = Date().addingTimeInterval(-28 * 24 * 3600)
+        let toDelete = cached.subtracting(freshUUIDs).filter { uuid in
+            guard let t = cachedDates[uuid] else { return true }  // legacy: no date, attempt delete
+            return Date(timeIntervalSinceReferenceDate: t) >= windowStart
+        }
         var stillStale: [String] = []
         for uuid in toDelete {
             do {
@@ -1436,10 +1456,6 @@ final class HealthKitImporter: ObservableObject {
                 if ok {
                     result.deleted += 1
                 } else {
-                    // Non-2xx · keep in cache so next sync retries. This
-                    // covers the window where the DELETE endpoint isn't
-                    // shipped yet (returns 404/405) and the case where
-                    // a transient 5xx happens. Either way, no data loss.
                     stillStale.append(uuid)
                 }
             } catch {
@@ -1448,10 +1464,14 @@ final class HealthKitImporter: ObservableObject {
             }
         }
 
-        // Update the cache: fresh uuids that POSTed cleanly + any deletes
-        // that didn't go through yet (so we retry next sync).
+        // Update both caches: fresh UUIDs + any retrying deletes.
         let nextCache = freshUUIDs.union(stillStale)
         UserDefaults.standard.set(Array(nextCache), forKey: strengthUUIDCacheKey)
+        // Dates cache: merge fresh entries, keep stale entries, drop removed UUIDs.
+        var nextDates = cachedDates
+        for (uuid, t) in freshStartTimes { nextDates[uuid] = t }
+        for key in nextDates.keys where !nextCache.contains(key) { nextDates.removeValue(forKey: key) }
+        UserDefaults.standard.set(nextDates, forKey: strengthDateCacheKey)
 
         return result
     }

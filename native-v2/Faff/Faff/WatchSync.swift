@@ -19,6 +19,10 @@ final class WatchSync: NSObject, ObservableObject {
     @Published private(set) var lastSyncStatus: String?
     @Published private(set) var isPaired = false
     @Published private(set) var isWatchAppInstalled = false
+    /// True once the watch replies "ok" to a `startTreadmillHR` message.
+    /// P-6: prior code returned `true` on reachability alone; this is the
+    /// real ack flag for TreadmillView's "live HR" affordance.
+    @Published private(set) var treadmillSessionConfirmed = false
 
     private var pendingContext: [String: Any]?
 
@@ -114,18 +118,28 @@ final class WatchSync: NSObject, ObservableObject {
     // iPhone gracefully shows no live HR pill. The treadmill workout
     // still records · the iPhone's POST is independent of the watch.
 
-    /// Ask the watch to start an indoor-running HR session. Returns
-    /// whether the watch acknowledged (used by TreadmillView to show
-    /// "Open Faff on watch for live HR" when the watch isn't reachable).
+    /// Ask the watch to start an indoor-running HR session.
+    /// Returns `true` if the message was *sent* (watch was reachable at send
+    /// time). The watch's actual acknowledgement is reflected in
+    /// `treadmillSessionConfirmed` once the reply handler fires (async).
+    /// P-6 2026-06-10: prior doc said "returns whether the watch acknowledged"
+    /// but the replyHandler was `{ _ in }` — always `true` if reachable,
+    /// regardless of whether the watch session actually started.
     @discardableResult
     func startTreadmillHRSession(sessionId: String) -> Bool {
         guard WCSession.isSupported() else { return false }
         let s = WCSession.default
         guard s.activationState == .activated, s.isReachable else { return false }
+        treadmillSessionConfirmed = false
         s.sendMessage(
             ["request": "startTreadmillHR", "sessionId": sessionId],
-            replyHandler: { _ in },
-            errorHandler: { err in
+            replyHandler: { [weak self] reply in
+                Task { @MainActor [weak self] in
+                    self?.treadmillSessionConfirmed = reply["ok"] != nil
+                }
+            },
+            errorHandler: { [weak self] err in
+                Task { @MainActor [weak self] in self?.treadmillSessionConfirmed = false }
                 print("[WatchSync] startTreadmillHR failed: \(err.localizedDescription)")
             }
         )
