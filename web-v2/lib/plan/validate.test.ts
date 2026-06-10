@@ -85,6 +85,7 @@ const BASE_CTX: PlanValidationContext = {
   isSteppingStoneToMarathon: false,
   priorPlanPeakLongMi: null,
   todayISO: TODAY,
+  trailingAvgWeeklyMi: null,
 };
 
 // ── F1–F3: long-run cap + taper ───────────────────────────────────────────────
