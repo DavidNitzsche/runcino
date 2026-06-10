@@ -6,6 +6,7 @@ import type { FaffSeed } from '../types';
 import { CountdownLadder, CourseAnnotations, MARATHON_COUNTDOWN, StateChangeToast } from '../toolkit';
 import { RouteMap } from '../RouteMap';
 import { RaceRetrospectiveForm } from '@/components/races/RaceRetrospectiveForm';
+import { parseRaceTime } from '@/lib/training/vdot';
 
 interface RecalcResult {
   vdotBefore?: number | null;
@@ -837,11 +838,12 @@ function distLabel(mi: number): string {
   if (mi > 0) return `${mi.toFixed(1)} MI`;
   return 'RACE';
 }
+/** 2026-06-09 · race-killer F2 — shared parser. The local 2-part branch
+ *  forced H:MM, so a sub-hour goal typed "45:00" (10K) normalized to 45
+ *  HOURS. parseRaceTime disambiguates h:mm vs m:ss (vdot.ts:145):
+ *  "1:30" → 5400 · "45:00" → 2700. Keeps this file's number/0 contract. */
 function parseHMS(t: string): number {
-  const parts = (t || '').trim().split(':').map(x => parseInt(x, 10) || 0);
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60;
-  return 0;
+  return parseRaceTime((t || '').trim()) ?? 0;
 }
 function fmtHMS(sec: number): string {
   const h = Math.floor(sec / 3600);

@@ -58,6 +58,8 @@ export interface HealthAction {
     | 'tsb_overreach'
     | 'tsb_race_ready'
     | 'plan_adapted'       // 2026-06-03 · the plan adapter has changed today/tomorrow
+    | 'race_day'           // 2026-06-09 · race morning · execute line (F4)
+    | 'race_week'          // 2026-06-09 · race week · taper-noise note (F4)
     | 'on_course';
   priority: HealthActionPriority;
   /** Imperative sentence the runner reads first. */
@@ -262,6 +264,23 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   // recover." (streak chip) say the same thing twice. Hard rules + sleep
   // (behavioral lever) + informational chips still fire.
   const planAbsorbed = planAdaptation != null;
+
+  // ── 2026-06-09 · race-killer F4 · race-week proximity ─────────────
+  //
+  // Inside the final 7 days, fatigue-class signals are EXPECTED taper
+  // physiology, not actionable warnings: "taper crud / taper madness —
+  // fatigue, sluggish legs, irritability, sleeplessness, phantom pains
+  // — is normal. Resist the urge to test fitness. The work is done."
+  // (Cite: Research/08-pacing-and-race-week.md §9.) Production proof of
+  // the failure mode: 2026-06-08, a single 29 ms partial-night HRV
+  // reading (corrected to 46 ms on re-sync) scored readiness 38
+  // PULL-BACK and fired pull-back prescriptions. The same logic running
+  // on race morning would tell a runner to "take 2-3 easy days" at 5 AM
+  // with the gun at 7. Health hard rules (illness, flare, wrist temp)
+  // stay on — racing sick is a medical risk, not taper noise.
+  const daysToRace = state.nextARace?.days_to_race ?? null;
+  const isRaceWeek = daysToRace != null && daysToRace >= 0 && daysToRace <= 7;
+  const isRaceMorning = daysToRace === 0;
 
   // Streak direction convention (lib/coach/readiness-brief.ts):
   //   · hrv  direction 'below' = HRV below baseline (bad)
@@ -547,6 +566,52 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         cite: `Recent scores: ${recentScores.join('/')}.`,
       });
     }
+  }
+
+  // ── 2026-06-09 · race-killer F4 · RACE-WEEK GUARD ─────────────────
+  //
+  // Post-filter (rather than gating each rule) so the suppression list
+  // is one auditable place. Health stays on; fatigue-class comes off:
+  //   · keep  · sick / niggle / wrist temp (medical) · plan_adapted
+  //             (describes a change that already happened) ·
+  //             tsb_race_ready (positive) · sleep_deficit (behavioral
+  //             lever — "lights out earlier" is good race-week advice).
+  //   · drop  · pull-back prescriptions, HRV/RHR streaks, TSB
+  //             overreach, every ACWR band — taper physiology reads
+  //             exactly like the overload symptoms these rules watch
+  //             for, and "trim your next long run" is meaningless when
+  //             the next long run is the race.
+  if (isRaceWeek) {
+    const fatigueClass = new Set<HealthAction['signal']>([
+      'compound', 'hrv_low_streak', 'rhr_high_streak', 'tsb_overreach',
+      'load_spike', 'load_caution', 'load_detraining', 'hrv_cv_destabilizing',
+    ]);
+    const suppressed = out.filter((a) => fatigueClass.has(a.signal));
+    let kept = out.filter((a) => !fatigueClass.has(a.signal));
+
+    if (isRaceMorning) {
+      // Race morning · the only job is execution. Everything except
+      // medical hard rules comes off; the execute line leads.
+      kept = kept.filter((a) =>
+        a.signal === 'sick' || a.signal === 'niggle' || a.signal === 'wrist_temp_elevated');
+      kept.unshift({
+        signal: 'race_day',
+        priority: 'on-course',
+        action: 'Race day. Time to execute — the work is done.',
+        cite: 'Race-week guard · readiness advice suppressed on race morning (Research/08 §9).',
+      });
+    } else if (suppressed.length > 0) {
+      // Name what was filtered instead of going silently quiet — the
+      // panel's whole contract is showing the rules of engagement.
+      kept.push({
+        signal: 'race_week',
+        priority: 'low',
+        action: `Race week · ${daysToRace}d out. Taper noise is normal — fatigue signals don't change the plan now. Illness and injury rules stay on.`,
+        cite: 'Taper crud is expected · Research/08-pacing-and-race-week.md §9.',
+      });
+    }
+    out.length = 0;
+    out.push(...kept);
   }
 
   // ── EMPTY STATE (Option B · transparent trend) ────────────────────

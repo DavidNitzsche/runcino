@@ -209,11 +209,10 @@ struct TargetsView: View {
         return String(format: "%d:%02d/mi", perMi / 60, perMi % 60)
     }
 
+    // 2026-06-09 · race-killer F2 — RaceClock (API.swift). The local 2-part
+    // branch read the stored "1:30" goal as 90s → hero pace "0:06/mi".
     private func goalSeconds(_ g: String) -> Int? {
-        let parts = g.split(separator: ":").compactMap { Int($0) }
-        if parts.count == 3 { return parts[0]*3600 + parts[1]*60 + parts[2] }
-        if parts.count == 2 { return parts[0]*60 + parts[1] }
-        return nil
+        RaceClock.seconds(from: g)
     }
 
     private var heroBlock: some View {

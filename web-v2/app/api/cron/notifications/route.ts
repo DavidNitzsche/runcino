@@ -249,13 +249,18 @@ function userLocalTomorrow(tz: string): string {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-/** Returns true iff the user-local current minute equals exactly HH:MM. */
-function isAtLocalTime(hour: number, minute: number, hm: string, slackMin = 15): boolean {
+/** Returns true iff the user-local current minute is within slack of HH:MM. */
+function isAtLocalTime(hour: number, minute: number, hm: string, slackMin = 25): boolean {
   const [h, m] = hm.split(':').map(Number);
   const userMin = hour * 60 + minute;
   const targetMin = h * 60 + m;
   const delta = userMin - targetMin;
-  // Cron polls every 15 min → fire if within [0, 15min) of the target.
+  // 2026-06-09 · race-killer F6 — slack was 15 min against a workflow
+  // that polls every 30 ("cron polls every 15" was stale): any target in
+  // the second half of a 30-min gap was silently skipped, and GitHub
+  // Actions habitually fires 5-20 min late on top. 25 min covers a full
+  // 30-min cadence with delay; enqueueIfFresh's 24h dedup_key makes a
+  // double-match harmless (second tick is a no-op).
   return delta >= 0 && delta < slackMin;
 }
 

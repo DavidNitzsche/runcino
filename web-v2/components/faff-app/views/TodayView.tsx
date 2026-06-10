@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, KIT, ROLECOL, type EffortKey } from '../constants';
 import { useGlossaryDrawer } from '../toolkit/GlossaryDrawer';
+import { parseRaceTime } from '@/lib/training/vdot';
 
 /**
  * 2026-06-04 · per-workout-type gradient for the .hmain hero card.
@@ -4323,13 +4324,13 @@ function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes
  * derivation, matching raceDetail.ts). Projection vs goal. Logistics,
  * pacing splits, fueling and course stay one tap away via "Full race plan"
  * → onOpenRace (RaceView), which already owns that depth. */
+/** 2026-06-09 · race-killer F2 — delegate to the shared parser. The local
+ *  2-part branch read "1:30" (the stored AFC goalDisplay) as 90 seconds, so
+ *  the first-ever race-morning render would have shown goal pace "0:07/mi"
+ *  and B·SAFE "8:30". parseRaceTime carries the H:MM-vs-MM:SS heuristic
+ *  fixed in lib on 2026-06-03 (vdot.ts:145) — race-day surfaces never got it. */
 function parseHMSToSec(s: string | null | undefined): number | null {
-  if (!s) return null;
-  const parts = s.split(':').map(Number);
-  if (parts.some((n) => !Number.isFinite(n))) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return null;
+  return parseRaceTime(s);
 }
 function fmtHMS(sec: number): string {
   const s = Math.round(sec);

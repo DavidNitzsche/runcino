@@ -16,9 +16,13 @@ struct RaceDetailResponse: Decodable {
     let course_geometry: CourseGeometry?
     let course_source: String?
     let course_library: CourseLibraryProvenance?
+    /// 2026-06-09 · race-killer F3 — server-computed, course-aware goal
+    /// splits (lib/race/pacing.ts). nil on older servers; consumers fall
+    /// back to local linear interpolation.
+    let pacing: RacePacing?
 
     enum CodingKeys: String, CodingKey {
-        case race, proximity, course_geometry, course_source, course_library
+        case race, proximity, course_geometry, course_source, course_library, pacing
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -27,7 +31,33 @@ struct RaceDetailResponse: Decodable {
         self.course_geometry = try c.decodeIfPresent(CourseGeometry.self, forKey: .course_geometry)
         self.course_source = try c.decodeIfPresent(String.self, forKey: .course_source)
         self.course_library = try c.decodeIfPresent(CourseLibraryProvenance.self, forKey: .course_library)
+        self.pacing = try? c.decodeIfPresent(RacePacing.self, forKey: .pacing)
     }
+}
+
+/// 2026-06-09 · race-killer F3 — course-aware goal pacing from the server.
+/// `source` is "course" (grade-weighted over the authored phase profile,
+/// cite Research/11 §grade-cost) or "linear" (no usable profile).
+struct RacePacing: Decodable {
+    let source: String
+    let goal_sec: Int
+    let splits: [RacePacingSplit]
+    let phases: [RacePacingPhase]?
+}
+
+struct RacePacingSplit: Decodable {
+    let label: String      // "5K" / "10K" / "HALF" / "FINISH"
+    let mi: Double
+    let cum_sec: Int
+    let display: String    // "21:31" / "1:30:00"
+}
+
+struct RacePacingPhase: Decodable {
+    let label: String          // "Point Loma Climb"
+    let start_mi: Double
+    let end_mi: Double
+    let pace_s_per_mi: Int
+    let display: String        // "6:58/mi"
 }
 
 struct CourseLibraryProvenance: Decodable {

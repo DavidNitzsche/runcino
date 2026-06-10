@@ -35,6 +35,11 @@ export interface ProfileState {
     vdot_anchor_date: string | null;
     /** Distance (miles) of that race/run. Null pre-migration-125. */
     vdot_anchor_distance_mi: number | null;
+    /** 2026-06-09 · F1/F9 — anchor age (days) at load time. Null when no anchor. */
+    vdot_anchor_age_days: number | null;
+    /** 2026-06-09 · F1/F9 — resolved race name for the anchor ("Disney Half
+     *  Marathon"). Null when the anchor was a training run or pre-migration. */
+    vdot_anchor_name: string | null;
     lthr: number | null;
     lthr_method: string | null;      // how it was set
     lthr_set_at: string | null;      // ISO timestamp
@@ -204,6 +209,26 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   const { vdot, anchorDateISO: vdotAnchorDate, anchorDistanceMi: vdotAnchorDistMi } =
     await loadLatestVdotWithAnchor(userId);
 
+  // 2026-06-09 · race-killers F1/F9 — anchor age + name. A 4-month-old
+  // VDOT rendered with no provenance: "47.9" looked current while every
+  // race since the anchor read 44-45. Resolve the anchor race's name by
+  // date (±1d) + distance so the UI can say
+  // "47.9 · Disney Half Marathon · Feb 1 · 128d old".
+  const vdotAnchorAgeDays = vdotAnchorDate
+    ? Math.max(0, Math.round((Date.parse(today + 'T12:00:00Z') - Date.parse(String(vdotAnchorDate).slice(0, 10) + 'T12:00:00Z')) / 86400000))
+    : null;
+  let vdotAnchorName: string | null = null;
+  if (vdotAnchorDate) {
+    vdotAnchorName = (await pool.query<{ name: string | null }>(
+      `SELECT meta->>'name' AS name FROM races
+        WHERE user_uuid = $1
+          AND ABS((meta->>'date')::date - $2::date) <= 1
+        ORDER BY ABS((meta->>'date')::date - $2::date) ASC
+        LIMIT 1`,
+      [userId, String(vdotAnchorDate).slice(0, 10)],
+    ).catch(() => ({ rows: [] }))).rows[0]?.name ?? null;
+  }
+
   // === LTHR + true MaxHR ===
   // Prefer user-entered values; fall back to derived-from-race if we have race meta.
   let lthr: number | null = p?.lthr ?? null;
@@ -275,6 +300,8 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       rhr, vo2, weight_lb, vdot,
       vdot_anchor_date: vdotAnchorDate ?? null,
       vdot_anchor_distance_mi: vdotAnchorDistMi ?? null,
+      vdot_anchor_age_days: vdotAnchorAgeDays,
+      vdot_anchor_name: vdotAnchorName,
       lthr,
       lthr_method: lthrMethod,
       lthr_set_at: p?.lthr_set_at ?? null,

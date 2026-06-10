@@ -12,15 +12,15 @@
  */
 import { useState, useTransition, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { parseRaceTime } from '@/lib/training/vdot';
 
 function parseFinishTime(s: string): number | null {
   const t = s.trim();
   if (!t) return null;
   if (/^\d+$/.test(t)) return Number(t) > 0 ? Number(t) : null;
-  const parts = t.split(':').map(Number);
-  if (parts.some(isNaN) || parts.length < 2 || parts.length > 3) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  return parts[0] * 60 + parts[1];
+  // 2026-06-09 · race-killer F2 — shared parser. A runner typing a HM
+  // finish as "1:30" got 90 seconds from the local 2-part branch.
+  return parseRaceTime(t);
 }
 
 function fmtSec(secs: number | null | undefined): string {

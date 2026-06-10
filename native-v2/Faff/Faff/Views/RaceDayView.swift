@@ -495,15 +495,11 @@ struct RaceDayView: View {
     /// sub-3-marathon placeholder · misleading when shown over another
     /// distance or no race.
     private var goalPace: String {
-        guard let g = detail?.race.goal,
+        // 2026-06-09 · race-killer F2 — RaceClock (API.swift) carries the
+        // h:mm-vs-m:ss heuristic. The local 2-part branch read the stored
+        // "1:30" goal as 90s → "0:07/mi" on race morning.
+        guard let totalSec = RaceClock.seconds(from: detail?.race.goal),
               let dist = detail?.race.distance_mi, dist > 0 else { return "—" }
-        let parts = g.split(separator: ":").map { Int($0) ?? 0 }
-        let totalSec: Int
-        switch parts.count {
-        case 3: totalSec = parts[0] * 3600 + parts[1] * 60 + parts[2]
-        case 2: totalSec = parts[0] * 60 + parts[1]
-        default: return "—"
-        }
         let perMile = Int(round(Double(totalSec) / dist))
         return String(format: "%d:%02d", perMile / 60, perMile % 60)
     }
@@ -555,16 +551,13 @@ struct RaceDayView: View {
 
     // MARK: - Race-morning + plan helpers
 
-    /// Parse goal string ("1:30:00" / "45:00") → total seconds. Used by
-    /// B-goal, splits, and fuel computations so we only decode once.
+    /// Parse goal string ("1:30:00" / "1:30" / "45:00") → total seconds.
+    /// Used by B-goal, splits, and fuel computations so we only decode once.
+    /// 2026-06-09 · race-killer F2 — RaceClock (API.swift). The local
+    /// 2-part branch read the stored "1:30" goal as 90 seconds, which made
+    /// this view's race-morning splits card show 5K "0:21" and B-goal "8:30".
     private var parsedGoalSec: Int? {
-        guard let g = detail?.race.goal else { return nil }
-        let parts = g.split(separator: ":").compactMap { Int($0) }
-        switch parts.count {
-        case 3: return parts[0] * 3600 + parts[1] * 60 + parts[2]
-        case 2: return parts[0] * 60 + parts[1]
-        default: return nil
-        }
+        RaceClock.seconds(from: detail?.race.goal)
     }
 
     private func fmtRaceTime(_ secs: Int) -> String {
@@ -593,9 +586,18 @@ struct RaceDayView: View {
         return fmtPaceSec(Double(gs + 420) / dist)
     }
 
-    /// Cumulative split times at standard checkpoints. Mirrors web
-    /// raceDetail.ts:buildSplits — same ladder, same filter rule.
+    /// Cumulative split times at standard checkpoints.
+    /// 2026-06-09 · race-killer F3 — prefer the server's course-aware
+    /// splits (RaceDetailResponse.pacing · grade-weighted over the
+    /// authored course phases, cite Research/11 §grade-cost). The local
+    /// linear ladder remains as the fallback for older servers / courses
+    /// with no usable phase profile — flat-course splits on AFC told the
+    /// runner to bank nothing on The Drop and left the Balboa climb
+    /// unpriced.
     private var raceSplits: [(label: String, time: String)] {
+        if let server = detail?.pacing?.splits, !server.isEmpty {
+            return server.map { ($0.label, $0.display) }
+        }
         guard let gs = parsedGoalSec,
               let dist = detail?.race.distance_mi, dist > 0 else { return [] }
         let rungs: [(label: String, mi: Double)] = [

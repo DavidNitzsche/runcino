@@ -19,6 +19,7 @@
 import type { RaceDetailSeed } from './views/RaceView';
 import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
+import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 
 type CourseGeom = {
   trackPoints?: Array<{ lat: number; lon: number; ele: number | null }>;
@@ -74,20 +75,19 @@ function formatMileRange(a: number, b: number, first: boolean): string {
   return `${lo}–${round(b)}`;
 }
 
-function buildSplits(goalSec: number, distMi: number): RaceDetailSeed['splits'] {
+/** 2026-06-09 · race-killer F3 — course-aware goal splits. Delegates to
+ *  lib/race/pacing.ts: grade-weighted over the authored course phases when
+ *  the library has them (cite Research/11 §grade-cost), the identical
+ *  linear ladder when it doesn't. Flat-course splits on AFC told the
+ *  runner to bank nothing on The Drop and left the Balboa climb unpriced. */
+function buildSplits(
+  goalSec: number,
+  distMi: number,
+  geometry?: CourseGeometryInput | null,
+): RaceDetailSeed['splits'] {
   if (!goalSec || !distMi) return [];
-  const ladder: Array<{ label: string; mi: number }> = [
-    { label: '5K',  mi: 3.1069 },
-    { label: '10K', mi: 6.2137 },
-    { label: 'HALF', mi: 13.1094 },
-    { label: '30K', mi: 18.641 },
-    { label: '40K', mi: 24.855 },
-  ];
-  const out = ladder
-    .filter(r => r.mi < distMi - 0.1)
-    .map(r => ({ label: r.label, val: cumAt(goalSec, distMi, r.mi) }));
-  out.push({ label: 'FINISH', val: formatRaceTime(Math.round(goalSec)) ?? '·' });
-  return out;
+  return buildRacePacing({ goalSec, distanceMi: distMi, geometry: geometry ?? null })
+    .splits.map(s => ({ label: s.label, val: s.display }));
 }
 
 /** Gels at ~70g/hr (40g per gel), one every ~35 min. */
@@ -258,11 +258,13 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       // 2026-05-31: also pull editorial annotations (start_label,
       // finish_label, notes) so RaceView can render CourseAnnotations
       // when source='editorial'. Closes coverage row 1185.
+      // 2026-06-09 · race-killer F3 — also pull geometry_json: the authored
+      // phase profile feeds course-aware goal splits (lib/race/pacing.ts).
       pool.query(
-        `SELECT source, contributor_count, start_label, finish_label, notes
+        `SELECT source, contributor_count, start_label, finish_label, notes, geometry_json
            FROM course_library WHERE slug = $1`,
         [slug]
-      ).catch(() => ({ rows: [] as Array<{ source: string | null; contributor_count: number | null; start_label: string | null; finish_label: string | null; notes: string | null }> })),
+      ).catch(() => ({ rows: [] as Array<{ source: string | null; contributor_count: number | null; start_label: string | null; finish_label: string | null; notes: string | null; geometry_json: unknown }> })),
     ]);
     const row = geoRow.rows[0] ?? null;
     const geom = row?.course_geometry ?? null;
@@ -322,7 +324,7 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       aGoal,
       bGoal,
       pacing: buildPacing(aGoalSec, dist, netElevFt),
-      splits: buildSplits(aGoalSec, dist),
+      splits: buildSplits(aGoalSec, dist, (lib as { geometry_json?: unknown } | null)?.geometry_json as CourseGeometryInput | null),
       gels: buildGels(aGoalSec, dist),
       preRace:   '3 hrs out · 100g carbs + 24oz electrolyte',
       onCourse:  `${buildGels(aGoalSec, dist).length} × gel · ~70g/hr carbs`,

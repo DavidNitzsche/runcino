@@ -25,6 +25,7 @@
 
 import type { GoalRace } from '@/components/faff-app/types';
 import type { PhaseKey } from '@/components/faff-app/constants';
+import { parseRaceTime } from '@/lib/training/vdot';
 
 /** 2026-06-03 · minimal race shape phase-focus consumes. Lets backend
  *  callers (state-loader) reach the same authored copy without dragging
@@ -71,12 +72,12 @@ function goalPaceLabel(goalRace: GoalRace | PhaseFocusRace | null): string | nul
   return `${m}:${s}/mi`;
 }
 
+// 2026-06-09 · race-killer F2 — delegate to the shared parser. The local
+// 2-part branch read the stored "1:30" goal as 90s → goal-pace copy
+// "0:07/mi" in phase focus. parseRaceTime carries the h:mm-vs-m:ss
+// heuristic (vdot.ts:145).
 function parseClockToSec(s: string): number | null {
-  const parts = s.split(':').map((p) => parseInt(p, 10));
-  if (parts.some((n) => !Number.isFinite(n))) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return null;
+  return parseRaceTime(s);
 }
 
 /** Goal-time label for the race-day copy ("1:30 at AFC"). Falls back

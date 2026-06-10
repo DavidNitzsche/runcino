@@ -42,6 +42,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { GoalRace } from '../types';
+import { parseRaceTime } from '@/lib/training/vdot';
 
 interface GapPanelProps {
   goal: GoalRace;
@@ -81,28 +82,12 @@ const SWATCH: Record<SegKey, string> = {
 
 /* ─────── helpers ─────── */
 function parseClockToSec(s: string | null | undefined): number | null {
-  if (!s || s === '·') return null;
-  const parts = s.split(':').map(Number);
-  if (parts.some(Number.isNaN)) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) {
-    // 2026-06-04 · disambiguate h:mm vs m:ss · race goals are typically
-    // stored as "1:30" meaning 1 hour 30 minutes (5400s), not 1m30s (90s).
-    // David's QC: fitness chip showed "92:48" because goalSec=90 (misparsed)
-    // → totalGap = projSec - 90 = 5604 → fitness = 5568 ≈ 92:48.
-    //
-    // Heuristic: if the second part is 00-59 AND the first part is
-    // 1-9 (small-hour range), AND the implied m:ss would be < 10 min
-    // (unrealistic race finish), treat as h:mm. Real race finishes
-    // start at 12-15 min (5K) so a "race time" parsed below 10 min
-    // is almost certainly an h:mm mis-parse.
-    const asMinSec = parts[0] * 60 + parts[1];
-    if (asMinSec < 600 && parts[0] >= 1 && parts[0] <= 9 && parts[1] >= 0 && parts[1] < 60) {
-      return parts[0] * 3600 + parts[1] * 60;
-    }
-    return asMinSec;
-  }
-  return null;
+  // 2026-06-09 · race-killer F2 — delegate to the shared parser so every
+  // surface disambiguates "1:30" (h:mm goal) vs "23:15" (m:ss finish) the
+  // same way. This panel had its own fix since 2026-06-04 (David's QC:
+  // fitness chip "92:48" from goalSec=90); same heuristic, now one copy.
+  if (s === '·') return null;
+  return parseRaceTime(s);
 }
 function fmtClock(sec: number | null): string {
   if (sec == null) return ' · ';

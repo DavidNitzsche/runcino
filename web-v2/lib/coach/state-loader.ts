@@ -228,6 +228,14 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // Helper · groups daily values by sample_date (last 30 days),
   // returns current (today's reading) + baseline (mean of all
   // EXCEPT the last 7).
+  // 2026-06-09 · F4 · outlier-robust center for the "current" window.
+  const median = (xs: number[]): number | null => {
+    if (xs.length === 0) return null;
+    const s = [...xs].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 === 1 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+  };
+
   const loadStableBaseline = async (sampleType: string, currentWindow = 1): Promise<{ current: number | null; baseline: number | null }> => {
     const rows = (await pool.query<{ d: string; v: number | string }>(
       `SELECT recorded_at::date::text AS d, AVG(value)::numeric AS v
@@ -242,7 +250,14 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     const vals = rows.slice(-30).map((r) => Math.round(Number(r.v))).filter((v) => v > 0);
     if (vals.length === 0) return { current: null, baseline: null };
     const w = Math.min(currentWindow, vals.length);
-    const current = w > 0 ? Math.round(vals.slice(-w).reduce((s, x) => s + x, 0) / w) : null;
+    // 2026-06-09 · race-killer F4 — MEDIAN of the window, not mean.
+    // A single corrupted reading poisons a mean: 2026-06-08 production
+    // stored a 29 ms partial-night HRV (re-sync later corrected it to
+    // 46 ms) and the readiness pillar swung −18 → score 38 PULL-BACK;
+    // 2026-06-09 stored 102 ms vs a 55 ms baseline (ingest has no
+    // bounds). The median ignores one bad night in either direction;
+    // a real multi-day trend still moves it.
+    const current = w > 0 ? median(vals.slice(-w)) : null;
     // Stable baseline · mean of all-EXCEPT-last-7. Need ≥ 14 to be honest;
     // cold-start uses the whole-window mean as fallback.
     const baseline = vals.length >= 14

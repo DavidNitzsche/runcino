@@ -164,7 +164,14 @@ export interface RaceVdotCandidate {
   priority: 'A' | 'B' | 'C' | null;
   distance_mi: number;
   finish_seconds: number;
+  /** Effective VDOT after the stale-anchor fade (= vdot_raw inside the
+   *  full-value window). This is the value every consumer should treat
+   *  as "current fitness estimate". */
   vdot: number;
+  /** Raw Daniels VDOT of the performance, no age adjustment. */
+  vdot_raw: number;
+  /** Anchor age at evaluation time (days from race date to `today`). */
+  age_days: number;
 }
 
 export interface RunVdotCandidate {
@@ -175,6 +182,8 @@ export interface RunVdotCandidate {
   distance_mi: number;
   finish_seconds: number;
   vdot: number;
+  vdot_raw: number;
+  age_days: number;
 }
 
 export type VdotCandidate = RaceVdotCandidate | RunVdotCandidate;
@@ -240,8 +249,27 @@ export function vdotFromRun(input: {
  * point for sort purposes (a single real race always wins ties against
  * a training-derived estimate). This is the "race wins ties" doctrine.
  *
- * Skips items more than `lookbackDays` old (default: 180).
+ * 2026-06-09 · race-killer F1 — STALE-ANCHOR FADE. The hard window used
+ * to cliff: the day an anchor crossed `lookbackDays` it vanished and the
+ * next-best (often much slower) race took over overnight. Production
+ * case: Disney HM (Feb 1, 47.9) was due to exit the 180-day window on
+ * Aug 1 — VDOT 47.9 → 44.1 (LA Marathon), HM projection 1:34:54 →
+ * 1:41:55, fifteen days before the A-race, with zero fitness change.
+ *
+ * Now: candidates keep FULL value through `lookbackDays`, then fade at
+ * 0.1 VDOT per 14 days for up to `FADE_TAIL_DAYS` more before dropping
+ * out entirely. This is estimator smoothing, not physiology — the same
+ * staleness judgment the hard window already encoded, applied gradually
+ * instead of as a step function. Newer evidence (a race or qualifying
+ * run) still takes over the moment it scores higher — the fade only
+ * governs how an aging anchor exits. Fresh anchors are unaffected:
+ * age ≤ lookbackDays → effective ≡ raw. Recency-over-age precedent:
+ * Research/02-race-time-prediction.md §"estimate the exponent from two
+ * RECENT races". Cite: docs/ADVERSARIAL-AUDIT-REPORT.md §F1.
  */
+const FADE_PER_14D = 0.1;
+const FADE_TAIL_DAYS = 120;
+
 export function bestRecentVdot(
   races: Array<{ slug: string; name: string; date: string; priority: 'A'|'B'|'C'|null; distance_mi: number | null; finish_seconds: number | null }>,
   todayISO: string,
@@ -256,7 +284,17 @@ export function bestRecentVdot(
     max_hr?: number | null;
   }>,
 ): { best: VdotCandidate | null; considered: VdotCandidate[] } {
-  const cutoff = new Date(Date.parse(todayISO + 'T12:00:00Z') - lookbackDays * 86400000).toISOString().slice(0, 10);
+  const todayMs = Date.parse(todayISO + 'T12:00:00Z');
+  // Hard cutoff now includes the fade tail; the fade handles 180→300.
+  const cutoff = new Date(todayMs - (lookbackDays + FADE_TAIL_DAYS) * 86400000).toISOString().slice(0, 10);
+
+  const ageDays = (dateISO: string): number =>
+    Math.max(0, Math.round((todayMs - Date.parse(dateISO + 'T12:00:00Z')) / 86400000));
+  const effective = (raw: number, age: number): number => {
+    const over = Math.max(0, age - lookbackDays);
+    const faded = raw - (over / 14) * FADE_PER_14D;
+    return Math.round(faded * 10) / 10;
+  };
 
   const raceCandidates: RaceVdotCandidate[] = [];
   for (const r of races) {
@@ -265,10 +303,12 @@ export function bestRecentVdot(
     if (r.priority === 'C') continue;
     const v = vdotFromRace(r.finish_seconds, r.distance_mi);
     if (v == null) continue;
+    const age = ageDays(r.date);
     raceCandidates.push({
       source: 'race',
       slug: r.slug, name: r.name, date: r.date, priority: r.priority,
-      distance_mi: r.distance_mi, finish_seconds: r.finish_seconds, vdot: v,
+      distance_mi: r.distance_mi, finish_seconds: r.finish_seconds,
+      vdot: effective(v, age), vdot_raw: v, age_days: age,
     });
   }
 
@@ -285,15 +325,20 @@ export function bestRecentVdot(
         maxHr: r.max_hr ?? null,
       });
       if (v == null) continue;
+      const age = ageDays(r.date);
       runCandidates.push({
         source: 'run',
         id: r.id, date: r.date, workout_type: r.workout_type,
-        distance_mi: r.distance_mi, finish_seconds: r.finish_seconds, vdot: v,
+        distance_mi: r.distance_mi, finish_seconds: r.finish_seconds,
+        // Run candidates live in a 60-day loader window — well inside
+        // lookbackDays, so effective ≡ raw today; kept uniform anyway.
+        vdot: effective(v, age), vdot_raw: v, age_days: age,
       });
     }
   }
 
-  // Sort key: races at face value, runs -1 so a real race wins ties.
+  // Sort key: races at (effective) face value, runs -1 so a real race
+  // wins ties against a training-derived estimate.
   const sortKey = (c: VdotCandidate) => (c.source === 'race' ? c.vdot : c.vdot - 1);
   const considered = [...raceCandidates, ...runCandidates]
     .sort((a, b) => sortKey(b) - sortKey(a));

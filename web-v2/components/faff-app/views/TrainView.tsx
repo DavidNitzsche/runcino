@@ -22,7 +22,7 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed, GoalRace } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { buildAdaptText } from '../adapt-text';
-import { formatRaceTime } from '@/lib/training/vdot';
+import { formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 // 2026-06-03 · per-distance phase + race-day copy author. Replaces the
 // hardcoded marathon strings in PHASE constants. A half-marathon plan
 // no longer reads "sub-3 gets built" or "Hold 6:51/mi at CIM."
@@ -1369,12 +1369,9 @@ function workoutPurpose(
 
   const racePaceStr = (() => {
     if (!goalRace?.goal || !goalRace?.distanceMi) return null;
-    const parts = goalRace.goal.split(':').map(Number);
-    const totalSec = parts.length === 3
-      ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-      : parts.length === 2
-      ? parts[0] * 60 + parts[1]
-      : null;
+    // 2026-06-09 · race-killer F2 — shared parser. The inline 2-part branch
+    // read the stored "1:30" goal as 90s → "0:07/mi" in this copy, live daily.
+    const totalSec = parseRaceTime(goalRace.goal);
     if (totalSec == null) return null;
     return fmtPace(totalSec / goalRace.distanceMi);
   })();

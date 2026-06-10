@@ -31,6 +31,13 @@ on:
     # COUNT + a small batch dispatch + scheduler pass).
     - cron: '*/30 14-23 * * *'
     - cron: '*/30 0-6 * * *'
+    # 2026-06-09 · race-killer F6 — the 07:00-13:59 UTC gap above is
+    # 00:00-06:59 PACIFIC: the race-day wake notification (Category A,
+    # default 05:30 local = 12:30 UTC) needed a tick in that window and
+    # mathematically could never get one — the carefully-built gun-time
+    # reminder was unreachable code. Full 24h coverage also fixes every
+    # early-morning local time for non-Pacific runners.
+    - cron: '*/30 7-13 * * *'
   workflow_dispatch: {}
 
 jobs:

@@ -27,6 +27,12 @@ on:
     # hour even if half drift past their target.
     - cron: '*/15 14-23 * * *'
     - cron: '*/15 0-6 * * *'
+    # 2026-06-09 · race-killer F6 (companion) — the 07:00-13:59 UTC gap
+    # is 00:00-06:59 Pacific. A 5:00 AM race-morning app open hit a cold
+    # container on the one morning patience is shortest. Hourly (not
+    # */15) in the overnight window: warm enough for a 5 AM open, ~75%
+    # fewer overnight ticks than the daytime cadence.
+    - cron: '0 7-13 * * *'
   workflow_dispatch: {}  # manual trigger
 
 jobs:

@@ -22,6 +22,7 @@ import { prescriptionFor, type WorkoutType, type PrescriptionStep } from '@/lib/
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
 import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -285,7 +286,7 @@ export async function buildWatchToday(
 
   // 1. Find today's plan workout
   const plan = (await pool.query(
-    `SELECT id FROM training_plans
+    `SELECT id, race_id FROM training_plans
       WHERE user_uuid = $1 AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,
     [userId]
@@ -499,7 +500,18 @@ export async function buildWatchToday(
     //   · late-PM (issued 8AM → valid until 10PM same-day)
     // 14h covers both extremes. Doctrine:
     //   designs/briefs/backend-response-to-watch-2026-06-02.md
-    expiresAt: new Date(Date.now() + 14 * 3600 * 1000).toISOString(),
+    //
+    // 2026-06-09 · race-killer F5 — RACE payloads get end-of-day validity
+    // instead. The 14h guard exists to stop *yesterday's training run*
+    // recording against today's plan; on race morning it inverts into
+    // "phone dead at the corral + last sync > 14h → watch refuses to
+    // start THE RACE" (WorkoutRootView.swift:51). A race workout is
+    // pinned to its calendar date, so the stale-day risk the guard
+    // covers doesn't exist — validity through end-of-day-+8h closes the
+    // corral-refusal hole without re-opening Flag 6 for training days.
+    expiresAt: wo.type === 'race'
+      ? new Date(Date.parse(today + 'T23:59:59Z') + 8 * 3600 * 1000).toISOString()
+      : new Date(Date.now() + 14 * 3600 * 1000).toISOString(),
     distanceMi,
     paceLabel: paceLabelFor(wo.type),
     isRace: wo.type === 'race',
@@ -510,6 +522,103 @@ export async function buildWatchToday(
              : wo.type === 'tempo' ? 'tempo'
              : null,
   };
+
+  // 2026-06-09 · race-killers F3 + F16 — make the race payload race-ready.
+  if (wo.type === 'race') {
+    // The goal belongs to THE race this plan targets (plan.race_id), not
+    // "the next priority-A race" loaded above for prescription templates —
+    // on a B-race day those diverge and the watch would pace the wrong race.
+    const planRace = plan.race_id
+      ? (await pool.query<{ meta: Record<string, unknown> | null }>(
+          `SELECT meta FROM races WHERE user_uuid = $1 AND slug = $2 LIMIT 1`,
+          [userId, String(plan.race_id)],
+        ).catch(() => ({ rows: [] }))).rows[0]
+      : null;
+    const raceMeta = (planRace?.meta ?? raceRow?.meta ?? null) as Record<string, unknown> | null;
+    const raceGoalSec = raceMeta ? parseRaceGoalSec(raceMeta.goalDisplay as string) : null;
+    const raceDistMi = raceMeta
+      ? (Number(raceMeta.distanceMi) || distanceMiFromLabel(raceMeta.distanceLabel as string | null) || distanceMi)
+      : distanceMi;
+
+    // F3 · the race face's pace target is the runner's stated GOAL pace,
+    // not the spec band midpoint. Race rows stash kind:'long' with a
+    // T-anchored band (e.g. AFC: lo 397 / hi 412 → expandLong mid = 405
+    // = 6:45/mi — 7 s/mi faster than the 1:30 goal and ~29 s/mi faster
+    // than fitness pace). A runner obeying "on target" at the midpoint
+    // through an early descent blows up late.
+    //
+    // When the course library carries an authored phase profile, go one
+    // better: expand the race into one work phase PER COURSE PHASE with
+    // grade-adjusted targets (lib/race/pacing.ts · cite Research/11
+    // §grade-cost). The watch's existing phase machinery renders this
+    // with zero watch-side changes — per-phase target on LiveRaceFace,
+    // strip segments per course phase, haptic at each terrain change.
+    // Fallback: single work phase at flat goal pace. A deliberately
+    // multi-phase race SPEC (none exist today) is left untouched.
+    const specWorkPhases = workout.phases.filter((p) => p.type === 'work');
+    if (raceGoalSec && specWorkPhases.length === 1 && Math.abs(raceDistMi - distanceMi) < 0.5) {
+      let coursePhases: WatchPhase[] | null = null;
+      try {
+        const courseSlug = String(raceMeta?.courseSlug ?? plan.race_id ?? '');
+        const geoRow = courseSlug
+          ? (await pool.query<{ geometry_json: unknown }>(
+              `SELECT geometry_json FROM course_library WHERE slug = $1 LIMIT 1`,
+              [courseSlug],
+            ).catch(() => ({ rows: [] }))).rows[0]
+          : null;
+        const pacing = buildRacePacing({
+          goalSec: raceGoalSec,
+          distanceMi,
+          geometry: (geoRow?.geometry_json ?? null) as CourseGeometryInput | null,
+        });
+        if (pacing.source === 'course' && pacing.phases && pacing.phases.length > 1) {
+          coursePhases = pacing.phases.map((ph, i) => ({
+            type: 'work' as const,
+            label: ph.label,
+            distanceMi: Number((ph.end_mi - ph.start_mi).toFixed(2)),
+            durationSec: Math.round((ph.end_mi - ph.start_mi) * ph.pace_s_per_mi),
+            targetPaceSPerMi: ph.pace_s_per_mi,
+            tolerancePaceSPerMi: 12,
+            haptic: i === 0 ? ('start' as const) : ('transition-work' as const),
+            repUnit: 'distance' as const,
+            hrTargetBpm: null,
+          }));
+        }
+      } catch { /* course pacing is additive — flat goal pace below */ }
+
+      if (coursePhases) {
+        workout.phases = coursePhases;
+      } else {
+        const race = specWorkPhases[0];
+        race.targetPaceSPerMi = Math.round(raceGoalSec / raceDistMi);
+        race.tolerancePaceSPerMi = Math.min(race.tolerancePaceSPerMi ?? 12, 12);
+        if (race.distanceMi) {
+          race.durationSec = Math.round(race.distanceMi * (race.targetPaceSPerMi ?? 0));
+        }
+      }
+      workout.totalEstimatedMinutes = Math.round(
+        workout.phases.reduce((s, p) => s + p.durationSec, 0) / 60,
+      );
+    }
+
+    // F16 · goal delta — the watch's LiveRaceFace goal-delta row and the
+    // IdleView goal line (WorkoutEngine.swift:297, IdleView.swift:70)
+    // decode goalSec but the server never sent it. Independent of the
+    // pace targets so the delta renders even when course pacing is off.
+    if (raceGoalSec) workout.goalSec = raceGoalSec;
+
+    // F16 · gel cues — WorkoutEngine.swift:764 fires distance-anchored
+    // race-day gel alerts off gelsMi; never sent before. Source is the
+    // authored spec's fuel_mi, dropping cues inside the final 2 miles
+    // (the generator emits fixed spacing — AFC's spec says [5, 9, 13],
+    // and a gel at mile 13.0 of 13.1 is a cue nobody can use).
+    const fuelMi = Array.isArray((wo.workout_spec as Record<string, unknown> | null)?.fuel_mi)
+      ? ((wo.workout_spec as Record<string, unknown>).fuel_mi as unknown[])
+          .map(Number)
+          .filter((m) => Number.isFinite(m) && m >= 2 && m <= distanceMi - 2)
+      : [];
+    if (fuelMi.length > 0) workout.gelsMi = fuelMi;
+  }
 
   // P27.5 — populate readiness on the watch payload. Before this the
   // model declared readinessScore/Label fields but the server never

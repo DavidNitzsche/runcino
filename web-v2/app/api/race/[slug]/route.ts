@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { loadRacesState } from '@/lib/coach/races-state';
 import { requireUserId } from '@/lib/auth/session';
+import { parseRaceTime } from '@/lib/training/vdot';
+import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,14 +37,36 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // Course-library provenance (2026-05-30 audit) — when the course came
     // from the shared library, surface `source` + `contributor_count` so
     // the iPhone can render "Crowd-sourced by N runners" on the race page.
+    // 2026-06-09 · also pull geometry_json — the authored phase profile
+    // feeds the course-aware goal splits below (race-killer F3).
     const libRow = await pool.query(
-      `SELECT source, contributor_count FROM course_library WHERE slug = $1`,
+      `SELECT source, contributor_count, geometry_json FROM course_library WHERE slug = $1`,
       [slug],
     ).catch(() => ({ rows: [] }));
     const courseLibrary = libRow.rows[0] ? {
       source: libRow.rows[0].source ?? null,
       contributor_count: Number(libRow.rows[0].contributor_count ?? 0),
     } : null;
+
+    // 2026-06-09 · race-killer F3 — course-aware goal splits. The splits
+    // cards used to interpolate the goal linearly (flat-course splits on
+    // every course). Distribute the goal over the authored phase profile
+    // instead; degrades to the same linear ladder when no usable phases.
+    // The goal string parses via the shared parser ("1:30" → 5400, not 90
+    // — race-killer F2). Library phases win over user GPX geometry: the
+    // library carries authored grade phases, GPX rarely does.
+    let pacing = null;
+    try {
+      const goalSec = parseRaceTime((race as { goal?: string | null }).goal);
+      const distanceMi = Number((race as { distance_mi?: number | null }).distance_mi);
+      if (goalSec && distanceMi > 0) {
+        pacing = buildRacePacing({
+          goalSec,
+          distanceMi,
+          geometry: (libRow.rows[0]?.geometry_json ?? courseGeometry) as CourseGeometryInput | null,
+        });
+      }
+    } catch { /* pacing is additive — never fail the detail over it */ }
 
     const proximity = (race as any).days < 0 ? 'post-race'
       : (race as any).days <= 7 ? 'race-week'
@@ -55,6 +79,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       course_geometry: courseGeometry,
       course_source: courseSource,
       course_library: courseLibrary,
+      pacing,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });

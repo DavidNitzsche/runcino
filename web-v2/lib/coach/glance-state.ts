@@ -436,7 +436,19 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // same number. Previously: driver row used LIMIT 14 here (got 51),
   // BODY tile + forecast used the stable form (got 45) · same metric,
   // two numbers, one page.
-  const loadStableBaseline = async (sampleType: string): Promise<{ current: number | null; baseline: number | null }> => {
+  // 2026-06-09 · race-killer F4 — current = MEDIAN of a short window,
+  // not the last raw reading. This fast-path copy fed computeReadiness
+  // a SINGLE-DAY value while state-loader fed a 7-day window — the
+  // split-brain behind 2026-06-08's score-38 PULL-BACK from one 29 ms
+  // partial-night HRV sample (corrected to 46 ms on re-sync). Windows
+  // now match state-loader.ts exactly: hrv 7 · resting_hr 3, median.
+  const median = (xs: number[]): number | null => {
+    if (xs.length === 0) return null;
+    const s = [...xs].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 === 1 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+  };
+  const loadStableBaseline = async (sampleType: string, currentWindow = 1): Promise<{ current: number | null; baseline: number | null }> => {
     const rows = (await pool.query<{ d: string; v: number | string }>(
       `SELECT recorded_at::date::text AS d, AVG(value)::numeric AS v
          FROM health_samples
@@ -449,16 +461,17 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     ).catch(() => ({ rows: [] as Array<{ d: string; v: number | string }> }))).rows;
     const vals = rows.slice(-30).map((r) => Math.round(Number(r.v))).filter((v) => v > 0);
     if (vals.length === 0) return { current: null, baseline: null };
-    const current = vals.at(-1) ?? null;
+    const w = Math.min(currentWindow, vals.length);
+    const current = w > 0 ? median(vals.slice(-w)) : null;
     const baseline = vals.length >= 14
       ? Math.round(vals.slice(0, -7).reduce((s, x) => s + x, 0) / Math.max(1, vals.length - 7))
       : Math.round(vals.reduce((s, x) => s + x, 0) / vals.length);
     return { current, baseline };
   };
-  const rhrSt = await loadStableBaseline('resting_hr');
+  const rhrSt = await loadStableBaseline('resting_hr', 3);
   const rhrCurrent = rhrSt.current;
   const rhrBaseline = rhrSt.baseline;
-  const hrvSt = await loadStableBaseline('hrv');
+  const hrvSt = await loadStableBaseline('hrv', 7);
   const hrvCurrent = hrvSt.current;
   const hrvBaseline = hrvSt.baseline;
 

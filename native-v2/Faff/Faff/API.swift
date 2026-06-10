@@ -2200,3 +2200,32 @@ extension API {
 // LearnArticle model lives in Models/Tips.swift — was the original P40
 // home; extended with citations_json in the 2026-05-30 audit so the
 // /api/learn/[slug] reader has the full payload to render.
+
+/// 2026-06-09 · race-killer F2 — the ONE race-clock parser for iPhone.
+///
+/// Mirrors web `lib/training/vdot.ts parseRaceTime` (fixed 2026-06-03)
+/// exactly. Race goals commonly omit seconds: the stored AFC goal is
+/// "1:30", which the per-view 2-part parsers read as 90 seconds — on
+/// race morning RaceDayView would have shown 5K split "0:21", B-goal
+/// "8:30", goal pace "0:07/mi". Heuristic for the two-part form:
+/// first part ≤ 9 → H:MM (no real race goal is 10+ hours; 5K/10K
+/// finishes fit MM:SS with a first part ≥ 10).
+///
+///   "1:34:54" → 5694 · "1:30" → 5400 · "45:00" → 2700 · "23:15" → 1395
+enum RaceClock {
+    static func seconds(from raw: String?) -> Int? {
+        guard let raw else { return nil }
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        let parts = t.split(separator: ":")
+        guard parts.count == 2 || parts.count == 3 else { return nil }
+        // Match the web regex ^(\d+):(\d{2})(?::(\d{2}))?$ — trailing
+        // parts must be exactly two digits ("1:5" is malformed, nil).
+        guard parts.dropFirst().allSatisfy({ $0.count == 2 }) else { return nil }
+        let nums = parts.compactMap { Int($0) }
+        guard nums.count == parts.count else { return nil }
+        if nums.count == 3 { return nums[0] * 3600 + nums[1] * 60 + nums[2] }
+        return nums[0] <= 9
+            ? nums[0] * 3600 + nums[1] * 60   // H:MM goal form ("1:30")
+            : nums[0] * 60 + nums[1]          // MM:SS finish form ("23:15")
+    }
+}

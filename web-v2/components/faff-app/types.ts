@@ -504,7 +504,9 @@ export type ReadinessBriefSeed = {
     signal: 'sick' | 'niggle' | 'compound' | 'hrv_low_streak' | 'rhr_high_streak'
       | 'sleep_deficit' | 'hrv_cv_destabilizing' | 'wrist_temp_elevated'
       | 'load_spike' | 'load_caution' | 'load_detraining'
-      | 'tsb_overreach' | 'tsb_race_ready' | 'plan_adapted' | 'on_course';
+      | 'tsb_overreach' | 'tsb_race_ready' | 'plan_adapted'
+      // 2026-06-09 · race-killer F4 · race-morning execute line + taper note.
+      | 'race_day' | 'race_week' | 'on_course';
     priority: 'urgent' | 'high' | 'medium' | 'low' | 'on-course';
     action: string;
     cite: string;
