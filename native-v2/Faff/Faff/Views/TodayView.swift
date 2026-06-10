@@ -176,65 +176,9 @@ struct TodayView: View {
             FaffMeshView(mesh: mesh)
 
             VStack(spacing: 0) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(dayHeaderLabel)
-                            .font(.body(22, weight: .extraBold))
-                            .tracking(-0.4)
-                            .foregroundStyle(Theme.txt)
-                        if let wk = weekContextLabel {
-                            Text(wk)
-                                .font(.body(11, weight: .bold))
-                                .tracking(1.0)
-                                .foregroundStyle(Color.white.opacity(0.66))
-                        }
-                    }
-                    Spacer(minLength: 4)
-                    Button { onProfile() } label: {
-                        Group {
-                            if !avatarInitials.isEmpty {
-                                Text(avatarInitials)
-                                    .font(.body(12, weight: .bold))
-                            } else {
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 13, weight: .bold))
-                            }
-                        }
-                        .foregroundStyle(Theme.txt)
-                        .frame(width: 32, height: 32)
-                        .background(Theme.Glass.fill, in: Circle())
-                        .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-
-                HStack(spacing: 8) {
-                    Text("THIS WEEK")
-                        .font(.body(11, weight: .extraBold))
-                        .tracking(1.4)
-                        .foregroundStyle(Color.white.opacity(0.55))
-                    Spacer(minLength: 8)
-                    NavigationLink(value: FaffRoute.activity) {
-                        HStack(spacing: 4) {
-                            Text("ALL RUNS")
-                                .font(.body(11, weight: .extraBold))
-                                .tracking(1.4)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .foregroundStyle(Color.white.opacity(0.85))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 14)
-
                 if !allStripDays.isEmpty {
                     WeekStrip(days: allStripDays, selectedID: $selectedDayID)
-                        .padding(.top, 10)
+                        .padding(.top, 14)
                 }
 
                 StravaReconnectBanner(status: stravaStatus)
@@ -665,16 +609,12 @@ struct TodayView: View {
     private var heroBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // Eyebrow: effort type · zone + weather chip right-aligned
-            HStack(spacing: 8) {
-                SpecLabel(text: subLabel, size: 12, tracking: 1.0,
-                          color: Theme.txt.opacity(0.78))
-                    .textCase(.uppercase)
-                Spacer(minLength: 0)
-                if let t = weather?.tempF, t > 10, t < 130 {
-                    HeatBandChip(band: HeatBand.from(tempF: t),
-                                 tempLabel: "\(Int(t.rounded()))°F")
-                } else if let tag = weatherTagLabel {
+            // Weather chip — right-aligned, only shown when heat is meaningful
+            if let t = weather?.tempF, t > 10, t < 130 {
+                HStack { Spacer(minLength: 0); HeatBandChip(band: HeatBand.from(tempF: t), tempLabel: "\(Int(t.rounded()))°F") }
+            } else if let tag = weatherTagLabel {
+                HStack {
+                    Spacer(minLength: 0)
                     Text(tag)
                         .font(.label(9)).tracking(1.5)
                         .foregroundStyle(Color(hex: 0x1C0A02))
