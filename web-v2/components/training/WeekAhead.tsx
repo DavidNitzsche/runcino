@@ -40,11 +40,12 @@ function toGlanceDay(day: PlanWeek['days'][number], today: string): GlanceWeekDa
     // this component receives (lighter API for the WeekAhead grid). The
     // detail modal renders the placeholder fallback when null.
     plannedSpec: null,
+    strengthSpec: null,
     doneMi: day.doneMi,
     activityId: day.activityId,
     isToday: day.date === today,
     isPast: day.date < today,
-        adaptation: null,
+    adaptation: null,
   };
 }
 

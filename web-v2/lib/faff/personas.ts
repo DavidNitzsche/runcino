@@ -191,11 +191,12 @@ function buildWeek(
       // Lilian). Real users hit the spec path via plan-builder +
       // workout_spec column.
       plannedSpec: null,
+      strengthSpec: null,
       doneMi: s.doneMi ?? 0,
       activityId: s.activityId ?? null,
       isToday: isoDate === todayIso,
       isPast: isoDate < todayIso,
-        adaptation: null,
+      adaptation: null,
     };
   });
 }
