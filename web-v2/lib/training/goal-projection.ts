@@ -309,7 +309,7 @@ async function loadNextTestPoints(
        JOIN training_plans tp ON tp.id = pw.plan_id
       WHERE tp.user_uuid = $1::uuid
         AND tp.archived_iso IS NULL
-        AND pw.type IN ('tempo','threshold','intervals','long','race')
+        AND pw.type IN ('tempo','threshold','intervals','long','race','race_week_tuneup')
         AND pw.date_iso >= $2
         AND NOT EXISTS (
           SELECT 1 FROM runs r
@@ -410,7 +410,7 @@ async function loadRecentTestPoints(
         AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
       WHERE tp.user_uuid = $1::uuid
         AND tp.archived_iso IS NULL
-        AND pw.type IN ('tempo','threshold','intervals','long','race')
+        AND pw.type IN ('tempo','threshold','intervals','long','race','race_week_tuneup')
         AND pw.date_iso <= $2
       ORDER BY pw.date_iso DESC
       LIMIT 3`,
