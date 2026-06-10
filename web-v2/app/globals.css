@@ -34,20 +34,22 @@
      .gate-mesh (login) and any older selectors that haven't migrated. */
   --c1:#F5C297; --c2:#F18847; --c3:#E15F30; --c4:#D04525; --c5:#C2303E;
   --base:#8A1E30; --mbase:#8A1E30;
+  /* ── MOTION SCALE · four semantic durations ── */
+  --t-tap:0.12s; --t-state:0.22s; --t-sheet:0.42s; --t-mesh:0.7s;
 }
 html,body{height:100%;}
 body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211d18;overscroll-behavior:none;}
 .disp{font-family:'Oswald',sans-serif;}
-.win{width:100%;min-height:100vh;position:relative;overflow:hidden;background:var(--base);display:flex;transition:background .7s ease;}
+.win{width:100%;min-height:100vh;position:relative;overflow:hidden;background:var(--base);display:flex;transition:background var(--t-mesh) ease;}
 /* Effort Mesh Background · §2 blob layout + §4 web implementation.
    The Mesh component writes --c1..--c5 + --base per the active day's
    effort; per-blob inline `background` keeps React's .7s transition
    smooth on re-theme. Class-level `background: var(--cN)` is the
    no-anim baseline the reduced-motion fallback gradient reads. */
-.mesh{position:absolute;inset:0;z-index:0;background:var(--base);transition:background .7s ease;}
+.mesh{position:absolute;inset:0;z-index:0;background:var(--base);transition:background var(--t-mesh) ease;}
 .blobs{position:absolute;inset:-12%;filter:blur(46px);animation:breathe 17s ease-in-out infinite;}
 @keyframes breathe{0%,100%{filter:blur(46px) saturate(1) brightness(1)}50%{filter:blur(52px) saturate(1.14) brightness(1.06)}}
-.blob{position:absolute;border-radius:50%;opacity:.92;transition:background .7s ease;}
+.blob{position:absolute;border-radius:50%;opacity:.92;transition:background var(--t-mesh) ease;}
 .b1{left:-12%;top:-14%;width:74%;height:74%;background:var(--c1);animation:d1 22s ease-in-out infinite alternate;}
 .b2{left:34%;top:-10%;width:70%;height:72%;background:var(--c2);animation:d2 26s ease-in-out infinite alternate;}
 .b3{left:4%;top:18%;width:96%;height:88%;background:var(--c5);animation:d3 30s ease-in-out infinite alternate;}
@@ -58,6 +60,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 @keyframes d3{from{transform:translate(0,0) scale(1)}to{transform:translate(6%,-7%) scale(1.12)}}
 @keyframes d4{from{transform:translate(0,0) scale(1.05)}to{transform:translate(9%,-6%) scale(.95)}}
 @keyframes d5{from{transform:translate(0,0) scale(.97)}to{transform:translate(-8%,-8%) scale(1.12)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 /* Offscreen pause · spec §4. Stop burning GPU cycles on the mesh while
    the runner is on Plan / Health / Races / Profile / Activity. Today
    stays animated. Pausing leaves the last frame visible so the
@@ -84,7 +87,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .brandmark .bdot{display:inline-block;width:.16em;height:.16em;background:#F5C518;border-radius:50%;vertical-align:baseline;margin:0 .03em;-webkit-text-fill-color:#F5C518;}
 @keyframes faffSweep{0%{background-position:0% 50%}100%{background-position:200% 50%}}
 .nav{display:flex;flex-direction:column;gap:3px;}
-.nav a{display:flex;align-items:center;gap:13px;padding:12px 12px;border-radius:12px;color:var(--txt);text-decoration:none;font-size:15px;font-weight:500;opacity:1;transition:.15s;cursor:pointer;}
+.nav a{display:flex;align-items:center;gap:13px;padding:12px 12px;border-radius:12px;color:var(--txt);text-decoration:none;font-size:15px;font-weight:500;opacity:1;transition:var(--t-tap);cursor:pointer;}
 .nav a svg{width:19px;height:19px;}
 .nav a:hover{opacity:1;background:rgba(255,255,255,.05);}
 .nav a.on{opacity:1;background:rgba(255,255,255,.1);}
@@ -110,7 +113,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    - Section-labeled bands wrap their label + content in a .band div
      (see below).  Two-tier rhythm: tight --label-gap inside the
      band, loose --section-gap between bands. */
-.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:var(--grid-gap);display:grid;grid-auto-flow:row;grid-auto-rows:auto;gap:var(--section-gap);align-content:start;-ms-overflow-style:none;scrollbar-width:none;}
+.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:var(--grid-gap);display:grid;grid-auto-flow:row;grid-auto-rows:auto;gap:var(--section-gap);align-content:start;-ms-overflow-style:none;scrollbar-width:none;animation:fadeUp var(--t-tap) ease-out;}
 .main::-webkit-scrollbar{display:none;}
 /* 2026-06-04 · `.band` · a section-labeled band wraps its label
    (.fll / .weeklab / .eyebrow-sec / etc.) + its content as ONE grid
