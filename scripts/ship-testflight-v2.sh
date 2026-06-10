@@ -143,6 +143,12 @@ cat > /tmp/FaffV2ExportOptions.plist <<PLIST
 </dict></plist>
 PLIST
 
+# Brief v2 §1 build enforcement (queued task 6) · the ten-color lock +
+# retired-hex tripwire gates every TestFlight archive. Fails the ship if
+# any surface drifts from the locked palette.
+echo "→ Palette-sync gate (brief v2 §1)…"
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-palette-sync.sh"
+
 echo "→ Archiving…"
 ( cd "$NATIVE_V2" && xcodebuild -scheme Faff -configuration Release \
     -destination 'generic/platform=iOS' -archivePath /tmp/Faff-v2.xcarchive archive \
