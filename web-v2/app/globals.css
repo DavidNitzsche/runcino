@@ -638,7 +638,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-04 · margins stripped · .weeklab is a section label inside
    a .band wrapper.  Spacing comes from the band's flex gap
    (--label-gap below) and .main's grid gap (--section-gap above). */
-.weeklab{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;}
+.weeklab{font-size:11px;font-weight:700;letter-spacing:1.2px;opacity:1;text-transform:uppercase;}
 .week{display:flex;gap:10px;}
 .day{text-shadow:none;flex:1;border-radius:14px;padding:14px 13px;cursor:pointer;transition:.15s;border:1px solid var(--line);background:rgba(8,10,14,.46);backdrop-filter:blur(10px);}
 .day:hover{background:rgba(8,10,14,.58);}
@@ -1126,7 +1126,14 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-04 · margin-bottom stripped · the grid handles vertical
    rhythm now.  When .fll is used inside a card the local layout takes
    over (each card can space its eyebrow internally). */
-.fll{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;}
+/* ── EYEBROW SCALE (audit-locked 2026-06-10) ──
+   .eyebrow      · section labels ≤11px: 1.2px tracking
+   .eyebrow-hero · prominent headers ≥12px: 2px tracking
+   Update all new eyebrows to reference these classes; legacy
+   component-specific eyebrows migrate in their own pass. */
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.72);}
+.eyebrow-hero{font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.85);}
+.fll{font-size:11px;font-weight:700;letter-spacing:1.2px;opacity:1;text-transform:uppercase;}
 .vol{position:relative;display:flex;align-items:flex-end;gap:6px;height:60px;}
 .volavg{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(246,247,248,.45);pointer-events:none;}
 .vol i{flex:1;border-radius:4px 4px 0 0;}
@@ -1552,7 +1559,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 
 /* Drivers column */
 .hh-drivers{display:flex;flex-direction:column;}
-.hh-lbl{font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(159,179,173,.85);margin-bottom:14px;}
+.hh-lbl{font-size:11px;font-weight:800;letter-spacing:1.2px;color:rgba(159,179,173,.85);margin-bottom:14px;text-transform:uppercase;}
 .hh-drvlist{flex:1;display:flex;flex-direction:column;justify-content:space-between;}
 .hdrv{display:grid;grid-template-columns:128px 1fr 46px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06);}
 .hdrv:last-child{border-bottom:none;}
@@ -1624,7 +1631,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    on Health; spacing comes from .main grid (--section-gap above) +
    .band flex gap (--label-gap below).  Internal gap: 14 → 12 (3×base). */
 .hseclbl2{display:flex;align-items:center;gap:12px;}
-.hseclbl2 .t{font-size:12px;font-weight:800;letter-spacing:2.5px;color:rgba(255,255,255,.82);}
+.hseclbl2 .t{font-size:12px;font-weight:800;letter-spacing:2px;color:rgba(255,255,255,.82);text-transform:uppercase;}
 .hseclbl2 .ln{flex:1;height:1px;background:rgba(255,255,255,.1);}
 
 /* Architecture line · sits between SLEEP STAGES label and tiles */
