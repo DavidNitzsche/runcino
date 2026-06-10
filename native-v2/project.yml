@@ -144,6 +144,13 @@ targets:
         WKApplication: true
         WKWatchOnly: false
         WKCompanionAppBundleIdentifier: run.faff.app
+        # REQUIRED for HKWorkoutSession — without workout-processing the
+        # session fails / the app suspends on wrist-down mid-run. The
+        # legacy project carried this in FaffWatch-Watch-App-Info.plist
+        # (b051a523); the v2 cutover lost it because xcodegen regenerates
+        # the watch plist from THIS block. Audit RK-1 (2026-06-09).
+        WKBackgroundModes:
+          - workout-processing
         # Required: the watch uses HKWorkoutSession + HKWorkoutRouteBuilder
         # + CLLocationManager. Apple rejects ITMS-90683 without these.
         NSHealthShareUsageDescription: "Faff reads heart rate, HRV, calories, and workout data from Apple Health to coach your training."

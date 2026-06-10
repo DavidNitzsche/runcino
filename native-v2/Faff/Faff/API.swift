@@ -1199,6 +1199,13 @@ struct ProfilePhysiology: Decodable {
     // same 5-row Z1-Z5 anchor table the web /profile shows.
     let lthr_method: String?
     let zones: ProfileZoneTable?
+    // 2026-06-09 · Phase 2 F9 — anchor provenance for the displayed VDOT
+    // ("47.9 · Disney Half Marathon · 128d old"). The number rendered with
+    // no hint its anchor was a February race while every race since read
+    // 44-45 (adversarial audit F9). Optional on the wire — older servers
+    // omit them, views fall back to the bare number.
+    let vdot_anchor_age_days: Int?
+    let vdot_anchor_name: String?
 
     /// Empty fallback used by ProfileState when the wire emits a malformed
     /// physiology block. Every field is already optional · the explicit
@@ -1207,14 +1214,18 @@ struct ProfilePhysiology: Decodable {
     static let empty = ProfilePhysiology(
         max_hr: nil, max_hr_source: nil, rhr: nil,
         _vo2: nil, _weight_lb: nil, _vdot: nil,
-        lthr: nil, lthr_method: nil, zones: nil
+        lthr: nil, lthr_method: nil, zones: nil,
+        vdot_anchor_age_days: nil, vdot_anchor_name: nil
     )
     private init(max_hr: Int?, max_hr_source: String?, rhr: Int?,
                  _vo2: FlexibleDouble?, _weight_lb: FlexibleDouble?, _vdot: FlexibleDouble?,
-                 lthr: Int?, lthr_method: String?, zones: ProfileZoneTable?) {
+                 lthr: Int?, lthr_method: String?, zones: ProfileZoneTable?,
+                 vdot_anchor_age_days: Int?, vdot_anchor_name: String?) {
         self.max_hr = max_hr; self.max_hr_source = max_hr_source; self.rhr = rhr
         self._vo2 = _vo2; self._weight_lb = _weight_lb; self._vdot = _vdot
         self.lthr = lthr; self.lthr_method = lthr_method; self.zones = zones
+        self.vdot_anchor_age_days = vdot_anchor_age_days
+        self.vdot_anchor_name = vdot_anchor_name
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1223,6 +1234,7 @@ struct ProfilePhysiology: Decodable {
         case _weight_lb = "weight_lb"
         case _vdot = "vdot"
         case lthr, lthr_method, zones
+        case vdot_anchor_age_days, vdot_anchor_name
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1235,6 +1247,8 @@ struct ProfilePhysiology: Decodable {
         self.lthr = c.decodeFlexInt(forKey: .lthr)
         self.lthr_method = try c.decodeIfPresent(String.self, forKey: .lthr_method)
         self.zones = try? c.decode(ProfileZoneTable.self, forKey: .zones)
+        self.vdot_anchor_age_days = c.decodeFlexInt(forKey: .vdot_anchor_age_days)
+        self.vdot_anchor_name = try c.decodeIfPresent(String.self, forKey: .vdot_anchor_name)
     }
 }
 

@@ -269,7 +269,23 @@ struct TargetsView: View {
             // have a VDOT + projection_sec.
             Group {
                 if let p = projection, p.vdot != nil {
-                    TargetsProjectionPanel(summary: p)
+                    VStack(alignment: .leading, spacing: 8) {
+                        TargetsProjectionPanel(summary: p)
+                        // 2026-06-09 · Phase 2 F9 — anchor provenance. The
+                        // VDOT rendered with no hint its anchor was months
+                        // old (adversarial audit F9: 47.9 was a February
+                        // race while everything since read 44-45). Amber
+                        // past the 120-day confidence window (Research/02
+                        // §13.7) — same threshold as the web Health page.
+                        if let age = profile?.physiology.vdot_anchor_age_days {
+                            let stale = age >= 120
+                            Text("ANCHOR · \((profile?.physiology.vdot_anchor_name ?? "RACE EFFORT").uppercased()) · \(age)D\(stale ? " · STALE — A TUNE-UP RACE RE-RATES IT" : "")")
+                                .font(.body(10, weight: .bold))
+                                .tracking(1.2)
+                                .foregroundStyle(stale ? Theme.Accent.amberBright : Theme.txt.opacity(0.55))
+                                .padding(.horizontal, 4)
+                        }
+                    }
                 } else if projectionLoaded {
                     TargetsProjectionColdState()
                 } else {

@@ -408,6 +408,7 @@ final class WorkoutEngine: ObservableObject {
             ChimePlayer.shared.play()
         }
         startTimer()
+        saveSnapshot()
     }
 
     /// Arm a fresh pace-drift evaluator when the current phase is a WORK
@@ -449,23 +450,32 @@ final class WorkoutEngine: ObservableObject {
         transition = nil
         tracker?.pause()
         Haptics.play(.transitionCooldown)
+        saveSnapshot()
     }
 
-    /// Resume from a pause — shift the phase + workout origins forward by
-    /// the paused interval so the time off the clock never counts.
+    /// Resume from a pause — shift the phase origin forward by the paused
+    /// interval so the time off the clock never counts.
+    ///
+    /// `workoutStart` is deliberately NOT shifted (audit W-4, 2026-06-09):
+    /// its only consumer is the completion's `startedAt`, which must be the
+    /// real wall-clock start of the run — the old shift made a run paused
+    /// 8 min post a startedAt 8 min late, corrupting the server-side run
+    /// timestamp and straining HK-import dedup proximity. Elapsed math
+    /// never read workoutStart (it runs on bankedSec + phaseStart).
     func resume() {
         guard state == .running, isPaused, let ps = pauseStart else { return }
         let delta = Date.now.timeIntervalSince(ps)
         phaseStart = phaseStart.addingTimeInterval(delta)
-        workoutStart = workoutStart.addingTimeInterval(delta)
         pauseStart = nil
         isPaused = false
         tracker?.resume()
         Haptics.play(.transitionWork)
+        saveSnapshot()
     }
 
     func reset() {
         stopTimer()
+        Self.clearSnapshot()
         countdownTask?.cancel(); countdownTask = nil
         transitionClear?.cancel(); transitionClear = nil
         state = .idle
@@ -484,12 +494,19 @@ final class WorkoutEngine: ObservableObject {
         completion = nil
     }
 
-    /// Show a transition flip. **Fuel cues are persistent** — they stay on
-    /// screen until the runner swipes them away (`dismissTransition()`).
-    /// Everything else auto-clears after `seconds`. Idea: a missed gel is the
-    /// difference between hitting your race plan and bonking, so the alert
-    /// can't time out on you while you fumble for your gel.
-    private func flash(_ cue: TransitionCue, for seconds: Double) {
+    /// Show a transition flip. `persistent: true` keeps the cue on screen
+    /// until the runner swipes it away (`dismissTransition()`); everything
+    /// else auto-clears after `seconds`.
+    ///
+    /// TRAINING fuel cues are persistent — a missed gel is the difference
+    /// between hitting the plan and bonking, so the alert can't time out
+    /// while you fumble for your gel. RACE gel cues auto-clear (audit W-2,
+    /// 2026-06-09): mid-race the pace face is the priority read, and the
+    /// old code's `if case .fuel` early-return silently overrode the race
+    /// call site's auto-clear duration — at mile 20 the takeover hid live
+    /// pace until a deliberate swipe landed. Swipe-dismiss still works
+    /// during the visible window for both kinds.
+    private func flash(_ cue: TransitionCue, for seconds: Double, persistent: Bool = false) {
         transition = cue
         transitionClear?.cancel()
         // Audible "ding" on top of whatever haptic the caller already fired,
@@ -499,8 +516,7 @@ final class WorkoutEngine: ObservableObject {
         if UserDefaults.standard.bool(forKey: "audibleAlerts") {
             Haptics.chime()
         }
-        // Fuel: no auto-clear. Runner explicitly acknowledges.
-        if case .fuel = cue { return }
+        if persistent { return }
         transitionClear = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
             guard let self, self.transition == cue else { return }
@@ -536,9 +552,17 @@ final class WorkoutEngine: ObservableObject {
         // this class's @MainActor isolation, so tick() stays on the main
         // actor (no Swift 6 concurrency warning), and Task.sleep keeps the
         // clock ticking without blocking the run loop.
+        //
+        // 1 Hz, not 250 ms (audit W-1, 2026-06-09). The clock is wall-clock
+        // anchored (elapsedSincePhaseStart), so a slower tick can't drift —
+        // and GPS/HR sources update at ~1 Hz anyway. At 250 ms every tick
+        // re-assigned @Published vars (willSet fires even on equal values),
+        // so the whole face tree re-rendered 4×/s for the entire workout.
+        // Combined with the changed-value guards in tick(), this cuts
+        // render churn ~4× over a 3.5 h race.
         ticker = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(250))
+                try? await Task.sleep(for: .seconds(1))
                 guard let self else { return }
                 self.tick()
             }
@@ -553,21 +577,28 @@ final class WorkoutEngine: ObservableObject {
     // Internal so tests can call it directly after rolling `phaseStart`
     // backward to simulate elapsed time. Production callers reach it via
     // the Task loop in `startTimer()`.
+    /// Assign only when the value actually changed — @Published fires
+    /// objectWillChange on every write (willSet), equal or not, so
+    /// unconditional assigns re-render every observing face per tick.
+    private func publishElapsed(_ phaseSec: Int) {
+        if phaseElapsedSec != phaseSec { phaseElapsedSec = phaseSec }
+        let total = bankedSec + phaseSec
+        if totalElapsedSec != total { totalElapsedSec = total }
+    }
+
     func tick() {
         guard state == .running, !isPaused else { return }
 
         // Overtime: plan is done, but keep the clock + live metrics running.
         // No phase logic — the user runs free until they End.
         if planComplete {
-            phaseElapsedSec = elapsedSincePhaseStart()
-            totalElapsedSec = bankedSec + phaseElapsedSec
+            publishElapsed(elapsedSincePhaseStart())
             return
         }
 
         guard let phase = currentPhase else { return }
 
-        phaseElapsedSec = elapsedSincePhaseStart()
-        totalElapsedSec = bankedSec + phaseElapsedSec
+        publishElapsed(elapsedSincePhaseStart())
 
         // Sample per-phase aggregates from the tracker once per tick (1 Hz).
         // recordCurrentPhase() turns these into true averages on phase end.
@@ -607,7 +638,8 @@ final class WorkoutEngine: ObservableObject {
         // HR drops back below the ceiling so the alert is honest, not sticky.
         if let ceiling = workout.hrCeilingBpm, ceiling > 0 {
             let hr = tracker?.heartRate ?? 0
-            hrOverCeiling = hr > ceiling
+            let over = hr > ceiling
+            if hrOverCeiling != over { hrOverCeiling = over }
         } else if hrOverCeiling {
             hrOverCeiling = false
         }
@@ -635,7 +667,7 @@ final class WorkoutEngine: ObservableObject {
                     // swiped down — see flash() and dismissTransition().
                     let total = max(fueling.gels, fueling.atMins.count)
                     Haptics.play(.transitionCooldown)
-                    flash(.fuel(index: i + 1, total: total), for: 5)
+                    flash(.fuel(index: i + 1, total: total), for: 5, persistent: true)
                 }
             }
         }
@@ -645,8 +677,8 @@ final class WorkoutEngine: ObservableObject {
         if phase.type == .work, let pace = tracker?.paceSPerMi, pace > 0 {
             let r = driftEval?.update(currentPaceSPerMi: pace)
             if let r {
-                paceZone = r.zone
-                paceDeltaSPerMi = r.deltaSPerMi
+                if paceZone != r.zone { paceZone = r.zone }
+                if paceDeltaSPerMi != r.deltaSPerMi { paceDeltaSPerMi = r.deltaSPerMi }
                 if r.fireHaptic { Haptics.almostDone() }
             }
         }
@@ -765,7 +797,10 @@ final class WorkoutEngine: ObservableObject {
             for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
                 firedGels.insert(i)
                 Haptics.almostDone()
-                flash(.fuel(index: i + 1, total: gels.count), for: 3)
+                // Auto-clears (6 s, generous but bounded) — mid-race the
+                // pace face must come back on its own; see flash() doc.
+                flash(.fuel(index: i + 1, total: gels.count), for: 6)
+                saveSnapshot()
             }
         }
 
@@ -823,6 +858,7 @@ final class WorkoutEngine: ObservableObject {
             // signals overtime by flipping the distance row to .bonus
             // purple + counting up, and Haptics.play(.end) just fired
             // above. The extra full-screen wordmark flash was clutter.
+            saveSnapshot()
             return
         }
 
@@ -869,6 +905,7 @@ final class WorkoutEngine: ObservableObject {
         if pendingRpeResultsIndex != nil, currentPhase?.type != .work {
             showRpePromptIfPending()
         }
+        saveSnapshot()
     }
 
     private func recordCurrentPhase(completed: Bool) {
@@ -1009,6 +1046,115 @@ final class WorkoutEngine: ObservableObject {
         pendingRpeResultsIndex = nil
     }
 
+    // MARK: - Crash/reboot recovery snapshot (audit RK-3, 2026-06-09)
+    //
+    // The engine's state lives in memory; a watch app crash or reboot at
+    // mile 20 used to lose the entire run structure (HK kept recording,
+    // but the app relaunched into the lobby). A tiny Codable snapshot is
+    // persisted at every state-changing boundary (start, phase advance,
+    // pause, resume, race gel) — never per-tick — and cleared on finish/
+    // reset. WorkoutRootModel checks for it at launch, re-attaches the
+    // live HKWorkoutSession via WorkoutTracker.recover(), and rebuilds
+    // the engine mid-run. Everything time-derived self-heals because the
+    // clock is wall-anchored (phaseStart/bankedSec), and distance
+    // self-heals because HK statistics are cumulative for the session.
+
+    struct EngineSnapshot: Codable {
+        let workout: WatchWorkout
+        var currentIndex: Int
+        var bankedSec: Int
+        var phaseStart: Date
+        var phaseStartMi: Double
+        var workoutStart: Date
+        var planComplete: Bool
+        var isPaused: Bool
+        var pauseStart: Date?
+        var firedFuelIndices: [Int]
+        var firedGels: [Int]
+        var lastMileIndex: Int
+        var lastMileElapsedSec: Int
+        var didFireAlmostDone: Bool
+        var results: [WatchCompletionPhase]
+    }
+
+    private static let snapshotKey = "faff.watch.activeRun.v1"
+
+    func saveSnapshot() {
+        guard state == .running else { return }
+        let snap = EngineSnapshot(
+            workout: workout,
+            currentIndex: currentIndex,
+            bankedSec: bankedSec,
+            phaseStart: phaseStart,
+            phaseStartMi: phaseStartMi,
+            workoutStart: workoutStart,
+            planComplete: planComplete,
+            isPaused: isPaused,
+            pauseStart: pauseStart,
+            firedFuelIndices: Array(firedFuelIndices),
+            firedGels: Array(firedGels),
+            lastMileIndex: lastMileIndex,
+            lastMileElapsedSec: lastMileElapsedSec,
+            didFireAlmostDone: didFireAlmostDone,
+            results: results
+        )
+        if let data = try? JSONEncoder().encode(snap) {
+            UserDefaults.standard.set(data, forKey: Self.snapshotKey)
+        }
+    }
+
+    static func clearSnapshot() {
+        UserDefaults.standard.removeObject(forKey: snapshotKey)
+    }
+
+    /// A snapshot worth restoring: exists and is younger than 12 h (don't
+    /// resurrect yesterday's crash into this morning's lobby).
+    static func loadSnapshot() -> EngineSnapshot? {
+        guard let data = UserDefaults.standard.data(forKey: snapshotKey),
+              let snap = try? JSONDecoder().decode(EngineSnapshot.self, from: data) else { return nil }
+        guard Date.now.timeIntervalSince(snap.workoutStart) < 12 * 3600 else {
+            clearSnapshot()
+            return nil
+        }
+        return snap
+    }
+
+    /// Rebuild a mid-run engine from a snapshot. Caller attaches the
+    /// tracker (recovered or fresh) before calling. Per-phase HR/cadence
+    /// aggregates and 5-sec sample buffers restart empty — the banked
+    /// results array carries everything from completed phases, and the
+    /// current phase's aggregates cover post-recovery samples only.
+    static func restore(from snap: EngineSnapshot, tracker: WorkoutTracker?) -> WorkoutEngine {
+        let e = WorkoutEngine(workout: snap.workout)
+        e.tracker = tracker
+        e.state = .running
+        e.currentIndex = snap.currentIndex
+        e.bankedSec = snap.bankedSec
+        e.phaseStart = snap.phaseStart
+        e.phaseStartMi = snap.phaseStartMi
+        e.workoutStart = snap.workoutStart
+        e.planComplete = snap.planComplete
+        e.isPaused = snap.isPaused
+        e.pauseStart = snap.pauseStart
+        e.firedFuelIndices = Set(snap.firedFuelIndices)
+        e.firedGels = Set(snap.firedGels)
+        e.lastMileIndex = snap.lastMileIndex
+        e.lastMileElapsedSec = snap.lastMileElapsedSec
+        e.didFireAlmostDone = snap.didFireAlmostDone
+        e.results = snap.results
+        // While paused the clock shows the frozen value (phaseStart →
+        // pauseStart); running, it catches up to now off the wall clock.
+        if e.isPaused, let ps = snap.pauseStart {
+            e.phaseElapsedSec = max(0, Int(ps.timeIntervalSince(snap.phaseStart) * warpFactor))
+        } else {
+            e.phaseElapsedSec = max(0, Int(Date.now.timeIntervalSince(snap.phaseStart) * warpFactor))
+        }
+        e.totalElapsedSec = snap.bankedSec + e.phaseElapsedSec
+        e.prepDrift()
+        e.startTimer()
+        return e
+    }
+
     // MARK: - GPS polyline encoder
 
     /// Google precision-5 polyline encoding.  Matches the decoder in the
@@ -1034,6 +1180,7 @@ final class WorkoutEngine: ObservableObject {
 
     private func finish(status: String) {
         stopTimer()
+        Self.clearSnapshot()
         // Build the completion BEFORE flipping state, so anything observing the
         // .finished transition (the root model's auto-send) can read it.
         completion = buildCompletion(status: status)
