@@ -21,6 +21,7 @@
  *   Cite: Research/08-pacing-and-race-week.md §taper
  */
 import { pool } from '@/lib/db/pool';
+import type { PoolClient } from 'pg';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
@@ -1535,29 +1536,22 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
 
 // ── Persistence ─────────────────────────────────────────────────────────
 
-async function clearActivePlansFor(userId: string): Promise<void> {
-  await pool.query(
+/** 2026-06-09 · M-19 · runs on the rebuild transaction's client so the
+ *  archive UPDATE commits (or rolls back) atomically with the new
+ *  plan's inserts. A crash between archive and insert used to leave
+ *  the runner with NO active plan — today/watch/adaptation crons went
+ *  dark. The lookup-cache bust moved to generatePlan, post-commit
+ *  (busting pre-commit let a concurrent render re-cache the OLD plan
+ *  mid-rebuild and serve it stale for the TTL). */
+async function clearActivePlansFor(client: PoolClient, userId: string): Promise<void> {
+  await client.query(
     `UPDATE training_plans SET archived_iso = NOW()
       WHERE user_uuid = $1 AND archived_iso IS NULL`,
     [userId]
   );
-  // Plan mutation → invalidate memoized lookup so the next /today render
-  // sees the new active plan.
-  (await import('./lookup')).bustPlanLookupCache(userId);
 }
 
-/**
- * 2026-06-03 · Rule 15 · Seal completed days against retroactive
- * mutation. Snapshotted BEFORE clearActivePlansFor archives the prior
- * plan; applied during INSERT so the new plan's row for a completed
- * date inherits the prior prescription.
- *
- * Captured at module scope so persistPlan + its caller share the same
- * snapshot · the wrapper sets it on each invocation.
- */
-let sealedSnapshot: Map<string, SealedPrescription> = new Map();
-
-async function persistPlan(args: {
+async function persistPlan(client: PoolClient, args: {
   userId: string; raceSlug: string; raceDateISO: string;
   blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean; tPaceSec?: number | null }>;
   authoredState: Record<string, unknown>;
@@ -1578,26 +1572,44 @@ async function persistPlan(args: {
    *  goal time · spec-builder falls back to an inverse-offset
    *  derivation from T. */
   goalPaceSec: number | null;
+  /** 2026-06-03 · Rule 15 · Seal completed days against retroactive
+   *  mutation. Snapshotted BEFORE clearActivePlansFor archives the
+   *  prior plan; applied during INSERT so the new plan's row for a
+   *  completed date inherits the prior prescription.
+   *  2026-06-09 · M-19 · passed as a parameter (was module-scoped
+   *  state shared between generatePlan and persistPlan). */
+  sealedSnapshot: Map<string, SealedPrescription>;
 }): Promise<string> {
   const planId = id('pln');
-  await pool.query(
+  await client.query(
     `INSERT INTO training_plans (id, user_id, user_uuid, mode, race_id, goal_iso, authored_state)
      VALUES ($1, 'me', $2, 'race-prep', $3, $4, $5)`,
     [planId, args.userId, args.raceSlug, args.raceDateISO, args.authoredState]
   );
 
   // Phases (need ids upfront so weeks can reference)
+  // 2026-06-09 · M-19 · one multi-row INSERT (was one statement per
+  // phase) · fewer round-trips inside the rebuild transaction.
   const phaseIds: string[] = [];
-  let cursor = 0;
-  for (const ph of args.blocks.phases) {
-    const phaseId = id('phs');
-    phaseIds.push(phaseId);
-    await pool.query(
-      `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [phaseId, planId, ph.label, cursor, cursor + ph.weeks - 1, ph.rationale, ph.citation]
-    );
-    cursor += ph.weeks;
+  {
+    const params: unknown[] = [];
+    const tuples: string[] = [];
+    let cursor = 0;
+    for (const ph of args.blocks.phases) {
+      const phaseId = id('phs');
+      phaseIds.push(phaseId);
+      const b = params.length;
+      tuples.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7})`);
+      params.push(phaseId, planId, ph.label, cursor, cursor + ph.weeks - 1, ph.rationale, ph.citation);
+      cursor += ph.weeks;
+    }
+    if (tuples.length > 0) {
+      await client.query(
+        `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation)
+         VALUES ${tuples.join(', ')}`,
+        params
+      );
+    }
   }
 
   // Map weekIdx → phaseId
@@ -1611,12 +1623,18 @@ async function persistPlan(args: {
     return phaseIds[phaseIds.length - 1];
   };
 
+  // 2026-06-09 · M-19 · collect week + workout rows, then flush as
+  // multi-row VALUES inserts (weeks in one statement, workouts in
+  // chunks of 50). Was one pool.query per row — ~16 + ~80-100 separate
+  // statements inside the rebuild, each a round-trip. Day-level logic
+  // below is unchanged; only the write is deferred.
+  const weekRows: unknown[][] = [];
+  const workoutRows: unknown[][] = [];
+
   for (let wi = 0; wi < args.weeks.length; wi++) {
     const w = args.weeks[wi];
     const weekId = id('wk');
-    await pool.query(
-      `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    weekRows.push(
       [weekId, planId, wi, w.startISO, phaseForWeek(wi), w.isRaceWeek, `${w.phase} · week ${wi + 1}`]
     );
 
@@ -1670,7 +1688,7 @@ async function persistPlan(args: {
       // exists, OVERRIDE the freshly-composed prescription with the
       // prior's. The runner trained against the prior prescription ·
       // changing it after-the-fact would make every retro lie.
-      const sealed = sealedSnapshot.get(dateISO);
+      const sealed = args.sealedSnapshot.get(dateISO);
       const finalType = sealed?.type ?? d.type;
       const finalDistanceMi = sealed?.distance_mi ?? totalDistanceMi;
       const finalPaceSec = sealed?.pace_target_s_per_mi ?? paceTargetSPerMi;
@@ -1684,17 +1702,50 @@ async function persistPlan(args: {
       }
       // dow stored as 1=Mon..7=Sun in our convention? Use what plan_workouts expects.
       // We pass dow 0..6 (Sun..Sat). Existing reader treats numeric dow + sub_label.
-      await pool.query(
-        `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
-                                    pace_target_s_per_mi, workout_spec,
-                                    is_quality, is_long, notes, sub_label,
-                                    original_date_iso, original_type, original_distance_mi, original_sub_label)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $4, $6, $7, $13)`,
+      workoutRows.push(
         [wkoId, planId, weekId, dateISO, d.dow, finalType, finalDistanceMi,
          finalPaceSec, finalSpec ? JSON.stringify(finalSpec) : null,
          finalIsQuality, finalIsLong, finalNotes, finalSubLabel]
       );
     }
+  }
+
+  if (weekRows.length > 0) {
+    const params: unknown[] = [];
+    const tuples = weekRows.map((row) => {
+      const b = params.length;
+      params.push(...row);
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7})`;
+    });
+    await client.query(
+      `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale)
+       VALUES ${tuples.join(', ')}`,
+      params
+    );
+  }
+
+  // 13 bound params per row · the original_* columns reuse the row's own
+  // placeholders ($b+4 date, $b+6 type, $b+7 distance, $b+13 sub_label)
+  // exactly like the old single-row statement reused $4/$6/$7/$13.
+  const WORKOUT_CHUNK = 50;
+  for (let i = 0; i < workoutRows.length; i += WORKOUT_CHUNK) {
+    const chunk = workoutRows.slice(i, i + WORKOUT_CHUNK);
+    const params: unknown[] = [];
+    const tuples = chunk.map((row) => {
+      const b = params.length;
+      params.push(...row);
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, ` +
+        `$${b + 8}, $${b + 9}::jsonb, $${b + 10}, $${b + 11}, $${b + 12}, $${b + 13}, ` +
+        `$${b + 4}, $${b + 6}, $${b + 7}, $${b + 13})`;
+    });
+    await client.query(
+      `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
+                                  pace_target_s_per_mi, workout_spec,
+                                  is_quality, is_long, notes, sub_label,
+                                  original_date_iso, original_type, original_distance_mi, original_sub_label)
+       VALUES ${tuples.join(', ')}`,
+      params
+    );
   }
 
   return planId;
@@ -1777,55 +1828,87 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     });
   }
 
-  // 4. Archive existing + persist.
-  // 2026-06-03 · Rule 15 · snapshot the prior plan's completed-day
-  // prescriptions BEFORE archiving so persistPlan can overlay them
-  // onto the new plan's rows. Without this, a rebuild would change
-  // what the runner was prescribed for days they already ran ·
-  // every retro surface (badge, recap, VDOT, adapt-text) would lie.
-  sealedSnapshot = await snapshotSealedDays(userId);
-  await clearActivePlansFor(userId);
-  const planId = await persistPlan({
-    userId,
-    raceSlug,
-    raceDateISO: inputs.compose.raceDateISO,
-    blocks: composed.blocks,
-    weeks: composed.weeks.map((w) => ({
-      // 2026-06-06 · Audit C C1-1f · pass the per-week blended tPaceSec
-      // through to persistPlan. Was stripped here → persistPlan fell back
-      // to plan-wide goalT for every week → flat goal-pace plan (the
-      // Rule 3 ramp was computed in composePlan then discarded at persist).
-      startISO: w.startISO, phase: w.phase, days: w.days, isRaceWeek: w.isRaceWeek, tPaceSec: w.tPaceSec,
-    })),
-    tPaceSec: inputs.compose.tPaceSec,
-    lthr: inputs.compose.lthr,
-    // 2026-06-03 · Rule 16 · plumb maxHr through to spec-builder so
-    // easy/long HR caps land at max(89% LTHR, 78% maxHR) instead of
-    // LTHR-only. profile.max_hr already loaded in inputs.compose.maxHr
-    // via the planInputs reader.
-    maxHr: inputs.compose.maxHr,
-    // 2026-06-09 state-audit fix · goal pace for the race-day target.
-    goalPaceSec: inputs.compose.goalPaceSec,
-    authoredState: {
-      ...composed.authoredState,
-      mode,
-      generated_at: new Date().toISOString(),
-      // When runway is < 14 weeks (e.g. AFC → CIM compressed block), flag it
-      // so the coach briefing layer can surface the context. Base phase
-      // condenses; race-specific and taper are preserved intact.
-      // Cite: Research/22-plan-templates.md §11 "Two Marathons (spring + fall)"
-      ...(composed.totalWeeks < 14 ? {
-        compressed_timeline: true,
-        compressed_note: `${composed.totalWeeks}-week build — base phase condensed; race-specific phase and taper preserved intact.`,
-      } : {}),
-    },
-  });
+  // 4. Archive existing + persist · one transaction (M-19, 2026-06-09).
+  // Wraps sealed-day snapshot → archive → all plan inserts → mode
+  // stamp. Before this each step was its own pool.query: a crash after
+  // the archive UPDATE left the runner with NO active plan (today /
+  // watch / adaptation crons go dark), a crash mid-insert left a
+  // half-written plan, and a transient DB error during the sealed-day
+  // snapshot silently returned an empty map — the retry rebuilt with
+  // every Rule 15 seal dropped. Now any failure rolls the whole
+  // rebuild back and the prior plan stays active.
+  let planId: string | undefined;
+  const client = await pool.connect();
+  let releaseErr: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    // 2026-06-03 · Rule 15 · snapshot the prior plan's completed-day
+    // prescriptions BEFORE archiving so persistPlan can overlay them
+    // onto the new plan's rows. Without this, a rebuild would change
+    // what the runner was prescribed for days they already ran ·
+    // every retro surface (badge, recap, VDOT, adapt-text) would lie.
+    // Throws on DB error · the rebuild aborts rather than unsealing.
+    const sealedSnapshot = await snapshotSealedDays(client, userId);
+    await clearActivePlansFor(client, userId);
+    planId = await persistPlan(client, {
+      userId,
+      raceSlug,
+      raceDateISO: inputs.compose.raceDateISO,
+      blocks: composed.blocks,
+      weeks: composed.weeks.map((w) => ({
+        // 2026-06-06 · Audit C C1-1f · pass the per-week blended tPaceSec
+        // through to persistPlan. Was stripped here → persistPlan fell back
+        // to plan-wide goalT for every week → flat goal-pace plan (the
+        // Rule 3 ramp was computed in composePlan then discarded at persist).
+        startISO: w.startISO, phase: w.phase, days: w.days, isRaceWeek: w.isRaceWeek, tPaceSec: w.tPaceSec,
+      })),
+      tPaceSec: inputs.compose.tPaceSec,
+      lthr: inputs.compose.lthr,
+      // 2026-06-03 · Rule 16 · plumb maxHr through to spec-builder so
+      // easy/long HR caps land at max(89% LTHR, 78% maxHR) instead of
+      // LTHR-only. profile.max_hr already loaded in inputs.compose.maxHr
+      // via the planInputs reader.
+      maxHr: inputs.compose.maxHr,
+      // 2026-06-09 state-audit fix · goal pace for the race-day target.
+      goalPaceSec: inputs.compose.goalPaceSec,
+      sealedSnapshot,
+      authoredState: {
+        ...composed.authoredState,
+        mode,
+        generated_at: new Date().toISOString(),
+        // When runway is < 14 weeks (e.g. AFC → CIM compressed block), flag it
+        // so the coach briefing layer can surface the context. Base phase
+        // condenses; race-specific and taper are preserved intact.
+        // Cite: Research/22-plan-templates.md §11 "Two Marathons (spring + fall)"
+        ...(composed.totalWeeks < 14 ? {
+          compressed_timeline: true,
+          compressed_note: `${composed.totalWeeks}-week build — base phase condensed; race-specific phase and taper preserved intact.`,
+        } : {}),
+      },
+    });
 
-  // Write the mode column for fast filtering by graduate/transition crons.
-  await pool.query(
-    `UPDATE training_plans SET mode = $1 WHERE id = $2`,
-    [mode, planId],
-  );
+    // Write the mode column for fast filtering by graduate/transition crons.
+    await client.query(
+      `UPDATE training_plans SET mode = $1 WHERE id = $2`,
+      [mode, planId],
+    );
+    await client.query('COMMIT');
+  } catch (e) {
+    console.error('[generatePlan]', `rebuild rolled back · prior active plan untouched · user=${userId.slice(0, 8)} ·`, e instanceof Error ? e.message : String(e));
+    // Roll back so the prior active plan stays live. If ROLLBACK itself
+    // fails the connection is poisoned — hand the error to release() so
+    // the pool destroys the socket instead of recycling a connection
+    // with an open aborted transaction.
+    try { await client.query('ROLLBACK'); }
+    catch (rbErr) { releaseErr = rbErr instanceof Error ? rbErr : new Error(String(rbErr)); }
+    throw e;
+  } finally {
+    client.release(releaseErr);
+  }
+
+  // Post-commit, best-effort · plan mutation → invalidate memoized lookup
+  // so the next /today render sees the new active plan.
+  (await import('./lookup')).bustPlanLookupCache(userId);
 
   return { ok: true, plan_id: planId, weeks_generated: composed.totalWeeks };
 }

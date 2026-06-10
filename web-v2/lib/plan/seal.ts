@@ -45,6 +45,7 @@
  * Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 15
  */
 import { pool } from '@/lib/db/pool';
+import type { PoolClient } from 'pg';
 
 /**
  * Does a completed run exist for this user/date?
@@ -125,11 +126,20 @@ export interface SealedPrescription {
  * day so persistPlan can overlay them onto the new plan's rows.
  *
  * Returns a Map keyed by date_iso (YYYY-MM-DD).
+ *
+ * 2026-06-09 · M-19 · runs on the rebuild transaction's client (passed
+ * in, not the pool) so the snapshot reads the SAME still-active plan
+ * the archive UPDATE that follows will touch. A query failure now
+ * THROWS instead of returning an empty map — the old `.catch(() =>
+ * ({ rows: [] }))` silently unsealed every completed day on a
+ * transient DB error. Throwing aborts the rebuild transaction and the
+ * prior plan stays active, which is the correct outcome.
  */
 export async function snapshotSealedDays(
+  client: PoolClient,
   userUuid: string,
 ): Promise<Map<string, SealedPrescription>> {
-  const rows = (await pool.query<{
+  const rows = (await client.query<{
     date_iso: string;
     type: string;
     distance_mi: string;
@@ -154,7 +164,7 @@ export async function snapshotSealedDays(
              AND NOT (r.data ? 'mergedIntoId')
         )`,
     [userUuid],
-  ).catch(() => ({ rows: [] }))).rows;
+  )).rows;
 
   const m = new Map<string, SealedPrescription>();
   for (const r of rows) {

@@ -151,6 +151,14 @@ final class WorkoutEngine: ObservableObject {
     /// `completed` flips to false when the user ends a phase early.
     private var results: [WatchCompletionPhase] = []
 
+    // ─── Crash-recovery snapshot (RK-3 · 2026-06-09) ────────────────
+    /// totalElapsedSec at the last cadence-driven snapshot write, so the
+    /// tick path persists at most once per ~60s.
+    private var lastSnapshotElapsedSec: Int = 0
+    /// The workout payload encoded once per run (snapshots embed it so a
+    /// recovered launch can rebuild the engine without PhoneSync state).
+    private var workoutJSONCache: Data?
+
     /// Per-phase running aggregates — sampled once per tick (1 Hz) from the
     /// tracker. recordCurrentPhase() turns these into true averages on phase
     /// end (true average HR over the rep, peak HR, average cadence, etc).
@@ -399,6 +407,12 @@ final class WorkoutEngine: ObservableObject {
         phaseHrSamples = []; phasePaceSamples = []; phaseLastSampleSec = -5
         tracker?.start()
         prepDrift()
+        // Recovery snapshot — write the first one as the run begins so a
+        // crash in minute one is already covered, and refresh on every
+        // phase transition + ~60s cadence from tick(). Cleared in finish().
+        workoutJSONCache = try? JSONEncoder().encode(workout)
+        lastSnapshotElapsedSec = 0
+        persistSnapshot()
         // Start cue · haptic + chime if Sound is on. User reported no beep
         // at workout start — the chime was wired into flash() (mile splits,
         // fuel, etc.) but the start haptic only fired the haptic, never
@@ -478,6 +492,10 @@ final class WorkoutEngine: ObservableObject {
         Self.clearSnapshot()
         countdownTask?.cancel(); countdownTask = nil
         transitionClear?.cancel(); transitionClear = nil
+        // Defensive — finish() already clears, but a reset from any other
+        // path (user bailed during countdown, etc.) must not leave a stale
+        // snapshot behind to mislabel a future recovery.
+        Self.clearSnapshot()
         state = .idle
         currentIndex = 0
         phaseElapsedSec = 0
@@ -593,12 +611,14 @@ final class WorkoutEngine: ObservableObject {
         // No phase logic — the user runs free until they End.
         if planComplete {
             publishElapsed(elapsedSincePhaseStart())
+            snapshotIfDue()
             return
         }
 
         guard let phase = currentPhase else { return }
 
         publishElapsed(elapsedSincePhaseStart())
+        snapshotIfDue()
 
         // Sample per-phase aggregates from the tracker once per tick (1 Hz).
         // recordCurrentPhase() turns these into true averages on phase end.
@@ -853,6 +873,9 @@ final class WorkoutEngine: ObservableObject {
             driftEval = nil
             paceZone = .onTarget
             paceDeltaSPerMi = 0
+            // Snapshot the plan-done state (results now hold every phase) so
+            // a crash during overtime still recovers a complete run.
+            persistSnapshot()
             Haptics.play(.end)
             // No takeover face for plan-done — the live face already
             // signals overtime by flipping the distance row to .bonus
@@ -873,6 +896,9 @@ final class WorkoutEngine: ObservableObject {
         phaseCadSum = 0; phaseCadCount = 0
         phaseHrSamples = []; phasePaceSamples = []; phaseLastSampleSec = -5
         prepDrift()
+        // Phase boundary — refresh the recovery snapshot (the just-banked
+        // phase's result is the data a crash must not lose).
+        persistSnapshot()
         if let p = currentPhase {
             Haptics.play(p.haptic)
             if isRace {
@@ -1046,113 +1072,213 @@ final class WorkoutEngine: ObservableObject {
         pendingRpeResultsIndex = nil
     }
 
-    // MARK: - Crash/reboot recovery snapshot (audit RK-3, 2026-06-09)
+    // MARK: - Crash-recovery snapshot (RK-3 · 2026-06-09)
     //
-    // The engine's state lives in memory; a watch app crash or reboot at
-    // mile 20 used to lose the entire run structure (HK kept recording,
-    // but the app relaunched into the lobby). A tiny Codable snapshot is
-    // persisted at every state-changing boundary (start, phase advance,
-    // pause, resume, race gel) — never per-tick — and cleared on finish/
-    // reset. WorkoutRootModel checks for it at launch, re-attaches the
-    // live HKWorkoutSession via WorkoutTracker.recover(), and rebuilds
-    // the engine mid-run. Everything time-derived self-heals because the
-    // clock is wall-anchored (phaseStart/bankedSec), and distance
-    // self-heals because HK statistics are cumulative for the session.
+    // All engine state (results, banked time, phase cursor) is in-memory —
+    // a watch crash/reboot mid-run used to lose the entire run (no HKWorkout
+    // → the iPhone HK fallback had nothing → no completion). The snapshot
+    // is a lightweight UserDefaults record written at start, on every phase
+    // transition, and on a ~60s cadence from tick(). It is deleted on every
+    // normal end (finish — completed AND abandoned — plus reset). Its
+    // presence at launch therefore means exactly one thing: a run died
+    // mid-flight.
+    //
+    // The in-flight phase's 5s sample buffers are NOT persisted (too churny
+    // to write 4×/sec-adjacent); on RESUME that phase's timelines restart
+    // from the recovery point. Completed phases carry their full timelines
+    // through `results`.
 
-    struct EngineSnapshot: Codable {
-        let workout: WatchWorkout
-        var currentIndex: Int
-        var bankedSec: Int
-        var phaseStart: Date
-        var phaseStartMi: Double
-        var workoutStart: Date
-        var planComplete: Bool
-        var isPaused: Bool
-        var pauseStart: Date?
-        var firedFuelIndices: [Int]
-        var firedGels: [Int]
-        var lastMileIndex: Int
-        var lastMileElapsedSec: Int
-        var didFireAlmostDone: Bool
-        var results: [WatchCompletionPhase]
+    struct RunSnapshot: Codable {
+        let workoutId: String
+        /// The full WatchWorkout payload, JSON-encoded — recovery rebuilds
+        /// the engine from this, independent of PhoneSync's current state.
+        let workoutJSON: Data
+        let startedAtEpoch: Double
+        let currentIndex: Int
+        let planComplete: Bool
+        let bankedSec: Int
+        let phaseElapsedSec: Int
+        let phaseStartMi: Double
+        let results: [WatchCompletionPhase]
+        let savedAtEpoch: Double
+
+        func decodedWorkout() -> WatchWorkout? {
+            try? JSONDecoder().decode(WatchWorkout.self, from: workoutJSON)
+        }
     }
 
-    private static let snapshotKey = "faff.watch.activeRun.v1"
+    static let snapshotKey = "faff.watch.activeRunSnapshot.v1"
 
-    func saveSnapshot() {
-        guard state == .running else { return }
-        let snap = EngineSnapshot(
-            workout: workout,
-            currentIndex: currentIndex,
-            bankedSec: bankedSec,
-            phaseStart: phaseStart,
-            phaseStartMi: phaseStartMi,
-            workoutStart: workoutStart,
-            planComplete: planComplete,
-            isPaused: isPaused,
-            pauseStart: pauseStart,
-            firedFuelIndices: Array(firedFuelIndices),
-            firedGels: Array(firedGels),
-            lastMileIndex: lastMileIndex,
-            lastMileElapsedSec: lastMileElapsedSec,
-            didFireAlmostDone: didFireAlmostDone,
-            results: results
-        )
-        if let data = try? JSONEncoder().encode(snap) {
-            UserDefaults.standard.set(data, forKey: Self.snapshotKey)
-        }
+    static func loadSnapshot() -> RunSnapshot? {
+        guard let data = UserDefaults.standard.data(forKey: snapshotKey) else { return nil }
+        return try? JSONDecoder().decode(RunSnapshot.self, from: data)
     }
 
     static func clearSnapshot() {
         UserDefaults.standard.removeObject(forKey: snapshotKey)
     }
 
-    /// A snapshot worth restoring: exists and is younger than 12 h (don't
-    /// resurrect yesterday's crash into this morning's lobby).
-    static func loadSnapshot() -> EngineSnapshot? {
-        guard let data = UserDefaults.standard.data(forKey: snapshotKey),
-              let snap = try? JSONDecoder().decode(EngineSnapshot.self, from: data) else { return nil }
-        guard Date.now.timeIntervalSince(snap.workoutStart) < 12 * 3600 else {
-            clearSnapshot()
-            return nil
+    func saveSnapshot() { persistSnapshot() }
+
+    private func persistSnapshot() {
+        guard state == .running else { return }
+        if workoutJSONCache == nil { workoutJSONCache = try? JSONEncoder().encode(workout) }
+        guard let workoutJSON = workoutJSONCache else { return }
+        let snap = RunSnapshot(
+            workoutId: workout.workoutId,
+            workoutJSON: workoutJSON,
+            startedAtEpoch: workoutStart.timeIntervalSince1970,
+            currentIndex: currentIndex,
+            planComplete: planComplete,
+            bankedSec: bankedSec,
+            phaseElapsedSec: phaseElapsedSec,
+            phaseStartMi: phaseStartMi,
+            results: results,
+            savedAtEpoch: Date.now.timeIntervalSince1970
+        )
+        if let data = try? JSONEncoder().encode(snap) {
+            UserDefaults.standard.set(data, forKey: Self.snapshotKey)
         }
-        return snap
     }
 
-    /// Rebuild a mid-run engine from a snapshot. Caller attaches the
-    /// tracker (recovered or fresh) before calling. Per-phase HR/cadence
-    /// aggregates and 5-sec sample buffers restart empty — the banked
-    /// results array carries everything from completed phases, and the
-    /// current phase's aggregates cover post-recovery samples only.
-    static func restore(from snap: EngineSnapshot, tracker: WorkoutTracker?) -> WorkoutEngine {
-        let e = WorkoutEngine(workout: snap.workout)
-        e.tracker = tracker
-        e.state = .running
-        e.currentIndex = snap.currentIndex
-        e.bankedSec = snap.bankedSec
-        e.phaseStart = snap.phaseStart
-        e.phaseStartMi = snap.phaseStartMi
-        e.workoutStart = snap.workoutStart
-        e.planComplete = snap.planComplete
-        e.isPaused = snap.isPaused
-        e.pauseStart = snap.pauseStart
-        e.firedFuelIndices = Set(snap.firedFuelIndices)
-        e.firedGels = Set(snap.firedGels)
-        e.lastMileIndex = snap.lastMileIndex
-        e.lastMileElapsedSec = snap.lastMileElapsedSec
-        e.didFireAlmostDone = snap.didFireAlmostDone
-        e.results = snap.results
-        // While paused the clock shows the frozen value (phaseStart →
-        // pauseStart); running, it catches up to now off the wall clock.
-        if e.isPaused, let ps = snap.pauseStart {
-            e.phaseElapsedSec = max(0, Int(ps.timeIntervalSince(snap.phaseStart) * warpFactor))
-        } else {
-            e.phaseElapsedSec = max(0, Int(Date.now.timeIntervalSince(snap.phaseStart) * warpFactor))
+    /// Cadence write from the tick path — at most once per ~60s.
+    private func snapshotIfDue() {
+        guard totalElapsedSec - lastSnapshotElapsedSec >= 60 else { return }
+        lastSnapshotElapsedSec = totalElapsedSec
+        persistSnapshot()
+    }
+
+    /// Rebuild a mid-run engine from a recovery snapshot and keep going —
+    /// the RESUME path after a crash. The tracker must already be re-attached
+    /// to the recovered HKWorkoutSession (WorkoutTracker.adoptRecoveredSession)
+    /// so live metrics + total distance flow. Defensive: indices are clamped,
+    /// historical cues (mile splits, fuel marks, heads-ups) are marked as
+    /// already-fired so the runner doesn't get a barrage of stale takeovers.
+    func resumeFromSnapshot(_ snap: RunSnapshot) {
+        guard state == .idle else { return }
+        state = .running
+        let count = workout.phases.count
+        currentIndex = min(max(0, snap.currentIndex), max(0, count - 1))
+        planComplete = snap.planComplete || snap.currentIndex >= count
+        bankedSec = snap.bankedSec
+        results = snap.results
+        workoutStart = Date(timeIntervalSince1970: snap.startedAtEpoch)
+        // Continue the phase clock from where the last snapshot left it.
+        // The dead window (crash → relaunch) is NOT credited to the phase —
+        // the engine only counts time it observed. The HKWorkout itself
+        // still spans the real wall-clock run.
+        phaseElapsedSec = max(0, snap.phaseElapsedSec)
+        phaseStart = Date.now.addingTimeInterval(-Double(phaseElapsedSec) / Self.warpFactor)
+        totalElapsedSec = bankedSec + phaseElapsedSec
+        phaseStartMi = snap.phaseStartMi
+        // In-flight phase aggregates restart clean — only post-recovery
+        // samples feed this phase's averages (honest, never fabricated).
+        phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
+        phaseCadSum = 0; phaseCadCount = 0
+        phaseHrSamples = []; phasePaceSamples = []
+        phaseLastSampleSec = phaseElapsedSec
+        // Don't replay cues that already fired before the crash.
+        didFireAlmostDone = false
+        lastMileIndex = Int(coveredMi)
+        lastMileElapsedSec = totalElapsedSec
+        if let fueling = workout.fueling {
+            for (i, mark) in fueling.atMins.enumerated() where totalElapsedSec / 60 >= mark {
+                firedFuelIndices.insert(i)
+            }
         }
-        e.totalElapsedSec = snap.bankedSec + e.phaseElapsedSec
-        e.prepDrift()
-        e.startTimer()
-        return e
+        if let gels = workout.gelsMi {
+            for (i, mark) in gels.enumerated() where coveredMi >= mark {
+                firedGels.insert(i)
+            }
+        }
+        hrOverCeiling = false
+        isPaused = false
+        pauseStart = nil
+        prepDrift()
+        workoutJSONCache = snap.workoutJSON
+        lastSnapshotElapsedSec = totalElapsedSec
+        persistSnapshot()
+        Haptics.play(.transitionWork)
+        startTimer()
+    }
+
+    /// Build a WatchCompletion for a recovered run WITHOUT a live engine —
+    /// the END & SAVE path. Totals come from the recovered builder's
+    /// statistics (they span the whole session, pre-crash included); phases
+    /// come from the snapshot's banked results plus a best-effort entry for
+    /// the phase that was in flight when the watch died. With no snapshot
+    /// (crash during countdown / mismatched leftovers) it degrades to a
+    /// single-phase record so the run still reaches the server.
+    static func completionFromRecovery(snapshot: RunSnapshot?,
+                                       stats: WorkoutTracker.RecoveredStats) -> WatchCompletion {
+        let iso = ISO8601DateFormatter()
+        let workout = snapshot?.decodedWorkout()
+        // HK's session start is ground truth when present; the snapshot's
+        // engine start is the fallback; last resort walks back from elapsed.
+        let startDate = stats.startDate
+            ?? snapshot.map { Date(timeIntervalSince1970: $0.startedAtEpoch) }
+            ?? Date.now.addingTimeInterval(-Double(stats.elapsedSec))
+
+        var phases = snapshot?.results ?? []
+        if let snap = snapshot, !snap.planComplete,
+           let w = workout, w.phases.indices.contains(snap.currentIndex) {
+            // The phase in flight at the crash — duration as of the last
+            // snapshot (never inflated by the dead window), no per-phase
+            // pace/HR claims we can't back.
+            let p = w.phases[snap.currentIndex]
+            phases.append(WatchCompletionPhase(
+                index: p.index,
+                type: p.type.rawValue,
+                label: p.label,
+                targetPaceSPerMi: p.targetPaceSPerMi,
+                actualPaceSPerMi: nil,
+                actualDurationSec: max(0, snap.phaseElapsedSec),
+                actualDistanceMi: nil,
+                avgHr: nil,
+                maxHr: nil,
+                avgCadence: nil,
+                completed: false
+            ))
+        }
+        if phases.isEmpty {
+            let avgPace: Int? = {
+                guard let mi = stats.distanceMi, mi > 0.05, stats.elapsedSec > 0 else { return nil }
+                return Int((Double(stats.elapsedSec) / mi).rounded())
+            }()
+            phases = [WatchCompletionPhase(
+                index: 0,
+                type: "work",
+                label: workout?.name ?? "Recovered run",
+                targetPaceSPerMi: nil,
+                actualPaceSPerMi: avgPace,
+                actualDurationSec: stats.elapsedSec,
+                actualDistanceMi: stats.distanceMi.map { ($0 * 100).rounded() / 100 },
+                avgHr: stats.avgHr,
+                maxHr: stats.maxHr,
+                avgCadence: nil,
+                completed: false
+            )]
+        }
+
+        let workoutId = snapshot?.workoutId
+            ?? workout?.workoutId
+            ?? "recovered-\(Int(startDate.timeIntervalSince1970))"
+        let dist = stats.distanceMi.flatMap { $0 > 0.01 ? ($0 * 100).rounded() / 100 : nil }
+        return WatchCompletion(
+            workoutId: workoutId,
+            startedAt: iso.string(from: startDate),
+            completedAt: iso.string(from: .now),
+            status: snapshot?.planComplete == true ? "completed" : "partial",
+            totalDistanceMi: dist,
+            totalDurationSec: stats.elapsedSec,
+            avgHr: stats.avgHr,
+            maxHr: stats.maxHr,
+            avgCadence: nil,
+            kcal: stats.kcal,
+            phases: phases,
+            routePolyline: nil,   // pre-crash route died with the old process
+            elevGainFt: nil       // partial post-crash climb would mislead
+        )
     }
 
     // MARK: - GPS polyline encoder
@@ -1180,6 +1306,8 @@ final class WorkoutEngine: ObservableObject {
 
     private func finish(status: String) {
         stopTimer()
+        // The run is closing out through the normal path — the recovery
+        // snapshot is no longer needed (covers completed AND abandoned ends).
         Self.clearSnapshot()
         // Build the completion BEFORE flipping state, so anything observing the
         // .finished transition (the root model's auto-send) can read it.

@@ -31,6 +31,11 @@ final class PhoneSync: NSObject, ObservableObject {
     /// True once we've received any context (so the UI can distinguish
     /// "nothing yet" from "synced, but no workout today").
     @Published private(set) var hasSynced: Bool = false
+    /// Last sync failure, for the lobby to read (M-13 hardening). Set when
+    /// a workout payload arrives but fails to decode (the watch keeps the
+    /// previous workout — that must not be 100% silent anymore) and when a
+    /// direct request to the phone errors. Cleared on the next good decode.
+    @Published private(set) var lastSyncError: String?
 
     /// Completion upload status — the SummaryView status line (W-7) binds to
     /// this after a run finishes to show "Sending…", "Sent", or a failure hint.
@@ -178,12 +183,27 @@ final class PhoneSync: NSObject, ObservableObject {
 
     /// Ask the iPhone for today's workout right now (used on launch when
     /// the iPhone is reachable, so we don't wait for the next context push).
-    func requestTodayWorkout() {
+    ///
+    /// `onUnreachable` (optional) fires when the request can't be delivered —
+    /// either the session isn't activated/reachable up front, or sendMessage
+    /// reports an error. The stale-plan flow (RK-2) uses it to offer START
+    /// ANYWAY immediately instead of waiting out the full timeout; failures
+    /// are no longer silent.
+    func requestTodayWorkout(onUnreachable: (() -> Void)? = nil) {
         let session = WCSession.default
-        guard session.activationState == .activated, session.isReachable else { return }
+        guard session.activationState == .activated, session.isReachable else {
+            onUnreachable?()
+            return
+        }
         session.sendMessage(["request": "today"], replyHandler: { [weak self] reply in
             Task { @MainActor in self?.apply(reply) }
-        }, errorHandler: nil)
+        }, errorHandler: { [weak self] error in
+            Task { @MainActor in
+                self?.lastSyncError = "Phone request failed: \(error.localizedDescription)"
+                print("[PhoneSync] requestTodayWorkout error: \(error.localizedDescription)")
+                onUnreachable?()
+            }
+        })
     }
 
     /// Send a finished workout's result up two independent ways:
@@ -228,11 +248,23 @@ final class PhoneSync: NSObject, ObservableObject {
            let r = try? JSONDecoder().decode(WatchReadiness.self, from: rData) {
             readiness = r
         }
-        if let data = payload["workout"] as? Data,
-           let workout = try? JSONDecoder().decode(WatchWorkout.self, from: data) {
-            todayWorkout = workout
-            noWorkoutMessage = nil
-            hasSynced = true
+        if let data = payload["workout"] as? Data {
+            // Decode failures keep the current workout but are RECORDED —
+            // M-13 was a fractional readinessScore failing this decode and
+            // the watch silently running yesterday's plan. The models layer
+            // is now tolerant of fractional ints; anything that still fails
+            // lands in lastSyncError so the lobby (and a tethered debugger)
+            // can see it.
+            do {
+                let workout = try JSONDecoder().decode(WatchWorkout.self, from: data)
+                todayWorkout = workout
+                noWorkoutMessage = nil
+                hasSynced = true
+                lastSyncError = nil
+            } catch {
+                lastSyncError = "Workout decode failed: \(error.localizedDescription)"
+                print("[PhoneSync] workout decode failed: \(error)")
+            }
         } else if let message = payload["noWorkout"] as? String {
             todayWorkout = nil
             noWorkoutMessage = message

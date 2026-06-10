@@ -42,7 +42,48 @@ final class WatchSync: NSObject, ObservableObject {
         let s = WCSession.default
         s.delegate = self
         s.activate()
+        // Count the launch push against refresh()'s 60s window — scenePhase
+        // flips to .active right after didFinishLaunching, and the cold
+        // launch shouldn't hit /api/watch/today twice back-to-back.
+        lastRefreshAt = Date()
         Task { await self.pushTodayToWatch() }
+    }
+
+    // MARK: Foreground / reachability re-push (RK-4 · 2026-06-09)
+    //
+    // start() runs once per process (didFinishLaunching). An app that sat
+    // backgrounded overnight never re-pushed today's workout — the watch
+    // kept yesterday's context until the next cold launch. refresh() is the
+    // re-entry point: re-fetch /api/watch/today, push context, retry any
+    // stranded pendingContext, and drain the completion relay queue.
+    // Called on scenePhase → .active and when the watch becomes reachable.
+
+    /// Earliest next refresh — at most one per 60s regardless of caller
+    /// (mirrors FaffApp's lastImportAt throttle pattern; kept here so the
+    /// foreground and reachability paths share one window).
+    private var lastRefreshAt: Date = .distantPast
+
+    func refresh() async {
+        guard Date().timeIntervalSince(lastRefreshAt) > 60 else { return }
+        lastRefreshAt = Date()
+        await pushTodayToWatch()
+        flushPendingContextIfPossible()
+        await flushPendingCompletions()
+    }
+
+    /// Re-send a context stranded by an earlier failure (activation race,
+    /// transient WCSession error). pushTodayToWatch normally supersedes it
+    /// with a fresher payload; this covers the fetch-failed-offline case
+    /// where the stranded context is still the best one we have.
+    private func flushPendingContextIfPossible() {
+        guard let pending = pendingContext, WCSession.isSupported(),
+              WCSession.default.activationState == .activated else { return }
+        do {
+            try WCSession.default.updateApplicationContext(pending)
+            pendingContext = nil
+        } catch {
+            // Keep it queued; the next activation/refresh retries.
+        }
     }
 
     // MARK: Push today's workout to the watch
@@ -253,6 +294,15 @@ extension WatchSync: WCSessionDelegate {
             self.enqueue(data)
             await self.flushPendingCompletions()
         }
+    }
+
+    /// Watch just came into reach (app opened on wrist, Bluetooth back) —
+    /// push a fresh context + drain queues. Same 60s throttle as the
+    /// foreground path (inside refresh()), so reachability flaps can't
+    /// hammer /api/watch/today. (RK-4)
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        guard session.isReachable else { return }
+        Task { @MainActor in await self.refresh() }
     }
 
     nonisolated func session(_ session: WCSession,

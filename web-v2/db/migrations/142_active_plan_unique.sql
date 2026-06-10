@@ -1,0 +1,42 @@
+-- 142_active_plan_unique.sql
+-- M-19 follow-up: enforce ONE active plan per user at the schema level.
+--
+-- ⚠ REQUIRES David's per-statement GO before running. DO NOT auto-apply.
+-- ⚠ CONCURRENTLY cannot run inside a transaction — run via psql autocommit
+--   (no BEGIN), and NOT through any migration runner that wraps files in
+--   a transaction.
+--
+-- Why: the plan rebuild (lib/plan/generate.ts) archives the active plan
+-- then inserts the new one. As of M-19 that pair is transactional, but
+-- two OTHER writers still archive-then-insert without a transaction
+-- (lib/plan/injury-builder.ts, lib/plan/seed-from-onboarding.ts), and
+-- concurrent rebuild requests for the same user could interleave. This
+-- index converts the silent-corruption outcome (two active plans, every
+-- ORDER BY authored_iso DESC LIMIT 1 reader nondeterministic) into a
+-- loud unique-violation on the second insert.
+--
+-- Audited 2026-06-09: every creator of an active plan archives existing
+-- actives first (generate.ts, injury-builder.ts, seed-from-onboarding.ts);
+-- every reader takes LIMIT 1. No code path legitimately holds >1 active
+-- plan per user, so the index encodes an invariant the code already
+-- assumes. Rows with user_uuid IS NULL (legacy 'me' rows, if any) don't
+-- collide — NULLs are never equal in a unique index.
+--
+-- Pre-flight (run first · index build FAILS if duplicates exist):
+--
+--   SELECT user_uuid, COUNT(*) FROM training_plans
+--    WHERE archived_iso IS NULL AND user_uuid IS NOT NULL
+--    GROUP BY user_uuid HAVING COUNT(*) > 1;
+--
+--   If any rows return, archive all but the newest per user (per-statement
+--   GO required for that UPDATE) before creating the index.
+--
+-- Recovery note: if the CONCURRENTLY build fails midway it leaves an
+-- INVALID index behind — `DROP INDEX IF EXISTS training_plans_active_uq;`
+-- then re-run.
+--
+-- Naming follows the calibration_sessions_active_uq precedent (mig 138).
+
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS training_plans_active_uq
+  ON training_plans (user_uuid)
+  WHERE archived_iso IS NULL;

@@ -41,6 +41,11 @@ export interface FuelingPlan {
   shortLine: string;             // "2 Maurten 100s, at 30 + 60 min"
   why: string;
   citation: string;
+  // Wire fields for the watch's WatchFueling struct (strict decode — the
+  // watch requires all of these when a fueling object is present).
+  gPerHr: number;                // effective intake rate after heat penalty
+  isRehearsal: boolean;          // inside the 56d Costa gut-training ramp
+  heatAdjusted: boolean;         // heat penalty actually reduced the rate
 }
 
 /** Base carbs/hr by duration + workout type (Research/18 §1). */
@@ -146,5 +151,8 @@ export function computeFueling(input: FuelingInput): FuelingPlan {
     shortLine,
     why,
     citation: 'Research/18-fueling-products.md §1 + §13 (Costa et al.)',
+    gPerHr: effectiveRate,
+    isRehearsal: workoutType === 'long' && daysToARace != null && daysToARace <= 56,
+    heatAdjusted: heatPen > 0,
   };
 }

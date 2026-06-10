@@ -4,11 +4,12 @@
  * One call: `dispatchNotification(userId, rendered)`. Handles:
  *   1. Pref check (master + per-category)
  *   2. Recent-dedup (any same dedup_key sent in prior 24h → drop)
- *   3. Resolve all active device_tokens for the user
- *   4. Pre-log row insert (delivered = null)
- *   5. Per-token sendPush
- *   6. Update log row with apns_id + delivered flag
- *   7. On APNs 410 Gone → revoke the device_token row
+ *   3. Quiet-hours gate (runner-local, unless bypass_quiet_hours)
+ *   4. Resolve all active device_tokens for the user
+ *   5. Pre-log row insert (delivered = null)
+ *   6. Per-token sendPush
+ *   7. Update log row with apns_id + delivered flag
+ *   8. On APNs 410 Gone → revoke the device_token row
  *
  * The caller (cron / event-trigger / event-bus writer) does NOT touch the
  * sender directly. Always go through dispatch.
@@ -17,16 +18,24 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { sendPush, type SendPushArgs, apnsIsConfigured, type NotificationCategory } from './apns';
+import { sendPush, type SendPushArgs, apnsIsConfigured, isInQuietHours, type NotificationCategory } from './apns';
+import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import { loadNotificationPrefs, categoryEnabled } from './prefs';
 import type { RenderedTemplate } from './templates';
 
 export interface DispatchResult {
   ok: boolean;
-  skipped?: 'master_off' | 'category_off' | 'no_tokens' | 'apns_not_configured' | 'recently_sent';
+  skipped?: 'master_off' | 'category_off' | 'no_tokens' | 'apns_not_configured' | 'recently_sent' | 'quiet_hours';
   sent_count?: number;
   failed_count?: number;
   log_ids?: number[];
+  /** Set when failed_count > 0. Drives the drain loop's retry policy:
+   *  permanent = true only for APNs rejections that will never succeed
+   *  on retry (400 BadDeviceToken, 403, 410 Gone). Network errors,
+   *  timeouts, 429 and 5xx are retryable. With multiple tokens a
+   *  retryable failure wins over a permanent one — the row retries so
+   *  the retryable token gets another shot. */
+  failure?: { reason: string; status?: number; detail?: string; permanent: boolean };
 }
 
 /**
@@ -86,11 +95,25 @@ export async function dispatchNotification(
     return { ok: true, skipped: 'recently_sent' };
   }
 
-  // 3. Tokens
+  // 3. Quiet hours (RK-5/M-21). Runner-local clock via profile.timezone,
+  // same resolution the cron scheduler uses. Window comes from
+  // notification_prefs (migration 121, default 22:00 → 06:00). Templates
+  // that must wake the runner (race_day, deck §A) carry
+  // bypass_quiet_hours = true and sail through. The drain loop leaves a
+  // quiet_hours-skipped pending row UNPROCESSED so it delivers at the
+  // first tick after quiet hours end — this is a defer, not a drop.
+  if (!tpl.bypass_quiet_hours) {
+    const tz = await runnerTimezone(userId).catch(() => 'UTC');
+    if (isInQuietHours(new Date(), tz, prefs.quiet_hours_start, prefs.quiet_hours_end)) {
+      return { ok: true, skipped: 'quiet_hours' };
+    }
+  }
+
+  // 4. Tokens
   const tokens = await activeDeviceTokens(userId);
   if (tokens.length === 0) return { ok: true, skipped: 'no_tokens' };
 
-  // 4. Cert / key sanity
+  // 5. Cert / key sanity
   if (!apnsIsConfigured()) {
     // Log a row so a deck-style audit surfaces "tried, no creds" — but
     // don't crash. The scheduler keeps polling until env arrives.
@@ -102,10 +125,11 @@ export async function dispatchNotification(
     return { ok: true, skipped: 'apns_not_configured' };
   }
 
-  // 5. Per-token send
+  // 6. Per-token send
   const log_ids: number[] = [];
   let sent = 0;
   let failed = 0;
+  let failure: DispatchResult['failure'];
   for (const tok of tokens) {
     if (tok.platform !== 'ios') continue; // v1 ships iOS only
     const args: SendPushArgs = {
@@ -146,12 +170,25 @@ export async function dispatchNotification(
     } else {
       failed++;
       if (logId != null) {
+        // RK-6: persist the APNs host alongside the failure so a 400
+        // BadDeviceToken is diagnosable as a host/token-environment
+        // mismatch straight from notifications_log.
         await pool.query(
           `UPDATE notifications_log SET delivered = false,
                                         payload  = payload || $1::jsonb
             WHERE id = $2`,
-          [JSON.stringify({ error: { reason: result.reason, status: result.status, detail: result.detail } }), logId],
+          [JSON.stringify({ error: { reason: result.reason, status: result.status, detail: result.detail, host: result.host } }), logId],
         ).catch(() => {});
+      }
+      // Classify for the drain loop's retry policy (M-21). Permanent =
+      // APNs said this will never work: 400 BadDeviceToken, 403 auth,
+      // 410 Gone. Everything else (network, timeout, 429, 5xx,
+      // apns_not_configured mid-loop) is worth retrying.
+      const permanent =
+        result.reason === 'apns_rejected' &&
+        (result.status === 400 || result.status === 403 || result.status === 410);
+      if (!failure || (failure.permanent && !permanent)) {
+        failure = { reason: result.reason, status: result.status, detail: result.detail, permanent };
       }
       // APNs 410 Gone → revoke the device token so future sends skip it.
       if (result.reason === 'apns_rejected' && result.status === 410) {
@@ -163,7 +200,7 @@ export async function dispatchNotification(
     }
   }
 
-  return { ok: true, sent_count: sent, failed_count: failed, log_ids };
+  return { ok: true, sent_count: sent, failed_count: failed, log_ids, failure };
 }
 
 /** Strip the raw device_token from the SendPushArgs before persisting to

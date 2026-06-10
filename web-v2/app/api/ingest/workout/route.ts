@@ -330,17 +330,39 @@ export async function POST(req: NextRequest) {
       (data as any).mergedIntoId = existing.mergedIntoId;
     }
 
+    // M-16 / Rule 6 · upsert, not DELETE+INSERT. The old shape wiped every
+    // COLUMN on re-ingest — shoe_id + shoe_auto_assigned_at (a manual shoe
+    // pick was destroyed, then auto-assign re-filled with a system pick),
+    // provenance (tier doctrine inverted: Strava pull saw tier 0 and
+    // overwrote watch/HK values), weather_enriched_at, fetched_at. The
+    // legacy-id DELETE below only clears rows from older id schemes; the
+    // same-id path is now an UPDATE that never touches those columns.
+    // Data merge: existing keys survive; incoming non-null keys win
+    // (warmup bonus + mergedIntoId were already re-applied onto `data`
+    // above, so they ride the incoming side); incoming nulls cannot erase
+    // absorbed values.
     await pool.query(
       `DELETE FROM runs
         WHERE user_uuid = $1
-          AND data->>'client_workout_id' = $2`,
-      [userId, body.client_workout_id]
+          AND data->>'client_workout_id' = $2
+          AND id <> $3::bigint`,
+      [userId, body.client_workout_id, stableId]
     );
-    await pool.query(
+    // The WHERE keeps the pre-upsert safety property: a cross-user
+    // synthetic-id collision used to die on the PK conflict; with DO
+    // UPDATE it would silently merge into the other runner's row. WHERE
+    // false → no row written → rowCount 0 → refuse loudly (P0-4 shape).
+    const up = await pool.query(
       `INSERT INTO runs (id, user_uuid, data)
-       VALUES ($1::bigint, $2, $3)`,
+       VALUES ($1::bigint, $2, $3)
+       ON CONFLICT (id) DO UPDATE
+         SET data = runs.data || jsonb_strip_nulls(EXCLUDED.data)
+       WHERE runs.user_uuid = EXCLUDED.user_uuid`,
       [stableId, userId, data]
     );
+    if (up.rowCount === 0) {
+      throw new Error(`cross-user collision on synthetic id ${stableId} · refusing to write`);
+    }
 
     // 2026-06-03 · post-write hook · calibration auto-complete on
     // HK ingest. Best-effort, doesn't block ingest response.

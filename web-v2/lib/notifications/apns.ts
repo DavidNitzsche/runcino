@@ -158,7 +158,12 @@ function derToJose(der: Buffer): Buffer {
 // 3. HTTP/2 session — reused across pushes within the same call
 // ──────────────────────────────────────────────────────────────
 
-function apnsHost(): string {
+/** Exported for the cron health probe (RK-6) — the GET handler reports
+ *  which host a send WOULD hit so a 400 BadDeviceToken is diagnosable as
+ *  a host mismatch from the DB + probe alone. TestFlight + App Store both
+ *  register PRODUCTION tokens (production provisioning profile); only
+ *  Xcode-debug installs register sandbox tokens. */
+export function apnsHost(): string {
   return process.env.APNS_PRODUCTION === '1'
     ? 'https://api.push.apple.com'
     : 'https://api.sandbox.push.apple.com';
@@ -170,19 +175,38 @@ function apnsHost(): string {
 
 /** Returns true if `now` (in the runner's tz) falls within
  *  [quiet_hours_start, quiet_hours_end). Handles cross-midnight ranges
- *  (e.g. 22:00 → 06:00). The race-day sender passes bypass=true. */
+ *  (e.g. 22:00 → 06:00). Templates that must wake the runner (race_day)
+ *  set bypass_quiet_hours=true and the dispatcher skips this gate.
+ *
+ *  Takes an IANA timezone name ('America/Los_Angeles'), resolved the
+ *  same way the cron route resolves it (profile.timezone via
+ *  lib/runtime/runner-tz). Was offset-minutes based; rewritten when the
+ *  gate got its first caller (dispatchNotification, RK-5/M-21) since
+ *  the rest of the system already standardized on Intl + IANA names
+ *  (backend audit P0-10). */
 export function isInQuietHours(
   now: Date,
-  tzOffsetMinutes: number,
+  tz: string,
   startHm: string,
   endHm: string,
 ): boolean {
-  const local = new Date(now.getTime() + tzOffsetMinutes * 60 * 1000);
-  const minutes = local.getUTCHours() * 60 + local.getUTCMinutes();
+  let minutes: number;
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit',
+    });
+    const parts = fmt.formatToParts(now);
+    const get = (t: string): number =>
+      Number(parts.find((p) => p.type === t)?.value ?? '0') || 0;
+    minutes = (get('hour') % 24) * 60 + get('minute');
+  } catch {
+    // Bad tz name: fall back to UTC rather than throwing mid-dispatch.
+    minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  }
   const [sh, sm] = startHm.split(':').map(Number);
   const [eh, em] = endHm.split(':').map(Number);
-  const start = sh * 60 + sm;
-  const end = eh * 60 + em;
+  const start = (sh || 0) * 60 + (sm || 0);
+  const end = (eh || 0) * 60 + (em || 0);
   if (start === end) return false;
   if (start < end) return minutes >= start && minutes < end;
   // Cross-midnight (22:00 → 06:00) — inside if minutes >= start OR minutes < end.
@@ -236,7 +260,11 @@ export interface SendPushArgs {
 
 export type SendPushResult =
   | { ok: true; apns_id: string }
-  | { ok: false; reason: 'apns_not_configured' | 'jwt_failed' | 'http2_error' | 'apns_rejected'; status?: number; detail?: string };
+  /** `host` rides on every failure (RK-6) so notifications_log captures
+   *  which APNs host the send hit — a 400 BadDeviceToken against the
+   *  sandbox host with a production token is otherwise indistinguishable
+   *  from a genuinely bad token. */
+  | { ok: false; reason: 'apns_not_configured' | 'jwt_failed' | 'http2_error' | 'apns_rejected'; status?: number; detail?: string; host?: string };
 
 /**
  * POST a single push to APNs.
@@ -248,9 +276,10 @@ export type SendPushResult =
  * caller to record on notifications_log.
  */
 export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
+  const host = apnsHost();
   const token = signJwt();
   if (!token) {
-    return { ok: false, reason: 'apns_not_configured' };
+    return { ok: false, reason: 'apns_not_configured', host };
   }
   const bundleId = process.env.APNS_BUNDLE_ID ?? 'run.faff.app';
 
@@ -274,12 +303,11 @@ export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
     },
   });
 
-  const host = apnsHost();
   let client: http2.ClientHttp2Session;
   try {
     client = http2.connect(host);
   } catch (err) {
-    return { ok: false, reason: 'http2_error', detail: (err as Error).message };
+    return { ok: false, reason: 'http2_error', detail: (err as Error).message, host };
   }
 
   return await new Promise<SendPushResult>((resolve) => {
@@ -292,7 +320,7 @@ export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
     };
 
     client.on('error', (err) => {
-      settle({ ok: false, reason: 'http2_error', detail: err.message });
+      settle({ ok: false, reason: 'http2_error', detail: err.message, host });
     });
 
     const headers: Record<string, string | number> = {
@@ -313,7 +341,7 @@ export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
     try {
       req = client.request(headers);
     } catch (err) {
-      settle({ ok: false, reason: 'http2_error', detail: (err as Error).message });
+      settle({ ok: false, reason: 'http2_error', detail: (err as Error).message, host });
       return;
     }
 
@@ -336,11 +364,12 @@ export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
           reason: 'apns_rejected',
           status: respStatus,
           detail: respBody || `HTTP ${respStatus}`,
+          host,
         });
       }
     });
     req.on('error', (err) => {
-      settle({ ok: false, reason: 'http2_error', detail: err.message });
+      settle({ ok: false, reason: 'http2_error', detail: err.message, host });
     });
 
     req.end(body);
@@ -348,7 +377,7 @@ export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
     // Belt-and-braces timeout. Apple's docs say up to 60s but we cap at
     // 10s for the cron path — if APNs is sad, log + retry on next poll.
     setTimeout(() => {
-      settle({ ok: false, reason: 'http2_error', detail: 'timeout 10s' });
+      settle({ ok: false, reason: 'http2_error', detail: 'timeout 10s', host });
     }, 10_000);
   });
 }

@@ -174,7 +174,7 @@ GET handles the verification handshake (echoes `hub.challenge` only when `hub.ve
 | `APNS_TEAM_ID` | 10-char Team ID from step 2 | JWT `iss` claim |
 | `APNS_BUNDLE_ID` | `run.faff.app` | APNs `apns-topic` header |
 | `APNS_KEY_PEM` | The entire `.p8` file contents (including `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines) | Signing key for the JWT |
-| `APNS_PRODUCTION` | `1` when shipping to App Store, unset for TestFlight + Xcode debug | Routes to `api.push.apple.com` vs `api.sandbox.push.apple.com` |
+| `APNS_PRODUCTION` | `1` for TestFlight AND App Store builds; unset ONLY for Xcode-debug installs | Routes to `api.push.apple.com` vs `api.sandbox.push.apple.com`. TestFlight signs with a production provisioning profile and registers PRODUCTION device tokens — sandbox host + production token = 400 BadDeviceToken on every send. |
 | `CRON_SECRET` | Random 32-byte hex (`openssl rand -hex 32`) | Bearer token Cron-job.org sends on every poll |
 
 **Wiring the cron:**
@@ -183,7 +183,7 @@ The cron endpoint is `POST https://www.faff.run/api/cron/notifications` with `Au
 
 | Action | Where | How |
 |---|---|---|
-| **Check APNs config status** | Local terminal | `curl https://www.faff.run/api/cron/notifications` → `{ pending, secret_configured, apns_configured }`. Confirm both flags are `true` after env-var setup. |
+| **Check APNs config status** | Local terminal | `curl https://www.faff.run/api/cron/notifications` → `{ pending, secret_configured, apns_configured, apns_host, apns_production, delivered_24h, failed_24h, unacked_alerts }`. Confirm both flags are `true` after env-var setup, and that `apns_host` is `https://api.push.apple.com` for TestFlight / App Store builds. |
 | **Trigger a cron manually** | Local terminal | `curl -X POST https://www.faff.run/api/cron/notifications -H "Authorization: Bearer $CRON_SECRET"` → returns dispatch stats |
 | **Inspect recent notifications** | Postgres | `SELECT category, fired_at, delivered, ack_action FROM notifications_log WHERE user_id = '<uuid>' ORDER BY fired_at DESC LIMIT 20;` |
 | **Inspect pending queue** | Postgres | `SELECT category, fire_at, dedup_key FROM notifications_pending WHERE processed_at IS NULL;` |

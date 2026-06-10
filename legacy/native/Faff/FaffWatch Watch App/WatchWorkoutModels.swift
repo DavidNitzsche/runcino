@@ -19,6 +19,41 @@
 
 import Foundation
 
+// MARK: - Lenient Int decoding (M-13 hardening · 2026-06-09)
+//
+// The server occasionally emits fractional numbers for fields the watch
+// types as Int (readinessScore 67.4 was the live failure — the strict
+// Int decode threw, the WHOLE WatchWorkout decode failed, and the watch
+// silently kept yesterday's workout). The server is being fixed to round
+// these in parallel; the watch additionally tolerates both forms so one
+// fractional field can never invalidate the day's payload again.
+//
+// Decode order: Int first (exact, the common case), then Double → rounded.
+// Encoding is untouched — these helpers are decode-only.
+
+extension KeyedDecodingContainer {
+    /// Required Int that may arrive as a JSON double. Throws only when the
+    /// key is missing or the value is neither Int- nor Double-shaped.
+    func lenientInt(forKey key: Key) throws -> Int {
+        if let i = try? decode(Int.self, forKey: key) { return i }
+        return Int((try decode(Double.self, forKey: key)).rounded())
+    }
+
+    /// Optional Int that may arrive as a JSON double. Never throws —
+    /// missing / null / unparseable all read as nil.
+    func lenientIntIfPresent(forKey key: Key) -> Int? {
+        if let i = (try? decodeIfPresent(Int.self, forKey: key)) ?? nil { return i }
+        if let d = (try? decodeIfPresent(Double.self, forKey: key)) ?? nil { return Int(d.rounded()) }
+        return nil
+    }
+
+    /// Required [Int] that may arrive as [Double] (or mixed).
+    func lenientIntArray(forKey key: Key) throws -> [Int] {
+        if let ints = try? decode([Int].self, forKey: key) { return ints }
+        return (try decode([Double].self, forKey: key)).map { Int($0.rounded()) }
+    }
+}
+
 // MARK: - Incoming · today's prescribed workout
 
 enum WatchPhaseType: String, Codable {
@@ -101,13 +136,16 @@ struct WatchPhase: Codable, Identifiable {
         self.index = 0
         self.type = try c.decode(WatchPhaseType.self, forKey: .type)
         self.label = try c.decode(String.self, forKey: .label)
-        self.durationSec = try c.decode(Int.self, forKey: .durationSec)
-        self.targetPaceSPerMi = try c.decodeIfPresent(Int.self, forKey: .targetPaceSPerMi)
-        self.tolerancePaceSPerMi = try c.decodeIfPresent(Int.self, forKey: .tolerancePaceSPerMi)
+        // Lenient Int decodes (M-13): server-derived numerics can arrive
+        // fractional (durationSec = pace × miles, etc). Int first, Double
+        // → rounded fallback — a stray .5 must not kill the whole payload.
+        self.durationSec = try c.lenientInt(forKey: .durationSec)
+        self.targetPaceSPerMi = c.lenientIntIfPresent(forKey: .targetPaceSPerMi)
+        self.tolerancePaceSPerMi = c.lenientIntIfPresent(forKey: .tolerancePaceSPerMi)
         self.haptic = try c.decode(WatchHaptic.self, forKey: .haptic)
         self.repUnit = try c.decodeIfPresent(WatchRepUnit.self, forKey: .repUnit) ?? .time
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
-        self.hrTargetBpm = try c.decodeIfPresent(Int.self, forKey: .hrTargetBpm)
+        self.hrTargetBpm = c.lenientIntIfPresent(forKey: .hrTargetBpm)
         self.isFinishSegment = try c.decodeIfPresent(Bool.self, forKey: .isFinishSegment) ?? false
     }
 
@@ -207,19 +245,22 @@ struct WatchWorkout: Codable {
         self.workoutId = try c.decode(String.self, forKey: .workoutId)
         self.name = try c.decode(String.self, forKey: .name)
         self.summary = try c.decode(String.self, forKey: .summary)
-        self.totalEstimatedMinutes = try c.decode(Int.self, forKey: .totalEstimatedMinutes)
+        // Lenient Int decodes (M-13): readinessScore arrived as 67.4 once
+        // and the strict Int decode failed the WHOLE workout decode — the
+        // watch silently kept yesterday's session. Tolerate Double → round.
+        self.totalEstimatedMinutes = try c.lenientInt(forKey: .totalEstimatedMinutes)
         self.completionEndpoint = try c.decode(String.self, forKey: .completionEndpoint)
         self.expiresAt = try c.decode(String.self, forKey: .expiresAt)
-        self.readinessScore = try c.decodeIfPresent(Int.self, forKey: .readinessScore)
+        self.readinessScore = c.lenientIntIfPresent(forKey: .readinessScore)
         self.readinessLabel = try c.decodeIfPresent(String.self, forKey: .readinessLabel)
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
         self.paceLabel = try c.decodeIfPresent(String.self, forKey: .paceLabel)
         self.isRace = try c.decodeIfPresent(Bool.self, forKey: .isRace) ?? false
-        self.goalSec = try c.decodeIfPresent(Int.self, forKey: .goalSec)
+        self.goalSec = c.lenientIntIfPresent(forKey: .goalSec)
         self.strategyLabel = try c.decodeIfPresent(String.self, forKey: .strategyLabel)
         self.gelsMi = try c.decodeIfPresent([Double].self, forKey: .gelsMi)
         self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
-        self.hrCeilingBpm = try c.decodeIfPresent(Int.self, forKey: .hrCeilingBpm)
+        self.hrCeilingBpm = c.lenientIntIfPresent(forKey: .hrCeilingBpm)
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
         // Re-stamp each phase with its cursor index. CRITICAL: pass through
         // repUnit + distanceMi too — earlier this constructor only carried
@@ -241,6 +282,41 @@ struct WatchWorkout: Codable {
     }
 }
 
+// MARK: - Expiry parsing (RK-2 · 2026-06-09)
+//
+// The backend stamps `expiresAt` via toISOString(), which ALWAYS carries
+// fractional seconds ("2026-06-09T18:00:00.000Z"). A default
+// ISO8601DateFormatter cannot parse fractional seconds, so the staleness
+// gate's parse silently failed and the gate never fired. The server is
+// being changed in parallel to also emit non-fractional timestamps —
+// this parser accepts BOTH forms. Parse failure stays permissive
+// (isExpired == false) so a malformed timestamp can't block a legit run.
+
+extension WatchWorkout {
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    /// Parse an ISO-8601 timestamp, fractional seconds or not.
+    static func parseExpiry(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
+    }
+
+    /// True when the payload's expiry window has passed. Unparseable /
+    /// missing expiry reads as NOT expired (permissive — see above).
+    var isExpired: Bool {
+        guard let exp = Self.parseExpiry(expiresAt) else { return false }
+        return Date.now > exp
+    }
+}
+
 // MARK: - Outgoing · completion writeback (phase 6)
 
 // MARK: - Tier 1 telemetry samples
@@ -256,6 +332,12 @@ struct WatchWorkout: Codable {
 //   designs/briefs/backend-response-recap-engine-not-llm-2026-06-02.md
 //   designs/briefs/watch-response-yes-to-raw-passthrough-2026-06-02.md
 //   (backend ship 0489c791 · 2026-06-02)
+// NOTE (RK-3 · 2026-06-09): PaceSample / HRSample / WatchCompletionPhase
+// are now Codable (was Encodable) so the WorkoutEngine crash-recovery
+// snapshot can persist banked per-phase results to UserDefaults and read
+// them back after a relaunch. Decoding is synthesized; ENCODING is
+// unchanged (still synthesized, same keys) — zero wire-format impact on
+// the completion POST.
 struct PaceSample: Codable {
     /// Seconds since the phase began (not since workout start).
     let tSec: Int
@@ -419,6 +501,23 @@ struct WatchFueling: Codable {
     let heatAdjusted: Bool
     let shortLine: String
     let why: String
+
+    /// Lenient Int decode (M-13) — server-computed gel math (gPerHr,
+    /// atMins) can plausibly arrive fractional; a malformed fueling block
+    /// must not fail the whole WatchWorkout decode chain. Encoding stays
+    /// synthesized (unchanged on the wire).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.needed = try c.decode(Bool.self, forKey: .needed)
+        self.gels = try c.lenientInt(forKey: .gels)
+        self.atMins = try c.lenientIntArray(forKey: .atMins)
+        self.gPerHr = try c.lenientInt(forKey: .gPerHr)
+        self.totalCarbsG = try c.lenientInt(forKey: .totalCarbsG)
+        self.isRehearsal = try c.decode(Bool.self, forKey: .isRehearsal)
+        self.heatAdjusted = try c.decode(Bool.self, forKey: .heatAdjusted)
+        self.shortLine = try c.decode(String.self, forKey: .shortLine)
+        self.why = try c.decode(String.self, forKey: .why)
+    }
 }
 
 // MARK: - Readiness glance (watch-app.html §G · GET /api/watch/readiness)
@@ -440,6 +539,44 @@ struct WatchReadiness: Codable {
         let name: String
         let slug: String
         let daysAway: Int
+
+        init(name: String, slug: String, daysAway: Int) {
+            self.name = name; self.slug = slug; self.daysAway = daysAway
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.name = try c.decode(String.self, forKey: .name)
+            self.slug = try c.decode(String.self, forKey: .slug)
+            self.daysAway = try c.lenientInt(forKey: .daysAway)
+        }
+    }
+
+    init(score: Int?, state: String, label: String, recommendation: String,
+         hrvMs: Int?, rhrBpm: Int?, suppressReason: String?, nextRace: NextRace?) {
+        self.score = score
+        self.state = state
+        self.label = label
+        self.recommendation = recommendation
+        self.hrvMs = hrvMs
+        self.rhrBpm = rhrBpm
+        self.suppressReason = suppressReason
+        self.nextRace = nextRace
+    }
+
+    /// Lenient Int decode (M-13) — readiness numerics come from the same
+    /// server that shipped a fractional readinessScore. Encoding stays
+    /// synthesized (unchanged on the wire).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.score = c.lenientIntIfPresent(forKey: .score)
+        self.state = try c.decode(String.self, forKey: .state)
+        self.label = try c.decode(String.self, forKey: .label)
+        self.recommendation = try c.decode(String.self, forKey: .recommendation)
+        self.hrvMs = c.lenientIntIfPresent(forKey: .hrvMs)
+        self.rhrBpm = c.lenientIntIfPresent(forKey: .rhrBpm)
+        self.suppressReason = try c.decodeIfPresent(String.self, forKey: .suppressReason)
+        self.nextRace = try c.decodeIfPresent(NextRace.self, forKey: .nextRace)
     }
 }
 
@@ -498,6 +635,8 @@ extension WatchWorkout {
             totalEstimatedMinutes: total / 60,
             phases: phases,
             completionEndpoint: "/api/watch/workouts/complete",
+            // Far-future — RK-2 expiry parse now actually fires; a past date
+            // here would flag the fixture stale and break -autostart drives.
             expiresAt: "2099-12-31T00:00:00Z",
             readinessScore: 82,
             readinessLabel: "Primed",
@@ -642,6 +781,7 @@ extension WatchWorkout {
             totalEstimatedMinutes: total / 60,
             phases: phases,
             completionEndpoint: "/api/watch/workouts/complete",
+            // Far-future — RK-2 expiry gate now really fires; must not be stale.
             expiresAt: "2099-12-31T00:00:00Z",
             readinessScore: 88,
             readinessLabel: "Race ready",

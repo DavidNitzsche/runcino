@@ -23,6 +23,7 @@ import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-sp
 import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
+import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -524,9 +525,15 @@ export async function buildWatchToday(
     // pinned to its calendar date, so the stale-day risk the guard
     // covers doesn't exist — validity through end-of-day-+8h closes the
     // corral-refusal hole without re-opening Flag 6 for training days.
-    expiresAt: wo.type === 'race'
+    //
+    // 2026-06-09 · RK-2 · no fractional seconds in either form: deployed
+    // watch builds parse expiresAt with a default ISO8601DateFormatter,
+    // which rejects ".000Z" — the gate had never fired on fractional
+    // stamps, making F5's expiry (and Flag 6 itself) dead on arrival.
+    expiresAt: (wo.type === 'race'
       ? new Date(Date.parse(today + 'T23:59:59Z') + 8 * 3600 * 1000).toISOString()
-      : new Date(Date.now() + 14 * 3600 * 1000).toISOString(),
+      : new Date(Date.now() + 14 * 3600 * 1000).toISOString()
+    ).replace(/\.\d{3}Z$/, 'Z'),
     distanceMi,
     paceLabel: paceLabelFor(wo.type),
     isRace: wo.type === 'race',
@@ -654,6 +661,108 @@ export async function buildWatchToday(
           .filter((m) => Number.isFinite(m) && m >= 2 && m <= distanceMi - 2)
       : [];
     if (fuelMi.length > 0) workout.gelsMi = fuelMi;
+
+    // RK-1 · strategy line for the race face — goal + B-target in one
+    // glance. Sourced from the same plan-race meta as goalSec.
+    const goalDisp = (raceMeta?.goalDisplay as string | undefined) ?? null;
+    const safeDisp = (raceMeta?.goalSafeDisplay as string | undefined) ?? null;
+    workout.strategyLabel = goalDisp
+      ? (safeDisp ? `${goalDisp} goal · ${safeDisp} safe` : `${goalDisp} goal`)
+      : null;
+
+    // RK-1 · gel fallback for races whose authored spec carries no
+    // fuel_mi: convert the research-doctrine fueling plan (time-anchored)
+    // to course miles via goal pace. Spec-authored positions win when
+    // present (above).
+    if (workout.gelsMi == null && raceGoalSec) {
+      try {
+        const fuelRow = (await pool.query<{
+          fuel_brand: string | null;
+          fuel_gel_carbs_g: number | null;
+          fuel_target_g_per_hr: number | null;
+        }>(
+          `SELECT fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr FROM users WHERE id = $1 LIMIT 1`,
+          [userId]
+        ).catch(() => ({ rows: [] }))).rows[0];
+        const fuel = computeFueling({
+          durationEstMin: Math.round(raceGoalSec / 60),
+          distanceMi: raceDistMi,
+          workoutType: 'race',
+          tempF: null,
+          daysToARace: 0,
+          raceFuelTargetGPerHr: fuelRow?.fuel_target_g_per_hr ?? null,
+          gelCarbsG: fuelRow?.fuel_gel_carbs_g ?? null,
+          gelLabel: fuelRow?.fuel_brand ?? null,
+        });
+        if (fuel.needed && raceDistMi > 0) {
+          const paceMinPerMi = (raceGoalSec / 60) / raceDistMi;
+          const gels = fuel.atMins
+            .map((m) => Math.round((m / paceMinPerMi) * 10) / 10)
+            .filter((mi) => mi >= 2 && mi <= raceDistMi - 2);
+          if (gels.length > 0) workout.gelsMi = gels;
+        }
+      } catch { /* gel fallback is additive */ }
+    }
+  }
+
+  // 7b. RK-1 — training-run fueling. The model declared `fueling` since
+  // the watch shipped, but the server never assigned it: the 30/60/90-min
+  // gel haptics (WorkoutEngine.swift:628) were dead on every real long
+  // run (sim fixtures set them, masking the gap). Race day is handled
+  // above via gelsMi — the engine ignores time-anchored fueling there.
+  // Best-effort: never fail the payload over fueling math.
+  if (wo.type !== 'race') {
+    try {
+      const fuelingType: WorkoutFuelingType =
+        wo.type === 'long' ? 'long'
+        : wo.type === 'threshold' || wo.type === 'tempo' || wo.type === 'intervals' ? 'quality'
+        : wo.type === 'rest' ? 'rest'
+        : 'easy';
+
+      // Runner product prefs — same source as the iPhone brief, so the
+      // watch quotes the same product line ("2 Maurten 100s").
+      const fuelRow = (await pool.query<{
+        fuel_brand: string | null;
+        fuel_gel_carbs_g: number | null;
+        fuel_target_g_per_hr: number | null;
+      }>(
+        `SELECT fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr FROM users WHERE id = $1 LIMIT 1`,
+        [userId]
+      ).catch(() => ({ rows: [] }))).rows[0];
+
+      const daysToARace = raceRow?.meta?.date
+        ? Math.max(0, Math.round((Date.parse(raceRow.meta.date + 'T12:00:00Z') - Date.now()) / 86400000))
+        : null;
+
+      const fuel = computeFueling({
+        durationEstMin: totalEstimatedMinutes,
+        distanceMi,
+        workoutType: fuelingType,
+        tempF: null, // forecast wiring is the weather-cron fix's job (M-15)
+        daysToARace,
+        raceFuelTargetGPerHr: fuelRow?.fuel_target_g_per_hr ?? null,
+        gelCarbsG: fuelRow?.fuel_gel_carbs_g ?? null,
+        gelLabel: fuelRow?.fuel_brand ?? null,
+      });
+
+      if (fuel.needed) {
+        // Time-anchored prompts (haptic at each atMins). The watch's
+        // WatchFueling decode is strict — every field present.
+        workout.fueling = {
+          needed: fuel.needed,
+          gels: fuel.gels,
+          atMins: fuel.atMins,
+          gPerHr: fuel.gPerHr,
+          totalCarbsG: fuel.carbsTotalG,
+          isRehearsal: fuel.isRehearsal,
+          heatAdjusted: fuel.heatAdjusted,
+          shortLine: fuel.shortLine,
+          why: fuel.why,
+        };
+      }
+    } catch {
+      /* fueling is additive — a failure must not cost the workout push */
+    }
   }
 
   // P27.5 — populate readiness on the watch payload. Before this the
@@ -664,7 +773,11 @@ export async function buildWatchToday(
     const { computeReadiness } = await import('@/lib/coach/readiness');
     const state = await loadCoachState(userId);
     const r = computeReadiness(state);
-    workout.readinessScore = r.score ?? null;
+    // Math.round: readiness pillars carry float weights and the deployed
+    // watch decodes readinessScore as a strict Int — a fractional score
+    // fails the WHOLE WatchWorkout decode and the watch silently keeps
+    // yesterday's session (M-13).
+    workout.readinessScore = r.score != null ? Math.round(r.score) : null;
     workout.readinessLabel = r.label ?? r.band ?? null;
   } catch {
     /* don't fail the watch payload over readiness — best effort only */

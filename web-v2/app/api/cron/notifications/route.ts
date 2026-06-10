@@ -2,8 +2,9 @@
  * GET  /api/cron/notifications   — health probe (no auth)
  * POST /api/cron/notifications   — drain + schedule (Bearer CRON_SECRET)
  *
- * Hybrid scheduler entry point (deck §5). The POST handler runs every
- * 15 min via Railway's cron-job.org integration and does TWO things:
+ * Hybrid scheduler entry point (deck §5). The POST handler is ticked by
+ * .github/workflows/notifications.yml (every 30 min waking hours, every
+ * 15 min in the 11:00-13:59 UTC race-day wake band) and does TWO things:
  *
  *   1. DRAIN THE QUEUE
  *      For every notifications_pending row where fire_at <= now() AND
@@ -11,6 +12,15 @@
  *      and dispatch it. The row's payload was pre-rendered at enqueue
  *      time so we don't re-resolve state at fire — what the enqueuer
  *      decided was the message IS the message.
+ *
+ *      Rows are consumed (processed_at set) ONLY on terminal outcomes:
+ *      delivered, pref-skip, dedup-skip, permanent APNs rejection
+ *      (400 BadDeviceToken / 403 / 410). Retryable outcomes (network,
+ *      timeout, 429, 5xx, no tokens, APNs unconfigured) leave the row
+ *      pending and count attempts in payload._attempts — give-up marker
+ *      after 8. Quiet-hours skips also leave the row pending but do NOT
+ *      count an attempt; the row delivers at the first tick outside
+ *      quiet hours (M-21).
  *
  *   2. SCHEDULE TIME-BASED CATEGORIES
  *      For every active user, evaluate B (race eve T-21:00), D (Sunday
@@ -28,6 +38,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { apnsHost } from '@/lib/notifications/apns';
+import { raiseAlert } from '@/lib/ops/alerts';
 import { dispatchNotification } from '@/lib/notifications/dispatch';
 import {
   renderRaceEve,
@@ -58,6 +70,30 @@ export async function GET() {
     );
     pendingCount = r.rows[0]?.n ?? 0;
   } catch { /* table not present → 0 */ }
+  // RK-0/RK-6 observability: 24h delivery counts + unacked notification
+  // alerts. Best-effort — a missing table reads as 0, never fails the probe.
+  let delivered24h = 0;
+  let failed24h = 0;
+  try {
+    const r = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE delivered = true)::int  AS delivered,
+         COUNT(*) FILTER (WHERE delivered = false)::int AS failed
+       FROM notifications_log
+      WHERE fired_at > now() - interval '24 hours'`,
+    );
+    delivered24h = r.rows[0]?.delivered ?? 0;
+    failed24h = r.rows[0]?.failed ?? 0;
+  } catch { /* table not present → 0 */ }
+  let unackedAlerts = 0;
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM ops_alerts
+        WHERE acked_at IS NULL
+          AND kind IN ('apns_send_failed', 'notifications_cron_error')`,
+    );
+    unackedAlerts = r.rows[0]?.n ?? 0;
+  } catch { /* table not present → 0 */ }
   return NextResponse.json({
     endpoint: 'POST /api/cron/notifications',
     pending: pendingCount,
@@ -67,6 +103,14 @@ export async function GET() {
       process.env.APNS_TEAM_ID &&
       (process.env.APNS_KEY_PEM || process.env.APNS_KEY_PATH),
     ),
+    // RK-6: the host sendPush WOULD hit. TestFlight + App Store builds
+    // both register PRODUCTION tokens — if apns_production reads false
+    // while testing a TestFlight build, every send 400s BadDeviceToken.
+    apns_host: apnsHost(),
+    apns_production: process.env.APNS_PRODUCTION === '1',
+    delivered_24h: delivered24h,
+    failed_24h: failed24h,
+    unacked_alerts: unackedAlerts,
   });
 }
 
@@ -96,6 +140,9 @@ export async function POST(req: NextRequest) {
     skipped_dedup: 0,
     skipped_no_tokens: 0,
     skipped_apns_not_configured: 0,
+    skipped_quiet: 0,
+    retry_pending: 0,
+    gave_up: 0,
     failed: 0,
     enqueued_b: 0,
     enqueued_d: 0,
@@ -109,6 +156,11 @@ export async function POST(req: NextRequest) {
     await drainPending(stats);
   } catch (err: any) {
     stats.errors.push(`drain: ${err?.message ?? err}`);
+    await raiseAlertDeduped(
+      'notifications_cron_error',
+      `notifications cron drain crashed: ${err?.message ?? err}`,
+      { phase: 'drain' },
+    );
   }
 
   // 2. Schedule
@@ -116,6 +168,11 @@ export async function POST(req: NextRequest) {
     await scheduleTimeBased(stats);
   } catch (err: any) {
     stats.errors.push(`schedule: ${err?.message ?? err}`);
+    await raiseAlertDeduped(
+      'notifications_cron_error',
+      `notifications cron schedule crashed: ${err?.message ?? err}`,
+      { phase: 'schedule' },
+    );
   }
 
   return NextResponse.json({ ok: true, ...stats });
@@ -124,6 +181,13 @@ export async function POST(req: NextRequest) {
 // ──────────────────────────────────────────────────────────────
 // 1. DRAIN — process notifications_pending rows that are due
 // ──────────────────────────────────────────────────────────────
+
+/** Max drain attempts before a retryable row is consumed with a give-up
+ *  marker. At the 15-30 min tick cadence that is roughly 2-4 hours of
+ *  retries — enough to ride out an APNs blip without replaying a stale
+ *  notification forever. Counted in payload._attempts (jsonb, no schema
+ *  change). */
+const MAX_DRAIN_ATTEMPTS = 8;
 
 async function drainPending(stats: any): Promise<void> {
   const due = (await pool.query(
@@ -139,32 +203,138 @@ async function drainPending(stats: any): Promise<void> {
     try {
       // The pending row carries the fully-rendered template (we stored it
       // pre-rendered at enqueue time so what was decided IS what fires).
+      // Bookkeeping keys the drain adds (_attempts, _last_error, _final,
+      // _gave_up) ride alongside the template fields and are ignored by
+      // the dispatcher.
       const tpl = row.payload as RenderedTemplate;
       const result = await dispatchNotification(row.user_id, tpl);
-      if (result.ok && result.sent_count != null && result.sent_count > 0) {
-        stats.dispatched++;
-      } else if (result.skipped === 'category_off' || result.skipped === 'master_off') {
+
+      // Quiet-hours defer (RK-5/M-21): NOT a failure. Leave the row
+      // pending without counting an attempt — it delivers at the first
+      // tick outside the runner's quiet hours.
+      if (result.skipped === 'quiet_hours') {
+        stats.skipped_quiet++;
+        continue;
+      }
+
+      if (result.skipped === 'category_off' || result.skipped === 'master_off') {
         stats.skipped_pref++;
+        await markProcessed(row.id);
       } else if (result.skipped === 'recently_sent') {
         stats.skipped_dedup++;
+        await markProcessed(row.id);
+      } else if (result.ok && result.sent_count != null && result.sent_count > 0) {
+        stats.dispatched++;
+        await markProcessed(row.id);
       } else if (result.skipped === 'no_tokens') {
+        // Retryable — a race-morning push enqueued before the phone
+        // registered should still land once the token arrives.
         stats.skipped_no_tokens++;
+        await retryLater(row, 'no_tokens', stats);
       } else if (result.skipped === 'apns_not_configured') {
+        // Retryable — env may land mid-day; the queue should survive it.
         stats.skipped_apns_not_configured++;
+        await retryLater(row, 'apns_not_configured', stats);
       } else if (result.failed_count != null && result.failed_count > 0) {
         stats.failed++;
+        const f = result.failure;
+        const reason = f ? `${f.reason}${f.status != null ? ` ${f.status}` : ''}` : 'send_failed';
+        await raiseAlertDeduped(
+          'apns_send_failed',
+          `APNs send failed (${row.category}): ${reason}`,
+          { pending_id: row.id, category: row.category, reason, detail: f?.detail ?? null },
+        );
+        if (f?.permanent) {
+          // Terminal APNs rejection (400 BadDeviceToken / 403 / 410) —
+          // retrying cannot succeed. Consume the row and record why.
+          await markProcessed(row.id, { outcome: 'apns_rejected_permanent', reason, detail: f.detail ?? null });
+        } else {
+          await retryLater(row, reason, stats);
+        }
+      } else {
+        // Nothing sent, nothing failed, no skip — e.g. only non-iOS
+        // tokens registered. Retry; the attempt cap terminates it.
+        await retryLater(row, 'no_send_attempted', stats);
       }
     } catch (err: any) {
       stats.errors.push(`drain row ${row.id}: ${err?.message ?? err}`);
-    } finally {
-      // Mark processed either way — the dispatcher logged the attempt
-      // on notifications_log; the pending row's job is done.
-      await pool.query(
-        `UPDATE notifications_pending SET processed_at = now() WHERE id = $1`,
-        [row.id],
-      ).catch(() => {});
+      await raiseAlertDeduped(
+        'apns_send_failed',
+        `Drain dispatch threw (${row.category}): ${err?.message ?? err}`,
+        { pending_id: row.id, category: row.category },
+      );
+      await retryLater(row, `exception: ${err?.message ?? err}`, stats);
     }
   }
+}
+
+/** Terminal outcome — consume the pending row. Optional `final` lands in
+ *  payload._final so a permanently-rejected row says why it was consumed. */
+async function markProcessed(id: number, final?: Record<string, unknown>): Promise<void> {
+  if (final) {
+    await pool.query(
+      `UPDATE notifications_pending
+          SET processed_at = now(), payload = payload || $2::jsonb
+        WHERE id = $1`,
+      [id, JSON.stringify({ _final: final })],
+    ).catch(() => {});
+  } else {
+    await pool.query(
+      `UPDATE notifications_pending SET processed_at = now() WHERE id = $1`,
+      [id],
+    ).catch(() => {});
+  }
+}
+
+/** Retryable outcome (M-21) — leave processed_at NULL so the next tick
+ *  picks the row up again, and count the attempt inside the payload
+ *  jsonb. After MAX_DRAIN_ATTEMPTS the row is consumed with a give-up
+ *  marker so the queue can't replay a stale notification forever. */
+async function retryLater(
+  row: { id: number; payload: any },
+  reason: string,
+  stats: any,
+): Promise<void> {
+  const attempts = (Number(row.payload?._attempts) || 0) + 1;
+  if (attempts >= MAX_DRAIN_ATTEMPTS) {
+    stats.gave_up++;
+    await pool.query(
+      `UPDATE notifications_pending
+          SET processed_at = now(), payload = payload || $2::jsonb
+        WHERE id = $1`,
+      [row.id, JSON.stringify({ _attempts: attempts, _gave_up: true, _last_error: reason })],
+    ).catch(() => {});
+  } else {
+    stats.retry_pending++;
+    await pool.query(
+      `UPDATE notifications_pending
+          SET payload = payload || $2::jsonb
+        WHERE id = $1`,
+      [row.id, JSON.stringify({ _attempts: attempts, _last_error: reason })],
+    ).catch(() => {});
+  }
+}
+
+/** RK-0 alerts MVP. raiseAlert with a 6h dedup: if an unacked ops_alerts
+ *  row of the same kind landed in the last 6 hours, stay quiet — one
+ *  alert per incident, not one per failed row per tick. Swallows its own
+ *  errors; alerting must never break the drain. */
+async function raiseAlertDeduped(
+  kind: 'apns_send_failed' | 'notifications_cron_error',
+  message: string,
+  metadata?: Record<string, any>,
+): Promise<void> {
+  try {
+    const recent = await pool.query(
+      `SELECT 1 FROM ops_alerts
+        WHERE kind = $1 AND acked_at IS NULL
+          AND created_at > now() - interval '6 hours'
+        LIMIT 1`,
+      [kind],
+    );
+    if (recent.rows.length > 0) return;
+    await raiseAlert({ kind, severity: 'error', message, metadata, source: 'cron/notifications' });
+  } catch { /* never let alerting break the drain */ }
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -249,18 +419,23 @@ function userLocalTomorrow(tz: string): string {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-/** Returns true iff the user-local current minute is within slack of HH:MM. */
-function isAtLocalTime(hour: number, minute: number, hm: string, slackMin = 25): boolean {
+/** Returns true iff the user-local clock is inside the fire window
+ *  [HH:MM, HH:MM + slackMin). */
+function isAtLocalTime(hour: number, minute: number, hm: string, slackMin = 30): boolean {
   const [h, m] = hm.split(':').map(Number);
   const userMin = hour * 60 + minute;
   const targetMin = h * 60 + m;
   const delta = userMin - targetMin;
-  // 2026-06-09 · race-killer F6 — slack was 15 min against a workflow
-  // that polls every 30 ("cron polls every 15" was stale): any target in
-  // the second half of a 30-min gap was silently skipped, and GitHub
-  // Actions habitually fires 5-20 min late on top. 25 min covers a full
-  // 30-min cadence with delay; enqueueIfFresh's 24h dedup_key makes a
-  // double-match harmless (second tick is a no-op).
+  // 30-min window (RK-5/F6, two audits converged here). Slack was 15 min
+  // against a workflow that polls every 30 ("cron polls every 15" was
+  // stale): any target off the tick grid straddle-missed (wake 06:10 →
+  // ticks 06:00 delta -10 and 06:30 delta 20 both missed → never fired),
+  // and GitHub Actions habitually fires 5-20 min late on top. F6 took 25;
+  // 30 closes the residual :01-:04 holes a 25-min window leaves on a
+  // 30-min grid. The */15 race-day wake band survives one dropped tick.
+  // Two ticks landing inside the same window cannot double-send:
+  // enqueueIfFresh blocks on the unprocessed pending row (24h) and on
+  // the delivered notifications_log row (24h).
   return delta >= 0 && delta < slackMin;
 }
 

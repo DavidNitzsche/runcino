@@ -28,6 +28,42 @@ import { getStravaToken } from '@/lib/strava/auth';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { isSubThresholdRun } from '@/lib/runs/length-guard';
+import { raiseAlert } from '@/lib/ops/alerts';
+
+// Layer 3 (M-1) · optional shared secret carried as ?key=<value> on the
+// callback URL registered with Strava. Strava echoes the full callback URL
+// (query included) on both the GET handshake and every POST delivery, so a
+// matching key proves the caller knows the registered URL — the body-field
+// checks (Layers 1+2) stop being the only defense. Unset env → layer off
+// (deploys safely ahead of the re-subscribe that adds the key to the URL).
+function secretKeyOk(req: NextRequest): boolean {
+  const expected = process.env.STRAVA_WEBHOOK_SECRET_PATH;
+  if (!expected) return true;
+  return req.nextUrl.searchParams.get('key') === expected;
+}
+
+// Rejected-event alert with a 6h dedup so a scanner burst can't flood
+// ops_alerts. Best-effort — alerting must never break the ACK path.
+async function alertWebhookRejected(message: string, metadata: Record<string, unknown>): Promise<void> {
+  try {
+    const recent = await pool.query(
+      `SELECT 1 FROM ops_alerts
+        WHERE kind = 'webhook_failure'
+          AND created_at > NOW() - INTERVAL '6 hours'
+        LIMIT 1`,
+    );
+    if (recent.rows.length > 0) return;
+    await raiseAlert({
+      kind: 'webhook_failure',
+      severity: 'error',
+      message,
+      metadata,
+      source: 'strava/webhook',
+    });
+  } catch (e: any) {
+    console.error('[strava/webhook] alert write failed:', e?.message);
+  }
+}
 
 export const dynamic = 'force-dynamic';
 // Node runtime — we hit pg + Strava fetch with timeouts; the Edge
@@ -43,6 +79,9 @@ export async function GET(req: NextRequest) {
   const token = sp.get('hub.verify_token') ?? '';
   const challenge = sp.get('hub.challenge') ?? '';
 
+  if (!secretKeyOk(req)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
   if (mode !== 'subscribe' || !token || !challenge) {
     return NextResponse.json({ error: 'invalid handshake params' }, { status: 400 });
   }
@@ -74,6 +113,12 @@ export async function POST(req: NextRequest) {
   //   updates: { title?: string, type?: string, private?: 'true'|'false',
   //              authorized?: 'false' }    // present on update/athlete deauth
   // }
+  // Layer 3 first — a caller without the registered URL's key never
+  // reaches body parsing or DB lookups. 200 per the established pattern
+  // (Strava doesn't retry; scanners get nothing to distinguish).
+  if (!secretKeyOk(req)) {
+    return NextResponse.json({ ok: false }, { status: 200 });
+  }
   let body: any = null;
   try {
     body = await req.json();
@@ -126,20 +171,37 @@ export async function POST(req: NextRequest) {
     console.warn(`[strava/webhook] missing subscription_id · rejecting`);
     return NextResponse.json({ ok: false, error: 'missing subscription_id' }, { status: 200 });
   }
-  let subRow: { user_uuid: string | null } | null = null;
+  // M-1 root cause #2: this lookup used to SELECT user_uuid — a column
+  // that has NEVER existed on strava_webhook_subscriptions (migration 119
+  // defines id/subscription_id/callback_url/verify_token/created_at/
+  // last_event_at/events_received). Every event since the validation
+  // shipped died here on "column does not exist" → catch → 200-reject.
+  // The row's identity is all Layer 1 needs; the user resolves in Layer 2.
+  let subRow: { subscription_id: number } | null = null;
   try {
-    const s = await pool.query<{ user_uuid: string | null }>(
-      `SELECT user_uuid::text AS user_uuid FROM strava_webhook_subscriptions WHERE subscription_id = $1 LIMIT 1`,
+    const s = await pool.query<{ subscription_id: number }>(
+      `SELECT subscription_id FROM strava_webhook_subscriptions WHERE subscription_id = $1 LIMIT 1`,
       [subscriptionId],
     );
     subRow = s.rows[0] ?? null;
   } catch (e: unknown) {
     console.error(`[strava/webhook] subscription lookup failed: ${e instanceof Error ? e.message : String(e)}`);
+    await alertWebhookRejected(
+      `webhook subscription lookup threw: ${e instanceof Error ? e.message : String(e)}`,
+      { subscriptionId, ownerId, objectId, aspectType },
+    );
     return NextResponse.json({ ok: false }, { status: 200 });
   }
   if (!subRow) {
     console.warn(`[strava/webhook] unknown subscription_id=${subscriptionId} · ` +
       `rejecting forged event. owner=${ownerId} object=${objectId} aspect=${aspectType}`);
+    // RK-0/M-1 · this branch silently ate EVERY real event for 4 days when
+    // strava_webhook_subscriptions was empty (Jun 5-9). A rejection here is
+    // either an attack or a broken subscription table — both worth an alert.
+    await alertWebhookRejected(
+      `webhook event rejected: unknown subscription_id=${subscriptionId} (empty/stale strava_webhook_subscriptions?)`,
+      { subscriptionId, ownerId, objectId, aspectType },
+    );
     return NextResponse.json({ ok: false, error: 'unknown subscription_id' }, { status: 200 });
   }
   // Layer 2 · is this athlete actually one of our runners?
@@ -156,6 +218,10 @@ export async function POST(req: NextRequest) {
   }
   if (!ownerProfile) {
     console.warn(`[strava/webhook] unknown owner_id=${ownerId} · no profile.strava_athlete_id match · rejecting`);
+    await alertWebhookRejected(
+      `webhook event rejected: unknown owner_id=${ownerId}`,
+      { subscriptionId, ownerId, objectId, aspectType },
+    );
     return NextResponse.json({ ok: false, error: 'unknown owner_id' }, { status: 200 });
   }
 
@@ -281,12 +347,31 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
   // rows in strava_pushes are untouched (auditable history).
   if (aspectType === 'delete') {
     try {
+      // M-6 · read the row's local date BEFORE deleting so the day can be
+      // re-merged after. If the deleted row was the cluster canonical
+      // (possible via pickCanonical's GPS-divergence preference), the
+      // watch/HK losers still carry mergedIntoId → the deleted row and
+      // the day silently vanishes from volume until the nightly cron's
+      // 14-day window — permanently if older. Re-merging on the row's own
+      // date clears the stale flags immediately.
+      const deletedDate = (await pool.query<{ d: string | null }>(
+        `SELECT data->>'date' AS d FROM runs
+          WHERE user_uuid = $1 AND id = $2::bigint`,
+        [userId, String(objectId)]
+      ).catch(() => ({ rows: [] as Array<{ d: string | null }> }))).rows[0]?.d ?? null;
       await pool.query(
         `DELETE FROM runs
           WHERE user_uuid = $1
             AND id = $2::bigint`,
         [userId, String(objectId)]
       );
+      if (deletedDate) {
+        await autoMergeForDate(userId, deletedDate).catch((err) => {
+          console.warn('[strava/webhook] post-delete autoMerge failed', {
+            userId, date: deletedDate, err: String(err?.message ?? err).slice(0, 200),
+          });
+        });
+      }
       await bustBriefingCacheForEvent(userId, 'run_ingest').catch(() => {});
       await markProcessed(eventRowId, 'ok');
     } catch (e: any) {
@@ -446,29 +531,18 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
     stravaRaw: activity, // keep the original for downstream enrichment
   };
 
-  // DELETE-then-INSERT on the BIGINT id is the idempotent path used
-  // everywhere else in this codebase. Both create and update collapse
-  // to the same upsert — dedupe handled.
+  // M-16 / Rule 6 · upsert, not DELETE-then-INSERT. The old shape wiped
+  // every column (shoe_id, provenance, weather_enriched_at) and every
+  // data key this webhook payload doesn't carry (mergedIntoId — a Strava
+  // rename event used to resurrect a merged loser row as a visible
+  // double-count; absorbed weather/splits) on each update event. Merge
+  // semantics: existing keys survive; incoming non-null keys win;
+  // incoming nulls cannot erase enriched values.
   //
-  // 2026-06-05 · backend audit P0-5 fix · scope DELETE by user_uuid.
-  // Strava's activity-id space is global · without the user_uuid
-  // filter, a webhook delivered for user A's activity-update silently
-  // deletes user B's row (if they ever shared an id, e.g. via a future
-  // ingest path or an admin-restore from another runner's export).
-  // Cite docs/2026-06-05-backend-audit.html § P0-5.
-  await pool.query(
-    `DELETE FROM runs
-      WHERE id = $1::bigint AND user_uuid = $2`,
-    [String(id), userId]
-  );
   // 2026-06-05 · backend audit P0-4 fix · same shape as pullSync.ts.
-  // Pre-check the existing-row owner so an INSERT that would silently
-  // collide on PK (id) but with a DIFFERENT user_uuid surfaces as a
-  // loud error rather than getting swallowed. The DELETE above is
-  // already user-scoped (P0-5), so a foreign-owner row would not have
-  // been removed · the INSERT would then throw or no-op depending on
-  // ON CONFLICT. Either way the runner sees nothing. Surface it.
-  // Cite docs/2026-06-05-backend-audit.html § P0-4.
+  // Pre-check the existing-row owner so a PK (id) collision with a
+  // DIFFERENT user_uuid surfaces as a loud error rather than getting
+  // swallowed. Cite docs/2026-06-05-backend-audit.html § P0-4.
   const existingOwner = (await pool.query<{ u: string }>(
     `SELECT user_uuid::text AS u FROM runs WHERE id = $1::bigint`,
     [String(id)],
@@ -482,11 +556,20 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
     );
     throw new Error(`cross-user collision on Strava id ${id}`);
   }
-  await pool.query(
+  // WHERE backstops the pre-check (P0-5 user scoping, upsert form): a
+  // cross-user conflict makes DO UPDATE a no-op instead of merging into
+  // the other runner's row; rowCount 0 keeps the refusal loud.
+  const up = await pool.query(
     `INSERT INTO runs (id, user_uuid, data)
-     VALUES ($1::bigint, $2, $3)`,
+     VALUES ($1::bigint, $2, $3)
+     ON CONFLICT (id) DO UPDATE
+       SET data = runs.data || jsonb_strip_nulls(EXCLUDED.data)
+     WHERE runs.user_uuid = EXCLUDED.user_uuid`,
     [String(id), userId, data]
   );
+  if (up.rowCount === 0) {
+    throw new Error(`cross-user collision on Strava id ${id}`);
+  }
   // 2026-06-03 · post-write hook · calibration auto-complete on
   // Strava webhook delivery. Cold-start runner finishing first run
   // gets calibrated within seconds.

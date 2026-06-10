@@ -14,8 +14,15 @@
 #      active user — idempotent via dedup_key.
 #
 # Schedule: every 30 min during waking hours (14:00-06:00 UTC = 7am-
-# 11pm PT). Off overnight — race-eve fires at 21:00 local which falls
-# inside the waking window every time zone we care about.
+# 11pm PT). Plus a 15-min band at 11:00-13:59 UTC (= 4am-6:59am PT
+# during PDT) so race-day wake pushes can fire: race_day_wake_time
+# defaults to 05:30 and David's pref is 06:00, both inside the band.
+# Without it there were NO ticks 07:00-13:59 UTC and Category A could
+# never fire. Early ticks cannot spam: quiet hours are enforced in
+# dispatch (lib/notifications/dispatch.ts), so anything that lands in
+# the band without bypass_quiet_hours stays pending until quiet hours
+# end. Race-eve fires at 21:00 local which falls inside the waking
+# window every time zone we care about.
 #
 # Manual trigger: Actions tab > "Drain notifications queue" > Run workflow.
 
@@ -38,6 +45,13 @@ on:
     # reminder was unreachable code. Full 24h coverage also fixes every
     # early-morning local time for non-Pacific runners.
     - cron: '*/30 7-13 * * *'
+    # Race-day wake band: 11:00-13:59 UTC = 04:00-06:59 PT during PDT
+    # (race season). 15-min ticks so the 30-min isAtLocalTime window in
+    # the cron route survives a dropped or drifted tick on the one band
+    # that cannot afford a miss. Quiet hours are enforced per-user in
+    # dispatch, so early ticks only deliver bypass_quiet_hours payloads
+    # (race-day morning) until quiet hours end. 12 extra ticks/day.
+    - cron: '*/15 11-13 * * *'
   workflow_dispatch: {}
 
 jobs:

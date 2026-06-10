@@ -145,6 +145,15 @@ struct FaffApp: App {
         // until the next pull-to-refresh.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
+            // 2026-06-09 (RK-4): re-push today's workout to the watch + flush
+            // the completion relay queue on every foreground. WatchSync.start()
+            // only runs once per process, so an iPhone that sat backgrounded
+            // overnight never re-pushed and the watch kept yesterday's plan
+            // until the next cold launch. refresh() throttles itself to once
+            // per 60s (same pattern as the lastImportAt throttle below), so
+            // this call is safe to make unconditionally — and it must run
+            // BEFORE the HK 30s guard, which returns early.
+            Task { await WatchSync.shared.refresh() }
             let now = Date()
             guard now.timeIntervalSince(lastImportAt) > 30 else { return }
             lastImportAt = now

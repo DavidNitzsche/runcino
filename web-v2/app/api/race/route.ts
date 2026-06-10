@@ -54,10 +54,16 @@ export async function POST(req: NextRequest) {
   };
 
   try {
+    // Rule 6 guard: PATCH accumulates result fields onto this same meta blob
+    // (finishTime, bib, wave, goalSafeDisplay, retro*, avgHrBpm). A re-add
+    // must never full-replace them. Existing keys survive; non-null incoming
+    // keys win; incoming nulls (absent form fields) cannot erase. Clearing a
+    // field stays PATCH's job, not POST's.
     await pool.query(
       `INSERT INTO races (slug, user_uuid, meta)
        VALUES ($1, $2, $3)
-       ON CONFLICT (slug) DO UPDATE SET meta = EXCLUDED.meta`,
+       ON CONFLICT (slug) DO UPDATE
+         SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta)`,
       [slug, userId, meta]
     );
     await bustBriefingCacheForEvent(userId, 'race_crud');

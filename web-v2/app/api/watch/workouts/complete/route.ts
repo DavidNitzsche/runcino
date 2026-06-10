@@ -143,21 +143,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── 1. Full per-phase blob into coach_intents ──
-  // The coach reads this via getWorkoutCompletion. Idempotent on
-  // (user_id, reason, field) — re-POSTing the same workoutId overwrites.
-  await pool.query(
-    `DELETE FROM coach_intents
-      WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion' AND field = $2`,
-    [userId, body.workoutId]
-  ).catch(() => {});
-  await pool.query(
-    `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value, briefing_id)
-     VALUES ($1, $1, 'watch_completion', $2, $3, NULL)`,
-    [userId, body.workoutId, JSON.stringify(body)]
-  ).catch(() => {});
-
-  // ── 2. strava_activities-shaped row so non-coach consumers see the run ──
+  // ── 1. strava_activities-shaped row so non-coach consumers see the run ──
   // Shape mirrors /api/ingest/workout — keeps a single canonical activity
   // shape across watch, Strava, HealthKit, and manual entry sources.
 
@@ -196,6 +182,63 @@ export async function POST(req: NextRequest) {
     ? formatPace(Math.round(totalSec / totalMi))
     : null;
   const indoor = body.indoor === true;
+
+  // ── RK-2 cross-day guard ──
+  // workoutId is server-issued as `${userId}-${YYYY-MM-DD}` (per-DAY). A
+  // stale cached workout started on a LATER day used to come back carrying
+  // the original day's id, and the idempotent overwrite below destroyed
+  // that day's real run (Saturday's run replaced by Sunday's race). When
+  // the id's planned date disagrees with the run's actual local date,
+  // fork the identity with an `@date` suffix: the completion lands as a
+  // NEW run on its true date and the original day's row is untouched.
+  // Re-POSTs of the same completion still dedup (same startedAt → same
+  // date → same suffix). Ids without a date suffix (treadmill trd_*) have
+  // no cross-day concept and pass through unchanged.
+  const plannedDate = body.workoutId.match(/(\d{4}-\d{2}-\d{2})$/)?.[1] ?? null;
+  const crossDay = plannedDate != null && plannedDate !== date;
+  const effectiveWorkoutId = crossDay ? `${body.workoutId}@${date}` : body.workoutId;
+  if (crossDay) {
+    console.warn(
+      `[watch/complete] cross-day completion · workoutId=${body.workoutId} ` +
+      `planned=${plannedDate} actual=${date} · forking to ${effectiveWorkoutId} ` +
+      `so the ${plannedDate} run is not overwritten.`,
+    );
+  }
+
+  // ── Full per-phase blob into coach_intents ──
+  // The coach reads this via getWorkoutCompletion. Idempotent on
+  // (user_id, reason, field) — re-POSTing the same workoutId overwrites.
+  // Create-before-delete: the old order (DELETE then INSERT, both with
+  // swallowed catches) destroyed the PREVIOUS blob when the INSERT failed
+  // — and two prod trd_* completions were acked with no surviving record.
+  // Now the new row lands first; older rows for the same key are swept
+  // after; a failed insert leaves the prior blob intact and is surfaced
+  // in the response instead of swallowed.
+  let intentsErr: string | null = null;
+  try {
+    const ins = await pool.query<{ id: number | string }>(
+      `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value, briefing_id)
+       VALUES ($1, $1, 'watch_completion', $2, $3, NULL)
+       RETURNING id`,
+      [userId, effectiveWorkoutId, JSON.stringify(body)]
+    );
+    const newRowId = ins.rows[0]?.id;
+    if (newRowId != null) {
+      await pool.query(
+        `DELETE FROM coach_intents
+          WHERE COALESCE(user_uuid, user_id) = $1
+            AND reason = 'watch_completion' AND field = $2 AND id <> $3`,
+        [userId, effectiveWorkoutId, newRowId]
+      ).catch(() => {
+        // Duplicate blob rows are tolerable: readers take the newest;
+        // the next re-POST sweeps again.
+      });
+    }
+  } catch (e: any) {
+    intentsErr = e?.message ?? String(e);
+    console.error('[watch/complete] coach_intents write failed:', e);
+  }
+
   // Fix 4b · derive whole-run avgHr once (null when phases carry no HR).
   const wholeRunHr = wholeRunAvgHr(body.phases);
 
@@ -240,9 +283,12 @@ export async function POST(req: NextRequest) {
   }
 
   const data: any = {
-    id: body.workoutId,
-    activityId: body.workoutId,
-    client_workout_id: body.workoutId,
+    id: effectiveWorkoutId,
+    activityId: effectiveWorkoutId,
+    client_workout_id: effectiveWorkoutId,
+    // Original server-issued id when a cross-day fork renamed this run —
+    // keeps the plan-slot linkage auditable.
+    plannedWorkoutId: crossDay ? body.workoutId : undefined,
     source,
     // 2026-06-01 · `indoor` distinguishes treadmill/incline-trainer from
     // outdoor-with-no-GPS. Downstream gates (lib/coach/run-recap.ts skips
@@ -303,8 +349,9 @@ export async function POST(req: NextRequest) {
     // Best-effort · null when client omitted it.
     timezone: typeof body.timezone === 'string' ? body.timezone : null,
     // Reference to the full per-phase blob for any downstream consumer
-    // that wants the structured detail.
-    watchCompletionRef: body.workoutId,
+    // that wants the structured detail. Must match the coach_intents
+    // field key, which is the effective (cross-day-forked) id.
+    watchCompletionRef: effectiveWorkoutId,
     // GPS polyline shipped directly by watch app (build 172+). The watch
     // emits camelCase `routePolyline` (Encodable default, no CodingKeys); the
     // prior snake_case-only read silently dropped a valid 1486-char polyline
@@ -347,16 +394,11 @@ export async function POST(req: NextRequest) {
   // (matches the existing apple_health pattern), keeping our keyspace
   // disjoint from Strava's positive numeric ids. Idempotent: same
   // workoutId → same id, so re-POSTing overwrites.
-  const stableId = -stableBigintFromString(body.workoutId);
+  const stableId = -stableBigintFromString(effectiveWorkoutId);
 
   let stravaWriteErr: string | null = null;
+  let runsWritePermanent = false;
   try {
-    await pool.query(
-      `DELETE FROM runs
-        WHERE user_uuid = $1
-          AND data->>'client_workout_id' = $2`,
-      [userId, body.workoutId]
-    );
     // 2026-06-05 · backend audit P0-4 fix · defense-in-depth · the
     // synthetic bigint derived from a workout UUID is astronomically
     // unlikely to collide across users, but if it ever did (or if an
@@ -373,12 +415,45 @@ export async function POST(req: NextRequest) {
         `stableId=${stableId} owned_by=${existingOwner.u.slice(0,8)} ` +
         `attempting=${userId.slice(0,8)} · refusing to write.`,
       );
+      runsWritePermanent = true;
       throw new Error(`cross-user collision on synthetic id ${stableId}`);
     }
+    // Legacy cleanup: rows carrying this client_workout_id under a
+    // DIFFERENT synthetic id (older id schemes). Date-scoped so a stale
+    // workoutId can never reach across days (RK-2), and id-excluded so
+    // the row we are about to upsert is never deleted — its columns
+    // (shoe_id, provenance, weather_enriched_at) must survive.
     await pool.query(
-      `INSERT INTO runs (id, user_uuid, data) VALUES ($1, $2, $3)`,
+      `DELETE FROM runs
+        WHERE user_uuid = $1
+          AND data->>'client_workout_id' = $2
+          AND id <> $3
+          AND data->>'date' = $4`,
+      [userId, effectiveWorkoutId, stableId, date]
+    );
+    // M-16 / Rule 6 · upsert, not DELETE+INSERT. The old shape wiped
+    // every column (shoe_id, shoe_auto_assigned_at, provenance,
+    // weather_enriched_at) and every data key the watch payload doesn't
+    // carry (mergedIntoId, absorbed splits/weather/elev, warmup bonus) on
+    // each re-POST — then the auto-assign hook re-filled the shoe with a
+    // system pick, silently corrupting shoe mileage. Merge semantics:
+    // existing keys survive; incoming non-null keys win; incoming nulls
+    // (absent sensors on this payload) cannot erase absorbed values.
+    // WHERE backstops the pre-check above against a write landing between
+    // the SELECT and this statement: a cross-user conflict makes the DO
+    // UPDATE a no-op (rowCount 0) instead of merging into the other
+    // runner's row, and the throw keeps the refusal loud.
+    const up = await pool.query(
+      `INSERT INTO runs (id, user_uuid, data) VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO UPDATE
+         SET data = runs.data || jsonb_strip_nulls(EXCLUDED.data)
+       WHERE runs.user_uuid = EXCLUDED.user_uuid`,
       [stableId, userId, data]
     );
+    if (up.rowCount === 0) {
+      runsWritePermanent = true;
+      throw new Error(`cross-user collision on synthetic id ${stableId}`);
+    }
     // 2026-06-03 · post-write hook · calibration auto-complete for
     // cold-start runners on first qualifying easy run. Best-effort.
     void (await import('@/lib/runs/post-write-hooks'))
@@ -409,23 +484,37 @@ export async function POST(req: NextRequest) {
   // Auto-push to Strava when the runner opted in. Fire-and-forget · the
   // helper checks profile.strava_auto_push internally, pushes in the
   // background, and never blocks this response. Idempotent on run_id ·
-  // a re-POST of the same watch completion won't double-upload.
-  const { maybeAutoPush } = await import('@/lib/strava/auto-push');
-  maybeAutoPush(userId, String(stableId));
+  // a re-POST of the same watch completion won't double-upload. Skipped
+  // when the runs write failed — there is no row to push.
+  if (!stravaWriteErr) {
+    const { maybeAutoPush } = await import('@/lib/strava/auto-push');
+    maybeAutoPush(userId, String(stableId));
+  }
 
+  // M-9 · a failed runs write must NOT be acked with 200: both durable
+  // queues (watch direct lane + iPhone relay) dequeue on any 2xx, and a
+  // completion acked-but-unwritten is gone forever (two prod trd_* rows
+  // died exactly this way). Retryable failures → 500 so the queues hold
+  // the payload and re-POST. Permanent refusals (cross-user collision)
+  // → 200 with the error surfaced, because a retry can never succeed and
+  // would loop the queue forever.
+  const retryableFailure = stravaWriteErr != null && !runsWritePermanent;
   return NextResponse.json({
-    ok: true,
+    ok: stravaWriteErr == null,
     workoutId: body.workoutId,
+    effective_workout_id: effectiveWorkoutId,
+    cross_day: crossDay || undefined,
     accepted_at: new Date().toISOString(),
     // Deploy marker. Kept (small + harmless) so future audits can detect
     // when this endpoint's behavior changes without depending on side
     // effects. Bump the suffix on behavioral changes.
-    api_version: 'watch-complete/p21',
+    api_version: 'watch-complete/p22-upsert',
     // Strava-table write outcome surfaced explicitly: harmless on
     // success, and on failure tells the watch agent + audit harnesses
     // exactly what went wrong without log access.
     strava_write: stravaWriteErr ? { ok: false, error: stravaWriteErr } : { ok: true },
-  });
+    intents_write: intentsErr ? { ok: false, error: intentsErr } : { ok: true },
+  }, { status: retryableFailure ? 500 : 200 });
 }
 
 // ── helpers ──

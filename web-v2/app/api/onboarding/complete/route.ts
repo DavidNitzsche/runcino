@@ -417,11 +417,14 @@ export async function POST(req: NextRequest) {
         location: null,
       };
       // Mirror POST /api/race exactly (idempotent on slug → re-onboarding
-      // updates the same row instead of duplicating).
+      // updates the same row instead of duplicating). Rule 6 guard: never
+      // full-replace meta — re-onboarding after the race must not erase
+      // finishTime/bib/goalSafeDisplay that PATCH wrote onto this blob.
       await pool.query(
         `INSERT INTO races (slug, user_uuid, meta)
          VALUES ($1, $2, $3)
-         ON CONFLICT (slug) DO UPDATE SET meta = EXCLUDED.meta`,
+         ON CONFLICT (slug) DO UPDATE
+           SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta)`,
         [slug, userId, meta]
       );
       // Canonical race-prep generator. Best-effort: returns ok:false with

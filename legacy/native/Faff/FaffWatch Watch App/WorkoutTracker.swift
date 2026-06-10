@@ -303,6 +303,163 @@ final class WorkoutTracker: NSObject, ObservableObject {
         ChimePlayer.shared.deactivate()
     }
 
+    // MARK: - Crash recovery (RK-3 · 2026-06-09)
+    //
+    // A watch crash / reboot mid-run used to be total loss: the HKWorkout
+    // only persists in end(), and end() only runs from the engine's finish
+    // path. HealthKit keeps the HKWorkoutSession alive system-side, though —
+    // recoverActiveWorkoutSession hands it back on relaunch so the run can
+    // be re-attached (RESUME) or closed out properly (END & SAVE). Two
+    // documented mid-run crash classes exist in this file's comments; this
+    // is the recovery net under both.
+
+    /// Aggregate read of the recovered builder's statistics, for building a
+    /// WatchCompletion without engine state. Read BEFORE end() tears the
+    /// builder down.
+    struct RecoveredStats {
+        let distanceMi: Double?
+        let avgHr: Int?
+        let maxHr: Int?
+        let kcal: Int?
+        let elapsedSec: Int
+        let startDate: Date?
+    }
+
+    /// Ask HealthKit for a session that outlived its process. nil when
+    /// there's nothing to recover (the overwhelmingly common launch).
+    /// Simulator always reports nil — the sim flow never opens a real
+    /// HKWorkoutSession (startSimulatorMock instead).
+    func recoverActiveSession() async -> HKWorkoutSession? {
+        #if targetEnvironment(simulator)
+        return nil
+        #else
+        guard available, session == nil, builder == nil else { return nil }
+        return await withCheckedContinuation { (cont: CheckedContinuation<HKWorkoutSession?, Never>) in
+            healthStore.recoverActiveWorkoutSession { s, _ in
+                cont.resume(returning: s)
+            }
+        }
+        #endif
+    }
+
+    /// Re-attach a recovered session so live metrics flow again and the
+    /// existing end() path can persist the HKWorkout + route. Defensive by
+    /// design: no force unwraps, every sub-step degrades gracefully — a
+    /// crash loop in recovery is worse than no recovery.
+    func adoptRecoveredSession(_ s: HKWorkoutSession) {
+        guard session == nil else { return }
+        let b = s.associatedWorkoutBuilder()
+        s.delegate = self
+        b.delegate = self
+        // Recreate the live data source (Apple's documented recovery
+        // pattern) so post-recovery samples keep landing in the builder.
+        b.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore,
+                                               workoutConfiguration: s.workoutConfiguration)
+        session = s
+        builder = b
+        // Fresh route builder — the pre-crash one (and its un-finished route
+        // data) died with the old process. Post-recovery fixes still map.
+        routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
+        gpsCoords = []
+        elevGainM = 0; lastAltitudeM = nil
+
+        // If the runner had paused at the moment of the crash, resume — the
+        // recovered UI's elapsed/HR reads should be live either way.
+        if s.state == .paused { s.resume() }
+
+        // Restart collection. If the builder is already collecting (normal
+        // for a recovered session) this completes with an error we ignore.
+        b.beginCollection(withStart: Date()) { _, _ in }
+
+        // GPS + cadence back online (same configuration as start()).
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        locationManager.distanceFilter = 5
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.startUpdatingLocation()
+        if CMPedometer.isCadenceAvailable() {
+            pedometer.startUpdates(from: Date()) { [weak self] data, _ in
+                guard let self, let c = data?.currentCadence else { return }
+                let spm = Int((c.doubleValue * 60).rounded())
+                guard spm > 0, spm < 320 else { return }
+                Task { @MainActor in
+                    self.cadence = spm; self.cadSum += spm; self.cadCount += 1
+                }
+            }
+        }
+
+        // DELIBERATELY no ChimePlayer.activate() here: activating an audio
+        // session while an HKWorkoutSession is already running raises an
+        // uncatchable NSException (the mile-1 crash — see start()). A
+        // recovered run gets haptic-only cues; ChimePlayer.play() safely
+        // no-ops while inactive.
+
+        isRecording = true
+        seedFromBuilderStatistics()
+    }
+
+    /// Prime the published metrics + aggregates from the recovered builder
+    /// so the UI shows real numbers immediately instead of zeros until the
+    /// next live sample lands.
+    private func seedFromBuilderStatistics() {
+        guard let builder else { return }
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        if let q = builder.statistics(for: HKQuantityType(.heartRate))?.mostRecentQuantity() {
+            let hr = Int(q.doubleValue(for: bpm).rounded())
+            if hr > 0 { heartRate = hr }
+        }
+        if let q = builder.statistics(for: HKQuantityType(.heartRate))?.maximumQuantity() {
+            maxHr = max(maxHr, Int(q.doubleValue(for: bpm).rounded()))
+        }
+        if let q = builder.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity() {
+            distanceMi = q.doubleValue(for: .mile())
+        }
+        if let q = builder.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity() {
+            activeEnergyKcal = Int(q.doubleValue(for: .kilocalorie()).rounded())
+        }
+    }
+
+    /// Whole-run aggregates from the recovered builder, for the END & SAVE
+    /// completion. Unlike the engine's per-tick accumulators (which only
+    /// cover post-recovery time), these span the entire session.
+    func recoveredStats() -> RecoveredStats {
+        guard let builder else {
+            return RecoveredStats(distanceMi: nil, avgHr: nil, maxHr: nil,
+                                  kcal: nil, elapsedSec: 0, startDate: session?.startDate)
+        }
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        let hrStats = builder.statistics(for: HKQuantityType(.heartRate))
+        let avgHr = hrStats?.averageQuantity().map { Int($0.doubleValue(for: bpm).rounded()) }
+        let maxHr = hrStats?.maximumQuantity().map { Int($0.doubleValue(for: bpm).rounded()) }
+        let dist = builder.statistics(for: HKQuantityType(.distanceWalkingRunning))?
+            .sumQuantity()?.doubleValue(for: .mile())
+        let kcal = builder.statistics(for: HKQuantityType(.activeEnergyBurned))?
+            .sumQuantity().map { Int($0.doubleValue(for: .kilocalorie()).rounded()) }
+        return RecoveredStats(distanceMi: dist,
+                              avgHr: avgHr,
+                              maxHr: maxHr,
+                              kcal: kcal,
+                              elapsedSec: Int(builder.elapsedTime.rounded()),
+                              startDate: session?.startDate)
+    }
+
+    /// Live elapsed seconds straight off the builder — drives the recovered
+    /// screen's ticking clock (the engine isn't running yet at that point).
+    var liveElapsedSec: Int { Int((builder?.elapsedTime ?? 0).rounded()) }
+
+    /// End a recovered session and DISCARD its workout — the close-out a
+    /// crashed TreadmillHRSession would have done itself (its HKWorkout is
+    /// deliberately never saved; the iPhone's POST is canonical). Never used
+    /// for outdoor runs.
+    func endAndDiscardRecovered(_ s: HKWorkoutSession) async {
+        let b = s.associatedWorkoutBuilder()
+        let endAt = Date()
+        s.stopActivity(with: endAt)
+        s.end()
+        do { try await b.endCollection(at: endAt) } catch { /* best effort */ }
+        b.discardWorkout()
+    }
+
     // MARK: - Apply samples (main actor)
 
     fileprivate func apply(hr: Int?, dist: Double?, energy: Int?, speedMps: Double? = nil) {

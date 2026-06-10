@@ -18,6 +18,7 @@
 
 import SwiftUI
 import Combine
+import HealthKit
 
 @MainActor
 final class WatchRootModel: ObservableObject {
@@ -34,6 +35,19 @@ final class WatchRootModel: ObservableObject {
     /// the summary (a wrist-drop there used to mean the run never synced).
     private var didSendCompletion = false
 
+    // MARK: Stale-plan gate (RK-2 · 2026-06-09)
+
+    /// True between a stale-triggered refetch and either a fresh workout
+    /// landing or the runner overriding. The lobby swaps START for the
+    /// STALE state while this is set.
+    @Published private(set) var stalePending = false
+    /// Flips true ~10s after the stale refetch went out unanswered, or
+    /// immediately when the phone is unreachable / sendMessage errors —
+    /// surfaces the START ANYWAY override. Race morning with the phone in
+    /// a gear bag must never brick the START button.
+    @Published private(set) var staleOverrideAvailable = false
+    private var staleTimeoutTask: Task<Void, Never>?
+
     func start(_ workout: WatchWorkout) {
         // Flag 6 (backend audit 2026-06-02) — refuse to start a stale
         // workout. Risk: runner opens the watch app the next morning
@@ -42,42 +56,80 @@ final class WatchRootModel: ObservableObject {
         // would record against the wrong day's plan.
         //
         // Window: backend stamps `expiresAt = issuedAt + 14h` (per
-        // backend-response-to-watch-2026-06-02.md). 14h covers both
-        // the evening-issued workout that's used the next morning and
-        // the morning-issued workout that's used that evening, while
-        // still catching the day-late start. Parse-failure is permissive
-        // (fall through and start) to avoid blocking legit runs on a
-        // malformed timestamp; the gap is very small.
-        if let exp = ISO8601DateFormatter().date(from: workout.expiresAt),
-           Date.now > exp {
-            // Trigger a re-fetch from iPhone; once it lands via
-            // applicationContext the IdleView re-renders with the
-            // fresh workout, and the runner can re-tap Start.
-            PhoneSync.shared.requestTodayWorkout()
+        // backend-response-to-watch-2026-06-02.md). Parsing accepts both
+        // fractional (toISOString) and plain ISO-8601 — the old default
+        // formatter couldn't read fractional seconds, so this gate had
+        // NEVER actually fired (RK-2). Parse failure stays permissive.
+        //
+        // When expired: never a silent return. The lobby flips to an
+        // explicit STALE state, a refetch goes out, and if no fresh
+        // workout lands (phone unreachable / timeout) the runner gets a
+        // clearly-labeled START ANYWAY override to run the cached session.
+        if workout.isExpired {
+            beginStaleRefresh()
             return
         }
+        launch(workout)
+    }
+
+    /// Explicit override from the STALE state — run the cached workout
+    /// even though its expiry window has passed.
+    func startAnyway(_ workout: WatchWorkout) {
+        launch(workout)
+    }
+
+    private func beginStaleRefresh() {
+        stalePending = true
+        staleOverrideAvailable = false
+        // Failures are visible now: unreachable phone / sendMessage error
+        // offers the override immediately instead of leaving a dead button.
+        PhoneSync.shared.requestTodayWorkout(onUnreachable: { [weak self] in
+            self?.staleOverrideAvailable = true
+        })
+        staleTimeoutTask?.cancel()
+        staleTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled, let self, self.stalePending else { return }
+            self.staleOverrideAvailable = true
+        }
+    }
+
+    private func clearStale() {
+        staleTimeoutTask?.cancel(); staleTimeoutTask = nil
+        stalePending = false
+        staleOverrideAvailable = false
+    }
+
+    private func launch(_ workout: WatchWorkout) {
+        clearStale()
         Task {
             // Prompt for HealthKit (+ location) before the session starts
             // so the run is recorded from the first second.
             await tracker.requestAuthorization()
             let engine = WorkoutEngine(workout: workout)
             engine.tracker = tracker
-            didSendCompletion = false
-            stateForward = engine.$state
-                .removeDuplicates()
-                .sink { [weak self] newState in
-                    guard let self else { return }
-                    self.objectWillChange.send()
-                    // Auto-send the completion as soon as the run finishes.
-                    if newState == .finished, !self.didSendCompletion,
-                       let completion = engine.completion {
-                        self.didSendCompletion = true
-                        PhoneSync.shared.sendCompletion(completion)
-                    }
-                }
-            self.engine = engine
+            bind(engine)
             engine.beginCountdown()
         }
+    }
+
+    /// Shared engine wiring for fresh starts AND crash-recovery resumes:
+    /// forward state flips to the router + auto-send the completion once.
+    private func bind(_ engine: WorkoutEngine) {
+        didSendCompletion = false
+        stateForward = engine.$state
+            .removeDuplicates()
+            .sink { [weak self] newState in
+                guard let self else { return }
+                self.objectWillChange.send()
+                // Auto-send the completion as soon as the run finishes.
+                if newState == .finished, !self.didSendCompletion,
+                   let completion = engine.completion {
+                    self.didSendCompletion = true
+                    PhoneSync.shared.sendCompletion(completion)
+                }
+            }
+        self.engine = engine
     }
 
     func reset() {
@@ -87,26 +139,133 @@ final class WatchRootModel: ObservableObject {
         engine = nil
     }
 
-    /// Check for a crash-recovery snapshot at launch and rebuild the engine
-    /// mid-run if one exists (audit RK-3, 2026-06-09). No-op when already
-    /// running an engine (normal launch) or when no fresh snapshot exists.
-    func attemptRecovery() async {
-        guard engine == nil, let snap = WorkoutEngine.loadSnapshot() else { return }
-        let recovered = await tracker.recover()
-        let eng = WorkoutEngine.restore(from: snap, tracker: recovered ? tracker : nil)
-        didSendCompletion = false
-        stateForward = eng.$state
-            .removeDuplicates()
-            .sink { [weak self] newState in
-                guard let self else { return }
-                self.objectWillChange.send()
-                if newState == .finished, !self.didSendCompletion,
-                   let completion = eng.completion {
-                    self.didSendCompletion = true
-                    PhoneSync.shared.sendCompletion(completion)
-                }
+    // MARK: Crash recovery (RK-3 · 2026-06-09)
+
+    struct RecoveredRunState {
+        var canResume: Bool
+        var saving = false
+    }
+    struct RecoverySummary {
+        let workout: WatchWorkout
+        let completion: WatchCompletion
+    }
+
+    /// Non-nil while a recovered HKWorkoutSession is waiting on the
+    /// runner's RESUME / END & SAVE decision.
+    @Published private(set) var recoveredRun: RecoveredRunState?
+    /// End-of-recovery receipt — drives a SummaryView after END & SAVE.
+    @Published private(set) var recoverySummary: RecoverySummary?
+    private var recoveredResume: (workout: WatchWorkout, snapshot: WorkoutEngine.RunSnapshot)?
+    private var recoveredSnapshot: WorkoutEngine.RunSnapshot?
+    private var didAttemptRecovery = false
+
+    /// Called once at first root appearance. If HealthKit hands back a
+    /// session that outlived its process (crash / reboot mid-run), re-attach
+    /// it and surface the RECOVERED state. No recoverable session → normal
+    /// startup, zero behavior change. Every step is defensive — a crash
+    /// loop in recovery would be worse than no recovery.
+    func attemptRecovery() {
+        guard !didAttemptRecovery else { return }
+        didAttemptRecovery = true
+        guard engine == nil else { return }
+        Task {
+            let snap = WorkoutEngine.loadSnapshot()
+            guard let session = await tracker.recoverActiveSession() else {
+                // Nothing recoverable. A leftover snapshot means the run
+                // died in a way HealthKit couldn't bridge (e.g. battery
+                // death where the session lapsed) — no builder exists to
+                // save from, so clear it; a lingering snapshot would
+                // mislabel a future recovery.
+                if snap != nil { WorkoutEngine.clearSnapshot() }
+                return
             }
-        self.engine = eng
+            // TreadmillHRSession runs are indoor and their HKWorkout is
+            // deliberately discarded (the iPhone's POST is the canonical
+            // record — see TreadmillHRSession). Our own tracker only ever
+            // opens OUTDOOR sessions, so indoor → treadmill: end-and-discard
+            // exactly as that flow's own end() would have.
+            if session.workoutConfiguration.locationType == .indoor {
+                await tracker.endAndDiscardRecovered(session)
+                if snap == nil { return }
+                // Keep any outdoor-run snapshot for a later attempt? No —
+                // its session is gone too (only one session survives).
+                WorkoutEngine.clearSnapshot()
+                return
+            }
+            tracker.adoptRecoveredSession(session)
+            // Pair the snapshot with THIS session only when their start
+            // times agree — a stale snapshot from an older crashed run must
+            // not be grafted onto a different session's data.
+            let validSnap: WorkoutEngine.RunSnapshot? = {
+                guard let snap else { return nil }
+                guard let sessionStart = session.startDate else { return snap }
+                let gap = abs(sessionStart.timeIntervalSince1970 - snap.startedAtEpoch)
+                return gap <= 600 ? snap : nil
+            }()
+            recoveredSnapshot = validSnap
+            recoveredResume = {
+                guard let validSnap, let w = validSnap.decodedWorkout() else { return nil }
+                let indexOk = validSnap.planComplete || w.phases.indices.contains(validSnap.currentIndex)
+                return indexOk ? (w, validSnap) : nil
+            }()
+            recoveredRun = RecoveredRunState(canResume: recoveredResume != nil)
+        }
+    }
+
+    /// RESUME — rebuild the engine at the snapshot's phase and re-enter the
+    /// active workout flow. Only offered when the snapshot decoded cleanly.
+    func resumeRecovered() {
+        guard let plan = recoveredResume else { return }
+        let engine = WorkoutEngine(workout: plan.workout)
+        engine.tracker = tracker
+        bind(engine)
+        engine.resumeFromSnapshot(plan.snapshot)
+        recoveredRun = nil
+        recoveredResume = nil
+        recoveredSnapshot = nil
+    }
+
+    /// END & SAVE — close the session through the normal end() path (the
+    /// HKWorkout + route persist), build a completion from builder
+    /// statistics + snapshot phases, and send it through the existing
+    /// completion pipeline so the run reaches the server. Works with or
+    /// without a snapshot — the HKWorkout is never discarded.
+    func endAndSaveRecovered() {
+        guard recoveredRun != nil, recoveredRun?.saving != true else { return }
+        recoveredRun?.saving = true
+        let snap = recoveredSnapshot
+        Task {
+            // Builder statistics must be read BEFORE end() tears it down.
+            let stats = tracker.recoveredStats()
+            await tracker.end()
+            let completion = WorkoutEngine.completionFromRecovery(snapshot: snap, stats: stats)
+            PhoneSync.shared.sendCompletion(completion)
+            WorkoutEngine.clearSnapshot()
+            let summaryWorkout = snap?.decodedWorkout()
+                ?? Self.recoveredStubWorkout(completion: completion)
+            recoverySummary = RecoverySummary(workout: summaryWorkout, completion: completion)
+            recoveredRun = nil
+            recoveredResume = nil
+            recoveredSnapshot = nil
+        }
+    }
+
+    func dismissRecoverySummary() {
+        recoverySummary = nil
+    }
+
+    /// Minimal workout shell for the post-recovery summary when no snapshot
+    /// survived (SummaryView only reads name / isRace from it).
+    private static func recoveredStubWorkout(completion: WatchCompletion) -> WatchWorkout {
+        WatchWorkout(
+            workoutId: completion.workoutId,
+            name: "Recovered",
+            summary: "Recovered run",
+            totalEstimatedMinutes: max(1, completion.totalDurationSec / 60),
+            phases: [],
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2099-12-31T00:00:00Z"
+        )
     }
 }
 
@@ -139,6 +298,10 @@ struct WorkoutRootView: View {
                 Task { await model.attemptRecovery() }
                 phone.activate()
                 phone.requestTodayWorkout()
+                // RK-3 — ask HealthKit for a session that outlived its
+                // process (crash / reboot mid-run). One-shot; no-op on a
+                // normal launch.
+                model.attemptRecovery()
                 #if targetEnvironment(simulator)
                 // -autostart launch arg: skip the lobby tap and immediately
                 // begin the simulator workout. For automated sim drives via
@@ -162,6 +325,22 @@ struct WorkoutRootView: View {
             // the idle TabView so a wrist-glance during the treadmill
             // session shows the heart rate immediately.
             TreadmillHRView()
+        } else if let summary = model.recoverySummary {
+            // END & SAVE receipt — the recovered run's numbers, then home.
+            SummaryView(workout: summary.workout, completion: summary.completion) {
+                model.dismissRecoverySummary()
+            }
+        } else if let recovered = model.recoveredRun {
+            // RK-3 — a run outlived its process (crash / reboot mid-run).
+            // Live elapsed / distance / HR from the re-attached session,
+            // plus RESUME (when the snapshot reconstructed) and END & SAVE.
+            RecoveredRunView(
+                tracker: model.tracker,
+                canResume: recovered.canResume,
+                saving: recovered.saving,
+                onResume: { model.resumeRecovered() },
+                onEndSave: { model.endAndSaveRecovered() }
+            )
         } else if let engine = model.engine {
             switch engine.state {
             case .finished:
@@ -198,12 +377,14 @@ struct WorkoutRootView: View {
     @ViewBuilder
     private var idleHome: some View {
         if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
-            // W-5: show a sync prompt when the cached workout has expired — the
-            // runner opened the watch before the iPhone pushed today's payload.
-            // Tapping Start on a stale workout silently did nothing; now we
-            // surface the state and trigger a re-fetch automatically.
-            if phone.staleWorkout {
-                StaleWorkoutView()
+            if model.stalePending && workout.isExpired {
+                // RK-2 — the cached plan is past its window and a refetch is
+                // out. The moment a fresh payload lands, `isExpired` reads
+                // false and this branch falls back to the normal START.
+                StalePlanView(
+                    overrideAvailable: model.staleOverrideAvailable,
+                    onStartAnyway: { model.startAnyway(workout) }
+                )
             } else {
                 IdleView(workout: workout) { model.start(workout) }
             }
@@ -280,24 +461,135 @@ private struct NoWorkoutView: View {
     }
 }
 
-/// Cached workout has expired — yesterday's plan is still in memory but the
-/// window has passed. Prompt the user to open the iPhone app for a re-push.
-private struct StaleWorkoutView: View {
+/// RK-2 — the cached plan is expired and a refetch is in flight. Amber
+/// STALE hero + status line; once the phone proves unreachable (or ~10s
+/// pass) a START ANYWAY capsule appears so race morning with the phone in
+/// a gear bag never bricks the start.
+private struct StalePlanView: View {
+    let overrideAvailable: Bool
+    let onStartAnyway: () -> Void
+
     var body: some View {
         ResponsiveFace {
-            VStack(spacing: 10) {
-                Text("Syncing…")
-                    .font(WatchTheme.body(14, .semibold))
-                    .foregroundStyle(WatchTheme.C.orange)
-                Text("Open Faff on your iPhone to load today's workout.")
-                    .font(WatchTheme.body(12, .medium))
-                    .foregroundStyle(WatchTheme.C.t2)
-                    .multilineTextAlignment(.center)
+            VStack(spacing: 0) {
+                HStack {
+                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+                    Spacer()
+                }
+                .padding(.leading, 8).padding(.top, 14)   // FAFF baseline level with the OS clock
+                Spacer()
+                Text("STALE").font(WatchTheme.display(64)).foregroundStyle(WatchTheme.C.amber)
+                Text(overrideAvailable
+                     ? "Phone unreachable. Cached session only."
+                     : "Syncing today's session.")
+                    .font(WatchTheme.body(13, .medium)).foregroundStyle(WatchTheme.C.t2)
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 180).padding(.top, 6)
+                if !overrideAvailable {
+                    ProgressView().tint(WatchTheme.C.amber).padding(.top, 8)
+                }
+                Spacer()
+                if overrideAvailable {
+                    Button(action: onStartAnyway) {
+                        Text("START ANYWAY")
+                            .font(.custom("HelveticaNeue-Bold", size: 16)).tracking(1.5)
+                            .foregroundStyle(Color.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(WatchTheme.C.amber))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 15)
+                }
             }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, 14).padding(.bottom, 12)
         }
-        .onAppear { PhoneSync.shared.requestTodayWorkout() }
+    }
+}
+
+/// RK-3 — a run outlived its process. Live reads come straight off the
+/// re-attached session (builder elapsed, tracker distance/HR); RESUME
+/// re-enters the guided workout at the snapshot's phase, END & SAVE closes
+/// the session out properly so the HKWorkout + completion are never lost.
+private struct RecoveredRunView: View {
+    @ObservedObject var tracker: WorkoutTracker
+    let canResume: Bool
+    let saving: Bool
+    let onResume: () -> Void
+    let onEndSave: () -> Void
+
+    private var distText: String {
+        tracker.distanceMi > 0 ? String(format: "%.2f", tracker.distanceMi) : "—"
+    }
+    private var hrText: String {
+        tracker.heartRate > 0 ? "♥\(tracker.heartRate)" : "♥—"
+    }
+    private func elapsedText() -> String {
+        let s = tracker.liveElapsedSec
+        return s >= 3600 ? PaceFormat.hms(s) : PaceFormat.clock(s)
+    }
+
+    var body: some View {
+        ResponsiveFace {
+            GeometryReader { geo in
+                let h = geo.size.height
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    VStack(alignment: .leading, spacing: 0) {
+                        FaceLabel(text: "RECOVERED", color: Faff.goal, size: h * 0.06)
+                            .topTagInset(h)
+                        VStack(alignment: .leading, spacing: h * 0.012) {
+                            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                                BigValue(text: elapsedText(), role: .neutral, size: h * 0.14)
+                            }
+                            BigValue(text: distText, role: .dist, size: h * 0.14)
+                            BigValue(text: hrText, role: .neutral, size: h * 0.14)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        if saving {
+                            HStack {
+                                Spacer()
+                                ProgressView().tint(Faff.goal)
+                                Spacer()
+                            }
+                            .padding(.vertical, h * 0.035)
+                        } else {
+                            VStack(spacing: h * 0.018) {
+                                if canResume {
+                                    Button(action: onResume) {
+                                        HStack(spacing: h * 0.028) {
+                                            Image(systemName: "play.fill")
+                                                .font(.system(size: h * 0.048, weight: .bold))
+                                            Text("RESUME")
+                                                .font(.custom("HelveticaNeue-Bold", size: h * 0.072))
+                                                .tracking(1.5)
+                                        }
+                                        .foregroundStyle(Color(hex: 0x06210C))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, h * 0.020)
+                                        .background(Capsule().fill(Faff.live))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                Button(action: onEndSave) {
+                                    Text("END & SAVE")
+                                        .font(.custom("HelveticaNeue-Bold", size: h * 0.072))
+                                        .tracking(1.5)
+                                        .foregroundStyle(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, h * 0.020)
+                                        .background(Capsule().fill(Faff.brand))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, h * 0.075)
+                    .padding(.bottom, h * 0.045)
+                }
+            }
+        }
     }
 }
 
