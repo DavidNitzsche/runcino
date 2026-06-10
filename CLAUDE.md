@@ -10,9 +10,9 @@ Read these in order before doing any design or implementation work in this proje
 
 ### 1. Design source of truth
 
-`Design/running-app-design-brief.md`
+`Design/running-app-design-brief-v2.md`
 
-The complete design language: palette (locked), typography, spacing, component vocabulary, hierarchy rules, surface variants, tone of voice, anti-patterns. Includes an explicit "Source of truth" section at the top that supersedes any prior design work in this codebase.
+The complete design language, locked 2026-06-09 and enforced from build 200: the ten-color palette (byte-for-byte identical on web / iPhone / watch, CI-enforced by `scripts/check-palette-sync.sh`), typography (Oswald ≥16pt display · Inter below · Inter body), mesh doctrine, glass retirement, label grammar, banner caps, and the David-ruled addendum (TweakAccent exemption, phase-identity categorical group). Supersedes v1, which is archived at `Design/running-app-design-brief.md.archived` for reference only.
 
 ### 2. Knowledge base research
 
