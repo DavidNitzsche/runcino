@@ -176,51 +176,52 @@ struct TodayView: View {
             FaffMeshView(mesh: mesh)
 
             VStack(spacing: 0) {
-                // Single-line top bar: profile · bell  |  FAFF  |  calendar
-                HStack(spacing: 0) {
-                    Button { onProfile() } label: {
-                        Group {
-                            if !avatarInitials.isEmpty {
-                                Text(avatarInitials)
-                                    .font(.body(11, weight: .bold))
-                                    .foregroundStyle(Theme.txt)
-                            } else {
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(Theme.txt)
-                            }
-                        }
-                        .frame(width: 30, height: 30)
-                        .background(Theme.Glass.fill, in: Circle())
-                        .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-
-                    Button { showInbox = true } label: {
-                        Image(systemName: "bell")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Theme.txt.opacity(0.75))
-                            .frame(width: 30, height: 30)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 4)
-
-                    Spacer(minLength: 0)
-
+                // Single-line top bar — ZStack so FAFF is screen-centered
+                // regardless of button group widths on either side.
+                ZStack {
                     Text("FAFF")
                         .font(.heroDisplay(18))
                         .tracking(1)
                         .foregroundStyle(Theme.txt)
 
-                    Spacer(minLength: 0)
-
-                    NavigationLink(value: FaffRoute.activity) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Theme.txt.opacity(0.75))
+                    HStack(spacing: 0) {
+                        Button { onProfile() } label: {
+                            Group {
+                                if !avatarInitials.isEmpty {
+                                    Text(avatarInitials)
+                                        .font(.body(11, weight: .bold))
+                                        .foregroundStyle(Theme.txt)
+                                } else {
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(Theme.txt)
+                                }
+                            }
                             .frame(width: 30, height: 30)
+                            .background(Theme.Glass.fill, in: Circle())
+                            .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button { showInbox = true } label: {
+                            Image(systemName: "bell")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Theme.txt.opacity(0.75))
+                                .frame(width: 30, height: 30)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.leading, 4)
+
+                        Spacer(minLength: 0)
+
+                        NavigationLink(value: FaffRoute.activity) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(Theme.txt.opacity(0.75))
+                                .frame(width: 30, height: 30)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 6)
