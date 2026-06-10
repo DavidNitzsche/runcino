@@ -6,8 +6,9 @@
 //  x = 0 / 114 / 228 / 342 with 14-unit gaps.
 //
 //  F = stem (42×100 rx14) + top-bar (100×30 rx14) + mid-bar (88×22 rx11)
-//  A = solid block (100×100 rx16) minus top-slot (12×58 rx6) and
-//      bottom-notch (12×24 rx6) punched via .destinationOut + .compositingGroup
+//  A = solid block (100×100 rx16) minus central slot (12×64 rx6, offset y=12)
+//      punched via .destinationOut + .compositingGroup
+//      → 12pt top cap + 64pt counter + 24pt bottom crossbar
 //
 //  Usage:
 //    FaffLogoMark()                      // white, 22pt tall
@@ -51,24 +52,18 @@ struct FaffLogoMark: View {
         .frame(width: 100 * s, height: 100 * s)
     }
 
-    // MARK: - A letter (block with punched-out slot counters)
+    // MARK: - A letter (block with punched-out slot counter)
 
     private var aLetter: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 16 * s)
                 .fill(color)
                 .frame(width: 100 * s, height: 100 * s)
-            // Top slot — carves the counter from the top of the block
+            // Single central slot: 12pt top cap + 64pt slot + 24pt bottom crossbar = 100
             RoundedRectangle(cornerRadius: 6 * s)
                 .fill(color)
-                .frame(width: 12 * s, height: 58 * s)
-                .offset(x: 44 * s)
-                .blendMode(.destinationOut)
-            // Bottom notch — carves the counter from the bottom
-            RoundedRectangle(cornerRadius: 6 * s)
-                .fill(color)
-                .frame(width: 12 * s, height: 24 * s)
-                .offset(x: 44 * s, y: 76 * s)
+                .frame(width: 12 * s, height: 64 * s)
+                .offset(x: 44 * s, y: 12 * s)
                 .blendMode(.destinationOut)
         }
         .frame(width: 100 * s, height: 100 * s)
