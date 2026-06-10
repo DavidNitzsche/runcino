@@ -28,7 +28,7 @@
  * jsonb array of single characters.  This endpoint handles both shapes.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUserId } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { pool } from '@/lib/db/pool';
 
 // Re-export the deriveSplitsFromPaceSamples logic inline so this
@@ -112,7 +112,7 @@ function reconstructBody(value: any): any | null {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireUserId(req);
+  const auth = await requireAdmin(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
 

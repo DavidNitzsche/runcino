@@ -218,14 +218,49 @@ export async function POST(req: NextRequest) {
     }
 
     if (!userUuid) {
+      // Genuine new signup. 2026-06-10 multi-user fix: this branch used
+      // to INSERT a bare profile row and RETURN its user_uuid — but
+      // nothing ever created the users row, so user_uuid came back NULL
+      // and the request 500'd ("profile resolution failed"). A stranger
+      // with an Apple ID could never actually sign up. Now: create the
+      // users row first (email comes from the VERIFIED token claims;
+      // Apple always supplies one, relay or real), then the linked
+      // profile row, atomically.
+      if (!email) {
+        return NextResponse.json(
+          { error: 'Apple sign-in returned no email · cannot create an account' },
+          { status: 400 },
+        );
+      }
       const fullName = body.full_name ? `${body.full_name.givenName ?? ''} ${body.full_name.familyName ?? ''}`.trim() : null;
-      const r = (await pool.query(
-        `INSERT INTO profile (apple_user_id, apple_email, full_name, onboarded_at)
-         VALUES ($1, $2, $3, NOW())
-         RETURNING user_uuid::text AS user_uuid`,
-        [appleUserId, email, fullName],
-      )).rows[0];
-      userUuid = r.user_uuid;
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const u = (await client.query(
+          `INSERT INTO users (email, name, status, onboarding_complete)
+           VALUES ($1, COALESCE($2, ''), 'active', FALSE)
+           ON CONFLICT (email) DO UPDATE SET updated_at = NOW()
+           RETURNING id::text AS id`,
+          [email, fullName],
+        )).rows[0];
+        userUuid = u.id;
+        // profile's PK is the legacy user_id text column (DEFAULT 'me')
+        // — set it to the uuid-as-text or every new signup collides
+        // with the legacy row. No ON CONFLICT: a brand-new users row
+        // cannot have a profile row yet, and profile has no unique
+        // index on user_uuid to conflict on anyway.
+        await client.query(
+          `INSERT INTO profile (user_id, user_uuid, apple_user_id, apple_email, full_name)
+           VALUES ($1::text, $1::uuid, $2, $3, $4)`,
+          [userUuid, appleUserId, email, fullName],
+        );
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw e;
+      } finally {
+        client.release();
+      }
     }
   } catch (e: any) {
     return NextResponse.json({ error: `profile upsert failed: ${e?.message}` }, { status: 500 });
@@ -238,8 +273,19 @@ export async function POST(req: NextRequest) {
   // Mint a session.
   const userAgent = req.headers.get('user-agent') ?? undefined;
   const sess = await createSession(userUuid, { kind: 'apple', userAgent });
+
+  // Same redirect contract as /api/auth/email: finished accounts land
+  // on /today, fresh ones walk the onboarding deck. Web AuthButtons and
+  // the iPhone client both honor it; absence degrades to '/today'.
+  const ob = (await pool.query(
+    `SELECT onboarding_complete FROM users WHERE id = $1 LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as Array<{ onboarding_complete: boolean }> }))).rows[0];
+  const redirect: '/today' | '/onboarding' = ob?.onboarding_complete === false ? '/onboarding' : '/today';
+
   const res = NextResponse.json({
     ok: true,
+    redirect,
     token: sess.token,
     expires_at: sess.expiresAt,
     user_uuid: userUuid,

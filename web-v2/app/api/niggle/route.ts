@@ -14,8 +14,7 @@
  * schema but ignored by GET. (Multi-niggle is a v1.1 design problem per
  * the deck's footer Q3.)
  *
- * Single-user beta pattern: user_id is DEFAULT_USER_ID. Same posture as
- * app/api/today/skip/route.ts.
+ * Auth: requireUserId session auth · same posture as app/api/today/skip.
  *
  * Spec: docs/2026-05-28-niggle-sick-logging.html §SECTION 02 (modal),
  *       §SECTION 04 (state on /today), §SECTION 06 (recovery).

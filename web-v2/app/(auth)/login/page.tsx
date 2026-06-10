@@ -27,9 +27,20 @@ export const metadata = {
   description: 'Run with intent. A plan that adapts every day, built from your own training.',
 };
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  // ?next= return path · only same-site relative paths ('/x', not '//x'
+  // or 'https://…') so /login can't be used as an open redirector.
+  const rawNext = typeof sp.next === 'string' ? sp.next : null;
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null;
+  // ?mode=signup deep-link (onboarding deck sends unauthenticated
+  // runners here from the confirm step).
+  const initialEmailMode = sp.mode === 'signup' ? 'signup' as const : null;
+
   const userId = await userIdFromCookies();
-  if (userId) redirect('/today');
+  if (userId) redirect(next ?? '/today');
 
   const appleClientId = process.env.APPLE_SERVICES_ID || process.env.APPLE_AUDIENCE || null;
   const redirectUri = (process.env.APPLE_REDIRECT_URI || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.faff.run') + '/login';
@@ -73,10 +84,15 @@ export default async function LoginPage() {
         <div className="gate-panelwrap">
           <div className="gate-panel">
             <div className="gate-phead">
-              <div className="gate-plabel">SIGN IN</div>
+              <div className="gate-plabel">{initialEmailMode === 'signup' ? 'CREATE ACCOUNT' : 'SIGN IN'}</div>
             </div>
 
-            <AuthButtons appleClientId={appleClientId} redirectUri={redirectUri} />
+            <AuthButtons
+              appleClientId={appleClientId}
+              redirectUri={redirectUri}
+              next={next}
+              initialEmailMode={initialEmailMode}
+            />
           </div>
         </div>
       </div>

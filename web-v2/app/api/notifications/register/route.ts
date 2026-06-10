@@ -7,9 +7,8 @@
  * application(_:didRegisterForRemoteNotificationsWithDeviceToken:) handler,
  * AND on every foreground transition (Apple silently rotates).
  *
- * Single-user beta pattern: user_id comes from process.env.DEFAULT_USER_ID
- * when the body doesn't supply one (matches /api/checkin). Sign-in-with-Apple
- * cutover (v1.1) will swap to userIdFromRequest, same as other endpoints.
+ * Auth: requireUserId session auth — the device token binds to the
+ * session user (multi-user since 2026-05-30).
  *
  * Source spec: docs/2026-05-28-notifications.html §1 (token registration).
  */

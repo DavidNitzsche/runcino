@@ -44,13 +44,12 @@ export async function POST(req: NextRequest) {
   const { runnerToday } = await import('@/lib/runtime/runner-tz');
 
   // Walk every active user. Same source as readiness-snapshot: any user
-  // with an active plan, plus the default user as a safety net.
+  // with an active plan. (2026-06-10 · multi-user: dropped the hardcoded
+  // default-user append — the SELECT is the population.)
   const userIds = (await pool.query<{ user_uuid: string }>(
     `SELECT DISTINCT user_uuid FROM training_plans
       WHERE archived_iso IS NULL AND user_uuid IS NOT NULL`,
   ).catch(() => ({ rows: [] }))).rows.map((r) => r.user_uuid);
-  const DEFAULT = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
-  if (!userIds.includes(DEFAULT)) userIds.push(DEFAULT);
 
   const results: Array<{ userUuid: string; newMax: number | null; error?: string }> = [];
   let ratcheted = 0;

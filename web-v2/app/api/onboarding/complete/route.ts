@@ -248,12 +248,18 @@ export async function POST(req: NextRequest) {
   try {
     await client.query('BEGIN');
 
+    // onboarding_complete = TRUE is what the sign-in redirect keys off
+    // ('/today' vs '/onboarding' in /api/auth/email + /api/auth/apple).
+    // Before 2026-06-10 nothing ever set it — a finished runner bounced
+    // back into the deck on every fresh login.
     await client.query(
       `UPDATE users SET
           timezone = $1,
           name = COALESCE(NULLIF(name, ''), $2),
           age = COALESCE(age, $3),
-          sex = COALESCE(sex, $4)
+          sex = COALESCE(sex, $4),
+          onboarding_complete = TRUE,
+          updated_at = NOW()
         WHERE id = $5`,
       [timezone, name, ageNum, sex, userId]
     );
@@ -263,10 +269,16 @@ export async function POST(req: NextRequest) {
     // Onboarding doesn't currently ASK for these; we create the row so
     // the first plan + the Settings UI both have a real row to read +
     // edit.
+    //
+    // 2026-06-10 fix: the PK is the LEGACY user_id text column (DEFAULT
+    // 'me') — there is NO unique constraint on user_uuid, so the old
+    // ON CONFLICT (user_uuid) threw "no unique or exclusion constraint"
+    // for EVERY new onboarder. Set user_id = uuid-as-text and conflict
+    // on the real PK.
     await client.query(
-      `INSERT INTO user_prefs (user_uuid, long_run_dow, quality_dows, rest_dow, units, updated_at)
-       VALUES ($1, 0, '2,4', 6, 'imperial', NOW())
-       ON CONFLICT (user_uuid) DO NOTHING`,
+      `INSERT INTO user_prefs (user_id, user_uuid, long_run_dow, quality_dows, rest_dow, units, updated_at)
+       VALUES ($1::text, $1::uuid, 0, '2,4', 6, 'imperial', NOW())
+       ON CONFLICT (user_id) DO NOTHING`,
       [userId]
     );
   } catch (err) {
@@ -321,10 +333,13 @@ export async function POST(req: NextRequest) {
     );
 
     if (update.rowCount === 0) {
-      // No row yet — first-ever onboarder. Insert one.
+      // No row yet — first-ever onboarder. Insert one. user_id (the
+      // LEGACY text PK, DEFAULT 'me') must be set to the uuid-as-text
+      // or this collides with the legacy 'me' row (2026-06-10 fix —
+      // same landmine as /api/auth/signup's profile insert).
       await client.query(
         `INSERT INTO profile (
-            user_uuid,
+            user_id, user_uuid,
             goal_race_distance, goal_race_date, goal_race_time,
             full_name, timezone,
             onboarding_completed_at, onboarded_at,
@@ -335,7 +350,7 @@ export async function POST(req: NextRequest) {
             birthday, sex, height_cm, age,
             race_history
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, NOW(), NOW(), $7,
+            $1::text, $1::uuid, $2, $3, $4, $5, $6, NOW(), NOW(), $7,
             $8, $9, $10, $11, $12, $13, $14,
             $15::date, $16, $17, $18,
             $19::jsonb

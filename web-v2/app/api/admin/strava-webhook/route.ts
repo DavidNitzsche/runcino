@@ -12,9 +12,7 @@
  *   GET                             — returns current subscription state
  *                                     + event counts (admin dashboard).
  *
- * Auth: mirrors /api/admin/recompute-runs — uses `userIdFromRequest`,
- * which falls back to DEFAULT_USER_ID for single-user beta. When multi-user
- * lands, replace with `requireAuth` + an explicit admin allowlist.
+ * Auth: requireAdmin — session auth + users.is_admin (2026-06-10).
  *
  * The callback URL defaults to `${origin}/api/strava/webhook` — works for
  * both prod (https://www.faff.run) and local dev (http://localhost:3000)
@@ -23,7 +21,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
-import { requireUserId } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { pool } from '@/lib/db/pool';
 import {
   subscribeWebhook,
@@ -35,7 +33,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
-  const auth = await requireUserId(req);
+  const auth = await requireAdmin(req);
   if (auth instanceof NextResponse) return auth;
 
   const sub = await getActiveSubscription();
@@ -73,7 +71,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireUserId(req);
+  const auth = await requireAdmin(req);
   if (auth instanceof NextResponse) return auth;
 
   const body = await req.json().catch(() => null);

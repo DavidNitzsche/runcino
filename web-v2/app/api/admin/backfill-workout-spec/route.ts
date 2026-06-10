@@ -26,7 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-import { requireUserId } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 
 function distanceMiFromLabel(label: string | null | undefined): number | null {
   if (!label) return null;
@@ -207,7 +207,7 @@ function buildSpec(
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireUserId(req);
+  const auth = await requireAdmin(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const dry = req.nextUrl.searchParams.get('dry') === '1';

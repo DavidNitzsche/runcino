@@ -48,9 +48,8 @@ export async function POST(req: NextRequest) {
         AND (data->>'date')::date >= CURRENT_DATE - 14`,
   ).catch(() => ({ rows: [] }))).rows.map((r) => r.user_uuid);
 
-  // Always include the default user (David) per the other cron's pattern.
-  const DEFAULT = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
-  if (!users.includes(DEFAULT)) users.push(DEFAULT);
+  // 2026-06-10 · multi-user: the SELECT above IS the population — no
+  // hardcoded-user append (was a legacy-row safety net for David).
 
   const results: Array<{ user_uuid: string; changed: number; error?: string }> = [];
   let totalChanged = 0;

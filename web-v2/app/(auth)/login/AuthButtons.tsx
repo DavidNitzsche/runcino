@@ -3,21 +3,27 @@
 /**
  * AuthButtons · Client island of the /login Server Component.
  *
- * Apple is the only working path · the button bootstraps Apple's web
- * JS SDK lazily (so the static HTML stays light), calls AppleID.auth
- * signIn, and POSTs the identity token to /api/auth/apple. On success
- * the server sets the faff_session cookie and the client navigates to
- * /today (or /onboarding if the runner hasn't claimed an account yet).
+ * Apple: bootstraps Apple's web JS SDK lazily (so the static HTML stays
+ * light), calls AppleID.auth signIn, and POSTs the identity token to
+ * /api/auth/apple. On success the server sets the faff_session cookie
+ * and the client navigates per the server's redirect ('/today', or
+ * '/onboarding' for accounts that haven't finished the deck).
  *
- * Google + email are visual-fidelity placeholders. onClick fires a
- * "Coming soon" toast so the buttons feel polished instead of broken,
- * but no fetch is issued and no new auth routes get built in this PR.
- * Future work owns wiring those two paths.
+ * Email: two modes on one form. Sign-in POSTs /api/auth/email; create-
+ * account adds a Name field and POSTs /api/auth/signup (2026-06-10 ·
+ * multi-user opening — signup is the canonical account-creation path).
+ *
+ * Google stays a visual-fidelity placeholder (toast only).
+ *
+ * `next` (from /login?next=…) wins over the server redirect after any
+ * successful auth — it carries a runner back to a mid-flight onboarding
+ * deck URL (state lives in searchParams, so nothing is lost).
  */
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Phase = 'idle' | 'apple-loading' | 'apple-signing' | 'apple-error' | 'apple-ok' | 'email-form' | 'email-signing' | 'email-error' | 'email-ok';
+type EmailMode = 'signin' | 'signup';
 
 declare global {
   interface Window {
@@ -41,12 +47,26 @@ declare global {
 
 const APPLE_SDK_SRC = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
 
-export function AuthButtons({ appleClientId, redirectUri }: { appleClientId: string | null; redirectUri: string }) {
+export function AuthButtons({ appleClientId, redirectUri, next, initialEmailMode }: {
+  appleClientId: string | null;
+  redirectUri: string;
+  /** Safe relative path to return to after auth (validated server-side). */
+  next?: string | null;
+  /** Open the email form pre-set to a mode (deep-link from onboarding). */
+  initialEmailMode?: EmailMode | null;
+}) {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<Phase>(initialEmailMode ? 'email-form' : 'idle');
+  const [emailMode, setEmailMode] = useState<EmailMode>(initialEmailMode ?? 'signin');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Where to land after a successful auth: explicit ?next= wins, then
+   *  the server's verdict ('/today' vs '/onboarding'), then /today. */
+  function destination(serverRedirect?: string | null): string {
+    return next || serverRedirect || '/today';
+  }
 
   function showToast(msg: string) {
     setToast(msg);
@@ -156,9 +176,11 @@ export function AuthButtons({ appleClientId, redirectUri }: { appleClientId: str
       return;
     }
 
+    let parsed: { redirect?: string } = {};
+    try { parsed = await server.json(); } catch {}
     setPhase('apple-ok');
     // Server already set the faff_session cookie · navigate.
-    router.replace('/today');
+    router.replace(destination(parsed.redirect));
     router.refresh();
   }
 
@@ -176,17 +198,19 @@ export function AuthButtons({ appleClientId, redirectUri }: { appleClientId: str
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
+    const name = String(fd.get('name') ?? '').trim();
     const email = String(fd.get('email') ?? '').trim();
     const password = String(fd.get('password') ?? '');
+    if (emailMode === 'signup' && !name) { setErrorMsg('Enter your name.'); return; }
     if (!email || !password) { setErrorMsg('Enter your email and password.'); return; }
     setErrorMsg(null);
     setPhase('email-signing');
     let server: Response;
     try {
-      server = await fetch('/api/auth/email', {
+      server = await fetch(emailMode === 'signup' ? '/api/auth/signup' : '/api/auth/email', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(emailMode === 'signup' ? { name, email, password } : { email, password }),
       });
     } catch (err) {
       setPhase('email-error');
@@ -196,13 +220,13 @@ export function AuthButtons({ appleClientId, redirectUri }: { appleClientId: str
     if (!server.ok) {
       const body = await server.json().catch(() => ({} as { error?: string }));
       setPhase('email-error');
-      setErrorMsg(body.error ?? `sign-in failed (HTTP ${server.status})`);
+      setErrorMsg(body.error ?? `${emailMode === 'signup' ? 'signup' : 'sign-in'} failed (HTTP ${server.status})`);
       return;
     }
     let parsed: { ok?: boolean; redirect?: string } = {};
     try { parsed = await server.json(); } catch {}
     setPhase('email-ok');
-    router.replace(parsed.redirect ?? '/today');
+    router.replace(destination(parsed.redirect));
     router.refresh();
   }
 
@@ -247,19 +271,50 @@ export function AuthButtons({ appleClientId, redirectUri }: { appleClientId: str
 
       {phase === 'email-form' || phase === 'email-signing' || phase === 'email-error' ? (
         <form className="email-form" onSubmit={onEmailSubmit} data-test="signin-email-form">
-          <input className="email-input" name="email" type="email" placeholder="Email" autoComplete="email" required autoFocus />
-          <input className="email-input" name="password" type="password" placeholder="Password" autoComplete="current-password" required minLength={6} />
-          <button type="submit" className="gbtn email-submit" disabled={phase === 'email-signing'}>
-            {phase === 'email-signing' ? 'Signing in…' : 'Sign in'}
+          {emailMode === 'signup' && (
+            <input className="email-input" name="name" type="text" placeholder="Name" autoComplete="name" required maxLength={80} autoFocus data-test="signup-name" />
+          )}
+          <input className="email-input" name="email" type="email" placeholder="Email" autoComplete="email" required autoFocus={emailMode === 'signin'} />
+          <input
+            className="email-input"
+            name="password"
+            type="password"
+            placeholder="Password"
+            autoComplete={emailMode === 'signup' ? 'new-password' : 'current-password'}
+            required
+            minLength={6}
+          />
+          <button type="submit" className="gbtn email-submit" disabled={phase === 'email-signing'} data-test="email-submit">
+            {phase === 'email-signing'
+              ? (emailMode === 'signup' ? 'Creating account…' : 'Signing in…')
+              : (emailMode === 'signup' ? 'Create account' : 'Sign in')}
+          </button>
+          <button
+            type="button"
+            className="email-cancel"
+            data-test="email-mode-toggle"
+            onClick={() => { setEmailMode(emailMode === 'signup' ? 'signin' : 'signup'); setErrorMsg(null); }}
+          >
+            {emailMode === 'signup' ? 'Already have an account? Sign in' : 'New to Faff? Create an account'}
           </button>
           <button type="button" className="email-cancel" onClick={() => { setPhase('idle'); setErrorMsg(null); }}>
             Cancel
           </button>
         </form>
       ) : (
-        <button className="gbtn email" type="button" data-test="signin-email" onClick={onEmailClick}>
-          Sign in with email
-        </button>
+        <>
+          <button className="gbtn email" type="button" data-test="signin-email" onClick={onEmailClick}>
+            Sign in with email
+          </button>
+          <button
+            className="gbtn email"
+            type="button"
+            data-test="signup-email"
+            onClick={() => { setEmailMode('signup'); setErrorMsg(null); setPhase('email-form'); }}
+          >
+            New to Faff? Create an account
+          </button>
+        </>
       )}
 
       <div className="gfine">

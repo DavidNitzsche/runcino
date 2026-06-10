@@ -24,12 +24,12 @@
  * agree.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUserId } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { autoMergeRecent } from '@/lib/runs/merge';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 export async function POST(req: NextRequest) {
-  const auth = await requireUserId(req);
+  const auth = await requireAdmin(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const daysParam = req.nextUrl.searchParams.get('days');

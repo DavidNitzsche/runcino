@@ -41,6 +41,8 @@
 import { randomBytes } from 'crypto';
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { buildWorkoutSpec, conservativeVdotFromMileage } from './spec-builder';
+import { tPaceFromVdot } from '@/lib/training/vdot';
 import {
   HIST_AVG_MIDPOINTS,
   HIST_LONG_MIDPOINTS,
@@ -305,10 +307,24 @@ async function persistMaintenancePlan(args: {
   authoredState: Record<string, unknown>;
 }): Promise<string> {
   const planId = id('pln');
+
+  // 2026-06-10 · plan_workouts now carries the `workout_spec_required`
+  // CHECK (every running row needs a spec — only rest/cross/strength are
+  // exempt). The seeder predates the constraint and inserted spec-less
+  // rows, so EVERY no-race onboarding's plan seed failed. Anchor the
+  // specs on the same cited cold-start heuristic the race generator
+  // uses: conservative VDOT from reported weekly mileage → T pace.
+  // No LTHR/maxHr exists for a brand-new runner, so HR caps stay null
+  // (spec-builder never invents an HR number). 480 = 8:00/mi default
+  // per tPaceFromGoal's documented contract.
+  const provisionalVdot = conservativeVdotFromMileage(args.peakWeeklyMi);
+  const tPaceSec = tPaceFromVdot(provisionalVdot) ?? 480;
+
   await pool.query(
     `INSERT INTO training_plans (id, user_id, user_uuid, mode, race_id, goal_iso, authored_state)
      VALUES ($1, 'me', $2, 'maintenance', NULL, $3, $4)`,
-    [planId, args.userId, args.goalISO, JSON.stringify(args.authoredState)],
+    [planId, args.userId, args.goalISO,
+     JSON.stringify({ ...args.authoredState, provisionalVdot, tPaceSec })],
   );
 
   // Single MAINTENANCE phase across all 16 weeks.
@@ -359,13 +375,19 @@ async function persistMaintenancePlan(args: {
         : effectiveType === 'threshold' ? 'Cruise Intervals'
         : null;
       const wkoId = id('wko');
+      // Spec per row · rest returns {spec:null} which the CHECK exempts.
+      const { spec, paceTargetSPerMi } = buildWorkoutSpec(
+        effectiveType, distances[jsDow], tPaceSec, /* lthr */ null,
+      );
       await pool.query(
         `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
+                                    pace_target_s_per_mi, workout_spec,
                                     is_quality, is_long, notes, sub_label,
                                     original_date_iso, original_type, original_distance_mi)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $4, $6, $7)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4, $6, $7)`,
         [
           wkoId, planId, weekId, dateISO, jsDow, effectiveType, distances[jsDow],
+          paceTargetSPerMi, spec ? JSON.stringify(spec) : null,
           pick.isQuality, pick.isLong, notesFor(effectiveType, isCutback), subLabel,
         ],
       );

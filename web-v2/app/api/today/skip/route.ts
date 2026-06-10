@@ -8,8 +8,7 @@
  * missed (passive), or sick/niggle (health). See db/migrations/114_day_actions.sql
  * for the full semantics rationale.
  *
- * Single-user beta pattern: user_id comes from process.env.DEFAULT_USER_ID
- * (matches app/api/checkin/route.ts:25). `today` is computed with the same
+ * Auth: requireUserId session auth (multi-user since 2026-05-30). `today` is computed with the same
  * -7h offset as lib/coach/glance-state.ts:56 so the API and the glance
  * loader agree on what "today" means.
  *

@@ -13,7 +13,7 @@
  * started:   today|yesterday|few_days|week_plus
  * has_fever: boolean (denormalized · gates DO-NOT-RUN copy + the return gate)
  *
- * Single-user beta pattern: user_id = DEFAULT_USER_ID.
+ * Auth: requireUserId session auth (multi-user since 2026-05-30).
  *
  * Spec: docs/2026-05-28-niggle-sick-logging.html §SECTION 03 (modal),
  *       §SECTION 05 (state on /today), §SECTION 07 (recovery + gates).

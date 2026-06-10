@@ -108,6 +108,32 @@ export async function requireUserId(
   return userId;
 }
 
+/**
+ * Admin gate for /api/admin/** routes (2026-06-10 · multi-user opening).
+ *
+ * requireUserId alone meant ANY signed-in runner could fire the
+ * diagnostic/backfill endpoints — harmless while David was the only
+ * account, wrong the moment signup opened. Resolves the session like
+ * requireUserId, then requires users.is_admin. Returns the user_uuid,
+ * a 401 (no session), or a 403 (valid session, not an admin).
+ */
+export async function requireAdmin(
+  req: Request | { headers: Headers, url?: string },
+): Promise<string | NextResponse> {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  try {
+    const r = (await pool.query(
+      `SELECT is_admin FROM users WHERE id = $1 LIMIT 1`,
+      [auth],
+    )).rows[0];
+    if (r?.is_admin === true) return auth;
+  } catch (e: any) {
+    console.error('[auth] admin lookup failed:', e?.message);
+  }
+  return NextResponse.json({ error: 'Forbidden · admin only' }, { status: 403 });
+}
+
 /** Strict variant — throws if no valid session. Use on new endpoints
  *  that must not silently fall back. */
 export async function requireAuth(req: Request | { headers: Headers }): Promise<string> {

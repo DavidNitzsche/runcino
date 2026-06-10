@@ -4,39 +4,22 @@
  * Deck source: docs/2026-05-28-onboarding-lilian.html § HERO · LANDING.
  *
  * Just the verb + two CTAs. Primary advances into step 1; secondary
- * uses the existing /api/auth/strava OAuth handler — which is already
- * the production sign-in path for returning runners.
+ * links to /login, the canonical sign-in surface (Apple + email +
+ * create-account).
+ *
+ * 2026-06-10 · the old secondary CTA fetched /api/auth/strava?action=
+ * connect — but that handler requires an existing session (it CONNECTS
+ * Strava to a signed-in account, it doesn't sign you in), so for the
+ * signed-out runners this CTA exists for it always 401'd and silently
+ * fell through to the goal step. /login is the real path.
  */
 
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
 import { buildOnboardingHref } from '@/lib/onboarding/state';
 
 export function LandingHero() {
-  const [signingIn, setSigningIn] = useState(false);
-
-  async function signIn() {
-    // Reuse the existing Strava OAuth handler exactly as /profile and
-    // StravaPushButton do — fetch the connect URL, then redirect.
-    setSigningIn(true);
-    try {
-      const r = await fetch('/api/auth/strava?action=connect');
-      const j = await r.json().catch(() => ({}));
-      if (j?.url) {
-        window.location.href = j.url;
-      } else {
-        // Either env isn't configured locally or the handler returned an
-        // error. Fall through to the goal step so the runner isn't stuck.
-        window.location.href = buildOnboardingHref(
-          { step: 'goal' } as any,
-        );
-      }
-    } catch {
-      setSigningIn(false);
-    }
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
@@ -96,25 +79,18 @@ export function LandingHero() {
         textAlign: 'left',
       }}>
         Already have an account?{' '}
-        <button
-          type="button"
-          onClick={signIn}
-          disabled={signingIn}
+        <Link
+          href="/login"
           style={{
-            background: 'transparent',
-            border: 'none',
             color: '#fff',
             fontWeight: 700,
             fontFamily: 'inherit',
             fontSize: 13,
-            padding: 0,
-            cursor: signingIn ? 'wait' : 'pointer',
             textDecoration: 'underline',
-            opacity: signingIn ? 0.7 : 1,
           }}
         >
-          {signingIn ? 'Redirecting…' : 'Sign in'}
-        </button>
+          Sign in
+        </Link>
       </div>
     </div>
   );

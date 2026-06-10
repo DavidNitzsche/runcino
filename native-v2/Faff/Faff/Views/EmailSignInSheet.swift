@@ -21,13 +21,20 @@ struct EmailSignInSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// 2026-06-10 multi-user opening · the sheet now carries both modes:
+    /// sign-in POSTs /api/auth/email, create-account adds a Name field
+    /// and POSTs /api/auth/signup.
+    private enum Mode { case signIn, createAccount }
+    @State private var mode: Mode = .signIn
+
+    @State private var name: String = ""
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var pending: Bool = false
     @State private var error: String?
 
     @FocusState private var focused: Field?
-    private enum Field { case email, password }
+    private enum Field { case name, email, password }
 
     var body: some View {
         let mesh = FaffMesh(
@@ -54,13 +61,8 @@ struct EmailSignInSheet: View {
                 submitButton
                     .padding(.top, 18)
 
-                Text("Apple sign-in is the primary path. Email is here as a fallback while that's being fixed.")
-                    .font(.body(10, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.5))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
+                modeToggle
                     .padding(.top, 14)
-                    .lineSpacing(2)
             }
             .padding(.horizontal, 30)
             .padding(.bottom, 30)
@@ -80,21 +82,23 @@ struct EmailSignInSheet: View {
                     .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
             }
             .buttonStyle(.plain)
-            SpecLabel(text: "EMAIL SIGN-IN", size: 13, tracking: 2.5, color: Theme.txt)
+            SpecLabel(text: mode == .signIn ? "EMAIL SIGN-IN" : "CREATE ACCOUNT", size: 13, tracking: 2.5, color: Theme.txt)
             Spacer()
         }
     }
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Welcome\nback.")
+            Text(mode == .signIn ? "Welcome\nback." : "Start\nhere.")
                 .font(.heroDisplay(46))
                 .tracking(-2)
                 .foregroundStyle(Theme.txt)
                 .lineSpacing(-6)
                 .shadow(color: .black.opacity(0.3), radius: 26, y: 2)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Sign in with the email and password you already use on faff.run.")
+            Text(mode == .signIn
+                 ? "Sign in with the email and password you already use on faff.run."
+                 : "A name, an email and a password. The plan comes next.")
                 .font(.body(15, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.78))
                 .lineSpacing(3)
@@ -104,6 +108,16 @@ struct EmailSignInSheet: View {
 
     private var form: some View {
         VStack(spacing: 12) {
+            if mode == .createAccount {
+                field(
+                    placeholder: "Name",
+                    text: $name,
+                    focusTag: .name,
+                    contentType: .name,
+                    keyboard: .default,
+                    isSecure: false
+                )
+            }
             field(
                 placeholder: "Email",
                 text: $email,
@@ -116,7 +130,7 @@ struct EmailSignInSheet: View {
                 placeholder: "Password",
                 text: $password,
                 focusTag: .password,
-                contentType: .password,
+                contentType: mode == .createAccount ? .newPassword : .password,
                 keyboard: .default,
                 isSecure: true
             )
@@ -175,7 +189,7 @@ struct EmailSignInSheet: View {
                 if pending {
                     ProgressView().tint(Color(hex: 0x0B0B0B))
                 }
-                Text("Sign in")
+                Text(mode == .signIn ? "Sign in" : "Create account")
                     .font(.body(16, weight: .extraBold))
                     .foregroundStyle(Color(hex: 0x0B0B0B))
             }
@@ -188,8 +202,27 @@ struct EmailSignInSheet: View {
         .disabled(!canSubmit)
     }
 
+    private var modeToggle: some View {
+        Button {
+            mode = (mode == .signIn) ? .createAccount : .signIn
+            error = nil
+            focused = (mode == .createAccount) ? .name : .email
+        } label: {
+            Text(mode == .signIn ? "New to Faff? Create an account" : "Already have an account? Sign in")
+                .font(.body(12, weight: .semibold))
+                .foregroundStyle(Theme.txt.opacity(0.7))
+                .underline()
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var canSubmit: Bool {
-        !pending && email.contains("@") && password.count >= 6
+        let base = !pending && email.contains("@") && password.count >= 6
+        if mode == .createAccount {
+            return base && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return base
     }
 
     @MainActor
@@ -198,10 +231,17 @@ struct EmailSignInSheet: View {
         error = nil
         defer { pending = false }
         do {
-            let resp = try await API.signInWithEmail(
-                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                password: password
-            )
+            let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resp: API.EmailSignInResponse
+            if mode == .createAccount {
+                resp = try await API.signUpWithEmail(
+                    name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    email: trimmedEmail,
+                    password: password
+                )
+            } else {
+                resp = try await API.signInWithEmail(email: trimmedEmail, password: password)
+            }
             if resp.ok, let token = resp.token {
                 TokenStore.shared.set(
                     token: token,
@@ -216,10 +256,10 @@ struct EmailSignInSheet: View {
             } else if let msg = resp.error {
                 error = humanize(msg)
             } else {
-                error = "Sign-in failed. Try again."
+                error = mode == .signIn ? "Sign-in failed. Try again." : "Signup failed. Try again."
             }
         } catch {
-            self.error = "Sign-in failed: \(error.localizedDescription)"
+            self.error = (mode == .signIn ? "Sign-in failed: " : "Signup failed: ") + error.localizedDescription
         }
     }
 
@@ -227,6 +267,7 @@ struct EmailSignInSheet: View {
         let lower = raw.lowercased()
         if lower.contains("invalid credentials") { return "Wrong email or password." }
         if lower.contains("not active") { return "Account isn't active yet." }
+        if lower.contains("already exists") { return "That email already has an account. Sign in instead." }
         return raw
     }
 }

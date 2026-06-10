@@ -182,12 +182,10 @@ enum API {
         let redirect: String?
     }
 
-    /// POST /api/auth/email · single endpoint that handles both signin
-    /// (email exists with a password_hash) and signup (new email · name
-    /// required). Same response shape as signInWithApple so TokenStore
-    /// can persist the result with one helper. `name` is required only
-    /// when the email isn't on file yet · the backend returns 404 in
-    /// that case so the iPhone can re-prompt for it.
+    /// POST /api/auth/email · sign-IN only (401s on unknown emails —
+    /// account creation lives at /api/auth/signup, see signUpWithEmail).
+    /// Same response shape as signInWithApple so TokenStore can persist
+    /// the result with one helper.
     static func signInWithEmail(email: String, password: String, name: String? = nil) async throws -> EmailSignInResponse {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/auth/email"))
         req.httpMethod = "POST"
@@ -195,6 +193,19 @@ enum API {
         var body: [String: Any] = ["email": email, "password": password]
         if let n = name, !n.isEmpty { body["name"] = n }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return try JSONDecoder().decode(EmailSignInResponse.self, from: data)
+    }
+
+    /// POST /api/auth/signup · name + email + password account creation
+    /// (2026-06-10 multi-user opening). Returns the same shape as
+    /// signInWithEmail — token persists via TokenStore unchanged, and
+    /// redirect is always "/onboarding" for a fresh account.
+    static func signUpWithEmail(name: String, email: String, password: String) async throws -> EmailSignInResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/auth/signup"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "email": email, "password": password])
         let (data, _) = try await URLSession.shared.data(for: req)
         return try JSONDecoder().decode(EmailSignInResponse.self, from: data)
     }

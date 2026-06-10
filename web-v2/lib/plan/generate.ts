@@ -26,7 +26,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
-import { buildWorkoutSpec, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromRace, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
@@ -1142,21 +1142,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // Cite: §Rule 3.
   const goalT = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? input.tPaceSec;
 
-  // Cold-start VDOT floor: when no measured fitness signal exists, estimate
-  // conservatively from weekly mileage rather than defaulting to the goal.
-  // A 28-min 5K runner entering sub-20 at 15 mpw is assumed VDOT 32
-  // (~10:45 easy), not VDOT 50 (~8:12 easy). Deliberate underestimate.
+  // Cold-start VDOT floor · conservativeVdotFromMileage lifted to
+  // spec-builder.ts 2026-06-10 (shared with the maintenance seeder) ·
   // Cite: Daniels Running Formula §"VDOT and Training" — mileage-band heuristic.
-  function conservativeVdotFromMileage(weeklyMi: number): number {
-    if (weeklyMi >= 45) return 47;
-    if (weeklyMi >= 40) return 45;
-    if (weeklyMi >= 35) return 43;
-    if (weeklyMi >= 30) return 40;
-    if (weeklyMi >= 25) return 38;
-    if (weeklyMi >= 20) return 35;
-    if (weeklyMi >= 15) return 32;
-    return 30; // Daniels VDOT floor; sub-30 is indistinguishable from no-data
-  }
   const estimatedCurrentVdot = input.bestRecentVdot
     ?? conservativeVdotFromMileage(input.recentWeeklyMi);
   const currentT = tPaceFromVdot(estimatedCurrentVdot);

@@ -114,9 +114,9 @@ export async function POST(req: NextRequest) {
       WHERE archived_iso IS NULL AND user_uuid IS NOT NULL`,
   ).catch(() => ({ rows: [] }))).rows.map((r) => r.user_uuid);
 
-  // Always include David (legacy 'me'-anchored).
-  const DAVID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
-  if (!userIds.includes(DAVID)) userIds.push(DAVID);
+  // 2026-06-10 · multi-user: the SELECT above IS the population — no
+  // hardcoded-user append. (Pre-signup this force-included David's UUID
+  // as legacy-row paranoia; every active plan now carries user_uuid.)
 
   const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; error?: string }> = [];
   for (const u of userIds) {

@@ -23,13 +23,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { requireUserId } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { enrichOneActivity } from '@/lib/weather/openmeteo';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const auth = await requireUserId(req);
+  const auth = await requireAdmin(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
 

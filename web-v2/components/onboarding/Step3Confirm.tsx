@@ -100,6 +100,14 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
           height_cm: heightCm ? Number(heightCm) : undefined,
         }),
       });
+      if (r.status === 401) {
+        // Anonymous runner finished the deck — send them to create an
+        // account, then return HERE with every answer intact (the whole
+        // deck state lives in the URL, so the round-trip loses nothing).
+        const here = window.location.pathname + window.location.search;
+        window.location.href = `/login?mode=signup&next=${encodeURIComponent(here)}`;
+        return;
+      }
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.success) {
         throw new Error(j?.error ?? 'Could not save your answers');

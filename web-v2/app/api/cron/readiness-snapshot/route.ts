@@ -37,10 +37,8 @@ export async function POST(req: NextRequest) {
       WHERE archived_iso IS NULL AND user_uuid IS NOT NULL`,
   ).catch(() => ({ rows: [] }))).rows.map((r) => r.user_uuid);
 
-  // Always include the default user (David's legacy id · same pattern as
-  // snapshot-projections cron).
-  const DEFAULT = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
-  if (!userIds.includes(DEFAULT)) userIds.push(DEFAULT);
+  // 2026-06-10 · multi-user: the SELECT above IS the population — no
+  // hardcoded-user append (was a legacy-row safety net for David).
 
   const results = [] as Array<{ userUuid: string; date: string; score: number | null; band: string; written: boolean; reason?: string; error?: string }>;
 

@@ -39,7 +39,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { requireUserId } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { toUtcIso } from '@/lib/runs/normalize-time';
 
 export const dynamic = 'force-dynamic';
@@ -52,7 +52,7 @@ interface RunRow {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireUserId(req);
+  const auth = await requireAdmin(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
 

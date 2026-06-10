@@ -519,3 +519,25 @@ export function tPaceFromGoal(
   if (goalDistanceMi >= 5)  return goalSPerMi + 8;    // 10K
   return goalSPerMi + 15;                              // 5K
 }
+
+/**
+ * Cold-start VDOT floor: when no measured fitness signal exists, estimate
+ * conservatively from weekly mileage rather than defaulting to the goal.
+ * A 28-min 5K runner entering sub-20 at 15 mpw is assumed VDOT 32
+ * (~10:45 easy), not VDOT 50 (~8:12 easy). Deliberate underestimate.
+ * Cite: Daniels Running Formula §"VDOT and Training" — mileage-band heuristic.
+ *
+ * 2026-06-10 · lifted to module scope from generate.ts (where it was
+ * nested in the composer) so the maintenance seeder can anchor its
+ * workout_spec paces on the same cited heuristic. One source.
+ */
+export function conservativeVdotFromMileage(weeklyMi: number): number {
+  if (weeklyMi >= 45) return 47;
+  if (weeklyMi >= 40) return 45;
+  if (weeklyMi >= 35) return 43;
+  if (weeklyMi >= 30) return 40;
+  if (weeklyMi >= 25) return 38;
+  if (weeklyMi >= 20) return 35;
+  if (weeklyMi >= 15) return 32;
+  return 30; // Daniels VDOT floor; sub-30 is indistinguishable from no-data
+}
