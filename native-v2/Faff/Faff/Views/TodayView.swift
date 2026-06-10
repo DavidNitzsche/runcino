@@ -32,6 +32,7 @@ struct TodayView: View {
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
     @State private var selectedDayID: String = ""
+    @State private var selectedWeekIndex: Int = 0
     @State private var sheetProgress: Double = 1     // 1 = collapsed
     @State private var skipped: Bool = false
     @State private var showNudge: Bool = false
@@ -179,10 +180,10 @@ struct TodayView: View {
                 // 44pt clearance for the globalTopBar overlay in RootTabView.
                 // Both sit at safe-area-top; ZStack-based bar needs explicit
                 // space below it since safeAreaInset doesn't pierce FaffMesh.
-                Color.clear.frame(height: 44)
+                Color.clear.frame(height: screenSafeAreaTop + 44)
 
-                if !allStripDays.isEmpty {
-                    WeekStrip(days: allStripDays, selectedID: $selectedDayID)
+                if !allStripWeeks.isEmpty {
+                    WeekStrip(weeks: allStripWeeks, selectedID: $selectedDayID, weekIndex: $selectedWeekIndex)
                         .padding(.top, 8)
                 }
 
@@ -440,6 +441,17 @@ struct TodayView: View {
             // open across an hour boundary still shows the right mesh.
             timeOfDay = TimeOfDay.current()
             Task { await loadAll() }
+        }
+        .onChange(of: selectedWeekIndex) { _, newIdx in
+            // User swiped to a different week · update the selected day.
+            // Prefer today if this week contains it, else land on the first day.
+            guard newIdx < allStripWeeks.count else { return }
+            let week = allStripWeeks[newIdx]
+            if let today = week.first(where: { $0.isToday }) {
+                withAnimation(Theme.Motion.smooth) { selectedDayID = today.id }
+            } else if let first = week.first {
+                withAnimation(Theme.Motion.smooth) { selectedDayID = first.id }
+            }
         }
         .task(id: selectedDayID) {
             // Tapped a day in the week strip · fetch that day's planned
@@ -906,10 +918,10 @@ struct TodayView: View {
             // Deep band background (readinessBandTint on DragSheet) +
             // orb glow = premium gradient look vs flat pastel.
             RadialGradient(
-                colors: [readinessBandArc.opacity(0.55), Color.clear],
+                colors: [readinessBandArc.opacity(0.22), Color.clear],
                 center: UnitPoint(x: 0.08, y: 0.5),
                 startRadius: 0,
-                endRadius: 160
+                endRadius: 120
             )
             .allowsHitTesting(false)
 
@@ -1615,7 +1627,7 @@ struct TodayView: View {
             if selectedEffort == .rest { return Color(hex: 0x9FB0AD) }
             return selectedEffort.dot
         }
-        return readinessBandTint
+        return Theme.card  // dark; accent lives on the ring arc and score number only
     }
 
     /// Readiness band → deep background tint for the peek strip.
@@ -1744,19 +1756,25 @@ struct TodayView: View {
     // now reads /api/today/purpose (verdict + facts + citations) and
     // hides entirely when the payload is nil. No placeholder fallback.
 
-    /// All strip days across prev + current + future weeks, deduped by date.
-    /// Powers the horizontally-scrollable WeekStrip (~35 days of depth).
-    private var allStripDays: [WeekStripDay] {
+    /// Status bar height for the current device. Used to compute the week strip
+    /// clearance — FaffMeshView internally ignores safe area, pulling the ZStack
+    /// to y=0, so the clearance must include the status bar + top bar content.
+    private var screenSafeAreaTop: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first(where: { $0.isKeyWindow })?
+            .safeAreaInsets.top ?? 54
+    }
+
+    /// All weeks available for the paged week strip (prev + current + future).
+    /// Each element is a 7-day array — one page per week, Sat–Sun order.
+    private var allStripWeeks: [[WeekStripDay]] {
         guard let current = plan else { return [] }
-        var seen = Set<String>()
-        var result: [WeekStripDay] = []
-        let allWeeks: [PlanWeek] = ([prevWeekPlan].compactMap { $0 }) + [current] + futureWeekPlans
-        for week in allWeeks {
-            for d in makeStripDays(from: week) {
-                if seen.insert(d.id).inserted { result.append(d) }
-            }
-        }
-        return result.sorted { $0.id < $1.id }
+        var result: [[WeekStripDay]] = []
+        if let prev = prevWeekPlan { result.append(makeStripDays(from: prev)) }
+        result.append(makeStripDays(from: current))
+        result += futureWeekPlans.map { makeStripDays(from: $0) }
+        return result
     }
 
     private func makeStripDays(from week: PlanWeek) -> [WeekStripDay] {
@@ -1883,6 +1901,10 @@ struct TodayView: View {
             if let brief { self.briefing = brief }
             if let prof { self.profile = prof }
             if let wx { self.weather = wx }
+            // Snap the week strip to the current week after all plans load.
+            if let idx = self.allStripWeeks.firstIndex(where: { $0.contains(where: { $0.isToday }) }) {
+                self.selectedWeekIndex = idx
+            }
             // 2026-06-02 · forecast (range_label + best_window) fetched
             // separately · server returns 404 if no GPS home base yet,
             // which is fine · the iPhone falls back to "—" cells.

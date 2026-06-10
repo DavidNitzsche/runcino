@@ -1,9 +1,8 @@
 //
 //  WeekStrip.swift
-//  Horizontally scrollable day strip across multiple weeks.
-//  Each day shows DOW letter + date + effort-color dot (or rest dash).
-//  Today is highlighted; selected day pops; non-selected days dim.
-//  Swipe left/right to scroll freely through past and future weeks.
+//  7-day week strip with full-week page-snap.
+//  Each page = one Sat–Sun week. Swipe left/right flips the whole week.
+//  Tap a day to select it within the visible page.
 //
 
 import SwiftUI
@@ -20,51 +19,35 @@ struct WeekStripDay: Identifiable, Hashable {
 }
 
 struct WeekStrip: View {
-    let days: [WeekStripDay]
+    let weeks: [[WeekStripDay]]
     @Binding var selectedID: String
+    @Binding var weekIndex: Int
 
-    // 44pt cell + 4pt gap = 48pt/cell → ~7 full cells visible on a 393pt
-    // iPhone (349pt strip width ÷ 48 = 7.3), with the 8th cell peeking
-    // out to signal scrollability.
     private let cellWidth: CGFloat = 44
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(days) { d in
-                        Button {
-                            withAnimation(Theme.Motion.smooth) { selectedID = d.id }
-                        } label: {
-                            cell(d)
-                        }
-                        .buttonStyle(.plain)
-                        .id(d.id)
-                    }
-                }
-                .padding(.horizontal, 22)
-            }
-            .onAppear {
-                // Scroll to today (or selected) with no animation on first load.
-                let target = days.first(where: { $0.id == selectedID })?.id
-                    ?? days.first(where: { $0.isToday })?.id
-                    ?? selectedID
-                proxy.scrollTo(target, anchor: .center)
-            }
-            .onChange(of: selectedID) { _, id in
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    proxy.scrollTo(id, anchor: .center)
-                }
-            }
-            .onChange(of: days.count) { oldCount, newCount in
-                // Re-anchor when prev/future weeks load in. Prepending days
-                // shifts the scroll offset; re-center on selected so the
-                // user doesn't see the strip jump.
-                guard newCount > oldCount, newCount > 7 else { return }
-                let target = days.first(where: { $0.id == selectedID })?.id ?? selectedID
-                proxy.scrollTo(target, anchor: .center)
+        TabView(selection: $weekIndex) {
+            ForEach(Array(weeks.enumerated()), id: \.offset) { idx, week in
+                weekRow(week)
+                    .tag(idx)
             }
         }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(height: 72)
+    }
+
+    private func weekRow(_ week: [WeekStripDay]) -> some View {
+        HStack(spacing: 4) {
+            ForEach(week) { d in
+                Button {
+                    withAnimation(Theme.Motion.smooth) { selectedID = d.id }
+                } label: {
+                    cell(d)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 22)
     }
 
     @ViewBuilder
