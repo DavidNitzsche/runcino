@@ -56,6 +56,10 @@ final class WatchSync: NSObject, ObservableObject {
             if let t = TokenStore.shared.token {
                 ctx["authToken"] = t
             }
+            // Nonce prevents updateApplicationContext being skipped when content
+            // is identical to the last delivery (watchOS compares the dict; a
+            // same-day re-push would be silently dropped without this).
+            ctx["syncedAt"] = Date().timeIntervalSinceReferenceDate
             // workout / message — decode the response shape and route.
             let obj = try JSONSerialization.jsonObject(with: raw) as? [String: Any] ?? [:]
             if obj["workout"] != nil {
@@ -188,7 +192,13 @@ final class WatchSync: NSObject, ObservableObject {
         // bearer attaches and 401 surfaces via .faffSessionExpired.
         do {
             let (_, http) = try await API.authedSend(req)
-            return (200..<300).contains(http.statusCode)
+            if (200..<300).contains(http.statusCode) { return true }
+            // 409 = already accepted (idempotent backend) → treat as success, drop from queue.
+            if http.statusCode == 409 { return true }
+            // Other 4xx (400 bad-request, 404 not-found, etc.) are permanent client errors —
+            // retrying will never succeed; dead-letter by returning true so the caller drops it.
+            if (400..<500).contains(http.statusCode) && http.statusCode != 401 { return true }
+            return false  // 401 (needs re-auth) or 5xx — keep and retry
         } catch {
             return false
         }
@@ -219,6 +229,17 @@ extension WatchSync: WCSessionDelegate {
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
     nonisolated func sessionDidDeactivate(_ session: WCSession) { session.activate() }
+
+    /// Watch sent a large completion via transferFile (audit RK-2 fallback: payloads
+    /// >60 KB exceed transferUserInfo cap; the watch uses transferFile instead).
+    nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard file.metadata?["completion"] as? String == "v1" else { return }
+        guard let data = try? Data(contentsOf: file.fileURL) else { return }
+        Task { @MainActor in
+            self.enqueue(data)
+            await self.flushPendingCompletions()
+        }
+    }
 
     nonisolated func session(_ session: WCSession,
                              didReceiveUserInfo userInfo: [String: Any] = [:]) {
@@ -254,6 +275,11 @@ extension WatchSync: WCSessionDelegate {
                 let raw = try await API.fetchWatchTodayRaw()
                 if let obj = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] {
                     var reply: [String: Any] = [:]
+                    // Include the auth token so the watch can POST completions
+                    // directly after a fresh install (without waiting for the next
+                    // applicationContext push). The watch already gets it via context,
+                    // but a sendMessage reply is faster on first launch.
+                    if let t = TokenStore.shared.token { reply["authToken"] = t }
                     if let w = obj["workout"], JSONSerialization.isValidJSONObject(w) {
                         // Gate with isValidJSONObject — see didReceiveUserInfo
                         // comment above for the NSException-vs-try? story.

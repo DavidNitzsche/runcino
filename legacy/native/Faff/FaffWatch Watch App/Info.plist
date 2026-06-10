@@ -32,6 +32,10 @@
 	<dict/>
 	<key>WKApplication</key>
 	<true/>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>workout-processing</string>
+	</array>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>run.faff.app</string>
 	<key>WKWatchOnly</key>
