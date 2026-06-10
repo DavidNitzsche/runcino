@@ -35,28 +35,26 @@ struct ReadinessGlanceView: View {
         }
         .padding(.horizontal, 14).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WatchTheme.C.bg.ignoresSafeArea())
+        .background(Color.black.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .top)
     }
 
-    // The body-state read: label word, big score hero (state-colored), HRV·RHR,
-    // and the race countdown.
     @ViewBuilder private func filled(_ r: WatchReadiness, score: Int) -> some View {
         let c = stateColor(r.state)
         Text(r.label.uppercased())
             .font(WatchTheme.body(12, .bold)).tracking(0.8)
-            .foregroundStyle(WatchTheme.C.t2).lineLimit(1)
+            .foregroundStyle(Faff.t2).lineLimit(1)
         Text("\(score)")
             .font(WatchTheme.display(96)).foregroundStyle(c)
             .lineLimit(1).minimumScaleFactor(0.5)
         if let sub = subline(r) {
-            Text(sub).font(WatchTheme.body(13, .semibold)).foregroundStyle(WatchTheme.C.t2)
+            Text(sub).font(WatchTheme.body(13, .semibold)).foregroundStyle(Faff.t2)
                 .padding(.top, 4)
         }
         if !r.recommendation.isEmpty {
             Text(r.recommendation)
                 .font(WatchTheme.body(12, .regular))
-                .foregroundStyle(WatchTheme.C.t2)
+                .foregroundStyle(Faff.t2)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
@@ -64,17 +62,16 @@ struct ReadinessGlanceView: View {
         if let race = r.nextRace {
             Text("\(race.name.uppercased()) · \(race.daysAway) DAYS")
                 .font(WatchTheme.body(11, .semibold)).tracking(0.4)
-                .foregroundStyle(WatchTheme.C.t3).padding(.top, 12)
+                .foregroundStyle(Faff.t3).padding(.top, 12)
         }
     }
 
-    // Suppressed read (injured / no data): a dashed, dimmed placeholder.
     private var empty: some View {
         VStack(spacing: 10) {
             Text("– –")
-                .font(WatchTheme.display(96)).foregroundStyle(WatchTheme.C.t3)
+                .font(WatchTheme.display(96)).foregroundStyle(Faff.t3)
             Text(emptyReason)
-                .font(WatchTheme.body(12.5, .medium)).foregroundStyle(WatchTheme.C.t3)
+                .font(WatchTheme.body(12.5, .medium)).foregroundStyle(Faff.t3)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 170)
         }
@@ -88,10 +85,9 @@ struct ReadinessGlanceView: View {
         }
     }
 
-    /// State hue only when there's a real score; muted when suppressed.
     private var eyebrowColor: Color {
         if let r = readiness, r.score != nil { return stateColor(r.state) }
-        return WatchTheme.C.t2
+        return Faff.t2
     }
 
     private func subline(_ r: WatchReadiness) -> String? {
@@ -101,13 +97,11 @@ struct ReadinessGlanceView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// ≥80 green, ≥60 yellow, else red — the backend already decides `state`
-    /// against the shared phone/web thresholds; we just map it to the hue.
     private func stateColor(_ state: String) -> Color {
         switch state {
-        case "green":  return WatchTheme.C.green
-        case "yellow": return WatchTheme.C.amber
-        default:       return WatchTheme.C.warn
+        case "green":  return Faff.live
+        case "yellow": return Faff.goal
+        default:       return Faff.over
         }
     }
 }

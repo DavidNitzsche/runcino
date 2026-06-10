@@ -40,6 +40,6 @@ struct ResponsiveFace<Content: View>: View {
                 .frame(width: geo.size.width, height: geo.size.height)
         }
         .ignoresSafeArea()
-        .background(WatchTheme.C.bg.ignoresSafeArea())
+        .background(Color.black.ignoresSafeArea())
     }
 }

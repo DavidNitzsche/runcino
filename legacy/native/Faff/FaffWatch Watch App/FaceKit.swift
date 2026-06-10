@@ -37,17 +37,20 @@ extension Color {
 enum Faff {
     static let live   = Color(hex: 0x3EBD41) // Good state — on-pace / governed
     static let goal   = Color(hex: 0xF3AD38) // Watch attention — target / "act now" (fuel)
+    static let race   = Color(hex: 0xFF5722) // Race / now — brand hero (--race web token)
     static let dist   = Color(hex: 0x27B4E0) // Recovery blue — DISTANCE, always
     static let over   = Color(hex: 0xFC4D64) // Off/warn — behind / over ceiling (LIVE DATA)
     static let redish = Color(hex: 0xFC4D64) // Destructive-action red (= warn slot · #D03F3F deleted)
     static let rest   = Color(hex: 0x27B4E0) // Recovery blue — rest / landmark chrome (corporate #008FEC deleted)
-    static let ink    = Color(hex: 0xF6F7F8) // neutral readout (white)
+    static let ink    = Color(hex: 0xF6F7F8) // neutral readout (near-white)
     static let mute   = Color(hex: 0x8A90A0)
     static let dim    = Color(hex: 0x646464)
     static let brand  = Color(hex: 0x27B4E0) // (= rest · corporate blue deleted)
-    static let bonus  = Color(hex: 0xF5C518) // PR gold — distance gone past the plan (counts up ·
-                                             // was an out-of-palette purple; overtime is the small
-                                             // milestone state, gold per the locked table)
+    static let bonus  = Color(hex: 0xF5C518) // PR gold — distance gone past the plan
+    // Surface neutrals for non-run views (previously via WatchTheme.C)
+    static let t2     = Color.white.opacity(0.62) // secondary labels
+    static let t3     = Color.white.opacity(0.40) // dim / eyebrow labels
+    static let track  = Color.white.opacity(0.14) // progress ring track
 }
 
 // MARK: - A number's role decides its colour

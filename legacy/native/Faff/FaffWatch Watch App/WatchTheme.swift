@@ -18,6 +18,10 @@ enum WatchTheme {
     // globals.css. The old values (#2CA82F / #D4900A / #E85D26) were a
     // second, divergent palette on the same wrist · on-pace green differed
     // between the glance surfaces and the in-run faces for the same metric.
+    //
+    // DEPRECATED for direct use in views — consume Faff.* from FaceKit instead.
+    // WatchTheme.C remains as the source-of-truth definition; it is not deleted
+    // because it anchors the locked values. New view code must not add C.* calls.
     enum C {
         static let bg      = Color.black            // true-black surface
         static let ink     = Color.white            // --wink

@@ -442,15 +442,15 @@ private struct NoWorkoutView: View {
         ResponsiveFace {
             VStack(spacing: 0) {
                 HStack {
-                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(Faff.race)
                     Spacer()
                 }
                 .padding(.leading, 8).padding(.top, 14)   // FAFF baseline level with the OS clock
                 Spacer()
                 // Big green REST + the body read (no "REST DAY" eyebrow — that's "rest" twice).
-                Text("REST").font(WatchTheme.display(80)).foregroundStyle(WatchTheme.C.green)
+                Text("REST").font(WatchTheme.display(80)).foregroundStyle(Faff.live)
                 Text(message)
-                    .font(WatchTheme.body(13, .medium)).foregroundStyle(WatchTheme.C.t2)
+                    .font(WatchTheme.body(13, .medium)).foregroundStyle(Faff.t2)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 180).padding(.top, 8)
                 Spacer()
@@ -473,20 +473,20 @@ private struct StalePlanView: View {
         ResponsiveFace {
             VStack(spacing: 0) {
                 HStack {
-                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(Faff.race)
                     Spacer()
                 }
                 .padding(.leading, 8).padding(.top, 14)   // FAFF baseline level with the OS clock
                 Spacer()
-                Text("STALE").font(WatchTheme.display(64)).foregroundStyle(WatchTheme.C.amber)
+                Text("STALE").font(WatchTheme.display(64)).foregroundStyle(Faff.goal)
                 Text(overrideAvailable
                      ? "Phone unreachable. Cached session only."
                      : "Syncing today's session.")
-                    .font(WatchTheme.body(13, .medium)).foregroundStyle(WatchTheme.C.t2)
+                    .font(WatchTheme.body(13, .medium)).foregroundStyle(Faff.t2)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 180).padding(.top, 6)
                 if !overrideAvailable {
-                    ProgressView().tint(WatchTheme.C.amber).padding(.top, 8)
+                    ProgressView().tint(Faff.goal).padding(.top, 8)
                 }
                 Spacer()
                 if overrideAvailable {
@@ -496,7 +496,7 @@ private struct StalePlanView: View {
                             .foregroundStyle(Color.black)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 9)
-                            .background(Capsule().fill(WatchTheme.C.amber))
+                            .background(Capsule().fill(Faff.goal))
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, 15)
@@ -598,10 +598,10 @@ private struct WaitingForPhoneView: View {
     var body: some View {
         ResponsiveFace {
             VStack(spacing: 10) {
-                ProgressView().tint(WatchTheme.C.orange)
+                ProgressView().tint(Faff.race)
                 Text("Open Faff on your iPhone to load today's workout.")
                     .font(WatchTheme.body(12, .medium))
-                    .foregroundStyle(WatchTheme.C.t2)
+                    .foregroundStyle(Faff.t2)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 12)

@@ -26,11 +26,11 @@ struct TreadmillHRView: View {
             VStack(spacing: 0) {
                 HStack {
                     Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5)
-                        .foregroundStyle(WatchTheme.C.orange)
+                        .foregroundStyle(Faff.race)
                     Spacer()
                     Text(elapsedLabel)
                         .font(WatchTheme.body(11, .semibold))
-                        .foregroundStyle(WatchTheme.C.t2)
+                        .foregroundStyle(Faff.t2)
                         .monospacedDigit()
                 }
                 .padding(.leading, 8).padding(.trailing, 4).padding(.top, 14)
@@ -40,33 +40,33 @@ struct TreadmillHRView: View {
                 Text("TREADMILL")
                     .font(WatchTheme.body(10, .bold))
                     .tracking(2)
-                    .foregroundStyle(WatchTheme.C.t2)
+                    .foregroundStyle(Faff.t2)
 
                 // Big BPM hero · "—" until first sample, "162" once it lands.
                 Text(hr.currentBpm > 0 ? "\(hr.currentBpm)" : "—")
                     .font(WatchTheme.display(72))
-                    .foregroundStyle(WatchTheme.C.ink)
+                    .foregroundStyle(Faff.ink)
                     .monospacedDigit()
                 Text("BPM")
                     .font(WatchTheme.body(11, .bold))
                     .tracking(1.5)
-                    .foregroundStyle(WatchTheme.C.t2.opacity(0.85))
+                    .foregroundStyle(Faff.t2.opacity(0.85))
 
                 Spacer(minLength: 8)
 
                 Text("Phone has the controls")
                     .font(WatchTheme.body(10, .medium))
-                    .foregroundStyle(WatchTheme.C.t2)
+                    .foregroundStyle(Faff.t2)
                     .multilineTextAlignment(.center)
 
                 Button(action: stop) {
                     Text("STOP")
                         .font(WatchTheme.body(13, .bold))
                         .tracking(1.5)
-                        .foregroundStyle(WatchTheme.C.ink)
+                        .foregroundStyle(Faff.ink)
                         .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(WatchTheme.C.orange.opacity(0.18), in: Capsule())
-                        .overlay(Capsule().stroke(WatchTheme.C.orange.opacity(0.5), lineWidth: 1))
+                        .background(Faff.race.opacity(0.18), in: Capsule())
+                        .overlay(Capsule().stroke(Faff.race.opacity(0.5), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 18)
