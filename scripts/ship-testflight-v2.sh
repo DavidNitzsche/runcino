@@ -149,6 +149,27 @@ PLIST
 echo "→ Palette-sync gate (brief v2 §1)…"
 bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-palette-sync.sh"
 
+# WorkoutEngine test gate · compile-check the watch test target before
+# archiving. Catches regressions in the engine that are only visible via
+# the test layer (state machine, overtime, snapshot, race-pause contracts).
+# Uses build-for-testing so it runs in CI without a booted simulator;
+# test execution is separately verified in dev via xcodebuild test.
+echo "→ Watch engine test gate (build-for-testing)…"
+WATCH_SIM=$(xcrun simctl list devices available 2>/dev/null | \
+  grep -A30 "watchOS" | grep -m1 -oE "[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}" || true)
+if [ -n "$WATCH_SIM" ]; then
+  ( cd "$ROOT/legacy/native/Faff" && \
+    xcodebuild build-for-testing \
+      -project Faff.xcodeproj \
+      -scheme "FaffWatch Watch App" \
+      -destination "platform=watchOS Simulator,id=$WATCH_SIM" \
+      2>&1 | grep -E "error:|TEST BUILD SUCCEEDED|TEST BUILD FAILED" | tail -5 ) \
+    || { echo "ERROR: Watch test target build FAILED — aborting ship." >&2; exit 1; }
+  echo "✓ Watch engine test target builds clean"
+else
+  echo "  → No watchOS simulator available — skipping test gate (check the simulator after shipping)"
+fi
+
 echo "→ Archiving…"
 ( cd "$NATIVE_V2" && xcodebuild -scheme Faff -configuration Release \
     -destination 'generic/platform=iOS' -archivePath /tmp/Faff-v2.xcarchive archive \
