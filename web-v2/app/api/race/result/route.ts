@@ -175,7 +175,9 @@ export async function POST(req: NextRequest) {
           WHERE user_uuid = $1
             AND (meta->>'date')::date > $2::date
             AND meta->>'priority' IN ('A', 'B')
-          ORDER BY (meta->>'date')::date
+          ORDER BY
+            CASE WHEN meta->>'priority' = 'A' THEN 0 ELSE 1 END,
+            (meta->>'date')::date
           LIMIT 1`,
         [userId, (meta.date as string) ?? '9999-99-99'],
       )).rows[0];

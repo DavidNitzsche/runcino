@@ -77,6 +77,20 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // F20: physiological bounds guard — clamp impossible HR values to null
+  // and reject absurd distances before any DB write.
+  if (body.avg_hr_bpm != null && (body.avg_hr_bpm < 30 || body.avg_hr_bpm > 230)) {
+    console.warn(`[ingest/workout] clamped out-of-bounds avg_hr_bpm=${body.avg_hr_bpm}`);
+    body.avg_hr_bpm = null;
+  }
+  if (body.max_hr_bpm != null && (body.max_hr_bpm < 30 || body.max_hr_bpm > 230)) {
+    console.warn(`[ingest/workout] clamped out-of-bounds max_hr_bpm=${body.max_hr_bpm}`);
+    body.max_hr_bpm = null;
+  }
+  if (Number(body.distance_mi) > 50) {
+    return NextResponse.json({ error: 'distance_mi exceeds 50 mi ceiling' }, { status: 400 });
+  }
+
   const slug = `wko_${body.client_workout_id}`;
 
   // 2026-06-04 · compute HR-zone percentages at ingest. Watch payloads

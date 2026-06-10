@@ -44,6 +44,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // F20: physiological bounds guard for manual entries.
+  if (Number(body.distance_mi) > 50) {
+    return NextResponse.json({ error: 'distance_mi exceeds 50 mi ceiling' }, { status: 400 });
+  }
+  if (body.avg_hr_bpm != null && (body.avg_hr_bpm < 30 || body.avg_hr_bpm > 230)) {
+    body.avg_hr_bpm = null;
+  }
+
   const data = {
     id: slug,
     activityId: slug,

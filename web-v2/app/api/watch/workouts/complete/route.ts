@@ -143,6 +143,22 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // ── 0b. Physiological bounds guard (F20) ──────────────────────────────────
+  // Clamp impossible HR values to null rather than storing garbage that
+  // would poison readiness pillars. Distance ceiling guards against the
+  // dedup absorber treating a 100-mile phantom as a valid run.
+  if (body.maxHr != null && (body.maxHr < 30 || body.maxHr > 230)) {
+    console.warn(`[watch/complete] out-of-bounds maxHr=${body.maxHr} clamped to null`);
+    body.maxHr = null;
+  }
+  if (body.avgHr != null && (body.avgHr < 30 || body.avgHr > 230)) {
+    console.warn(`[watch/complete] out-of-bounds avgHr=${body.avgHr} clamped to null`);
+    body.avgHr = null;
+  }
+  if (body.totalDistanceMi != null && body.totalDistanceMi > 50) {
+    return NextResponse.json({ error: 'distance exceeds 50 mi ceiling' }, { status: 400 });
+  }
+
   // ── 1. strava_activities-shaped row so non-coach consumers see the run ──
   // Shape mirrors /api/ingest/workout — keeps a single canonical activity
   // shape across watch, Strava, HealthKit, and manual entry sources.
@@ -342,6 +358,10 @@ export async function POST(req: NextRequest) {
     // no plan day matched · readers treat null as untyped (pre-fix behavior).
     workoutType: plannedWorkoutType,
     ...(plannedWorkoutType ? { workoutTypeSource: 'plan' } : {}),
+    // F10: raw per-phase array stored directly on the run row so the
+    // coach and VDOT engines can query per-phase actuals without a
+    // JOIN to coach_intents. Empty array when old clients omit phases.
+    ...(body.phases?.length ? { phases: body.phases } : {}),
     ingestedAt: new Date().toISOString(),
     // 2026-06-03 · per-run TZ capture · stored on the run row so the
     // recovery anchor + activity feed read the TZ that was in effect

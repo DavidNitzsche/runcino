@@ -176,11 +176,22 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
   const stresses = rows.map((r) => {
     const mi = Number(r.mi) || 0;
     const avgHr = r.avg_hr ? Number(r.avg_hr) : null;
-    const type = r.inferred_type
-      ?? (mi >= 10 ? 'long'
+    // F19: a run on a planned rest day still contributes real stress.
+    // When the plan says 'rest' but the runner logged miles, apply HR/
+    // distance inference instead of the 0.00 rest factor — silently
+    // zeroing out the stress of a 6-mile run because the plan had "OFF"
+    // produces a structurally lighter CTL than reality.
+    const planType = r.inferred_type;
+    const type = (planType === 'rest' && mi > 0)
+      ? (mi >= 10 ? 'long'
         : avgHr && lthr && avgHr >= lthr * 0.88 ? 'tempo'
         : avgHr && lthr && avgHr >= lthr * 0.78 ? 'progression'
-        : 'easy');
+        : 'easy')
+      : planType
+        ?? (mi >= 10 ? 'long'
+          : avgHr && lthr && avgHr >= lthr * 0.88 ? 'tempo'
+          : avgHr && lthr && avgHr >= lthr * 0.78 ? 'progression'
+          : 'easy');
     const ifct = INTENSITY_FACTOR[type] ?? 0.85;
     return mi * ifct;
   });
