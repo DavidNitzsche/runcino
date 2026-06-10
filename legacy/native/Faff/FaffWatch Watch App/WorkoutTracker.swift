@@ -214,7 +214,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         #else
         guard available else { return false }
         do {
-            let s = try await healthStore.recoverActiveWorkoutSession()
+            guard let s = try await healthStore.recoverActiveWorkoutSession() else { return false }
             let b = s.associatedWorkoutBuilder()
             s.delegate = self
             b.delegate = self
