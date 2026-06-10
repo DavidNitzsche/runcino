@@ -20,6 +20,8 @@ struct SummaryView: View {
     let completion: WatchCompletion?
     let onDone: () -> Void
 
+    @ObservedObject private var phone = PhoneSync.shared
+
     var body: some View {
         if workout.isRace {
             ResponsiveFace { raceSummary }
@@ -48,8 +50,29 @@ struct SummaryView: View {
             hr:          avgHrText,
             verdict:     verdictInfo?.text,
             verdictRole: verdictInfo?.role ?? .neutral,
+            syncStatus:  syncStatusText,
+            syncRole:    syncStatusRole,
             onDone:      onDone
         )
+    }
+
+    /// W-7: one-line upload status so a stranded run (RK-2 silent path-1 fail)
+    /// is visible. Nil hides the row — shown only while actively sending or
+    /// when a definitive outcome has arrived.
+    private var syncStatusText: String? {
+        switch phone.syncState {
+        case .idle:             return nil
+        case .sending:          return "Uploading…"
+        case .sent:             return "Sent ✓"
+        case .failed(let msg):  return msg
+        }
+    }
+    private var syncStatusRole: Role {
+        switch phone.syncState {
+        case .sent:   return .live
+        case .failed: return .over
+        default:      return .neutral
+        }
     }
 
     /// Brief v2 §9 verdict row · state (on-pace / under / over) + one-word

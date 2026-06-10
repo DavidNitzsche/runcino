@@ -792,6 +792,10 @@ struct CompleteFace: View {
     /// math is untouched. Nil hides the row (no target to judge against).
     var verdict: String? = nil
     var verdictRole: Role = .neutral
+    /// W-7: one-line upload status shown just above Done ("Uploading…" /
+    /// "Sent ✓" / failure hint). Nil hides the line — idle state is silent.
+    var syncStatus: String? = nil
+    var syncRole: Role = .neutral
     var onDone: () -> Void = {}
 
     private var rows: [NumRow] {
