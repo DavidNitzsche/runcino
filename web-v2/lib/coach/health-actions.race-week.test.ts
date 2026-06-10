@@ -103,4 +103,13 @@ describe('buildHealthActions — race-week guard (F4)', () => {
     const out = buildHealthActions(stressedArgs(null));
     expect(out.some((a) => FATIGUE_SIGNALS.includes(a.signal))).toBe(true);
   });
+
+  it('race week + missing gun time → logistics nag (F14); absent on race morning', () => {
+    const week = buildHealthActions(stressedArgs(3, { raceGunTimeMissing: true }));
+    const nag = week.find((a) => a.action.includes('Gun time not set'));
+    expect(nag).toBeDefined();
+    expect(nag!.priority).toBe('medium');
+    const morning = buildHealthActions(stressedArgs(0, { raceGunTimeMissing: true }));
+    expect(morning.some((a) => a.action.includes('Gun time'))).toBe(false);
+  });
 });

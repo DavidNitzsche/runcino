@@ -150,7 +150,7 @@ export function TargetsView({
 
       <div className="band">
         <div className="eyebrow-sec">Closing the gap</div>
-        <GapPanel goal={goal} series={seed.projectionTrend} />
+        <GapPanel goal={goal} series={seed.projectionTrend} anchor={seed.health?.vdotAnchor ?? null} />
       </div>
 
       {status !== 'off-track' ? (

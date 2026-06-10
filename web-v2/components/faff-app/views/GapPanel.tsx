@@ -47,6 +47,17 @@ import { parseRaceTime } from '@/lib/training/vdot';
 interface GapPanelProps {
   goal: GoalRace;
   series: Array<{ date: string; projectionSec: number | null; vdot: number | null }>;
+  /** 2026-06-09 · Phase 2 F1/F9 — provenance of the VDOT this panel hangs
+   *  off. Same envelope as seed.health.vdotAnchor (Health staleness
+   *  warning). The Targets page showed "VDOT 47.9" with no hint the anchor
+   *  was a February race while every race since read 44-45. */
+  anchor?: {
+    vdot: number;
+    anchorDateISO: string;
+    anchorRaceName: string | null;
+    ageDays: number;
+    tier: 'fresh' | 'aging' | 'stale';
+  } | null;
 }
 
 type SegKey = 'fitness' | 'conditions' | 'course' | 'execution';
@@ -366,7 +377,7 @@ function Icon({ kind }: { kind: Hit['icon'] }) {
 }
 
 /* ─────── the panel ─────── */
-export function GapPanel({ goal, series }: GapPanelProps) {
+export function GapPanel({ goal, series, anchor }: GapPanelProps) {
   const goalSec = useMemo(() => parseClockToSec(goal.goal), [goal.goal]);
   const projSec = useMemo(
     () => goal.vdotProjectionSec ?? null,
@@ -520,6 +531,17 @@ export function GapPanel({ goal, series }: GapPanelProps) {
         </div>
         <div className="vmeta">
           {latest?.vdot ? <span className="pill">VDOT <b>{latest.vdot.toFixed(1)}</b></span> : null}
+          {anchor ? (
+            <span
+              className="pill"
+              title={anchor.tier === 'stale'
+                ? 'This anchor is past the 120-day confidence window (Research/02 §13.7). A tune-up race or time trial would re-rate it.'
+                : 'The race/run this VDOT is read from.'}
+              style={anchor.tier === 'stale' ? { color: '#F3AD38' } : undefined}
+            >
+              anchor <b>{anchor.anchorRaceName ?? `${anchor.anchorDateISO.slice(0, 10)} effort`} · {anchor.ageDays}d{anchor.tier === 'stale' ? ' · stale' : ''}</b>
+            </span>
+          ) : null}
           {heldDays > 0 ? <span className="pill">held <b>{heldDays} days</b></span> : null}
           <span className="pill">{isOff ? 'gap' : 'gap'} <b>{fmtDelta(totalGapSec)}</b></span>
           <span className="next">

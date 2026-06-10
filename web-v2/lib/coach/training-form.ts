@@ -92,9 +92,9 @@ const INTENSITY_FACTOR: Record<string, number> = {
 /**
  * Compute the training-form envelope for a runner.
  *
- * Bootstrap window · reads 60 days of runs (enough to seed the 42d EWMA
- * with stable history). Steps day-by-day forward applying the EWMA
- * formula. Today's value is the last in the series.
+ * Bootstrap window · reads 120 days of runs; the first 42 seed the EWMAs
+ * analytically (see F7 note below), the rest iterate day-by-day. Today's
+ * value is the last in the series.
  *
  * Returns null when there's no recoverable history (true cold start ·
  * caller falls back to STEADY/cold-start defaults).
@@ -172,11 +172,8 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
 
   if (rows.length === 0) return null;
 
-  // Compute training stress per day + iterate the EWMAs.
-  let ctl = 0;
-  let atl = 0;
-  const tsbSeries: number[] = [];
-  for (const r of rows) {
+  // Per-day stress series.
+  const stresses = rows.map((r) => {
     const mi = Number(r.mi) || 0;
     const avgHr = r.avg_hr ? Number(r.avg_hr) : null;
     const type = r.inferred_type
@@ -185,7 +182,37 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
         : avgHr && lthr && avgHr >= lthr * 0.78 ? 'progression'
         : 'easy');
     const ifct = INTENSITY_FACTOR[type] ?? 0.85;
-    const stress = mi * ifct;
+    return mi * ifct;
+  });
+
+  // 2026-06-09 · race-killer follow-up F7 — seed the EWMAs analytically
+  // instead of from zero. A 42-day EWMA seeded at 0 and fed 60 days
+  // reaches only 1−e^(−60/42) ≈ 76% of steady state, so CTL ran ~24%
+  // low and TSB ~10 display-points too negative (audit reproduction:
+  // shipped −25 vs −15 with a converged seed — a full interpretation
+  // band of phantom fatigue). Window is now 120 days; the first 42 days
+  // seed the chronic mean (ctl₀) and the trailing 7 of those seed the
+  // acute mean (atl₀); iteration runs over the remaining ~78 days, far
+  // past both time constants, so any seed error decays to noise.
+  // Cold start (< 56 days of history): original zero-seed behavior —
+  // the CTL<10 BUILDING guard already labels that envelope honestly.
+  const SEED_DAYS = CTL_WINDOW_DAYS; // 42
+  const mean = (xs: number[]) => xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
+  let ctl: number;
+  let atl: number;
+  let iterFrom: number;
+  if (stresses.length >= SEED_DAYS + 14) {
+    ctl = mean(stresses.slice(0, SEED_DAYS));
+    atl = mean(stresses.slice(SEED_DAYS - ATL_WINDOW_DAYS, SEED_DAYS));
+    iterFrom = SEED_DAYS;
+  } else {
+    ctl = 0;
+    atl = 0;
+    iterFrom = 0;
+  }
+  const tsbSeries: number[] = [];
+  for (let i = iterFrom; i < stresses.length; i++) {
+    const stress = stresses[i];
     // EWMA update · today = yesterday × (1 - α) + stress × α
     ctl = ctl * (1 - CTL_DECAY) + stress * CTL_DECAY;
     atl = atl * (1 - ATL_DECAY) + stress * ATL_DECAY;

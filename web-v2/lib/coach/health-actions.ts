@@ -109,6 +109,12 @@ interface BuildArgs {
    *  message as a separate prescription. Plan is the source of truth
    *  for "what you actually do" · panel just describes it. */
   planAdaptation?: PlanAdaptationContext | null;
+  /** 2026-06-09 · Phase 2 F14 — true when the runner is inside race week
+   *  and the A-race has no stored gun time (races.meta.startTime). Drives
+   *  a logistics nag: race-morning timing math (wake, fuel, corral) hangs
+   *  off the gun, and "—" on the race card was being discovered on race
+   *  morning (adversarial audit F14). Caller resolves it (needs a DB read). */
+  raceGunTimeMissing?: boolean;
 }
 
 /**
@@ -630,6 +636,19 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         priority: 'low',
         action: `Race week · ${daysToRace}d out. Taper noise is normal — fatigue signals don't change the plan now. Illness and injury rules stay on.`,
         cite: 'Taper crud is expected · Research/08-pacing-and-race-week.md §9.',
+      });
+    }
+
+    // 2026-06-09 · Phase 2 F14 — gun-time logistics nag. Fires through
+    // race week but not race morning (too late to be useful there; the
+    // execute line owns that surface). Medium priority — it's the one
+    // race-week to-do that blocks wake/fuel/corral timing math.
+    if (!isRaceMorning && args.raceGunTimeMissing) {
+      kept.push({
+        signal: 'race_week',
+        priority: 'medium',
+        action: `Gun time not set · ${daysToRace}d out. Confirm the start time and wave on the race page — wake-up, fueling, and corral timing hang off it.`,
+        cite: 'races.meta.startTime is empty · race card shows "—".',
       });
     }
     out.length = 0;

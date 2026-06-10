@@ -480,6 +480,20 @@ export async function loadReadinessBrief(
   // double-prescribe" architecture per David.
   const planAdaptation = await loadActivePlanAdaptation(userId, date);
 
+  // 2026-06-09 · Phase 2 F14 — gun-time presence for the race-week nag.
+  // One cheap meta read, only inside the final 7 days (any priority —
+  // meta.startTime is what races-state serves as gun_time).
+  let raceGunTimeMissing = false;
+  const daysToRace = state.nextARace?.days_to_race;
+  if (state.nextARace && daysToRace != null && daysToRace >= 0 && daysToRace <= 7) {
+    const gunRow = (await pool.query<{ gun: string | null }>(
+      `SELECT COALESCE(meta->>'startTime', meta->>'gun_time', meta->>'start_time') AS gun
+         FROM races WHERE user_uuid = $1 AND slug = $2 LIMIT 1`,
+      [userId, state.nextARace.slug],
+    ).catch(() => ({ rows: [] }))).rows[0];
+    raceGunTimeMissing = !gunRow?.gun;
+  }
+
   const actions = buildHealthActions({
     breakdown,
     state,
@@ -492,6 +506,7 @@ export async function loadReadinessBrief(
     // tail of slice(-3) is [day-before-yesterday, yesterday, today].
     scoreTrend: scoreTrend.map((s) => ({ date: s.date, score: s.score })),
     planAdaptation,
+    raceGunTimeMissing,
   });
   const actionsThreshold = buildThresholdLine({
     state,
