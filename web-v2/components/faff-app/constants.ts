@@ -100,6 +100,10 @@ export type PlannedDay = {
   /** plan_workouts.id · required for POST /api/plan/restore (override
    *  the auto-adapter on this row). Null on off-plan days. */
   planWorkoutId?: string | null;
+  /** 2026-06-10 · coached mode v2: the runner's own coach's workout for
+   *  this day, read-only, from their pasted ICS calendar feed (Final
+   *  Surge Sync URL etc.). Display text only — never a workout_spec. */
+  coachWorkout?: { title: string; description: string | null } | null;
   type: EffortKey; name: string;
   /** Raw plan_workouts.sub_label · the canonical workout name from
    *  the plan generator ("Cruise Intervals", "HM Threshold Blocks",

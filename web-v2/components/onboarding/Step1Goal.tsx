@@ -197,7 +197,7 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
             color: 'var(--mute)',
             lineHeight: 1.5,
           }}>
-            Faff tracks the work — runs, readiness, health — and stays out of the prescriptions. Connect your sources next. If that changes, pick a race any time and Faff builds the plan.
+            Faff tracks the work — runs, readiness, health — and stays out of the prescriptions. Connect your sources next, and once you're in you can paste your coach's calendar link (Final Surge, TrainingPeaks) so the day's workout shows up alongside your readiness. If that changes, pick a race any time and Faff builds the plan.
           </div>
         </div>
       )}

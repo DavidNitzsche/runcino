@@ -2065,6 +2065,7 @@ function emptySeed(): FaffSeed {
     topDate: todayLabel(),
     weekOf: '·',
     coachedExternally: false,
+    coachCalendar: null,
     user: {
       name: 'Guest',
       city: '',
@@ -2156,11 +2157,34 @@ export async function buildSeed(): Promise<FaffSeed> {
       const r = await pool.query<{ coached: boolean | null }>(
         `SELECT (user_settings->>'coached_externally')::boolean AS coached
            FROM profile WHERE user_uuid = $1 LIMIT 1`,
-        [userId],
+      [userId],
       );
       return r.rows[0]?.coached === true;
     } catch { return false; }
   })();
+
+  // Coached-mode v2 · the coach's calendar feed (read-only ICS). Serves
+  // cache; a stale cache refreshes in the background (never blocks the
+  // page on the coach platform's host). Events attach per-day below.
+  let coachCalendar: FaffSeed['coachCalendar'] = null;
+  if (coachedExternally) {
+    try {
+      const { getCoachCalendarStatus } = await import('@/lib/coach-calendar/store');
+      const cal = await getCoachCalendarStatus(userId);
+      coachCalendar = { urlSet: cal.urlSet, fetchedAt: cal.fetchedAt, lastError: cal.lastError };
+      if (cal.events.length > 0) {
+        const byDate = new Map<string, { title: string; description: string | null }>();
+        for (const ev of cal.events) {
+          // First event per day wins · coaches occasionally stack notes
+          // as extra events; the primary workout is listed first.
+          if (!byDate.has(ev.dateISO)) byDate.set(ev.dateISO, { title: ev.title, description: ev.description });
+        }
+        for (const day of week) {
+          if (day.iso && byDate.has(day.iso)) day.coachWorkout = byDate.get(day.iso);
+        }
+      }
+    } catch { coachCalendar = { urlSet: false, fetchedAt: null, lastError: null }; }
+  }
 
   // 2026-06-01 · web agent brief · enrich week with live standing
   // recommendations. Re-evaluates today's signals against each planned
@@ -2645,5 +2669,6 @@ export async function buildSeed(): Promise<FaffSeed> {
     connections,
     pendingProposals,
     coachedExternally,
+    coachCalendar,
   };
 }

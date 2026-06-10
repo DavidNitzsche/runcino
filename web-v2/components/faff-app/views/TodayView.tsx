@@ -32,6 +32,7 @@ import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type Bluep
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { PlanProposalCard } from '../cards/PlanProposalCard';
+import { CoachCalendarConnect } from '../CoachCalendarConnect';
 import { WorkoutProposalBanner } from '../cards/WorkoutProposalBanner';
 import { RouteMap } from '../RouteMap';
 import {
@@ -731,10 +732,27 @@ export function TodayView({
                 empty space below the stats.  Pulled from KIT.rest.coach
                 so the copy stays in the canonical effort kit.
                 2026-06-10 · coached mode swaps the line: Faff doesn't
-                prescribe for runners whose own coach owns the plan. */}
-            <div className="rest-coach">{isCoachedBlank
-              ? 'Your coach owns the plan. Faff tracks the work. Runs land here from your watch or Strava.'
-              : KIT.rest.coach}</div>
+                prescribe for runners whose own coach owns the plan.
+                When their calendar feed carries a workout for this day,
+                show it verbatim (read-only · their coach's words). */}
+            {isCoachedBlank && d.coachWorkout ? (
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', opacity: 0.62 }}>FROM YOUR COACH</div>
+                <div style={{ fontSize: 19, fontWeight: 700, marginTop: 5, lineHeight: 1.25 }}>{d.coachWorkout.title}</div>
+                {d.coachWorkout.description && (
+                  <div className="rest-coach" style={{ whiteSpace: 'pre-wrap', maxHeight: 180, overflow: 'auto' }}>
+                    {d.coachWorkout.description}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rest-coach">{isCoachedBlank
+                ? 'Your coach owns the plan. Faff tracks the work. Runs land here from your watch or Strava.'
+                : KIT.rest.coach}</div>
+            )}
+            {isCoachedBlank && seed.coachCalendar && (
+              <CoachCalendarConnect cal={seed.coachCalendar} />
+            )}
             <div className="stats">
               {/* 2026-06-03 · subtitles added per David: "not sure what
                   it means for 6:06 hours sleep. Seems wrong." The value

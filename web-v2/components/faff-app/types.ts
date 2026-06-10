@@ -39,6 +39,10 @@ export type FaffSeed = {
    *  readiness / health and renders NO prescriptions — TodayView swaps
    *  the planned-workout hero for the coached card on plan-less days. */
   coachedExternally: boolean;
+  /** Coached-mode v2 · ICS feed status (Final Surge Calendar Sync URL
+   *  etc.). null when the runner isn't coached. Per-day events ride on
+   *  week[i].coachWorkout. */
+  coachCalendar: { urlSet: boolean; fetchedAt: string | null; lastError: string | null } | null;
   readiness: Readiness;
   /** 2026-05-31 · daily morning brief envelope · score + trend + per-pillar
    *  tiles + streaks + movers + confounders. Null when the runner has no
