@@ -300,19 +300,24 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   )).rows[0];
   const cadenceBaseline = cad?.avg ? Math.round(Number(cad.avg)) : null;
 
-  // HR recovery — 60s drop after workout end (Apple Watch). Most recent
-  // value as the current, 30-day median as the baseline. Feeds a 5%
-  // weight in the readiness formula (lib/coach/readiness.ts § HR_REC).
+  // HR recovery — 60s drop after workout end (Apple Watch). Current =
+  // most recent sample only if within 7 days (null when stale). 30-day
+  // mean for the baseline. Feeds a 5% weight in the readiness formula
+  // (lib/coach/readiness.ts § HR_REC). Splitting windows prevents a
+  // 6-day-old sample from continuously dragging the current score.
   const hrRecRows = (await pool.query(
-    `SELECT value FROM health_samples
+    `SELECT value,
+            (recorded_at >= NOW() - interval '7 days') AS is_recent
+       FROM health_samples
       WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hr_recovery'
         AND recorded_at >= NOW() - interval '30 days'
       ORDER BY recorded_at DESC LIMIT 30`,
     [userId]
-  )).rows.map((r: { value: number | string }) => Number(r.value)).filter((v: number) => v > 0);
-  const hrRecoveryCurrent = hrRecRows[0] ?? null;
-  const hrRecoveryBaseline = hrRecRows.length
-    ? Math.round(hrRecRows.reduce((s: number, x: number) => s + x, 0) / hrRecRows.length)
+  )).rows as Array<{ value: number | string; is_recent: boolean }>;
+  const hrRecValues = hrRecRows.map(r => Number(r.value)).filter(v => v > 0);
+  const hrRecoveryCurrent = hrRecRows[0]?.is_recent ? (hrRecValues[0] ?? null) : null;
+  const hrRecoveryBaseline = hrRecValues.length
+    ? Math.round(hrRecValues.reduce((s: number, x: number) => s + x, 0) / hrRecValues.length)
     : null;
 
   // Recent check-ins (7 days) — pull extras so we can derive activeNiggle.

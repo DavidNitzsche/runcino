@@ -106,6 +106,7 @@ export async function computePacingDiscipline(
         AND r.absorbed_into_canonical_at IS NULL
         AND r.id = ANY($5::bigint[])
         AND (data->>'distanceMi')::numeric >= $2
+        AND (data->>'splits_unreliable')::boolean IS NOT TRUE
         AND COALESCE(
               (data->>'date')::date,
               LEFT(data->>'startLocal', 10)::date

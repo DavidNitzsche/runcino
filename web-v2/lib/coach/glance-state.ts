@@ -36,6 +36,11 @@ export interface GlanceWeekDay {
    *  structured spec (rest/race/shakeout). Downstream renderers fall back
    *  to the existing label-only render in that case. */
   plannedSpec: WorkoutSpec | null;
+  /** Strength session for this day, if a strength row exists in plan_workouts.
+   *  Stored as workout_spec JSONB on the strength row. null on non-strength
+   *  days. Kept in a separate Map so strength rows never shadow the run row
+   *  for the same date (the planByDate Map is run-only). */
+  strengthSpec: WorkoutSpec | null;
   // Actual (strava)
   doneMi: number;
   activityId: string | null;   // → click navigates to /runs/[id]
@@ -289,6 +294,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
 
   // Plan-aware fields (only populated when plan exists)
   let planByDate = new Map<string, any>();
+  let strengthByDate = new Map<string, any>();
   if (plan) {
     const weeks = (await pool.query(
       `SELECT id::text AS id, week_idx, week_start_iso FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
@@ -321,12 +327,20 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     // /runs/[id] WorkoutBreakdown + /today Poster A3 breakdown rows. We
     // pull it here (small per-day payload) so glance-adapter can prefer
     // real Daniels-VDOT numbers over its placeholder strings.
-    const planRows = (await pool.query(
+    const allPlanRows = (await pool.query(
       `SELECT id::text AS id, date_iso, dow, type, distance_mi, sub_label, workout_spec FROM plan_workouts
         WHERE plan_id = $1 AND date_iso BETWEEN $2::text AND $3::text`,
       [plan.id, weekDates[0].date, weekDates[6].date]
     )).rows;
-    planByDate = new Map<string, any>(planRows.map((r: any) => [r.date_iso, r]));
+    // Separate strength rows so they don't shadow the run row for the same
+    // date (planByDate last-row-wins would overwrite the run with the
+    // strength row if both share a date_iso).
+    planByDate = new Map<string, any>(
+      allPlanRows.filter((r: any) => r.type !== 'strength').map((r: any) => [r.date_iso, r])
+    );
+    strengthByDate = new Map<string, any>(
+      allPlanRows.filter((r: any) => r.type === 'strength').map((r: any) => [r.date_iso, r])
+    );
   }
 
   // 2026-06-01 · adaptation envelope per workout · web agent brief
@@ -402,6 +416,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       plannedType: planRow?.type ?? (plan ? 'rest' : 'unplanned'),
       plannedLabel: planRow?.sub_label ?? null,
       plannedSpec,
+      strengthSpec: (strengthByDate.get(date)?.workout_spec ?? null) as WorkoutSpec,
       doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
       activityId: actual?.id ?? null,
       isToday: date === today,

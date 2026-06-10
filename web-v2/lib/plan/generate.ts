@@ -1543,11 +1543,11 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
  *  dark. The lookup-cache bust moved to generatePlan, post-commit
  *  (busting pre-commit let a concurrent render re-cache the OLD plan
  *  mid-rebuild and serve it stale for the TTL). */
-async function clearActivePlansFor(client: PoolClient, userId: string): Promise<void> {
+async function clearActivePlansFor(client: PoolClient, userId: string, reason = 'regenerated'): Promise<void> {
   await client.query(
-    `UPDATE training_plans SET archived_iso = NOW()
+    `UPDATE training_plans SET archived_iso = NOW(), archive_reason = $2
       WHERE user_uuid = $1 AND archived_iso IS NULL`,
-    [userId]
+    [userId, reason]
   );
 }
 
@@ -1631,11 +1631,28 @@ async function persistPlan(client: PoolClient, args: {
   const weekRows: unknown[][] = [];
   const workoutRows: unknown[][] = [];
 
+  // Pre-compute is_peak and is_cutback for plan_weeks (finding 2.4 — generator
+  // never set these; all rows landed as false). is_peak = highest-mileage
+  // non-race week (first occurrence wins); is_cutback = ≥15% drop from prior.
+  const weeklyMiles = args.weeks.map(w => w.days.reduce((s, d) => s + d.distanceMi, 0));
+  const maxMi = Math.max(...weeklyMiles.filter((_, i) => !args.weeks[i].isRaceWeek), 0);
+  let peakMarked = false;
+  const isPeakByWeek = weeklyMiles.map((mi, i) => {
+    if (!args.weeks[i].isRaceWeek && mi === maxMi && !peakMarked) {
+      peakMarked = true; return true;
+    }
+    return false;
+  });
+  const isCutbackByWeek = weeklyMiles.map((mi, i) =>
+    i > 0 && !args.weeks[i].isRaceWeek && mi < weeklyMiles[i - 1] * 0.85
+  );
+
   for (let wi = 0; wi < args.weeks.length; wi++) {
     const w = args.weeks[wi];
     const weekId = id('wk');
     weekRows.push(
-      [weekId, planId, wi, w.startISO, phaseForWeek(wi), w.isRaceWeek, `${w.phase} · week ${wi + 1}`]
+      [weekId, planId, wi, w.startISO, phaseForWeek(wi), w.isRaceWeek,
+       `${w.phase} · week ${wi + 1}`, isPeakByWeek[wi], isCutbackByWeek[wi]]
     );
 
     for (const d of w.days) {
@@ -1708,6 +1725,38 @@ async function persistPlan(client: PoolClient, args: {
          finalIsQuality, finalIsLong, finalNotes, finalSubLabel]
       );
     }
+
+    // Strength companion rows (finding 5.5) · Research/07 doctrine.
+    // Two sessions on easy days per week, alternating Session A (even
+    // weeks, heavy/hip) and Session B (odd weeks, single-leg/core).
+    // Skipped on race week and the final 2 taper weeks where fatigue
+    // management takes priority over strength stimulus.
+    if (!w.isRaceWeek && wi < args.weeks.length - 2) {
+      const isHeavy = wi % 2 === 0;
+      const strengthSession = isHeavy
+        ? { kind: 'strength', title: 'Session A · hips + posterior', durationMin: 20,
+            exercises: [
+              { name: 'Goblet squat (or rear-foot split squat)', sets: 3, reps: '6-8 heavy' },
+              { name: 'Hip thrust (or single-leg bridge)', sets: 3, reps: '8-10' },
+              { name: 'Calf raise, straight knee', sets: 2, reps: '12-15' },
+            ] }
+        : { kind: 'strength', title: 'Session B · single-leg + core', durationMin: 20,
+            exercises: [
+              { name: 'Walking lunge (or step-up)', sets: 3, reps: '8/leg' },
+              { name: 'Side plank + leg lift', sets: 3, reps: '30s/side' },
+              { name: 'Soleus raise, bent knee', sets: 2, reps: '12-15' },
+            ] };
+      const strLabel = isHeavy ? 'SESSION A' : 'SESSION B';
+      for (const d of w.days.filter(d2 => d2.type === 'easy').slice(0, 2)) {
+        const sId = id('wko');
+        const dateISO = addDays(w.startISO, ((d.dow - 1 + 7) % 7));
+        workoutRows.push(
+          [sId, planId, weekId, dateISO, d.dow, 'strength', 0,
+           null, JSON.stringify(strengthSession),
+           false, false, null, strLabel]
+        );
+      }
+    }
   }
 
   if (weekRows.length > 0) {
@@ -1715,10 +1764,10 @@ async function persistPlan(client: PoolClient, args: {
     const tuples = weekRows.map((row) => {
       const b = params.length;
       params.push(...row);
-      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7})`;
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9})`;
     });
     await client.query(
-      `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale)
+      `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale, is_peak, is_cutback)
        VALUES ${tuples.join(', ')}`,
       params
     );

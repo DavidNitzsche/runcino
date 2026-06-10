@@ -1248,7 +1248,7 @@ function adaptHealth(
     // P2 #11 (2026-05-30): real VO2 trend over 6 months. health-state ships
     // vo2Series as the sparse Apple Health readings. We sort + clamp into
     // a 30-point chart (downsample if 30+ points, pad-with-last if fewer).
-    mk('vo2',    'VO₂ MAX',    '',    vo2Current,    undefined,
+    mk('vo2',    'VO₂ APPLE',  '',    vo2Current,    undefined,
        [Math.max(30, (vo2Current || 50) - 8), (vo2Current || 50) + 6],
        packVo2Series(health?.vo2Series ?? [], vo2Current),
        'good', 1, false, !hasVo2),
@@ -2261,11 +2261,31 @@ export async function buildSeed(): Promise<FaffSeed> {
       ]);
       const courseLibRow = courseLibRes.rows[0];
       const raceStartTimeLocal = (raceRowRes.rows[0] as { start_time_local?: string | null } | undefined)?.start_time_local ?? null;
-      const bbox = raceRowRes.rows[0]?.course_geometry?.bbox ?? null;
+      const courseGeom = (raceRowRes.rows[0] as any)?.course_geometry ?? null;
+      const bbox = courseGeom?.bbox ?? null;
       const raceLat = bbox?.minLat != null && bbox?.maxLat != null
         ? (Number(bbox.minLat) + Number(bbox.maxLat)) / 2 : null;
       const raceLng = bbox?.minLon != null && bbox?.maxLon != null
         ? (Number(bbox.minLon) + Number(bbox.maxLon)) / 2 : null;
+
+      // When course_library is a stub (or missing), prefer GPS-derived
+      // elevation from the uploaded course_geometry. AFC example: library
+      // stub says 210 ft gain / 0 net; GPX has 923 ft gain / −130 ft net.
+      const libSource = (courseLibRow?.source as 'editorial' | 'crowd' | 'stub' | null) ?? null;
+      const libIsStub = libSource == null || libSource === 'stub';
+      let elevGainFt: number | null = courseLibRow?.elevation_gain_ft ?? null;
+      let netElevFt: number | null = courseLibRow?.net_elevation_ft ?? null;
+      let effectiveCourseSource: 'editorial' | 'crowd' | 'stub' | null = libSource;
+      if (libIsStub && courseGeom?.elevation_gain_ft != null) {
+        elevGainFt = Number(courseGeom.elevation_gain_ft);
+        const tp = Array.isArray(courseGeom.trackPoints) ? courseGeom.trackPoints : null;
+        if (tp && tp.length >= 2) {
+          const firstEle = Number((tp[0] as any).ele ?? 0);
+          const lastEle = Number((tp[tp.length - 1] as any).ele ?? 0);
+          netElevFt = Math.round((lastEle - firstEle) * 3.28084);
+        }
+        effectiveCourseSource = 'crowd'; // GPS-measured, not editorially verified
+      }
 
       if (goalSecLocal > 0) {
         // §2.2 · Course chunk · per-race elevation impact
@@ -2274,10 +2294,10 @@ export async function buildSeed(): Promise<FaffSeed> {
           {
             distanceMi: goalRace.distanceMi,
             goalSec: goalSecLocal,
-            elevationGainFt: courseLibRow?.elevation_gain_ft ?? null,
-            netElevationFt: courseLibRow?.net_elevation_ft ?? null,
+            elevationGainFt: elevGainFt,
+            netElevationFt: netElevFt,
           },
-          (courseLibRow?.source as 'editorial' | 'crowd' | 'stub' | null) ?? null,
+          effectiveCourseSource,
         );
         goalRace.courseImpactSec = courseImpact.seconds;
         goalRace.courseSource = courseImpact.source;

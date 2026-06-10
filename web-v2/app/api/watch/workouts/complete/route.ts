@@ -380,6 +380,21 @@ export async function POST(req: NextRequest) {
     // enhanceCanonicalFromAbsorbed as before.
     routePolyline: body.routePolyline ?? body.route_polyline ?? null,
   };
+  // Splits reliability guard — same check as iPhone ingest (finding 1.7).
+  // deriveSplitsFromPaceSamples can yield an n-1 array when the final
+  // mile has no pace-sample crossing: splits sum < duration by ~1 mile
+  // worth of seconds. Flag and drop so consumers don't see truncated data.
+  if (Array.isArray(data.splits) && data.splits.length > 0 && totalSec > 0) {
+    const splitsSumS = (data.splits as Array<Record<string, unknown>>).reduce((acc, s) => {
+      const distMi = typeof s.distanceMi === 'number' ? s.distanceMi : 1;
+      return acc + (typeof s.paceSecPerMi === 'number' ? s.paceSecPerMi * distMi : 0);
+    }, 0);
+    if (Math.abs(Math.round(splitsSumS) - totalSec) > 5) {
+      data.splits = [];
+      data.splits_unreliable = true;
+    }
+  }
+
   // Elevation gain · device-measured from the watch's barometer-fused altitude
   // (build 17x+). Read camelCase body.elevGainFt (same wire lesson as
   // routePolyline). Route through elev-sanity so an absurd barometric value
