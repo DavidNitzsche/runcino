@@ -32,6 +32,24 @@ final class PhoneSync: NSObject, ObservableObject {
     /// "nothing yet" from "synced, but no workout today").
     @Published private(set) var hasSynced: Bool = false
 
+    /// Completion upload status — the SummaryView status line (W-7) binds to
+    /// this after a run finishes to show "Sending…", "Sent", or a failure hint.
+    enum SyncState: Equatable {
+        case idle, sending, sent
+        case failed(String)
+    }
+    @Published private(set) var syncState: SyncState = .idle
+
+    /// True when `todayWorkout` is set but its `expiresAt` has already passed —
+    /// the watch is showing yesterday's plan. IdleView should prompt the runner
+    /// to sync the iPhone (W-5).
+    var staleWorkout: Bool {
+        guard let w = todayWorkout else { return false }
+        let iso = ISO8601DateFormatter()
+        guard let exp = iso.date(from: w.expiresAt) else { return false }
+        return exp < Date.now
+    }
+
     private override init() { super.init() }
 
     // MARK: Direct-to-backend writeback (independent of the iPhone bridge)
@@ -176,8 +194,20 @@ final class PhoneSync: NSObject, ObservableObject {
     /// The backend de-dupes, so both arriving is fine.
     func sendCompletion(_ completion: WatchCompletion) {
         guard let data = try? JSONEncoder().encode(completion) else { return }
+        syncState = .sending
         if WCSession.isSupported() {
-            WCSession.default.transferUserInfo(["completion": data])
+            // transferUserInfo has a hard ~65 536-byte limit (audit RK-2, 2026-06-09):
+            // any run longer than ~65 min at 5-sec telemetry exceeds the cap and the
+            // transfer silently fails with no delegate callback. transferFile has no
+            // size limit and is reliable even when the iPhone is unreachable.
+            let cap = 60_000  // conservative margin below the 65 536 B hard limit
+            if data.count > cap {
+                if let fileURL = Self.writeTempBody(data, id: completion.workoutId) {
+                    WCSession.default.transferFile(fileURL, metadata: ["completion": "v1"])
+                }
+            } else {
+                WCSession.default.transferUserInfo(["completion": data])
+            }
         }
         enqueueDirect(data)
         Task { await flushDirectCompletions() }
@@ -229,6 +259,24 @@ extension PhoneSync: WCSessionDelegate {
         Task { @MainActor in self.apply(applicationContext) }
     }
 
+    /// transferUserInfo completion — first time we've ever known whether the
+    /// phone received it (audit RK-2). On failure the direct-POST path is the
+    /// fallback; we just update syncState so the SummaryView can reflect it.
+    nonisolated func session(_ session: WCSession,
+                             didFinish userInfoTransfer: WCSessionUserInfoTransfer,
+                             error: Error?) {
+        let failed = error != nil
+        Task { @MainActor in
+            if failed {
+                if self.syncState == .sending {
+                    self.syncState = .failed("Transfer failed — uploading directly")
+                }
+            } else {
+                if self.syncState == .sending { self.syncState = .sent }
+            }
+        }
+    }
+
     /// iPhone → watch real-time messages. Today handles two requests:
     ///   · `startTreadmillHR` · iPhone TreadmillView started a session ·
     ///     spin up TreadmillHRSession so HK gets fast HR samples.
@@ -276,8 +324,15 @@ extension PhoneSync: URLSessionDataDelegate {
             if !failed, (200...299).contains(status) {
                 if let id { self.removePending(workoutId: id) }   // accepted → drop from durable queue
                 Self.cleanTempBody(id: id)
+                if self.syncState == .sending { self.syncState = .sent }
             } else if status == 401 || status == 403 {
                 self.authToken = nil                               // stale token → stop; iPhone re-shares one
+                Self.cleanTempBody(id: id)
+            } else if (400...499).contains(status) {
+                // Permanent client error (400 bad-request, 404 not-found, 409 already-accepted,
+                // etc.) — the backend will never accept this payload regardless of retries.
+                // Drop from the durable queue so it doesn't accumulate forever (dead-letter).
+                if let id { self.removePending(workoutId: id) }
                 Self.cleanTempBody(id: id)
             }
             // Network errors / 5xx: leave queued + temp file in place; next
