@@ -29,7 +29,7 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 interface SuccessBody {
   ok: true;
-  redirect: '/today' | '/onboarding';
+  redirect: '/today' | '/onboarding' | '/set-password';
   // iPhone clients need the bearer token in the JSON body (Bearer auth,
   // not cookies). Web ignores these fields and follows `redirect`. Added
   // 2026-05-31 so the iPhone EmailSignInSheet can save into TokenStore
@@ -102,7 +102,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody |
 
   await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [userRow.user_uuid]).catch(() => {});
 
-  const redirect: '/today' | '/onboarding' = userRow.onboarding_complete ? '/today' : '/onboarding';
+  // Invite-only flow (2026-06-10): a non-admin with NULL email_verified_at
+  // is signing in on the TEMP password David's approval generated — route
+  // them to choose their own before anything else. (Admins with NULL
+  // hit the bootstrap branch above instead and verify there.)
+  const mustChangePassword = !bootstrapped && userRow.email_verified_at == null && userRow.is_admin !== true;
+  const redirect: '/today' | '/onboarding' | '/set-password' = mustChangePassword
+    ? '/set-password'
+    : userRow.onboarding_complete ? '/today' : '/onboarding';
   const res = NextResponse.json<SuccessBody>({
     ok: true,
     redirect,

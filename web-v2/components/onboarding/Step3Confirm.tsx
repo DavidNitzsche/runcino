@@ -101,11 +101,12 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
         }),
       });
       if (r.status === 401) {
-        // Anonymous runner finished the deck — send them to create an
-        // account, then return HERE with every answer intact (the whole
-        // deck state lives in the URL, so the round-trip loses nothing).
+        // Anonymous runner finished the deck — send them to sign in
+        // (invite-only since 2026-06-10: existing accounts only; the
+        // login page carries the REQUEST ACCESS door). They return HERE
+        // with every answer intact — deck state lives in the URL.
         const here = window.location.pathname + window.location.search;
-        window.location.href = `/login?mode=signup&next=${encodeURIComponent(here)}`;
+        window.location.href = `/login?next=${encodeURIComponent(here)}`;
         return;
       }
       const j = await r.json().catch(() => ({}));

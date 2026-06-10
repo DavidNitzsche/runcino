@@ -236,12 +236,16 @@ export async function POST(req: NextRequest) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        // password_hash is NOT NULL · Apple-only accounts get an
+        // unusable sentinel (random preimage, never matchable) — they
+        // sign in with Apple, not a password.
+        const { unusablePasswordHash } = await import('@/lib/auth/access-requests');
         const u = (await client.query(
-          `INSERT INTO users (email, name, status, onboarding_complete)
-           VALUES ($1, COALESCE($2, ''), 'active', FALSE)
+          `INSERT INTO users (email, name, status, onboarding_complete, password_hash)
+           VALUES ($1, COALESCE($2, ''), 'active', FALSE, $3)
            ON CONFLICT (email) DO UPDATE SET updated_at = NOW()
            RETURNING id::text AS id`,
-          [email, fullName],
+          [email, fullName, await unusablePasswordHash()],
         )).rows[0];
         userUuid = u.id;
         // profile's PK is the legacy user_id text column (DEFAULT 'me')

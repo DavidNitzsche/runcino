@@ -46,6 +46,18 @@ interface SuccessBody {
 interface ErrorBody { ok: false; error: string; }
 
 export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody | ErrorBody>> {
+  // 2026-06-10 (same day it opened): faff.run went INVITE-ONLY per
+  // David — "either you have one or you don't. You can request access."
+  // Open self-signup is OFF; the route stays (the machinery below is
+  // sound and may reopen later) but always answers 403 pointing at the
+  // request-access door. iPhone's create-account sheet surfaces this
+  // error verbatim.
+  if (process.env.ALLOW_OPEN_SIGNUP !== 'true') {
+    return NextResponse.json(
+      { ok: false, error: 'Faff is invite-only — request access at faff.run' },
+      { status: 403 },
+    );
+  }
   if (authRateLimited(req)) {
     return NextResponse.json({ ok: false, error: 'too many attempts — try again in a few minutes' }, { status: 429 });
   }
