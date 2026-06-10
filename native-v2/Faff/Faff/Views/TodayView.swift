@@ -122,11 +122,11 @@ struct TodayView: View {
     @State private var completedDetail: RunDetail?
     /// Post-run RunRecap · verdict + facts + (future) `win` line.
     @State private var completedRecap: RunRecap?
-    /// Adjacent-week plans · fetched in parallel with the current week so
-    /// the strip has 3 weeks of days (prev + current + next) pre-loaded for
-    /// smooth horizontal scrolling without a round-trip on swipe.
+    /// Adjacent-week plans · fetched in parallel with the current week.
+    /// prevWeekPlan = 1 week back; futureWeekPlans = 4 weeks ahead.
+    /// Combined with current week = ~35 days of scroll depth.
     @State private var prevWeekPlan: PlanWeek? = nil
-    @State private var nextWeekPlan: PlanWeek? = nil
+    @State private var futureWeekPlans: [PlanWeek] = []
 
     var body: some View {
         // 2026-06-08 · race-morning takeover. The brief is categorical:
@@ -1131,7 +1131,7 @@ struct TodayView: View {
     private var selectedDayEffort: FaffEffort? {
         // Search across all loaded weeks so selecting a prev/next-week day
         // correctly resolves the effort without a separate "browsedPlan" state.
-        let allDays = (prevWeekPlan?.days ?? []) + (plan?.days ?? []) + (nextWeekPlan?.days ?? [])
+        let allDays = (prevWeekPlan?.days ?? []) + (plan?.days ?? []) + futureWeekPlans.flatMap { $0.days }
         guard let d = allDays.first(where: { $0.date_iso == selectedDayID })
         else { return nil }
         // 2026-06-02 round 43 · effort classification reads the
@@ -1308,7 +1308,7 @@ struct TodayView: View {
     }
 
     private var todaySelectedDay: PlanDay? {
-        let allDays = (prevWeekPlan?.days ?? []) + (plan?.days ?? []) + (nextWeekPlan?.days ?? [])
+        let allDays = (prevWeekPlan?.days ?? []) + (plan?.days ?? []) + futureWeekPlans.flatMap { $0.days }
         return allDays.first { $0.date_iso == selectedDayID }
     }
 
@@ -1724,13 +1724,14 @@ struct TodayView: View {
     // now reads /api/today/purpose (verdict + facts + citations) and
     // hides entirely when the payload is nil. No placeholder fallback.
 
-    /// All strip days across prev + current + next weeks, deduped by date.
-    /// Powers the horizontally-scrollable WeekStrip.
+    /// All strip days across prev + current + future weeks, deduped by date.
+    /// Powers the horizontally-scrollable WeekStrip (~35 days of depth).
     private var allStripDays: [WeekStripDay] {
         guard let current = plan else { return [] }
         var seen = Set<String>()
         var result: [WeekStripDay] = []
-        for week in [prevWeekPlan, current, nextWeekPlan].compactMap({ $0 }) {
+        let allWeeks: [PlanWeek] = ([prevWeekPlan].compactMap { $0 }) + [current] + futureWeekPlans
+        for week in allWeeks {
             for d in makeStripDays(from: week) {
                 if seen.insert(d.id).inserted { result.append(d) }
             }
@@ -1801,25 +1802,23 @@ struct TodayView: View {
             planWeek = nil
             primaryFailure = loadFailureMessage(error)
         }
-        // Adjacent weeks · fetch in parallel after current week so we have
-        // the week_start_iso anchor. Try? so a missing adjacent week degrades
-        // gracefully (strip just shows current week only).
+        // Adjacent weeks (1 back + 4 ahead) · all fetched concurrently.
+        // Try? so any missing week degrades gracefully.
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
         let baseStart = planWeek?.week_start_iso ?? todayISO
-        let prevISO: String
-        let nextISO: String
-        if let sat = df.date(from: baseStart),
-           let prev = Calendar.current.date(byAdding: .day, value: -7, to: sat),
-           let next = Calendar.current.date(byAdding: .day, value:  7, to: sat) {
-            prevISO = df.string(from: prev)
-            nextISO = df.string(from: next)
-        } else {
-            prevISO = todayISO
-            nextISO = todayISO
+        func offsetISO(_ weeks: Int) -> String {
+            guard let sat = df.date(from: baseStart),
+                  let d = Calendar.current.date(byAdding: .day, value: 7 * weeks, to: sat)
+            else { return todayISO }
+            return df.string(from: d)
         }
-        async let prevWeek = (try? await API.fetchPlanWeek(date: prevISO))
-        async let nextWeek = (try? await API.fetchPlanWeek(date: nextISO))
-        let (prevW, nextW) = await (prevWeek, nextWeek)
+        async let wPrev  = (try? await API.fetchPlanWeek(date: offsetISO(-1)))
+        async let wNext1 = (try? await API.fetchPlanWeek(date: offsetISO(1)))
+        async let wNext2 = (try? await API.fetchPlanWeek(date: offsetISO(2)))
+        async let wNext3 = (try? await API.fetchPlanWeek(date: offsetISO(3)))
+        async let wNext4 = (try? await API.fetchPlanWeek(date: offsetISO(4)))
+        let (prevW, n1, n2, n3, n4) = await (wPrev, wNext1, wNext2, wNext3, wNext4)
+        let futureW = [n1, n2, n3, n4].compactMap { $0 }
         let (watch, ready, brief, skip, prof) = await (w, r, b, s, pr)
         let stravaStat = await ss
         let pur = await pp
@@ -1848,7 +1847,7 @@ struct TodayView: View {
             // boolean that's safe to overwrite (defaults to false).
             // Adjacent weeks — always update so strip reflects latest data.
             self.prevWeekPlan = prevW
-            self.nextWeekPlan = nextW
+            self.futureWeekPlans = futureW
             if let planWeek {
                 self.plan = planWeek
                 self.loadState = .loaded

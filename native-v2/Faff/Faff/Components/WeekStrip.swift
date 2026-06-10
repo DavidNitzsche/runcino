@@ -23,9 +23,9 @@ struct WeekStrip: View {
     let days: [WeekStripDay]
     @Binding var selectedID: String
 
-    // Fixed cell width — keeps each day the same size regardless of
-    // how many days are in the strip (3 weeks = 21 cells).
-    private let cellWidth: CGFloat = 44
+    // Fixed cell width — 40pt fits ~8 days in the visible area at once,
+    // giving a clear affordance that the strip scrolls further.
+    private let cellWidth: CGFloat = 40
 
     var body: some View {
         ScrollViewReader { proxy in
