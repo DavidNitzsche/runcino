@@ -395,10 +395,20 @@ struct TodayView: View {
                 } else {
                     // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
-                        heroBlock
-                            .padding(.horizontal, 22)
-                            .padding(.top, 28)
-                            .padding(.bottom, 220)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(selectedEffort.title.uppercased())
+                                .font(.heroDisplay(72))
+                                .tracking(-2)
+                                .foregroundStyle(selectedEffort.dot)
+                                .minimumScaleFactor(0.6)
+                                .lineLimit(1)
+                                .padding(.horizontal, 22)
+                                .padding(.top, 18)
+                            heroBlock
+                                .padding(.horizontal, 22)
+                                .padding(.top, 16)
+                                .padding(.bottom, 220)
+                        }
                     }
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
@@ -650,22 +660,18 @@ struct TodayView: View {
     // MARK: - Hero
 
     private var heroBlock: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            // sub label + optional weather tag (drawn inline so it sits on
-            // the same baseline as the existing "EASY · 8:30/mi" eyebrow)
+        VStack(alignment: .leading, spacing: 0) {
+
+            // Eyebrow: effort type · zone + weather chip right-aligned
             HStack(spacing: 8) {
-                SpecLabel(text: subLabel, size: 13, tracking: 0.5, color: Theme.txt.opacity(0.92))
+                SpecLabel(text: subLabel, size: 12, tracking: 1.0,
+                          color: Theme.txt.opacity(0.78))
                     .textCase(.uppercase)
-                // HeatBandChip · only when the temp is a real reading.
-                // tempF outside [10, 130] is an unfetched default ·
-                // rendering it produced the bogus "Neutral · 0°F" chip.
+                Spacer(minLength: 0)
                 if let t = weather?.tempF, t > 10, t < 130 {
                     HeatBandChip(band: HeatBand.from(tempF: t),
                                  tempLabel: "\(Int(t.rounded()))°F")
                 } else if let tag = weatherTagLabel {
-                    // Fallback for the (rare) case where deltaF is set
-                    // but tempF is nil · keeps the legacy delta tag
-                    // visible until the next weather refresh.
                     Text(tag)
                         .font(.label(9)).tracking(1.5)
                         .foregroundStyle(Color(hex: 0x1C0A02))
@@ -673,75 +679,99 @@ struct TodayView: View {
                         .background(weatherTagColor, in: RoundedRectangle(cornerRadius: 5))
                 }
             }
-            // Type word hero · one word, never wraps. The structural
-            // workout name ("1.5 mi WU · 3.5 mi @T · 1.5 mi CD") is a
-            // description, not a title · at display size it wrapped to
-            // three lines and ate the screen. Structure is now DRAWN
-            // (segment bar below) instead of typeset.
-            Text(peekTitleWord)
-                .displayRecipe(size: 64, weight: .bold)
-                .foregroundStyle(Theme.txt)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .shadow(color: .black.opacity(0.32), radius: 30, y: 2)
 
+            // Big stat row — numbers are the hero
             if heroStatsPresent {
-                HStack(spacing: 26) {
-                    stat(key: "Distance",     value: distanceStr)
-                    stat(key: "Target Pace",  value: paceStr)
+                HStack(alignment: .bottom, spacing: 0) {
+                    heroStat(key: "DISTANCE",    value: distanceStr)
+                    heroStat(key: "TARGET PACE", value: paceStr)
                     if let t = estTimeStr {
-                        stat(key: "Time", value: t)
+                        heroStat(key: "TIME", value: t)
                     }
                 }
-                .padding(.top, 2)
+                .padding(.top, 20)
             }
 
-            if heroSegments.count >= 2 {
-                // Garmin-style step list: each phase as a compact row
-                // with a colored left accent + name + distance.
-                HeroStepList(segments: heroSegments)
-                    .padding(.top, 16)
-            } else {
-                // Single-phase run · zone meter carries the intensity
-                // story; optional name subtitle when it adds info.
-                if let sub = heroNameSubtitle {
-                    Text(sub)
-                        .font(.body(14, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.78))
-                        .lineLimit(1)
-                }
-                // The marker pill draws ~38pt ABOVE the bar via a
-                // negative offset (no reserved layout space) · without
-                // explicit headroom it collides with the stat row.
+            // Structured workout → Garmin-style step list
+            // Single-phase → full-width effort meter
+            if heroSteps.count >= 1 {
+                HeroStepList(steps: heroSteps)
+                    .padding(.top, 22)
+            } else if selectedEffort != .rest {
                 EffortMeter(
                     position: selectedEffort.meterPosition,
                     label: selectedEffort.effortLabel.uppercased(),
                     height: 6,
                     showZones: true
                 )
-                .padding(.top, 46)
-                .frame(maxWidth: 236, alignment: .leading)
+                .padding(.top, 48)
             }
 
-            // HR cap · compact chip, number only. The "why" copy
-            // (let it climb and easy becomes tempo) is sheet material ·
-            // a sentence in the hero read as clutter.
-            if let cap = displayWorkout?.hrCeilingBpm, cap > 0 {
-                HStack(spacing: 6) {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xFC4D64))
-                    Text("HR CAP \(cap) BPM")
-                        .font(.body(10, weight: .extraBold)).tracking(1.1)
-                        .foregroundStyle(Theme.txt.opacity(0.9))
+            // Coach cue · one sentence from /api/today/purpose
+            if let cue = heroCueLine {
+                Text(cue)
+                    .font(.body(14))
+                    .italic()
+                    .foregroundStyle(Theme.txt.opacity(0.68))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 22)
+            }
+
+            // Chip row: HR cap + best window
+            let hasCap = (displayWorkout?.hrCeilingBpm ?? 0) > 0
+            let hasWindow = !(forecast?.best_window?.isEmpty ?? true)
+            if hasCap || hasWindow {
+                HStack(spacing: 10) {
+                    if let cap = displayWorkout?.hrCeilingBpm, cap > 0 {
+                        heroChip(icon: "heart.fill",
+                                 iconColor: Color(hex: 0xFC4D64),
+                                 text: "HR CAP \(cap)")
+                    }
+                    if let win = forecast?.best_window, !win.isEmpty {
+                        heroChip(icon: "clock.fill",
+                                 iconColor: Color(hex: 0x8FD0FF),
+                                 text: win.uppercased())
+                    }
                 }
-                .padding(.horizontal, 11).padding(.vertical, 6)
-                .background(Color.white.opacity(0.08), in: Capsule())
-                .overlay(Capsule().stroke(Color(hex: 0xFC4D64).opacity(0.45), lineWidth: 1))
-                .padding(.top, 10)
+                .padding(.top, 18)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func heroStat(key: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(value)
+                .font(.display(32, weight: .bold))
+                .tracking(-0.8)
+                .foregroundStyle(Theme.txt)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+                .shadow(color: .black.opacity(0.25), radius: 16, y: 1)
+            SpecLabel(text: key, size: 9.5, tracking: 1.2, color: Theme.txt.opacity(0.50))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func heroChip(icon: String, iconColor: Color, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(iconColor)
+            Text(text)
+                .font(.body(11, weight: .extraBold)).tracking(0.8)
+                .foregroundStyle(Theme.txt.opacity(0.88))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Color.white.opacity(0.08), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+    }
+
+    private var heroCueLine: String? {
+        guard selectedIsToday else { return nil }
+        guard let cue = purpose?.cue?.trimmingCharacters(in: .whitespaces),
+              !cue.isEmpty else { return nil }
+        return cue
     }
 
     /// Hide the stat row entirely on rest days where every cell is "—".
@@ -769,39 +799,68 @@ struct TodayView: View {
         return name
     }
 
-    /// Segment-bar model from the workout phases. Weights by distance
-    /// when every phase carries one, else by duration.
-    private var heroSegments: [HeroSeg] {
+    /// Step items for the hero step list. For interval workouts, consecutive
+    /// work+recovery pairs are collapsed into a single repeatGroup item so
+    /// the list stays 3 rows (Warm Up · Repeat N× · Cool Down) regardless
+    /// of how many reps the workout contains.
+    private var heroSteps: [HeroStepItem] {
         let phases = displayWorkout?.phases ?? []
         guard phases.count >= 2 else { return [] }
         let allHaveDistance = phases.allSatisfy { ($0.distanceMi ?? 0) > 0 }
-        return phases.map { p in
+
+        func makeSeg(_ p: WatchPhase) -> HeroSeg {
             let w: Double = allHaveDistance
                 ? (p.distanceMi ?? 0)
                 : Double(max(60, p.durationSec))
-            let c: Color
-            let top: String
-            let bottom: String
             switch p.type {
             case .work:
-                c = selectedEffort.dot
-                top = workPhaseShortLabel(p)
-                bottom = segDistLabel(p)
+                return HeroSeg(weight: w, color: selectedEffort.dot,
+                               topLabel: workPhaseShortLabel(p), bottomLabel: segDistLabel(p))
             case .warmup:
-                c = Color(hex: 0x5BBFB0)
-                top = "Warm Up"
-                bottom = segDistLabel(p)
+                return HeroSeg(weight: w, color: Color(hex: 0x5BBFB0),
+                               topLabel: "Warm Up", bottomLabel: segDistLabel(p))
             case .cooldown:
-                c = Color(hex: 0x5BBFB0)
-                top = "Cool Down"
-                bottom = segDistLabel(p)
+                return HeroSeg(weight: w, color: Color(hex: 0x5BBFB0),
+                               topLabel: "Cool Down", bottomLabel: segDistLabel(p))
             case .recovery:
-                c = Color(hex: 0x8AA0A8)
-                top = "Recovery"
-                bottom = segDistLabel(p)
+                return HeroSeg(weight: w, color: Color(hex: 0x8AA0A8),
+                               topLabel: "Recovery", bottomLabel: segDistLabel(p))
             }
-            return HeroSeg(weight: w, color: c, topLabel: top, bottomLabel: bottom)
         }
+
+        // Interval workouts: collapse middle work+recovery pairs into one block.
+        if selectedEffort == .intervals {
+            var items: [HeroStepItem] = []
+            var i = 0
+            while i < phases.count && phases[i].type == .warmup {
+                items.append(.row(makeSeg(phases[i]))); i += 1
+            }
+            let middleStart = i
+            var repCount = 0
+            var firstWork: HeroSeg? = nil
+            var firstRec: HeroSeg? = nil
+            while i < phases.count && phases[i].type != .cooldown {
+                let p = phases[i]
+                if p.type == .work {
+                    if firstWork == nil { firstWork = makeSeg(p) }
+                    repCount += 1
+                } else if p.type == .recovery && firstRec == nil {
+                    firstRec = makeSeg(p)
+                }
+                i += 1
+            }
+            if repCount > 0, let ws = firstWork {
+                items.append(.repeatGroup(count: repCount, work: ws, recovery: firstRec))
+            } else {
+                for j in middleStart..<i { items.append(.row(makeSeg(phases[j]))) }
+            }
+            while i < phases.count {
+                items.append(.row(makeSeg(phases[i]))); i += 1
+            }
+            return items
+        }
+
+        return phases.map { .row(makeSeg($0)) }
     }
 
     private func workPhaseShortLabel(_ p: WatchPhase) -> String {
@@ -826,17 +885,6 @@ struct TodayView: View {
         }
         let m = max(1, p.durationSec / 60)
         return "\(m) min"
-    }
-
-    private func stat(key: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            SpecLabel(text: key, size: 10, tracking: 1, color: Theme.txt.opacity(0.72))
-            Text(value)
-                .font(.display(23, weight: .bold))
-                .tracking(-0.5)
-                .foregroundStyle(Theme.txt)
-                .shadow(color: .black.opacity(0.3), radius: 18, y: 1)
-        }
     }
 
     /// Peek header · branches on mode:
@@ -1165,12 +1213,12 @@ struct TodayView: View {
 
     private var subLabel: String {
         switch selectedEffort {
-        case .recovery:  return "Easiest · Zone 1"
-        case .easy:      return "Easy · Zone 2"
-        case .long:      return "Sustained · Z2 → MP"
-        case .tempo:     return "Hard · Zone 4 Threshold"
-        case .intervals: return "Hardest · Zone 5 VO2"
-        case .rest:      return "Rest · Recovery Day"
+        case .recovery:  return "Zone 1"
+        case .easy:      return "Zone 2"
+        case .long:      return "Z2 → Marathon Pace"
+        case .tempo:     return "Zone 4 Threshold"
+        case .intervals: return "Zone 5 VO2"
+        case .rest:      return "Recovery Day"
         case .race:      return "Race Day"
         }
     }
@@ -1731,11 +1779,9 @@ struct TodayView: View {
     // hides entirely when the payload is nil. No placeholder fallback.
 
     private func makeStripDays(from week: PlanWeek) -> [WeekStripDay] {
-        // Sat–Sun training week: backend returns up to 9 days (Sat through
-        // the following Sun). No hard-cap — whatever the server returns is
-        // rendered. Keeping prefix(9) as a safety clamp against future
-        // over-fetch.
-        week.days.prefix(9).map { d in
+        // Sat–Fri training week: backend returns 7 days (Sat through Fri).
+        // Prefix clamp keeps it safe against any future over-fetch.
+        week.days.prefix(7).map { d in
             WeekStripDay(
                 id: d.date_iso,
                 dow: dowLetter(d.dow),
@@ -2010,47 +2056,118 @@ struct TodayView: View {
 
 /// One step row in the hero workout breakdown.
 fileprivate struct HeroSeg {
-    let weight: Double   // used for future proportional display if needed
+    let weight: Double
     let color: Color
-    let topLabel: String    // "WU", "@T", "CD", etc.
-    let bottomLabel: String // "1.5 mi" or "20 min"
+    let topLabel: String
+    let bottomLabel: String
 }
 
-/// Garmin-style vertical step list. Each phase is a compact row:
-/// 4pt colored left accent · step name · distance/duration.
-/// Dark glass card so it reads on the mesh without fighting the title.
+fileprivate enum HeroStepItem {
+    case row(HeroSeg)
+    /// Interval repeat block: N identical work+recovery pairs collapsed into one entry.
+    case repeatGroup(count: Int, work: HeroSeg, recovery: HeroSeg?)
+}
+
+/// Garmin-style vertical step list. Interval workouts render as a
+/// compact repeat block (Warm Up · REPEAT N× · Cool Down) instead of
+/// listing every rep/recovery row individually.
 fileprivate struct HeroStepList: View {
-    let segments: [HeroSeg]
+    let steps: [HeroStepItem]
 
     var body: some View {
         VStack(spacing: 6) {
-            ForEach(segments.indices, id: \.self) { i in
-                HStack(spacing: 12) {
-                    // Colored left accent bar
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(segments[i].color)
-                        .frame(width: 4)
-                    // Step name (big label)
-                    Text(segments[i].topLabel)
-                        .font(.body(15, weight: .extraBold))
-                        .tracking(-0.2)
-                        .foregroundStyle(.white)
-                    Spacer(minLength: 0)
-                    // Distance / duration
-                    Text(segments[i].bottomLabel)
-                        .font(.body(13, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.72))
+            ForEach(steps.indices, id: \.self) { i in
+                switch steps[i] {
+                case .row(let seg):
+                    stepRow(seg)
+                case .repeatGroup(let count, let work, let recovery):
+                    repeatBlock(count: count, work: work, recovery: recovery)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.08),
-                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
             }
         }
+    }
+
+    @ViewBuilder
+    private func stepRow(_ seg: HeroSeg) -> some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(seg.color)
+                .frame(width: 4)
+            Text(seg.topLabel)
+                .font(.body(15, weight: .extraBold))
+                .tracking(-0.2)
+                .foregroundStyle(.white)
+            Spacer(minLength: 0)
+            Text(seg.bottomLabel)
+                .font(.body(13, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.72))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(Color.white.opacity(0.10), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func repeatBlock(count: Int, work: HeroSeg, recovery: HeroSeg?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Neutral app-chrome repeat header — no interval color
+            HStack(spacing: 5) {
+                Image(systemName: "repeat")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.38))
+                Text("REPEAT \(count)×")
+                    .font(.body(10, weight: .extraBold))
+                    .tracking(1.0)
+                    .foregroundStyle(Color.white.opacity(0.38))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 11)
+            .padding(.bottom, 7)
+
+            Divider().background(Color.white.opacity(0.08))
+
+            // Work phase
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(work.color)
+                    .frame(width: 3)
+                Text(work.topLabel)
+                    .font(.body(13, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer(minLength: 0)
+                Text(work.bottomLabel)
+                    .font(.body(12, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.65))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+
+            if let rec = recovery {
+                Divider().background(Color.white.opacity(0.06))
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(rec.color)
+                        .frame(width: 3)
+                    Text(rec.topLabel)
+                        .font(.body(13, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.70))
+                    Spacer(minLength: 0)
+                    Text(rec.bottomLabel)
+                        .font(.body(12, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.48))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+            }
+        }
+        .background(Color.white.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(Color.white.opacity(0.10), lineWidth: 1))
     }
 }
 

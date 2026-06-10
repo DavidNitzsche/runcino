@@ -1,16 +1,16 @@
 /**
  * GET /api/plan/week?date=YYYY-MM-DD
  *
- * Returns the Sat–Sun (9-day) window of plan_workouts containing the given date.
+ * Returns the Sat–Fri (7-day) window of plan_workouts containing the given date.
  * Week starts on Saturday (long-run anchor day) and runs through the following
- * Sunday, so both weekend days bracket the Mon–Fri block in the strip.
+ * Friday, so the strip spans one complete training cycle.
  * Used by the iPhone WeekStrip.
  *
  * Response shape:
  *   {
  *     plan_id: string,
  *     week_start_iso: string,     // ISO Saturday (start of training week)
- *     week_end_iso:   string,     // ISO Sunday (end of training week, 8 days later)
+ *     week_end_iso:   string,     // ISO Friday (end of training week, 6 days later)
  *     today_iso:      string,     // server "today" (PT-adjusted)
  *     days: Array<{
  *       date_iso: string, dow: number, type: string,
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
     `SELECT date_iso, dow, type, distance_mi, sub_label
        FROM plan_workouts
       WHERE plan_id = $1
-        AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 8)
+        AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 6)
       ORDER BY date_iso ASC`,
     [plan.id, dateParam, daysSinceSaturday]
   )).rows;
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
     [dateParam, daysSinceSaturday]
   )).rows[0].d;
   const weekEnd = (await pool.query(
-    `SELECT ($1::date - $2::int + 8)::text AS d`,
+    `SELECT ($1::date - $2::int + 6)::text AS d`,
     [dateParam, daysSinceSaturday]
   )).rows[0].d;
 
