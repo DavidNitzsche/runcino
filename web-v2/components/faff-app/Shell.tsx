@@ -362,7 +362,7 @@ function isGuestSeed(seed: FaffSeed): boolean {
 function GuestPanel({ view }: { view: ViewKey }) {
   const blurbs: Partial<Record<ViewKey, { title: string; body: string }>> = {
     today:     { title: 'Sign in to see today',
-                 body: 'Open the Faff iPhone app and sign in. Your session is shared with the web automatically — your plan, runs, and readiness will light up here.' },
+                 body: 'Open the Faff iPhone app and sign in. Your session is shared with the web automatically. Your plan, runs, and readiness will light up here.' },
     train:     { title: 'Sign in to see your plan',
                  body: 'The training dashboard is per-runner. Sign in on the Faff iPhone app and your block, weeks, and key workouts populate here.' },
     health:    { title: 'Sign in to see your health',
@@ -370,7 +370,7 @@ function GuestPanel({ view }: { view: ViewKey }) {
     targets:   { title: 'Sign in to see your races',
                  body: 'Goal race, projection vs goal, calendar and PRs unlock after sign-in.' },
     activity:  { title: 'Sign in to see your log',
-                 body: 'Activity heatmap, recent runs and aggregates follow your runner-id — sign in on iPhone to see them here.' },
+                 body: 'Activity heatmap, recent runs and aggregates follow your runner-id. Sign in on iPhone to see them here.' },
     profile:   { title: 'Sign in to see your profile',
                  body: 'Shoe garage, connections, units and preferences are per-runner. Sign in on the iPhone app to manage them.' },
     spectator: { title: 'Sign in to spectate', body: 'Spectator mode is per-runner.' },
@@ -402,7 +402,7 @@ function GuestPanel({ view }: { view: ViewKey }) {
         WEB SIGN-IN COMING SOON
       </div>
       <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-        Until then, sign in on the iPhone app — the session cookie is shared automatically.
+        Until then, sign in on the iPhone app. The session cookie is shared automatically.
       </div>
     </div>
   );

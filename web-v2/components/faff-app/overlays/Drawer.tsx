@@ -970,7 +970,7 @@ function FeelingCheckin({ todayRunDone, todayWorkoutType }: {
         <div className="rb-checkin-msg">
           Logged · <b>{done.rating}/10</b>.
           {done.willOverride
-            ? ' Your read disagrees with the numbers — yours wins on the next refresh.'
+            ? ' Your read disagrees with the numbers. Yours wins on the next refresh.'
             : ' In line with today\'s read.'}
         </div>
       </div>

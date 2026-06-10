@@ -653,7 +653,7 @@ export function TodayView({
             const capPart = cap ? ` (${cap} bpm)` : '';
             return (
               <div style={{ fontSize: 12, opacity: 0.6, padding: '10px 0 2px', lineHeight: 1.5 }}>
-                {mover} — run this by the HR cap{capPart}, not pace.
+                {mover}. Run this by the HR cap{capPart}, not pace.
               </div>
             );
           })()}
@@ -2443,7 +2443,7 @@ function CompletedHeroV2({
           // exceeded run duration; pause events inflated GPS timestamps).
           // No MILE SPLITS card — just a brief note. No blank framed box.
           <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8, lineHeight: 1.5 }}>
-            GPS pacing not shown — splits couldn't be verified for this run.
+            GPS pacing not shown. Splits couldn't be verified for this run.
           </div>
         ) : (
           <>

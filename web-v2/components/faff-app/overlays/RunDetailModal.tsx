@@ -209,7 +209,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
 
               {data.splits_unreliable && (
                 <div style={{ fontSize: 11, opacity: 0.5, margin: '12px 0', lineHeight: 1.5 }}>
-                  GPS pacing not shown — splits couldn't be verified for this run.
+                  GPS pacing not shown. Splits couldn't be verified for this run.
                 </div>
               )}
               {!data.splits_unreliable && data.splits?.length > 0 && (() => {

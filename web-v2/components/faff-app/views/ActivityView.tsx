@@ -283,7 +283,7 @@ function EfficiencyTrendCard({ trend }: { trend: EfficiencyTrend }) {
         <EfficiencySparkline points={trend.points} direction={trend.direction} />
       </div>
       <div className="av-et-footer">
-        Pace at aerobic HR — a downward line means your engine is getting more efficient.
+        Pace at aerobic HR. A downward line means your engine is getting more efficient.
       </div>
     </>
   );
