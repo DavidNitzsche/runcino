@@ -454,11 +454,21 @@ struct TodayView: View {
                     }
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
+                } else if isQualityWorkoutDay {
+                    // Quality-day hero · workout is the main event.
+                    // C1: "hero is the workout on quality days · readiness
+                    // is the moment's hero only when today is easy/rest."
+                    ScrollView(showsIndicators: false) {
+                        heroBlock
+                            .padding(.horizontal, 22)
+                            .padding(.top, 28)
+                            .padding(.bottom, 220)
+                    }
+                    .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
+                    .offset(y: -22 * (1 - sheetProgress))
                 } else {
-                    // Readiness panel · the new Today hero (2026-06-01).
-                    // 2026-06-02 round 63 · same scroll-wrap treatment as
-                    // the recovery panel · readiness pillars + tile grid
-                    // can also overflow the peek on smaller phones.
+                    // Easy/rest/recovery hero · readiness is the main event.
+                    // DragSheet below carries the workout prescription.
                     ScrollView(showsIndicators: false) {
                         TodayReadinessPanel(
                             snapshot: readiness,
@@ -507,12 +517,8 @@ struct TodayView: View {
                     peekBackground: peekFill,
                     // 2026-06-02 round 54 · BOTH bodies stack white-bg
                     // section cards on a colored sheet bg. The default
-                    // cream showed through as a gap below the last card
-                    // before the floating tab bar pill · "see-behind the
-                    // page" feel. Going white-on-white removes the contrast
-                    // · sheet reads as one continuous surface.
-                    bodyBackground: Color.white,
-                    grabTint: Color.white.opacity(0.6),
+                    bodyBackground: Theme.card,
+                    grabTint: Color.white.opacity(0.35),
                     header: { peekHeader },
                     content: { sheetContent }
                 )
@@ -1059,6 +1065,13 @@ struct TodayView: View {
     private var selectedEffort: FaffEffort {
         if skipped { return .rest }
         return selectedDayEffort ?? .easy
+    }
+
+    private var isQualityWorkoutDay: Bool {
+        switch selectedEffort {
+        case .long, .tempo, .intervals, .race: return true
+        default: return false
+        }
     }
 
     private var subLabel: String {
