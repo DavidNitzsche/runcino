@@ -125,9 +125,10 @@ function backHrefFor(state: OnboardingState): string | undefined {
   if (state.step === 'goal') return '/onboarding';
   if (state.step === 'goal-details') return buildOnboardingHref(state, { step: 'goal' });
   if (state.step === 'signals') {
-    return state.distance === 'none'
-      ? buildOnboardingHref(state, { step: 'goal-details' })
-      : buildOnboardingHref(state, { step: 'goal' });
+    // Coached skips 1b · every running path (race + none) walks it.
+    return state.distance === 'coached'
+      ? buildOnboardingHref(state, { step: 'goal' })
+      : buildOnboardingHref(state, { step: 'goal-details' });
   }
   if (state.step === 'confirm') return buildOnboardingHref(state, { step: 'signals' });
   return undefined;

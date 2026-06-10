@@ -145,11 +145,17 @@ export function validateComposedPlan(
   const violations: string[] = [];
 
   // ── 1. Long run peak (doctrine cap) ──────────────────────────────────────
+  // 2026-06-10 persona-suite fix: the RACE-DAY row is authored with
+  // isLong:true at full race distance (layoutWeek race branch) — it is
+  // the race, not a training long run, and counting it made EVERY
+  // marathon plan read "peak 26.2mi exceeds 22mi". The doctrine caps
+  // (Daniels/Pfitzinger long-run progression) govern TRAINING longs;
+  // exclude type 'race' here and in the WoW series below.
   const cap = longRunCapMi(cat, ctx);
   let longPeak = 0;
   for (const week of weeks) {
     for (const day of week.days) {
-      if (day.isLong && day.distanceMi > longPeak) longPeak = day.distanceMi;
+      if (day.isLong && day.type !== 'race' && day.distanceMi > longPeak) longPeak = day.distanceMi;
     }
   }
   if (longPeak > cap) {
@@ -198,8 +204,9 @@ export function validateComposedPlan(
   }
 
   // ── 4. Long run week-over-week increase ───────────────────────────────────
+  // (race-day rows excluded — see section 1 note.)
   const longByWeek = weeks.map(w =>
-    Math.max(0, ...w.days.filter(d => d.isLong).map(d => d.distanceMi)),
+    Math.max(0, ...w.days.filter(d => d.isLong && d.type !== 'race').map(d => d.distanceMi)),
   );
   for (let i = 1; i < longByWeek.length; i++) {
     const prev = longByWeek[i - 1];

@@ -1710,7 +1710,8 @@ async function persistPlan(client: PoolClient, args: {
       workoutRows.push(
         [wkoId, planId, weekId, dateISO, d.dow, finalType, finalDistanceMi,
          finalPaceSec, finalSpec ? JSON.stringify(finalSpec) : null,
-         finalIsQuality, finalIsLong, finalNotes, finalSubLabel]
+         // notes coalesce '' · column is NOT NULL (persona-suite catch).
+         finalIsQuality, finalIsLong, finalNotes ?? '', finalSubLabel]
       );
     }
 
@@ -1741,7 +1742,9 @@ async function persistPlan(client: PoolClient, args: {
         workoutRows.push(
           [sId, planId, weekId, dateISO, d.dow, 'strength', 0,
            null, JSON.stringify(strengthSession),
-           false, false, null, strLabel]
+           // notes '' not null · plan_workouts.notes is NOT NULL (persona-
+           // suite catch — every cold-start race plan died here at persist).
+           false, false, '', strLabel]
         );
       }
     }
@@ -1870,6 +1873,58 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     const trailingAvgWeeklyMi = trailingRow?.avg_weekly != null
       ? Number(trailingRow.avg_weekly)
       : null;
+    // 2026-06-10 persona-suite fix · author-time WoW smoothing. The
+    // long-run curve steps in whole/half miles; at low cold-start bases
+    // a 2mi step IS >30% (6mi → 8mi = 33%) and the validator (rightly,
+    // per its cited progression doctrine) rejected every low-base race
+    // plan. Enforce the SAME rule at author time: clamp each training
+    // long to ≤ prev × 1.30, rounded DOWN to 0.5mi, trimming the week
+    // total to match. 30 mirrors validate.ts CONSTRAINTS.longRunWoWMaxPct
+    // (30 for all four distance categories — kept literal here because
+    // generate→validate would be a runtime import cycle). Race-day rows
+    // are not training longs and are skipped, matching the validator.
+    {
+      let prevLong = 0;
+      for (const week of composed.weeks) {
+        const day = week.days.find((d) => d.isLong && d.type !== 'race' && d.distanceMi > 0);
+        if (!day) continue;
+        if (prevLong > 0) {
+          const ceil = Math.floor(prevLong * 1.30 * 2) / 2;
+          if (day.distanceMi > ceil) {
+            const trim = day.distanceMi - ceil;
+            day.distanceMi = ceil;
+            week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - trim) * 10) / 10);
+          }
+        }
+        prevLong = day.distanceMi;
+      }
+
+      // Long-trim lowers the peak, which can leave taper weeks (sized
+      // against the ORIGINAL peak) under the validator's minimum drop.
+      // Rescale taper run days against the post-smoothing peak. Drop
+      // minimums mirror validate.ts CONSTRAINTS.taperDropMinPct
+      // (5k:20 · 10k:25 · hm:30 · m:30 — literal here, runtime import
+      // cycle as above). +2pct margin clears rounding.
+      const taperDrop: Record<string, number> = { '5k': 20, '10k': 25, 'hm': 30, 'm': 30 };
+      const minDrop = (taperDrop[distanceCategoryOfPublic(inputs.compose.raceDistanceMi)] ?? 30) + 2;
+      const nonTaperPeak = Math.max(0, ...composed.weeks
+        .filter((w) => w.phase !== 'TAPER' && !w.isRaceWeek)
+        .map((w) => w.weeklyMi ?? 0));
+      if (nonTaperPeak > 0) {
+        for (const tw of composed.weeks.filter((w) => w.phase === 'TAPER')) {
+          const maxAllowed = nonTaperPeak * (1 - minDrop / 100);
+          if (tw.weeklyMi > maxAllowed) {
+            const scale = maxAllowed / tw.weeklyMi;
+            for (const d of tw.days) {
+              if (d.type !== 'race' && d.distanceMi > 0) {
+                d.distanceMi = Math.floor(d.distanceMi * scale * 2) / 2;
+              }
+            }
+            tw.weeklyMi = Math.round(tw.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
+          }
+        }
+      }
+    }
     validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
       level: inputs.compose.level,
       isSteppingStoneToMarathon: (inputs.compose.horizonRaces ?? []).some(r => r.distanceMi >= 20),
@@ -2052,9 +2107,27 @@ async function loadGeneratorInputs(
   if (totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 
   const isMidBlock = await detectMidBlock(userId);
-  const recentMi = await recentWeeklyMileage(userId);
+  let recentMi = await recentWeeklyMileage(userId);
   const easyFloor = await easyDayMedianMi(userId);
-  const recentLong = await recentPeakLongMi(userId);
+  let recentLong = await recentPeakLongMi(userId);
+  // 2026-06-10 persona-suite fix · cold-start race plans. A brand-new
+  // runner has NO runs, so recentMi/recentLong read 0 and the ramp from
+  // zero to race-prep peaks trips the progression validator (26.2mi
+  // long-run peak, 50% weekly jumps — EVERY race-path onboarding
+  // failed). Seed the zeros from the runner's SELF-REPORTED onboarding
+  // baselines — the documented purpose of profile.history_* (see
+  // /api/onboarding/complete § PLAN-GEN HANDOFF). Self-reports only
+  // fill zeros; any real run history always wins.
+  if (recentMi <= 0 || recentLong <= 0) {
+    const selfReport = (await pool.query<{ avg: number | null; target: number | null; long: number | null }>(
+      `SELECT history_avg_weekly_mi AS avg, weekly_mileage_target AS target,
+              history_longest_recent_mi AS long
+         FROM profile WHERE user_uuid = $1 LIMIT 1`,
+      [userId],
+    ).catch(() => ({ rows: [] }))).rows[0];
+    if (recentMi <= 0) recentMi = Number(selfReport?.avg ?? selfReport?.target ?? 0) || 0;
+    if (recentLong <= 0) recentLong = Number(selfReport?.long ?? 0) || 0;
+  }
   // 2026-06-03 · mid-block doctrine carriers (Rules 2, 3, 5, 8).
   const recentQualityDist = await recentQualityDistanceMi(userId);
   const recentQualityPW = await recentQualityPerWeek(userId);

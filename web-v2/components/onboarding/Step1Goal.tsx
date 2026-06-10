@@ -51,9 +51,13 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
 
   function onContinue() {
     if (!canAdvance) return;
-    // "No specific race" branches into Step 1b for goal + history detail.
-    // Every other distance jumps straight to signals (Step 2).
-    const nextStep = state.distance === 'none' ? 'goal-details' : 'signals';
+    // Every running path walks Step 1b — the no-race path for goal +
+    // history, the race paths for CURRENT volume + history (2026-06-10
+    // persona-suite fix: without a self-reported baseline, a cold-start
+    // race plan ramps from zero and the progression validator rightly
+    // rejects it — see lib/plan/generate.ts cold-start seeding).
+    // Coached skips it: their coach owns the ramp.
+    const nextStep = state.distance === 'coached' ? 'signals' : 'goal-details';
     router.push(buildOnboardingHref(state, { step: nextStep }));
   }
 

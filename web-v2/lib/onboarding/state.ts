@@ -321,10 +321,13 @@ export function canAdvanceFromGoal(s: OnboardingState): boolean {
 
 /** Step 1b valid → can advance to signals.
  *  Sections B (weekly target) + C (history) are required, A (time-trial)
- *  is optional. History section is satisfied when Strava is connected
- *  (numbers come from Strava live) OR all three chip groups are picked. */
+ *  is optional and only exists on the no-race path. History section is
+ *  satisfied when Strava is connected (numbers come from Strava live)
+ *  OR all three chip groups are picked.
+ *  2026-06-10: race paths walk 1b too (current volume + history seed
+ *  the race-prep ramp); only coached skips. */
 export function canAdvanceFromGoalDetails(s: OnboardingState): boolean {
-  if (s.distance !== 'none') return false;  // wrong path
+  if (!s.distance || s.distance === 'coached') return false;  // wrong path
   if (s.weeklyMi == null || s.weeklyFreq == null) return false;
   const historySatisfied = s.stravaConnected
     || (s.histAvg && s.histLong && s.histYears);

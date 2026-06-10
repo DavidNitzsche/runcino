@@ -59,9 +59,13 @@ export async function POST(req: NextRequest) {
     // must never full-replace them. Existing keys survive; non-null incoming
     // keys win; incoming nulls (absent form fields) cannot erase. Clearing a
     // field stays PATCH's job, not POST's.
+    // 2026-06-10 persona-suite catch: plan + gpx_text are NOT NULL with
+    // no defaults — this INSERT failed for any NEW race row (existing
+    // rows predate v2 and already carry both). Empty seeds; PATCH and
+    // the execution-plan builders own the real content.
     await pool.query(
-      `INSERT INTO races (slug, user_uuid, meta)
-       VALUES ($1, $2, $3)
+      `INSERT INTO races (slug, user_uuid, meta, plan, gpx_text)
+       VALUES ($1, $2, $3, '{}'::jsonb, '')
        ON CONFLICT (slug) DO UPDATE
          SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta)`,
       [slug, userId, meta]

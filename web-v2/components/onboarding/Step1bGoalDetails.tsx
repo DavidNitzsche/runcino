@@ -134,6 +134,12 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
 
   const ladder = state.ttDistance ? TT_TIME_LADDERS[state.ttDistance] : [];
 
+  // 2026-06-10 · race paths walk this step too (current volume + history
+  // seed the race-prep ramp — a cold-start race plan from zero base
+  // fails the progression validator). Copy + the TT section flex by
+  // path: a runner with a race date doesn't need a time-trial goal.
+  const isRacePath = state.distance !== 'none' && state.distance !== 'coached' && state.distance != null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
       <h1 style={{
@@ -145,7 +151,7 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
         margin: 0,
         color: 'var(--ink)',
       }}>
-        Just running.<br />Tell us how.
+        {isRacePath ? <>Where are<br />you now?</> : <>Just running.<br />Tell us how.</>}
       </h1>
 
       <p style={{
@@ -156,10 +162,14 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
         margin: '20px 0 28px',
         maxWidth: 520,
       }}>
-        Three quick picks. The plan builds around them, no typing.
+        {isRacePath
+          ? 'Quick picks. The plan ramps from here, not from zero.'
+          : 'Three quick picks. The plan builds around them, no typing.'}
       </p>
 
-      {/* ── Section A · TIME-TRIAL GOAL (optional) ─────────────────── */}
+      {/* ── Section A · TIME-TRIAL GOAL (optional · no-race path only —
+            a race-path runner already named their goal on step 1) ──── */}
+      {!isRacePath && (
       <Section header="WANT TO HIT A TIME?" optional>
         <ChipRow>
           {TT_DISTANCES.map((d) => (
@@ -187,6 +197,7 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
           </div>
         )}
       </Section>
+      )}
 
       {/* ── NEW · RACE HISTORY (optional · TASK B4) ─────────────────
           Self-reported PRs at any distance · drives voice-band

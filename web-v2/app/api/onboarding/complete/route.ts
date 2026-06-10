@@ -174,28 +174,32 @@ export async function POST(req: NextRequest) {
 
   const connectionsSkipped = Boolean(body.connectionsSkipped);
 
-  // ── Step 1b · no-race fields ────────────────────────────────────
-  // Only persist these on the no-race path. We don't HARD-fail when
-  // they're missing (the runner could be on a race path) — null is fine.
+  // ── Step 1b fields ──────────────────────────────────────────────
+  // 2026-06-10: volume + history persist on EVERY running path now —
+  // race paths walk Step 1b too, because a cold-start race plan needs
+  // a self-reported baseline (generate.ts seeds recentWeeklyMi /
+  // recentLongMi from these when run history is empty). TT goal stays
+  // no-race-only (a race-path runner already named their goal). Null is
+  // always fine — coached posts none of these.
   const ttDistance = !isRace && typeof body.ttDistance === 'string'
       && VALID_TT_DISTANCES.has(body.ttDistance as TTDistance)
     ? (body.ttDistance as TTDistance) : null;
   const ttTime = !isRace && ttDistance && typeof body.ttTime === 'string'
       && body.ttTime.length > 0 && body.ttTime.length <= 32
     ? body.ttTime : null;
-  const weeklyMi = !isRace && Number.isFinite(Number(body.weeklyMi))
+  const weeklyMi = Number.isFinite(Number(body.weeklyMi))
       && VALID_WEEKLY_MI.has(Number(body.weeklyMi) as WeeklyMileage)
     ? (Number(body.weeklyMi) as WeeklyMileage) : null;
-  const weeklyFreq = !isRace && Number.isFinite(Number(body.weeklyFreq))
+  const weeklyFreq = Number.isFinite(Number(body.weeklyFreq))
       && VALID_FREQ.has(Number(body.weeklyFreq) as WeeklyFrequency)
     ? (Number(body.weeklyFreq) as WeeklyFrequency) : null;
-  const histAvg = !isRace && typeof body.histAvg === 'string'
+  const histAvg = typeof body.histAvg === 'string'
       && VALID_HIST_AVG.has(body.histAvg as HistAvg)
     ? (body.histAvg as HistAvg) : null;
-  const histLong = !isRace && typeof body.histLong === 'string'
+  const histLong = typeof body.histLong === 'string'
       && VALID_HIST_LONG.has(body.histLong as HistLong)
     ? (body.histLong as HistLong) : null;
-  const histYears = !isRace && typeof body.histYears === 'string'
+  const histYears = typeof body.histYears === 'string'
       && VALID_HIST_YEARS.has(body.histYears as HistYears)
     ? (body.histYears as HistYears) : null;
 
@@ -457,12 +461,25 @@ export async function POST(req: NextRequest) {
       // updates the same row instead of duplicating). Rule 6 guard: never
       // full-replace meta — re-onboarding after the race must not erase
       // finishTime/bib/goalSafeDisplay that PATCH wrote onto this blob.
+      //
+      // 2026-06-10 persona-suite catch: races.plan + races.gpx_text are
+      // NOT NULL with no defaults — omitting them failed EVERY race-path
+      // onboarding ("null value in column plan"). plan seeds the goal
+      // when the runner typed one (goal-gap reads plan.goal.finish_time_s)
+      // else {}; gpx_text '' until a course exists. On conflict the
+      // existing plan wins unless it's still the empty seed (Rule 6).
+      const goalSec = (() => {
+        const m = (meta.goalDisplay ?? '').match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+        return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+      })();
+      const planSeed = goalSec ? { goal: { finish_time_s: goalSec } } : {};
       await pool.query(
-        `INSERT INTO races (slug, user_uuid, meta)
-         VALUES ($1, $2, $3)
+        `INSERT INTO races (slug, user_uuid, meta, plan, gpx_text)
+         VALUES ($1, $2, $3, $4::jsonb, '')
          ON CONFLICT (slug) DO UPDATE
-           SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta)`,
-        [slug, userId, meta]
+           SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta),
+               plan = CASE WHEN races.plan = '{}'::jsonb THEN EXCLUDED.plan ELSE races.plan END`,
+        [slug, userId, meta, JSON.stringify(planSeed)]
       );
       // Canonical race-prep generator. Best-effort: returns ok:false with
       // a reason for edge runways (<2wks / >1yr / <3wks) — the race row
