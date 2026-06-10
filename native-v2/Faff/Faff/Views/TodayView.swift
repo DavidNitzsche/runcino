@@ -1627,7 +1627,7 @@ struct TodayView: View {
             if selectedEffort == .rest { return Color(hex: 0x9FB0AD) }
             return selectedEffort.dot
         }
-        return Theme.card  // dark; accent lives on the ring arc and score number only
+        return Color(hex: 0x1A1F2B)  // dark slate — lifts off the mesh without amber wash
     }
 
     /// Readiness band → deep background tint for the peek strip.
