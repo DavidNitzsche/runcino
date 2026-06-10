@@ -256,7 +256,7 @@ struct WatchWorkout: Codable {
 //   designs/briefs/backend-response-recap-engine-not-llm-2026-06-02.md
 //   designs/briefs/watch-response-yes-to-raw-passthrough-2026-06-02.md
 //   (backend ship 0489c791 · 2026-06-02)
-struct PaceSample: Encodable {
+struct PaceSample: Codable {
     /// Seconds since the phase began (not since workout start).
     let tSec: Int
     /// Instantaneous pace at the sample instant, in seconds per mile.
@@ -268,7 +268,7 @@ struct PaceSample: Encodable {
     let distMi: Double
 }
 
-struct HRSample: Encodable {
+struct HRSample: Codable {
     /// Seconds since the phase began.
     let tSec: Int
     /// Heart rate in beats per minute. `nil` when HR couldn't be read
@@ -276,7 +276,7 @@ struct HRSample: Encodable {
     let bpm: Int?
 }
 
-struct WatchCompletionPhase: Encodable {
+struct WatchCompletionPhase: Codable {
     let index: Int
     let type: String
     let label: String
@@ -498,7 +498,7 @@ extension WatchWorkout {
             totalEstimatedMinutes: total / 60,
             phases: phases,
             completionEndpoint: "/api/watch/workouts/complete",
-            expiresAt: "2026-05-21T08:00:00Z",
+            expiresAt: "2099-12-31T00:00:00Z",
             readinessScore: 82,
             readinessLabel: "Primed",
             distanceMi: 6.4,
@@ -642,7 +642,7 @@ extension WatchWorkout {
             totalEstimatedMinutes: total / 60,
             phases: phases,
             completionEndpoint: "/api/watch/workouts/complete",
-            expiresAt: "2026-05-21T08:00:00Z",
+            expiresAt: "2099-12-31T00:00:00Z",
             readinessScore: 88,
             readinessLabel: "Race ready",
             distanceMi: 26.2,
@@ -658,10 +658,12 @@ extension WatchWorkout {
 // MARK: - Pace formatting helpers
 
 enum PaceFormat {
-    /// "6:31" from 391 s/mi.
+    /// "6:31" from 391 s/mi. Floors at 0:00 — negative inputs from GPS
+    /// glitches or early-phase extrapolation must not produce "-1:-1".
     static func mmss(_ secondsPerMile: Int) -> String {
-        let m = secondsPerMile / 60
-        let s = secondsPerMile % 60
+        let v = max(0, secondsPerMile)
+        let m = v / 60
+        let s = v % 60
         return "\(m):\(String(format: "%02d", s))"
     }
 
