@@ -182,7 +182,12 @@ final class WorkoutTracker: NSObject, ObservableObject {
             // startActivity(), is the supported pattern: HK respects the
             // already-active session and coexists with it. No-op if audio
             // hardware refuses; chime() then degrades to haptic-only.
-            ChimePlayer.shared.activate()
+            // Gated on audibleAlerts (W-6): activating when the runner
+            // has sounds OFF still calls AVAudioSession.setActive which
+            // can produce a brief audio blip on watchOS 10.
+            if UserDefaults.standard.bool(forKey: "audibleAlerts") {
+                ChimePlayer.shared.activate()
+            }
 
             let start = Date()
             s.startActivity(with: start)
@@ -193,6 +198,58 @@ final class WorkoutTracker: NSObject, ObservableObject {
             session = nil
             builder = nil
         }
+    }
+
+    /// Re-attach to an HKWorkoutSession that survived a watch crash or reboot
+    /// (audit RK-3, 2026-06-09). Returns true when a live session was found and
+    /// reconnected. The caller should then call WorkoutEngine.restore(from:tracker:)
+    /// to rebuild engine state. Returns false on a normal first launch.
+    ///
+    /// GPS coordinates and elevation don't survive the crash — accumulator
+    /// restarts empty. The completion polyline will be truncated but the run
+    /// is saved and the HK workout is intact.
+    func recover() async -> Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #else
+        guard available else { return false }
+        do {
+            let s = try await healthStore.recoverActiveWorkoutSession()
+            let b = s.associatedWorkoutBuilder()
+            s.delegate = self
+            b.delegate = self
+            session = s
+            builder = b
+            routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
+            gpsCoords = []
+            elevGainM = 0; lastAltitudeM = nil
+
+            locationManager.delegate = self
+            locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+            locationManager.distanceFilter = 5
+            locationManager.startUpdatingLocation()
+
+            if CMPedometer.isCadenceAvailable() {
+                pedometer.startUpdates(from: Date()) { [weak self] data, _ in
+                    guard let self, let c = data?.currentCadence else { return }
+                    let spm = Int((c.doubleValue * 60).rounded())
+                    guard spm > 0, spm < 320 else { return }
+                    Task { @MainActor in
+                        self.cadence = spm; self.cadSum += spm; self.cadCount += 1
+                    }
+                }
+            }
+
+            if UserDefaults.standard.bool(forKey: "audibleAlerts") {
+                ChimePlayer.shared.activate()
+            }
+
+            isRecording = true
+            return true
+        } catch {
+            return false
+        }
+        #endif
     }
 
     /// Pause the tracked session (stoplight / water stop). Live sampling
