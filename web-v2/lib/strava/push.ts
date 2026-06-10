@@ -65,13 +65,30 @@ export async function pushRunToStrava(
   }
 
   // 2. Load run + profile prefs.
-  const runRow = (await pool.query(
+  let runRow = (await pool.query(
     `SELECT data FROM runs
       WHERE user_uuid = $1
         AND (data->>'id' = $2 OR data->>'activityId' = $2)
       LIMIT 1`,
     [userId, runId]
   )).rows[0];
+  // Fallback: legacy strava_pushes rows used a user_uuid-YYYY-MM-DD format
+  // that doesn't match the run's actual data->>'id'. Look up by date so
+  // Sweep-3 retries can resolve these without a DB migration.
+  if (!runRow?.data && runId.startsWith(userId + '-')) {
+    const dateSuffix = runId.slice(userId.length + 1);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateSuffix)) {
+      runRow = (await pool.query(
+        `SELECT data FROM runs
+          WHERE user_uuid = $1
+            AND data->>'date' = $2
+            AND (data->>'mergedIntoId') IS NULL
+            AND absorbed_into_canonical_at IS NULL
+          LIMIT 1`,
+        [userId, dateSuffix],
+      )).rows[0];
+    }
+  }
   if (!runRow?.data) {
     return { pushId: -1, status: 'failed', error: 'run not found' };
   }
