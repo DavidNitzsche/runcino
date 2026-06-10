@@ -56,7 +56,14 @@ struct WatchMirrorView: View {
                     .padding(.bottom, 28)
             }
         }
-        .task { workout = try? await API.fetchWatchWorkout() }
+        .task {
+            do {
+                workout = try await API.fetchWatchWorkout()
+                liveOk = true
+            } catch {
+                liveOk = false
+            }
+        }
         // 2026-06-02 round 34 · hide the floating tab bar during live
         // mirror · the watch run is the focus, no tab nav needed.
         .hideFaffTabBar()

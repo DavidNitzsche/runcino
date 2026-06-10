@@ -20,6 +20,7 @@ struct OnboardingView: View {
     @State private var raceName: String = ""
     @State private var raceDate: Date = Calendar.current.date(byAdding: .day, value: 112, to: Date()) ?? Date()
     @State private var submitting: Bool = false
+    @State private var onboardingError: String? = nil
 
     // Profile (physiology) — age + sex persist via /onboarding/complete;
     // LTHR (optional, advanced) persists via PATCH /api/profile. RHR is
@@ -683,23 +684,39 @@ struct OnboardingView: View {
 
             Spacer(minLength: 0)
 
+            if let err = onboardingError {
+                Text(err)
+                    .font(.body(12, weight: .semibold))
+                    .foregroundStyle(Color(hex: 0xFC4D64))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 8)
+            }
+
             ctaButton(title: submitting ? "Saving…" : (mode == .just ? "Start running" : "Build my plan")) {
                 guard !submitting else { return }
                 submitting = true
+                onboardingError = nil
                 Task {
-                    _ = try? await API.completeOnboarding(payload: onboardingPayload)
-                    // Optional advanced fields that ride the profile PATCH
-                    // (not part of the onboarding/complete contract).
-                    var patch: [String: Any] = [:]
-                    if let lthr = parsedLthr { patch["lthr"] = lthr }
-                    if case .connected = healthState {
-                        let iso = ISO8601DateFormatter().string(from: Date())
-                        patch["health_connected_at"] = iso
-                    }
-                    if !patch.isEmpty { try? await API.updateProfile(patch) }
-                    await MainActor.run {
-                        submitting = false
-                        onComplete()
+                    do {
+                        _ = try await API.completeOnboarding(payload: onboardingPayload)
+                        // Optional advanced fields that ride the profile PATCH
+                        // (not part of the onboarding/complete contract).
+                        var patch: [String: Any] = [:]
+                        if let lthr = parsedLthr { patch["lthr"] = lthr }
+                        if case .connected = healthState {
+                            let iso = ISO8601DateFormatter().string(from: Date())
+                            patch["health_connected_at"] = iso
+                        }
+                        if !patch.isEmpty { try? await API.updateProfile(patch) }
+                        await MainActor.run {
+                            submitting = false
+                            onComplete()
+                        }
+                    } catch {
+                        await MainActor.run {
+                            submitting = false
+                            onboardingError = "Couldn't save · check your connection"
+                        }
                     }
                 }
             }

@@ -179,12 +179,20 @@ struct HealthView: View {
     private var sectionPanel: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                switch section {
-                case .overview: overviewPane
-                case .body:     bodyPane
-                case .sleep:    sleepPane
-                case .form:     formPane
-                case .insights: insightsPane
+                if let msg = loadState.failureMessage, state == nil {
+                    Text(msg)
+                        .font(.body(14, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0xFC4D64))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 60)
+                } else {
+                    switch section {
+                    case .overview: overviewPane
+                    case .body:     bodyPane
+                    case .sleep:    sleepPane
+                    case .form:     formPane
+                    case .insights: insightsPane
+                    }
                 }
             }
             .padding(.horizontal, 18)

@@ -434,20 +434,22 @@ struct ActivityView: View {
         let cal = Calendar.current
         let today = Date()
         let weeks = 18
+        // Pre-build a date→run dict so each cell is O(1) instead of O(n)
+        let runsByDate: [String: LogRun] = {
+            guard let runs = log?.weeks.flatMap({ $0.runs }) else { return [:] }
+            return Dictionary(runs.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+        }()
         var cols: [[HeatmapDay]] = []
         for w in 0..<weeks {
             var col: [HeatmapDay] = []
             for d in 0..<7 {
                 let day = cal.date(byAdding: .day, value: -(weeks - 1 - w) * 7 - (6 - d), to: today) ?? today
                 let iso = isoFmt.string(from: day)
-                // Look up volume from log if present
                 var intensity = 0
                 var label = "Rest day"
-                if let runs = log?.weeks.flatMap({ $0.runs }) {
-                    if let r = runs.first(where: { $0.date == iso }) {
-                        intensity = bucket(r.distance_mi)
-                        label = "\(monthFmt.string(from: day)) · \(formatMi(r.distance_mi)) mi · \((r.workoutType ?? r.type ?? "Run").capitalized)"
-                    }
+                if let r = runsByDate[iso] {
+                    intensity = bucket(r.distance_mi)
+                    label = "\(monthFmt.string(from: day)) · \(formatMi(r.distance_mi)) mi · \((r.workoutType ?? r.type ?? "Run").capitalized)"
                 }
                 col.append(HeatmapDay(date: day, intensity: intensity, label: label))
             }
@@ -467,7 +469,7 @@ struct ActivityView: View {
     // MARK: - FEED
 
     private var feedBody: some View {
-        VStack(spacing: 0) {
+        LazyVStack(spacing: 0) {
             // StreakPill · current run streak from /api/streak. Hidden
             // when count is 0 (no streak to celebrate).
             if let s = streak, s.current > 0 {

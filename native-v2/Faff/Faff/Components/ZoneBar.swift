@@ -19,12 +19,13 @@ struct ZoneBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 1) {
-                ForEach(zones, id: \.zone) { z in
-                    Rectangle()
-                        .fill(color(z.zone))
-                        .frame(width: nil)
-                        .frame(maxWidth: .infinity * CGFloat(z.pct))
+            GeometryReader { geo in
+                HStack(spacing: 1) {
+                    ForEach(zones, id: \.zone) { z in
+                        Rectangle()
+                            .fill(color(z.zone))
+                            .frame(width: geo.size.width * CGFloat(z.pct))
+                    }
                 }
             }
             .frame(height: height)

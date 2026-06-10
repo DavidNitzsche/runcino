@@ -133,6 +133,10 @@ struct TodayView: View {
         // through to the normal readiness / pre-run / recovery body.
         if let slug = raceDayRouteSlug {
             RaceDayView(raceSlug: slug)
+                .task { await loadAll() }
+                .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
+                    Task { await loadAll() }
+                }
         } else {
             mainBody
         }
@@ -564,43 +568,43 @@ struct TodayView: View {
             timeOfDay = TimeOfDay.current()
             Task { await loadAll() }
         }
-        .onChange(of: selectedDayID) { _, newID in
+        .task(id: selectedDayID) {
             // Tapped a day in the week strip · fetch that day's planned
             // workout so the drag sheet + hero reflect Sunday's long run
-            // instead of today's rest day, etc.
-            guard !newID.isEmpty else { return }
-            Task {
-                if newID == todayISO {
-                    // Today's workout was already loaded by loadAll().
-                    await MainActor.run { dayWorkout = nil }
-                } else {
-                    let w = try? await API.fetchWatchWorkout(date: newID)
-                    await MainActor.run { dayWorkout = w }
-                }
-                // Today v2 · also refetch RunDetail + RunRecap for the
-                // new selected day's completion (or null them out when
-                // the new day isn't completed).
-                let runId = await MainActor.run { completedRunId }
-                if let id = runId {
-                    async let d = (try? await API.fetchRunDetail(id: id))
-                    async let rc = (try? await API.fetchRunRecap(runId: id))
-                    let (det, rec) = await (d, rc)
-                    await MainActor.run {
-                        self.completedDetail = det
-                        self.completedRecap = rec
-                    }
-                } else {
-                    await MainActor.run {
-                        self.completedDetail = nil
-                        self.completedRecap = nil
-                    }
-                }
-                // 2026-06-02 · refresh forecast for the newly selected
-                // day so FORECAST + BEST WINDOW reflect that day's
-                // strings, not yesterday's cache.
-                let f = try? await API.fetchDailyForecast(date: newID)
-                await MainActor.run { self.forecast = f }
+            // instead of today's rest day, etc. Using .task(id:) cancels
+            // the previous in-flight fetch when the selection changes, so
+            // rapid taps don't produce racing results.
+            guard !selectedDayID.isEmpty else { return }
+            if selectedDayID == todayISO {
+                // Today's workout was already loaded by loadAll().
+                await MainActor.run { dayWorkout = nil }
+            } else {
+                let w = try? await API.fetchWatchWorkout(date: selectedDayID)
+                await MainActor.run { dayWorkout = w }
             }
+            // Today v2 · also refetch RunDetail + RunRecap for the
+            // new selected day's completion (or null them out when
+            // the new day isn't completed).
+            let runId = await MainActor.run { completedRunId }
+            if let id = runId {
+                async let d = (try? await API.fetchRunDetail(id: id))
+                async let rc = (try? await API.fetchRunRecap(runId: id))
+                let (det, rec) = await (d, rc)
+                await MainActor.run {
+                    self.completedDetail = det
+                    self.completedRecap = rec
+                }
+            } else {
+                await MainActor.run {
+                    self.completedDetail = nil
+                    self.completedRecap = nil
+                }
+            }
+            // 2026-06-02 · refresh forecast for the newly selected
+            // day so FORECAST + BEST WINDOW reflect that day's
+            // strings, not yesterday's cache.
+            let f = try? await API.fetchDailyForecast(date: selectedDayID)
+            await MainActor.run { self.forecast = f }
         }
         .sheet(isPresented: $showNudge) {
             NudgeSheet(

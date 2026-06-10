@@ -196,6 +196,7 @@ struct RPEEntryCard: View {
     @State private var rpe: Int? = nil
     @State private var notes: String = ""
     @State private var submitting: Bool = false
+    @State private var submitError: String? = nil
     @State private var loaded: Bool = false
     var onSubmitted: () -> Void = {}
 
@@ -227,6 +228,12 @@ struct RPEEntryCard: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(rpe == nil || submitting)
+            }
+            if let err = submitError {
+                Text(err)
+                    .font(.body(11, weight: .semibold))
+                    .foregroundStyle(Color(hex: 0xFC4D64))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(16)
@@ -322,13 +329,21 @@ struct RPEEntryCard: View {
     private func submit() {
         guard let r = rpe else { return }
         submitting = true
+        submitError = nil
         Task {
-            _ = try? await API.postRPE(runId: runId, rpe: r, notes: notes.isEmpty ? nil : notes)
-            await MainActor.run {
-                priorRpe = r
-                priorNotes = notes
-                submitting = false
-                onSubmitted()
+            do {
+                _ = try await API.postRPE(runId: runId, rpe: r, notes: notes.isEmpty ? nil : notes)
+                await MainActor.run {
+                    priorRpe = r
+                    priorNotes = notes
+                    submitting = false
+                    onSubmitted()
+                }
+            } catch {
+                await MainActor.run {
+                    submitting = false
+                    submitError = "Couldn't save · check your connection"
+                }
             }
         }
     }

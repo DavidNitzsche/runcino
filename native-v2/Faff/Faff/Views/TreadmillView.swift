@@ -203,6 +203,11 @@ struct TreadmillView: View {
         .task {
             await loadPlan()
         }
+        .onDisappear {
+            if let id = workoutId {
+                WatchSync.shared.stopTreadmillHRSession(sessionId: id)
+            }
+        }
         .alert("End workout?", isPresented: $showEndConfirm) {
             Button("End and save", role: .destructive) { endAndPost(status: "completed") }
             Button("Cancel", role: .cancel) {}
