@@ -587,7 +587,7 @@ export function TodayView({
           shoes={seed.shoes}
           seedShoe={(seed.todayShoeId != null
             ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
-            : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
+            : null) ?? seed.shoeRecByType[d.type] ?? null}
           persistShoe={curDay === seed.todayIdx}
         />
       ) : isPullBack ? (
@@ -666,7 +666,7 @@ export function TodayView({
             shoes={seed.shoes}
             seedShoe={(seed.todayShoeId != null
               ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
-              : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
+              : null) ?? seed.shoeRecByType[d.type] ?? null}
             persistShoe={curDay === seed.todayIdx}
             seed={seed}
           />
@@ -678,7 +678,7 @@ export function TodayView({
             shoes={seed.shoes}
             seedShoe={(seed.todayShoeId != null
               ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
-              : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
+              : null) ?? seed.shoeRecByType[d.type] ?? null}
             persistShoe={curDay === seed.todayIdx}
             cadenceBaseline={seed.health.body.find(m => m.k === 'cadence')?.current ?? null}
             skipped={dSkipped}
@@ -788,7 +788,7 @@ export function TodayView({
             shoes={seed.shoes}
             seedShoe={(seed.todayShoeId != null
               ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
-              : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
+              : null) ?? seed.shoeRecByType[d.type] ?? null}
             persistShoe={curDay === seed.todayIdx}
             seed={seed}
           />
@@ -1464,8 +1464,12 @@ function deriveFuelLabel(
 ): string {
   const spec = d.workoutSpec as { fuel_mi?: number[] } | null | undefined;
   const fuelMi = spec?.fuel_mi ?? null;
-  if (Array.isArray(fuelMi) && fuelMi.length > 0) {
-    return `PF 30 @ ${fuelMi.join('·')}`;
+  if (Array.isArray(fuelMi)) {
+    // Spec is authoritative when present: [] = run too short to fuel →
+    // Water, never the KIT template (2026-06-10 · a new runner's seeded
+    // 4mi tempo was rendering "PF 30 @ mi 5" — a gel at a mile the run
+    // doesn't have).
+    return fuelMi.length > 0 ? `PF 30 @ ${fuelMi.join('·')}` : 'Water';
   }
   if (kitFallback?.trim() && kitFallback !== ' · ') return kitFallback;
   return 'Water';
@@ -1605,7 +1609,7 @@ function PlannedHeroV2({
 }: {
   d: FaffSeed['week'][number];
   shoes: FaffSeed['shoes'];
-  seedShoe: string;
+  seedShoe: string | null;
   persistShoe: boolean;
   cadenceBaseline: number | null;
   skipped: boolean;
@@ -1889,7 +1893,8 @@ function PlannedHeroV2({
  *  legacy client derivation for older forecasts cached without the
  *  field. */
 function bestWindow(f: { temp_min_f: number | null; temp_max_f: number | null; best_window?: string } | null): string {
-  if (!f) return '6–8 AM';
+  // No forecast → no window. Never invent one (2026-06-10 honesty pass).
+  if (!f) return '—';
   if (f.best_window) return f.best_window;
   // Legacy fallback · matches the server's composeBestWindow for older
   // cached forecasts. Drop once 30-min cache cycles past 2026-06-01.
@@ -1964,7 +1969,7 @@ function CompletedHeroV2({
   resolvedGainFt: number | undefined;
   resolvedShoeNm: string | undefined;
   shoes: FaffSeed['shoes'];
-  seedShoe: string;
+  seedShoe: string | null;
   persistShoe: boolean;
 }) {
   // Decode the run's GPS polyline once per runData change.
@@ -4125,7 +4130,7 @@ function RestDayCard({ d, seed }: { d: FaffSeed['week'][number]; seed?: FaffSeed
   );
 }
 
-function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, persistShoe, seed }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; runData: RunSummary | null; runLoading: boolean; shoes: FaffSeed['shoes']; seedShoe: string; persistShoe: boolean; seed?: FaffSeed }) {
+function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, persistShoe, seed }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; runData: RunSummary | null; runLoading: boolean; shoes: FaffSeed['shoes']; seedShoe: string | null; persistShoe: boolean; seed?: FaffSeed }) {
   if (done) {
     return <CompletedResultCard d={d} fallback={result} runData={runData} loading={runLoading} />;
   }
@@ -4179,7 +4184,7 @@ function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, pe
   );
 }
 
-function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes']; initial: string; persist: boolean; runId?: string | null }) {
+function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes']; initial: string | null; persist: boolean; runId?: string | null }) {
   // 2026-05-31: `picked` must stay in sync with `initial` after a fresh SSR
   // render. Previously the useState seed froze on the first mount value, so
   // when the parent re-rendered with the just-persisted shoe (after
@@ -4272,7 +4277,8 @@ function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes
   }
 
   if (!shoes.length) {
-    return <div className="kcv">{picked}</div>;
+    // No garage yet (new runner) · honest blank, not a phantom shoe.
+    return <div className="kcv">{picked?.trim() ? picked : '—'}</div>;
   }
 
   const menu = open && mounted ? createPortal(

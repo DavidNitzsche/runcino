@@ -197,11 +197,14 @@ function PlannedBody({ d, seed }: { d: FaffSeed['week'][number]; seed: FaffSeed 
   const k = KIT[d.type];
   const pl = PLAN_CUES[d.type] ?? PLAN_CUES.easy;
   // Live forecast + shoe — same sources as the primary TodayView card.
+  // 2026-06-10 honesty pass: no KIT placeholder fallbacks — when the
+  // real chain is empty render '—', never a shoe the runner doesn't
+  // own or weather nobody measured.
   const forecast = useDayForecast(d.iso ?? null);
-  const weatherLabel = formatForecast(forecast) ?? k.weather;
+  const weatherLabel = formatForecast(forecast) ?? null;
   const shoeLabel = (d.today && seed.todayShoeId != null
     ? seed.shoes.find((s) => s.id === seed.todayShoeId)?.nm
-    : null) ?? (seed.shoeRecByType[d.type] || k.shoe);
+    : null) ?? (seed.shoeRecByType[d.type] || null);
   return (
     <>
       <AdaptationBlock d={d} />
@@ -239,8 +242,8 @@ function PlannedBody({ d, seed }: { d: FaffSeed['week'][number]; seed: FaffSeed 
       <div className="band">
         <div className="fll">CONDITIONS &amp; FUEL</div>
         <div className="wk-grid">
-          <div className="i"><div className="k">WEATHER</div><div className="v">{weatherLabel}</div></div>
-          <div className="i"><div className="k">SHOE</div>   <div className="v">{shoeLabel}</div></div>
+          <div className="i"><div className="k">WEATHER</div><div className="v">{weatherLabel ?? '—'}</div></div>
+          <div className="i"><div className="k">SHOE</div>   <div className="v">{shoeLabel ?? '—'}</div></div>
           {pl.fuel.map((f, i) => (
             <div className="i" key={i}><div className="k">{f[0].toUpperCase()}</div><div className="v">{f[1]}</div></div>
           ))}

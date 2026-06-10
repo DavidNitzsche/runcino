@@ -66,14 +66,24 @@ export type Segment = { l: string; sub: string; w: number; c: string };
 // David's flag: "every intervals day was rendering 6 × 800m regardless
 // of what the engine prescribed."
 
+// 2026-06-10 · fabrication strip (multi-user honesty pass). weather +
+// shoe used to carry placeholder DATA ('66° · Calm', 'Novablast 5',
+// David-era garage names) that rendered verbatim for any runner whose
+// real chain (forecast / day_actions / shoeRecByType) came up empty —
+// a brand-new signup saw a shoe they don't own. Real values come from
+// per-user sources; these fields are now the ' · ' empty glyph so any
+// missed consumer renders an honest blank, never a fake. fuel keeps
+// its templates ONLY as the legacy-row fallback (pre-spec plan rows
+// where these strings were the actual written fuel plan); coach lines
+// are voice copy, not data.
 export const KIT: Record<EffortKey, { weather: string; shoe: string; fuel: string; coach: string }> = {
-  easy:      { weather: '66° · Calm', shoe: 'Novablast 5',   fuel: ' · ',            coach: 'Keep it truly easy. Nose-breathing pace the whole way.' },
-  intervals: { weather: '63° · Calm', shoe: 'SC Trainer v3', fuel: 'PF 30 pre',      coach: "Full float between reps. Don't bleed the recoveries." },
-  tempo:     { weather: '67° · Calm', shoe: 'Zoom Fly 6',    fuel: 'PF 30 @ mi 5',   coach: 'Hold 6:38. Sustainable but focused. The back half is the test.' },
-  recovery:  { weather: '66° · Calm', shoe: 'Vomero Plus',   fuel: ' · ',            coach: 'Shake the legs out. Slower than feels right is correct.' },
-  long:      { weather: '64° · Calm', shoe: 'Superblast 3',  fuel: 'PF 30 @ 5·10·15',coach: 'Easy first 10, then squeeze the last 4 to marathon pace.' },
-  rest:      { weather: ' · ',        shoe: ' · ',           fuel: ' · ',            coach: 'Rest is training. Sleep, hydrate, mobilize. Let the work land.' },
-  race:      { weather: ' · ',        shoe: 'SC Trainer v3', fuel: 'Race fuel plan',  coach: 'Trust the work. Settle into goal effort early, hold the line, finish strong.' },
+  easy:      { weather: ' · ', shoe: ' · ', fuel: ' · ',             coach: 'Keep it truly easy. Nose-breathing pace the whole way.' },
+  intervals: { weather: ' · ', shoe: ' · ', fuel: 'PF 30 pre',       coach: "Full float between reps. Don't bleed the recoveries." },
+  tempo:     { weather: ' · ', shoe: ' · ', fuel: 'PF 30 @ mi 5',    coach: 'Sustainable but focused. The back half is the test.' },
+  recovery:  { weather: ' · ', shoe: ' · ', fuel: ' · ',             coach: 'Shake the legs out. Slower than feels right is correct.' },
+  long:      { weather: ' · ', shoe: ' · ', fuel: 'PF 30 @ 5·10·15', coach: 'Easy early. Squeeze the finish only if the plan says so.' },
+  rest:      { weather: ' · ', shoe: ' · ', fuel: ' · ',             coach: 'Rest is training. Sleep, hydrate, mobilize. Let the work land.' },
+  race:      { weather: ' · ', shoe: ' · ', fuel: 'Race fuel plan',  coach: 'Trust the work. Settle into goal effort early, hold the line, finish strong.' },
 };
 
 // Z1–Z5 ladder = the effort temperature scale (recovery → easy → long →
@@ -214,13 +224,9 @@ export type CompletedRun = {
   recap: string;
 };
 
-export const SHOES_DEFAULT = [
-  { nm: 'SC Trainer v3', role: 'RACE',     col: '#FF5722', mi: 142, max: 400 },
-  { nm: 'Superblast 3',  role: 'LONG',     col: '#F3AD38', mi: 210, max: 400 },
-  { nm: 'Zoom Fly 6',    role: 'TEMPO',    col: '#FF5722', mi: 88,  max: 350 },
-  { nm: 'Novablast 5',   role: 'RECOVERY', col: '#27B4E0', mi: 64,  max: 400 },
-  { nm: 'Vomero Plus',   role: 'EASY',     col: '#14C08C', mi: 120, max: 400 },
-];
+// SHOES_DEFAULT removed 2026-06-10 · dead constant (zero consumers) and
+// it was David's literal garage hardcoded — the shoes table (user-scoped
+// via user_uuid) is the only shoe source.
 
 // Per the locked palette, RACE and TEMPO share #FF5722 (one semantic slot).
 // Shoe chips for the two roles are now color-identical · differentiated by
