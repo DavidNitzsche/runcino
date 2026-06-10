@@ -23,9 +23,10 @@ struct WeekStrip: View {
     let days: [WeekStripDay]
     @Binding var selectedID: String
 
-    // Fixed cell width — 40pt fits ~8 days in the visible area at once,
-    // giving a clear affordance that the strip scrolls further.
-    private let cellWidth: CGFloat = 40
+    // 44pt cell + 4pt gap = 48pt/cell → ~7 full cells visible on a 393pt
+    // iPhone (349pt strip width ÷ 48 = 7.3), with the 8th cell peeking
+    // out to signal scrollability.
+    private let cellWidth: CGFloat = 44
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -54,6 +55,14 @@ struct WeekStrip: View {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     proxy.scrollTo(id, anchor: .center)
                 }
+            }
+            .onChange(of: days.count) { oldCount, newCount in
+                // Re-anchor when prev/future weeks load in. Prepending days
+                // shifts the scroll offset; re-center on selected so the
+                // user doesn't see the strip jump.
+                guard newCount > oldCount, newCount > 7 else { return }
+                let target = days.first(where: { $0.id == selectedID })?.id ?? selectedID
+                proxy.scrollTo(target, anchor: .center)
             }
         }
     }

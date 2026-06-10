@@ -176,6 +176,11 @@ struct TodayView: View {
             FaffMeshView(mesh: mesh)
 
             VStack(spacing: 0) {
+                // 44pt clearance for the globalTopBar overlay in RootTabView.
+                // Both sit at safe-area-top; ZStack-based bar needs explicit
+                // space below it since safeAreaInset doesn't pierce FaffMesh.
+                Color.clear.frame(height: 44)
+
                 if !allStripDays.isEmpty {
                     WeekStrip(days: allStripDays, selectedID: $selectedDayID)
                         .padding(.top, 8)
@@ -896,33 +901,46 @@ struct TodayView: View {
     /// centre, run type + distance on the right so the runner gets both
     /// signals at a glance without opening the sheet.
     private var readinessPeekContent: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .stroke(Color.white.opacity(0.25), lineWidth: 4.5)
-                Circle()
-                    .trim(from: 0, to: min(1.0, max(0.0, Double(readiness?.score ?? 0) / 100.0)))
-                    .stroke(readinessBandArc,
-                            style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.6), value: readiness?.score)
-                Text(readiness?.score.map(String.init) ?? "—")
-                    .font(.display(16, weight: .semibold))
-                    .foregroundStyle(.white)
+        ZStack(alignment: .leading) {
+            // Radial orb glow emanating from the ring position.
+            // Deep band background (readinessBandTint on DragSheet) +
+            // orb glow = premium gradient look vs flat pastel.
+            RadialGradient(
+                colors: [readinessBandArc.opacity(0.55), Color.clear],
+                center: UnitPoint(x: 0.08, y: 0.5),
+                startRadius: 0,
+                endRadius: 160
+            )
+            .allowsHitTesting(false)
+
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.25), lineWidth: 4.5)
+                    Circle()
+                        .trim(from: 0, to: min(1.0, max(0.0, Double(readiness?.score ?? 0) / 100.0)))
+                        .stroke(readinessBandArc,
+                                style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeInOut(duration: 0.6), value: readiness?.score)
+                    Text(readiness?.score.map(String.init) ?? "—")
+                        .font(.display(16, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("READINESS")
+                        .font(.body(9, weight: .extraBold)).tracking(1.2)
+                        .foregroundStyle(.white.opacity(0.72))
+                    Text(readinessPeekHeadline)
+                        .font(.body(14, weight: .extraBold)).tracking(-0.2)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
             }
-            .frame(width: 44, height: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("READINESS")
-                    .font(.body(9, weight: .extraBold)).tracking(1.2)
-                    .foregroundStyle(.white.opacity(0.72))
-                Text(readinessPeekHeadline)
-                    .font(.body(14, weight: .extraBold)).tracking(-0.2)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 4)
+            .padding(.top, 2)
         }
-        .padding(.top, 2)
     }
 
     private var sheetContent: some View {
@@ -1600,14 +1618,16 @@ struct TodayView: View {
         return readinessBandTint
     }
 
-    /// Readiness band → background tint for the peek strip.
+    /// Readiness band → deep background tint for the peek strip.
+    /// Rich dark variants of the band palette so the peek reads as premium
+    /// rather than flat/pastel; the radial orb glow provides the color punch.
     private var readinessBandTint: Color {
         switch (readiness?.band ?? "").uppercased() {
-        case "SHARP", "PRIMED":                    return Color(hex: 0x62E08A)
-        case "READY", "HOLD EASY":                 return Color(hex: 0x8FD0FF)
-        case "MODERATE":                           return Color(hex: 0xFFCE8A)
-        case "PULL-BACK", "PULL BACK", "BACK OFF": return Color(hex: 0xFF7A66)
-        default:                                   return Color(hex: 0x4A4540)
+        case "SHARP", "PRIMED":                    return Color(hex: 0x0B2B18)   // deep forest green
+        case "READY", "HOLD EASY":                 return Color(hex: 0x0B1D33)   // deep navy blue
+        case "MODERATE":                           return Color(hex: 0x311E08)   // deep dark amber
+        case "PULL-BACK", "PULL BACK", "BACK OFF": return Color(hex: 0x330A0A)   // deep dark red
+        default:                                   return Color(hex: 0x18130E)   // warm very dark
         }
     }
 

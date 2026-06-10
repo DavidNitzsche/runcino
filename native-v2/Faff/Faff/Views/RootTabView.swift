@@ -108,7 +108,14 @@ struct RootTabView: View {
             // design's hard-cut behavior.
             content
                 .ignoresSafeArea(.keyboard)
-                .safeAreaInset(edge: .top, spacing: 0) { globalTopBar }
+
+            // Global top bar · sits above content as a ZStack overlay so
+            // FaffMeshView's .ignoresSafeArea() doesn't swallow the inset.
+            // Each tab view adds its own 44pt top clearance.
+            VStack(spacing: 0) {
+                globalTopBar
+                Spacer(minLength: 0)
+            }
 
             // Run action menu · scrim + menu card. Renders ABOVE the
             // content but BELOW the tab bar (per design z-order: scrim
@@ -161,6 +168,13 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .faffShowRunMenu)) { _ in
             showRunMenu = true
         }
+        .sheet(isPresented: $showTrainingCal) {
+            TrainingCalendarView()
+        }
+        .sheet(isPresented: $showInbox) {
+            NotificationInboxSheet()
+                .presentationDetents([.large])
+        }
     }
 
     // MARK: - Global top bar
@@ -212,13 +226,6 @@ struct RootTabView: View {
         .padding(.top, 6)
         .padding(.bottom, 4)
         .background(Color.clear)
-        .sheet(isPresented: $showTrainingCal) {
-            TrainingCalendarView()
-        }
-        .sheet(isPresented: $showInbox) {
-            NotificationInboxSheet()
-                .presentationDetents([.large])
-        }
     }
 
     // MARK: - Content
