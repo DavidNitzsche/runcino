@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { pool } from '@/lib/db/pool';
 import { createSession } from '@/lib/auth/session';
+import { authRateLimited } from '@/lib/auth/rate-limit';
 
 const SESSION_COOKIE = 'faff_session';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
@@ -40,6 +41,11 @@ interface SuccessBody {
 interface ErrorBody   { ok: false; error: string; }
 
 export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody | ErrorBody>> {
+  // 2026-06-10 · multi-user opening: per-IP brake on the public auth
+  // surfaces (bcrypt cost was the only thing slowing a stuffing bot).
+  if (authRateLimited(req)) {
+    return NextResponse.json({ ok: false, error: 'too many attempts — try again in a few minutes' }, { status: 429 });
+  }
   let body: { email?: unknown; password?: unknown };
   try { body = await req.json(); }
   catch { return NextResponse.json({ ok: false, error: 'invalid JSON' }, { status: 400 }); }

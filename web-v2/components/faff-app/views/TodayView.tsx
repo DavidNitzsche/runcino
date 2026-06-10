@@ -88,6 +88,11 @@ export function TodayView({
   const isRaceDay = goal != null && goal.daysAway === 0 && !!d.iso && d.iso === goal.date && !d.done;
   const band = seed.readinessBrief?.band ?? null;
   const isPullBack = band === 'pull-back' && !d.done && (d.type === 'easy' || d.type === 'recovery');
+  // 2026-06-10 · coached mode (fifth onboarding path): the runner's own
+  // coach owns the plan. A plan-less day for a coached runner gets the
+  // coached hero (no prescriptions, no workout card) — completed runs
+  // still render the normal done hero.
+  const isCoachedBlank = seed.coachedExternally && !d.planWorkoutId && !d.done;
   const result = d.done ? (seed.results[curDay] ?? seed.results[0]) : undefined;
   // 2026-05-30: lazy-fetch the real run summary for past days so the hero
   // stats grid + heroExtra row don't render seed.results placeholder "·"
@@ -720,12 +725,16 @@ export function TodayView({
                 eyebrow · same info as the week strip + the title itself,
                 pure repetition. Title now sits at the top of the column
                 aligned with the route + recap cards' top edges. */}
-            <div className="htitle">{workoutTypeTitle(d.type)}</div>
+            <div className="htitle">{isCoachedBlank ? 'COACHED' : workoutTypeTitle(d.type)}</div>
             {/* 2026-06-04 · rest-day coach line · gives the card real
                 content for its grid-stretched height instead of leaving
                 empty space below the stats.  Pulled from KIT.rest.coach
-                so the copy stays in the canonical effort kit. */}
-            <div className="rest-coach">{KIT.rest.coach}</div>
+                so the copy stays in the canonical effort kit.
+                2026-06-10 · coached mode swaps the line: Faff doesn't
+                prescribe for runners whose own coach owns the plan. */}
+            <div className="rest-coach">{isCoachedBlank
+              ? 'Your coach owns the plan. Faff tracks the work. Runs land here from your watch or Strava.'
+              : KIT.rest.coach}</div>
             <div className="stats">
               {/* 2026-06-03 · subtitles added per David: "not sure what
                   it means for 6:06 hours sleep. Seems wrong." The value
@@ -779,19 +788,22 @@ export function TodayView({
               })()}
             </div>
           </div>
-          <WorkoutCard
-            d={d}
-            done={false}
-            result={result}
-            runData={runData}
-            runLoading={runLoading}
-            shoes={seed.shoes}
-            seedShoe={(seed.todayShoeId != null
-              ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
-              : null) ?? seed.shoeRecByType[d.type] ?? null}
-            persistShoe={curDay === seed.todayIdx}
-            seed={seed}
-          />
+          {/* Coached mode: no workout card · there is no Faff workout. */}
+          {!isCoachedBlank && (
+            <WorkoutCard
+              d={d}
+              done={false}
+              result={result}
+              runData={runData}
+              runLoading={runLoading}
+              shoes={seed.shoes}
+              seedShoe={(seed.todayShoeId != null
+                ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
+                : null) ?? seed.shoeRecByType[d.type] ?? null}
+              persistShoe={curDay === seed.todayIdx}
+              seed={seed}
+            />
+          )}
         </div>
       )}
 

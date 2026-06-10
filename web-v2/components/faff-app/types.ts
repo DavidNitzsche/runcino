@@ -34,6 +34,11 @@ export type FaffSeed = {
   week: PlannedDay[];              // 7 days, mon..sun
   todayIdx: number;                // index of "today" in week
   results: Record<number, CompletedRun | undefined>; // by week idx
+  /** 2026-06-10 · fifth onboarding path: the runner's own coach owns the
+   *  plan (profile.user_settings.coached_externally). Faff tracks runs /
+   *  readiness / health and renders NO prescriptions — TodayView swaps
+   *  the planned-workout hero for the coached card on plan-less days. */
+  coachedExternally: boolean;
   readiness: Readiness;
   /** 2026-05-31 · daily morning brief envelope · score + trend + per-pillar
    *  tiles + streaks + movers + confounders. Null when the runner has no

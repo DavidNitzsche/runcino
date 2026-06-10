@@ -105,6 +105,8 @@ function intentFor(state: OnboardingState): OnboardingIntent {
     // otherwise consistency-blue.
     return state.ttDistance ? 'tt-goal' : 'consistency';
   }
+  // Coached mode rides the consistency-blue skin · no race anchor.
+  if (state.distance === 'coached') return 'consistency';
   if (state.distance) return 'race';
   return 'landing';
 }

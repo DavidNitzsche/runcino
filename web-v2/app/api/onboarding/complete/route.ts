@@ -93,7 +93,7 @@ import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboardi
 import { generatePlan } from '@/lib/plan/generate';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
-const VALID_DISTANCES = new Set(['5k', '10k', 'half', 'marathon', 'none']);
+const VALID_DISTANCES = new Set(['5k', '10k', 'half', 'marathon', 'none', 'coached']);
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
 const VALID_WEEKLY_MI = new Set<WeeklyMileage>([15, 25, 35, 45, 55]);
 const VALID_FREQ = new Set<WeeklyFrequency>([3, 4, 5, 6]);
@@ -149,7 +149,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'distance is required' }, { status: 400 });
   }
 
-  const isRace = distance !== 'none';
+  // 'coached' (2026-06-10 · fifth onboarding mode): the runner's own
+  // coach owns the plan. Not a race path, not a maintenance path —
+  // Faff authors NOTHING and acts as the measurement layer.
+  const isCoached = distance === 'coached';
+  const isRace = distance !== 'none' && !isCoached;
   const date: string | null = isRace && isValidDate(body.date) ? body.date : null;
   if (isRace && !date) {
     return NextResponse.json({ error: 'race date is required when a race distance is picked' }, { status: 400 });
@@ -295,6 +299,10 @@ export async function POST(req: NextRequest) {
   // include the new onboarding columns. Going direct to the DB keeps
   // that surface untouched and lets this endpoint stay specific.
   try {
+    // profile.goal_race_distance has a CHECK allowing only the original
+    // five values · coached mode stores 'none' there (true: no race goal
+    // owned by Faff) and carries its identity in user_settings.
+    const goalDistanceForProfile = isCoached ? 'none' : distance;
     const update = await client.query(
       `UPDATE profile SET
           goal_race_distance      = $1,
@@ -316,11 +324,12 @@ export async function POST(req: NextRequest) {
           sex                     = COALESCE(sex, $16),
           height_cm               = COALESCE(height_cm, $17),
           age                     = COALESCE(age, $18),
-          race_history            = $19::jsonb
+          race_history            = $19::jsonb,
+          user_settings           = user_settings || jsonb_build_object('coached_externally', $20::boolean)
         WHERE user_uuid = $14
         RETURNING user_uuid`,
       [
-        distance, date, time, name, timezone, connectionsSkipped,
+        goalDistanceForProfile, date, time, name, timezone, connectionsSkipped,
         ttDistance, ttTime, weeklyMi, weeklyFreq,
         histAvgMi, histLongMi, histYears,
         userId,
@@ -329,6 +338,10 @@ export async function POST(req: NextRequest) {
         // Stamps the runner's self-reported PRs · voice-band reads from
         // profile.race_history alongside the races table.
         JSON.stringify(raceHistory.map((e) => ({ ...e, source: 'self_reported' }))),
+        // Rule 6 discipline: always written true/false via field-level
+        // jsonb merge — re-onboarding from coached → race clears it,
+        // and other user_settings keys are never clobbered.
+        isCoached,
       ]
     );
 
@@ -348,19 +361,22 @@ export async function POST(req: NextRequest) {
             weekly_mileage_target, weekly_frequency,
             history_avg_weekly_mi, history_longest_recent_mi, history_years_running,
             birthday, sex, height_cm, age,
-            race_history
+            race_history,
+            user_settings
           ) VALUES (
             $1::text, $1::uuid, $2, $3, $4, $5, $6, NOW(), NOW(), $7,
             $8, $9, $10, $11, $12, $13, $14,
             $15::date, $16, $17, $18,
-            $19::jsonb
+            $19::jsonb,
+            jsonb_build_object('coached_externally', $20::boolean)
           )`,
         [
-          userId, distance, date, time, name, timezone, connectionsSkipped,
+          userId, goalDistanceForProfile, date, time, name, timezone, connectionsSkipped,
           ttDistance, ttTime, weeklyMi, weeklyFreq,
           histAvgMi, histLongMi, histYears,
           birthday, sex, heightCm, ageNum,
           JSON.stringify(raceHistory.map((e) => ({ ...e, source: 'self_reported' }))),
+          isCoached,
         ]
       );
     }
@@ -401,9 +417,15 @@ export async function POST(req: NextRequest) {
   // pull rebuilds via lifecycle. We surface the outcome in the response
   // payload so the caller can log issues in dev.
   let seedPlan:
-    | { ok: boolean; mode?: 'race-prep' | 'maintenance'; race_slug?: string; plan_id?: string; weeks_generated?: number; peak_mpw?: number; error?: string }
+    | { ok: boolean; mode?: 'race-prep' | 'maintenance' | 'coached'; race_slug?: string; plan_id?: string; weeks_generated?: number; peak_mpw?: number; error?: string }
     | null = null;
-  if (isRace) {
+  if (isCoached) {
+    // Coached mode: Faff authors NOTHING. No races row, no training_plans
+    // row. The runner's coach owns the prescription; Faff tracks runs,
+    // readiness, and health. Surfaces read the plan-less state +
+    // profile.user_settings.coached_externally.
+    seedPlan = { ok: true, mode: 'coached' };
+  } else if (isRace) {
     try {
       const distanceLabel = raceDistanceLabel(distance);
       const raceName = `My ${distanceLabel}`;

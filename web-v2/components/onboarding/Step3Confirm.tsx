@@ -122,6 +122,9 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
   // Build the goal-summary string from step 1 (and 1b on no-race path).
   const goalSummary = (() => {
     if (!initial.distance) return '—';
+    if (initial.distance === 'coached') {
+      return "My coach's plan · Faff tracks the work";
+    }
     if (initial.distance === 'none') {
       const parts: string[] = [];
       if (initial.ttDistance && initial.ttTime) {

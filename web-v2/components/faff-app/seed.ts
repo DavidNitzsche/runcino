@@ -41,6 +41,12 @@ function niceLong(iso: string) {
 }
 function mapType(t: string | null | undefined): EffortKey {
   const low = (t ?? '').toLowerCase();
+  // 2026-06-10 honesty pass: a day with NO planned workout is "nothing
+  // planned" — render it as rest, never invent an easy run for it.
+  // glance-state emits 'unplanned' for plan-less users (coached mode,
+  // pre-plan); the old fallthrough turned that into a week of phantom
+  // "Easy" days with 8:45 target paces and MISSED prompts.
+  if (low === '' || low === 'unplanned') return 'rest';
   if (low.includes('rest')) return 'rest';
   // 2026-06-08 · race must resolve BEFORE the easy fallback. Previously
   // 'race' fell through to 'easy', so race morning rendered a cyan EASY
@@ -74,15 +80,16 @@ const EFFORT_COLOR: Record<EffortKey, string> = {
 
 /* ─────────────────────────  Fallbacks  ───────────────────────── */
 
-const FALLBACK_WEEK: PlannedDay[] = [
-  { dw: 'MON', dn: 1,  full: 'Monday',    type: 'easy',     name: 'Easy Aerobic',  dist: '6.0', pace: '8:45', est: '~52 min', done: false },
-  { dw: 'TUE', dn: 2,  full: 'Tuesday',   type: 'tempo',    name: 'Tempo Run',     dist: '8.0', pace: '6:38', est: '~54 min', today: true },
-  { dw: 'WED', dn: 3,  full: 'Wednesday', type: 'recovery', name: 'Recovery Jog',  dist: '4.0', pace: '9:30', est: '~38 min' },
-  { dw: 'THU', dn: 4,  full: 'Thursday',  type: 'rest',     name: 'Rest Day',      dist: ' · ', pace: 'Rest', est: ' · '     },
-  { dw: 'FRI', dn: 5,  full: 'Friday',    type: 'easy',     name: 'Easy Aerobic',  dist: '5.0', pace: '8:50', est: '~44 min' },
-  { dw: 'SAT', dn: 6,  full: 'Saturday',  type: 'long',     name: 'Long Run',      dist: '16.0', pace: '7:40', est: '~2:03'  },
-  { dw: 'SUN', dn: 7,  full: 'Sunday',    type: 'recovery', name: 'Recovery Jog',  dist: '4.0', pace: '9:30', est: '~36 min' },
-];
+// 2026-06-10 honesty pass: was a hardcoded DEMO week ("Tempo 8.0 @
+// 6:38", "Long 16.0 @ 7:40") that rendered as a real prescription for
+// any runner whose glance had no weekDays. Now a neutral rest week —
+// nothing planned reads as nothing planned.
+const FALLBACK_WEEK: PlannedDay[] = ['MON','TUE','WED','THU','FRI','SAT','SUN'].map((dw, i) => ({
+  dw, dn: i + 1,
+  full: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i],
+  type: 'rest' as EffortKey, name: ' · ', dist: ' · ', pace: ' · ', est: ' · ',
+  today: i === 1,
+}));
 
 /* ────────────────  trainingInfluence composer (Phase web brief) ──────── */
 
@@ -2057,6 +2064,7 @@ function emptySeed(): FaffSeed {
     todayISO: new Date().toISOString(),
     topDate: todayLabel(),
     weekOf: '·',
+    coachedExternally: false,
     user: {
       name: 'Guest',
       city: '',
@@ -2137,6 +2145,22 @@ export async function buildSeed(): Promise<FaffSeed> {
   const weekSkips: Set<string> = skRes.value;
 
   const { week, todayIdx, results } = adaptWeek(glance, weekSkips, health?.cadence.baseline ?? null);
+
+  // 2026-06-10 · coached mode (fifth onboarding path). The runner's own
+  // coach owns the plan; Faff tracks the work and stays out of the
+  // prescriptions. profile-state doesn't surface user_settings, so read
+  // the flag directly. Best-effort — absence reads false.
+  const coachedExternally = await (async () => {
+    try {
+      const { pool } = await import('@/lib/db/pool');
+      const r = await pool.query<{ coached: boolean | null }>(
+        `SELECT (user_settings->>'coached_externally')::boolean AS coached
+           FROM profile WHERE user_uuid = $1 LIMIT 1`,
+        [userId],
+      );
+      return r.rows[0]?.coached === true;
+    } catch { return false; }
+  })();
 
   // 2026-06-01 · web agent brief · enrich week with live standing
   // recommendations. Re-evaluates today's signals against each planned
@@ -2620,5 +2644,6 @@ export async function buildSeed(): Promise<FaffSeed> {
     shoeRecByType,
     connections,
     pendingProposals,
+    coachedExternally,
   };
 }

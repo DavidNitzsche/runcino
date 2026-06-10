@@ -17,7 +17,11 @@
  * non-race intake — see Step1bGoalDetails for the chip ladders.
  */
 
-export type RaceDistance = '5k' | '10k' | 'half' | 'marathon' | 'none';
+/** Step-1 goal values. 'none' = consistency (Faff authors a maintenance
+ *  plan) · 'coached' = the runner's own coach owns the plan (2026-06-10,
+ *  David's fifth onboarding mode) — Faff tracks runs/readiness/health
+ *  and authors NOTHING. */
+export type RaceDistance = '5k' | '10k' | 'half' | 'marathon' | 'none' | 'coached';
 
 /** Time-trial distance chip values (no-race path only). */
 export type TTDistance = '1mi' | '5k' | '10k';
@@ -117,7 +121,7 @@ const RACE_HISTORY_MAX_ENTRIES = 3;
 const VALID_STEPS = new Set([
   'goal', 'goal-details', 'signals', 'confirm', 'done',
 ]);
-const VALID_DISTANCES = new Set<RaceDistance>(['5k', '10k', 'half', 'marathon', 'none']);
+const VALID_DISTANCES = new Set<RaceDistance>(['5k', '10k', 'half', 'marathon', 'none', 'coached']);
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
 const VALID_WEEKLY_MI = new Set<WeeklyMileage>([15, 25, 35, 45, 55]);
 const VALID_FREQ = new Set<WeeklyFrequency>([3, 4, 5, 6]);
@@ -308,10 +312,10 @@ export function buildOnboardingHref(
 }
 
 /** Step 1 valid → can advance.
- *  Race path needs a date; no-race path always advances (to step 1b). */
+ *  Race path needs a date; no-race + coached paths always advance. */
 export function canAdvanceFromGoal(s: OnboardingState): boolean {
   if (!s.distance) return false;
-  if (s.distance === 'none') return true;
+  if (s.distance === 'none' || s.distance === 'coached') return true;
   return Boolean(s.date);  // race anchor needs a date
 }
 
@@ -358,6 +362,7 @@ export function distanceLabel(d: RaceDistance | null): string {
     case 'half':     return 'Half marathon';
     case 'marathon': return 'Marathon';
     case 'none':     return 'No specific race';
+    case 'coached':  return "My coach's plan";
     default:         return '—';
   }
 }

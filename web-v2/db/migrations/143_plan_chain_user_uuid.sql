@@ -37,10 +37,22 @@ UPDATE plan_weeks w
   FROM training_plans t
  WHERE w.plan_id = t.id AND w.user_uuid IS NULL;
 
+-- workout_spec_required is NOT VALID, but Postgres still enforces
+-- NOT VALID checks on UPDATEs of existing rows — so backfilling
+-- legacy pre-constraint rows (spec-less running days) re-fails the
+-- check. Drop + re-add the identical constraint around the backfill:
+-- net schema delta is zero, and it stays NOT VALID (unvalidated
+-- against legacy rows) exactly as before.
+ALTER TABLE plan_workouts DROP CONSTRAINT workout_spec_required;
+
 UPDATE plan_workouts pw
    SET user_uuid = t.user_uuid
   FROM training_plans t
  WHERE pw.plan_id = t.id AND pw.user_uuid IS NULL;
+
+ALTER TABLE plan_workouts ADD CONSTRAINT workout_spec_required
+  CHECK (type = ANY (ARRAY['rest'::text,'cross'::text,'strength'::text]) OR workout_spec IS NOT NULL)
+  NOT VALID;
 
 -- plan_mutations hangs off plan_workouts, not training_plans directly.
 UPDATE plan_mutations m

@@ -26,6 +26,10 @@ const DISTANCES: { value: RaceDistance; label: string; wide?: boolean }[] = [
   { value: 'half',     label: 'Half' },
   { value: 'marathon', label: 'Marathon' },
   { value: 'none',     label: 'No specific race', wide: true },
+  // 2026-06-10 · fifth onboarding mode (David): runner's own coach owns
+  // the plan · Faff is the measurement layer. Skips goal-details; no
+  // plan is authored at completion.
+  { value: 'coached',  label: 'I have a coach', wide: true },
 ];
 
 export function Step1Goal({ initial }: { initial: OnboardingState }) {
@@ -33,12 +37,13 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
   const [state, setState] = useState<OnboardingState>(initial);
 
   const canAdvance = canAdvanceFromGoal(state);
-  const showRaceInputs = state.distance && state.distance !== 'none';
+  const showRaceInputs = state.distance && state.distance !== 'none' && state.distance !== 'coached';
   const showConsistencyCallout = state.distance === 'none';
+  const showCoachedCallout = state.distance === 'coached';
 
   function pick(d: RaceDistance) {
-    // Clear date/time when leaving race mode for no-race mode.
-    const next: OnboardingState = d === 'none'
+    // Clear date/time when leaving race mode for the non-race modes.
+    const next: OnboardingState = d === 'none' || d === 'coached'
       ? { ...state, distance: d, date: null, time: null }
       : { ...state, distance: d };
     setState(next);
@@ -163,6 +168,37 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
               }}
             />
           </InputBlock>
+        </div>
+      )}
+
+      {/* "I have a coach" alternate copy */}
+      {showCoachedCallout && (
+        <div style={{
+          background: 'var(--card-2)',
+          border: '1px solid var(--line)',
+          borderRadius: 14,
+          padding: '18px 18px',
+          marginBottom: 18,
+          maxWidth: 560,
+        }}>
+          <div style={{
+            fontFamily: 'var(--f-display)',
+            fontWeight: 700,
+            letterSpacing: '-0.015em',
+            fontSize: 24,
+            color: 'var(--ink)',
+            marginBottom: 6,
+          }}>
+            Your coach owns the plan
+          </div>
+          <div style={{
+            fontFamily: 'var(--f-body)',
+            fontSize: 13,
+            color: 'var(--mute)',
+            lineHeight: 1.5,
+          }}>
+            Faff tracks the work — runs, readiness, health — and stays out of the prescriptions. Connect your sources next. If that changes, pick a race any time and Faff builds the plan.
+          </div>
         </div>
       )}
 
