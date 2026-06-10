@@ -183,10 +183,7 @@ struct RootTabView: View {
     /// ZStack keeps "FAFF" screen-centered regardless of button widths.
     private var globalTopBar: some View {
         ZStack {
-            Text("FAFF")
-                .font(.heroDisplay(18))
-                .tracking(1)
-                .foregroundStyle(Theme.txt)
+            FaffLogoMark(color: Theme.txt, height: 20)
 
             HStack(spacing: 0) {
                 // Profile avatar

@@ -12,6 +12,7 @@ struct TrainingCalendarView: View {
 
     @State private var weeks: [PlanWeek] = []
     @State private var loading = true
+    @State private var scrolledToCurrentWeek = false
 
     var body: some View {
         ZStack {
@@ -50,13 +51,21 @@ struct TrainingCalendarView: View {
                         .tint(Theme.txt.opacity(0.5))
                     Spacer()
                 } else {
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 0, pinnedViews: []) {
-                            ForEach(weeks, id: \.week_start_iso) { week in
-                                weekSection(week)
+                    ScrollViewReader { proxy in
+                        ScrollView(showsIndicators: false) {
+                            LazyVStack(spacing: 0, pinnedViews: []) {
+                                ForEach(weeks, id: \.week_start_iso) { week in
+                                    weekSection(week)
+                                        .id(week.week_start_iso ?? "")
+                                }
                             }
+                            .padding(.bottom, 120)
                         }
-                        .padding(.bottom, 120)
+                        .onChange(of: scrolledToCurrentWeek) { _, jumped in
+                            guard jumped, let current = currentWeekID else { return }
+                            // No animation — lands instantly on current week
+                            proxy.scrollTo(current, anchor: .top)
+                        }
                     }
                 }
             }
@@ -211,10 +220,27 @@ struct TrainingCalendarView: View {
         await MainActor.run {
             weeks = deduped
             loading = false
+            // Trigger scroll to current week after the list renders.
+            // Small delay lets LazyVStack place the rows before we jump.
+            Task {
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                scrolledToCurrentWeek = true
+            }
         }
     }
 
     // MARK: - Helpers
+
+    /// week_start_iso of the week that contains today, for scroll targeting.
+    private var currentWeekID: String? {
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        let today = df.string(from: Date())
+        return weeks.first(where: { w in
+            guard let start = w.week_start_iso else { return false }
+            return w.days.contains(where: { $0.date_iso == today || $0.is_today })
+                || (start <= today && (w.week_end_iso ?? "") >= today)
+        })?.week_start_iso
+    }
 
     private func weekRangeLabel(_ week: PlanWeek) -> String {
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
