@@ -86,6 +86,28 @@ final class WatchRootModel: ObservableObject {
         engine?.reset()
         engine = nil
     }
+
+    /// Check for a crash-recovery snapshot at launch and rebuild the engine
+    /// mid-run if one exists (audit RK-3, 2026-06-09). No-op when already
+    /// running an engine (normal launch) or when no fresh snapshot exists.
+    func attemptRecovery() async {
+        guard engine == nil, let snap = WorkoutEngine.loadSnapshot() else { return }
+        let recovered = await tracker.recover()
+        let eng = WorkoutEngine.restore(from: snap, tracker: recovered ? tracker : nil)
+        didSendCompletion = false
+        stateForward = eng.$state
+            .removeDuplicates()
+            .sink { [weak self] newState in
+                guard let self else { return }
+                self.objectWillChange.send()
+                if newState == .finished, !self.didSendCompletion,
+                   let completion = eng.completion {
+                    self.didSendCompletion = true
+                    PhoneSync.shared.sendCompletion(completion)
+                }
+            }
+        self.engine = eng
+    }
 }
 
 struct WorkoutRootView: View {
@@ -112,6 +134,9 @@ struct WorkoutRootView: View {
     private var appBody: some View {
         content
             .onAppear {
+                // Crash recovery: if a run was in progress when the app crashed or the
+                // watch rebooted, restore the engine from the snapshot (RK-3, 2026-06-09).
+                Task { await model.attemptRecovery() }
                 phone.activate()
                 phone.requestTodayWorkout()
                 #if targetEnvironment(simulator)
@@ -173,7 +198,15 @@ struct WorkoutRootView: View {
     @ViewBuilder
     private var idleHome: some View {
         if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
-            IdleView(workout: workout) { model.start(workout) }
+            // W-5: show a sync prompt when the cached workout has expired — the
+            // runner opened the watch before the iPhone pushed today's payload.
+            // Tapping Start on a stale workout silently did nothing; now we
+            // surface the state and trigger a re-fetch automatically.
+            if phone.staleWorkout {
+                StaleWorkoutView()
+            } else {
+                IdleView(workout: workout) { model.start(workout) }
+            }
         } else if let message = phone.noWorkoutMessage {
             NoWorkoutView(message: message)
         } else {
@@ -244,6 +277,27 @@ private struct NoWorkoutView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, 14).padding(.bottom, 12)
         }
+    }
+}
+
+/// Cached workout has expired — yesterday's plan is still in memory but the
+/// window has passed. Prompt the user to open the iPhone app for a re-push.
+private struct StaleWorkoutView: View {
+    var body: some View {
+        ResponsiveFace {
+            VStack(spacing: 10) {
+                Text("Syncing…")
+                    .font(WatchTheme.body(14, .semibold))
+                    .foregroundStyle(WatchTheme.C.orange)
+                Text("Open Faff on your iPhone to load today's workout.")
+                    .font(WatchTheme.body(12, .medium))
+                    .foregroundStyle(WatchTheme.C.t2)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onAppear { PhoneSync.shared.requestTodayWorkout() }
     }
 }
 
