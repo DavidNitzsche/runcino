@@ -1820,11 +1820,25 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND pw.type = 'long'`,
       [userId],
     ).catch(() => ({ rows: [{ peak_long: null }] }))).rows[0];
+    // F13: query trailing 28d actual mileage for peak-vs-trailing ramp check.
+    const trailingRow = (await pool.query<{ avg_weekly: string | null }>(
+      `SELECT (SUM((data->>'distanceMi')::numeric) / 4.0)::text AS avg_weekly
+         FROM runs
+        WHERE user_uuid = $1
+          AND NOT (data ? 'mergedIntoId')
+          AND (data->>'date')::date >= $2::date - INTERVAL '28 days'
+          AND (data->>'date')::date < $2::date`,
+      [userId, todayISO],
+    ).catch(() => ({ rows: [{ avg_weekly: null }] }))).rows[0];
+    const trailingAvgWeeklyMi = trailingRow?.avg_weekly != null
+      ? Number(trailingRow.avg_weekly)
+      : null;
     validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
       level: inputs.compose.level,
       isSteppingStoneToMarathon: (inputs.compose.horizonRaces ?? []).some(r => r.distanceMi >= 20),
       priorPlanPeakLongMi: priorPeakRow?.peak_long != null ? Number(priorPeakRow.peak_long) : null,
       todayISO,
+      trailingAvgWeeklyMi,
     });
   }
 

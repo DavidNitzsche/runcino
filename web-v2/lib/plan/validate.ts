@@ -85,6 +85,15 @@ export interface PlanValidationContext {
   priorPlanPeakLongMi: number | null;
   /** Caller-supplied today (YYYY-MM-DD) — keeps this function pure. */
   todayISO: string;
+  /**
+   * Runner's trailing 28-day average weekly mileage, computed from actual runs
+   * immediately before generation. Used for peak-vs-trailing ramp check (F13):
+   * plan peak weekly volume must not exceed trailing × 1.65, a 65% jump ceiling
+   * grounded in Pfitzinger's 10%/week escalation doctrine and race-prep ramp
+   * literature. null = not enough history to compute (skip the check).
+   * Cite: Pfitzinger "Advanced Marathoning" §weekly volume escalation.
+   */
+  trailingAvgWeeklyMi: number | null;
 }
 
 // ── error type ────────────────────────────────────────────────────────────────
@@ -170,7 +179,25 @@ export function validateComposedPlan(
     }
   }
 
-  // ── 3. Long run week-over-week increase ───────────────────────────────────
+  // ── 3. Peak vs trailing volume ramp (F13) ────────────────────────────────
+  // Catches plans whose peak weekly volume is unreachably high relative to
+  // what the runner has actually been doing. A 65% ceiling gives room for
+  // the ramp progression within the plan but blocks "jump from 25 mi/wk
+  // training to 50 mi/wk peak" plans that will break the runner regardless
+  // of how well the intervening weeks are structured.
+  if (ctx.trailingAvgWeeklyMi != null && ctx.trailingAvgWeeklyMi > 0) {
+    const peakWeeklyMi = Math.max(0, ...weeks.map(w => w.weeklyMi ?? 0));
+    const ceiling = ctx.trailingAvgWeeklyMi * 1.65;
+    if (peakWeeklyMi > ceiling) {
+      violations.push(
+        `Peak weekly volume ${Math.round(peakWeeklyMi)}mi exceeds 1.65× trailing average ` +
+        `${Math.round(ctx.trailingAvgWeeklyMi)}mi (ceiling: ${Math.round(ceiling)}mi) — ` +
+        `plan ramp is unsupported by current fitness`,
+      );
+    }
+  }
+
+  // ── 4. Long run week-over-week increase ───────────────────────────────────
   const longByWeek = weeks.map(w =>
     Math.max(0, ...w.days.filter(d => d.isLong).map(d => d.distanceMi)),
   );
