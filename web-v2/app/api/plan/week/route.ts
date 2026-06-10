@@ -1,15 +1,16 @@
 /**
  * GET /api/plan/week?date=YYYY-MM-DD
  *
- * Returns the Mon–Sun week of plan_workouts containing the given date.
- * Used by the iPhone WeekStripView (and any other surface that wants the
- * structured plan for a week without hauling the briefing wrapper).
+ * Returns the Sat–Sun (9-day) window of plan_workouts containing the given date.
+ * Week starts on Saturday (long-run anchor day) and runs through the following
+ * Sunday, so both weekend days bracket the Mon–Fri block in the strip.
+ * Used by the iPhone WeekStrip.
  *
  * Response shape:
  *   {
  *     plan_id: string,
- *     week_start_iso: string,     // ISO Monday
- *     week_end_iso:   string,     // ISO Sunday
+ *     week_start_iso: string,     // ISO Saturday (start of training week)
+ *     week_end_iso:   string,     // ISO Sunday (end of training week, 8 days later)
  *     today_iso:      string,     // server "today" (PT-adjusted)
  *     days: Array<{
  *       date_iso: string, dow: number, type: string,
@@ -40,9 +41,11 @@ export async function GET(req: NextRequest) {
   const today = await runnerToday(userId);
   const dateParam = req.nextUrl.searchParams.get('date') ?? today;
 
-  // Mon-Sun week containing date.
+  // Sat–Sun (9-day) training week containing date.
+  // Week starts on Saturday (long-run anchor) and ends the following Sunday.
+  // daysSinceSaturday: Sat=0, Sun=1, Mon=2 … Fri=6 → formula (dow+1)%7
   const dow = new Date(dateParam + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
-  const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+  const daysSinceSaturday = (dow + 1) % 7;
 
   // Active plan
   const plan = (await pool.query(
@@ -67,18 +70,18 @@ export async function GET(req: NextRequest) {
     `SELECT date_iso, dow, type, distance_mi, sub_label
        FROM plan_workouts
       WHERE plan_id = $1
-        AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 6)
+        AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 8)
       ORDER BY date_iso ASC`,
-    [plan.id, dateParam, daysSinceMonday]
+    [plan.id, dateParam, daysSinceSaturday]
   )).rows;
 
   const weekStart = (await pool.query(
     `SELECT ($1::date - $2::int)::text AS d`,
-    [dateParam, daysSinceMonday]
+    [dateParam, daysSinceSaturday]
   )).rows[0].d;
   const weekEnd = (await pool.query(
-    `SELECT ($1::date - $2::int + 6)::text AS d`,
-    [dateParam, daysSinceMonday]
+    `SELECT ($1::date - $2::int + 8)::text AS d`,
+    [dateParam, daysSinceSaturday]
   )).rows[0].d;
 
   // 2026-05-28 Phase 17 — Resolve completed strava activity per day so the

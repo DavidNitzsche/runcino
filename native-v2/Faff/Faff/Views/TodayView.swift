@@ -172,27 +172,11 @@ struct TodayView: View {
 
             VStack(spacing: 0) {
                 HStack(alignment: .top, spacing: 12) {
-                    // Greeting eyebrow + date + week label · per the
-                    // Today redesign brief (2026-06-01). Replaces the
-                    // legacy "TODAY" SpecLabel — gives the runner the
-                    // time-of-day context the mesh palette is set to.
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 7, height: 7)
-                                .shadow(color: .white.opacity(0.7), radius: 5)
-                            Text(timeOfDay.greeting.uppercased())
-                                .font(.body(11, weight: .extraBold))
-                                .tracking(1.4)
-                                .foregroundStyle(Color.white.opacity(0.78))
-                                .lineLimit(1)
-                        }
                         Text(dayHeaderLabel)
                             .font(.body(22, weight: .extraBold))
                             .tracking(-0.4)
                             .foregroundStyle(Theme.txt)
-                            .padding(.top, 4)
                         if let wk = weekContextLabel {
                             Text(wk)
                                 .font(.body(11, weight: .bold))
@@ -201,57 +185,7 @@ struct TodayView: View {
                         }
                     }
                     Spacer(minLength: 4)
-                    Button {
-                        guard !refreshing else { return }
-                        refreshing = true
-                        Task {
-                            await loadAll()
-                            await MainActor.run { refreshing = false }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Theme.txt.opacity(refreshing ? 0.4 : 0.85))
-                            .frame(width: 28, height: 28)
-                            .background(Theme.Glass.fill, in: Circle())
-                            .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
-                            .rotationEffect(.degrees(refreshing ? 360 : 0))
-                            .animation(refreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: refreshing)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(refreshing)
-
-                    // 2026-06-02 round 37 · bell stripped to a direct
-                    // notification-inbox tap. The other three menu
-                    // items (Log niggle / Log non-run / Today's shoe)
-                    // moved to the Run-tab action menu where they
-                    // belong (centralized run actions). No more menu
-                    // wrap · single-purpose button.
-                    Button { if hasNudge { showNudge = true } else { showInbox = true } } label: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: "bell.fill")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(Theme.txt)
-                                .frame(width: 32, height: 32)
-                                .background(Theme.Glass.fill, in: Circle())
-                                .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
-                            if hasNudge {
-                                Circle()
-                                    .fill(Theme.race)
-                                    .frame(width: 8, height: 8)
-                                    .overlay(Circle().stroke(Theme.bg, lineWidth: 1.5))
-                                    .offset(x: -2, y: 2)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
                     Button { onProfile() } label: {
-                        // 2026-06-02 round 16 · avatar button now matches the
-                        // other topbar circles (translucent glass + stroke)
-                        // instead of the coral→red gradient, which read as
-                        // a notification badge / alert. Falls back to a
-                        // person SF Symbol when initials are empty (profile
-                        // hasn't loaded yet or identity has no name).
                         Group {
                             if !avatarInitials.isEmpty {
                                 Text(avatarInitials)
@@ -458,36 +392,13 @@ struct TodayView: View {
                     }
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
-                } else if isQualityWorkoutDay {
-                    // Quality-day hero · workout is the main event.
-                    // C1: "hero is the workout on quality days · readiness
-                    // is the moment's hero only when today is easy/rest."
+                } else {
+                    // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
                         heroBlock
                             .padding(.horizontal, 22)
                             .padding(.top, 28)
                             .padding(.bottom, 220)
-                    }
-                    .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
-                    .offset(y: -22 * (1 - sheetProgress))
-                } else {
-                    // Easy/rest/recovery hero · readiness is the main event.
-                    // DragSheet below carries the workout prescription.
-                    ScrollView(showsIndicators: false) {
-                        TodayReadinessPanel(
-                            snapshot: readiness,
-                            lastNightHours: lastNightHours,
-                            thisWeekMiles: thisWeekMiles,
-                            bestWindow: forecast?.best_window,
-                            weeksToRace: weeksToRaceValue,
-                            daysToRace: daysToRaceValue,
-                            nextHardLabel: nextHardLabel,
-                            formLine: readiness?.formLine,
-                            onTap: { onReadinessTap() }
-                        )
-                        .padding(.horizontal, 22)
-                        .padding(.top, 22)
-                        .padding(.bottom, 220)
                     }
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
@@ -745,12 +656,10 @@ struct TodayView: View {
             HStack(spacing: 8) {
                 SpecLabel(text: subLabel, size: 13, tracking: 0.5, color: Theme.txt.opacity(0.92))
                     .textCase(.uppercase)
-                // HeatBandChip · tints the conditions chip on the
-                // neutral / warm / hot / extreme ramp derived from
-                // today's tempF. Replaces the legacy HOTTER/COOLER tag
-                // visually (we keep the absolute temp in the chip).
-                // Toolkit · Family J.
-                if let t = weather?.tempF {
+                // HeatBandChip · only when the temp is a real reading.
+                // tempF outside [10, 130] is an unfetched default ·
+                // rendering it produced the bogus "Neutral · 0°F" chip.
+                if let t = weather?.tempF, t > 10, t < 130 {
                     HeatBandChip(band: HeatBand.from(tempF: t),
                                  tempLabel: "\(Int(t.rounded()))°F")
                 } else if let tag = weatherTagLabel {
@@ -764,39 +673,159 @@ struct TodayView: View {
                         .background(weatherTagColor, in: RoundedRectangle(cornerRadius: 5))
                 }
             }
-            // big workout name
-            Text(workoutName)
-                .displayRecipe(size: 58, weight: .bold)
+            // Type word hero · one word, never wraps. The structural
+            // workout name ("1.5 mi WU · 3.5 mi @T · 1.5 mi CD") is a
+            // description, not a title · at display size it wrapped to
+            // three lines and ate the screen. Structure is now DRAWN
+            // (segment bar below) instead of typeset.
+            Text(peekTitleWord)
+                .displayRecipe(size: 64, weight: .bold)
                 .foregroundStyle(Theme.txt)
-                .lineSpacing(-12)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .shadow(color: .black.opacity(0.32), radius: 30, y: 2)
 
-            HStack(spacing: 26) {
-                stat(key: "Distance",     value: distanceStr)
-                stat(key: "Target Pace",  value: paceStr)
+            if heroStatsPresent {
+                HStack(spacing: 26) {
+                    stat(key: "Distance",     value: distanceStr)
+                    stat(key: "Target Pace",  value: paceStr)
+                    if let t = estTimeStr {
+                        stat(key: "Time", value: t)
+                    }
+                }
+                .padding(.top, 2)
             }
-            .padding(.top, 2)
 
-            // HR cap chip · only on easy / heat-flag days where the
-            // watch carries an explicit hrCeilingBpm. Toolkit · Family B.
-            // The pace shows what to run; the cap shows when easy would
-            // turn into tempo if you let it.
+            if heroSegments.count >= 2 {
+                // Garmin-style step list: each phase as a compact row
+                // with a colored left accent + name + distance.
+                HeroStepList(segments: heroSegments)
+                    .padding(.top, 16)
+            } else {
+                // Single-phase run · zone meter carries the intensity
+                // story; optional name subtitle when it adds info.
+                if let sub = heroNameSubtitle {
+                    Text(sub)
+                        .font(.body(14, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.78))
+                        .lineLimit(1)
+                }
+                // The marker pill draws ~38pt ABOVE the bar via a
+                // negative offset (no reserved layout space) · without
+                // explicit headroom it collides with the stat row.
+                EffortMeter(
+                    position: selectedEffort.meterPosition,
+                    label: selectedEffort.effortLabel.uppercased(),
+                    height: 6,
+                    showZones: true
+                )
+                .padding(.top, 46)
+                .frame(maxWidth: 236, alignment: .leading)
+            }
+
+            // HR cap · compact chip, number only. The "why" copy
+            // (let it climb and easy becomes tempo) is sheet material ·
+            // a sentence in the hero read as clutter.
             if let cap = displayWorkout?.hrCeilingBpm, cap > 0 {
-                HRTargetPill(variant: .cap(bpm: cap,
-                                            note: "let it climb and easy becomes tempo"))
-                    .padding(.top, 4)
+                HStack(spacing: 6) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color(hex: 0xFC4D64))
+                    Text("HR CAP \(cap) BPM")
+                        .font(.body(10, weight: .extraBold)).tracking(1.1)
+                        .foregroundStyle(Theme.txt.opacity(0.9))
+                }
+                .padding(.horizontal, 11).padding(.vertical, 6)
+                .background(Color.white.opacity(0.08), in: Capsule())
+                .overlay(Capsule().stroke(Color(hex: 0xFC4D64).opacity(0.45), lineWidth: 1))
+                .padding(.top, 10)
             }
-
-            EffortMeter(
-                position: selectedEffort.meterPosition,
-                label: selectedEffort.effortLabel.uppercased(),
-                height: 6,
-                showZones: true
-            )
-            .padding(.top, 16)
-            .frame(maxWidth: 236, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Hide the stat row entirely on rest days where every cell is "—".
+    private var heroStatsPresent: Bool {
+        distanceStr != "—" || paceStr != "—" || estTimeStr != nil
+    }
+
+    /// Estimated time stat · "48 min" under an hour, "1h 44m" over.
+    private var estTimeStr: String? {
+        guard let m = displayWorkout?.totalEstimatedMinutes, m > 0 else { return nil }
+        if m >= 60 {
+            let h = m / 60, mm = m % 60
+            return mm == 0 ? "\(h) hr" : "\(h)h \(mm)m"
+        }
+        return "\(m) min"
+    }
+
+    /// Name subtitle for single-phase runs · hidden when it just
+    /// repeats the type word.
+    private var heroNameSubtitle: String? {
+        guard let raw = displayWorkout?.name else { return nil }
+        let name = raw.trimmingCharacters(in: .whitespaces)
+        if name.isEmpty { return nil }
+        if name.uppercased() == peekTitleWord { return nil }
+        return name
+    }
+
+    /// Segment-bar model from the workout phases. Weights by distance
+    /// when every phase carries one, else by duration.
+    private var heroSegments: [HeroSeg] {
+        let phases = displayWorkout?.phases ?? []
+        guard phases.count >= 2 else { return [] }
+        let allHaveDistance = phases.allSatisfy { ($0.distanceMi ?? 0) > 0 }
+        return phases.map { p in
+            let w: Double = allHaveDistance
+                ? (p.distanceMi ?? 0)
+                : Double(max(60, p.durationSec))
+            let c: Color
+            let top: String
+            let bottom: String
+            switch p.type {
+            case .work:
+                c = selectedEffort.dot
+                top = workPhaseShortLabel(p)
+                bottom = segDistLabel(p)
+            case .warmup:
+                c = Color(hex: 0x5BBFB0)
+                top = "Warm Up"
+                bottom = segDistLabel(p)
+            case .cooldown:
+                c = Color(hex: 0x5BBFB0)
+                top = "Cool Down"
+                bottom = segDistLabel(p)
+            case .recovery:
+                c = Color(hex: 0x8AA0A8)
+                top = "Recovery"
+                bottom = segDistLabel(p)
+            }
+            return HeroSeg(weight: w, color: c, topLabel: top, bottomLabel: bottom)
+        }
+    }
+
+    private func workPhaseShortLabel(_ p: WatchPhase) -> String {
+        let lbl = p.label.uppercased()
+        if lbl.contains("THRESHOLD") || lbl.contains("TEMPO") || lbl.contains("@T") { return "Tempo" }
+        if lbl.contains("INTERVAL") || lbl.contains("@I") || lbl.contains("VO2") { return "Intervals" }
+        if lbl.contains("MARATHON") || lbl.contains("@MP") { return "Marathon Pace" }
+        if lbl.contains("REPEAT") { return "Repeat" }
+        if !p.label.isEmpty { return p.label }
+        switch selectedEffort {
+        case .tempo:     return "Tempo"
+        case .intervals: return "Intervals"
+        case .long:      return "Marathon Pace"
+        default:         return "Run"
+        }
+    }
+
+    private func segDistLabel(_ p: WatchPhase) -> String {
+        if let d = p.distanceMi, d > 0 {
+            return d.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(d)) mi" : String(format: "%.1f mi", d)
+        }
+        let m = max(1, p.durationSec / 60)
+        return "\(m) min"
     }
 
     private func stat(key: String, value: String) -> some View {
@@ -810,11 +839,21 @@ struct TodayView: View {
         }
     }
 
-    /// Peek header · the row inside the accent-filled grab band. White
-    /// text in all states; on done, swaps the small dot for a green
-    /// check-in-circle and the effort label for a DONE pill. (Today
-    /// v2 brief 2026-06-01.)
+    /// Peek header · branches on mode:
+    ///   · Pre-run: readiness score ring + headline + run type on the right.
+    ///     The sheet is now the readiness surface, so the peek announces it.
+    ///   · Post-run: existing run-type / DONE peek (effort color + recap cue).
+    @ViewBuilder
     private var peekHeader: some View {
+        if isPostRunMode {
+            postRunPeekContent
+        } else {
+            readinessPeekContent
+        }
+    }
+
+    /// Post-run peek · existing design: effort type word + distance + DONE pill.
+    private var postRunPeekContent: some View {
         HStack(spacing: 12) {
             if isDone {
                 ZStack {
@@ -832,11 +871,6 @@ struct TodayView: View {
                     .shadow(color: .white.opacity(0.5), radius: 6)
             }
             VStack(alignment: .leading, spacing: 1) {
-                // 2026-06-02 round 45 · type-word title, distance subtitle.
-                // Old: workout name + "Today's session" — name read as
-                // noise (already echoed in the hero) and "Today's session"
-                // told the runner nothing. Now: vocabulary matches the
-                // hero (INTERVALS / TEMPO / LONG / EASY) + actual mileage.
                 Text(peekTitleWord)
                     .font(.body(17, weight: .extraBold))
                     .tracking(-0.3)
@@ -867,14 +901,65 @@ struct TodayView: View {
         .padding(.top, 2)
     }
 
+    /// Pre-run peek · compact readiness ring on the left, score headline
+    /// centre, run type + distance on the right so the runner gets both
+    /// signals at a glance without opening the sheet.
+    private var readinessPeekContent: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.25), lineWidth: 4.5)
+                Circle()
+                    .trim(from: 0, to: min(1.0, max(0.0, Double(readiness?.score ?? 0) / 100.0)))
+                    .stroke(readinessBandArc,
+                            style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.6), value: readiness?.score)
+                Text(readiness?.score.map(String.init) ?? "—")
+                    .font(.display(16, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("READINESS")
+                    .font(.body(9, weight: .extraBold)).tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.72))
+                Text(readinessPeekHeadline)
+                    .font(.body(14, weight: .extraBold)).tracking(-0.2)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+        }
+        .padding(.top, 2)
+    }
+
     private var sheetContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Today v2 (2026-06-01) · branch: completed days render the
-            // post-run results body; pre-run days fall through to the
-            // existing prescription/fueling/conditions/coach stack.
             if isDone {
                 postRunBody
             } else {
+                // Readiness panel sits at the top of the sheet (dark body
+                // background · white text reads cleanly). Pre-run workout
+                // details follow below so both surfaces are reachable in
+                // one scroll.
+                TodayReadinessPanel(
+                    snapshot: readiness,
+                    lastNightHours: lastNightHours,
+                    thisWeekMiles: thisWeekMiles,
+                    bestWindow: forecast?.best_window,
+                    weeksToRace: weeksToRaceValue,
+                    daysToRace: daysToRaceValue,
+                    nextHardLabel: nextHardLabel,
+                    formLine: readiness?.formLine,
+                    onTap: { onReadinessTap() }
+                )
+                .padding(.horizontal, 22)
+                .padding(.top, 22)
+                .padding(.bottom, 20)
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 1)
                 preRunSheetContent
             }
         }
@@ -1211,6 +1296,7 @@ struct TodayView: View {
     /// hide the badge entirely.
     private var weatherTagLabel: String? {
         guard let wx = weather, let d = wx.deltaF, let t = wx.tempF else { return nil }
+        guard t > 10, t < 130 else { return nil }   // unfetched default · not a reading
         if abs(d) < 6 { return nil }
         let degrees = Int(t.rounded())
         return d > 0 ? "HOTTER \(degrees)°F" : "COOLER \(degrees)°F"
@@ -1506,18 +1592,72 @@ struct TodayView: View {
         return week.contains { $0.date_iso == key && $0.completedRunId != nil }
     }
 
-    /// Peek background color · accent for pre-run AND post-run.
-    /// Rest stays neutral grey.
-    ///
-    /// 2026-06-02 round 52 · earlier rounds forced post-run to green
-    /// (#1F9A6F) to communicate "done" · David flagged it lost the
-    /// run-type signal (intervals went green not red). The DONE pill
-    /// + green check icon on the peek already communicate completion ·
-    /// the background color's job is to convey the EFFORT TYPE. Keep
-    /// the effort color through the whole lifecycle.
+    /// Peek background color.
+    ///   · Pre-run: readiness band tint — the sheet is the readiness
+    ///     surface; band color gives a quick "body-state" signal from
+    ///     the collapsed peek (amber = moderate, green = sharp, etc.).
+    ///   · Post-run: effort dot color — communicates what was done,
+    ///     consistent with the DONE pill + check icon signalling.
     private var peekFill: Color {
-        if selectedEffort == .rest { return Color(hex: 0x9FB0AD) }
-        return selectedEffort.dot
+        if isPostRunMode {
+            if selectedEffort == .rest { return Color(hex: 0x9FB0AD) }
+            return selectedEffort.dot
+        }
+        return readinessBandTint
+    }
+
+    /// Readiness band → background tint for the peek strip.
+    private var readinessBandTint: Color {
+        switch (readiness?.band ?? "").uppercased() {
+        case "SHARP", "PRIMED":                    return Color(hex: 0x62E08A)
+        case "READY", "HOLD EASY":                 return Color(hex: 0x8FD0FF)
+        case "MODERATE":                           return Color(hex: 0xFFCE8A)
+        case "PULL-BACK", "PULL BACK", "BACK OFF": return Color(hex: 0xFF7A66)
+        default:                                   return Color(hex: 0x4A4540)
+        }
+    }
+
+    /// Readiness band → arc stroke color for the compact ring in the peek.
+    private var readinessBandArc: Color {
+        switch (readiness?.band ?? "").uppercased() {
+        case "SHARP", "PRIMED":                    return Color(hex: 0x3CD370)
+        case "READY", "HOLD EASY":                 return Color(hex: 0x58B8FF)
+        case "MODERATE":                           return Color(hex: 0xFFB24D)
+        case "PULL-BACK", "PULL BACK", "BACK OFF": return Color(hex: 0xFC4D64)
+        default:                                   return Color(hex: 0x8AA0A8)
+        }
+    }
+
+    /// One-line readiness summary for the peek strip.
+    private var readinessPeekHeadline: String {
+        guard let inputs = readiness?.inputs, !inputs.isEmpty else {
+            return "No overnight data"
+        }
+        let drags = inputs
+            .filter { $0.weight < 0 }
+            .sorted { $0.weight < $1.weight }
+            .prefix(2)
+            .map { humanizeReadinessKey($0.key) }
+        if drags.isEmpty {
+            switch (readiness?.band ?? "").uppercased() {
+            case "SHARP", "PRIMED": return "Everything firing"
+            case "READY":           return "Solid across the board"
+            default:                return readiness?.band?.capitalized ?? "Looking good"
+            }
+        }
+        if drags.count == 1 { return "\(drags[0]) dragging" }
+        return "\(drags[0]) + \(drags[1]) dragging"
+    }
+
+    private func humanizeReadinessKey(_ key: String) -> String {
+        switch key.lowercased() {
+        case "sleep": return "Sleep"
+        case "hrv":   return "HRV"
+        case "rhr":   return "RHR"
+        case "load":  return "Load"
+        case "rpe":   return "RPE"
+        default:      return key.capitalized
+        }
     }
 
     /// Skip-this-run action · POSTs to /api/today/skip via the existing
@@ -1591,7 +1731,11 @@ struct TodayView: View {
     // hides entirely when the payload is nil. No placeholder fallback.
 
     private func makeStripDays(from week: PlanWeek) -> [WeekStripDay] {
-        week.days.prefix(7).map { d in
+        // Sat–Sun training week: backend returns up to 9 days (Sat through
+        // the following Sun). No hard-cap — whatever the server returns is
+        // rendered. Keeping prefix(9) as a safety clamp against future
+        // over-fetch.
+        week.days.prefix(9).map { d in
             WeekStripDay(
                 id: d.date_iso,
                 dow: dowLetter(d.dow),
@@ -1605,7 +1749,7 @@ struct TodayView: View {
     }
 
     private func dowLetter(_ i: Int) -> String {
-        // Backend dow is 1-based (Mon=1..Sun=7). Be defensive: 0-6 also OK.
+        // dow is 0=Sun..6=Sat (JS Date / UTC convention from the backend).
         let letters = ["S","M","T","W","T","F","S"]
         return letters[((i % 7) + 7) % 7]
     }
@@ -1859,6 +2003,54 @@ struct TodayView: View {
     /// without clearing the episode. Card stays visible tomorrow.
     private func handleStillResting() async {
         _ = try? await API.postSickRecovery(trend: "same")
+    }
+}
+
+// MARK: - Hero step list (Garmin-inspired)
+
+/// One step row in the hero workout breakdown.
+fileprivate struct HeroSeg {
+    let weight: Double   // used for future proportional display if needed
+    let color: Color
+    let topLabel: String    // "WU", "@T", "CD", etc.
+    let bottomLabel: String // "1.5 mi" or "20 min"
+}
+
+/// Garmin-style vertical step list. Each phase is a compact row:
+/// 4pt colored left accent · step name · distance/duration.
+/// Dark glass card so it reads on the mesh without fighting the title.
+fileprivate struct HeroStepList: View {
+    let segments: [HeroSeg]
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(segments.indices, id: \.self) { i in
+                HStack(spacing: 12) {
+                    // Colored left accent bar
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(segments[i].color)
+                        .frame(width: 4)
+                    // Step name (big label)
+                    Text(segments[i].topLabel)
+                        .font(.body(15, weight: .extraBold))
+                        .tracking(-0.2)
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 0)
+                    // Distance / duration
+                    Text(segments[i].bottomLabel)
+                        .font(.body(13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+            }
+        }
     }
 }
 
