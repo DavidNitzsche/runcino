@@ -94,6 +94,7 @@
 		A66CE409BB06035C16E77160 /* LearnArticleSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D2748856DA0BE8CFF0A0E62 /* LearnArticleSheet.swift */; };
 		A9540BA3268DA8CC72864FA3 /* HealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */; };
 		AA3F43C1079621406B520A96 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E94BF41A96C49C2F0DFE896D /* ActivityView.swift */; };
+		AE008917FAEA2A97F59D9556 /* TrainingCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B0FEBCF8E25692D5279ECD8 /* TrainingCalendarView.swift */; };
 		AAF411FFC548C34FA08F3A29 /* WorkoutRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */; };
 		ABA8B73ABAB07391B459D29A /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71B88D7D0751ABFACD1479 /* API.swift */; };
 		ACA6645F1B466A2A24E43209 /* HealthKitImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */; };
@@ -313,6 +314,7 @@
 		E341D1073CB161F54628F683 /* RunDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDetailView.swift; sourceTree = "<group>"; };
 		E642C82A6F2C85D02FB33076 /* AppCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCache.swift; sourceTree = "<group>"; };
 		E94BF41A96C49C2F0DFE896D /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
+		3B0FEBCF8E25692D5279ECD8 /* TrainingCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingCalendarView.swift; sourceTree = "<group>"; };
 		ED073449FE88CA9532AFF720 /* J_CoachVerdict.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = J_CoachVerdict.swift; sourceTree = "<group>"; };
 		EE0C78AC3D1E5FE8777CB224 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
 		EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -479,6 +481,7 @@
 			isa = PBXGroup;
 			children = (
 				E94BF41A96C49C2F0DFE896D /* ActivityView.swift */,
+				3B0FEBCF8E25692D5279ECD8 /* TrainingCalendarView.swift */,
 				81938656B7079C01BB12693C /* ColdStartView.swift */,
 				7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */,
 				A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */,
@@ -745,6 +748,7 @@
 				ABA8B73ABAB07391B459D29A /* API.swift in Sources */,
 				EAF8355DE9CD72C8C10FFD51 /* A_Signals.swift in Sources */,
 				AA3F43C1079621406B520A96 /* ActivityView.swift in Sources */,
+				AE008917FAEA2A97F59D9556 /* TrainingCalendarView.swift in Sources */,
 				36B9DFECC527B9516F2E9D87 /* AppCache.swift in Sources */,
 				A11A3E74B3A9B30D43030CAA /* B_Provenance.swift in Sources */,
 				22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */,

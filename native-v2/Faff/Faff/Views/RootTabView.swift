@@ -91,6 +91,8 @@ struct RootTabView: View {
     @State private var showRunMenu: Bool = false
     @State private var showSymptomSheet: Bool = false
     @State private var showLogNonRunSheet: Bool = false
+    @State private var showTrainingCal: Bool = false
+    @State private var showInbox: Bool = false
     /// Pending navigation set by the run-menu mode buttons · triggers a
     /// push into the active tab's NavigationStack via the .navigationDestination(item:)
     /// hook below. Cleared once the push lands.
@@ -106,6 +108,7 @@ struct RootTabView: View {
             // design's hard-cut behavior.
             content
                 .ignoresSafeArea(.keyboard)
+                .safeAreaInset(edge: .top, spacing: 0) { globalTopBar }
 
             // Run action menu · scrim + menu card. Renders ABOVE the
             // content but BELOW the tab bar (per design z-order: scrim
@@ -157,6 +160,64 @@ struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .faffShowRunMenu)) { _ in
             showRunMenu = true
+        }
+    }
+
+    // MARK: - Global top bar
+
+    /// Single-line header present on every tab.
+    /// ZStack keeps "FAFF" screen-centered regardless of button widths.
+    private var globalTopBar: some View {
+        ZStack {
+            Text("FAFF")
+                .font(.heroDisplay(18))
+                .tracking(1)
+                .foregroundStyle(Theme.txt)
+
+            HStack(spacing: 0) {
+                // Profile avatar
+                Button { pushProfile = true } label: {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.txt)
+                        .frame(width: 30, height: 30)
+                        .background(Theme.Glass.fill, in: Circle())
+                        .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+
+                // Bell / inbox
+                Button { showInbox = true } label: {
+                    Image(systemName: "bell")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.txt.opacity(0.75))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 4)
+
+                Spacer(minLength: 0)
+
+                // Training calendar
+                Button { showTrainingCal = true } label: {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.txt.opacity(0.75))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+        .background(Color.clear)
+        .sheet(isPresented: $showTrainingCal) {
+            TrainingCalendarView()
+        }
+        .sheet(isPresented: $showInbox) {
+            NotificationInboxSheet()
+                .presentationDetents([.large])
         }
     }
 
