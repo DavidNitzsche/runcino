@@ -36,6 +36,15 @@
   --base:#8A1E30; --mbase:#8A1E30;
   /* ── MOTION SCALE · four semantic durations ── */
   --t-tap:0.12s; --t-state:0.22s; --t-sheet:0.42s; --t-mesh:0.7s;
+  /* ── TYPE SCALE · six canonical tiers (brief v2) ──
+     hero  = Oswald display at the largest single-field role
+     stat  = Oswald mid-size stats and section numbers
+     body  = Inter primary copy (≥16pt per brief display rule)
+     sec   = Inter secondary labels / detail rows
+     eye   = Inter ExtraBold eyebrow (≤11pt · 1.2px tracking)
+     mic   = Inter micro labels and calendar tags */
+  --fs-hero:64px; --fs-stat:30px; --fs-body:15px;
+  --fs-sec:13px;  --fs-eye:11px;  --fs-mic:9.5px;
 }
 html,body{height:100%;}
 body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211d18;overscroll-behavior:none;}
@@ -1131,9 +1140,9 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    .eyebrow-hero · prominent headers ≥12px: 2px tracking
    Update all new eyebrows to reference these classes; legacy
    component-specific eyebrows migrate in their own pass. */
-.eyebrow{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.72);}
+.eyebrow{font-size:var(--fs-eye);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.72);}
 .eyebrow-hero{font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.85);}
-.fll{font-size:11px;font-weight:700;letter-spacing:1.2px;opacity:1;text-transform:uppercase;}
+.fll{font-size:var(--fs-eye);font-weight:700;letter-spacing:1.2px;opacity:1;text-transform:uppercase;}
 .vol{position:relative;display:flex;align-items:flex-end;gap:6px;height:60px;}
 .volavg{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(246,247,248,.45);pointer-events:none;}
 .vol i{flex:1;border-radius:4px 4px 0 0;}

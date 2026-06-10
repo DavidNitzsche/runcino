@@ -21,7 +21,7 @@ extension Font {
     // ───── Anton · brand wordmark only ─────
     static func brand(_ size: CGFloat) -> Font {
         if UIFont(name: "Anton-Regular", size: size) != nil {
-            return .custom("Anton-Regular", size: size)
+            return .custom("Anton-Regular", size: size, relativeTo: .largeTitle)
         }
         return .system(size: size, weight: .black, design: .default).width(.condensed)
     }
@@ -30,7 +30,7 @@ extension Font {
     static func display(_ size: CGFloat, weight: OswaldWeight = .semibold) -> Font {
         let name = weight.postScriptName
         if UIFont(name: name, size: size) != nil {
-            return .custom(name, size: size)
+            return .custom(name, size: size, relativeTo: .title)
         }
         return .system(size: size, weight: weight.systemWeight).width(.condensed)
     }
@@ -45,7 +45,7 @@ extension Font {
     static func body(_ size: CGFloat, weight: InterWeight = .regular) -> Font {
         let name = weight.postScriptName
         if UIFont(name: name, size: size) != nil {
-            return .custom(name, size: size)
+            return .custom(name, size: size, relativeTo: .body)
         }
         return .system(size: size, weight: weight.systemWeight)
     }
@@ -103,6 +103,25 @@ enum InterWeight {
         case .extraBold: return .heavy
         }
     }
+}
+
+// MARK: - Canonical type scale (brief v2)
+//
+// Six tiers, mirroring web's --fs-* CSS vars. New views pick the nearest
+// tier; never hard-code a point size that fits between two rungs.
+enum TypeScale {
+    /// Oswald hero — the largest single-field display role (workout name, big countdown)
+    static let hero: CGFloat = 64
+    /// Oswald mid stats — section numerals, ring values, weekly totals
+    static let stat: CGFloat = 30
+    /// Inter primary body copy (brief: display ≥16pt · body uses this tier)
+    static let body: CGFloat = 15
+    /// Inter secondary — detail rows, list labels, subheads
+    static let sec:  CGFloat = 13
+    /// Inter ExtraBold eyebrow — tracking 1.2px, uppercase (≤11pt boundary)
+    static let eye:  CGFloat = 11
+    /// Inter micro — calendar tags, badge stamps, map sub-labels
+    static let mic:  CGFloat = 9.5
 }
 
 // MARK: - Display recipe modifier
