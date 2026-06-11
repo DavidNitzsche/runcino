@@ -988,6 +988,34 @@ function layoutWeek({
   return slots as DayPlan[];
 }
 
+/** "Get them running on day one." If the week's anchor-day slot is a rest
+ *  day, relocate an easy run onto it — stolen from the easy day furthest
+ *  out — so a fresh onboarder isn't met with several rest days before
+ *  their first run. The long + quality days and the weekly run count stay
+ *  put; only an easy day moves. No-op when the anchor already runs or
+ *  there's no easy day to relocate (a low-frequency week that's all
+ *  long + quality). */
+function frontLoadFirstRun(days: DayPlan[], anchorDow: number): void {
+  const todaySlot = days.find((d) => d.dow === anchorDow);
+  if (!todaySlot || todaySlot.type !== 'rest') return; // already runs today
+  const easies = days.filter((d) => d.type === 'easy' && d.distanceMi > 0);
+  if (easies.length === 0) return; // only long/quality this week — leave them
+  const offset = (dow: number) => (dow - anchorDow + 7) % 7;
+  const donor = easies.reduce((a, b) => (offset(b.dow) > offset(a.dow) ? b : a));
+  todaySlot.type = 'easy';
+  todaySlot.distanceMi = donor.distanceMi;
+  todaySlot.isQuality = false;
+  todaySlot.isLong = false;
+  todaySlot.subLabel = 'EASY';
+  todaySlot.notes = 'First run. Ease in at a conversational pace · the week settles into its rhythm from here.';
+  donor.type = 'rest';
+  donor.distanceMi = 0;
+  donor.isQuality = false;
+  donor.isLong = false;
+  donor.subLabel = 'REST';
+  donor.notes = 'Off. Sleep, hydrate, mobilize.';
+}
+
 // ── Pure compose layer (2026-06-02) ─────────────────────────────────────
 // Extracted from generatePlan() so the plan-engine bench can test the
 // actual plan output against persona doctrine targets without a database.
@@ -1288,6 +1316,19 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     }
     weeks.push({ startISO: weekStart, phase: phaseLabel, weeklyMi: vols[wi], days, isRaceWeek, tPaceSec: weekT });
     phaseWkRemaining--;
+  }
+
+  // 2026-06-10 · "get them running on day one." A mid-week onboarder
+  // (today-anchored · start day is not a Monday) whose preferred run days
+  // fall later in the week would otherwise stare at several rest days
+  // before their first run (David: "if someone signs up lets get them
+  // running and then the schedule can even out · they're going to be
+  // ready and excited to run"). When week 0's start day is a rest day,
+  // relocate an easy run onto it — stolen from the latest easy day so the
+  // weekly count (and the long/quality days) are untouched. Week 1+ keeps
+  // the normal day-of-week rhythm. Monday-anchored regens skip this.
+  if (weeks.length > 0 && new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay() !== 1) {
+    frontLoadFirstRun(weeks[0].days, new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay());
   }
 
   return {

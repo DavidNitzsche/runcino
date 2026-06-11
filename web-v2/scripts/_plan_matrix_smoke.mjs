@@ -151,6 +151,16 @@ function checkNoPastRuns(loaded) {
   return past.length ? [`${past.length} run(s) scheduled before today (e.g. ${past[0].date_iso})`] : [];
 }
 
+// "Get them running on day one": the first prescribed run should land
+// within the first 2 days of signup, not after a stretch of rest.
+function checkFirstRunSoon(loaded) {
+  const runDates = loaded.weeks.flatMap((w) => w.days).filter((d) => d.mi > 0).map((d) => d.date_iso).sort();
+  if (!runDates.length) return ['no runs at all'];
+  const days = (a, b) => Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86400000);
+  const gap = days(TODAY, runDates[0]);
+  return gap > 1 ? [`first run is ${gap} days out (${runDates[0]}) — not running on day one`] : [];
+}
+
 // ── Validators ────────────────────────────────────────────────────
 function validateMaintenance(p, loaded) {
   const fails = [];
@@ -274,7 +284,7 @@ for (const p of personas) {
 
     const loaded = await loadPlanWeeks(userUuid);
     const fails = p.kind === 'race' ? validateRace(p, loaded) : validateMaintenance(p, loaded);
-    if (loaded) fails.push(...checkNoPastRuns(loaded));
+    if (loaded) fails.push(...checkNoPastRuns(loaded), ...checkFirstRunSoon(loaded));
     row.fails = fails;
     row.status = fails.length ? 'FAIL' : 'PASS';
     if (loaded) {

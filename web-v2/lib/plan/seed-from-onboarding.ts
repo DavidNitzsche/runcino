@@ -428,6 +428,26 @@ async function persistMaintenancePlan(args: {
       thisWeekMi, shape, args.peakLongMi, thisWeekMi,
     );
 
+    // 2026-06-10 · "get them running on day one." Onboarding anchors week
+    // 0 at today; if the join day lands on a rest day, relocate an easy
+    // run onto it (stolen from the easy day furthest out) so a fresh,
+    // eager runner isn't met with rest days before their first run. The
+    // long + quality days and the weekly count are untouched.
+    if (wi === 0) {
+      const anchorDow = new Date(args.startMonday + 'T12:00:00Z').getUTCDay();
+      if (distances[anchorDow] === 0) {
+        const easyDows = [0, 1, 2, 3, 4, 5, 6].filter((dw) => shape[dw].type === 'easy' && distances[dw] > 0);
+        if (easyDows.length) {
+          const off = (dw: number) => (dw - anchorDow + 7) % 7;
+          const donor = easyDows.reduce((a, b) => (off(b) > off(a) ? b : a));
+          distances[anchorDow] = distances[donor];
+          shape[anchorDow] = { type: 'easy', isQuality: false, isLong: false };
+          distances[donor] = 0;
+          shape[donor] = { type: 'rest', isQuality: false, isLong: false };
+        }
+      }
+    }
+
     for (let offset = 0; offset < 7; offset++) {
       const dateISO = addDays(weekStartISO, offset);
       const jsDow = new Date(dateISO + 'T12:00:00Z').getUTCDay();
