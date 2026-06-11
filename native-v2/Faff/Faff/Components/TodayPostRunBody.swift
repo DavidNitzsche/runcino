@@ -94,6 +94,9 @@ struct TodayPostRunBody: View {
     /// not for white-card sections (those are sectionBg).
     private var chipBg: Color { onMesh ? Color.white.opacity(0.08) : Color(hex: 0xF6F0E2) }
 
+    @State private var stravaPushState: StravaPushStateLocal = .idle
+    private enum StravaPushStateLocal { case idle, pushing, pending, done, dup, failed }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header                          // NEW · eyebrow + Oswald title + win line
@@ -117,15 +120,11 @@ struct TodayPostRunBody: View {
             }
             formGrid
             howItWent
-            // 2026-06-02 round 50 · "View full run ›" link retired.
-            // Post-run pull-up sheet is the canonical post-run surface
-            // now · everything the runner needs lives here. The
-            // viewFullRunLink view itself is kept dead-coded in case
-            // a future deep-link route brings it back.
-            // 2026-06-02 round 54 · tail-filler REVERTED · the 320pt
-            // void was worse than the cream band. Real fix is in
-            // DragSheet/TodayView · the sheet's body BG now goes white
-            // in post-run mode so there's no cream to hide.
+            // Strava push — hidden for Strava-origin runs (pushing back
+            // is a no-op) and when there's no runId.
+            if let id = runId, detail?.source != "strava" {
+                stravaPushSection(runId: id)
+            }
         }
     }
 
@@ -150,7 +149,7 @@ struct TodayPostRunBody: View {
             Text(headerTitle.uppercased())
                 .font(.display(46, weight: .bold))
                 .tracking(-1.5)
-                .foregroundStyle(primaryText)
+                .foregroundStyle(accent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .padding(.top, 2)
@@ -513,11 +512,12 @@ struct TodayPostRunBody: View {
                             Text(item.0)
                                 .font(.body(9, weight: .extraBold)).tracking(1.0)
                                 .foregroundStyle(subtleText)
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(item.1)
                                 .font(.display(18, weight: .bold)).tracking(-0.2)
                                 .foregroundStyle(primaryText)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
                         .padding(.horizontal, 12).padding(.vertical, 10)
                         .background(chipBg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
@@ -553,7 +553,14 @@ struct TodayPostRunBody: View {
     }
 
     private func gridColumns(count: Int) -> [GridItem] {
-        let n = max(1, min(4, count))
+        // 3 columns for exactly 3 metrics; 2 columns otherwise.
+        // Avoids a lone orphan cell when count % 2 == 1 (except 3).
+        let n: Int
+        switch count {
+        case 1: n = 1
+        case 3: n = 3
+        default: n = 2
+        }
         return Array(repeating: GridItem(.flexible(), spacing: 8), count: n)
     }
 
@@ -703,6 +710,94 @@ struct TodayPostRunBody: View {
         let v = (recap?.verdict ?? "").lowercased()
         if v.contains("off plan") || v.contains("dnf") { return Color(hex: 0xFC4D64) }
         return Color(hex: 0x1F9A6F)
+    }
+
+    // MARK: - Strava push
+
+    @ViewBuilder
+    private func stravaPushSection(runId: String) -> some View {
+        VStack(spacing: 0) {
+            Button {
+                guard stravaPushState == .idle || stravaPushState == .failed else { return }
+                stravaPushState = .pushing
+                Task {
+                    if let s = try? await API.pushRunToStrava(runId: runId) {
+                        await MainActor.run {
+                            switch s.status {
+                            case "uploaded":  stravaPushState = .done
+                            case "duplicate": stravaPushState = .dup
+                            case "pending":
+                                stravaPushState = .pending
+                                Task { await pollStravaPush(runId: runId) }
+                            default:          stravaPushState = .failed
+                            }
+                        }
+                    } else {
+                        await MainActor.run { stravaPushState = .failed }
+                    }
+                }
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: stravaIcon)
+                        .font(.system(size: 13, weight: .bold))
+                    Text(stravaLabel)
+                        .font(.body(14, weight: .extraBold)).tracking(0.3)
+                }
+                .foregroundStyle(Theme.txt)
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .background(
+                    Color(hex: 0xFC4D24).opacity(
+                        (stravaPushState == .done || stravaPushState == .dup) ? 0.18 : 0.32
+                    ),
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color(hex: 0xFC4D24).opacity(0.6), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled([.pushing, .pending, .done, .dup].contains(stravaPushState))
+        }
+        .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 28)
+    }
+
+    private var stravaIcon: String {
+        switch stravaPushState {
+        case .idle:    return "arrow.up.right.square.fill"
+        case .pushing: return "ellipsis"
+        case .pending: return "clock.fill"
+        case .done:    return "checkmark"
+        case .dup:     return "checkmark.circle.fill"
+        case .failed:  return "exclamationmark.triangle.fill"
+        }
+    }
+    private var stravaLabel: String {
+        switch stravaPushState {
+        case .idle:    return "PUSH TO STRAVA"
+        case .pushing: return "PUSHING..."
+        case .pending: return "PROCESSING..."
+        case .done:    return "PUSHED"
+        case .dup:     return "ALREADY ON STRAVA"
+        case .failed:  return "PUSH FAILED · TAP TO RETRY"
+        }
+    }
+
+    private func pollStravaPush(runId: String, attempt: Int = 0) async {
+        guard attempt < 8 else { return }
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        guard let s = try? await API.fetchStravaPushStatus(runId: runId) else {
+            await pollStravaPush(runId: runId, attempt: attempt + 1)
+            return
+        }
+        await MainActor.run {
+            switch s.status {
+            case "uploaded":  stravaPushState = .done
+            case "duplicate": stravaPushState = .dup
+            case "failed":    stravaPushState = .failed
+            default:          Task { await pollStravaPush(runId: runId, attempt: attempt + 1) }
+            }
+        }
     }
 }
 
