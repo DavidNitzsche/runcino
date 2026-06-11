@@ -79,6 +79,7 @@ struct HealthView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
+                Color.clear.frame(height: 44)
                 pinnedRegion
                 sectionPanel
             }
