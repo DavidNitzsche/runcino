@@ -103,18 +103,12 @@ struct HealthView: View {
     /// Never scrolls. Padded for status bar.
     private var pinnedRegion: some View {
         VStack(spacing: 0) {
-            // Header row · title + log button
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("HEALTH")
-                        .font(.display(32, weight: .bold))
-                        .tracking(0.3)
-                        .foregroundStyle(.white)
-                    Text(eyebrowText)
-                        .font(.body(11, weight: .extraBold))
-                        .tracking(1.5)
-                        .foregroundStyle(Color.white.opacity(0.78))
-                }
+            // Header row · eyebrow context + log button
+            HStack(alignment: .center) {
+                Text(eyebrowText)
+                    .font(.body(11, weight: .extraBold))
+                    .tracking(1.5)
+                    .foregroundStyle(Color.white.opacity(0.78))
                 Spacer()
                 Button { showLogSheet = true } label: {
                     Image(systemName: "plus")

@@ -184,6 +184,7 @@ struct RootTabView: View {
     private var globalTopBar: some View {
         ZStack {
             FaffLogoMark(color: Theme.txt, height: 20)
+                .allowsHitTesting(false)
 
             HStack(spacing: 0) {
                 // Profile avatar

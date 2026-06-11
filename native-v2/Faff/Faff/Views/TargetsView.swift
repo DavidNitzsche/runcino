@@ -30,9 +30,6 @@ struct TargetsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     Color.clear.frame(height: 44)
-                    PageHeader(title: "TARGETS", avatarInitials: avatarInitials, onAvatarTap: onProfile)
-                        .padding(.horizontal, 22).padding(.top, 12)
-
                     heroBlock
                         .padding(.horizontal, 24).padding(.top, 20)
 

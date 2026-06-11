@@ -56,12 +56,9 @@ struct TrainView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     Color.clear.frame(height: 44)
-                    topbar
-                        .padding(.horizontal, 22)
-                        .padding(.top, 8)
                     header
                         .padding(.horizontal, 22)
-                        .padding(.top, 18)
+                        .padding(.top, 10)
                     phaseContextCard
                         .padding(.horizontal, 22)
                         .padding(.top, 16)
