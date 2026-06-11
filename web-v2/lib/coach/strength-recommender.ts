@@ -248,6 +248,15 @@ export async function recommendStrengthDays(
   // under recoverable fatigue; piling on a second heavy day is not.
   const maxFromReadiness = readinessGate.capAtOne ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
   const target = Math.min(maxFromRunner, maxFromPhase, maxFromLoad, maxFromReadiness, candidates.length);
+  // 2026-06-10 · this cap is recomputed LIVE every read (loadGlanceState is
+  // not cached · readiness + load are re-read each call), so the weekly
+  // target adapts BOTH directions within a week. It drops under fatigue
+  // (readiness streak / ACWR spike) and returns to DEFAULT the moment the
+  // gate clears · the pick + roll-forward below then fill the remaining
+  // viable days, keeping two whenever it makes sense (David 2026-06-10 #2/#3).
+  // Do NOT memoize this per-week to "stop the chip jitter" · that jitter is
+  // the up/down adaptation, and the existing guards (readiness, ACWR,
+  // adjacency, ≥1 rest day, phase frequency) are the "if it makes sense" gate.
 
   // 5b. Mode-aware intensity demotion · per-phase frequency cap doesn't
   //     touch intensity tags. Demote heavy → maintenance when phase
@@ -278,6 +287,18 @@ export async function recommendStrengthDays(
       picked = picked.filter((_, i) => i !== picked.length - 1 - lastRestPickIdx);
     }
   }
+
+  // 6b. 2026-06-10 · Rule 14b · missed-strength roll-forward.
+  //     A recommended day that has PASSED unlogged is a miss · advance it
+  //     to the next viable slot this week instead of leaving it to surface
+  //     as "1 day missed". Completion-aware, so it needs the logged set +
+  //     runner-local today. The cap above already set HOW MANY · this only
+  //     moves WHICH day. David 2026-06-10.
+  const [loggedSet, todayISO] = await Promise.all([
+    loadLoggedStrengthDates(userUuid, weekStartISO),
+    runnerToday(userUuid),
+  ]);
+  picked = rollForwardMissedPicks(picked, candidates, loggedSet, todayISO);
 
   // Sort the final picks chronologically for stable display.
   picked.sort();
@@ -598,6 +619,22 @@ async function loadLoadContext(userUuid: string): Promise<LoadContext> {
   return { acwr: Math.round((acute / chronic) * 100) / 100 };
 }
 
+/**
+ * 2026-06-10 · Rule 14b · dates with a logged strength session this week.
+ * Drives the missed-strength roll-forward (a logged day is neither a miss
+ * to advance nor a free slot to land on). Same date range loadStrengthWeekStatus
+ * reconciles against · one source for "did they lift on this day".
+ */
+async function loadLoggedStrengthDates(userUuid: string, weekStartISO: string): Promise<Set<string>> {
+  const weekEndISO = isoAddDays(weekStartISO, 6);
+  const rows = (await pool.query<{ d: string }>(
+    `SELECT DISTINCT date::text AS d FROM strength_sessions
+      WHERE user_uuid = $1::uuid AND date >= $2::date AND date <= $3::date`,
+    [userUuid, weekStartISO, weekEndISO],
+  ).catch(() => ({ rows: [] as Array<{ d: string }> }))).rows;
+  return new Set(rows.map((r) => r.d));
+}
+
 // ─── Candidate scoring ──────────────────────────────────────────────────
 
 interface Candidate {
@@ -690,6 +727,57 @@ function pickCandidates(weekDays: WeekDay[]): Candidate[] {
     });
   }
   return candidates;
+}
+
+// ─── Missed-strength roll-forward · Rule 14b (2026-06-10) ───────────────
+
+/**
+ * Advance a missed recommended day to the next viable slot this week.
+ *
+ * A picked date that is BEFORE runner-local today with no logged session
+ * is a miss. Rather than leave it to surface as "N days missed", move it
+ * to the best-scoring candidate that is today-or-later, not already
+ * picked, and not already logged. Ties break to the sooner day.
+ *
+ * Doctrine carries through the destination: the replacement is a regular
+ * Candidate, so a heavy quality-day session that slips lands heavy-PM on
+ * the next quality day (David's case · Tue tempo → Thu tempo), or drops to
+ * maintenance if the only slot left is an easy day. The weekly cap already
+ * fixed HOW MANY sessions · this only changes WHICH day, never the count.
+ *
+ * When no future slot exists (miss on the last viable day of the week),
+ * the date is kept so it still surfaces honestly as skipped. Deterministic
+ * given (picked, logged, today) · the chip only moves in response to a
+ * real miss, so it doesn't jitter day to day.
+ *
+ * David 2026-06-10: "if a strength session is missed the plan/strength
+ * session needs to auto adapt and find the next day · tomorrow after
+ * intervals."
+ */
+function rollForwardMissedPicks(
+  picked: string[],
+  candidates: Candidate[],
+  loggedSet: Set<string>,
+  todayISO: string,
+): string[] {
+  const used = new Set(picked);
+  const out: string[] = [];
+  // Chronological so an earlier miss claims the earlier replacement slot.
+  for (const date of [...picked].sort()) {
+    const missed = date < todayISO && !loggedSet.has(date);
+    if (!missed) { out.push(date); continue; }
+    const replacement = candidates
+      .filter((c) => c.date >= todayISO && !used.has(c.date) && !loggedSet.has(c.date))
+      .sort((a, b) => b.preferenceScore - a.preferenceScore || (a.date < b.date ? -1 : 1))[0];
+    if (replacement) {
+      used.delete(date);
+      used.add(replacement.date);
+      out.push(replacement.date);
+    } else {
+      out.push(date); // no future slot · keep the miss visible
+    }
+  }
+  return out;
 }
 
 // ─── Copy synthesis ─────────────────────────────────────────────────────
