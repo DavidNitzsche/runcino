@@ -17,10 +17,8 @@ struct PlannedView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        let mesh = effort.mesh
         ZStack {
-            FaffMeshView(mesh: mesh)
-                .animation(Theme.Motion.mesh, value: mesh)
+            FaffMeshView(mesh: .neutral)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
