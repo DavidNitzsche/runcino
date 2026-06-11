@@ -9,9 +9,14 @@ declare global {
   var __pgPool: Pool | undefined;
 }
 
+// Local sandbox (scripts/sandbox.sh · localhost Postgres) speaks no TLS —
+// forcing ssl there fails every query. Railway proxy connections keep the
+// permissive TLS they always had.
+const isLocalDb = /@(localhost|127\.0\.0\.1)[:/]|^postgres(ql)?:\/\/(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? '');
+
 export const pool: Pool = global.__pgPool ?? new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: isLocalDb ? undefined : { rejectUnauthorized: false },
   max: 8,
   // Fail a checkout instead of queueing forever when all 8 connections hang.
   connectionTimeoutMillis: 10_000,

@@ -4,7 +4,13 @@
     {
       "name": "Designs static",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4040", "--directory", "/Volumes/WP/06 Claude Code/Runcino/designs"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4040",
+        "--directory",
+        "/Volumes/WP/06 Claude Code/Runcino/designs"
+      ],
       "cwd": "/Volumes/WP/06 Claude Code/Runcino/designs",
       "port": 4040,
       "autoPort": true
@@ -12,7 +18,13 @@
     {
       "name": "Docs static",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4050", "--directory", "/Volumes/WP/06 Claude Code/Runcino/docs"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4050",
+        "--directory",
+        "/Volumes/WP/06 Claude Code/Runcino/docs"
+      ],
       "cwd": "/Volumes/WP/06 Claude Code/Runcino/docs",
       "port": 4050,
       "autoPort": true
@@ -20,10 +32,23 @@
     {
       "name": "faff.run web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "cwd": "/Volumes/WP/06 Claude Code/Runcino/web-v2",
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "Faff sandbox",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "scripts/sandbox.sh"
+      ],
+      "cwd": "/Volumes/WP/06 Claude Code/Runcino/web-v2",
+      "port": 3100,
+      "autoPort": false
     }
   ]
 }
