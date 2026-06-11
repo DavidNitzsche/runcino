@@ -32,7 +32,6 @@ import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type Bluep
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { PlanProposalCard } from '../cards/PlanProposalCard';
-import { CoachCalendarConnect } from '../CoachCalendarConnect';
 import { WorkoutProposalBanner } from '../cards/WorkoutProposalBanner';
 import { RouteMap } from '../RouteMap';
 import {
@@ -621,6 +620,20 @@ export function TodayView({
                 const hrvTile = seed.health.body.find(m => m.k === 'hrv');
                 const hrvCur = hrvTile?.current ?? null;
                 const hrvBase = hrvTile?.target ?? null;
+                // 2026-06-10 · cold start. A brand-new runner with no
+                // HealthKit data was shown three empty tiles ("· bpm /
+                // · ms / 0.0h") that read as a broken card (David). When
+                // there's no biometric data at all, show one honest
+                // connect prompt instead of empty placeholders.
+                // Falsy (null/0) all-around = no real biometrics: a
+                // cold-start runner reads avg7 as 0.0h, not null.
+                if (!lastNight && !avg7 && !rhrCur && !hrvCur) {
+                  return (
+                    <div style={{ gridColumn: '1 / -1', opacity: 0.6, fontSize: 12.5, lineHeight: 1.5 }}>
+                      Connect Apple Health to track sleep, resting HR, and HRV. Until then, Faff coaches off your runs.
+                    </div>
+                  );
+                }
                 return (
                   <>
                     <div>
@@ -753,8 +766,15 @@ export function TodayView({
                 ? 'Your coach owns the plan. Faff tracks the work. Runs land here from your watch or Strava.'
                 : KIT.rest.coach}</div>
             )}
-            {isCoachedBlank && seed.coachCalendar && (
-              <CoachCalendarConnect cal={seed.coachCalendar} />
+            {/* 2026-06-10 · the calendar-link paste UI moved to Settings ›
+                Connections (David: "why would they paste the training
+                peaks link here? that should be in settings"). The hero
+                keeps only a quiet pointer when no calendar is connected
+                yet. */}
+            {isCoachedBlank && !seed.coachCalendar?.urlSet && (
+              <div className="rest-coach" style={{ opacity: 0.62, fontSize: 12.5 }}>
+                Using Final Surge or TrainingPeaks? Add your coach&rsquo;s calendar in Settings › Connections.
+              </div>
             )}
             <div className="stats">
               {/* 2026-06-03 · subtitles added per David: "not sure what
@@ -774,6 +794,20 @@ export function TodayView({
                 const hrvTile = seed.health.body.find(m => m.k === 'hrv');
                 const hrvCur = hrvTile?.current ?? null;
                 const hrvBase = hrvTile?.target ?? null;
+                // 2026-06-10 · cold start. A brand-new runner with no
+                // HealthKit data was shown three empty tiles ("· bpm /
+                // · ms / 0.0h") that read as a broken card (David). When
+                // there's no biometric data at all, show one honest
+                // connect prompt instead of empty placeholders.
+                // Falsy (null/0) all-around = no real biometrics: a
+                // cold-start runner reads avg7 as 0.0h, not null.
+                if (!lastNight && !avg7 && !rhrCur && !hrvCur) {
+                  return (
+                    <div style={{ gridColumn: '1 / -1', opacity: 0.6, fontSize: 12.5, lineHeight: 1.5 }}>
+                      Connect Apple Health to track sleep, resting HR, and HRV. Until then, Faff coaches off your runs.
+                    </div>
+                  );
+                }
                 return (
                   <>
                     <div>

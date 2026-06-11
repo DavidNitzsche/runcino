@@ -14,6 +14,7 @@ import {
   useGlossaryDrawer,
 } from '../toolkit';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
+import { CoachCalendarConnect } from '../CoachCalendarConnect';
 
 const ROLES = ['EASY','LONG','TEMPO','INTERVALS','RACE','RECOVERY'];
 
@@ -213,6 +214,16 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           />
         ))}
       </div>
+
+      {/* Coach's calendar (Final Surge / TrainingPeaks ICS) · lives in
+          Settings under CONNECTIONS, not on the Today hero (David
+          2026-06-10: "why would they paste the training peaks link
+          here? that should be in settings"). Shown for coached runners. */}
+      {seed.coachedExternally && (
+        <div style={{ marginTop: 14 }}>
+          <CoachCalendarConnect cal={seed.coachCalendar ?? { urlSet: false, fetchedAt: null, lastError: null }} />
+        </div>
+      )}
       </div>{/* .band */}
 
       {/* Pro toggles · phone_hr_alerts + strava_auto_push. Closes
