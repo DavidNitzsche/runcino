@@ -18,6 +18,7 @@ import {
   canAdvanceFromGoal,
   type OnboardingState,
   type RaceDistance,
+  type TTDistance,
 } from '@/lib/onboarding/state';
 
 const DISTANCES: { value: RaceDistance; label: string; wide?: boolean }[] = [
@@ -47,6 +48,22 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
       ? { ...state, distance: d, date: null, time: null }
       : { ...state, distance: d };
     setState(next);
+  }
+
+  /** 2026-06-10 (David): "what if there isnt a race date. they could
+   *  just want to hit a time and then let the plan tell them when its
+   *  possible." A race plan genuinely needs an anchor date (the build
+   *  periodizes backward from race day) — so no-date runners route to
+   *  the TIME-GOAL path instead: 5K/10K carry their distance into the
+   *  time-trial ladder; half/marathon (no TT ladder) go to consistency,
+   *  where booking the race later recalibrates the plan. */
+  function chaseTimeInstead() {
+    const tt: TTDistance | null =
+      state.distance === '5k' ? '5k' : state.distance === '10k' ? '10k' : null;
+    router.push(buildOnboardingHref(
+      { ...state, distance: 'none', date: null, time: null, ttDistance: tt, ttTime: null },
+      { step: 'goal-details' },
+    ));
   }
 
   function onContinue() {
@@ -173,6 +190,32 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
             />
           </InputBlock>
         </div>
+      )}
+
+      {/* No-date escape · routes into the time-goal path */}
+      {showRaceInputs && (
+        <button
+          type="button"
+          data-test="chase-time"
+          onClick={chaseTimeInstead}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'rgba(255,255,255,0.72)',
+            fontFamily: 'var(--f-body)',
+            fontSize: 13,
+            fontWeight: 600,
+            textAlign: 'left',
+            textDecoration: 'underline',
+            textUnderlineOffset: 3,
+            cursor: 'pointer',
+            padding: 0,
+            marginBottom: 16,
+            maxWidth: 560,
+          }}
+        >
+          No race booked yet? Chase the time instead →
+        </button>
       )}
 
       {/* "I have a coach" alternate copy */}

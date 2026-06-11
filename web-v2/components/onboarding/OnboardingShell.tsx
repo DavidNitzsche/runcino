@@ -74,13 +74,31 @@ export function OnboardingShell({
   const faceBg = gradientFor(variant, intent);
 
   return (
-    <main style={{
+    <main className="ob-shell" style={{
       minHeight: '100vh',
       background: faceBg,
       color: '#fff',
       display: 'flex',
       flexDirection: 'column',
     }}>
+      {/* 2026-06-10 · web framing (David: "looks like the iphone option
+          but on the web") · the deck was a phone flow stretched across
+          the desktop viewport — hero mid-left, CTA flexed to the bottom
+          of a 1300px window. On ≥900px the column now centers both ways
+          and caps its height so each step reads as one composed unit.
+          Below 900px nothing changes — the phone flow IS the design. */}
+      <style>{`
+        @media (min-width: 900px) {
+          .ob-shell .ob-col {
+            flex: initial;
+            margin: auto;
+            width: 640px;
+            min-height: 620px;
+            max-height: 800px;
+            padding: 48px 40px;
+          }
+        }
+      `}</style>
       {/* Top strip · brand left, back right */}
       <header style={{
         padding: '24px 28px 0',
@@ -104,8 +122,8 @@ export function OnboardingShell({
         )}
       </header>
 
-      {/* Content column · constrained to 760 on desktop, full-bleed on phone */}
-      <div style={{
+      {/* Content column · centered card on desktop, full-bleed on phone */}
+      <div className="ob-col" style={{
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
