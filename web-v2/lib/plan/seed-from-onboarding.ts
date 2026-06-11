@@ -190,24 +190,50 @@ function buildProgressiveCurve(startMpw: number, targetMpw: number): {
   return { volumeMi, isCutback };
 }
 
+type QualityKind = 'threshold' | 'intervals';
+type DayKind = 'rest' | 'easy' | 'long' | QualityKind;
+
+/** Quality type for the runner's GOAL distance. A runner with an active
+ *  time goal needs the energy system that distance races on — so the
+ *  quality session targets it instead of generic aerobic threshold:
+ *    · 1mi / 5K → VO2max intervals (I-pace) · the primary stimulus that
+ *      actually raises 5K speed (Daniels Running Formula §"5K-10K
+ *      training": I-pace intervals are THE 5K driver).
+ *    · 10K → threshold-dominant with alternating VO2 touches
+ *      (Research/22 §quality-mix-by-distance · 10K is balanced).
+ *    · no TT goal (pure consistency) → threshold · holding aerobic
+ *      fitness with no speed goal is the correct maintenance shape.
+ *
+ *  Before this, the no-race seeder hardcoded `threshold` for everyone —
+ *  so "get faster at a 5K" produced an aerobic hold plan with ZERO speed
+ *  work. The goal was captured and then ignored. */
+function goalQualityType(ttDistance: TTDistance | null, weekIdx: number): QualityKind {
+  if (ttDistance === '1mi' || ttDistance === '5k') return 'intervals';
+  if (ttDistance === '10k') return weekIdx % 2 === 1 ? 'intervals' : 'threshold';
+  return 'threshold';
+}
+
 /** Day-of-week layout for one week.
  *
  *  Maintenance is 1 quality + 1 long + N easy days + rest. weeklyFrequency
  *  caps total running days: frequency - mandatory(long + quality) = easy
  *  slots; remaining days become rest. This is the fix for the original
  *  "intentionally ignored" note — ignoring frequency meant a 3-day runner
- *  got a 6-day plan.
+ *  got a 6-day plan. The quality day's TYPE is goal-driven (goalQualityType).
  */
 function dayShape(
   layout: { longRunDow: number; qualityDows: number[]; restDow: number },
   weeklyFrequency: WeeklyFrequency | null,
+  ttDistance: TTDistance | null,
+  weekIdx: number,
 ): Array<{
-  type: 'rest' | 'easy' | 'long' | 'threshold';
+  type: DayKind;
   isQuality: boolean;
   isLong: boolean;
 }> {
+  const qualityType = goalQualityType(ttDistance, weekIdx);
   const days = Array.from({ length: 7 }, () => ({
-    type: 'easy' as 'rest' | 'easy' | 'long' | 'threshold',
+    type: 'easy' as DayKind,
     isQuality: false,
     isLong: false,
   }));
@@ -215,7 +241,7 @@ function dayShape(
   days[layout.longRunDow] = { type: 'long', isQuality: false, isLong: true };
   for (const d of layout.qualityDows) {
     if (d === layout.restDow || d === layout.longRunDow) continue;
-    days[d] = { type: 'threshold', isQuality: true, isLong: false };
+    days[d] = { type: qualityType, isQuality: true, isLong: false };
   }
   // Respect weeklyFrequency: limit easy days, converting excess to rest.
   if (weeklyFrequency != null) {
@@ -246,6 +272,9 @@ function notesFor(type: string, isCutback: boolean): string {
   }
   if (type === 'threshold') {
     return 'Threshold session, comfortably hard. 4–6 × 1K at T pace with 60s jog. The aerobic ceiling is the long-term project.';
+  }
+  if (type === 'intervals') {
+    return 'VO2 intervals. 5 × 1000m at 5K effort, 2 min jog between. Short and hard, even splits. This is the top-end speed your goal is built on.';
   }
   if (isCutback) {
     return 'Cutback easy, shorter, slower, no agenda. Move blood through the legs and get out of the way of recovery.';
@@ -328,6 +357,7 @@ async function persistMaintenancePlan(args: {
   curve: { volumeMi: number[]; isCutback: boolean[] };
   layout: { longRunDow: number; qualityDows: number[]; restDow: number };
   weeklyFrequency: WeeklyFrequency | null;
+  ttDistance: TTDistance | null;
   peakLongMi: number;
   peakWeeklyMi: number;
   authoredState: Record<string, unknown>;
@@ -353,15 +383,23 @@ async function persistMaintenancePlan(args: {
      JSON.stringify({ ...args.authoredState, provisionalVdot, tPaceSec })],
   );
 
-  // Single MAINTENANCE phase across all 16 weeks.
+  // Single phase across all 16 weeks. A TT-goal runner is on a BUILD
+  // toward that distance (VO2/threshold targeted); a no-goal runner is
+  // on an aerobic maintenance hold. The label reflects which.
+  const phaseLabel = args.ttDistance
+    ? `${args.ttDistance === '1mi' ? '1 MILE' : args.ttDistance.toUpperCase()} BUILD`
+    : 'MAINTENANCE';
+  const phaseRationale = args.ttDistance
+    ? `Building toward your ${args.ttDistance === '1mi' ? '1-mile' : args.ttDistance.toUpperCase()} goal · 1 targeted quality session/week + aerobic base.`
+    : 'No A-race, holding aerobic base with 1 quality session/week.';
   const phaseId = id('phs');
   await pool.query(
     `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
-      phaseId, planId, 'MAINTENANCE', 0, TOTAL_WEEKS - 1,
-      'No A-race, holding aerobic base with 1 quality session/week.',
-      'Daniels Running Formula §13 · Periodization',
+      phaseId, planId, phaseLabel, 0, TOTAL_WEEKS - 1,
+      phaseRationale,
+      'Daniels Running Formula §13 · Periodization + §"5K-10K training"',
     ],
   );
 
@@ -381,7 +419,7 @@ async function persistMaintenancePlan(args: {
       ],
     );
 
-    const shape = dayShape(args.layout, args.weeklyFrequency);
+    const shape = dayShape(args.layout, args.weeklyFrequency, args.ttDistance, wi);
     // Use this week's volume as both weeklyMi and peakWeeklyMi so the long
     // run is a fixed proportion of the week (not scaled down relative to a
     // far-off peak the runner hasn't reached yet).
@@ -403,6 +441,7 @@ async function persistMaintenancePlan(args: {
         effectiveType === 'long' && !isCutback ? null
         : effectiveType === 'long' && isCutback ? 'Long Run · Cutback'
         : effectiveType === 'threshold' ? 'Cruise Intervals'
+        : effectiveType === 'intervals' ? '5 × 1000m @ I · 2 min jog'
         : null;
       const wkoId = id('wko');
       // Spec per row · rest returns {spec:null} which the CHECK exempts.
@@ -490,20 +529,24 @@ export async function seedMaintenancePlanFromOnboarding(
     curve,
     layout,
     weeklyFrequency: goals.weeklyFrequency,
+    ttDistance: goals.ttDistance,
     peakLongMi,
     peakWeeklyMi: targetWeeklyMi,
     authoredState: {
       generated_at: new Date().toISOString(),
       seeder: 'onboarding-no-race',
+      // A TT goal makes this a goal BUILD (VO2/threshold targeted at the
+      // distance); without one it's an aerobic maintenance hold.
+      intent: goals.ttDistance ? `${goals.ttDistance}-build` : 'consistency-maintenance',
       total_weeks: TOTAL_WEEKS,
       start_weekly_mi: startWeeklyMi,
       peak_weekly_mi: targetWeeklyMi,
       peak_long_mi: peakLongMi,
       onboarding_goals: goals,
       citations: [
-        'Daniels Running Formula §13 · Periodization (maintenance)',
+        'Daniels Running Formula §13 · Periodization + §"5K-10K training" (I-pace intervals = 5K driver)',
         'Research/00a · long-run anchored on recent / historical longest + ≤10% progression rule',
-        'Research/22 · maintenance proportions (long 26%, threshold 18%, easy remainder)',
+        'Research/22 · quality mix by goal distance (5K VO2-dominant, 10K balanced, no-goal aerobic)',
       ],
     },
   });

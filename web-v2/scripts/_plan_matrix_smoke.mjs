@@ -127,6 +127,7 @@ async function loadPlanWeeks(userUuid) {
             (pw.workout_spec IS NOT NULL) AS has_spec, plw.week_idx
        FROM plan_workouts pw JOIN plan_weeks plw ON plw.id = pw.week_id
       WHERE pw.plan_id = $1 ORDER BY plw.week_idx, pw.date_iso`, [plan.id])).rows;
+  plan.qualityTypes = [...new Set(rows.filter((r) => r.is_quality && r.mi > 0).map((r) => r.type))];
   const weeks = new Map();
   for (const r of rows) {
     if (!weeks.has(r.week_idx)) weeks.set(r.week_idx, []);
@@ -167,6 +168,20 @@ function validateMaintenance(p, loaded) {
   if (p.body.weeklyMi > cur) {
     const peak = Math.max(...weeks.map((w) => weekMi(w.days)));
     if (peak <= w0) fails.push(`no ramp: peak ${peak} <= week0 ${w0}`);
+  }
+
+  // Goal-appropriate quality: a TT-goal runner must get the energy system
+  // their distance races on, NOT generic threshold. 5K/1mi → intervals
+  // present; 10K → both threshold + intervals; no-goal consistency →
+  // threshold only (no VO2 — correct aerobic hold).
+  const q = loaded.plan.qualityTypes ?? [];
+  const tt = p.body.ttDistance;
+  if (tt === '5k' || tt === '1mi') {
+    if (!q.includes('intervals')) fails.push(`${tt} goal but no interval/VO2 work (quality=${q.join(',')||'none'})`);
+  } else if (tt === '10k') {
+    if (!q.includes('intervals') || !q.includes('threshold')) fails.push(`10k goal wants threshold+intervals, got ${q.join(',')||'none'}`);
+  } else {
+    if (q.includes('intervals')) fails.push(`consistency (no goal) should not prescribe VO2 intervals, got ${q.join(',')}`);
   }
   return fails;
 }
