@@ -109,8 +109,6 @@ export async function GET(
        FROM runs
       WHERE user_uuid = $1
         AND (id::text = $2 OR data->>'activityId' = $2 OR data->>'id' = $2)
-        AND absorbed_into_canonical_at IS NULL
-        AND (data ? 'mergedIntoId') = false
       LIMIT 1`,
     [userId, String(id)],
   )).rows[0];
