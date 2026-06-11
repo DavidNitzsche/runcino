@@ -48,6 +48,10 @@ struct DragSheet<Header: View, Body: View>: View {
     /// breathing room (~200pt covers the floating tab bar pill on all
     /// iPhones, leaving the peek visible above with a small gap).
     var collapsedInsetFromBottom: CGFloat? = nil
+    /// Minimum y-offset for the sheet top when fully expanded.
+    /// Prevents the sheet from sliding above the global header bar.
+    /// Pass `screenSafeAreaTop + 44` to cap at the header bottom.
+    var minTopOffset: CGFloat = 0
     /// 0 = fully expanded (rests at top), 1 = fully collapsed (rests at peek).
     @Binding var progress: Double
     /// 2026-06-01 · Today v2 brief: "the whole peek (grab + peek) is filled
@@ -114,7 +118,7 @@ struct DragSheet<Header: View, Body: View>: View {
                 if let top = collapsedFromTop { return top }
                 return screenH - 200
             }()
-            let y = collapsedY * CGFloat(progress)
+            let y = max(minTopOffset, collapsedY * CGFloat(progress))
 
             VStack(spacing: 0) {
                 grabRegion
@@ -239,7 +243,7 @@ struct DragSheet<Header: View, Body: View>: View {
                 }
                 guard let start = dragStartProgress else { return }
                 let startY = CGFloat(start) * collapsedY
-                let newY = max(0, min(collapsedY, startY + g.translation.height))
+                let newY = max(minTopOffset, min(collapsedY, startY + g.translation.height))
                 progress = Double(newY / collapsedY)
             }
             .onEnded { g in

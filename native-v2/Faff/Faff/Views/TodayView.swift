@@ -177,14 +177,15 @@ struct TodayView: View {
             FaffMeshView(mesh: mesh)
 
             VStack(spacing: 0) {
-                // 44pt clearance for the globalTopBar overlay in RootTabView.
-                // Both sit at safe-area-top; ZStack-based bar needs explicit
-                // space below it since safeAreaInset doesn't pierce FaffMesh.
-                Color.clear.frame(height: screenSafeAreaTop + 44)
+                // Clearance for the globalTopBar overlay in RootTabView.
+                // The VStack already starts below the safe area; this just
+                // clears the bar content (6pt top pad + 30pt content + 4pt
+                // bottom pad = 40pt), plus a small breathing gap.
+                Color.clear.frame(height: 44)
 
                 if !allStripWeeks.isEmpty {
                     WeekStrip(weeks: allStripWeeks, selectedID: $selectedDayID, weekIndex: $selectedWeekIndex)
-                        .padding(.top, 8)
+                        .padding(.top, 2)
                 }
 
                 StravaReconnectBanner(status: stravaStatus)
@@ -350,13 +351,13 @@ struct TodayView: View {
                     ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(selectedEffort.title.uppercased())
-                                .font(.heroDisplay(72))
+                                .font(.heroDisplay(88))
                                 .tracking(-2)
                                 .foregroundStyle(selectedEffort.dot)
-                                .minimumScaleFactor(0.6)
+                                .minimumScaleFactor(0.55)
                                 .lineLimit(1)
                                 .padding(.horizontal, 22)
-                                .padding(.top, 18)
+                                .padding(.top, 14)
                             heroBlock
                                 .padding(.horizontal, 22)
                                 .padding(.top, 16)
@@ -391,11 +392,10 @@ struct TodayView: View {
                     // clearance gives a comfortable gap so the tab bar
                     // reads as separate from the peek.
                     collapsedInsetFromBottom: 200,
+                    minTopOffset: screenSafeAreaTop + 44,
                     progress: $sheetProgress,
                     peekBackground: peekFill,
-                    // 2026-06-02 round 54 · BOTH bodies stack white-bg
-                    // section cards on a colored sheet bg. The default
-                    bodyBackground: Theme.card,
+                    bodyBackground: peekFill,
                     grabTint: Color.white.opacity(0.35),
                     header: { peekHeader },
                     content: { sheetContent }
@@ -652,19 +652,13 @@ struct TodayView: View {
                 .padding(.top, 20)
             }
 
-            // Structured workout → Garmin-style step list
-            // Single-phase → full-width effort meter
-            if heroSteps.count >= 1 {
-                HeroStepList(steps: heroSteps)
+            // All run types use the same step-list layout.
+            // Structured workouts use real phases; easy/long fall back to
+            // a synthetic single-row so every run has consistent structure.
+            let steps = heroSteps.isEmpty ? syntheticHeroSteps : heroSteps
+            if !steps.isEmpty {
+                HeroStepList(steps: steps)
                     .padding(.top, 22)
-            } else if selectedEffort != .rest {
-                EffortMeter(
-                    position: selectedEffort.meterPosition,
-                    label: selectedEffort.effortLabel.uppercased(),
-                    height: 6,
-                    showZones: true
-                )
-                .padding(.top, 48)
             }
 
             // Coach cue · one sentence from /api/today/purpose
@@ -823,6 +817,32 @@ struct TodayView: View {
         return phases.map { .row(makeSeg($0)) }
     }
 
+    /// Single-row step for easy / long runs that have no structured phases.
+    /// Keeps the hero layout identical across all run types.
+    private var syntheticHeroSteps: [HeroStepItem] {
+        guard selectedEffort != .rest else { return [] }
+        let topLabel: String
+        switch selectedEffort {
+        case .easy:  topLabel = "Easy Run"
+        case .long:  topLabel = "Long Run"
+        case .tempo: topLabel = "Tempo"
+        default:     topLabel = selectedEffort.effortLabel
+        }
+        let bottomLabel: String
+        if distanceStr != "—", paceStr != "—" {
+            bottomLabel = "\(distanceStr)  ·  \(paceStr)"
+        } else if distanceStr != "—" {
+            bottomLabel = distanceStr
+        } else if let t = estTimeStr {
+            bottomLabel = t
+        } else {
+            bottomLabel = ""
+        }
+        let seg = HeroSeg(weight: 1.0, color: selectedEffort.dot,
+                          topLabel: topLabel, bottomLabel: bottomLabel)
+        return [.row(seg)]
+    }
+
     private func workPhaseShortLabel(_ p: WatchPhase) -> String {
         let lbl = p.label.uppercased()
         if lbl.contains("THRESHOLD") || lbl.contains("TEMPO") || lbl.contains("@T") { return "Tempo" }
@@ -853,11 +873,9 @@ struct TodayView: View {
     ///   · Post-run: existing run-type / DONE peek (effort color + recap cue).
     @ViewBuilder
     private var peekHeader: some View {
-        if isPostRunMode {
-            postRunPeekContent
-        } else {
-            readinessPeekContent
-        }
+        // 2026-06-10 · readiness-only panel · the peek header is always the
+        // readiness glance (no post-run effort/DONE variant on the panel).
+        readinessPeekContent
     }
 
     /// Post-run peek · existing design: effort type word + distance + DONE pill.
@@ -913,18 +931,11 @@ struct TodayView: View {
     /// centre, run type + distance on the right so the runner gets both
     /// signals at a glance without opening the sheet.
     private var readinessPeekContent: some View {
-        ZStack(alignment: .leading) {
-            // Radial orb glow emanating from the ring position.
-            // Deep band background (readinessBandTint on DragSheet) +
-            // orb glow = premium gradient look vs flat pastel.
-            RadialGradient(
-                colors: [readinessBandArc.opacity(0.22), Color.clear],
-                center: UnitPoint(x: 0.08, y: 0.5),
-                startRadius: 0,
-                endRadius: 120
-            )
-            .allowsHitTesting(false)
-
+        // 2026-06-10 · COMPACT peek header · just the ring + headline row,
+        // no orb glow. The glow was a greedy RadialGradient that inflated
+        // the peek to ~half the sheet, and once constrained it read as a
+        // weird gradient box on the thin strip. The bare row is naturally
+        // sized, so the peek stays a thin glance strip.
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
@@ -952,38 +963,27 @@ struct TodayView: View {
                 Spacer(minLength: 4)
             }
             .padding(.top, 2)
-        }
     }
 
     private var sheetContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if isDone {
-                postRunBody
-            } else {
-                // Readiness panel sits at the top of the sheet (dark body
-                // background · white text reads cleanly). Pre-run workout
-                // details follow below so both surfaces are reachable in
-                // one scroll.
-                TodayReadinessPanel(
-                    snapshot: readiness,
-                    lastNightHours: lastNightHours,
-                    thisWeekMiles: thisWeekMiles,
-                    bestWindow: forecast?.best_window,
-                    weeksToRace: weeksToRaceValue,
-                    daysToRace: daysToRaceValue,
-                    nextHardLabel: nextHardLabel,
-                    formLine: readiness?.formLine,
-                    onTap: { onReadinessTap() }
-                )
-                .padding(.horizontal, 22)
-                .padding(.top, 22)
-                .padding(.bottom, 20)
-                Rectangle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(height: 1)
-                preRunSheetContent
-            }
-        }
+        // 2026-06-10 · the slide panel is the READINESS surface only.
+        // No run detail (pre-run plan) and no post-run recap render here ·
+        // the run is the background hero, the recap has its own surface.
+        // David: the panel "is just readiness information."
+        TodayReadinessPanel(
+            snapshot: readiness,
+            lastNightHours: lastNightHours,
+            thisWeekMiles: thisWeekMiles,
+            bestWindow: forecast?.best_window,
+            weeksToRace: weeksToRaceValue,
+            daysToRace: daysToRaceValue,
+            nextHardLabel: nextHardLabel,
+            formLine: readiness?.formLine,
+            onTap: { onReadinessTap() }
+        )
+        .padding(.horizontal, 22)
+        .padding(.top, 22)
+        .padding(.bottom, 20)
     }
 
     /// 2026-06-02 round 61 · extracted so the past-day flat layout (no
@@ -1627,7 +1627,7 @@ struct TodayView: View {
             if selectedEffort == .rest { return Color(hex: 0x9FB0AD) }
             return selectedEffort.dot
         }
-        return Color(hex: 0x1A1F2B)  // dark slate — lifts off the mesh without amber wash
+        return Color(hex: 0x2B303A)  // neutral charcoal · two steps up the mesh scale so the panel reads clearly distinct from the page background
     }
 
     /// Readiness band → deep background tint for the peek strip.
@@ -1778,9 +1778,18 @@ struct TodayView: View {
     }
 
     private func makeStripDays(from week: PlanWeek) -> [WeekStripDay] {
-        // Sat–Fri training week: backend returns 7 days (Sat through Fri).
-        // Prefix clamp keeps it safe against any future over-fetch.
-        week.days.prefix(7).map { d in
+        // Backend returns a Sat-anchored 7-day window (Sat…Fri).
+        // Re-window to match the long-run day convention:
+        //   Long run Sunday (dow=0) → Mon→Sun (weekStartDow=1)
+        //   Long run Saturday (dow=6) → Sun→Sat (weekStartDow=0)
+        //   Mid-week or no long run   → Sun→Sat (weekStartDow=0)
+        let rawDays = week.days.prefix(7)
+        let longRunDow = rawDays.first { $0.type == "long" }?.dow
+        let weekStartDow: Int = longRunDow == 0 ? 1 : 0
+        let sorted = rawDays.sorted { a, b in
+            (a.dow - weekStartDow + 7) % 7 < (b.dow - weekStartDow + 7) % 7
+        }
+        return sorted.map { d in
             WeekStripDay(
                 id: d.date_iso,
                 dow: dowLetter(d.dow),

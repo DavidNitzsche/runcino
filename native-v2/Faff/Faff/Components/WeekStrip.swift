@@ -37,7 +37,7 @@ struct WeekStrip: View {
     }
 
     private func weekRow(_ week: [WeekStripDay]) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ForEach(week) { d in
                 Button {
                     withAnimation(Theme.Motion.smooth) { selectedID = d.id }
@@ -45,9 +45,10 @@ struct WeekStrip: View {
                     cell(d)
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 6)
     }
 
     @ViewBuilder
