@@ -139,3 +139,14 @@ When in doubt: backend ships, iPhone reads. If iPhone needs to opt in, the contr
 | `RaceClock` shared parser (F2), ten-color palette lock, cold-start brandmark, chip grid | iPhone Swift | **Needs next TF build + David installs before Aug 9** (T3) |
 | TempoFace signed-delta row, WatchTheme palette | Watch Swift | **Needs watch build** — rides the same `ship-testflight-v2.sh` ipa |
 | Stored race row re-paced 407→412 (M2), Aug 11 → race_week_tuneup (M4) | DB | Free — all surfaces read the row; watch payload re-expands at next relay |
+
+## 2026-06-10 · multi-user onboarding + plan-gen (web session)
+
+| Change | Surface | iPhone/watch action |
+|---|---|---|
+| Plan generators honor `profile.weekly_frequency` (3-day runner no longer gets 6-day plan); gated on NOT NULL | `lib/plan/generate.ts`, `lib/plan/seed-from-onboarding.ts` | **Free** — iPhone reads plan_workouts by date; correct shape flows through on next plan read |
+| "Get faster at a 5K/mile" no-race plan now prescribes VO2 intervals (was threshold-only); phase label "5K BUILD" | `seed-from-onboarding.ts` | **Free** — workout rows + sub_label/notes flow through |
+| Onboarding plans anchor week 0 at the runner's chosen start day; no runs dated before signup; day-1 front-load | `generate.ts` startDateISO, seeder | **Free** — date-driven |
+| Onboarding asks **start day + long-run day** (web Step3Confirm). Backend `/api/onboarding/complete` accepts `startDate` + `longRunDay`, writes `user_settings.long_run_day` + non-colliding `rest_day` | web onboarding + API | **Needs iPhone wiring** — native onboarding (SwiftUI) must add the two pickers (date + day-of-week) and POST `startDate`/`longRunDay`. Backend is lenient (both optional → defaults today/Sunday), so old iPhone builds keep working. Queue for next TF. |
+| Cold-start COACHED hero: empty biometric tiles → "Connect Apple Health" prompt; readiness ring "0" → "—"; coach-calendar paste moved to Settings › Connections | `components/faff-app/views/TodayView.tsx`, `ProfileView.tsx` | **iPhone equivalent TBD** — native Today/Profile are separate SwiftUI; check whether the native COACHED + cold-start states have the same empty-tile issue, patch in Swift if so (queue) |
+| Strength "skipped" floored at join date (no false "1 day missed" on day one) | `lib/coach/strength-status.ts` | **Free** — strengthWeekStatus payload flows through |
