@@ -417,7 +417,18 @@ final class HealthKitImporter: ObservableObject {
                 enrichedSplits.append(split)
             }
             payload["splits"] = enrichedSplits
-            if splits.elevGainFt > 0 { payload["elev_gain_ft"] = splits.elevGainFt }
+            // Prefer barometric elevation from workout metadata (available iOS 16+,
+            // recorded by the Watch's altimeter). GPS-derived per-split deltas
+            // accumulate ±2m altitude jitter from CLLocation.altitude even after the
+            // per-mile smoothing — barometric is significantly more accurate.
+            // Fall back to GPS splits sum when the metadata key is absent (older
+            // firmware, treadmill runs, or workouts recorded by third-party apps).
+            if let elevQ = w.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity {
+                let ft = elevQ.doubleValue(for: HKUnit.foot())
+                if ft.isFinite && ft > 0 { payload["elev_gain_ft"] = Int(ft.rounded()) }
+            } else if splits.elevGainFt > 0 {
+                payload["elev_gain_ft"] = splits.elevGainFt
+            }
             if let poly = splits.polyline { payload["route_polyline"] = poly }
         }
         return payload

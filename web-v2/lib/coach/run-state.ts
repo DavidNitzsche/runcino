@@ -376,7 +376,20 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // filled in after phaseBreakdown loads (a few lines down) · null here
   // because we don't know yet, and a later pass walks the splits + phase
   // cumulative-distance map to attach the right tag per mile.
-  const splitsRaw: RunSplit[] = Array.isArray(r.splits) ? r.splits.map((s: any, i: number) => {
+  const rawSplits: any[] = Array.isArray(r.splits) ? r.splits as any[] : [];
+  const splitsRaw: RunSplit[] = rawSplits
+    // Drop trailing fractional stubs: HealthKitImporter appends a synthetic
+    // last split for the gap between GPS-stop and watch-timer-stop. For a 6mi
+    // run the stub is ~0.047mi — it shows as a 7th row with average pace (no
+    // real GPS signal). Only the last entry can be a stub; all real full-mile
+    // splits have distanceMi = 1.0. Keep the entry if distanceMi is absent
+    // (non-Faff sources don't send it) or ≥ 0.5 (real half-mile+ segment).
+    .filter((s: any, i: number, arr: any[]) => {
+      if (i !== arr.length - 1) return true; // never drop non-last splits
+      const distMi = Number(s.distanceMi ?? s.distance_mi) || null;
+      return distMi === null || distMi >= 0.5;
+    })
+    .map((s: any, i: number) => {
     // Resolve seconds-per-mile across every source shape we see:
     //   · paceSPerMi    (legacy)
     //   · paceSecPerMi  (watch / iPhone HK numeric)
@@ -414,7 +427,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       elev_change_ft: Number(s.elev_change_ft ?? s.elevChangeFt ?? s.elev_ft) || null,
       phase: null,
     };
-  }) : [];
+  });
   // 2026-06-04 · defensive cleanup for legacy stub splits.  Old watch
   // ingests wrote `splits: [{mi:1, ...whole-run-stats}]` · a single
   // entry that semantically is the whole-run summary, not a per-mile
