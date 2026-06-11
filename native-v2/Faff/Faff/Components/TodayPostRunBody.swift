@@ -155,26 +155,15 @@ struct TodayPostRunBody: View {
 
     private var shoeSection: some View {
         Button { shoeSheetOpen = true } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Circle()
                     .fill(shoeRoleColor)
-                    .frame(width: 9, height: 9)
-                if let shoe = currentShoe {
-                    Text(shoe.displayName.isEmpty ? "Unnamed shoe" : shoe.displayName)
-                        .font(.body(14, weight: .extraBold))
-                        .foregroundStyle(primaryText)
-                    Text("· \(Int((shoe.mileage ?? 0).rounded())) mi")
-                        .font(.body(14, weight: .medium))
-                        .foregroundStyle(mutedText)
-                } else {
-                    Text("Assign a shoe")
-                        .font(.body(14, weight: .medium))
-                        .foregroundStyle(mutedText)
-                }
+                    .frame(width: 8, height: 8)
+                Text(currentShoe.map { $0.displayName.isEmpty ? "Unnamed shoe" : $0.displayName } ?? "Assign a shoe")
+                    .font(.body(14, weight: .semibold))
+                    .foregroundStyle(currentShoe != nil ? primaryText : mutedText)
+                    .lineLimit(1)
                 Spacer()
-                Text("Change")
-                    .font(.body(12, weight: .semibold))
-                    .foregroundStyle(mutedText)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(subtleText)
