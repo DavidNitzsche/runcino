@@ -21,7 +21,7 @@
 //   · `scrollDisabled(progress > 0.5)` locks the inner ScrollView
 //     while peeked, so body drags bubble up to the sheet pan cleanly.
 //   · When expanded, the gesture only engages if the drag STARTS in
-//     the grab band (top ~80pt) · the body keeps full scroll control.
+//     the grab band (top ~90pt) · the body keeps full scroll control.
 //   · Tap on the grab handle toggles peek ↔ expanded.
 //   · Velocity-priority snap · a meaningful flick beats the position
 //     threshold (|v| > 120pt-projected → snap that direction).
@@ -31,8 +31,26 @@
 //     fresh from `progress` on first onChanged event, immune to
 //     concurrent mutations.
 //
+//  2026-06-10 · Scroll-aware body dismiss + explicit close button:
+//   · When fully expanded and scroll content is at the top (y ≥ -5pt),
+//     a clearly downward body swipe re-routes to sheet collapse instead
+//     of ScrollView bounce. `bodyDragActive` immediately disables the
+//     scroll so there's no double-animation.
+//   · Added a visible chevron.down button in the top-right of the grab
+//     strip when expanded — removes the "mystery X in the top right"
+//     confusion that came from the full-width contentShape tap target.
+//
 
 import SwiftUI
+
+// MARK: - Scroll offset preference key
+
+private struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
 
 struct DragSheet<Header: View, Body: View>: View {
     /// LEGACY · distance the sheet rests below the screen top when
@@ -83,6 +101,16 @@ struct DragSheet<Header: View, Body: View>: View {
     /// concurrent progress mutation (hydration, animation finish)
     /// doesn't break the math mid-drag.
     @State private var dragStartProgress: Double? = nil
+
+    /// True when the scroll content is at or within 5pt of the top.
+    /// Updated via PreferenceKey from the 0-height tracker at the top
+    /// of the ScrollView content. Governs body-area dismiss.
+    @State private var bodyScrollAtTop: Bool = true
+
+    /// Set to true when a body-area dismiss drag is recognized. Disables
+    /// the ScrollView immediately so sheet pan and scroll don't fight.
+    /// Cleared on drag end.
+    @State private var bodyDragActive: Bool = false
 
     /// Snap animation used by both the gesture-end snap and the tap-
     /// toggle. Native-feeling response + slight bounce.
@@ -138,18 +166,34 @@ struct DragSheet<Header: View, Body: View>: View {
                     Divider().background(Color(hex: 0xEEE7DA))
                 }
                 ScrollView(showsIndicators: false) {
-                    content()
-                        // 2026-06-02 round 55 · 170 → 100.
-                        // 2026-06-02 round 57 · 100 → 120. Signature
-                        // row was reading too close to the tab bar pill ·
-                        // 20pt more bottom gap pushes the last visible
-                        // content row clear of the pill with comfortable
-                        // breathing room.
-                        .padding(.bottom, 120)
+                    VStack(spacing: 0) {
+                        // 0-height tracker at the top of the content.
+                        // minY in the scroll coordinate space = 0 at
+                        // scroll-top, negative when scrolled down.
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: ScrollOffsetKey.self,
+                                value: proxy.frame(in: .named("dragSheetScroll")).minY
+                            )
+                        }
+                        .frame(height: 0)
+
+                        content()
+                            // 2026-06-02 round 55 · 170 → 100.
+                            // 2026-06-02 round 57 · 100 → 120. Signature
+                            // row was reading too close to the tab bar pill ·
+                            // 20pt more bottom gap pushes the last visible
+                            // content row clear of the pill with comfortable
+                            // breathing room.
+                            .padding(.bottom, 120)
+                    }
                 }
+                .coordinateSpace(name: "dragSheetScroll")
+                .onPreferenceChange(ScrollOffsetKey.self) { bodyScrollAtTop = $0 >= -5 }
                 // When peeked, body scrolls would fight the sheet pan ·
                 // disable so vertical drags bubble up to our gesture.
-                .scrollDisabled(progress > 0.5)
+                // Also disable when a body-dismiss drag is in progress.
+                .scrollDisabled(progress > 0.5 || bodyDragActive)
                 // 2026-06-02 round 24 · body fades out as the sheet
                 // collapses. Peek stays solid (it's outside this
                 // ScrollView · in grabRegion above). At progress >= 0.7
@@ -202,9 +246,10 @@ struct DragSheet<Header: View, Body: View>: View {
         .ignoresSafeArea(.container, edges: .bottom)
     }
 
-    /// Grab strip · handle + caller-provided peek header. Also accepts
-    /// taps to toggle the sheet · gives runners a fallback when their
-    /// flick doesn't quite register.
+    /// Grab strip · handle + caller-provided peek header.
+    /// Tapping anywhere in the strip toggles peek ↔ expanded.
+    /// When expanded, a visible chevron.down button sits in the top-right
+    /// so the tap-to-collapse affordance is explicit rather than invisible.
     private var grabRegion: some View {
         VStack(spacing: 0) {
             Capsule()
@@ -223,6 +268,25 @@ struct DragSheet<Header: View, Body: View>: View {
                 progress = progress > 0.5 ? 0 : 1
             }
         }
+        // Explicit close button in the top-right when fully expanded.
+        // Makes the "tap top-right to dismiss" affordance visible so it
+        // doesn't feel like a mystery X. Button wins over the outer
+        // onTapGesture because child gestures take priority in SwiftUI.
+        .overlay(alignment: .topTrailing) {
+            if progress < 0.3 {
+                Button {
+                    withAnimation(snapAnim) { progress = 1 }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(grabTint)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity.animation(snapAnim))
+            }
+        }
     }
 
     private func panGesture(collapsedY: CGFloat) -> some Gesture {
@@ -235,11 +299,20 @@ struct DragSheet<Header: View, Body: View>: View {
                 //   · expanded → engage ONLY if the drag STARTED in the
                 //     grab band (top ~90pt); body keeps scroll control
                 //     everywhere else
+                //   · expanded + scroll at top + clearly downward →
+                //     engage from any y position and disable scroll so
+                //     the sheet absorbs the full swipe without fighting
+                //     the ScrollView bounce
                 if dragStartProgress == nil {
                     let isPeeked = progress > 0.05
                     let startedInGrab = g.startLocation.y < grabBandHeight
-                    guard isPeeked || startedInGrab else { return }
+                    let isBodyDownSwipe = progress < 0.05
+                        && bodyScrollAtTop
+                        && g.translation.height > 3
+                        && g.translation.height > abs(g.translation.width)
+                    guard isPeeked || startedInGrab || isBodyDownSwipe else { return }
                     dragStartProgress = progress
+                    if isBodyDownSwipe { bodyDragActive = true }
                 }
                 guard let start = dragStartProgress else { return }
                 let startY = CGFloat(start) * collapsedY
@@ -249,6 +322,7 @@ struct DragSheet<Header: View, Body: View>: View {
             .onEnded { g in
                 guard dragStartProgress != nil else { return }
                 dragStartProgress = nil
+                bodyDragActive = false
                 // Velocity proxy: predictedEndTranslation - translation ≈ v·0.1
                 let velProxy = g.predictedEndTranslation.height - g.translation.height
                 let target: Double
