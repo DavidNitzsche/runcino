@@ -208,10 +208,13 @@ struct TodayPostRunBody: View {
         return "Run"
     }
 
-    /// 2026-06-02 round 45 · subordinate workout name under the hero.
-    /// Hides when it duplicates the hero (so "EASY" name under "EASY"
-    /// hero doesn't repeat) or when the caller didn't pass one.
+    /// First coach fact as the subtitle under the effort title.
+    /// "Got into the threshold band and held it." beats the raw
+    /// phase-spec string ("1.5 mi WU · 3.5 mi @ T · 1.5 mi CD")
+    /// because it reads as a result, not a prescription.
+    /// Falls back to nameSubtitle when no recap is available.
     private var subtitleText: String? {
+        if let first = recap?.facts.first, !first.isEmpty { return first }
         guard let raw = nameSubtitle?.trimmingCharacters(in: .whitespaces),
               !raw.isEmpty else { return nil }
         let title = (titleText ?? "").trimmingCharacters(in: .whitespaces)
@@ -450,42 +453,116 @@ struct TodayPostRunBody: View {
                 let fastest = paces.min() ?? 0
                 let slowest = paces.max() ?? 1
                 let denom = max(1, slowest - fastest)
-                VStack(spacing: 8) {
-                    ForEach(splits) { split in
-                        SplitRow(
-                            split: split,
-                            paceSec: paceSecForSplit(split),
-                            tint: tintForSplit(split, total: splits.count),
-                            fastestSec: fastest,
-                            denom: denom,
-                            onMesh: onMesh
-                        )
+                if let phases = detail?.phase_breakdown, !phases.isEmpty {
+                    phasedSplitList(splits: splits, phases: phases,
+                                    fastest: fastest, denom: denom)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(splits) { split in
+                            SplitRow(
+                                split: split,
+                                paceSec: paceSecForSplit(split),
+                                tint: tintForSplit(split, total: splits.count),
+                                fastestSec: fastest,
+                                denom: denom,
+                                onMesh: onMesh
+                            )
+                        }
                     }
                 }
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
             .background(sectionBg)
             .overlay(
-                Rectangle()
-                    .fill(dividerColor)
-                    .frame(height: 1),
+                Rectangle().fill(dividerColor).frame(height: 1),
                 alignment: .bottom
             )
         }
     }
 
-    /// Color a split by phase position · warmup (first ~15% miles) and
-    /// cooldown (last ~15%) read as the teal "support" color; work-phase
-    /// miles read in the run accent. Tracks the prototype's per-type
-    /// pattern without coupling to specific run types.
+    /// Splits grouped by phase (warm-up / work / cool-down).
+    /// Uses cumulative phase distances to assign each split mile to a
+    /// phase by its midpoint, then renders a labeled header per group.
+    @ViewBuilder
+    private func phasedSplitList(splits: [RunSplit], phases: [PhaseBreakdown],
+                                  fastest: Int, denom: Int) -> some View {
+        // Build cumulative mile endpoints for each phase.
+        var cum: [(phase: PhaseBreakdown, endMi: Double)] = []
+        var running = 0.0
+        for p in phases {
+            running += p.actual_distance_mi ?? p.target_distance_mi ?? 0
+            cum.append((p, running))
+        }
+        let assigned: [(split: RunSplit, phaseIdx: Int)] = splits.map { s in
+            let mid = Double(s.mile) - 0.5
+            let idx = cum.firstIndex(where: { mid < $0.endMi }) ?? (cum.count - 1)
+            return (s, idx)
+        }
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(phases.enumerated()), id: \.offset) { idx, phase in
+                let group = assigned.filter { $0.phaseIdx == idx }.map { $0.split }
+                if !group.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text(phaseSplitLabel(phase))
+                                .font(.body(11, weight: .extraBold)).tracking(1.2)
+                                .foregroundStyle(primaryText.opacity(0.7))
+                            if let dist = phase.actual_distance_mi {
+                                Text(String(format: "%.1f mi", dist))
+                                    .font(.body(11, weight: .semibold))
+                                    .foregroundStyle(subtleText)
+                            }
+                            Spacer()
+                            if let hr = phase.avg_hr {
+                                Text("\(hr) bpm")
+                                    .font(.body(11, weight: .semibold))
+                                    .foregroundStyle(subtleText)
+                            }
+                        }
+                        VStack(spacing: 8) {
+                            ForEach(group) { split in
+                                SplitRow(
+                                    split: split,
+                                    paceSec: paceSecForSplit(split),
+                                    tint: tintForPhase(phase),
+                                    fastestSec: fastest,
+                                    denom: denom,
+                                    onMesh: onMesh
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func phaseSplitLabel(_ phase: PhaseBreakdown) -> String {
+        switch phase.type.lowercased() {
+        case "warmup":   return "WARM-UP"
+        case "cooldown": return "COOL-DOWN"
+        case "recovery": return "RECOVERY"
+        case "work":
+            switch hiwEffort {
+            case .tempo:     return "TEMPO"
+            case .intervals: return "INTERVALS"
+            default:         return "WORK"
+            }
+        default: return phase.label.uppercased()
+        }
+    }
+
+    private func tintForPhase(_ phase: PhaseBreakdown) -> Color {
+        phase.type.lowercased() == "work" ? accent : Color(hex: 0x5BBFB0)
+    }
+
+    /// Color a split by phase position when no phase_breakdown is available.
     private func tintForSplit(_ split: RunSplit, total: Int) -> Color {
         if total < 3 { return accent }
         let i = split.mile - 1
         let warm = max(1, total / 6)
         let cool = max(1, total / 6)
-        if i < warm || i >= (total - cool) {
-            return Color(hex: 0x5BBFB0)
-        }
+        if i < warm || i >= (total - cool) { return Color(hex: 0x5BBFB0) }
         return accent
     }
 
@@ -535,19 +612,27 @@ struct TodayPostRunBody: View {
     }
 
     private var formMetrics: [(String, String)] {
-        guard let f = detail?.form else { return [] }
+        let f = detail?.form
         var out: [(String, String)] = []
-        if let cad = f.cadence_spm, cad > 0 {
+        // Cadence: prefer form.cadence_spm, fall back to top-level cadence_avg.
+        let cadSpm: Double? = f?.cadence_spm ?? detail?.cadence_avg.map(Double.init)
+        if let cad = cadSpm, cad > 0 {
             out.append(("CADENCE", "\(Int(cad.rounded())) spm"))
         }
-        if let gct = f.ground_contact_ms, gct > 0 {
+        if let gct = f?.ground_contact_ms, gct > 0 {
             out.append(("GROUND CONTACT", "\(Int(gct.rounded())) ms"))
         }
-        if let vo = f.vertical_oscillation_cm, vo > 0 {
+        if let vo = f?.vertical_oscillation_cm, vo > 0 {
             out.append(("VERT OSC", String(format: "%.1f cm", vo)))
         }
-        if let pw = f.run_power_w, pw > 0 {
+        if let pw = f?.run_power_w, pw > 0 {
             out.append(("POWER", "\(Int(pw.rounded())) W"))
+        }
+        if let sl = f?.stride_length_m, sl > 0 {
+            out.append(("STRIDE", String(format: "%.2f m", sl)))
+        }
+        if let vr = f?.vertical_ratio_pct, vr > 0 {
+            out.append(("VERT RATIO", String(format: "%.1f%%", vr)))
         }
         return out
     }
