@@ -134,10 +134,7 @@ function defaultLayout(weeklyFrequency: WeeklyFrequency | null): {
     qualityDows: [2],               // Tuesday (single quality, maintenance)
     restDow: 1,                     // Monday
   };
-  // weeklyFrequency intentionally ignored at this layer — the runner can
-  // tune long/quality/rest days via /profile, and the canonical builder
-  // honors any user_prefs override on next lifecycle rebuild.
-  void weeklyFrequency;
+  void weeklyFrequency; // layout only sets anchor days; dayShape() applies the cap
 }
 
 /** Translate a runner-supplied OnboardingGoals into the
@@ -158,40 +155,53 @@ function midpoints(goals: OnboardingGoals): {
 }
 
 /**
- * Compute the maintenance volume curve for 16 weeks.
+ * Build the 16-week volume curve.
  *
- * Per canonical builder (weeklyVolumeCurve · MAINTENANCE branch):
- *   - Flat hold at startMpw
- *   - Cutback every 3rd week → 0.82× startMpw
+ * For a new runner whose start ≠ target: ramp ~10% per non-cutback week
+ * until reaching targetMpw, then hold flat. Cutback every 3rd week at
+ * 0.82× current level (Daniels §13 · cutback week doctrine). This
+ * replaces the old flat-from-target approach that dropped brand-new
+ * runners into their goal mileage on day 1.
  *
- * Cite: Daniels Running Formula §13 · "Periodization" — maintenance
- * weeks ARE peak weeks (no ramp).
+ * Cite: Daniels Running Formula §13 · Periodization + Research/00a
+ * §Volume-Progression-Rules (≤10% per week).
  */
-function maintenanceCurve(startMpw: number): {
+function buildProgressiveCurve(startMpw: number, targetMpw: number): {
   volumeMi: number[];
   isCutback: boolean[];
 } {
   const volumeMi: number[] = [];
   const isCutback: boolean[] = [];
+  let current = Math.min(startMpw, targetMpw);
   for (let i = 0; i < TOTAL_WEEKS; i++) {
     const cutback = (i + 1) % 3 === 0;
-    volumeMi.push(cutback ? round1(startMpw * 0.82) : startMpw);
-    isCutback.push(cutback);
+    if (cutback) {
+      volumeMi.push(round1(current * 0.82));
+      isCutback.push(true);
+      // Resume from the pre-cutback level (cutback doesn't reset progress).
+    } else {
+      volumeMi.push(round1(current));
+      isCutback.push(false);
+      if (current < targetMpw) {
+        current = Math.min(targetMpw, round1(current * 1.10));
+      }
+    }
   }
   return { volumeMi, isCutback };
 }
 
 /** Day-of-week layout for one week.
  *
- *  Maintenance is 1 quality + 1 long + N easy days + 1 rest. Race-week
- *  logic is intentionally omitted (this seeder never lands inside a
- *  race week).
+ *  Maintenance is 1 quality + 1 long + N easy days + rest. weeklyFrequency
+ *  caps total running days: frequency - mandatory(long + quality) = easy
+ *  slots; remaining days become rest. This is the fix for the original
+ *  "intentionally ignored" note — ignoring frequency meant a 3-day runner
+ *  got a 6-day plan.
  */
-function dayShape(layout: {
-  longRunDow: number;
-  qualityDows: number[];
-  restDow: number;
-}): Array<{
+function dayShape(
+  layout: { longRunDow: number; qualityDows: number[]; restDow: number },
+  weeklyFrequency: WeeklyFrequency | null,
+): Array<{
   type: 'rest' | 'easy' | 'long' | 'threshold';
   isQuality: boolean;
   isLong: boolean;
@@ -206,6 +216,18 @@ function dayShape(layout: {
   for (const d of layout.qualityDows) {
     if (d === layout.restDow || d === layout.longRunDow) continue;
     days[d] = { type: 'threshold', isQuality: true, isLong: false };
+  }
+  // Respect weeklyFrequency: limit easy days, converting excess to rest.
+  if (weeklyFrequency != null) {
+    const mandatoryRunDays = 1  // long
+      + layout.qualityDows.filter(d => d !== layout.restDow && d !== layout.longRunDow).length;
+    const maxEasyDays = Math.max(0, weeklyFrequency - mandatoryRunDays);
+    let easyCount = 0;
+    for (let i = 0; i < 7; i++) {
+      if (days[i].type === 'easy') {
+        easyCount < maxEasyDays ? easyCount++ : (days[i] = { type: 'rest', isQuality: false, isLong: false });
+      }
+    }
   }
   return days;
 }
@@ -252,9 +274,10 @@ function distributeVolume(
   // Hard cap: long ≤ 50% of weekly.
   longMi = Math.min(longMi, round1(weeklyMi * 0.50));
 
-  // Threshold: 18% of weekly, min 4mi.
+  // Threshold: 18% of weekly, min 3mi (was 4 — floor at 4 over-allocated
+  // quality on low-volume weeks, leaving almost nothing for easy days).
   const numQ = shape.filter(d => d.isQuality).length;
-  let threshMi = numQ > 0 ? Math.max(4, round1(weeklyMi * T_SOLO_PCT)) : 0;
+  let threshMi = numQ > 0 ? Math.max(3, round1(weeklyMi * T_SOLO_PCT)) : 0;
 
   // Easy days budget = whatever's left.
   const usedMi = longMi + threshMi;
@@ -266,7 +289,9 @@ function distributeVolume(
   const activeEasy = easyBudget >= minEasy
     ? Math.min(easySlotIdxs.length, Math.max(1, Math.floor(easyBudget / minEasy)))
     : easySlotIdxs.length > 0 ? 1 : 0;
-  const easyPerDay = activeEasy > 0 ? round1(easyBudget / activeEasy) : 0;
+  // Cap individual easy runs at 12 mi so the single easy slot on a
+  // 3-day/week plan doesn't absorb an unreasonable budget at high volume.
+  const easyPerDay = activeEasy > 0 ? Math.min(12, round1(easyBudget / activeEasy)) : 0;
 
   const distances = new Array(7).fill(0);
   for (let i = 0; i < 7; i++) {
@@ -302,6 +327,7 @@ async function persistMaintenancePlan(args: {
   goalISO: string;
   curve: { volumeMi: number[]; isCutback: boolean[] };
   layout: { longRunDow: number; qualityDows: number[]; restDow: number };
+  weeklyFrequency: WeeklyFrequency | null;
   peakLongMi: number;
   peakWeeklyMi: number;
   authoredState: Record<string, unknown>;
@@ -355,9 +381,13 @@ async function persistMaintenancePlan(args: {
       ],
     );
 
-    const shape = dayShape(args.layout);
+    const shape = dayShape(args.layout, args.weeklyFrequency);
+    // Use this week's volume as both weeklyMi and peakWeeklyMi so the long
+    // run is a fixed proportion of the week (not scaled down relative to a
+    // far-off peak the runner hasn't reached yet).
+    const thisWeekMi = args.curve.volumeMi[wi];
     const distances = distributeVolume(
-      args.curve.volumeMi[wi], shape, args.peakLongMi, args.peakWeeklyMi,
+      thisWeekMi, shape, args.peakLongMi, thisWeekMi,
     );
 
     for (let offset = 0; offset < 7; offset++) {
@@ -422,24 +452,31 @@ export async function seedMaintenancePlanFromOnboarding(
 
   const { historyAvgWeeklyMi, historyLongestRecentMi } = midpoints(goals);
 
-  // Peak weekly mileage: target > history floor > MPW_FLOOR.
-  // Mirrors the canonical buildPlan maintenance-branch logic.
-  let peakWeeklyMi = MPW_FLOOR;
-  if (goals.weeklyMiTarget != null && goals.weeklyMiTarget > 0) {
-    peakWeeklyMi = Math.max(MPW_FLOOR, goals.weeklyMiTarget);
-  } else if (historyAvgWeeklyMi != null && historyAvgWeeklyMi > 0) {
-    peakWeeklyMi = Math.max(MPW_FLOOR, historyAvgWeeklyMi);
-  }
+  // Start at the runner's CURRENT mileage, build toward their target.
+  // Old logic used weeklyMiTarget as the starting point (flat from day 1 at
+  // goal mileage), which is wrong for new runners who say "I run 10mi/week
+  // but want to reach 25." They get a 25mi week on day 1.
+  const startWeeklyMi = Math.max(
+    MPW_FLOOR,
+    historyAvgWeeklyMi != null && historyAvgWeeklyMi > 0 ? historyAvgWeeklyMi : MPW_FLOOR,
+  );
+  const targetWeeklyMi = Math.max(
+    startWeeklyMi,
+    goals.weeklyMiTarget != null && goals.weeklyMiTarget > 0 ? goals.weeklyMiTarget : startWeeklyMi,
+  );
 
-  // Peak long run: 50% of historyLongestRecent, floor 4 mi. Cap at 50% of weekly.
-  let peakLongMi = 4;
-  if (historyLongestRecentMi != null && historyLongestRecentMi > 0) {
-    peakLongMi = Math.max(4, round1(historyLongestRecentMi * 0.5));
-  }
-  peakLongMi = Math.min(peakLongMi, round1(peakWeeklyMi * 0.5));
+  // Peak long: 26% of the TARGET weekly (canonical long-run proportion)
+  // OR the runner's historical longest, whichever is larger. This lets
+  // the long run scale with the target rather than being perpetually
+  // capped at the runner's current fitness, which would push all the
+  // late-plan volume onto a single easy day.
+  const histLongFloor = historyLongestRecentMi != null && historyLongestRecentMi > 0
+    ? historyLongestRecentMi : 4;
+  let peakLongMi = Math.max(histLongFloor, round1(targetWeeklyMi * LONG_PCT));
+  peakLongMi = Math.min(peakLongMi, round1(targetWeeklyMi * 0.45));
 
   const layout = defaultLayout(goals.weeklyFrequency);
-  const curve = maintenanceCurve(peakWeeklyMi);
+  const curve = buildProgressiveCurve(startWeeklyMi, targetWeeklyMi);
 
   const startMonday = mondayOf(await runnerToday(userId));
   // 16 weeks · last day = startMonday + 16*7 - 1.
@@ -452,18 +489,20 @@ export async function seedMaintenancePlanFromOnboarding(
     goalISO,
     curve,
     layout,
+    weeklyFrequency: goals.weeklyFrequency,
     peakLongMi,
-    peakWeeklyMi,
+    peakWeeklyMi: targetWeeklyMi,
     authoredState: {
       generated_at: new Date().toISOString(),
       seeder: 'onboarding-no-race',
       total_weeks: TOTAL_WEEKS,
-      peak_weekly_mi: peakWeeklyMi,
+      start_weekly_mi: startWeeklyMi,
+      peak_weekly_mi: targetWeeklyMi,
       peak_long_mi: peakLongMi,
       onboarding_goals: goals,
       citations: [
         'Daniels Running Formula §13 · Periodization (maintenance)',
-        'Research/00a · long-run anchored on recent / historical longest',
+        'Research/00a · long-run anchored on recent / historical longest + ≤10% progression rule',
         'Research/22 · maintenance proportions (long 26%, threshold 18%, easy remainder)',
       ],
     },
@@ -473,6 +512,6 @@ export async function seedMaintenancePlanFromOnboarding(
     ok: true,
     plan_id: planId,
     weeks_generated: TOTAL_WEEKS,
-    peak_mpw: peakWeeklyMi,
+    peak_mpw: targetWeeklyMi,
   };
 }
