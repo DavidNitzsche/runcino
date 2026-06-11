@@ -18,9 +18,15 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Mode = 'signin' | 'request' | 'request-sent';
+type Mode = 'signin' | 'request' | 'request-sent' | 'signup';
 
-export function LoginPanel({ next }: { next?: string | null }) {
+export function LoginPanel({ next, openSignup }: {
+  next?: string | null;
+  /** Sandbox only (ALLOW_OPEN_SIGNUP) · shows a direct create-account
+   *  form so test users can be mass-created without the invite dance.
+   *  Prod never sets the flag, so this stays invisible there. */
+  openSignup?: boolean;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signin');
   const [busy, setBusy] = useState(false);
@@ -86,6 +92,48 @@ export function LoginPanel({ next }: { next?: string | null }) {
     );
   }
 
+  if (mode === 'signup') {
+    return (
+      <form
+        className="email-form"
+        data-test="sandbox-signup-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          setBusy(true); setError(null);
+          try {
+            const r = await fetch('/api/auth/signup', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                name: String(fd.get('name') ?? '').trim(),
+                email: String(fd.get('email') ?? '').trim(),
+                password: String(fd.get('password') ?? ''),
+              }),
+            });
+            const j = await r.json().catch(() => ({} as { error?: string; redirect?: string }));
+            if (!r.ok) { setError(j.error ?? `signup failed (HTTP ${r.status})`); return; }
+            router.replace(next || j.redirect || '/onboarding');
+            router.refresh();
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'network error');
+          } finally { setBusy(false); }
+        }}
+      >
+        <input className="email-input" name="name" type="text" placeholder="Name" autoComplete="name" required maxLength={80} autoFocus />
+        <input className="email-input" name="email" type="email" placeholder="Email" autoComplete="email" required />
+        <input className="email-input" name="password" type="password" placeholder="Password" autoComplete="new-password" required minLength={6} />
+        <button type="submit" className="gbtn email-submit" disabled={busy}>
+          {busy ? 'Creating…' : 'Create account'}
+        </button>
+        <button type="button" className="email-cancel" onClick={() => { setMode('signin'); setError(null); }}>
+          ← Back to sign in
+        </button>
+        {error && <div role="alert" className="auth-error">{error}</div>}
+      </form>
+    );
+  }
+
   if (mode === 'request') {
     return (
       <form className="email-form" onSubmit={onRequest} data-test="request-form">
@@ -118,6 +166,16 @@ export function LoginPanel({ next }: { next?: string | null }) {
       >
         Request access
       </button>
+      {openSignup && (
+        <button
+          type="button"
+          className="email-cancel"
+          data-test="sandbox-signup"
+          onClick={() => { setMode('signup'); setError(null); }}
+        >
+          SANDBOX · Create account directly
+        </button>
+      )}
       {error && <div role="alert" className="auth-error">{error}</div>}
     </form>
   );

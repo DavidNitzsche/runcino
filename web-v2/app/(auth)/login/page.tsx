@@ -57,7 +57,7 @@ export default async function LoginPage({ searchParams }: {
       <div className="gate">
         <div className="gate-panel">
           <div className="gate-logo"><FaffLogo height={30} /></div>
-          <LoginPanel next={next} />
+          <LoginPanel next={next} openSignup={process.env.ALLOW_OPEN_SIGNUP === 'true'} />
           <div className="gfine">Run with intent.</div>
         </div>
       </div>
