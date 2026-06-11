@@ -59,11 +59,13 @@ export interface BlueprintSegment {
   /** Color token. */
   color: string;
   /** Reps count when this is an interval/threshold work block · the
-   *  renderer draws a comb of N work bars + N-1 float-recovery bars. */
+   *  list renders it as a "REPEAT N×" group. */
   reps?: number;
-  /** Float-recovery distance per gap (mi) · used inside the comb to
-   *  size the low-zone bars between reps. */
+  /** Float-recovery distance per gap (mi). */
   restMi?: number;
+  /** Float-recovery duration per gap (seconds) · the list's "Recovery"
+   *  row reads this ("45s" / "3 min"). */
+  restSec?: number;
   /** Per-rep distance label · "800m" / "1 mi". */
   repDistanceLabel?: string;
   /** Per-rep pace pretty · "@ 2:55 · 400m float". */
@@ -365,6 +367,7 @@ export function deriveBlueprintData(
         zn: zLabel(coreZ), color: ZONE_COLOR[coreZ],
         reps: spec.rep_count,
         restMi,
+        restSec: spec.rep_rest_s ?? 0,
         repDistanceLabel: fmtRepB(spec),
         repPaceLabel: `@ ${fmtPaceB(spec.rep_pace_s_per_mi)} · ${spec.rep_rest_s ?? 0}s jog`,
       });

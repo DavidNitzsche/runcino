@@ -1137,7 +1137,7 @@ function SessionBlueprint({
 
       <div className="sb-chartwrap">
         {data && data.segs.length > 0 ? (
-          <SessionBlueprintChart data={data} />
+          <SessionBlueprintList data={data} />
         ) : (
           <div className="sb-empty">No structured spec for this run yet.</div>
         )}
@@ -1153,191 +1153,132 @@ function SessionBlueprint({
   );
 }
 
-/** The SVG itself. Pure render from BlueprintData. */
-function SessionBlueprintChart({ data }: { data: BlueprintData }) {
-  // v2 sizing per design handoff · taller viewBox so the chart fills
-  // the .sb-chartwrap flex:1 column and absorbs extra card height.
-  const W = 712;
-  const H = 288;
-  const padL = 30;
-  const padR = 16;
-  const hasReps = data.segs.some(s => !!s.reps);
-  const padT = hasReps ? 56 : 30;
-  const padB = 30;
-  const x0 = padL;
-  const x1 = W - padR;
-  const y0 = H - padB;
-  const y1 = padT;
-  const laneH = (y0 - y1) / 5;
-  const total = data.totalMi;
-  const xOf = (mi: number) => x0 + (mi / total) * (x1 - x0);
-  // Stable id for the gradient (per-mount).
-  const gradId = `sb-sheen-${Math.random().toString(36).slice(2, 8)}`;
-
-  // Lanes background · alternating row tint + a horizontal line at the
-  // top of each lane + a Z-label gutter on the left.
-  const lanes: React.ReactNode[] = [];
-  for (let zz = 1; zz <= 5; zz++) {
-    const ly = y0 - (zz - 1) * laneH;
-    const lt = ly - laneH;
-    if (zz % 2 === 0) {
-      lanes.push(<rect key={`zb-${zz}`} x={x0} y={lt} width={x1 - x0} height={laneH} fill="rgba(255,255,255,.05)" />);
-    }
-    lanes.push(<line key={`zl-${zz}`} x1={x0} y1={ly} x2={x1} y2={ly} stroke="rgba(255,255,255,.12)" strokeWidth={1} />);
-    lanes.push(
-      <text key={`zt-${zz}`} x={x0 - 8} y={ly - laneH / 2 + 3} textAnchor="end" fontFamily="Inter" fontSize="9" fill="rgba(255,255,255,.5)">
-        Z{zz}
-      </text>
-    );
-  }
-
-  // Blocks · one per segment. Rep blocks render as a comb of work bars
-  // + N-1 float bars with a bracket label above.
-  const blocks: React.ReactNode[] = [];
-  data.segs.forEach((seg, segIdx) => {
-    const bx = xOf(seg.from);
-    const bw = xOf(seg.to) - xOf(seg.from);
-    const bh = seg.zone * laneH;
-    const by = y0 - bh;
-
-    if (seg.reps && seg.reps > 0) {
-      const n = seg.reps;
-      const units = n * 2 + (n - 1); // each rep = 2 units, each rest = 1 unit
-      const uW = bw / units;
-      const repBh = 5 * laneH;
-      const repBy = y0 - repBh;
-      const floBh = 1.3 * laneH;
-      const floBy = y0 - floBh;
-      // AFC fix 2 · float/jog recovery bars take the recovery blue from
-      // the locked palette (#48B3B5 deleted).
-      const floCol = '#27B4E0';
-      let cxp = bx;
-      for (let r = 0; r < n; r++) {
-        const rw = 2 * uW;
-        blocks.push(
-          <rect key={`rep-${segIdx}-${r}-fill`} x={cxp + 1} y={repBy} width={rw - 2} height={repBh} rx={4} fill={seg.color} opacity={0.96} />,
-          <rect key={`rep-${segIdx}-${r}-sheen`} x={cxp + 1} y={repBy} width={rw - 2} height={repBh} rx={4} fill={`url(#${gradId})`} />,
-        );
-        cxp += rw;
-        if (r < n - 1) {
-          blocks.push(
-            <rect key={`flo-${segIdx}-${r}-fill`} x={cxp} y={floBy} width={uW} height={floBh} rx={3} fill={floCol} opacity={0.85} />,
-            <rect key={`flo-${segIdx}-${r}-sheen`} x={cxp} y={floBy} width={uW} height={floBh} rx={3} fill={`url(#${gradId})`} />,
-          );
-          cxp += uW;
-        }
-      }
-      // Bracket + label above the comb.
-      const bxs = bx + 1;
-      const bxe = bx + bw - 1;
-      const byr = repBy - 9;
-      const gcx = bx + bw / 2;
-      blocks.push(
-        <path
-          key={`bracket-${segIdx}`}
-          d={`M${bxs} ${byr + 5} L${bxs} ${byr} L${bxe} ${byr} L${bxe} ${byr + 5}`}
-          fill="none" stroke="rgba(255,255,255,.5)" strokeWidth={1.3}
-        />,
-        <text
-          key={`bracket-lbl-${segIdx}`}
-          x={gcx} y={byr - 6} textAnchor="middle"
-          fontFamily="Inter" fontSize="11.5" fontWeight={800} letterSpacing=".3" fill="#fff"
-        >
-          {seg.label}
-          {seg.pace ? (
-            // Oswald-below-16 sweep (brief v2 typography) · inherits the
-            // bracket label's Inter 11.5 instead of forcing Oswald small.
-            <tspan fontWeight={700} fill="rgba(255,255,255,.82)">
-              {' '}@ {seg.pace}
-              {seg.repDistanceLabel ? ` /${seg.repDistanceLabel.replace(/\s+/g, '')}` : ''}
-            </tspan>
-          ) : null}
-        </text>
-      );
-      return;
-    }
-
-    // Standard block · rounded rect with sheen overlay.
-    blocks.push(
-      <rect key={`b-${segIdx}-fill`} x={bx + 2} y={by} width={Math.max(0, bw - 4)} height={bh} rx={8} fill={seg.color} opacity={0.96} />,
-      <rect key={`b-${segIdx}-sheen`} x={bx + 2} y={by} width={Math.max(0, bw - 4)} height={bh} rx={8} fill={`url(#${gradId})`} />,
-    );
-
-    // Left-anchored text · NAME · big pace · "X mi · Zn" when block tall enough.
-    const tx = bx + 14;
-    blocks.push(
-      <text key={`bl-${segIdx}`} x={tx} y={by + 19} fontFamily="Inter" fontSize="9.5" fontWeight={800} letterSpacing="1" fill="rgba(255,255,255,.82)">
-        {seg.label.toUpperCase()}
-      </text>
-    );
-    if (seg.pace) {
-      blocks.push(
-        <text key={`bp-${segIdx}`} x={tx} y={by + 41} fontFamily="Oswald" fontSize="20" fontWeight={700} fill="#fff">
-          {seg.pace}
-          {/* /mi unit at 11px → Inter per the Oswald-below-16 rule */}
-          <tspan fontFamily="Inter" fontSize="11" fontWeight={600} fill="rgba(255,255,255,.72)"> /mi</tspan>
-        </text>
-      );
-    }
-    if (bh > 62) {
-      const segMi = (seg.to - seg.from);
-      blocks.push(
-        <text key={`bm-${segIdx}`} x={tx} y={by + bh - 11} fontFamily="Inter" fontSize="11" fontWeight={600} fill="rgba(255,255,255,.7)">
-          {segMi.toFixed(segMi === Math.round(segMi) ? 0 : 1)} mi · {seg.zn}
-        </text>
-      );
-    }
-  });
-
-  // Mile ruler · ticks every 1 mi (≤10 total) or 2 mi (longer), with a
-  // closing "MI" label at the right edge.
-  const ruler: React.ReactNode[] = [
-    <line key="r-base" x1={x0} y1={y0} x2={x1} y2={y0} stroke="rgba(255,255,255,.35)" strokeWidth={1.4} />,
-  ];
-  const stepMi = total > 10 ? 2 : 1;
-  for (let t = 0; t <= total + 0.001; t += stepMi) {
-    const rx2 = xOf(t);
-    ruler.push(
-      <line key={`rt-${t}`} x1={rx2} y1={y0} x2={rx2} y2={y0 + 4} stroke="rgba(255,255,255,.45)" strokeWidth={1.2} />,
-      <text key={`rl-${t}`} x={rx2} y={y0 + 16} textAnchor="middle" fontFamily="Inter" fontSize="9.5" fill="rgba(255,255,255,.55)">
-        {t}
-      </text>
-    );
-  }
-  ruler.push(
-    <text key="r-end" x={x1} y={y0 + 16} textAnchor="end" fontFamily="Inter" fontSize="9.5" fill="rgba(255,255,255,.5)">MI</text>
-  );
-
-  // Fuel pins · dashed line starting BELOW the GEL label, drop icon
-  // above the dashed start.
-  const fuel: React.ReactNode[] = [];
-  data.fuelMi.forEach((f, i) => {
-    const fx = xOf(f);
-    fuel.push(
-      <line key={`f-${i}-line`} x1={fx} y1={y1 + 28} x2={fx} y2={y0} stroke="rgba(255,255,255,.4)" strokeWidth={1} strokeDasharray="2 3" />,
-      <path
-        key={`f-${i}-icn`}
-        d={`M${fx} ${y1 + 5 - 8} C${fx + 5} ${y1 + 5 - 2} ${fx + 4.5} ${y1 + 5 + 4} ${fx} ${y1 + 5 + 4} C${fx - 4.5} ${y1 + 5 + 4} ${fx - 5} ${y1 + 5 - 2} ${fx} ${y1 + 5 - 8} Z`}
-        fill="rgba(255,255,255,.92)"
-      />,
-      <text key={`f-${i}-lbl`} x={fx} y={y1 + 22} textAnchor="middle" fontFamily="Inter" fontSize="8" fontWeight={700} fill="rgba(255,255,255,.78)">GEL</text>
-    );
-  });
-
+/**
+ * The SESSION breakdown · a clean, web-refined segment list (replaces
+ * the prior Z1-Z5 SVG lane chart). Built from the iPhone session list,
+ * dressed up for the command center: each row is a glowing zone rail +
+ * the segment name + a two-column stat (pace · distance). Distances are
+ * Oswald numerals right-aligned into one column so every row lines up;
+ * pace tucks into its own column to the left. Hard segments (zone ≥ 3)
+ * carry a faint zone-color wash so the work stands out. Interval /
+ * threshold work renders inside a "REPEAT N×" group.
+ *
+ * Context that lives elsewhere on the page stays elsewhere — fuel is in
+ * the conditions panel, the HR cap / time window are chips on the hero,
+ * the effort target is the EFFORT stat above. The list is purely the
+ * shape of the run.
+ */
+function SessionBlueprintList({ data }: { data: BlueprintData }) {
   return (
-    <svg className="sb-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fff" stopOpacity="0.26" />
-          <stop offset="42%" stopColor="#fff" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {lanes}
-      {blocks}
-      {ruler}
-      {fuel}
-    </svg>
+    <div className="sbl">
+      <div className="sbl-eyebrow">SESSION</div>
+      {data.segs.map((seg, i) =>
+        seg.reps && seg.reps > 0 ? (
+          <SblRepGroup key={i} seg={seg} />
+        ) : (
+          <SblRow
+            key={i}
+            color={seg.color}
+            name={seg.label}
+            dist={miMeasure(seg.to - seg.from)}
+            pace={seg.pace ? `${seg.pace}/mi` : null}
+            work={seg.zone >= 3}
+          />
+        ),
+      )}
+    </div>
   );
+}
+
+/** One segment row · glow rail · name · right-aligned pace + distance
+ *  columns. `work` adds the zone-color wash for hard efforts. The rail
+ *  glow / wash colors ride in via CSS custom properties so the styling
+ *  lives in the stylesheet, not inline. */
+function SblRow({
+  color, name, dist, pace, work,
+}: {
+  color: string;
+  name: string;
+  dist: React.ReactNode;
+  pace?: string | null;
+  work?: boolean;
+}) {
+  const style = {
+    '--rail': color,
+    '--glow': `${color}66`,
+    ...(work ? { '--wash': `${color}1f` } : {}),
+  } as React.CSSProperties;
+  return (
+    <div className={work ? 'sbl-row work' : 'sbl-row'} style={style}>
+      <span className="sbl-rail" aria-hidden="true" />
+      <span className="sbl-name">{name}</span>
+      <span className="sbl-stat">
+        {pace ? <span className="sbl-pace">{pace}</span> : null}
+        <span className="sbl-dist">{dist}</span>
+      </span>
+    </div>
+  );
+}
+
+/** Interval / threshold work · a REPEAT N× group around one rep row and
+ *  (when there's a float recovery) a recovery row. The header carries
+ *  the rep count · the rows show one representative rep + recovery. */
+function SblRepGroup({ seg }: { seg: BlueprintSegment }) {
+  const restLabel = formatRest(seg.restSec);
+  return (
+    <div className="sbl-rep">
+      <div className="sbl-rep-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M17 1l4 4-4 4" />
+          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+          <path d="M7 23l-4-4 4-4" />
+          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+        </svg>
+        REPEAT {seg.reps}×
+      </div>
+      <SblRow
+        color={seg.color}
+        name="Rep"
+        dist={seg.repDistanceLabel ? labelMeasure(seg.repDistanceLabel) : null}
+        pace={seg.pace ? `${seg.pace}/mi` : null}
+        work
+      />
+      {restLabel ? (
+        <SblRow color={SBL_RECOVERY} name="Recovery" dist={labelMeasure(restLabel)} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Recovery rail · the locked-palette recovery cyan, same float color
+ *  the prior chart used. */
+const SBL_RECOVERY = '#27B4E0';
+
+/** A measure rendered as a bright Oswald number + a small Inter unit, so
+ *  the distance column reads as a confident stat. */
+function miMeasure(mi: number): React.ReactNode {
+  if (!Number.isFinite(mi) || mi <= 0) return null;
+  const n = mi === Math.round(mi) ? String(Math.round(mi)) : mi.toFixed(1);
+  return <>{n}<small> mi</small></>;
+}
+
+/** Split a "<number> <unit>" label ("1 mi", "800 m", "3 min") into the
+ *  same Oswald-number + small-unit treatment. Falls back to the raw
+ *  label if it doesn't parse. */
+function labelMeasure(label: string): React.ReactNode {
+  const m = label.match(/^([\d.]+)\s*(.*)$/);
+  if (!m) return label;
+  return <>{m[1]}<small> {m[2]}</small></>;
+}
+
+/** Recovery duration · "45s" under a minute · "3 min" on the minute ·
+ *  "1:30" otherwise. Null when there's no rest to show. */
+function formatRest(s?: number): string | null {
+  if (!s || s <= 0) return null;
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return sec === 0 ? `${m} min` : `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 function toTitleCase(s: string): string {

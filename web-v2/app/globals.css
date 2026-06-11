@@ -601,6 +601,31 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .sb-chart{width:100%;display:block;}
 .hero-v2 .sb-empty{padding:32px 8px;font-size:13px;color:rgba(255,255,255,.55);text-align:center;width:100%;}
 
+/* SESSION segment list · the web-refined structural breakdown (warm-up →
+   work → cool-down), built from the iPhone session list. A glowing zone
+   rail · the segment name · a two-column stat (pace · distance). Oswald
+   distances right-align into one shared column so every row lines up;
+   pace tucks into its own column to the left. Hard segments (zone ≥ 3)
+   carry a faint zone-color wash. Interval work nests inside a REPEAT N×
+   group. Rail glow / wash colors arrive as --rail / --glow / --wash
+   custom properties set per row. */
+.hero-v2 .sbl{width:100%;display:flex;flex-direction:column;gap:8px;}
+.hero-v2 .sbl-eyebrow{font-family:'Inter',sans-serif;font-size:9.5px;font-weight:800;letter-spacing:1.7px;color:rgba(255,255,255,.42);margin:0 2px 2px;}
+.hero-v2 .sbl-row{display:flex;align-items:center;gap:13px;padding:12px 16px;border-radius:13px;background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);transition:background .15s ease,filter .15s ease;}
+.hero-v2 .sbl-row:hover{background:rgba(255,255,255,.08);}
+.hero-v2 .sbl-row.work{background:var(--wash);}
+.hero-v2 .sbl-row.work:hover{filter:brightness(1.12);}
+.hero-v2 .sbl-rail{align-self:stretch;width:4px;min-height:22px;border-radius:4px;flex:0 0 auto;background:var(--rail);box-shadow:0 0 12px var(--glow);}
+.hero-v2 .sbl-name{font-family:'Inter',sans-serif;font-size:15px;font-weight:700;letter-spacing:-.2px;color:var(--txt);}
+.hero-v2 .sbl-stat{margin-left:auto;display:flex;align-items:baseline;gap:14px;padding-left:14px;}
+.hero-v2 .sbl-pace{font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.52);text-align:right;white-space:nowrap;}
+.hero-v2 .sbl-dist{font-family:'Oswald',sans-serif;font-size:19px;font-weight:700;letter-spacing:.3px;color:var(--txt);text-align:right;min-width:52px;white-space:nowrap;}
+.hero-v2 .sbl-dist small{font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:rgba(255,255,255,.58);}
+/* REPEAT group · nests a rep row + recovery row under a count header. */
+.hero-v2 .sbl-rep{display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:14px;background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);}
+.hero-v2 .sbl-rep-head{display:flex;align-items:center;gap:7px;padding:1px 6px;font-family:'Inter',sans-serif;font-size:9.5px;font-weight:800;letter-spacing:1.4px;color:rgba(255,255,255,.5);}
+.hero-v2 .sbl-rep-head svg{width:12px;height:12px;}
+
 /* Coach line · frosted panel pinned to bottom (margin-top:auto). No
    divider line above · the panel itself separates it. Small dot
    anchor on the left. */
