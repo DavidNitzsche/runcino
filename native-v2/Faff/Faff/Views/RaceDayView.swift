@@ -10,6 +10,8 @@ import SwiftUI
 struct RaceDayView: View {
     let raceSlug: String
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var detail: RaceDetailResponse?
     @State private var raceFacts: CoachFactsBlock?
     @State private var projection: ProjectionSummary?
@@ -25,15 +27,19 @@ struct RaceDayView: View {
     @State private var gpxUploadStatus: String?
 
     var body: some View {
-        let mesh = FaffEffort.race.mesh
         ZStack {
-            FaffMeshView(mesh: mesh)
+            FaffMeshView(mesh: .neutral)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    topRow
-                        .padding(.horizontal, 22)
-                        .padding(.top, 8)
+                    // Navigation header — BackChip + phase context label
+                    HStack(spacing: 12) {
+                        BackChip { dismiss() }
+                        SpecLabel(text: topRowLabel, size: 13, tracking: 2.5, color: Theme.txt)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.top, 8)
 
                     hero
                         .padding(.horizontal, 24)
@@ -246,22 +252,6 @@ struct RaceDayView: View {
         }
     }
 
-    /// Topbar label · "RACE DAY" / "RACE WEEK" / "BUILDING" derived from
-    /// race.is_past + proximity. Was always "RACE DAY" with a hardcoded
-    /// 92 readiness ring next to it · misleading on a race 11 weeks out.
-    private var topRow: some View {
-        HStack(alignment: .center) {
-            HStack(spacing: 9) {
-                LivePulseDot(color: Color(hex: 0xFFD27A), size: 8)
-                    .frame(width: 12, height: 12)
-                Text(topRowLabel)
-                    .font(.label(13)).tracking(2.5)
-                    .foregroundStyle(Theme.txt)
-            }
-            Spacer()
-        }
-    }
-
     private var topRowLabel: String {
         if detail?.race.is_past == true { return "POST-RACE" }
         switch (detail?.proximity ?? "").uppercased() {
@@ -434,11 +424,11 @@ struct RaceDayView: View {
                 }
             }
             .stroke(
-                LinearGradient(colors: [Color(hex: 0xFFE0A0), Color(hex: 0xFF5A52)],
+                LinearGradient(colors: [Color(hex: 0xFFD27A), Color(hex: 0xFF5A52)],
                                startPoint: .topLeading, endPoint: .bottomTrailing),
-                style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
             )
-            .background(Color.black.opacity(0.18))
+            .background(Color.white.opacity(0.06))
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
