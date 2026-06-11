@@ -923,7 +923,9 @@ async function loadPhaseBreakdown(
       type,
       target_pace: fmtPace(targetSPerMi),
       target_pace_sec: targetSPerMi,
-      tolerance_pace_sec: Number(p.tolerancePaceSPerMi) || null,
+      // Fall back to 8 s/mi (build-workout.ts default for single-pace
+      // targets) when tolerance wasn't stored in the watch completion.
+      tolerance_pace_sec: Number(p.tolerancePaceSPerMi) || (targetSPerMi && type === 'work' ? 8 : null),
       target_distance_mi: Number(p.targetDistanceMi) || null,
       target_duration_sec: Number(p.targetDurationSec) || null,
       actual_pace: fmtPace(actualSPerMi),
