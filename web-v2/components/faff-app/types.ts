@@ -43,6 +43,11 @@ export type FaffSeed = {
    *  etc.). null when the runner isn't coached. Per-day events ride on
    *  week[i].coachWorkout. */
   coachCalendar: { urlSet: boolean; fetchedAt: string | null; lastError: string | null } | null;
+  /** 2026-06-10 · time-goal runners (TT goal, no goal race): "when is
+   *  my goal time possible" projection · lib/training/goal-ready.ts.
+   *  null when a goal race exists (race-anchored GAP wins) or no TT
+   *  goal is set. */
+  goalReady: import('@/lib/training/goal-ready').GoalReadyProjection | null;
   readiness: Readiness;
   /** 2026-05-31 · daily morning brief envelope · score + trend + per-pillar
    *  tiles + streaks + movers + confounders. Null when the runner has no

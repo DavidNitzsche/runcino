@@ -2066,6 +2066,7 @@ function emptySeed(): FaffSeed {
     weekOf: '·',
     coachedExternally: false,
     coachCalendar: null,
+    goalReady: null,
     user: {
       name: 'Guest',
       city: '',
@@ -2431,6 +2432,19 @@ export async function buildSeed(): Promise<FaffSeed> {
   // 2026-05-31: projection trend series from projection_snapshots
   // (cron-daily rows). Pull 90 days of (vdot, projection_sec) for the
   // goal race's distance so TargetsView can render a sparkline.
+  // 2026-06-10 · time-goal runners: "when is my goal time possible".
+  // Only meaningful when there's NO goal race (race-anchored runners
+  // use the existing GAP projection); the loader itself returns null
+  // unless a TT goal is on the profile.
+  const goalReady = goalRace
+    ? null
+    : await (async () => {
+        try {
+          const { loadGoalReadyProjection } = await import('@/lib/training/goal-ready');
+          return await loadGoalReadyProjection(userId);
+        } catch { return null; }
+      })();
+
   const goalDistMi = goalRace?.distanceMi ?? null;
   const projectionTrend = goalDistMi
     ? await (async () => {
@@ -2670,5 +2684,6 @@ export async function buildSeed(): Promise<FaffSeed> {
     pendingProposals,
     coachedExternally,
     coachCalendar,
+    goalReady,
   };
 }

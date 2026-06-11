@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, KIT, ROLECOL, type EffortKey } from '../constants';
 import { useGlossaryDrawer } from '../toolkit/GlossaryDrawer';
-import { parseRaceTime } from '@/lib/training/vdot';
+import { formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 
 /**
  * 2026-06-04 · per-workout-type gradient for the .hmain hero card.
@@ -4514,8 +4514,67 @@ function RaceDayHero({
   );
 }
 
+/** Time-goal GAP body · 2026-06-10 (David: "they could just want to hit
+ *  a time and then let the plan tell them when its possible"). Renders
+ *  the goal-ready projection for TT-goal runners with no goal race —
+ *  one branch per honesty state, never a fabricated date. Method +
+ *  citations live in lib/training/goal-ready.ts (Daniels reassessment
+ *  quantum caps the rate; freshness window bounds the trend). */
+function GoalReadyBody({ ready }: { ready: NonNullable<FaffSeed['goalReady']> }) {
+  const fmtMon = (iso: string) => {
+    const d = new Date(iso + 'T12:00:00Z');
+    const thisYear = new Date().getUTCFullYear();
+    return d.toLocaleDateString('en-US', d.getUTCFullYear() === thisYear
+      ? { month: 'short' } : { month: 'short', year: 'numeric' });
+  };
+  const goalTime = formatRaceTime(ready.goalTimeSec) ?? '—';
+  const pct = ready.currentVdot != null
+    ? Math.max(0, Math.min(100, Math.round((ready.currentVdot / ready.requiredVdot) * 100)))
+    : 0;
+
+  const byState: Record<typeof ready.state, { big: string; color: string; lab: string; sub: string; foot: string; footColor: string }> = {
+    'in-range': {
+      big: goalTime, color: '#3EBD41', lab: 'IN RANGE NOW',
+      sub: `Fitness is there · VDOT ${ready.currentVdot} vs ${ready.requiredVdot} needed`,
+      foot: 'Trend says race it — book one', footColor: '#3EBD41',
+    },
+    'projectable': {
+      big: `~${fmtMon(ready.readyEarliestISO!)}`, color: '#FFCE8A', lab: 'IN RANGE BY',
+      sub: `Goal ${goalTime} · window ${fmtMon(ready.readyEarliestISO!)}–${fmtMon(ready.readyLatestISO!)}`,
+      foot: `On your trend · +${ready.observedPerWeek} VDOT/wk`, footColor: '#FFCE8A',
+    },
+    'trend-flat': {
+      big: goalTime, color: '#9099A8', lab: 'GOAL',
+      sub: 'Trend is not moving toward it yet',
+      foot: 'Keep stacking weeks', footColor: '#9099A8',
+    },
+    'beyond-horizon': {
+      big: goalTime, color: '#9099A8', lab: 'GOAL',
+      sub: 'More than a year out on current trend',
+      foot: 'Long game · keep building', footColor: '#9099A8',
+    },
+    'insufficient-data': {
+      big: goalTime, color: '#9099A8', lab: 'GOAL',
+      sub: 'A few more weeks of running to project',
+      foot: 'Building the trend', footColor: '#9099A8',
+    },
+  };
+  const s = byState[ready.state];
+
+  return (
+    <div className="tbody cd">
+      <div className="cdbig" style={{ color: s.color }}>{s.big}</div>
+      <div className="cdlab">{s.lab}</div>
+      <div className="cdsub" style={{ opacity: 0.8 }}>{s.sub}</div>
+      <div className="cdbar"><div className="cdfill" style={{ width: `${pct}%`, background: s.color }} /></div>
+      <div className="cdwk" style={{ color: s.footColor, opacity: 1 }}>{s.foot}</div>
+    </div>
+  );
+}
+
 function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void }) {
   const goal = seed.goalRace;
+  const ready = !goal ? seed.goalReady : null;
   const [hoverBar, setHoverBar] = useState<number | null>(null);
   const bar = hoverBar != null ? seed.volumeBars[hoverBar] : null;
   const num = bar ? `${bar.mi}` : `${seed.thisWeekMiles}`;
@@ -4529,7 +4588,10 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
         role={goal ? undefined : 'button'}
         tabIndex={goal ? undefined : 0}
       >
-        <div className="fll">THE GAP{goal ? ` · ${goal.name.toUpperCase().replace(' MARATHON','').slice(0,12)}` : ''}</div>
+        <div className="fll">THE GAP{goal
+          ? ` · ${goal.name.toUpperCase().replace(' MARATHON','').slice(0,12)}`
+          : ready ? ` · ${ready.goalLabel}` : ''}</div>
+        {ready ? <GoalReadyBody ready={ready} /> : (
         <div className="tbody cd">
           {/* 2026-05-30: when projection hasn't computed (no recent race result
               yet → no VDOT seed), show the goal as the big number so the tile
@@ -4581,6 +4643,7 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
               : 'No goal race set'}
           </div>
         </div>
+        )}
       </div>
 
       <div className="tile click" onClick={onOpenRace} role="button" tabIndex={0}>
