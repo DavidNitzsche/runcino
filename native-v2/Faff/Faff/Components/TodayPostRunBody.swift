@@ -480,24 +480,27 @@ struct TodayPostRunBody: View {
         }
     }
 
-    /// Splits grouped by phase (warm-up / work / cool-down).
-    /// Uses cumulative phase distances to assign each split mile to a
-    /// phase by its midpoint, then renders a labeled header per group.
-    @ViewBuilder
-    private func phasedSplitList(splits: [RunSplit], phases: [PhaseBreakdown],
-                                  fastest: Int, denom: Int) -> some View {
-        // Build cumulative mile endpoints for each phase.
-        var cum: [(phase: PhaseBreakdown, endMi: Double)] = []
+    /// Map each split to a phase index using cumulative phase distances.
+    private func assignSplitsToPhases(splits: [RunSplit],
+                                       phases: [PhaseBreakdown]) -> [(split: RunSplit, phaseIdx: Int)] {
+        var cum: [Double] = []
         var running = 0.0
         for p in phases {
             running += p.actual_distance_mi ?? p.target_distance_mi ?? 0
-            cum.append((p, running))
+            cum.append(running)
         }
-        let assigned: [(split: RunSplit, phaseIdx: Int)] = splits.map { s in
+        return splits.map { s in
             let mid = Double(s.mile) - 0.5
-            let idx = cum.firstIndex(where: { mid < $0.endMi }) ?? (cum.count - 1)
+            let idx = cum.firstIndex(where: { mid < $0 }) ?? (cum.count - 1)
             return (s, idx)
         }
+    }
+
+    /// Splits grouped by phase (warm-up / work / cool-down).
+    @ViewBuilder
+    private func phasedSplitList(splits: [RunSplit], phases: [PhaseBreakdown],
+                                  fastest: Int, denom: Int) -> some View {
+        let assigned = assignSplitsToPhases(splits: splits, phases: phases)
         VStack(alignment: .leading, spacing: 16) {
             ForEach(Array(phases.enumerated()), id: \.offset) { idx, phase in
                 let group = assigned.filter { $0.phaseIdx == idx }.map { $0.split }
