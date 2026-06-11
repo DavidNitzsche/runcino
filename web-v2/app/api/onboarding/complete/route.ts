@@ -242,6 +242,32 @@ export async function POST(req: NextRequest) {
     if (before) a--;
     return (a >= 13 && a <= 100) ? a : null;
   })() : null;
+
+  // 2026-06-10 · scheduling (David: "ask when they want to start · what
+  // day the long runs should be on"). longRunDay → user_settings.long_run_day
+  // (the jsonb field the generator reads via loadSettings). startDate →
+  // the plan's week-0 anchor (clamped to [runner-today, +21d]). Both null
+  // on coached + legacy clients; generators then default (today / Sunday).
+  const VALID_DAY_KEYS = new Set(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']);
+  const longRunDay = typeof body.longRunDay === 'string' && VALID_DAY_KEYS.has(body.longRunDay)
+    ? (body.longRunDay as string) : null;
+  // Rest day must not collide with the long run; the generator overwrites
+  // a shared slot with the long and would leave the week rest-less.
+  const restDay = longRunDay ? (longRunDay === 'sat' ? 'mon' : 'sat') : null;
+  const todayInTz = (() => {
+    try { return new Date().toLocaleDateString('en-CA', { timeZone: timezone }); }
+    catch { return new Date().toISOString().slice(0, 10); }
+  })();
+  const startDate = (() => {
+    if (typeof body.startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.startDate)) return null;
+    const hi = new Date(todayInTz + 'T12:00:00Z');
+    hi.setUTCDate(hi.getUTCDate() + 21);
+    const hiISO = hi.toISOString().slice(0, 10);
+    return (body.startDate >= todayInTz && body.startDate <= hiISO) ? body.startDate : null;
+  })();
+  // The user_settings patch merged into profile.user_settings (jsonb).
+  const settingsPatch: Record<string, unknown> = { coached_externally: isCoached };
+  if (longRunDay) { settingsPatch.long_run_day = longRunDay; settingsPatch.rest_day = restDay; }
   // ── Atomic onboarding write (txn) ────────────────────────────────
   //
   // Pass-4 fix: previously the users + profile + user_prefs writes were
@@ -283,11 +309,19 @@ export async function POST(req: NextRequest) {
     // ON CONFLICT (user_uuid) threw "no unique or exclusion constraint"
     // for EVERY new onboarder. Set user_id = uuid-as-text and conflict
     // on the real PK.
+    // long-run/rest day reflect the runner's pick (default sun/sat). Both
+    // the text day-key columns and the int dow columns are written so the
+    // Settings UI and any reader stay consistent. The generator itself
+    // reads user_settings.long_run_day (jsonb · written above).
+    const lrdKey = longRunDay ?? 'sun';
+    const restKey = restDay ?? 'sat';
+    const lrdDow = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(lrdKey);
+    const restDow = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(restKey);
     await client.query(
-      `INSERT INTO user_prefs (user_id, user_uuid, long_run_dow, quality_dows, rest_dow, units, updated_at)
-       VALUES ($1::text, $1::uuid, 0, '2,4', 6, 'imperial', NOW())
+      `INSERT INTO user_prefs (user_id, user_uuid, long_run_day, long_run_dow, quality_days, quality_dows, rest_day, rest_dow, units, updated_at)
+       VALUES ($1::text, $1::uuid, $2, $3, 'tue,thu', '2,4', $4, $5, 'imperial', NOW())
        ON CONFLICT (user_id) DO NOTHING`,
-      [userId]
+      [userId, lrdKey, lrdDow, restKey, restDow]
     );
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -329,7 +363,7 @@ export async function POST(req: NextRequest) {
           height_cm               = COALESCE(height_cm, $17),
           age                     = COALESCE(age, $18),
           race_history            = $19::jsonb,
-          user_settings           = user_settings || jsonb_build_object('coached_externally', $20::boolean)
+          user_settings           = user_settings || $20::jsonb
         WHERE user_uuid = $14
         RETURNING user_uuid`,
       [
@@ -342,10 +376,11 @@ export async function POST(req: NextRequest) {
         // Stamps the runner's self-reported PRs · voice-band reads from
         // profile.race_history alongside the races table.
         JSON.stringify(raceHistory.map((e) => ({ ...e, source: 'self_reported' }))),
-        // Rule 6 discipline: always written true/false via field-level
-        // jsonb merge — re-onboarding from coached → race clears it,
-        // and other user_settings keys are never clobbered.
-        isCoached,
+        // Rule 6 discipline: field-level jsonb merge — coached_externally
+        // (always written true/false so re-onboarding coached→race clears
+        // it) + long_run_day/rest_day when picked. Other user_settings
+        // keys are never clobbered.
+        JSON.stringify(settingsPatch),
       ]
     );
 
@@ -372,7 +407,7 @@ export async function POST(req: NextRequest) {
             $8, $9, $10, $11, $12, $13, $14,
             $15::date, $16, $17, $18,
             $19::jsonb,
-            jsonb_build_object('coached_externally', $20::boolean)
+            $20::jsonb
           )`,
         [
           userId, goalDistanceForProfile, date, time, name, timezone, connectionsSkipped,
@@ -380,7 +415,7 @@ export async function POST(req: NextRequest) {
           histAvgMi, histLongMi, histYears,
           birthday, sex, heightCm, ageNum,
           JSON.stringify(raceHistory.map((e) => ({ ...e, source: 'self_reported' }))),
-          isCoached,
+          JSON.stringify(settingsPatch),
         ]
       );
     }
@@ -484,10 +519,10 @@ export async function POST(req: NextRequest) {
       // Canonical race-prep generator. Best-effort: returns ok:false with
       // a reason for edge runways (<2wks / >1yr / <3wks) — the race row
       // still stands, and lifecycle authors the plan once it's in range.
-      // startAnchor:'today' — a runner onboarding mid-week starts their
-      // plan on the join day, not the Monday before, so week 0 never
-      // contains runs dated before they signed up.
-      const result = await generatePlan({ userId, raceSlug: slug, startAnchor: 'today' });
+      // The runner picked their start day (defaults to today). The plan's
+      // week 0 anchors there — startAnchor:'today' is the fallback when
+      // no explicit date was sent (legacy clients).
+      const result = await generatePlan({ userId, raceSlug: slug, startAnchor: 'today', startDateISO: startDate ?? undefined });
       seedPlan = {
         ok: result.ok,
         mode: 'race-prep',
@@ -504,6 +539,7 @@ export async function POST(req: NextRequest) {
     try {
       const result = await seedMaintenancePlanFromOnboarding({
         userId,
+        startDateISO: startDate ?? undefined,
         goals: {
           ttDistance,
           ttTimeBucket: ttTime,

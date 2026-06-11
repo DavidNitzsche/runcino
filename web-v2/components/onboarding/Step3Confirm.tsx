@@ -28,6 +28,10 @@ export interface Step3ConfirmProps {
   initialName: string | null;
 }
 
+type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
 export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
   const router = useRouter();
   // The URL's `name` param wins if present (back-button workflow);
@@ -46,6 +50,24 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
   const [sex, setSex] = useState<'M' | 'F' | ''>('');
   const [heightFt, setHeightFt] = useState<string>('');
   const [heightIn, setHeightIn] = useState<string>('');
+
+  // 2026-06-10 · scheduling (David: "ask them when they want to start ·
+  // what day the long runs should be on · people sign up in the evening
+  // and want to start tomorrow"). Local component state · POSTed on
+  // submit · drives the plan's start day + long-run day. Defaults: start
+  // today, long run Sunday. Plan-authoring paths only (coached skips —
+  // Faff authors no plan for them).
+  const localISO = (offsetDays: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  };
+  const todayLocal = localISO(0);
+  const tomorrowLocal = localISO(1);
+  const maxStartLocal = localISO(21);
+  const [startDate, setStartDate] = useState<string>(todayLocal);
+  const [longRunDay, setLongRunDay] = useState<DayKey>('sun');
+  const authorsPlan = initial.distance !== 'coached';
 
   // Detect timezone on mount if not already set in the URL.
   useEffect(() => {
@@ -92,6 +114,10 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
           raceHistory: initial.raceHistory,
           name: name.trim(),
           timezone,
+          // 2026-06-10 · scheduling · plan start day + long-run day.
+          // Null on coached (no plan); server clamps/validates.
+          startDate: authorsPlan ? startDate : undefined,
+          longRunDay: authorsPlan ? longRunDay : undefined,
           connectionsSkipped: initial.connectionsSkipped,
           // T2 physiology — optional, COALESCE'd server-side so empty
           // fields don't clobber existing values.
@@ -294,6 +320,69 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
               {historySummary}
             </div>
           </FormRow>
+        )}
+
+        {/* Scheduling · start day + long-run day. Plan-authoring paths
+            only (coached has no Faff plan to schedule). */}
+        {authorsPlan && (
+          <>
+            <FormRow label="WHEN DO YOU WANT TO START?" hint="YOUR FIRST RUN LANDS THIS DAY">
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                {([['Today', todayLocal], ['Tomorrow', tomorrowLocal]] as const).map(([lab, val]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setStartDate(val)}
+                    style={{
+                      background: startDate === val ? 'rgba(255,255,255,0.18)' : 'transparent',
+                      border: `1px solid ${startDate === val ? 'var(--ink)' : 'rgba(255,255,255,0.20)'}`,
+                      color: startDate === val ? 'var(--ink)' : 'var(--mute)',
+                      fontFamily: 'var(--f-body)', fontWeight: 700, fontSize: 14,
+                      letterSpacing: '0.6px', padding: '6px 18px', borderRadius: 10, cursor: 'pointer',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {lab}
+                  </button>
+                ))}
+                <input
+                  type="date"
+                  min={todayLocal}
+                  max={maxStartLocal}
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={{
+                    background: (startDate !== todayLocal && startDate !== tomorrowLocal) ? 'rgba(255,255,255,0.10)' : 'transparent',
+                    border: '1px solid rgba(255,255,255,0.20)', borderRadius: 10,
+                    color: 'var(--ink)', fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: 14,
+                    padding: '6px 10px', outline: 'none', colorScheme: 'dark',
+                  }}
+                />
+              </div>
+            </FormRow>
+
+            <FormRow label="LONG RUN DAY" hint="YOUR WEEKLY LONG RUN LANDS HERE">
+              <div style={{ display: 'flex', gap: 6 }}>
+                {DAY_KEYS.map((d, i) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setLongRunDay(d)}
+                    aria-label={d}
+                    style={{
+                      background: longRunDay === d ? 'rgba(255,255,255,0.18)' : 'transparent',
+                      border: `1px solid ${longRunDay === d ? 'var(--ink)' : 'rgba(255,255,255,0.20)'}`,
+                      color: longRunDay === d ? 'var(--ink)' : 'var(--mute)',
+                      fontFamily: 'var(--f-body)', fontWeight: 700, fontSize: 14,
+                      width: 38, height: 38, borderRadius: 10, cursor: 'pointer',
+                    }}
+                  >
+                    {DAY_LETTERS[i]}
+                  </button>
+                ))}
+              </div>
+            </FormRow>
+          </>
         )}
 
         {/* T2 physiology · optional but strongly encouraged.

@@ -55,6 +55,10 @@ export interface GenerateInput {
    *     schedule runs in the past"). First week is a full 7 days from
    *     today; no past-dated prescriptions. */
   startAnchor?: 'today' | 'monday';
+  /** 2026-06-10 · explicit week-0 start date (YYYY-MM-DD) the runner
+   *  picked at onboarding. Overrides startAnchor. Clamped to ≥ today.
+   *  Day-of-week placement (long run etc.) still follows user prefs. */
+  startDateISO?: string;
 }
 
 export interface GenerateResult {
@@ -1908,10 +1912,10 @@ async function persistPlan(client: PoolClient, args: {
 // ── Main entrypoint ─────────────────────────────────────────────────────
 
 export async function generatePlan(input: GenerateInput): Promise<GenerateResult> {
-  const { userId, raceSlug, startAnchor = 'monday' } = input;
+  const { userId, raceSlug, startAnchor = 'monday', startDateISO } = input;
 
   // 1. Load all DB-sourced inputs into a pure-data bundle.
-  const inputs = await loadGeneratorInputs(userId, raceSlug, startAnchor);
+  const inputs = await loadGeneratorInputs(userId, raceSlug, startAnchor, startDateISO);
   if (!inputs.ok) return { ok: false, reason: inputs.reason };
 
   // 2026-06-03 · Rules 12 + 13 · pick plan mode based on temporal context.
@@ -2177,6 +2181,7 @@ async function loadGeneratorInputs(
   userId: string,
   raceSlug: string,
   startAnchor: 'today' | 'monday' = 'monday',
+  startDateISO?: string,
 ): Promise<
   | { ok: true; compose: ComposePlanInput }
   | { ok: false; reason: string }
@@ -2236,12 +2241,15 @@ async function loadGeneratorInputs(
     ? ctRow.cross_training_modes : [];
 
   // 4. Plan-shape inputs
-  // 2026-06-10 · onboarding anchors week 0 at TODAY (the join day) so a
-  // mid-week signup never sees runs dated before they existed. Lifecycle
-  // regens keep Monday anchoring for clean Mon-Sun weeks. The race-week
-  // math is anchor-agnostic: race day always falls in the final 7-day
-  // block regardless of where week 0 starts.
-  const startMondayISO = startAnchor === 'today' ? todayISO : mondayOf(todayISO);
+  // 2026-06-10 · onboarding anchors week 0 at the runner's chosen start
+  // day (startDateISO, clamped to ≥ today), else TODAY (startAnchor),
+  // so a mid-week signup never sees runs dated before they existed.
+  // Lifecycle regens keep Monday anchoring for clean Mon-Sun weeks. The
+  // race-week math is anchor-agnostic: race day always falls in the final
+  // 7-day block regardless of where week 0 starts.
+  const startMondayISO = (startDateISO && startDateISO >= todayISO)
+    ? startDateISO
+    : startAnchor === 'today' ? todayISO : mondayOf(todayISO);
   const totalWeeks = daysBetween(startMondayISO, mondayOf(raceDateISO)) / 7 + 1;
   if (totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 
