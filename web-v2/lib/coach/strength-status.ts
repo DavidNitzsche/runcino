@@ -65,6 +65,21 @@ export async function loadStrengthWeekStatus(
   const weekEndISO = addDaysISO(weekStartISO, 6);
   const todayISO = await runnerToday(userUuid);
 
+  // 2026-06-10 · onboarding floor. A brand-new runner who joined midweek
+  // never "skipped" the strength days that fell before they had an
+  // account — counting them as missed greets first-time users with
+  // "1 day missed" on day one (David caught this 3 clicks into
+  // onboarding). Floor the skipped check at the join date.
+  const joinedISO: string | null = (await pool.query<{ d: string | null }>(
+    `SELECT to_char(LEAST(
+              COALESCE(p.onboarded_at, u.created_at),
+              COALESCE(u.created_at, p.onboarded_at)
+            ), 'YYYY-MM-DD') AS d
+       FROM users u LEFT JOIN profile p ON p.user_uuid = u.id
+      WHERE u.id = $1::uuid LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as Array<{ d: string | null }> }))).rows[0]?.d ?? null;
+
   const rows = (await pool.query<{
     id: number;
     date: string;
@@ -135,6 +150,7 @@ export async function loadStrengthWeekStatus(
   const skipped: string[] = [];
   for (const date of recommendedDays) {
     if (date >= todayISO) continue;            // today or future · not skipped yet
+    if (joinedISO && date < joinedISO) continue; // before the runner joined · never theirs to skip
     if (byDate.has(date)) continue;            // logged · not skipped
     skipped.push(date);
   }

@@ -210,7 +210,10 @@ export function TodayView({
                   <circle cx="28" cy="28" r="23" fill="none" stroke="rgba(255,255,255,.18)" strokeWidth="5"/>
                   <circle cx="28" cy="28" r="23" fill="none" stroke={ringColor} strokeWidth="5" strokeLinecap="round" strokeDasharray="144.5" strokeDashoffset={144.5 - (score / 100) * 144.5} transform="rotate(-90 28 28)"/>
                 </svg>
-                <div className="rv">{score}</div>
+                {/* Cold-start: no biometric data yet → a "0" score reads as
+                    broken. Show an em-dash; the "BUILDING" label carries
+                    the honest state. */}
+                <div className="rv">{band === 'no-data' ? '—' : score}</div>
               </div>
             </div>
           );
