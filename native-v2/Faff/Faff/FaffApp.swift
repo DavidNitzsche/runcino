@@ -271,6 +271,10 @@ struct RootContainer: View {
         // hard-cutting. Was three bare `step =` assignments.
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: "faff.onboarded") {
+            // Hold the FAFF logo for a beat while prefetchAllOnLaunch()
+            // warms AppCache. By the time we advance to .main the first
+            // tab renders from cache with no loading state.
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             advance(.main); return
         }
         // Returning user heuristic: any cached surface bytes means they've
@@ -281,6 +285,7 @@ struct RootContainer: View {
             || AppCache.read(.logState, as: LogState.self) != nil
         if hasCachedSurfaces || TokenStore.shared.isSignedIn {
             defaults.set(true, forKey: "faff.onboarded")
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             advance(.main); return
         }
         advance(.signIn)

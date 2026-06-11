@@ -97,17 +97,25 @@ struct RootTabView: View {
     /// push into the active tab's NavigationStack via the .navigationDestination(item:)
     /// hook below. Cleared once the push lands.
     @State private var pendingRoute: FaffRoute? = nil
-    /// Reflects whichever view's hideFaffTabBar preference is currently
-    /// set. RootTabView reads this to fade the bar in/out.
-    @State private var tabBarHidden: Bool = false
+    /// Per-tab hideFaffTabBar preference — only the selected tab's value
+    /// drives actual bar visibility, so a hidden tab with a pushed run
+    /// screen doesn't bleed its hide-request onto other tabs.
+    @State private var tabBarHiddenPerTab: [FaffTab: Bool] = [:]
+    /// Tracks which tabs have been visited at least once. Non-visited tabs
+    /// are excluded from the ZStack so SwiftUI doesn't pay their layout
+    /// cost until first visit. Once in the ZStack they're never removed,
+    /// so switching back to a visited tab restores its state instantly.
+    @State private var visitedTabs: Set<FaffTab> = [.today]
+    private var tabBarHidden: Bool { tabBarHiddenPerTab[selected] ?? false }
 
     var body: some View {
         ZStack {
-            // Content layer · the active tab's view stack, full-screen.
-            // Tab swap is instant (no TabView crossfade) · matches the
-            // design's hard-cut behavior.
+            // Content layer · all visited tabs live here simultaneously.
+            // Invisible tabs keep their SwiftUI state so returning to a
+            // tab is instant — no recreation, no loadAll re-fire.
             content
                 .ignoresSafeArea(.keyboard)
+                .onChange(of: selected) { _, tab in visitedTabs.insert(tab) }
 
             // Global top bar · sits above content as a ZStack overlay so
             // FaffMeshView's .ignoresSafeArea() doesn't swallow the inset.
@@ -146,9 +154,6 @@ struct RootTabView: View {
             .opacity(tabBarHidden ? 0 : 1)
             .allowsHitTesting(!tabBarHidden)
             .animation(.easeInOut(duration: 0.22), value: tabBarHidden)
-        }
-        .onPreferenceChange(HideFaffTabBarKey.self) { newValue in
-            tabBarHidden = newValue
         }
         .sheet(isPresented: $pushProfile) {
             NavigationStack {
@@ -232,28 +237,44 @@ struct RootTabView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch selected {
-        case .today:
-            navStack { TodayView(onProfile: { pushProfile = true }) }
-        case .train:
-            navStack { TrainView(onProfile: { pushProfile = true }) }
-        case .health:
-            navStack { HealthView(onProfile: { pushProfile = true }) }
-        case .targets:
-            navStack { TargetsView(onProfile: { pushProfile = true }) }
+        ZStack {
+            // Each tab is wrapped in its own NavigationStack and lives
+            // at a stable position in the ZStack. Tabs are created on
+            // first visit and never destroyed — SwiftUI preserves their
+            // @State so returning to a tab is instant.
+            if visitedTabs.contains(.today) {
+                tabStack(.today) { TodayView(onProfile: { pushProfile = true }) }
+            }
+            if visitedTabs.contains(.train) {
+                tabStack(.train) { TrainView(onProfile: { pushProfile = true }) }
+            }
+            if visitedTabs.contains(.health) {
+                tabStack(.health) { HealthView(onProfile: { pushProfile = true }) }
+            }
+            if visitedTabs.contains(.targets) {
+                tabStack(.targets) { TargetsView(onProfile: { pushProfile = true }) }
+            }
         }
     }
 
     @ViewBuilder
-    private func navStack<Content: View>(@ViewBuilder _ root: () -> Content) -> some View {
+    private func tabStack<Content: View>(_ tab: FaffTab, @ViewBuilder _ root: () -> Content) -> some View {
         NavigationStack {
             root()
                 .navigationBarHidden(true)
                 .navigationDestination(for: FaffRoute.self) { routeDestination($0) }
-                .navigationDestination(item: $pendingRoute) { route in
-                    routeDestination(route)
-                }
+                // Route pendingRoute only to the currently selected tab so
+                // multiple NavigationStacks in the ZStack don't all respond.
+                .navigationDestination(item: Binding(
+                    get: { selected == tab ? pendingRoute : nil },
+                    set: { pendingRoute = $0 }
+                )) { routeDestination($0) }
         }
+        .opacity(selected == tab ? 1 : 0)
+        .allowsHitTesting(selected == tab)
+        // Capture per-tab bar-hide preference so a hidden tab with a pushed
+        // run screen can't bleed its hide-state onto whichever tab is visible.
+        .onPreferenceChange(HideFaffTabBarKey.self) { tabBarHiddenPerTab[tab] = $0 }
     }
 
     @ViewBuilder
