@@ -170,7 +170,7 @@ struct HealthView: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 16)
-            .padding(.bottom, 120)        // clear of floating tab bar
+            .padding(.bottom, 70)        // clear of floating tab bar
             .frame(maxWidth: .infinity, alignment: .leading)
             .transition(.opacity.combined(with: .move(edge: .top)))
             .id(section)                  // re-mount on section swap so the transition fires

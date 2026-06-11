@@ -308,18 +308,14 @@ struct TodayView: View {
                                         pastDayNoRunStub
                                     }
                                 }
-                                // HARD width lock. Children that try
-                                // to size wider than this just get
-                                // clipped by the .clipped() below.
                                 .frame(width: proxy.size.width, alignment: .leading)
-                                // Clear of the floating tab bar pill.
-                                .padding(.bottom, 120)
+                                .padding(.bottom, 100)
                             }
-                            .frame(width: proxy.size.width)
-                            .clipped()
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .ignoresSafeArea(edges: .bottom)
                         }
                         .frame(width: proxy.size.width, height: proxy.size.height)
-                        .clipped()
+                        .ignoresSafeArea(edges: .bottom)
                     }
                     .padding(.top, 16)
                 } else if isPostRunMode {
@@ -329,18 +325,16 @@ struct TodayView: View {
                     // (TodayRecoveryPanel) was here previously but the
                     // readiness score is orphaned now that the reactive
                     // coach layer is unmounted.
-                    GeometryReader { proxy in
-                        ScrollView(.vertical, showsIndicators: false) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                postRunBody
-                            }
-                            .frame(width: proxy.size.width, alignment: .leading)
-                            .padding(.bottom, 120)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            postRunBody
                         }
-                        .frame(width: proxy.size.width)
-                        .clipped()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.bottom, 100)
                     }
-                    .padding(.top, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(edges: .bottom)
+                    .padding(.top, 14)
                 } else {
                     // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
@@ -377,11 +371,11 @@ struct TodayView: View {
             if !isPastDayView && !isPostRunMode {
                 DragSheet(
                     // 2026-06-02 round 25 · 150 → 180.
-                    // 2026-06-02 round 46 · 180 → 200. David flagged the
-                    // peek sat right against the tab bar pill · 20pt more
-                    // clearance gives a comfortable gap so the tab bar
-                    // reads as separate from the peek.
-                    collapsedInsetFromBottom: 200,
+                    // 2026-06-02 round 46 · 180 → 200.
+                    // 2026-06-11 · 200 → 170. Pill shrank (62→50) and
+                    // moved down (14→4pt pad), so the pill zone dropped
+                    // ~22pt — tighter peek sits naturally above the pill.
+                    collapsedInsetFromBottom: 170,
                     minTopOffset: screenSafeAreaTop + 44,
                     progress: $sheetProgress,
                     peekBackground: peekFill,
@@ -849,12 +843,19 @@ struct TodayView: View {
     }
 
     private func segDistLabel(_ p: WatchPhase) -> String {
+        let distPart: String
         if let d = p.distanceMi, d > 0 {
-            return d.truncatingRemainder(dividingBy: 1) == 0
+            distPart = d.truncatingRemainder(dividingBy: 1) == 0
                 ? "\(Int(d)) mi" : String(format: "%.1f mi", d)
+        } else {
+            let m = max(1, p.durationSec / 60)
+            distPart = "\(m) min"
         }
-        let m = max(1, p.durationSec / 60)
-        return "\(m) min"
+        if let pace = p.targetPaceSPerMi, pace > 0 {
+            let paceStr = String(format: "%d:%02d/mi", pace / 60, pace % 60)
+            return "\(distPart) · \(paceStr)"
+        }
+        return distPart
     }
 
     /// Peek header · branches on mode:

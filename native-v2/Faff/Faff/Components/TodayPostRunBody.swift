@@ -97,11 +97,21 @@ struct TodayPostRunBody: View {
     @State private var stravaPushState: StravaPushStateLocal = .idle
     private enum StravaPushStateLocal { case idle, pushing, pending, done, dup, failed }
 
+    @State private var shoeSheetOpen = false
+    @State private var localShoeId: Int? = nil
+
+    private var effectiveShoeId: Int? { localShoeId ?? detail?.shoe_id }
+    private var currentShoe: RunDetailShoe? {
+        guard let id = effectiveShoeId else { return nil }
+        return detail?.shoes?.first { $0.id == id }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header                          // NEW · eyebrow + Oswald title + win line
+            header
             statsTrio
             secondaryStats
+            shoeSection
             // Route map · only render the section when there's actual
             // polyline data. The Today v2 feedback caught the old
             // unconditional render leaving a black card on runs without
@@ -126,6 +136,65 @@ struct TodayPostRunBody: View {
                 stravaPushSection(runId: id)
             }
         }
+        .sheet(isPresented: $shoeSheetOpen) {
+            RunShoePickerSheet(
+                shoes: detail?.shoes?.filter { $0.retired != true } ?? [],
+                currentShoeId: effectiveShoeId,
+                accent: accent
+            ) { picked in
+                localShoeId = picked.id
+                guard let id = runId else { return }
+                Task { try? await API.assignShoeToRun(runId: id, shoeId: picked.id) }
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Shoe row
+
+    private var shoeSection: some View {
+        Button { shoeSheetOpen = true } label: {
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(shoeRoleColor)
+                    .frame(width: 9, height: 9)
+                if let shoe = currentShoe {
+                    Text(shoe.displayName.isEmpty ? "Unnamed shoe" : shoe.displayName)
+                        .font(.body(14, weight: .extraBold))
+                        .foregroundStyle(primaryText)
+                    Text("· \(Int((shoe.mileage ?? 0).rounded())) mi")
+                        .font(.body(14, weight: .medium))
+                        .foregroundStyle(mutedText)
+                } else {
+                    Text("Assign a shoe")
+                        .font(.body(14, weight: .medium))
+                        .foregroundStyle(mutedText)
+                }
+                Spacer()
+                Text("Change")
+                    .font(.body(12, weight: .semibold))
+                    .foregroundStyle(mutedText)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(subtleText)
+            }
+            .padding(.horizontal, 22).padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(sectionBg)
+            .overlay(Rectangle().fill(dividerColor).frame(height: 1), alignment: .bottom)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var shoeRoleColor: Color {
+        guard let shoe = currentShoe else { return subtleText }
+        if shoe.preferred == true { return Theme.Shoe.race }
+        if let mi = shoe.mileage, let cap = shoe.mileage_cap, cap > 0, mi / cap > 0.8 {
+            return Theme.Shoe.recovery
+        }
+        return Theme.Shoe.easy
     }
 
     /// 2026-06-02 round 49 · effort resolved from the run's planned type
@@ -147,12 +216,11 @@ struct TodayPostRunBody: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(headerTitle.uppercased())
-                .font(.display(46, weight: .bold))
-                .tracking(-1.5)
+                .font(.heroDisplay(88))
+                .tracking(-2)
                 .foregroundStyle(accent)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.top, 2)
+                .minimumScaleFactor(0.55)
             if let sub = subtitleText {
                 Text(sub)
                     .font(.body(14, weight: .semibold))
@@ -160,34 +228,8 @@ struct TodayPostRunBody: View {
                     .lineLimit(2)
                     .padding(.top, 1)
             }
-            // 2026-06-03 round 70 · WIN LINE as a contained pill.
-            // David: "still hard to read" — round 67 green-on-mesh
-            // was muddy. Pattern: WHITE pill background + DARK GREEN
-            // text + check on mesh context · semantic green-ness via
-            // the icon/text, max contrast via the white pill.
-            // Cream context keeps the original light-green chip.
-            if let win = winLineText {
-                let pillBg: Color = onMesh ? Color.white : Color(hex: 0xE9F7EE)
-                let inkColor: Color = Color(hex: 0x1F9A6F)
-                HStack(alignment: .firstTextBaseline, spacing: 0) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(inkColor)
-                        Text(win)
-                            .font(.body(15, weight: .extraBold))
-                            .foregroundStyle(inkColor)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .lineLimit(2)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(pillBg, in: Capsule())
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, 10)
-            }
         }
-        .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 16)
+        .padding(.horizontal, 22).padding(.top, 0).padding(.bottom, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(sectionBg)
         .overlay(

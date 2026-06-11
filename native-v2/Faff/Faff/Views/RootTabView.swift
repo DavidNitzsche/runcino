@@ -141,6 +141,26 @@ struct RootTabView: View {
             )
             .allowsHitTesting(showRunMenu)
 
+            // Gradient scrim — fades from clear above the pill to solid
+            // bg at the physical screen bottom. ignoresSafeArea on the
+            // outer VStack fills full screen height so the gradient
+            // covers both the pill zone and the home-indicator area below.
+            VStack {
+                Spacer()
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: Theme.bg.opacity(0.82), location: 0.55),
+                        .init(color: Theme.bg, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 150)
+            }
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+
             // Custom floating glass tab bar · always visible on top
             // EXCEPT when an active run view (TreadmillView /
             // WatchMirrorView) sets hideFaffTabBar() · the run console
@@ -149,7 +169,7 @@ struct RootTabView: View {
                 Spacer()
                 tabBar
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 4)
             }
             .opacity(tabBarHidden ? 0 : 1)
             .allowsHitTesting(!tabBarHidden)
@@ -305,17 +325,12 @@ struct RootTabView: View {
             tabButton(.health)
             tabButton(.targets)
         }
-        .padding(6)
-        .frame(height: 62)
-        // Brief v2 §3 · glass is retired on chrome (queued task 1).
-        // Was: 72%-opacity navy + .ultraThinMaterial + a 38pt drop
-        // shadow. Now: solid dark neutral (Theme.card) + the standard
-        // hairline. Contrast on the solid fill: active label #F6F7F8 on
-        // #11141A ≈ 15.9:1 (AAA) · inactive 50% white ≈ 5.0:1 (AA).
-        .background(Theme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 6).padding(.vertical, 4)
+        .frame(height: 50)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Theme.line, lineWidth: 1)
         )
     }

@@ -25,6 +25,7 @@
 		22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232F9F14460F13DDC369F512 /* Brandmark.swift */; };
 		241CFCD0626CE2C875BE32F2 /* Oswald-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 014129C189442D8193785F35 /* Oswald-Variable.ttf */; };
 		269C1642A3928FABA51378F5 /* RecoveryBrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E6C4CECAB490A0F91D63C3 /* RecoveryBrief.swift */; };
+		27F43A4B6D6FA538F991A6DE /* RunShoePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0165EB077E98C01384F34584 /* RunShoePickerSheet.swift */; };
 		2919F201CE287CAF6B172EED /* Inter-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 37F523B1198BDF2C15E626B2 /* Inter-SemiBold.ttf */; };
 		2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
@@ -180,6 +181,7 @@
 
 /* Begin PBXFileReference section */
 		014129C189442D8193785F35 /* Oswald-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Oswald-Variable.ttf"; sourceTree = "<group>"; };
+		0165EB077E98C01384F34584 /* RunShoePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunShoePickerSheet.swift; sourceTree = "<group>"; };
 		0743519D766EECA60297B74F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		081F3BDD4979D92FC6A19386 /* TodayRecoveryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayRecoveryPanel.swift; sourceTree = "<group>"; };
 		09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A_Signals.swift; sourceTree = "<group>"; };
@@ -500,6 +502,7 @@
 				726282D996DBB67B81D4C203 /* RolePickView.swift */,
 				894094955F354E1174579A70 /* RootTabView.swift */,
 				E341D1073CB161F54628F683 /* RunDetailView.swift */,
+				0165EB077E98C01384F34584 /* RunShoePickerSheet.swift */,
 				743648B82E2A21410A13F000 /* SettingsView.swift */,
 				8FCD25057781DAE979CCDBFC /* ShoesView.swift */,
 				7A2DDEC15725161C4032FEC9 /* SignInView.swift */,
@@ -814,6 +817,7 @@
 				097BBD3A01CCAB65AC7F4F60 /* RootTabView.swift in Sources */,
 				E0BE2A0BC43ECFFFEFE7A395 /* RunActionMenu.swift in Sources */,
 				E05B05674D1FD82CFD0AC965 /* RunDetailView.swift in Sources */,
+				27F43A4B6D6FA538F991A6DE /* RunShoePickerSheet.swift in Sources */,
 				3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */,
 				8A9B601EB7B9856185B78459 /* ScrubbableTrace.swift in Sources */,
 				3A64039201C05E24C914B07D /* SettingsCache.swift in Sources */,
