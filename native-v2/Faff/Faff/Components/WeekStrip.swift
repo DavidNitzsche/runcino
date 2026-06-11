@@ -26,17 +26,19 @@ struct WeekStrip: View {
     private let cellWidth: CGFloat = 44
 
     var body: some View {
-        TabView(selection: $weekIndex) {
-            ForEach(Array(weeks.enumerated()), id: \.offset) { idx, week in
-                weekRow(week)
-                    .tag(idx)
+        GeometryReader { geo in
+            TabView(selection: $weekIndex) {
+                ForEach(Array(weeks.enumerated()), id: \.offset) { idx, week in
+                    weekRow(week, slotWidth: geo.size.width / CGFloat(max(1, week.count)))
+                        .tag(idx)
+                }
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: 72)
     }
 
-    private func weekRow(_ week: [WeekStripDay]) -> some View {
+    private func weekRow(_ week: [WeekStripDay], slotWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
             ForEach(week) { d in
                 Button {
@@ -45,10 +47,9 @@ struct WeekStrip: View {
                     cell(d)
                 }
                 .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
+                .frame(width: slotWidth)
             }
         }
-        .padding(.horizontal, 6)
     }
 
     @ViewBuilder

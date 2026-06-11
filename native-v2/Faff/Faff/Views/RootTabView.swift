@@ -215,7 +215,8 @@ struct RootTabView: View {
                     Image(systemName: "calendar")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Theme.txt.opacity(0.75))
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
