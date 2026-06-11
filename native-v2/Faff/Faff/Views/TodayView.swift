@@ -323,28 +323,24 @@ struct TodayView: View {
                     }
                     .padding(.top, 16)
                 } else if isPostRunMode {
-                    // 2026-06-02 round 63 · David: "cant scroll this top
-                    // section." The recovery panel renders 5 sections
-                    // stacked (A: card · B: pillars · C: training input ·
-                    // D: NEXT HARD + ETA · E: week-to-date). On most
-                    // phones D + E sat behind the collapsed peek with no
-                    // way to reveal them. Wrap in a ScrollView with
-                    // bottom padding ≥ peek inset so the tail sections
-                    // are reachable while the peek stays anchored.
-                    ScrollView(showsIndicators: false) {
-                        TodayRecoveryPanel(
-                            brief: recoveryBrief,
-                            onTapRecoveryCard: { onReadinessTap() },
-                            onExplainACWR: { glossaryEntry = GlossaryEntry.entry(for: "acwr") }
-                        )
-                        .padding(.horizontal, 22)
-                        .padding(.top, 22)
-                        // 220pt = 200pt peek inset + 20pt breathing room
-                        // so the last section clears the peek edge.
-                        .padding(.bottom, 220)
+                    // Show the run directly on the main canvas — same flat
+                    // layout as past-day recaps. DragSheet is suppressed
+                    // in this mode (see gate below). The recovery panel
+                    // (TodayRecoveryPanel) was here previously but the
+                    // readiness score is orphaned now that the reactive
+                    // coach layer is unmounted.
+                    GeometryReader { proxy in
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                postRunBody
+                            }
+                            .frame(width: proxy.size.width, alignment: .leading)
+                            .padding(.bottom, 120)
+                        }
+                        .frame(width: proxy.size.width)
+                        .clipped()
                     }
-                    .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
-                    .offset(y: -22 * (1 - sheetProgress))
+                    .padding(.top, 16)
                 } else {
                     // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
@@ -367,23 +363,18 @@ struct TodayView: View {
                     .offset(y: -22 * (1 - sheetProgress))
                 }
 
-                // Spacer only when a fixed-size hero panel sits above ·
-                // pushes the panel up so the DragSheet covers the bottom.
-                // On past days the ScrollView IS the bottom-filling view
-                // and a Spacer would steal half its height. Skip it.
-                if !isPastDayView {
+                // Spacer pushes the hero + DragSheet up in pre-run mode.
+                // Suppressed on past days and post-run (both use a full-
+                // height ScrollView that fills the space naturally).
+                if !isPastDayView && !isPostRunMode {
                     Spacer(minLength: 0)
                 }
             }
 
-            // 2026-06-02 round 61 · DragSheet suppressed entirely on
-            // past-day views. The flat recap rendered in the VStack
-            // above is the whole page · no peek, no slide-up,
-            // nothing covering the recap from below. Today's drag
-            // sheet stays on today only, where it carries the
-            // pre-run prescription or the post-run recap on top of
-            // the morning readiness/recovery hero.
-            if !isPastDayView {
+            // DragSheet suppressed on past days and today-post-run.
+            // On past days the flat recap is the whole page.
+            // On today-post-run the run is shown directly on the canvas.
+            if !isPastDayView && !isPostRunMode {
                 DragSheet(
                     // 2026-06-02 round 25 · 150 → 180.
                     // 2026-06-02 round 46 · 180 → 200. David flagged the
@@ -1009,7 +1000,7 @@ struct TodayView: View {
             dowLabel: selectedIsToday ? "TODAY" : shortDOWLabel,
             titleText: peekTitleWord,
             nameSubtitle: plainWorkoutName,
-            onMesh: isPastDayView
+            onMesh: true
         )
     }
 

@@ -28,30 +28,26 @@ struct WeekStrip: View {
     var body: some View {
         TabView(selection: $weekIndex) {
             ForEach(Array(weeks.enumerated()), id: \.offset) { idx, week in
-                // GeometryReader inside the page — measures actual page content
-                // width AFTER TabView's internal insets, so each slot is exact.
-                GeometryReader { geo in
-                    weekRow(week, slotWidth: geo.size.width / CGFloat(max(1, week.count)))
+                HStack(spacing: 0) {
+                    ForEach(week) { d in
+                        Button {
+                            withAnimation(Theme.Motion.smooth) { selectedID = d.id }
+                        } label: {
+                            cell(d)
+                        }
+                        .buttonStyle(.plain)
+                        // maxWidth distributes the page width equally across all
+                        // day slots — no measurement needed. contentShape ensures
+                        // the full slot (not just the 44pt cell) is tappable.
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                    }
                 }
                 .tag(idx)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 72)
-    }
-
-    private func weekRow(_ week: [WeekStripDay], slotWidth: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            ForEach(week) { d in
-                Button {
-                    withAnimation(Theme.Motion.smooth) { selectedID = d.id }
-                } label: {
-                    cell(d)
-                }
-                .buttonStyle(.plain)
-                .frame(width: slotWidth)
-            }
-        }
+        .frame(height: 80)
     }
 
     @ViewBuilder

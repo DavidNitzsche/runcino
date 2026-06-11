@@ -206,11 +206,19 @@ final class WatchSync: NSObject, ObservableObject {
         let q = pendingCompletions
         guard !q.isEmpty else { return }
         var keep: [Data] = []
+        var anySucceeded = false
         for data in q {
             let ok = await postCompletion(data)
             if !ok { keep.append(data) }
+            else { anySucceeded = true }
         }
         pendingCompletions = keep
+        // Trigger a plan refresh so TodayView picks up the new completedRunId
+        // and pivots to the post-run view without waiting for the next
+        // foreground wakeup.
+        if anySucceeded {
+            NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+        }
     }
 
     private func postCompletion(_ data: Data) async -> Bool {

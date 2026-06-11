@@ -23,7 +23,6 @@
 		16105FF9F23FE470CECECD32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 139264554EDD5A64F64E384F /* Assets.xcassets */; };
 		21BAA9938430A3B59A7DA1FF /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */; };
 		22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232F9F14460F13DDC369F512 /* Brandmark.swift */; };
-		CF3A1B2E9F0E4A87B56C2D1F /* FaffLogoMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF3A1B2D9F0E4A87B56C2D1E /* FaffLogoMark.swift */; };
 		241CFCD0626CE2C875BE32F2 /* Oswald-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 014129C189442D8193785F35 /* Oswald-Variable.ttf */; };
 		269C1642A3928FABA51378F5 /* RecoveryBrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E6C4CECAB490A0F91D63C3 /* RecoveryBrief.swift */; };
 		2919F201CE287CAF6B172EED /* Inter-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 37F523B1198BDF2C15E626B2 /* Inter-SemiBold.ttf */; };
@@ -36,6 +35,7 @@
 		3A64039201C05E24C914B07D /* SettingsCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7664FBCD6CBCAE37BCC24B3B /* SettingsCache.swift */; };
 		3BA6B12FCF16C3B5BD62797B /* WeekStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */; };
 		3DFD4C5161A0FAD5F32AB8CA /* EmailSignInSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */; };
+		3E28E1189EB347FEFCABFED7 /* FaffLogoMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F562BA41AED08247EB40613 /* FaffLogoMark.swift */; };
 		3EB76E519E17B14973CF58F1 /* K_TargetsProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12F0216F8FF9AE20E14B49D4 /* K_TargetsProjection.swift */; };
 		3F8961DDB77A018095E82A1D /* ProView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 188559D9B23742DBC413C75E /* ProView.swift */; };
 		3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761D6D9F643EAA00C64D9BBC /* Runs.swift */; };
@@ -185,9 +185,9 @@
 		09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A_Signals.swift; sourceTree = "<group>"; };
 		0A82679266351BEBAFB330F1 /* ActiveWorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutView.swift; sourceTree = "<group>"; };
 		0C18DDEE14414B527EFBB143 /* FaffMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffMesh.swift; sourceTree = "<group>"; };
-		CF3A1B2D9F0E4A87B56C2D1E /* FaffLogoMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffLogoMark.swift; sourceTree = "<group>"; };
 		0CDBF2DFC432A591DA62EDEF /* Oswald-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Oswald-SemiBold.ttf"; sourceTree = "<group>"; };
 		0E832B4905DEB6F14ADB19D0 /* MileBars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MileBars.swift; sourceTree = "<group>"; };
+		0F562BA41AED08247EB40613 /* FaffLogoMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffLogoMark.swift; sourceTree = "<group>"; };
 		0FC065B278966D7AAA360355 /* ScrubbableTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrubbableTrace.swift; sourceTree = "<group>"; };
 		12F0216F8FF9AE20E14B49D4 /* K_TargetsProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = K_TargetsProjection.swift; sourceTree = "<group>"; };
 		139264554EDD5A64F64E384F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -386,10 +386,10 @@
 			isa = PBXGroup;
 			children = (
 				232F9F14460F13DDC369F512 /* Brandmark.swift */,
-				CF3A1B2D9F0E4A87B56C2D1E /* FaffLogoMark.swift */,
 				6556483A9E7743D2B8695A4E /* BriefingTopicCard.swift */,
 				730D6283403CA7FE36BA1199 /* CoachNote.swift */,
 				84E231F45E68801F45CA43EB /* DragSheet.swift */,
+				0F562BA41AED08247EB40613 /* FaffLogoMark.swift */,
 				0C18DDEE14414B527EFBB143 /* FaffMesh.swift */,
 				14A0089434ECA1192B331A77 /* GapBeam.swift */,
 				BB5B89100A345745753B0C8B /* HealthBarCard.swift */,
@@ -754,7 +754,6 @@
 				36B9DFECC527B9516F2E9D87 /* AppCache.swift in Sources */,
 				A11A3E74B3A9B30D43030CAA /* B_Provenance.swift in Sources */,
 				22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */,
-				CF3A1B2E9F0E4A87B56C2D1F /* FaffLogoMark.swift in Sources */,
 				E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */,
 				9E415C1133441F6D7667FFED /* BriefingTopicCard.swift in Sources */,
 				D3BC37653D9BE02DAEABE840 /* C_CoachTransparency.swift in Sources */,
@@ -769,6 +768,7 @@
 				3DFD4C5161A0FAD5F32AB8CA /* EmailSignInSheet.swift in Sources */,
 				97C0A9C35C5B8D867ADBB661 /* F_Sheets.swift in Sources */,
 				30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */,
+				3E28E1189EB347FEFCABFED7 /* FaffLogoMark.swift in Sources */,
 				456E4CFA1CB168E314A39A1D /* FaffMesh.swift in Sources */,
 				4CACFB0EB456705EF1BAABB5 /* FaffPayloads.swift in Sources */,
 				661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */,
