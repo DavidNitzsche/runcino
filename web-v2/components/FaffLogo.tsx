@@ -6,18 +6,20 @@
  * internals; every consumer takes it via this one component.
  *
  * fill = currentColor → set `color` on the wrapper for white-on-dark.
+ *
+ * 2026-06-11 hardening (David: "logo is cut off at the top" on /admin):
+ *   - explicit width alongside height — Safari mis-sizes viewBox-only
+ *     SVGs inside flex rows, which can shear the drawing;
+ *   - 4 units of vertical margin inside the viewBox so the curves
+ *     never sit on the raster edge.
  */
+const VIEW_W = 442;
+const VIEW_H = 108; // glyphs occupy y 4..104
+
 export function FaffLogo({ height = 34 }: { height?: number }) {
-  // One letter cell is 100×100 with a 14-unit gap. F stem + bars; A is a
-  // block with a top slot + bottom notch. Slots are mask cutouts so the
-  // mark sits on any background.
+  const width = Math.round(height * (VIEW_W / VIEW_H));
   const F = (x: number, i: number) => (
-    <g key={i} transform={`translate(${x} 0)`}>
-      <path d="
-        M 16 0  H 84 Q 100 0 100 16 V 26 Q 100 38 84 38 H 46 V 38
-        H 100 V 38
-        M 0 16 Q 0 0 16 0
-      " fill="none" />
+    <g key={i} transform={`translate(${x} 4)`}>
       {/* stem */}
       <rect x="0" y="0" width="42" height="100" rx="14" />
       {/* top bar */}
@@ -28,25 +30,26 @@ export function FaffLogo({ height = 34 }: { height?: number }) {
   );
   return (
     <svg
-      viewBox="0 0 442 100"
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      width={width}
       height={height}
       role="img"
       aria-label="FAFF"
-      style={{ display: 'block' }}
+      style={{ display: 'block', flexShrink: 0 }}
       fill="currentColor"
     >
       <defs>
         <mask id="faff-a-slots">
-          <rect x="0" y="0" width="100" height="100" fill="#fff" />
+          <rect x="0" y="0" width={VIEW_W} height={VIEW_H} fill="#fff" />
           {/* top slot counter */}
-          <rect x="44" y="0" width="12" height="58" rx="6" fill="#000" />
+          <rect x="158" y="4" width="12" height="58" rx="6" fill="#000" />
           {/* bottom notch counter */}
-          <rect x="44" y="76" width="12" height="24" rx="6" fill="#000" />
+          <rect x="158" y="80" width="12" height="24" rx="6" fill="#000" />
         </mask>
       </defs>
       {F(0, 0)}
       {/* A · solid block with slot counters */}
-      <g transform="translate(114 0)">
+      <g transform="translate(114 4)">
         <rect x="0" y="0" width="100" height="100" rx="16" mask="url(#faff-a-slots)" />
       </g>
       {F(228, 1)}

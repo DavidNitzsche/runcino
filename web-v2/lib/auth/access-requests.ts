@@ -88,9 +88,12 @@ export async function createAccessRequest(name: string, email: string): Promise<
 }
 
 export async function listAccessRequests(): Promise<AccessRequestRow[]> {
+  // to_char AT TIME ZONE · David's wall clock, not UTC (his 17:16 PT
+  // request rendered as "2026-06-11 00:16" — the node-pg timestamp
+  // trap, see reference_pg_timestamp_tz_parsing). Admin page is his.
   const r = await pool.query<AccessRequestRow>(
     `SELECT id::text AS id, email::text AS email, COALESCE(name,'') AS name, status,
-            to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+            to_char(created_at AT TIME ZONE 'America/Los_Angeles', 'Mon DD · HH24:MI') AS created_at
        FROM users
       WHERE status IN ('pending','denied')
       ORDER BY created_at DESC
