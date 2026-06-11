@@ -41,11 +41,11 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
   // Optional but strongly encouraged — without these the coach hedges
   // every HR-derived prescription. UI keeps them light: birthday is a
   // YYYY-MM-DD date input; sex is M/F (medical/research split, not
-  // identity); height is cm with a placeholder for the common 5'10"
-  // (178cm) so the runner doesn't have to do the math cold.
+  // identity); height captured as ft + in, converted to cm on submit.
   const [birthday, setBirthday] = useState<string>('');
   const [sex, setSex] = useState<'M' | 'F' | ''>('');
-  const [heightCm, setHeightCm] = useState<string>('');
+  const [heightFt, setHeightFt] = useState<string>('');
+  const [heightIn, setHeightIn] = useState<string>('');
 
   // Detect timezone on mount if not already set in the URL.
   useEffect(() => {
@@ -97,7 +97,9 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
           // fields don't clobber existing values.
           birthday: birthday || undefined,
           sex: sex || undefined,
-          height_cm: heightCm ? Number(heightCm) : undefined,
+          height_cm: (heightFt || heightIn)
+            ? Math.round((Number(heightFt || 0) * 12 + Number(heightIn || 0)) * 2.54)
+            : undefined,
         }),
       });
       if (r.status === 401) {
@@ -336,21 +338,43 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
           </div>
         </FormRow>
 
-        <FormRow label="HEIGHT (CM)" hint="OPTIONAL · UNLOCKS CADENCE COACHING">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={120}
-            max={230}
-            value={heightCm}
-            onChange={(e) => setHeightCm(e.target.value)}
-            placeholder="e.g. 178"
-            style={{
-              background: 'transparent', border: 'none', color: 'var(--ink)',
-              fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: 17,
-              padding: 0, width: '100%', outline: 'none',
-            }}
-          />
+        <FormRow label="HEIGHT" hint="OPTIONAL · UNLOCKS CADENCE COACHING">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={3}
+                max={8}
+                value={heightFt}
+                onChange={(e) => setHeightFt(e.target.value)}
+                placeholder="5"
+                style={{
+                  background: 'transparent', border: 'none', color: 'var(--ink)',
+                  fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: 17,
+                  padding: 0, width: 36, outline: 'none',
+                }}
+              />
+              <span style={{ color: 'var(--ink)', fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: 17 }}>ft</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={11}
+                value={heightIn}
+                onChange={(e) => setHeightIn(e.target.value)}
+                placeholder="10"
+                style={{
+                  background: 'transparent', border: 'none', color: 'var(--ink)',
+                  fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: 17,
+                  padding: 0, width: 36, outline: 'none',
+                }}
+              />
+              <span style={{ color: 'var(--ink)', fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: 17 }}>in</span>
+            </div>
+          </div>
         </FormRow>
       </div>
 

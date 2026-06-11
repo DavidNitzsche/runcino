@@ -44,7 +44,7 @@
       "name": "Faff sandbox",
       "runtimeExecutable": "bash",
       "runtimeArgs": [
-        "scripts/sandbox.sh"
+        "/Volumes/WP/06 Claude Code/Runcino/web-v2/scripts/sandbox.sh"
       ],
       "cwd": "/Volumes/WP/06 Claude Code/Runcino/web-v2",
       "port": 3100,

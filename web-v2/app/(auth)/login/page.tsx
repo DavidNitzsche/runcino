@@ -106,7 +106,7 @@ const styles = `
   background:linear-gradient(180deg,rgba(0,0,0,.36) 0%,rgba(0,0,0,0) 26%,rgba(0,0,0,0) 56%,rgba(0,0,0,.46) 100%);
 }
 
-.login-shell .gate{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;}
+.login-shell .gate{position:absolute;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:max(5vh,32px) 24px 32px;overflow-y:auto;}
 .login-shell .gate-panel{
   width:100%;max-width:400px;background:var(--glass-strong);border:1px solid var(--line);border-radius:22px;
   padding:34px 30px 26px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
