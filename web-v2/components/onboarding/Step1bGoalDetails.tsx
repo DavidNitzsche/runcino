@@ -604,9 +604,15 @@ function RaceHistorySection({
   // when collapsed AND empty. Once at least one entry is added, the
   // collapsed state shows the entries with an "+ Add another" affordance.
   const [adding, setAdding] = useState<RaceHistoryEntry | null>(null);
+  // 2026-06-10 (David sandbox QC: "NO FIRST RACE is not allowing me to
+  // select") · the chip was a hardcoded-inactive no-op because the DATA
+  // answer is just the empty array. The runner still needs the tap to
+  // land — explicit selection state, payload unchanged.
+  const [declaredFirstRace, setDeclaredFirstRace] = useState(false);
   const isEmpty = entries.length === 0;
 
   function startAdd() {
+    setDeclaredFirstRace(false);
     setAdding({ distance: '5k', timeSec: 0, whenRaced: '<6mo' });
   }
   function confirmAdd() {
@@ -629,7 +635,11 @@ function RaceHistorySection({
         <div>
           <SubLabel>HAVE YOU RACED BEFORE?</SubLabel>
           <ChipRow>
-            <Chip active={false} onClick={() => { /* no-op · empty array = first race */ }} label="No, first race" />
+            <Chip
+              active={declaredFirstRace}
+              onClick={() => setDeclaredFirstRace(true)}
+              label="No, first race"
+            />
             <Chip active={false} onClick={startAdd} label="Yes — add PR" />
           </ChipRow>
         </div>
