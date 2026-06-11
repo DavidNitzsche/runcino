@@ -288,7 +288,8 @@ export function deriveRecap(input: RecapInput): RecapPayload {
         : workPaceStr
           ? `Tempo done · ${workPaceStr} tempo block${hrPart}.`
           : `Tempo done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
-      facts.push(`${leadLine} These build up over weeks · one alone doesn't change much, but the bank pays off.`);
+      facts.push(leadLine);
+      facts.push(`These build up over weeks · one alone doesn't change much, but the bank pays off.`);
       // 2026-06-04 · don't repeat the heat percentage here · the
       // CONDITIONS card already owns the "Got from 69°F to 74°F ·
       // Costs you about X% on pace" quantitative read. Recap keeps
@@ -317,7 +318,8 @@ export function deriveRecap(input: RecapInput): RecapPayload {
           : workPaceStr
             ? `Reps done · ${workPaceStr} work avg${hrPart}.`
             : `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
-      facts.push(`${leadLine} Building the top end · these stack.`);
+      facts.push(leadLine);
+      facts.push(`Building the top end · these stack.`);
       if (heatExplainsDrift) {
         facts.push(`Heat makes interval pace harder. Go by feel and HR · the workout still counted.`);
       }
