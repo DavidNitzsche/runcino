@@ -218,6 +218,22 @@ export async function POST(req: NextRequest) {
     }
 
     if (!userUuid) {
+      // 2026-06-10 · invite-only gate (David: "remove apple sign on, just
+      // email and password"). Apple Sign In was the one auth path that
+      // created `status='active'` accounts with NO invite check — anyone
+      // with an Apple ID was straight in, a hole in the otherwise
+      // invite-only model. New-account creation via Apple is now gated
+      // the same as /api/auth/signup: blocked unless ALLOW_OPEN_SIGNUP.
+      // EXISTING Apple users (userUuid resolved above) still sign in, so
+      // this never locks anyone out; it only stops new un-approved
+      // accounts. The iPhone Apple button is also removed — request
+      // access is the only door for strangers.
+      if (process.env.ALLOW_OPEN_SIGNUP !== 'true') {
+        return NextResponse.json(
+          { ok: false, error: 'Faff is invite-only — request access at faff.run' },
+          { status: 403 },
+        );
+      }
       // Genuine new signup. 2026-06-10 multi-user fix: this branch used
       // to INSERT a bare profile row and RETURN its user_uuid — but
       // nothing ever created the users row, so user_uuid came back NULL

@@ -28,6 +28,9 @@ struct SignInView: View {
 
     @State private var toast: String?
     @State private var emailSheet: Bool = false
+    /// Which mode the email sheet opens in — sign-in (have an account) or
+    /// request-access (invite-only · stranger asks for a login).
+    @State private var sheetStartInRequestMode: Bool = false
 
     var body: some View {
         ZStack {
@@ -67,7 +70,7 @@ struct SignInView: View {
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $emailSheet) {
-            EmailSignInSheet(onSignedIn: onSignedIn)
+            EmailSignInSheet(startInRequestMode: sheetStartInRequestMode, onSignedIn: onSignedIn)
         }
     }
 
@@ -89,43 +92,32 @@ struct SignInView: View {
     }
 
     private var authStack: some View {
+        // 2026-06-10 · email + password is the only auth path (David:
+        // "remove apple sign on, just email and password"). Apple + Google
+        // buttons retired. Faff is invite-only, so the secondary CTA is
+        // "Request access" (opens the same sheet in request mode), not
+        // open signup.
         VStack(spacing: 11) {
-            // Apple is the canonical button · the native AS framework
-            // renders the lockup so we don't recreate the glyph in SwiftUI.
-            // Apple flow doesn't yet thread the redirect, so default to
-            // the gated path (skipOnboarding: false) — new Apple sign-ups
-            // walk RolePick + Onboarding, returning users see one extra
-            // tap. Email flow honors the server's redirect directly.
-            SignInWithAppleView(onResult: { ok in if ok { onSignedIn(false) } })
-
-            // Google: glass-style button with the real Google G mark.
-            // Tap = toast only (no OAuth in this PR per the brief).
+            // Primary: white pill, the committed action.
             Button {
-                showToast("Google sign-in coming soon.")
-            } label: {
-                HStack(spacing: 11) {
-                    GoogleGMark()
-                        .frame(width: 18, height: 18)
-                    Text("Continue with Google")
-                        .font(.body(15, weight: .extraBold))
-                }
-                .foregroundStyle(Theme.txt)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.26), lineWidth: 1))
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            // Email: real path now (2026-05-31). Apple is the primary
-            // flow on this build · email is here as the fallback so
-            // David can get in while the Apple signin issue is sorted.
-            Button {
+                sheetStartInRequestMode = false
                 emailSheet = true
             } label: {
                 Text("Sign in with email")
+                    .font(.body(16, weight: .extraBold))
+                    .foregroundStyle(Color(hex: 0x0B0B0B))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 17)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            // Secondary: request access (invite-only door for new runners).
+            Button {
+                sheetStartInRequestMode = true
+                emailSheet = true
+            } label: {
+                Text("Request access")
                     .font(.body(15, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.85))
                     .frame(maxWidth: .infinity)

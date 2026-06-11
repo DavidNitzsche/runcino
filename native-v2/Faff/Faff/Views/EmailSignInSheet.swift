@@ -17,14 +17,19 @@ struct EmailSignInSheet: View {
     /// response's `redirect` field · "/today" means the runner has an
     /// onboarding-complete user row server-side and should land in the
     /// main app, "/onboarding" means walk the gate.
+    /// When true the sheet opens in request-access mode (invite-only door
+    /// for a new runner) instead of sign-in.
+    var startInRequestMode: Bool = false
+
     let onSignedIn: (_ skipOnboarding: Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
-    /// 2026-06-10 multi-user opening · the sheet now carries both modes:
-    /// sign-in POSTs /api/auth/email, create-account adds a Name field
-    /// and POSTs /api/auth/signup.
-    private enum Mode { case signIn, createAccount }
+    /// 2026-06-10 · invite-only (David: "just email and password"). The
+    /// sheet carries two modes: sign-in POSTs /api/auth/email; request-
+    /// access POSTs /api/auth/request-access (name + email · an admin
+    /// approves and emails a temp password). There is no open signup.
+    private enum Mode { case signIn, requestAccess }
     @State private var mode: Mode = .signIn
 
     @State private var name: String = ""
@@ -32,6 +37,9 @@ struct EmailSignInSheet: View {
     @State private var password: String = ""
     @State private var pending: Bool = false
     @State private var error: String?
+    /// Set after a successful request-access POST · swaps the form for a
+    /// "check your email" confirmation.
+    @State private var requestSent: Bool = false
 
     @FocusState private var focused: Field?
     private enum Field { case name, email, password }
@@ -50,25 +58,62 @@ struct EmailSignInSheet: View {
 
                 Spacer(minLength: 0)
 
-                hero
-                    .padding(.top, 4)
+                if requestSent {
+                    requestSentView
+                } else {
+                    hero
+                        .padding(.top, 4)
 
-                form
-                    .padding(.top, 28)
+                    form
+                        .padding(.top, 28)
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
 
-                submitButton
-                    .padding(.top, 18)
+                    submitButton
+                        .padding(.top, 18)
 
-                modeToggle
-                    .padding(.top, 14)
+                    modeToggle
+                        .padding(.top, 14)
+                }
             }
             .padding(.horizontal, 30)
             .padding(.bottom, 30)
         }
         .preferredColorScheme(.dark)
-        .onAppear { focused = .email }
+        .onAppear {
+            mode = startInRequestMode ? .requestAccess : .signIn
+            focused = startInRequestMode ? .name : .email
+        }
+    }
+
+    /// Post-request confirmation · invite-only flow ends here until the
+    /// admin approves and emails a temp password.
+    private var requestSentView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 40, weight: .bold))
+                .foregroundStyle(Theme.txt)
+            Text("Request sent.")
+                .font(.heroDisplay(40))
+                .tracking(-2)
+                .foregroundStyle(Theme.txt)
+            Text("We'll email you at \(email) when you're approved, with a temporary password to sign in.")
+                .font(.body(15, weight: .semibold))
+                .foregroundStyle(Theme.txt.opacity(0.78))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button { dismiss() } label: {
+                Text("Done")
+                    .font(.body(16, weight: .extraBold))
+                    .foregroundStyle(Color(hex: 0x0B0B0B))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 17)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
@@ -82,14 +127,14 @@ struct EmailSignInSheet: View {
                     .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
             }
             .buttonStyle(.plain)
-            SpecLabel(text: mode == .signIn ? "EMAIL SIGN-IN" : "CREATE ACCOUNT", size: 13, tracking: 2.5, color: Theme.txt)
+            SpecLabel(text: mode == .signIn ? "EMAIL SIGN-IN" : "REQUEST ACCESS", size: 13, tracking: 2.5, color: Theme.txt)
             Spacer()
         }
     }
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(mode == .signIn ? "Welcome\nback." : "Start\nhere.")
+            Text(mode == .signIn ? "Welcome\nback." : "Request\naccess.")
                 .font(.heroDisplay(46))
                 .tracking(-2)
                 .foregroundStyle(Theme.txt)
@@ -98,7 +143,7 @@ struct EmailSignInSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text(mode == .signIn
                  ? "Sign in with the email and password you already use on faff.run."
-                 : "A name, an email and a password. The plan comes next.")
+                 : "Faff is invite-only. Leave your name and email and we'll send a login when you're approved.")
                 .font(.body(15, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.78))
                 .lineSpacing(3)
@@ -108,7 +153,7 @@ struct EmailSignInSheet: View {
 
     private var form: some View {
         VStack(spacing: 12) {
-            if mode == .createAccount {
+            if mode == .requestAccess {
                 field(
                     placeholder: "Name",
                     text: $name,
@@ -126,14 +171,17 @@ struct EmailSignInSheet: View {
                 keyboard: .emailAddress,
                 isSecure: false
             )
-            field(
-                placeholder: "Password",
-                text: $password,
-                focusTag: .password,
-                contentType: mode == .createAccount ? .newPassword : .password,
-                keyboard: .default,
-                isSecure: true
-            )
+            // Password only on sign-in · request-access is name + email.
+            if mode == .signIn {
+                field(
+                    placeholder: "Password",
+                    text: $password,
+                    focusTag: .password,
+                    contentType: .password,
+                    keyboard: .default,
+                    isSecure: true
+                )
+            }
             if let err = error, !err.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.circle.fill")
@@ -189,7 +237,7 @@ struct EmailSignInSheet: View {
                 if pending {
                     ProgressView().tint(Color(hex: 0x0B0B0B))
                 }
-                Text(mode == .signIn ? "Sign in" : "Create account")
+                Text(mode == .signIn ? "Sign in" : "Request access")
                     .font(.body(16, weight: .extraBold))
                     .foregroundStyle(Color(hex: 0x0B0B0B))
             }
@@ -204,11 +252,11 @@ struct EmailSignInSheet: View {
 
     private var modeToggle: some View {
         Button {
-            mode = (mode == .signIn) ? .createAccount : .signIn
+            mode = (mode == .signIn) ? .requestAccess : .signIn
             error = nil
-            focused = (mode == .createAccount) ? .name : .email
+            focused = (mode == .requestAccess) ? .name : .email
         } label: {
-            Text(mode == .signIn ? "New to Faff? Create an account" : "Already have an account? Sign in")
+            Text(mode == .signIn ? "New to Faff? Request access" : "Already have an account? Sign in")
                 .font(.body(12, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.7))
                 .underline()
@@ -218,11 +266,11 @@ struct EmailSignInSheet: View {
     }
 
     private var canSubmit: Bool {
-        let base = !pending && email.contains("@") && password.count >= 6
-        if mode == .createAccount {
-            return base && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if pending || !email.contains("@") { return false }
+        if mode == .requestAccess {
+            return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        return base
+        return password.count >= 6
     }
 
     @MainActor
@@ -230,18 +278,22 @@ struct EmailSignInSheet: View {
         pending = true
         error = nil
         defer { pending = false }
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resp: API.EmailSignInResponse
-            if mode == .createAccount {
-                resp = try await API.signUpWithEmail(
+            if mode == .requestAccess {
+                let resp = try await API.requestAccess(
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                    email: trimmedEmail,
-                    password: password
+                    email: trimmedEmail
                 )
-            } else {
-                resp = try await API.signInWithEmail(email: trimmedEmail, password: password)
+                if resp.ok {
+                    requestSent = true
+                } else {
+                    error = humanize(resp.error ?? "Request failed. Try again.")
+                }
+                return
             }
+            // Sign-in.
+            let resp = try await API.signInWithEmail(email: trimmedEmail, password: password)
             if resp.ok, let token = resp.token {
                 TokenStore.shared.set(
                     token: token,
@@ -256,10 +308,10 @@ struct EmailSignInSheet: View {
             } else if let msg = resp.error {
                 error = humanize(msg)
             } else {
-                error = mode == .signIn ? "Sign-in failed. Try again." : "Signup failed. Try again."
+                error = "Sign-in failed. Try again."
             }
         } catch {
-            self.error = (mode == .signIn ? "Sign-in failed: " : "Signup failed: ") + error.localizedDescription
+            self.error = (mode == .signIn ? "Sign-in failed: " : "Request failed: ") + error.localizedDescription
         }
     }
 

@@ -210,7 +210,34 @@ enum API {
         return try JSONDecoder().decode(EmailSignInResponse.self, from: data)
     }
 
-    // MARK: - P39 auth — Sign in with Apple
+    // MARK: - Invite-only access request
+
+    struct RequestAccessResponse: Decodable {
+        let ok: Bool
+        let message: String?
+        let error: String?
+    }
+
+    /// POST /api/auth/request-access · name + email. Faff is invite-only
+    /// (David's call 2026-06-10) — strangers can't self-create an account,
+    /// they request access and an admin approves + emails a temp password.
+    /// Returns { ok, message } on success or { ok:false, error }.
+    static func requestAccess(name: String, email: String) async throws -> RequestAccessResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/auth/request-access"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "email": email])
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return try JSONDecoder().decode(RequestAccessResponse.self, from: data)
+    }
+
+    // MARK: - P39 auth — Sign in with Apple (RETIRED 2026-06-10)
+    //
+    // Apple Sign In is removed from the UI (email/password only) and new-
+    // account creation is gated server-side. These types/methods are kept
+    // only so the now-unreferenced SignInWithAppleView component + its
+    // tests still compile; delete in Xcode when convenient (the pbxproj
+    // had concurrent WIP at removal time, so the file was left in place).
 
     struct AppleSignInResponse: Decodable {
         let ok: Bool
