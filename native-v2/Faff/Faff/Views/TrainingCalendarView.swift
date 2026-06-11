@@ -8,8 +8,6 @@
 import SwiftUI
 
 struct TrainingCalendarView: View {
-    @Environment(\.dismiss) private var dismiss
-
     @State private var weeks: [PlanWeek] = []
     @State private var loading = true
     @State private var scrolledToCurrentWeek = false
@@ -19,28 +17,17 @@ struct TrainingCalendarView: View {
             Theme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Theme.txt)
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer(minLength: 0)
+                // Drag pill + title
+                VStack(spacing: 10) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.25))
+                        .frame(width: 36, height: 4)
+                        .padding(.top, 12)
                     Text("Training Calendar")
                         .font(.body(17, weight: .extraBold))
                         .foregroundStyle(Theme.txt)
-                    Spacer(minLength: 0)
-
-                    // Placeholder to balance chevron
-                    Color.clear.frame(width: 36, height: 36)
+                        .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
 
                 Divider()
                     .background(Color.white.opacity(0.10))

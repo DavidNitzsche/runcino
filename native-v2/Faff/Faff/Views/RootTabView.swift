@@ -170,6 +170,7 @@ struct RootTabView: View {
         }
         .sheet(isPresented: $showTrainingCal) {
             TrainingCalendarView()
+                .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showInbox) {
             NotificationInboxSheet()
