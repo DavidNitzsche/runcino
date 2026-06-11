@@ -637,6 +637,9 @@ struct TodayPostRunBody: View {
         if let vr = f?.vertical_ratio_pct, vr > 0 {
             out.append(("VERT RATIO", String(format: "%.1f%%", vr)))
         }
+        if let wc = detail?.cadence_avg_work, wc > 0 {
+            out.append(("WORK CADENCE", "\(wc) spm"))
+        }
         return out
     }
 
