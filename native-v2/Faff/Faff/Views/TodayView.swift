@@ -178,10 +178,9 @@ struct TodayView: View {
 
             VStack(spacing: 0) {
                 // Clearance for the globalTopBar overlay in RootTabView.
-                // The VStack already starts below the safe area; this just
-                // clears the bar content (6pt top pad + 30pt content + 4pt
-                // bottom pad = 40pt), plus a small breathing gap.
-                Color.clear.frame(height: 44)
+                // Bar = 2pt top pad + 30pt content + 4pt bottom pad = 36pt.
+                // Extra 14pt breathing room between bar bottom and week strip.
+                Color.clear.frame(height: 50)
 
                 if !allStripWeeks.isEmpty {
                     WeekStrip(weeks: allStripWeeks, selectedID: $selectedDayID, weekIndex: $selectedWeekIndex)
@@ -1770,26 +1769,33 @@ struct TodayView: View {
     /// Each element is a 7-day array — one page per week, Sat–Sun order.
     private var allStripWeeks: [[WeekStripDay]] {
         guard let current = plan else { return [] }
+        // Build ordered list of backend weeks (Sat-anchored Sat→Fri each).
+        var allBackend: [PlanWeek] = []
+        if let prev = prevWeekPlan { allBackend.append(prev) }
+        allBackend.append(current)
+        allBackend += futureWeekPlans
+
+        // Build Mon→Sun display windows by combining:
+        //   Mon-Fri (dow 1-5) from backend[i]
+        //   Sat-Sun (dow 6, 0) from backend[i+1]  (the upcoming weekend)
+        // Without this, sorting within a single Sat-anchored week places the
+        // PREVIOUS Sat-Sun at the end of the Mon→Sun strip instead of the
+        // upcoming one.
         var result: [[WeekStripDay]] = []
-        if let prev = prevWeekPlan { result.append(makeStripDays(from: prev)) }
-        result.append(makeStripDays(from: current))
-        result += futureWeekPlans.map { makeStripDays(from: $0) }
+        for i in 0..<allBackend.count {
+            let monFri = Array(allBackend[i].days.prefix(7).filter { $0.dow >= 1 && $0.dow <= 5 })
+            let weekendSource = i + 1 < allBackend.count ? allBackend[i + 1] : allBackend[i]
+            let satSun = Array(weekendSource.days.prefix(7).filter { $0.dow == 6 || $0.dow == 0 })
+            let displayDays = (monFri + satSun).sorted { $0.date_iso < $1.date_iso }
+            if !displayDays.isEmpty {
+                result.append(makeStripDays(from: displayDays))
+            }
+        }
         return result
     }
 
-    private func makeStripDays(from week: PlanWeek) -> [WeekStripDay] {
-        // Backend returns a Sat-anchored 7-day window (Sat…Fri).
-        // Re-window to match the long-run day convention:
-        //   Long run Sunday (dow=0) → Mon→Sun (weekStartDow=1)
-        //   Long run Saturday (dow=6) → Sun→Sat (weekStartDow=0)
-        //   Mid-week or no long run   → Sun→Sat (weekStartDow=0)
-        let rawDays = week.days.prefix(7)
-        let longRunDow = rawDays.first { $0.type == "long" }?.dow
-        let weekStartDow: Int = longRunDow == 0 ? 1 : 0
-        let sorted = rawDays.sorted { a, b in
-            (a.dow - weekStartDow + 7) % 7 < (b.dow - weekStartDow + 7) % 7
-        }
-        return sorted.map { d in
+    private func makeStripDays(from days: [PlanDay]) -> [WeekStripDay] {
+        days.map { d in
             WeekStripDay(
                 id: d.date_iso,
                 dow: dowLetter(d.dow),

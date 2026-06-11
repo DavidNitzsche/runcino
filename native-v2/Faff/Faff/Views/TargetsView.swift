@@ -25,7 +25,8 @@ struct TargetsView: View {
 
     var body: some View {
         ZStack {
-            FaffMeshView(mesh: FaffMesh.forView(.targets))
+            FaffMeshView(mesh: .neutral)
+                .ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {

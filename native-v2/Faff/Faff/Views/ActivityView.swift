@@ -55,7 +55,8 @@ struct ActivityView: View {
             }
         } else {
         ZStack {
-            FaffMeshView(mesh: FaffMesh.forView(.activity))
+            FaffMeshView(mesh: .neutral)
+                .ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {

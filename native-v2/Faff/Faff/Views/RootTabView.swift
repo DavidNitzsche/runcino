@@ -222,7 +222,7 @@ struct RootTabView: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.top, 6)
+        .padding(.top, 2)
         .padding(.bottom, 4)
         .background(Color.clear)
     }

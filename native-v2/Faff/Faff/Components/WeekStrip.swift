@@ -26,15 +26,17 @@ struct WeekStrip: View {
     private let cellWidth: CGFloat = 44
 
     var body: some View {
-        GeometryReader { geo in
-            TabView(selection: $weekIndex) {
-                ForEach(Array(weeks.enumerated()), id: \.offset) { idx, week in
+        TabView(selection: $weekIndex) {
+            ForEach(Array(weeks.enumerated()), id: \.offset) { idx, week in
+                // GeometryReader inside the page — measures actual page content
+                // width AFTER TabView's internal insets, so each slot is exact.
+                GeometryReader { geo in
                     weekRow(week, slotWidth: geo.size.width / CGFloat(max(1, week.count)))
-                        .tag(idx)
                 }
+                .tag(idx)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
         }
+        .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: 72)
     }
 

@@ -53,30 +53,8 @@ struct HealthView: View {
 
     var body: some View {
         ZStack {
-            // 2026-06-03 round 75 · STATIC dark-teal gradient
-            // replaces the animated mesh on this page.
-            //
-            // Earlier rounds layered FaffMesh.health (animated blobs
-            // + 17s breathe filter) under a top-region radial.
-            // Result: oscillating bright + muted patches as the mesh
-            // breathed, fighting the calm even teal of the design.
-            // Health is a "settled, knowing" surface · the page
-            // should breathe like a sleeping body, not pulse.
-            //
-            // Static linear gradient: deeper teal at edges, slightly
-            // brighter mid-page so the gauge + score still feel
-            // anchored without strobing.
-            LinearGradient(
-                stops: [
-                    .init(color: Color(hex: 0x0E5A54), location: 0),
-                    .init(color: Color(hex: 0x1B8C7C), location: 0.35),
-                    .init(color: Color(hex: 0x14746A), location: 0.7),
-                    .init(color: Color(hex: 0x0A4540), location: 1.0),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            FaffMeshView(mesh: .neutral)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Color.clear.frame(height: 44)

@@ -49,8 +49,7 @@ struct TrainView: View {
 
     var body: some View {
         ZStack {
-            FaffMeshView(mesh: FaffMesh.forPhase(displayPhase))
-                .animation(.easeInOut(duration: 0.9), value: displayPhase)
+            FaffMeshView(mesh: .neutral)
                 .ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
