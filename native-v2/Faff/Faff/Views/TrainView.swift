@@ -172,13 +172,14 @@ struct TrainView: View {
                 }
             }
 
-            // Phase big
+            // Phase big — matches Today's effort hero word
             Text(phaseLabel)
-                .font(.display(60, weight: .bold))
+                .font(.heroDisplay(88))
                 .tracking(-2)
-                .foregroundStyle(Theme.txt)
+                .foregroundStyle(phaseColor)
+                .minimumScaleFactor(0.55)
+                .lineLimit(1)
                 .padding(.top, 14)
-                .shadow(color: Color.black.opacity(0.32), radius: 26, x: 0, y: 3)
 
             // Phase subtitle
             Text(phaseSub)

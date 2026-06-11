@@ -221,12 +221,11 @@ struct TargetsView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(RaceName.short(h.name, abbreviateAlways: (h.name?.count ?? 0) > 14))
-                        .font(.display(50, weight: .bold))
-                        .tracking(-2.5)
-                        .foregroundStyle(Theme.txt)
-                        .shadow(color: .black.opacity(0.32), radius: 22, y: 2)
+                        .font(.heroDisplay(88))
+                        .tracking(-2)
+                        .foregroundStyle(Theme.race)
+                        .minimumScaleFactor(0.55)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.6)
                     Text(h.name ?? "Set a target")
                         .font(.body(13, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.82))
