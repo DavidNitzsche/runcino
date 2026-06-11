@@ -702,7 +702,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -729,6 +729,9 @@ function layoutWeek({
    *  Drives longShare + caps the long-run upper bound at the tier
    *  band. Without it, the generator was producing goal-blind plans. */
   tierTarget: TierTarget;
+  /** 2026-06-10 · cap total running days to the runner's stated
+   *  frequency (excess easy slots become rest). NULL → fill all slots. */
+  trainingDaysPerWeek?: number | null;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -771,6 +774,23 @@ function layoutWeek({
           days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Strides optional.' });
         } else {
           days.push({ dow, type: daysBeforeRace > 5 ? 'easy' : 'rest', distanceMi: daysBeforeRace > 5 ? 4 : 0, isQuality: false, isLong: false, subLabel: daysBeforeRace > 5 ? 'EASY' : 'REST', notes: '' });
+        }
+      }
+    }
+    // 2026-06-10 · frequency cap also applies to race week. Without it a
+    // 3-day runner saw 6 running days in their race week (race + shakeout
+    // + tune-up + 3 easies). Trim easy days (lowest priority) to rest
+    // until the running-day count hits the runner's stated frequency.
+    // Race / shakeout / tune-up are protected — they're the purposeful
+    // race-week touches. NULL frequency → untouched (legacy behavior).
+    if (trainingDaysPerWeek != null) {
+      let running = days.filter((d) => d.distanceMi > 0).length;
+      for (const d of days) {
+        if (running <= trainingDaysPerWeek) break;
+        if (d.type === 'easy' && d.distanceMi > 0) {
+          d.type = 'rest'; d.distanceMi = 0; d.subLabel = 'REST';
+          d.notes = 'Off. Taper week — rest is the work now.';
+          running--;
         }
       }
     }
@@ -916,9 +936,29 @@ function layoutWeek({
   // the floor (handled by the early return for isRaceWeek above).
   const allocated = slots.filter(Boolean).reduce((s, d) => s + (d!.distanceMi || 0), 0);
   const remainingMi = Math.max(0, weeklyMi - allocated);
-  const easySlots = slots
+  const emptySlots = slots
     .map((s, i) => ({ slot: s, dow: i as DOW }))
     .filter((x) => x.slot == null);
+
+  // 2026-06-10 · frequency cap. When the runner stated a training
+  // frequency, fill only enough easy days to hit it; the rest become
+  // rest days. Without this the generator filled EVERY non-rest slot,
+  // so a 3-day runner got a 6-day plan (the bug David hit 3 clicks into
+  // onboarding). NULL frequency → fill all empties (legacy behavior).
+  const runningPlaced = slots.filter(Boolean).filter((d) => d!.distanceMi > 0).length; // long + quality
+  const easyCount = trainingDaysPerWeek != null
+    ? Math.max(0, Math.min(emptySlots.length, trainingDaysPerWeek - runningPlaced))
+    : emptySlots.length;
+  // Spread the chosen easy days across the empty slots (avoid clustering
+  // every easy day adjacent to the long run). Even-stride pick.
+  const easyDowSet = new Set<number>();
+  if (easyCount >= emptySlots.length) {
+    emptySlots.forEach((e) => easyDowSet.add(e.dow));
+  } else if (easyCount > 0) {
+    const stride = emptySlots.length / easyCount;
+    for (let k = 0; k < easyCount; k++) easyDowSet.add(emptySlots[Math.floor(k * stride)].dow);
+  }
+
   const mathFloor = 3;
   const baselineFloor = easyMileFloor && easyMileFloor > 0 ? easyMileFloor : 0;
   // BASE and CUTBACK weeks may legitimately step down · don't over-floor
@@ -928,13 +968,12 @@ function layoutWeek({
   const effectiveFloor = isDeloadOrBase
     ? mathFloor
     : Math.max(mathFloor, baselineFloor);
-  const perEasyRaw = easySlots.length > 0 ? Math.round(remainingMi / easySlots.length) : 0;
+  const perEasyRaw = easyCount > 0 ? Math.round(remainingMi / easyCount) : 0;
   const perEasy = Math.max(effectiveFloor, perEasyRaw);
-  for (const { dow } of easySlots) {
-    slots[dow] = {
-      dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false,
-      subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.',
-    };
+  for (const { dow } of emptySlots) {
+    slots[dow] = easyDowSet.has(dow)
+      ? { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }
+      : { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Sleep, mobility, fuel.' };
   }
 
   return slots as DayPlan[];
@@ -1003,6 +1042,12 @@ export interface ComposePlanInput {
   longRunDow: DOW;
   restDow: DOW;
   qualityDows: DOW[];
+  /** 2026-06-10 · runner's stated training frequency (profile.
+   *  weekly_frequency, captured at onboarding). When set, caps total
+   *  running days per week so a 3-day runner never gets a 6-day plan.
+   *  NULL preserves the historical "fill every non-rest slot" behavior
+   *  (David + pre-frequency profiles unaffected). */
+  trainingDaysPerWeek: number | null;
   /** Profile cross-training modes · drives rest-day relabeling. */
   crossModes: string[];
   rxQuality: ResolvedPrescriptions;
@@ -1216,6 +1261,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       recentLongMi: input.recentLongMi,
       recentQualityDistanceMi: input.recentQualityDistanceMi,
       tierTarget,
+      trainingDaysPerWeek: input.trainingDaysPerWeek,
     });
     // P34 · cross-training opt-in · rotate enabled modes across the
     // rest day. Same logic that used to live in generatePlan's loop.
@@ -1307,6 +1353,10 @@ export interface ComposeNonRaceInput {
   longRunDow: DOW;
   restDow: DOW;
   qualityDows: DOW[];
+  /** 2026-06-10 · runner's stated training frequency. When set, overrides
+   *  the tier's daysPerWeek so a far-out-race runner's maintenance block
+   *  honors the days/week they actually picked. NULL → tier default. */
+  trainingDaysPerWeek: number | null;
   crossModes: string[];
   /** For maintenance: tier of the next race (so the maintenance shape
    *  matches the runner's level). For recovery: tier of the race that
@@ -1330,7 +1380,13 @@ export interface ComposeNonRaceInput {
  * runner's recent peak; quality drops to 1/week; intervals removed.
  */
 export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanResult {
-  const shape = MAINTENANCE_BY_TIER[input.tier];
+  const tierShape = MAINTENANCE_BY_TIER[input.tier];
+  // 2026-06-10 · honor the runner's stated frequency over the tier
+  // default so a far-out-race runner who picked 3 days/wk doesn't get
+  // the tier's 5-6. NULL → tier default (David / pre-frequency profiles).
+  const shape = input.trainingDaysPerWeek != null
+    ? { ...tierShape, daysPerWeek: input.trainingDaysPerWeek }
+    : tierShape;
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
   const targetWeekly = Math.round(peakAnchor * shape.weeklyPctOfPeak);
   const targetLong = Math.max(8, Math.round(input.recentLongMi * shape.longPctOfPeak));
@@ -1830,6 +1886,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       longRunDow: inputs.compose.longRunDow,
       restDow: inputs.compose.restDow,
       qualityDows: inputs.compose.qualityDows,
+      trainingDaysPerWeek: inputs.compose.trainingDaysPerWeek,
       crossModes: inputs.compose.crossModes,
       tier,
       nextRace: {
@@ -2091,7 +2148,25 @@ async function loadGeneratorInputs(
   const restDow     = dayKeyToDow((prefs?.rest_day ?? 'sat') as DayKey);
   // qualityDows comes from runner prefs · composePlan slices it per-
   // week via densityForWeek() to honor Rule 5 (density ramp).
-  const qualityDows = (prefs?.quality_days ?? ['tue', 'thu']).map((d) => dayKeyToDow(d as DayKey));
+  let qualityDows = (prefs?.quality_days ?? ['tue', 'thu']).map((d) => dayKeyToDow(d as DayKey));
+
+  // 2026-06-10 · stated training frequency (profile.weekly_frequency,
+  // captured at onboarding). Drives BOTH the quality-day count and the
+  // total running-days cap (layoutWeek). NULL (David, pre-frequency
+  // profiles, Strava-only signups) preserves legacy behavior — the
+  // generator fills every non-rest slot and uses prefs' 2 quality days.
+  const freqRow = (await pool.query<{ f: number | null }>(
+    `SELECT weekly_frequency AS f FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as Array<{ f: number | null }> }))).rows[0];
+  const trainingDaysPerWeek = freqRow?.f != null && Number(freqRow.f) >= 3 && Number(freqRow.f) <= 7
+    ? Number(freqRow.f) : null;
+  // Frequency-appropriate quality count: 3-4 days/wk → 1 quality day
+  // (1 long + 1 quality + N easy is the canonical low-frequency shape);
+  // 5+ days/wk supports the prefs' 2 quality days.
+  if (trainingDaysPerWeek != null) {
+    qualityDows = qualityDows.slice(0, trainingDaysPerWeek >= 5 ? 2 : 1);
+  }
 
   // 3. Cross-training opt-in (P34)
   const ctRow = (await pool.query(
@@ -2240,6 +2315,7 @@ async function loadGeneratorInputs(
       longRunDow,
       restDow,
       qualityDows,
+      trainingDaysPerWeek,
       crossModes,
       rxQuality,
       rxRaceSpecific,

@@ -100,6 +100,9 @@ function personaToComposeInput(p: SyntheticRunner): ComposePlanInput {
     longRunDow: 0 as DOW,    // Sun
     restDow: 6 as DOW,        // Sat
     qualityDows: [2, 4] as DOW[],   // Tue + Thu
+    // null = legacy fill-all (synthetic personas predate weekly_frequency;
+    // the matrix smoke harness covers the frequency-capped behavior).
+    trainingDaysPerWeek: null,
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),

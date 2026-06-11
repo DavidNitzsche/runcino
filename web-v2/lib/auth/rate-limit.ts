@@ -24,6 +24,11 @@ let checksSinceSweep = 0;
 /** True when this request should be rejected with a 429. Counts the
  *  attempt regardless of auth outcome (failed logins are the signal). */
 export function authRateLimited(req: Request | { headers: Headers }): boolean {
+  // Sandbox bypass: ALLOW_OPEN_SIGNUP is set ONLY in the local sandbox
+  // (scripts/sandbox.sh) — never on Railway prod, which stays invite-only.
+  // The persona/matrix smoke harnesses hammer signup dozens of times in a
+  // burst; the brake exists for prod bots, not local fixtures.
+  if (process.env.ALLOW_OPEN_SIGNUP === 'true') return false;
   // Railway terminates TLS at the edge proxy · the client lands in the
   // first hop of x-forwarded-for. Absent header (local dev, tests) →
   // one shared bucket, which only matters under attack anyway.
