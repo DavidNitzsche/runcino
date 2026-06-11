@@ -177,15 +177,11 @@ struct TodayView: View {
             FaffMeshView(mesh: mesh)
 
             VStack(spacing: 0) {
-                // Clearance for the globalTopBar overlay in RootTabView.
-                // Bar = 2pt top pad + 30pt content + 4pt bottom pad = 36pt.
-                // Extra 14pt breathing room between bar bottom and week strip.
-                Color.clear.frame(height: 50)
-
-                if !allStripWeeks.isEmpty {
-                    WeekStrip(weeks: allStripWeeks, selectedID: $selectedDayID, weekIndex: $selectedWeekIndex)
-                        .padding(.top, 2)
-                }
+                // Clearance for globalTopBar (50pt) + week strip (80pt + 2pt pad = 82pt).
+                // WeekStrip is promoted to its own ZStack layer above the top scrim
+                // so it always renders crisp. Content scrolling behind it fades
+                // through the gradient scrim rather than hard-clipping at the strip.
+                Color.clear.frame(height: 132)
 
                 StravaReconnectBanner(status: stravaStatus)
                     .padding(.horizontal, 22)
@@ -365,6 +361,27 @@ struct TodayView: View {
                 }
             }
 
+            // Top scrim — mirrors the bottom scrim in RootTabView. Fades from
+            // solid bg at the top to clear below the week strip so content
+            // scrolling upward blurs out rather than hard-clipping at the strip.
+            // Sits above the content VStack but below the DragSheet; week strip
+            // is its own ZStack layer above everything.
+            VStack {
+                LinearGradient(
+                    stops: [
+                        .init(color: Theme.bg, location: 0),
+                        .init(color: Theme.bg.opacity(0.88), location: 0.62),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 140)
+                .ignoresSafeArea(edges: .top)
+                Spacer()
+            }
+            .allowsHitTesting(false)
+
             // DragSheet suppressed on past days and today-post-run.
             // On past days the flat recap is the whole page.
             // On today-post-run the run is shown directly on the canvas.
@@ -413,6 +430,20 @@ struct TodayView: View {
             // intact so the new menu can wire them up cleanly. Pre-run
             // sheet's own "Skip this run" footer is unaffected (lives
             // inside TodayPreRunBodyV3 · separate concern).
+
+            // Week strip — rendered last so it sits above the content scrim,
+            // DragSheet, and all other ZStack layers. The strip itself stays
+            // crisp; only scrolling content behind it fades through the scrim.
+            // No Spacer — frame(maxHeight: .infinity, alignment: .top) pins the
+            // content to the top without creating a hit-test surface below.
+            VStack(spacing: 0) {
+                Color.clear.frame(height: 50)
+                if !allStripWeeks.isEmpty {
+                    WeekStrip(weeks: allStripWeeks, selectedID: $selectedDayID, weekIndex: $selectedWeekIndex)
+                        .padding(.top, 2)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .task {
             await loadAll()
