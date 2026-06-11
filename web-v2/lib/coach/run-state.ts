@@ -43,6 +43,8 @@ export interface PhaseBreakdown {
   type: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown';
   // Plan
   target_pace: string | null;       // "6:48" formatted
+  target_pace_sec: number | null;   // raw seconds/mi for bar math
+  tolerance_pace_sec: number | null; // ±band in seconds/mi
   target_distance_mi: number | null;
   target_duration_sec: number | null;
   // Actual
@@ -920,6 +922,8 @@ async function loadPhaseBreakdown(
       label: String(p.label ?? p.name ?? defaultLabel(type, i)),
       type,
       target_pace: fmtPace(targetSPerMi),
+      target_pace_sec: targetSPerMi,
+      tolerance_pace_sec: Number(p.tolerancePaceSPerMi) || null,
       target_distance_mi: Number(p.targetDistanceMi) || null,
       target_duration_sec: Number(p.targetDurationSec) || null,
       actual_pace: fmtPace(actualSPerMi),

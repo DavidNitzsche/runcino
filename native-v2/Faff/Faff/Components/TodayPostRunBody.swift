@@ -530,6 +530,8 @@ struct TodayPostRunBody: View {
                                     tint: tintForPhase(phase),
                                     fastestSec: fastest,
                                     denom: denom,
+                                    targetPaceSec: phase.target_pace_sec,
+                                    tolerancePaceSec: phase.tolerance_pace_sec,
                                     onMesh: onMesh
                                 )
                             }
@@ -898,17 +900,21 @@ private struct SplitRow: View {
     let split: RunSplit
     let paceSec: Int
     let tint: Color
-    let fastestSec: Int
-    let denom: Int
-    /// 2026-06-02 round 64 · same context flag as TodayPostRunBody.
-    /// SplitRow is a private struct (out of scope of the parent's
-    /// helpers), so it takes its own copy. Default false preserves
-    /// the cream-context look for the drag-sheet body.
+    // Simple-bar fallback (used when no target range is available).
+    var fastestSec: Int = 0
+    var denom: Int = 1
+    // Range-bar inputs: when both are non-nil the range bar renders
+    // instead of the simple length bar. target is the phase's planned
+    // pace in s/mi; tolerance is the ±band from build-workout.ts
+    // (typically 8s for a single pace target, 15s for a range spec).
+    var targetPaceSec: Double? = nil
+    var tolerancePaceSec: Double? = nil
     var onMesh: Bool = false
 
     private var mutedText: Color { onMesh ? Color.white.opacity(0.78) : Color(hex: 0x4F483F) }
     private var subtleText: Color { onMesh ? Color.white.opacity(0.55) : Color(hex: 0x9A9286) }
-    private var trackFill: Color { onMesh ? Color.white.opacity(0.15) : Color(hex: 0xF1EBDF) }
+    private var trackFill: Color { onMesh ? Color.white.opacity(0.12) : Color(hex: 0xF1EBDF) }
+    private var zoneFill: Color  { tint.opacity(0.22) }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -917,14 +923,10 @@ private struct SplitRow: View {
                 .foregroundStyle(mutedText)
                 .frame(width: 22, alignment: .leading)
             GeometryReader { geo in
-                let frac = denom > 0 ? CGFloat(paceSec - fastestSec) / CGFloat(denom) : 0
-                let w = geo.size.width * (0.25 + 0.75 * frac)
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(trackFill)
-                    Capsule()
-                        .fill(tint.opacity(0.85))
-                        .frame(width: max(28, w))
+                if let target = targetPaceSec, let tol = tolerancePaceSec, tol > 0 {
+                    rangeBar(in: geo.size.width, target: target, tol: tol)
+                } else {
+                    simpleBar(in: geo.size.width)
                 }
             }
             .frame(height: 8)
@@ -936,6 +938,51 @@ private struct SplitRow: View {
                 .font(.body(11, weight: .semibold))
                 .foregroundStyle(subtleText)
                 .frame(width: 32, alignment: .trailing)
+        }
+    }
+
+    /// Target-range bar: zone occupies the middle 50%, dot = actual pace.
+    /// Track spans target ± (2 × tolerance) so the zone fills 25–75%.
+    /// Higher s/mi = slower = left; lower s/mi = faster = right.
+    @ViewBuilder
+    private func rangeBar(in width: CGFloat, target: Double, tol: Double) -> some View {
+        let span = tol * 4                        // total track range in seconds
+        let trackLeft = target + tol * 2          // slowest end (left)
+        let rawFrac = (trackLeft - Double(paceSec)) / span
+        let frac = CGFloat(max(0, min(1, rawFrac)))
+        let dotX = width * frac
+        let zoneX = width * 0.25
+        let zoneW = width * 0.5
+
+        ZStack(alignment: .leading) {
+            // Track
+            Capsule().fill(trackFill)
+            // Target zone
+            Rectangle()
+                .fill(zoneFill)
+                .frame(width: zoneW, height: 8)
+                .offset(x: zoneX)
+            // Target center line
+            Rectangle()
+                .fill(tint.opacity(0.45))
+                .frame(width: 1.5, height: 8)
+                .offset(x: width * 0.5 - 0.75)
+            // Actual pace dot
+            Circle()
+                .fill(tint)
+                .frame(width: 9, height: 9)
+                .offset(x: dotX - 4.5, y: -0.5)
+        }
+    }
+
+    /// Simple proportional bar: longest = slowest, shortest = fastest.
+    @ViewBuilder
+    private func simpleBar(in width: CGFloat) -> some View {
+        let frac = denom > 0 ? CGFloat(paceSec - fastestSec) / CGFloat(denom) : 0
+        let w = width * (0.25 + 0.75 * frac)
+        ZStack(alignment: .leading) {
+            Capsule().fill(trackFill)
+            Capsule().fill(tint.opacity(0.85)).frame(width: max(28, w))
         }
     }
 }

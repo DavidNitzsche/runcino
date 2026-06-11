@@ -301,6 +301,8 @@ struct PhaseBreakdown: Decodable, Identifiable {
     let label: String
     let type: String                       // "warmup" | "work" | "recovery" | "cooldown" | "unknown"
     let target_pace: String?
+    let target_pace_sec: Double?
+    let tolerance_pace_sec: Double?
     let target_distance_mi: Double?
     let target_duration_sec: Int?
     let actual_pace: String?
