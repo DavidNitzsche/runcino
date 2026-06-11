@@ -138,6 +138,18 @@ async function loadPlanWeeks(userUuid) {
 
 const runDays = (days) => days.filter((d) => d.mi > 0).length;
 const weekMi = (days) => days.reduce((s, d) => s + d.mi, 0);
+// Personas onboard with timezone America/Los_Angeles; the generator
+// anchors on the RUNNER's local today (runnerToday), so compare against
+// the same zone — not UTC, which is a day ahead on Pacific evenings.
+const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+
+// No prescribed run may be dated before today — a runner who onboards
+// mid-week should never see runs scheduled before they existed.
+function checkNoPastRuns(loaded) {
+  const past = loaded.weeks.flatMap((w) => w.days)
+    .filter((d) => d.mi > 0 && d.date_iso < TODAY);
+  return past.length ? [`${past.length} run(s) scheduled before today (e.g. ${past[0].date_iso})`] : [];
+}
 
 // ── Validators ────────────────────────────────────────────────────
 function validateMaintenance(p, loaded) {
@@ -262,6 +274,7 @@ for (const p of personas) {
 
     const loaded = await loadPlanWeeks(userUuid);
     const fails = p.kind === 'race' ? validateRace(p, loaded) : validateMaintenance(p, loaded);
+    if (loaded) fails.push(...checkNoPastRuns(loaded));
     row.fails = fails;
     row.status = fails.length ? 'FAIL' : 'PASS';
     if (loaded) {

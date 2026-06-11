@@ -46,6 +46,15 @@ const dayKeyToDow = (k: DayKey): DOW => DAY_KEYS.indexOf(k) as DOW;
 export interface GenerateInput {
   userId: string;
   raceSlug: string;
+  /** 2026-06-10 · where week 0 begins.
+   *   · 'monday' (default) — Monday of the current week. Established
+   *     runners keep clean Mon-Sun weeks across lifecycle regens.
+   *   · 'today' — the join day. Used by onboarding so a runner who
+   *     signs up mid-week doesn't get runs scheduled before they
+   *     existed (David: "today is their first day, why would we
+   *     schedule runs in the past"). First week is a full 7 days from
+   *     today; no past-dated prescriptions. */
+  startAnchor?: 'today' | 'monday';
 }
 
 export interface GenerateResult {
@@ -1694,6 +1703,14 @@ async function persistPlan(client: PoolClient, args: {
   for (let wi = 0; wi < args.weeks.length; wi++) {
     const w = args.weeks[wi];
     const weekId = id('wk');
+    // 2026-06-10 · derive each day's date as an offset from the week's
+    // actual start weekday (not a hardcoded Monday). For Monday-anchored
+    // plans (default · David + lifecycle regens) this is identical to the
+    // old `(dow - 1 + 7) % 7`. For onboarding's today-anchored plans the
+    // week can start any weekday, and this keeps a Sunday long run on
+    // Sunday instead of scattering it.
+    const weekStartDow = new Date(w.startISO + 'T12:00:00Z').getUTCDay();
+    const dateForDow = (dow: number) => addDays(w.startISO, ((dow - weekStartDow + 7) % 7));
     weekRows.push(
       [weekId, planId, wi, w.startISO, phaseForWeek(wi), w.isRaceWeek,
        `${w.phase} · week ${wi + 1}`, isPeakByWeek[wi], isCutbackByWeek[wi]]
@@ -1702,7 +1719,7 @@ async function persistPlan(client: PoolClient, args: {
     for (const d of w.days) {
       if (d.distanceMi === 0 && d.type !== 'rest' && d.type !== 'race') continue;
       const wkoId = id('wko');
-      const dateISO = addDays(w.startISO, ((d.dow - 1 + 7) % 7));
+      const dateISO = dateForDow(d.dow);
       // 2026-06-01 · derive pace_target + workout_spec at insert time
       // (web agent gap brief). Was leaving both NULL waiting on the
       // backfill cron · now every freshly-generated quality row
@@ -1794,7 +1811,7 @@ async function persistPlan(client: PoolClient, args: {
       const strLabel = isHeavy ? 'SESSION A' : 'SESSION B';
       for (const d of w.days.filter(d2 => d2.type === 'easy').slice(0, 2)) {
         const sId = id('wko');
-        const dateISO = addDays(w.startISO, ((d.dow - 1 + 7) % 7));
+        const dateISO = dateForDow(d.dow);
         workoutRows.push(
           [sId, planId, weekId, dateISO, d.dow, 'strength', 0,
            null, JSON.stringify(strengthSession),
@@ -1850,10 +1867,10 @@ async function persistPlan(client: PoolClient, args: {
 // ── Main entrypoint ─────────────────────────────────────────────────────
 
 export async function generatePlan(input: GenerateInput): Promise<GenerateResult> {
-  const { userId, raceSlug } = input;
+  const { userId, raceSlug, startAnchor = 'monday' } = input;
 
   // 1. Load all DB-sourced inputs into a pure-data bundle.
-  const inputs = await loadGeneratorInputs(userId, raceSlug);
+  const inputs = await loadGeneratorInputs(userId, raceSlug, startAnchor);
   if (!inputs.ok) return { ok: false, reason: inputs.reason };
 
   // 2026-06-03 · Rules 12 + 13 · pick plan mode based on temporal context.
@@ -2118,6 +2135,7 @@ async function loadLastRaceFinished(
 async function loadGeneratorInputs(
   userId: string,
   raceSlug: string,
+  startAnchor: 'today' | 'monday' = 'monday',
 ): Promise<
   | { ok: true; compose: ComposePlanInput }
   | { ok: false; reason: string }
@@ -2177,7 +2195,12 @@ async function loadGeneratorInputs(
     ? ctRow.cross_training_modes : [];
 
   // 4. Plan-shape inputs
-  const startMondayISO = mondayOf(todayISO);
+  // 2026-06-10 · onboarding anchors week 0 at TODAY (the join day) so a
+  // mid-week signup never sees runs dated before they existed. Lifecycle
+  // regens keep Monday anchoring for clean Mon-Sun weeks. The race-week
+  // math is anchor-agnostic: race day always falls in the final 7-day
+  // block regardless of where week 0 starts.
+  const startMondayISO = startAnchor === 'today' ? todayISO : mondayOf(todayISO);
   const totalWeeks = daysBetween(startMondayISO, mondayOf(raceDateISO)) / 7 + 1;
   if (totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 

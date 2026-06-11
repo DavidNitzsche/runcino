@@ -484,7 +484,10 @@ export async function POST(req: NextRequest) {
       // Canonical race-prep generator. Best-effort: returns ok:false with
       // a reason for edge runways (<2wks / >1yr / <3wks) — the race row
       // still stands, and lifecycle authors the plan once it's in range.
-      const result = await generatePlan({ userId, raceSlug: slug });
+      // startAnchor:'today' — a runner onboarding mid-week starts their
+      // plan on the join day, not the Monday before, so week 0 never
+      // contains runs dated before they signed up.
+      const result = await generatePlan({ userId, raceSlug: slug, startAnchor: 'today' });
       seedPlan = {
         ok: result.ok,
         mode: 'race-prep',

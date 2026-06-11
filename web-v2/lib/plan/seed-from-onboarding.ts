@@ -517,8 +517,15 @@ export async function seedMaintenancePlanFromOnboarding(
   const layout = defaultLayout(goals.weeklyFrequency);
   const curve = buildProgressiveCurve(startWeeklyMi, targetWeeklyMi);
 
-  const startMonday = mondayOf(await runnerToday(userId));
-  // 16 weeks · last day = startMonday + 16*7 - 1.
+  // 2026-06-10 · anchor week 0 at TODAY (the join day), not the Monday
+  // before it. A runner who onboards mid-week shouldn't see runs dated
+  // before they existed (David: "today is their first day, why would we
+  // schedule runs in the past"). The persist loop places workouts by
+  // each date's calendar weekday, so a today-anchored week still lands
+  // the long run on the preferred day — the first week is just a full
+  // 7 days starting today instead of a partial Mon-Sun stub.
+  const startMonday = await runnerToday(userId);
+  // 16 weeks · last day = start + 16*7 - 1.
   const goalISO = addDays(startMonday, TOTAL_WEEKS * 7 - 1);
 
   await clearActivePlansFor(userId);
