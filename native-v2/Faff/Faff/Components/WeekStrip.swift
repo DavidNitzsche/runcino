@@ -19,6 +19,9 @@ struct WeekStripDay: Identifiable, Hashable {
     /// Strength recommender picked this day · renders a thin underline under
     /// the date number (no glyph — David's pick, keeps the strip uncluttered).
     var strengthSuggested: Bool = false
+    /// A strength session was LOGGED on this date · the underline turns green
+    /// (vs blue for merely recommended).
+    var strengthDone: Bool = false
 }
 
 struct WeekStrip: View {
@@ -67,9 +70,14 @@ struct WeekStrip: View {
                 // Strength day · a thin underline below the number. Overlay (not
                 // a stacked element) so it never shifts the cell's layout.
                 .overlay(alignment: .bottom) {
-                    if d.strengthSuggested {
+                    if d.strengthDone {
                         Capsule()
-                            .fill(Color(hex: 0x27B4E0))
+                            .fill(Color(hex: 0x9AF0BF))   // green · strength logged
+                            .frame(width: 14, height: 2.5)
+                            .offset(y: 4)
+                    } else if d.strengthSuggested {
+                        Capsule()
+                            .fill(Color(hex: 0x27B4E0))   // blue · recommended
                             .frame(width: 14, height: 2.5)
                             .offset(y: 4)
                     }

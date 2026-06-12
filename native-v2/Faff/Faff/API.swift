@@ -1616,9 +1616,11 @@ struct TrainingPlanWeek: Decodable, Identifiable {
     /// on the current week by training-state.ts. Drives the week-strip
     /// underline + the Today strength nudge.
     let recommendedStrengthDays: [String]?
+    /// ISO dates a strength session was LOGGED this week (current week only).
+    let completedStrengthDays: [String]?
     var id: Int { idx }
 
-    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent, recommendedStrengthDays }
+    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent, recommendedStrengthDays, completedStrengthDays }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.idx = c.decodeFlexInt(forKey: .idx) ?? 0
@@ -1628,6 +1630,7 @@ struct TrainingPlanWeek: Decodable, Identifiable {
         self.days = (try? c.decode([TrainingPlanDay].self, forKey: .days)) ?? []
         self.isCurrent = try c.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
         self.recommendedStrengthDays = try? c.decode([String].self, forKey: .recommendedStrengthDays)
+        self.completedStrengthDays = try? c.decode([String].self, forKey: .completedStrengthDays)
     }
 }
 

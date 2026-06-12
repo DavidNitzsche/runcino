@@ -59,12 +59,15 @@ export interface PlanWeek {
     } | null;
   }>;
   isCurrent: boolean;
-  /** 2026-06-01 · per-week strength-day picks · ISO YYYY-MM-DD dates
-   *  for this Mon-Sun. Populated only for the CURRENT week (computing
-   *  forward is fine, computing 25 weeks of recommendations is wasted
-   *  work · they re-derive when the runner reaches them). Empty array
-   *  for non-current weeks. */
+  /** Strength-day picks · ISO YYYY-MM-DD for this Mon-Sun. Populated for
+   *  the CURRENT and NEXT week (2026-06-12 · forward look so the strip can
+   *  show strength ahead). A future week's picks use today's readiness gate,
+   *  so they're the plan-based forecast — they re-rate when the runner
+   *  reaches that week. Empty for weeks beyond next. */
   recommendedStrengthDays: string[];
+  /** Days a strength session was actually LOGGED this week · ISO dates from
+   *  strength_sessions. Current week only (2026-06-12). */
+  completedStrengthDays?: string[];
 }
 
 export interface PlanPhase { label: string; startWeekIdx: number; endWeekIdx: number; }
@@ -254,14 +257,30 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   // into each new Monday. Per the recommender's stability rule, same
   // (user, weekStart) always returns the same set.
   try {
-    const cur = weeks.find(w => w.isCurrent);
+    const { recommendStrengthDays } = await import('./strength-recommender');
+    const curIdx = weeks.findIndex(w => w.isCurrent);
+    // Suggested days · current + next week (forward look · 2026-06-12). A
+    // future week's picks use today's readiness gate, so they're the
+    // plan-based forecast — they re-rate when the runner reaches that week.
+    for (const w of [weeks[curIdx], weeks[curIdx + 1]].filter(Boolean)) {
+      const rec = await recommendStrengthDays(userId, w.startDate);
+      w.recommendedStrengthDays = rec.recommendedDays;
+    }
+    // Completed days · current week, from strength_sessions — so a logged
+    // session shows on the strip even on a non-recommended day.
+    const cur = weeks[curIdx];
     if (cur) {
-      const { recommendStrengthDays } = await import('./strength-recommender');
-      const rec = await recommendStrengthDays(userId, cur.startDate);
-      cur.recommendedStrengthDays = rec.recommendedDays;
+      const weekEnd = new Date(new Date(cur.startDate + 'T12:00:00Z').getTime() + 6 * 86400000)
+        .toISOString().slice(0, 10);
+      const done = await pool.query<{ date: string }>(
+        `SELECT DISTINCT date::text AS date FROM strength_sessions
+          WHERE user_uuid = $1::uuid AND date >= $2::date AND date <= $3::date`,
+        [userId, cur.startDate, weekEnd],
+      ).catch(() => ({ rows: [] as Array<{ date: string }> }));
+      cur.completedStrengthDays = done.rows.map(r => r.date);
     }
   } catch (e) {
-    console.warn('[training-state] strength-recommender failed:', e instanceof Error ? e.message : String(e));
+    console.warn('[training-state] strength enrich failed:', e instanceof Error ? e.message : String(e));
   }
 
   const current = weeks.find((w) => w.isCurrent);

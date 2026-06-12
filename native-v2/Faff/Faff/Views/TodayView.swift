@@ -40,9 +40,17 @@ struct TodayView: View {
     /// drives the strip underline + the Today nudge. Seeded from the cached
     /// training-state (instant), refreshed in loadAll.
     @State private var strengthDays: Set<String> = {
+        guard let ts = AppCache.read(.trainingState, as: TrainingState.self) else { return [] }
+        // Union ALL weeks so strength shows ahead (the backend now fills the
+        // current + next week), not just the current one.
+        return Set(ts.weeks.flatMap { $0.recommendedStrengthDays ?? [] })
+    }()
+    /// ISO dates a strength session was logged (current week) · drives the
+    /// green "done" underline + nudge.
+    @State private var strengthDoneDays: Set<String> = {
         guard let ts = AppCache.read(.trainingState, as: TrainingState.self),
               let cur = ts.weeks.first(where: { $0.isCurrent }) else { return [] }
-        return Set(cur.recommendedStrengthDays ?? [])
+        return Set(cur.completedStrengthDays ?? [])
     }()
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
@@ -356,7 +364,11 @@ struct TodayView: View {
                                 .padding(.top, 6)
                             heroBlock
                                 .padding(.horizontal, 22)
-                                .padding(.top, 16)
+                                // Pull up into the 88pt headline's line-box
+                                // whitespace (descender) so the gap below EASY
+                                // matches the gap above it — was +16, which on
+                                // top of the descender read as "too far down".
+                                .padding(.top, -12)
                                 .padding(.bottom, 220)
                         }
                     }
@@ -731,7 +743,23 @@ struct TodayView: View {
             // Strength nudge · the recommender picked this day. The strip shows
             // WHICH days (the underline); this is the selected day's heads-up.
             // Purely additive — runs-only days look exactly as before.
-            if strengthDays.contains(selectedDayID) {
+            if strengthDoneDays.contains(selectedDayID) {
+                HStack(spacing: 7) {
+                    Image(systemName: "dumbbell.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                    Text("Strength")
+                        .font(.body(13, weight: .bold))
+                        .foregroundStyle(Theme.txt)
+                    Text("done")
+                        .font(.body(12, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                }
+                .padding(.top, 16)
+            } else if strengthDays.contains(selectedDayID) {
                 HStack(spacing: 8) {
                     Image(systemName: "dumbbell.fill")
                         .font(.system(size: 12, weight: .bold))
@@ -1892,7 +1920,8 @@ struct TodayView: View {
                 isToday: d.is_today,
                 isDone: d.completedRunId != nil,
                 isSkipped: d.skipped ?? false,
-                strengthSuggested: strengthDays.contains(d.date_iso)
+                strengthSuggested: strengthDays.contains(d.date_iso),
+                strengthDone: strengthDoneDays.contains(d.date_iso)
             )
         }
     }
@@ -1994,8 +2023,11 @@ struct TodayView: View {
             // Adjacent weeks — always update so strip reflects latest data.
             self.prevWeekPlan = prevW
             self.futureWeekPlans = futureW
-            if let cur = trainingS?.weeks.first(where: { $0.isCurrent }) {
-                self.strengthDays = Set(cur.recommendedStrengthDays ?? [])
+            if let ts = trainingS {
+                self.strengthDays = Set(ts.weeks.flatMap { $0.recommendedStrengthDays ?? [] })
+                if let cur = ts.weeks.first(where: { $0.isCurrent }) {
+                    self.strengthDoneDays = Set(cur.completedStrengthDays ?? [])
+                }
             }
             if let planWeek {
                 self.plan = planWeek
