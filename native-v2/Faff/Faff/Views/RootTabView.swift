@@ -403,8 +403,10 @@ struct RootTabView: View {
             showRunMenu.toggle()
         } label: {
             VStack(spacing: 4) {
+                // Match the other four tabs exactly (was 22pt bold — read as
+                // oversized next to the 19pt semibold siblings · David).
                 Image(systemName: "figure.run")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 19, weight: .semibold))
                 Text("RUN")
                     .font(.body(9, weight: .extraBold)).tracking(0.4)
             }

@@ -11,6 +11,10 @@ struct TrainingCalendarView: View {
     @State private var weeks: [PlanWeek] = []
     @State private var loading = true
     @State private var scrolledToCurrentWeek = false
+    // Strength days from the recommender (training-state · current + next week).
+    // PlanWeek itself carries no strength info, so we overlay it here.
+    @State private var strengthDays: Set<String> = []
+    @State private var strengthDoneDays: Set<String> = []
 
     var body: some View {
         ZStack {
@@ -127,8 +131,11 @@ struct TrainingCalendarView: View {
                     .font(.body(13, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.38))
                 Spacer()
+                // Strength can land on a rest-from-running day · keep the
+                // marker on the row's right edge, same side as the run rows.
+                strengthIcon(for: day.date_iso)
             } else {
-                // Workout card
+                // Workout card (strength dumbbell rides inside, on its right)
                 workoutCard(day: day, effort: effort, isDone: isDone)
                 Spacer(minLength: 0)
             }
@@ -159,6 +166,8 @@ struct TrainingCalendarView: View {
 
             Spacer(minLength: 0)
 
+            strengthIcon(for: day.date_iso)
+
             if isDone {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 18, weight: .semibold))
@@ -169,6 +178,22 @@ struct TrainingCalendarView: View {
         .padding(.vertical, 10)
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.10), lineWidth: 1))
+    }
+
+    /// Small dumbbell on the right of a day · the recommender picked this day
+    /// for strength (blue) or one was logged (green). Renders nothing on
+    /// non-strength days. (David 2026-06-12)
+    @ViewBuilder
+    private func strengthIcon(for dateIso: String) -> some View {
+        if strengthDoneDays.contains(dateIso) {
+            Image(systemName: "dumbbell.fill")
+                .font(.system(size: 12.5, weight: .bold))
+                .foregroundStyle(Color(hex: 0x9AF0BF))
+        } else if strengthDays.contains(dateIso) {
+            Image(systemName: "dumbbell.fill")
+                .font(.system(size: 12.5, weight: .bold))
+                .foregroundStyle(Color(hex: 0x27B4E0))
+        }
     }
 
     // MARK: - Data
@@ -194,8 +219,20 @@ struct TrainingCalendarView: View {
         async let w5 = (try? await API.fetchPlanWeek(date: offsetDate(4)))
         async let w6 = (try? await API.fetchPlanWeek(date: offsetDate(5)))
         async let w7 = (try? await API.fetchPlanWeek(date: offsetDate(6)))
+        // Strength recommendations ride a separate endpoint (training-state).
+        async let ts = (try? await API.fetchTrainingState())
 
         let fetched = await [w0, w1, w2, w3, w4, w5, w6, w7].compactMap { $0 }
+
+        // Union strength days across the weeks the recommender returns
+        // (current + next). Days beyond that simply get no marker.
+        var sDays = Set<String>(), sDone = Set<String>()
+        if let weeks = await ts?.weeks {
+            for w in weeks {
+                for d in (w.recommendedStrengthDays ?? []) { sDays.insert(d) }
+                for d in (w.completedStrengthDays ?? []) { sDone.insert(d) }
+            }
+        }
 
         // Dedupe by week_start_iso, preserve order
         var seen = Set<String>()
@@ -206,6 +243,8 @@ struct TrainingCalendarView: View {
 
         await MainActor.run {
             weeks = deduped
+            strengthDays = sDays
+            strengthDoneDays = sDone
             loading = false
             // Trigger scroll to current week after the list renders.
             // Small delay lets LazyVStack place the rows before we jump.

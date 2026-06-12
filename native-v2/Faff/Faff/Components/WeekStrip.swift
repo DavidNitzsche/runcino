@@ -87,14 +87,12 @@ struct WeekStrip: View {
                     .fill(Color.white.opacity(0.5))
                     .frame(width: 9, height: 2)
             } else if d.isSkipped {
-                ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.30), lineWidth: 1)
-                        .frame(width: 14, height: 14)
-                    Image(systemName: "slash.circle")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.txt.opacity(0.45))
-                }
+                // Skipped · a muted grey dot in place of the live effort color
+                // (David's pick — de-emphasize, don't flag with a slash). Same
+                // 6pt dot as a normal day so only the colour reads as "off".
+                Circle()
+                    .fill(Color.white.opacity(0.38))
+                    .frame(width: 6, height: 6)
             } else if d.isDone {
                 ZStack {
                     Circle()

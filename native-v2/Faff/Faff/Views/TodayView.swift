@@ -354,10 +354,10 @@ struct TodayView: View {
                     // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(selectedEffort.title.uppercased())
+                            Text(isSkippedToday ? "SKIPPED" : selectedEffort.title.uppercased())
                                 .font(.heroDisplay(88))
                                 .tracking(-2)
-                                .foregroundStyle(selectedEffort.dot)
+                                .foregroundStyle(isSkippedToday ? Color(hex: 0x7E8794) : selectedEffort.dot)
                                 .minimumScaleFactor(0.55)
                                 .lineLimit(1)
                                 .padding(.horizontal, 22)
@@ -675,6 +675,44 @@ struct TodayView: View {
 
     private var heroBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if isSkippedToday {
+                skippedHeroDetail
+            } else {
+                runHeroDetail
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Custom bottom sheet instead of .confirmationDialog — the system
+        // dialog anchored as a popover over the scrolled hero (David: "pops up
+        // in a weird place"). A sheet always seats at the bottom.
+        .sheet(isPresented: $showSkipConfirm) { skipConfirmSheet }
+    }
+
+    /// Minimal hero shown when today's run is skipped: acknowledgement + an
+    /// undo. No stats / steps / pills — those describe a run that isn't
+    /// happening. (David 2026-06-12)
+    @ViewBuilder private var skippedHeroDetail: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("You skipped today's \(skippedRunNoun). Your plan keeps moving.")
+                .font(.body(15))
+                .foregroundStyle(Theme.txt.opacity(0.6))
+                .fixedSize(horizontal: false, vertical: true)
+            Button { unskipTodayAction() } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Undo skip")
+                        .font(.body(15, weight: .semibold))
+                }
+                .foregroundStyle(Color(hex: 0x8FD0FF))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.top, 14)
+    }
+
+    @ViewBuilder private var runHeroDetail: some View {
+        VStack(alignment: .leading, spacing: 0) {
 
             // Weather chip — right-aligned, only shown when heat is meaningful
             if let t = weather?.tempF, t > 10, t < 130 {
@@ -795,11 +833,6 @@ struct TodayView: View {
                 .padding(.top, 16)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Custom bottom sheet instead of .confirmationDialog — the system
-        // dialog was anchoring as a popover over the scrolled hero (David:
-        // "pops up in a weird place"). A sheet always seats at the bottom.
-        .sheet(isPresented: $showSkipConfirm) { skipConfirmSheet }
     }
 
     private func heroStat(key: String, value: String) -> some View {
@@ -1291,8 +1324,30 @@ struct TodayView: View {
     }
 
     private var selectedEffort: FaffEffort {
-        if skipped { return .rest }
+        // Skip applies to TODAY only — never relabel another selected day as
+        // rest just because today was skipped.
+        if skipped && selectedIsToday { return .rest }
         return selectedDayEffort ?? .easy
+    }
+
+    /// Today's run was actively skipped (day_actions). A skipped today reads
+    /// as "SKIPPED" with the run detail dropped — distance/pace/time for a run
+    /// you chose not to do is incoherent (David 2026-06-12). Scoped to today so
+    /// it never relabels another selected day.
+    private var isSkippedToday: Bool { skipped && selectedIsToday }
+
+    /// The run you skipped, as a noun for the "You skipped today's …" line.
+    /// Reads the REAL planned effort, not selectedEffort (which is .rest here).
+    private var skippedRunNoun: String {
+        switch selectedDayEffort ?? .easy {
+        case .recovery:  return "recovery jog"
+        case .easy:      return "easy run"
+        case .long:      return "long run"
+        case .tempo:     return "tempo run"
+        case .intervals: return "intervals session"
+        case .race:      return "race"
+        case .rest:      return "session"
+        }
     }
 
     private var isQualityWorkoutDay: Bool {
@@ -1361,6 +1416,7 @@ struct TodayView: View {
     /// non-today days made Wed (easy) read as "INTERVALS" because
     /// Tuesday's intervals purpose bled through.
     private var peekTitleWord: String {
+        if isSkippedToday { return "SKIPPED" }
         if selectedIsToday, let t = purpose?.typeTitle?.uppercased(), !t.isEmpty {
             return t
         }
@@ -1860,6 +1916,20 @@ struct TodayView: View {
         }
     }
 
+    /// Undo today's skip · DELETE /api/today/skip, flip back to the run, and
+    /// reload so the plan/workout re-hydrate into the run hero.
+    private func unskipTodayAction() {
+        Task {
+            do {
+                try await API.deleteSkipToday()
+                await MainActor.run { self.skipped = false }
+                await loadAll()
+            } catch {
+                print("[today v2] unskip failed: \(error)")
+            }
+        }
+    }
+
     // restoreAdaptationAction retired 2026-06-01 round 2 along with
     // the in-sheet banner. When the AdaptationCard above the hero
     // grows a Restore affordance, re-introduce a posted decline-with-
@@ -1965,7 +2035,11 @@ struct TodayView: View {
                 effort: FaffEffort.fromType(d.type),
                 isToday: d.is_today,
                 isDone: d.completedRunId != nil,
-                isSkipped: d.skipped ?? false,
+                // Today's skip lands in day_actions (the `skipped` @State from
+                // GET /api/today/skip) before the plan/week API folds it into
+                // PlanDay.skipped — OR it in so the strip greys immediately,
+                // consistent with the SKIPPED hero.
+                isSkipped: (d.skipped ?? false) || (d.is_today && skipped),
                 strengthSuggested: strengthDays.contains(d.date_iso),
                 strengthDone: strengthDoneDays.contains(d.date_iso)
             )
