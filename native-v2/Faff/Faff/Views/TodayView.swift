@@ -2221,9 +2221,23 @@ struct TodayView: View {
             if let brief { self.briefing = brief }
             if let prof { self.profile = prof }
             if let wx { self.weather = wx }
-            // Snap the week strip to the current week after all plans load.
-            if let idx = self.allStripWeeks.firstIndex(where: { $0.contains(where: { $0.isToday }) }) {
-                self.selectedWeekIndex = idx
+            // Snap the strip to the current week AND select today in ONE
+            // silent (non-animated) transaction, so the first painted frame is
+            // already today. allStripWeeks gains a prepended prev week during
+            // loadAll, which shifts the current week's index; without a silent
+            // snap + explicit today-selection the strip visibly slid from last
+            // week into today and the hero showed a default "EASY" until the
+            // selection landed (David 2026-06-12 · "always load on today").
+            let resolvedTodayId = planWeek?.today_iso ?? self.plan?.today_iso
+            if let idx = self.allStripWeeks.firstIndex(where: {
+                $0.contains(where: { $0.isToday || ($0.id == resolvedTodayId && resolvedTodayId != nil) })
+            }) {
+                var tx = Transaction()
+                tx.disablesAnimations = true
+                withTransaction(tx) {
+                    self.selectedWeekIndex = idx
+                    if let tid = resolvedTodayId { self.selectedDayID = tid }
+                }
             }
             // Zero-pop launch · the primary surface is painted. Signal the
             // splash gate. Trailing fetches (forecast, shoes) ride the
