@@ -249,28 +249,30 @@ struct TreadmillView: View {
         totalSec += delta
         // Distance accumulates · mph × hours = miles
         dist += Double(delta) / 3600.0 * speedMph
-        // Auto-advance when the current segment runs out.
+        // Auto-advance only INTERMEDIATE segments when they run out. The
+        // last (or only) segment never auto-advances or auto-ends — the
+        // runner can keep going past the target (run longer if they want)
+        // and taps End when they're done. Auto-ending mid-run was wrong.
         let seg = segments[safe: idx]
-        if let seg, elapsedInSeg >= seg.dur {
+        if let seg, elapsedInSeg >= seg.dur, idx + 1 < segments.count {
             recordActual(forSegment: idx, completed: true)
             let next = idx + 1
-            if next < segments.count {
-                idx = next
-                elapsedInSeg = 0
-                let nseg = segments[next]
-                speedMph = nseg.mph
-                inclinePct = nseg.inc
-            } else {
-                // All segments done · auto-end as completed.
-                playing = false
-                endAndPost(status: "completed")
-            }
+            idx = next
+            elapsedInSeg = 0
+            let nseg = segments[next]
+            speedMph = nseg.mph
+            inclinePct = nseg.inc
         }
     }
 
     private func recordActual(forSegment i: Int, completed: Bool) {
         let seg = segments[i]
-        let durActual = min(elapsedInSeg, seg.dur * 2)  // cap defensive
+        // The last/only segment is open-ended — the runner can keep going
+        // past the target — so record its true elapsed time. Intermediate
+        // segments auto-advance at their target, so an over-target value
+        // there means a clock glitch (e.g. backgrounding); cap it at 2×.
+        let isLast = i == segments.count - 1
+        let durActual = isLast ? elapsedInSeg : min(elapsedInSeg, seg.dur * 2)
         // Close the HR phase here · returns (avg, max) for everything
         // streamed since the last phase boundary and clears the phase
         // buffer for the next segment.
@@ -340,12 +342,13 @@ struct TreadmillView: View {
                 .background(.ultraThinMaterial, in: Capsule())
             Spacer()
             HStack(alignment: .lastTextBaseline, spacing: 6) {
-                Text(formatClock(remainingInSeg))
+                Text(isOverTarget ? "+\(formatClock(overInSeg))" : formatClock(remainingInSeg))
                     .font(.display(42, weight: .bold))
                     .tracking(-1)
-                Text("LEFT")
+                    .foregroundStyle(isOverTarget ? Theme.green : Theme.txt)
+                Text(isOverTarget ? "OVER" : "LEFT")
                     .font(.label(11)).tracking(1.5)
-                    .foregroundStyle(Theme.txt.opacity(0.6))
+                    .foregroundStyle(isOverTarget ? Theme.green.opacity(0.85) : Theme.txt.opacity(0.6))
             }
         }
     }
@@ -355,13 +358,27 @@ struct TreadmillView: View {
         return max(0, seg.dur - elapsedInSeg)
     }
 
+    /// True once the runner passes the target on the open-ended last
+    /// segment. The clock flips from counting down ("LEFT") to counting
+    /// up ("OVER") so a hit target reads as bonus time, not a stuck 0:00.
+    private var isOverTarget: Bool {
+        guard let seg = segments[safe: idx] else { return false }
+        return idx == segments.count - 1 && seg.dur > 0 && elapsedInSeg >= seg.dur
+    }
+
+    private var overInSeg: Int {
+        guard let seg = segments[safe: idx] else { return 0 }
+        return max(0, elapsedInSeg - seg.dur)
+    }
+
     private var segProgressBar: some View {
         let seg = segments[safe: idx]
         let frac = seg.map { max(0, min(1, Double(elapsedInSeg) / Double($0.dur))) } ?? 0
+        let fill: Color = isOverTarget ? Theme.green : Color.white
         return GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.2)).frame(height: 8)
-                Capsule().fill(Color.white).frame(width: geo.size.width * frac, height: 8)
+                Capsule().fill(fill).frame(width: geo.size.width * frac, height: 8)
             }
         }
         .frame(height: 8)
