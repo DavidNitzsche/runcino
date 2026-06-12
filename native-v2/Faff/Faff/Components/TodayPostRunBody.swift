@@ -203,7 +203,7 @@ struct TodayPostRunBody: View {
     /// Oswald title, DONE is implied by being on the post-run surface.
     /// Just renders Oswald title + green-check win line now.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(headerTitle.uppercased())
                 .font(.heroDisplay(88))
                 .tracking(-2)
@@ -215,10 +215,9 @@ struct TodayPostRunBody: View {
                     .font(.body(14, weight: .semibold))
                     .foregroundStyle(mutedText)
                     .lineLimit(2)
-                    .padding(.top, 1)
             }
         }
-        .padding(.horizontal, 22).padding(.top, 0).padding(.bottom, 16)
+        .padding(.horizontal, 22).padding(.top, 0).padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(sectionBg)
         .overlay(

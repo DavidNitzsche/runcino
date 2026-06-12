@@ -90,7 +90,7 @@ struct TodayPreRunBodyV3: View {
                     .padding(.top, 10)
             }
         }
-        .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 14)
+        .padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white)
         .overlay(separator, alignment: .bottom)
