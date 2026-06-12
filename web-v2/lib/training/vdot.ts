@@ -139,6 +139,36 @@ export function vdotFromTpace(tPaceSPerMi: number): number | null {
   return Math.round(((lo + hi) / 2) * 10) / 10;
 }
 
+/**
+ * 2026-06-11 · invert marathon pace → VDOT. M-pace is even more sub-maximal
+ * than T-pace, so reading a marathon-pace segment as an all-out race understates
+ * fitness the most. M-pace(v) = predictRaceTime(v, 26.2188)/26.2188; binary
+ * search the table. Cite: Research/01-pace-zones-vdot.md §Daniels-M-pace.
+ */
+export function vdotFromMpace(mPaceSPerMi: number): number | null {
+  if (!mPaceSPerMi || mPaceSPerMi <= 0) return null;
+  let lo = 30, hi = 85;
+  for (let i = 0; i < 50; i++) {
+    const mid = (lo + hi) / 2;
+    const t = predictRaceTime(mid, 26.2188);
+    if (t == null) return null;
+    if (t / 26.2188 > mPaceSPerMi) lo = mid; else hi = mid;
+  }
+  return Math.round(((lo + hi) / 2) * 10) / 10;
+}
+
+/** Map a workout-type string to its training zone, for the zone-aware VDOT read
+ *  in vdotFromRun. Null when the type doesn't pin a zone. */
+export function zoneFromType(t: string | null | undefined):
+  'threshold' | 'marathon' | 'interval' | 'race' | null {
+  const w = String(t ?? '').toLowerCase();
+  if (w === 'threshold' || w === 'tempo' || w === 'cruise') return 'threshold';
+  if (w === 'marathon_pace' || w === 'mp' || w === 'marathon') return 'marathon';
+  if (w === 'intervals' || w === 'interval' || w === 'vo2' || w === 'vo2max') return 'interval';
+  if (w === 'race' || w === 'time_trial' || w === 'tune_up' || w === 'race_week_tuneup') return 'race';
+  return null;
+}
+
 /** Format seconds → "1:44:50" (h:mm:ss) or "59:30" (m:ss). */
 export function formatRaceTime(seconds: number | null | undefined): string | null {
   if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;
@@ -247,6 +277,11 @@ export function vdotFromRun(input: {
   workoutType?: string | null;
   avgHr?: number | null;
   maxHr?: number | null;
+  /** 2026-06-11 · the prescribed training zone (from the plan, when the run
+   *  matched a plan quality day). Overrides the zone inferred from workoutType.
+   *  Lets a threshold/marathon-pace effort read by its zone instead of as a
+   *  race — see below. */
+  zone?: 'threshold' | 'marathon' | 'interval' | 'race' | null;
 }): number | null {
   if (!input.finishSeconds || input.finishSeconds < 60) return null;
   if (!input.distanceMi || input.distanceMi < 4) return null;
@@ -259,6 +294,18 @@ export function vdotFromRun(input: {
 
   if (!isQuality && !isHardEffort) return null;
 
+  // 2026-06-11 · zone-aware read. A sustained sub-maximal effort (threshold,
+  // marathon pace) is NOT an all-out race — reading it via vdotFromRace
+  // understates VDOT ~3 points, so a tempo at the right pace could never move
+  // current fitness off a stale race anchor (David's repeated ask). Invert the
+  // Daniels ZONE mapping for those. Intervals (I-pace ≈ 3-5K race pace) and
+  // races read correctly as a race, so they keep vdotFromRace. bestRecentVdot
+  // takes the MAX, so this can only RAISE current fitness from honest training,
+  // never lower it.
+  const zone = input.zone ?? zoneFromType(wType);
+  const pace = input.finishSeconds / input.distanceMi;
+  if (zone === 'threshold') return vdotFromTpace(pace);
+  if (zone === 'marathon') return vdotFromMpace(pace);
   return vdotFromRace(input.finishSeconds, input.distanceMi);
 }
 
@@ -306,6 +353,8 @@ export function bestRecentVdot(
     finish_seconds: number | null;
     avg_hr?: number | null;
     max_hr?: number | null;
+    /** Prescribed training zone for the zone-aware read (vdotFromRun). */
+    zone?: 'threshold' | 'marathon' | 'interval' | 'race' | null;
   }>,
 ): { best: VdotCandidate | null; considered: VdotCandidate[] } {
   const todayMs = Date.parse(todayISO + 'T12:00:00Z');
@@ -347,6 +396,7 @@ export function bestRecentVdot(
         workoutType: r.workout_type,
         avgHr: r.avg_hr ?? null,
         maxHr: r.max_hr ?? null,
+        zone: r.zone ?? null,
       });
       if (v == null) continue;
       const age = ageDays(r.date);

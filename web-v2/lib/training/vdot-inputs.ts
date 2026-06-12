@@ -20,7 +20,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { parseRaceTime } from '@/lib/training/vdot';
+import { parseRaceTime, zoneFromType } from '@/lib/training/vdot';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 
 // ── Input shapes — match exactly what bestRecentVdot() accepts ──────────────
@@ -42,6 +42,10 @@ export interface RunVdotInput {
   finish_seconds: number | null;
   avg_hr: number | null;
   max_hr: number | null;
+  /** Prescribed training zone (from the plan day this run matched) for the
+   *  zone-aware VDOT read. Only set when the work-phase pace is used (so the
+   *  zone applies to the zone pace, not a WU+CD-dragged overall pace). */
+  zone: 'threshold' | 'marathon' | 'interval' | 'race' | null;
 }
 
 export interface VdotInputs {
@@ -186,6 +190,7 @@ export async function loadVdotInputs(
     avg_hr: string | null;
     work_mi: string | null;
     work_seconds: string | null;
+    plan_type: string | null;
   }>(
     `SELECT sa.id::text AS id,
             COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) AS date,
@@ -242,7 +247,19 @@ export async function loadVdotInputs(
                 AND (phase->>'actualPaceSPerMi')::numeric > 0
                 AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi') IS NOT NULL
                 AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi')::numeric > 0
-            ) AS work_seconds
+            ) AS work_seconds,
+            -- 2026-06-11 · the prescribed zone for this run's date (if it
+            -- matched a plan quality day). Drives the zone-aware VDOT read so a
+            -- threshold/marathon-pace effort reads by zone, not as a race.
+            (SELECT pw.type
+               FROM plan_workouts pw
+               JOIN training_plans tp ON tp.id = pw.plan_id
+              WHERE tp.user_uuid = sa.user_uuid
+                AND tp.archived_iso IS NULL
+                AND pw.date_iso = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))
+                AND pw.type IN ('tempo','threshold','intervals','marathon_pace','race','race_week_tuneup')
+              ORDER BY pw.type
+              LIMIT 1) AS plan_type
        FROM runs sa
       WHERE sa.user_uuid = $1
         AND NOT (sa.data ? 'mergedIntoId')
@@ -300,6 +317,10 @@ export async function loadVdotInputs(
       finish_seconds: useWork ? workSec : (r.finish_seconds != null ? Number(r.finish_seconds) : null),
       avg_hr: r.avg_hr != null ? Number(r.avg_hr) : null,
       max_hr: maxHrValue,
+      // Zone-read ONLY the work-phase pace · applying a zone inversion to a
+      // WU+CD-dragged overall pace would badly understate. Without work-phase
+      // data the run keeps the conservative race interpretation (zone null).
+      zone: useWork ? zoneFromType(r.plan_type) : null,
     };
   });
 
