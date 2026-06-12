@@ -118,8 +118,14 @@ export async function GET(req: NextRequest) {
           course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null;
           goal_safe: string | null;
         }>(
-          `SELECT slug, name, date::text AS date, goal, distance_mi, location, course_geometry,
-                  meta->>'goalSafeDisplay' AS goal_safe
+          `SELECT slug,
+                  meta->>'name'                              AS name,
+                  meta->>'date'                              AS date,
+                  COALESCE(meta->>'goalDisplay', meta->>'goal') AS goal,
+                  (meta->>'distanceMi')::float               AS distance_mi,
+                  meta->>'location'                          AS location,
+                  course_geometry,
+                  meta->>'goalSafeDisplay'                   AS goal_safe
              FROM races
             WHERE slug = $1 AND user_uuid = $2`,
           [slugQ, userId],
@@ -130,13 +136,19 @@ export async function GET(req: NextRequest) {
           course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null;
           goal_safe: string | null;
         }>(
-          `SELECT slug, name, date::text AS date, goal, distance_mi, location, course_geometry,
-                  meta->>'goalSafeDisplay' AS goal_safe
+          `SELECT slug,
+                  meta->>'name'                              AS name,
+                  meta->>'date'                              AS date,
+                  COALESCE(meta->>'goalDisplay', meta->>'goal') AS goal,
+                  (meta->>'distanceMi')::float               AS distance_mi,
+                  meta->>'location'                          AS location,
+                  course_geometry,
+                  meta->>'goalSafeDisplay'                   AS goal_safe
              FROM races
             WHERE user_uuid = $1
-              AND priority = 'A'
-              AND date >= CURRENT_DATE
-            ORDER BY date ASC LIMIT 1`,
+              AND meta->>'priority' = 'A'
+              AND (meta->>'date')::date >= CURRENT_DATE
+            ORDER BY (meta->>'date')::date ASC LIMIT 1`,
           [userId],
         );
     const race = raceQ.rows[0] ?? null;
