@@ -194,6 +194,19 @@ export async function GET(req: NextRequest) {
       projectionSec = predictRaceTime(vdot, distanceMi) ?? null;
     }
 
+    // 2026-06-12 · the goal-seeking trajectory · the ONE engine both surfaces
+    // read (same computeGoalProjection the web seed uses). Carries the upgrade
+    // gear (aheadOfGoal / planUnderBuilt / overPerformanceBonusVdot) + the
+    // goal-seeking projectedSec, and below it drives `status` so the native Goal
+    // tab shows the same number + status as web — no second projection engine.
+    // Dormant unless genuinely over-performing. Best-effort.
+    const gp = (vdot != null && goalSec != null && daysAway != null)
+      ? await computeGoalProjection({
+          userUuid: userId, goalSec, raceDistanceMi: distanceMi, vdot, daysToRace: daysAway,
+        }).catch(() => null)
+      : null;
+    const traj = gp?.trajectory ?? null;
+
     // ─── 3. GapPanel chunks · per-race-per-runner ───────────────
     //   Mirrors the enrichment in seed.ts L1185-L1295 verbatim so the
     //   iPhone and web read identical numbers. Helper signatures owned
@@ -308,7 +321,12 @@ export async function GET(req: NextRequest) {
       }).catch(() => []);
     }
 
-    const status = statusFor(projectionSec, goalSec, daysAway);
+    // Status from the trajectory — the SAME logic web's TargetsView uses — so
+    // native and web agree. Race-week stays a time-based override; statusFor is
+    // the cold fallback only when there's no trajectory (no vdot/goal/date).
+    const status = (daysAway != null && daysAway <= 7 && daysAway >= 0) ? 'race_week'
+      : traj ? (traj.reachable ? 'on_track' : traj.gapVdot <= 1.5 ? 'watch' : 'off')
+      : statusFor(projectionSec, goalSec, daysAway);
     const goalStatus = toGoalStatus(status);
     const confidenceInterval = computeConfidenceInterval({
       centerSec: projectionSec,
@@ -327,20 +345,6 @@ export async function GET(req: NextRequest) {
       : null;
     const lastMove = lastMoveFromSeries(series);
     const held = heldDays(series, vdot);
-
-    // 2026-06-12 · the goal-seeking trajectory · same engine the web GapPanel
-    // reads (computeGoalProjection.trajectory). Carries the UPGRADE GEAR —
-    // aheadOfGoal / planUnderBuilt / overPerformanceBonusVdot — plus the
-    // goal-seeking projectedSec, so the native Goal tab can show "AHEAD" off the
-    // same signal as web. Restores the web/native parity this endpoint targets.
-    // Dormant unless the runner is genuinely over-performing (bonus 0 → flags
-    // false). Best-effort: a failure leaves the rest of the panel intact.
-    const gp = (vdot != null && goalSec != null && daysAway != null)
-      ? await computeGoalProjection({
-          userUuid: userId, goalSec, raceDistanceMi: distanceMi, vdot, daysToRace: daysAway,
-        }).catch(() => null)
-      : null;
-    const traj = gp?.trajectory ?? null;
 
     // All four standard Daniels distances via the canonical predictRaceTime
     // (binary-search on rawVdot). iPhone renders these directly — no local
