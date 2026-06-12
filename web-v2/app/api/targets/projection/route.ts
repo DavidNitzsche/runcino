@@ -37,7 +37,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
-import { loadProjectionSeries } from '@/lib/training/projection-snapshots';
+import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
 import { predictRaceTime, parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
@@ -161,14 +161,25 @@ export async function GET(req: NextRequest) {
     let vdot = latest?.vdot ?? null;
     let projectionSec = latest?.projectionSec ?? null;
 
-    if (vdot == null || projectionSec == null) {
+    // Distance-agnostic fallback · the latest snapshot at ANY distance — the
+    // same source the web seed reads (loadLatestVdotWithAnchor). Without this
+    // the iPhone cold-started ("baseline needed") whenever no projection
+    // snapshot existed at the queried distance, e.g. a Half-marathon anchor
+    // while the panel asks at the 13.1 default, even though a perfectly good
+    // anchor VDOT existed at another distance. The web never saw this because
+    // its seed already reads the distance-agnostic anchor.
+    if (vdot == null) {
+      const anchor = await loadLatestVdotWithAnchor(userId).catch(() => null);
+      if (anchor?.vdot != null) vdot = anchor.vdot;
+    }
+    // Last resort · the profile-state VDOT.
+    if (vdot == null) {
       const profileState = await loadProfileState(userId).catch(() => null);
-      const profileVdot = profileState?.physiology?.vdot ?? null;
-      if (profileVdot != null) {
-        vdot = vdot ?? profileVdot;
-        const p = predictRaceTime(profileVdot, distanceMi);
-        projectionSec = projectionSec ?? (p ?? null);
-      }
+      vdot = profileState?.physiology?.vdot ?? null;
+    }
+    // Derive today's projected race time from whatever VDOT resolved.
+    if (projectionSec == null && vdot != null) {
+      projectionSec = predictRaceTime(vdot, distanceMi) ?? null;
     }
 
     // ─── 3. GapPanel chunks · per-race-per-runner ───────────────

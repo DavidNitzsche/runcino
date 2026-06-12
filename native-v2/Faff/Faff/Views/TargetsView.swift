@@ -32,13 +32,16 @@ struct TargetsView: View {
                 VStack(spacing: 0) {
                     // Bar (50) + shared header pill (84) clearance, matching Today.
                     Color.clear.frame(height: 132)
-                    // Big headline · the goal finish time without seconds, the
-                    // way TEMPO leads Today.
-                    Text(goalHeadline)
+                    // Big headline · the GOAL VERDICT (AHEAD / ON TRACK /
+                    // WATCHING / BEHIND) so you see at a glance how the plan is
+                    // tracking to the goal — the way HOLD leads Health. Falls
+                    // back to the race identity (AFC) until the projection is
+                    // live. Tint encodes the verdict (green/amber/red).
+                    Text(goalStatusHeadline)
                         .font(.heroDisplay(88))
                         .tracking(-2)
-                        .foregroundStyle(Color(hex: 0xF3AD38))
-                        .minimumScaleFactor(0.55)
+                        .foregroundStyle(goalStatusColor)
+                        .minimumScaleFactor(0.5)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 24)
@@ -231,12 +234,51 @@ struct TargetsView: View {
         RaceClock.seconds(from: g)
     }
 
-    /// Goal finish time without seconds for the big headline · "1:30:00" → "1:30".
+    /// Goal finish time without seconds · "1:30:00" → "1:30". Still used by
+    /// the pill / projection detail; no longer the page headline.
     private var goalHeadline: String {
         guard let g = hero.goal, !g.isEmpty else { return "—" }
         let parts = g.split(separator: ":")
         if parts.count == 3 { return "\(parts[0]):\(parts[1])" }
         return g
+    }
+
+    /// Race identity · "Americas Finest City" → "AFC". The cold fallback for
+    /// the headline before the projection resolves.
+    private var raceHeadline: String {
+        let s = RaceName.short(hero.name, abbreviateAlways: (hero.name?.count ?? 0) > 14)
+        return s.isEmpty ? "—" : s
+    }
+
+    /// Goal verdict word for the big headline · the projection status as a
+    /// glance ("how am I going for the goal"), the way HOLD/READY leads
+    /// Health. Cold falls back to the race identity (AFC) so there's never an
+    /// empty headline.
+    private var goalStatusHeadline: String {
+        guard let p = projection, p.vdot != nil else { return raceHeadline }
+        switch p.status {
+        case "on_track":
+            if let proj = p.projectionSec, let goal = p.goalSec, goal > 0,
+               Double(proj) < Double(goal) * 0.985 { return "AHEAD" }
+            return "ON TRACK"
+        case "watch":     return "WATCHING"
+        case "off":       return "BEHIND"
+        case "race_week": return "RACE WEEK"
+        default:          return raceHeadline
+        }
+    }
+
+    /// Headline tint for the verdict · green ahead/on-track, amber watching,
+    /// red behind. Race-orange when cold (the AFC fallback).
+    private var goalStatusColor: Color {
+        guard let p = projection, p.vdot != nil else { return Theme.race }
+        switch p.status {
+        case "on_track":  return Color(hex: 0x5FD08A)
+        case "watch":     return Color(hex: 0xF3AD38)
+        case "off":       return Color(hex: 0xFC4D64)
+        case "race_week": return Color(hex: 0xF3AD38)
+        default:          return Theme.race
+        }
     }
 
     /// Condensed race summary for the shared header pill · A-RACE · short
@@ -245,18 +287,17 @@ struct TargetsView: View {
     private var racePill: some View {
         let h = hero
         return HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
+                // Short name (AFC) is the page headline now, so the pill leads
+                // with the full race name to avoid printing AFC twice.
                 Text(h.name != nil ? "A-RACE" : "TOP GOAL")
                     .font(.body(9.5, weight: .extraBold)).tracking(2)
                     .foregroundStyle(Theme.txt.opacity(0.6))
-                Text(RaceName.short(h.name, abbreviateAlways: (h.name?.count ?? 0) > 14))
-                    .font(.body(23, weight: .extraBold)).tracking(-0.5)
-                    .foregroundStyle(Theme.race)
-                    .lineLimit(1).minimumScaleFactor(0.6)
                 Text(h.name ?? "Set a target")
-                    .font(.body(10.5, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.7))
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .font(.body(16, weight: .extraBold)).tracking(-0.2)
+                    .foregroundStyle(Theme.txt)
+                    .lineLimit(2).minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 4) {

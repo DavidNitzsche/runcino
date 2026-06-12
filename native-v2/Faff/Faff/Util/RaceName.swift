@@ -28,6 +28,11 @@ enum RaceName {
 
         if !collapse { return name }
 
+        // A single significant word has no meaningful initials form — "CIM"
+        // (California International Marathon, already an acronym) must not
+        // collapse to "C", nor "Boston" to "B". Return the word whole.
+        if words.count == 1 { return String(words[0]) }
+
         let initials = words.compactMap { $0.first.map { String($0).uppercased() } }
         if initials.isEmpty { return name }
         return initials.joined()
