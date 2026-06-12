@@ -15,6 +15,7 @@ import {
 } from '../toolkit';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 import { CoachCalendarConnect } from '../CoachCalendarConnect';
+import { SettingsPanel } from './SettingsPanel';
 
 const ROLES = ['EASY','LONG','TEMPO','INTERVALS','RACE','RECOVERY'];
 
@@ -22,7 +23,6 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
   const router = useRouter();
   const [garage, setGarage] = useState<ShoeRec[]>(seed.shoes);
   const [editing, setEditing] = useState<number | null>(null);
-  const [units, setUnits] = useState('Miles · °F');
   const [pending, setPending] = useState(false);
 
   // Pick up server-seed updates so refreshes reflect the truth.
@@ -153,23 +153,15 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       </div>
       </div>{/* .band */}
 
-      <div className="band">
-      <div className="fll">SETTINGS</div>
-      <div className="setlist">
-        <div className="setr" onClick={() => setUnits(units === 'Miles · °F' ? 'Kilometers · °C' : 'Miles · °F')}>
-          <span className="setk">UNITS</span><span className="setv">{units}</span><span className="sgo">›</span>
-        </div>
-        <div className="setr">
-          <span className="setk">EXPERIENCE</span><span className="setv">{prettyExperience(seed.user.experienceLevel)}</span><span className="sgo">›</span>
-        </div>
-        <div className="setr" onClick={onOpenPaywall}>
-          <span className="setk">SUBSCRIPTION</span><span className="setv">{seed.user.subscriptionLabel}</span><span className="sgo">›</span>
-        </div>
-        <div className="setr danger">
-          <span className="setk">SIGN OUT</span><span className="setv"></span>
-        </div>
-      </div>
-      </div>{/* .band */}
+      {/* Consolidated settings · YOU / TRAINING / PHYSIOLOGY / TIMEZONE /
+          RACE FUELING / ACCOUNT, every row wired to /api/profile or
+          /api/settings. Replaces the old dead band (fake units toggle,
+          inert experience, dead sign-out). Units omitted per David
+          2026-06-12 until the display layer renders km/°C. */}
+      <SettingsPanel
+        subscriptionLabel={seed.user.subscriptionLabel}
+        onOpenPaywall={onOpenPaywall}
+      />
 
       {/* Connection rows · per-source connection state with sync timestamp.
           Closes coverage line 1816 (connected sources management). */}

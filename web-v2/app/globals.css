@@ -1462,6 +1462,8 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .setr.danger .setk{color:#FC4D64;}
 .setr.danger{justify-content:center;}
 .setr.danger .setk{margin:0;}
+/* settings save ack · neutral pill, works for success + failure copy */
+.settoast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:60;background:#202020;border:1px solid rgba(255,255,255,.14);color:#fff;font-size:13px;font-weight:600;letter-spacing:.2px;padding:10px 18px;border-radius:999px;box-shadow:0 8px 24px rgba(0,0,0,.45);}
 
 /* overlays */
 .ov{position:absolute;inset:0;z-index:40;display:none;align-items:center;justify-content:center;}
