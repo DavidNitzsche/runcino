@@ -32,44 +32,35 @@ struct RaceDayView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Navigation header — BackChip + phase context label
-                    HStack(spacing: 12) {
-                        BackChip { dismiss() }
-                        SpecLabel(text: topRowLabel, size: 13, tracking: 2.5, color: Theme.txt)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 8)
+                    // Header-pill clearance (bar 50 + pill 84), matching the tabs.
+                    Color.clear.frame(height: 132)
 
-                    hero
+                    // Countdown · the big type. Grows in urgency toward race
+                    // day, becomes the finish time once the race is run.
+                    Text(countdownHeadline)
+                        .font(.heroDisplay(88))
+                        .tracking(-2)
+                        .foregroundStyle(countdownColor)
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 24)
-                        .padding(.top, 18)
-
-                    // RACE MORNING — gun time + wave + location.
-                    // Only on the day itself (days == 0, not past).
-                    if detail?.race.days == 0, detail?.race.is_past != true {
-                        section(title: "RACE MORNING", right: nil) {
-                            raceMorningCard
-                        }
-                        .padding(.top, 26)
+                        .padding(.top, 6)
+                    if let sub = countdownSub {
+                        Text(sub)
+                            .font(.body(13, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.7))
+                            .padding(.horizontal, 24)
+                            .padding(.top, 2)
                     }
 
-                    // RACE PLAN — A-goal and B-goal paces. Visible whenever
-                    // a goal is set and the race is upcoming (not just day-of).
-                    if bGoalTime != nil, detail?.race.is_past != true {
-                        section(title: "RACE PLAN", right: nil) {
-                            racePlanCard
+                    // 1 · THE PLAN — how to run it, phase by phase (replaces the
+                    // splits ladder · what pace for which stretch, with intent).
+                    if !planPhases.isEmpty, detail?.race.is_past != true {
+                        section(title: "THE PLAN", right: planRightLabel) {
+                            planPhasesCard
                         }
-                        .padding(.top, 26)
-                    }
-
-                    // SPLITS — 5K / 10K / FINISH ladder derived client-side
-                    // from goal time and distance. No backend call needed.
-                    if !raceSplits.isEmpty, detail?.race.is_past != true {
-                        section(title: "SPLITS", right: nil) {
-                            splitsCard
-                        }
-                        .padding(.top, 26)
+                        .padding(.top, 30)
                     }
 
                     // THE COURSE — only render when we actually have course
@@ -81,130 +72,85 @@ struct RaceDayView: View {
                     if let geo = detail?.course_geometry,
                        let pts = geo.trackPoints, pts.count > 5 {
                         section(title: "THE COURSE", right: courseStat) {
-                            VStack(alignment: .leading, spacing: 14) {
-                                SpecLabel(text: "ROUTE", size: 9, tracking: 2, color: Theme.txt.opacity(0.5))
+                            VStack(alignment: .leading, spacing: 12) {
                                 courseRoute(points: pts)
-                                    .frame(height: 118)
-                                if let prov = courseProvenanceLabel {
-                                    Text(prov)
-                                        .font(.body(10, weight: .bold))
-                                        .tracking(0.5)
-                                        .foregroundStyle(Theme.txt.opacity(0.55))
-                                        .padding(.top, 2)
-                                }
-                                if let elev = geo.elevation_gain_ft, elev > 0 {
-                                    SpecLabel(text: "ELEVATION GAIN · \(Int(elev)) FT", size: 9, tracking: 2, color: Theme.txt.opacity(0.5))
-                                        .padding(.top, 4)
+                                    .frame(height: 188)
+                                HStack(spacing: 12) {
+                                    if let elev = geo.elevation_gain_ft, elev > 0 {
+                                        Text("\(Int(elev)) FT GAIN")
+                                            .font(.body(10, weight: .extraBold)).tracking(1.2)
+                                            .foregroundStyle(Theme.txt.opacity(0.7))
+                                    }
+                                    if let prov = courseProvenanceLabel {
+                                        Text(prov)
+                                            .font(.body(10, weight: .bold)).tracking(0.5)
+                                            .foregroundStyle(Theme.txt.opacity(0.5))
+                                    }
+                                    Spacer()
                                 }
                             }
                         }
-                        .padding(.top, 26)
+                        .padding(.top, 30)
                     } else if detail?.race.is_past != true {
-                        // No course geometry yet · let the runner upload a
-                        // GPX file. Multipart-form POSTs to /api/race/gpx
-                        // which parses + stores + promotes to the library.
-                        // Toolkit · CourseAnnotations.stub variant.
+                        // No course geometry yet · let the runner upload a GPX.
                         section(title: "THE COURSE", right: nil) {
                             CourseAnnotations(variant: .stub(onUpload: { showGpxPicker = true }))
                         }
-                        .padding(.top, 26)
+                        .padding(.top, 30)
                     }
 
-                    // RaceStatusDot · derived from race proximity + goal
-                    // tracking. Surfaces on_track / watch / off so the
-                    // runner has a deterministic readout of where the
-                    // race plan stands. Toolkit · Family A.
-                    if let status = derivedRaceStatus {
-                        section(title: "STATUS", right: nil) {
-                            RaceStatusDot(status: status.dot, reason: status.reason)
+                    // 3 · FUELING — clean gel timeline across the course.
+                    if let gels = raceGelsMi, !gels.isEmpty,
+                       let totalMi = detail?.race.distance_mi, totalMi > 0,
+                       detail?.race.is_past != true {
+                        section(title: "FUELING", right: "\(gels.count) GELS") {
+                            fuelingCard(gelsMi: gels, totalMi: totalMi)
                         }
-                        .padding(.top, 26)
+                        .padding(.top, 30)
                     }
 
-                    // THE PLAN section was 4 hardcoded "MI 1-3 Settle in 6:55"
-                    // rows + "Set from your sub-3 goal and the CIM profile"
-                    // copy · not derived from anything. RACE MORNING was
-                    // similarly hardcoded ("Gun time 7:00 AM · Wave 1",
-                    // "Weather 41°F · clear · calm"). Both gone until per-race
-                    // plan steps + race-morning data ship.
-
-                    // CountdownLadder · race-week vertical timeline that mirrors
-                    // the push cadence (T-7 / T-5 / T-3 / T-1 / Race). Today's
-                    // rung glows. Only renders when days_to_race is in the
-                    // 0..7 window AND not past · keeps Building / weeks-out
-                    // pages clean. Toolkit · Family H.
+                    // 4 · RACE WEEK — the final-7-days ladder, mirrors the push
+                    // cadence (T-7 / T-5 / T-3 / T-1 / Race). Only in the window.
                     if let days = detail?.race.days,
                        days >= 0 && days <= 7,
                        detail?.race.is_past != true {
                         section(title: "RACE WEEK", right: nil) {
                             CountdownLadder(rungs: makeCountdownRungs(daysToRace: days))
                         }
-                        .padding(.top, 26)
+                        .padding(.top, 30)
                     }
 
-                    if let pRows = projection?.raceProjections, !pRows.isEmpty,
-                       detail?.race.is_past != true {
-                        let vdotN = projection?.vdot.map { "\(Int($0))" } ?? "·"
-                        section(title: "WHAT VDOT \(vdotN) PREDICTS", right: nil) {
-                            VDOTPredictionTable(rows: pRows.map {
-                                VDOTPredictionRow(distance: $0.distance, time: $0.time)
-                            })
-                        }
-                        .padding(.top, 26)
-                    }
-
-                    // GelMileMarkers · distance-anchored fueling strip,
-                    // ticks on the elevation curve at the gel mile points.
-                    // Renders only when the watch workout payload carries
-                    // gelsMi AND the race has a distance to anchor against.
-                    // Toolkit · Family H.
-                    if let gels = raceGelsMi, !gels.isEmpty,
-                       let totalMi = detail?.race.distance_mi, totalMi > 0,
-                       detail?.race.is_past != true {
-                        section(title: "FUELING PLAN", right: nil) {
-                            GelMileMarkers(gelsMi: gels,
-                                           totalMi: totalMi,
-                                           elevationPoints: courseElevationNormalized)
-                        }
-                        .padding(.top, 26)
-                    }
-
-                    if let facts = raceFacts?.facts, !facts.isEmpty {
-                        section(title: "AT A GLANCE", right: nil) {
-                            VStack(spacing: 0) {
-                                ForEach(Array(facts.enumerated()), id: \.element.label) { i, f in
-                                    HStack(alignment: .top) {
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
-                                            if let meta = f.meta, !meta.isEmpty {
-                                                Text(meta)
-                                                    .font(.body(11, weight: .semibold))
-                                                    .foregroundStyle(Theme.txt.opacity(0.62))
-                                                    .lineLimit(2)
-                                            }
-                                        }
-                                        Spacer(minLength: 12)
-                                        Text(f.value)
-                                            .font(.body(15, weight: .bold))
-                                            .foregroundStyle(factTint(f.valueColor))
-                                            .multilineTextAlignment(.trailing)
-                                    }
-                                    .padding(14)
-                                    if i < facts.count - 1 {
-                                        Divider().background(Color.white.opacity(0.08))
-                                    }
+                    // Past race · jump into the matched run for full splits/HR.
+                    if detail?.race.is_past == true,
+                       let mr = detail?.race.matchedRun,
+                       let aid = mr.activity_id, !aid.isEmpty {
+                        section(title: "THE RUN", right: nil) {
+                            NavigationLink(value: FaffRoute.runDetail(id: aid)) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.system(size: 12, weight: .bold))
+                                    Text(matchedRunMetaLine(mr))
+                                        .font(.body(13, weight: .semibold))
+                                    Spacer()
                                 }
+                                .foregroundStyle(Theme.txt.opacity(0.85))
+                                .padding(14)
+                                .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
                             }
-                            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+                            .buttonStyle(.plain)
                         }
-                        .padding(.top, 26)
+                        .padding(.top, 30)
                     }
 
-                    Spacer(minLength: 60)
+                    Spacer(minLength: 80)
                 }
             }
+            .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
         }
+        // Shared frosted header pill · race + goal summary, in the slot the
+        // tabs use. The countdown owns the days, so the pill drops "days out".
+        .faffHeaderPill { racePill }
         .task { await load() }
         .fileImporter(isPresented: $showGpxPicker,
                       allowedContentTypes: [.xml, .data],
@@ -404,33 +350,213 @@ struct RaceDayView: View {
     private func courseRoute(points pts: [CourseTrackPoint]) -> some View {
         let lats = pts.compactMap { $0.lat }
         let lons = pts.compactMap { $0.lon }
-        let minLat = lats.min() ?? 0
-        let maxLat = lats.max() ?? 1
-        let minLon = lons.min() ?? 0
-        let maxLon = lons.max() ?? 1
+        let minLat = lats.min() ?? 0, maxLat = lats.max() ?? 1
+        let minLon = lons.min() ?? 0, maxLon = lons.max() ?? 1
         let latSpan = max(0.0001, maxLat - minLat)
         let lonSpan = max(0.0001, maxLon - minLon)
         return GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            Path { p in
-                var started = false
-                for pt in pts {
-                    guard let lat = pt.lat, let lon = pt.lon else { continue }
-                    let x = CGFloat((lon - minLon) / lonSpan) * w
-                    let y = h - CGFloat((lat - minLat) / latSpan) * h
-                    if started { p.addLine(to: CGPoint(x: x, y: y)) }
-                    else { p.move(to: CGPoint(x: x, y: y)); started = true }
+            // Inset + preserve aspect ratio. The old version stretched the
+            // route edge-to-edge so it ran off the rounded corners ("cut
+            // off"); this fits it whole inside the frame with a margin.
+            let inset: CGFloat = 18
+            let availW = geo.size.width - inset * 2
+            let availH = geo.size.height - inset * 2
+            let scale = min(availW / lonSpan, availH / latSpan)
+            let drawW = lonSpan * scale, drawH = latSpan * scale
+            let offX = inset + (availW - drawW) / 2
+            let offY = inset + (availH - drawH) / 2
+            let projected: [CGPoint] = pts.compactMap { pt in
+                guard let lat = pt.lat, let lon = pt.lon else { return nil }
+                return CGPoint(x: offX + CGFloat(lon - minLon) * scale,
+                               y: offY + drawH - CGFloat(lat - minLat) * scale)
+            }
+            ZStack {
+                Path { p in
+                    guard let first = projected.first else { return }
+                    p.move(to: first)
+                    for xy in projected.dropFirst() { p.addLine(to: xy) }
+                }
+                .stroke(
+                    LinearGradient(colors: [Color(hex: 0xFFD27A), Color(hex: 0xFF5A52)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                )
+                if let s = projected.first {
+                    Circle().fill(Color(hex: 0x9AF0BF)).frame(width: 9, height: 9).position(s)
+                }
+                if let e = projected.last {
+                    Circle().fill(Theme.race).frame(width: 9, height: 9).position(e)
                 }
             }
-            .stroke(
-                LinearGradient(colors: [Color(hex: 0xFFD27A), Color(hex: 0xFF5A52)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing),
-                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
-            )
-            .background(Color.white.opacity(0.06))
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    // MARK: - Facelift · countdown · pill · plan · fueling
+
+    private var countdownHeadline: String {
+        if detail?.race.is_past == true { return detail?.race.finishTime ?? "DONE" }
+        guard let d = detail?.race.days else { return "—" }
+        if d <= 0 { return "RACE DAY" }
+        if d == 1 { return "TOMORROW" }
+        return "\(d) DAYS"
+    }
+
+    private var countdownColor: Color {
+        if detail?.race.is_past == true {
+            return detail?.race.pb == true ? Color(hex: 0xF5C518) : Theme.txt
+        }
+        return Theme.race
+    }
+
+    private var countdownSub: String? {
+        if detail?.race.is_past == true {
+            return detail?.race.pb == true ? "FINISHED · PERSONAL BEST" : "FINISHED"
+        }
+        guard let d = detail?.race.days, d > 0 else { return "Race day. Trust the work." }
+        return "TO \(raceShortCode)"
+    }
+
+    /// Race + goal summary for the shared header pill. The countdown owns the
+    /// days, so the pill carries name + goal + pace only.
+    private var racePill: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("A-RACE")
+                    .font(.body(9.5, weight: .extraBold)).tracking(2)
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                Text(raceName)
+                    .font(.body(16, weight: .extraBold)).tracking(-0.2)
+                    .foregroundStyle(Theme.txt)
+                    .lineLimit(2).minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("GOAL")
+                    .font(.body(9.5, weight: .extraBold)).tracking(1.2)
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                Text(goalTime)
+                    .font(.display(20, weight: .bold)).tracking(-0.5)
+                    .foregroundStyle(Theme.txt)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                if goalPace != "—" {
+                    Text("\(goalPace)/mi")
+                        .font(.body(10.5, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                }
+            }
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
+    }
+
+    private struct RacePhase: Identifiable {
+        let id = UUID(); let range: String; let intent: String; let pace: String
+    }
+
+    /// Negative-split plan derived from goal pace + distance · controlled
+    /// start, goal-pace middle, strong finish. Real numbers, not the old
+    /// hardcoded "MI 1-3 settle 6:55" copy.
+    private var planPhases: [RacePhase] {
+        guard let gs = parsedGoalSec,
+              let dist = detail?.race.distance_mi, dist > 0 else { return [] }
+        let goalPaceSec = Double(gs) / dist
+        let settleEnd = max(1, Int((dist * 0.22).rounded()))
+        let goalEnd = max(settleEnd + 1, Int((dist * 0.77).rounded()))
+        let distLabel = dist.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(dist))" : String(format: "%.1f", dist)
+        return [
+            RacePhase(range: "MILES 1–\(settleEnd)", intent: "Settle in · bank nothing",
+                      pace: fmtPaceSec(goalPaceSec + 5)),
+            RacePhase(range: "MILES \(settleEnd + 1)–\(goalEnd)", intent: "Lock goal pace",
+                      pace: fmtPaceSec(goalPaceSec)),
+            RacePhase(range: "MILES \(goalEnd + 1)–\(distLabel)", intent: "Empty the tank",
+                      pace: fmtPaceSec(goalPaceSec - 7)),
+        ]
+    }
+
+    private var planRightLabel: String? {
+        goalPace == "—" ? nil : "AVG \(goalPace)/mi"
+    }
+
+    private var planPhasesCard: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(planPhases.enumerated()), id: \.offset) { i, ph in
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ph.range)
+                            .font(.body(12, weight: .extraBold)).tracking(0.6)
+                            .foregroundStyle(Theme.txt)
+                        Text(ph.intent)
+                            .font(.body(11, weight: .semibold))
+                            .foregroundStyle(Theme.txt.opacity(0.6))
+                    }
+                    Spacer(minLength: 12)
+                    Text("\(ph.pace)/mi")
+                        .font(.display(18, weight: .bold)).tracking(-0.3)
+                        .foregroundStyle(i == 1 ? Theme.race : Theme.txt)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 13)
+                if i < planPhases.count - 1 {
+                    Divider().background(Color.white.opacity(0.08))
+                }
+            }
+            if let b = bGoalTime, let bp = bGoalPace {
+                Divider().background(Color.white.opacity(0.08))
+                HStack {
+                    Text("IF IT GOES SIDEWAYS")
+                        .font(.body(9.5, weight: .extraBold)).tracking(1.2)
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                    Spacer()
+                    Text("\(b) · \(bp)/mi")
+                        .font(.body(12, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.7))
+                }
+                .padding(.horizontal, 14).padding(.vertical, 11)
+            }
+        }
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    private func fuelingCard(gelsMi: [Double], totalMi: Double) -> some View {
+        let distLabel = totalMi.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(totalMi))" : String(format: "%.1f", totalMi)
+        return VStack(alignment: .leading, spacing: 14) {
+            GeometryReader { geo in
+                let w = geo.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.12)).frame(height: 3)
+                    ForEach(Array(gelsMi.enumerated()), id: \.offset) { _, mi in
+                        let x = CGFloat(min(1, max(0, mi / totalMi))) * w
+                        Circle()
+                            .fill(Theme.goal)
+                            .frame(width: 11, height: 11)
+                            .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                            .position(x: max(5, min(w - 5, x)), y: 6)
+                    }
+                }
+            }
+            .frame(height: 12)
+            HStack {
+                Text("START").font(.body(9, weight: .extraBold)).tracking(1)
+                    .foregroundStyle(Theme.txt.opacity(0.5))
+                Spacer()
+                Text("FINISH · \(distLabel) MI").font(.body(9, weight: .extraBold)).tracking(1)
+                    .foregroundStyle(Theme.txt.opacity(0.5))
+            }
+            Text(gelsMi.enumerated().map { i, mi in "Gel \(i + 1) · mi \(Int(mi.rounded()))" }
+                    .joined(separator: "   "))
+                .font(.body(11, weight: .semibold))
+                .foregroundStyle(Theme.txt.opacity(0.65))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
     }
 
     // Note: removed `mapPlaceholder`, `elevationPlaceholder`, `fuelLine`,
