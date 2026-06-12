@@ -169,7 +169,7 @@ struct RootTabView: View {
                 Spacer()
                 tabBar
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 24)
             }
             .opacity(tabBarHidden ? 0 : 1)
             .allowsHitTesting(!tabBarHidden)

@@ -125,9 +125,9 @@ private struct ProjectionStatusChip: View {
 
     private var copy: (label: String, tint: Color) {
         switch status {
-        case "on_track":  return ("ON TRACK", Theme.green)
-        case "watch":     return ("WATCH",    Theme.goal)
-        case "off":       return ("OFF",      Theme.over)
+        case "on_track":  return ("ON PACE",  Theme.green)
+        case "watch":     return ("IN REACH", Theme.goal)
+        case "off":       return ("BEHIND",   Theme.over)
         case "race_week": return ("RACE WEEK", Theme.race)
         case "cold":      return ("BASELINE NEEDED", Theme.mute)
         default:          return (status.uppercased(), Theme.mute)

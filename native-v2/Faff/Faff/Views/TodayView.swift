@@ -381,9 +381,10 @@ struct TodayView: View {
                     // 2026-06-02 round 25 · 150 → 180.
                     // 2026-06-02 round 46 · 180 → 200.
                     // 2026-06-11 · 200 → 170. Pill shrank (62→50) and
-                    // moved down (14→4pt pad), so the pill zone dropped
-                    // ~22pt — tighter peek sits naturally above the pill.
-                    collapsedInsetFromBottom: 170,
+                    // moved down (14→4pt pad), so the pill zone dropped.
+                    // 2026-06-12 · 170 → 200. Tab bar lifted (4→24pt pad), so
+                    // the peek rises with it to keep clear air above the bar.
+                    collapsedInsetFromBottom: 200,
                     minTopOffset: screenSafeAreaTop + 44,
                     progress: $sheetProgress,
                     peekBackground: peekFill,

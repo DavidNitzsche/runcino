@@ -47,7 +47,10 @@ struct TargetsView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 6)
                     heroBlock
-                        .padding(.horizontal, 24).padding(.top, 16)
+                        // Pull the card up into the heroDisplay line-box
+                        // whitespace under WATCHING — the default 16pt left it
+                        // floating too low.
+                        .padding(.horizontal, 24).padding(.top, -12)
 
                     section("RACES") {
                         if let r = races, !r.races.isEmpty {
@@ -260,8 +263,8 @@ struct TargetsView: View {
         case "on_track":
             if let proj = p.projectionSec, let goal = p.goalSec, goal > 0,
                Double(proj) < Double(goal) * 0.985 { return "AHEAD" }
-            return "ON TRACK"
-        case "watch":     return "WATCHING"
+            return "ON PACE"
+        case "watch":     return "IN REACH"
         case "off":       return "BEHIND"
         case "race_week": return "RACE WEEK"
         default:          return raceHeadline
