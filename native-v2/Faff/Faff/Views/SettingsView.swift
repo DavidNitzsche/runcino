@@ -35,14 +35,11 @@ struct SettingsView: View {
     /// status changes from any sync (foreground, manual, cycle-toggle).
     @ObservedObject private var hkImporter: HealthKitImporter = .shared
 
-    private let mesh = FaffMesh(
-        c1: 0x3FB6B0, c2: 0x62E08A, c3: 0x0E4F4C,
-        c4: 0x155A4A, c5: 0x155A4A, base: 0x072A28
-    )
-
     var body: some View {
         ZStack {
-            FaffMeshView(mesh: mesh)
+            // Neutral black/grey mesh, matching every tab + the now-neutral
+            // ProfileView so the whole settings flow reads consistent.
+            FaffMeshView(mesh: .neutral)
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {

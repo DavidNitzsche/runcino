@@ -421,6 +421,17 @@ struct TargetsProjectionPanel: View {
     }
 
     private var headlineText: String {
+        // Over-performing · the goal-seeking trajectory leads, mirroring web.
+        // Reframes positively rather than dropping the trajectory time into the
+        // current-fitness gap copy below (which would read as a contradiction).
+        if summary.aheadOfGoal == true {
+            let traj = formatTime(summary.trajectoryProjectedSec ?? summary.projectionSec)
+            let goal = formatTime(summary.goalSec)
+            if let t = summary.trajectoryProjectedSec, let g = summary.goalSec, g > t {
+                return "Projecting \(traj) by race day · about \(formatGap(g - t)) faster than \(goal). Your recent quality work is landing ahead of plan."
+            }
+            return "Projecting \(traj) · tracking to beat \(goal). Your recent quality work is landing ahead of plan."
+        }
         let proj = formatTime(summary.projectionSec)
         let goal = formatTime(summary.goalSec)
         let gapSec = summary.totalGapSec

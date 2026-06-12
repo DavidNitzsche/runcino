@@ -32,7 +32,9 @@ struct ProfileView: View {
 
     var body: some View {
         ZStack {
-            FaffMeshView(mesh: FaffMesh.forView(.profile))
+            // Neutral black/grey mesh, matching every other tab. The warm
+            // .profile mesh read as an off-palette "brownish" page (David).
+            FaffMeshView(mesh: .neutral)
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -495,6 +497,9 @@ struct ProfileView: View {
                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.5))
             }
             .padding(14)
+            // Make the WHOLE row tappable, not just the text/chevron glyphs —
+            // the Spacer gap was dead space, so taps in the middle missed.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

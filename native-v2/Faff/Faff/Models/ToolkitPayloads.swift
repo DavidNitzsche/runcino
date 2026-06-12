@@ -449,6 +449,14 @@ struct ProjectionSummary: Decodable {
     let confidenceInterval: ProjectionConfidenceInterval?
     let confidenceLabel: ProjectionConfidenceLabel?
 
+    // 2026-06-12 · goal-seeking trajectory ("AHEAD" upgrade gear). Server
+    // derives these from computeGoalProjection — the same engine web reads.
+    // All optional · older API responses lack them → nil → dormant behavior.
+    let aheadOfGoal: Bool?              // projected to beat the goal
+    let planUnderBuilt: Bool?           // trajectory passed what the plan trains for
+    let overPerformanceBonusVdot: Double?  // unconfirmed training-derived fitness (diagnostic)
+    let trajectoryProjectedSec: Int?    // goal-seeking projected race-day time
+
     enum CodingKeys: String, CodingKey {
         case ok, status, vdot, projectionSec, goalSec, goalSafeSec,
              raceSlug, raceName, raceDate, daysAway, distanceMi, location,
@@ -457,7 +465,8 @@ struct ProjectionSummary: Decodable {
              conditionsImpactSec, conditionsSource,
              executionBufferSec, executionSource, executionCV, executionN,
              levers, heldDays, lastMove, raceProjections,
-             confidenceInterval, confidenceLabel
+             confidenceInterval, confidenceLabel,
+             aheadOfGoal, planUnderBuilt, overPerformanceBonusVdot, trajectoryProjectedSec
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -497,5 +506,9 @@ struct ProjectionSummary: Decodable {
         self.raceProjections    = try? c.decode([RaceProjectionEntry].self,            forKey: .raceProjections)
         self.confidenceInterval = try? c.decode(ProjectionConfidenceInterval.self,     forKey: .confidenceInterval)
         self.confidenceLabel    = try? c.decode(ProjectionConfidenceLabel.self,        forKey: .confidenceLabel)
+        self.aheadOfGoal              = try c.decodeIfPresent(Bool.self,   forKey: .aheadOfGoal)
+        self.planUnderBuilt           = try c.decodeIfPresent(Bool.self,   forKey: .planUnderBuilt)
+        self.overPerformanceBonusVdot = try c.decodeIfPresent(Double.self, forKey: .overPerformanceBonusVdot)
+        self.trajectoryProjectedSec   = try c.decodeIfPresent(Int.self,    forKey: .trajectoryProjectedSec)
     }
 }

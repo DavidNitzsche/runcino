@@ -262,11 +262,12 @@ struct TargetsView: View {
     /// empty headline.
     private var goalStatusHeadline: String {
         guard let p = projection, p.vdot != nil else { return raceHeadline }
+        // Server-derived over-performance flag · single source of truth. Fires
+        // when the goal-seeking trajectory is projected to beat the goal — which
+        // the old current-fitness math (projectionSec < goal) would miss.
+        if p.aheadOfGoal == true { return "AHEAD" }
         switch p.status {
-        case "on_track":
-            if let proj = p.projectionSec, let goal = p.goalSec, goal > 0,
-               Double(proj) < Double(goal) * 0.985 { return "AHEAD" }
-            return "ON PACE"
+        case "on_track":  return "ON PACE"
         case "watch":     return "IN REACH"
         case "off":       return "BEHIND"
         case "race_week": return "RACE WEEK"
@@ -278,6 +279,7 @@ struct TargetsView: View {
     /// red behind. Race-orange when cold (the AFC fallback).
     private var goalStatusColor: Color {
         guard let p = projection, p.vdot != nil else { return Theme.race }
+        if p.aheadOfGoal == true { return Theme.Accent.mintReady }
         switch p.status {
         case "on_track":  return Color(hex: 0x5FD08A)
         case "watch":     return Color(hex: 0xF3AD38)
@@ -350,6 +352,16 @@ struct TargetsView: View {
                                 .font(.body(10, weight: .bold))
                                 .tracking(1.2)
                                 .foregroundStyle(stale ? Theme.Accent.amberBright : Theme.txt.opacity(0.55))
+                                .padding(.horizontal, 4)
+                        }
+                        // Over-performer advisory · the plan now under-builds the
+                        // trajectory. Passive read — native has no goal-edit
+                        // endpoint, so it points at the web rebuild door.
+                        if p.planUnderBuilt == true {
+                            Text("Tracking ahead of plan. Set a faster goal on the web to rebuild around it.")
+                                .font(.body(11, weight: .medium))
+                                .foregroundStyle(Theme.Accent.mintReady.opacity(0.9))
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, 4)
                         }
                     }
