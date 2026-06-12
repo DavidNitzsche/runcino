@@ -49,8 +49,13 @@ struct ProvenanceLine: View {
             var s = AttributedString("from your ")
             var n = AttributedString(name); n.font = .body(11.5, weight: .extraBold)
             n.foregroundColor = Theme.txt
-            var rest = AttributedString(" · " + date)
-            s.append(n); s.append(rest); return s
+            s.append(n)
+            // Only append the date when there is one — an empty dateLabel was
+            // leaving a dangling " · " that read as janky trailing punctuation.
+            if !date.trimmingCharacters(in: .whitespaces).isEmpty {
+                s.append(AttributedString(" · " + date))
+            }
+            return s
         case .estimated(let m):
             return AttributedString("estimated from " + m)
         case .stale(let d, let cta):

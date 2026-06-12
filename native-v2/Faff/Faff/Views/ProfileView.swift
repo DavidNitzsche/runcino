@@ -74,12 +74,10 @@ struct ProfileView: View {
                     connectionsCard
                         .padding(.horizontal, 22).padding(.top, 13)
 
-                    // COACH ACTIVITY · full history from /api/coach/intents.
-                    // Toolkit · CoachActivityTimeline (Family C).
-                    SectionLabel(title: "COACH ACTIVITY")
-                        .padding(.horizontal, 22).padding(.top, 30)
-                    CoachActivityTimeline(intents: coachIntents)
-                        .padding(.horizontal, 22).padding(.top, 13)
+                    // COACH ACTIVITY moved out of the main scroll → it's a sheet
+                    // behind a "Coach activity" row in the settings card below.
+                    // Most runners never read it; it shouldn't push settings far
+                    // down the page.
 
                     // NOTIFICATIONS · 7-category panel from
                     // /api/profile/notifications. Toolkit · NotificationPrefsList.
@@ -137,6 +135,7 @@ struct ProfileView: View {
         .refreshable { await reload() }
         .sheet(item: $glossaryEntry) { e in GlossarySheet(entry: e) }
         .sheet(isPresented: $showNameEdit) { nameEditSheet }
+        .sheet(isPresented: $showCoachActivity) { coachActivitySheet }
     }
 
     /// 2026-06-02 · Sign-out button shipped to ProfileView's bottom.
@@ -147,6 +146,7 @@ struct ProfileView: View {
     @State private var showSignOutConfirm: Bool = false
     @State private var showNameEdit: Bool = false
     @State private var nameDraft: String = ""
+    @State private var showCoachActivity: Bool = false
     private var signOutButton: some View {
         Button {
             showSignOutConfirm = true
@@ -249,16 +249,16 @@ struct ProfileView: View {
     private func provenanceKindForLTHR(value: Int?, source: String?) -> ProvenanceKind? {
         guard value != nil else { return nil }
         switch source {
-        case "race_half":     return .raceCalibrated(raceName: "your last half", dateLabel: "")
-        case "race_marathon": return .raceCalibrated(raceName: "your last marathon", dateLabel: "")
+        case "race_half":     return .raceCalibrated(raceName: "last half", dateLabel: "")
+        case "race_marathon": return .raceCalibrated(raceName: "last marathon", dateLabel: "")
         case "manual":        return .manual
-        default:              return .estimated(method: "lthr-derived from your max HR")
+        default:              return .estimated(method: "your max HR")
         }
     }
     private func provenanceKindForMaxHR(value: Int?, source: String?) -> ProvenanceKind? {
         guard value != nil else { return nil }
         switch source {
-        case "observed":     return .raceCalibrated(raceName: "an observed max effort", dateLabel: "")
+        case "observed":     return .raceCalibrated(raceName: "hardest recorded effort", dateLabel: "")
         case "lthr-derived": return .estimated(method: "lthr × Friel factor")
         case "manual":       return .manual
         case "formula":      return .estimated(method: "age formula · add a max effort to calibrate")
@@ -267,7 +267,7 @@ struct ProfileView: View {
     }
     private func provenanceKindForVDOT(value: Double?) -> ProvenanceKind? {
         guard value != nil else { return nil }
-        return .raceCalibrated(raceName: "your recent race PR", dateLabel: "")
+        return .raceCalibrated(raceName: "recent race PR", dateLabel: "")
     }
 
     // MARK: - Toolkit · SETTINGS rows (SettingValueRow)
@@ -405,6 +405,31 @@ struct ProfileView: View {
         }
     }
 
+    private var coachActivitySheet: some View {
+        ZStack {
+            FaffMeshView(mesh: .neutral).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    SpecLabel(text: "COACH ACTIVITY", size: 13, tracking: 2.5, color: Theme.txt)
+                    Spacer()
+                    Button { showCoachActivity = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 22).padding(.top, 24).padding(.bottom, 14)
+                ScrollView(showsIndicators: false) {
+                    CoachActivityTimeline(intents: coachIntents)
+                        .padding(.horizontal, 22).padding(.bottom, 30)
+                }
+            }
+        }
+        .presentationDetents([.large, .medium])
+        .presentationDragIndicator(.visible)
+    }
+
     /// Avatar initials · delegates to ProfileIdentity.avatarInitials. Falls
     /// back to "FA" (Faff) here only — the dedicated profile screen wants
     /// something rendered even when no name is on file, whereas the page-
@@ -538,6 +563,19 @@ struct ProfileView: View {
                 settingsRow("Shoe garage", value: nil, route: .shoes)
                 Divider().background(Color.white.opacity(0.08))
                 settingsRow("Faff Pro", value: nil, route: .pro)
+                Divider().background(Color.white.opacity(0.08))
+                Button { showCoachActivity = true } label: {
+                    HStack {
+                        Text("Coach activity")
+                            .font(.body(15, weight: .extraBold)).foregroundStyle(Theme.txt)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.5))
+                    }
+                    .padding(14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
