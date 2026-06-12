@@ -263,16 +263,32 @@ export async function recommendStrengthDays(
   //     calls for it (peak / taper / maintenance mode / recovery mode).
   const demoteHeavy = shouldDemoteHeavy(phaseContext, raceContext);
 
-  // 6. Pick the best `target` candidates. Sort by preference score
-  //    (quality days first per "hard with hard" doctrine).
-  candidates.sort((a, b) => b.preferenceScore - a.preferenceScore);
+  // 5c. 2026-06-11 · count this week's ALREADY-LOGGED sessions toward the
+  //     weekly target. The target is a COUNT, not a per-day schedule · a
+  //     session the runner already did (HK or manual) satisfies one slot
+  //     and must NOT be superseded by recommending ANOTHER day. David
+  //     2026-06-11: he did strength today, but with two quality days this
+  //     week the picker chose Tuesday, saw it missed, and rolled the chip
+  //     to Friday — telling him to repeat a session he'd already done. A
+  //     logged day renders green on its own (strengthDone); here we just
+  //     stop recommending more once the count is met.
+  const [loggedSet, todayISO] = await Promise.all([
+    loadLoggedStrengthDates(userUuid, weekStartISO),
+    runnerToday(userUuid),
+  ]);
+  const remainingTarget = Math.max(0, target - loggedSet.size);
 
-  // Ensure we don't strand the runner with zero pure rest days. Find
-  // the candidate that would leave at least 1 unselected rest day after
-  // picking. If the only viable picks are rest days AND removing them
-  // would leave 0 rest days, fall back to maxFromPhase = 1.
+  // 6. Pick the best `remainingTarget` candidates that aren't already
+  //    logged. Sort by preference score (quality days first · "hard with
+  //    hard"). When the weekly count is already met this is [].
+  candidates.sort((a, b) => b.preferenceScore - a.preferenceScore);
+  const unlogged = candidates.filter((c) => !loggedSet.has(c.date));
+
+  // Ensure we don't strand the runner with zero pure rest days. If the
+  // only viable picks are rest days AND removing them would leave 0 rest
+  // days, drop one rest-day pick to preserve a pure rest day.
   const restDaysInWeek = weekDays.filter(d => d.type === 'rest').length;
-  let picked = candidates.slice(0, target).map(c => c.date);
+  let picked = unlogged.slice(0, remainingTarget).map(c => c.date);
   const restPicked = picked.filter(d => {
     const day = weekDays.find(w => w.date === d);
     return day?.type === 'rest';
@@ -291,13 +307,8 @@ export async function recommendStrengthDays(
   // 6b. 2026-06-10 · Rule 14b · missed-strength roll-forward.
   //     A recommended day that has PASSED unlogged is a miss · advance it
   //     to the next viable slot this week instead of leaving it to surface
-  //     as "1 day missed". Completion-aware, so it needs the logged set +
-  //     runner-local today. The cap above already set HOW MANY · this only
-  //     moves WHICH day. David 2026-06-10.
-  const [loggedSet, todayISO] = await Promise.all([
-    loadLoggedStrengthDates(userUuid, weekStartISO),
-    runnerToday(userUuid),
-  ]);
+  //     as "1 day missed". Only moves WHICH day, never HOW MANY (the
+  //     logged-aware count above fixed that). David 2026-06-10.
   picked = rollForwardMissedPicks(picked, candidates, loggedSet, todayISO);
 
   // Sort the final picks chronologically for stable display.

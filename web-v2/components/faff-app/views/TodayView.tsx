@@ -405,7 +405,12 @@ export function TodayView({
           // run-done doesn't preclude strength. Chip now hides only on
           // skipped days. Tomorrow's chip auto-recomputes when today
           // passes (date moves out of the week).
-          const showStrength = !!day.strengthSuggested && !skipped;
+          // 2026-06-11 · show the glyph when strength is recommended OR
+          // already logged that day. Once the weekly count is met the
+          // recommender stops recommending (so the day is no longer
+          // "suggested"), but the logged day must still show its green
+          // done state · otherwise a completed session would vanish.
+          const showStrength = (!!day.strengthSuggested || !!day.strengthDone) && !skipped;
           // 2026-06-03 · per-day done state from strength_sessions
           // reconcile · flips chip when HK push or manual log lands.
           // Source: glance.strengthWeekStatus.{confirmed,bonus}.
