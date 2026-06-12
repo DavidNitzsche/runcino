@@ -175,6 +175,78 @@ final class HealthKitImporter: ObservableObject {
         await importRecent(daysBack: daysBack)
     }
 
+    // MARK: - Background delivery (workouts + strength)
+    //
+    // Registered from NotificationsAppDelegate.didFinishLaunchingWithOptions
+    // (NOT a SwiftUI .task) so iOS can BACKGROUND-LAUNCH the app when a new
+    // workout lands in HealthKit and ingest it without the runner opening
+    // Faff. Same reasoning as WatchSync.start() living in didFinishLaunching:
+    // a foreground-only path stranded finished work until next open (a gym
+    // strength session didn't reach the app for hours/days).
+    //
+    // One observer on workoutType() covers EVERY workout — runs recorded in
+    // the Apple Workouts app and strength / functional / yoga / pilates /
+    // core sessions alike. Strength has no other ingest route, so this is
+    // what makes "I did strength, it just shows up" work hands-free.
+    //
+    // Requires the com.apple.developer.healthkit.background-delivery
+    // entitlement (added to Faff.entitlements). Without it,
+    // enableBackgroundDelivery silently no-ops and only the foreground
+    // importIfConnected path runs.
+
+    /// HKObserverQuery kept alive for the process. Guards once-per-launch
+    /// registration so repeated calls (every didFinishLaunching) are cheap.
+    private var workoutObserver: HKObserverQuery?
+
+    /// Register the workout observer and turn on HK background delivery.
+    /// Idempotent per process. No-op until the runner has connected Health
+    /// (background delivery for an unauthorized type fails anyway).
+    func startWorkoutBackgroundDelivery() {
+        guard isAvailable, hasConnected, workoutObserver == nil else { return }
+        let workoutType = HKObjectType.workoutType()
+        let q = HKObserverQuery(sampleType: workoutType, predicate: nil) { [weak self] _, completionHandler, error in
+            if let error {
+                print("[HKImporter] workout observer error: \(error)")
+                completionHandler()
+                return
+            }
+            // Drain THEN call the completion handler · iOS throttles (then
+            // stops) background delivery for a query that misses completions
+            // (same contract HRAlerter follows · P-1a).
+            Task { [weak self] in
+                await self?.backgroundWorkoutSync()
+                completionHandler()
+            }
+        }
+        store.execute(q)
+        workoutObserver = q
+        // .immediate is a hint · iOS clamps workout delivery to roughly
+        // hourly. Enough for "syncs on its own"; the foreground path stays
+        // the instant route when the runner opens the app.
+        store.enableBackgroundDelivery(for: workoutType, frequency: .immediate) { _, error in
+            if let error { print("[HKImporter] enableBackgroundDelivery(workout) failed: \(error)") }
+        }
+    }
+
+    /// Focused background import · workouts + strength only. Deliberately
+    /// skips the heavy daily-vitals sweep (hundreds of active_energy buckets)
+    /// so the background wake stays inside iOS's delivery budget; vitals keep
+    /// flowing via the foreground importIfConnected path. Mutates no
+    /// @Published state — a background wake shouldn't drive SwiftUI work.
+    private func backgroundWorkoutSync() async {
+        guard isAvailable, hasConnected else { return }
+        // Runs recorded outside Faff (Apple Workouts app / third-party). The
+        // Faff watch + Strava paths already cover their own; this is the
+        // backstop. Idempotent server-side on client_workout_id.
+        let workouts = await fetchRunWorkouts(daysBack: 3)
+        for w in workouts {
+            let payload = await buildPayload(for: w)
+            try? await postWorkout(payload: payload)
+        }
+        // Strength · the only ingest route for HK strength sessions.
+        _ = await syncStrengthFromHK()
+    }
+
     // MARK: - Import flow
 
     private func importRecent(daysBack: Int) async {

@@ -13,6 +13,21 @@
 	<true/>
 
 	<!--
+	  HealthKit background delivery. Lets iOS background-LAUNCH the app
+	  when a new workout (run OR strength) lands in HealthKit so
+	  HealthKitImporter can ingest it without the runner opening Faff —
+	  the gap behind "I did a strength session and the app didn't know
+	  until I opened it." Part of the HealthKit capability (already
+	  enabled for App ID run.faff.app), so Automatic signing +
+	  -allowProvisioningUpdates regenerates the profile to include it ·
+	  no separate Developer-portal toggle beyond HealthKit itself.
+	  Without this key, HKHealthStore.enableBackgroundDelivery silently
+	  no-ops and only the foreground import path runs.
+	-->
+	<key>com.apple.developer.healthkit.background-delivery</key>
+	<true/>
+
+	<!--
 	  Shared app group with the watch app target. The legacy app uses
 	  this for SharedDefaults; the v2 iPhone+watch pair use it the same
 	  way. Bundle ID matches App Store Connect declaration.

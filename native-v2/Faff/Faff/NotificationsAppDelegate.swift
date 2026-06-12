@@ -42,6 +42,15 @@ final class NotificationsAppDelegate: NSObject, UIApplicationDelegate, UNUserNot
         // that didn't land for 54h). UIApplicationDelegate is @MainActor, so
         // this main-thread call into the @MainActor WatchSync is synchronous.
         WatchSync.shared.start()
+
+        // Same story for HealthKit: register the workout observer + turn on
+        // HK background delivery HERE (not a SwiftUI .task) so iOS can
+        // background-launch the app when a new workout lands in HealthKit and
+        // ingest it without the runner opening Faff. This is what makes a
+        // strength session sync on its own. No-op until Health is connected.
+        // UIApplicationDelegate is @MainActor; HealthKitImporter is @MainActor;
+        // the call is synchronous (it only registers — the drain runs async).
+        HealthKitImporter.shared.startWorkoutBackgroundDelivery()
         return true
     }
 
