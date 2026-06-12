@@ -18,7 +18,9 @@ struct ShoesView: View {
 
     var body: some View {
         ZStack {
-            FaffMeshView(mesh: mesh)
+            // Neutral black/grey mesh, matching every tab + Profile/Settings.
+            // The warm shoe mesh read as an off-palette brown page (David).
+            FaffMeshView(mesh: .neutral)
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {

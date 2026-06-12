@@ -537,16 +537,27 @@ struct SettingsView: View {
         editingField = nil
         Task {
             let body: [String: Any] = [f.key: json ?? NSNull()]
-            let replanned = (try? (f.endpoint == .profile
-                ? await API.updateProfile(body)
-                : await API.patchSettings(body))) ?? false
-            if replanned {
-                await MainActor.run {
-                    showToast("Plan updated")
-                    // Re-fetch the plan surfaces — Today / Train / Goal / Activity
-                    // all observe this — so the rebuilt plan shows without a relaunch.
-                    NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+            do {
+                let replanned = try (f.endpoint == .profile
+                    ? await API.updateProfile(body)
+                    : await API.patchSettings(body))
+                if replanned {
+                    await MainActor.run {
+                        showToast("Plan updated")
+                        // Re-fetch the plan surfaces — Today / Train / Goal / Activity
+                        // all observe this — so the rebuilt plan shows without a relaunch.
+                        NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+                    }
                 }
+            } catch {
+                // Don't pretend it saved. A swallowed error (e.g. an expired
+                // session → 401) silently dropped the write and the optimistic
+                // row lied that it stuck. Surface it + restore server truth.
+                await MainActor.run { showToast("Couldn't save — check your connection or sign in again") }
+                async let fp = (try? await API.fetchProfile())
+                async let fs = (try? await API.fetchSettings())
+                let (p, s) = await (fp, fs)
+                await MainActor.run { seedVals(p ?? profileFields, s ?? settings) }
             }
         }
     }
@@ -704,10 +715,13 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         SettingField(key: "tz_mode", label: "Auto-update on travel", endpoint: .profile, kind: .tzmode),
         SettingField(key: "timezone", label: "Time zone", endpoint: .profile, kind: .select, options: SETTINGS_ZONES.map(zoneOpt)),
     ]),
+    // Gel brand + carbs/gel are facts about the runner's product (legit
+    // settings). Target intake RATE (g/hr) is a coaching prescription —
+    // research-backed, per race distance/duration — so it's surfaced per
+    // race at the coach level, not edited as a static preference here.
     SettingGroup(title: "RACE FUELING", fields: [
         SettingField(key: "fuel_brand", label: "Gel brand", endpoint: .profile, kind: .text, placeholder: "e.g. Maurten"),
         SettingField(key: "fuel_gel_carbs_g", label: "Carbs per gel", endpoint: .profile, kind: .number, unit: "g"),
-        SettingField(key: "fuel_target_g_per_hr", label: "Target intake", endpoint: .profile, kind: .number, unit: "g/hr"),
     ]),
 ]
 
