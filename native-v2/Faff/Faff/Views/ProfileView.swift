@@ -107,16 +107,16 @@ struct ProfileView: View {
                         })
                         .padding(.horizontal, 22).padding(.top, 13)
 
-                    // SETTINGS · daily briefing time + plan-schedule rows.
-                    // Toolkit · SettingValueRow. Pickers themselves are
-                    // deferred · row taps fire onTap so the picker can be
-                    // wired in incrementally.
+                    // SETTINGS · deep-links into the consolidated, fully-wired
+                    // SettingsView (YOU / TRAINING / PHYSIOLOGY / TIMEZONE /
+                    // FUELING / CONNECTIONS). The fake briefing/long-run/rest
+                    // placeholder rows that used to sit here were removed in the
+                    // 2026-06-12 settings consolidation — they're real and
+                    // editable in SettingsView now.
                     SectionLabel(title: "SETTINGS")
                         .padding(.horizontal, 22).padding(.top, 28)
-                    settingValueRows
-                        .padding(.horizontal, 22).padding(.top, 13)
                     settingsCard
-                        .padding(.horizontal, 22).padding(.top, 10)
+                        .padding(.horizontal, 22).padding(.top, 13)
 
                     // 2026-06-02 round 17 · dev pills (Strava pushes /
                     // LLM spend) retired from ProfileView. They were
@@ -134,7 +134,6 @@ struct ProfileView: View {
         .task { await reload() }
         .refreshable { await reload() }
         .sheet(item: $glossaryEntry) { e in GlossarySheet(entry: e) }
-        .sheet(isPresented: $showWeeklyMiPicker) { weeklyMiSheet }
     }
 
     /// 2026-06-02 · Sign-out button shipped to ProfileView's bottom.
@@ -143,8 +142,6 @@ struct ProfileView: View {
     /// surfaces' sign-out paths stay symmetric.
     @State private var glossaryEntry: GlossaryEntry? = nil
     @State private var showSignOutConfirm: Bool = false
-    @State private var showWeeklyMiPicker = false
-    @State private var weeklyMiDraft: Int = 30
     private var signOutButton: some View {
         Button {
             showSignOutConfirm = true
@@ -270,119 +267,6 @@ struct ProfileView: View {
 
     // MARK: - Toolkit · SETTINGS rows (SettingValueRow)
 
-    @ViewBuilder
-    private var settingValueRows: some View {
-        VStack(spacing: 0) {
-            SettingValueRow(label: "Daily briefing",
-                            value: briefingTimeLabel,
-                            sub: nil,
-                            onTap: { },
-                            interactive: false)
-            Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
-            SettingValueRow(label: "Long run day",
-                            value: longRunDayLabel,
-                            sub: "Affects your plan layout · changing it redistributes the week",
-                            onTap: { },
-                            interactive: false)
-            Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
-            SettingValueRow(label: "Rest day",
-                            value: restDayLabel,
-                            sub: nil,
-                            onTap: { },
-                            interactive: false)
-            Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
-            SettingValueRow(label: "Weekly mileage",
-                            value: weeklyMiLabel,
-                            sub: "Coach calibrates training load against this",
-                            onTap: {
-                                weeklyMiDraft = profileFields?.weekly_mileage_target ?? 30
-                                showWeeklyMiPicker = true
-                            })
-        }
-        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
-    }
-
-    private var briefingTimeLabel: String { "07:00" }   // placeholder until user_settings exposes briefing_time on profile.
-    private var longRunDayLabel: String { "Saturday" }
-    private var restDayLabel: String { "Monday" }
-    private var weeklyMiLabel: String {
-        if let v = profileFields?.weekly_mileage_target { return "\(v) mi/wk" }
-        return "—"
-    }
-
-    @ViewBuilder
-    private var weeklyMiSheet: some View {
-        VStack(spacing: 0) {
-            // handle
-            Capsule()
-                .fill(Theme.txt.opacity(0.2))
-                .frame(width: 36, height: 4)
-                .padding(.top, 12)
-
-            Text("WEEKLY MILEAGE")
-                .font(.body(11, weight: .extraBold))
-                .foregroundStyle(Theme.txt.opacity(0.5))
-                .tracking(2)
-                .padding(.top, 24)
-
-            Text("\(weeklyMiDraft) mi")
-                .font(.display(56, weight: .bold))
-                .foregroundStyle(Theme.txt)
-                .padding(.top, 8)
-
-            Text("per week")
-                .font(.body(13, weight: .medium))
-                .foregroundStyle(Theme.txt.opacity(0.5))
-                .padding(.top, 2)
-
-            HStack(spacing: 40) {
-                Button {
-                    if weeklyMiDraft > 5 { weeklyMiDraft -= 5 }
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(weeklyMiDraft > 5 ? Theme.txt : Theme.txt.opacity(0.25))
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    if weeklyMiDraft < 120 { weeklyMiDraft += 5 }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(weeklyMiDraft < 120 ? Theme.txt : Theme.txt.opacity(0.25))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.top, 32)
-
-            Button {
-                let v = weeklyMiDraft
-                profileFields?.weekly_mileage_target = v
-                Task { _ = try? await API.updateProfile(["weekly_mileage_target": v]) }
-                showWeeklyMiPicker = false
-            } label: {
-                Text("Save")
-                    .font(.body(16, weight: .extraBold))
-                    .foregroundStyle(Theme.txt)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Theme.race.opacity(0.18),
-                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Theme.race.opacity(0.35), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 24)
-            .padding(.top, 36)
-
-            Spacer()
-        }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.hidden)
-        .background(Theme.bg)
-    }
 
     private var coachStats: [CoachFact] {
         meFacts?.facts ?? []
@@ -594,9 +478,7 @@ struct ProfileView: View {
     private var settingsCard: some View {
         GlassTile(padding: 0) {
             VStack(spacing: 0) {
-                settingsRow("Units & display", value: "Miles", route: .settings)
-                Divider().background(Color.white.opacity(0.08))
-                settingsRow("Notifications", value: nil, route: .settings)
+                settingsRow("Profile & training", value: nil, route: .settings)
                 Divider().background(Color.white.opacity(0.08))
                 settingsRow("Shoe garage", value: nil, route: .shoes)
                 Divider().background(Color.white.opacity(0.08))

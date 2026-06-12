@@ -157,13 +157,16 @@ enum API {
     }
 
     /// Closed loop §8.6 — submit a profile gap input (height, weight, etc.).
-    static func updateProfile(_ patch: [String: Any]) async throws {
+    /// Returns `replanned` so a plan-shaping edit can toast "Plan updated".
+    @discardableResult
+    static func updateProfile(_ patch: [String: Any]) async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/profile"))
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: patch)
-        let (_, http) = try await API.authedSend(req)
+        let (data, http) = try await API.authedSend(req)
         guard (200..<300).contains(http.statusCode) else { throw APIError.badStatus(http.statusCode) }
+        return (try? JSONDecoder().decode(ReplanAck.self, from: data))?.replanned ?? false
     }
 
     // MARK: - Email + password (fallback while Apple flow is being fixed)
@@ -328,15 +331,17 @@ enum API {
         return try? JSONDecoder().decode(UserSettings.self, from: data)
     }
 
-    static func patchSettings(_ patch: [String: Any]) async throws {
+    @discardableResult
+    static func patchSettings(_ patch: [String: Any]) async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/settings"))
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: patch)
-        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
         guard (200..<300).contains(http.statusCode) else {
             throw APIError.badStatus(http.statusCode)
         }
+        return (try? JSONDecoder().decode(ReplanAck.self, from: data))?.replanned ?? false
     }
 
     static func fetchProfile() async throws -> ProfileFields? {
@@ -1133,7 +1138,30 @@ struct ProfileFields: Decodable {
     var strava_auto_push: Bool?
     var phone_hr_alerts: Bool?
     var weekly_mileage_target: Int?
+
+    // 2026-06-12 settings consolidation · the rest of the editable surface
+    // the consolidated SettingsView reads. All optional · absent keys decode
+    // to nil (synthesized Decodable). weight_kg is FlexibleDouble for the
+    // same Postgres-NUMERIC-as-string reason as height_cm.
+    let full_name: String?
+    let email: String?
+    let weight_kg: FlexibleDouble?
+    var weightKg: Double? { weight_kg?.value }
+    let weekly_frequency: Int?
+    let max_hr_override: Int?
+    let resting_hr_override: Int?
+    let timezone: String?
+    let tz_mode: String?
+    let fuel_brand: String?
+    let fuel_gel_carbs_g: Int?
+    let fuel_target_g_per_hr: Int?
 }
+
+/// Minimal ack shape for the PATCH responses · both /api/profile and
+/// /api/settings return `replanned: true` when a plan-shaping edit
+/// triggered a server-side rebuild. updateProfile/patchSettings surface
+/// it so the editor can toast "Plan updated".
+struct ReplanAck: Decodable { let replanned: Bool? }
 
 // MARK: - ProfileState (full /profile rendering)
 //
