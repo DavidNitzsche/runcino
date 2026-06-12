@@ -406,11 +406,11 @@ struct TodayView: View {
                     // 2026-06-12 · 170 → 200. Tab bar lifted (4→24pt pad), so
                     // the peek rises with it to keep clear air above the bar.
                     collapsedInsetFromBottom: 200,
-                    // 2026-06-12 · cap the EXPANDED top below the week-strip
-                    // pill (global bar ~50 + pill 84), not just the 44pt global
-                    // bar. At +44 the sheet slid UNDER the strip and its grab
-                    // handle hid behind it — couldn't see the top or swipe down.
-                    minTopOffset: screenSafeAreaTop + 140,
+                    // 2026-06-12 · cap the EXPANDED top just under the week
+                    // strip. +44 slid under the strip (handle hidden); +140
+                    // left too much gap (David: "more room here"). +110 tucks
+                    // it a touch below the strip. One-number tweak if needed.
+                    minTopOffset: screenSafeAreaTop + 110,
                     progress: $sheetProgress,
                     peekBackground: peekFill,
                     bodyBackground: peekFill,
