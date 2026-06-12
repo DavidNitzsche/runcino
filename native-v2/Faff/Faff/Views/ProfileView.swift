@@ -136,6 +136,7 @@ struct ProfileView: View {
         .task { await reload() }
         .refreshable { await reload() }
         .sheet(item: $glossaryEntry) { e in GlossarySheet(entry: e) }
+        .sheet(isPresented: $showNameEdit) { nameEditSheet }
     }
 
     /// 2026-06-02 · Sign-out button shipped to ProfileView's bottom.
@@ -144,6 +145,8 @@ struct ProfileView: View {
     /// surfaces' sign-out paths stay symmetric.
     @State private var glossaryEntry: GlossaryEntry? = nil
     @State private var showSignOutConfirm: Bool = false
+    @State private var showNameEdit: Bool = false
+    @State private var nameDraft: String = ""
     private var signOutButton: some View {
         Button {
             showSignOutConfirm = true
@@ -341,14 +344,64 @@ struct ProfileView: View {
                     in: Circle()
                 )
             VStack(alignment: .leading, spacing: 4) {
-                Text(profile?.identity.full_name ?? "Faff Runner")
-                    .font(.display(24, weight: .bold))
-                    .foregroundStyle(Theme.txt)
+                // Tap the name to edit it inline — easier than going into
+                // Settings. PATCHes /api/profile { full_name }, then reloads.
+                Button {
+                    nameDraft = profile?.identity.full_name ?? ""
+                    showNameEdit = true
+                } label: {
+                    HStack(spacing: 7) {
+                        Text(profile?.identity.full_name ?? "Add your name")
+                            .font(.display(24, weight: .bold))
+                            .foregroundStyle(profile?.identity.full_name == nil ? Theme.txt.opacity(0.55) : Theme.txt)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.4))
+                    }
+                }
+                .buttonStyle(.plain)
                 Text(subtitleLine)
                     .font(.body(13, weight: .medium))
                     .foregroundStyle(Theme.txt.opacity(0.7))
             }
             Spacer()
+        }
+    }
+
+    private var nameEditSheet: some View {
+        ZStack {
+            Color(hex: 0x07211F).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Your name")
+                    .font(.display(24, weight: .bold)).foregroundStyle(Theme.txt)
+                TextField("Your name", text: $nameDraft)
+                    .textFieldStyle(.plain)
+                    .font(.body(17, weight: .bold)).foregroundStyle(Theme.txt)
+                    .autocorrectionDisabled()
+                    .padding(14)
+                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                Spacer()
+                Button { saveName() } label: {
+                    Text("Save")
+                        .font(.body(15, weight: .extraBold))
+                        .foregroundStyle(Color(hex: 0x06302E))
+                        .frame(maxWidth: .infinity).padding(.vertical, 15)
+                        .background(Theme.green, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(24).padding(.top, 12)
+        }
+        .presentationDetents([.height(250)])
+    }
+
+    private func saveName() {
+        let n = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        showNameEdit = false
+        let value: Any = n.isEmpty ? NSNull() : n
+        Task {
+            try? await API.updateProfile(["full_name": value])
+            await reload()
         }
     }
 
