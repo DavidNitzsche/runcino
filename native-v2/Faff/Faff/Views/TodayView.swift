@@ -699,7 +699,10 @@ struct TodayView: View {
                         heroStat(key: "TIME", value: t)
                     }
                 }
-                .padding(.top, 20)
+                // Tightened 20 → 14 · with the 88pt headline's descender +
+                // heroBlock's -12 pull-up, the gap below EASY read wider than
+                // the gap above it (David). This evens them.
+                .padding(.top, 14)
             }
 
             // All run types use the same step-list layout.
