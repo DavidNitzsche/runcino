@@ -93,7 +93,7 @@ struct WeekStrip: View {
             }
         }
         .frame(width: cellWidth)
-        .padding(.vertical, 9)
+        .padding(.top, 7).padding(.bottom, 11)
         .background(
             RoundedRectangle(cornerRadius: 15)
                 .fill(isSelected ? Color.white.opacity(0.17) : Color.clear)

@@ -56,12 +56,64 @@ struct HealthView: View {
             FaffMeshView(mesh: .neutral)
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Color.clear.frame(height: 44)
-                pinnedRegion
-                sectionPanel
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Bar (50) + shared header pill (84) clearance, matching Today.
+                    Color.clear.frame(height: 132)
+
+                    // Big readiness-band word headline · leads below the pill
+                    // the way TEMPO leads Today. Manual-log entry sits top-right.
+                    HStack(alignment: .top) {
+                        Text(readinessWord)
+                            .font(.heroDisplay(88))
+                            .tracking(-2)
+                            .foregroundStyle(readinessBandColor)
+                            .minimumScaleFactor(0.55)
+                            .lineLimit(1)
+                        Spacer()
+                        Button { showLogSheet = true } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 38, height: 38)
+                                .background(Color.white.opacity(0.12), in: Circle())
+                                .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 14)
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.top, 6)
+
+                    // Long scroll · the whole readiness picture on one surface.
+                    // Overview (WHAT IS DRIVING IT …) leads, then each section
+                    // under its own header. Per-metric detail still opens on tap.
+                    VStack(alignment: .leading, spacing: 0) {
+                        if let msg = loadState.failureMessage, state == nil {
+                            Text(msg)
+                                .font(.body(14, weight: .semibold))
+                                .foregroundStyle(Color(hex: 0xFC4D64))
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, 40)
+                        } else {
+                            overviewPane
+                            healthSectionDivider("BODY");     bodyPane
+                            healthSectionDivider("SLEEP");    sleepPane
+                            healthSectionDivider("FORM");     formPane
+                            healthSectionDivider("INSIGHTS"); insightsPane
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 18)
+                    .padding(.bottom, 70)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
+            .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
         }
+        // Shared frosted header pill · readiness ring + verdict, in the Today
+        // week-strip slot. Replaces the old section menu.
+        .faffHeaderPill { healthReadinessPill }
         .task { await reload() }
         .refreshable { await reload() }
         .sheet(isPresented: $showLogSheet) {
@@ -130,10 +182,7 @@ struct HealthView: View {
             .padding(.top, 4)
             .padding(.bottom, 14)
 
-            // Segmented control
-            HealthSegmentedControl(selection: $section)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
+            // Section menu moved to the shared header pill (faffHeaderPill).
         }
         // 2026-06-03 round 75 · pinned region rides the page gradient.
         // Earlier radial+linear overlays were creating bright + muted
@@ -523,6 +572,62 @@ struct HealthView: View {
         let f = DateFormatter()
         f.dateFormat = "EEE · MMM d"
         return "RECOVERY & FORM · \(f.string(from: Date()).uppercased())"
+    }
+
+    /// Single punchy band word for the big headline (the Health analog of
+    /// Today's TEMPO / Train's BUILD). Falls back to the score when the band
+    /// hasn't resolved yet.
+    private var readinessWord: String {
+        switch (readiness?.band ?? "").lowercased() {
+        case "sharp":    return "SHARP"
+        case "ready":    return "READY"
+        case "moderate": return "HOLD"
+        case "pullback": return "EASE"
+        default:         return readiness?.score.map { "\($0)" } ?? "—"
+        }
+    }
+
+    /// Headline tint for the band word · green ready, amber hold, red ease.
+    private var readinessBandColor: Color {
+        switch (readiness?.band ?? "").lowercased() {
+        case "sharp", "ready": return Color(hex: 0x3EBD41)
+        case "moderate":       return Color(hex: 0xF3AD38)
+        case "pullback":       return Color(hex: 0xFC4D64)
+        default:               return Color(hex: 0x8A90A0)
+        }
+    }
+
+    /// Compact readiness ring + verdict for the shared header pill (the Today
+    /// week-strip slot). Sized to the fixed 84pt pill · replaces the old gauge.
+    private var healthReadinessPill: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().stroke(Color.white.opacity(0.15), lineWidth: 5)
+                Circle()
+                    .trim(from: 0, to: min(1, max(0, Double(readiness?.score ?? 0) / 100)))
+                    .stroke(readinessBandColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text(readiness?.score.map(String.init) ?? "—")
+                    .font(.display(19, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 56, height: 56)
+            verdictAttributedText
+                .font(.body(11.5, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineSpacing(1)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 15)
+    }
+
+    /// Section header for the long health scroll · BODY / SLEEP / FORM / INSIGHTS.
+    private func healthSectionDivider(_ title: String) -> some View {
+        SectionLabel(title: title)
+            .padding(.top, 28)
+            .padding(.bottom, 10)
     }
 
     /// Coach voice for the hero. Action phrase wrapped in **double

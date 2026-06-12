@@ -54,13 +54,13 @@ struct TrainView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    Color.clear.frame(height: 44)
+                    // Reserve the shared header-pill slot (50pt bar + ~82pt
+                    // pill), matching the Today week strip. The BUILD hero
+                    // scrolls and dissolves behind the pill like TEMPO does.
+                    Color.clear.frame(height: 132)
                     header
                         .padding(.horizontal, 22)
-                        .padding(.top, 10)
-                    phaseContextCard
-                        .padding(.horizontal, 22)
-                        .padding(.top, 16)
+                        .padding(.top, 6)
                     thisWeekCard
                         .padding(.horizontal, 22)
                         .padding(.top, 16)
@@ -77,9 +77,48 @@ struct TrainView: View {
                 }
             }
             .refreshable { await reload() }
+            // Dissolve the BUILD hero into the mesh behind the frosted pill,
+            // same as TEMPO on Today (clear above the pill, ramp behind it).
+            .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
         }
+        // Shared frosted header pill · phase summary in the week-strip slot.
+        .faffHeaderPill { phasePill }
         .task { await reload() }
         .onAppear { syncDisplayPhase() }
+    }
+
+    /// Glance pill for the shared header slot · phase eyebrow + 2-line summary,
+    /// sized to match the Today week strip so every tab carries one header.
+    @ViewBuilder
+    private var phasePill: some View {
+        let phaseKey = (state?.currentPhase ?? "base").lowercased()
+        let phase = TrainPhase(phaseKey: phaseKey)
+        let totalWks = state?.weeks.count ?? 13
+        let weeks = state?.weeks ?? []
+        let range = phaseWeekRange(phaseKey: phaseKey, weeks: weeks)
+        let phaseColor = accent(for: phase)
+        HStack(alignment: .top, spacing: 12) {
+            Capsule()
+                .fill(phaseColor)
+                .shadow(color: phaseColor.opacity(0.6), radius: 4)
+                .frame(width: 4)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("\(phase.label) PHASE · WK \(range.0)–\(range.1) OF \(totalWks)")
+                    .font(.body(10.5, weight: .extraBold))
+                    .tracking(1.4)
+                    .foregroundStyle(phaseColor)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Text(phaseContextBody(for: phase))
+                    .font(.body(12.5, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.82))
+                    .lineSpacing(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 13)
     }
 
     // MARK: Topbar (avatar + refresh)
@@ -131,77 +170,24 @@ struct TrainView: View {
         .disabled(refreshing)
     }
 
-    // MARK: Header (eyebrow + days · phase big · subtitle · week pill)
+    // MARK: Header (phase big — the lone headline below the pill)
 
     @ViewBuilder
     private var header: some View {
-        let race = state?.race
-        let raceLabel = race?.name.uppercased() ?? "RACE TBD"
-        let goal = (race?.goal?.isEmpty == false ? race!.goal! : "Sub —").uppercased()
-        let days = race?.days_to_race ?? 0
-        let curIdx = state?.currentWeekIdx ?? 0
-        let totalWks = max(1, state?.weeks.count ?? 13)
-        let curWeek = state?.weeks.first(where: { $0.isCurrent })
-        let weekMi = Int((curWeek?.plannedMi ?? 0).rounded())
         let phaseKey = (state?.currentPhase ?? "base").lowercased()
         let phase = TrainPhase(phaseKey: phaseKey)
-        let phaseLabel = phase.label
-        let phaseSub = phaseSubtitle(for: phase, totalWeeks: totalWks)
         let phaseColor = accent(for: phase)
 
-        VStack(alignment: .leading, spacing: 0) {
-            // ROAD TO X · SUB X:XX  |  XXd
-            HStack(alignment: .center) {
-                (
-                    Text("ROAD TO \(raceShortName(raceLabel)) ")
-                    + Text("· \(goal)").foregroundColor(Theme.txt.opacity(0.62))
-                )
-                .font(.body(10.5, weight: .extraBold))
-                .tracking(1.6)
-                .foregroundStyle(Theme.txt.opacity(0.82))
-                .lineLimit(1).minimumScaleFactor(0.75)
-                Spacer()
-                if days > 0 {
-                    Text("\(days)d")
-                        .font(.body(12, weight: .bold))
-                        .foregroundStyle(Theme.txt.opacity(0.85))
-                        .padding(.horizontal, 11).padding(.vertical, 4)
-                        .background(Theme.Glass.fill, in: Capsule())
-                        .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
-                }
-            }
-
-            // Phase big — matches Today's effort hero word
-            Text(phaseLabel)
-                .font(.heroDisplay(88))
-                .tracking(-2)
-                .foregroundStyle(phaseColor)
-                .minimumScaleFactor(0.55)
-                .lineLimit(1)
-                .padding(.top, 14)
-
-            // Phase subtitle
-            Text(phaseSub)
-                .font(.body(13.5, weight: .bold))
-                .foregroundStyle(Theme.txt.opacity(0.9))
-                .padding(.top, 9)
-
-            // WK pill
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(phaseColor)
-                    .frame(width: 7, height: 7)
-                    .shadow(color: phaseColor.opacity(0.9), radius: 4)
-                Text("WK \(curIdx + 1) OF \(totalWks) · \(weekMi) MI")
-                    .font(.body(12.5, weight: .bold))
-                    .foregroundStyle(Theme.txt)
-            }
-            .padding(.horizontal, 13).padding(.vertical, 6)
-            .background(Theme.Glass.fill, in: Capsule())
-            .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
-            .padding(.top, 14)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Phase big — leads the body right below the pill, the way TEMPO
+        // leads Today. The pill already carries phase · week range · focus,
+        // so the body needs only the headline (the THIS-WEEK card follows).
+        Text(phase.label)
+            .font(.heroDisplay(88))
+            .tracking(-2)
+            .foregroundStyle(phaseColor)
+            .minimumScaleFactor(0.55)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: This week
@@ -211,7 +197,7 @@ struct TrainView: View {
         if let curWeek = state?.weeks.first(where: { $0.isCurrent }) {
             VStack(alignment: .leading, spacing: 13) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("THIS WEEK · WK \((state?.currentWeekIdx ?? 0) + 1)")
+                    Text("WK \((state?.currentWeekIdx ?? 0) + 1) OF \(state?.weeks.count ?? 13)")
                         .font(.body(10.5, weight: .extraBold))
                         .tracking(1.4)
                         .foregroundStyle(Theme.txt.opacity(0.66))
@@ -847,18 +833,20 @@ struct TrainView: View {
         }
     }
 
+    /// Pill copy · kept to two lines so it never truncates in the fixed-height
+    /// header pill. One tight sentence per phase.
     private func phaseContextBody(for phase: TrainPhase) -> String {
         switch phase {
         case .base:
-            return "Easy mileage and long runs growing the base week to week. Strides at the end of easy days keep the legs sharp."
+            return "Easy miles and long runs build the aerobic base."
         case .build:
-            return "Tempos and intervals sharpening your lactate threshold and VO2max. Long runs adding HMP finish miles."
+            return "Tempos and intervals sharpen your threshold and VO2max."
         case .peak:
-            return "Race-pace intervals and quality long runs at peak volume. Intensity holds while volume starts to trim."
+            return "Race-pace work at peak volume before the taper."
         case .taper:
-            return "Volume drops while intensity holds. Your body is absorbing the work — you will feel sharp by race morning."
+            return "Volume drops, intensity holds. Sharp by race morning."
         case .race:
-            return "Light activation keeps the legs fresh. Race-pace strides Thursday, rest Friday, start line race day."
+            return "Light activation keeps the legs fresh for race day."
         }
     }
 

@@ -309,11 +309,12 @@ struct TodayView: View {
                             }
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .ignoresSafeArea(edges: .bottom)
+                            .scrollClipDisabled(true)
                         }
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .ignoresSafeArea(edges: .bottom)
                     }
-                    .padding(.top, 16)
+                    .padding(.top, 8)
                 } else if isPostRunMode {
                     // Show the run directly on the main canvas — same flat
                     // layout as past-day recaps. DragSheet is suppressed
@@ -330,7 +331,8 @@ struct TodayView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(edges: .bottom)
-                    .padding(.top, 14)
+                    .padding(.top, 6)
+                    .scrollClipDisabled(true)
                 } else {
                     // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
@@ -342,13 +344,14 @@ struct TodayView: View {
                                 .minimumScaleFactor(0.55)
                                 .lineLimit(1)
                                 .padding(.horizontal, 22)
-                                .padding(.top, 14)
+                                .padding(.top, 6)
                             heroBlock
                                 .padding(.horizontal, 22)
                                 .padding(.top, 16)
                                 .padding(.bottom, 220)
                         }
                     }
+                    .scrollClipDisabled(true)
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
                 }
@@ -360,6 +363,15 @@ struct TodayView: View {
                     Spacer(minLength: 0)
                 }
             }
+            // Dissolve bleeding scroll content into the mesh (shared modifier).
+            // scrollClipDisabled lets the hero (e.g. the giant TEMPO) ride UP
+            // behind the frosted strip — desired — but it kept going up into
+            // the transparent top-bar zone too. Strip-tuned params: fully
+            // CLEAR across the top-bar zone AND the strip's top edge (≈y0–56,
+            // strip starts ~y50), with the clear→opaque ramp landing BEHIND
+            // the frosted strip (y56–80) so the dissolve is blurred away;
+            // content re-emerges softly behind the lower strip and below.
+            .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
 
             // DragSheet suppressed on past days and today-post-run.
             // On past days the flat recap is the whole page.
@@ -410,34 +422,37 @@ struct TodayView: View {
             // sheet's own "Skip this run" footer is unaffected (lives
             // inside TodayPreRunBodyV3 · separate concern).
 
-            // Week strip — rendered last so it sits above the DragSheet and
-            // all content layers. .regularMaterial background blurs content
-            // scrolling behind the strip (same frosted glass as the tab bar
-            // pill). Gradient mask fades the bottom edge of the material so
-            // there's no hard line where the blur ends.
+        }
+        // Week strip + header scrim as .overlay on the ZStack — this is the
+        // only placement guaranteed to render above scrollClipDisabled overflow.
+        // ZStack siblings lose to scroll overflow in UIKit's layer ordering;
+        // an overlay is added as a separate UIView after the ZStack's subtree.
+        .overlay(alignment: .top) {
             VStack(spacing: 0) {
-                Color.clear.frame(height: 50)
+                // Invisible spacer · holds the week strip in its place below
+                // the top bar. The opaque Theme.bg band that used to live here
+                // was the hard-line source (flat fill over the gradient mesh);
+                // content is now dissolved by the .mask on the content stack
+                // above, so this only needs to reserve the strip's offset.
+                Color.clear
+                    .frame(height: 50)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
                 if !allStripWeeks.isEmpty {
                     WeekStrip(weeks: allStripWeeks, selectedID: $selectedDayID, weekIndex: $selectedWeekIndex)
-                        .padding(.top, 2)
-                        .background(
-                            Rectangle()
-                                .fill(.regularMaterial)
-                                .mask(
-                                    LinearGradient(
-                                        stops: [
-                                            .init(color: .black, location: 0),
-                                            .init(color: .black, location: 0.65),
-                                            .init(color: .clear, location: 1)
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
+                        // Symmetric vertical inset · the day cells center inside
+                        // the strip, so a top-only inset left more buffer above
+                        // the row than below. Match it on the bottom.
+                        .padding(.vertical, 2)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Theme.line, lineWidth: 1)
                         )
+                        .padding(.horizontal, 12)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity)
         }
         .task {
             await loadAll()
@@ -1037,7 +1052,7 @@ struct TodayView: View {
     /// plan but no fake recap data is rendered. Minimal by design.
     @ViewBuilder
     private var pastDayNoRunStub: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(shortDOWLabel)
                 .font(.body(11, weight: .extraBold))
                 .tracking(1.4)
@@ -1049,10 +1064,10 @@ struct TodayView: View {
             Text(pastDayNoRunSubtitle)
                 .font(.body(13.5, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.78))
-                .padding(.top, 4)
+                .padding(.top, 2)
         }
         .padding(.horizontal, 22)
-        .padding(.top, 28)
+        .padding(.top, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

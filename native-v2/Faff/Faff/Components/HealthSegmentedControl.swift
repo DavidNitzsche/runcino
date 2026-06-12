@@ -32,6 +32,10 @@ enum HealthSection: String, CaseIterable, Identifiable {
 
 struct HealthSegmentedControl: View {
     @Binding var selection: HealthSection
+    /// Drop the dark pill container so a host (e.g. the shared header pill)
+    /// supplies the chrome — the buttons then sit directly on the host's
+    /// frosted surface, the way the week-strip day cells do.
+    var chromeless: Bool = false
 
     var body: some View {
         HStack(spacing: 3) {
@@ -61,14 +65,16 @@ struct HealthSegmentedControl: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(Color.black.opacity(0.28))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-        )
+        .padding(chromeless ? 0 : 4)
+        .background {
+            if !chromeless {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(Color.black.opacity(0.28))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+            }
+        }
     }
 }

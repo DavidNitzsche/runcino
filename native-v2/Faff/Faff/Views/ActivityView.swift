@@ -82,6 +82,9 @@ struct ActivityView: View {
                 }
                 .padding(.bottom, 120)
             }
+            // Interim · clears most of the bar without touching the resting
+            // content (44pt clearance).
+            .faffHeaderDissolve(clearTo: 40, opaqueAt: 44)
         }
         .task { await reload(); await loadStreak() }
         .refreshable { await reload() }

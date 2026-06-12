@@ -30,9 +30,21 @@ struct TargetsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    Color.clear.frame(height: 44)
+                    // Bar (50) + shared header pill (84) clearance, matching Today.
+                    Color.clear.frame(height: 132)
+                    // Big headline · the goal finish time without seconds, the
+                    // way TEMPO leads Today.
+                    Text(goalHeadline)
+                        .font(.heroDisplay(88))
+                        .tracking(-2)
+                        .foregroundStyle(Color(hex: 0xF3AD38))
+                        .minimumScaleFactor(0.55)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 6)
                     heroBlock
-                        .padding(.horizontal, 24).padding(.top, 20)
+                        .padding(.horizontal, 24).padding(.top, 16)
 
                     section("RACES") {
                         if let r = races, !r.races.isEmpty {
@@ -78,7 +90,12 @@ struct TargetsView: View {
                 }
                 .padding(.bottom, 130)
             }
+            // Dissolve the projection panel into the mesh behind the frosted
+            // pill, same as Today/Train.
+            .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
         }
+        // Shared frosted header pill · condensed race summary in the slot.
+        .faffHeaderPill { racePill }
         .task { await reload() }
         .refreshable { await reload() }
         .sheet(isPresented: $showNewGoalSheet) {
@@ -214,56 +231,61 @@ struct TargetsView: View {
         RaceClock.seconds(from: g)
     }
 
-    private var heroBlock: some View {
+    /// Goal finish time without seconds for the big headline · "1:30:00" → "1:30".
+    private var goalHeadline: String {
+        guard let g = hero.goal, !g.isEmpty else { return "—" }
+        let parts = g.split(separator: ":")
+        if parts.count == 3 { return "\(parts[0]):\(parts[1])" }
+        return g
+    }
+
+    /// Condensed race summary for the shared header pill · A-RACE · short
+    /// name · full name on the left; days-out · goal time · pace on the
+    /// right. Replaces the old 88pt AFC hero that headed the scroll body.
+    private var racePill: some View {
         let h = hero
-        return VStack(alignment: .leading, spacing: 16) {
-            SpecLabel(text: h.name != nil ? "A-RACE" : "TOP GOAL", size: 11, tracking: 2.5, color: Theme.txt.opacity(0.66))
-
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(RaceName.short(h.name, abbreviateAlways: (h.name?.count ?? 0) > 14))
-                        .font(.heroDisplay(88))
-                        .tracking(-2)
-                        .foregroundStyle(Theme.race)
-                        .minimumScaleFactor(0.55)
-                        .lineLimit(1)
-                    Text(h.name ?? "Set a target")
-                        .font(.body(13, weight: .bold))
-                        .foregroundStyle(Theme.txt.opacity(0.82))
-                        .lineLimit(2)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    if let d = h.days {
-                        Text("\(d)")
-                            .font(.display(30, weight: .semibold))
-                            .tracking(-1)
-                            .foregroundStyle(Theme.txt)
-                        SpecLabel(text: "DAYS OUT", size: 9, tracking: 1.5, color: Theme.txt.opacity(0.6))
-                    } else {
-                        Text("OPEN")
-                            .font(.body(15, weight: .semibold))
-                            .foregroundStyle(Theme.txt.opacity(0.8))
-                        SpecLabel(text: "NO DATE SET", size: 9, tracking: 1.5, color: Theme.txt.opacity(0.6))
-                    }
-                }
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(h.name != nil ? "A-RACE" : "TOP GOAL")
+                    .font(.body(9.5, weight: .extraBold)).tracking(2)
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                Text(RaceName.short(h.name, abbreviateAlways: (h.name?.count ?? 0) > 14))
+                    .font(.body(23, weight: .extraBold)).tracking(-0.5)
+                    .foregroundStyle(Theme.race)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text(h.name ?? "Set a target")
+                    .font(.body(10.5, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.7))
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(h.goal ?? "—")
-                    .font(.display(58, weight: .bold))
-                    .tracking(-2.5)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 4) {
+                if let d = h.days {
+                    Text("\(d) DAYS OUT")
+                        .font(.body(9.5, weight: .extraBold)).tracking(1.2)
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                }
+                // Goal time moved to the big headline; pace stays as the pill's
+                // goal detail.
+                Text("GOAL PACE")
+                    .font(.body(9.5, weight: .extraBold)).tracking(1.2)
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                Text(h.pace ?? "—")
+                    .font(.display(20, weight: .bold)).tracking(-0.5)
                     .foregroundStyle(Theme.txt)
-                    .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
-                Text("GOAL TIME\(h.pace.map { " · \($0)" } ?? "")")
-                    .font(.body(14, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.8))
+                    .lineLimit(1).minimumScaleFactor(0.7)
             }
-            .padding(.top, 12)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
+    }
 
-            // Closing-the-gap projection panel · replaces the legacy
-            // GapBeam placeholder. Renders cold state until /api/targets/
-            // projection returns, then switches to the full panel once we
+    /// Closing-the-gap projection panel. The race summary that used to head
+    /// this block now lives in the shared header pill (racePill).
+    private var heroBlock: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Closing-the-gap projection panel · renders cold state until
+            // /api/targets/projection returns, then the full panel once we
             // have a VDOT + projection_sec.
             Group {
                 if let p = projection, p.vdot != nil {

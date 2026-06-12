@@ -492,3 +492,79 @@ extension Color {
         #endif
     }
 }
+
+// MARK: - Global top-bar dissolve
+
+extension View {
+    /// Dissolves rising scroll content into the mesh as it enters the
+    /// global top-bar zone, so nothing bleeds behind the header. The header
+    /// (`globalTopBar` in RootTabView) is transparent on every page, so any
+    /// content scrolled up into the bar zone renders straight behind the FAFF
+    /// logo. A flat scrim painted over it can never match the charcoal-
+    /// GRADIENT mesh — its edge always seams. Instead we fade the content's
+    /// OWN alpha to nothing across the header zone, so it melts into the real
+    /// mesh it sits on (no second surface → no seam).
+    ///
+    /// `clearTo` / `opaqueAt` are measured in points from the masked view's
+    /// top, which sits at the safe-area top (a ScrollView's frame is inset to
+    /// the safe area even though its content scrolls behind the bar). Keep
+    /// `clearTo` ≥ the bar height (~50pt) so content is fully hidden through
+    /// the whole header; `opaqueAt` is where it returns to full opacity —
+    /// behind the frosted pill/strip on tabbed pages.
+    ///
+    /// - Parameters:
+    ///   - clearTo: points kept fully hidden (the header zone).
+    ///   - opaqueAt: point at which content reaches full opacity. On pages
+    ///     with a header pill/strip this lands behind it so the ramp is
+    ///     blurred away; bare pages land it just below the bar.
+    func faffHeaderDissolve(clearTo: CGFloat = 50, opaqueAt: CGFloat = 58) -> some View {
+        mask(alignment: .top) {
+            VStack(spacing: 0) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .clear, location: min(0.999, clearTo / opaqueAt)),
+                        .init(color: .black, location: 1),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: opaqueAt)
+                Color.black
+            }
+            .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    /// Frosted header pill in the global top-bar slot — the same container the
+    /// Today week strip uses (regularMaterial · r18 · hairline · 12pt side
+    /// inset · 50pt clearance under the FAFF bar). Every tab fills it with its
+    /// own glanceable summary while the page scrolls and dissolves behind it
+    /// (pair with `faffHeaderDissolve`). Keeps position/size/style identical
+    /// across tabs; only the contents change.
+    func faffHeaderPill<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        overlay(alignment: .top) {
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: 50)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
+                content()
+                    .frame(maxWidth: .infinity)
+                    // Fixed height = the Today week strip (80pt content + 4pt
+                    // inset). Every page's pill is therefore the exact same
+                    // size and position; only the contents differ. A flexible
+                    // child (e.g. an accent capsule) now fills the pill height
+                    // cleanly instead of being proposed the whole screen.
+                    .frame(height: 84)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Theme.line, lineWidth: 1)
+                    )
+                    .padding(.horizontal, 12)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
