@@ -44,7 +44,13 @@ targets:
     info:
       path: Faff/Faff/Info.plist
       properties:
-        UILaunchScreen: {}
+        # Dark launch screen — UIColorName points at the LaunchBackground
+        # color asset (Theme.bg 0x0A0C10) so the system launch image matches
+        # the dark app instead of flashing white. MUST live here: xcodegen
+        # regenerates Info.plist from this block on every ship, so an edit made
+        # directly to Info.plist gets clobbered (caught shipping TF 212).
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: faff
