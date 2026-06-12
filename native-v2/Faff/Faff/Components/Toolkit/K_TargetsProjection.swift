@@ -450,22 +450,28 @@ struct TargetsProjectionPanel: View {
 
     @ViewBuilder
     private var metaPills: some View {
-        HStack(spacing: 6) {
-            VdotMetaPill(key: "VDOT", value: formatVdot(summary.vdot))
-            if let goalV = summary.confidenceLabel?.evidence?.goalVdot {
-                VdotMetaPill(key: "GOAL", value: formatVdot(goalV))
+        // Up to 5 chips (VDOT / GOAL / B / HELD / MOVE) exceed the panel
+        // width. A plain HStack would stretch the card's layout past the
+        // screen and let the whole page drag sideways — contain the overflow
+        // in a horizontal scroll so only the chip row scrolls, never the page.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                VdotMetaPill(key: "VDOT", value: formatVdot(summary.vdot))
+                if let goalV = summary.confidenceLabel?.evidence?.goalVdot {
+                    VdotMetaPill(key: "GOAL", value: formatVdot(goalV))
+                }
+                if let bSec = summary.goalSafeSec, bSec > 0 {
+                    VdotMetaPill(key: "B", value: formatTime(bSec))
+                }
+                if summary.heldDays > 0 {
+                    VdotMetaPill(key: "HELD", value: "\(summary.heldDays)d")
+                }
+                if let mv = summary.lastMove {
+                    let arrow = mv.deltaVdot >= 0 ? "+" : ""
+                    VdotMetaPill(key: "MOVE", value: "\(arrow)\(String(format: "%.1f", mv.deltaVdot)) · \(relativeDate(mv.iso))")
+                }
             }
-            if let bSec = summary.goalSafeSec, bSec > 0 {
-                VdotMetaPill(key: "B", value: formatTime(bSec))
-            }
-            if summary.heldDays > 0 {
-                VdotMetaPill(key: "HELD", value: "\(summary.heldDays)d")
-            }
-            if let mv = summary.lastMove {
-                let arrow = mv.deltaVdot >= 0 ? "+" : ""
-                VdotMetaPill(key: "MOVE", value: "\(arrow)\(String(format: "%.1f", mv.deltaVdot)) · \(relativeDate(mv.iso))")
-            }
-            Spacer(minLength: 0)
+            .padding(.vertical, 1)
         }
     }
 
