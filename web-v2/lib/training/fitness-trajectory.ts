@@ -51,6 +51,10 @@ import { predictRaceTime, vdotFromRace } from './vdot';
 export const BASE_BUILD_RATE = 0.35; // VDOT per week, focused block
 export const MAX_BLOCK_GAIN = 5.0;   // VDOT, ceiling for one block
 export const TAPER_WEEKS = 2;        // no fitness gain modeled in taper
+/** Max unconfirmed, training-derived fitness the projection will apply on top
+ *  of the race anchor (the "upgrade gear"). Training is a LEAD, not a verdict
+ *  (Research/01 §triggers-to-retest) — a race/TT confirms more than this. */
+export const OVERPERFORMANCE_CAP_VDOT = 4.0;
 
 export interface FitnessTrajectory {
   /** Responsive current fitness (race anchor + training). */
@@ -89,6 +93,19 @@ export interface FitnessTrajectory {
   /** The extra VDOT/wk over the projected slope needed to reach goal. 0 when
    *  already on track. Drives the "what closes it" coaching line. */
   rateShortfallPerWeek: number;
+  /** 2026-06-12 · unconfirmed, training-derived fitness applied to the projection
+   *  (HR-controlled over-performance on recent threshold work). Lives in PROJECTION
+   *  space only — it never moves currentVdot or any prescribed pace. Capped at
+   *  OVERPERFORMANCE_CAP_VDOT. 0 when the runner isn't beating the plan. */
+  overPerformanceBonusVdot: number;
+  /** 2026-06-12 · the upgrade gear: projected to BEAT the goal beyond noise.
+   *  The projection can finally read PAST the goal, mirroring how drift reads short. */
+  aheadOfGoal: boolean;
+  /** 2026-06-12 · the trajectory has reached/passed the plan's prescribed ceiling
+   *  — the plan trains for LESS than the runner is tracking toward. The trigger to
+   *  offer a faster goal + rebuild (the plan is the limiter, not the runner).
+   *  null when no plan signal supplied. */
+  planUnderBuilt: boolean | null;
 }
 
 function clamp(x: number, lo: number, hi: number): number {
@@ -118,6 +135,10 @@ export function projectFitnessTrajectory(args: {
    *  capped at (plannedTargetVdot − currentVdot): the plan is the stimulus
    *  ceiling. Omit for a plan-agnostic projection (research build rate only). */
   plannedTargetVdot?: number | null;
+  /** 2026-06-12 · unconfirmed training-derived over-performance (VDOT), from the
+   *  caller's HR-controlled signal. Applied in projection space on top of the
+   *  anchor; never touches currentVdot or paces. Capped at OVERPERFORMANCE_CAP_VDOT. */
+  overPerformanceBonusVdot?: number | null;
 }): FitnessTrajectory | null {
   const { currentVdot, goalSec, raceDistanceMi, weeksToRace } = args;
   if (!currentVdot || currentVdot <= 0) return null;
@@ -129,17 +150,32 @@ export function projectFitnessTrajectory(args: {
   if (goalVdot == null) return null;
 
   const plannedTargetVdot = args.plannedTargetVdot ?? null;
-  // The plan is the stimulus ceiling — you don't out-gain what it prescribes.
+
+  // 2026-06-12 · the UPGRADE gear. Over-performance is demonstrated-but-
+  // unconfirmed fitness (HR-controlled threshold work beating prescribed pace)
+  // that the race anchor hasn't caught up to. It rides in PROJECTION space on
+  // top of the anchor — currentVdot and every prescribed pace stay put. Capped
+  // so training alone can't manufacture a wild jump (research: training is a
+  // lead, confirm with a race/TT to lock it).
+  const overPerfBonus = clamp(args.overPerformanceBonusVdot ?? 0, 0, OVERPERFORMANCE_CAP_VDOT);
+  // What the runner has actually shown they are, for sizing the remaining build.
+  const effectiveCurrentVdot = currentVdot + overPerfBonus;
+
+  // The plan is the stimulus ceiling for the BUILD gain — measured from where
+  // they've shown they are, not the stale anchor. Once over-performance reaches
+  // that ceiling, the build adds nothing more and planUnderBuilt fires below.
   const planGainCap = plannedTargetVdot != null
-    ? Math.max(0, plannedTargetVdot - currentVdot)
+    ? Math.max(0, plannedTargetVdot - effectiveCurrentVdot)
     : Infinity;
 
   const buildWeeks = Math.max(0, weeksToRace - TAPER_WEEKS);
-  const projectedGainVdot = clamp(
+  const plannedGainVdot = clamp(
     buildWeeks * BASE_BUILD_RATE * executionQuality,
     0,
     Math.min(MAX_BLOCK_GAIN, planGainCap),
   );
+  // Total gain from the anchor = unconfirmed over-performance + the planned build.
+  const projectedGainVdot = overPerfBonus + plannedGainVdot;
   const projectedVdot = Math.round((currentVdot + projectedGainVdot) * 10) / 10;
 
   const currentSec = predictRaceTime(currentVdot, raceDistanceMi);
@@ -149,9 +185,18 @@ export function projectFitnessTrajectory(args: {
   const gapSec = projectedSec != null ? projectedSec - goalSec : null;
   // 0.2 VDOT ≈ 10-12s at HM · within noise, call it reachable.
   const reachable = gapVdot <= 0.2;
+  // 2026-06-12 · the upgrade gear's headline: projected to BEAT the goal beyond
+  // noise. Mirrors how the drift detectors let the projection read SHORT.
+  const aheadOfGoal = gapVdot < -0.2;
   // Is the plan's prescribed ceiling enough to reach the goal? (Same 0.3 grace.)
   const planBuiltForGoal = plannedTargetVdot != null
     ? plannedTargetVdot >= goalVdot - 0.3
+    : null;
+  // 2026-06-12 · the trajectory has reached/passed the plan's prescribed ceiling
+  // — the plan now trains for LESS than the runner is tracking toward. The signal
+  // to offer a faster goal + rebuild. null when no plan signal supplied.
+  const planUnderBuilt = plannedTargetVdot != null
+    ? projectedVdot > plannedTargetVdot + 0.3
     : null;
 
   // What rate would close the remaining gap over the build window — the
@@ -181,5 +226,8 @@ export function projectFitnessTrajectory(args: {
     buildWeeks: Math.round(buildWeeks * 10) / 10,
     executionQuality: Math.round(executionQuality * 100) / 100,
     rateShortfallPerWeek,
+    overPerformanceBonusVdot: Math.round(overPerfBonus * 10) / 10,
+    aheadOfGoal,
+    planUnderBuilt,
   };
 }

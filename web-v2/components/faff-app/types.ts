@@ -382,6 +382,10 @@ export type GoalRace = {
     buildWeeks: number;
     executionQuality: number;
     rateShortfallPerWeek: number;
+    /** 2026-06-12 · the upgrade gear (see fitness-trajectory.ts). */
+    overPerformanceBonusVdot: number;
+    aheadOfGoal: boolean;
+    planUnderBuilt: boolean | null;
   } | null;
 
   // ─── GapPanel chunks · per-race, per-runner adjusters ───

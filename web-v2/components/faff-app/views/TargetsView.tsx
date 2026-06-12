@@ -91,7 +91,9 @@ export function TargetsView({
   // which would read "behind on this runway" directly under a hero that says
   // "within reach"). reachable → HIGH, close → MEDIUM, far → LOW.
   const conf: { tier: string; word: string; descriptor: string; detail: string } | null = traj
-    ? (traj.reachable
+    ? (traj.aheadOfGoal
+        ? { tier: 'high', word: 'AHEAD', descriptor: 'tracking to beat it', detail: `${formatGap(Math.abs(traj.gapSec ?? 0))} ahead of goal · confirm with a tune-up` }
+        : traj.reachable
         ? { tier: 'high', word: 'HIGH', descriptor: 'tracking to hit it', detail: 'on the projected path · hold the plan' }
         : traj.gapVdot <= 1.5
           ? { tier: 'medium', word: 'MEDIUM', descriptor: 'within reach', detail: `${formatGap(traj.gapSec ?? 0)} to find by race day` }

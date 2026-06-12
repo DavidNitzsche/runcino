@@ -44,7 +44,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { isoDaysBefore } from '@/lib/runs/volume';
-import { predictRaceTime, vdotFromRace, tPaceFromVdot } from './vdot';
+import { predictRaceTime, vdotFromRace, tPaceFromVdot, vdotFromTpace } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
@@ -272,6 +272,14 @@ export async function computeGoalProjection(args: {
   const plannedTargetVdot = vdot != null
     ? await loadPlannedTargetVdot(userUuid, raceDistanceMi).catch(() => null)
     : null;
+  // 2026-06-12 · the UPGRADE gear · symmetric opposite of the drift detectors.
+  // Controlled over-performance on recent threshold work → unconfirmed
+  // training-derived fitness the projection can read PAST goal with. Projection
+  // space only — never moves vdot or any prescribed pace. 0 unless he's beating
+  // the plan, so this is dormant for a runner who's merely on track.
+  const overPerf = vdot != null
+    ? await computeOverPerformanceBonus(userUuid, vdot).catch(() => ({ bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 }))
+    : { bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 };
   const trajectory = (vdot != null && daysToRace != null)
     ? projectFitnessTrajectory({
         currentVdot: vdot,
@@ -280,6 +288,7 @@ export async function computeGoalProjection(args: {
         weeksToRace: daysToRace / 7,
         executionQuality,
         plannedTargetVdot,
+        overPerformanceBonusVdot: overPerf.bonusVdot,
       })
     : null;
 
@@ -324,6 +333,98 @@ function executionQualityFromTestPoints(
   let q = w > 0 ? wsum / w : 0.7;
   if (missedKeyWorkouts) q *= 0.8;
   return Math.round(Math.max(0, Math.min(1, q)) * 100) / 100;
+}
+
+/** 2026-06-12 · the UPGRADE gear · the symmetric opposite of the drift detectors.
+ *  Sustained, controlled over-performance on THRESHOLD work → unconfirmed
+ *  training-derived fitness the forward projection can apply (projection space
+ *  only — never moves currentVdot or any prescribed pace).
+ *
+ *  Research basis: VDOT updates canonically from races/TTs; a tempo landing
+ *  "notably easier" is a +1-estimated LEAD that must be field-tested
+ *  (Research/01 §triggers-to-retest). This productizes that lead as a labeled,
+ *  capped projection bonus — NOT a canonical VDOT change. Intervals/long are
+ *  excluded: the research treats them as stimulus, not fitness reads.
+ *
+ *  Gate (David 2026-06-12): a session counts only when the work-phase pace beat
+ *  the prescribed target by ≥ BEAT_FLOOR s/mi AND avgHr stayed at/under LTHR —
+ *  faster at threshold effort = fitter; faster with HR spiking = just overcooked,
+ *  no signal. Needs ≥ MIN_SESSIONS so one hot tempo can't swing it. The bonus is
+ *  the median demonstrated VDOT gain; the trajectory clamps it to the hard cap. */
+async function computeOverPerformanceBonus(
+  userUuid: string,
+  currentVdot: number | null,
+): Promise<{ bonusVdot: number; sessions: number; medianBeatSPerMi: number }> {
+  const NONE = { bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 };
+  if (!currentVdot) return NONE;
+  const BEAT_FLOOR = 10;   // s/mi faster than prescribed to count as beating it
+  const MIN_SESSIONS = 2;  // ≥2 controlled-fast sessions before the projection moves
+  const today = await runnerToday(userUuid);
+  const since = isoDaysBefore(today, 28);
+
+  const lthr = (await pool.query<{ lthr: number | null }>(
+    `SELECT lthr FROM profile WHERE user_uuid = $1::uuid LIMIT 1`, [userUuid],
+  ).catch(() => ({ rows: [] }))).rows[0]?.lthr ?? null;
+  if (lthr == null) return NONE; // no HR governor → can't confirm "controlled"
+
+  const rows = (await pool.query<{
+    target_s: number | string | null;
+    work_pace_s: number | string | null;
+    avg_hr: number | string | null;
+  }>(
+    `SELECT pw.pace_target_s_per_mi AS target_s,
+            ( SELECT AVG((phase->>'actualPaceSPerMi')::numeric)
+                FROM coach_intents ci, jsonb_array_elements(
+                  CASE jsonb_typeof(ci.value::jsonb) WHEN 'object'
+                    THEN ci.value::jsonb->'phases' ELSE '[]'::jsonb END) AS phase
+               WHERE COALESCE(ci.user_uuid, ci.user_id::uuid) = $1::uuid
+                 AND ci.reason = 'watch_completion'
+                 AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date
+                 AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
+                               WHERE COALESCE(ci2.user_uuid, ci2.user_id::uuid) = $1::uuid
+                                 AND ci2.reason = 'watch_completion'
+                                 AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date)
+                 AND phase->>'type' = 'work' AND (phase->>'actualPaceSPerMi')::numeric > 0
+            ) AS work_pace_s,
+            ( SELECT (r.data->>'avgHr')::numeric FROM runs r
+               WHERE r.user_uuid = $1::uuid AND r.data->>'date' = pw.date_iso
+                 AND NOT (r.data ? 'mergedIntoId') AND r.absorbed_into_canonical_at IS NULL
+                 AND (r.data->>'avgHr') IS NOT NULL
+               LIMIT 1
+            ) AS avg_hr
+       FROM plan_workouts pw JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE tp.user_uuid = $1::uuid AND tp.archived_iso IS NULL
+        AND pw.type IN ('tempo','threshold','race_week_tuneup')
+        AND pw.date_iso >= $2 AND pw.date_iso <= $3`,
+    [userUuid, since, today],
+  ).catch(() => ({ rows: [] }))).rows;
+
+  const bonuses: number[] = [];
+  const beats: number[] = [];
+  for (const r of rows) {
+    const target = r.target_s != null ? Number(r.target_s) : null;
+    const work = r.work_pace_s != null ? Number(r.work_pace_s) : null;
+    const hr = r.avg_hr != null ? Number(r.avg_hr) : null;
+    if (target == null || work == null || hr == null) continue;
+    const beatBy = target - work;      // +ve = faster than prescribed
+    if (beatBy < BEAT_FLOOR) continue; // not meaningfully faster
+    if (hr > lthr) continue;           // ran hot → overcooked, not a fitness read
+    const demonstrated = vdotFromTpace(work);
+    if (demonstrated == null) continue;
+    bonuses.push(Math.max(0, demonstrated - currentVdot));
+    beats.push(beatBy);
+  }
+  if (bonuses.length < MIN_SESSIONS) return { ...NONE, sessions: bonuses.length };
+  const median = (a: number[]): number => {
+    const s = [...a].sort((x, y) => x - y);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  return {
+    bonusVdot: Math.round(median(bonuses) * 10) / 10,
+    sessions: bonuses.length,
+    medianBeatSPerMi: Math.round(median(beats)),
+  };
 }
 
 /** Load the next 1-3 quality workouts from the active plan · tempo,

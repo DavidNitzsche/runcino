@@ -557,7 +557,10 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
   let truthSub: string;
   if (traj) {
     eyebrow = 'On the path';
-    if (traj.reachable) {
+    if (traj.aheadOfGoal) {
+      truthHl = `<em>Ahead of ${goalLabel}</em> · tracking to beat it.`;
+      truthSub = `Executing the plan, you project to <b>${fmtClock(traj.projectedSec ?? 0)}</b> by race day · about <b>${fmtDelta(Math.abs(traj.gapSec ?? 0))} faster</b> than goal. Your recent quality work is landing ahead of plan. Confirm it with a tune-up, or commit to the faster goal below.`;
+    } else if (traj.reachable) {
       truthHl = `On track for <em>${goalLabel}</em>.`;
       truthSub = `Executing the plan, you project to <b>${fmtClock(traj.projectedSec ?? 0)}</b> by race day. Keep doing the work · the trajectory holds.`;
     } else if (traj.planBuiltForGoal === false) {
@@ -578,9 +581,11 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
       ? `The projection ${fmtClock(projSec ?? 0)} is a real gap, not an off day. <b>${goal.daysAway} days can close part of it</b> · setting a B-target keeps race day a win instead of a referendum.`
       : `The projection is deterministic · it only re-rates when a race or a breakthrough session beats your current estimate. It will not drift on its own. <b>Next test point: any quality workout that beats it, or the race.</b>`;
   }
-  const statusChipKind = traj ? (traj.reachable ? 'good' : 'watch') : status.kind;
+  const statusChipKind = traj ? ((traj.aheadOfGoal || traj.reachable) ? 'good' : 'watch') : status.kind;
   const statusChipText = traj
-    ? (traj.reachable ? 'On track' : `${fmtDelta(traj.gapSec ?? 0)} to find`)
+    ? (traj.aheadOfGoal ? `${fmtDelta(Math.abs(traj.gapSec ?? 0))} ahead`
+      : traj.reachable ? 'On track'
+      : `${fmtDelta(traj.gapSec ?? 0)} to find`)
     : status.text;
 
   return (
@@ -596,6 +601,7 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
         </div>
         {traj ? <TrajectoryHero t={traj} raceDateLabel={raceDateLabel} /> : null}
         {traj && trajSeries.length >= 3 ? <TrajectorySparkline series={trajSeries} goalSec={goalSec} /> : null}
+        {traj && traj.planUnderBuilt ? <RebuildDoor slug={goal.slug} projectedSec={traj.projectedSec} goalSec={traj.goalSec} /> : null}
         {/* 2026-06-11 · one fitness line · David's strip-down. The chip pile
             (held / gap / re-rates), the 4-part gap breakdown, and the hit list
             are cut — the trajectory hero + sparkline already say where you are,
@@ -656,6 +662,54 @@ function TrajectoryHero({ t, raceDateLabel }: {
       {node(raceDateLabel, t.projectedSec != null ? fmtClock(t.projectedSec) : '—', true, projTone)}
       {arrow}
       {node('Goal', fmtClock(t.goalSec), false, 'rgba(255,255,255,.92)')}
+    </div>
+  );
+}
+
+/* ─────── the upgrade door · set a faster goal + rebuild (Phase 3) ───────
+ * Shows only when the trajectory has passed what the plan trains for
+ * (planUnderBuilt). Routes to the existing PATCH /api/race flow, which updates
+ * the goal AND auto-rebuilds the plan in one transaction. Deliberate (confirm
+ * gate) — a door the runner walks through, not a nag. */
+function RebuildDoor({ slug, projectedSec, goalSec }: {
+  slug: string; projectedSec: number | null; goalSec: number;
+}) {
+  // A slightly conservative target: the projection rounded UP to the nearest
+  // 30s — never promise faster than the trajectory actually shows.
+  const suggestSec = projectedSec != null && projectedSec < goalSec
+    ? Math.ceil(projectedSec / 30) * 30
+    : goalSec;
+  const fmtHMS = (s: number) => {
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.round(s % 60);
+    return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  };
+  const onRebuild = async () => {
+    if (!window.confirm(`Set ${fmtClock(suggestSec)} as your goal and rebuild the plan around it? Your current plan will be replaced.`)) return;
+    try {
+      const res = await fetch('/api/race', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, goal: fmtHMS(suggestSec) }),
+      });
+      if (res.ok) window.location.reload();
+      else window.alert('Could not rebuild the plan. Try setting the goal from the race page.');
+    } catch { window.alert('Could not rebuild the plan. Try setting the goal from the race page.'); }
+  };
+  return (
+    <div style={{
+      marginTop: 14, padding: '12px 14px', borderRadius: 12,
+      background: 'rgba(243,173,56,.07)', border: '1px solid rgba(243,173,56,.22)',
+    }}>
+      <div style={{ fontSize: 12, lineHeight: 1.45, color: 'rgba(255,255,255,.66)', marginBottom: 9 }}>
+        Your trajectory has passed what this plan trains for. Confirm it with a tune-up, or commit to the faster goal and rebuild the block around it.
+      </div>
+      <button onClick={onRebuild} style={{
+        fontFamily: 'var(--font-oswald, var(--font-display, inherit))', fontWeight: 600,
+        fontSize: 12.5, letterSpacing: '.04em', textTransform: 'uppercase',
+        color: '#1a1205', background: '#F3AD38', border: 'none', borderRadius: 8,
+        padding: '8px 13px', cursor: 'pointer',
+      }}>
+        Set {fmtClock(suggestSec)} goal · rebuild plan
+      </button>
     </div>
   );
 }
