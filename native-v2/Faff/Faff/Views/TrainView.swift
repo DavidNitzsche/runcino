@@ -84,6 +84,9 @@ struct TrainView: View {
         // Shared frosted header pill · phase summary in the week-strip slot.
         .faffHeaderPill { phasePill }
         .task { await reload() }
+        .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
+            Task { await reload() }
+        }
         .onAppear { syncDisplayPhase() }
     }
 

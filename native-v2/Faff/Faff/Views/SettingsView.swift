@@ -543,7 +543,14 @@ struct SettingsView: View {
             let replanned = (try? (f.endpoint == .profile
                 ? await API.updateProfile(body)
                 : await API.patchSettings(body))) ?? false
-            if replanned { await MainActor.run { showToast("Plan updated") } }
+            if replanned {
+                await MainActor.run {
+                    showToast("Plan updated")
+                    // Re-fetch the plan surfaces — Today / Train / Goal / Activity
+                    // all observe this — so the rebuilt plan shows without a relaunch.
+                    NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+                }
+            }
         }
     }
 

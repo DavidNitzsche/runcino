@@ -104,6 +104,9 @@ struct TargetsView: View {
         .faffHeaderPill { racePill }
         .task { await reload() }
         .refreshable { await reload() }
+        .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
+            Task { await reload() }
+        }
         .sheet(isPresented: $showNewGoalSheet) {
             NewGoalSheet(onSubmitted: { Task { await reload() } })
                 .presentationDetents([.medium])
