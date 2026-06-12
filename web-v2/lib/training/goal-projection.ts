@@ -48,6 +48,8 @@ import { predictRaceTime, vdotFromRace, tPaceFromVdot } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
+import { projectFitnessTrajectory, type FitnessTrajectory } from './fitness-trajectory';
+import { loadPlannedTargetVdot } from './plan-target';
 
 export type GoalStatus = 'on-track' | 'watching' | 'off-track';
 export type DriftWeight = 'strong' | 'medium' | 'weak';
@@ -154,6 +156,13 @@ export interface GoalProjection {
   /** 2026-06-08 · goal-attainment confidence (HIGH/MEDIUM/LOW). Null at
    *  cold-start. See computeConfidenceLabel. */
   confidenceLabel: ConfidenceLabel | null;
+  /** 2026-06-11 · the goal-seeking trajectory · current fitness + the planned
+   *  build (scaled by execution quality) projected to race day, with the gap
+   *  to goal and whether the plan is built to reach it. Null at cold-start
+   *  (no current VDOT) or when the race date is unknown. The piece that makes
+   *  the projection answer "executing this plan, where do I land on race day"
+   *  instead of "where am I frozen today." See lib/training/fitness-trajectory. */
+  trajectory: FitnessTrajectory | null;
 }
 
 export async function computeGoalProjection(args: {
@@ -249,6 +258,31 @@ export async function computeGoalProjection(args: {
     status,
   });
 
+  // 2026-06-11 · the goal-seeking trajectory. Current fitness + the planned
+  // build, scaled by how the runner is actually executing the plan, projected
+  // to race day. executionQuality reads the recent quality-session verdicts +
+  // missed-workout signal; plannedTargetVdot reads the plan's prescribed
+  // ceiling (so the gain can't exceed what the plan trains toward, and an
+  // under-built plan gets flagged). Null when there's no current VDOT or the
+  // race date is unknown — the display falls back to the static projection.
+  const executionQuality = executionQualityFromTestPoints(
+    recentTestPoints,
+    driftSignals.some((s) => s.kind === 'missed_key_workouts'),
+  );
+  const plannedTargetVdot = vdot != null
+    ? await loadPlannedTargetVdot(userUuid, raceDistanceMi).catch(() => null)
+    : null;
+  const trajectory = (vdot != null && daysToRace != null)
+    ? projectFitnessTrajectory({
+        currentVdot: vdot,
+        goalSec,
+        raceDistanceMi,
+        weeksToRace: daysToRace / 7,
+        executionQuality,
+        plannedTargetVdot,
+      })
+    : null;
+
   return {
     status,
     projectionSec,
@@ -261,7 +295,35 @@ export async function computeGoalProjection(args: {
     transitions,
     confidenceInterval,
     confidenceLabel,
+    trajectory,
   };
+}
+
+/** 2026-06-11 · execution quality 0..1 from recent quality-session verdicts +
+ *  whether key workouts are being missed. Feeds the fitness trajectory's slope:
+ *  a runner hitting every session projects the full planned build; one missing
+ *  or under-hitting sessions projects a discounted slope. Recency-weighted —
+ *  the most recent session counts most. Default 0.7 when there's no verdict
+ *  signal yet (assume roughly-following the plan, not nailing it). */
+function executionQualityFromTestPoints(
+  points: GoalProjection['recentTestPoints'],
+  missedKeyWorkouts: boolean,
+): number {
+  const scored = points.filter((p) => p.verdict != null);
+  if (scored.length === 0) return missedKeyWorkouts ? 0.5 : 0.7;
+  // fast = over-eager but hitting the work; slow = a real miss vs target.
+  const score = (v: 'on' | 'fast' | 'slow' | null): number =>
+    v === 'on' ? 1.0 : v === 'fast' ? 0.9 : 0.45;
+  // points arrive most-recent-first (loadRecentTestPoints ORDER BY date DESC).
+  let wsum = 0, w = 0;
+  scored.forEach((p, i) => {
+    const weight = 1 / (i + 1);
+    wsum += score(p.verdict) * weight;
+    w += weight;
+  });
+  let q = w > 0 ? wsum / w : 0.7;
+  if (missedKeyWorkouts) q *= 0.8;
+  return Math.round(Math.max(0, Math.min(1, q)) * 100) / 100;
 }
 
 /** Load the next 1-3 quality workouts from the active plan · tempo,

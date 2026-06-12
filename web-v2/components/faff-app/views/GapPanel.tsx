@@ -511,24 +511,61 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
 
   /* ─────── steady / offtrack ─────── */
   const isOff = mode === 'offtrack';
-  const truthHl = isOff
-    ? `${goal.goal.replace(':00', '')} is a <em>stretch</em> from where you are.`
-    : `Your fitness ${heldDays >= 14 ? `hasn't moved in <em>${heldDays} days</em>` : `held its mark this week`}. That's expected, not a stall.`;
-  const truthSub = isOff
-    ? `The projection ${fmtClock(projSec ?? 0)} is a real gap, not an off day. <b>${goal.daysAway} days can close part of it</b> · setting a B-target keeps race day a win instead of a referendum.`
-    : `The projection is deterministic · it only re-rates when a race or a breakthrough session beats your current estimate. It will not drift on its own. <b>Next test point: any quality workout that beats it, or the race.</b>`;
+  // 2026-06-11 · the goal-seeking trajectory leads when present. It supersedes
+  // the old frozen-snapshot copy ("fitness held its mark") and the drift-binary
+  // status: a runner can be drift-flagged "off track" yet projecting 40s off
+  // goal on a perfect-execution trajectory — the trajectory is the honest read.
+  const traj = goal.trajectory ?? null;
+  const goalLabel = goal.goal;
+  const raceDateLabel = (() => {
+    const d = goal.date ? new Date(goal.date + 'T12:00:00Z') : null;
+    if (!d || isNaN(d.getTime())) return 'Race day';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  })();
+
+  let eyebrow = isOff ? 'The math is honest' : 'Holding steady';
+  let truthHl: string;
+  let truthSub: string;
+  if (traj) {
+    eyebrow = 'On the path';
+    if (traj.reachable) {
+      truthHl = `On track for <em>${goalLabel}</em>.`;
+      truthSub = `Executing the plan, you project to <b>${fmtClock(traj.projectedSec ?? 0)}</b> by race day. Keep doing the work · the trajectory holds.`;
+    } else if (traj.planBuiltForGoal === false) {
+      truthHl = `Your plan tops out short of <em>${goalLabel}</em>.`;
+      truthSub = `Executed clean it still projects <b>${fmtClock(traj.projectedSec ?? 0)}</b>. The fix is a more aggressive plan, not a harder you · the peak quality work needs to be faster.`;
+    } else {
+      const execWord = traj.executionQuality >= 0.9
+        ? 'You\'re nailing your sessions'
+        : traj.executionQuality >= 0.7 ? 'You\'re hitting most of your sessions' : 'Some sessions are slipping';
+      truthHl = `<em>${fmtDelta(traj.gapSec ?? 0)}</em> from ${goalLabel} on this trajectory.`;
+      truthSub = `${execWord}, and the plan is built for it · the build closes the last <b>${fmtDelta(traj.gapSec ?? 0)}</b>, about <b>+${traj.rateShortfallPerWeek}/wk</b> more fitness than you\'re on pace for. Within reach.`;
+    }
+  } else {
+    truthHl = isOff
+      ? `${goal.goal.replace(':00', '')} is a <em>stretch</em> from where you are.`
+      : `Your fitness ${heldDays >= 14 ? `hasn't moved in <em>${heldDays} days</em>` : `held its mark this week`}. That's expected, not a stall.`;
+    truthSub = isOff
+      ? `The projection ${fmtClock(projSec ?? 0)} is a real gap, not an off day. <b>${goal.daysAway} days can close part of it</b> · setting a B-target keeps race day a win instead of a referendum.`
+      : `The projection is deterministic · it only re-rates when a race or a breakthrough session beats your current estimate. It will not drift on its own. <b>Next test point: any quality workout that beats it, or the race.</b>`;
+  }
+  const statusChipKind = traj ? (traj.reachable ? 'good' : 'watch') : status.kind;
+  const statusChipText = traj
+    ? (traj.reachable ? 'On track' : `${fmtDelta(traj.gapSec ?? 0)} to find`)
+    : status.text;
 
   return (
     <div className="fa-gappanel">
       <div className="pad">
         <div className="phead">
-          <div className="eyebrow">{isOff ? 'The math is honest' : 'Holding steady'}</div>
-          <span className={`statuschip ${status.kind}`}><i className="dot" />{status.text}</span>
+          <div className="eyebrow">{eyebrow}</div>
+          <span className={`statuschip ${statusChipKind}`}><i className="dot" />{statusChipText}</span>
         </div>
         <div className="truth">
           <div className="hl" dangerouslySetInnerHTML={{ __html: truthHl }} />
           <div className="sub" dangerouslySetInnerHTML={{ __html: truthSub }} />
         </div>
+        {traj ? <TrajectoryHero t={traj} raceDateLabel={raceDateLabel} /> : null}
         <div className="vmeta">
           {latest?.vdot ? <span className="pill">VDOT <b>{latest.vdot.toFixed(1)}</b></span> : null}
           {anchor ? (
@@ -646,6 +683,46 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
           </div>
         </>
       ) : null}
+    </div>
+  );
+}
+
+/* ─────── trajectory hero · today → projected race-day → goal ─────── */
+function TrajectoryHero({ t, raceDateLabel }: {
+  t: NonNullable<GoalRace['trajectory']>;
+  raceDateLabel: string;
+}) {
+  // Green when the trajectory reaches the goal, gold when it falls short.
+  const projTone = t.reachable ? '#46B97E' : '#F3AD38';
+  const node = (label: string, value: string, hero: boolean, tone: string) => (
+    <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: 0 }}>
+      <div style={{
+        fontSize: 9.5, letterSpacing: '.09em', textTransform: 'uppercase',
+        color: 'rgba(255,255,255,.42)', marginBottom: 4, whiteSpace: 'nowrap',
+      }}>{label}</div>
+      <div style={{
+        fontFamily: 'var(--font-oswald, var(--font-display, inherit))', fontWeight: 600,
+        fontSize: hero ? 27 : 19, lineHeight: 1, color: tone, fontVariantNumeric: 'tabular-nums',
+      }}>{value}</div>
+    </div>
+  );
+  const arrow = (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="rgba(255,255,255,.28)"
+         strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto' }}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+      padding: '15px 14px', borderRadius: 14, marginTop: 16,
+      background: 'rgba(255,255,255,.035)', border: '1px solid rgba(255,255,255,.07)',
+    }}>
+      {node('Today', t.currentSec != null ? fmtClock(t.currentSec) : '—', false, 'rgba(255,255,255,.62)')}
+      {arrow}
+      {node(raceDateLabel, t.projectedSec != null ? fmtClock(t.projectedSec) : '—', true, projTone)}
+      {arrow}
+      {node('Goal', fmtClock(t.goalSec), false, 'rgba(255,255,255,.92)')}
     </div>
   );
 }

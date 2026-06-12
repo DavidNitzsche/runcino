@@ -360,6 +360,29 @@ export type GoalRace = {
     toBetter: string | null;
     toWorse: string | null;
   };
+  /** 2026-06-11 · the goal-seeking trajectory · current fitness + the planned
+   *  build (scaled by execution quality) projected to race day. The piece that
+   *  makes the projection answer "executing this plan, where do I land on race
+   *  day" instead of "where am I frozen today." Null at cold-start / no race
+   *  date. Mirrors lib/training/fitness-trajectory.ts FitnessTrajectory. */
+  trajectory?: {
+    currentVdot: number;
+    projectedVdot: number;
+    goalVdot: number;
+    projectedGainVdot: number;
+    gapVdot: number;
+    currentSec: number | null;
+    projectedSec: number | null;
+    goalSec: number;
+    gapSec: number | null;
+    reachable: boolean;
+    plannedTargetVdot: number | null;
+    planBuiltForGoal: boolean | null;
+    weeksToRace: number;
+    buildWeeks: number;
+    executionQuality: number;
+    rateShortfallPerWeek: number;
+  } | null;
 
   // ─── GapPanel chunks · per-race, per-runner adjusters ───
   // Targets the four placeholder chunks in views/GapPanel.tsx with

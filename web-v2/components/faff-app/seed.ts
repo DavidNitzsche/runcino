@@ -2283,6 +2283,7 @@ export async function buildSeed(): Promise<FaffSeed> {
         (goalRace as { transitions?: unknown }).transitions = gp.transitions;
         (goalRace as { confidenceInterval?: unknown }).confidenceInterval = gp.confidenceInterval;
         (goalRace as { confidenceLabel?: unknown }).confidenceLabel = gp.confidenceLabel;
+        (goalRace as { trajectory?: unknown }).trajectory = gp.trajectory;
         // Recompute onTrack/delta against the new projection.
         const newProjSec = gp.projectionSec;
         const diff = goalSecForGP - newProjSec;

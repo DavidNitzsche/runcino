@@ -115,6 +115,30 @@ export function tPaceFromVdot(vdot: number | null | undefined): number | null {
   return Math.round(hmPaceSPerMi - 5);
 }
 
+/**
+ * 2026-06-11 · invert tPaceFromVdot: given an observed/prescribed threshold
+ * pace (s/mi), return the VDOT whose T-pace matches it. The honest read of a
+ * tempo workout — "you sustained T-pace X, which is the threshold pace for
+ * VDOT Y" — instead of vdotFromRace's "you raced X all-out" understatement.
+ *
+ * tPaceFromVdot is monotonically decreasing in VDOT (fitter → faster T-pace),
+ * so binary-search the [30,85] table. Returns null on bad input.
+ *
+ * Cite: Research/01-pace-zones-vdot.md §Daniels-T-pace (inverse of tPaceFromVdot).
+ */
+export function vdotFromTpace(tPaceSPerMi: number): number | null {
+  if (!tPaceSPerMi || tPaceSPerMi <= 0) return null;
+  let lo = 30, hi = 85;
+  for (let i = 0; i < 50; i++) {
+    const mid = (lo + hi) / 2;
+    const tp = tPaceFromVdot(mid);
+    if (tp == null) return null;
+    // T-pace slower (larger s/mi) than target → VDOT too low → search up.
+    if (tp > tPaceSPerMi) lo = mid; else hi = mid;
+  }
+  return Math.round(((lo + hi) / 2) * 10) / 10;
+}
+
 /** Format seconds → "1:44:50" (h:mm:ss) or "59:30" (m:ss). */
 export function formatRaceTime(seconds: number | null | undefined): string | null {
   if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;
