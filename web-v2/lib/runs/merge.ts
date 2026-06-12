@@ -56,7 +56,16 @@ export async function autoMergeForDate(
   // no circular mergedIntoId can survive a merge pass (the 2026-06-07 bug class
   // that zeroed 5 of David's days in volume.ts).
   for (const id of clears) {
-    await pool.query(`UPDATE runs SET data = data - 'mergedIntoId' WHERE id = $1::BIGINT`, [id]);
+    // 2026-06-11 · clear absorbed_into_canonical_at TOO. A row promoted from
+    // loser → canonical (its mergedIntoId removed) kept a stale absorbed stamp
+    // from when it WAS a loser, and every reader filters
+    // `absorbed_into_canonical_at IS NULL` — so the promoted canonical (today's
+    // run) went invisible: shown as a NEXT test point, missing from volume.
+    // A non-merged row is canonical; it is not "absorbed into" anything.
+    await pool.query(
+      `UPDATE runs SET data = data - 'mergedIntoId', absorbed_into_canonical_at = NULL WHERE id = $1::BIGINT`,
+      [id],
+    );
     changed++;
   }
   for (const { id, canonicalId } of sets) {

@@ -220,11 +220,11 @@ export async function loadVdotInputs(
                         ELSE '[]'::jsonb END) AS phase
               WHERE COALESCE(ci.user_uuid, ci.user_id) = sa.user_uuid
                 AND ci.reason = 'watch_completion'
-                AND ci.ts::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
+                AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
                 AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                               WHERE COALESCE(ci2.user_uuid, ci2.user_id) = sa.user_uuid
                                 AND ci2.reason = 'watch_completion'
-                                AND ci2.ts::date = ci.ts::date)
+                                AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = (ci.ts AT TIME ZONE 'America/Los_Angeles')::date)
                 AND phase->>'type' = 'work'
                 AND (phase->>'actualPaceSPerMi')::numeric > 0
                 AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi') IS NOT NULL
@@ -238,11 +238,11 @@ export async function loadVdotInputs(
                         ELSE '[]'::jsonb END) AS phase
               WHERE COALESCE(ci.user_uuid, ci.user_id) = sa.user_uuid
                 AND ci.reason = 'watch_completion'
-                AND ci.ts::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
+                AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
                 AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                               WHERE COALESCE(ci2.user_uuid, ci2.user_id) = sa.user_uuid
                                 AND ci2.reason = 'watch_completion'
-                                AND ci2.ts::date = ci.ts::date)
+                                AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = (ci.ts AT TIME ZONE 'America/Los_Angeles')::date)
                 AND phase->>'type' = 'work'
                 AND (phase->>'actualPaceSPerMi')::numeric > 0
                 AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi') IS NOT NULL
