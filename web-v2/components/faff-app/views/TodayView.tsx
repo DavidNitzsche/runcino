@@ -428,12 +428,11 @@ export function TodayView({
                   {showStrength ? (
                     strengthDone ? (
                       <span className="gly str strdone" title="Strength logged" aria-label="Strength logged">
-                        {/* 2026-06-03 · done state when HK / manual session
-                            matched this date. Dumbbell + check overlay. */}
+                        {/* 2026-06-11 · done = the dumbbell simply turns green
+                            (.strdone · David call). Dropped the check overlay;
+                            the green icon IS the "logged" signal. */}
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/>
-                          <circle cx="18" cy="18" r="5" fill="#3EBD41" stroke="none"/>
-                          <path d="M16 18l1.5 1.5L20 17" stroke="#fff" strokeWidth="2.2"/>
                         </svg>
                       </span>
                     ) : (
@@ -555,23 +554,11 @@ export function TodayView({
           available to other consumers · just no longer surfaces as
           standalone chrome on Today. */}
 
-      {/* 2026-06-01 · weekly strength status chip · backend brief
-          `strength-hk-web-consumer-brief.md`. Renders
-          `glance.strengthWeekStatus.summary` directly · zero chrome,
-          single line below the week strip. Silent when summary is
-          empty or no days were recommended (race weeks). This is a
-          reconciliation read-out, not a marketing nudge · "2/2 this
-          week + 1 bonus" / "1/2 · 1 skipped" — pure status. */}
-      {!isRaceDay && seed.strengthWeekStatus?.summary && seed.strengthWeekStatus.recommended.length > 0 ? (
-        <div className="strstatus">
-          <span className="strstatus-icn" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/>
-            </svg>
-          </span>
-          <span className="strstatus-tx">{seed.strengthWeekStatus.summary}</span>
-        </div>
-      ) : null}
+      {/* 2026-06-11 · the weekly "X/Y this week" strength status chip was
+          removed here (David call). Strength completion now reads off a
+          single signal · the per-day dumbbell glyph in the week strip turns
+          green when a session is logged on that day (see .strdone). No
+          separate counter line. */}
 
       {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
           Detail (Easy)), planned-and-not-rest days use PlannedHeroV2
