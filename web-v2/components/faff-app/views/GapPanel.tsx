@@ -43,6 +43,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { GoalRace } from '../types';
 import { parseRaceTime } from '@/lib/training/vdot';
+import { projectFitnessTrajectory } from '@/lib/training/fitness-trajectory';
 
 interface GapPanelProps {
   goal: GoalRace;
@@ -412,6 +413,34 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
     return 0;
   }, [series]);
 
+  // 2026-06-11 · trajectory trend · the projected race-day time for each day of
+  // VDOT history, recomputed at read-time from that day's stored VDOT + the
+  // runway it had left. With a flat VDOT it drifts UP toward current fitness as
+  // the runway closes (the honest "the window is closing" signal); a real
+  // fitness gain pulls it back toward goal. Bounded by the plan ceiling, so it
+  // never projects past the goal.
+  const trajSeries = useMemo(() => {
+    const t = goal.trajectory;
+    const dist = goal.distanceMi;
+    if (!t || goalSec == null || !dist || !goal.date) return [] as Array<{ date: string; sec: number }>;
+    const raceMs = new Date(goal.date + 'T12:00:00Z').getTime();
+    if (!Number.isFinite(raceMs)) return [];
+    const out: Array<{ date: string; sec: number }> = [];
+    for (const pt of series) {
+      if (pt.vdot == null) continue;
+      const ptMs = new Date(pt.date + 'T12:00:00Z').getTime();
+      if (!Number.isFinite(ptMs)) continue;
+      const weeksToRace = (raceMs - ptMs) / (7 * 86400000);
+      if (weeksToRace < 0) continue;
+      const proj = projectFitnessTrajectory({
+        currentVdot: pt.vdot, goalSec, raceDistanceMi: dist, weeksToRace,
+        executionQuality: t.executionQuality, plannedTargetVdot: t.plannedTargetVdot,
+      });
+      if (proj?.projectedSec != null) out.push({ date: pt.date, sec: proj.projectedSec });
+    }
+    return out;
+  }, [series, goal, goalSec]);
+
   // Resolve which mode we're in. Race-week beats off-track beats steady.
   const mode: 'cold' | 'raceweek' | 'offtrack' | 'steady' = (() => {
     if (projSec == null) return 'cold';
@@ -566,6 +595,7 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
           <div className="sub" dangerouslySetInnerHTML={{ __html: truthSub }} />
         </div>
         {traj ? <TrajectoryHero t={traj} raceDateLabel={raceDateLabel} /> : null}
+        {traj && trajSeries.length >= 3 ? <TrajectorySparkline series={trajSeries} goalSec={goalSec} /> : null}
         <div className="vmeta">
           {latest?.vdot ? <span className="pill">VDOT <b>{latest.vdot.toFixed(1)}</b></span> : null}
           {anchor ? (
@@ -723,6 +753,43 @@ function TrajectoryHero({ t, raceDateLabel }: {
       {node(raceDateLabel, t.projectedSec != null ? fmtClock(t.projectedSec) : '—', true, projTone)}
       {arrow}
       {node('Goal', fmtClock(t.goalSec), false, 'rgba(255,255,255,.92)')}
+    </div>
+  );
+}
+
+/* ─────── trajectory trend sparkline · projected race-day time over history ─────── */
+function TrajectorySparkline({ series, goalSec }: {
+  series: Array<{ date: string; sec: number }>;
+  goalSec: number | null;
+}) {
+  if (series.length < 3 || goalSec == null) return null;
+  const W = 320, H = 58, padX = 5, padTop = 9, padBot = 7;
+  const secs = series.map((s) => s.sec);
+  const yMin = Math.min(...secs, goalSec);
+  const yMax = Math.max(...secs, goalSec);
+  const range = Math.max(1, yMax - yMin);
+  const x = (i: number) => padX + (i / (series.length - 1)) * (W - 2 * padX);
+  const y = (sec: number) => padTop + ((sec - yMin) / range) * (H - padTop - padBot);
+  const pts = series.map((s, i) => `${x(i).toFixed(1)},${y(s.sec).toFixed(1)}`).join(' ');
+  const goalY = y(goalSec);
+  const last = series[series.length - 1];
+  // green when the projection is at/under goal, gold when above.
+  const tone = last.sec <= goalSec + 1 ? '#46B97E' : '#F3AD38';
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+        <span style={{ fontSize: 9.5, letterSpacing: '.09em', textTransform: 'uppercase', color: 'rgba(255,255,255,.42)' }}>
+          Projected race time · trend
+        </span>
+        <span style={{ fontSize: 9.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.32)' }}>
+          goal {fmtClock(goalSec)}
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
+        <line x1={padX} y1={goalY} x2={W - padX} y2={goalY} stroke="rgba(255,255,255,.20)" strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+        <polyline points={pts} fill="none" stroke={tone} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        <circle cx={x(series.length - 1)} cy={y(last.sec)} r="2.6" fill={tone} vectorEffect="non-scaling-stroke" />
+      </svg>
     </div>
   );
 }
