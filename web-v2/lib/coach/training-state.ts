@@ -60,10 +60,10 @@ export interface PlanWeek {
   }>;
   isCurrent: boolean;
   /** Strength-day picks · ISO YYYY-MM-DD for this Mon-Sun. Populated for
-   *  the CURRENT and NEXT week (2026-06-12 · forward look so the strip can
-   *  show strength ahead). A future week's picks use today's readiness gate,
-   *  so they're the plan-based forecast — they re-rate when the runner
-   *  reaches that week. Empty for weeks beyond next. */
+   *  the current week and ALL future weeks so the native calendar and strip
+   *  show strength markers across the full plan arc. Current + next week use
+   *  today's readiness gate; weeks 2+ out skip it (plan-phase target only)
+   *  and re-rate live when the runner reaches each week. */
   recommendedStrengthDays: string[];
   /** Days a strength session was actually LOGGED this week · ISO dates from
    *  strength_sessions. Current week only (2026-06-12). */
@@ -252,22 +252,26 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     };
   });
 
-  // 2026-06-01 · annotate current week with strength recommendations.
-  // Only the current week · re-derives forward as the runner walks
-  // into each new Monday. Per the recommender's stability rule, same
-  // (user, weekStart) always returns the same set.
+  // 2026-06-01 · annotate every current + future week with strength
+  // recommendations so the native calendar and strip show strength markers
+  // across the full plan arc.
   try {
     const { recommendStrengthDays } = await import('./strength-recommender');
     const curIdx = weeks.findIndex(w => w.isCurrent);
-    // Suggested days · current + next week (forward look · 2026-06-12). A
-    // future week's picks use today's readiness gate, so they're the
-    // plan-based forecast — they re-rate when the runner reaches that week.
-    for (const w of [weeks[curIdx], weeks[curIdx + 1]].filter(Boolean)) {
-      const rec = await recommendStrengthDays(userId, w.startDate);
+    const curWeekStart = weeks[curIdx]?.startDate ?? today;
+    // One week past current = boundary where readiness gate becomes noise.
+    // Weeks 2+ out get skipReadinessGate:true so the plan shows the
+    // phase-level target (2/wk for QUALITY) rather than today's fatigue
+    // state bleeding into a week the runner hasn't reached yet.
+    const nextWeekStart = new Date(Date.parse(curWeekStart + 'T00:00:00Z') + 7 * 86400000)
+      .toISOString().slice(0, 10);
+    const futureWeeks = weeks.filter((_, i) => i >= curIdx);
+    await Promise.all(futureWeeks.map(async (w) => {
+      const skipReadinessGate = w.startDate > nextWeekStart;
+      const rec = await recommendStrengthDays(userId, w.startDate, { skipReadinessGate });
       w.recommendedStrengthDays = rec.recommendedDays;
-    }
-    // Completed days · current week, from strength_sessions — so a logged
-    // session shows on the strip even on a non-recommended day.
+    }));
+    // Completed days · current week only, from strength_sessions.
     const cur = weeks[curIdx];
     if (cur) {
       const weekEnd = new Date(new Date(cur.startDate + 'T12:00:00Z').getTime() + 6 * 86400000)

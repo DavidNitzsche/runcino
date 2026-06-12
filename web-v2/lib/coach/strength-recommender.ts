@@ -183,17 +183,25 @@ function sessionFor(intensity: StrengthIntensity): StrengthPick['session'] {
 export async function recommendStrengthDays(
   userUuid: string,
   weekStartISO: string,
+  opts?: {
+    /** When true, skip the real-time readiness gate (suppressAll / capAtOne).
+     *  Use for planning-ahead weeks (2+ weeks out) where today's fatigue
+     *  streak is speculative noise — the recommendation re-rates live when
+     *  the runner reaches that week. */
+    skipReadinessGate?: boolean;
+  },
 ): Promise<StrengthRecommendation> {
   // 1. Load the week's plan workouts
   const weekDays = await loadWeekWorkouts(userUuid, weekStartISO);
 
   // 2. Load runner habit + preferences + readiness gate
+  const noGate: ReadinessGate = { suppressAll: false, capAtOne: false, reason: '' };
   const [habit, prefs, raceContext, loadContext, readinessGate] = await Promise.all([
     loadHabit(userUuid),
     loadPreferences(userUuid),
     loadRaceContext(userUuid, weekStartISO),
     loadLoadContext(userUuid),
-    loadReadinessGate(userUuid),
+    opts?.skipReadinessGate ? Promise.resolve(noGate) : loadReadinessGate(userUuid),
   ]);
 
   const coachIntent = habit === 'dormant' ? buildDormantIntent() : null;
