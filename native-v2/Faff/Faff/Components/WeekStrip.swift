@@ -74,12 +74,12 @@ struct WeekStrip: View {
                         Capsule()
                             .fill(Color(hex: 0x9AF0BF))   // green · strength logged
                             .frame(width: 14, height: 2.5)
-                            .offset(y: 4)
+                            .offset(y: 2)
                     } else if d.strengthSuggested {
                         Capsule()
                             .fill(Color(hex: 0x27B4E0))   // blue · recommended
                             .frame(width: 14, height: 2.5)
-                            .offset(y: 4)
+                            .offset(y: 2)
                     }
                 }
             if d.effort == .rest {
