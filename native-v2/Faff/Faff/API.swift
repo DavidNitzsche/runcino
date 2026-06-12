@@ -11,6 +11,12 @@ extension Notification.Name {
     /// Auth contract changed 2026-05-30 · /api/* no longer falls back to
     /// the default user when no token is present.
     static let faffSessionExpired = Notification.Name("faff.session.expired")
+    /// Posted when an authed request fails at the NETWORK layer (offline /
+    /// can't reach the server) rather than returning a status. RootTabView
+    /// shows a loud "can't reach Faff" banner so failures aren't silent —
+    /// the alternative is every surface quietly falling back to empty/stale
+    /// cache, which reads as data loss (see the 2026-06-12 keychain episode).
+    static let faffReachabilityLost = Notification.Name("faff.reachability.lost")
 }
 
 /// Decodes from either a JSON number OR a JSON string. Backstop against
@@ -77,7 +83,19 @@ enum API {
         //     and would clobber the new token. Compare confirms it's still the same.
         let tokenAtSend = TokenStore.shared.readToken()
         TokenStore.shared.authorize(&req)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let data: Data
+        let resp: URLResponse
+        do {
+            (data, resp) = try await URLSession.shared.data(for: req)
+        } catch {
+            // Network-level failure (offline / can't reach Faff). Surface a
+            // loud global signal so the runner sees "can't reach Faff" instead
+            // of every surface silently falling back to empty/stale cache.
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .faffReachabilityLost, object: nil)
+            }
+            throw error
+        }
         guard let http = resp as? HTTPURLResponse else { throw APIError.badStatus(-1) }
         if http.statusCode == 401 {
             let tokenNow = TokenStore.shared.readToken()

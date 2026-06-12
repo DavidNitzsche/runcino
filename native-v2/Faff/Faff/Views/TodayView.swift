@@ -35,6 +35,7 @@ struct TodayView: View {
     @State private var selectedWeekIndex: Int = 0
     @State private var sheetProgress: Double = 1     // 1 = collapsed
     @State private var skipped: Bool = false
+    @State private var showSkipConfirm: Bool = false
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
@@ -718,8 +719,32 @@ struct TodayView: View {
                 }
                 .padding(.top, 18)
             }
+
+            // "Not running today?" · the skip affordance, under the pills
+            // (David's pick 1b). The action already exists — skipTodayAction()
+            // → POST /api/today/skip. Hidden once skipped / on rest+done days.
+            if displayWorkout != nil && !skipped {
+                Button { showSkipConfirm = true } label: {
+                    HStack(spacing: 6) {
+                        Text("Not running today?")
+                            .font(.body(12.5))
+                            .foregroundStyle(Theme.txt.opacity(0.5))
+                        Text("Skip \u{203A}")
+                            .font(.body(12.5, weight: .semibold))
+                            .foregroundStyle(Color(hex: 0x8FD0FF))
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 16)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .confirmationDialog("Skip today's run?", isPresented: $showSkipConfirm, titleVisibility: .visible) {
+            Button("Skip today's run", role: .destructive) { skipTodayAction() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It'll show as skipped. Your plan keeps moving.")
+        }
     }
 
     private func heroStat(key: String, value: String) -> some View {

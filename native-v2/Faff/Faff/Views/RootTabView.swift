@@ -93,6 +93,7 @@ struct RootTabView: View {
     @State private var showLogNonRunSheet: Bool = false
     @State private var showTrainingCal: Bool = false
     @State private var showInbox: Bool = false
+    @State private var showReachabilityBanner: Bool = false
     /// Pending navigation set by the run-menu mode buttons · triggers a
     /// push into the active tab's NavigationStack via the .navigationDestination(item:)
     /// hook below. Cleared once the push lands.
@@ -122,6 +123,7 @@ struct RootTabView: View {
             // Each tab view adds its own 44pt top clearance.
             VStack(spacing: 0) {
                 globalTopBar
+                reachabilityBanner
                 Spacer(minLength: 0)
             }
 
@@ -193,6 +195,13 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .faffShowRunMenu)) { _ in
             showRunMenu = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faffReachabilityLost)) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) { showReachabilityBanner = true }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                withAnimation(.easeInOut(duration: 0.25)) { showReachabilityBanner = false }
+            }
+        }
         .sheet(isPresented: $showTrainingCal) {
             TrainingCalendarView()
                 .presentationDragIndicator(.hidden)
@@ -251,6 +260,34 @@ struct RootTabView: View {
         .padding(.top, 2)
         .padding(.bottom, 4)
         .background(Color.clear)
+    }
+
+    /// Loud "can't reach Faff" banner · appears on a NETWORK failure so the
+    /// runner reads it as connectivity, not lost data (the silent-empty trap).
+    /// Auto-hides after a few seconds; Retry kicks a foreground refresh.
+    @ViewBuilder private var reachabilityBanner: some View {
+        if showReachabilityBanner {
+            HStack(spacing: 9) {
+                Image(systemName: "wifi.slash")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color(hex: 0xFC4D64))
+                Text("Can't reach Faff")
+                    .font(.body(13, weight: .bold)).foregroundStyle(Theme.txt)
+                Spacer(minLength: 8)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showReachabilityBanner = false }
+                    NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+                } label: {
+                    Text("Retry").font(.body(13, weight: .extraBold)).foregroundStyle(Color(hex: 0x8FD0FF))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 15).padding(.vertical, 10)
+            .background(Color(hex: 0x2A1416), in: Capsule())
+            .overlay(Capsule().stroke(Color(hex: 0xFC4D64).opacity(0.40), lineWidth: 1))
+            .padding(.horizontal, 14).padding(.top, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
     }
 
     // MARK: - Content
