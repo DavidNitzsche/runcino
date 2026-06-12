@@ -16,6 +16,9 @@ struct WeekStripDay: Identifiable, Hashable {
     var isDone: Bool = false
     /// Runner tapped Skip Today on this date · day_actions row exists.
     var isSkipped: Bool = false
+    /// Strength recommender picked this day · renders a thin underline under
+    /// the date number (no glyph — David's pick, keeps the strip uncluttered).
+    var strengthSuggested: Bool = false
 }
 
 struct WeekStrip: View {
@@ -61,6 +64,16 @@ struct WeekStrip: View {
                 .font(.body(15, weight: .semibold))
                 .tracking(-0.3)
                 .foregroundStyle(Theme.txt.opacity(isSelected || d.isToday ? 1 : 0.8))
+                // Strength day · a thin underline below the number. Overlay (not
+                // a stacked element) so it never shifts the cell's layout.
+                .overlay(alignment: .bottom) {
+                    if d.strengthSuggested {
+                        Capsule()
+                            .fill(Color(hex: 0x27B4E0))
+                            .frame(width: 14, height: 2.5)
+                            .offset(y: 4)
+                    }
+                }
             if d.effort == .rest {
                 Capsule()
                     .fill(Color.white.opacity(0.5))

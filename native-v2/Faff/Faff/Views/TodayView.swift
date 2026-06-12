@@ -36,6 +36,14 @@ struct TodayView: View {
     @State private var sheetProgress: Double = 1     // 1 = collapsed
     @State private var skipped: Bool = false
     @State private var showSkipConfirm: Bool = false
+    /// date_iso strings the strength recommender picked for the current week ·
+    /// drives the strip underline + the Today nudge. Seeded from the cached
+    /// training-state (instant), refreshed in loadAll.
+    @State private var strengthDays: Set<String> = {
+        guard let ts = AppCache.read(.trainingState, as: TrainingState.self),
+              let cur = ts.weeks.first(where: { $0.isCurrent }) else { return [] }
+        return Set(cur.recommendedStrengthDays ?? [])
+    }()
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
@@ -718,6 +726,24 @@ struct TodayView: View {
                     }
                 }
                 .padding(.top, 18)
+            }
+
+            // Strength nudge · the recommender picked this day. The strip shows
+            // WHICH days (the underline); this is the selected day's heads-up.
+            // Purely additive — runs-only days look exactly as before.
+            if strengthDays.contains(selectedDayID) {
+                HStack(spacing: 8) {
+                    Image(systemName: "dumbbell.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x27B4E0))
+                    Text("Strength")
+                        .font(.body(13, weight: .bold))
+                        .foregroundStyle(Theme.txt)
+                    Text("recommended")
+                        .font(.body(12, weight: .medium))
+                        .foregroundStyle(Theme.txt.opacity(0.55))
+                }
+                .padding(.top, 16)
             }
 
             // "Not running today?" · the skip affordance, under the pills
@@ -1865,7 +1891,8 @@ struct TodayView: View {
                 effort: FaffEffort.fromType(d.type),
                 isToday: d.is_today,
                 isDone: d.completedRunId != nil,
-                isSkipped: d.skipped ?? false
+                isSkipped: d.skipped ?? false,
+                strengthSuggested: strengthDays.contains(d.date_iso)
             )
         }
     }
@@ -1903,6 +1930,9 @@ struct TodayView: View {
         async let an = (try? await API.fetchActiveNiggle())
         async let asc = (try? await API.fetchActiveSick())
         async let pp2 = (try? await API.fetchPendingProposals())
+        // Strength days for the current week · drives the strip underline + the
+        // Today nudge (the fetch also warms the training-state cache).
+        async let tstr = (try? await API.fetchTrainingState())
 
         // Primary fetch · plan drives the hero + week strip + drag sheet.
         // Throws on network failure so we can flip loadState into the
@@ -1942,6 +1972,7 @@ struct TodayView: View {
         let activeN   = await an
         let activeSickRow = await asc
         let proposals = (await pp2) ?? []
+        let trainingS = await tstr
         // Weather baseline runs second-pass — it needs the workout type
         // and weekly mileage from the plan/workout. Fire-and-forget; the
         // HOTTER THAN USUAL tag silently hides if the lookup fails.
@@ -1963,6 +1994,9 @@ struct TodayView: View {
             // Adjacent weeks — always update so strip reflects latest data.
             self.prevWeekPlan = prevW
             self.futureWeekPlans = futureW
+            if let cur = trainingS?.weeks.first(where: { $0.isCurrent }) {
+                self.strengthDays = Set(cur.recommendedStrengthDays ?? [])
+            }
             if let planWeek {
                 self.plan = planWeek
                 self.loadState = .loaded
