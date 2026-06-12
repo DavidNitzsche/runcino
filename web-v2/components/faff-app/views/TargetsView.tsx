@@ -67,10 +67,36 @@ export function TargetsView({
   }
 
   // === DERIVED VALUES =====================================================
-  const status = goal.goalStatus ?? 'on-track';
+  // 2026-06-11 · the goal-seeking trajectory is the headline read · the drift
+  // binary (goalStatus) becomes a background signal. Derive the surface status
+  // from where the plan PROJECTS you on race day, so the status pill, the
+  // projection band, and the path section all agree with the GapPanel
+  // trajectory hero instead of contradicting it — drift could flag "off track"
+  // while you're projected 40s off goal and "within reach", which read as the
+  // page arguing with itself.
+  const traj = goal.trajectory ?? null;
+  const status: 'on-track' | 'watching' | 'off-track' = traj
+    ? (traj.reachable ? 'on-track' : traj.gapVdot <= 1.5 ? 'watching' : 'off-track')
+    : (goal.goalStatus ?? 'on-track');
   const goalSec = parseRaceTime(goal.goal) ?? null;
+  // The band shows CURRENT FITNESS today (its label) vs the plan target — an
+  // honest "where you are now". The race-day TRAJECTORY is the GapPanel hero
+  // below; keeping them as two clearly-labeled time points (today vs race day)
+  // is coherent, where forcing the projected time into the "current fitness"
+  // marker would mislabel it.
   const fitSec = goal.vdotProjectionSec ?? null;
   const gapSec = goalSec != null && fitSec != null ? fitSec - goalSec : null; // positive = slower than goal
+  // Goal-attainment confidence chip · trajectory-aware when we have a trajectory
+  // (the engine's confidenceLabel is capped LOW by the old off-track binary,
+  // which would read "behind on this runway" directly under a hero that says
+  // "within reach"). reachable → HIGH, close → MEDIUM, far → LOW.
+  const conf: { tier: string; word: string; descriptor: string; detail: string } | null = traj
+    ? (traj.reachable
+        ? { tier: 'high', word: 'HIGH', descriptor: 'tracking to hit it', detail: 'on the projected path · hold the plan' }
+        : traj.gapVdot <= 1.5
+          ? { tier: 'medium', word: 'MEDIUM', descriptor: 'within reach', detail: `${formatGap(traj.gapSec ?? 0)} to find by race day` }
+          : { tier: 'low', word: 'LOW', descriptor: 'behind on this runway', detail: `${formatGap(traj.gapSec ?? 0)} to find · plan needs to push` })
+    : (goal.confidenceLabel ?? null);
 
   // VDOT block · derived from projectionTrend (latest, 6-weeks-ago).
   const trend = seed.projectionTrend ?? [];
@@ -109,11 +135,11 @@ export function TargetsView({
         <div className="goalblock">
           <div className="eyebrow">Primary goal</div>
           <div className="goaltime">{goal.goal}</div>
-          {goal.confidenceLabel ? (
+          {conf ? (
             <div className="goalconf">
-              <span className={`confword ${goal.confidenceLabel.tier}`}>{goal.confidenceLabel.word}</span>
-              <span className="confdesc">{goal.confidenceLabel.descriptor}</span>
-              <span className="confdetail">{goal.confidenceLabel.detail}</span>
+              <span className={`confword ${conf.tier}`}>{conf.word}</span>
+              <span className="confdesc">{conf.descriptor}</span>
+              <span className="confdetail">{conf.detail}</span>
             </div>
           ) : null}
           <div className="goalmeta">
@@ -738,7 +764,13 @@ function pathHeadline(status: 'on-track' | 'watching' | 'off-track'): string {
 }
 
 function pathSubline(goal: GoalRace, status: 'on-track' | 'watching' | 'off-track'): string {
-  if (goal.projectionSummary) return goal.projectionSummary;
+  // When the trajectory drives the surface status, the engine's drift-status
+  // summary (computed from the OLD off-track/watching binary) can flatly
+  // contradict it — "the math is honest, time to look at what the plan can't
+  // close" under a hero that says "within reach". Prefer the status-driven
+  // copy whenever a trajectory is present; only fall back to the engine summary
+  // when there's no trajectory to align to.
+  if (!goal.trajectory && goal.projectionSummary) return goal.projectionSummary;
   if (status === 'on-track') return 'The work is doing the work · stay the course.';
   if (status === 'off-track') return 'The next blocks are written to close it.';
   return 'Hold the plan · the next quality run will tell us more.';
