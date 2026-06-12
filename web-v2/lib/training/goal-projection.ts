@@ -465,7 +465,15 @@ async function loadRecentTestPoints(
           heatSlowdownPct = j.slowdownPct ?? 0;
         } catch { /* leave 0 · band collapses to symmetric */ }
       }
-      verdict = heatAdjustedStatus(targetS, actualS, heatSlowdownPct);
+      // Easy/long runs get a generous band (David 2026-06-11). Running an
+      // easy run slower than its guide pace is correct by design — not a
+      // miss — so only an egregious gap (>40 s/mi over, fatigue / under-
+      // fuelling territory) reads 'slow'. A flat 8:00/mi long target judged
+      // with the tempo-grade ±10s band was flagging a textbook 8:21 easy
+      // 12-miler as "Slow". Quality days (tempo/threshold/intervals/race)
+      // keep the tight ±10s — there the target IS the prescription.
+      const tolerance = r.type === 'long' ? 40 : 10;
+      verdict = heatAdjustedStatus(targetS, actualS, heatSlowdownPct, tolerance);
     }
 
     return {

@@ -67,6 +67,24 @@ function ageFromBirthday(iso: string | null): number | null {
   return age;
 }
 
+/**
+ * Parse a last-sync value into a Date, or null. Tolerates BOTH the
+ * "YYYY-MM-DD" date-only shape (anchored at noon UTC to dodge a TZ
+ * rollover) AND a full ISO timestamp — some ingest paths write
+ * data.date as a full timestamp ("2026-06-11T02:41:28Z"), and the old
+ * `new Date(`${v}T12:00:00Z`)` produced a double-suffixed Invalid Date
+ * for those. A truthy-but-Invalid Date is the trap: `?.toISOString()`
+ * does NOT guard it (optional-chaining only stops at null/undefined),
+ * so it threw "Invalid time value" and crashed the entire profile load
+ * → null profile → cold Targets gap. Never returns an Invalid Date.
+ */
+function parseLastSync(v: string | Date | null | undefined): Date | null {
+  if (!v) return null;
+  const s = v instanceof Date ? v.toISOString() : String(v);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T12:00:00Z`) : new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export async function loadProfileState(userId: string): Promise<ProfileState> {
   const today = await runnerToday(userId);
 
@@ -193,12 +211,15 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     days_to_race: nextARaceFull.days_to_race,
   } : null;
 
-  // Connection windows from the now-parallelized lastsync rows.
-  const stravaLast: Date | null = stravaRow?.last ? new Date(`${stravaRow.last}T12:00:00Z`) : null;
+  // Connection windows from the now-parallelized lastsync rows. parseLastSync
+  // tolerates date-only OR full-timestamp inputs and never yields an Invalid
+  // Date (see helper · the old inline `new Date(`${v}T12:00:00Z`)` threw on a
+  // full-timestamp value and crashed the whole profile load).
+  const stravaLast: Date | null = parseLastSync(stravaRow?.last);
   const stravaConnected = stravaLast != null && (Date.now() - stravaLast.getTime()) < 1000 * 60 * 60 * 24 * 14;
-  const healthLast: Date | null = healthRow?.last ? new Date(healthRow.last) : null;
+  const healthLast: Date | null = parseLastSync(healthRow?.last);
   const healthConnected = healthLast != null && (Date.now() - healthLast.getTime()) < 1000 * 60 * 60 * 24 * 7;
-  const watchLast: Date | null = watchRow?.last ? new Date(watchRow.last) : null;
+  const watchLast: Date | null = parseLastSync(watchRow?.last);
   const watchConnected = watchLast != null && (Date.now() - watchLast.getTime()) < 1000 * 60 * 60 * 24 * 30;
 
   // B4 (2026-06-08): VDOT is now read from projection_snapshots (cron-written

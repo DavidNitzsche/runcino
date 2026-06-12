@@ -133,7 +133,14 @@ function stravaToFaffPayload(
     type: act.type,
     sportType: act.sport_type,
     workoutType: act.workout_type,
-    date: act.start_date,
+    // `date` is the LOCAL calendar day (YYYY-MM-DD) — the invariant every
+    // reader assumes (`data->>'date' = plan.date_iso` joins, the
+    // `COALESCE(data->>'date', LEFT(data->>'startLocal',10))` fallback, and
+    // profile-state's last-sync parse). Writing Strava's full UTC timestamp
+    // (act.start_date) here was wrong twice: wrong format (a full timestamp
+    // that crashed profile-state → null profile → cold Targets gap) AND wrong
+    // day (UTC rolls an evening run to tomorrow). Truncate the LOCAL start.
+    date: String(act.start_date_local ?? act.start_date ?? '').slice(0, 10) || null,
     startLocal: act.start_date_local,
     distanceMi: Number(distanceMi.toFixed(4)),
     movingTimeS: act.moving_time,

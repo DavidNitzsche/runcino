@@ -2245,15 +2245,29 @@ export async function buildSeed(): Promise<FaffSeed> {
       const goalSecForGP = parseRaceTime(goalRace.goal);
       if (goalSecForGP != null) {
         const { computeGoalProjection, formatGoalTime } = await import('@/lib/training/goal-projection');
+        // Series-first VDOT · mirror app/api/targets/projection/route.ts. The
+        // cron-written snapshot is the canonical source; profile is the
+        // fallback. profile can fail to load (seed.ts safe()→null when
+        // loadProfileState throws) — reading the snapshot directly keeps the
+        // gap panel alive on the snapshot's VDOT instead of collapsing to the
+        // cold "we can't draw your gap" state while the same snapshot is shown
+        // as "VDOT 47.9" two lines up. The iPhone surface never had this bug
+        // because it already read series-first.
+        const { loadLatestVdotWithAnchor } = await import('@/lib/training/projection-snapshots');
+        const snap = await loadLatestVdotWithAnchor(userId)
+          .catch(() => ({ vdot: null, anchorDateISO: null, anchorDistanceMi: null }));
+        const projVdot = snap.vdot ?? profile?.physiology.vdot ?? null;
+        const projAnchorDate = snap.anchorDateISO ?? profile?.physiology.vdot_anchor_date ?? null;
+        const projAnchorDist = snap.anchorDistanceMi ?? profile?.physiology.vdot_anchor_distance_mi ?? null;
         const gp = await computeGoalProjection({
           userUuid: userId,
           goalSec: goalSecForGP,
           raceDistanceMi: goalRace.distanceMi,
-          vdot: profile?.physiology.vdot ?? null,
+          vdot: projVdot,
           daysToRace: goalRace.daysAway ?? null,
           pacing: pacing ? { cv: pacing.cv, source: pacing.source } : null,
-          vdotAnchorDateISO: profile?.physiology.vdot_anchor_date ?? null,
-          vdotAnchorDistanceMi: profile?.physiology.vdot_anchor_distance_mi ?? null,
+          vdotAnchorDateISO: projAnchorDate,
+          vdotAnchorDistanceMi: projAnchorDist,
         });
         // Override projection with plan-trusts-itself value.
         goalRace.projected = formatGoalTime(gp.projectionSec) ?? goalRace.projected;
