@@ -148,29 +148,8 @@ export function TargetsView({
             {' · '}{formatDate(goal.date)}
           </div>
           <div className="statusrow">
-            <StatusPill status={status} />
-            <span className="stx">{posturePhrase(goal, status)}</span>
-            <span className="dot">·</span>
             <span className="days"><b>{goal.daysAway}</b> days out</span>
           </div>
-        </div>
-
-        <div className="t2card bandcard">
-          <div className="bandhead">
-            <div className="t">Projection</div>
-            <div className="t" style={{ color: 'rgba(255,255,255,.72)' }}>
-              {goal.daysAway} days out · {statusWord(status)}
-            </div>
-          </div>
-          <ProjectionBand
-            goalSec={goalSec}
-            fitSec={fitSec}
-            loSec={goal.confidenceInterval?.lo ?? null}
-            hiSec={goal.confidenceInterval?.hi ?? null}
-            status={status}
-            gapText={gapText(gapSec, status)}
-          />
-          <div className="bandcap">{bandCaption(goal, gapSec, status)}</div>
         </div>
       </div>
 
@@ -179,79 +158,21 @@ export function TargetsView({
         <GapPanel goal={goal} series={seed.projectionTrend} anchor={seed.health?.vdotAnchor ?? null} />
       </div>
 
-      {status !== 'off-track' ? (
-        <>
-          {/* ============ SECTION 2 · THE PATH ============ */}
-          <div className="band">
-          <div className="eyebrow-sec">On the path</div>
-          <div className="t2card pathcard">
-            <div className="pathhead">
-              <h3>{pathHeadline(status)}</h3>
-              <p>{pathSubline(goal, status)}</p>
-            </div>
-            {goal.driftSignals && goal.driftSignals.length > 0 ? (
-              goal.driftSignals.map((s, i) => (
-                <div key={i} className={`signal ${s.weight}`}>
-                  <span className="sig-w">{s.weight}</span>
-                  <div className="sig-tx">
-                    {s.detail}
-                    {evidenceLine(s) ? <span className="ev">{evidenceLine(s)}</span> : null}
-                  </div>
-                </div>
-              ))
-            ) : null}
-
-            <div className="hr" />
-
-            <TestPointsGrid
-              recent={goal.recentTestPoints ?? []}
-              next={goal.nextTestPoints ?? []}
-            />
-
-            <div className="hr" />
-
-            <StatusLadder goal={goal} status={status} />
-          </div>
-          </div>{/* .band */}
-
-          {/* ============ SECTION 3 · THE WORK · VDOT ============ */}
-          {latestVdot != null ? (
-            <div className="band">
-              <div className="eyebrow-sec">The work behind the number</div>
-              <div className="t2card vdotcard">
-                <div className="vdotmain">
-                  <div className="lbl">Current fitness · VDOT</div>
-                  <div className="vdotrow">
-                    <span className="big">{latestVdot.toFixed(1)}</span>
-                    {vdotDelta != null ? <VdotDelta delta={vdotDelta} /> : null}
-                  </div>
-                  <VdotSparkline trend={trend} goalVdot={goalVdot} />
-                </div>
-                <div className="vdotaside">
-                  <div className="vdotsub">{vdotReadCopy(latestVdot, vdotDelta, vdotHeldDays)}</div>
-                  <div className="vdotmeta">
-                    {vdotHeldDays != null ? (
-                      <div className="m"><div className="mk">Held</div><div className="mv">{vdotHeldDays} days</div></div>
-                    ) : null}
-                    {fitSec != null ? (
-                      <div className="m">
-                        <div className="mk">Implies</div>
-                        <div className="mv">{formatRaceTime(fitSec) ?? '·'}</div>
-                      </div>
-                    ) : null}
-                    {goalVdot != null ? (
-                      <div className="m">
-                        <div className="mk">Goal VDOT</div>
-                        <div className="mv">~{goalVdot.toFixed(1)}</div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      {/* ============ THE WORK · test points ============ */}
+      {/* 2026-06-11 · David's strip-down. The drift-signal banners (they argued
+          with the trajectory), the pathHead copy, and the status ladder are
+          cut; the separate VDOT card is cut (its number + sparkline now live in
+          the GapPanel). What's left is the real, trackable session record: what
+          you ran (judged vs PLAN target) and what's next. Always shown. */}
+      <div className="band">
+        <div className="eyebrow-sec">The work</div>
+        <div className="t2card pathcard">
+          <TestPointsGrid
+            recent={goal.recentTestPoints ?? []}
+            next={goal.nextTestPoints ?? []}
+          />
+        </div>
+      </div>
 
       {/* ============ SECTION 4 · PRs ANCHORED ============ */}
       <div className="band">

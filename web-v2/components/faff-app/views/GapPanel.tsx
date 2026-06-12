@@ -596,123 +596,26 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
         </div>
         {traj ? <TrajectoryHero t={traj} raceDateLabel={raceDateLabel} /> : null}
         {traj && trajSeries.length >= 3 ? <TrajectorySparkline series={trajSeries} goalSec={goalSec} /> : null}
+        {/* 2026-06-11 · one fitness line · David's strip-down. The chip pile
+            (held / gap / re-rates), the 4-part gap breakdown, and the hit list
+            are cut — the trajectory hero + sparkline already say where you are,
+            where you're headed, and what moves it. Keep only current fitness +
+            how fresh the anchor is. */}
         <div className="vmeta">
           {latest?.vdot ? <span className="pill">VDOT <b>{latest.vdot.toFixed(1)}</b></span> : null}
           {anchor ? (
             <span
               className="pill"
               title={anchor.tier === 'stale'
-                ? 'This anchor is past the 120-day confidence window (Research/02 §13.7). A tune-up race or time trial would re-rate it.'
-                : 'The race/run this VDOT is read from.'}
+                ? 'Past the 120-day confidence window · a tune-up race or time trial would re-rate it.'
+                : 'The race this fitness is read from.'}
               style={anchor.tier === 'stale' ? { color: '#F3AD38' } : undefined}
             >
-              anchor <b>{anchor.anchorRaceName ?? `${anchor.anchorDateISO.slice(0, 10)} effort`} · {anchor.ageDays}d{anchor.tier === 'stale' ? ' · stale' : ''}</b>
+              from <b>{anchor.anchorRaceName ?? `${anchor.anchorDateISO.slice(0, 10)} effort`} · {anchor.ageDays}d{anchor.tier === 'stale' ? ' · aging' : ''}</b>
             </span>
           ) : null}
-          {heldDays > 0 ? <span className="pill">held <b>{heldDays} days</b></span> : null}
-          <span className="pill">{isOff ? 'gap' : 'gap'} <b>{fmtDelta(totalGapSec)}</b></span>
-          <span className="next">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
-              <rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" />
-            </svg>
-            Re-rates: breakthrough or race
-          </span>
         </div>
       </div>
-
-      {totalGapSec > 0 ? (
-        <>
-          <div className="div" />
-          <div className="pad">
-            <div className="gaphd">
-              <span className="l">What the gap is made of</span>
-              <span className="r"><b>{fmtDelta(totalGapSec)}</b> to find</span>
-            </div>
-            <div className="gapbar">
-              {segs.map((seg, i) => (
-                <button
-                  key={seg.key}
-                  type="button"
-                  className={`seg${openSeg === i ? ' is-active' : ''}`}
-                  style={{ flex: `${seg.sec} 1 0`, background: SWATCH[seg.key] }}
-                  onClick={() => toggleSeg(i)}
-                  aria-label={`${seg.nm} · ${fmtDelta(seg.sec)}`}
-                >
-                  {seg.sec / Math.max(totalGapSec, 1) >= 0.09 ? <span className="pct">{fmtDelta(seg.sec)}</span> : null}
-                </button>
-              ))}
-            </div>
-            <div className="gapends">
-              <span className="goal">GOAL {fmtClock(goalSec)}</span>
-              <span className="proj">PROJECTED {fmtClock(projSec)}</span>
-            </div>
-            <div className="legend">
-              {segs.map((seg, i) => (
-                <button
-                  key={seg.key}
-                  type="button"
-                  className={`legcell${openSeg === i ? ' is-active' : ''}`}
-                  onClick={() => toggleSeg(i)}
-                  style={{ background: openSeg === i ? 'rgba(255,255,255,.09)' : undefined, textAlign: 'left' }}
-                >
-                  <div className="top">
-                    <span className="swatch" style={{ background: SWATCH[seg.key] }} />
-                    <span className="nm">{seg.nm}</span>
-                  </div>
-                  <div className="v">{fmtDelta(seg.sec)}</div>
-                  <span className={`tag tag-${seg.tag === 'Trainable' ? 'train' : seg.tag === 'Partly' ? 'partly' : 'fixed'}`}>{seg.tag}</span>
-                </button>
-              ))}
-            </div>
-            {/* 2026-06-02 · doctrine drawer renamed from `.drawer` to
-                `.gp-doctrine` to avoid the global `.drawer` Shell sidebar
-                collision (globals.css:816 sets position:absolute + right:0
-                + transform:translateX(100%) for the right-side slide-over).
-                The scoped `.fa-gappanel .drawer` rules only overrode the
-                surface, not position · so clicking a chunk button popped
-                this doctrine card up in the corner instead of inline.
-                David call: render inline below the chunk cards, full
-                width, above "What would actually move it". */}
-            <div className={`gp-doctrine${openSeg != null ? ' is-open' : ''}`}>
-              <div className="gp-body">
-                {openSeg != null && segs[openSeg] ? (
-                  <>
-                    <p dangerouslySetInnerHTML={{ __html: segs[openSeg].doctrine }} />
-                    <div className="src">{segs[openSeg].src}</div>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </>
-      ) : null}
-
-      {hits.length > 0 ? (
-        <>
-          <div className="div" />
-          <div className="pad">
-            <div className="gaphd" style={{ marginBottom: 4 }}>
-              <span className="l">{isOff ? 'The honest path' : 'What would actually move it'}</span>
-            </div>
-            {hits.map((h, i) => (
-              <div className="hitrow" key={i}>
-                <span className="ic"><Icon kind={h.icon} /></span>
-                <div className="bd">
-                  <div className="t">
-                    <span dangerouslySetInnerHTML={{ __html: h.t }} />
-                    {h.lvtag ? <span className={`lvtag ${h.lvtag === 'Trainable' ? 'tag-train' : h.lvtag === 'Logistics' ? 'tag-partly' : 'tag-fixed'}`}>{h.lvtag}</span> : null}
-                  </div>
-                  <div className="w">{h.w}</div>
-                </div>
-                <div className="delta">
-                  <div className="to">{h.to}</div>
-                  <div className={`d ${h.dKind}`}>{h.d}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : null}
     </div>
   );
 }

@@ -840,6 +840,15 @@ async function detectTempoPaceDrift(
                    WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
                      AND ci.reason = 'watch_completion'
                      AND ci.ts::date = pw.date_iso::date
+                     -- 2026-06-11 · latest completion only. A day can carry
+                     -- more than one watch_completion (a stale 1-phase push +
+                     -- the real 3-phase run); averaging across both pulled a
+                     -- 7:17 tempo to ~7:45 and fired a false drift signal.
+                     -- Mirror loadRecentTestPoints, which already does this.
+                     AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
+                                   WHERE COALESCE(ci2.user_uuid, ci2.user_id) = $1::uuid
+                                     AND ci2.reason = 'watch_completion'
+                                     AND ci2.ts::date = pw.date_iso::date)
                      AND phase->>'type' = 'work'
                      AND (phase->>'actualPaceSPerMi')::numeric > 0
                 ) AS work_pace
