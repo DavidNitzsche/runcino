@@ -573,7 +573,7 @@ struct SettingsView: View {
     // MARK: - Display formatting
 
     private func displayValue(_ f: SettingField) -> String {
-        guard let val = vals[f.key] else { return f.kind == .multi ? "None" : "Not set" }
+        guard let val = vals[f.key] else { return f.autoSource ?? (f.kind == .multi ? "None" : "Not set") }
         switch f.kind {
         case .select:
             if case .str(let s) = val { return f.options.first { $0.value == s }?.label ?? s }
@@ -641,6 +641,10 @@ struct SettingField: Identifiable {
     var hint: String? = nil
     var planShaping: Bool = false
     var placeholder: String? = nil
+    /// When set, an UNSET field shows this label instead of "Not set" — for
+    /// values that auto-fill from Apple Health / connected data sources, so
+    /// the runner knows they don't have to type them in.
+    var autoSource: String? = nil
     var id: String { key }
 }
 
@@ -684,7 +688,7 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         SettingField(key: "gender", label: "Sex", endpoint: .profile, kind: .select, options: SETTINGS_SEX, hint: "Used for readiness adjustments."),
         SettingField(key: "birthday", label: "Birthday", endpoint: .profile, kind: .date),
         SettingField(key: "height_cm", label: "Height", endpoint: .profile, kind: .height, hint: "Unlocks cadence coaching."),
-        SettingField(key: "weight_kg", label: "Weight", endpoint: .profile, kind: .weight, hint: "Falls back to Apple Health when unset."),
+        SettingField(key: "weight_kg", label: "Weight", endpoint: .profile, kind: .weight, hint: "Falls back to Apple Health when unset.", autoSource: "From Apple Health"),
         SettingField(key: "experience_level", label: "Experience", endpoint: .profile, kind: .select, options: SETTINGS_EXPERIENCE, planShaping: true),
     ]),
     SettingGroup(title: "TRAINING", fields: [
@@ -696,8 +700,8 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         SettingField(key: "cross_training_modes", label: "Cross-training", endpoint: .profile, kind: .multi, options: SETTINGS_CROSS),
     ]),
     SettingGroup(title: "PHYSIOLOGY", fields: [
-        SettingField(key: "lthr", label: "LTHR", endpoint: .profile, kind: .number, unit: "bpm", hint: "Sets your training zones."),
-        SettingField(key: "max_hr_override", label: "Max HR", endpoint: .profile, kind: .number, unit: "bpm", hint: "Overrides the observed ceiling."),
+        SettingField(key: "lthr", label: "LTHR", endpoint: .profile, kind: .number, unit: "bpm", hint: "Sets your training zones.", autoSource: "From Apple Health"),
+        SettingField(key: "max_hr_override", label: "Max HR", endpoint: .profile, kind: .number, unit: "bpm", hint: "Overrides the observed ceiling.", autoSource: "From Apple Health"),
     ]),
     SettingGroup(title: "TIMEZONE", fields: [
         SettingField(key: "tz_mode", label: "Auto-update on travel", endpoint: .profile, kind: .tzmode),

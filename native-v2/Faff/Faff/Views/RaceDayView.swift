@@ -422,7 +422,19 @@ struct RaceDayView: View {
     /// Race + goal summary for the shared header pill. The countdown owns the
     /// days, so the pill carries name + goal + pace only.
     private var racePill: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 11) {
+            // Back to the Goal tab · this is a pushed detail view with the nav
+            // bar hidden, so it needs an explicit way out. Scoped to the pill
+            // so it rides the shared header slot without a second header row.
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+                    .frame(width: 30, height: 30)
+                    .background(Theme.Glass.fill, in: Circle())
+                    .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 3) {
                 Text("A-RACE")
                     .font(.body(9.5, weight: .extraBold)).tracking(2)
