@@ -904,6 +904,11 @@ type RunSummary = {
     label: string;
     type: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown';
     target_pace: string | null;
+    /** raw s/mi + ±band · drive the per-mile range bar (iPhone parity).
+     *  Produced by loadPhaseBreakdown (run-state.ts; work default ±8s);
+     *  absent on older cached payloads, so optional. */
+    target_pace_sec?: number | null;
+    tolerance_pace_sec?: number | null;
     target_distance_mi: number | null;
     target_duration_sec: number | null;
     actual_pace: string | null;
@@ -1951,6 +1956,123 @@ function deriveRecap(d: FaffSeed['week'][number], runData: RunSummary | null): s
   return 'Logged.';
 }
 
+// ─── Segmented mile splits · iPhone-parity breakdown (2026-06-11) ────────
+//
+// Ported from native TodayPostRunBody.swift (phasedSplitList + SplitRow)
+// per David: "I like how the iphone app does the breakdown better." Groups
+// the per-mile splits by phase (warm-up / work / cool-down) via the
+// phase_breakdown cumulative distances. Per-mile bar: work miles get a
+// target-zone range bar (zone = target ± tolerance, dot = actual pace ·
+// slower left, faster right); warm-up / cool-down get a simple proportional
+// bar (longer = slower). Dark-surface variant — the wcard is dark.
+const PHASED_SPLIT_TEAL = '#5BBFB0';
+
+function PhasedSplitRow({
+  mile, pace, hr, tint, paceSec, fastest, denom, targetSec, tolSec,
+}: {
+  mile: number; pace: string | null; hr: number | null; tint: string;
+  paceSec: number; fastest: number; denom: number;
+  targetSec: number | null; tolSec: number | null;
+}) {
+  const track = 'rgba(255,255,255,.12)';
+  const isRange = targetSec != null && tolSec != null && tolSec > 0 && paceSec > 0;
+  // Range-bar geometry · track spans target ± 2·tol, zone is the middle 50%.
+  const span = (tolSec ?? 0) * 4;
+  const trackLeft = (targetSec ?? 0) + (tolSec ?? 0) * 2;
+  const dotFrac = span > 0 ? Math.max(0, Math.min(1, (trackLeft - paceSec) / span)) : 0.5;
+  // Simple-bar geometry · longer = slower.
+  const simpleW = Math.max(14, 25 + 75 * (denom > 0 ? (paceSec - fastest) / denom : 0));
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ width: 18, flex: '0 0 auto', fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,.78)' }}>{mile}</span>
+      <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <div style={{ position: 'relative', height: 8, borderRadius: 4, background: track }}>
+          {isRange ? (
+            <>
+              <div style={{ position: 'absolute', left: '25%', width: '50%', top: 0, bottom: 0, background: `${tint}38` }} />
+              <div style={{ position: 'absolute', left: 'calc(50% - 0.75px)', width: 1.5, top: 0, bottom: 0, background: `${tint}73` }} />
+              <div style={{ position: 'absolute', left: `calc(${(dotFrac * 100).toFixed(2)}% - 4.5px)`, top: -0.5, width: 9, height: 9, borderRadius: '50%', background: tint }} />
+            </>
+          ) : (
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${simpleW.toFixed(1)}%`, borderRadius: 4, background: `${tint}D9` }} />
+          )}
+        </div>
+      </div>
+      <span style={{ width: 48, flex: '0 0 auto', textAlign: 'right', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,.85)' }}>{pace ?? '—'}</span>
+      <span style={{ width: 30, flex: '0 0 auto', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.5)' }}>{hr ?? '—'}</span>
+    </div>
+  );
+}
+
+function PhasedMileSplits({
+  phases, splits, accent, effort,
+}: {
+  phases: NonNullable<RunSummary['phase_breakdown']>;
+  splits: RunSummary['splits'];
+  accent: string;
+  effort: string;
+}) {
+  const paceSecs = splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0);
+  const fastest = paceSecs.length ? Math.min(...paceSecs) : 0;
+  const slowest = paceSecs.length ? Math.max(...paceSecs) : 1;
+  const denom = Math.max(1, slowest - fastest);
+
+  // Assign each split to a phase via cumulative phase distances (iPhone parity).
+  const cum: number[] = [];
+  let running = 0;
+  for (const p of phases) { running += (p.actual_distance_mi ?? p.target_distance_mi ?? 0); cum.push(running); }
+  const phaseIdxForMile = (mile: number) => {
+    const mid = mile - 0.5;
+    const i = cum.findIndex(c => mid < c);
+    return i === -1 ? cum.length - 1 : i;
+  };
+  const phaseLabel = (p: NonNullable<RunSummary['phase_breakdown']>[number]) => {
+    switch (p.type) {
+      case 'warmup': return 'WARM-UP';
+      case 'cooldown': return 'COOL-DOWN';
+      case 'recovery': return 'RECOVERY';
+      case 'work': return effort === 'intervals' ? 'INTERVALS' : effort === 'tempo' ? 'TEMPO' : 'WORK';
+      default: return (p.label || '').toUpperCase();
+    }
+  };
+  const sub = { fontSize: 11, fontWeight: 600 as const, color: 'rgba(255,255,255,.5)' };
+
+  return (
+    <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: 'rgba(255,255,255,.55)' }}>MILE SPLITS</div>
+      {phases.map((phase, idx) => {
+        const group = splits.filter(s => phaseIdxForMile(s.mile) === idx);
+        if (!group.length) return null;
+        const tint = phase.type === 'work' ? accent : PHASED_SPLIT_TEAL;
+        const targetSec = phase.type === 'work'
+          ? (phase.target_pace_sec ?? (phase.target_pace ? paceToSec(phase.target_pace) : null))
+          : null;
+        const tolSec = phase.type === 'work' ? (phase.tolerance_pace_sec ?? 8) : null;
+        return (
+          <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: 'rgba(255,255,255,.72)' }}>{phaseLabel(phase)}</span>
+              {phase.actual_distance_mi != null && <span style={sub}>{phase.actual_distance_mi.toFixed(1)} mi</span>}
+              <span style={{ flex: 1 }} />
+              {phase.avg_hr != null && <span style={sub}>{phase.avg_hr} bpm</span>}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {group.map(s => (
+                <PhasedSplitRow
+                  key={s.mile}
+                  mile={s.mile} pace={s.pace} hr={s.hr ?? null} tint={tint}
+                  paceSec={paceToSec(s.pace ?? '')} fastest={fastest} denom={denom}
+                  targetSec={targetSec} tolSec={tolSec}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CompletedHeroV2({
   d, result, runData, runLoading,
   resolvedTime, resolvedPace, resolvedHr, resolvedTempF, resolvedTempRange,
@@ -2388,6 +2510,19 @@ function CompletedHeroV2({
           )}
         </div>
         <div className="recap">{recap}</div>
+
+        {/* 2026-06-11 · iPhone-parity segmented mile splits, dropped right
+            under the recap copy (David call). Renders for any run carrying
+            phase_breakdown (tempo / intervals / long-with-finish); easy runs
+            with no phases fall through to their existing panels below. */}
+        {runData?.phase_breakdown && runData.phase_breakdown.length > 0 && splits.length > 0 ? (
+          <PhasedMileSplits
+            phases={runData.phase_breakdown}
+            splits={splits}
+            accent={d.type === 'intervals' ? '#F43F5E' : '#FF5722'}
+            effort={d.type}
+          />
+        ) : null}
 
         {/* CONDITIONS + COACH TIP + CITATIONS moved into the leftstack
             (2026-05-31 redistribution) so the wcard stays trim and the
