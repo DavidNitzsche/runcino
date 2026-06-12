@@ -793,12 +793,10 @@ struct TodayView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .confirmationDialog("Skip today's run?", isPresented: $showSkipConfirm, titleVisibility: .visible) {
-            Button("Skip today's run", role: .destructive) { skipTodayAction() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("It'll show as skipped. Your plan keeps moving.")
-        }
+        // Custom bottom sheet instead of .confirmationDialog — the system
+        // dialog was anchoring as a popover over the scrolled hero (David:
+        // "pops up in a weird place"). A sheet always seats at the bottom.
+        .sheet(isPresented: $showSkipConfirm) { skipConfirmSheet }
     }
 
     private func heroStat(key: String, value: String) -> some View {
@@ -1803,6 +1801,51 @@ struct TodayView: View {
 
     /// Skip-this-run action · POSTs to /api/today/skip via the existing
     /// API helper. Pre-run only (hidden when isDone or rest).
+    private var skipConfirmSheet: some View {
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Capsule().fill(Theme.txt.opacity(0.2))
+                    .frame(width: 40, height: 4).padding(.top, 12)
+                Text("Skip today's run?")
+                    .font(.display(22, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+                    .padding(.top, 26)
+                Text("It'll show as skipped. Your plan keeps moving.")
+                    .font(.body(14))
+                    .foregroundStyle(Theme.txt.opacity(0.58))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 8).padding(.horizontal, 30)
+                Spacer(minLength: 0)
+                Button {
+                    showSkipConfirm = false
+                    skipTodayAction()
+                } label: {
+                    Text("Skip today's run")
+                        .font(.body(15, weight: .extraBold))
+                        .foregroundStyle(Color(hex: 0xFF8A82))
+                        .frame(maxWidth: .infinity).padding(.vertical, 15)
+                        .background(Color(hex: 0xFF5A52).opacity(0.14),
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color(hex: 0xFF5A52).opacity(0.3), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 22)
+                Button { showSkipConfirm = false } label: {
+                    Text("Cancel")
+                        .font(.body(14, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
+            }
+        }
+        .presentationDetents([.height(280)])
+        .presentationDragIndicator(.hidden)
+    }
+
     private func skipTodayAction() {
         Task {
             do {
