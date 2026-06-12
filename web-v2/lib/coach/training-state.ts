@@ -266,7 +266,8 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     const nextWeekStart = new Date(Date.parse(curWeekStart + 'T00:00:00Z') + 7 * 86400000)
       .toISOString().slice(0, 10);
     const futureWeeks = weeks.filter((_, i) => i >= curIdx);
-    await Promise.all(futureWeeks.map(async (w) => {
+    // allSettled: a single week failure must NOT zero out all other weeks.
+    await Promise.allSettled(futureWeeks.map(async (w) => {
       const skipReadinessGate = w.startDate > nextWeekStart;
       const rec = await recommendStrengthDays(userId, w.startDate, { skipReadinessGate });
       w.recommendedStrengthDays = rec.recommendedDays;
