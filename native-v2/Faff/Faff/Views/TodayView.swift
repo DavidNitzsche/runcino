@@ -55,6 +55,12 @@ struct TodayView: View {
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
+    /// Prefetched per-day workout + forecast, keyed by date_iso. Filled in the
+    /// background after loadAll so tapping a strip day renders from cache
+    /// instantly instead of popping the detail in on a network round-trip
+    /// (David 2026-06-12 · "load the days in the background").
+    @State private var workoutCache: [String: WatchWorkout] = [:]
+    @State private var forecastCache: [String: DailyForecast] = [:]
     @State private var weather: WeatherBaseline?   // forecast vs 14-day baseline · drives the HOTTER THAN USUAL tag
     /// Display-ready forecast for the selected day · /api/forecast/<date>.
     /// range_label + best_window are pre-composed server-side per the
@@ -514,8 +520,19 @@ struct TodayView: View {
                 // Today's workout was already loaded by loadAll().
                 await MainActor.run { dayWorkout = nil }
             } else {
-                let w = try? await API.fetchWatchWorkout(date: selectedDayID)
-                await MainActor.run { dayWorkout = w }
+                // Seed from the prefetch cache FIRST so the hero + sheet render
+                // instantly — no pop. A nil seed (uncached day) clears the
+                // previous day's stale detail; the refresh below fills it.
+                await MainActor.run {
+                    dayWorkout = workoutCache[selectedDayID]
+                    forecast = forecastCache[selectedDayID]
+                }
+                if let w = try? await API.fetchWatchWorkout(date: selectedDayID) {
+                    await MainActor.run {
+                        dayWorkout = w
+                        workoutCache[selectedDayID] = w
+                    }
+                }
             }
             // Today v2 · also refetch RunDetail + RunRecap for the
             // new selected day's completion (or null them out when
@@ -535,11 +552,15 @@ struct TodayView: View {
                     self.completedRecap = nil
                 }
             }
-            // 2026-06-02 · refresh forecast for the newly selected
-            // day so FORECAST + BEST WINDOW reflect that day's
-            // strings, not yesterday's cache.
-            let f = try? await API.fetchDailyForecast(date: selectedDayID)
-            await MainActor.run { self.forecast = f }
+            // 2026-06-02 · refresh forecast for the newly selected day.
+            // Only overwrite on a real value so a transient nil doesn't wipe
+            // the cache-seeded forecast (and so switching days never blanks).
+            if let f = try? await API.fetchDailyForecast(date: selectedDayID) {
+                await MainActor.run {
+                    self.forecast = f
+                    self.forecastCache[selectedDayID] = f
+                }
+            }
         }
         .sheet(isPresented: $showNudge) {
             NudgeSheet(
@@ -762,10 +783,12 @@ struct TodayView: View {
                     .padding(.top, 22)
             }
 
-            // Chip row: HR cap + best window
+            // Chip row: HR cap + best window. Hidden on rest days — there's no
+            // run to cap or to time, so "BEFORE 7 AM" on a rest day is nonsense
+            // (David 2026-06-12).
             let hasCap = (displayWorkout?.hrCeilingBpm ?? 0) > 0
             let hasWindow = !(forecast?.best_window?.isEmpty ?? true)
-            if hasCap || hasWindow {
+            if (hasCap || hasWindow) && selectedEffort != .rest {
                 HStack(spacing: 10) {
                     if let cap = displayWorkout?.hrCeilingBpm, cap > 0 {
                         heroChip(icon: "heart.fill",
@@ -2060,6 +2083,40 @@ struct TodayView: View {
 
     // MARK: - Loaders
 
+    /// Background-fill workoutCache + forecastCache for every strip day so
+    /// tapping a day renders from cache instantly (no pop). Bounded concurrency
+    /// (5 at a time) keeps it gentle on the backend; skips today (already
+    /// loaded) and already-cached days. (David 2026-06-12)
+    private func prefetchStripDays() async {
+        // Compute the work-list on the main actor — allStripWeeks + the caches
+        // are @State and must not be read off-main.
+        let ids: [String] = await MainActor.run {
+            var seen = Set<String>()
+            let cached = Set(workoutCache.keys).intersection(Set(forecastCache.keys))
+            return allStripWeeks.flatMap { $0 }
+                .map { $0.id }
+                .filter { $0 != todayISO && !cached.contains($0) && seen.insert($0).inserted }
+        }
+        var i = 0
+        while i < ids.count {
+            let chunk = Array(ids[i ..< min(i + 5, ids.count)])
+            await withTaskGroup(of: Void.self) { group in
+                for id in chunk {
+                    group.addTask {
+                        async let w = (try? await API.fetchWatchWorkout(date: id))
+                        async let f = (try? await API.fetchDailyForecast(date: id))
+                        let (ww, ff) = await (w, f)
+                        await MainActor.run {
+                            if let ww { self.workoutCache[id] = ww }
+                            if let ff { self.forecastCache[id] = ff }
+                        }
+                    }
+                }
+            }
+            i += 5
+        }
+    }
+
     private func loadAll() async {
         if plan == nil { await MainActor.run { loadState = .loading } }
         async let w = (try? await API.fetchWatchWorkout())
@@ -2173,6 +2230,10 @@ struct TodayView: View {
             // settle buffer in RootContainer — they never pop into a
             // visible tab because the splash still covers it.
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
+            // Background-fill every strip day's workout + forecast so tapping a
+            // day is instant (no pop). Runs after the primary surface is up so
+            // it never delays first paint. (David 2026-06-12)
+            Task { await prefetchStripDays() }
             // 2026-06-02 · forecast (range_label + best_window) fetched
             // separately · server returns 404 if no GPS home base yet,
             // which is fine · the iPhone falls back to "—" cells.
