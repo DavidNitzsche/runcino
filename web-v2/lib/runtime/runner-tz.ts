@@ -94,11 +94,14 @@ export function invalidateRunnerTz(userUuid: string): void {
 }
 
 /**
- * 2026-06-03 · capture a TZ from a device sync payload and persist it
- * if profile.timezone is currently null. Silent no-op for runners who
- * already have a TZ set · keeps manually-overridden TZs sticky and only
- * auto-populates the empty case. Returns the stored value (the new one
- * if just written, or the existing one if already set).
+ * 2026-06-03 · capture a TZ from a device sync payload and persist it.
+ * 2026-06-12 · travel-aware. Writes the device TZ when EITHER:
+ *   · profile.timezone is currently null (first-sync auto-populate), OR
+ *   · the runner is in AUTO mode (user_settings.tz_mode != 'manual', the
+ *     default) and the device zone has changed (they travelled).
+ * A MANUAL override (tz_mode='manual', set via Settings) stays sticky and
+ * is never clobbered by a device payload. Returns the newly-stored value
+ * when a write happened, else null.
  *
  * Used by watch workout complete, iPhone HK sync, iPhone seed call · any
  * surface that includes a TimeZone.current.identifier on its payload.
@@ -116,7 +119,16 @@ export async function captureTimezoneFromDevice(
     return null;
   }
   const row = (await pool.query<{ timezone: string | null }>(
-    `UPDATE profile SET timezone = $2 WHERE user_uuid = $1::uuid AND timezone IS NULL RETURNING timezone`,
+    `UPDATE profile SET timezone = $2
+       WHERE user_uuid = $1::uuid
+         AND (
+           timezone IS NULL
+           OR (
+             COALESCE(user_settings->>'tz_mode', 'auto') <> 'manual'
+             AND timezone IS DISTINCT FROM $2
+           )
+         )
+     RETURNING timezone`,
     [userUuid, payloadTz],
   ).catch(() => ({ rows: [] as Array<{ timezone: string | null }> }))).rows[0];
   if (row?.timezone) {
@@ -124,4 +136,35 @@ export async function captureTimezoneFromDevice(
     return row.timezone;
   }
   return null;
+}
+
+/**
+ * 2026-06-12 · explicit Settings write of the runner timezone.
+ *   · mode='manual' + a tz → pin profile.timezone, mark tz_mode='manual'
+ *     so device payloads stop overwriting it.
+ *   · mode='auto' (tz optional) → mark tz_mode='auto' so travel updates
+ *     resume; if a fresh device tz is passed, adopt it immediately.
+ * Validates the IANA name and busts the per-process cache.
+ */
+export async function setRunnerTimezone(
+  userUuid: string,
+  tz: string | null,
+  mode: 'auto' | 'manual',
+): Promise<void> {
+  if (tz) {
+    try {
+      new Intl.DateTimeFormat('en-CA', { timeZone: tz });
+    } catch {
+      throw new Error(`invalid timezone: ${tz}`);
+    }
+  }
+  await pool.query(
+    `UPDATE profile
+        SET timezone = COALESCE($2, timezone),
+            user_settings = COALESCE(user_settings, '{}'::jsonb)
+                            || jsonb_build_object('tz_mode', $3::text)
+      WHERE user_uuid = $1::uuid`,
+    [userUuid, tz ?? null, mode],
+  );
+  invalidateRunnerTz(userUuid);
 }

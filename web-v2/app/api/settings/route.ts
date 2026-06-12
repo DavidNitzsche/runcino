@@ -5,12 +5,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadSettings, patchSettings } from '@/lib/coach/settings';
 import { requireUserId } from '@/lib/auth/session';
+import { rebuildActivePlanForPrefs } from '@/lib/plan/auto-rebuild';
+
+// A plan-shaping day change re-runs generatePlan inline. Give it headroom.
+export const maxDuration = 120;
 
 const ALLOWED = new Set([
   'units_distance', 'units_temp', 'units_pace',
   'long_run_day', 'rest_day', 'quality_days',
   'briefing_time', 'push_enabled',
 ]);
+
+// Changing which day is long / rest / quality reshapes the plan layout.
+const PLAN_SHAPING = new Set(['long_run_day', 'rest_day', 'quality_days']);
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -45,7 +52,16 @@ export async function PATCH(req: NextRequest) {
   }
   try {
     await patchSettings(userId, patch);
-    return NextResponse.json({ ok: true, patch });
+    // A long-run / rest / quality day change reshapes the plan layout →
+    // rebuild the active race-prep plan inline (isolated; the save still
+    // succeeds if no plan exists or the rebuild fails).
+    const changedShaping = Object.keys(patch).filter((k) => PLAN_SHAPING.has(k));
+    let replanned = false;
+    if (changedShaping.length > 0) {
+      const r = await rebuildActivePlanForPrefs(userId, changedShaping).catch(() => ({ ok: false }));
+      replanned = !!r.ok;
+    }
+    return NextResponse.json({ ok: true, patch, replanned });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? String(e) }, { status: 500 });
   }

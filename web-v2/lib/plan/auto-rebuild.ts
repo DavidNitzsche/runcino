@@ -160,3 +160,85 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
     proposalId: proposalRow.id,
   };
 }
+
+/**
+ * 2026-06-12 · rebuild the active race-prep plan after a plan-shaping
+ * SETTINGS change (days/week, long-run / rest / quality day, weekly
+ * target, experience, cross-training). Same generatePlan path the race
+ * hooks use, so the edit takes effect immediately instead of waiting for
+ * the next organic rebuild.
+ *
+ * No-op (returns ok:false, no throw) when the runner has no active
+ * race-prep plan · the new prefs simply apply at the next build.
+ *
+ * De-duped within 30s on (user, 'settings_prefs') so a burst of single-
+ * field PATCHes from the Settings UI rebuilds once, not N times.
+ */
+export async function rebuildActivePlanForPrefs(
+  userUuid: string,
+  changedFields: string[],
+): Promise<AutoRebuildResult> {
+  const plan = (await pool.query<{ id: string; race_id: string | null }>(
+    `SELECT id, race_id FROM training_plans
+      WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+      ORDER BY authored_iso DESC LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as Array<{ id: string; race_id: string | null }> }))).rows[0];
+  if (!plan?.race_id) return { ok: false, reason: 'no_active_race_plan' };
+
+  // De-dupe rapid single-field PATCHes from the Settings UI.
+  const recent = (await pool.query<{ id: number; new_plan_id: string | null }>(
+    `SELECT id, new_plan_id FROM plan_proposals
+      WHERE user_uuid = $1::uuid AND source = 'settings_prefs'
+        AND created_at >= NOW() - interval '30 seconds'
+      ORDER BY created_at DESC LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as Array<{ id: number; new_plan_id: string | null }> }))).rows[0];
+  if (recent) {
+    return {
+      ok: true,
+      reason: 'deduped_within_30s',
+      oldPlanId: plan.id,
+      newPlanId: recent.new_plan_id ?? undefined,
+      proposalId: recent.id,
+    };
+  }
+
+  let newPlanId: string | undefined;
+  let rebuildOk = false;
+  let rebuildReason: string | undefined;
+  try {
+    const result = await generatePlan({ userId: userUuid, raceSlug: String(plan.race_id) });
+    if (result.ok) { rebuildOk = true; newPlanId = result.plan_id; }
+    else rebuildReason = result.reason;
+  } catch (e: unknown) {
+    rebuildReason = e instanceof Error ? e.message : String(e);
+  }
+
+  const proposalRow = (await pool.query<{ id: number }>(
+    `INSERT INTO plan_proposals
+       (user_uuid, plan_id, proposal_kind, reasons, status, source, new_plan_id, created_at, resolved_at)
+     VALUES ($1, $2, 'replan', $3::jsonb, $4, 'settings_prefs', $5, NOW(), NOW())
+     RETURNING id`,
+    [
+      userUuid,
+      plan.id,
+      JSON.stringify({
+        trigger: 'prefs_changed',
+        fields: changedFields,
+        rebuild_ok: rebuildOk,
+        rebuild_reason: rebuildReason ?? null,
+      }),
+      rebuildOk ? 'auto_applied' : 'pending',
+      newPlanId ?? null,
+    ],
+  ).catch(() => ({ rows: [{ id: -1 }] }))).rows[0];
+
+  return {
+    ok: rebuildOk,
+    reason: rebuildReason,
+    oldPlanId: plan.id,
+    newPlanId,
+    proposalId: proposalRow.id,
+  };
+}

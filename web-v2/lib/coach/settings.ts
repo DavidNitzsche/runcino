@@ -12,6 +12,10 @@ export interface UserSettings {
   quality_days: ('sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat')[];
   briefing_time: string;            // 'HH:MM' local
   push_enabled: boolean;
+  /** 2026-06-12 · timezone mode. 'manual' pins profile.timezone (Settings
+   *  override); 'auto' (default when absent) lets device sync follow travel.
+   *  Written via setRunnerTimezone, read by captureTimezoneFromDevice. */
+  tz_mode?: 'auto' | 'manual';
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
