@@ -2094,6 +2094,11 @@ struct TodayView: View {
             if let idx = self.allStripWeeks.firstIndex(where: { $0.contains(where: { $0.isToday }) }) {
                 self.selectedWeekIndex = idx
             }
+            // Zero-pop launch · the primary surface is painted. Signal the
+            // splash gate. Trailing fetches (forecast, shoes) ride the
+            // settle buffer in RootContainer — they never pop into a
+            // visible tab because the splash still covers it.
+            NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
             // 2026-06-02 · forecast (range_label + best_window) fetched
             // separately · server returns 404 if no GPS home base yet,
             // which is fine · the iPhone falls back to "—" cells.

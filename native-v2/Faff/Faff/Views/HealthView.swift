@@ -735,10 +735,15 @@ struct HealthView: View {
                 if let bd {
                     self.brief = bd
                 }
+                // Zero-pop launch · Health surface painted, release the splash gate.
+                NotificationCenter.default.post(name: .faffSurfaceReady, object: "health")
             }
         } catch {
             await MainActor.run {
                 self.loadState = .failed("Couldn't read health data.")
+                // Still "settled" — the error card is painted behind the
+                // splash, so releasing the gate won't pop anything.
+                NotificationCenter.default.post(name: .faffSurfaceReady, object: "health")
             }
         }
     }

@@ -178,6 +178,10 @@ extension Notification.Name {
     /// into the app · this is the iPhone equivalent of a callback).
     static let faffForegroundRefresh = Notification.Name("faff.foreground.refresh")
     static let faffShowRunMenu = Notification.Name("faff.show.run.menu")
+    /// Posted by each tab (object: tab name) when its first full load finishes.
+    /// RootContainer holds the FAFF splash until every tab has signaled, so the
+    /// app reveals fully painted — nothing pops as the user navigates.
+    static let faffSurfaceReady = Notification.Name("faff.surface.ready")
 }
 
 /// Routes the user between the auth/onboarding gate and the main app.
@@ -197,6 +201,13 @@ extension Notification.Name {
 /// enforced as a gate today (beta uses DEFAULT_USER_ID fallback server-side).
 struct RootContainer: View {
     @State private var step: GateStep = .checking
+    /// Zero-pop launch · the FAFF splash overlay stays over .main until every
+    /// tab has loaded (each posts .faffSurfaceReady), then a short settle for
+    /// trailing fetches, then it fades. Capped so it can never hang.
+    @State private var mainReady = false
+    @State private var readySurfaces: Set<String> = []
+    @State private var revealScheduled = false
+    private static let launchSurfaces: Set<String> = ["today", "train", "health", "targets"]
 
     enum GateStep: Equatable {
         case checking
@@ -239,10 +250,29 @@ struct RootContainer: View {
                 OnboardingView(onComplete: { complete() })
             case .main:
                 RootTabView()
+                    .overlay {
+                        if !mainReady {
+                            ZStack {
+                                Theme.bg.ignoresSafeArea()
+                                Brandmark(size: 40)
+                            }
+                            .transition(.opacity)
+                        }
+                    }
+                    .task {
+                        // Hard cap · reveal even if a tab never signals (slow
+                        // net / error) so the splash can never hang. Generous
+                        // because we hold for all four tabs to load.
+                        try? await Task.sleep(nanoseconds: 6_000_000_000)
+                        if !mainReady {
+                            withAnimation(.easeOut(duration: 0.4)) { mainReady = true }
+                        }
+                    }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .faffGateReset)) { _ in
             // Settings → Sign out cleared the session. Bounce back to gate.
+            resetLaunchHydration()
             withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
         }
         .onReceive(NotificationCenter.default.publisher(for: .faffSessionExpired)) { _ in
@@ -261,37 +291,42 @@ struct RootContainer: View {
             // after re-auth — a small visual glitch, not a data-loss risk.
             TokenStore.shared.clear()
             UserDefaults.standard.removeObject(forKey: "faff.onboarded")
+            resetLaunchHydration()
             withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .faffSurfaceReady)) { note in
+            guard step == .main, !mainReady, !revealScheduled else { return }
+            if let s = note.object as? String { readySurfaces.insert(s) }
+            guard readySurfaces.isSuperset(of: Self.launchSurfaces) else { return }
+            // Every tab is loaded · settle briefly for trailing fetches
+            // (forecast chip, etc.), then fade the splash into a ready app.
+            revealScheduled = true
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                withAnimation(.easeOut(duration: 0.4)) { mainReady = true }
+            }
         }
     }
 
-    /// Hold the FAFF brandmark until Today's critical surfaces are in
-    /// AppCache, then let advance()'s 0.32s fade crossfade into a hydrated
-    /// screen. Races the prefetch against a hard cap so a slow network can't
-    /// strand the runner on the splash — at the cap we reveal with whatever
-    /// cache we have (the tab .task + the background prefetchAllOnLaunch fill
-    /// the rest). Replaces the old fixed 1s sleep that revealed .main before
-    /// the data had landed, which is what made Today pop in.
-    private func holdForCriticalData() async {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await API.prefetchTodayCritical() }
-            group.addTask { _ = try? await Task.sleep(nanoseconds: 2_600_000_000) }
-            _ = await group.next()   // whichever lands first — data or the cap
-            group.cancelAll()
-        }
+    /// Re-arm the splash hold when bouncing back to the gate (sign-out /
+    /// expiry) so the next .main entry waits for a fresh full load again.
+    private func resetLaunchHydration() {
+        mainReady = false
+        readySurfaces = []
+        revealScheduled = false
     }
 
     private func decideInitialStep() async {
-        // AFC task 13 · route every exit through advance() so the brandmark
-        // gate FADES into the destination (0.32s easeInOut) instead of
-        // hard-cutting. Was three bare `step =` assignments.
+        // The gate FADES into .signIn / .onboarding (0.32s easeInOut). It does
+        // NOT fade into .main: the .checking brandmark and .main's splash
+        // overlay are the identical Brandmark-on-bg, so an instant swap is
+        // seamless (the brandmark simply stays on screen and keeps holding).
+        // A crossfade here would briefly show the cache-warm content under the
+        // still-fading-in overlay — a flash before the splash covers it again.
+        // enterMain() = instant, no flash.
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: "faff.onboarded") {
-            // Hold the FAFF logo for a beat while prefetchAllOnLaunch()
-            // warms AppCache. By the time we advance to .main the first
-            // tab renders from cache with no loading state.
-            await holdForCriticalData()
-            advance(.main); return
+            enterMain(); return
         }
         // Returning user heuristic: any cached surface bytes means they've
         // launched the app before and got real data back. Mark onboarded so
@@ -301,8 +336,7 @@ struct RootContainer: View {
             || AppCache.read(.logState, as: LogState.self) != nil
         if hasCachedSurfaces || TokenStore.shared.isSignedIn {
             defaults.set(true, forKey: "faff.onboarded")
-            await holdForCriticalData()
-            advance(.main); return
+            enterMain(); return
         }
         advance(.signIn)
     }
@@ -310,8 +344,14 @@ struct RootContainer: View {
     private func advance(_ next: GateStep) {
         withAnimation(.easeInOut(duration: 0.32)) { step = next }
     }
+    /// Enter .main with NO crossfade · the brandmark splash overlay on .main is
+    /// visually identical to the .checking brandmark, so an instant swap keeps
+    /// it on screen seamlessly and never flashes the loading content beneath.
+    private func enterMain() {
+        step = .main
+    }
     private func complete() {
         UserDefaults.standard.set(true, forKey: "faff.onboarded")
-        advance(.main)
+        enterMain()
     }
 }

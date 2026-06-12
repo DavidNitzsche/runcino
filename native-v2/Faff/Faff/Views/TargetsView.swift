@@ -145,6 +145,8 @@ struct TargetsView: View {
         await MainActor.run {
             self.projection = proj
             self.projectionLoaded = true
+            // Zero-pop launch · Targets surface painted, release the splash gate.
+            NotificationCenter.default.post(name: .faffSurfaceReady, object: "targets")
         }
     }
 

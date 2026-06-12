@@ -801,6 +801,8 @@ struct TrainView: View {
             self.planAdaptIntents = ints ?? []
             syncDisplayPhase()
             primeCalMonthFromToday()
+            // Zero-pop launch · Train surface painted, release the splash gate.
+            NotificationCenter.default.post(name: .faffSurfaceReady, object: "train")
         }
     }
 

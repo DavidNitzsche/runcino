@@ -106,7 +106,11 @@ struct RootTabView: View {
     /// are excluded from the ZStack so SwiftUI doesn't pay their layout
     /// cost until first visit. Once in the ZStack they're never removed,
     /// so switching back to a visited tab restores its state instantly.
-    @State private var visitedTabs: Set<FaffTab> = [.today]
+    // Zero-pop launch · pre-create ALL tabs so they load behind the FAFF
+    // splash. RootContainer holds the splash until every tab signals
+    // .faffSurfaceReady, so by the time it fades, switching tabs paints from
+    // loaded state — nothing pops. Was [.today] (lazy per-visit → first-tap pop).
+    @State private var visitedTabs: Set<FaffTab> = Set(FaffTab.allCases)
     private var tabBarHidden: Bool { tabBarHiddenPerTab[selected] ?? false }
 
     var body: some View {
