@@ -44,7 +44,7 @@ import { computeCourseImpact } from '@/lib/training/course-impact';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { computePacingDiscipline } from '@/lib/coach/pacing-discipline';
 import { computeProjectionLevers } from '@/lib/coach/projection-levers';
-import { computeConfidenceInterval, computeConfidenceLabel } from '@/lib/training/goal-projection';
+import { computeConfidenceInterval, computeConfidenceLabel, computeGoalProjection } from '@/lib/training/goal-projection';
 
 export const dynamic = 'force-dynamic';
 
@@ -328,6 +328,20 @@ export async function GET(req: NextRequest) {
     const lastMove = lastMoveFromSeries(series);
     const held = heldDays(series, vdot);
 
+    // 2026-06-12 · the goal-seeking trajectory · same engine the web GapPanel
+    // reads (computeGoalProjection.trajectory). Carries the UPGRADE GEAR —
+    // aheadOfGoal / planUnderBuilt / overPerformanceBonusVdot — plus the
+    // goal-seeking projectedSec, so the native Goal tab can show "AHEAD" off the
+    // same signal as web. Restores the web/native parity this endpoint targets.
+    // Dormant unless the runner is genuinely over-performing (bonus 0 → flags
+    // false). Best-effort: a failure leaves the rest of the panel intact.
+    const gp = (vdot != null && goalSec != null && daysAway != null)
+      ? await computeGoalProjection({
+          userUuid: userId, goalSec, raceDistanceMi: distanceMi, vdot, daysToRace: daysAway,
+        }).catch(() => null)
+      : null;
+    const traj = gp?.trajectory ?? null;
+
     // All four standard Daniels distances via the canonical predictRaceTime
     // (binary-search on rawVdot). iPhone renders these directly — no local
     // race-time math on any client surface.
@@ -374,6 +388,14 @@ export async function GET(req: NextRequest) {
       raceProjections,
       confidenceInterval,
       confidenceLabel,
+      // 2026-06-12 · upgrade gear (trajectory-derived) for the native Goal tab.
+      // aheadOfGoal → render the "AHEAD" headline; planUnderBuilt → advisory
+      // (rebuild is web-only); trajectoryProjectedSec is the goal-seeking
+      // projection (vs projectionSec, which stays current-fitness).
+      aheadOfGoal: traj?.aheadOfGoal ?? false,
+      planUnderBuilt: traj?.planUnderBuilt ?? null,
+      overPerformanceBonusVdot: traj?.overPerformanceBonusVdot ?? 0,
+      trajectoryProjectedSec: traj?.projectedSec ?? null,
     });
   } catch (err: any) {
     console.error('[api/targets/projection] failed:', err);
