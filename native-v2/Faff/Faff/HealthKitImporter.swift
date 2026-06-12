@@ -1518,6 +1518,23 @@ final class HealthKitImporter: ObservableObject {
             }
         }
 
+        // SAFETY GUARD (2026-06-11) · never run the delete-diff when the
+        // fresh HK query came back EMPTY. An empty result is overwhelmingly
+        // a transient HK read — store not ready on a background-delivery
+        // wake, a permission race, or the per-type query loop returning
+        // nothing — NOT "the runner deleted every strength workout."
+        // Treating empty as "delete everything cached" silently wiped
+        // David's logged sessions same-day (both rows gone within hours of
+        // ingest, 2026-06-11). Bail before the diff: with no workouts seen
+        // the POST loop above already no-op'd, so the whole sweep becomes a
+        // clean no-op and the caches stay intact (delete-tracking survives
+        // the transient). The rare cost — a genuinely-deleted last workout
+        // leaves one stale row until the next non-empty sync — is vastly
+        // cheaper than mass data loss on a flaky read. Matters MORE now that
+        // the workout observer runs this on background wakes, where an
+        // empty/cold HK store is common.
+        guard !freshUUIDs.isEmpty else { return result }
+
         // Delete diffing · cached uuids no longer in HK → DELETE.
         // P-7 guard: only delete if the session's date was still inside the
         // 28-day window — a session that merely aged out is indistinguishable
