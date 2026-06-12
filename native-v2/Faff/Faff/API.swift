@@ -904,6 +904,19 @@ enum API {
         _ = await (w, pw, r)
         _ = await (ts, hs, ps, rl, lg)
     }
+
+    /// The handful of surfaces TodayView paints from on first render. The
+    /// launch gate AWAITS this (time-capped) so the FAFF splash holds until
+    /// Today is hydrated, then crossfades into a ready screen — no pop-in.
+    /// prefetchAllOnLaunch() still warms the other tabs in the background.
+    static func prefetchTodayCritical() async {
+        async let w  = (try? await fetchWatchWorkout())
+        async let pw = (try? await fetchPlanWeek())
+        async let r  = (try? await fetchReadiness())
+        async let ps = (try? await fetchProfileState())
+        async let bt = (try? await briefing(surface: "today"))
+        _ = await (w, pw, r, ps, bt)
+    }
 }
 
 // MARK: - Watch workout wrapper

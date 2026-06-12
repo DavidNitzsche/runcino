@@ -265,6 +265,22 @@ struct RootContainer: View {
         }
     }
 
+    /// Hold the FAFF brandmark until Today's critical surfaces are in
+    /// AppCache, then let advance()'s 0.32s fade crossfade into a hydrated
+    /// screen. Races the prefetch against a hard cap so a slow network can't
+    /// strand the runner on the splash — at the cap we reveal with whatever
+    /// cache we have (the tab .task + the background prefetchAllOnLaunch fill
+    /// the rest). Replaces the old fixed 1s sleep that revealed .main before
+    /// the data had landed, which is what made Today pop in.
+    private func holdForCriticalData() async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await API.prefetchTodayCritical() }
+            group.addTask { _ = try? await Task.sleep(nanoseconds: 2_600_000_000) }
+            _ = await group.next()   // whichever lands first — data or the cap
+            group.cancelAll()
+        }
+    }
+
     private func decideInitialStep() async {
         // AFC task 13 · route every exit through advance() so the brandmark
         // gate FADES into the destination (0.32s easeInOut) instead of
@@ -274,7 +290,7 @@ struct RootContainer: View {
             // Hold the FAFF logo for a beat while prefetchAllOnLaunch()
             // warms AppCache. By the time we advance to .main the first
             // tab renders from cache with no loading state.
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await holdForCriticalData()
             advance(.main); return
         }
         // Returning user heuristic: any cached surface bytes means they've
@@ -285,7 +301,7 @@ struct RootContainer: View {
             || AppCache.read(.logState, as: LogState.self) != nil
         if hasCachedSurfaces || TokenStore.shared.isSignedIn {
             defaults.set(true, forKey: "faff.onboarded")
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await holdForCriticalData()
             advance(.main); return
         }
         advance(.signIn)

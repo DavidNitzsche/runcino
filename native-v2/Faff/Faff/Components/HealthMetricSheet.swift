@@ -29,8 +29,10 @@ struct HealthMetricSheet: View {
                 .fill(Color.white.opacity(0.28))
                 .frame(width: 44, height: 4)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 10)
-                .padding(.bottom, 18)
+                // More breathing room up top — the header + hero value were
+                // jammed against the sheet edge (David: "too close to the edge").
+                .padding(.top, 16)
+                .padding(.bottom, 30)
 
             VStack(alignment: .leading, spacing: 16) {
                 // Header · status dot + label + trend arrow
