@@ -438,9 +438,9 @@ struct LogNonRunSheet: View {
 // MARK: - SetGoalSheet
 //
 // Set a time goal for a specific distance — no race required.
-// Distance: fixed picker (5K / 10K / Half Marathon / Marathon / 50K / 100K).
-// Time: free-text field with auto-colon formatting (type "2350" → "23:50").
-// Saves to profiles.tt_goal_distance + tt_goal_time via POST /api/profile/goal.
+// Distance: horizontal chip picker.
+// Time: three wheel pickers — hours (0-9) · minutes (00-59) · seconds (00/15/30/45).
+// Saves via POST /api/profile/goal.
 
 struct NewGoalSheet: View {
     var onSubmitted: () -> Void = {}
@@ -457,17 +457,29 @@ struct SetGoalSheet: View {
     var existingGoal: FitnessGoal? = nil
 
     private let distances = ["5K", "10K", "Half Marathon", "Marathon", "50K", "100K"]
+    private let secondOptions = [0, 15, 30, 45]
 
     @State private var distance: String = "Half Marathon"
-    @State private var timeText: String = ""
+    @State private var hours: Int = 1
+    @State private var minutes: Int = 45
+    @State private var seconds: Int = 0
     @State private var saving: Bool = false
     @State private var error: String? = nil
+
+    private var goalTimeString: String {
+        let m = String(format: "%02d", minutes)
+        let s = String(format: "%02d", seconds)
+        return hours > 0 ? "\(hours):\(m):\(s)" : "\(minutes):\(s)"
+    }
+
+    private var isValid: Bool { hours > 0 || minutes > 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             sheetHeader(existingGoal != nil ? "Edit goal" : "Set your goal")
-            VStack(alignment: .leading, spacing: 20) {
-                // Distance picker
+            VStack(alignment: .leading, spacing: 24) {
+
+                // Distance chips
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISTANCE")
                         .font(.body(10, weight: .extraBold)).tracking(1.5)
@@ -475,17 +487,13 @@ struct SetGoalSheet: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(distances, id: \.self) { d in
-                                Button {
-                                    distance = d
-                                } label: {
+                                Button { distance = d } label: {
                                     Text(d)
                                         .font(.body(13, weight: distance == d ? .extraBold : .semibold))
                                         .foregroundStyle(distance == d ? Theme.bg : Theme.txt)
                                         .padding(.horizontal, 14).padding(.vertical, 8)
-                                        .background(
-                                            distance == d ? Theme.race : Theme.Glass.fill,
-                                            in: Capsule()
-                                        )
+                                        .background(distance == d ? Theme.race : Theme.Glass.fill,
+                                                    in: Capsule())
                                 }
                                 .buttonStyle(.plain)
                                 .animation(.easeInOut(duration: 0.15), value: distance)
@@ -495,20 +503,36 @@ struct SetGoalSheet: View {
                     }
                 }
 
-                // Time input
-                VStack(alignment: .leading, spacing: 8) {
+                // Time wheel picker
+                VStack(alignment: .leading, spacing: 10) {
                     Text("TARGET TIME")
                         .font(.body(10, weight: .extraBold)).tracking(1.5)
                         .foregroundStyle(Theme.mute)
-                    TextField(timePlaceholder, text: $timeText)
-                        .font(.display(28, weight: .bold))
-                        .foregroundStyle(Theme.txt)
-                        .keyboardType(.numberPad)
-                        .onChange(of: timeText) { _, new in
-                            timeText = formatTimeInput(new)
+
+                    HStack(spacing: 0) {
+                        timeColumn(label: "HR") {
+                            Picker("", selection: $hours) {
+                                ForEach(0...9, id: \.self) { h in Text("\(h)").tag(h) }
+                            }
                         }
-                    Text(timeHint)
-                        .font(.body(11)).foregroundStyle(Theme.mute)
+                        colonSep
+                        timeColumn(label: "MIN") {
+                            Picker("", selection: $minutes) {
+                                ForEach(0...59, id: \.self) { m in
+                                    Text(String(format: "%02d", m)).tag(m)
+                                }
+                            }
+                        }
+                        colonSep
+                        timeColumn(label: "SEC") {
+                            Picker("", selection: $seconds) {
+                                ForEach(secondOptions, id: \.self) { s in
+                                    Text(String(format: "%02d", s)).tag(s)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
                 }
 
                 if let e = error {
@@ -526,74 +550,72 @@ struct SetGoalSheet: View {
         }
         .background(Theme.Glass.strong)
         .ignoresSafeArea(edges: .bottom)
-        .onAppear {
-            if let g = existingGoal {
-                distance = g.distance
-                timeText = g.time
+        .onAppear { seedValues() }
+        .onChange(of: distance) { _, _ in if existingGoal == nil { setDefaults(for: distance) } }
+    }
+
+    @ViewBuilder
+    private func timeColumn<P: View>(label: String, @ViewBuilder picker: () -> P) -> some View {
+        VStack(spacing: 4) {
+            picker()
+                .labelsHidden()
+                .pickerStyle(.wheel)
+                .frame(width: 72, height: 120)
+                .clipped()
+            Text(label)
+                .font(.body(9, weight: .bold)).tracking(1)
+                .foregroundStyle(Theme.mute)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var colonSep: some View {
+        Text(":")
+            .font(.display(26, weight: .bold))
+            .foregroundStyle(Theme.mute)
+            .padding(.bottom, 22)
+    }
+
+    private func seedValues() {
+        if let g = existingGoal {
+            distance = g.distance
+            let parts = g.time.split(separator: ":").compactMap { Int($0) }
+            if parts.count == 2 {
+                hours = 0; minutes = parts[0]; seconds = snap15(parts[1])
+            } else if parts.count == 3 {
+                hours = parts[0]; minutes = parts[1]; seconds = snap15(parts[2])
             }
+        } else {
+            setDefaults(for: distance)
         }
     }
 
-    private var timePlaceholder: String {
-        switch distance {
-        case "5K":           return "23:50"
-        case "10K":          return "48:30"
-        case "Half Marathon": return "1:45:00"
-        case "Marathon":     return "3:30:00"
-        default:             return "4:30:00"
+    private func setDefaults(for d: String) {
+        switch d {
+        case "5K":            hours = 0; minutes = 25; seconds = 0
+        case "10K":           hours = 0; minutes = 50; seconds = 0
+        case "Half Marathon": hours = 1; minutes = 45; seconds = 0
+        case "Marathon":      hours = 3; minutes = 30; seconds = 0
+        case "50K":           hours = 5; minutes = 0;  seconds = 0
+        default:              hours = 9; minutes = 0;  seconds = 0
         }
     }
 
-    private var timeHint: String {
-        switch distance {
-        case "5K", "10K": return "MM:SS"
-        default:           return "H:MM:SS"
-        }
-    }
-
-    private var isValid: Bool {
-        !timeText.isEmpty && parseSeconds(timeText) != nil
+    private func snap15(_ s: Int) -> Int {
+        secondOptions.min(by: { abs($0 - s) < abs($1 - s) }) ?? 0
     }
 
     private func save() {
-        guard let _ = parseSeconds(timeText) else { return }
         saving = true; error = nil
         Task {
             let ok = (try? await API.setFitnessGoal(
                 distanceLabel: distance,
-                goalTime: timeText
+                goalTime: goalTimeString
             )) ?? false
             await MainActor.run {
                 if ok { onSubmitted(); dismiss() }
                 else { error = "Could not save goal. Try again."; saving = false }
             }
-        }
-    }
-
-    /// Auto-insert colons as the user types digits.
-    private func formatTimeInput(_ raw: String) -> String {
-        let digits = raw.filter(\.isNumber)
-        switch digits.count {
-        case 0:      return ""
-        case 1, 2:   return digits
-        case 3, 4:   return String(digits.prefix(2)) + ":" + String(digits.dropFirst(2))
-        default:
-            let h = String(digits.prefix(digits.count - 4))
-            let m = String(digits.dropFirst(digits.count - 4).prefix(2))
-            let s = String(digits.suffix(2))
-            return "\(h):\(m):\(s)"
-        }
-    }
-
-    /// Parse "MM:SS" or "H:MM:SS" → seconds, nil if invalid.
-    private func parseSeconds(_ s: String) -> Int? {
-        let parts = s.split(separator: ":").compactMap { Int($0) }
-        switch parts.count {
-        case 2 where parts[1] < 60:
-            return parts[0] * 60 + parts[1]
-        case 3 where parts[1] < 60 && parts[2] < 60:
-            return parts[0] * 3600 + parts[1] * 60 + parts[2]
-        default: return nil
         }
     }
 }
