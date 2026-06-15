@@ -1011,13 +1011,13 @@ struct TodayView: View {
     private func workPhaseShortLabel(_ p: WatchPhase) -> String {
         let lbl = p.label.uppercased()
         if lbl.contains("THRESHOLD") || lbl.contains("TEMPO") || lbl.contains("@T") { return "Tempo" }
-        if lbl.contains("INTERVAL") || lbl.contains("@I") || lbl.contains("VO2") { return "Intervals" }
+        if lbl.contains("INTERVAL") || lbl.contains("@I") || lbl.contains("VO2") { return "Interval" }
         if lbl.contains("MARATHON") || lbl.contains("@MP") { return "Marathon Pace" }
         if lbl.contains("REPEAT") { return "Repeat" }
         if !p.label.isEmpty { return p.label }
         switch selectedEffort {
         case .tempo:     return "Tempo"
-        case .intervals: return "Intervals"
+        case .intervals: return "Interval"
         case .long:      return "Marathon Pace"
         default:         return "Run"
         }
