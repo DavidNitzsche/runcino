@@ -575,28 +575,11 @@ struct HealthView: View {
         }
     }
 
-    /// Compact readiness ring + verdict for the shared header pill (the Today
-    /// week-strip slot). Sized to the fixed 84pt pill · replaces the old gauge.
+    /// 7-day readiness sparkline pill — replaces the score ring + verdict text.
+    /// The trend IS the story on the Health tab; a text verdict is Today-tab language.
     private var healthReadinessPill: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle().stroke(Color.white.opacity(0.15), lineWidth: 5)
-                Circle()
-                    .trim(from: 0, to: min(1, max(0, Double(readiness?.score ?? 0) / 100)))
-                    .stroke(readinessBandColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Text(readiness?.score.map(String.init) ?? "—")
-                    .font(.display(19, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 56, height: 56)
-            verdictAttributedText
-                .font(.body(11.5, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineSpacing(1)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+        HStack(spacing: 12) {
+            ReadinessTrendPill(snapshot: readiness, state: state)
             Button { showLogSheet = true } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 15, weight: .bold))
@@ -1021,5 +1004,85 @@ struct HealthLogSheet: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
         }
+    }
+}
+
+// MARK: - ReadinessTrendPill
+
+/// Compact 7-day readiness bar sparkline for the Health header pill.
+/// Replaces the ring + text verdict — the trend is the story on Health,
+/// not a today-specific coaching message.
+private struct ReadinessTrendPill: View {
+    let snapshot: ReadinessSnapshot?
+    let state: HealthState?
+
+    private var series: [Double] {
+        if let dr = state?.dailyReadiness, !dr.isEmpty {
+            let last7 = Array(dr.suffix(7))
+            return last7.map { Double($0.score ?? 0) }
+        }
+        let score = Double(snapshot?.score ?? 0)
+        return (0..<6).map { _ in 0.0 } + [score]
+    }
+
+    private var dayInitials: [String] {
+        let cal = Calendar.current
+        let f = DateFormatter(); f.dateFormat = "E"
+        return (0..<7).reversed().map { offset in
+            let d = cal.date(byAdding: .day, value: -offset, to: Date()) ?? Date()
+            return String(f.string(from: d).prefix(1)).uppercased()
+        }
+    }
+
+    private var bandColor: Color {
+        switch (snapshot?.band ?? "").lowercased() {
+        case "sharp":                   return Color(hex: 0x3CD370)
+        case "ready":                   return Color(hex: 0x58B8FF)
+        case "moderate":                return Color(hex: 0xFFB24D)
+        case "pull-back", "pullback":   return Color(hex: 0xFC4D64)
+        default:                        return Color(hex: 0x8A90A0)
+        }
+    }
+
+    var body: some View {
+        let s = series
+        let maxV = max(1, s.max() ?? 1)
+        let todayIdx = s.count - 1
+        let labels = dayInitials
+
+        VStack(alignment: .leading, spacing: 3) {
+            // "NOW 66" header
+            HStack(spacing: 4) {
+                Text("NOW")
+                    .font(.body(9, weight: .extraBold)).tracking(0.8)
+                    .foregroundStyle(Color.white.opacity(0.45))
+                Text(snapshot?.score.map(String.init) ?? "—")
+                    .font(.body(9, weight: .extraBold)).tracking(0.4)
+                    .foregroundStyle(bandColor)
+                Spacer(minLength: 0)
+            }
+            // Bars
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(Array(s.enumerated()), id: \.offset) { idx, v in
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(idx == todayIdx ? bandColor : Color.white.opacity(0.15))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: max(4, CGFloat(v / maxV) * 30))
+                }
+            }
+            .frame(height: 30)
+            // Single-letter day labels
+            HStack(spacing: 5) {
+                ForEach(Array(labels.enumerated()), id: \.offset) { idx, lbl in
+                    Text(lbl)
+                        .font(.body(8, weight: .bold))
+                        .foregroundStyle(idx == labels.count - 1
+                                         ? bandColor.opacity(0.9)
+                                         : Color.white.opacity(0.30))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 }
