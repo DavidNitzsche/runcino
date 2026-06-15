@@ -409,43 +409,42 @@ struct HealthView: View {
 
     private var sleepPane: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sleepArchitectureLine
+            HStack(spacing: 10) {
+                sleepSummaryCard(
+                    label: "LAST NIGHT",
+                    value: hkImporter.lastNightHours ?? readiness?.sleep7Avg
+                )
+                sleepSummaryCard(
+                    label: "7-NIGHT AVG",
+                    value: readiness?.sleep7Avg ?? hkImporter.lastNightHours
+                )
+            }
             metricsGrid(HealthSeed.sleepMetrics(readiness: readiness, healthState: state),
                         variant: .big)
         }
     }
 
-    /// 2026-06-05 round 85 fix · "Architecture · last night Xh · 7-night Yh"
-    /// used to read `readiness?.sleep7Avg` for BOTH numbers — the format
-    /// string passed `(s7, s7)` so the two labels were just relabels of
-    /// the same value. That's why David's QC saw 6.1h / 6.1h identical
-    /// despite the round 84 totalMinutes fix landing on the iPhone side.
-    ///
-    /// Split:
-    ///  · "last night" reads `hkImporter.lastNightHours` first · this is
-    ///    the freshest single-night `sleep_hours` value the iPhone just
-    ///    wrote to the backend. After build 158 + a re-sync it includes
-    ///    the unspecified / legacy `.asleep` minutes that were missing
-    ///    pre-round-84, so the displayed value jumps to match HK's
-    ///    "Time Asleep" total immediately (no need to wait for the
-    ///    7-night rolling window to drift up).
-    ///  · "7-night" stays on `sleep7Avg` · the backend's rolling average
-    ///    over the historical samples. This will drift up to match HK
-    ///    gradually as the next 7 nights' worth of corrected rows land.
-    ///  · Either number falls back to the other if missing, so the line
-    ///    never shows a partial half-result.
-    private var sleepArchitectureLine: some View {
-        let lastNight: Double? = hkImporter.lastNightHours ?? readiness?.sleep7Avg
-        let sevenNight: Double? = readiness?.sleep7Avg ?? hkImporter.lastNightHours
-        return Group {
-            if let ln = lastNight, let s7 = sevenNight {
-                Text(String(format: "Architecture · last night %.1fh · 7-night %.1fh",
-                            ln, s7))
-                    .font(.body(11.5, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.66))
-                    .padding(.bottom, 4)
-            }
+    private func sleepSummaryCard(label: String, value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.body(9, weight: .extraBold)).tracking(0.9)
+                .foregroundStyle(Color.white.opacity(0.55))
+            Text(value.map { String(format: "%.1fh", $0) } ?? "—")
+                .font(.display(32, weight: .semibold))
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.8)
+                .lineLimit(1)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+        )
     }
 
     // MARK: - FORM pane
