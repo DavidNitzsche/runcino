@@ -52,12 +52,13 @@ struct ReadinessBriefSeed: Decodable {
     // :226/:233 via buildHealthActions); the model just wasn't decoding them.
     let actions: [HealthAction]
     let actionsThreshold: String
+    let prescription: BriefPrescription?
 
     enum CodingKeys: String, CodingKey {
         case date, score, band, label, headline, oneLineMover,
              scoreTrend, pillars, streaks, movers,
              subjectiveOverride, coldStart, trendNote, composition, watchTomorrow,
-             actions, actionsThreshold
+             actions, actionsThreshold, prescription
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -78,6 +79,7 @@ struct ReadinessBriefSeed: Decodable {
         self.watchTomorrow = (try? c.decode([String].self, forKey: .watchTomorrow)) ?? []
         self.actions = (try? c.decode([HealthAction].self, forKey: .actions)) ?? []
         self.actionsThreshold = try c.decodeIfPresent(String.self, forKey: .actionsThreshold) ?? ""
+        self.prescription = try c.decodeIfPresent(BriefPrescription.self, forKey: .prescription)
     }
 }
 
@@ -98,6 +100,28 @@ struct HealthAction: Decodable, Identifiable {
         self.priority = try c.decodeIfPresent(String.self, forKey: .priority) ?? "low"
         self.action   = try c.decodeIfPresent(String.self, forKey: .action) ?? ""
         self.cite     = try c.decodeIfPresent(String.self, forKey: .cite) ?? ""
+    }
+}
+
+// MARK: - Prescription (today's run guidance)
+
+struct BriefPrescription: Decodable {
+    let action: String
+    let why: String
+    let intent: String
+    let targetMinutes: Int?
+    let targetMiles: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case action, why, intent, targetMinutes, targetMiles
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.action        = try c.decodeIfPresent(String.self, forKey: .action) ?? ""
+        self.why           = try c.decodeIfPresent(String.self, forKey: .why) ?? ""
+        self.intent        = try c.decodeIfPresent(String.self, forKey: .intent) ?? "plan"
+        self.targetMinutes = try c.decodeIfPresent(Int.self,    forKey: .targetMinutes)
+        self.targetMiles   = try c.decodeIfPresent(Double.self, forKey: .targetMiles)
     }
 }
 

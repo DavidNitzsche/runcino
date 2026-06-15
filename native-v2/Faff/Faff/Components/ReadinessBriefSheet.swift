@@ -11,10 +11,9 @@
 //  Content order:
 //    1. Subjective override (when present) · loud amber-red banner
 //    2. Hero · 92pt ring (number only) + READINESS · LABEL + headline + oneLineMover
-//    3. 14-day score trend bar chart · the lead element
-//    4. Streaks · tappable banners (collapsed → short, expanded → meaning)
-//    5. Pillars · 5 tap-to-expand rows · contribution bar + pillar history + confounders
-//    6. Watch tomorrow · glass card list (when present)
+//    3. 2×2 signal tiles (SLEEP / RECOVERY / RESTING HR / TRAINING LOAD)
+//       tap → 7-night mini sparkline
+//    4. TODAY'S RUN · action + why from BriefPrescription (when present)
 //
 //  Cold-start variant (band='no-data'): replaces the body with the
 //  baseline-building progress ring + connect HK CTA.
@@ -59,31 +58,6 @@ private enum PillarBand {
     }
 }
 
-/// Signed-contribution tint per the spec:
-///   ≤ -8 red · < 0 amber-orange · > 0 green · 0 grey
-private func contributionTint(_ pts: Int) -> Color {
-    if pts <= -8 { return Color(hex: 0xFC4D64) }
-    if pts <  0  { return Color(hex: 0xFFB24D) }
-    if pts >  0  { return Color(hex: 0x3EBD41) }
-    return Color(hex: 0x8A90A0)
-}
-
-private func signed(_ n: Int) -> String {
-    if n > 0 { return "+\(n)" }
-    if n < 0 { return "−\(abs(n))" }
-    return "0"
-}
-
-private func humanPillar(_ key: String) -> String {
-    switch key.lowercased() {
-    case "sleep": return "Sleep"
-    case "hrv":   return "HRV"
-    case "rhr":   return "RHR"
-    case "load":  return "Load"
-    case "hr_recovery", "hr-rec", "hr_rec": return "HR recovery"
-    default:      return key.capitalized
-    }
-}
 
 // MARK: - Sheet container
 
@@ -275,18 +249,25 @@ struct ReadinessBriefSheet: View {
     @ViewBuilder
     private func briefContent(_ b: ReadinessBriefSeed) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Cold-start envelope takes over the whole body when present.
             if let cold = b.coldStart {
                 BriefColdStartView(brief: b, cold: cold)
             } else {
                 if let o = b.subjectiveOverride { subjectiveOverrideCard(o) }
                 heroBlock(b)
-                if b.scoreTrend.count > 1 { trendSection(b) }
-                if !b.streaks.isEmpty { streaksSection(b.streaks) }
-                pillarsSection(b)
-                if !b.watchTomorrow.isEmpty { watchSection(b.watchTomorrow) }
+                sectionDivider.padding(.top, 22)
+                signalsGrid(b)
+                if let rx = b.prescription, !rx.action.isEmpty {
+                    sectionDivider.padding(.top, 22)
+                    todaysRunSection(rx)
+                }
             }
         }
+    }
+
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.09))
+            .frame(height: 1)
     }
 
     // MARK: - 1. Subjective override
@@ -396,139 +377,43 @@ struct ReadinessBriefSheet: View {
         .padding(.top, 4)
     }
 
-    // MARK: - 3. 14-day trend bar chart
+    // MARK: - 3. 2×2 signals grid
 
-    @ViewBuilder
-    private func trendSection(_ b: ReadinessBriefSeed) -> some View {
-        VStack(alignment: .leading, spacing: 13) {
-            Text("14-DAY TREND")
+    private func signalsGrid(_ b: ReadinessBriefSeed) -> some View {
+        let tiles = b.pillars.filter { $0.key != "hr_recovery" }
+        return LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+            alignment: .leading,
+            spacing: 12
+        ) {
+            ForEach(tiles) { p in
+                SignalTile(pillar: p)
+            }
+        }
+        .padding(.top, 16)
+    }
+
+    // MARK: - 4. Today's run prescription
+
+    private func todaysRunSection(_ rx: BriefPrescription) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TODAY'S RUN")
                 .font(.body(10.5, weight: .bold))
                 .tracking(2)
                 .foregroundStyle(Color.white.opacity(0.48))
-            TrendBarChart(points: b.scoreTrend)
-            HStack {
-                Text(formatTrendDate(b.scoreTrend.first?.date))
-                    .font(.body(9.5, weight: .bold))
-                    .tracking(0.5)
-                    .foregroundStyle(Color.white.opacity(0.42))
-                Spacer()
-                Text("TODAY")
-                    .font(.body(9.5, weight: .bold))
-                    .tracking(0.5)
-                    .foregroundStyle(Color.white.opacity(0.42))
-            }
-            if let note = b.trendNote, !note.isEmpty {
-                Text(note)
-                    .font(.body(13, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.8))
+            Text(rx.action)
+                .font(.body(17, weight: .bold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            if !rx.why.isEmpty {
+                Text(rx.why)
+                    .font(.body(13.5, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.72))
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4)
             }
         }
-        .padding(.top, 26)
-    }
-
-    // MARK: - 4. Streaks
-
-    private func streaksSection(_ streaks: [ReadinessStreak]) -> some View {
-        VStack(spacing: 10) {
-            ForEach(streaks) { s in
-                StreakRow(streak: s)
-            }
-        }
-        .padding(.top, 26)
-    }
-
-    // MARK: - 5. Pillars + composition
-
-    @ViewBuilder
-    private func pillarsSection(_ b: ReadinessBriefSeed) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("WHAT'S DRIVING IT")
-                    .font(.body(10.5, weight: .bold))
-                    .tracking(2)
-                    .foregroundStyle(Color.white.opacity(0.48))
-                Spacer()
-                Text("WEIGHTED CONTRIBUTION")
-                    .font(.body(9.5, weight: .medium))
-                    .tracking(0.3)
-                    .foregroundStyle(Color.white.opacity(0.34))
-            }
-            .padding(.bottom, 13)
-
-            VStack(spacing: 2) {
-                ForEach(b.pillars) { p in
-                    PillarRowView(pillar: p)
-                }
-            }
-
-            if let comp = b.composition {
-                HStack(spacing: 0) {
-                    Text("BASELINE \(comp.baseline)")
-                        .foregroundStyle(Color.white.opacity(0.6))
-                    Text("  ·  ")
-                        .foregroundStyle(Color.white.opacity(0.4))
-                    Text("NET ")
-                        .foregroundStyle(Color.white.opacity(0.6))
-                    Text(signed(comp.net))
-                        .foregroundStyle(contributionTint(comp.net))
-                    Text("  ·  ")
-                        .foregroundStyle(Color.white.opacity(0.4))
-                    Text("TODAY ")
-                        .foregroundStyle(Color.white.opacity(0.6))
-                    Text("\(comp.today)")
-                        .foregroundStyle(BriefBand.tint(b.band))
-                    Spacer(minLength: 0)
-                }
-                .font(.body(11.5, weight: .extraBold))
-                .tracking(0.5)
-                .padding(.top, 18)
-            }
-        }
-        .padding(.top, 26)
-    }
-
-    // MARK: - 6. Watch tomorrow
-
-    private func watchSection(_ items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 13) {
-            Text("WATCH TOMORROW")
-                .font(.body(10.5, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(Color.white.opacity(0.48))
-            VStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { idx, line in
-                    HStack(alignment: .top, spacing: 11) {
-                        Circle()
-                            .fill(Color(hex: 0xFFCE8A))
-                            .frame(width: 5, height: 5)
-                            .padding(.top, 7)
-                        Text(line)
-                            .font(.body(13.5, weight: .regular))
-                            .foregroundStyle(Color.white.opacity(0.92))
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.vertical, 12)
-                    if idx != items.count - 1 {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.07))
-                            .frame(height: 1)
-                    }
-                }
-            }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 5)
-            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            )
-        }
-        .padding(.top, 26)
+        .padding(.top, 16)
     }
 
     // MARK: - load
@@ -549,312 +434,113 @@ struct ReadinessBriefSheet: View {
     }
 }
 
-// MARK: - Trend bar chart
+// MARK: - Signal tile (2×2 grid card)
 
-private struct TrendBarChart: View {
-    let points: [ScoreTrendPoint]
-
-    var body: some View {
-        GeometryReader { geo in
-            HStack(alignment: .bottom, spacing: 4) {
-                ForEach(Array(points.enumerated()), id: \.offset) { idx, p in
-                    let isToday = idx == points.count - 1
-                    let h = barHeight(score: p.score) * geo.size.height
-                    let tint = BriefBand.tint(p.band)
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(tint)
-                        .frame(height: max(5, h))
-                        .opacity(isToday ? 1 : 0.5)
-                        .shadow(color: isToday ? tint.opacity(0.45) : .clear, radius: 6)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-        }
-        .frame(height: 96)
-    }
-
-    /// score domain clamped 35-95 → bar 14% to 100% of height
-    /// (per spec L25-L26 of README).
-    private func barHeight(score: Int) -> Double {
-        let clamped = max(35.0, min(95.0, Double(score)))
-        return 0.14 + ((clamped - 35.0) / 60.0) * 0.86
-    }
-}
-
-// MARK: - Streak row
-
-private struct StreakRow: View {
-    let streak: ReadinessStreak
-    @State private var open: Bool = false
-
-    private var isDown: Bool { streak.direction.lowercased() == "below" }
-    private var tint: Color { isDown ? Color(hex: 0xFC4D64) : Color(hex: 0x3EBD41) }
-    private var fillBg: Color {
-        isDown ? Color(hex: 0xFC4D64).opacity(0.12) : Color(hex: 0x3EBD41).opacity(0.12)
-    }
-    private var border: Color {
-        isDown ? Color(hex: 0xFC4D64).opacity(0.3) : Color(hex: 0x3EBD41).opacity(0.28)
-    }
-
-    var body: some View {
-        Button(action: { withAnimation(.easeInOut(duration: 0.16)) { open.toggle() } }) {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 9) {
-                    Text(humanPillar(streak.pillar).uppercased())
-                        .font(.body(10.5, weight: .extraBold))
-                        .tracking(1.2)
-                        .foregroundStyle(.white)
-                    Text("\(isDown ? "↓" : "↑") \(streak.days) days \(streak.direction)")
-                        .font(.body(11, weight: .bold))
-                        .foregroundStyle(isDown ? Color(hex: 0xFF9AA8) : Color(hex: 0x8FE6A0))
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.5))
-                        .rotationEffect(.degrees(open ? 180 : 0))
-                }
-                Text(streak.short)
-                    .font(.body(13.5, weight: .medium))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.leading)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if open && streak.meaning != streak.short && !streak.meaning.isEmpty {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.1))
-                        .frame(height: 1)
-                        .padding(.top, 2)
-                    Text(streak.meaning)
-                        .font(.body(12.5, weight: .regular))
-                        .foregroundStyle(Color.white.opacity(0.74))
-                        .multilineTextAlignment(.leading)
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(fillBg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(border, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Pillar row (collapsed + expanded)
-
-private struct PillarRowView: View {
+private struct SignalTile: View {
     let pillar: ReadinessPillar
-    @State private var open: Bool = false
+    @State private var showHistory: Bool = false
 
-    private var isNoData: Bool { pillar.band.lowercased() == "no-data" }
-    private var tint: Color { contributionTint(pillar.weightContribution) }
-    private var dotColor: Color { PillarBand.tint(pillar.band) }
+    private var tint: Color { PillarBand.tint(pillar.band) }
+    private var isNoData: Bool { pillar.band.lowercased().contains("no-data") || pillar.band.isEmpty }
 
-    /// 2026-06-02 round 45 · pillar value · just the leading number
-    /// chunk ("5.9h") · the qualifier part is moved to the subtitle.
-    /// Split on " · " · if the source doesn't carry the separator we
-    /// pass the whole string through unchanged.
-    private var pillarValueShort: String {
+    /// Leading chunk before " · " — the compact value shown big.
+    private var displayValue: String {
         let v = pillar.observedValue
         guard let dot = v.range(of: " · ") else { return v }
         return String(v[..<dot.lowerBound])
     }
 
-    /// 2026-06-02 round 45 · subtitle · trailing qualifier from
-    /// observedValue joined with the baseline copy. Examples:
-    ///   "7-night avg · target 8.0h"  (had qualifier + baseline)
-    ///   "target 8.0h"                (baseline only)
-    ///   "7-night avg"                (qualifier only · no baseline)
-    private var pillarBaselineCombined: String {
+    /// Trailing qualifier after " · " — shown small below the value.
+    private var displaySub: String {
         let v = pillar.observedValue
-        let baseline = pillar.baseline
-        guard let dot = v.range(of: " · ") else { return baseline }
+        guard let dot = v.range(of: " · ") else { return pillar.observedSub }
         let trailing = String(v[dot.upperBound...])
-        if baseline.isEmpty { return trailing }
-        return "\(trailing) · \(baseline)"
+        return trailing.isEmpty ? pillar.observedSub : trailing
+    }
+
+    /// True when the value is a word (no digit) — use smaller font.
+    private var valueIsWord: Bool {
+        displayValue.first.map { !$0.isNumber } ?? false
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Button(action: { if !isNoData { withAnimation(.easeInOut(duration: 0.16)) { open.toggle() } } }) {
-                HStack(spacing: 11) {
+        Button(action: {
+            if !pillar.trend.isEmpty {
+                withAnimation(.easeInOut(duration: 0.18)) { showHistory.toggle() }
+            }
+        }) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Label row
+                HStack(spacing: 5) {
                     Circle()
-                        .fill(dotColor)
-                        .frame(width: 8, height: 8)
-                    Text(pillar.label)
-                        .font(.body(11, weight: .extraBold))
-                        .tracking(0.4)
-                        .foregroundStyle(Color.white.opacity(isNoData ? 0.5 : 0.82))
-                        .frame(width: 44, alignment: .leading)
-
-                    contributionBar
-                        .frame(height: 8)
-                        .frame(maxWidth: .infinity)
-
-                    VStack(alignment: .trailing, spacing: 1) {
-                        // 2026-06-02 round 45 · "5.9h · 7-night avg" used
-                        // to overflow the 96pt column and truncate to
-                        // "5.9h · 7-nigh...". Split on " · " so the
-                        // value line stays compact ("5.9h") and the
-                        // qualifier rolls into the subtitle alongside
-                        // the baseline copy.
-                        Text(isNoData ? "·" : pillarValueShort)
-                            .font(.body(12.5, weight: .bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        Text(pillarBaselineCombined)
-                            .font(.body(9.5, weight: .regular))
-                            .foregroundStyle(Color.white.opacity(0.5))
-                            .lineLimit(1)
-                    }
-                    .frame(width: 96, alignment: .trailing)
-
-                    Text(isNoData ? "—" : signed(pillar.weightContribution))
-                        .font(.body(12.5, weight: .extraBold))
-                        .foregroundStyle(isNoData ? Color.white.opacity(0.3) : tint)
-                        .frame(width: 28, alignment: .trailing)
-
-                    if !isNoData {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.white.opacity(0.6))
-                            .rotationEffect(.degrees(open ? 180 : 0))
-                    }
-                }
-                .padding(.vertical, 13)
-                .padding(.horizontal, 12)
-                .opacity(isNoData ? 0.56 : 1)
-            }
-            .buttonStyle(.plain)
-            .disabled(isNoData)
-
-            if open && !isNoData {
-                expandedDetail
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 18)
-            }
-        }
-        .background(open ? Color.white.opacity(0.05) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var contributionBar: some View {
-        GeometryReader { geo in
-            ZStack {
-                Capsule()
-                    .fill(Color.white.opacity(0.12))
-                Rectangle()
-                    .fill(Color.white.opacity(0.3))
-                    .frame(width: 1, height: 12)
-                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
-
-                if !isNoData {
-                    let pts = abs(pillar.weightContribution)
-                    let widthPct = min(46.0, Double(pts) * 3.2 + 4) / 100.0
-                    let half = geo.size.width / 2
-                    let fillW = max(8, half * CGFloat(widthPct * 2))   // bar can extend up to ~46% of full width
-                    let xPos = pillar.weightContribution >= 0
-                        ? half + fillW / 2
-                        : half - fillW / 2
-                    Capsule()
                         .fill(tint)
-                        .frame(width: fillW, height: 8)
-                        .position(x: xPos, y: geo.size.height / 2)
+                        .frame(width: 6, height: 6)
+                    Text(pillar.label)
+                        .font(.body(8, weight: .extraBold))
+                        .tracking(1.2)
+                        .foregroundStyle(tint)
+                    Spacer(minLength: 0)
                 }
-            }
-        }
-    }
 
-    private var expandedDetail: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if !pillar.meaning.isEmpty {
-                Text(pillar.meaning)
-                    .font(.body(13.5, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.92))
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            pillarHistory
-            confounderList
-        }
-    }
+                // Big value
+                Text(isNoData ? "—" : displayValue)
+                    .font(.body(valueIsWord ? 14 : 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .padding(.top, 8)
 
-    @ViewBuilder
-    private var pillarHistory: some View {
-        if !pillar.trend.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("14-DAY HISTORY")
-                        .font(.body(9.5, weight: .extraBold))
-                        .tracking(1)
-                        .foregroundStyle(Color.white.opacity(0.42))
-                    Spacer()
-                    Text("TODAY · ")
-                        .font(.body(9.5, weight: .extraBold))
-                        .tracking(1)
-                        .foregroundStyle(Color.white.opacity(0.42))
-                    + Text(pillar.observedValue)
-                        .font(.body(9.5, weight: .extraBold))
-                        .tracking(1)
-                        .foregroundStyle(.white)
+                // Sub label
+                if !displaySub.isEmpty && !isNoData {
+                    Text(displaySub)
+                        .font(.body(9, weight: .regular))
+                        .foregroundStyle(Color.white.opacity(0.5))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.top, 2)
                 }
-                PillarHistoryBars(points: pillar.trend, tint: dotColor)
-                HStack {
-                    Text("14 DAYS AGO")
-                        .font(.body(9, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.38))
-                    Spacer()
-                    Text("TODAY")
-                        .font(.body(9, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.38))
-                }
-            }
-        }
-    }
 
-    @ViewBuilder
-    private var confounderList: some View {
-        let likely = pillar.confounders.filter { $0.likely }
-        let other  = pillar.confounders.filter { !$0.likely }
-        if !likely.isEmpty || !other.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                if !likely.isEmpty {
-                    confounderGroup(label: "MOST LIKELY BEHIND IT", items: likely, accent: Color(hex: 0xFFCE8A))
+                // Meaning description
+                if !pillar.meaning.isEmpty {
+                    Text(pillar.meaning)
+                        .font(.body(10, weight: .regular))
+                        .foregroundStyle(Color.white.opacity(0.56))
+                        .lineSpacing(1.5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 7)
                 }
-                if !other.isEmpty {
-                    confounderGroup(label: "ALSO WORTH CHECKING", items: other, accent: Color.white.opacity(0.78))
-                }
-            }
-        }
-    }
 
-    private func confounderGroup(label: String, items: [ReadinessConfounder], accent: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(.body(9.5, weight: .extraBold))
-                .tracking(1)
-                .foregroundStyle(Color.white.opacity(0.42))
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(items) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        Text(item.pillar)
-                            .font(.body(12.5, weight: .bold))
-                            .foregroundStyle(accent)
-                            .frame(width: 66, alignment: .leading)
-                        Text(item.explanation)
-                            .font(.body(12.5, weight: .regular))
-                            .foregroundStyle(Color.white.opacity(0.84))
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
+                // 7-day mini sparkline (tap reveal)
+                if showHistory && !pillar.trend.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.1))
+                            .frame(height: 1)
+                            .padding(.top, 9)
+                        PillarHistoryBars(points: pillar.trend, tint: tint)
+                        HStack {
+                            Text("7 NIGHTS AGO")
+                                .font(.body(7.5, weight: .bold))
+                                .foregroundStyle(Color.white.opacity(0.36))
+                            Spacer()
+                            Text("LAST NIGHT")
+                                .font(.body(7.5, weight: .bold))
+                                .foregroundStyle(Color.white.opacity(0.36))
+                        }
                     }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color.white.opacity(showHistory ? 0.08 : 0.05),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(tint.opacity(isNoData ? 0.1 : 0.22), lineWidth: 1)
+            )
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -988,14 +674,3 @@ private struct RoundedCornerShape: Shape {
     }
 }
 
-// MARK: - helpers
-
-private func formatTrendDate(_ iso: String?) -> String {
-    guard let iso, !iso.isEmpty else { return "" }
-    let parts = iso.split(separator: "-").compactMap { Int($0) }
-    guard parts.count == 3 else { return iso.uppercased() }
-    let mon = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]
-    let mi = parts[1] - 1
-    guard mi >= 0 && mi < 12 else { return iso.uppercased() }
-    return "\(mon[mi]) \(parts[2])"
-}

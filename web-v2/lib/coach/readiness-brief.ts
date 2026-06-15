@@ -262,6 +262,10 @@ export interface ReadinessBrief {
 const PILLAR_LABEL: Record<PillarKey, string> = {
   sleep: 'SLEEP', hrv: 'HRV', rhr: 'RHR', load: 'LOAD', hr_recovery: 'HR RECOVERY',
 };
+// Plain-English tile labels for the iPhone signal grid.
+const PILLAR_DISPLAY_LABEL: Record<PillarKey, string> = {
+  sleep: 'SLEEP', hrv: 'RECOVERY', rhr: 'RESTING HR', load: 'TRAINING LOAD', hr_recovery: 'HR RECOVERY',
+};
 const PILLAR_WEIGHT: Record<PillarKey, number> = {
   sleep: 28, hrv: 28, rhr: 24, load: 15, hr_recovery: 5,
 };
@@ -1030,11 +1034,21 @@ function buildPillarTiles(
     const confounders = confoundersFor(input.key, input, state, history);
     const baseline = baselineLabel(input.key, input, dynamicSleepTarget);
 
+    // LOAD: convert ACWR to a plain-English word so the iPhone tile can
+    // display "Building" as the big value rather than the raw ratio string.
+    let observedValue = input.observedV;
+    if (input.key === 'load' && state.loadAcwr != null) {
+      const r = state.loadAcwr;
+      const word = r < 0.8 ? 'Low' : r < 1.0 ? 'Building' : r <= 1.3 ? 'In range'
+        : r < 1.5 ? 'Elevated' : 'High';
+      observedValue = `${word} · ${r.toFixed(2)} ACWR`;
+    }
+
     return {
       key: input.key,
-      label: PILLAR_LABEL[input.key],
+      label: PILLAR_DISPLAY_LABEL[input.key],
       weightPct: PILLAR_WEIGHT[input.key],
-      observedValue: input.observedV,
+      observedValue,
       observedSub: input.observedSub,
       baseline,
       band,
