@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
 
   const emailFilter = req.nextUrl.searchParams.get('email');
 
+  try {
   // ── 1. Users (exclude admin) ─────────────────────────────────────────────
   const usersQ = await pool.query<{
     id: string; email: string; name: string; created_at: string; is_admin: boolean;
@@ -244,4 +245,8 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({ testers, generatedAt: new Date().toISOString() }, { headers: CORS });
+  } catch (e: any) {
+    console.error('[tester-watch]', e);
+    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500, headers: CORS });
+  }
 }
