@@ -136,7 +136,7 @@ struct TargetsView: View {
                 onSubmitted: { Task { await reload() } },
                 existingGoal: fitnessGoal
             )
-            .presentationDetents([.medium])
+            .presentationDetents([.large])
         }
         .sheet(isPresented: $showAddRaceSheet) {
             AddRaceSheet(onSaved: { Task { await reload() } })
