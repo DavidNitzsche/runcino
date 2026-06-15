@@ -94,6 +94,35 @@ struct TargetsView: View {
                             }
                         }
                     }
+
+                    // ── Fitness goal (always accessible) ──────────────────
+                    // Race runners see this below the race list.
+                    // Goal-only runners see it as the hero above instead.
+                    if hasUpcomingRace {
+                        section("GOAL") {
+                            if let g = fitnessGoal {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("\(g.distance) · \(g.time)")
+                                            .font(.body(15, weight: .extraBold))
+                                            .foregroundStyle(Theme.txt)
+                                        Text("Time target")
+                                            .font(.body(11)).foregroundStyle(Theme.mute)
+                                    }
+                                    Spacer()
+                                    Button("Edit") { showNewGoalSheet = true }
+                                        .font(.body(13, weight: .semibold))
+                                        .foregroundStyle(Theme.dist)
+                                        .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 12)
+                                .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+                            } else {
+                                addButton("+ SET GOAL") { showNewGoalSheet = true }
+                            }
+                        }
+                    }
                 }
                 .padding(.bottom, 130)
             }
