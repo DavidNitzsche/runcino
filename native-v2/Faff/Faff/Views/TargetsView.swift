@@ -633,7 +633,7 @@ struct AddRaceSheet: View {
             distanceLabel: distance == "Other" ? nil : distance,
             priority: priority,
             goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal
-        ), let slug else {
+        ) else {
             error = "Could not save race. Check your connection and try again."
             saving = false
             return
