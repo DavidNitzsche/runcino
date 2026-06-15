@@ -346,7 +346,12 @@ export async function POST(req: NextRequest) {
           goal_race_distance      = $1,
           goal_race_date          = $2,
           goal_race_time          = $3,
-          full_name               = $4,
+          -- $4 is the onboarding "name" field, which native sends as the RACE
+          -- name (default "Goal Race") — NOT the person. Signup already set the
+          -- real full_name, so preserve it and only fall back to $4 when the
+          -- profile somehow has none. (Was: full_name = $4, which clobbered the
+          -- runner's name → the coach would address them as "Goal Race".)
+          full_name               = COALESCE(NULLIF(full_name, ''), $4),
           timezone                = $5,
           onboarding_completed_at = NOW(),
           onboarded_at            = COALESCE(onboarded_at, NOW()),

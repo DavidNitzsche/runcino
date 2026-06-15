@@ -26,6 +26,7 @@ import {
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+import { reanchorMaintenancePlan } from '@/lib/plan/reanchor-maintenance';
 
 export const maxDuration = 60;
 
@@ -40,7 +41,7 @@ function distFromLabel(label: string | null | undefined): number | null {
   return null;
 }
 
-async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }> }> {
+async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchor: Awaited<ReturnType<typeof reanchorMaintenancePlan>> }> {
   // Ratchet stored max_hr if a new ceiling was observed this year.
   // loadVdotInputs calls loadEffectiveMaxHr internally for the run-candidate
   // HR gate; we call it separately here for the ratchet side effect only.
@@ -96,7 +97,16 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
     );
     snapshots.push({ distance: d, sec: projSec });
   }
-  return { vdot, snapshots };
+
+  // Self-heal: if this runner is on a no-race plan that was anchored
+  // provisionally (or their fitness has shifted >= 2 VDOT), refresh its future
+  // paces in place off the measured read. This is what makes a provisional /
+  // calibrating plan never get stuck on fabricated paces. Best-effort.
+  let reanchor: Awaited<ReturnType<typeof reanchorMaintenancePlan>> = null;
+  try { reanchor = await reanchorMaintenancePlan(userUuid, vdot, today); }
+  catch { reanchor = null; }
+
+  return { vdot, snapshots, reanchor };
 }
 
 export async function POST(req: NextRequest) {
@@ -124,12 +134,15 @@ export async function POST(req: NextRequest) {
   // hardcoded-user append. (Pre-signup this force-included David's UUID
   // as legacy-row paranoia; every active plan now carries user_uuid.)
 
-  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; error?: string }> = [];
+  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { from: number | null; to: number; workouts: number }; error?: string }> = [];
   for (const u of userIds) {
     try {
       const today = await runnerToday(u);
       const r = await snapshotForUser(u, today);
-      results.push({ user_uuid: u, vdot: r.vdot, snapshots: r.snapshots });
+      results.push({
+        user_uuid: u, vdot: r.vdot, snapshots: r.snapshots,
+        ...(r.reanchor ? { reanchored: { from: r.reanchor.fromVdot, to: r.reanchor.toVdot, workouts: r.reanchor.workoutsUpdated } } : {}),
+      });
     } catch (e: unknown) {
       results.push({
         user_uuid: u, vdot: null, snapshots: [],

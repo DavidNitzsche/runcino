@@ -28,7 +28,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, vdotFromRace, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
+import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRace, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -1670,6 +1670,12 @@ async function persistPlan(client: PoolClient, args: {
    *  goal time · spec-builder falls back to an inverse-offset
    *  derivation from T. */
   goalPaceSec: number | null;
+  /** 2026-06-15 · R3 · use true Daniels I-pace (≈ current 5K race pace, from
+   *  iPaceFromVdot) for intervals on a 5K/10K race goal — where VO2 at race
+   *  pace IS the point — instead of spec-builder's tPaceSec-18 cruise default
+   *  (which lands near threshold for a low-VDOT runner). Half/marathon keep the
+   *  conservative cruise default. Per-week I-pace ramps with the week's T. */
+  goalIPaceEligible: boolean;
   /** 2026-06-03 · Rule 15 · Seal completed days against retroactive
    *  mutation. Snapshotted BEFORE clearActivePlansFor archives the
    *  prior plan; applied during INSERT so the new plan's row for a
@@ -1785,10 +1791,17 @@ async function persistPlan(client: PoolClient, args: {
         // produced 5×1km specs under "4×1 mi @ I" labels.
         // 2026-06-03 · Rule 16 · pass maxHr alongside LTHR so easy/long
         // HR caps use max(89% LTHR, 78% maxHR) instead of LTHR-only.
+        // R3 · per-week true I-pace for 5K/10K goals: invert the week's blended
+        // T back to a VDOT, then take its 5K-race-pace I. Ramps with the block;
+        // null (→ cruise default) for half/marathon and when weekT is unusable.
+        const iPaceSec = args.goalIPaceEligible
+          ? iPaceFromVdot(vdotFromTpace(weekT))
+          : null;
         const built = buildWorkoutSpec(
           d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null,
           // 2026-06-09 · goal pace · only the race branch reads it.
           args.goalPaceSec ?? null,
+          iPaceSec,
         );
         paceTargetSPerMi = built.paceTargetSPerMi;
         workoutSpec = built.spec;
@@ -2096,6 +2109,9 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       maxHr: inputs.compose.maxHr,
       // 2026-06-09 state-audit fix · goal pace for the race-day target.
       goalPaceSec: inputs.compose.goalPaceSec,
+      // R3 · 5K/10K race goals get true VO2 I-pace intervals (not the cruise
+      // default). Half/marathon keep the conservative ceiling-work pace.
+      goalIPaceEligible: ['5k', '10k'].includes(distanceCategoryOf(inputs.compose.raceDistanceMi)),
       sealedSnapshot,
       authoredState: {
         ...composed.authoredState,

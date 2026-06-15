@@ -90,6 +90,10 @@ interface SeedResult {
 }
 
 const TOTAL_WEEKS = 16;        // Maintenance window per canonical builder.
+const CALIBRATION_INTRO_WEEKS = 2;  // Cold-start runner: ease in for this many
+                                    // weeks with effort-cued threshold (not
+                                    // fabricated-pace VO2) until a measured read
+                                    // lands and the re-anchor commits the build.
 const MPW_FLOOR   = 8;         // Below 8 mpw, no plan helps; floor at 8.
 const LONG_PCT    = 0.26;      // Long run % of weekly (canonical builder).
 const T_SOLO_PCT  = 0.18;      // Threshold (1 quality/wk · maintenance).
@@ -214,7 +218,13 @@ type DayKind = 'rest' | 'easy' | 'long' | QualityKind;
  *  Before this, the no-race seeder hardcoded `threshold` for everyone —
  *  so "get faster at a 5K" produced an aerobic hold plan with ZERO speed
  *  work. The goal was captured and then ignored. */
-function goalQualityType(ttDistance: TTDistance | null, weekIdx: number): QualityKind {
+export function goalQualityType(ttDistance: TTDistance | null, weekIdx: number, calibrating = false): QualityKind {
+  // Calibration intro (cold start, no measured fitness): a gentle, effort-cued
+  // threshold — which surfaces a clean VDOT read via the zone-aware path — in
+  // place of max-VO2 intervals at a fabricated pace. The daily re-anchor swaps
+  // in the real I-pace intervals the moment that read lands. Same threshold a
+  // no-goal consistency runner already gets in week 0, so it's not novel load.
+  if (calibrating && weekIdx < CALIBRATION_INTRO_WEEKS) return 'threshold';
   if (ttDistance === '1mi' || ttDistance === '5k') return 'intervals';
   if (ttDistance === '10k') return weekIdx % 2 === 1 ? 'intervals' : 'threshold';
   return 'threshold';
@@ -233,12 +243,13 @@ function dayShape(
   weeklyFrequency: WeeklyFrequency | null,
   ttDistance: TTDistance | null,
   weekIdx: number,
+  calibrating = false,
 ): Array<{
   type: DayKind;
   isQuality: boolean;
   isLong: boolean;
 }> {
-  const qualityType = goalQualityType(ttDistance, weekIdx);
+  const qualityType = goalQualityType(ttDistance, weekIdx, calibrating);
   const days = Array.from({ length: 7 }, () => ({
     type: 'easy' as DayKind,
     isQuality: false,
@@ -371,6 +382,11 @@ async function persistMaintenancePlan(args: {
    *  (goal-relative floor). Null when nothing qualified → fall back to the
    *  conservative mileage estimate. Anchors pace specs, not volume. */
   anchorVdot: number | null;
+  /** 2026-06-15 · cold start (no measured VDOT). Eases the first
+   *  CALIBRATION_INTRO_WEEKS in with effort-cued threshold instead of
+   *  fabricated-pace VO2 intervals; the daily re-anchor commits the real
+   *  build once a read lands. */
+  calibrating: boolean;
   authoredState: Record<string, unknown>;
 }): Promise<string> {
   const planId = id('pln');
@@ -407,6 +423,7 @@ async function persistMaintenancePlan(args: {
        anchorVdot, anchorSource,
        provisionalVdot: anchorVdot,  // back-compat key (now measured when available)
        tPaceSec, iPaceSec,
+       calibrating: args.calibrating,
      })],
   );
 
@@ -446,7 +463,7 @@ async function persistMaintenancePlan(args: {
       ],
     );
 
-    const shape = dayShape(args.layout, args.weeklyFrequency, args.ttDistance, wi);
+    const shape = dayShape(args.layout, args.weeklyFrequency, args.ttDistance, wi, args.calibrating);
     // Use this week's volume as both weeklyMi and peakWeeklyMi so the long
     // run is a fixed proportion of the week (not scaled down relative to a
     // far-off peak the runner hasn't reached yet).
@@ -611,6 +628,9 @@ export async function seedMaintenancePlanFromOnboarding(
     peakLongMi,
     peakWeeklyMi: targetWeeklyMi,
     anchorVdot,
+    // Cold start (no measured read) → calibration intro; the daily re-anchor
+    // commits the real build once the runner's first honest effort reads.
+    calibrating: anchorVdot == null,
     authoredState: {
       generated_at: new Date().toISOString(),
       seeder: 'onboarding-no-race',
