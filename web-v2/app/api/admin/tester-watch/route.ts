@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
 
   // ── 3. Latest active plan per user ───────────────────────────────────────
   const plansQ = await pool.query(
-    `SELECT tp.id, tp.user_uuid, tp.mode, tp.authored_iso, tp.race_date,
+    `SELECT tp.id, tp.user_uuid, tp.mode, tp.authored_iso, tp.goal_iso,
             COUNT(DISTINCT plw.id) AS week_count,
             COUNT(pw.id) FILTER (WHERE pw.distance_mi > 0) AS total_run_days,
             ROUND(SUM(pw.distance_mi) FILTER (WHERE pw.distance_mi > 0)) AS total_plan_mi,
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
      LEFT JOIN plan_weeks plw ON plw.plan_id = tp.id
      LEFT JOIN plan_workouts pw ON pw.week_id = plw.id
      WHERE tp.user_uuid = ANY($1) AND tp.archived_iso IS NULL
-     GROUP BY tp.id, tp.user_uuid, tp.mode, tp.authored_iso, tp.race_date
+     GROUP BY tp.id, tp.user_uuid, tp.mode, tp.authored_iso, tp.goal_iso
      ORDER BY tp.authored_iso DESC`,
     [uuids],
   );
