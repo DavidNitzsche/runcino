@@ -460,7 +460,6 @@ struct SetGoalSheet: View {
     var existingGoal: FitnessGoal? = nil
 
     private let distances = ["5K", "10K", "Half Marathon", "Marathon", "50K", "100K"]
-    private let secondOptions = [0, 15, 30, 45]
 
     @State private var distance: String = "Half Marathon"
     @State private var hours: Int = 1
@@ -491,7 +490,8 @@ struct SetGoalSheet: View {
                     }
                     .pickerStyle(.wheel)
                     .labelsHidden()
-                    .frame(height: 120)
+                    .frame(height: 100)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     if let v = currentVdot,
                        let pred = Self.predictSeconds(vdot: v, distance: distance) {
                         HStack {
@@ -508,21 +508,21 @@ struct SetGoalSheet: View {
                             Picker("", selection: $hours) {
                                 ForEach(0...9, id: \.self) { h in Text("\(h)").tag(h) }
                             }
-                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 120).clipped()
+                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
                             Text(":").font(.system(size: 22, weight: .semibold)).foregroundStyle(.secondary)
                             Picker("", selection: $minutes) {
                                 ForEach(0...59, id: \.self) { m in
                                     Text(String(format: "%02d", m)).tag(m)
                                 }
                             }
-                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 120).clipped()
+                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
                             Text(":").font(.system(size: 22, weight: .semibold)).foregroundStyle(.secondary)
                             Picker("", selection: $seconds) {
-                                ForEach(secondOptions, id: \.self) { s in
+                                ForEach(0...59, id: \.self) { s in
                                     Text(String(format: "%02d", s)).tag(s)
                                 }
                             }
-                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 120).clipped()
+                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
                     } label: {
@@ -601,8 +601,8 @@ struct SetGoalSheet: View {
         if let g = existingGoal {
             distance = g.distance
             let parts = g.time.split(separator: ":").compactMap { Int($0) }
-            if parts.count == 2 { hours = 0; minutes = parts[0]; seconds = snap15(parts[1]) }
-            else if parts.count == 3 { hours = parts[0]; minutes = parts[1]; seconds = snap15(parts[2]) }
+            if parts.count == 2 { hours = 0; minutes = parts[0]; seconds = parts[1] }
+            else if parts.count == 3 { hours = parts[0]; minutes = parts[1]; seconds = parts[2] }
         } else {
             setDefaults(for: distance)
         }
@@ -613,7 +613,7 @@ struct SetGoalSheet: View {
         if let v = currentVdot, let pred = Self.predictSeconds(vdot: v, distance: d) {
             hours = pred / 3600
             minutes = (pred % 3600) / 60
-            seconds = snap15(pred % 60)
+            seconds = pred % 60
         } else {
             setDefaults(for: d)
         }
@@ -628,10 +628,6 @@ struct SetGoalSheet: View {
         case "50K":           hours = 5; minutes = 0;  seconds = 0
         default:              hours = 9; minutes = 0;  seconds = 0
         }
-    }
-
-    private func snap15(_ s: Int) -> Int {
-        secondOptions.min(by: { abs($0 - s) < abs($1 - s) }) ?? 0
     }
 
     private func planOptions(for d: String) -> [PlanOption] {
