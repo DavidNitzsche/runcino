@@ -147,10 +147,11 @@ struct RootTabView: View {
             )
             .allowsHitTesting(showRunMenu)
 
-            // Gradient scrim — fades from clear above the pill to solid
-            // bg at the physical screen bottom. ignoresSafeArea on the
-            // outer VStack fills full screen height so the gradient
-            // covers both the pill zone and the home-indicator area below.
+            // Gradient scrim — covers home-indicator area below the tab bar
+            // pill only. Height kept to 90pt so the scrim never reaches
+            // DragSheet content (chips sit ~120pt above screen bottom) —
+            // previously 150pt caused the top of the gradient to darken
+            // content cards above the pill zone.
             VStack {
                 Spacer()
                 LinearGradient(
@@ -162,7 +163,7 @@ struct RootTabView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 150)
+                .frame(height: 90)
             }
             .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)

@@ -69,8 +69,8 @@ struct HealthView: View {
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.top, 40)
                         } else {
-                            bodyPane
                             readinessTrendSection
+                            healthSectionDivider("BODY");     bodyPane
                             healthSectionDivider("SLEEP");    sleepPane
                             healthSectionDivider("FORM");     formPane
                             healthSectionDivider("INSIGHTS"); insightsPane
@@ -229,7 +229,8 @@ struct HealthView: View {
 
     @ViewBuilder
     private var readinessTrendSection: some View {
-        healthSectionDivider("7-DAY READINESS")
+        // No top divider padding when this is the first section in scroll
+        SectionLabel(title: "7-DAY READINESS").padding(.bottom, 10)
         HealthWeekBars(snapshot: readiness, state: state)
         if let vo2 = state?.vo2.current {
             aerobicCard(vo2: vo2).padding(.top, 18)
@@ -620,16 +621,16 @@ struct HealthView: View {
     /// Backend can later ship rich copy by including the same
     /// markdown spans in /api/readiness's verdict field.
     private var verdictMarkdown: String {
-        if let band = readiness?.band?.lowercased() {
-            switch band {
-            case "sharp":    return "Engine is sharp. **Use it on the hard pieces** today."
-            case "ready":    return "Body is on baseline · today is a **green light**."
-            case "moderate": return "Sleep is short but the engine is sharp. **Hold the line** and bank a real night."
-            case "pullback": return "Recovery is dragging · **ease today's effort** and protect tonight's sleep."
-            default:         return "Reading your body · check back after the next sleep."
-            }
+        guard let band = readiness?.band?.lowercased() else {
+            return "Reading your body · needs more sleep data."
         }
-        return "Reading your body · check back after the next sleep."
+        switch band {
+        case "sharp":    return "**Above baseline.** Recovery is dialed in."
+        case "ready":    return "Body **on baseline.** All signals clear."
+        case "moderate": return "Sleep deficit pulling the score. **Watch the load.**"
+        case "pull-back", "pullback": return "**Recovery lagging.** Rest is the priority."
+        default:         return "Reading your body · needs more sleep data."
+        }
     }
 
     /// Parses **bold spans** out of the verdict markdown and renders them
