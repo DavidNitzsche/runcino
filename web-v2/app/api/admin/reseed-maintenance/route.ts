@@ -67,9 +67,24 @@ export async function POST(req: NextRequest) {
     }, { status: 409 });
   }
 
+  // Preserve the runner's intended start date (captured at onboarding as their
+  // ORIGINAL plan's week-0). Without this, a re-seed yanked the plan to "today"
+  // and silently discarded the "start in N days" choice. The seeder clamps to
+  // >= today, so a past start just becomes today. Body can override.
+  let startDateISO: string | undefined = typeof body.startDateISO === 'string' ? body.startDateISO : undefined;
+  if (!startDateISO) {
+    const startRow = (await pool.query<{ start: string | null }>(
+      `SELECT MIN(week_start_iso)::text AS start FROM plan_weeks
+        WHERE plan_id = (SELECT id FROM training_plans WHERE user_uuid = $1 ORDER BY authored_iso ASC LIMIT 1)`,
+      [userId],
+    ).catch(() => ({ rows: [] as Array<{ start: string | null }> }))).rows[0];
+    startDateISO = startRow?.start ?? undefined;
+  }
+
   try {
     const result = await seedMaintenancePlanFromOnboarding({
       userId,
+      startDateISO,
       goals: {
         ttDistance: (row.ttd as TTDistance) ?? null,
         ttTimeBucket: row.ttt ?? null,
