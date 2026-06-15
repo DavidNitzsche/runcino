@@ -67,37 +67,9 @@ struct TargetsView: View {
                         }
                     }
 
-                    // ── Races ─────────────────────────────────────────────
-                    if hasUpcomingRace {
-                        section("RACES") {
-                            let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
-                                .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
-                            VStack(spacing: 10) {
-                                ForEach(upcoming) { race in raceTile(race) }
-                                addButton("+ ADD RACE") { showAddRaceSheet = true }
-                            }
-                        }
-                    } else {
-                        // No upcoming race — demote to a quiet add link.
-                        section("RACES") {
-                            addButton("+ ADD RACE") { showAddRaceSheet = true }
-                        }
-                    }
-
-                    // Past races always shown if present.
-                    let past = (races?.races.filter { ($0.days_to_race ?? 1) < 0 } ?? [])
-                        .sorted { ($0.days_to_race ?? 0) > ($1.days_to_race ?? 0) }
-                    if !past.isEmpty {
-                        section("PAST RACES") {
-                            VStack(spacing: 10) {
-                                ForEach(past) { race in raceTile(race) }
-                            }
-                        }
-                    }
-
-                    // ── Fitness goal (always accessible) ──────────────────
-                    // Race runners see this below the race list.
-                    // Goal-only runners see it as the hero above instead.
+                    // ── Fitness goal · always visible right after the hero ─
+                    // For race runners this is below the projection panel.
+                    // For goal-only runners, goalHeroBlock above already shows it.
                     if hasUpcomingRace {
                         section("GOAL") {
                             if let g = fitnessGoal {
@@ -120,6 +92,33 @@ struct TargetsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
                             } else {
                                 addButton("+ SET GOAL") { showNewGoalSheet = true }
+                            }
+                        }
+                    }
+
+                    // ── Races ─────────────────────────────────────────────
+                    if hasUpcomingRace {
+                        section("RACES") {
+                            let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
+                                .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
+                            VStack(spacing: 10) {
+                                ForEach(upcoming) { race in raceTile(race) }
+                                addButton("+ ADD RACE") { showAddRaceSheet = true }
+                            }
+                        }
+                    } else {
+                        section("RACES") {
+                            addButton("+ ADD RACE") { showAddRaceSheet = true }
+                        }
+                    }
+
+                    // Past races always shown if present.
+                    let past = (races?.races.filter { ($0.days_to_race ?? 1) < 0 } ?? [])
+                        .sorted { ($0.days_to_race ?? 0) > ($1.days_to_race ?? 0) }
+                    if !past.isEmpty {
+                        section("PAST RACES") {
+                            VStack(spacing: 10) {
+                                ForEach(past) { race in raceTile(race) }
                             }
                         }
                     }
