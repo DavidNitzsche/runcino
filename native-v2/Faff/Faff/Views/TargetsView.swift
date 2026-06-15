@@ -14,7 +14,6 @@ struct TargetsView: View {
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
     @State private var raceFacts: CoachFactsBlock?
-    @State private var standingGoals: [StandingGoal] = []
     /// Targets projection panel state · 2026-05-31 redesign.
     /// `nil` while loading; cold-state when ok but no VDOT yet.
     @State private var projection: ProjectionSummary?
@@ -53,19 +52,22 @@ struct TargetsView: View {
                         .padding(.horizontal, 24).padding(.top, -12)
 
                     section("RACES") {
-                        if let r = races, !r.races.isEmpty {
+                        let upcoming = races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? []
+                        let past     = races?.races.filter { ($0.days_to_race ?? 1)  < 0 } ?? []
+                        if upcoming.isEmpty && past.isEmpty {
+                            emptyState("No races scheduled", "+ Add a race when you're ready")
+                        } else {
                             VStack(spacing: 10) {
-                                ForEach(r.races) { race in raceTile(race) }
+                                ForEach(upcoming) { race in raceTile(race) }
                                 addButton("+ ADD RACE")
                             }
-                        } else {
-                            emptyState("No races scheduled", "+ Add a race when you're ready")
                         }
                     }
-                    if !standingGoals.isEmpty {
-                        section("STANDING GOALS") {
+                    let past = races?.races.filter { ($0.days_to_race ?? 1) < 0 } ?? []
+                    if !past.isEmpty {
+                        section("PAST RACES") {
                             VStack(spacing: 10) {
-                                ForEach(standingGoals) { g in standingGoalTile(g) }
+                                ForEach(past) { race in raceTile(race) }
                             }
                         }
                     }
@@ -126,16 +128,6 @@ struct TargetsView: View {
             if let rs { self.races = rs }
             if let pr { self.profile = pr }
             if let fc { self.raceFacts = fc }
-            self.standingGoals = (self.races?.races ?? [])
-                .filter { $0.priority == "A" || $0.priority == "B" }
-                .prefix(3)
-                .map { race in
-                    StandingGoal(
-                        title: RaceName.short(race.name, abbreviateAlways: true),
-                        detail: race.distance_label?.uppercased() ?? "",
-                        sub: race.name ?? ""
-                    )
-                }
         }
         // Projection panel · derive distance from the A-race or fall back
         // to half. Run after races/profile so we can pick up the right
