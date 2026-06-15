@@ -160,10 +160,10 @@ private struct HIWHead: View {
                     .foregroundStyle(mutedText)
             }
         }
-        // Was 12 — on top of the panel's VStack(spacing: 18) that left the
-        // header floating 30pt above its first row (AEROBIC STAMP → KEPT IT
-        // EASY). 2pt tucks the header to its content. David 2026-06-15.
-        .padding(.bottom, 2)
+        // Negative · counters the panel's VStack(spacing: 18) so the section
+        // header tucks ~10pt above its first row (was floating 30pt above
+        // AEROBIC STAMP → KEPT IT EASY; 2pt still read as 20). David 2026-06-15.
+        .padding(.bottom, -8)
     }
 }
 
@@ -329,12 +329,19 @@ private struct PaceFootprint: View {
                             p.addLine(to: CGPoint(x: geo.size.width, y: avgY))
                         }
                         .stroke(subtleText, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        // Readable chip · the old `sectionBg` was Color.clear on
+                        // the mesh, so the white "8:46 avg" sat directly on the
+                        // green bars (unreadable · David 2026-06-15). Solid
+                        // contrast pill instead.
                         Text(formatPace(avgSecondsPerMile) + " avg")
                             .font(.body(9, weight: .extraBold)).tracking(0.2)
-                            .foregroundStyle(mutedText)
-                            .padding(.horizontal, 6)
-                            .background(sectionBg)
-                            .position(x: geo.size.width - 32, y: max(8, avgY))
+                            .foregroundStyle(onMesh ? Color.white : Color(hex: 0x14110D))
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(onMesh ? Color(hex: 0x0A0C10).opacity(0.78)
+                                                      : Color.white.opacity(0.92))
+                            )
+                            .position(x: geo.size.width - 32, y: max(9, avgY))
                     }
                 }
                 .frame(height: 56)
