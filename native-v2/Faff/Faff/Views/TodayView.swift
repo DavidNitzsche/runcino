@@ -2438,6 +2438,7 @@ fileprivate enum HeroStepItem {
 /// listing every rep/recovery row individually.
 fileprivate struct HeroStepList: View {
     let steps: [HeroStepItem]
+    @State private var showIntervalInfo = false
 
     var body: some View {
         VStack(spacing: 6) {
@@ -2450,6 +2451,20 @@ fileprivate struct HeroStepList: View {
                 }
             }
         }
+    }
+
+    private func intervalExplainer(count: Int, work: HeroSeg, recovery: HeroSeg?) -> String {
+        let wParts = work.bottomLabel.components(separatedBy: " · ")
+        let wDist  = wParts.first ?? work.bottomLabel
+        let wPace  = wParts.count > 1 ? wParts[1] : ""
+        var text = "Run \(wDist)" + (wPace.isEmpty ? "" : " at \(wPace)")
+        if let rec = recovery {
+            let rTime = rec.bottomLabel.components(separatedBy: " · ").first ?? rec.bottomLabel
+            text += ", then jog for \(rTime)"
+        }
+        text += ". Do that \(count) times."
+        text += " Interval runs push your aerobic ceiling — the engine that converts into faster race pace."
+        return text
     }
 
     @ViewBuilder
@@ -2488,10 +2503,30 @@ fileprivate struct HeroStepList: View {
                     .tracking(1.0)
                     .foregroundStyle(Color.white.opacity(0.38))
                 Spacer(minLength: 0)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.22)) { showIntervalInfo.toggle() }
+                } label: {
+                    Text(showIntervalInfo ? "close" : "what is this?")
+                        .font(.body(10, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(showIntervalInfo ? 0.28 : 0.48))
+                }
             }
             .padding(.horizontal, 14)
             .padding(.top, 11)
             .padding(.bottom, 7)
+
+            if showIntervalInfo {
+                Divider().background(Color.white.opacity(0.06))
+                Text(intervalExplainer(count: count, work: work, recovery: recovery))
+                    .font(.body(12.5, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.72))
+                    .lineSpacing(4)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white.opacity(0.03))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             Divider().background(Color.white.opacity(0.08))
 
