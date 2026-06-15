@@ -117,29 +117,52 @@ struct TodayReadinessPanel: View {
     //     with nothing to say. A fresh install previously showed a grid
     //     of six "—" chips.
 
-    private var presentChips: [(label: String, value: String)] {
-        let all: [(String, String?)] = [
-            ("TO RACE",     toRaceDisplay),
-            ("NEXT HARD",   nextHardDisplay),
-            ("BEST WINDOW", bestWindowDisplay),
-            ("LAST NIGHT",  lastNightDisplay),
-            ("THIS WEEK",   thisWeekDisplay),
-        ]
-        return all.compactMap { label, value in
-            value.map { (label: label, value: $0) }
-        }
-    }
+    // Chip grid: 3-column Grid so NEXT HARD can span 2 columns (double wide).
+    // Row 1: TO RACE (1/3) | NEXT HARD (2/3)
+    // Row 2: BEST WINDOW | LAST NIGHT | THIS WEEK (equal thirds)
+    // Missing chips render as invisible placeholders so column widths stay consistent.
 
     @ViewBuilder
     private var statChips: some View {
-        let chips = presentChips
-        if !chips.isEmpty {
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
-                spacing: 8
-            ) {
-                ForEach(chips.indices, id: \.self) { i in
-                    StatChip(label: chips[i].label, value: chips[i].value)
+        let hasRow1 = toRaceDisplay != nil || nextHardDisplay != nil
+        let hasRow2 = bestWindowDisplay != nil || lastNightDisplay != nil || thisWeekDisplay != nil
+        if hasRow1 || hasRow2 {
+            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                if hasRow1 {
+                    GridRow {
+                        if let v = toRaceDisplay {
+                            StatChip(label: "TO RACE", value: v)
+                        } else {
+                            Color.clear.frame(height: 1)
+                        }
+                        Group {
+                            if let v = nextHardDisplay {
+                                StatChip(label: "NEXT HARD", value: v)
+                            } else {
+                                Color.clear.frame(height: 1)
+                            }
+                        }
+                        .gridCellColumns(2)
+                    }
+                }
+                if hasRow2 {
+                    GridRow {
+                        if let v = bestWindowDisplay {
+                            StatChip(label: "BEST WINDOW", value: v)
+                        } else {
+                            Color.clear.frame(height: 1)
+                        }
+                        if let v = lastNightDisplay {
+                            StatChip(label: "LAST NIGHT", value: v)
+                        } else {
+                            Color.clear.frame(height: 1)
+                        }
+                        if let v = thisWeekDisplay {
+                            StatChip(label: "THIS WEEK", value: v)
+                        } else {
+                            Color.clear.frame(height: 1)
+                        }
+                    }
                 }
             }
         }
