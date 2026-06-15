@@ -567,7 +567,7 @@ struct SetGoalSheet: View {
                 } header: {
                     Text("PLAN LENGTH")
                 } footer: {
-                    Text("Daniels periodization: each ~4-week block builds one quality. Longer plans allow more base before race-specific work.")
+                    Text("Longer plans give your body more time to adapt. If in doubt, pick the longer option.")
                         .font(.footnote)
                 }
 
@@ -637,35 +637,35 @@ struct SetGoalSheet: View {
         switch d {
         case "5K":
             return [
-                PlanOption(weeks: 8,  rationale: "Speed sharpener — 2 quality blocks targeting R and T paces."),
-                PlanOption(weeks: 12, rationale: "Full build — adds an E/L base phase before quality work."),
+                PlanOption(weeks: 8,  rationale: "A focused speed block. Works if you're already running regularly."),
+                PlanOption(weeks: 12, rationale: "Builds your base first, then sharpens speed. Better starting point for most runners."),
             ]
         case "10K":
             return [
-                PlanOption(weeks: 10, rationale: "Focused build — T and I emphasis over 2.5 blocks."),
-                PlanOption(weeks: 14, rationale: "Full cycle — base → T-phase → I-phase → competition."),
+                PlanOption(weeks: 10, rationale: "A steady build with a speed focus in the final weeks."),
+                PlanOption(weeks: 14, rationale: "A complete build from base to race-ready. More time, better results."),
             ]
         case "Half Marathon":
             return [
-                PlanOption(weeks: 12, rationale: "Foundation — 3 blocks: E base, T build, race-specific."),
-                PlanOption(weeks: 16, rationale: "Full build — 4 blocks with a proper M-pace phase."),
-                PlanOption(weeks: 20, rationale: "Patient build — extra base raises the aerobic ceiling first."),
+                PlanOption(weeks: 12, rationale: "The minimum for a well-prepared half marathon. Works best if you already have a solid base."),
+                PlanOption(weeks: 16, rationale: "The standard choice. Enough time to build fitness and sharpen race pace."),
+                PlanOption(weeks: 20, rationale: "More base time before race training. Best if you're coming off a down period."),
             ]
         case "Marathon":
             return [
-                PlanOption(weeks: 16, rationale: "Standard — 4 blocks; assumes solid half-marathon base."),
-                PlanOption(weeks: 20, rationale: "Full cycle — adds a dedicated M-pace block mid-plan."),
-                PlanOption(weeks: 24, rationale: "Patient — 6 blocks; builds the aerobic base to hold goal pace."),
+                PlanOption(weeks: 16, rationale: "The minimum for a serious marathon. Assumes you're already running regularly."),
+                PlanOption(weeks: 20, rationale: "The most popular choice. Enough time to build and peak properly."),
+                PlanOption(weeks: 24, rationale: "Six months of work. Gives your body time to fully adapt to marathon training."),
             ]
         case "50K":
             return [
-                PlanOption(weeks: 18, rationale: "Introduction — marathon fitness + trail-specific work."),
-                PlanOption(weeks: 24, rationale: "Full ultra build — back-to-back long runs and time-on-feet."),
+                PlanOption(weeks: 18, rationale: "A solid intro to ultra distance. Builds on marathon-level fitness."),
+                PlanOption(weeks: 24, rationale: "More time on your feet, more confidence on race day."),
             ]
         default: // 100K
             return [
-                PlanOption(weeks: 24, rationale: "Base ultra build — high mileage and time-on-feet priority."),
-                PlanOption(weeks: 32, rationale: "Full preparation — peak-week mileage and course simulation."),
+                PlanOption(weeks: 24, rationale: "High mileage across six months. The foundation a 100K demands."),
+                PlanOption(weeks: 32, rationale: "Eight months to fully prepare. Builds volume and time-on-feet gradually."),
             ]
         }
     }
