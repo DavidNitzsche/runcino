@@ -379,13 +379,9 @@ struct TargetsProjectionPanel: View {
     // 1 — Title row + status chip
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Text("CLOSING THE GAP")
-                .font(.body(11, weight: .extraBold)).tracking(2.0)
-                .foregroundStyle(Theme.mute)
-            Spacer()
-            ProjectionStatusChip(status: summary.status)
-        }
+        Text("CLOSING THE GAP")
+            .font(.body(11, weight: .extraBold)).tracking(2.0)
+            .foregroundStyle(Theme.mute)
     }
 
     // 2 — Truth headline + confidence band (range · tier label)
