@@ -225,7 +225,11 @@ function expandLong(
   if (finishMi > 0 && finishPace > 0 && finishMi < totalMi) {
     const easyMi = Number((totalMi - finishMi).toFixed(1));
     const finishLabel = String(s.finish_label ?? '').trim();
-    const finishTag = finishLabel ? `@ ${finishLabel} pace` : '@ race pace';
+    const finishPaceLabel = finishLabel === 'M' ? 'marathon pace'
+      : finishLabel === 'HM' ? 'half marathon pace'
+      : finishLabel === 'T' ? 'tempo pace'
+      : finishLabel ? `${finishLabel} pace` : 'race pace';
+    const finishTag = `@ ${finishPaceLabel}`;
     return [
       {
         type: 'work',
