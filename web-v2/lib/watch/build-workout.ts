@@ -182,7 +182,7 @@ function stepToPhases(step: PrescriptionStep, defaultTolerance: number): WatchPh
     for (let i = 0; i < reps; i++) {
       phases.push({
         type: 'work',
-        label: `Rep ${i + 1}/${reps}`,
+        label: `Interval`,
         durationSec: repDurSec,
         targetPaceSPerMi: targetSec,
         tolerancePaceSPerMi: toleranceSec,
