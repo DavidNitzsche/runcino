@@ -25,7 +25,7 @@ import {
 } from '@/lib/training/vdot';
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
-import { loadVdotInputs } from '@/lib/training/vdot-inputs';
+import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 
 export const maxDuration = 60;
 
@@ -49,11 +49,17 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
     await ratchetUsersMaxHr(userUuid, today).catch(() => null);
   }
 
+  // Goal-relative training-VDOT floor: a 5K-goal runner's ~3.1mi quality
+  // efforts must count as fitness candidates (vdotRunFloorMi → 3.0). The flat
+  // 4mi floor rejected every one of them, so short-distance runners had no
+  // measured VDOT at all and stayed pinned on an onboarding estimate.
+  const runFloorMi = await goalRunFloorMiForUser(userUuid);
+
   // Race + run candidates via the shared canonical loader.
   // Throws on DB error — the outer loop catches per-user, logs, and continues
   // rather than storing VDOT=null from a transient failure.
   const { raceCandidates, runCandidates } = await loadVdotInputs(userUuid, today);
-  const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates);
+  const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates, runFloorMi);
   const vdot = best?.vdot ?? null;
 
   // Race-anchored distance (if active plan ties to a race).

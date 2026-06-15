@@ -39,7 +39,7 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bestRecentVdot } from '@/lib/training/vdot';
-import { loadVdotInputs } from '@/lib/training/vdot-inputs';
+import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 
 export type DriftKind =
   | 'volume_drift'
@@ -402,8 +402,11 @@ function inverseTPaceToVdot(tPaceSec: number): number | null {
 
 async function loadCurrentVdot(userUuid: string): Promise<number | null> {
   const today = await runnerToday(userUuid);
+  // Same goal-relative floor as the projection cron so a 5K runner's drift
+  // reads off the same candidate set (mismatch → false drift signal).
+  const runFloorMi = await goalRunFloorMiForUser(userUuid);
   const { raceCandidates, runCandidates } = await loadVdotInputs(userUuid, today);
-  const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates);
+  const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates, runFloorMi);
   return best?.vdot ?? null;
 }
 

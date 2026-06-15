@@ -255,6 +255,60 @@ const QUALITY_RUN_TYPES = new Set([
   'marathon_pace', 'mp', 'race', 'time_trial', 'tune_up',
 ]);
 
+/** Map an onboarding/profile distance code (race goal or TT goal) to miles.
+ *  Null for 'none'/unknown. Used to derive the goal-relative training-VDOT
+ *  floor (vdotRunFloorMi) so the fitness read keys off the event the runner
+ *  is actually training for. */
+export function goalDistanceMiFromCode(code: string | null | undefined): number | null {
+  switch (String(code ?? '').toLowerCase()) {
+    case '1mi': case 'mile':            return 1.0;
+    case '5k':                          return 3.10686;
+    case '10k':                         return 6.21371;
+    case 'half': case 'half-marathon':  return 13.1094;
+    case 'marathon': case 'full':       return 26.2188;
+    default:                            return null;
+  }
+}
+
+/**
+ * Minimum honest-effort distance (miles) for a TRAINING-derived VDOT, keyed to
+ * the runner's goal event. A solo effort at ~the goal distance is the canonical
+ * field test: a 5K time trial IS a valid VDOT input. A flat 4-mile floor used
+ * to exclude every 5K-goal runner — whose quality sessions ARE ~3.1mi — from
+ * training-derived fitness entirely. The floor never drops below the 5K TT
+ * (3.0mi, the shortest canonical test) nor demands more than a sustained tempo
+ * (4mi — we don't make a half/marathon runner race their event to read fitness;
+ * a tempo is signal enough, and vdotFromRun's HR gate guards honesty).
+ *
+ * 5K goal → 3.0mi · 10K / Half / Marathon / unknown → 4.0mi.
+ *
+ * Cite: Research/01-pace-zones-vdot.md §"Field-test protocols" (5K TT → VDOT,
+ * apply +1 solo correction) + §"Field-test selection for the Coach".
+ */
+export function vdotRunFloorMi(goalDistanceMi: number | null | undefined): number {
+  if (!goalDistanceMi || goalDistanceMi <= 0) return 4;
+  return Math.min(4, Math.max(3, goalDistanceMi * 0.9));
+}
+
+/**
+ * Daniels I-pace (VO2max interval pace, s/mi) from a VDOT score.
+ *
+ * I-pace ≈ the runner's CURRENT 5K race pace — 3–5 min reps at ~95–100%
+ * VO2max. Derived from predictRaceTime(vdot, 5K) so it scales correctly with
+ * fitness, unlike the spec-builder's legacy `tPaceSec - 18` constant offset,
+ * which only approximates I at high VDOT and badly understates it for a
+ * novice / 5K runner (at VDOT 32 the constant offset lands near threshold —
+ * ~2 min/mi slower than real I-pace, slower than the runner's own easy days).
+ *
+ * Cite: Research/01-pace-zones-vdot.md §Daniels-I (I-pace ≈ 3–5K race pace).
+ */
+export function iPaceFromVdot(vdot: number | null | undefined): number | null {
+  if (!vdot || !Number.isFinite(vdot) || vdot <= 0) return null;
+  const fiveKSec = predictRaceTime(vdot, 3.10686);
+  if (fiveKSec == null) return null;
+  return Math.round(fiveKSec / 3.10686);
+}
+
 /**
  * Derive VDOT from a single sustained training run.
  *
@@ -282,9 +336,15 @@ export function vdotFromRun(input: {
    *  Lets a threshold/marathon-pace effort read by its zone instead of as a
    *  race — see below. */
   zone?: 'threshold' | 'marathon' | 'interval' | 'race' | null;
+  /** 2026-06-15 · goal-relative minimum honest-effort distance (vdotRunFloorMi).
+   *  Defaults to the legacy flat 4mi floor; a 5K-goal runner passes 3.0 so their
+   *  ~3.1mi quality efforts become VDOT-readable instead of being silently
+   *  rejected. The HR gate below still guards effort honesty. */
+  minDistanceMi?: number;
 }): number | null {
   if (!input.finishSeconds || input.finishSeconds < 60) return null;
-  if (!input.distanceMi || input.distanceMi < 4) return null;
+  const floorMi = input.minDistanceMi ?? 4;
+  if (!input.distanceMi || input.distanceMi < floorMi) return null;
 
   const wType = String(input.workoutType ?? '').toLowerCase();
   const isQuality = QUALITY_RUN_TYPES.has(wType);
@@ -356,6 +416,10 @@ export function bestRecentVdot(
     /** Prescribed training zone for the zone-aware read (vdotFromRun). */
     zone?: 'threshold' | 'marathon' | 'interval' | 'race' | null;
   }>,
+  /** 2026-06-15 · goal-relative run floor (vdotRunFloorMi). Default 4mi keeps
+   *  legacy behavior for every caller that doesn't pass it; a 5K-goal caller
+   *  passes 3.0 so the runner's ~3.1mi efforts count as fitness candidates. */
+  minRunDistanceMi: number = 4,
 ): { best: VdotCandidate | null; considered: VdotCandidate[] } {
   const todayMs = Date.parse(todayISO + 'T12:00:00Z');
   // Hard cutoff now includes the fade tail; the fade handles 180→300.
@@ -397,6 +461,7 @@ export function bestRecentVdot(
         avgHr: r.avg_hr ?? null,
         maxHr: r.max_hr ?? null,
         zone: r.zone ?? null,
+        minDistanceMi: minRunDistanceMi,
       });
       if (v == null) continue;
       const age = ageDays(r.date);

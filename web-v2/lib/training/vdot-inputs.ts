@@ -20,7 +20,9 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { parseRaceTime, zoneFromType } from '@/lib/training/vdot';
+import {
+  parseRaceTime, zoneFromType, vdotRunFloorMi, goalDistanceMiFromCode,
+} from '@/lib/training/vdot';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 
 // ── Input shapes — match exactly what bestRecentVdot() accepts ──────────────
@@ -265,7 +267,12 @@ export async function loadVdotInputs(
         AND NOT (sa.data ? 'mergedIntoId')
         AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2
         AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) <  $3
-        AND (sa.data->>'distanceMi')::numeric >= 4
+        -- 2026-06-15 · floor lowered 4 → 3mi so a 5K-goal runner's ~3.1mi
+        -- quality efforts leave the DB at all. The GOAL-RELATIVE gate
+        -- (vdotRunFloorMi: 3.0 for 5K, 4.0 for longer) is applied downstream
+        -- in vdotFromRun/bestRecentVdot — this WHERE is just the cheap row
+        -- prefilter, set to the lowest floor any goal can ask for (5K = 3.0).
+        AND (sa.data->>'distanceMi')::numeric >= 3
         -- 2026-06-09 state-audit fix: was movingTimeS-only, a Strava field
         -- watch rows don't carry (they carry durationSec; their timeMoving
         -- is a display string, never castable) — which structurally
@@ -325,4 +332,26 @@ export async function loadVdotInputs(
   });
 
   return { raceCandidates, runCandidates };
+}
+
+/**
+ * Resolve the runner's goal-relative training-VDOT floor (vdotRunFloorMi) from
+ * their stored goal — race goal preferred, else time-trial goal (goal-mode
+ * runners have no race). A 5K-goal runner gets 3.0mi so their ~3.1mi quality
+ * efforts qualify as fitness candidates; every longer/unknown goal keeps the
+ * 4mi default. Pass the result as bestRecentVdot's minRunDistanceMi so the
+ * projection cron, drift monitor, and plan generator all gate identically (a
+ * mismatch would have the cron compute a 5K runner's VDOT while drift sees
+ * none → false drift). Best-effort — returns 4 on any read failure.
+ *
+ * Cite: Research/01-pace-zones-vdot.md §field-test (a solo 5K IS a VDOT input).
+ */
+export async function goalRunFloorMiForUser(userId: string): Promise<number> {
+  const row = (await pool.query<{ grd: string | null; ttd: string | null }>(
+    `SELECT goal_race_distance AS grd, tt_goal_distance AS ttd
+       FROM profile WHERE user_uuid = $1`,
+    [userId],
+  ).catch(() => ({ rows: [] as Array<{ grd: string | null; ttd: string | null }> }))).rows[0];
+  const code = (row?.grd && row.grd !== 'none') ? row.grd : row?.ttd;
+  return vdotRunFloorMi(goalDistanceMiFromCode(code));
 }

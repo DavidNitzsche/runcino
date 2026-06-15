@@ -165,6 +165,14 @@ export function buildWorkoutSpec(
   // callers (restore, adapt) keep compiling · they fall back to the
   // inverse-of-tPaceFromGoal derivation inside the race case.
   goalPaceSPerMi: number | null = null,
+  // 2026-06-15 · true Daniels I-pace (s/mi) for the intervals/vo2max branch,
+  // from iPaceFromVdot(currentVdot). When provided it REPLACES the legacy
+  // `tPaceSec - 18` constant offset (which only approximates I-pace at high
+  // VDOT and lands near threshold for a novice / 5K-goal runner — slower than
+  // their own easy days). Optional · callers that don't pass it (marathon /
+  // maintenance) keep the cruise-interval behavior unchanged.
+  // Cite: Research/01-pace-zones-vdot.md §Daniels-I (I-pace ≈ 5K race pace).
+  iPaceSec: number | null = null,
 ): SpecBuildResult {
   // 2026-06-02 · parse the prescription up front (e.g. "6×800m @ I
   // pace · 90s jog" → {reps:6, repDistanceMi:0.497, restS:90}). When
@@ -332,19 +340,22 @@ export function buildWorkoutSpec(
       const repMi = parsed?.repDistanceMi ?? 0.62;
       const restS = parsed?.restS ?? 90;
       const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
+      // True I-pace when the caller threaded a VDOT-derived one (goal builds);
+      // else the legacy T−18 cruise-interval offset (marathon / maintenance).
+      const repPace = iPaceSec ?? interval;
       return {
         spec: {
           kind: 'intervals',
           warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
           rep_count: repCount,
           rep_distance_mi: repMi,
-          rep_pace_s_per_mi: interval,
+          rep_pace_s_per_mi: repPace,
           rep_rest_s: restS,
           cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
-        paceTargetSPerMi: interval,
+        paceTargetSPerMi: repPace,
       };
     }
     case 'race': {

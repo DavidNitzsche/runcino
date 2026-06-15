@@ -33,7 +33,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromRace, bestRecentVdot as computeBe
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
-import { loadVdotInputs } from '@/lib/training/vdot-inputs';
+import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode } from './goal-tiers';
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 import { validateComposedPlan } from './validate';
@@ -2282,8 +2282,9 @@ async function loadGeneratorInputs(
   // A fix to the race/run query now propagates to all call sites automatically.
   // Throws on DB error; generatePlan propagates up (refuses to plan rather than
   // producing a goal-pace plan from undefined VDOT — the C1 bug class).
+  const runFloorMi = await goalRunFloorMiForUser(userId);
   const { raceCandidates, runCandidates } = await loadVdotInputs(userId, todayISO);
-  const { best: bestVdotPick } = computeBestRecentVdot(raceCandidates, todayISO, 180, runCandidates);
+  const { best: bestVdotPick } = computeBestRecentVdot(raceCandidates, todayISO, 180, runCandidates, runFloorMi);
   const bestRecentVdot = bestVdotPick?.vdot ?? undefined;
   // maxHr for Rule 16 (easy/long HR cap). loadVdotInputs resolves it
   // internally for the run-candidate gate; hoist separately for composePlan.

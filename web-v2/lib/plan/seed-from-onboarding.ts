@@ -42,7 +42,11 @@ import { randomBytes } from 'crypto';
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildWorkoutSpec, conservativeVdotFromMileage } from './spec-builder';
-import { tPaceFromVdot } from '@/lib/training/vdot';
+import {
+  tPaceFromVdot, iPaceFromVdot, bestRecentVdot,
+  vdotRunFloorMi, goalDistanceMiFromCode,
+} from '@/lib/training/vdot';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import {
   HIST_AVG_MIDPOINTS,
   HIST_LONG_MIDPOINTS,
@@ -363,6 +367,10 @@ async function persistMaintenancePlan(args: {
   ttDistance: TTDistance | null;
   peakLongMi: number;
   peakWeeklyMi: number;
+  /** 2026-06-15 · measured current-fitness VDOT from the runner's recent runs
+   *  (goal-relative floor). Null when nothing qualified → fall back to the
+   *  conservative mileage estimate. Anchors pace specs, not volume. */
+  anchorVdot: number | null;
   authoredState: Record<string, unknown>;
 }): Promise<string> {
   const planId = id('pln');
@@ -376,14 +384,30 @@ async function persistMaintenancePlan(args: {
   // No LTHR/maxHr exists for a brand-new runner, so HR caps stay null
   // (spec-builder never invents an HR number). 480 = 8:00/mi default
   // per tPaceFromGoal's documented contract.
-  const provisionalVdot = conservativeVdotFromMileage(args.peakWeeklyMi);
-  const tPaceSec = tPaceFromVdot(provisionalVdot) ?? 480;
+  // Anchor paces on MEASURED current fitness when the runner's recent runs
+  // gave us one (args.anchorVdot, goal-relative floor applied upstream); only
+  // fall back to the conservative mileage estimate when nothing qualified.
+  // Per CLAUDE.md "Engine must match research": VDOT comes from a measured
+  // effort (Research/01 §field-test), not fabricated from weekly mileage —
+  // the mileage estimate is a last-resort provisional, flagged as such.
+  const anchorVdot = args.anchorVdot ?? conservativeVdotFromMileage(args.peakWeeklyMi);
+  const anchorSource = args.anchorVdot != null ? 'measured_run' : 'provisional_mileage';
+  const tPaceSec = tPaceFromVdot(anchorVdot) ?? 480;
+  // True Daniels I-pace for a goal BUILD (5K/10K quality = VO2 intervals).
+  // Scales with fitness, unlike spec-builder's T−18 cruise default. Null for
+  // no-goal maintenance (quality there is threshold, never intervals).
+  const iPaceSec = args.ttDistance ? iPaceFromVdot(anchorVdot) : null;
 
   await pool.query(
     `INSERT INTO training_plans (id, user_id, user_uuid, mode, race_id, goal_iso, authored_state)
      VALUES ($1, 'me', $2, 'maintenance', NULL, $3, $4)`,
     [planId, args.userId, args.goalISO,
-     JSON.stringify({ ...args.authoredState, provisionalVdot, tPaceSec })],
+     JSON.stringify({
+       ...args.authoredState,
+       anchorVdot, anchorSource,
+       provisionalVdot: anchorVdot,  // back-compat key (now measured when available)
+       tPaceSec, iPaceSec,
+     })],
   );
 
   // Single phase across all 16 weeks. A TT-goal runner is on a BUILD
@@ -470,6 +494,8 @@ async function persistMaintenancePlan(args: {
       // Spec per row · rest returns {spec:null} which the CHECK exempts.
       const { spec, paceTargetSPerMi } = buildWorkoutSpec(
         effectiveType, distances[jsDow], tPaceSec, /* lthr */ null,
+        /* prescription */ undefined, /* maxHr */ null, /* goalPaceSPerMi */ null,
+        /* iPaceSec */ iPaceSec,
       );
       await pool.query(
         `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
@@ -551,6 +577,28 @@ export async function seedMaintenancePlanFromOnboarding(
   // 16 weeks · last day = start + 16*7 - 1.
   const goalISO = addDays(startMonday, TOTAL_WEEKS * 7 - 1);
 
+  // 2026-06-15 · root the plan in REAL fitness when the data exists. HealthKit
+  // / Strava history is usually already synced by the time onboarding
+  // completes (a watch runner has months of runs). Read it through the
+  // canonical VDOT loader with a GOAL-RELATIVE floor — a 5K-goal runner's
+  // ~3.1mi quality efforts qualify (vdotRunFloorMi → 3.0) where the flat 4mi
+  // floor used to reject every one of them, leaving the plan anchored on a
+  // VDOT fabricated from weekly mileage. Best-effort: a read failure (or no
+  // qualifying run) falls back to the conservative estimate inside persist —
+  // it never blocks onboarding. Once the floor is fixed, the daily projection
+  // cron also starts computing this runner's VDOT, so live paces self-heal.
+  // Cite: Research/01 §field-test (a solo 5K IS a VDOT input) · CLAUDE.md
+  // "Engine must match research".
+  let anchorVdot: number | null = null;
+  try {
+    const runFloorMi = vdotRunFloorMi(goalDistanceMiFromCode(goals.ttDistance));
+    const { raceCandidates, runCandidates } = await loadVdotInputs(userId, today);
+    const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates, runFloorMi);
+    anchorVdot = best?.vdot ?? null;
+  } catch {
+    anchorVdot = null;
+  }
+
   await clearActivePlansFor(userId);
   const planId = await persistMaintenancePlan({
     userId,
@@ -562,6 +610,7 @@ export async function seedMaintenancePlanFromOnboarding(
     ttDistance: goals.ttDistance,
     peakLongMi,
     peakWeeklyMi: targetWeeklyMi,
+    anchorVdot,
     authoredState: {
       generated_at: new Date().toISOString(),
       seeder: 'onboarding-no-race',
