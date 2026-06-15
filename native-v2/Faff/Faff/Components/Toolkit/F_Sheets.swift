@@ -451,6 +451,7 @@ struct NewGoalSheet: View {
 private struct PlanOption: Identifiable {
     let weeks: Int
     let rationale: String
+    let vdotGain: Double
     var id: Int { weeks }
 }
 
@@ -477,7 +478,26 @@ struct SetGoalSheet: View {
         return hours > 0 ? "\(hours):\(m):\(s)" : "\(minutes):\(s)"
     }
 
+    private var goalTotalSeconds: Int { hours * 3600 + minutes * 60 + seconds }
+
     private var isValid: Bool { hours > 0 || minutes > 0 }
+
+    // Compares the runner's set goal against the selected plan's projection.
+    // Returns nil when no plan is selected or goal is within range.
+    private var stretchWarning: String? {
+        guard let wks = planWeeks,
+              let v = currentVdot,
+              let opt = planOptions(for: distance).first(where: { $0.weeks == wks }),
+              let projected = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance)
+        else { return nil }
+        let delta = projected - goalTotalSeconds  // positive = goal is faster than projected
+        if delta <= 0 { return nil }
+        if delta < 30 {
+            return "Stretch goal for \(wks) weeks — you'll need to execute every session."
+        } else {
+            return "Well beyond what \(wks) weeks typically delivers. Consider a longer plan."
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -542,14 +562,34 @@ struct SetGoalSheet: View {
                             var t = Transaction(animation: nil)
                             t.disablesAnimations = true
                             withTransaction(t) {
-                                planWeeks = (planWeeks == opt.weeks ? nil : opt.weeks)
+                                if planWeeks == opt.weeks {
+                                    planWeeks = nil
+                                } else {
+                                    planWeeks = opt.weeks
+                                    // Seed goal from this plan's projection
+                                    if let v = currentVdot,
+                                       let pred = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance) {
+                                        let rounded = (pred / 5) * 5
+                                        hours = rounded / 3600
+                                        minutes = (rounded % 3600) / 60
+                                        seconds = rounded % 60
+                                    }
+                                }
                             }
                         } label: {
                             HStack(alignment: .top, spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(opt.weeks) weeks")
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.primary)
+                                    HStack(spacing: 6) {
+                                        Text("\(opt.weeks) weeks")
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.primary)
+                                        if let v = currentVdot,
+                                           let proj = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance) {
+                                            Text("· \(Self.formatSecs((proj / 5) * 5))")
+                                                .fontWeight(.semibold)
+                                                .foregroundStyle(.blue)
+                                        }
+                                    }
                                     Text(opt.rationale)
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
@@ -568,8 +608,14 @@ struct SetGoalSheet: View {
                 } header: {
                     Text("PLAN LENGTH")
                 } footer: {
-                    Text("Longer plans give your body more time to adapt. If in doubt, pick the longer option.")
-                        .font(.footnote)
+                    if let warning = stretchWarning {
+                        Text(warning)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("Longer plans give your body more time to adapt. If in doubt, pick the longer option.")
+                            .font(.footnote)
+                    }
                 }
 
                 if let e = error {
@@ -608,10 +654,11 @@ struct SetGoalSheet: View {
         }
     }
 
-    // Seeds wheels from VDOT+1 prediction (one Daniels training cycle improvement),
-    // rounded down to nearest 5 seconds. Falls back to hardcoded defaults with no VDOT.
+    // Seeds wheels from the first plan option's VDOT gain (Daniels training cycle baseline).
+    // Rounded down to nearest 5 seconds. Falls back to hardcoded defaults with no VDOT.
     private func seedTimeForDistance(_ d: String) {
-        if let v = currentVdot, let pred = Self.predictSeconds(vdot: v + 1.0, distance: d) {
+        let gain = planOptions(for: d).first?.vdotGain ?? 1.0
+        if let v = currentVdot, let pred = Self.predictSeconds(vdot: v + gain, distance: d) {
             let rounded = (pred / 5) * 5
             hours = rounded / 3600
             minutes = (rounded % 3600) / 60
@@ -632,39 +679,40 @@ struct SetGoalSheet: View {
         }
     }
 
+    // vdotGain per plan: ~1 VDOT point per 8 weeks of focused training (Daniels).
     private func planOptions(for d: String) -> [PlanOption] {
         switch d {
         case "5K":
             return [
-                PlanOption(weeks: 8,  rationale: "A focused speed block. Works if you're already running regularly."),
-                PlanOption(weeks: 12, rationale: "Builds your base first, then sharpens speed. Better starting point for most runners."),
+                PlanOption(weeks: 8,  rationale: "A focused speed block. Works if you're already running regularly.", vdotGain: 1.0),
+                PlanOption(weeks: 12, rationale: "Builds your base first, then sharpens speed. Better starting point for most runners.", vdotGain: 1.5),
             ]
         case "10K":
             return [
-                PlanOption(weeks: 10, rationale: "A steady build with a speed focus in the final weeks."),
-                PlanOption(weeks: 14, rationale: "A complete build from base to race-ready. More time, better results."),
+                PlanOption(weeks: 10, rationale: "A steady build with a speed focus in the final weeks.", vdotGain: 1.25),
+                PlanOption(weeks: 14, rationale: "A complete build from base to race-ready. More time, better results.", vdotGain: 1.75),
             ]
         case "Half Marathon":
             return [
-                PlanOption(weeks: 12, rationale: "The minimum for a well-prepared half marathon. Works best if you already have a solid base."),
-                PlanOption(weeks: 16, rationale: "The standard choice. Enough time to build fitness and sharpen race pace."),
-                PlanOption(weeks: 20, rationale: "More base time before race training. Best if you're coming off a down period."),
+                PlanOption(weeks: 12, rationale: "The minimum for a well-prepared half marathon. Works best if you already have a solid base.", vdotGain: 1.5),
+                PlanOption(weeks: 16, rationale: "The standard choice. Enough time to build fitness and sharpen race pace.", vdotGain: 2.0),
+                PlanOption(weeks: 20, rationale: "More base time before race training. Best if you're coming off a down period.", vdotGain: 2.5),
             ]
         case "Marathon":
             return [
-                PlanOption(weeks: 16, rationale: "The minimum for a serious marathon. Assumes you're already running regularly."),
-                PlanOption(weeks: 20, rationale: "The most popular choice. Enough time to build and peak properly."),
-                PlanOption(weeks: 24, rationale: "Six months of work. Gives your body time to fully adapt to marathon training."),
+                PlanOption(weeks: 16, rationale: "The minimum for a serious marathon. Assumes you're already running regularly.", vdotGain: 2.0),
+                PlanOption(weeks: 20, rationale: "The most popular choice. Enough time to build and peak properly.", vdotGain: 2.5),
+                PlanOption(weeks: 24, rationale: "Six months of work. Gives your body time to fully adapt to marathon training.", vdotGain: 3.0),
             ]
         case "50K":
             return [
-                PlanOption(weeks: 18, rationale: "A solid intro to ultra distance. Builds on marathon-level fitness."),
-                PlanOption(weeks: 24, rationale: "More time on your feet, more confidence on race day."),
+                PlanOption(weeks: 18, rationale: "A solid intro to ultra distance. Builds on marathon-level fitness.", vdotGain: 2.25),
+                PlanOption(weeks: 24, rationale: "More time on your feet, more confidence on race day.", vdotGain: 3.0),
             ]
         default: // 100K
             return [
-                PlanOption(weeks: 24, rationale: "High mileage across six months. The foundation a 100K demands."),
-                PlanOption(weeks: 32, rationale: "Eight months to fully prepare. Builds volume and time-on-feet gradually."),
+                PlanOption(weeks: 24, rationale: "High mileage across six months. The foundation a 100K demands.", vdotGain: 3.0),
+                PlanOption(weeks: 32, rationale: "Eight months to fully prepare. Builds volume and time-on-feet gradually.", vdotGain: 4.0),
             ]
         }
     }
