@@ -175,7 +175,7 @@ function detectPaceFade(splits: RecapInput['splits']): number | null {
 export function deriveRecap(input: RecapInput): RecapPayload {
   // E6: pass the workout type so the conditions copy reframes around effort
   // for easy/long/recovery/shakeout (pace-cost framing only for quality/race).
-  const weather = input.weather ? judgeWeather({ ...input.weather, workoutType: input.type }) : null;
+  const weather = input.weather ? judgeWeather({ ...input.weather, workoutType: input.type, phase: 'post' }) : null;
   const drift = detectHrDrift(input.splits);
   const fade = detectPaceFade(input.splits);
   const paceStr = paceLabel(input.actualPaceSPerMi);
@@ -261,9 +261,25 @@ export function deriveRecap(input: RecapInput): RecapPayload {
     }
 
     case 'easy': {
-      facts.push(
-        `Easy ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}. Boring is good · that's the whole point of easy days.`,
-      );
+      // Read the run, not a platitude (David 2026-06-12). Easy pace is a
+      // range, so compare actual to the easy target and say what happened:
+      // honest-easy, a touch quick (the one easy-day mistake worth flagging),
+      // or relaxed. Falls back to a by-feel line when there's no target pace.
+      const lead = `Easy ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}.`;
+      const easyTgt = input.plannedPaceSPerMi ?? null;
+      const easyAct = input.actualPaceSPerMi ?? null;
+      if (easyTgt && easyAct) {
+        const delta = easyAct - easyTgt; // + slower, − faster
+        if (delta < -25) {
+          facts.push(`${lead} A touch quicker than the ${paceLabel(easyTgt)} easy target — fine, but easy days bank the most when you let them stay genuinely easy.`);
+        } else if (delta > 45) {
+          facts.push(`${lead} Relaxed and well inside easy — exactly what these days are for.`);
+        } else {
+          facts.push(`${lead} Right in the easy range. That's the aerobic work, no cost.`);
+        }
+      } else {
+        facts.push(`${lead} Run by feel — the right way to take an easy day.`);
+      }
       if (input.plannedHrCap && input.actualAvgHr && input.actualAvgHr > input.plannedHrCap + 5) {
         if (heatExplainsDrift) {
           facts.push(`Your HR (${input.actualAvgHr}) ran a bit above the ${input.plannedHrCap} target, but it was hot · effort was right.`);

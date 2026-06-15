@@ -260,7 +260,8 @@ describe('deriveRecap · type=easy', () => {
       actualMaxHr: 152,
     });
     expect(r.verdict).toBe('Easy done.');
-    expect(r.facts.join(' ')).toMatch(/Boring is good|whole point of easy days/);
+    // Reads the run: actual 9:10 vs 9:00 target = in the easy range (David 2026-06-12).
+    expect(r.facts.join(' ')).toMatch(/easy range|aerobic work/);
     expect(r.facts.join(' ')).not.toMatch(/ran past the.*target/);
   });
 

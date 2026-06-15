@@ -70,6 +70,13 @@ export interface WeatherInput {
    * race, where pace IS the axis. Any runner.
    */
   workoutType?: WorkoutType | null;
+  /**
+   * 'pre' (default) frames forward — "your pace will sit slower, hold the
+   * effort". 'post' frames as a past reading for the run recap — no
+   * imperatives, no "will" (David 2026-06-12: the recap was reading like
+   * pre-run advice instead of responding to the run).
+   */
+  phase?: 'pre' | 'post';
 }
 
 export type HeatBand = 'neutral' | 'warm' | 'hot' | 'extreme';
@@ -227,10 +234,18 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   // Trailing framing only when material. E6: pace-cost for quality/race
   // (pace is the axis); effort framing for easy/long/recovery/shakeout
   // (pace drifts slower by design · the runner trains those by feel/HR).
+  const isPost = input.phase === 'post';
   if (slowdownPct >= 2) {
-    summary += isEffortRun(input.workoutType)
-      ? ` Your pace will sit slower in this · that's the heat, not lost fitness. Hold the effort.`
-      : ` Costs you about ${Math.round(slowdownPct)}% on pace.`;
+    if (isEffortRun(input.workoutType)) {
+      // Post: read it (past, no imperative). Pre: forward cue.
+      summary += isPost
+        ? ` Warm enough to cost a little pace — the heat, not lost fitness.`
+        : ` Your pace will sit slower in this · that's the heat, not lost fitness. Hold the effort.`;
+    } else {
+      summary += isPost
+        ? ` Cost you about ${Math.round(slowdownPct)}% on pace — the heat, not fitness.`
+        : ` Costs you about ${Math.round(slowdownPct)}% on pace.`;
+    }
   }
 
   // Coach tip · what to do next time. Runner-to-runner, no jargon.
@@ -240,9 +255,13 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   let coachTipForNextTime: string | null = null;
   const effort = isEffortRun(input.workoutType);
   if (heatBand === 'warm') {
-    coachTipForNextTime = effort
-      ? `Run these by effort, not the watch · let the pace drift slower and keep it truly easy. A little salt before the long ones helps.`
-      : `Try to start earlier next time when it's warm like this. Drink something with salt in it before long ones.`;
+    if (effort) {
+      coachTipForNextTime = isPost
+        ? `Next time it's this warm, start earlier and run by feel — the pace looks after itself.`
+        : `Run these by effort, not the watch · let the pace drift slower and keep it truly easy. A little salt before the long ones helps.`;
+    } else {
+      coachTipForNextTime = `Try to start earlier next time when it's warm like this. Drink something with salt in it before long ones.`;
+    }
   } else if (heatBand === 'hot') {
     coachTipForNextTime = effort
       ? `Go by effort and HR, not pace · heat like this makes the watch lie. Start earlier when you can, and drink 16-24 oz with salt the hour before.`
