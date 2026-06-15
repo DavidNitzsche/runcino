@@ -90,83 +90,18 @@ struct TodayReadinessPanel: View {
         if let s = snapshot?.score { return String(s) }
         return "—"
     }
-    private var headlineText: String {
-        // Derive a one-line headline from the snapshot. Until the iPhone
-        // wires the richer ReadinessBriefSeed.headline, we compose from
-        // the two lowest-weight pillars (the things dragging the score).
-        // No prescription · purely descriptive.
-        guard let inputs = snapshot?.inputs, !inputs.isEmpty else {
-            return "Wear the watch overnight\nto light up readiness."
-        }
-        let negatives = inputs
-            .filter { $0.weight < 0 }
-            .sorted { $0.weight < $1.weight }
-            .prefix(2)
-            .map { humanize($0.key) }
-        if negatives.isEmpty {
-            switch bandText {
-            case "SHARP":    return "Everything's stacked.\nThe system is firing."
-            case "READY":    return "Solid across the board.\nGood day to do work."
-            case "MODERATE": return "Sitting in the middle.\nOne pillar dipped."
-            default:         return "Readiness reading is steady."
-            }
-        }
-        if negatives.count == 1 {
-            return "\(negatives[0]) is dragging."
-        }
-        return "\(negatives[0]) and \(negatives[1])\nare dragging."
-    }
-
-    private func humanize(_ key: String) -> String {
-        switch key.lowercased() {
-        case "sleep": return "Sleep"
-        case "hrv":   return "Recovery"
-        case "rhr":   return "Resting HR"
-        case "load":  return "Load"
-        case "rpe":   return "RPE"
-        case "hr_recovery", "hr-rec", "hr_rec": return "HR recovery"
-        default:      return key.capitalized
-        }
-    }
-
     var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 20) {
-                ringPlusWords
-                signalTileGrid
-                // formLine + chips sit together; when formLine is nil
-                // the chips render at the same 22pt spacing as before.
-                VStack(alignment: .leading, spacing: 8) {
-                    formCaption
-                    statChips
-                }
+        VStack(alignment: .leading, spacing: 20) {
+            signalTileGrid
+            VStack(alignment: .leading, spacing: 8) {
+                formCaption
+                statChips
             }
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onTapGesture { onTap() }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Readiness \(scoreText), \(bandText). Tap for the full brief.")
-    }
-
-    // MARK: 1 · ring + words
-
-    private var ringPlusWords: some View {
-        HStack(alignment: .center, spacing: 20) {
-            TodayReadinessRing(score: snapshot?.score, arcTint: arcTint)
-                .frame(width: 108, height: 108)
-            VStack(alignment: .leading, spacing: 7) {
-                // 2026-06-03 round 68 · "READINESS · READY" eyebrow
-                // retired. David: "we dont need any labels here the
-                // number and circle is doing enough." Ring + score
-                // already communicate the band state; the eyebrow was
-                // redundant noise above the actual headline.
-                Text(headlineText)
-                    .font(.body(24, weight: .extraBold))
-                    .foregroundStyle(.white)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .shadow(color: .black.opacity(0.28), radius: 20, y: 2)
-            }
-        }
     }
 
     // MARK: 2 · 2×2 signal tile grid
@@ -274,34 +209,6 @@ struct TodayReadinessPanel: View {
     private var nextHardDisplay: String? {
         guard let s = nextHardLabel, !s.isEmpty else { return nil }
         return s
-    }
-}
-
-// MARK: - Ring atom
-
-private struct TodayReadinessRing: View {
-    let score: Int?
-    let arcTint: Color
-
-    private var progress: Double {
-        guard let s = score else { return 0 }
-        return min(1.0, max(0.0, Double(s) / 100.0))
-    }
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.2), lineWidth: 6.5)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(arcTint,
-                        style: StrokeStyle(lineWidth: 6.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeInOut(duration: 0.6), value: progress)
-            Text(score.map(String.init) ?? "—")
-                .font(.display(42, weight: .semibold))
-                .foregroundStyle(.white)
-        }
     }
 }
 

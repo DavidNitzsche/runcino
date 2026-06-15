@@ -46,8 +46,8 @@ DERIVED="/tmp/Faff-v2-sim-derived"
 ( cd "$NATIVE_V2" && xcodebuild -scheme Faff -configuration Debug \
     -destination "id=$DEVICE_ID" -derivedDataPath "$DERIVED" build )
 
-# Find the built .app — depth-limited search
-APP_PATH="$(find "$DERIVED/Build/Products" -name "*.app" -type d | head -1)"
+# Find the built iPhone .app explicitly (not the watch app)
+APP_PATH="$(find "$DERIVED/Build/Products" -name "Faff.app" -path "*iphonesimulator*" -type d | head -1)"
 if [ -z "$APP_PATH" ]; then
   echo "ERROR: could not find built .app" >&2; exit 1
 fi
