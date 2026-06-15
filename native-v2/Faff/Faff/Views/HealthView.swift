@@ -61,33 +61,6 @@ struct HealthView: View {
                     // Bar (50) + shared header pill (84) clearance, matching Today.
                     Color.clear.frame(height: 132)
 
-                    // Big readiness-band word headline · leads below the pill
-                    // the way TEMPO leads Today. Manual-log entry sits top-right.
-                    HStack(alignment: .top) {
-                        Text(readinessWord)
-                            .font(.heroDisplay(88))
-                            .tracking(-2)
-                            .foregroundStyle(readinessBandColor)
-                            .minimumScaleFactor(0.55)
-                            .lineLimit(1)
-                        Spacer()
-                        Button { showLogSheet = true } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 38, height: 38)
-                                .background(Color.white.opacity(0.12), in: Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 14)
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 6)
-
-                    // Long scroll · the whole readiness picture on one surface.
-                    // Overview (WHAT IS DRIVING IT …) leads, then each section
-                    // under its own header. Per-metric detail still opens on tap.
                     VStack(alignment: .leading, spacing: 0) {
                         if let msg = loadState.failureMessage, state == nil {
                             Text(msg)
@@ -96,8 +69,8 @@ struct HealthView: View {
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.top, 40)
                         } else {
-                            overviewPane
-                            healthSectionDivider("BODY");     bodyPane
+                            bodyPane
+                            readinessTrendSection
                             healthSectionDivider("SLEEP");    sleepPane
                             healthSectionDivider("FORM");     formPane
                             healthSectionDivider("INSIGHTS"); insightsPane
@@ -249,6 +222,17 @@ struct HealthView: View {
         }
         if let rec = state?.overview?.recoveryPhase, rec.anchor?.isEmpty == false {
             recoveryPhaseCard(rec).padding(.top, 14)
+        }
+    }
+
+    // MARK: - 7-day readiness trend (Health tab section after BODY)
+
+    @ViewBuilder
+    private var readinessTrendSection: some View {
+        healthSectionDivider("7-DAY READINESS")
+        HealthWeekBars(snapshot: readiness, state: state)
+        if let vo2 = state?.vo2.current {
+            aerobicCard(vo2: vo2).padding(.top, 18)
         }
     }
 
@@ -612,6 +596,14 @@ struct HealthView: View {
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
+            Button { showLogSheet = true } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(Color.white.opacity(0.15), in: Circle())
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 15)
     }
