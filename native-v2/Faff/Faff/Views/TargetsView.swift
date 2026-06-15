@@ -67,9 +67,23 @@ struct TargetsView: View {
                         }
                     }
 
-                    // ── Fitness goal · always visible right after the hero ─
-                    // For race runners this is below the projection panel.
-                    // For goal-only runners, goalHeroBlock above already shows it.
+                    // ── Races ─────────────────────────────────────────────
+                    if hasUpcomingRace {
+                        section("RACES") {
+                            let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
+                                .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
+                            VStack(spacing: 10) {
+                                ForEach(upcoming) { race in raceTile(race) }
+                                addButton("+ ADD RACE") { showAddRaceSheet = true }
+                            }
+                        }
+                    } else {
+                        section("RACES") {
+                            addButton("+ ADD RACE") { showAddRaceSheet = true }
+                        }
+                    }
+
+                    // ── Fitness goal · between upcoming and past races ─────
                     if hasUpcomingRace {
                         section("GOAL") {
                             if let g = fitnessGoal {
@@ -93,22 +107,6 @@ struct TargetsView: View {
                             } else {
                                 addButton("+ SET GOAL") { showNewGoalSheet = true }
                             }
-                        }
-                    }
-
-                    // ── Races ─────────────────────────────────────────────
-                    if hasUpcomingRace {
-                        section("RACES") {
-                            let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
-                                .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
-                            VStack(spacing: 10) {
-                                ForEach(upcoming) { race in raceTile(race) }
-                                addButton("+ ADD RACE") { showAddRaceSheet = true }
-                            }
-                        }
-                    } else {
-                        section("RACES") {
-                            addButton("+ ADD RACE") { showAddRaceSheet = true }
                         }
                     }
 
