@@ -2446,10 +2446,35 @@ fileprivate struct HeroStepList: View {
         case .easy:
             return "A comfortable effort where you can hold a conversation. Builds your aerobic base and helps your body recover between harder sessions."
         case .long:
-            return "Your biggest run of the week at a fully conversational pace. Builds endurance and trains your body to burn fat efficiently."
+            return longRunNote
         default:
             return nil
         }
+    }
+
+    private var longRunNote: String {
+        let rowLabels = steps.compactMap { item -> String? in
+            if case .row(let seg) = item { return seg.topLabel.uppercased() }
+            return nil
+        }
+        let hasMPace = rowLabels.contains { $0.contains("M PACE") || $0.contains("MARATHON") || $0.contains("@MP") || $0.contains("@M ") }
+        let hasTempo = rowLabels.contains { $0.contains("TEMPO") || $0.contains("THRESHOLD") }
+        if hasTempo {
+            return "Mostly easy miles, finishing with a tempo push. Builds endurance while sharpening your lactate threshold — both matter for the back half of a race."
+        }
+        if hasMPace {
+            let mpSeg = steps.compactMap { item -> HeroSeg? in
+                if case .row(let seg) = item {
+                    let l = seg.topLabel.uppercased()
+                    if l.contains("M PACE") || l.contains("MARATHON") || l.contains("@MP") || l.contains("@M ") { return seg }
+                }
+                return nil
+            }.first
+            let dist = mpSeg.map { $0.bottomLabel.components(separatedBy: " · ").first ?? "" } ?? ""
+            let distStr = dist.isEmpty ? "the final miles" : dist
+            return "Mostly easy miles to build endurance, then \(distStr) at marathon pace on tired legs. This is one of the most specific workouts for marathon prep."
+        }
+        return "Your biggest run of the week at a fully conversational pace. Builds endurance and trains your body to burn fat efficiently."
     }
 
     var body: some View {
