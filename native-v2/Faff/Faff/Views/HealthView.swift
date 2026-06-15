@@ -421,10 +421,16 @@ struct HealthView: View {
     }
 
     private func sleepSummaryCard(label: String, value: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let dotColor: Color = {
+            guard let h = value else { return Color(hex: 0x8A90A0) }
+            if h >= 7.0 { return Color(hex: 0x5fd06a) }
+            if h >= 6.0 { return Color(hex: 0xF3AD38) }
+            return Color(hex: 0xFC4D64)
+        }()
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(Color.white.opacity(0.45))
+                    .fill(dotColor)
                     .frame(width: 6, height: 6)
                 Text(label)
                     .font(.body(9.5, weight: .extraBold)).tracking(0.8)
