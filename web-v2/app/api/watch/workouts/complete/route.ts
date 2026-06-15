@@ -401,14 +401,23 @@ export async function POST(req: NextRequest) {
   // gets clamped, and stamp provenance 'watch' so the GPS-estimate fallback
   // (post-write-hooks enrichElevIfMissing) defers to the device value — it
   // only fires when elevGainFt is null or elevGainSource is 'absent'.
-  const elevSane = sanitizeElevGain({
-    elevGainFt: body.elevGainFt ?? null,
-    distanceMi: totalMi,
-    splits: Array.isArray(data.splits) ? data.splits : [],
-  });
-  if (elevSane.value != null) {
-    data.elevGainFt = elevSane.value;
-    data.elevGainSource = 'watch';
+  if (source === 'treadmill' && typeof body.elevGainFt === 'number' && body.elevGainFt >= 0) {
+    // Treadmill elevation is incline-derived (rise = distance × grade) and
+    // EXACT — not noisy barometry — so it bypasses the barometric sanity
+    // clamp (which would wrongly cap a steep but legitimate incline session).
+    // Provenance flags it as incline-derived, not device-measured.
+    data.elevGainFt = Math.round(body.elevGainFt);
+    data.elevGainSource = 'treadmill_incline';
+  } else {
+    const elevSane = sanitizeElevGain({
+      elevGainFt: body.elevGainFt ?? null,
+      distanceMi: totalMi,
+      splits: Array.isArray(data.splits) ? data.splits : [],
+    });
+    if (elevSane.value != null) {
+      data.elevGainFt = elevSane.value;
+      data.elevGainSource = 'watch';
+    }
   }
   // 2026-06-03 · auto-populate profile.timezone from the device's TZ on
   // first sync. Silent · only writes when profile.timezone is currently

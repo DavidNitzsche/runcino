@@ -57,8 +57,8 @@ struct TreadmillView: View {
     @State private var totalSec: Int = 0
     /// Cumulative distance in miles, accumulated each tick from speedMph.
     @State private var dist: Double = 0
-    /// Cumulative elevation gain in ft (placeholder · treadmill incline
-    /// doesn't translate to "feet climbed" cleanly without segment math).
+    /// Cumulative elevation gain in ft · accumulated each tick from the set
+    /// incline (rise = distance × grade) so incline reflects as real climb.
     @State private var elev: Double = 0
     /// Current runner-input speed (mph). Initialized per segment from
     /// the plan's target; runner adjusts via steppers.
@@ -248,7 +248,13 @@ struct TreadmillView: View {
         elapsedInSeg += delta
         totalSec += delta
         // Distance accumulates · mph × hours = miles
-        dist += Double(delta) / 3600.0 * speedMph
+        let distDeltaMi = Double(delta) / 3600.0 * speedMph
+        dist += distDeltaMi
+        // Elevation accumulates from the set incline · rise = run × grade.
+        // A treadmill at incline% over distDeltaMi miles climbs
+        // distDeltaMi × 5280 × (incline / 100) feet. Reflects incline as real
+        // elevation gain so a harder treadmill run isn't recorded as flat.
+        elev += distDeltaMi * 5280.0 * (inclinePct / 100.0)
         // Auto-advance only INTERMEDIATE segments when they run out. The
         // last (or only) segment never auto-advances or auto-ends — the
         // runner can keep going past the target (run longer if they want)
@@ -693,6 +699,11 @@ struct TreadmillView: View {
             "status": status,
             "totalDistanceMi": (dist * 100).rounded() / 100,
             "totalDurationSec": totalSec,
+            // Incline-derived elevation gain · so a treadmill run with incline
+            // shows real climb instead of flat (0 ft). Source flags it as
+            // incline-derived, not barometric.
+            "elevGainFt": elev.rounded(),
+            "elevGainSource": "treadmill_incline",
             // kcal stays null on iPhone-treadmill v1 · backend
             // resolveCalories tier 3 estimator picks up.
             "source": "treadmill",
