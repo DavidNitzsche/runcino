@@ -69,7 +69,6 @@ struct HealthView: View {
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.top, 40)
                         } else {
-                            readinessTrendSection
                             healthSectionDivider("BODY");     bodyPane
                             healthSectionDivider("SLEEP");    sleepPane
                             healthSectionDivider("FORM");     formPane
@@ -222,18 +221,6 @@ struct HealthView: View {
         }
         if let rec = state?.overview?.recoveryPhase, rec.anchor?.isEmpty == false {
             recoveryPhaseCard(rec).padding(.top, 14)
-        }
-    }
-
-    // MARK: - 7-day readiness trend (Health tab section after BODY)
-
-    @ViewBuilder
-    private var readinessTrendSection: some View {
-        // No top divider padding when this is the first section in scroll
-        SectionLabel(title: "7-DAY READINESS").padding(.bottom, 10)
-        HealthWeekBars(snapshot: readiness, state: state)
-        if let vo2 = state?.vo2.current {
-            aerobicCard(vo2: vo2).padding(.top, 18)
         }
     }
 
@@ -1019,7 +1006,17 @@ private struct ReadinessTrendPill: View {
     private var series: [Double] {
         if let dr = state?.dailyReadiness, !dr.isEmpty {
             let last7 = Array(dr.suffix(7))
-            return last7.map { Double($0.score ?? 0) }
+            let scores = last7.map { Double($0.score ?? 0) }
+            // Only use dailyReadiness if it carries actual non-zero history;
+            // if all previous days are 0 it means scores haven't backfilled yet
+            // and the sleep proxy is a better shape.
+            if scores.dropLast().contains(where: { $0 > 0 }) {
+                return scores
+            }
+        }
+        // Sleep proxy: hours * 12 maps ~8h → 96, giving realistic relative bar heights.
+        if let s = state?.sleepSeries.suffix(7), s.count == 7 {
+            return s.map { min(100, max(0, $0.hours * 12)) }
         }
         let score = Double(snapshot?.score ?? 0)
         return (0..<6).map { _ in 0.0 } + [score]
