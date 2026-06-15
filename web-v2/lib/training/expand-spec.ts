@@ -174,7 +174,7 @@ function expandReps(
   for (let i = 0; i < reps; i++) {
     phases.push({
       type: 'work',
-      label: `Interval ${i + 1}/${reps} · ${formatRepLabel(effRepMi)}`,
+      label: `Interval · ${formatRepLabel(effRepMi)}`,
       distanceMi: Number(effRepMi.toFixed(2)),
       durationSec: Math.round(effRepMi * repPace),
       targetPaceSPerMi: repPace,
