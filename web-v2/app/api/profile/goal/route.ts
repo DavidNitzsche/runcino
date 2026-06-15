@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   }
 
   await pool.query(
-    `UPDATE profiles
+    `UPDATE profile
         SET tt_goal_distance        = $1,
             tt_goal_time            = $2,
             tt_goal_time_seconds    = $3

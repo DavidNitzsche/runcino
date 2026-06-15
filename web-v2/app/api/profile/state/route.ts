@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const [state, goalRow] = await Promise.all([
       loadProfileState(userId),
       pool.query<{ tt_goal_distance: string | null; tt_goal_time: string | null }>(
-        `SELECT tt_goal_distance, tt_goal_time FROM profiles WHERE user_uuid = $1`,
+        `SELECT tt_goal_distance, tt_goal_time FROM profile WHERE user_uuid = $1`,
         [userId]
       ),
     ]);
