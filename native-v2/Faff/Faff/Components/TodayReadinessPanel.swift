@@ -97,16 +97,17 @@ private func rowsFromInputs(_ inputs: [ReadinessInput]?) -> [PillarRow] {
         case -1: tint = Color(hex: 0xFFB24D)
         default: tint = Color(hex: 0x8AA0A8)
         }
-        // Label cleanup · the endpoint emits "SLEEP · 28%" / "HRV · 28%"
-        // etc. Strip the weight suffix for this surface (the panel doesn't
-        // show pillar weights). Keep ≤6 chars so it fits the 42pt column.
+        // Map internal key to user-facing display name.
+        // The endpoint emits "SLEEP · 28%" / "HRV · 28%" etc.
         let label: String = {
-            let primary = (row.label.split(separator: "·").first ?? "").trimmingCharacters(in: .whitespaces)
-            // The endpoint uses "RPE" for the 5th pillar; the design calls
-            // it "HR REC". Until the iPhone migrates to the richer brief
-            // contract, render with the source's label and the design
-            // intent is preserved (5 rows, same column widths).
-            return primary.isEmpty ? key.uppercased() : primary
+            switch key {
+            case "hrv":  return "RECOVERY"
+            case "rhr":  return "RESTING HR"
+            case "load": return "LOAD"
+            default:
+                let primary = (row.label.split(separator: "·").first ?? "").trimmingCharacters(in: .whitespaces)
+                return primary.isEmpty ? key.uppercased() : primary
+            }
         }()
         return PillarRow(
             id: row.key,
@@ -183,8 +184,8 @@ struct TodayReadinessPanel: View {
     private func humanize(_ key: String) -> String {
         switch key.lowercased() {
         case "sleep": return "Sleep"
-        case "hrv":   return "HRV"
-        case "rhr":   return "RHR"
+        case "hrv":   return "Recovery"
+        case "rhr":   return "Resting HR"
         case "load":  return "Load"
         case "rpe":   return "RPE"
         case "hr_recovery", "hr-rec", "hr_rec": return "HR recovery"
@@ -388,7 +389,9 @@ private struct WhyRow: View {
             Text(row.label.uppercased())
                 .font(.body(9.5, weight: .extraBold)).tracking(0.6)
                 .foregroundStyle(Color.white.opacity(0.7))
-                .frame(width: 42, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(width: 76, alignment: .leading)
 
             GeometryReader { geo in
                 ZStack {

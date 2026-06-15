@@ -169,9 +169,11 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
       meaning = `Above 1.5 · the elevated-injury-risk band per Gabbett. Coach factors this into today's prescription.`;
     }
     score += w;
+    const acwrWord = r < 0.8 ? 'Low' : r < 1.0 ? 'Building' : r <= 1.3 ? 'In range'
+      : r < 1.5 ? 'Elevated' : 'High';
     inputs.push({
       key: 'load', label: 'LOAD · 15%', weight: w,
-      observedV: `${r.toFixed(2)} ACWR (this week vs last 4 weeks)`,
+      observedV: `${acwrWord} · ${r.toFixed(2)} ACWR`,
       observedSub: `this week ${state.loadAcute7.toFixed(1)} · month avg ${state.loadChronic28.toFixed(1)} mi/day`,
       meaning,
     });
