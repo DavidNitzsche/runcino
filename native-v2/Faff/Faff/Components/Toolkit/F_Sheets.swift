@@ -489,6 +489,8 @@ struct SetGoalSheet: View {
                     Picker("Distance", selection: $distance) {
                         ForEach(distances, id: \.self) { Text($0) }
                     }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
                     if let v = currentVdot,
                        let pred = Self.predictSeconds(vdot: v, distance: distance) {
                         HStack {
