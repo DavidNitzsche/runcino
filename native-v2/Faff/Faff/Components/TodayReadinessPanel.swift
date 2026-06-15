@@ -57,69 +57,6 @@ private enum ReadinessBand {
     }
 }
 
-// MARK: - Pillar row model
-
-/// One row in the WHY strip. Built by mapping `ReadinessInput` → row
-/// model. The bar is center-anchored: fill extends right (green) when
-/// the pillar lifts the score, left (amber/red) when it drags it down.
-private struct PillarRow: Identifiable {
-    let id: String           // input.key
-    let label: String        // "SLEEP"
-    let value: String        // "5.9h · 7-night"
-    let dir: Int             // -1 / 0 / 1
-    let mag: Double          // 0..1, fraction of half-bar width
-    let tint: Color
-}
-
-private func rowsFromInputs(_ inputs: [ReadinessInput]?) -> [PillarRow] {
-    guard let inputs else { return [] }
-    // Keep the 5 canonical inputs in the brief's order. The endpoint may
-    // return them in any order; we normalize so the panel reads the same
-    // every render.
-    let order: [String] = ["sleep", "hrv", "rhr", "load", "rpe"]
-    let byKey: [String: ReadinessInput] = Dictionary(
-        inputs.map { ($0.key.lowercased(), $0) },
-        uniquingKeysWith: { a, _ in a }
-    )
-    return order.compactMap { key in
-        guard let row = byKey[key] else { return nil }
-        let dir: Int
-        if row.weight > 0 { dir = 1 }
-        else if row.weight < 0 { dir = -1 }
-        else { dir = 0 }
-        // Magnitude · weight typically ranges -14..+8 across pillars. Map
-        // |weight| → 0..1 of the half-bar width using 14 as the practical
-        // ceiling (clamped). 0-weight rows still render a small dot.
-        let mag = min(1.0, Double(abs(row.weight)) / 14.0)
-        let tint: Color
-        switch dir {
-        case 1:  tint = Color(hex: 0x62E08A)
-        case -1: tint = Color(hex: 0xFFB24D)
-        default: tint = Color(hex: 0x8AA0A8)
-        }
-        // Map internal key to user-facing display name.
-        // The endpoint emits "SLEEP · 28%" / "HRV · 28%" etc.
-        let label: String = {
-            switch key {
-            case "hrv":  return "RECOVERY"
-            case "rhr":  return "RESTING HR"
-            case "load": return "LOAD"
-            default:
-                let primary = (row.label.split(separator: "·").first ?? "").trimmingCharacters(in: .whitespaces)
-                return primary.isEmpty ? key.uppercased() : primary
-            }
-        }()
-        return PillarRow(
-            id: row.key,
-            label: label,
-            value: row.observedV ?? "—",
-            dir: dir,
-            mag: mag,
-            tint: tint
-        )
-    }
-}
-
 // MARK: - Public panel
 
 struct TodayReadinessPanel: View {
@@ -143,7 +80,6 @@ struct TodayReadinessPanel: View {
     /// Tap target · routes to the "full readiness brief" surface.
     let onTap: () -> Void
 
-    private var rows: [PillarRow] { rowsFromInputs(snapshot?.inputs) }
     private var bandTint: Color { ReadinessBand.tint(snapshot?.band) }
     private var arcTint: Color  { ReadinessBand.arc(snapshot?.band) }
     private var bandText: String {
@@ -195,9 +131,9 @@ struct TodayReadinessPanel: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 20) {
                 ringPlusWords
-                whyStrip
+                signalTileGrid
                 // formLine + chips sit together; when formLine is nil
                 // the chips render at the same 22pt spacing as before.
                 VStack(alignment: .leading, spacing: 8) {
@@ -229,32 +165,22 @@ struct TodayReadinessPanel: View {
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .shadow(color: .black.opacity(0.28), radius: 20, y: 2)
-                // 2026-06-02 round 40 · subtle "view full" affordance.
-                // The panel was tappable end-to-end (whole Button) but
-                // gave no visual cue · runners might not realize the
-                // ring + headline + WHY all expand into a full brief.
-                // Inline low-contrast chevron-text covers the cue
-                // without competing with the headline.
-                HStack(spacing: 4) {
-                    Text("View full read")
-                        .font(.body(11, weight: .semibold)).tracking(0.2)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                }
-                .foregroundStyle(Color.white.opacity(0.55))
-                .padding(.top, 2)
             }
         }
     }
 
-    // MARK: 2 · WHY strip
+    // MARK: 2 · 2×2 signal tile grid
 
     @ViewBuilder
-    private var whyStrip: some View {
-        if !rows.isEmpty {
-            VStack(spacing: 9) {
-                ForEach(rows) { row in
-                    WhyRow(row: row)
+    private var signalTileGrid: some View {
+        let tiles = (snapshot?.inputs ?? []).filter { !["hr_recovery", "rpe"].contains($0.key) }
+        if !tiles.isEmpty {
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                spacing: 10
+            ) {
+                ForEach(tiles) { input in
+                    TodaySignalTile(input: input)
                 }
             }
         }
@@ -379,62 +305,96 @@ private struct TodayReadinessRing: View {
     }
 }
 
-// MARK: - WHY row atom
+// MARK: - Signal tile atom (2×2 grid)
 
-private struct WhyRow: View {
-    let row: PillarRow
+private struct TodaySignalTile: View {
+    let input: ReadinessInput
+
+    private var displayLabel: String {
+        switch input.key.lowercased() {
+        case "hrv":  return "RECOVERY"
+        case "rhr":  return "RESTING HR"
+        case "load": return "LOAD"
+        default:
+            let primary = (input.label.split(separator: "·").first ?? "").trimmingCharacters(in: .whitespaces)
+            return primary.isEmpty ? input.key.uppercased() : primary.uppercased()
+        }
+    }
+
+    private var tint: Color {
+        let w = input.weight
+        if w <= -8 { return Color(hex: 0xFC4D64) }
+        if w <  0  { return Color(hex: 0xF3AD38) }
+        if w >  0  { return Color(hex: 0x3EBD41) }
+        return Color(hex: 0x8A90A0)
+    }
+
+    private var isNoData: Bool {
+        let v = (input.observedV ?? "").lowercased()
+        return v == "no data" || v == "building history" || v.isEmpty
+    }
+
+    private var displayValue: String {
+        let v = input.observedV ?? "—"
+        guard !isNoData, let dot = v.range(of: " · ") else { return isNoData ? "—" : v }
+        return String(v[..<dot.lowerBound])
+    }
+
+    private var displaySub: String {
+        guard !isNoData else { return "" }
+        let v = input.observedV ?? ""
+        guard let dot = v.range(of: " · ") else { return input.observedSub ?? "" }
+        let trailing = String(v[dot.upperBound...])
+        return trailing.isEmpty ? (input.observedSub ?? "") : trailing
+    }
+
+    private var valueIsWord: Bool {
+        displayValue.first.map { !$0.isNumber } ?? false
+    }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(row.label.uppercased())
-                .font(.body(9.5, weight: .extraBold)).tracking(0.6)
-                .foregroundStyle(Color.white.opacity(0.7))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .frame(width: 76, alignment: .leading)
-
-            GeometryReader { geo in
-                ZStack {
-                    // Track
-                    Capsule()
-                        .fill(Color.white.opacity(0.14))
-                        .frame(height: 7)
-
-                    // Center axis tick
-                    Rectangle()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(width: 1, height: 11)
-                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
-
-                    // Fill bar (center-anchored)
-                    if row.dir != 0 {
-                        let half = geo.size.width / 2
-                        let fillW = max(6, half * CGFloat(row.mag))
-                        let xPos = row.dir > 0
-                            ? half + fillW / 2
-                            : half - fillW / 2
-                        Capsule()
-                            .fill(row.tint)
-                            .frame(width: fillW, height: 7)
-                            .position(x: xPos, y: geo.size.height / 2)
-                    } else {
-                        // Dir=0: tiny dot on the axis
-                        Circle()
-                            .fill(Color.white.opacity(0.45))
-                            .frame(width: 5, height: 5)
-                            .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                    }
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 6, height: 6)
+                Text(displayLabel)
+                    .font(.body(8, weight: .extraBold))
+                    .tracking(1.2)
+                    .foregroundStyle(tint)
+                Spacer(minLength: 0)
             }
-            .frame(height: 11)
-
-            Text(row.value)
-                .font(.body(11, weight: .bold))
-                .foregroundStyle(Color.white.opacity(0.92))
-                .frame(width: 118, alignment: .trailing)
+            Text(displayValue)
+                .font(.body(valueIsWord ? 14 : 20, weight: .bold))
+                .foregroundStyle(.white)
                 .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.75)
+                .padding(.top, 8)
+            if !displaySub.isEmpty {
+                Text(displaySub)
+                    .font(.body(9, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.5))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.top, 2)
+            }
+            if !input.meaning.isEmpty && !isNoData {
+                Text(input.meaning)
+                    .font(.body(10, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.56))
+                    .lineSpacing(1.5)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 7)
+            }
         }
+        .padding(13)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.white.opacity(0.05),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(isNoData ? 0.1 : 0.2), lineWidth: 1)
+        )
     }
 }
 
