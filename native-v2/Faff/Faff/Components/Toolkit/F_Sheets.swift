@@ -437,9 +437,9 @@ struct LogNonRunSheet: View {
 
 // MARK: - SetGoalSheet
 //
-// Set a time goal for a specific distance — no race required.
-// Distance: horizontal chip picker.
-// Time: three wheel pickers — hours (0-9) · minutes (00-59) · seconds (00/15/30/45).
+// Ad-lib goal setter: "I want to run a [DISTANCE] in [TIME]"
+// Distance: tapping the highlighted word cycles through fixed options.
+// Time: three inline wheel pickers (H · MM · SS in :15 steps).
 // Saves via POST /api/profile/goal.
 
 struct NewGoalSheet: View {
@@ -477,63 +477,55 @@ struct SetGoalSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             sheetHeader(existingGoal != nil ? "Edit goal" : "Set your goal")
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 28) {
 
-                // Distance chips
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("DISTANCE")
-                        .font(.body(10, weight: .extraBold)).tracking(1.5)
-                        .foregroundStyle(Theme.mute)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(distances, id: \.self) { d in
-                                Button { distance = d } label: {
-                                    Text(d)
-                                        .font(.body(13, weight: distance == d ? .extraBold : .semibold))
-                                        .foregroundStyle(distance == d ? Theme.bg : Theme.txt)
-                                        .padding(.horizontal, 14).padding(.vertical, 8)
-                                        .background(distance == d ? Theme.race : Theme.Glass.fill,
-                                                    in: Capsule())
-                                }
-                                .buttonStyle(.plain)
-                                .animation(.easeInOut(duration: 0.15), value: distance)
-                            }
+                // Ad-lib sentence
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("I want to run a")
+                        .font(.display(26, weight: .bold))
+                        .foregroundStyle(Theme.txt)
+                    // Tapping cycles to next distance
+                    Button { cycleDistance() } label: {
+                        HStack(spacing: 6) {
+                            Text(distance)
+                                .font(.display(26, weight: .bold))
+                                .foregroundStyle(Theme.race)
+                            Image(systemName: "arrow.trianglehead.2.clockwise")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Theme.race.opacity(0.7))
                         }
-                        .padding(.horizontal, 1)
                     }
+                    .buttonStyle(.plain)
+                    Text("in")
+                        .font(.display(26, weight: .bold))
+                        .foregroundStyle(Theme.txt)
                 }
 
-                // Time wheel picker
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("TARGET TIME")
-                        .font(.body(10, weight: .extraBold)).tracking(1.5)
-                        .foregroundStyle(Theme.mute)
-
-                    HStack(spacing: 0) {
-                        timeColumn(label: "HR") {
-                            Picker("", selection: $hours) {
-                                ForEach(0...9, id: \.self) { h in Text("\(h)").tag(h) }
-                            }
+                // Time wheels
+                HStack(spacing: 0) {
+                    timeColumn(label: "HR") {
+                        Picker("", selection: $hours) {
+                            ForEach(0...9, id: \.self) { h in Text("\(h)").tag(h) }
                         }
-                        colonSep
-                        timeColumn(label: "MIN") {
-                            Picker("", selection: $minutes) {
-                                ForEach(0...59, id: \.self) { m in
-                                    Text(String(format: "%02d", m)).tag(m)
-                                }
-                            }
-                        }
-                        colonSep
-                        timeColumn(label: "SEC") {
-                            Picker("", selection: $seconds) {
-                                ForEach(secondOptions, id: \.self) { s in
-                                    Text(String(format: "%02d", s)).tag(s)
-                                }
+                    }
+                    colonSep
+                    timeColumn(label: "MIN") {
+                        Picker("", selection: $minutes) {
+                            ForEach(0...59, id: \.self) { m in
+                                Text(String(format: "%02d", m)).tag(m)
                             }
                         }
                     }
-                    .frame(maxWidth: .infinity)
+                    colonSep
+                    timeColumn(label: "SEC") {
+                        Picker("", selection: $seconds) {
+                            ForEach(secondOptions, id: \.self) { s in
+                                Text(String(format: "%02d", s)).tag(s)
+                            }
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity)
 
                 if let e = error {
                     Text(e).font(.body(12, weight: .medium)).foregroundStyle(Theme.over)
@@ -551,7 +543,6 @@ struct SetGoalSheet: View {
         .background(Theme.Glass.strong)
         .ignoresSafeArea(edges: .bottom)
         .onAppear { seedValues() }
-        .onChange(of: distance) { _, _ in if existingGoal == nil { setDefaults(for: distance) } }
     }
 
     @ViewBuilder
@@ -603,6 +594,13 @@ struct SetGoalSheet: View {
 
     private func snap15(_ s: Int) -> Int {
         secondOptions.min(by: { abs($0 - s) < abs($1 - s) }) ?? 0
+    }
+
+    private func cycleDistance() {
+        let idx = distances.firstIndex(of: distance) ?? 0
+        let next = distances[(idx + 1) % distances.count]
+        distance = next
+        if existingGoal == nil { setDefaults(for: next) }
     }
 
     private func save() {
