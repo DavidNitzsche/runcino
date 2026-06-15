@@ -408,43 +408,10 @@ struct HealthView: View {
     // MARK: - SLEEP pane
 
     private var sleepPane: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                sleepSummaryCard(
-                    label: "LAST NIGHT",
-                    value: hkImporter.lastNightHours ?? readiness?.sleep7Avg
-                )
-                sleepSummaryCard(
-                    label: "7-NIGHT AVG",
-                    value: readiness?.sleep7Avg ?? hkImporter.lastNightHours
-                )
-            }
-            metricsGrid(HealthSeed.sleepMetrics(readiness: readiness, healthState: state),
-                        variant: .big)
-        }
-    }
-
-    private func sleepSummaryCard(label: String, value: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.body(9, weight: .extraBold)).tracking(0.9)
-                .foregroundStyle(Color.white.opacity(0.55))
-            Text(value.map { String(format: "%.1fh", $0) } ?? "—")
-                .font(.display(32, weight: .semibold))
-                .foregroundStyle(.white)
-                .minimumScaleFactor(0.8)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                )
-        )
+        metricsGrid(HealthSeed.sleepMetrics(readiness: readiness,
+                                            healthState: state,
+                                            lastNightHours: hkImporter.lastNightHours),
+                    variant: .big)
     }
 
     // MARK: - FORM pane
