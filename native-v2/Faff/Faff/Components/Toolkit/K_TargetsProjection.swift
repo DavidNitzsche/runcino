@@ -379,9 +379,14 @@ struct TargetsProjectionPanel: View {
     // 1 — Title row + status chip
 
     private var header: some View {
-        Text("CLOSING THE GAP")
-            .font(.body(11, weight: .extraBold)).tracking(2.0)
-            .foregroundStyle(Theme.mute)
+        VStack(alignment: .leading, spacing: 3) {
+            Text("YOUR PROJECTION")
+                .font(.body(11, weight: .extraBold)).tracking(2.0)
+                .foregroundStyle(Theme.mute)
+            Text(formatTime(summary.projectionSec))
+                .font(.display(30, weight: .bold))
+                .foregroundStyle(Theme.ink)
+        }
     }
 
     // 2 — Truth headline + confidence band (range · tier label)
@@ -423,11 +428,10 @@ struct TargetsProjectionPanel: View {
             let traj = formatTime(summary.trajectoryProjectedSec ?? summary.projectionSec)
             let goal = formatTime(summary.goalSec)
             if let t = summary.trajectoryProjectedSec, let g = summary.goalSec, g > t {
-                return "Projecting \(traj) by race day · about \(formatGap(g - t)) faster than \(goal). Your recent quality work is landing ahead of plan."
+                return "Trajectory hits \(traj) by race day · \(formatGap(g - t)) faster than \(goal). Recent quality is landing ahead of plan."
             }
-            return "Projecting \(traj) · tracking to beat \(goal). Your recent quality work is landing ahead of plan."
+            return "Tracking to beat \(goal) by race day. Recent quality is landing ahead of plan."
         }
-        let proj = formatTime(summary.projectionSec)
         let goal = formatTime(summary.goalSec)
         let gapSec = summary.totalGapSec
         switch summary.status {
@@ -435,20 +439,20 @@ struct TargetsProjectionPanel: View {
             return "Need a clean baseline run to project. Race a 5K or threshold rep in the next 10 days."
         case "race_week":
             if gapSec == 0 {
-                return "Projection \(proj) · goal \(goal). Fitness is set. Race week is execution + conditions."
+                return "Goal \(goal). Fitness is set. Race week is execution and conditions."
             }
-            return "Projection \(proj) · goal \(goal). Fitness is set. \(formatGap(gapSec)) on the table this week is pacing + cooling, not training."
+            return "Goal \(goal). Fitness is set. \(formatGap(gapSec)) left — pacing and cooling, not training."
         case "off":
-            return "Projection \(proj) · goal \(goal). The math says you're \(formatGap(gapSec)) off · the gap below shows where it actually lives."
+            return "Goal \(goal). You're \(formatGap(gapSec)) off. The gap below shows where it lives."
         case "watch":
-            return "Projection \(proj) · goal \(goal). \(formatGap(gapSec)) to close. Most of it is movable."
+            return "Goal \(goal). \(formatGap(gapSec)) to close. Most of it is movable."
         case "on_track":
             if gapSec == 0 {
-                return "Projection \(proj) at or ahead of \(goal). Hold the plan."
+                return "At \(goal). Hold the plan."
             }
-            return "Projection \(proj) · goal \(goal). \(formatGap(gapSec)) to close. Mix below."
+            return "Goal \(goal). \(formatGap(gapSec)) to close. Mix below."
         default:
-            return "Projection \(proj) · goal \(goal)."
+            return "Goal \(goal)."
         }
     }
 
