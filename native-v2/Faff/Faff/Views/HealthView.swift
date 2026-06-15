@@ -69,9 +69,9 @@ struct HealthView: View {
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.top, 40)
                         } else {
-                            healthSectionDivider("BODY");     bodyPane
-                            healthSectionDivider("SLEEP");    sleepPane
-                            healthSectionDivider("FORM");     formPane
+                            healthSectionDivider("BODY",     isFirst: true, onAdd: { showLogSheet = true }); bodyPane
+                            healthSectionDivider("SLEEP",    onAdd: { showLogSheet = true });                sleepPane
+                            healthSectionDivider("FORM");    formPane
                             healthSectionDivider("INSIGHTS"); insightsPane
                         }
                     }
@@ -563,27 +563,31 @@ struct HealthView: View {
     }
 
     /// 7-day readiness sparkline pill — replaces the score ring + verdict text.
-    /// The trend IS the story on the Health tab; a text verdict is Today-tab language.
     private var healthReadinessPill: some View {
-        HStack(spacing: 12) {
-            ReadinessTrendPill(snapshot: readiness, state: state)
-            Button { showLogSheet = true } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Color.white.opacity(0.15), in: Circle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 15)
+        ReadinessTrendPill(snapshot: readiness, state: state)
+            .padding(.horizontal, 15)
     }
 
-    /// Section header for the long health scroll · BODY / SLEEP / FORM / INSIGHTS.
-    private func healthSectionDivider(_ title: String) -> some View {
-        SectionLabel(title: title)
-            .padding(.top, 28)
-            .padding(.bottom, 10)
+    /// Section header · small "+" log button when onAdd is provided.
+    /// isFirst: true skips the 28pt top gap (BODY is now flush after the pill).
+    private func healthSectionDivider(_ title: String, isFirst: Bool = false, onAdd: (() -> Void)? = nil) -> some View {
+        HStack(spacing: 0) {
+            SectionLabel(title: title)
+            Spacer(minLength: 0)
+            if let onAdd {
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .frame(width: 22, height: 22)
+                        .background(Color.white.opacity(0.10), in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, isFirst ? 0 : 28)
+        .padding(.bottom, 10)
     }
 
     /// Coach voice for the hero. Action phrase wrapped in **double
@@ -1048,9 +1052,9 @@ private struct ReadinessTrendPill: View {
         let labels = dayInitials
 
         VStack(alignment: .leading, spacing: 3) {
-            // "NOW 66" header
+            // "READINESS  66" header
             HStack(spacing: 4) {
-                Text("NOW")
+                Text("READINESS")
                     .font(.body(9, weight: .extraBold)).tracking(0.8)
                     .foregroundStyle(Color.white.opacity(0.45))
                 Text(snapshot?.score.map(String.init) ?? "—")
