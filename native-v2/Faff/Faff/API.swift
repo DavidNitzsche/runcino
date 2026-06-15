@@ -746,11 +746,11 @@ enum API {
         return decoded
     }
 
-    static func createRace(name: String, date: String, distanceLabel: String?, goal: String?) async throws -> Bool {
+    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?) async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/race"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any] = ["name": name, "date": date]
+        var body: [String: Any] = ["name": name, "date": date, "priority": priority]
         if let d = distanceLabel, !d.isEmpty { body["distance_label"] = d }
         if let g = goal, !g.isEmpty { body["goal"] = g }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)

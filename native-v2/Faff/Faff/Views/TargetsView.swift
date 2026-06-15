@@ -522,6 +522,7 @@ struct AddRaceSheet: View {
     @State private var name: String = ""
     @State private var date: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
     @State private var distance: String = "Half Marathon"
+    @State private var priority: String = "A"
     @State private var goal: String = ""
     @State private var saving: Bool = false
     @State private var error: String? = nil
@@ -536,6 +537,11 @@ struct AddRaceSheet: View {
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                     Picker("Distance", selection: $distance) {
                         ForEach(distances, id: \.self) { Text($0) }
+                    }
+                    Picker("Priority", selection: $priority) {
+                        Text("A — goal race").tag("A")
+                        Text("B — tune-up").tag("B")
+                        Text("C — for fun").tag("C")
                     }
                 }
                 Section("GOAL (optional)") {
@@ -579,6 +585,7 @@ struct AddRaceSheet: View {
             name: name.trimmingCharacters(in: .whitespaces),
             date: isoDate,
             distanceLabel: distance == "Other" ? nil : distance,
+            priority: priority,
             goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal
         )) ?? false
         if ok {
