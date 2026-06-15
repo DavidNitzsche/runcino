@@ -88,20 +88,23 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 4. Weekly mileage ramp (first 4 weeks) ──────────────────────────────
-  const rampQ = await pool.query(
-    `SELECT plw.plan_id, plw.week_idx,
-            ROUND(SUM(pw.distance_mi) FILTER (WHERE pw.distance_mi > 0)) AS week_mi
-     FROM plan_weeks plw
-     JOIN plan_workouts pw ON pw.week_id = plw.id
-     WHERE plw.plan_id = ANY($1) AND plw.week_idx <= 4
-     GROUP BY plw.plan_id, plw.week_idx
-     ORDER BY plw.plan_id, plw.week_idx`,
-    [Object.values(planMap).map((p: any) => p?.id).filter(Boolean)],
-  );
+  const planIds = Object.values(planMap).map((p: any) => p?.id).filter(Boolean);
   const rampMap: Record<string, number[]> = {};
-  for (const r of rampQ.rows) {
-    if (!rampMap[r.plan_id]) rampMap[r.plan_id] = [];
-    rampMap[r.plan_id].push(Number(r.week_mi));
+  if (planIds.length) {
+    const rampQ = await pool.query(
+      `SELECT plw.plan_id, plw.week_idx,
+              ROUND(SUM(pw.distance_mi) FILTER (WHERE pw.distance_mi > 0)) AS week_mi
+       FROM plan_weeks plw
+       JOIN plan_workouts pw ON pw.week_id = plw.id
+       WHERE plw.plan_id = ANY($1) AND plw.week_idx <= 4
+       GROUP BY plw.plan_id, plw.week_idx
+       ORDER BY plw.plan_id, plw.week_idx`,
+      [planIds],
+    );
+    for (const r of rampQ.rows) {
+      if (!rampMap[r.plan_id]) rampMap[r.plan_id] = [];
+      rampMap[r.plan_id].push(Number(r.week_mi));
+    }
   }
 
   // ── 5. Last session (last seen) ──────────────────────────────────────────
@@ -123,12 +126,15 @@ export async function GET(req: NextRequest) {
   const connMap = Object.fromEntries(connQ.rows.map((r: any) => [r.user_uuid, { strava: r.strava, healthkit: r.healthkit }]));
 
   // ── 7. Run count (last 30 days) ──────────────────────────────────────────
+  // runs.data is JSONB: distanceMi, startLocal; absorbed_into_canonical_at = dedup flag
   const runsQ = await pool.query(
-    `SELECT user_uuid, COUNT(*) AS run_count, ROUND(SUM(distance_mi)) AS run_mi
+    `SELECT user_uuid,
+            COUNT(*) AS run_count,
+            ROUND(SUM((data->>'distanceMi')::numeric)) AS run_mi
      FROM runs
      WHERE user_uuid = ANY($1)
-       AND start_time_local >= NOW() - INTERVAL '30 days'
-       AND merged_into_id IS NULL
+       AND absorbed_into_canonical_at IS NULL
+       AND (data->>'startLocal')::date >= CURRENT_DATE - 30
      GROUP BY user_uuid`,
     [uuids],
   );
