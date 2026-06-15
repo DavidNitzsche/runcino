@@ -187,6 +187,14 @@ export async function POST(req: NextRequest) {
   const ttTime = !isRace && ttDistance && typeof body.ttTime === 'string'
       && body.ttTime.length > 0 && body.ttTime.length <= 32
     ? body.ttTime : null;
+  // 2026-06-15 · exact goal time in seconds (native sends it for goal mode).
+  // Drives the goal-readiness projection precisely instead of the ±1.5min
+  // bucket midpoint. Stored in user_settings (no migration); read back by
+  // loadGoalReadyProjection. Sane band: 3:00–4:00:00.
+  const ttTimeSeconds = !isRace && ttDistance
+      && Number.isFinite(Number(body.ttTimeSeconds))
+      && Number(body.ttTimeSeconds) >= 180 && Number(body.ttTimeSeconds) <= 14400
+    ? Math.round(Number(body.ttTimeSeconds)) : null;
   const weeklyMi = Number.isFinite(Number(body.weeklyMi))
       && VALID_WEEKLY_MI.has(Number(body.weeklyMi) as WeeklyMileage)
     ? (Number(body.weeklyMi) as WeeklyMileage) : null;
@@ -268,6 +276,7 @@ export async function POST(req: NextRequest) {
   // The user_settings patch merged into profile.user_settings (jsonb).
   const settingsPatch: Record<string, unknown> = { coached_externally: isCoached };
   if (longRunDay) { settingsPatch.long_run_day = longRunDay; settingsPatch.rest_day = restDay; }
+  if (ttTimeSeconds != null) settingsPatch.tt_goal_time_seconds = ttTimeSeconds;
   // ── Atomic onboarding write (txn) ────────────────────────────────
   //
   // Pass-4 fix: previously the users + profile + user_prefs writes were

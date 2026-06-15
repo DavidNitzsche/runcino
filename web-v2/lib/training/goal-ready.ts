@@ -36,7 +36,7 @@
  * insufficient-data (cold start). The UI copy renders each honestly.
  */
 import { pool } from '@/lib/db/pool';
-import { vdotFromRace } from './vdot';
+import { vdotFromRace, formatRaceTime } from './vdot';
 
 export type TTGoalDistance = '1mi' | '5k' | '10k';
 
@@ -92,13 +92,23 @@ export function computeGoalReady(
   ttTimeBucket: string,
   points: VdotPoint[],
   todayISO: string,
+  exactGoalTimeSec?: number | null,
 ): GoalReadyProjection | null {
-  const goalTimeSec = BUCKET_SECONDS[ttDistance]?.[ttTimeBucket];
+  // Prefer the runner's EXACT goal time (native sends it) over the bucket
+  // midpoint — a 26:00 goal lands in the "25-28" bucket whose midpoint is
+  // ~26:30, skewing the required-VDOT gap ~4%. Fall back to the midpoint for
+  // older clients that only sent the bucket.
+  const goalTimeSec = (exactGoalTimeSec != null && exactGoalTimeSec > 0)
+    ? exactGoalTimeSec
+    : BUCKET_SECONDS[ttDistance]?.[ttTimeBucket];
   if (goalTimeSec == null) return null;
   const requiredVdot = vdotFromRace(goalTimeSec, DIST_MI[ttDistance]);
   if (requiredVdot == null) return null;
 
-  const goalLabel = `${ttDistance === '1mi' ? '1 MI' : ttDistance.toUpperCase()} · ${ttTimeBucket.toUpperCase()}`;
+  const goalDisplay = (exactGoalTimeSec != null && exactGoalTimeSec > 0)
+    ? (formatRaceTime(exactGoalTimeSec) ?? ttTimeBucket.toUpperCase())
+    : ttTimeBucket.toUpperCase();
+  const goalLabel = `${ttDistance === '1mi' ? '1 MI' : ttDistance.toUpperCase()} · ${goalDisplay}`;
   const base: Omit<GoalReadyProjection, 'state'> = {
     ttDistance, goalLabel, goalTimeSec, requiredVdot,
     currentVdot: points.length ? points[points.length - 1].vdot : null,
@@ -155,11 +165,12 @@ export function computeGoalReady(
 /** DB loader · null when the runner has no TT goal (race-anchored
  *  runners use the existing goal-gap machinery instead — caller gates). */
 export async function loadGoalReadyProjection(userId: string): Promise<GoalReadyProjection | null> {
-  const prof = (await pool.query<{ tt_distance: string | null; tt_time: string | null }>(
-    `SELECT tt_goal_distance AS tt_distance, tt_goal_time AS tt_time
+  const prof = (await pool.query<{ tt_distance: string | null; tt_time: string | null; tt_secs: number | null }>(
+    `SELECT tt_goal_distance AS tt_distance, tt_goal_time AS tt_time,
+            (user_settings->>'tt_goal_time_seconds')::int AS tt_secs
        FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
-  ).catch(() => ({ rows: [] as Array<{ tt_distance: string | null; tt_time: string | null }> }))).rows[0];
+  ).catch(() => ({ rows: [] as Array<{ tt_distance: string | null; tt_time: string | null; tt_secs: number | null }> }))).rows[0];
   const tt = prof?.tt_distance as TTGoalDistance | null;
   if (!tt || !prof?.tt_time || !(tt in DIST_MI)) return null;
 
@@ -178,5 +189,5 @@ export async function loadGoalReadyProjection(userId: string): Promise<GoalReady
     .filter((p) => Number.isFinite(p.vdot));
 
   const todayISO = new Date().toISOString().slice(0, 10);
-  return computeGoalReady(tt, prof.tt_time, pts, todayISO);
+  return computeGoalReady(tt, prof.tt_time, pts, todayISO, prof.tt_secs);
 }

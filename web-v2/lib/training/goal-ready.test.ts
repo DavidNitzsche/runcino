@@ -30,6 +30,22 @@ describe('computeGoalReady', () => {
     expect(r?.currentVdot).toBeNull();
   });
 
+  it('exact goal time overrides the bucket midpoint (precision fix)', () => {
+    // '25-28' midpoint ≈ 26:30; her exact 26:00 = 1560s should win.
+    const bucket = computeGoalReady('5k', '25-28', [], TODAY);
+    const exact = computeGoalReady('5k', '25-28', [], TODAY, 1560);
+    expect(exact?.goalTimeSec).toBe(1560);
+    expect(bucket?.goalTimeSec).not.toBe(1560);
+    // A tighter goal (26:00 < midpoint) ⇒ higher required VDOT.
+    expect(exact!.requiredVdot).toBeGreaterThan(bucket!.requiredVdot);
+    expect(exact?.goalLabel).toContain('26:00');
+  });
+
+  it('falls back to the bucket midpoint when no exact time (older clients)', () => {
+    expect(computeGoalReady('5k', '25-28', [], TODAY, null)?.goalTimeSec)
+      .toBe(computeGoalReady('5k', '25-28', [], TODAY)?.goalTimeSec);
+  });
+
   it('too short a span → insufficient-data (engineering gate)', () => {
     // 4 points across 14 days < 21-day span gate.
     const pts: VdotPoint[] = ['2026-05-27', '2026-06-01', '2026-06-05', '2026-06-10']

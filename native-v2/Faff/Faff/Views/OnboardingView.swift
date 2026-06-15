@@ -98,6 +98,9 @@ struct OnboardingView: View {
             "time": mode == .race ? goalTime : NSNull(),
             "ttDistance": ttDistanceField,
             "ttTime": ttTimeField,
+            // Exact goal time (sec) for goal mode — drives the goal-readiness
+            // projection precisely instead of the bucketed ttTime midpoint.
+            "ttTimeSeconds": (mode == .goal) ? goalSec : NSNull(),
             "weeklyMi": authorsPlan ? weeklyMi : NSNull(),
             "weeklyFreq": authorsPlan ? weeklyFreq : NSNull(),
             "histAvg": (histAvg as Any?) ?? NSNull(),
