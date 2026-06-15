@@ -21,6 +21,7 @@ struct TargetsView: View {
     /// New-goal sheet (Volume / Speed / Distance / Habit / Strength / Health).
     /// Toolkit · Family F · POSTs to /api/goals.
     @State private var showNewGoalSheet: Bool = false
+    @State private var showAddRaceSheet: Bool = false
 
     var body: some View {
         ZStack {
@@ -52,18 +53,21 @@ struct TargetsView: View {
                         .padding(.horizontal, 24).padding(.top, -12)
 
                     section("RACES") {
-                        let upcoming = races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? []
-                        let past     = races?.races.filter { ($0.days_to_race ?? 1)  < 0 } ?? []
+                        let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
+                            .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
+                        let past     = (races?.races.filter { ($0.days_to_race ?? 1)  < 0 } ?? [])
+                            .sorted { ($0.days_to_race ?? 0) > ($1.days_to_race ?? 0) }
                         if upcoming.isEmpty && past.isEmpty {
                             emptyState("No races scheduled", "+ Add a race when you're ready")
                         } else {
                             VStack(spacing: 10) {
                                 ForEach(upcoming) { race in raceTile(race) }
-                                addButton("+ ADD RACE")
+                                addButton("+ ADD RACE") { showAddRaceSheet = true }
                             }
                         }
                     }
-                    let past = races?.races.filter { ($0.days_to_race ?? 1) < 0 } ?? []
+                    let past = (races?.races.filter { ($0.days_to_race ?? 1) < 0 } ?? [])
+                        .sorted { ($0.days_to_race ?? 0) > ($1.days_to_race ?? 0) }
                     if !past.isEmpty {
                         section("PAST RACES") {
                             VStack(spacing: 10) {
@@ -111,6 +115,10 @@ struct TargetsView: View {
         }
         .sheet(isPresented: $showNewGoalSheet) {
             NewGoalSheet(onSubmitted: { Task { await reload() } })
+                .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showAddRaceSheet) {
+            AddRaceSheet(onSaved: { Task { await reload() } })
                 .presentationDetents([.medium])
         }
     }
@@ -450,8 +458,8 @@ struct TargetsView: View {
         .padding(.horizontal, 22).padding(.top, 24)
     }
 
-    private func addButton(_ title: String) -> some View {
-        Button {} label: {
+    private func addButton(_ title: String, action: @escaping () -> Void = {}) -> some View {
+        Button(action: action) {
             Text(title)
                 .font(.body(13, weight: .extraBold))
                 .tracking(0.5)
@@ -503,4 +511,82 @@ extension ProfileNextRace {
     var startLabel: String { "—" }
     var trendLabel: String? { nil }
     var location: String? { nil }
+}
+
+// MARK: - Add Race Sheet
+
+struct AddRaceSheet: View {
+    var onSaved: () -> Void = {}
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String = ""
+    @State private var date: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
+    @State private var distance: String = "Half Marathon"
+    @State private var goal: String = ""
+    @State private var saving: Bool = false
+    @State private var error: String? = nil
+
+    private let distances = ["5K", "10K", "Half Marathon", "Marathon", "50K", "50M", "100K", "100M", "Other"]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("RACE") {
+                    TextField("Race name", text: $name)
+                    DatePicker("Date", selection: $date, displayedComponents: .date)
+                    Picker("Distance", selection: $distance) {
+                        ForEach(distances, id: \.self) { Text($0) }
+                    }
+                }
+                Section("GOAL (optional)") {
+                    TextField("e.g. 1:45:00", text: $goal)
+                        .keyboardType(.numbersAndPunctuation)
+                }
+                if let err = error {
+                    Section { Text(err).foregroundStyle(.red).font(.body(13)) }
+                }
+            }
+            .navigationTitle("Add Race")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "Saving…" : "Save") {
+                        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+                            error = "Race name is required."
+                            return
+                        }
+                        Task { await save() }
+                    }
+                    .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+
+    private var isoDate: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: date)
+    }
+
+    private func save() async {
+        saving = true
+        error = nil
+        let ok = (try? await API.createRace(
+            name: name.trimmingCharacters(in: .whitespaces),
+            date: isoDate,
+            distanceLabel: distance == "Other" ? nil : distance,
+            goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal
+        )) ?? false
+        if ok {
+            onSaved()
+            dismiss()
+        } else {
+            error = "Could not save race. Check your connection and try again."
+            saving = false
+        }
+    }
 }
