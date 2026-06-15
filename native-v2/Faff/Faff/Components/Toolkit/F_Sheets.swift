@@ -527,7 +527,7 @@ struct SetGoalSheet: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                     } label: {
                         HStack {
-                            Text("Target time")
+                            Text("Recommended goal")
                             Spacer()
                             Text(isValid ? goalTimeString : "Tap to set")
                                 .foregroundStyle(isValid ? .primary : .secondary)
@@ -608,12 +608,14 @@ struct SetGoalSheet: View {
         }
     }
 
-    // Seeds wheels from prediction if VDOT available, else hardcoded fallback.
+    // Seeds wheels from VDOT+1 prediction (one Daniels training cycle improvement),
+    // rounded down to nearest 5 seconds. Falls back to hardcoded defaults with no VDOT.
     private func seedTimeForDistance(_ d: String) {
-        if let v = currentVdot, let pred = Self.predictSeconds(vdot: v, distance: d) {
-            hours = pred / 3600
-            minutes = (pred % 3600) / 60
-            seconds = pred % 60
+        if let v = currentVdot, let pred = Self.predictSeconds(vdot: v + 1.0, distance: d) {
+            let rounded = (pred / 5) * 5
+            hours = rounded / 3600
+            minutes = (rounded % 3600) / 60
+            seconds = rounded % 60
         } else {
             setDefaults(for: d)
         }
