@@ -484,10 +484,21 @@ struct SetGoalSheet: View {
         NavigationStack {
             Form {
 
-                // GOAL: distance + time
+                // GOAL: distance → current fitness reference → target time
                 Section("GOAL") {
                     Picker("Distance", selection: $distance) {
                         ForEach(distances, id: \.self) { Text($0) }
+                    }
+                    if let v = currentVdot,
+                       let pred = Self.predictSeconds(vdot: v, distance: distance) {
+                        HStack {
+                            Text("Current fitness")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(Self.formatSecs(pred))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
                     }
                     DisclosureGroup(isExpanded: $showTimePicker) {
                         HStack(spacing: 0) {
@@ -517,21 +528,6 @@ struct SetGoalSheet: View {
                             Spacer()
                             Text(isValid ? goalTimeString : "Tap to set")
                                 .foregroundStyle(isValid ? .primary : .secondary)
-                        }
-                    }
-                }
-
-                // CURRENT FITNESS: only shown when VDOT is available
-                if let v = currentVdot,
-                   let pred = Self.predictSeconds(vdot: v, distance: distance) {
-                    Section("CURRENT FITNESS") {
-                        HStack {
-                            Text("Predicted \(distance)")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(Self.formatSecs(pred))
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
                         }
                     }
                 }
@@ -591,7 +587,7 @@ struct SetGoalSheet: View {
         }
         .onAppear { seedValues(); Task { await loadVdot() } }
         .onChange(of: distance) { _, d in
-            if existingGoal == nil { setDefaults(for: d) }
+            if existingGoal == nil { seedTimeForDistance(d) }
             planWeeks = nil
         }
     }
@@ -606,6 +602,17 @@ struct SetGoalSheet: View {
             else if parts.count == 3 { hours = parts[0]; minutes = parts[1]; seconds = snap15(parts[2]) }
         } else {
             setDefaults(for: distance)
+        }
+    }
+
+    // Seeds wheels from prediction if VDOT available, else hardcoded fallback.
+    private func seedTimeForDistance(_ d: String) {
+        if let v = currentVdot, let pred = Self.predictSeconds(vdot: v, distance: d) {
+            hours = pred / 3600
+            minutes = (pred % 3600) / 60
+            seconds = snap15(pred % 60)
+        } else {
+            setDefaults(for: d)
         }
     }
 
@@ -695,7 +702,10 @@ struct SetGoalSheet: View {
 
     private func loadVdot() async {
         guard let state = try? await API.fetchProfileState() else { return }
-        await MainActor.run { currentVdot = state.physiology.vdot }
+        await MainActor.run {
+            currentVdot = state.physiology.vdot
+            if existingGoal == nil { seedTimeForDistance(distance) }
+        }
     }
 
     private func save() async {
