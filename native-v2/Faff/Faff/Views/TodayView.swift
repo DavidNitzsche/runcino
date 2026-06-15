@@ -769,7 +769,7 @@ struct TodayView: View {
             // a synthetic single-row so every run has consistent structure.
             let steps = heroSteps.isEmpty ? syntheticHeroSteps : heroSteps
             if !steps.isEmpty {
-                HeroStepList(steps: steps)
+                HeroStepList(steps: steps, effort: selectedEffort)
                     .padding(.top, 22)
             }
 
@@ -2438,10 +2438,22 @@ fileprivate enum HeroStepItem {
 /// listing every rep/recovery row individually.
 fileprivate struct HeroStepList: View {
     let steps: [HeroStepItem]
+    var effort: FaffEffort = .easy
     @State private var showIntervalInfo = false
 
+    private var effortNote: String? {
+        switch effort {
+        case .easy:
+            return "A comfortable effort where you can hold a conversation. Builds your aerobic base and helps your body recover between harder sessions."
+        case .long:
+            return "Your biggest run of the week at a fully conversational pace. Builds endurance and trains your body to burn fat efficiently."
+        default:
+            return nil
+        }
+    }
+
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
             ForEach(steps.indices, id: \.self) { i in
                 switch steps[i] {
                 case .row(let seg):
@@ -2449,6 +2461,13 @@ fileprivate struct HeroStepList: View {
                 case .repeatGroup(let count, let work, let recovery):
                     repeatBlock(count: count, work: work, recovery: recovery)
                 }
+            }
+            if let note = effortNote {
+                Text(note)
+                    .font(.body(13, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.52))
+                    .lineSpacing(3)
+                    .padding(.top, 4)
             }
         }
     }
