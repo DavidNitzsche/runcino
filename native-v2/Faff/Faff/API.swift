@@ -746,7 +746,41 @@ enum API {
         return decoded
     }
 
-    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?) async throws -> Bool {
+    static func importStravaRoute(slug: String, stravaUrl: String) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/race/strava-course"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["slug": slug, "strava_url": stravaUrl])
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
+    static func uploadRaceGPX(slug: String, gpxData: Data, filename: String) async throws -> Bool {
+        let boundary = "FaffBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/race/gpx"))
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        let crlf = "\r\n"
+        func field(_ name: String, _ value: String) {
+            body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\(crlf)\(crlf)".data(using: .utf8)!)
+            body.append(value.data(using: .utf8)!)
+            body.append(crlf.data(using: .utf8)!)
+        }
+        field("slug", slug)
+        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\(crlf)".data(using: .utf8)!)
+        body.append("Content-Type: application/gpx+xml\(crlf)\(crlf)".data(using: .utf8)!)
+        body.append(gpxData)
+        body.append("\(crlf)--\(boundary)--\(crlf)".data(using: .utf8)!)
+        req.httpBody = body
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
+    /// Returns the new race slug on success, nil on failure.
+    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?) async throws -> String? {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/race"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -754,8 +788,10 @@ enum API {
         if let d = distanceLabel, !d.isEmpty { body["distance_label"] = d }
         if let g = goal, !g.isEmpty { body["goal"] = g }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
-        return (200..<300).contains(http.statusCode)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return json?["slug"] as? String
     }
 
     /// /api/targets/projection — VDOT + projection_sec + held_days + gap

@@ -5,6 +5,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TargetsView: View {
     let onProfile: () -> Void
@@ -119,7 +120,7 @@ struct TargetsView: View {
         }
         .sheet(isPresented: $showAddRaceSheet) {
             AddRaceSheet(onSaved: { Task { await reload() } })
-                .presentationDetents([.medium])
+                .presentationDetents([.large])
         }
     }
 
@@ -524,6 +525,10 @@ struct AddRaceSheet: View {
     @State private var distance: String = "Half Marathon"
     @State private var priority: String = "A"
     @State private var goal: String = ""
+    @State private var stravaUrl: String = ""
+    @State private var pickedGPXData: Data? = nil
+    @State private var pickedGPXName: String = "course.gpx"
+    @State private var showFilePicker: Bool = false
     @State private var saving: Bool = false
     @State private var error: String? = nil
 
@@ -548,6 +553,29 @@ struct AddRaceSheet: View {
                     TextField("e.g. 1:45:00", text: $goal)
                         .keyboardType(.numbersAndPunctuation)
                 }
+                Section {
+                    TextField("Strava route URL", text: $stravaUrl)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    if pickedGPXData != nil {
+                        HStack {
+                            Text(pickedGPXName).foregroundStyle(.secondary).font(.body(13))
+                            Spacer()
+                            Button("Remove") { pickedGPXData = nil }
+                                .foregroundStyle(.red)
+                                .font(.body(13))
+                        }
+                    } else {
+                        Button("Upload GPX file") { showFilePicker = true }
+                            .foregroundStyle(Theme.dist)
+                    }
+                } header: {
+                    Text("COURSE (optional)")
+                } footer: {
+                    Text("Paste a Strava route URL or upload a .gpx file.")
+                        .font(.body(11))
+                }
                 if let err = error {
                     Section { Text(err).foregroundStyle(.red).font(.body(13)) }
                 }
@@ -569,6 +597,24 @@ struct AddRaceSheet: View {
                     .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: [UTType.xml, UTType.data],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    let accessing = url.startAccessingSecurityScopedResource()
+                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                    if let data = try? Data(contentsOf: url) {
+                        pickedGPXData = data
+                        pickedGPXName = url.lastPathComponent
+                    }
+                case .failure(let err):
+                    error = err.localizedDescription
+                }
+            }
         }
     }
 
@@ -581,19 +627,33 @@ struct AddRaceSheet: View {
     private func save() async {
         saving = true
         error = nil
-        let ok = (try? await API.createRace(
+        guard let slug = try? await API.createRace(
             name: name.trimmingCharacters(in: .whitespaces),
             date: isoDate,
             distanceLabel: distance == "Other" ? nil : distance,
             priority: priority,
             goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal
-        )) ?? false
-        if ok {
-            onSaved()
-            dismiss()
-        } else {
+        ), let slug else {
             error = "Could not save race. Check your connection and try again."
             saving = false
+            return
         }
+
+        let trimmedUrl = stravaUrl.trimmingCharacters(in: .whitespaces)
+        if !trimmedUrl.isEmpty {
+            let ok = (try? await API.importStravaRoute(slug: slug, stravaUrl: trimmedUrl)) ?? false
+            if !ok {
+                error = "Race saved, but the Strava route could not be imported. Check the URL and try again from the race detail."
+                saving = false
+                onSaved()
+                dismiss()
+                return
+            }
+        } else if let gpxData = pickedGPXData {
+            _ = try? await API.uploadRaceGPX(slug: slug, gpxData: gpxData, filename: pickedGPXName)
+        }
+
+        onSaved()
+        dismiss()
     }
 }
