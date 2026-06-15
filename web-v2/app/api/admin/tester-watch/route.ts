@@ -146,6 +146,35 @@ export async function GET(req: NextRequest) {
   );
   const runsMap = Object.fromEntries(runsQ.rows.map((r: any) => [r.user_uuid, { count: r.run_count, mi: r.run_mi }]));
 
+  // ── 7b. Connected biometrics (HealthKit health_samples · tall table) ──────
+  // What the runner actually HAS even when they skipped self-report at
+  // onboarding: observed max HR (12mo ceiling), latest resting HR / HRV /
+  // HealthKit VO2max. The engine already derives effective max HR from these;
+  // the admin should show them instead of the empty self-report columns.
+  const bioQ = await pool.query(
+    `SELECT user_uuid,
+            ROUND(MAX(value) FILTER (WHERE sample_type = 'max_hr' AND sample_date >= now() - interval '12 months')) AS obs_max_hr,
+            ROUND((array_agg(value ORDER BY sample_date DESC) FILTER (WHERE sample_type = 'resting_hr'))[1]) AS rhr,
+            ROUND((array_agg(value ORDER BY sample_date DESC) FILTER (WHERE sample_type = 'hrv'))[1]) AS hrv,
+            ROUND((array_agg(value ORDER BY sample_date DESC) FILTER (WHERE sample_type = 'vo2_max'))[1]) AS vo2max_hk
+       FROM health_samples WHERE user_uuid = ANY($1) GROUP BY user_uuid`,
+    [uuids],
+  ).catch(() => ({ rows: [] as any[] }));
+  const bioMap = Object.fromEntries(bioQ.rows.map((r: any) => [r.user_uuid, r]));
+
+  // ── 7c. History DERIVED from actual runs (vs skipped self-report) ─────────
+  const runHistQ = await pool.query(
+    `SELECT user_uuid,
+            MIN(COALESCE(data->>'date', LEFT(data->>'startLocal',10))) AS first_run,
+            ROUND(MAX((data->>'distanceMi')::numeric), 1) AS longest_mi,
+            ROUND(SUM((data->>'distanceMi')::numeric)
+              FILTER (WHERE COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= (CURRENT_DATE - 28)::text) / 4.0, 1) AS avg_wk_mi,
+            ROUND(MAX((data->>'maxHr')::numeric)) AS run_max_hr
+       FROM runs WHERE user_uuid = ANY($1) AND NOT (data ? 'mergedIntoId') GROUP BY user_uuid`,
+    [uuids],
+  ).catch(() => ({ rows: [] as any[] }));
+  const runHistMap = Object.fromEntries(runHistQ.rows.map((r: any) => [r.user_uuid, r]));
+
   // ── 8. Assemble + doctrine checks ────────────────────────────────────────
   const testers = users.map((u) => {
     const p = profileMap[u.id] ?? null;
@@ -153,6 +182,14 @@ export async function GET(req: NextRequest) {
     const ramp = plan ? (rampMap[plan.id] ?? []) : [];
     const conn = connMap[u.id] ?? { strava: false, healthkit: false };
     const runs30 = runsMap[u.id] ?? { count: 0, mi: 0 };
+    const bio = bioMap[u.id] ?? null;
+    const rh = runHistMap[u.id] ?? null;
+    // Observed max HR = the higher of the HealthKit daily ceiling and the
+    // hardest HR seen in a run (matches loadEffectiveMaxHr's union of sources).
+    const observedMaxHr = Math.max(Number(bio?.obs_max_hr ?? 0), Number(rh?.run_max_hr ?? 0)) || null;
+    const runningSinceMonths = rh?.first_run
+      ? Math.round((Date.now() - new Date(rh.first_run + 'T12:00:00Z').getTime()) / (30 * 86400000))
+      : null;
 
     const checks: { label: string; pass: boolean; note: string }[] = [];
 
@@ -166,7 +203,9 @@ export async function GET(req: NextRequest) {
       checks.push({ label: 'Goal set', pass: hasRaceGoal || hasTtGoal, note: hasRaceGoal ? p.goal_race_distance : hasTtGoal ? `${p.tt_goal_distance} time goal` : 'missing' });
       checks.push({ label: 'Timezone set', pass: !!p.timezone, note: p.timezone ?? 'missing' });
       checks.push({ label: 'Weekly frequency set', pass: !!p.weekly_frequency, note: p.weekly_frequency ? `${p.weekly_frequency}d/wk` : 'missing' });
-      checks.push({ label: 'History filled', pass: !!p.history_avg_weekly_mi, note: p.history_avg_weekly_mi ?? 'missing' });
+      // History is "known" if self-reported OR derivable from actual runs.
+      const histKnown = !!p.history_avg_weekly_mi || rh?.avg_wk_mi != null;
+      checks.push({ label: 'History known', pass: histKnown, note: p.history_avg_weekly_mi ?? (rh?.avg_wk_mi != null ? `${rh.avg_wk_mi} mi/wk · runs` : 'missing') });
     }
 
     if (plan) {
@@ -239,6 +278,14 @@ export async function GET(req: NextRequest) {
         rhr: p.rhr,
         experienceLevel: p.experience_level,
         connectionsSkipped: p.connections_skipped,
+        // Connected-data fallbacks — what we actually have when self-report is blank.
+        observedMaxHr,
+        restingHr: bio?.rhr != null ? Number(bio.rhr) : null,
+        hrv: bio?.hrv != null ? Number(bio.hrv) : null,
+        vo2maxHk: bio?.vo2max_hk != null ? Number(bio.vo2max_hk) : null,
+        derivedAvgWkMi: rh?.avg_wk_mi != null ? Number(rh.avg_wk_mi) : null,
+        derivedLongestMi: rh?.longest_mi != null ? Number(rh.longest_mi) : null,
+        runningSinceMonths,
       } : null,
       plan: plan ? {
         id: plan.id,

@@ -14,6 +14,8 @@ interface Tester {
     historyAvgMi: string | null; historyLongest: string | null; historyYears: string | null;
     timezone: string | null; hrmax: number | null; rhr: number | null;
     experienceLevel: string | null; connectionsSkipped: boolean;
+    observedMaxHr: number | null; restingHr: number | null; hrv: number | null; vo2maxHk: number | null;
+    derivedAvgWkMi: number | null; derivedLongestMi: number | null; runningSinceMonths: number | null;
   } | null;
   plan: {
     mode: string; phaseLabel: string | null; intent: string | null;
@@ -116,13 +118,15 @@ function TesterCard({ t }: { t: Tester }) {
             <KV k="Frequency" v={p.weeklyFrequency ? `${p.weeklyFrequency}d/wk` : null} />
             <KV k="Mileage target" v={p.weeklyMileageTarget ? `${p.weeklyMileageTarget} mi/wk` : null} />
             <div className="tw-sep" />
-            <KV k="History avg" v={p.historyAvgMi} />
-            <KV k="Longest recent" v={p.historyLongest} />
-            <KV k="Years running" v={p.historyYears} />
+            <KV k="History avg" v={p.historyAvgMi ?? (p.derivedAvgWkMi != null ? `${p.derivedAvgWkMi} mi/wk · runs` : null)} />
+            <KV k="Longest recent" v={p.historyLongest ?? (p.derivedLongestMi != null ? `${p.derivedLongestMi} mi · runs` : null)} />
+            <KV k="Years running" v={p.historyYears ?? (p.runningSinceMonths != null ? (p.runningSinceMonths >= 12 ? `${(p.runningSinceMonths / 12).toFixed(1)} yr · runs` : `${p.runningSinceMonths} mo · runs`) : null)} />
             <div className="tw-sep" />
             <KV k="Timezone" v={p.timezone} />
-            <KV k="HRmax" v={p.hrmax} />
-            <KV k="RHR" v={p.rhr} />
+            <KV k="HRmax" v={p.hrmax ?? (p.observedMaxHr != null ? `${p.observedMaxHr} · observed` : null)} />
+            <KV k="RHR" v={p.rhr ?? (p.restingHr != null ? `${p.restingHr} · HealthKit` : null)} />
+            <KV k="HRV" v={p.hrv != null ? `${p.hrv} ms · HealthKit` : null} />
+            <KV k="VO2max (HK)" v={p.vo2maxHk != null ? `${p.vo2maxHk} · estimate` : null} />
             <KV k="Experience" v={p.experienceLevel} />
           </>) : <div className="tw-empty">Not yet onboarded</div>}
         </div>
