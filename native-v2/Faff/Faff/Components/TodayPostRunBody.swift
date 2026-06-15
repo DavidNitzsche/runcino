@@ -703,12 +703,30 @@ struct TodayPostRunBody: View {
     /// record running-dynamics stride · stride = speed ÷ step-rate. Matches
     /// Apple's per-step HKRunningStrideLength scale (David 2026-06-12).
     private var derivedStrideM: Double? {
-        guard let paceSec = detail?.pace_s_per_mi, paceSec > 0,
-              let cad = detail?.cadence_avg, cad > 0 else { return nil }
-        let speedMps = 1609.344 / Double(paceSec)
+        guard let cad = detail?.cadence_avg, cad > 0 else { return nil }
         let stepsPerSec = Double(cad) / 60.0
         guard stepsPerSec > 0 else { return nil }
+        // Speed from whichever pace source the run carries — Apple-Health runs
+        // often omit pace_s_per_mi but keep avg_speed_mph or the pace string.
+        let speedMps: Double
+        if let mph = detail?.avg_speed_mph, mph > 0 {
+            speedMps = mph * 0.44704
+        } else if let paceSec = detail?.pace_s_per_mi, paceSec > 0 {
+            speedMps = 1609.344 / Double(paceSec)
+        } else if let p = detail?.pace, let paceSec = paceStringToSec(p), paceSec > 0 {
+            speedMps = 1609.344 / Double(paceSec)
+        } else {
+            return nil
+        }
         return speedMps / stepsPerSec
+    }
+
+    /// Parse an "M:SS" (optionally "M:SS/mi") pace string to seconds.
+    private func paceStringToSec(_ pace: String) -> Int? {
+        let clean = pace.prefix { $0.isNumber || $0 == ":" }
+        let parts = clean.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        return parts[0] * 60 + parts[1]
     }
 
     private func gridColumns(count: Int) -> [GridItem] {
