@@ -160,7 +160,10 @@ private struct HIWHead: View {
                     .foregroundStyle(mutedText)
             }
         }
-        .padding(.bottom, 12)
+        // Was 12 — on top of the panel's VStack(spacing: 18) that left the
+        // header floating 30pt above its first row (AEROBIC STAMP → KEPT IT
+        // EASY). 2pt tucks the header to its content. David 2026-06-15.
+        .padding(.bottom, 2)
     }
 }
 
