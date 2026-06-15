@@ -2447,6 +2447,8 @@ fileprivate struct HeroStepList: View {
             return "A comfortable effort where you can hold a conversation. Builds your aerobic base and helps your body recover between harder sessions."
         case .long:
             return longRunNote
+        case .tempo:
+            return "A sustained hard effort — harder than easy but not all-out. Trains your body to clear lactate faster, which directly raises your race pace ceiling."
         default:
             return nil
         }
