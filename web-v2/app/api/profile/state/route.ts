@@ -17,16 +17,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { requireUserId } from '@/lib/auth/session';
+import { pool } from '@/lib/db/pool';
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   try {
-    const state = await loadProfileState(userId);
-    // Trim to the bits the iPhone /profile actually renders. Shoes /
-    // nextARace / preferences are fetched separately by their own iPhone
-    // surfaces — no need to ship them here.
+    const [state, goalRow] = await Promise.all([
+      loadProfileState(userId),
+      pool.query<{ tt_goal_distance: string | null; tt_goal_time: string | null }>(
+        `SELECT tt_goal_distance, tt_goal_time FROM profiles WHERE user_uuid = $1`,
+        [userId]
+      ),
+    ]);
+    const g = goalRow.rows[0];
+    const fitnessGoal = g?.tt_goal_distance && g?.tt_goal_time
+      ? { distance: g.tt_goal_distance, time: g.tt_goal_time }
+      : null;
+
     return NextResponse.json({
       identity: state.identity,
       physiology: {
@@ -37,12 +46,11 @@ export async function GET(req: NextRequest) {
         weight_lb:     state.physiology.weight_lb,
         vdot:          state.physiology.vdot,
         lthr:          state.physiology.lthr,
-        // Cluster 3 · added so web PhysiologyBlock can use this endpoint
-        // instead of /api/profile (which has no vdot / no resolved max_hr).
         lthr_method:   state.physiology.lthr_method,
         lthr_set_at:   state.physiology.lthr_set_at,
       },
       connections: state.connections,
+      fitnessGoal,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? String(e) }, { status: 500 });

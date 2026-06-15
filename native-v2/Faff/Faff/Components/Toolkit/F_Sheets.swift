@@ -435,67 +435,165 @@ struct LogNonRunSheet: View {
     }
 }
 
-// MARK: - NewGoalSheet
+// MARK: - SetGoalSheet
 //
-// Targets tab is race-only today; this adds non-race goals (volume / speed
-// / distance / habit / strength / health). Progress chip on Today when
-// <90% done.
+// Set a time goal for a specific distance — no race required.
+// Distance: fixed picker (5K / 10K / Half Marathon / Marathon / 50K / 100K).
+// Time: free-text field with auto-colon formatting (type "2350" → "23:50").
+// Saves to profiles.tt_goal_distance + tt_goal_time via POST /api/profile/goal.
 
 struct NewGoalSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var type: String? = "Volume"
-    @State private var target: String? = "40 mi/wk"
-    @State private var deadline: String? = "8 weeks"
-    @State private var submitting: Bool = false
-    @State private var error: String? = nil
     var onSubmitted: () -> Void = {}
+    var existingGoal: FitnessGoal? = nil
 
-    private let types = ["Volume", "Speed", "Distance", "Habit", "Strength", "Health"]
-    private let targetsByType: [String: [String]] = [
-        "Volume":   ["30 mi/wk", "40 mi/wk", "50 mi/wk", "60 mi/wk"],
-        "Speed":    ["Sub-20 5K", "Sub-1:30 HM", "Sub-3:30 M"],
-        "Distance": ["50K total", "100K total", "Marathon"],
-        "Habit":    ["3 runs/wk", "5 runs/wk", "Run streak"],
-        "Strength": ["2 sessions/wk", "Pull-up x10"],
-        "Health":   ["Sleep 7h+", "RHR < 55"],
-    ]
-    private let deadlines = ["4 weeks", "8 weeks", "12 weeks", "6 months"]
+    var body: some View {
+        SetGoalSheet(onSubmitted: onSubmitted, existingGoal: existingGoal)
+    }
+}
+
+struct SetGoalSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var onSubmitted: () -> Void = {}
+    var existingGoal: FitnessGoal? = nil
+
+    private let distances = ["5K", "10K", "Half Marathon", "Marathon", "50K", "100K"]
+
+    @State private var distance: String = "Half Marathon"
+    @State private var timeText: String = ""
+    @State private var saving: Bool = false
+    @State private var error: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sheetHeader("New goal")
-            VStack(alignment: .leading, spacing: 18) {
-                PickRow(label: "Type", options: types, selection: $type)
-                PickRow(label: "Target",
-                        options: targetsByType[type ?? "Volume"] ?? [],
-                        selection: $target)
-                PickRow(label: "By when", options: deadlines, selection: $deadline)
-                if let e = error {
-                    Text(e).font(.body(12, weight: .medium))
-                        .foregroundStyle(Theme.over)
+            sheetHeader(existingGoal != nil ? "Edit goal" : "Set your goal")
+            VStack(alignment: .leading, spacing: 20) {
+                // Distance picker
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("DISTANCE")
+                        .font(.body(10, weight: .extraBold)).tracking(1.5)
+                        .foregroundStyle(Theme.mute)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(distances, id: \.self) { d in
+                                Button {
+                                    distance = d
+                                } label: {
+                                    Text(d)
+                                        .font(.body(13, weight: distance == d ? .extraBold : .semibold))
+                                        .foregroundStyle(distance == d ? Theme.bg : Theme.txt)
+                                        .padding(.horizontal, 14).padding(.vertical, 8)
+                                        .background(
+                                            distance == d ? Theme.race : Theme.Glass.fill,
+                                            in: Capsule()
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .animation(.easeInOut(duration: 0.15), value: distance)
+                            }
+                        }
+                        .padding(.horizontal, 1)
+                    }
                 }
-                PrimaryCta(title: submitting ? "Setting…" : "Set goal",
-                           disabled: type == nil || target == nil || deadline == nil || submitting,
-                           action: submit)
+
+                // Time input
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("TARGET TIME")
+                        .font(.body(10, weight: .extraBold)).tracking(1.5)
+                        .foregroundStyle(Theme.mute)
+                    TextField(timePlaceholder, text: $timeText)
+                        .font(.display(28, weight: .bold))
+                        .foregroundStyle(Theme.txt)
+                        .keyboardType(.numberPad)
+                        .onChange(of: timeText) { _, new in
+                            timeText = formatTimeInput(new)
+                        }
+                    Text(timeHint)
+                        .font(.body(11)).foregroundStyle(Theme.mute)
+                }
+
+                if let e = error {
+                    Text(e).font(.body(12, weight: .medium)).foregroundStyle(Theme.over)
+                }
+
+                PrimaryCta(
+                    title: saving ? "Saving…" : "Set goal",
+                    disabled: saving || !isValid,
+                    action: save
+                )
             }
             .padding(24)
             Spacer(minLength: 0)
         }
         .background(Theme.Glass.strong)
         .ignoresSafeArea(edges: .bottom)
+        .onAppear {
+            if let g = existingGoal {
+                distance = g.distance
+                timeText = g.time
+            }
+        }
     }
 
-    private func submit() {
-        submitting = true; error = nil
+    private var timePlaceholder: String {
+        switch distance {
+        case "5K":           return "23:50"
+        case "10K":          return "48:30"
+        case "Half Marathon": return "1:45:00"
+        case "Marathon":     return "3:30:00"
+        default:             return "4:30:00"
+        }
+    }
+
+    private var timeHint: String {
+        switch distance {
+        case "5K", "10K": return "MM:SS"
+        default:           return "H:MM:SS"
+        }
+    }
+
+    private var isValid: Bool {
+        !timeText.isEmpty && parseSeconds(timeText) != nil
+    }
+
+    private func save() {
+        guard let _ = parseSeconds(timeText) else { return }
+        saving = true; error = nil
         Task {
-            do {
-                _ = try await API.postGoal(type: (type ?? "volume").lowercased(),
-                                            target: target ?? "",
-                                            deadline: deadline ?? "")
-                await MainActor.run { submitting = false; onSubmitted(); dismiss() }
-            } catch {
-                await MainActor.run { self.submitting = false; self.error = error.localizedDescription }
+            let ok = (try? await API.setFitnessGoal(
+                distanceLabel: distance,
+                goalTime: timeText
+            )) ?? false
+            await MainActor.run {
+                if ok { onSubmitted(); dismiss() }
+                else { error = "Could not save goal. Try again."; saving = false }
             }
+        }
+    }
+
+    /// Auto-insert colons as the user types digits.
+    private func formatTimeInput(_ raw: String) -> String {
+        let digits = raw.filter(\.isNumber)
+        switch digits.count {
+        case 0:      return ""
+        case 1, 2:   return digits
+        case 3, 4:   return String(digits.prefix(2)) + ":" + String(digits.dropFirst(2))
+        default:
+            let h = String(digits.prefix(digits.count - 4))
+            let m = String(digits.dropFirst(digits.count - 4).prefix(2))
+            let s = String(digits.suffix(2))
+            return "\(h):\(m):\(s)"
+        }
+    }
+
+    /// Parse "MM:SS" or "H:MM:SS" → seconds, nil if invalid.
+    private func parseSeconds(_ s: String) -> Int? {
+        let parts = s.split(separator: ":").compactMap { Int($0) }
+        switch parts.count {
+        case 2 where parts[1] < 60:
+            return parts[0] * 60 + parts[1]
+        case 3 where parts[1] < 60 && parts[2] < 60:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        default: return nil
         }
     }
 }

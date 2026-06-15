@@ -24,6 +24,13 @@ struct TargetsView: View {
     @State private var showNewGoalSheet: Bool = false
     @State private var showAddRaceSheet: Bool = false
 
+    /// True when there is at least one upcoming race.
+    private var hasUpcomingRace: Bool {
+        races?.races.contains { ($0.days_to_race ?? 1) >= 0 } ?? false
+    }
+    /// Standalone time goal (no race required).
+    private var fitnessGoal: FitnessGoal? { profile?.fitnessGoal }
+
     var body: some View {
         ZStack {
             FaffMeshView(mesh: .neutral)
@@ -31,13 +38,9 @@ struct TargetsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    // Bar (50) + shared header pill (84) clearance, matching Today.
                     Color.clear.frame(height: 132)
-                    // Big headline · the GOAL VERDICT (AHEAD / ON TRACK /
-                    // WATCHING / BEHIND) so you see at a glance how the plan is
-                    // tracking to the goal — the way HOLD leads Health. Falls
-                    // back to the race identity (AFC) until the projection is
-                    // live. Tint encodes the verdict (green/amber/red).
+
+                    // ── Hero verdict ──────────────────────────────────────
                     Text(goalStatusHeadline)
                         .font(.heroDisplay(88))
                         .tracking(-2)
@@ -47,26 +50,41 @@ struct TargetsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 24)
                         .padding(.top, 6)
-                    heroBlock
-                        // Pull the card up into the heroDisplay line-box
-                        // whitespace under WATCHING — the default 16pt left it
-                        // floating too low.
-                        .padding(.horizontal, 24).padding(.top, -12)
 
-                    section("RACES") {
-                        let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
-                            .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
-                        let past     = (races?.races.filter { ($0.days_to_race ?? 1)  < 0 } ?? [])
-                            .sorted { ($0.days_to_race ?? 0) > ($1.days_to_race ?? 0) }
-                        if upcoming.isEmpty && past.isEmpty {
-                            emptyState("No races scheduled", "+ Add a race when you're ready")
-                        } else {
+                    // ── Goal block (always first) ─────────────────────────
+                    if hasUpcomingRace {
+                        // Race runner: projection panel is the hero.
+                        heroBlock
+                            .padding(.horizontal, 24).padding(.top, -12)
+                    } else if let g = fitnessGoal {
+                        // Goal runner (no race): show goal + projection.
+                        goalHeroBlock(g)
+                            .padding(.horizontal, 24).padding(.top, -12)
+                    } else {
+                        // Cold: no goal and no race.
+                        section("YOUR GOAL") {
+                            coldGoalCTA
+                        }
+                    }
+
+                    // ── Races ─────────────────────────────────────────────
+                    if hasUpcomingRace {
+                        section("RACES") {
+                            let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
+                                .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
                             VStack(spacing: 10) {
                                 ForEach(upcoming) { race in raceTile(race) }
                                 addButton("+ ADD RACE") { showAddRaceSheet = true }
                             }
                         }
+                    } else {
+                        // No upcoming race — demote to a quiet add link.
+                        section("RACES") {
+                            addButton("+ ADD RACE") { showAddRaceSheet = true }
+                        }
                     }
+
+                    // Past races always shown if present.
                     let past = (races?.races.filter { ($0.days_to_race ?? 1) < 0 } ?? [])
                         .sorted { ($0.days_to_race ?? 0) > ($1.days_to_race ?? 0) }
                     if !past.isEmpty {
@@ -76,52 +94,90 @@ struct TargetsView: View {
                             }
                         }
                     }
-                    // NewGoalSheet entry · non-race goals (volume / speed /
-                    // distance / habit / strength / health). Toolkit · F.
-                    // The Targets tab was race-only until now.
-                    section("PERSONAL GOALS") {
-                        Button { showNewGoalSheet = true } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(Theme.Accent.mintReady)
-                                Text("Set a non-race goal")
-                                    .font(.body(13, weight: .extraBold))
-                                    .tracking(0.4)
-                                    .foregroundStyle(Theme.txt)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(Theme.mute)
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 12)
-                            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
                 .padding(.bottom, 130)
             }
-            // Dissolve the projection panel into the mesh behind the frosted
-            // pill, same as Today/Train.
             .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
         }
-        // Shared frosted header pill · condensed race summary in the slot.
-        .faffHeaderPill { racePill }
+        .faffHeaderPill { headerPill }
         .task { await reload() }
         .refreshable { await reload() }
         .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
             Task { await reload() }
         }
         .sheet(isPresented: $showNewGoalSheet) {
-            NewGoalSheet(onSubmitted: { Task { await reload() } })
-                .presentationDetents([.medium])
+            NewGoalSheet(
+                onSubmitted: { Task { await reload() } },
+                existingGoal: fitnessGoal
+            )
+            .presentationDetents([.medium])
         }
         .sheet(isPresented: $showAddRaceSheet) {
             AddRaceSheet(onSaved: { Task { await reload() } })
                 .presentationDetents([.large])
         }
+    }
+
+    // ── Goal hero (no-race runner) ────────────────────────────────────────
+
+    private func goalHeroBlock(_ g: FitnessGoal) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Goal tile
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(g.distance.uppercased()) · TARGET")
+                    .font(.body(10, weight: .extraBold)).tracking(1.8)
+                    .foregroundStyle(Theme.txt.opacity(0.55))
+                Text(g.time)
+                    .font(.display(36, weight: .bold)).tracking(-1)
+                    .foregroundStyle(Theme.txt)
+                Button { showNewGoalSheet = true } label: {
+                    Text("Edit goal")
+                        .font(.body(11, weight: .semibold))
+                        .foregroundStyle(Theme.dist)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+
+            // Projection panel if available
+            if let p = projection, p.vdot != nil {
+                TargetsProjectionPanel(summary: p)
+                if let age = profile?.physiology.vdot_anchor_age_days {
+                    let stale = age >= 120
+                    Text("ANCHOR · \((profile?.physiology.vdot_anchor_name ?? "RACE EFFORT").uppercased()) · \(age)D\(stale ? " · STALE" : "")")
+                        .font(.body(10, weight: .bold)).tracking(1.2)
+                        .foregroundStyle(stale ? Theme.Accent.amberBright : Theme.txt.opacity(0.55))
+                        .padding(.horizontal, 4)
+                }
+            }
+        }
+    }
+
+    /// CTA shown when the runner has neither a goal nor a race.
+    private var coldGoalCTA: some View {
+        Button { showNewGoalSheet = true } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("What are you training for?")
+                        .font(.body(15, weight: .extraBold))
+                        .foregroundStyle(Theme.txt)
+                    Text("Set a distance and time target to unlock your projection.")
+                        .font(.body(12)).foregroundStyle(Theme.mute)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.mute)
+            }
+            .padding(16)
+            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.race.opacity(0.35), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     /// Avatar initials · delegates to ProfileIdentity.avatarInitials.
@@ -292,16 +348,22 @@ struct TargetsView: View {
         }
     }
 
-    /// Condensed race summary for the shared header pill · A-RACE · short
-    /// name · full name on the left; days-out · goal time · pace on the
-    /// right. Replaces the old 88pt AFC hero that headed the scroll body.
+    /// Header pill — adapts to race runner vs goal runner vs cold.
+    @ViewBuilder private var headerPill: some View {
+        if hasUpcomingRace {
+            racePill
+        } else if let g = fitnessGoal {
+            goalPill(g)
+        } else {
+            coldPill
+        }
+    }
+
     private var racePill: some View {
         let h = hero
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                // Short name (AFC) is the page headline now, so the pill leads
-                // with the full race name to avoid printing AFC twice.
-                Text(h.name != nil ? "A-RACE" : "TOP GOAL")
+                Text("A-RACE")
                     .font(.body(9.5, weight: .extraBold)).tracking(2)
                     .foregroundStyle(Theme.txt.opacity(0.6))
                 Text(h.name ?? "Set a target")
@@ -317,8 +379,6 @@ struct TargetsView: View {
                         .font(.body(9.5, weight: .extraBold)).tracking(1.2)
                         .foregroundStyle(Theme.txt.opacity(0.6))
                 }
-                // Goal time moved to the big headline; pace stays as the pill's
-                // goal detail.
                 Text("GOAL PACE")
                     .font(.body(9.5, weight: .extraBold)).tracking(1.2)
                     .foregroundStyle(Theme.txt.opacity(0.6))
@@ -327,6 +387,44 @@ struct TargetsView: View {
                     .foregroundStyle(Theme.txt)
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
+    }
+
+    private func goalPill(_ g: FitnessGoal) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("GOAL")
+                    .font(.body(9.5, weight: .extraBold)).tracking(2)
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                Text(g.distance)
+                    .font(.body(16, weight: .extraBold)).tracking(-0.2)
+                    .foregroundStyle(Theme.txt)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("TARGET")
+                    .font(.body(9.5, weight: .extraBold)).tracking(1.2)
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                Text(g.time)
+                    .font(.display(20, weight: .bold)).tracking(-0.5)
+                    .foregroundStyle(Theme.txt)
+            }
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
+    }
+
+    private var coldPill: some View {
+        HStack {
+            Text("GOAL")
+                .font(.body(9.5, weight: .extraBold)).tracking(2)
+                .foregroundStyle(Theme.txt.opacity(0.6))
+            Spacer()
+            Text("Not set")
+                .font(.body(13, weight: .semibold))
+                .foregroundStyle(Theme.mute)
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 12)

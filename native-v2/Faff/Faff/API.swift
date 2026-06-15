@@ -755,6 +755,18 @@ enum API {
         return (200..<300).contains(http.statusCode)
     }
 
+    static func setFitnessGoal(distanceLabel: String, goalTime: String) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/profile/goal"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "distance_label": distanceLabel,
+            "goal_time": goalTime,
+        ])
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
     /// Returns the new race slug on success, nil on failure.
     static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?) async throws -> String? {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/race"))
@@ -1232,15 +1244,21 @@ struct ReplanAck: Decodable { let replanned: Bool? }
 // page-header avatars + the profile screen + the targets/train tiles
 // would have gone blank. Each slice now decodes via `try? ... ?? empty`
 // so a partial response degrades gracefully.
+struct FitnessGoal: Decodable {
+    let distance: String  // "5K", "Half Marathon", etc.
+    let time: String      // "23:50", "1:45:00"
+}
+
 struct ProfileState: Decodable {
     let identity: ProfileIdentity
     let physiology: ProfilePhysiology
     let connections: ProfileConnections
     let shoes: [ProfileShoe]?
     let nextARace: ProfileNextRace?
+    let fitnessGoal: FitnessGoal?
 
     enum CodingKeys: String, CodingKey {
-        case identity, physiology, connections, shoes, nextARace
+        case identity, physiology, connections, shoes, nextARace, fitnessGoal
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1249,6 +1267,7 @@ struct ProfileState: Decodable {
         self.connections = (try? c.decode(ProfileConnections.self, forKey: .connections)) ?? .empty
         self.shoes = try? c.decode([ProfileShoe].self, forKey: .shoes)
         self.nextARace = try? c.decode(ProfileNextRace.self, forKey: .nextARace)
+        self.fitnessGoal = try? c.decode(FitnessGoal.self, forKey: .fitnessGoal)
     }
 }
 
