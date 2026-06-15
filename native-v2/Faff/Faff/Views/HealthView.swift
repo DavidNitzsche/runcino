@@ -74,7 +74,7 @@ struct HealthView: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
-                    .padding(.bottom, 70)
+                    .padding(.bottom, 110)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }

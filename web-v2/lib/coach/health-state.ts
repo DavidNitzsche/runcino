@@ -974,17 +974,17 @@ async function loadBodyTemp(userId: string, today: string): Promise<HealthState[
 async function loadInsights(userId: string, today: string): Promise<HealthState['insights']> {
   const insights: HealthState['insights'] = [];
 
-  // Insight 1: TRAINING FORM · TSB from training-form.ts
+  // Insight 1: TRAINING LOAD · human-readable form state, no PMC jargon
   try {
     const { computeTrainingForm } = await import('@/lib/coach/training-form');
     const form = await computeTrainingForm(userId);
     if (form) {
-      const direction = form.trend7 > 5 ? 'freshening up' : form.trend7 < -5 ? 'loading' : 'steady';
+      const direction = form.trend7 > 5 ? 'Building this week.' : form.trend7 < -5 ? 'Load easing this week.' : 'Steady this week.';
       insights.push({
         id: 'training_form',
-        eyebrow: 'TRAINING FORM',
-        title: `${form.label} · TSB ${form.tsb}`,
-        body: `CTL ${form.ctl} · ATL ${form.atl} · ${direction} over the last week.`,
+        eyebrow: 'TRAINING LOAD',
+        title: form.label,   // "Productive" / "Neutral" / "Fatigued" — plain English
+        body: direction,
       });
     }
   } catch { /* skip on error */ }
@@ -1013,15 +1013,14 @@ async function loadInsights(userId: string, today: string): Promise<HealthState[
     const nightCount = r.rows[0]?.night_count ? Number(r.rows[0].night_count) : 0;
     if (avg7 != null && deficit != null && nightCount >= 4) {
       const ofN = nightCount < 7 ? ` (${nightCount} of 7 nights tracked)` : '';
+      // No prescriptive commands — state the observation, not an instruction.
+      const debtNote = deficit > 5 ? 'Running a meaningful deficit.' : deficit > 2 ? 'Mild deficit.' : 'On track.';
       insights.push({
         id: 'sleep_debt',
         eyebrow: 'SLEEP DEBT',
         title: `${deficit.toFixed(1)}h short of target${ofN}`,
-        body: `Avg ${avg7.toFixed(1)}h vs 7.5h target. ${deficit > 5 ? 'Material debt · ease tomorrow.' : deficit > 2 ? 'Mild debt · watch HRV.' : 'On track.'}`,
+        body: `Avg ${avg7.toFixed(1)}h vs 7.5h target. ${debtNote}`,
       });
-    } else if (nightCount === 0) {
-      // Genuinely no sleep data · skip insight rather than fabricate.
-      // The Health page already shows the empty-state on its sleep tile.
     }
   } catch { /* skip */ }
 
@@ -1047,16 +1046,26 @@ async function loadInsights(userId: string, today: string): Promise<HealthState[
     }
   } catch { /* skip */ }
 
-  // Insight 4: DAY OF WEEK · use dow-patterns module's authored insights
+  // Insight 4: DAY OF WEEK · pattern-specific title derived from the insight text
   try {
     const { computeDowPatterns } = await import('@/lib/coach/dow-patterns');
     const dp = await computeDowPatterns(userId);
     if (dp?.insights && dp.insights.length > 0) {
+      const text = dp.insights[0];
+      // "HRV consistently lowest on FRI · …" → "HRV lowest on Fridays"
+      // "RHR highest on MON · …"             → "Elevated HR on Mondays"
+      // "Sleep shortest on TUE · …"          → "Less sleep on Tuesdays"
+      const dayMatch = text.match(/on (\w+)/);
+      const dayStr = dayMatch ? `${dayMatch[1]}s` : '';  // "FRIs", "MONs", etc.
+      let title = 'Weekly pattern';
+      if (text.startsWith('HRV'))   title = dayStr ? `HRV lowest on ${dayStr}` : 'HRV pattern';
+      else if (text.startsWith('RHR'))   title = dayStr ? `Elevated HR on ${dayStr}` : 'HR pattern';
+      else if (text.startsWith('Sleep')) title = dayStr ? `Less sleep on ${dayStr}` : 'Sleep pattern';
       insights.push({
         id: 'day_of_week',
         eyebrow: 'DAY OF WEEK',
-        title: 'Weekly rhythm',
-        body: dp.insights[0],
+        title,
+        body: text,
       });
     }
   } catch { /* skip · dow-patterns may not have data */ }
