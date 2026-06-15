@@ -75,33 +75,16 @@ struct TodayReadinessPanel: View {
     var weeksToRace: Int? = nil        // purpose.weeksToRace
     var daysToRace: Int? = nil         // profile.nextARace.days_to_race; used when <14
     var nextHardLabel: String? = nil   // e.g. "TUE · TEMPO"
-    /// TSB caption from /api/readiness · e.g. "Form +8 · fresh". Null on cold start.
-    var formLine: String? = nil
     /// Tap target · routes to the "full readiness brief" surface.
     let onTap: () -> Void
 
     private var bandTint: Color { ReadinessBand.tint(snapshot?.band) }
     private var arcTint: Color  { ReadinessBand.arc(snapshot?.band) }
-    private var bandText: String {
-        let raw = (snapshot?.band ?? "").uppercased()
-        return raw.isEmpty ? "" : raw
-    }
-    private var scoreText: String {
-        if let s = snapshot?.score { return String(s) }
-        return "—"
-    }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             signalTileGrid
-            VStack(alignment: .leading, spacing: 8) {
-                formCaption
-                statChips
-            }
+            statChips
         }
-        .contentShape(Rectangle())
-        .onTapGesture { onTap() }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Readiness \(scoreText), \(bandText). Tap for the full brief.")
     }
 
     // MARK: 2 · 2×2 signal tile grid
@@ -118,19 +101,6 @@ struct TodayReadinessPanel: View {
                     TodaySignalTile(input: input)
                 }
             }
-        }
-    }
-
-    // MARK: 2.5 · form caption (TSB)
-
-    @ViewBuilder
-    private var formCaption: some View {
-        if let line = formLine {
-            Text(line)
-                .font(.body(11, weight: .semibold))
-                .tracking(0.2)
-                .foregroundStyle(Color.white.opacity(0.55))
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -164,16 +134,12 @@ struct TodayReadinessPanel: View {
     private var statChips: some View {
         let chips = presentChips
         if !chips.isEmpty {
-            let rows: [[(label: String, value: String)]] = stride(from: 0, to: chips.count, by: 3).map {
-                Array(chips[$0..<min($0 + 3, chips.count)])
-            }
-            VStack(spacing: 8) {
-                ForEach(rows.indices, id: \.self) { r in
-                    HStack(spacing: 8) {
-                        ForEach(rows[r].indices, id: \.self) { i in
-                            StatChip(label: rows[r][i].label, value: rows[r][i].value)
-                        }
-                    }
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
+                spacing: 8
+            ) {
+                ForEach(chips.indices, id: \.self) { i in
+                    StatChip(label: chips[i].label, value: chips[i].value)
                 }
             }
         }

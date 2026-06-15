@@ -1150,7 +1150,6 @@ struct TodayView: View {
             weeksToRace: weeksToRaceValue,
             daysToRace: daysToRaceValue,
             nextHardLabel: nextHardLabel,
-            formLine: readiness?.formLine,
             onTap: { onReadinessTap() }
         )
         .padding(.horizontal, 22)
