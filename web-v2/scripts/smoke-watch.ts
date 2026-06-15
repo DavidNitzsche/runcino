@@ -51,7 +51,7 @@ async function main() {
     const tol = p.tolerancePaceSPerMi ? ` ±${p.tolerancePaceSPerMi}s` : '';
     const dist = p.distanceMi ? `${p.distanceMi}mi` : '';
     if (p.distanceMi) distSum += p.distanceMi;
-    if (p.type === 'work' && p.label.startsWith('Rep ')) workReps++;
+    if (p.type === 'work' && p.label.startsWith('Interval ')) workReps++;
     if (p.type === 'recovery') recoveryCount++;
     console.log(`  ${i} [${p.type}] ${p.label} · ${mm}:${ss} · ${dist} · ${pace}${tol} · ${p.haptic}`);
   }
