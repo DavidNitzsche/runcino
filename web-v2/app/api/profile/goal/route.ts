@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     [distanceLabel, goalTime, goalSeconds, userId]
   );
 
-  await bustBriefingCacheForEvent(userId, 'goal_time_changed');
+  await bustBriefingCacheForEvent(userId, 'profile_edit');
 
   return NextResponse.json({ ok: true, distance_label: distanceLabel, goal_time: goalTime, goal_seconds: goalSeconds });
 }
