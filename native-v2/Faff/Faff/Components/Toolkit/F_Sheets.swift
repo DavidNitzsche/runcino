@@ -539,7 +539,13 @@ struct SetGoalSheet: View {
                 // PLAN LENGTH: Daniels-grounded options
                 Section {
                     ForEach(planOptions(for: distance)) { opt in
-                        Button { planWeeks = (planWeeks == opt.weeks ? nil : opt.weeks) } label: {
+                        Button {
+                            var t = Transaction(animation: nil)
+                            t.disablesAnimations = true
+                            withTransaction(t) {
+                                planWeeks = (planWeeks == opt.weeks ? nil : opt.weeks)
+                            }
+                        } label: {
                             HStack(alignment: .top, spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("\(opt.weeks) weeks")
