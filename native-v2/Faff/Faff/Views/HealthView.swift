@@ -271,7 +271,7 @@ struct HealthView: View {
                         .foregroundStyle(Color(hex: 0xFC4D64))
                 }
                 if let d = s.hrvBelowBaselineDays, d > 0 {
-                    Text("HRV \(d)D ↓")
+                    Text("RECOVERY \(d)D ↓")
                         .font(.body(9, weight: .extraBold)).tracking(0.6)
                         .foregroundStyle(Color(hex: 0xFC4D64))
                 }
@@ -324,13 +324,6 @@ struct HealthView: View {
                     }
                     Spacer(minLength: 0)
                 }
-            }
-            if !threshold.isEmpty {
-                Text(threshold)
-                    .font(.body(11, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.55))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
             }
         }
         .padding(14)
@@ -782,14 +775,19 @@ struct HealthDriversList: View {
         // [dot] METRIC_NAME           [div bar]   [±N pts]
         //       value · target sub
         //
-        // ReadinessInput.label often arrives as "SLEEP · 28%" (the
-        // contribution-weight version backed into the label). Strip
-        // anything past " · " to get the bare metric name; design
-        // wants the NAME plain + value displayed separately.
-        let bareName = input.label
-            .split(separator: "·").first
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            ?? input.label
+        // Map internal key to user-facing display name.
+        let bareName: String = {
+            switch input.key.lowercased() {
+            case "hrv":  return "Recovery"
+            case "rhr":  return "Resting HR"
+            case "load": return "Training Load"
+            default:
+                return input.label
+                    .split(separator: "·").first
+                    .map { String($0).trimmingCharacters(in: .whitespaces) }
+                    ?? input.label
+            }
+        }()
         // Value line · prefer observedV + observedSub merged ("6h 28m target 7h 30m")
         let valueLine: String? = {
             let v = (input.observedV ?? "").trimmingCharacters(in: .whitespaces)
