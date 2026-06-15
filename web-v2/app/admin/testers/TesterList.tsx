@@ -9,13 +9,16 @@ interface Tester {
   runs30: { count: number; mi: number };
   profile: {
     goalDistance: string | null; goalDate: string | null; goalTime: string | null;
+    ttGoalDistance: string | null; ttGoalTime: string | null;
     weeklyFrequency: number | null; weeklyMileageTarget: number | null;
     historyAvgMi: string | null; historyLongest: string | null; historyYears: string | null;
     timezone: string | null; hrmax: number | null; rhr: number | null;
     experienceLevel: string | null; connectionsSkipped: boolean;
   } | null;
   plan: {
-    mode: string; authoredIso: string; raceDate: string | null;
+    mode: string; phaseLabel: string | null; intent: string | null;
+    anchorVdot: string | null; anchorSource: string | null;
+    authoredIso: string; raceDate: string | null;
     weekCount: number; totalRunDays: number; totalPlanMi: number;
     peakLongRunMi: number; avgRunMi: number; earlyRamp: number[];
   } | null;
@@ -33,8 +36,25 @@ function fmtDateTime(iso: string | null) {
     + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 function goalLabel(dist: string | null) {
-  const map: Record<string, string> = { marathon: 'Marathon', half: 'Half Marathon', '10k': '10K', '5k': '5K', none: 'Get faster', coached: 'Coached' };
+  const map: Record<string, string> = { marathon: 'Marathon', half: 'Half Marathon', '10k': '10K', '5k': '5K', '1mi': '1 Mile', none: 'Get faster', coached: 'Coached' };
   return dist ? (map[dist] ?? dist) : '—';
+}
+// A no-race time goal (goal mode) lives in ttGoalDistance/ttGoalTime, not the
+// race columns — show THAT instead of the generic "Get faster".
+function goalDisplay(p: NonNullable<Tester['profile']>): string {
+  if ((!p.goalDistance || p.goalDistance === 'none') && p.ttGoalDistance) {
+    return `${goalLabel(p.ttGoalDistance)} · faster`;
+  }
+  return `${goalLabel(p.goalDistance)}${p.goalDate ? ' · ' + fmtDate(p.goalDate) : ''}`;
+}
+// The plan's real identity is its phase ("5K BUILD") + fitness anchor, not the
+// raw mode column (always 'maintenance' for every no-race plan).
+function anchorDisplay(plan: NonNullable<Tester['plan']>): string | null {
+  if (!plan.anchorVdot) return null;
+  const src = plan.anchorSource === 'measured_run' ? 'measured'
+    : plan.anchorSource === 'provisional_mileage' ? 'estimate'
+    : plan.anchorSource ?? '';
+  return `VDOT ${plan.anchorVdot}${src ? ' · ' + src : ''}`;
 }
 function initials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -91,8 +111,8 @@ function TesterCard({ t }: { t: Tester }) {
         <div className="tw-section">
           <div className="tw-sec-title">Profile</div>
           {p ? (<>
-            <KV k="Goal" v={`${goalLabel(p.goalDistance)}${p.goalDate ? ' · ' + fmtDate(p.goalDate) : ''}`} hi />
-            <KV k="Goal time" v={p.goalTime} />
+            <KV k="Goal" v={goalDisplay(p)} hi />
+            <KV k="Goal time" v={p.goalTime ?? p.ttGoalTime} />
             <KV k="Frequency" v={p.weeklyFrequency ? `${p.weeklyFrequency}d/wk` : null} />
             <KV k="Mileage target" v={p.weeklyMileageTarget ? `${p.weeklyMileageTarget} mi/wk` : null} />
             <div className="tw-sep" />
@@ -111,7 +131,8 @@ function TesterCard({ t }: { t: Tester }) {
         <div className="tw-section">
           <div className="tw-sec-title">Plan</div>
           {plan ? (<>
-            <KV k="Mode" v={plan.mode} hi />
+            <KV k="Mode" v={plan.phaseLabel ?? plan.mode} hi />
+            <KV k="Fitness anchor" v={anchorDisplay(plan)} />
             <KV k="Length" v={`${plan.weekCount} weeks`} />
             <KV k="Race date" v={fmtDate(plan.raceDate)} />
             <KV k="Total mi" v={`${plan.totalPlanMi} mi`} />

@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
   const profilesQ = await pool.query(
     `SELECT user_uuid,
             goal_race_distance, goal_race_date, goal_race_time,
+            tt_goal_distance, tt_goal_time,
             weekly_frequency, weekly_mileage_target,
             history_avg_weekly_mi, history_longest_recent_mi, history_years_running,
             timezone, onboarding_completed_at, connections_skipped,
@@ -69,6 +70,10 @@ export async function GET(req: NextRequest) {
   // ── 3. Latest active plan per user ───────────────────────────────────────
   const plansQ = await pool.query(
     `SELECT tp.id, tp.user_uuid, tp.mode, tp.authored_iso, tp.goal_iso,
+            tp.authored_state->>'intent'       AS intent,
+            tp.authored_state->>'anchorVdot'   AS anchor_vdot,
+            tp.authored_state->>'anchorSource' AS anchor_source,
+            (SELECT label FROM plan_phases WHERE plan_id = tp.id ORDER BY start_week_idx LIMIT 1) AS phase_label,
             COUNT(DISTINCT plw.id) AS week_count,
             COUNT(pw.id) FILTER (WHERE pw.distance_mi > 0) AS total_run_days,
             ROUND(SUM(pw.distance_mi) FILTER (WHERE pw.distance_mi > 0)) AS total_plan_mi,
@@ -153,7 +158,12 @@ export async function GET(req: NextRequest) {
 
     if (p) {
       // Onboarding fields complete
-      checks.push({ label: 'Goal race set', pass: !!p.goal_race_distance && p.goal_race_distance !== 'none', note: p.goal_race_distance ?? 'missing' });
+      // A goal can be a race (goal_race_distance) OR a no-race time goal
+      // (tt_goal_distance). Goal-mode runners correctly have no race — don't
+      // flag them red for it.
+      const hasRaceGoal = !!p.goal_race_distance && p.goal_race_distance !== 'none';
+      const hasTtGoal = !!p.tt_goal_distance;
+      checks.push({ label: 'Goal set', pass: hasRaceGoal || hasTtGoal, note: hasRaceGoal ? p.goal_race_distance : hasTtGoal ? `${p.tt_goal_distance} time goal` : 'missing' });
       checks.push({ label: 'Timezone set', pass: !!p.timezone, note: p.timezone ?? 'missing' });
       checks.push({ label: 'Weekly frequency set', pass: !!p.weekly_frequency, note: p.weekly_frequency ? `${p.weekly_frequency}d/wk` : 'missing' });
       checks.push({ label: 'History filled', pass: !!p.history_avg_weekly_mi, note: p.history_avg_weekly_mi ?? 'missing' });
@@ -217,6 +227,8 @@ export async function GET(req: NextRequest) {
         goalDistance: p.goal_race_distance,
         goalDate: p.goal_race_date,
         goalTime: p.goal_race_time,
+        ttGoalDistance: p.tt_goal_distance,
+        ttGoalTime: p.tt_goal_time,
         weeklyFrequency: p.weekly_frequency,
         weeklyMileageTarget: p.weekly_mileage_target,
         historyAvgMi: p.history_avg_weekly_mi,
@@ -231,6 +243,10 @@ export async function GET(req: NextRequest) {
       plan: plan ? {
         id: plan.id,
         mode: plan.mode,
+        phaseLabel: plan.phase_label ?? null,
+        intent: plan.intent ?? null,
+        anchorVdot: plan.anchor_vdot ?? null,
+        anchorSource: plan.anchor_source ?? null,
         authoredIso: plan.authored_iso,
         raceDate: plan.race_date,
         weekCount: Number(plan.week_count),
