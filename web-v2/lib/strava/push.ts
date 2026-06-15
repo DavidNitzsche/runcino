@@ -120,8 +120,7 @@ export async function pushRunToStrava(
 
   // 3. Build title + description.
   const title = opts.title ?? titleFor({ ...run, type: runType ?? run.type }, prefs?.strava_push_title_format ?? 'type_phases');
-  const description = (opts.description ?? autoDescription(run))
-    + '\n\nvia Faff';
+  const description = opts.description ?? autoDescription(run);
   const privacy = opts.privacy ?? prefs?.strava_push_privacy ?? 'private';
 
   // 4. Build TCX.
@@ -378,65 +377,70 @@ async function flagReauth(userId: string): Promise<void> {
  *   tod_type_dist → "Morning easy · 5.2 mi"
  *   custom        → reserved for future user-provided string
  */
-function titleFor(run: any, template: string): string {
+function titleFor(run: any, _template: string): string {
   const type = (run.type ?? 'run').toLowerCase();
-  const dist = Number(run.distanceMi ?? 0).toFixed(1);
+  const day = dayName(run.startLocal ?? run.date);
 
-  if (template === 'tod_type_dist') {
-    const hour = new Date(run.startLocal ?? Date.now()).getHours();
-    const tod = hour < 11 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
-    const typeWord = type === 'easy' ? 'easy'
-      : type === 'long' ? 'long run'
-      : type === 'threshold' ? 'threshold'
-      : type === 'tempo' ? 'tempo'
-      : type === 'intervals' ? 'intervals'
-      : type === 'race' ? 'race'
-      : 'run';
-    return `${tod} ${typeWord} · ${dist} mi`;
-  }
+  if (type === 'race') return 'Race';
+  if (type === 'long') return `Long ${day}`;
+  if (type === 'tempo') return `Tempo ${day}`;
+  if (type === 'threshold' || type === 'intervals') return `${cap(type)} ${day}`;
 
-  // Default: type_phases
-  if (type === 'threshold' || type === 'intervals' || type === 'tempo') {
-    const phases = Array.isArray(run.phases) ? run.phases : [];
-    const workPhases = phases.filter((p: any) =>
-      p.type !== 'warmup' && p.type !== 'cooldown' && p.type !== 'recovery' && p.type !== 'rest'
-    );
-    if (workPhases.length > 0) {
-      const target = workPhases[0]?.targetPaceSPerMi;
-      const paceTxt = target ? ` @ ${Math.floor(target/60)}:${String(target%60).padStart(2,'0')}` : '';
-      const repTxt = workPhases.length > 1
-        ? `${workPhases.length}×${Number(workPhases[0]?.actualDistanceMi ?? 1).toFixed(0)}mi`
-        : `${Number(workPhases[0]?.actualDistanceMi ?? 1).toFixed(1)}mi`;
-      return `${cap(type)} · ${repTxt}${paceTxt}`;
-    }
-    return `${cap(type)} · ${dist} mi`;
+  // Easy / recovery / generic — "Easy Monday" or "Easy morning run" for morning slots
+  const hour = run.startLocal ? new Date(run.startLocal).getHours() : 9;
+  if (type === 'easy' || type === 'recovery') {
+    return hour < 11 ? `Easy morning run` : `Easy ${day}`;
   }
-  if (type === 'race') return `Race · ${dist} mi`;
-  if (type === 'long') return `Long run · ${dist} mi`;
-  return `${cap(type)} · ${dist} mi`;
+  return `${cap(type)} ${day}`;
+}
+
+function dayName(startLocal: string | null | undefined): string {
+  if (!startLocal) return 'run';
+  const d = new Date(startLocal);
+  return isNaN(d.getTime()) ? 'run'
+    : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
 }
 
 function cap(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 function autoDescription(run: any): string {
-  const parts: string[] = [];
-  if (run.avgHr) parts.push(`Avg HR ${run.avgHr}`);
-  if (run.maxHr) parts.push(`Max HR ${run.maxHr}`);
-  if (run.avgCadence) parts.push(`Cadence ${run.avgCadence}`);
-  if (Array.isArray(run.phases) && run.phases.length > 0) {
-    const work = run.phases.filter((p: any) =>
-      p.type !== 'warmup' && p.type !== 'cooldown' && p.type !== 'recovery' && p.type !== 'rest'
-    );
-    if (work.length > 0) {
-      const target = work[0]?.targetPaceSPerMi;
-      const allHit = work.every((p: any) => {
-        const a = p.actualPaceSPerMi;
-        return target != null && a != null && Math.abs(a - target) <= 5;
-      });
-      if (allHit) parts.push(`Hit pace on all ${work.length} reps`);
-    }
+  const type = (run.type ?? 'run').toLowerCase();
+  const dist = Number(run.distanceMi ?? 0);
+  const distStr = dist > 0 ? `${dist % 1 === 0 ? dist.toFixed(0) : dist.toFixed(1)} miles` : null;
+
+  if (type === 'race') {
+    return distStr ?? 'Race.';
   }
-  return parts.length > 0 ? parts.join(' · ') : '';
+
+  if (type === 'long') {
+    return distStr ? `${distStr}.` : 'Long run.';
+  }
+
+  if (type === 'tempo' || type === 'threshold' || type === 'intervals') {
+    const phases = Array.isArray(run.phases) ? run.phases : [];
+    const work = phases.filter((p: any) =>
+      !['warmup','cooldown','recovery','rest'].includes(p.type)
+    );
+    if (work.length > 1) {
+      const repDist = Number(work[0]?.actualDistanceMi ?? work[0]?.distanceMi ?? 0);
+      const repStr = repDist > 0
+        ? `${work.length}×${repDist < 1 ? Math.round(repDist * 5280) + 'm' : repDist.toFixed(0) + ' mile'} repeats`
+        : `${work.length} reps`;
+      const total = distStr ? ` — ${distStr} total` : '';
+      return `${repStr}${total}.`;
+    }
+    if (work.length === 1) {
+      const workDist = Number(work[0]?.actualDistanceMi ?? 0);
+      if (workDist > 0 && dist > workDist + 0.5) {
+        return `${distStr} with ${workDist.toFixed(0)} at ${type}.`;
+      }
+      return workDist > 0 ? `${workDist.toFixed(0)} miles at ${type}.` : `${cap(type)} workout.`;
+    }
+    return distStr ? `${cap(type)}, ${distStr}.` : `${cap(type)} workout.`;
+  }
+
+  // Easy / recovery
+  return distStr ? `${distStr}.` : 'Easy run.';
 }
 
 /**
