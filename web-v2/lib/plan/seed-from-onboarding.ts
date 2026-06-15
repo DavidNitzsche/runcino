@@ -531,6 +531,31 @@ async function persistMaintenancePlan(args: {
   return planId;
 }
 
+/**
+ * Cold-start fallback when the runner skipped self-reported history: derive
+ * recent weekly mileage + longest run from their ACTUAL runs (last 8 weeks).
+ * Same connected-data principle as the VDOT floor — use what we have instead of
+ * dropping to the bare MPW floor. Null only when there's genuinely no run data.
+ */
+async function deriveRunHistory(userId: string, cutoffISO: string): Promise<{
+  avgWeeklyMi: number | null;
+  longestMi: number | null;
+}> {
+  const r = (await pool.query<{ avg_wk: string | null; longest: string | null }>(
+    `SELECT ROUND(SUM((data->>'distanceMi')::numeric) / 8.0, 1) AS avg_wk,
+            ROUND(MAX((data->>'distanceMi')::numeric), 1) AS longest
+       FROM runs
+      WHERE user_uuid = $1
+        AND NOT (data ? 'mergedIntoId')
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2`,
+    [userId, cutoffISO],
+  ).catch(() => ({ rows: [] as Array<{ avg_wk: string | null; longest: string | null }> }))).rows[0];
+  return {
+    avgWeeklyMi: r?.avg_wk != null && Number(r.avg_wk) > 0 ? Number(r.avg_wk) : null,
+    longestMi: r?.longest != null && Number(r.longest) > 0 ? Number(r.longest) : null,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Public entrypoint
 // ─────────────────────────────────────────────────────────────────
@@ -554,8 +579,18 @@ export async function seedMaintenancePlanFromOnboarding(
   input: SeedInput,
 ): Promise<SeedResult> {
   const { userId, goals } = input;
+  const today = await runnerToday(userId);
 
-  const { historyAvgWeeklyMi, historyLongestRecentMi } = midpoints(goals);
+  // History anchors the START of the volume ramp + the long-run floor. Prefer
+  // the runner's self-reported chips; when they skipped them, DERIVE from their
+  // actual runs (last 8 weeks) rather than dropping to the bare MPW floor —
+  // same connected-data principle as the VDOT read.
+  const sr = midpoints(goals);
+  const derived = await deriveRunHistory(userId, addDays(today, -56));
+  const historyAvgWeeklyMi = sr.historyAvgWeeklyMi ?? derived.avgWeeklyMi;
+  const historyLongestRecentMi = sr.historyLongestRecentMi ?? derived.longestMi;
+  const historySource = sr.historyAvgWeeklyMi != null ? 'self_report'
+    : derived.avgWeeklyMi != null ? 'derived_runs' : 'none';
 
   // Start at the runner's CURRENT mileage, build toward their target.
   // Old logic used weeklyMiTarget as the starting point (flat from day 1 at
@@ -588,8 +623,7 @@ export async function seedMaintenancePlanFromOnboarding(
   // — a mid-week onboarder shouldn't see runs dated before they existed
   // (David). The persist loop places workouts by each date's calendar
   // weekday, so the long run still lands on the preferred day; the first
-  // week is just a full 7 days from the start day.
-  const today = await runnerToday(userId);
+  // week is just a full 7 days from the start day. (today resolved at the top.)
   const startMonday = (input.startDateISO && input.startDateISO >= today) ? input.startDateISO : today;
   // 16 weeks · last day = start + 16*7 - 1.
   const goalISO = addDays(startMonday, TOTAL_WEEKS * 7 - 1);
@@ -641,6 +675,7 @@ export async function seedMaintenancePlanFromOnboarding(
       start_weekly_mi: startWeeklyMi,
       peak_weekly_mi: targetWeeklyMi,
       peak_long_mi: peakLongMi,
+      history_source: historySource,  // self_report | derived_runs | none
       onboarding_goals: goals,
       citations: [
         'Daniels Running Formula §13 · Periodization + §"5K-10K training" (I-pace intervals = 5K driver)',
