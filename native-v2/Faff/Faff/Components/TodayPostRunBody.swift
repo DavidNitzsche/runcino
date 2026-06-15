@@ -561,7 +561,7 @@ struct TodayPostRunBody: View {
                                     fastestSec: fastest,
                                     denom: denom,
                                     targetPaceSec: phase.target_pace_sec,
-                                    tolerancePaceSec: phase.tolerance_pace_sec,
+                                    tolerancePaceSec: effectiveTolerance(phase.tolerance_pace_sec),
                                     onMesh: onMesh
                                 )
                             }
@@ -569,6 +569,19 @@ struct TodayPostRunBody: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Easy pace is a range, not a target — widen the splits band for easy /
+    /// recovery runs so a consistent easy run doesn't read as dramatic. With a
+    /// ±8s quality-grade band the track only spans ±16s, so honest easy miles
+    /// (8:34–8:56 on an 8:54 day) peg the edges. ±20s reflects the real easy
+    /// range (Daniels E). Quality work keeps the tight band. David 2026-06-12.
+    private func effectiveTolerance(_ base: Double?) -> Double? {
+        guard let base else { return nil }
+        switch hiwEffort {
+        case .easy, .recovery: return max(base, 20)
+        default:               return base
         }
     }
 
@@ -663,16 +676,39 @@ struct TodayPostRunBody: View {
         if let pw = f?.run_power_w, pw > 0 {
             out.append(("POWER", "\(Int(pw.rounded())) W"))
         }
+        // Stride length · cadence's natural partner (cadence × stride = speed).
+        // Prefer the watch's running-dynamics value; otherwise derive it from
+        // pace ÷ cadence so the FORM grid still has a meaningful second stat on
+        // an easy run instead of doubling cadence (David 2026-06-12).
         if let sl = f?.stride_length_m, sl > 0 {
+            out.append(("STRIDE", String(format: "%.2f m", sl)))
+        } else if let sl = derivedStrideM, sl > 0 {
             out.append(("STRIDE", String(format: "%.2f m", sl)))
         }
         if let vr = f?.vertical_ratio_pct, vr > 0 {
             out.append(("VERT RATIO", String(format: "%.1f%%", vr)))
         }
-        if let wc = detail?.cadence_avg_work, wc > 0 {
+        // WORK CADENCE only when the run truly has distinct phases AND work
+        // cadence differs meaningfully from overall — on a single-phase easy
+        // run it just duplicates CADENCE (David 2026-06-12).
+        if let wc = detail?.cadence_avg_work, wc > 0,
+           (detail?.phase_breakdown?.count ?? 0) > 1,
+           let overall = detail?.cadence_avg, abs(wc - overall) >= 3 {
             out.append(("WORK CADENCE", "\(wc) spm"))
         }
         return out
+    }
+
+    /// Stride length (m/step) derived from pace + cadence when the watch didn't
+    /// record running-dynamics stride · stride = speed ÷ step-rate. Matches
+    /// Apple's per-step HKRunningStrideLength scale (David 2026-06-12).
+    private var derivedStrideM: Double? {
+        guard let paceSec = detail?.pace_s_per_mi, paceSec > 0,
+              let cad = detail?.cadence_avg, cad > 0 else { return nil }
+        let speedMps = 1609.344 / Double(paceSec)
+        let stepsPerSec = Double(cad) / 60.0
+        guard stepsPerSec > 0 else { return nil }
+        return speedMps / stepsPerSec
     }
 
     private func gridColumns(count: Int) -> [GridItem] {
