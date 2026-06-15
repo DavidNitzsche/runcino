@@ -47,6 +47,7 @@ import {
   vdotRunFloorMi, goalDistanceMiFromCode,
 } from '@/lib/training/vdot';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
+import { loadSettings } from '@/lib/coach/settings';
 import {
   HIST_AVG_MIDPOINTS,
   HIST_LONG_MIDPOINTS,
@@ -117,35 +118,38 @@ function round1(n: number): number {
   return Math.round(n * 2) / 2;
 }
 
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+const dowOf = (k: string): number => Math.max(0, DAY_KEYS.indexOf(k as typeof DAY_KEYS[number]));
+
 /**
- * Default quality / long / rest days when the runner hasn't set
- * user_prefs yet. Mirrors `DEFAULT_QUALITY_DOWS` / `DEFAULT_LONG_RUN_DOW`
- * / `DEFAULT_REST_DOW` from legacy/web/lib/coach-state.ts:
- *   long: Saturday (dow 6)
- *   quality: Tue (2) for 1 q/wk, Tue + Thu (2, 4) for 2 q/wk
- *   rest: Monday (dow 1)
+ * Day-of-week layout from the runner's SAVED preferences (long-run day, rest
+ * day, quality days). The no-race seeder used to HARDCODE Sat-long / Mon-rest /
+ * Tue-quality and ignore the runner's picks entirely — so a runner who chose
+ * "Friday long, Saturday rest" got Saturday long + Monday rest (Justin's bug).
+ * This mirrors the race generator (generate.ts), which has always honored these
+ * via loadSettings. loadSettings supplies sane defaults (sun-long / sat-rest /
+ * tue+thu-quality) when the runner left them unset.
  *
- * weeklyFrequency hint:
- *   3 days/wk → 1 quality + 1 long + 1 easy
- *   4 days/wk → 1 quality + 1 long + 2 easy
- *   5 days/wk → 2 quality + 1 long + 2 easy
- *   6 days/wk → 2 quality + 1 long + 3 easy
- *
- * Maintenance is 1 quality/wk by canonical doctrine (Daniels §13) — so
- * for now we cap at 1 quality day even when the runner picks 5 / 6 days.
- * The extra days become easy mileage.
+ * Maintenance is 1 quality/wk by canonical doctrine (Daniels §13) — take the
+ * runner's first quality pick, spaced off the long + rest days. dayShape()
+ * applies the weeklyFrequency cap on top.
  */
-function defaultLayout(weeklyFrequency: WeeklyFrequency | null): {
-  longRunDow: number;
-  qualityDows: number[];
-  restDow: number;
-} {
-  return {
-    longRunDow: 6,                  // Saturday
-    qualityDows: [2],               // Tuesday (single quality, maintenance)
-    restDow: 1,                     // Monday
-  };
-  void weeklyFrequency; // layout only sets anchor days; dayShape() applies the cap
+export function layoutFromPrefs(prefs: {
+  long_run_day: string; rest_day: string; quality_days: string[];
+}): { longRunDow: number; qualityDows: number[]; restDow: number } {
+  const longRunDow = dowOf(prefs.long_run_day);
+  const restDow = dowOf(prefs.rest_day);
+  let qualityDows = (prefs.quality_days?.length ? prefs.quality_days : ['tue'])
+    .map(dowOf)
+    .filter((d) => d !== longRunDow && d !== restDow)
+    .slice(0, 1);
+  if (qualityDows.length === 0) {
+    // Every quality pick collided with long/rest — fall back to a day spaced
+    // from both (prefer mid-week).
+    const c = [2, 3, 4, 1, 5, 0, 6].find((d) => d !== longRunDow && d !== restDow);
+    qualityDows = [c ?? 2];
+  }
+  return { longRunDow, qualityDows, restDow };
 }
 
 /** Translate a runner-supplied OnboardingGoals into the
@@ -615,7 +619,10 @@ export async function seedMaintenancePlanFromOnboarding(
   let peakLongMi = Math.max(histLongFloor, round1(targetWeeklyMi * LONG_PCT));
   peakLongMi = Math.min(peakLongMi, round1(targetWeeklyMi * 0.45));
 
-  const layout = defaultLayout(goals.weeklyFrequency);
+  // Honor the runner's chosen long-run / rest / quality days (loadSettings
+  // defaults them when unset) — same as the race generator. Was hardcoded.
+  const prefs = await loadSettings(userId);
+  const layout = layoutFromPrefs(prefs);
   const curve = buildProgressiveCurve(startWeeklyMi, targetWeeklyMi);
 
   // 2026-06-10 · anchor week 0 at the runner's chosen start day
