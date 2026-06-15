@@ -437,18 +437,21 @@ struct LogNonRunSheet: View {
 
 // MARK: - SetGoalSheet
 //
-// Ad-lib goal setter: "I want to run a [DISTANCE] in [TIME]"
-// Distance: tapping the highlighted word cycles through fixed options.
-// Time: three inline wheel pickers (H · MM · SS in :15 steps).
-// Saves via POST /api/profile/goal.
+// NavigationStack + Form — mirrors AddRaceSheet chrome.
+// GOAL: distance Picker + expandable time wheels.
+// CURRENT FITNESS: predicted time from VDOT (omitted if no VDOT).
+// PLAN LENGTH: 2-3 Daniels-periodization options per distance.
 
 struct NewGoalSheet: View {
     var onSubmitted: () -> Void = {}
     var existingGoal: FitnessGoal? = nil
+    var body: some View { SetGoalSheet(onSubmitted: onSubmitted, existingGoal: existingGoal) }
+}
 
-    var body: some View {
-        SetGoalSheet(onSubmitted: onSubmitted, existingGoal: existingGoal)
-    }
+private struct PlanOption: Identifiable {
+    let weeks: Int
+    let rationale: String
+    var id: Int { weeks }
 }
 
 struct SetGoalSheet: View {
@@ -463,6 +466,9 @@ struct SetGoalSheet: View {
     @State private var hours: Int = 1
     @State private var minutes: Int = 45
     @State private var seconds: Int = 0
+    @State private var showTimePicker: Bool = true
+    @State private var planWeeks: Int? = nil
+    @State private var currentVdot: Double? = nil
     @State private var saving: Bool = false
     @State private var error: String? = nil
 
@@ -475,107 +481,123 @@ struct SetGoalSheet: View {
     private var isValid: Bool { hours > 0 || minutes > 0 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sheetHeader(existingGoal != nil ? "Edit goal" : "Set your goal")
-            VStack(alignment: .leading, spacing: 28) {
+        NavigationStack {
+            Form {
 
-                // Ad-lib sentence
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("I want to run a")
-                        .font(.display(26, weight: .bold))
-                        .foregroundStyle(Theme.txt)
-                    // Tapping cycles to next distance
-                    Button { cycleDistance() } label: {
-                        HStack(spacing: 6) {
-                            Text(distance)
-                                .font(.display(26, weight: .bold))
-                                .foregroundStyle(Theme.race)
-                            Image(systemName: "arrow.trianglehead.2.clockwise")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(Theme.race.opacity(0.7))
-                        }
+                // GOAL: distance + time
+                Section("GOAL") {
+                    Picker("Distance", selection: $distance) {
+                        ForEach(distances, id: \.self) { Text($0) }
                     }
-                    .buttonStyle(.plain)
-                    Text("in")
-                        .font(.display(26, weight: .bold))
-                        .foregroundStyle(Theme.txt)
-                }
-
-                // Time wheels
-                HStack(spacing: 0) {
-                    timeColumn(label: "HR") {
-                        Picker("", selection: $hours) {
-                            ForEach(0...9, id: \.self) { h in Text("\(h)").tag(h) }
-                        }
-                    }
-                    colonSep
-                    timeColumn(label: "MIN") {
-                        Picker("", selection: $minutes) {
-                            ForEach(0...59, id: \.self) { m in
-                                Text(String(format: "%02d", m)).tag(m)
+                    DisclosureGroup(isExpanded: $showTimePicker) {
+                        HStack(spacing: 0) {
+                            Picker("", selection: $hours) {
+                                ForEach(0...9, id: \.self) { h in Text("\(h)").tag(h) }
                             }
-                        }
-                    }
-                    colonSep
-                    timeColumn(label: "SEC") {
-                        Picker("", selection: $seconds) {
-                            ForEach(secondOptions, id: \.self) { s in
-                                Text(String(format: "%02d", s)).tag(s)
+                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 120).clipped()
+                            Text(":").font(.system(size: 22, weight: .semibold)).foregroundStyle(.secondary)
+                            Picker("", selection: $minutes) {
+                                ForEach(0...59, id: \.self) { m in
+                                    Text(String(format: "%02d", m)).tag(m)
+                                }
                             }
+                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 120).clipped()
+                            Text(":").font(.system(size: 22, weight: .semibold)).foregroundStyle(.secondary)
+                            Picker("", selection: $seconds) {
+                                ForEach(secondOptions, id: \.self) { s in
+                                    Text(String(format: "%02d", s)).tag(s)
+                                }
+                            }
+                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 120).clipped()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    } label: {
+                        HStack {
+                            Text("Target time")
+                            Spacer()
+                            Text(isValid ? goalTimeString : "Tap to set")
+                                .foregroundStyle(isValid ? .primary : .secondary)
                         }
                     }
                 }
-                .frame(maxWidth: .infinity)
+
+                // CURRENT FITNESS: only shown when VDOT is available
+                if let v = currentVdot,
+                   let pred = Self.predictSeconds(vdot: v, distance: distance) {
+                    Section("CURRENT FITNESS") {
+                        HStack {
+                            Text("Predicted \(distance)")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(Self.formatSecs(pred))
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+
+                // PLAN LENGTH: Daniels-grounded options
+                Section {
+                    ForEach(planOptions(for: distance)) { opt in
+                        Button { planWeeks = (planWeeks == opt.weeks ? nil : opt.weeks) } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(opt.weeks) weeks")
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
+                                    Text(opt.rationale)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer()
+                                Image(systemName: planWeeks == opt.weeks
+                                      ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(planWeeks == opt.weeks ? .blue : .secondary)
+                                    .padding(.top, 1)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text("PLAN LENGTH")
+                } footer: {
+                    Text("Daniels periodization: each ~4-week block builds one quality. Longer plans allow more base before race-specific work.")
+                        .font(.footnote)
+                }
 
                 if let e = error {
-                    Text(e).font(.body(12, weight: .medium)).foregroundStyle(Theme.over)
+                    Section { Text(e).foregroundStyle(.red).font(.footnote) }
                 }
-
-                PrimaryCta(
-                    title: saving ? "Saving…" : "Set goal",
-                    disabled: saving || !isValid,
-                    action: save
-                )
             }
-            .padding(24)
-            Spacer(minLength: 0)
+            .navigationTitle(existingGoal != nil ? "Edit goal" : "Set goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "Saving…" : "Set goal") { Task { await save() } }
+                        .disabled(saving || !isValid)
+                }
+            }
         }
-        .background(Theme.Glass.strong)
-        .ignoresSafeArea(edges: .bottom)
-        .onAppear { seedValues() }
+        .onAppear { seedValues(); Task { await loadVdot() } }
+        .onChange(of: distance) { _, d in
+            if existingGoal == nil { setDefaults(for: d) }
+            planWeeks = nil
+        }
     }
 
-    @ViewBuilder
-    private func timeColumn<P: View>(label: String, @ViewBuilder picker: () -> P) -> some View {
-        VStack(spacing: 4) {
-            picker()
-                .labelsHidden()
-                .pickerStyle(.wheel)
-                .frame(width: 72, height: 120)
-                .clipped()
-            Text(label)
-                .font(.body(9, weight: .bold)).tracking(1)
-                .foregroundStyle(Theme.mute)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var colonSep: some View {
-        Text(":")
-            .font(.display(26, weight: .bold))
-            .foregroundStyle(Theme.mute)
-            .padding(.bottom, 22)
-    }
+    // MARK: - Helpers
 
     private func seedValues() {
         if let g = existingGoal {
             distance = g.distance
             let parts = g.time.split(separator: ":").compactMap { Int($0) }
-            if parts.count == 2 {
-                hours = 0; minutes = parts[0]; seconds = snap15(parts[1])
-            } else if parts.count == 3 {
-                hours = parts[0]; minutes = parts[1]; seconds = snap15(parts[2])
-            }
+            if parts.count == 2 { hours = 0; minutes = parts[0]; seconds = snap15(parts[1]) }
+            else if parts.count == 3 { hours = parts[0]; minutes = parts[1]; seconds = snap15(parts[2]) }
         } else {
             setDefaults(for: distance)
         }
@@ -596,24 +618,89 @@ struct SetGoalSheet: View {
         secondOptions.min(by: { abs($0 - s) < abs($1 - s) }) ?? 0
     }
 
-    private func cycleDistance() {
-        let idx = distances.firstIndex(of: distance) ?? 0
-        let next = distances[(idx + 1) % distances.count]
-        distance = next
-        if existingGoal == nil { setDefaults(for: next) }
+    private func planOptions(for d: String) -> [PlanOption] {
+        switch d {
+        case "5K":
+            return [
+                PlanOption(weeks: 8,  rationale: "Speed sharpener — 2 quality blocks targeting R and T paces."),
+                PlanOption(weeks: 12, rationale: "Full build — adds an E/L base phase before quality work."),
+            ]
+        case "10K":
+            return [
+                PlanOption(weeks: 10, rationale: "Focused build — T and I emphasis over 2.5 blocks."),
+                PlanOption(weeks: 14, rationale: "Full cycle — base → T-phase → I-phase → competition."),
+            ]
+        case "Half Marathon":
+            return [
+                PlanOption(weeks: 12, rationale: "Foundation — 3 blocks: E base, T build, race-specific."),
+                PlanOption(weeks: 16, rationale: "Full build — 4 blocks with a proper M-pace phase."),
+                PlanOption(weeks: 20, rationale: "Patient build — extra base raises the aerobic ceiling first."),
+            ]
+        case "Marathon":
+            return [
+                PlanOption(weeks: 16, rationale: "Standard — 4 blocks; assumes solid half-marathon base."),
+                PlanOption(weeks: 20, rationale: "Full cycle — adds a dedicated M-pace block mid-plan."),
+                PlanOption(weeks: 24, rationale: "Patient — 6 blocks; builds the aerobic base to hold goal pace."),
+            ]
+        case "50K":
+            return [
+                PlanOption(weeks: 18, rationale: "Introduction — marathon fitness + trail-specific work."),
+                PlanOption(weeks: 24, rationale: "Full ultra build — back-to-back long runs and time-on-feet."),
+            ]
+        default: // 100K
+            return [
+                PlanOption(weeks: 24, rationale: "Base ultra build — high mileage and time-on-feet priority."),
+                PlanOption(weeks: 32, rationale: "Full preparation — peak-week mileage and course simulation."),
+            ]
+        }
     }
 
-    private func save() {
+    // Daniels VO2-based predicted race time (binary search matching server vdot.ts).
+    static func predictSeconds(vdot: Double, distance: String) -> Int? {
+        guard vdot > 0 else { return nil }
+        let mi: Double
+        switch distance {
+        case "5K":            mi = 3.10686
+        case "10K":           mi = 6.21371
+        case "Half Marathon": mi = 13.1094
+        case "Marathon":      mi = 26.2188
+        case "50K":           mi = 31.0686
+        case "100K":          mi = 62.1371
+        default:              return nil
+        }
+        let distM = mi * 1609.344
+        var lo = mi * 150.0, hi = mi * 1500.0
+        for _ in 0..<60 {
+            let mid = (lo + hi) / 2.0
+            let mpm = distM / (mid / 60.0)
+            let durMin = mid / 60.0
+            let vo2 = -4.60 + 0.182258 * mpm + 0.000104 * mpm * mpm
+            let pct = 0.8 + 0.1894393 * exp(-0.012778 * durMin) + 0.2989558 * exp(-0.1932605 * durMin)
+            if (vo2 / pct) > vdot { lo = mid } else { hi = mid }
+        }
+        return Int(round((lo + hi) / 2.0))
+    }
+
+    static func formatSecs(_ s: Int) -> String {
+        let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec)
+                     : String(format: "%d:%02d", m, sec)
+    }
+
+    private func loadVdot() async {
+        guard let state = try? await API.fetchProfileState() else { return }
+        await MainActor.run { currentVdot = state.physiology.vdot }
+    }
+
+    private func save() async {
         saving = true; error = nil
-        Task {
-            let ok = (try? await API.setFitnessGoal(
-                distanceLabel: distance,
-                goalTime: goalTimeString
-            )) ?? false
-            await MainActor.run {
-                if ok { onSubmitted(); dismiss() }
-                else { error = "Could not save goal. Try again."; saving = false }
-            }
+        let ok = (try? await API.setFitnessGoal(
+            distanceLabel: distance,
+            goalTime: goalTimeString
+        )) ?? false
+        await MainActor.run {
+            if ok { onSubmitted(); dismiss() }
+            else { error = "Could not save. Try again."; saving = false }
         }
     }
 }
