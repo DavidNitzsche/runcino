@@ -366,7 +366,6 @@ struct TargetsProjectionPanel: View {
             if summary.totalGapSec > 0 {
                 gapBlock
             }
-            hitsBlock
         }
         .padding(18)
         .background(Theme.card)
