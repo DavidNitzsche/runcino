@@ -445,7 +445,7 @@ struct TargetsProjectionPanel: View {
         case "off":
             return "Projection \(proj) · goal \(goal). The math says you're \(formatGap(gapSec)) off · the gap below shows where it actually lives."
         case "watch":
-            return "Projection \(proj) · goal \(goal). \(formatGap(gapSec)) between you and the wire. Most of it is movable."
+            return "Projection \(proj) · goal \(goal). \(formatGap(gapSec)) to close. Most of it is movable."
         case "on_track":
             if gapSec == 0 {
                 return "Projection \(proj) at or ahead of \(goal). Hold the plan."
