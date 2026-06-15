@@ -408,10 +408,50 @@ struct HealthView: View {
     // MARK: - SLEEP pane
 
     private var sleepPane: some View {
-        metricsGrid(HealthSeed.sleepMetrics(readiness: readiness,
-                                            healthState: state,
-                                            lastNightHours: hkImporter.lastNightHours),
-                    variant: .big)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                sleepSummaryCard(label: "LAST NIGHT",
+                                 value: hkImporter.lastNightHours ?? readiness?.sleep7Avg)
+                sleepSummaryCard(label: "7-NIGHT AVG",
+                                 value: readiness?.sleep7Avg ?? hkImporter.lastNightHours)
+            }
+            metricsGrid(HealthSeed.sleepMetrics(readiness: readiness, healthState: state),
+                        variant: .big)
+        }
+    }
+
+    private func sleepSummaryCard(label: String, value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color.white.opacity(0.45))
+                    .frame(width: 6, height: 6)
+                Text(label)
+                    .font(.body(9.5, weight: .extraBold)).tracking(0.8)
+                    .foregroundStyle(Color.white.opacity(0.62))
+                Spacer(minLength: 0)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value.map { String(format: "%.1f", $0) } ?? "—")
+                    .font(.display(38, weight: .bold))
+                    .foregroundStyle(.white)
+                if value != nil {
+                    Text("h")
+                        .font(.body(12, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(red: 0.016, green: 0.071, blue: 0.063).opacity(0.40))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                )
+        )
     }
 
     // MARK: - FORM pane

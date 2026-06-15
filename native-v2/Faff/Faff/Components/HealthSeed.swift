@@ -230,31 +230,15 @@ enum HealthSeed {
     // MARK: - SLEEP section metrics (4 stages, clock-formatted values)
 
     static func sleepMetrics(readiness: ReadinessSnapshot?,
-                              healthState: HealthState? = nil,
-                              lastNightHours: Double? = nil) -> [HealthMetric] {
-        let avg7 = readiness?.sleep7Avg
-        let hoursHistory = Array((healthState?.sleepSeries ?? []).suffix(14).map { $0.hours })
-
-        func hoursTile(id: String, label: String, value: Double?, caption: String) -> HealthMetric {
-            guard let v = value else { return noDataMetric(id: id, label: label, unit: nil) }
-            let status: HealthMetric.Status = v >= 7.0 ? .good : (v >= 6.0 ? .warn : .bad)
-            let dir: HealthMetric.Direction = {
-                guard let avg = avg7 else { return .flat }
-                return abs(v - avg) < 0.15 ? .flat : (v > avg ? .up : .down)
-            }()
-            return metric(id: id, label: label, value: String(format: "%.1f", v), unit: "h",
-                          history: hoursHistory, chart28: realChart(hoursHistory),
-                          target: 7.0, status: status, direction: dir,
-                          caption: caption, coach: "Target is 7+ hours per night.")
+                              healthState: HealthState? = nil) -> [HealthMetric] {
+        // Real stages or honest "—" · no more 18/22/52/8 ratio fabrication
+        // and no drift series for cold-start / non-watch nights.
+        guard let s = healthState?.sleepStages else {
+            return [ noDataMetric(id: "deep",  label: "DEEP",  unit: nil),
+                     noDataMetric(id: "rem",   label: "REM",   unit: nil),
+                     noDataMetric(id: "light", label: "LIGHT", unit: nil),
+                     noDataMetric(id: "awake", label: "AWAKE", unit: nil) ]
         }
-
-        let lastNight = hoursTile(id: "last_night", label: "LAST NIGHT",
-                                   value: lastNightHours ?? avg7,
-                                   caption: avg7.map { String(format: "avg %.1fh", $0) } ?? "needs data")
-        let avg7Tile  = hoursTile(id: "avg7", label: "7-NIGHT AVG",
-                                   value: avg7,
-                                   caption: avg7.map { $0 >= 7.0 ? "on target" : "target 7h" } ?? "needs data")
-
         func tile(_ id: String, _ label: String, _ minutes: Int?, _ series: [Int],
                   target: Double?, warnBelow: Int?, captionTarget: String, coach: String) -> HealthMetric {
             guard let m = minutes else { return noDataMetric(id: id, label: label, unit: nil) }
@@ -267,17 +251,7 @@ enum HealthSeed {
                 direction: target.map { Double(m) < $0 ? .down : .flat } ?? .flat,
                 caption: captionTarget, coach: coach)
         }
-
-        guard let s = healthState?.sleepStages else {
-            return [lastNight, avg7Tile,
-                    noDataMetric(id: "deep",  label: "DEEP",  unit: nil),
-                    noDataMetric(id: "rem",   label: "REM",   unit: nil),
-                    noDataMetric(id: "light", label: "LIGHT", unit: nil),
-                    noDataMetric(id: "awake", label: "AWAKE", unit: nil)]
-        }
         return [
-            lastNight,
-            avg7Tile,
             tile("deep", "DEEP", s.deepMin, s.deepSeries, target: 75, warnBelow: 70,
                  captionTarget: "target 1:15",
                  coach: (s.deepMin ?? 99) < 75 ? "Light on deep sleep · an earlier night usually helps."
