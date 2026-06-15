@@ -2525,7 +2525,7 @@ fileprivate struct HeroStepList: View {
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.white.opacity(0.03))
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
 
             Divider().background(Color.white.opacity(0.08))
