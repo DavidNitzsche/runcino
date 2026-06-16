@@ -87,15 +87,18 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const lutealNote = state.cyclePhase === 'luteal'
       ? ' Baseline adjusted for luteal phase.'
       : '';
+    // Frame every verdict on the 7-DAY window so it can't read as a
+    // contradiction of the Health tab's single-day HRV reading (today can
+    // bounce back to baseline while the week's trend still sits low).
     const meaning = (pct >= 15
-      ? `Well above your baseline. Nervous system fully recovered, green light for hard work.`
+      ? `7-day HRV well above baseline. Fully recovered, green light for hard work.`
       : pct >= 5
-        ? `Above baseline. Recovered, ready to go.`
+        ? `7-day HRV above baseline. Recovered, ready to go.`
         : pct >= -5
-          ? `At baseline. Neutral signal.`
+          ? `7-day HRV at baseline. Neutral signal.`
           : pct >= -15
-            ? `Below baseline. Could be stress, sleep, or accumulating load. Watch tomorrow.`
-            : `Well below baseline. Pull back today and check rest.`) + lutealNote;
+            ? `7-day HRV below baseline. Could be stress, sleep, or building load. Watch tomorrow.`
+            : `7-day HRV well below baseline. The week's been low. Ease off and check rest.`) + lutealNote;
     inputs.push({
       key: 'hrv', label: 'HRV · 28%', weight: w,
       // G3 (2026-06-09) · health-state now feeds the 7-day MEDIAN

@@ -262,9 +262,11 @@ export interface ReadinessBrief {
 const PILLAR_LABEL: Record<PillarKey, string> = {
   sleep: 'SLEEP', hrv: 'HRV', rhr: 'RHR', load: 'LOAD', hr_recovery: 'HR RECOVERY',
 };
-// Plain-English tile labels for the iPhone signal grid.
+// Plain-English tile labels for the iPhone signal grid. HRV stays "HRV"
+// (not "RECOVERY") so it matches the Health tab's HRV card — the rename was
+// disconnecting the same metric across the two surfaces.
 const PILLAR_DISPLAY_LABEL: Record<PillarKey, string> = {
-  sleep: 'SLEEP', hrv: 'RECOVERY', rhr: 'RESTING HR', load: 'TRAINING LOAD', hr_recovery: 'HR RECOVERY',
+  sleep: 'SLEEP', hrv: 'HRV', rhr: 'RESTING HR', load: 'TRAINING LOAD', hr_recovery: 'HR RECOVERY',
 };
 const PILLAR_WEIGHT: Record<PillarKey, number> = {
   sleep: 28, hrv: 28, rhr: 24, load: 15, hr_recovery: 5,
