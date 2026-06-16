@@ -40,46 +40,44 @@ struct TargetsView: View {
                 VStack(spacing: 0) {
                     Color.clear.frame(height: 132)
 
-                    // ── Hero verdict ──────────────────────────────────────
-                    Text(goalStatusHeadline)
-                        .font(.heroDisplay(88))
-                        .tracking(-2)
-                        .foregroundStyle(goalStatusColor)
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 6)
-
-                    // ── Goal block (always first) ─────────────────────────
-                    if hasUpcomingRace {
-                        // Race runner: projection panel is the hero.
-                        heroBlock
-                            .padding(.horizontal, 24).padding(.top, -12)
-                    } else if let g = fitnessGoal {
-                        // Goal runner (no race): show goal + projection.
-                        goalHeroBlock(g)
-                            .padding(.horizontal, 24).padding(.top, -12)
+                    if !hasUpcomingRace && fitnessGoal == nil {
+                        // ── Cold empty state ──────────────────────────────
+                        coldEmptyBody
                     } else {
-                        // Cold: no goal and no race.
-                        section("YOUR GOAL") {
-                            coldGoalCTA
-                        }
-                    }
+                        // ── Hero verdict ──────────────────────────────────
+                        Text(goalStatusHeadline)
+                            .font(.heroDisplay(88))
+                            .tracking(-2)
+                            .foregroundStyle(goalStatusColor)
+                            .minimumScaleFactor(0.5)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 6)
 
-                    // ── Races ─────────────────────────────────────────────
-                    if hasUpcomingRace {
-                        section("RACES") {
-                            let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
-                                .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
-                            VStack(spacing: 10) {
-                                ForEach(upcoming) { race in raceTile(race) }
+                        // ── Goal block (always first) ─────────────────────
+                        if hasUpcomingRace {
+                            heroBlock
+                                .padding(.horizontal, 24).padding(.top, -12)
+                        } else if let g = fitnessGoal {
+                            goalHeroBlock(g)
+                                .padding(.horizontal, 24).padding(.top, -12)
+                        }
+
+                        // ── Races ─────────────────────────────────────────
+                        if hasUpcomingRace {
+                            section("RACES") {
+                                let upcoming = (races?.races.filter { ($0.days_to_race ?? 1) >= 0 } ?? [])
+                                    .sorted { ($0.days_to_race ?? 0) < ($1.days_to_race ?? 0) }
+                                VStack(spacing: 10) {
+                                    ForEach(upcoming) { race in raceTile(race) }
+                                    addButton("+ ADD RACE") { showAddRaceSheet = true }
+                                }
+                            }
+                        } else {
+                            section("RACES") {
                                 addButton("+ ADD RACE") { showAddRaceSheet = true }
                             }
-                        }
-                    } else {
-                        section("RACES") {
-                            addButton("+ ADD RACE") { showAddRaceSheet = true }
                         }
                     }
 
@@ -204,6 +202,72 @@ struct TargetsView: View {
             .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.race.opacity(0.35), lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var coldEmptyBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("What are you\ntraining for?")
+                .font(.display(34, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Theme.txt)
+                .lineSpacing(2)
+                .padding(.horizontal, 24)
+                .padding(.top, 32)
+                .padding(.bottom, 6)
+
+            Text("Add a race or set a goal and we'll build your plan.")
+                .font(.body(15))
+                .foregroundStyle(Theme.txt.opacity(0.5))
+                .lineSpacing(3)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 32)
+
+            coldOptionCard(
+                eyebrow: "RACE",
+                headline: "I have a race",
+                detail: "Enter the date and distance. Your plan builds around it."
+            ) { showAddRaceSheet = true }
+
+            coldOptionCard(
+                eyebrow: "GOAL",
+                headline: "I have a goal",
+                detail: "Set a time target and we'll work toward it."
+            ) { showNewGoalSheet = true }
+        }
+    }
+
+    private func coldOptionCard(
+        eyebrow: String, headline: String, detail: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(eyebrow)
+                        .font(.body(10, weight: .extraBold)).tracking(2)
+                        .foregroundStyle(Theme.txt.opacity(0.4))
+                    Text(headline)
+                        .font(.body(17, weight: .extraBold))
+                        .foregroundStyle(Theme.txt)
+                    Text(detail)
+                        .font(.body(13))
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.3))
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 18)
+            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 12)
     }
 
     /// Avatar initials · delegates to ProfileIdentity.avatarInitials.
@@ -444,12 +508,12 @@ struct TargetsView: View {
 
     private var coldPill: some View {
         HStack {
-            Text("GOAL")
+            Text("GOALS")
                 .font(.body(9.5, weight: .extraBold)).tracking(2)
                 .foregroundStyle(Theme.txt.opacity(0.6))
             Spacer()
-            Text("Not set")
-                .font(.body(13, weight: .semibold))
+            Text("Nothing set yet")
+                .font(.body(13))
                 .foregroundStyle(Theme.mute)
         }
         .padding(.horizontal, 15)
