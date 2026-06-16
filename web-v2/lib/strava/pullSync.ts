@@ -151,7 +151,10 @@ function stravaToFaffPayload(
     paceSPerMi: paceSPerMi != null ? Math.round(paceSPerMi) : null,
     avgHr: act.average_heartrate ?? null,
     maxHr: act.max_heartrate ?? null,
-    avgCadence: act.average_cadence ?? null,
+    // Strava's running average_cadence is per-leg (half true steps/min); the
+    // webhook path already doubles it. Match here so cron-synced runs store
+    // full SPM (~168, not ~84) and clear the 130-220 health-baseline guard.
+    avgCadence: act.average_cadence != null ? Math.round(act.average_cadence * 2) : null,
     sufferScore: act.suffer_score ?? null,
     achievementCount: act.achievement_count ?? null,
     kudosCount: act.kudos_count ?? null,

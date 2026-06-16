@@ -38,7 +38,7 @@ Each line: what each surface shows → the audit-canonical answer → proposed d
 - [x] **#38 · Fabricated race net-elevation.** ✅ FIXED 2026-06-16 — curated `net_elevation_ft` wins, else measured from trackpoints; dropped the −0.24×gross heuristic. `netElevFt = -0.24 × gross gain` — a guess, not a measurement — drives the pacing plan + coach insight off a fake downhill (Big Sur, net +260 ft uphill, would pace as downhill). Fix: read net from trackpoints or the curated `net_elevation_ft` column (both exist). `raceDetail.ts:291`
 
 ### P2
-- [ ] **#1 · Strava cadence stored at two scales.** Cron `pullSync` stores raw (~84 spm); webhook stores `×2` (~168). Cron-synced runs show half, dropped from the baseline. Fix: apply `×2` in pullSync. `pullSync.ts:154`
+- [x] **#1 · Strava cadence stored at two scales.** ✅ FIXED 2026-06-16 — pullSync now `×2` to match the webhook (full SPM). Cron `pullSync` stores raw (~84 spm); webhook stores `×2` (~168). Cron-synced runs show half, dropped from the baseline. Fix: apply `×2` in pullSync. `pullSync.ts:154`
 - [ ] **#7 · 1-mile VDOT off the Daniels table ~4–5 points.** Raw equations diverge at the mile (5:24 → VDOT 54.5 vs table 50). Mile-goal readiness verdict reads pessimistic. Fix: interpolate the table / short-distance correction. `lib/training/vdot.ts`
 - [ ] **#29 · Strava-matched finish auto-fills `finishTime` with no provisional flag** → renders as an authoritative PR. Violates race-data rule 3. Fix: flag provisional or don't display as PR. `races-state.ts`
 - [x] **#30 · paceLabel renders "6:60/mi".** ✅ FIXED 2026-06-16 — round total seconds before splitting. Seconds round to 60 instead of carrying. Fix: round total seconds first, then split. `run-recap.ts`
