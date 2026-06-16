@@ -1065,15 +1065,18 @@ private struct RepsPostPanel: View {
         // little slack each side. A rep is a hit when its dot sits in the green
         // band · the dot's POSITION still shows the spread (hot early, settled
         // late) without a bar that maxes out and reads like a miss.
+        // Status is measured against the displayed RANGE (target → heat-
+        // adjusted) so the label can never disagree with it: in range = ON,
+        // faster than the range = HOT, slower = FADED. No raw "+7" that reads
+        // like a miss when the rep is actually inside 6:43–6:53.
         let adjOff = max(0, (adjustedGoalSec ?? rawT) - rawT)
-        let fastTol = 8.0
-        let slowTol = 5.0
-        let inBand = Double(delta) >= -fastTol && Double(delta) <= Double(adjOff) + slowTol
-        let tone: HIWTone = inBand ? .good : (delta > 0 ? .warn : .neutral)
-        let deltaStr: String = {
-            if delta == 0 { return "±0" }
-            return delta > 0 ? "+\(delta)" : "\(delta)"
-        }()
+        let fastTol = 2.0   // noise slack on the fast edge (≈ the target)
+        let slowTol = 3.0   // noise slack on the slow edge (≈ heat-adjusted)
+        let isHot = Double(delta) < -fastTol
+        let isSlow = Double(delta) > Double(adjOff) + slowTol
+        let statusColor: Color = isHot ? Color(hex: 0x3AB0CF)
+            : (isSlow ? Color(hex: 0xE0913A) : Color(hex: 0x2FA876))
+        let statusWord = isHot ? "HOT" : (isSlow ? "FADED" : "ON")
         // Map a pace delta (s vs raw target · + = slower) to an x fraction.
         // Slower → left, faster → right (matches the SLOWER ◂ ▸ FASTER legend).
         let window = Double(adjOff) + 20
@@ -1082,7 +1085,7 @@ private struct RepsPostPanel: View {
             VStack(spacing: 0) {
                 Text("\(idx + 1)")
                     .font(.body(15, weight: .bold))
-                    .foregroundStyle(primaryText)
+                    .foregroundStyle(accent)
                 Text("REP")
                     .font(.body(7.5, weight: .extraBold)).tracking(0.6)
                     .foregroundStyle(mutedText)
@@ -1098,8 +1101,13 @@ private struct RepsPostPanel: View {
                     Capsule().fill(dividerColor).frame(height: 4)
                     // green acceptable range
                     Capsule()
-                        .fill(Color(hex: 0x1F9A6F).opacity(onMesh ? 0.34 : 0.20))
-                        .frame(width: max(0, w * (xFast - xSlow)), height: 8)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: 0x2FA876).opacity(onMesh ? 0.30 : 0.18),
+                                         Color(hex: 0x2FA876).opacity(onMesh ? 0.50 : 0.30)],
+                                startPoint: .leading, endPoint: .trailing)
+                        )
+                        .frame(width: max(0, w * (xFast - xSlow)), height: 9)
                         .offset(x: w * xSlow)
                     // prescribed-target tick (the fast edge of the range)
                     Rectangle()
@@ -1108,20 +1116,21 @@ private struct RepsPostPanel: View {
                         .offset(x: w * frac(0) - 0.75)
                     // where this rep actually landed
                     Circle()
-                        .fill(tone.color)
-                        .frame(width: 11, height: 11)
+                        .fill(statusColor)
+                        .frame(width: 12, height: 12)
                         .overlay(Circle().stroke(onMesh ? Color.black.opacity(0.35) : Color.white, lineWidth: 1.5))
-                        .offset(x: w * xRep - 5.5)
+                        .shadow(color: statusColor.opacity(0.65), radius: 4)
+                        .offset(x: w * xRep - 6)
                 }
             }
             .frame(height: 16)
-            VStack(alignment: .trailing, spacing: 1) {
+            VStack(alignment: .trailing, spacing: 2) {
                 Text(rep.actual_pace ?? "—")
-                    .font(.body(13, weight: .bold))
+                    .font(.body(14, weight: .bold))
                     .foregroundStyle(primaryText)
-                Text(deltaStr)
-                    .font(.body(10, weight: .extraBold))
-                    .foregroundStyle(tone.color)
+                Text(statusWord)
+                    .font(.body(9, weight: .extraBold)).tracking(0.8)
+                    .foregroundStyle(statusColor)
             }
             .frame(width: 64, alignment: .trailing)
         }
@@ -1134,13 +1143,15 @@ private struct RepsPostPanel: View {
             let secs = workReps.compactMap { parsePaceSec($0.actual_pace) }
             if !secs.isEmpty {
                 let avgWork = secs.reduce(0, +) / secs.count
-                let delta = avgWork - t
-                let tone: HIWTone = abs(delta) <= 3 ? .good : (delta > 0 ? .warn : .good)
-                let deltaStr: String = {
-                    if delta == 0 { return "on target" }
-                    let sign = delta > 0 ? "+\(delta)" : "\(delta)"
-                    return "\(sign) vs goal"
-                }()
+                // Judge the work average against the same RANGE the reps use,
+                // so it reads "in range" instead of a bare "+2 vs goal" that
+                // looks like a miss next to the 6:43–6:53 band.
+                let adjOff = max(0, (adjustedGoalSec ?? t) - t)
+                let inRange = avgWork >= t - 2 && avgWork <= t + adjOff + 3
+                let tone: HIWTone = inRange ? .good : (avgWork > t + adjOff ? .warn : .good)
+                let deltaStr: String = inRange
+                    ? "in range"
+                    : (avgWork > t + adjOff ? "+\(avgWork - t - adjOff)s over" : "\(avgWork - t)s vs target")
                 HowItWentSignature(
                     label: "AVG WORK",
                     value: formatPace(avgWork),
