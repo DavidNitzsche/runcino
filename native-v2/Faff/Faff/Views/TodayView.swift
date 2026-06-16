@@ -53,6 +53,14 @@ struct TodayView: View {
               let cur = ts.weeks.first(where: { $0.isCurrent }) else { return [] }
         return Set(cur.completedStrengthDays ?? [])
     }()
+    /// True when the readiness gate paused this week's strength · drives a
+    /// yellow "Strength paused · readiness low" note so the empty strip reads
+    /// as intentional, not a bug.
+    @State private var strengthSuppressed: Bool = {
+        guard let ts = AppCache.read(.trainingState, as: TrainingState.self),
+              let cur = ts.weeks.first(where: { $0.isCurrent }) else { return false }
+        return cur.strengthSuppressed ?? false
+    }()
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
@@ -838,6 +846,21 @@ struct TodayView: View {
                     Text("recommended")
                         .font(.body(12, weight: .medium))
                         .foregroundStyle(Theme.txt.opacity(0.55))
+                }
+                .padding(.top, 16)
+            } else if selectedIsToday && strengthSuppressed {
+                // Strength was paused by the readiness gate this week · say so
+                // (yellow · caution, not alarm) instead of showing nothing.
+                HStack(spacing: 8) {
+                    Image(systemName: "dumbbell.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color(hex: 0xF3AD38))
+                    Text("Strength paused this week")
+                        .font(.body(13, weight: .bold))
+                        .foregroundStyle(Theme.txt)
+                    Text("· readiness low")
+                        .font(.body(12, weight: .medium))
+                        .foregroundStyle(Color(hex: 0xF3AD38))
                 }
                 .padding(.top, 16)
             }
@@ -2321,6 +2344,7 @@ struct TodayView: View {
                 self.strengthDays = Set(ts.weeks.flatMap { $0.recommendedStrengthDays ?? [] })
                 if let cur = ts.weeks.first(where: { $0.isCurrent }) {
                     self.strengthDoneDays = Set(cur.completedStrengthDays ?? [])
+                    self.strengthSuppressed = cur.strengthSuppressed ?? false
                 }
             }
             if let planWeek {

@@ -61,10 +61,14 @@ export interface PlanWeek {
   isCurrent: boolean;
   /** Strength-day picks · ISO YYYY-MM-DD for this Mon-Sun. Populated for
    *  the current week and ALL future weeks so the native calendar and strip
-   *  show strength markers across the full plan arc. Current + next week use
-   *  today's readiness gate; weeks 2+ out skip it (plan-phase target only)
+   *  show strength markers across the full plan arc. Only the CURRENT week
+   *  uses today's readiness gate; next week+ skip it (plan-phase target only)
    *  and re-rate live when the runner reaches each week. */
   recommendedStrengthDays: string[];
+  /** True when this week's strength was suppressed by the readiness gate
+   *  (pull-back band) · current week only. Lets the strip/Today explain the
+   *  absence ("Strength paused · readiness low") instead of showing nothing. */
+  strengthSuppressed?: boolean;
   /** Days a strength session was actually LOGGED this week · ISO dates from
    *  strength_sessions. Current week only (2026-06-12). */
   completedStrengthDays?: string[];
@@ -259,18 +263,21 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     const { recommendStrengthDays } = await import('./strength-recommender');
     const curIdx = weeks.findIndex(w => w.isCurrent);
     const curWeekStart = weeks[curIdx]?.startDate ?? today;
-    // One week past current = boundary where readiness gate becomes noise.
-    // Weeks 2+ out get skipReadinessGate:true so the plan shows the
-    // phase-level target (2/wk for QUALITY) rather than today's fatigue
-    // state bleeding into a week the runner hasn't reached yet.
-    const nextWeekStart = new Date(Date.parse(curWeekStart + 'T00:00:00Z') + 7 * 86400000)
-      .toISOString().slice(0, 10);
+    // Today's readiness only gates the CURRENT week. Suppressing next week
+    // (a week out, off a single low-readiness day) is too far in advance —
+    // those weeks show the phase-level target and re-rate live once the
+    // runner reaches them.
     const futureWeeks = weeks.filter((_, i) => i >= curIdx);
     // allSettled: a single week failure must NOT zero out all other weeks.
     await Promise.allSettled(futureWeeks.map(async (w) => {
-      const skipReadinessGate = w.startDate > nextWeekStart;
+      const skipReadinessGate = w.startDate > curWeekStart;
       const rec = await recommendStrengthDays(userId, w.startDate, { skipReadinessGate });
       w.recommendedStrengthDays = rec.recommendedDays;
+      // Current week only: remember when the readiness gate fully suppressed
+      // strength, so Today can say why instead of just showing nothing.
+      if (w.startDate === curWeekStart) {
+        w.strengthSuppressed = rec._readinessGate?.suppressed === true;
+      }
     }));
     // Completed days · current week only, from strength_sessions.
     const cur = weeks[curIdx];

@@ -1662,9 +1662,13 @@ struct TrainingPlanWeek: Decodable, Identifiable {
     let recommendedStrengthDays: [String]?
     /// ISO dates a strength session was LOGGED this week (current week only).
     let completedStrengthDays: [String]?
+    /// True when the readiness gate suppressed this week's strength (current
+    /// week only) · drives the "Strength paused · readiness low" note so the
+    /// empty strip reads as intentional, not a bug.
+    let strengthSuppressed: Bool?
     var id: Int { idx }
 
-    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent, recommendedStrengthDays, completedStrengthDays }
+    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent, recommendedStrengthDays, completedStrengthDays, strengthSuppressed }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.idx = c.decodeFlexInt(forKey: .idx) ?? 0
@@ -1675,6 +1679,7 @@ struct TrainingPlanWeek: Decodable, Identifiable {
         self.isCurrent = try c.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
         self.recommendedStrengthDays = try? c.decode([String].self, forKey: .recommendedStrengthDays)
         self.completedStrengthDays = try? c.decode([String].self, forKey: .completedStrengthDays)
+        self.strengthSuppressed = try? c.decode(Bool.self, forKey: .strengthSuppressed)
     }
 }
 
