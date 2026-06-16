@@ -165,12 +165,12 @@ function intervalPacing(
       // Settled: the back reps landed at/under the pace the heat allowed.
       ? {
           adjTarget,
-          fact: `Went out ~${drift}s hot on the first ${firstHalf.length}, then settled into the pace the conditions allowed.${hrClause}`,
+          fact: `Went out ~${drift}s fast on the first ${firstHalf.length}, then settled into the pace the conditions allowed.${hrClause}`,
         }
       // Faded: the back reps slipped past even the heat-adjusted pace.
       : {
           adjTarget,
-          fact: `Went out hard and gave back ~${drift}s across the reps · ${targetPhrase} was the line to hold.${hrClause}`,
+          fact: `Went out fast and gave back ~${drift}s across the reps · ${targetPhrase} was the line to hold.${hrClause}`,
         };
   }
   // Negative split · built into it.
@@ -398,27 +398,41 @@ export function deriveRecap(input: RecapInput): RecapPayload {
 
     case 'intervals': {
       const workPaceStr = paceLabel(input.workPaceSPerMi);
-      const repStr = input.repCount ? `${input.repCount} rep${input.repCount !== 1 ? 's' : ''}` : null;
-      const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
-      const leadLine = repStr && workPaceStr
-        ? `Reps done · ${repStr} @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
-        : repStr
-          ? `Reps done · ${repStr}${hrPart}.`
-          : workPaceStr
-            ? `Reps done · ${workPaceStr} work avg${hrPart}.`
-            : `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
-      facts.push(leadLine);
-      // The real read: rep-by-rep pacing pattern vs the heat-adjusted
-      // target (went out hot · faded · even · built), with HR as the
-      // guardrail. Falls back to the generic phase line only when there's
-      // no per-rep signal (Strava / cold-start). Replaces the old generic
-      // "Building the top end" filler + the weird "go by feel" heat fact.
+      const hrPart = input.actualAvgHr ? ` · HR ${input.actualAvgHr}` : '';
+      // The real read: rep-by-rep pacing pattern vs the heat-adjusted target
+      // (went out fast · faded · even · built), HR as the guardrail.
       const pacing = intervalPacing(
         input.repPaces ?? [],
         input.plannedPaceSPerMi ?? null,
         weather?.slowdownPct ?? 0,
         input.actualAvgHr ?? null,
       );
+      // Lead with the RESULT, not the prescription: how many reps landed in
+      // the acceptable range (same band as the per-rep graph · prescribed
+      // target − 6 to heat-adjusted + 4). Falls back to a plain "reps done"
+      // line only when there's no per-rep signal (Strava / cold-start).
+      const reps = (input.repPaces ?? []).filter((p) => typeof p === 'number' && p > 0);
+      const target = input.plannedPaceSPerMi ?? null;
+      const adj = pacing.adjTarget ?? target;
+      let leadLine: string;
+      if (reps.length >= 2 && target && adj) {
+        const inRange = reps.filter((p) => p >= target - 6 && p <= adj + 4).length;
+        const avgPart = workPaceStr ? ` · ${workPaceStr.replace('/mi', '')} avg` : '';
+        leadLine =
+          inRange === reps.length
+            ? `All ${reps.length} reps in range${avgPart}${hrPart}.`
+            : `${inRange} of ${reps.length} reps in range${avgPart}${hrPart}.`;
+      } else {
+        const repStr = input.repCount ? `${input.repCount} rep${input.repCount !== 1 ? 's' : ''}` : null;
+        leadLine = repStr && workPaceStr
+          ? `Reps done · ${repStr} @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
+          : repStr
+            ? `Reps done · ${repStr}${hrPart}.`
+            : workPaceStr
+              ? `Reps done · ${workPaceStr} work avg${hrPart}.`
+              : `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', HR ' + input.actualAvgHr : ''}.`;
+      }
+      facts.push(leadLine);
       facts.push(pacing.fact ?? `Building the top end · these stack.`);
       return {
         verdict: 'Reps done.',

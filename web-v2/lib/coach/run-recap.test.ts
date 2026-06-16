@@ -397,8 +397,11 @@ describe('deriveRecap · type=intervals', () => {
       splits: makeSplits(6, 145, 150),
       weather: { tempF: 63, humidityPct: 50, conditions: 'clear', cloudCoverPct: 10 },
     });
-    // Reads the pattern, not the generic filler.
-    expect(r.facts.join(' ')).toMatch(/went out .* hot on the first 2, then settled/i);
+    // Leads with the RESULT (in-range count), not the prescription.
+    expect(r.facts.join(' ')).toMatch(/in range/i);
+    // Reads the pattern, not the generic filler · "fast", never "hot".
+    expect(r.facts.join(' ')).toMatch(/went out .* fast on the first 2, then settled/i);
+    expect(r.facts.join(' ')).not.toMatch(/hot/i);
     expect(r.facts.join(' ')).toMatch(/HR 147/);
     expect(r.facts.join(' ')).not.toMatch(/Building the top end/);
     // Heat-adjusted target is exposed and slower than the raw 6:43.
