@@ -532,7 +532,15 @@ export async function POST(req: NextRequest) {
   // when the runs write failed — there is no row to push.
   if (!stravaWriteErr) {
     const { maybeAutoPush } = await import('@/lib/strava/auto-push');
-    maybeAutoPush(userId, String(stableId));
+    // 2026-06-16 · auto-push was silently no-opping for watch runs. It passed
+    // String(stableId) — the synthetic runs-table PK — but pushRunToStrava
+    // resolves runs by data->>'id' (the canonical `${userId}-${date}` slug the
+    // merge writes), so the lookup never matched → "run not found", no upload,
+    // no trace. Manual pushes worked because the app sends that slug. Fire with
+    // the canonical id (pushRunToStrava's date fallback resolves it to the
+    // non-merged row for the day) so auto + manual + the status GET all key off
+    // ONE run_id. Runs after autoMergeForDate above, so the canonical is settled.
+    maybeAutoPush(userId, `${userId}-${date}`);
   }
 
   // M-9 · a failed runs write must NOT be acked with 200: both durable
