@@ -25,6 +25,21 @@ struct RunRecapView: View {
         FaffEffort.fromType(detail?.planned_spec?.kind ?? detail?.type ?? "easy")
     }
 
+    /// The run's date for the header pill ("MON, JUN 15") — identifies
+    /// which run this is. Replaces a redundant "RUN RECAP" label (the
+    /// effort word is already the hero title right below).
+    private var dateLabel: String {
+        guard let raw = detail?.date, !raw.isEmpty else { return "" }
+        let inFmt = DateFormatter()
+        inFmt.dateFormat = "yyyy-MM-dd"
+        inFmt.locale = Locale(identifier: "en_US_POSIX")
+        guard let d = inFmt.date(from: String(raw.prefix(10))) else { return "" }
+        let outFmt = DateFormatter()
+        outFmt.dateFormat = "EEE, MMM d"
+        outFmt.locale = Locale(identifier: "en_US_POSIX")
+        return outFmt.string(from: d).uppercased()
+    }
+
     var body: some View {
         ZStack {
             // Grey · the neutral app base, NOT the warm effort mesh the old
@@ -53,10 +68,19 @@ struct RunRecapView: View {
             .scrollClipDisabled(true)
         }
         .faffHeaderPill {
-            HStack(spacing: 12) {
-                BackChip { dismiss() }
-                SpecLabel(text: "RUN RECAP", size: 13, tracking: 2.5, color: Theme.txt)
-                Spacer()
+            // Standard nav layout · back chevron pinned left, the run's
+            // date as a centered title. The date is NOT placed next to the
+            // chevron — a label there reads as the back destination ("back
+            // to RUN RECAP"), which is wrong since this is reachable from
+            // Activity, race day, or the week-ahead.
+            ZStack {
+                if !dateLabel.isEmpty {
+                    SpecLabel(text: dateLabel, size: 13, tracking: 2, color: Theme.txt)
+                }
+                HStack {
+                    BackChip { dismiss() }
+                    Spacer()
+                }
             }
             .padding(.horizontal, 15)
         }

@@ -199,19 +199,10 @@ struct ActivityView: View {
             ], valueFont: 20, keyColor: Theme.txt.opacity(0.55))
             .padding(.horizontal, 22).padding(.top, 22)
 
-            // SOURCE MIX · per-source ingestion breakdown for the range.
-            // Sums every LogRun by source and renders a tiny stacked bar +
-            // legend. Tells the runner where their data is coming from
-            // and surfaces gaps (e.g. zero "watch" rows on a runner who
-            // has a watch likely means watch sync broke).
-            if !sourceMix.isEmpty {
-                SectionLabel(title: "Source mix")
-                    .padding(.horizontal, 22).padding(.top, 26)
-                sourceMixBar
-                    .padding(.horizontal, 22).padding(.top, 12)
-                sourceMixLegend
-                    .padding(.horizontal, 22).padding(.top, 8)
-            }
+            // SOURCE MIX removed 2026-06-15 (David: "who cares") — where a
+            // run's data came from isn't something the runner needs on the
+            // stats wall. sourceMix/sourceMixBar/sourceMixLegend kept below
+            // in case it's wanted as a diagnostic later.
 
             SectionLabel(title: "Personal records")
                 .padding(.horizontal, 22).padding(.top, 26)
