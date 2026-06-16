@@ -61,6 +61,13 @@ struct TodayView: View {
               let cur = ts.weeks.first(where: { $0.isCurrent }) else { return false }
         return cur.strengthSuppressed ?? false
     }()
+    /// Days strength WOULD be on this week but the readiness gate paused it ·
+    /// drives the yellow "paused" underline on the strip.
+    @State private var strengthPausedDays: Set<String> = {
+        guard let ts = AppCache.read(.trainingState, as: TrainingState.self),
+              let cur = ts.weeks.first(where: { $0.isCurrent }) else { return [] }
+        return Set(cur.pausedStrengthDays ?? [])
+    }()
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
@@ -2204,7 +2211,8 @@ struct TodayView: View {
                 // consistent with the SKIPPED hero.
                 isSkipped: (d.skipped ?? false) || (d.is_today && skipped),
                 strengthSuggested: strengthDays.contains(d.date_iso),
-                strengthDone: strengthDoneDays.contains(d.date_iso)
+                strengthDone: strengthDoneDays.contains(d.date_iso),
+                strengthPaused: strengthPausedDays.contains(d.date_iso)
             )
         }
     }
@@ -2345,6 +2353,7 @@ struct TodayView: View {
                 if let cur = ts.weeks.first(where: { $0.isCurrent }) {
                     self.strengthDoneDays = Set(cur.completedStrengthDays ?? [])
                     self.strengthSuppressed = cur.strengthSuppressed ?? false
+                    self.strengthPausedDays = Set(cur.pausedStrengthDays ?? [])
                 }
             }
             if let planWeek {

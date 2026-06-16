@@ -69,6 +69,10 @@ export interface PlanWeek {
    *  (pull-back band) · current week only. Lets the strip/Today explain the
    *  absence ("Strength paused · readiness low") instead of showing nothing. */
   strengthSuppressed?: boolean;
+  /** When suppressed, the days strength WOULD have been on (the phase-target
+   *  picks, readiness gate ignored). The strip shows these yellow ("paused")
+   *  so the week isn't just blank. Current week only. */
+  pausedStrengthDays?: string[];
   /** Days a strength session was actually LOGGED this week · ISO dates from
    *  strength_sessions. Current week only (2026-06-12). */
   completedStrengthDays?: string[];
@@ -274,9 +278,16 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       const rec = await recommendStrengthDays(userId, w.startDate, { skipReadinessGate });
       w.recommendedStrengthDays = rec.recommendedDays;
       // Current week only: remember when the readiness gate fully suppressed
-      // strength, so Today can say why instead of just showing nothing.
+      // strength, so Today can say why instead of just showing nothing. When
+      // suppressed, also surface the days it WOULD have been on (re-run with
+      // the gate off) so the strip shows them yellow ("paused"), not blank.
       if (w.startDate === curWeekStart) {
-        w.strengthSuppressed = rec._readinessGate?.suppressed === true;
+        const suppressed = rec._readinessGate?.suppressed === true;
+        w.strengthSuppressed = suppressed;
+        if (suppressed) {
+          const wouldBe = await recommendStrengthDays(userId, w.startDate, { skipReadinessGate: true });
+          w.pausedStrengthDays = wouldBe.recommendedDays;
+        }
       }
     }));
     // Completed days · current week only, from strength_sessions.

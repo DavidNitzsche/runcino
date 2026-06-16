@@ -1666,9 +1666,12 @@ struct TrainingPlanWeek: Decodable, Identifiable {
     /// week only) · drives the "Strength paused · readiness low" note so the
     /// empty strip reads as intentional, not a bug.
     let strengthSuppressed: Bool?
+    /// When suppressed, the days strength WOULD have been on · the strip
+    /// renders these yellow ("paused") so the week isn't blank.
+    let pausedStrengthDays: [String]?
     var id: Int { idx }
 
-    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent, recommendedStrengthDays, completedStrengthDays, strengthSuppressed }
+    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent, recommendedStrengthDays, completedStrengthDays, strengthSuppressed, pausedStrengthDays }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.idx = c.decodeFlexInt(forKey: .idx) ?? 0
@@ -1680,6 +1683,7 @@ struct TrainingPlanWeek: Decodable, Identifiable {
         self.recommendedStrengthDays = try? c.decode([String].self, forKey: .recommendedStrengthDays)
         self.completedStrengthDays = try? c.decode([String].self, forKey: .completedStrengthDays)
         self.strengthSuppressed = try? c.decode(Bool.self, forKey: .strengthSuppressed)
+        self.pausedStrengthDays = try? c.decode([String].self, forKey: .pausedStrengthDays)
     }
 }
 

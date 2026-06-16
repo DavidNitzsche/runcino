@@ -22,6 +22,10 @@ struct WeekStripDay: Identifiable, Hashable {
     /// A strength session was LOGGED on this date · the underline turns green
     /// (vs blue for merely recommended).
     var strengthDone: Bool = false
+    /// Strength would have been on this day but the readiness gate paused it
+    /// this week · the underline shows yellow ("paused") so the week isn't
+    /// blank when recovery is low.
+    var strengthPaused: Bool = false
 }
 
 struct WeekStrip: View {
@@ -78,6 +82,11 @@ struct WeekStrip: View {
                     } else if d.strengthSuggested {
                         Capsule()
                             .fill(Color(hex: 0x27B4E0))   // blue · recommended
+                            .frame(width: 14, height: 2.5)
+                            .offset(y: 2)
+                    } else if d.strengthPaused {
+                        Capsule()
+                            .fill(Color(hex: 0xF3AD38).opacity(0.85))  // yellow · paused (readiness)
                             .frame(width: 14, height: 2.5)
                             .offset(y: 2)
                     }
