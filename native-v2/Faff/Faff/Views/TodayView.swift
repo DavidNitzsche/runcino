@@ -357,6 +357,10 @@ struct TodayView: View {
                     .ignoresSafeArea(edges: .bottom)
                     .padding(.top, 6)
                     .scrollClipDisabled(true)
+                } else if isNoGoalState {
+                    // No race and no goal — hero empty state for new users
+                    // who completed onboarding without setting a target.
+                    noGoalHeroView
                 } else {
                     // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
@@ -385,9 +389,8 @@ struct TodayView: View {
                 }
 
                 // Spacer pushes the hero + DragSheet up in pre-run mode.
-                // Suppressed on past days and post-run (both use a full-
-                // height ScrollView that fills the space naturally).
-                if !isPastDayView && !isPostRunMode {
+                // Suppressed on past days, post-run, and the no-goal empty state.
+                if !isPastDayView && !isPostRunMode && !isNoGoalState {
                     Spacer(minLength: 0)
                 }
             }
@@ -404,7 +407,7 @@ struct TodayView: View {
             // DragSheet suppressed on past days and today-post-run.
             // On past days the flat recap is the whole page.
             // On today-post-run the run is shown directly on the canvas.
-            if !isPastDayView && !isPostRunMode {
+            if !isPastDayView && !isPostRunMode && !isNoGoalState {
                 DragSheet(
                     // 2026-06-02 round 25 · 150 → 180.
                     // 2026-06-02 round 46 · 180 → 200.
@@ -1814,6 +1817,66 @@ struct TodayView: View {
         // string compare when the flag is missing.
         if let day = todaySelectedDay { return day.is_past }
         return selectedDayID < todayISO
+    }
+
+    /// True when the profile has loaded but the runner has set neither a race
+    /// nor a fitness goal — the new-user cold state after onboarding completes
+    /// without race/goal entry. TODAY shows a hero empty state instead of the
+    /// normal pre-run body so the runner has a clear path to starting a plan.
+    private var isNoGoalState: Bool {
+        guard let p = profile else { return false }
+        let hasRace = !(p.nextARace?.slug ?? "").isEmpty
+        let hasGoal = p.fitnessGoal != nil
+        return !hasRace && !hasGoal
+    }
+
+    @ViewBuilder
+    private var noGoalHeroView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("TODAY")
+                .font(.heroDisplay(88))
+                .tracking(-2)
+                .foregroundStyle(Theme.txt.opacity(0.08))
+                .minimumScaleFactor(0.55)
+                .lineLimit(1)
+                .padding(.horizontal, 22)
+                .padding(.top, 6)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text("No race or goal set.")
+                    .font(.body(22, weight: .semibold))
+                    .foregroundStyle(Theme.txt)
+                    .padding(.bottom, 8)
+
+                Text("Add one to generate your training plan.")
+                    .font(.body(15))
+                    .foregroundStyle(Theme.txt.opacity(0.55))
+                    .lineSpacing(3)
+                    .padding(.bottom, 28)
+
+                Button {
+                    selectedTab = .targets
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Add a race or goal")
+                            .font(.body(15, weight: .semibold))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.bg)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 13)
+                    .background(Theme.txt)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 24)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     /// Belt-and-suspenders for the StickyCTABar gate. Walks the plan
