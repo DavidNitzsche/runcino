@@ -659,6 +659,9 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
           distanceLabel: null,
         }
       : null,
+    // Glance fast-path skips the goal lookup · the full brief (state-loader)
+    // carries fitnessGoal for the no-race voice anchor.
+    fitnessGoal: null,
     sleep7Avg, sleep7Deficit, hrvCurrent, hrvBaseline,
     rhrCurrent, rhrBaseline, cadenceBaseline,
     // 2026-06-01 · was hardcoded null (fast-path excuse) · split-brain

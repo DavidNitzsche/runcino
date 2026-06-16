@@ -176,6 +176,19 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // same query twice when their Promise.all fans out. See race-lookup.ts.
   nextARace = await loadNextARace(userId, today, plan?.race_id ?? null);
 
+  // 2026-06-15 · fitness goal (no-race anchor). When there's no A-race, the
+  // runner's tt_goal_* IS what they're training for — the briefing voice
+  // anchors on it. Only loaded when no race, so a race always wins.
+  let fitnessGoal: CoachState['fitnessGoal'] = null;
+  if (!nextARace) {
+    const g = (await pool.query<{ d: string | null; t: string | null; s: number | null }>(
+      `SELECT tt_goal_distance AS d, tt_goal_time AS t, tt_goal_time_seconds AS s
+         FROM profile WHERE user_uuid = $1`,
+      [userId],
+    ).catch(() => ({ rows: [] as Array<{ d: string | null; t: string | null; s: number | null }> }))).rows[0];
+    if (g?.d && g?.t) fitnessGoal = { distance: g.d, time: g.t, seconds: g.s ?? null };
+  }
+
   // WEEK DONE (strava sum from Monday → today)
   const monday = (() => {
     const d = new Date(today + 'T12:00:00Z');
@@ -489,6 +502,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     todayWorkout,
     nextWorkout,
     nextARace,
+    fitnessGoal,
     sleep7Avg,
     sleep7Deficit,
     hrvCurrent,

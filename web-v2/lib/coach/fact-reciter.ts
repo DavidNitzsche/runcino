@@ -578,11 +578,20 @@ export function reciteMe(state: ProfileState): CoachFactBlock {
       valueColor: 'race',
       meta: a.goal ? `goal ${a.goal}` : 'no goal set',
     });
+  } else if (state.fitnessGoal) {
+    // No race, but a fitness goal IS the anchor (the new no-race flow).
+    const g = state.fitnessGoal;
+    facts.push({
+      label: 'TRAINING FOR',
+      value: `${g.distance.toUpperCase()} · ${g.time}`,
+      valueColor: 'race',
+      meta: 'fitness goal',
+    });
   } else {
     facts.push({
       label: 'TRAINING FOR',
       value: DASH,
-      meta: 'no A-race on the calendar',
+      meta: 'no race or goal set',
     });
   }
 

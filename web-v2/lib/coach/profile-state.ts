@@ -47,6 +47,9 @@ export interface ProfileState {
   };
   shoes: { id: string; name: string; brand: string; model: string; color: string | null; color2: string | null; notes: string | null; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean; baseline_mi: number }[];
   nextARace: { slug: string; name: string; date: string; goal: string | null; days_to_race: number } | null;
+  /** 2026-06-15 · no-race anchor: the runner's tt_goal_*. Present when there's
+   *  no A-race so the briefing voice can say "TRAINING FOR · 10K · 41:35". */
+  fitnessGoal: { distance: string; time: string; seconds: number | null } | null;
   connections: {
     strava:       { connected: boolean; lastSync: string | null; note: string };
     appleHealth:  { connected: boolean; lastSync: string | null; note: string };
@@ -211,6 +214,18 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     days_to_race: nextARaceFull.days_to_race,
   } : null;
 
+  // 2026-06-15 · fitness goal (no-race anchor). When there's no A-race, the
+  // tt_goal_* IS what the runner is training for — the briefing voice anchors
+  // on it. Only loaded when no race, so a race always wins.
+  let fitnessGoal: ProfileState['fitnessGoal'] = null;
+  if (!nextARace) {
+    const g = (await pool.query<{ d: string | null; t: string | null; s: number | null }>(
+      `SELECT tt_goal_distance AS d, tt_goal_time AS t, tt_goal_time_seconds AS s FROM profile WHERE user_uuid = $1`,
+      [userId],
+    ).catch(() => ({ rows: [] as Array<{ d: string | null; t: string | null; s: number | null }> }))).rows[0];
+    if (g?.d && g?.t) fitnessGoal = { distance: g.d, time: g.t, seconds: g.s ?? null };
+  }
+
   // Connection windows from the now-parallelized lastsync rows. parseLastSync
   // tolerates date-only OR full-timestamp inputs and never yields an Invalid
   // Date (see helper · the old inline `new Date(`${v}T12:00:00Z`)` threw on a
@@ -330,6 +345,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     },
     shoes: shoes.filter((s) => !s.retired),
     nextARace,
+    fitnessGoal,
     connections: {
       strava:      { connected: stravaConnected, lastSync: stravaLast?.toISOString() ?? null, note: stravaConnected ? `Last sync ${relativeAgo(stravaLast!)}` : 'Connect for auto-sync' },
       appleHealth: { connected: healthConnected, lastSync: healthLast?.toISOString() ?? null, note: healthConnected ? `Last reading ${relativeAgo(healthLast!)}` : 'Sleep / HRV / RHR / weight / VO2' },

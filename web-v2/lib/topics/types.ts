@@ -87,6 +87,11 @@ export interface CoachState {
     distanceMi: number | null;
     distanceLabel: string | null;
   } | null;
+  /** 2026-06-15 · the runner's fitness goal (profile.tt_goal_*), present when
+   *  there's no race — the briefing voice anchors on it ("TRAINING FOR · 10K ·
+   *  41:35") instead of going empty. distance is the label, time the display
+   *  string, seconds the exact target. */
+  fitnessGoal: { distance: string; time: string; seconds: number | null } | null;
 
   sleep7Avg: number | null;
   sleep7Deficit: number;
