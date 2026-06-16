@@ -1,8 +1,9 @@
 //
 //  WeekStrip.swift
 //  7-day week strip with full-week page-snap.
-//  Each page = one Sat–Sun week. Swipe left/right flips the whole week.
-//  Tap a day to select it within the visible page.
+//  Each page = one training week, anchored so it ends on the runner's
+//  long-run day (Mon–Sun for a Sunday long run · see /api/plan/week).
+//  Swipe left/right flips the whole week. Tap a day to select it.
 //
 
 import SwiftUI
