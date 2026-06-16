@@ -971,6 +971,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Faff/FaffWatch Watch App/FaffWatch Watch App.entitlements";
 				INFOPLIST_FILE = "Faff/FaffWatch Watch App/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = faff;
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_WKApplication = YES;
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = run.faff.app;
 				PRODUCT_BUNDLE_IDENTIFIER = run.faff.app.watchkitapp;
@@ -993,6 +994,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Faff/FaffWatch Watch App/FaffWatch Watch App.entitlements";
 				INFOPLIST_FILE = "Faff/FaffWatch Watch App/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = faff;
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_WKApplication = YES;
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = run.faff.app;
 				PRODUCT_BUNDLE_IDENTIFIER = run.faff.app.watchkitapp;

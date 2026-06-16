@@ -186,4 +186,5 @@ targets:
         INFOPLIST_KEY_WKApplication: YES
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: run.faff.app
         INFOPLIST_KEY_CFBundleDisplayName: faff
+        INFOPLIST_KEY_CFBundleIconName: AppIcon
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
