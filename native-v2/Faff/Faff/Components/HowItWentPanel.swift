@@ -162,6 +162,8 @@ private struct HIWHead: View {
                 Text(m)
                     .font(.body(10, weight: .extraBold)).tracking(0.8)
                     .foregroundStyle(mutedText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
         // Negative · counters the panel's VStack(spacing: 18) so the section
@@ -961,10 +963,11 @@ private struct RepsPostPanel: View {
 
     private var targetMeta: String? {
         guard let t = targetSec else { return nil }
-        // Show the range when heat widened the slow edge, so the runner sees
-        // why a few-seconds-slow rep still reads as on-target.
+        // Show the base target, what heat added, and the resulting slow edge —
+        // so the runner sees the prescribed pace and the heat's effect on it,
+        // not just a bare range.
         if let adj = adjustedGoalSec, adj > t + 2 {
-            return "TARGET \(formatPace(t))–\(formatPace(adj)) · heat"
+            return "TARGET \(formatPace(t)) · +\(adj - t)s heat → \(formatPace(adj))"
         }
         return "TARGET \(formatPace(t))/mi"
     }
