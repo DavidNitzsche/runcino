@@ -1060,14 +1060,24 @@ private struct RepsPostPanel: View {
         // slow edge (you judge against the achievable pace, not the cold
         // number). In range = a hit (green); faster than the range = went out
         // hot (neutral); slower than the range = faded (amber).
-        let tol = 5
-        let lo = min(rawT, adjustedGoalSec ?? rawT) - tol
-        let hi = max(rawT, adjustedGoalSec ?? rawT) + tol
-        let tone: HIWTone = actualSec > hi ? .warn : (actualSec < lo ? .neutral : .good)
+        // Acceptable RANGE on the SLOWER ◂ ▸ FASTER axis: from the prescribed
+        // target (fast edge) out to the heat-adjusted pace (slow edge), plus a
+        // little slack each side. A rep is a hit when its dot sits in the green
+        // band · the dot's POSITION still shows the spread (hot early, settled
+        // late) without a bar that maxes out and reads like a miss.
+        let adjOff = max(0, (adjustedGoalSec ?? rawT) - rawT)
+        let fastTol = 8.0
+        let slowTol = 5.0
+        let inBand = Double(delta) >= -fastTol && Double(delta) <= Double(adjOff) + slowTol
+        let tone: HIWTone = inBand ? .good : (delta > 0 ? .warn : .neutral)
         let deltaStr: String = {
             if delta == 0 { return "±0" }
             return delta > 0 ? "+\(delta)" : "\(delta)"
         }()
+        // Map a pace delta (s vs raw target · + = slower) to an x fraction.
+        // Slower → left, faster → right (matches the SLOWER ◂ ▸ FASTER legend).
+        let window = Double(adjOff) + 20
+        func frac(_ d: Double) -> Double { 0.5 - max(-window, min(window, d)) / window / 2 }
         return HStack(spacing: 10) {
             VStack(spacing: 0) {
                 Text("\(idx + 1)")
@@ -1080,24 +1090,28 @@ private struct RepsPostPanel: View {
             .frame(width: 30)
             GeometryReader { geo in
                 let w = geo.size.width
-                let mag = max(0.04, min(1.0, Double(abs(delta)) / 6.0)) * 0.5
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6).fill(dividerColor)
-                        .frame(height: 12)
-                    if abs(delta) > 0 {
-                        let xStart: Double = delta > 0 ? 0.5 - mag : 0.5
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(tone.color)
-                            .frame(width: w * mag, height: 10)
-                            .offset(x: w * xStart - w / 2 + w * mag / 2, y: 0)
-                    } else {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(primaryText)
-                            .frame(width: w * 0.06, height: 10)
-                    }
+                let xRep = min(0.95, max(0.05, frac(Double(delta))))
+                let xFast = frac(-fastTol)
+                let xSlow = frac(Double(adjOff) + slowTol)
+                ZStack(alignment: .leading) {
+                    // base track
+                    Capsule().fill(dividerColor).frame(height: 4)
+                    // green acceptable range
+                    Capsule()
+                        .fill(Color(hex: 0x1F9A6F).opacity(onMesh ? 0.34 : 0.20))
+                        .frame(width: max(0, w * (xFast - xSlow)), height: 8)
+                        .offset(x: w * xSlow)
+                    // prescribed-target tick (the fast edge of the range)
                     Rectangle()
-                        .fill(primaryText)
-                        .frame(width: 2, height: 16)
+                        .fill(primaryText.opacity(0.45))
+                        .frame(width: 1.5, height: 13)
+                        .offset(x: w * frac(0) - 0.75)
+                    // where this rep actually landed
+                    Circle()
+                        .fill(tone.color)
+                        .frame(width: 11, height: 11)
+                        .overlay(Circle().stroke(onMesh ? Color.black.opacity(0.35) : Color.white, lineWidth: 1.5))
+                        .offset(x: w * xRep - 5.5)
                 }
             }
             .frame(height: 16)
