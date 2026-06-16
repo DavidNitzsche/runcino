@@ -466,7 +466,6 @@ struct SetGoalSheet: View {
     @State private var hours: Int = 1
     @State private var minutes: Int = 45
     @State private var seconds: Int = 0
-    @State private var showTimePicker: Bool = true
     @State private var planWeeks: Int? = nil
     @State private var currentVdot: Double? = nil
     @State private var saving: Bool = false
@@ -479,32 +478,29 @@ struct SetGoalSheet: View {
     }
 
     private var goalTotalSeconds: Int { hours * 3600 + minutes * 60 + seconds }
-
     private var isValid: Bool { hours > 0 || minutes > 0 }
+    @State private var showTimePicker: Bool = false
 
-    // Compares the runner's set goal against the selected plan's projection.
-    // Returns nil when no plan is selected or goal is within range.
+    // Only warns when the runner has SELECTED a plan AND manually adjusted
+    // the wheels faster than that plan's projection.
     private var stretchWarning: String? {
         guard let wks = planWeeks,
               let v = currentVdot,
               let opt = planOptions(for: distance).first(where: { $0.weeks == wks }),
               let projected = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance)
         else { return nil }
-        let delta = projected - goalTotalSeconds  // positive = goal is faster than projected
+        let delta = projected - goalTotalSeconds
         if delta <= 0 { return nil }
-        if delta < 30 {
-            return "Stretch goal for \(wks) weeks — you'll need to execute every session."
-        } else {
-            return "Well beyond what \(wks) weeks typically delivers. Consider a longer plan."
-        }
+        if delta < 30 { return "Stretch goal for \(wks) weeks. You'll need to execute every session." }
+        return "Well beyond what \(wks) weeks typically delivers. Consider a longer plan."
     }
 
     var body: some View {
         NavigationStack {
             Form {
 
-                // GOAL: distance → current fitness reference → target time
-                Section("GOAL") {
+                // 1. DISTANCE + CURRENT FITNESS
+                Section("DISTANCE") {
                     Picker("Distance", selection: $distance) {
                         ForEach(distances, id: \.self) { Text($0) }
                     }
@@ -523,98 +519,94 @@ struct SetGoalSheet: View {
                                 .monospacedDigit()
                         }
                     }
-                    DisclosureGroup(isExpanded: $showTimePicker) {
-                        HStack(spacing: 0) {
-                            Picker("", selection: $hours) {
-                                ForEach(0...9, id: \.self) { h in Text("\(h)").tag(h) }
-                            }
-                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
-                            Text(":").font(.system(size: 22, weight: .semibold)).foregroundStyle(.secondary)
-                            Picker("", selection: $minutes) {
-                                ForEach(0...59, id: \.self) { m in
-                                    Text(String(format: "%02d", m)).tag(m)
-                                }
-                            }
-                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
-                            Text(":").font(.system(size: 22, weight: .semibold)).foregroundStyle(.secondary)
-                            Picker("", selection: $seconds) {
-                                ForEach(0...59, id: \.self) { s in
-                                    Text(String(format: "%02d", s)).tag(s)
-                                }
-                            }
-                            .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    } label: {
-                        HStack {
-                            Text("Recommended goal")
-                            Spacer()
-                            Text(isValid ? goalTimeString : "Tap to set")
-                                .foregroundStyle(isValid ? .primary : .secondary)
-                        }
-                    }
                 }
 
-                // PLAN LENGTH: Daniels-grounded options
+                // 2. HOW LONG DO YOU HAVE — picking a row sets the goal
                 Section {
                     ForEach(planOptions(for: distance)) { opt in
                         Button {
                             var t = Transaction(animation: nil)
                             t.disablesAnimations = true
                             withTransaction(t) {
-                                if planWeeks == opt.weeks {
-                                    planWeeks = nil
-                                } else {
-                                    planWeeks = opt.weeks
-                                    // Seed goal from this plan's projection
-                                    if let v = currentVdot,
-                                       let pred = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance) {
-                                        let rounded = (pred / 5) * 5
-                                        hours = rounded / 3600
-                                        minutes = (rounded % 3600) / 60
-                                        seconds = rounded % 60
-                                    }
+                                planWeeks = opt.weeks
+                                if let v = currentVdot,
+                                   let pred = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance) {
+                                    let rounded = (pred / 5) * 5
+                                    hours = rounded / 3600
+                                    minutes = (rounded % 3600) / 60
+                                    seconds = rounded % 60
                                 }
+                                showTimePicker = false
                             }
                         } label: {
-                            HStack(alignment: .top, spacing: 12) {
+                            HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    HStack(spacing: 6) {
-                                        Text("\(opt.weeks) weeks")
-                                            .fontWeight(.semibold)
-                                            .foregroundStyle(.primary)
-                                        if let v = currentVdot,
-                                           let proj = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance) {
-                                            Text("· \(Self.formatSecs((proj / 5) * 5))")
-                                                .fontWeight(.semibold)
-                                                .foregroundStyle(.blue)
-                                        }
-                                    }
+                                    Text("\(opt.weeks) weeks")
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
                                     Text(opt.rationale)
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 Spacer()
-                                Image(systemName: planWeeks == opt.weeks
-                                      ? "checkmark.circle.fill" : "circle")
+                                if let v = currentVdot,
+                                   let proj = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance) {
+                                    Text(Self.formatSecs((proj / 5) * 5))
+                                        .foregroundStyle(planWeeks == opt.weeks ? .primary : .secondary)
+                                        .monospacedDigit()
+                                        .fontWeight(planWeeks == opt.weeks ? .semibold : .regular)
+                                }
+                                Image(systemName: planWeeks == opt.weeks ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(planWeeks == opt.weeks ? .blue : .secondary)
-                                    .padding(.top, 1)
                             }
                             .padding(.vertical, 2)
                         }
                         .buttonStyle(.plain)
                     }
                 } header: {
-                    Text("PLAN LENGTH")
-                } footer: {
-                    if let warning = stretchWarning {
-                        Text(warning)
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                    } else {
-                        Text("Longer plans give your body more time to adapt. If in doubt, pick the longer option.")
-                            .font(.footnote)
+                    Text("HOW LONG DO YOU HAVE?")
+                }
+
+                // 3. YOUR GOAL — shows after plan picked, wheels expand for manual adjust
+                if planWeeks != nil || existingGoal != nil {
+                    Section {
+                        DisclosureGroup(isExpanded: $showTimePicker) {
+                            HStack(spacing: 0) {
+                                Picker("", selection: $hours) {
+                                    ForEach(0...9, id: \.self) { h in Text("\(h)").tag(h) }
+                                }
+                                .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
+                                Text(":").font(.system(size: 22, weight: .semibold)).foregroundStyle(.secondary)
+                                Picker("", selection: $minutes) {
+                                    ForEach(0...59, id: \.self) { m in
+                                        Text(String(format: "%02d", m)).tag(m)
+                                    }
+                                }
+                                .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
+                                Text(":").font(.system(size: 22, weight: .semibold)).foregroundStyle(.secondary)
+                                Picker("", selection: $seconds) {
+                                    ForEach(0...59, id: \.self) { s in
+                                        Text(String(format: "%02d", s)).tag(s)
+                                    }
+                                }
+                                .labelsHidden().pickerStyle(.wheel).frame(width: 64, height: 100).clipped()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                        } label: {
+                            HStack {
+                                Text("Your goal")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                                Text(isValid ? goalTimeString : "—")
+                                    .monospacedDigit()
+                                    .foregroundStyle(isValid ? .primary : .secondary)
+                            }
+                        }
+                    } footer: {
+                        if let w = stretchWarning {
+                            Text(w).foregroundStyle(.orange)
+                        }
                     }
                 }
 
@@ -630,14 +622,17 @@ struct SetGoalSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(saving ? "Saving…" : "Set goal") { Task { await save() } }
-                        .disabled(saving || !isValid)
+                        .disabled(saving || !isValid || planWeeks == nil && existingGoal == nil)
                 }
             }
         }
         .onAppear { seedValues(); Task { await loadVdot() } }
         .onChange(of: distance) { _, d in
-            if existingGoal == nil { seedTimeForDistance(d) }
-            planWeeks = nil
+            if existingGoal == nil {
+                planWeeks = nil
+                hours = 0; minutes = 0; seconds = 0
+                showTimePicker = false
+            }
         }
     }
 
