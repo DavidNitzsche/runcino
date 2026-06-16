@@ -2172,29 +2172,20 @@ struct TodayView: View {
     /// Each element is a 7-day array — one page per week, Sat–Sun order.
     private var allStripWeeks: [[WeekStripDay]] {
         guard let current = plan else { return [] }
-        // Build ordered list of backend weeks (Sat-anchored Sat→Fri each).
+        // The backend now returns each week already anchored to the runner's
+        // long-run day — the week ends on it (Mon→Sun for a Sunday long run,
+        // Sun→Sat for a Saturday one · see /api/plan/week). So we page the
+        // backend weeks straight through, no client-side re-bucketing: each
+        // PlanWeek is one display week, rendered in date order.
         var allBackend: [PlanWeek] = []
         if let prev = prevWeekPlan { allBackend.append(prev) }
         allBackend.append(current)
         allBackend += futureWeekPlans
 
-        // Build Mon→Sun display windows by combining:
-        //   Mon-Fri (dow 1-5) from backend[i]
-        //   Sat-Sun (dow 6, 0) from backend[i+1]  (the upcoming weekend)
-        // Without this, sorting within a single Sat-anchored week places the
-        // PREVIOUS Sat-Sun at the end of the Mon→Sun strip instead of the
-        // upcoming one.
-        var result: [[WeekStripDay]] = []
-        for i in 0..<allBackend.count {
-            let monFri = Array(allBackend[i].days.prefix(7).filter { $0.dow >= 1 && $0.dow <= 5 })
-            let weekendSource = i + 1 < allBackend.count ? allBackend[i + 1] : allBackend[i]
-            let satSun = Array(weekendSource.days.prefix(7).filter { $0.dow == 6 || $0.dow == 0 })
-            let displayDays = (monFri + satSun).sorted { $0.date_iso < $1.date_iso }
-            if !displayDays.isEmpty {
-                result.append(makeStripDays(from: displayDays))
-            }
+        return allBackend.compactMap { wk in
+            let days = wk.days.sorted { $0.date_iso < $1.date_iso }
+            return days.isEmpty ? nil : makeStripDays(from: days)
         }
-        return result
     }
 
     private func makeStripDays(from days: [PlanDay]) -> [WeekStripDay] {

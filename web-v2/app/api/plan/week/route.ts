@@ -1,16 +1,17 @@
 /**
  * GET /api/plan/week?date=YYYY-MM-DD
  *
- * Returns the Sat–Fri (7-day) window of plan_workouts containing the given date.
- * Week starts on Saturday (long-run anchor day) and runs through the following
- * Friday, so the strip spans one complete training cycle.
- * Used by the iPhone WeekStrip.
+ * Returns the 7-day training-week window of plan_workouts containing the given
+ * date. The week ENDS on the runner's long-run day (their last training day of
+ * the cycle) and starts the day after — derived from user_settings.long_run_day.
+ * David runs long on Sunday → Mon–Sun. A Saturday-long runner → Sun–Sat.
+ * Used by the iPhone WeekStrip and the training calendar.
  *
  * Response shape:
  *   {
  *     plan_id: string,
- *     week_start_iso: string,     // ISO Saturday (start of training week)
- *     week_end_iso:   string,     // ISO Friday (end of training week, 6 days later)
+ *     week_start_iso: string,     // ISO day after the long-run day (week start)
+ *     week_end_iso:   string,     // ISO long-run day (week end, 6 days later)
  *     today_iso:      string,     // server "today" (PT-adjusted)
  *     days: Array<{
  *       date_iso: string, dow: number, type: string,
@@ -31,6 +32,7 @@ import { pool } from '@/lib/db/pool';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { loadSettings } from '@/lib/coach/settings';
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -41,11 +43,16 @@ export async function GET(req: NextRequest) {
   const today = await runnerToday(userId);
   const dateParam = req.nextUrl.searchParams.get('date') ?? today;
 
-  // Sat–Sun (9-day) training week containing date.
-  // Week starts on Saturday (long-run anchor) and ends the following Sunday.
-  // daysSinceSaturday: Sat=0, Sun=1, Mon=2 … Fri=6 → formula (dow+1)%7
-  const dow = new Date(dateParam + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
-  const daysSinceSaturday = (dow + 1) % 7;
+  // 2026-06-16 · Week boundary derives from the runner's long-run day so the
+  // week ENDS on it (their last training day of the cycle). David runs long on
+  // Sunday → Mon–Sun; a Saturday-long runner → Sun–Sat. Was hardcoded Sat–Fri,
+  // which mislabeled the calendar for anyone whose long run isn't Saturday.
+  const DOW_OF: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  const settings = await loadSettings(userId);
+  const longRunDow = DOW_OF[settings.long_run_day] ?? 0;       // default Sunday
+  const weekStartDow = (longRunDow + 1) % 7;                   // day after the long run
+  const dow = new Date(dateParam + 'T12:00:00Z').getUTCDay();  // 0=Sun..6=Sat
+  const daysSinceWeekStart = (dow - weekStartDow + 7) % 7;
 
   // Active plan
   const plan = (await pool.query(
@@ -72,16 +79,16 @@ export async function GET(req: NextRequest) {
       WHERE plan_id = $1
         AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 6)
       ORDER BY date_iso ASC`,
-    [plan.id, dateParam, daysSinceSaturday]
+    [plan.id, dateParam, daysSinceWeekStart]
   )).rows;
 
   const weekStart = (await pool.query(
     `SELECT ($1::date - $2::int)::text AS d`,
-    [dateParam, daysSinceSaturday]
+    [dateParam, daysSinceWeekStart]
   )).rows[0].d;
   const weekEnd = (await pool.query(
     `SELECT ($1::date - $2::int + 6)::text AS d`,
-    [dateParam, daysSinceSaturday]
+    [dateParam, daysSinceWeekStart]
   )).rows[0].d;
 
   // 2026-05-28 Phase 17 — Resolve completed strava activity per day so the
