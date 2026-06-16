@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct WatchMirrorView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var liveOk: Bool = true
     @State private var workout: WatchWorkout?
 
@@ -21,12 +22,15 @@ struct WatchMirrorView: View {
             FaffMeshView(mesh: mesh)
 
             VStack(spacing: 0) {
-                followPill
-                    .padding(.top, 8)
+                // Clearance for the global top bar (50pt) + the header pill
+                // (84pt). Was a top:8 floating capsule that collided with
+                // the FAFF logo bar — now the status lives in a real
+                // faffHeaderPill like every other surface.
+                Color.clear.frame(height: 132)
 
                 if let w = workout {
                     plannedHero(workout: w)
-                        .padding(.top, 22)
+                        .padding(.top, 14)
                         .padding(.horizontal, 24)
 
                     if !w.phases.isEmpty {
@@ -43,7 +47,7 @@ struct WatchMirrorView: View {
                     // actually being live. Replaced with an honest empty
                     // state.
                     standbyEmpty
-                        .padding(.top, 60)
+                        .padding(.top, 48)
                         .padding(.horizontal, 32)
                 }
 
@@ -64,23 +68,42 @@ struct WatchMirrorView: View {
                 liveOk = false
             }
         }
+        .faffHeaderPill { mirrorPill }
         // 2026-06-02 round 34 · hide the floating tab bar during live
         // mirror · the watch run is the focus, no tab nav needed.
         .hideFaffTabBar()
     }
 
-    private var followPill: some View {
-        HStack(spacing: 9) {
+    /// Standard header pill · live status on the left, a Cancel control on
+    /// the right so the runner can always leave the mirror (the route is
+    /// pushed with the nav bar hidden, so there was no back affordance).
+    /// The watch still owns pause/lap/end — Cancel only closes this screen.
+    private var mirrorPill: some View {
+        HStack(spacing: 11) {
             LivePulseDot(color: liveOk ? Color(hex: 0x9AF0BF) : Color(hex: 0xFF5A52), size: 8)
-                .frame(width: 12, height: 12)
-            Text(workout != nil ? "TODAY'S PLAN · START ON YOUR WATCH" : "STANDING BY")
-                .font(.label(11)).tracking(1.5)
-                .foregroundStyle(Theme.txt)
+                .frame(width: 14, height: 14)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(workout != nil ? "TODAY'S PLAN" : "STANDING BY")
+                    .font(.body(9.5, weight: .extraBold)).tracking(2)
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                Text(workout?.name ?? "Start on your Apple Watch")
+                    .font(.body(15, weight: .extraBold)).tracking(-0.2)
+                    .foregroundStyle(Theme.txt)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+            Spacer(minLength: 8)
+            Button { dismiss() } label: {
+                Text("Cancel")
+                    .font(.body(13, weight: .extraBold))
+                    .foregroundStyle(Theme.txt)
+                    .padding(.horizontal, 15).padding(.vertical, 9)
+                    .background(Color.white.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14).padding(.vertical, 8)
-        .background(Color.white.opacity(0.1), in: Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 1))
-        .background(.ultraThinMaterial, in: Capsule())
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
     }
 
     private func plannedHero(workout w: WatchWorkout) -> some View {
