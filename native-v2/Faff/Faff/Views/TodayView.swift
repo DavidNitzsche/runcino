@@ -1841,7 +1841,7 @@ struct TodayView: View {
             Text("JUST RUN")
                 .font(.heroDisplay(76))
                 .tracking(-2)
-                .foregroundStyle(Theme.race)
+                .foregroundStyle(Theme.txt)
                 .minimumScaleFactor(0.55)
                 .lineLimit(1)
                 .padding(.horizontal, 22)
@@ -1873,7 +1873,7 @@ struct TodayView: View {
                     .foregroundStyle(Theme.bg)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
-                    .background(Theme.race, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(Theme.txt, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .padding(.bottom, 10)

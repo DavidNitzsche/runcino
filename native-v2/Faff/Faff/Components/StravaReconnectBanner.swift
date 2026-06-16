@@ -34,7 +34,7 @@ struct StravaReconnectBanner: View {
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
-                    Text("RECONNECT")
+                    Text(cta(for: s))
                         .font(.label(10)).tracking(1.2)
                         .foregroundStyle(Color(hex: 0xFC4D24))
                 }
@@ -49,16 +49,32 @@ struct StravaReconnectBanner: View {
         }
     }
 
+    /// True when there's no token on file yet — the runner has never linked
+    /// Strava, so the action is "connect", not "reconnect". `needs_reauth`
+    /// is the only state that genuinely means "was linked, link again".
+    private func isFirstTime(_ s: API.StravaStatusResponse) -> Bool {
+        s.state != "needs_reauth"
+    }
+
+    private func cta(for s: API.StravaStatusResponse) -> String {
+        isFirstTime(s) ? "CONNECT" : "RECONNECT"
+    }
+
     private func title(for s: API.StravaStatusResponse) -> String {
         switch s.state {
         case "needs_reauth":  return "Strava needs reauth"
-        case "disconnected":  return "Strava disconnected"
-        default:              return "Strava connection issue"
+        case "disconnected":  return "Strava not connected"
+        default:              return "Strava not connected"
         }
     }
 
     private func subtitle(for s: API.StravaStatusResponse) -> String {
-        s.reason ?? "Reconnect to keep runs syncing"
+        // First-time: friendly copy, not the raw "No Strava token on file"
+        // reason (that's diagnostic, not runner-facing). Reauth: the reason
+        // is useful ("token expired") so surface it when present.
+        if isFirstTime(s) { return "Connect to sync your runs" }
+        if let r = s.reason, !r.isEmpty { return r }
+        return "Reconnect to keep runs syncing"
     }
 
     @MainActor

@@ -35,6 +35,9 @@ struct RunActionMenu: View {
     let onTreadmill: () -> Void
     let onNiggle: () -> Void
     let onNonRun: () -> Void
+    /// Opens the full activity log (ActivityView). Optional so existing
+    /// call sites that don't pass it compile unchanged.
+    var onViewActivity: (() -> Void)? = nil
 
     var body: some View {
         // Outer ZStack houses scrim + menu so they share parent's
@@ -78,6 +81,13 @@ struct RunActionMenu: View {
                 label: "Log a non-run session",
                 onTap: { fire(onNonRun) }
             )
+            if let onViewActivity {
+                actionRow(
+                    icon: "list.bullet.rectangle",
+                    label: "View all activity",
+                    onTap: { fire(onViewActivity) }
+                )
+            }
         }
         .padding(9)
         .background(

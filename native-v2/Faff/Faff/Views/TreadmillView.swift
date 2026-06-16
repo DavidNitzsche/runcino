@@ -468,6 +468,16 @@ struct TreadmillView: View {
                     .font(.body(11, weight: .medium))
                     .foregroundStyle(Color(hex: 0xFF7A66))
                     .multilineTextAlignment(.center)
+                // Escape hatch · the console hides the tab bar, so a failed
+                // save would otherwise trap the runner here. Let them leave
+                // without saving rather than be stuck retrying.
+                Button { dismiss() } label: {
+                    Text("Discard and exit")
+                        .font(.body(13, weight: .extraBold))
+                        .foregroundStyle(Theme.txt.opacity(0.7))
+                        .underline()
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -729,6 +739,9 @@ struct TreadmillView: View {
             var req = URLRequest(url: API.baseURL.appendingPathComponent("api/watch/workouts/complete"))
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            // Fail fast · the default 60s left the End button stuck on
+            // "Saving" for a full minute when the network stalled.
+            req.timeoutInterval = 20
             req.httpBody = try JSONSerialization.data(withJSONObject: payload)
             let (_, http) = try await API.authedSend(req)
             return (200..<300).contains(http.statusCode)

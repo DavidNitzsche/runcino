@@ -12,17 +12,8 @@ struct ColdStartView: View {
 
     enum Mode: String, CaseIterable { case activity, health }
 
-    @State private var current: Mode
-
-    init(mode: Mode, onStartRun: (() -> Void)? = nil, onConnect: (() -> Void)? = nil) {
-        self.mode = mode
-        self.onStartRun = onStartRun
-        self.onConnect = onConnect
-        _current = State(initialValue: mode)
-    }
-
     private var meshForMode: FaffMesh {
-        switch current {
+        switch mode {
         case .activity:
             return FaffMesh(c1: 0x7A3A18, c2: 0x1F5A64, c3: 0x5E2F12,
                             c4: 0x16110D, c5: 0x16110D, base: 0x16110D)
@@ -40,9 +31,6 @@ struct ColdStartView: View {
                 header
                     .padding(.top, 50)
                     .padding(.horizontal, 24)
-                toggle
-                    .padding(.top, 14)
-                    .padding(.horizontal, 24)
 
                 Spacer(minLength: 0)
 
@@ -58,45 +46,16 @@ struct ColdStartView: View {
 
     private var header: some View {
         HStack {
-            SpecLabel(text: current == .activity ? "ACTIVITY" : "HEALTH",
+            SpecLabel(text: mode == .activity ? "ACTIVITY" : "HEALTH",
                       size: 13, tracking: 2.5, color: Theme.txt)
             Spacer()
         }
     }
 
-    private var toggle: some View {
-        HStack(spacing: 0) {
-            toggleButton(.activity, "ACTIVITY")
-            toggleButton(.health, "HEALTH")
-        }
-        .padding(4)
-        .background(Color.white.opacity(0.1),
-                    in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous)
-            .stroke(Color.white.opacity(0.2), lineWidth: 1))
-    }
-
-    private func toggleButton(_ m: Mode, _ label: String) -> some View {
-        let on = current == m
-        return Button {
-            withAnimation(Theme.Motion.smooth) { current = m }
-        } label: {
-            Text(label)
-                .font(.body(12, weight: .extraBold))
-                .tracking(0.8)
-                .foregroundStyle(on ? Color(hex: 0x0E1F1C) : Theme.txt)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(on ? Color.white : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
     @ViewBuilder
     private var center: some View {
         VStack(spacing: 0) {
-            switch current {
+            switch mode {
             case .activity:
                 ghostHeatmap
                     .padding(.bottom, 26)

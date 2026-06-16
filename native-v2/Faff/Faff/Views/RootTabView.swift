@@ -133,11 +133,19 @@ struct RootTabView: View {
             // Global top bar · sits above content as a ZStack overlay so
             // FaffMeshView's .ignoresSafeArea() doesn't swallow the inset.
             // Each tab view adds its own 44pt top clearance.
+            //
+            // Hidden on full-screen run consoles (treadmill / watch mirror,
+            // which also hide the tab bar): those own their whole canvas and
+            // their own headers, so the FAFF/profile/calendar bar was just
+            // colliding with the console's title ("Just Run" over "FAFF").
             VStack(spacing: 0) {
                 globalTopBar
                 reachabilityBanner
                 Spacer(minLength: 0)
             }
+            .opacity(tabBarHidden ? 0 : 1)
+            .allowsHitTesting(!tabBarHidden)
+            .animation(.easeInOut(duration: 0.22), value: tabBarHidden)
 
             // Run action menu · scrim + menu card. Renders ABOVE the
             // content but BELOW the tab bar (per design z-order: scrim
@@ -151,7 +159,8 @@ struct RootTabView: View {
                 onOutdoor: { tabPaths[selected, default: []].append(.watchMirror) },
                 onTreadmill: { tabPaths[selected, default: []].append(.treadmill) },
                 onNiggle: { showSymptomSheet = true },
-                onNonRun: { showLogNonRunSheet = true }
+                onNonRun: { showLogNonRunSheet = true },
+                onViewActivity: { tabPaths[selected, default: []].append(.activity) }
             )
             .allowsHitTesting(showRunMenu)
 
