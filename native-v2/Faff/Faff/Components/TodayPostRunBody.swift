@@ -125,7 +125,11 @@ struct TodayPostRunBody: View {
             // footprint, but that footprint is inside the recap-gated block
             // and often doesn't fire for easy runs with sparse recap data.
             // Every GPS run benefits from seeing its pace distribution.
-            if hiwEffort != .rest {
+            // Mile splits are for continuous runs. On a rep-based interval
+            // session, splitting by arbitrary mile (warm-up mile, half an
+            // interval, a recovery jog) is noise — THE REPS panel in HOW IT
+            // WENT breaks the session down the way it was actually run.
+            if hiwEffort != .rest && hiwEffort != .intervals {
                 mileSplits
             }
             formGrid

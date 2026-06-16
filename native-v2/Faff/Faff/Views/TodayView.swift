@@ -860,23 +860,11 @@ struct TodayView: View {
                 .padding(.top, 16)
             }
 
-            // No race and no goal — nudge toward the Goal tab.
-            let hasRace = !(profile?.nextARace?.slug ?? "").isEmpty
-            let hasGoal = profile?.fitnessGoal != nil
-            if !hasRace && !hasGoal && profile != nil {
-                Button { selectedTab = .targets } label: {
-                    HStack(spacing: 6) {
-                        Text("No race or goal set.")
-                            .font(.body(12.5))
-                            .foregroundStyle(Theme.txt.opacity(0.5))
-                        Text("Add one \u{203A}")
-                            .font(.body(12.5, weight: .semibold))
-                            .foregroundStyle(Color(hex: 0x8FD0FF))
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 16)
-            }
+            // (Removed the "No race or goal set · Add one" nudge — it only
+            // ever rendered inside the pre-run sheet, which by definition
+            // means a plan + workout exist, so the line was self-
+            // contradictory. The no-target case is handled by TODAY's
+            // "just run" hero and the Goal tab, not here.)
         }
     }
 
