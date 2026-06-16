@@ -80,6 +80,10 @@ interface SeedInput {
   /** 2026-06-10 · explicit week-0 start date (YYYY-MM-DD) the runner
    *  picked at onboarding. Clamped to ≥ today. Defaults to today. */
   startDateISO?: string;
+  /** 2026-06-15 · plan length in weeks the runner picked in SetGoalSheet
+   *  (profile.tt_goal_plan_weeks). Clamped to a sane band. Defaults to
+   *  TOTAL_WEEKS (16) for onboarding-seeded plans that don't pick one. */
+  planWeeks?: number;
 }
 
 interface SeedResult {
@@ -181,14 +185,14 @@ function midpoints(goals: OnboardingGoals): {
  * Cite: Daniels Running Formula §13 · Periodization + Research/00a
  * §Volume-Progression-Rules (≤10% per week).
  */
-function buildProgressiveCurve(startMpw: number, targetMpw: number): {
+function buildProgressiveCurve(startMpw: number, targetMpw: number, totalWeeks: number = TOTAL_WEEKS): {
   volumeMi: number[];
   isCutback: boolean[];
 } {
   const volumeMi: number[] = [];
   const isCutback: boolean[] = [];
   let current = Math.min(startMpw, targetMpw);
-  for (let i = 0; i < TOTAL_WEEKS; i++) {
+  for (let i = 0; i < totalWeeks; i++) {
     const cutback = (i + 1) % 3 === 0;
     if (cutback) {
       volumeMi.push(round1(current * 0.82));
@@ -380,6 +384,7 @@ async function persistMaintenancePlan(args: {
   layout: { longRunDow: number; qualityDows: number[]; restDow: number };
   weeklyFrequency: WeeklyFrequency | null;
   ttDistance: TTDistance | null;
+  totalWeeks: number;
   peakLongMi: number;
   peakWeeklyMi: number;
   /** 2026-06-15 · measured current-fitness VDOT from the runner's recent runs
@@ -445,13 +450,13 @@ async function persistMaintenancePlan(args: {
     `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
-      phaseId, planId, phaseLabel, 0, TOTAL_WEEKS - 1,
+      phaseId, planId, phaseLabel, 0, args.totalWeeks - 1,
       phaseRationale,
       'Daniels Running Formula §13 · Periodization + §"5K-10K training"',
     ],
   );
 
-  for (let wi = 0; wi < TOTAL_WEEKS; wi++) {
+  for (let wi = 0; wi < args.totalWeeks; wi++) {
     const weekStartISO = addDays(args.startMonday, wi * 7);
     const weekId = id('wk');
     const isCutback = args.curve.isCutback[wi];
@@ -623,7 +628,11 @@ export async function seedMaintenancePlanFromOnboarding(
   // defaults them when unset) — same as the race generator. Was hardcoded.
   const prefs = await loadSettings(userId);
   const layout = layoutFromPrefs(prefs);
-  const curve = buildProgressiveCurve(startWeeklyMi, targetWeeklyMi);
+  // Plan length: the runner's SetGoalSheet pick (input.planWeeks), clamped to a
+  // sane band; else the default 16-week window.
+  const totalWeeks = input.planWeeks && input.planWeeks >= 4 && input.planWeeks <= 52
+    ? Math.round(input.planWeeks) : TOTAL_WEEKS;
+  const curve = buildProgressiveCurve(startWeeklyMi, targetWeeklyMi, totalWeeks);
 
   // 2026-06-10 · anchor week 0 at the runner's chosen start day
   // (startDateISO, clamped to ≥ today), else today. Not the Monday before
@@ -632,8 +641,8 @@ export async function seedMaintenancePlanFromOnboarding(
   // weekday, so the long run still lands on the preferred day; the first
   // week is just a full 7 days from the start day. (today resolved at the top.)
   const startMonday = (input.startDateISO && input.startDateISO >= today) ? input.startDateISO : today;
-  // 16 weeks · last day = start + 16*7 - 1.
-  const goalISO = addDays(startMonday, TOTAL_WEEKS * 7 - 1);
+  // last day = start + totalWeeks*7 - 1.
+  const goalISO = addDays(startMonday, totalWeeks * 7 - 1);
 
   // 2026-06-15 · root the plan in REAL fitness when the data exists. HealthKit
   // / Strava history is usually already synced by the time onboarding
@@ -666,6 +675,7 @@ export async function seedMaintenancePlanFromOnboarding(
     layout,
     weeklyFrequency: goals.weeklyFrequency,
     ttDistance: goals.ttDistance,
+    totalWeeks,
     peakLongMi,
     peakWeeklyMi: targetWeeklyMi,
     anchorVdot,
@@ -678,7 +688,7 @@ export async function seedMaintenancePlanFromOnboarding(
       // A TT goal makes this a goal BUILD (VO2/threshold targeted at the
       // distance); without one it's an aerobic maintenance hold.
       intent: goals.ttDistance ? `${goals.ttDistance}-build` : 'consistency-maintenance',
-      total_weeks: TOTAL_WEEKS,
+      total_weeks: totalWeeks,
       start_weekly_mi: startWeeklyMi,
       peak_weekly_mi: targetWeeklyMi,
       peak_long_mi: peakLongMi,
@@ -695,7 +705,7 @@ export async function seedMaintenancePlanFromOnboarding(
   return {
     ok: true,
     plan_id: planId,
-    weeks_generated: TOTAL_WEEKS,
+    weeks_generated: totalWeeks,
     peak_mpw: targetWeeklyMi,
   };
 }

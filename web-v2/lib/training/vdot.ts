@@ -255,18 +255,21 @@ const QUALITY_RUN_TYPES = new Set([
   'marathon_pace', 'mp', 'race', 'time_trial', 'tune_up',
 ]);
 
-/** Map an onboarding/profile distance code (race goal or TT goal) to miles.
- *  Null for 'none'/unknown. Used to derive the goal-relative training-VDOT
- *  floor (vdotRunFloorMi) so the fitness read keys off the event the runner
- *  is actually training for. */
+/** Map an onboarding/profile distance to miles — accepts BOTH the legacy
+ *  onboarding codes ('5k') AND the SetGoalSheet labels ('5K', 'Half Marathon',
+ *  '50K', '100K'). Null for 'none'/unknown. Used to derive the goal-relative
+ *  training-VDOT floor (vdotRunFloorMi) and the goal plan distance, so the
+ *  fitness read keys off the event the runner is actually training for. */
 export function goalDistanceMiFromCode(code: string | null | undefined): number | null {
   switch (String(code ?? '').toLowerCase()) {
-    case '1mi': case 'mile':            return 1.0;
-    case '5k':                          return 3.10686;
-    case '10k':                         return 6.21371;
-    case 'half': case 'half-marathon':  return 13.1094;
-    case 'marathon': case 'full':       return 26.2188;
-    default:                            return null;
+    case '1mi': case 'mile':                            return 1.0;
+    case '5k':                                          return 3.10686;
+    case '10k':                                         return 6.21371;
+    case 'half': case 'half-marathon': case 'half marathon': return 13.1094;
+    case 'marathon': case 'full':                       return 26.2188;
+    case '50k':                                         return 31.0686;
+    case '100k':                                        return 62.1371;
+    default:                                            return null;
   }
 }
 

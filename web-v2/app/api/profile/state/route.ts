@@ -26,14 +26,14 @@ export async function GET(req: NextRequest) {
   try {
     const [state, goalRow] = await Promise.all([
       loadProfileState(userId),
-      pool.query<{ tt_goal_distance: string | null; tt_goal_time: string | null }>(
-        `SELECT tt_goal_distance, tt_goal_time FROM profile WHERE user_uuid = $1`,
+      pool.query<{ tt_goal_distance: string | null; tt_goal_time: string | null; tt_goal_time_seconds: number | null }>(
+        `SELECT tt_goal_distance, tt_goal_time, tt_goal_time_seconds FROM profile WHERE user_uuid = $1`,
         [userId]
       ),
     ]);
     const g = goalRow.rows[0];
     const fitnessGoal = g?.tt_goal_distance && g?.tt_goal_time
-      ? { distance: g.tt_goal_distance, time: g.tt_goal_time }
+      ? { distance: g.tt_goal_distance, time: g.tt_goal_time, seconds: g.tt_goal_time_seconds ?? null }
       : null;
 
     return NextResponse.json({

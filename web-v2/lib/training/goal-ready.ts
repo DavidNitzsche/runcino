@@ -38,14 +38,25 @@
 import { pool } from '@/lib/db/pool';
 import { vdotFromRace, formatRaceTime } from './vdot';
 
-export type TTGoalDistance = '1mi' | '5k' | '10k';
+export type TTGoalDistance =
+  // Legacy onboarding codes (bucketed time).
+  | '1mi' | '5k' | '10k'
+  // SetGoalSheet labels (exact tt_goal_time_seconds; migration 146 widened
+  // the tt_goal_distance constraint to accept these).
+  | '5K' | '10K' | 'Half Marathon' | 'Marathon' | '50K' | '100K';
 
-const DIST_MI: Record<TTGoalDistance, number> = { '1mi': 1.0, '5k': 3.107, '10k': 6.214 };
+const DIST_MI: Record<TTGoalDistance, number> = {
+  '1mi': 1.0, '5k': 3.107, '10k': 6.214,
+  '5K': 3.107, '10K': 6.214,
+  'Half Marathon': 13.109, 'Marathon': 26.219, '50K': 31.069, '100K': 62.137,
+};
 
-/** Bucket → seconds. Mirrors lib/onboarding/state.ts TT_TIME_LADDERS
- *  exactly. Closed buckets use the midpoint; 'Under X' uses X (being AT
- *  the boundary IS the goal); open '+' buckets use the boundary. */
-const BUCKET_SECONDS: Record<TTGoalDistance, Record<string, number>> = {
+/** Bucket → seconds for the LEGACY onboarding codes only. Mirrors
+ *  lib/onboarding/state.ts TT_TIME_LADDERS. The SetGoalSheet labels store an
+ *  exact tt_goal_time_seconds instead, so they have no bucket entry (Partial)
+ *  and never hit this fallback. Closed buckets use the midpoint; 'Under X'
+ *  uses X; open '+' buckets use the boundary. */
+const BUCKET_SECONDS: Partial<Record<TTGoalDistance, Record<string, number>>> = {
   '1mi': {
     'Under 5:00': 300, '5:00-6:00': 330, '6:00-7:00': 390, '7:00-8:00': 450, '8:00+': 480,
   },
@@ -167,7 +178,7 @@ export function computeGoalReady(
 export async function loadGoalReadyProjection(userId: string): Promise<GoalReadyProjection | null> {
   const prof = (await pool.query<{ tt_distance: string | null; tt_time: string | null; tt_secs: number | null }>(
     `SELECT tt_goal_distance AS tt_distance, tt_goal_time AS tt_time,
-            (user_settings->>'tt_goal_time_seconds')::int AS tt_secs
+            tt_goal_time_seconds AS tt_secs
        FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] as Array<{ tt_distance: string | null; tt_time: string | null; tt_secs: number | null }> }))).rows[0];
