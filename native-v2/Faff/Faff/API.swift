@@ -755,13 +755,14 @@ enum API {
         return (200..<300).contains(http.statusCode)
     }
 
-    static func setFitnessGoal(distanceLabel: String, goalTime: String) async throws -> Bool {
+    static func setFitnessGoal(distanceLabel: String, goalTime: String, planWeeks: Int) async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/profile/goal"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
             "distance_label": distanceLabel,
             "goal_time": goalTime,
+            "plan_weeks": planWeeks,
         ])
         let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
         return (200..<300).contains(http.statusCode)

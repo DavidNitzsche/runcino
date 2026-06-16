@@ -218,7 +218,6 @@ struct OnboardingView: View {
 
     private var welcomePanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Spacer(minLength: 0)
             Text("WELCOME TO")
                 .font(.label(11))
                 .tracking(3)

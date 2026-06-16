@@ -758,9 +758,11 @@ struct SetGoalSheet: View {
 
     private func save() async {
         saving = true; error = nil
+        let weeks = planWeeks ?? planOptions(for: distance).first?.weeks ?? 12
         let ok = (try? await API.setFitnessGoal(
             distanceLabel: distance,
-            goalTime: goalTimeString
+            goalTime: goalTimeString,
+            planWeeks: weeks
         )) ?? false
         await MainActor.run {
             if ok { onSubmitted(); dismiss() }
