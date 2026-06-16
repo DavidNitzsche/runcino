@@ -64,23 +64,20 @@ struct WeekStrip: View {
     private func cell(_ d: WeekStripDay) -> some View {
         let isSelected = d.id == selectedID
         VStack(spacing: 7) {
-            if d.isToday {
-                // Today's day letter in a small blue circle · a clear "you are
-                // here" marker distinct from the grey selection box.
-                Text(d.dow)
-                    .font(.label(10)).tracking(0.5).textCase(.uppercase)
-                    .foregroundStyle(.white)
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(Color(hex: 0x3AB0CF)))
-            } else {
-                Text(d.dow)
-                    .font(.label(10)).tracking(0.5).textCase(.uppercase)
-                    .foregroundStyle(Theme.txt.opacity(isSelected ? 1 : 0.65))
-            }
+            // Today's day letter is blue (no circle · a circle's frame grew the
+            // cell and clipped the fixed selection box). Pure colour change, so
+            // the cell + pill stay exactly the same size.
+            Text(d.dow)
+                .font(.label(10)).tracking(0.5).textCase(.uppercase)
+                .foregroundStyle(d.isToday
+                    ? Color(hex: 0x3AB0CF)
+                    : Theme.txt.opacity(isSelected ? 1 : 0.65))
             Text("\(d.date)")
                 .font(.body(15, weight: .semibold))
                 .tracking(-0.3)
-                .foregroundStyle(Theme.txt.opacity(isSelected || d.isToday ? 1 : 0.8))
+                .foregroundStyle(d.isToday
+                    ? Color(hex: 0x3AB0CF)
+                    : Theme.txt.opacity(isSelected ? 1 : 0.8))
                 // Strength day · a thin underline below the number. Overlay (not
                 // a stacked element) so it never shifts the cell's layout.
                 .overlay(alignment: .bottom) {
