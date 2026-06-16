@@ -281,29 +281,49 @@ struct ProfileView: View {
         GlassTile(padding: 0) {
             VStack(spacing: 0) {
                 ForEach(Array(coachStats.enumerated()), id: \.element.label) { i, f in
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
-                            if let meta = f.meta, !meta.isEmpty {
-                                Text(meta)
-                                    .font(.body(11, weight: .semibold))
-                                    .foregroundStyle(Theme.txt.opacity(0.6))
-                                    .lineLimit(2)
-                            }
+                    // The SHOES glance row opens the shoe garage; the rest
+                    // are read-only summaries.
+                    if f.label.uppercased().contains("SHOE") {
+                        NavigationLink(value: FaffRoute.shoes) {
+                            glanceRow(f, tappable: true)
                         }
-                        Spacer(minLength: 12)
-                        Text(f.value)
-                            .font(.body(15, weight: .bold))
-                            .foregroundStyle(factColor(f.valueColor))
-                            .multilineTextAlignment(.trailing)
+                        .buttonStyle(.plain)
+                    } else {
+                        glanceRow(f, tappable: false)
                     }
-                    .padding(14)
                     if i < coachStats.count - 1 {
                         Divider().background(Color.white.opacity(0.08))
                     }
                 }
             }
         }
+    }
+
+    private func glanceRow(_ f: CoachFact, tappable: Bool) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
+                if let meta = f.meta, !meta.isEmpty {
+                    Text(meta)
+                        .font(.body(11, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 12)
+            Text(f.value)
+                .font(.body(15, weight: .bold))
+                .foregroundStyle(factColor(f.valueColor))
+                .multilineTextAlignment(.trailing)
+            if tappable {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.4))
+                    .padding(.leading, 2)
+            }
+        }
+        .padding(14)
+        .contentShape(Rectangle())
     }
 
     private func factColor(_ tone: String?) -> Color {
