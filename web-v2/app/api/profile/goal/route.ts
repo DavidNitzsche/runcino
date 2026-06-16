@@ -14,6 +14,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboarding';
+import type { WeeklyMileage, WeeklyFrequency } from '@/lib/onboarding/state';
 
 const ALLOWED_DISTANCES = ['5K', '10K', 'Half Marathon', 'Marathon', '50K', '100K'];
 
@@ -34,6 +36,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const distanceLabel = String(body?.distance_label ?? '').trim();
   const goalTime = String(body?.goal_time ?? '').trim();
+  // Plan length the runner picked in SetGoalSheet (e.g. 10 / 14). Clamped.
+  const planWeeksRaw = Number(body?.plan_weeks);
+  const planWeeks = Number.isFinite(planWeeksRaw) && planWeeksRaw >= 4 && planWeeksRaw <= 52
+    ? Math.round(planWeeksRaw) : null;
 
   if (!ALLOWED_DISTANCES.includes(distanceLabel)) {
     return NextResponse.json(
@@ -53,16 +59,44 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await pool.query(
+  const prof = (await pool.query<{ wmt: number | null; wf: number | null }>(
     `UPDATE profile
         SET tt_goal_distance        = $1,
             tt_goal_time            = $2,
-            tt_goal_time_seconds    = $3
-      WHERE user_uuid = $4`,
-    [distanceLabel, goalTime, goalSeconds, userId]
-  );
+            tt_goal_time_seconds    = $3,
+            tt_goal_plan_weeks      = $5
+      WHERE user_uuid = $4
+      RETURNING weekly_mileage_target AS wmt, weekly_frequency AS wf`,
+    [distanceLabel, goalTime, goalSeconds, userId, planWeeks]
+  )).rows[0];
+
+  // Setting a goal SEEDS the plan — in the new flow the goal IS the anchor
+  // (onboarding no longer seeds). 5K/10K → goal-specific build (intervals /
+  // threshold); longer distances get a generic aerobic base for now —
+  // goal-specific half/marathon/ultra builds (long-run progression + race-pace
+  // work) are a follow-up. Best-effort: a seed failure doesn't fail the save.
+  let plan: Awaited<ReturnType<typeof seedMaintenancePlanFromOnboarding>> | null = null;
+  try {
+    const ttCode = distanceLabel === '5K' ? '5k' : distanceLabel === '10K' ? '10k' : null;
+    plan = await seedMaintenancePlanFromOnboarding({
+      userId,
+      planWeeks: planWeeks ?? undefined,
+      goals: {
+        ttDistance: ttCode,
+        ttTimeBucket: null,
+        weeklyMiTarget: (prof?.wmt as WeeklyMileage | null) ?? null,
+        weeklyFrequency: (prof?.wf as WeeklyFrequency | null) ?? null,
+        historyAvg: null, historyLong: null, historyYears: null,
+      },
+    });
+  } catch (e) {
+    console.error('[profile/goal] plan seed failed:', e);
+  }
 
   await bustBriefingCacheForEvent(userId, 'profile_edit');
 
-  return NextResponse.json({ ok: true, distance_label: distanceLabel, goal_time: goalTime, goal_seconds: goalSeconds });
+  return NextResponse.json({
+    ok: true, distance_label: distanceLabel, goal_time: goalTime, goal_seconds: goalSeconds,
+    plan_weeks: planWeeks, plan: plan ? { ok: plan.ok, plan_id: plan.plan_id, weeks: plan.weeks_generated } : null,
+  });
 }
