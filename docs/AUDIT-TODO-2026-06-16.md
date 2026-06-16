@@ -89,5 +89,15 @@ Each line: what each surface shows → the audit-canonical answer → proposed d
 
 ---
 
+## Part 5 — Additions (David)
+
+- [ ] **Web ← iPhone parity (design · content · tone) — standing goal.** The iPhone is the most-polished surface and is the reference now: the run-recap "HOW IT WENT" panel (per-rep range bars + needle, `TARGET 6:43 · +10s heat → 6:53`, "in range" labels, the coach-voice facts, the heat-context line — "63°F · a bit warm. Cost you about 2% on pace. Heat does that · your fitness is fine."), the information it surfaces, and the tone are all where they should be. **Bring the web up to mirror the iPhone wherever the web equivalent is behind or diverges.** This is the general form of Part 1's "web matches iPhone" — elevated from the disagreement fixes to a standing principle: when web and iPhone differ on *how something looks or reads* (not just the number), default to the iPhone.
+  - **Needs a parity inventory** (offer: run it as a focused pass) — for each surface (Today + post-run recap, Train, Health, Goal/Targets, Run Detail), capture: what the iPhone shows and how it says it, vs what the web shows today, and the gap to close. Output a port list.
+  - **Known targets** (grows as David flags them):
+    - **Run-recap panel.** Web recap should render the same rep-range bars + needle, the heat-adjusted target line (`TARGET 6:43 · +10s heat → 6:53`), the "in range" framing, and the same coach-voice facts as the iPhone `HowItWentPanel`/`RepsPostPanel`. Both already read the shared `run-recap.ts`, so most of the gap is display, not data.
+    - **Week strip — strength rules.** The web "THIS WEEK" strip shows none of the strength indicators the iPhone strip has: the blue "recommended" underline, green "done", and yellow "paused-on-readiness" states (shipped to iPhone this session). The web strip must render the same strength state from the same backend source (`recommendedStrengthDays` / strength recommender via training-state/glance), so strength reads identically on both. Ties to audit #24 (strength week should derive from `long_run_day`, not hardcoded Mon–Sun) — fix that at the source so both strips inherit it.
+
+---
+
 ## Verified clean (no action)
 Canonical volume reader, race-data source-of-truth ladder, VDOT formula constants (5K–marathon), readiness pillar weights, dedup/merge ordering, multi-writer jsonb preservation (Rule 6), strength count/logged-fill logic. No P0s.
