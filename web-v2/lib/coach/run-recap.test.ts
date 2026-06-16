@@ -408,6 +408,27 @@ describe('deriveRecap · type=intervals', () => {
     expect(r.intervals_adjusted_target_s_per_mi ?? 0).toBeGreaterThan(403);
   });
 
+  it('intervals: fewer reps than prescribed → "did N of M reps" (missed/stopped early)', () => {
+    const r = deriveRecap({
+      type: 'intervals',
+      phase: 'PEAK',
+      plannedMi: 7,
+      plannedPaceSPerMi: 403,
+      plannedHrCap: null,
+      actualMi: 5,
+      actualPaceSPerMi: 405,
+      actualAvgHr: 150,
+      actualMaxHr: 165,
+      repCount: 3,
+      prescribedRepCount: 4,
+      repPaces: [402, 405, 410], // only 3 of the 4 planned reps
+      splits: makeSplits(5, 148, 156),
+      weather: null,
+    });
+    expect(r.facts.join(' ')).toMatch(/3 of 4 reps/i);
+    expect(r.facts.join(' ')).not.toMatch(/All 3 reps in range/);
+  });
+
   it('intervals: no per-rep signal (Strava) → falls back to generic phase line', () => {
     const r = deriveRecap({
       type: 'intervals',

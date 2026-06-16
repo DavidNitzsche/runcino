@@ -237,6 +237,11 @@ export async function GET(
   const repPaces: number[] = workPhases
     .map((p) => p.actualPaceSPerMi as number)
     .filter((p) => typeof p === 'number' && p > 0);
+  // Prescribed rep count · lets the recap say "did 3 of 4" when reps were
+  // missed or the session stopped early, instead of treating the reps run
+  // as the whole workout.
+  const prescribedRepCount: number | null =
+    Number((planRow?.workout_spec as any)?.rep_count) || null;
 
   // Finish-segment spec fields for the long-run structured recap copy.
   // finish_mi / finish_pace_s_per_mi / finish_label live in workout_spec
@@ -276,6 +281,7 @@ export async function GET(
     workDistanceMi,
     repCount,
     repPaces,
+    prescribedRepCount,
     finishMi: finishMiSpec,
     finishPaceSPerMi,
     finishLabel: finishLabelRaw,

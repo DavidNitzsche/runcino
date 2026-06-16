@@ -57,9 +57,13 @@ export interface RecapInput {
    *  Absent on Strava/cold-start runs (falls back to total-distance block). */
   repCount?: number | null;
   /** Per-rep actual work pace (s/mi), in rep order. Drives the interval
-   *  pacing-pattern read (went out hot · faded · even · built). Absent on
+   *  pacing-pattern read (went out fast · faded · even · built). Absent on
    *  Strava/cold-start runs (the pattern fact is skipped). */
   repPaces?: number[] | null;
+  /** Prescribed rep count from the workout spec. When the runner completed
+   *  fewer reps than this, the lead line says "3 of 4 reps" instead of
+   *  treating the reps run as the whole session. Null when not plan-based. */
+  prescribedRepCount?: number | null;
   /** Finish-segment distance (mi) from workout_spec (long runs with HM/M finish). */
   finishMi?: number | null;
   /** Actual finish-segment pace (s/mi). Prefer the isFinishSegment phase's
@@ -414,10 +418,15 @@ export function deriveRecap(input: RecapInput): RecapPayload {
       const reps = (input.repPaces ?? []).filter((p) => typeof p === 'number' && p > 0);
       const target = input.plannedPaceSPerMi ?? null;
       const adj = pacing.adjTarget ?? target;
+      const prescribed = input.prescribedRepCount ?? null;
+      const avgPart = workPaceStr ? ` · ${workPaceStr.replace('/mi', '')} avg` : '';
       let leadLine: string;
-      if (reps.length >= 2 && target && adj) {
+      if (prescribed && reps.length >= 1 && reps.length < prescribed) {
+        // Missed reps (or stopped early) · the completion is the headline,
+        // not the pace. Covers "didn't finish" for rep-based sessions.
+        leadLine = `Did ${reps.length} of ${prescribed} reps${avgPart}${hrPart}.`;
+      } else if (reps.length >= 2 && target && adj) {
         const inRange = reps.filter((p) => p >= target - 6 && p <= adj + 4).length;
-        const avgPart = workPaceStr ? ` · ${workPaceStr.replace('/mi', '')} avg` : '';
         leadLine =
           inRange === reps.length
             ? `All ${reps.length} reps in range${avgPart}${hrPart}.`
