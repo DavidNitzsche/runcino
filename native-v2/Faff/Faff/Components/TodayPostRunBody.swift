@@ -1171,6 +1171,15 @@ struct RoutePolylineCard: View {
     private func routeMap(coords: [CLLocationCoordinate2D]) -> some View {
         let region = boundingRegion(for: coords, paddingFactor: 1.18)
         Map(initialPosition: .region(region), interactionModes: []) {
+            // Dark casing under the route · a wider near-black stroke gives the
+            // coral line a clean outline so it reads clearly ABOVE the basemap's
+            // street labels instead of tangling with them (David 2026-06-16 ·
+            // "street names over the route is weird"). Declared first so the
+            // coral stroke draws on top.
+            MapPolyline(coordinates: coords)
+                .stroke(Color(hex: 0x080B0F), style: StrokeStyle(
+                    lineWidth: 9, lineCap: .round, lineJoin: .round
+                ))
             MapPolyline(coordinates: coords)
                 .stroke(BASELINE_UNDER_COLOR, style: StrokeStyle(
                     lineWidth: 5, lineCap: .round, lineJoin: .round
@@ -1196,10 +1205,12 @@ struct RoutePolylineCard: View {
                 }
             }
         }
-        // Standard map style with muted emphasis (less label noise) ·
-        // combined with .environment(\.colorScheme, .dark) above gives
-        // the dark-tile look that mirrors the web's CartoDB dark base.
-        .mapStyle(.standard(elevation: .flat, emphasis: .muted))
+        // Standard map style, muted emphasis, POIs excluded · the muted
+        // emphasis quiets road labels and excludingAll drops the point-of-
+        // interest clutter (golf course, school, park, sports center, basin)
+        // that crowded the route. Dark colorScheme (above) gives the dark-tile
+        // look that mirrors the web's CartoDB dark base.
+        .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
     }
 
     /// MKCoordinateRegion fitting all points with a padding multiplier
