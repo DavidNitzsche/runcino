@@ -1089,7 +1089,7 @@ private struct RepsPostPanel: View {
             VStack(spacing: 0) {
                 Text("\(idx + 1)")
                     .font(.body(15, weight: .bold))
-                    .foregroundStyle(accent)
+                    .foregroundStyle(primaryText)
                 Text("REP")
                     .font(.body(7.5, weight: .extraBold)).tracking(0.6)
                     .foregroundStyle(mutedText)
