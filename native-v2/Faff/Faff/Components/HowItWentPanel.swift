@@ -1037,7 +1037,13 @@ private struct RepsPostPanel: View {
         let actualSec = parsePaceSec(rep.actual_pace) ?? (targetSec ?? 0)
         let goalSec = targetSec ?? actualSec
         let delta = actualSec - goalSec
-        let tone: HIWTone = delta > 0 ? .warn : (delta < 0 ? .good : .neutral)
+        // Intervals hit a pace RANGE, not an exact number. Anything within
+        // ~12 s/mi of target (either side) is a hit → green. Only flag reps
+        // that came in meaningfully slower than the range; faster is fine.
+        let onTargetTol = 12
+        let tone: HIWTone = abs(delta) <= onTargetTol
+            ? .good
+            : (delta > 0 ? .warn : .good)
         let deltaStr: String = {
             if delta == 0 { return "±0" }
             return delta > 0 ? "+\(delta)" : "\(delta)"

@@ -239,11 +239,11 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
     if (isEffortRun(input.workoutType)) {
       // Post: read it (past, no imperative). Pre: forward cue.
       summary += isPost
-        ? ` Warm enough to cost a little pace — the heat, not lost fitness.`
+        ? ` Warm enough to cost a little pace. Heat does that · your fitness is fine.`
         : ` Your pace will sit slower in this · that's the heat, not lost fitness. Hold the effort.`;
     } else {
       summary += isPost
-        ? ` Cost you about ${Math.round(slowdownPct)}% on pace — the heat, not fitness.`
+        ? ` Cost you about ${Math.round(slowdownPct)}% on pace. Heat does that · your fitness is fine.`
         : ` Costs you about ${Math.round(slowdownPct)}% on pace.`;
     }
   }
