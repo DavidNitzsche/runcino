@@ -10,7 +10,7 @@ Master action list from the full-app audit ([FULL-APP-AUDIT-2026-06-16.md](FULL-
 
 Each line: what each surface shows → the audit-canonical answer → proposed direction. Tick the box once you've confirmed the direction.
 
-- [ ] **#51 · P1 · Goal projected finish time.** Web shows the goal-seeking trajectory (~1:30); iPhone shows raw current-fitness from the snapshot (~1:34) — ~5 min apart on the flagship number, plus an iPhone-internal contradiction (prose says 1:30, big number says 1:34). Audit-canonical = goal-seeking (plan-trusts-itself doctrine). **Proposed: iPhone → match web** (render `trajectoryProjectedSec` as the iPhone primary). ⚠️ **Exception to the default — iPhone is the wrong side here.** `K_TargetsProjection.swift:386`
+- [~] **#51 · P1 · Goal projected finish time.** Web shows goal-seeking (~1:30); iPhone shows current fitness (1:34:54). Both legit, different questions (now vs race day). **DECISION (David 2026-06-16): SHOW BOTH, explicitly** — headline = current fitness, plus an explicit "Plan projects [traj] by race day" line, on both surfaces. ✅ iPhone: race-day line added to `K_TargetsProjection.swift`. ⬜ Web: flip `GapPanel` headline to current-fitness + add the race-day line (pending). Also resolves the aheadOfGoal intra-iPhone contradiction (race-day line is only shown when not-ahead; the headline number is always current fitness). Grounded: current VDOT 47.9 → predictRaceTime(13.1) = 1:34:54; goal 1:30 ≈ VDOT 50.9; gap 4:54.
 
 - [ ] **#36 · P2 · Targets confidence band width.** Web widens the band to ±8% when the fitness anchor is >180 days stale; iPhone never applies that override → a narrower, falsely-confident band for the same runner. **Proposed: iPhone → match web** (thread `anchorDateISO` into the iPhone projection route). ⚠️ **Exception — iPhone is the wrong side.** `app/api/targets/projection/route.ts`
 
@@ -54,6 +54,9 @@ Each line: what each surface shows → the audit-canonical answer → proposed d
 - [ ] **#16 · Dynamic sleep target drives the label but not the score** → crediting phantom surplus next to a "target 8.5h" baseline. Fix: feed dynamic target into the score or the label, consistently. `readiness-brief.ts` + `readiness.ts`
 - [ ] **#19 · HRV luteal-phase adjustment applied to the score but not streaks/threshold/recovery-phase.** Fix: propagate the filter to every HRV consumer. `readiness.ts` + `readiness-brief.ts` + `recovery-phase.ts`
 - [ ] **#20 · HRV CV bands (5%/7%) likely miscalibrated** (literature is CV-of-RMSSD; code uses CV-of-LnRMSSD). Fix: compute CV on raw RMSSD or re-derive cutoffs. `readiness-brief.ts`
+
+### New (found while tracing #51, 2026-06-16)
+- [ ] **#N1 · P2 · Spurious 26.2mi (marathon) projection snapshot for a half race.** `projection_snapshots` writes TWO rows per day for `americas-finest-city` (a 13.1mi half): the correct `dist 13.1 → 1:34:54` AND a spurious `dist 26.2 → 3:17:31`. The iPhone reads the 13.1 row (correct), but the marathon row is wrong data for a half. Find why the snapshot writer emits a 26.2 projection for a 13.1 race (distance source mismatch). `snapshot-projections` writer + the race distance it reads.
 
 ### P3
 - [ ] **#8 · Training-VDOT zone reads (tempo/MP) over-reach research** (only races/TTs should set VDOT). Fix: bound/route through the soft estimate. `lib/training/vdot.ts`

@@ -361,6 +361,7 @@ struct TargetsProjectionPanel: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             truthHeadline
+            raceDayLine
             confidenceBand
             metaPills
             if summary.totalGapSec > 0 {
@@ -397,6 +398,24 @@ struct TargetsProjectionPanel: View {
             .foregroundStyle(Theme.ink)
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // "Show both" · the big number is current fitness ("if you raced today");
+    // this states the goal-seeking projection explicitly so the runner sees
+    // BOTH where they are now and where the plan lands them by race day
+    // (David 2026-06-16). Hidden when ahead of goal — the headline already
+    // leads with the trajectory there — and when there's no separate
+    // trajectory value to add.
+    @ViewBuilder
+    private var raceDayLine: some View {
+        if summary.aheadOfGoal != true,
+           let traj = summary.trajectoryProjectedSec,
+           traj > 0, traj != summary.projectionSec {
+            Text("Plan projects \(formatTime(traj)) by race day.")
+                .font(.body(13, weight: .semibold))
+                .foregroundStyle(Theme.goal)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func ciTint(_ tier: String) -> Color {
