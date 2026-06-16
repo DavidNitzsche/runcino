@@ -38,12 +38,14 @@ struct TargetsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    Color.clear.frame(height: 132)
-
                     if !hasUpcomingRace && fitnessGoal == nil {
                         // ── Cold empty state ──────────────────────────────
+                        // No pill in this state, so clear only the top bar
+                        // (not the 132pt pill reserve the other states need).
+                        Color.clear.frame(height: 96)
                         coldEmptyBody
                     } else {
+                        Color.clear.frame(height: 132)
                         // ── Hero verdict ──────────────────────────────────
                         Text(goalStatusHeadline)
                             .font(.heroDisplay(88))
@@ -123,7 +125,7 @@ struct TargetsView: View {
             }
             .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
         }
-        .faffHeaderPill { headerPill }
+        .faffHeaderPill(visible: hasUpcomingRace || fitnessGoal != nil) { headerPill }
         .task { await reload() }
         .refreshable { await reload() }
         .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
@@ -131,14 +133,26 @@ struct TargetsView: View {
         }
         .sheet(isPresented: $showNewGoalSheet) {
             NewGoalSheet(
-                onSubmitted: { Task { await reload() } },
+                onSubmitted: { Task { await reload() }; afterTargetChange() },
                 existingGoal: fitnessGoal
             )
             .presentationDetents([.large])
         }
         .sheet(isPresented: $showAddRaceSheet) {
-            AddRaceSheet(onSaved: { Task { await reload() } })
+            AddRaceSheet(onSaved: { Task { await reload() }; afterTargetChange() })
                 .presentationDetents([.large])
+        }
+    }
+
+    /// A goal or race was just added/changed · tell the rest of the app to
+    /// re-resolve (RootTabView un-hides the Train tab, Today swaps out of
+    /// "just run" mode). The new plan also needs a beat to generate server-
+    /// side, so nudge a second refresh shortly after.
+    private func afterTargetChange() {
+        NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
         }
     }
 

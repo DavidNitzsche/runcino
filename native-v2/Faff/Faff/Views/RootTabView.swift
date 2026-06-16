@@ -94,6 +94,10 @@ struct RootTabView: View {
     @State private var showTrainingCal: Bool = false
     @State private var showInbox: Bool = false
     @State private var showReachabilityBanner: Bool = false
+    /// No race AND no goal → the runner is in "just run" casual mode.
+    /// Drives hiding the Train tab (no plan to show). Defaults true so the
+    /// tab never flash-hides before the first profile fetch resolves.
+    @State private var hasTarget: Bool = true
     /// Pending navigation set by the run-menu mode buttons · triggers a
     /// push into the active tab's NavigationStack via the .navigationDestination(item:)
     /// hook below. Cleared once the push lands.
@@ -196,6 +200,10 @@ struct RootTabView: View {
         .sheet(isPresented: $showLogNonRunSheet) {
             LogNonRunSheet(onSubmitted: { showLogNonRunSheet = false })
                 .presentationDetents([.medium])
+        }
+        .task { await refreshTarget() }
+        .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
+            Task { await refreshTarget() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .faffShowRunMenu)) { _ in
             showRunMenu = true
@@ -357,12 +365,28 @@ struct RootTabView: View {
         }
     }
 
+    /// Resolve "just run" mode · no race and no goal means there's no plan,
+    /// so the Train tab is hidden. Cheap single profile-state fetch; runs on
+    /// launch, on foreground, and whenever a goal/race is added or cleared
+    /// (those surfaces post .faffForegroundRefresh after saving).
+    private func refreshTarget() async {
+        guard let p = try? await API.fetchProfileState() else { return }
+        let hasRace = !((p.nextARace?.slug ?? "").isEmpty)
+        let hasGoal = p.fitnessGoal != nil
+        await MainActor.run {
+            let next = hasRace || hasGoal
+            if next != hasTarget { hasTarget = next }
+            // If Train got hidden out from under the selection, fall back.
+            if !next && selected == .train { selected = .today }
+        }
+    }
+
     // MARK: - Floating glass tab bar
 
     private var tabBar: some View {
         HStack(spacing: 0) {
             tabButton(.today)
-            tabButton(.train)
+            if hasTarget { tabButton(.train) }
             runTabButton
             tabButton(.health)
             tabButton(.targets)

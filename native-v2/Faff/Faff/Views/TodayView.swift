@@ -1830,53 +1830,85 @@ struct TodayView: View {
         return !hasRace && !hasGoal
     }
 
+    /// "Just run" casual home · shown when there's no race AND no goal, so
+    /// there's no plan to render. Reframes the cold state from a wall
+    /// ("you're missing a plan") into an invitation: log runs your way,
+    /// they're all tracked, set a goal whenever you want one built. The RUN
+    /// tab records; "All runs" opens the full tracked log.
     @ViewBuilder
     private var noGoalHeroView: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("TODAY")
-                .font(.heroDisplay(88))
+            Text("JUST RUN")
+                .font(.heroDisplay(76))
                 .tracking(-2)
-                .foregroundStyle(Theme.txt.opacity(0.08))
+                .foregroundStyle(Theme.race)
                 .minimumScaleFactor(0.55)
                 .lineLimit(1)
                 .padding(.horizontal, 22)
                 .padding(.top, 6)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("No race or goal set.")
-                    .font(.body(22, weight: .semibold))
+                Text("No plan yet, and that's fine.")
+                    .font(.body(18, weight: .bold))
                     .foregroundStyle(Theme.txt)
                     .padding(.bottom, 8)
 
-                Text("Add one to generate your training plan.")
-                    .font(.body(15))
+                Text("Log runs your way and they're all tracked here. Set a goal whenever you want a plan built around it.")
+                    .font(.body(14))
                     .foregroundStyle(Theme.txt.opacity(0.55))
                     .lineSpacing(3)
-                    .padding(.bottom, 28)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 26)
 
+                // Primary · record a run (opens the run menu owned by RootTabView).
                 Button {
-                    selectedTab = .targets
+                    NotificationCenter.default.post(name: .faffShowRunMenu, object: nil)
                 } label: {
-                    HStack(spacing: 6) {
-                        Text("Add a race or goal")
-                            .font(.body(15, weight: .semibold))
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 13, weight: .semibold))
+                    HStack(spacing: 8) {
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("Record a run")
+                            .font(.body(15, weight: .extraBold))
                     }
                     .foregroundStyle(Theme.bg)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 13)
-                    .background(Theme.txt)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Theme.race, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
+
+                // Secondary · all tracked runs.
+                NavigationLink(value: FaffRoute.activity) {
+                    noGoalRow(title: "All runs", system: "chevron.right", tint: Theme.txt.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
+
+                // Tertiary soft nudge · set a goal to unlock a plan.
+                Button { selectedTab = .targets } label: {
+                    noGoalRow(title: "Set a goal for a plan", system: "flag.fill", tint: Color(hex: 0x8FD0FF))
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 22)
-            .padding(.top, 24)
+            .padding(.top, 22)
 
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func noGoalRow(title: String, system: String, tint: Color) -> some View {
+        HStack {
+            Text(title).font(.body(14, weight: .semibold))
+            Spacer()
+            Image(systemName: system).font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
     }
 
     /// Belt-and-suspenders for the StickyCTABar gate. Walks the plan

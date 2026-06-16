@@ -542,6 +542,19 @@ extension View {
     /// own glanceable summary while the page scrolls and dissolves behind it
     /// (pair with `faffHeaderDissolve`). Keeps position/size/style identical
     /// across tabs; only the contents change.
+    /// Conditionally apply the header pill. When `visible` is false the
+    /// view is returned untouched — used by surfaces whose pill would be
+    /// empty in a cold state (e.g. Goal with no race + no goal), where an
+    /// empty frosted box reads as a bug.
+    @ViewBuilder
+    func faffHeaderPill<C: View>(visible: Bool, @ViewBuilder _ content: () -> C) -> some View {
+        if visible {
+            faffHeaderPill(content)
+        } else {
+            self
+        }
+    }
+
     func faffHeaderPill<C: View>(@ViewBuilder _ content: () -> C) -> some View {
         overlay(alignment: .top) {
             VStack(spacing: 0) {
