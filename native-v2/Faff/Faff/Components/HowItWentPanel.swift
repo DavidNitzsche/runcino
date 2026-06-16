@@ -1065,18 +1065,17 @@ private struct RepsPostPanel: View {
         // little slack each side. A rep is a hit when its dot sits in the green
         // band · the dot's POSITION still shows the spread (hot early, settled
         // late) without a bar that maxes out and reads like a miss.
-        // Status is measured against the displayed RANGE (target → heat-
-        // adjusted) so the label can never disagree with it: in range = ON,
-        // faster than the range = HOT, slower = FADED. No raw "+7" that reads
-        // like a miss when the rep is actually inside 6:43–6:53.
+        // The green band IS the acceptable range (target → heat-adjusted, with
+        // a little slack). A rep inside it hit the workout for the conditions;
+        // its needle shows exactly where it landed. The delta is shown as plain
+        // data (muted) so it reads like a splits report, not a verdict — the
+        // only judgment is in/out of range (green vs amber needle).
         let adjOff = max(0, (adjustedGoalSec ?? rawT) - rawT)
-        let fastTol = 2.0   // noise slack on the fast edge (≈ the target)
-        let slowTol = 3.0   // noise slack on the slow edge (≈ heat-adjusted)
-        let isHot = Double(delta) < -fastTol
-        let isSlow = Double(delta) > Double(adjOff) + slowTol
-        let statusColor: Color = isHot ? Color(hex: 0x3AB0CF)
-            : (isSlow ? Color(hex: 0xE0913A) : Color(hex: 0x2FA876))
-        let statusWord = isHot ? "HOT" : (isSlow ? "FADED" : "ON")
+        let fastTol = 6.0   // slack on the fast edge of the range
+        let slowTol = 4.0   // slack on the slow edge (≈ heat-adjusted)
+        let inRange = Double(delta) >= -fastTol && Double(delta) <= Double(adjOff) + slowTol
+        let markColor: Color = inRange ? Color(hex: 0x2FA876) : Color(hex: 0xE0913A)
+        let deltaStr: String = delta == 0 ? "±0" : (delta > 0 ? "+\(delta)" : "\(delta)")
         // Map a pace delta (s vs raw target · + = slower) to an x fraction.
         // Slower → left, faster → right (matches the SLOWER ◂ ▸ FASTER legend).
         let window = Double(adjOff) + 20
@@ -1097,42 +1096,40 @@ private struct RepsPostPanel: View {
                 let xFast = frac(-fastTol)
                 let xSlow = frac(Double(adjOff) + slowTol)
                 ZStack(alignment: .leading) {
-                    // base track
-                    Capsule().fill(dividerColor).frame(height: 4)
-                    // green acceptable range
+                    // base track · solid, full width
+                    Capsule().fill(dividerColor).frame(height: 6)
+                    // green acceptable range · solid, confident
                     Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: 0x2FA876).opacity(onMesh ? 0.30 : 0.18),
-                                         Color(hex: 0x2FA876).opacity(onMesh ? 0.50 : 0.30)],
-                                startPoint: .leading, endPoint: .trailing)
-                        )
-                        .frame(width: max(0, w * (xFast - xSlow)), height: 9)
+                        .fill(Color(hex: 0x2FA876).opacity(onMesh ? 0.55 : 0.32))
+                        .frame(width: max(0, w * (xFast - xSlow)), height: 11)
                         .offset(x: w * xSlow)
                     // prescribed-target tick (the fast edge of the range)
                     Rectangle()
-                        .fill(primaryText.opacity(0.45))
-                        .frame(width: 1.5, height: 13)
+                        .fill(primaryText.opacity(0.4))
+                        .frame(width: 1.5, height: 15)
                         .offset(x: w * frac(0) - 0.75)
-                    // where this rep actually landed
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 12, height: 12)
-                        .overlay(Circle().stroke(onMesh ? Color.black.opacity(0.35) : Color.white, lineWidth: 1.5))
-                        .shadow(color: statusColor.opacity(0.65), radius: 4)
-                        .offset(x: w * xRep - 6)
+                    // where this rep landed · solid needle (in-range green,
+                    // out amber). A confident gauge marker, not a soft dot.
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(markColor)
+                        .frame(width: 4, height: 20)
+                        .overlay(RoundedRectangle(cornerRadius: 2)
+                            .stroke(onMesh ? Color.black.opacity(0.3) : Color.white, lineWidth: 1))
+                        .offset(x: w * xRep - 2)
                 }
             }
-            .frame(height: 16)
+            .frame(height: 22)
             VStack(alignment: .trailing, spacing: 2) {
                 Text(rep.actual_pace ?? "—")
-                    .font(.body(14, weight: .bold))
+                    .font(.body(15, weight: .bold))
                     .foregroundStyle(primaryText)
-                Text(statusWord)
-                    .font(.body(9, weight: .extraBold)).tracking(0.8)
-                    .foregroundStyle(statusColor)
+                // Plain data · vs the prescribed target. Muted so it reads as a
+                // number on a report, not a verdict (the needle carries that).
+                Text("\(deltaStr) vs target")
+                    .font(.body(9.5, weight: .semibold))
+                    .foregroundStyle(inRange ? mutedText : markColor)
             }
-            .frame(width: 64, alignment: .trailing)
+            .frame(width: 78, alignment: .trailing)
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
     }
