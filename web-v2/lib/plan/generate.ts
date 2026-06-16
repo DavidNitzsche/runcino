@@ -45,7 +45,16 @@ const dayKeyToDow = (k: DayKey): DOW => DAY_KEYS.indexOf(k) as DOW;
 
 export interface GenerateInput {
   userId: string;
-  raceSlug: string;
+  /** Race-anchored plan: the races-row slug (reads distance/date/goal from it).
+   *  Mutually exclusive with goalTarget. */
+  raceSlug?: string;
+  /** 2026-06-15 · GOAL-anchored plan (no race row). The fitness goal IS the
+   *  anchor: distance + goal time + a synthetic target date (today + the
+   *  runner's chosen plan_weeks). Routes through the SAME canonical periodized
+   *  builder (BASE→QUALITY→RACE-SPECIFIC→TAPER, distance-appropriate long-run
+   *  progression + race-pace work, incl. ultra) so every distance gets a real
+   *  build — persisted with race_id = null. Mutually exclusive with raceSlug. */
+  goalTarget?: { distanceMi: number; goalSec: number | null; raceDateISO: string };
   /** 2026-06-10 · where week 0 begins.
    *   · 'monday' (default) — Monday of the current week. Established
    *     runners keep clean Mon-Sun weeks across lifecycle regens.
@@ -1650,7 +1659,7 @@ async function clearActivePlansFor(client: PoolClient, userId: string, reason = 
 }
 
 async function persistPlan(client: PoolClient, args: {
-  userId: string; raceSlug: string; raceDateISO: string;
+  userId: string; raceSlug: string | null; raceDateISO: string;
   blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean; tPaceSec?: number | null }>;
   authoredState: Record<string, unknown>;
   /** Runner's T-pace (s/mi) at generate-time. Used to populate every
@@ -1925,10 +1934,10 @@ async function persistPlan(client: PoolClient, args: {
 // ── Main entrypoint ─────────────────────────────────────────────────────
 
 export async function generatePlan(input: GenerateInput): Promise<GenerateResult> {
-  const { userId, raceSlug, startAnchor = 'monday', startDateISO } = input;
+  const { userId, raceSlug, startAnchor = 'monday', startDateISO, goalTarget } = input;
 
   // 1. Load all DB-sourced inputs into a pure-data bundle.
-  const inputs = await loadGeneratorInputs(userId, raceSlug, startAnchor, startDateISO);
+  const inputs = await loadGeneratorInputs(userId, raceSlug, startAnchor, startDateISO, goalTarget);
   if (!inputs.ok) return { ok: false, reason: inputs.reason };
 
   // 2026-06-03 · Rules 12 + 13 · pick plan mode based on temporal context.
@@ -1937,7 +1946,10 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   // recovery: another race finished recently · 1-2 week light-running
   const todayISO = await runnerToday(userId);
   const { lastRaceFinished, lastRaceDistanceMi } = await loadLastRaceFinished(userId, todayISO);
-  const mode: PlanMode = pickPlanMode(
+  // Goal-mode is always a BUILD to the goal (the runner chose the length) — it
+  // never demotes to maintenance/recovery the way a far-off or just-finished
+  // race would.
+  const mode: PlanMode = goalTarget ? 'race-prep' : pickPlanMode(
     todayISO,
     inputs.compose.raceDateISO,
     inputs.compose.raceDistanceMi,
@@ -1965,8 +1977,10 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       crossModes: inputs.compose.crossModes,
       tier,
       nextRace: {
-        slug: raceSlug,
-        name: raceSlug,
+        // This non-race (maintenance/recovery) branch is only reached on the
+        // race path (goal-mode forces 'race-prep'), so raceSlug is defined here.
+        slug: raceSlug ?? '',
+        name: raceSlug ?? '',
         date: inputs.compose.raceDateISO,
         distanceMi: inputs.compose.raceDistanceMi,
         goalPaceSec: inputs.compose.goalPaceSec,
@@ -2090,7 +2104,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     await clearActivePlansFor(client, userId);
     planId = await persistPlan(client, {
       userId,
-      raceSlug,
+      raceSlug: raceSlug ?? null,  // null for goal-mode (no race row)
       raceDateISO: inputs.compose.raceDateISO,
       blocks: composed.blocks,
       weeks: composed.weeks.map((w) => ({
@@ -2116,6 +2130,14 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       authoredState: {
         ...composed.authoredState,
         mode,
+        // Goal-anchored plan (no race row): record the goal so surfaces can
+        // say "working toward your 10K" off the plan + the projection can read
+        // the target without a races lookup.
+        ...(goalTarget ? {
+          goal_mode: true,
+          goal_distance_mi: goalTarget.distanceMi,
+          goal_sec: goalTarget.goalSec,
+        } : {}),
         generated_at: new Date().toISOString(),
         // When runway is < 14 weeks (e.g. AFC → CIM compressed block), flag it
         // so the coach briefing layer can surface the context. Base phase
@@ -2195,31 +2217,44 @@ async function loadLastRaceFinished(
  */
 async function loadGeneratorInputs(
   userId: string,
-  raceSlug: string,
+  raceSlug: string | undefined,
   startAnchor: 'today' | 'monday' = 'monday',
   startDateISO?: string,
+  goalTarget?: { distanceMi: number; goalSec: number | null; raceDateISO: string },
 ): Promise<
   | { ok: true; compose: ComposePlanInput }
   | { ok: false; reason: string }
 > {
-  // 1. Race
-  // 2026-06-05 · backend audit P0-6 fix · scope race lookup by user.
-  // races.slug is per-user · without user_uuid filter, plan generation
-  // can latch onto another runner's race row with the same slug.
-  // Cite docs/2026-06-05-backend-audit.html § P0-6.
-  const raceRow = (await pool.query(`SELECT slug, meta FROM races WHERE slug = $1 AND user_uuid = $2`, [raceSlug, userId])).rows[0];
-  if (!raceRow) return { ok: false, reason: 'race not found' };
-  const meta = raceRow.meta ?? {};
-  const raceDateISO: string | undefined = meta.date;
-  if (!raceDateISO) return { ok: false, reason: 'race missing date' };
   const todayISO = await runnerToday(userId);
 
-  const totalDays = daysBetween(todayISO, raceDateISO);
-  if (totalDays < 14) return { ok: false, reason: 'race < 2 weeks away; use race-week briefing only' };
-  if (totalDays > 365) return { ok: false, reason: 'race > 1 year out; plan only when within a year' };
+  // 1. Target — a races row (race-anchored) OR the runner's fitness goal
+  // (goal-anchored, no race row). Both resolve to {raceDistanceMi, raceDateISO,
+  // goalSec}; everything downstream is identical.
+  let raceDateISO: string;
+  let raceDistanceMi: number;
+  let goalSec: number | null;
+  if (goalTarget) {
+    raceDateISO = goalTarget.raceDateISO;
+    raceDistanceMi = goalTarget.distanceMi;
+    goalSec = goalTarget.goalSec;
+  } else {
+    // 2026-06-05 · backend audit P0-6 fix · scope race lookup by user.
+    // races.slug is per-user · without user_uuid filter, plan generation
+    // can latch onto another runner's race row with the same slug.
+    // Cite docs/2026-06-05-backend-audit.html § P0-6.
+    const raceRow = (await pool.query(`SELECT slug, meta FROM races WHERE slug = $1 AND user_uuid = $2`, [raceSlug, userId])).rows[0];
+    if (!raceRow) return { ok: false, reason: 'race not found' };
+    const meta = raceRow.meta ?? {};
+    if (!meta.date) return { ok: false, reason: 'race missing date' };
+    raceDateISO = meta.date;
+    raceDistanceMi = distanceMiOf(meta);
+    goalSec = parseGoalSeconds(meta.goalDisplay);
+  }
 
-  const raceDistanceMi = distanceMiOf(meta);
-  const goalSec = parseGoalSeconds(meta.goalDisplay);
+  const totalDays = daysBetween(todayISO, raceDateISO);
+  if (totalDays < 14) return { ok: false, reason: 'target < 2 weeks away; use race-week briefing only' };
+  if (totalDays > 365) return { ok: false, reason: 'target > 1 year out; plan only when within a year' };
+
   const goalPaceSec = goalSec ? Math.round(goalSec / raceDistanceMi) : null;
 
   // 2. User prefs · layout

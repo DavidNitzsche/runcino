@@ -14,8 +14,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboarding';
-import type { WeeklyMileage, WeeklyFrequency } from '@/lib/onboarding/state';
+import { generatePlan } from '@/lib/plan/generate';
+import { goalDistanceMiFromCode } from '@/lib/training/vdot';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 const ALLOWED_DISTANCES = ['5K', '10K', 'Half Marathon', 'Marathon', '50K', '100K'];
 
@@ -59,38 +60,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const prof = (await pool.query<{ wmt: number | null; wf: number | null }>(
+  await pool.query(
     `UPDATE profile
         SET tt_goal_distance        = $1,
             tt_goal_time            = $2,
             tt_goal_time_seconds    = $3,
             tt_goal_plan_weeks      = $5
-      WHERE user_uuid = $4
-      RETURNING weekly_mileage_target AS wmt, weekly_frequency AS wf`,
+      WHERE user_uuid = $4`,
     [distanceLabel, goalTime, goalSeconds, userId, planWeeks]
-  )).rows[0];
+  );
 
-  // Setting a goal SEEDS the plan — in the new flow the goal IS the anchor
-  // (onboarding no longer seeds). 5K/10K → goal-specific build (intervals /
-  // threshold); longer distances get a generic aerobic base for now —
-  // goal-specific half/marathon/ultra builds (long-run progression + race-pace
-  // work) are a follow-up. Best-effort: a seed failure doesn't fail the save.
-  let plan: Awaited<ReturnType<typeof seedMaintenancePlanFromOnboarding>> | null = null;
+  // Setting a goal GENERATES the plan — the goal IS the anchor (onboarding no
+  // longer seeds). EVERY distance (5K → 100K) routes through the canonical
+  // periodized builder via a goal target (no race row), so each gets a real
+  // build: BASE → QUALITY → RACE-SPECIFIC → TAPER with distance-appropriate
+  // long-run progression + race-pace work (incl. ultra). Synthetic target date
+  // = today + plan_weeks. generatePlan reads volume/frequency/prefs itself.
+  // Best-effort: a generation failure doesn't fail the save.
+  let plan: Awaited<ReturnType<typeof generatePlan>> | null = null;
   try {
-    const ttCode = distanceLabel === '5K' ? '5k' : distanceLabel === '10K' ? '10k' : null;
-    plan = await seedMaintenancePlanFromOnboarding({
-      userId,
-      planWeeks: planWeeks ?? undefined,
-      goals: {
-        ttDistance: ttCode,
-        ttTimeBucket: null,
-        weeklyMiTarget: (prof?.wmt as WeeklyMileage | null) ?? null,
-        weeklyFrequency: (prof?.wf as WeeklyFrequency | null) ?? null,
-        historyAvg: null, historyLong: null, historyYears: null,
-      },
-    });
+    const distMi = goalDistanceMiFromCode(distanceLabel);
+    if (distMi) {
+      const today = await runnerToday(userId);
+      const weeks = planWeeks ?? 16;
+      const raceDateISO = new Date(Date.parse(today + 'T12:00:00Z') + weeks * 7 * 86400000)
+        .toISOString().slice(0, 10);
+      plan = await generatePlan({
+        userId,
+        goalTarget: { distanceMi: distMi, goalSec: goalSeconds, raceDateISO },
+        startAnchor: 'today',
+      });
+    }
   } catch (e) {
-    console.error('[profile/goal] plan seed failed:', e);
+    console.error('[profile/goal] plan generation failed:', e);
   }
 
   await bustBriefingCacheForEvent(userId, 'profile_edit');
