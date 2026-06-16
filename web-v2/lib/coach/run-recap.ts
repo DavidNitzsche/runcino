@@ -118,7 +118,10 @@ export interface RecapPayload {
 
 function paceLabel(spm: number | null | undefined): string | null {
   if (!spm || spm <= 0) return null;
-  return `${Math.floor(spm / 60)}:${String(Math.round(spm % 60)).padStart(2, '0')}/mi`;
+  // Round to whole seconds FIRST, then split — rounding spm%60 on its own
+  // rolls 59.6s to "60" and prints "6:60/mi" instead of carrying to 7:00.
+  const total = Math.round(spm);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}/mi`;
 }
 
 /**
@@ -308,7 +311,10 @@ export function deriveRecap(input: RecapInput): RecapPayload {
       const finishMi = input.finishMi ?? 0;
       const hasFinish = finishMi > 0 && input.finishPaceSPerMi != null;
       if (hasFinish) {
-        const easyMi = Math.round(input.plannedMi - finishMi);
+        // Easy portion = what was ACTUALLY run minus the finish segment, so
+        // the breakdown sums to the real distance covered — not plannedMi,
+        // which over/under-states the easy miles when the runner ran long/short.
+        const easyMi = Math.max(0, Math.round(input.actualMi - finishMi));
         const fPaceStr = paceLabel(input.finishPaceSPerMi!)?.replace('/mi', '') ?? '';
         const rawLabel = String(input.finishLabel ?? '').trim().toUpperCase();
         const label = rawLabel === 'HM' ? 'HMP' : rawLabel === 'M' ? 'MP' : rawLabel || 'HMP';

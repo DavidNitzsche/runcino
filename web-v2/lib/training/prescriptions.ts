@@ -147,7 +147,7 @@ function paces(p: ProfileInputs) {
   const adj = (sec: number): number =>
     tempF != null ? applyHeatToPace(sec, tempF, refDist, tier) : sec;
   return {
-    easy:      fmtPaceRange(adj(t + 60),  adj(t + 110)),  // T + 60-110s
+    easy:      fmtPaceRange(adj(t + 80),  adj(t + 120)),  // T + 80-120s · matches spec-builder (Jun-8 floor-raise); Research/01 E = MP+60-90
     long:      fmtPaceRange(adj(t + 55),  adj(t + 90)),   // T + 55-90s
     marathon:  fmtPace(adj(t + 18)),                       // T + 18s
     tempo:     fmtPaceRange(adj(t + 5),   adj(t + 18)),   // T + 5-18s
@@ -238,8 +238,8 @@ export function derivePaces(p: ProfileInputs): DerivedPaceTargets {
   const z2 = z?.zones.find((x) => x.idx === 2) ?? null;
   return {
     tPaceSec: t,
-    easySecLo: t != null ? t + 60 : null,
-    easySecHi: t != null ? t + 110 : null,
+    easySecLo: t != null ? t + 80 : null,   // T+80 · matches spec-builder
+    easySecHi: t != null ? t + 120 : null,   // T+120 · matches spec-builder
     longSecLo: t != null ? t + 55 : null,
     longSecHi: t != null ? t + 90 : null,
     tempoSecLo: t != null ? t + 5 : null,
