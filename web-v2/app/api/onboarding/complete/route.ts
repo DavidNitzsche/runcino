@@ -470,7 +470,7 @@ export async function POST(req: NextRequest) {
   // pull rebuilds via lifecycle. We surface the outcome in the response
   // payload so the caller can log issues in dev.
   let seedPlan:
-    | { ok: boolean; mode?: 'race-prep' | 'maintenance' | 'coached'; race_slug?: string; plan_id?: string; weeks_generated?: number; peak_mpw?: number; error?: string }
+    | { ok: boolean; mode?: 'race-prep' | 'maintenance' | 'coached' | 'none'; race_slug?: string; plan_id?: string; weeks_generated?: number; peak_mpw?: number; error?: string }
     | null = null;
   if (isCoached) {
     // Coached mode: Faff authors NOTHING. No races row, no training_plans
@@ -549,7 +549,11 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       seedPlan = { ok: false, mode: 'race-prep', error: err?.message ?? String(err) };
     }
-  } else {
+  } else if (ttDistance) {
+    // Transitional: a TT goal still arriving in the onboarding payload (older
+    // clients that collect a goal at onboarding) → seed the goal build. The new
+    // flow removes goal entry from onboarding; the goal is set later via
+    // /api/profile/goal, which generates the plan. Kept so older builds work.
     try {
       const result = await seedMaintenancePlanFromOnboarding({
         userId,
@@ -574,6 +578,12 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       seedPlan = { ok: false, mode: 'maintenance', error: err?.message ?? String(err) };
     }
+  } else {
+    // NEW FLOW: no race AND no goal at onboarding → author NOTHING. The runner
+    // lands on the empty TODAY ("add a race or goal to start a plan"); a plan
+    // is generated when they add a race (/api/race) or a goal
+    // (/api/profile/goal). No more quiet consistency-maintenance plan.
+    seedPlan = { ok: true, mode: 'none' };
   }
 
   return NextResponse.json({
