@@ -56,6 +56,10 @@ export interface RecapInput {
    *  When present, used in intervals lead line: "4 reps @ 6:52".
    *  Absent on Strava/cold-start runs (falls back to total-distance block). */
   repCount?: number | null;
+  /** Per-rep actual work pace (s/mi), in rep order. Drives the interval
+   *  pacing-pattern read (went out hot · faded · even · built). Absent on
+   *  Strava/cold-start runs (the pattern fact is skipped). */
+  repPaces?: number[] | null;
   /** Finish-segment distance (mi) from workout_spec (long runs with HM/M finish). */
   finishMi?: number | null;
   /** Actual finish-segment pace (s/mi). Prefer the isFinishSegment phase's
@@ -97,6 +101,11 @@ export interface RecapPayload {
   facts: string[];
   coach_tip: string | null;
   conditions_note: string | null;
+  /** Heat-adjusted work-rep target (s/mi) for interval sessions · lets the
+   *  per-rep graph colour against the pace that was actually achievable in
+   *  the conditions, not the raw cold-weather number. Null/omitted for
+   *  non-interval runs or when there's no target. */
+  intervals_adjusted_target_s_per_mi?: number | null;
 }
 
 // Citations removed from output payloads (David, 2026-05-31). The
@@ -106,6 +115,70 @@ export interface RecapPayload {
 function paceLabel(spm: number | null | undefined): string | null {
   if (!spm || spm <= 0) return null;
   return `${Math.floor(spm / 60)}:${String(Math.round(spm % 60)).padStart(2, '0')}/mi`;
+}
+
+/**
+ * Read the rep-by-rep pacing pattern for an interval / cruise session and
+ * say what actually happened — judged against the HEAT-ADJUSTED target,
+ * not the raw cold-weather number.
+ *
+ * Research grounding:
+ *   · Research/01 · hard reps (I/T) lock to the target within ~±3 s; in
+ *     heat you judge against the adjusted pace or by HR, not the raw pace.
+ *   · Even / negative splitting is the goal; a positive split (fast early,
+ *     slow late) is the classic execution error. HR is the guardrail when
+ *     pace drifts.
+ *
+ * Returns the pattern fact (or null when there isn't enough rep signal)
+ * plus the heat-adjusted target so the per-rep graph can colour to it.
+ */
+function intervalPacing(
+  reps: number[],
+  targetSPerMi: number | null,
+  slowdownPct: number,
+  avgHr: number | null,
+): { fact: string | null; adjTarget: number | null } {
+  const clean = (reps ?? []).filter((p) => typeof p === 'number' && p > 0);
+  if (!targetSPerMi || clean.length < 2) {
+    return { fact: null, adjTarget: targetSPerMi ?? null };
+  }
+  const adjTarget = Math.round(targetSPerMi * (1 + slowdownPct / 100));
+  const heat = slowdownPct >= 2;
+  const targetPhrase = heat
+    ? `the heat-adjusted ~${paceLabel(adjTarget)}`
+    : `the ~${paceLabel(adjTarget)} target`;
+  const half = Math.max(1, Math.floor(clean.length / 2));
+  const firstHalf = clean.slice(0, half);
+  const lastHalf = clean.slice(-half);
+  const avg = (a: number[]) => Math.round(a.reduce((s, x) => s + x, 0) / a.length);
+  const fAvg = avg(firstHalf);
+  const lAvg = avg(lastHalf);
+  // Drift (late − early) is the robust signal · it doesn't depend on the
+  // exact heat number, only on how the reps moved across the session.
+  const drift = lAvg - fAvg; // >0 = slowed (positive split), <0 = built
+  const lateVsAdj = lAvg - adjTarget; // >0 = back reps slipped past the adjusted pace
+  const hrClause = avgHr && avgHr > 0 ? ` HR ${avgHr} says the effort was right.` : '';
+
+  // Positive split · went out faster than they finished.
+  if (drift >= 8) {
+    return lateVsAdj <= 8
+      // Settled: the back reps landed at/under the pace the heat allowed.
+      ? {
+          adjTarget,
+          fact: `Went out ~${drift}s hot on the first ${firstHalf.length}, then settled into the pace the conditions allowed.${hrClause}`,
+        }
+      // Faded: the back reps slipped past even the heat-adjusted pace.
+      : {
+          adjTarget,
+          fact: `Went out hard and gave back ~${drift}s across the reps · ${targetPhrase} was the line to hold.${hrClause}`,
+        };
+  }
+  // Negative split · built into it.
+  if (drift <= -8) {
+    return { adjTarget, fact: `Built into it · the last ${lastHalf.length} were ~${Math.abs(drift)}s quicker. Strong close.` };
+  }
+  // Even · held the line across the session.
+  return { adjTarget, fact: `Even across all ${clean.length} · held the line.${hrClause}` };
 }
 
 /** Pull an HR out of a split using either canonical key (`avgHr` or `hr`). */
@@ -335,17 +408,24 @@ export function deriveRecap(input: RecapInput): RecapPayload {
             ? `Reps done · ${workPaceStr} work avg${hrPart}.`
             : `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
       facts.push(leadLine);
-      facts.push(`Building the top end · these stack.`);
-      // Heat is already covered once by conditions_note ("cost ~X% on
-      // pace, not lost fitness") and again by coach_tip. A third mention
-      // here read as weird: it gave prospective advice ("go by feel and
-      // HR") in the recap of a run already finished, and "still counted"
-      // sounded defensive. Dropped — the conditions note tells it better.
+      // The real read: rep-by-rep pacing pattern vs the heat-adjusted
+      // target (went out hot · faded · even · built), with HR as the
+      // guardrail. Falls back to the generic phase line only when there's
+      // no per-rep signal (Strava / cold-start). Replaces the old generic
+      // "Building the top end" filler + the weird "go by feel" heat fact.
+      const pacing = intervalPacing(
+        input.repPaces ?? [],
+        input.plannedPaceSPerMi ?? null,
+        weather?.slowdownPct ?? 0,
+        input.actualAvgHr ?? null,
+      );
+      facts.push(pacing.fact ?? `Building the top end · these stack.`);
       return {
         verdict: 'Reps done.',
         facts,
         coach_tip,
         conditions_note,
+        intervals_adjusted_target_s_per_mi: pacing.adjTarget,
       };
     }
 

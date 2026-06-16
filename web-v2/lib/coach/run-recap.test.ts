@@ -380,6 +380,47 @@ describe('deriveRecap · type=intervals', () => {
     // prospective "go by feel" advice. Heat is explained by conditions_note.
     expect(r.facts.join(' ')).not.toMatch(/Go by feel and HR|workout still counted|Heat makes interval pace harder/);
   });
+
+  it('intervals: hot start then settled → pacing fact vs heat-adjusted target + HR guardrail', () => {
+    const r = deriveRecap({
+      type: 'intervals',
+      phase: 'PEAK',
+      plannedMi: 7,
+      plannedPaceSPerMi: 403, // 6:43
+      plannedHrCap: null,
+      actualMi: 7,
+      actualPaceSPerMi: 405,
+      actualAvgHr: 147,
+      actualMaxHr: 160,
+      repCount: 4,
+      repPaces: [400, 398, 412, 410], // 6:40, 6:38 (hot), 6:52, 6:50 (settled)
+      splits: makeSplits(6, 145, 150),
+      weather: { tempF: 63, humidityPct: 50, conditions: 'clear', cloudCoverPct: 10 },
+    });
+    // Reads the pattern, not the generic filler.
+    expect(r.facts.join(' ')).toMatch(/went out .* hot on the first 2, then settled/i);
+    expect(r.facts.join(' ')).toMatch(/HR 147/);
+    expect(r.facts.join(' ')).not.toMatch(/Building the top end/);
+    // Heat-adjusted target is exposed and slower than the raw 6:43.
+    expect(r.intervals_adjusted_target_s_per_mi ?? 0).toBeGreaterThan(403);
+  });
+
+  it('intervals: no per-rep signal (Strava) → falls back to generic phase line', () => {
+    const r = deriveRecap({
+      type: 'intervals',
+      phase: 'PEAK',
+      plannedMi: 7,
+      plannedPaceSPerMi: 403,
+      plannedHrCap: null,
+      actualMi: 7,
+      actualPaceSPerMi: 405,
+      actualAvgHr: 147,
+      actualMaxHr: 160,
+      splits: makeSplits(6, 145, 150),
+      weather: null,
+    });
+    expect(r.facts.join(' ')).toMatch(/Building the top end/);
+  });
 });
 
 describe('deriveRecap · type=recovery/shakeout/race/default', () => {

@@ -233,6 +233,10 @@ export async function GET(
   const workDistMiRaw = workPhases.reduce((s, p) => s + (p.actualDistanceMi ?? 0), 0);
   const workDistanceMi: number | null = workDistMiRaw > 0 ? workDistMiRaw : null;
   const repCount: number | null = workPhases.length > 0 ? workPhases.length : null;
+  // Per-rep actual paces (in rep order) for the interval pacing-pattern read.
+  const repPaces: number[] = workPhases
+    .map((p) => p.actualPaceSPerMi as number)
+    .filter((p) => typeof p === 'number' && p > 0);
 
   // Finish-segment spec fields for the long-run structured recap copy.
   // finish_mi / finish_pace_s_per_mi / finish_label live in workout_spec
@@ -271,6 +275,7 @@ export async function GET(
     workPaceSPerMi,
     workDistanceMi,
     repCount,
+    repPaces,
     finishMi: finishMiSpec,
     finishPaceSPerMi,
     finishLabel: finishLabelRaw,

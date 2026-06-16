@@ -92,10 +92,16 @@ struct RunRecap: Decodable {
     /// data is insufficient · iPhone hides the green check + win line
     /// and falls back to just the verdict.
     let win: String?
+    /// Heat-adjusted work-rep target (s/mi) for interval sessions · the
+    /// per-rep graph colours against this instead of the raw cold-weather
+    /// target so a hot-day rep isn't flagged as a miss. Null on non-interval
+    /// runs or when there's no target.
+    let intervalsAdjustedTargetSPerMi: Int?
 
     enum CodingKeys: String, CodingKey {
         case ok, runId, date, type, phase
         case verdict, facts, coach_tip, conditions_note, win
+        case intervalsAdjustedTargetSPerMi = "intervals_adjusted_target_s_per_mi"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -109,5 +115,6 @@ struct RunRecap: Decodable {
         self.coach_tip = try c.decodeIfPresent(String.self, forKey: .coach_tip)
         self.conditions_note = try c.decodeIfPresent(String.self, forKey: .conditions_note)
         self.win = try c.decodeIfPresent(String.self, forKey: .win)
+        self.intervalsAdjustedTargetSPerMi = c.decodeFlexInt(forKey: .intervalsAdjustedTargetSPerMi)
     }
 }

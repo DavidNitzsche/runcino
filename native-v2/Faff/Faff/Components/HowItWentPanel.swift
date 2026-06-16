@@ -49,6 +49,10 @@ struct HowItWentPanel: View {
     let detail: RunDetail?
     let accent: Color
     var onMesh: Bool = false
+    /// Heat-adjusted work-rep target (s/mi) from the recap · THE REPS
+    /// colours against the range [raw target → adjusted] so a rep that was
+    /// only a few seconds slow in heat isn't flagged as a miss.
+    var adjustedTargetSPerMi: Int? = nil
 
     var body: some View {
         switch effort {
@@ -59,7 +63,7 @@ struct HowItWentPanel: View {
         case .tempo:
             TempoPostPanel(detail: detail, accent: accent, onMesh: onMesh)
         case .intervals:
-            RepsPostPanel(detail: detail, accent: accent, onMesh: onMesh)
+            RepsPostPanel(detail: detail, accent: accent, onMesh: onMesh, adjustedTargetSPerMi: adjustedTargetSPerMi)
         case .race, .rest:
             EmptyView()
         }
@@ -914,6 +918,15 @@ private struct RepsPostPanel: View {
     let detail: RunDetail?
     let accent: Color
     var onMesh: Bool = false
+    var adjustedTargetSPerMi: Int? = nil
+
+    /// Slow edge of the acceptable range · the heat-adjusted target when it's
+    /// meaningfully slower than the prescribed one, else the prescribed target.
+    private var adjustedGoalSec: Int? {
+        guard let raw = targetSec else { return adjustedTargetSPerMi }
+        guard let adj = adjustedTargetSPerMi, adj > raw + 2 else { return raw }
+        return adj
+    }
 
     private var sectionBg: Color { onMesh ? Color.white.opacity(0.10) : Color(hex: 0xF6EFE2) }
     private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
@@ -948,6 +961,11 @@ private struct RepsPostPanel: View {
 
     private var targetMeta: String? {
         guard let t = targetSec else { return nil }
+        // Show the range when heat widened the slow edge, so the runner sees
+        // why a few-seconds-slow rep still reads as on-target.
+        if let adj = adjustedGoalSec, adj > t + 2 {
+            return "TARGET \(formatPace(t))–\(formatPace(adj)) · heat"
+        }
         return "TARGET \(formatPace(t))/mi"
     }
 
@@ -1035,15 +1053,17 @@ private struct RepsPostPanel: View {
 
     private func repRow(idx: Int, rep: PhaseBreakdown) -> some View {
         let actualSec = parsePaceSec(rep.actual_pace) ?? (targetSec ?? 0)
-        let goalSec = targetSec ?? actualSec
-        let delta = actualSec - goalSec
-        // Intervals hit a pace RANGE, not an exact number. Anything within
-        // ~12 s/mi of target (either side) is a hit → green. Only flag reps
-        // that came in meaningfully slower than the range; faster is fine.
-        let onTargetTol = 12
-        let tone: HIWTone = abs(delta) <= onTargetTol
-            ? .good
-            : (delta > 0 ? .warn : .good)
+        let rawT = targetSec ?? actualSec
+        let delta = actualSec - rawT   // shown vs the prescribed (raw) target
+        // Acceptable RANGE = prescribed target → heat-adjusted target.
+        // Intervals hit a range (Research/01 · ±3 lock), and heat widens the
+        // slow edge (you judge against the achievable pace, not the cold
+        // number). In range = a hit (green); faster than the range = went out
+        // hot (neutral); slower than the range = faded (amber).
+        let tol = 5
+        let lo = min(rawT, adjustedGoalSec ?? rawT) - tol
+        let hi = max(rawT, adjustedGoalSec ?? rawT) + tol
+        let tone: HIWTone = actualSec > hi ? .warn : (actualSec < lo ? .neutral : .good)
         let deltaStr: String = {
             if delta == 0 { return "±0" }
             return delta > 0 ? "+\(delta)" : "\(delta)"
