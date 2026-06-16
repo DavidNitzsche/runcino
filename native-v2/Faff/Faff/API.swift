@@ -612,6 +612,12 @@ enum API {
         let status: String
         let stravaActivityId: String?
         let error: String?
+        /// GET-only · whether the runner has auto-push on. When true the
+        /// iPhone shows a published-status pill instead of the edit sheet.
+        let autoPush: Bool?
+        /// GET-only · the smart default title ("Intervals · 4×1mi @ 6:45")
+        /// to pre-fill the edit sheet.
+        let suggestedTitle: String?
     }
 
     /// GET /api/strava/push/[runId] · current push status for a run.
@@ -627,20 +633,26 @@ enum API {
 
     /// POST /api/strava/push/[runId] · manually push a completed run to
     /// Strava. Idempotent: duplicate push returns status "duplicate".
+    /// Optional title/description ride up from the edit sheet; omitted, the
+    /// server falls back to its smart default title + empty description.
     /// Returns the server's status object; falls back to a synthetic
     /// "uploaded" on a 2xx whose body can't be decoded.
-    static func pushRunToStrava(runId: String) async throws -> StravaPushStatus {
+    static func pushRunToStrava(runId: String, title: String? = nil, description: String? = nil) async throws -> StravaPushStatus {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/strava/push/\(runId)"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = "{}".data(using: .utf8)
+        var body: [String: Any] = [:]
+        if let title, !title.trimmingCharacters(in: .whitespaces).isEmpty { body["title"] = title }
+        if let description, !description.isEmpty { body["description"] = description }
+        req.httpBody = (try? JSONSerialization.data(withJSONObject: body)) ?? "{}".data(using: .utf8)
         let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
         guard (200..<300).contains(http.statusCode) else {
             return StravaPushStatus(status: "failed", stravaActivityId: nil,
-                                    error: "HTTP \(http.statusCode)")
+                                    error: "HTTP \(http.statusCode)", autoPush: nil, suggestedTitle: nil)
         }
         return (try? JSONDecoder().decode(StravaPushStatus.self, from: data))
-            ?? StravaPushStatus(status: "uploaded", stravaActivityId: nil, error: nil)
+            ?? StravaPushStatus(status: "uploaded", stravaActivityId: nil, error: nil,
+                                autoPush: nil, suggestedTitle: nil)
     }
 
     /// POST /api/coach/proposal · accept or decline a coach swap proposal.

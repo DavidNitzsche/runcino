@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
-import { pushRunToStrava } from '@/lib/strava/push';
+import { pushRunToStrava, suggestTitleForRun } from '@/lib/strava/push';
 
 export async function GET(
   req: NextRequest,
@@ -28,6 +28,16 @@ export async function GET(
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const { runId } = await params;
+
+  // Auto-push flag + suggested title · the iPhone uses these to decide
+  // whether to offer the edit sheet (manual) vs a published-status pill
+  // (auto-push on), and to pre-fill the sheet's title field.
+  const profileRow = (await pool.query(
+    `SELECT strava_auto_push FROM profile WHERE user_uuid = $1`,
+    [userId],
+  )).rows[0];
+  const autoPush = profileRow?.strava_auto_push === true;
+  const suggestedTitle = await suggestTitleForRun(userId, runId).catch(() => null);
 
   let row = (await pool.query(
     `SELECT id, status, strava_activity_id, strava_upload_id, title, privacy,
@@ -40,7 +50,7 @@ export async function GET(
   )).rows[0];
 
   if (!row) {
-    return NextResponse.json({ pushed: false, status: 'never' });
+    return NextResponse.json({ pushed: false, status: 'never', autoPush, suggestedTitle });
   }
 
   // Live truth: if still pending and Strava has had >30s to process,
@@ -68,6 +78,8 @@ export async function GET(
     pushedAt: row.pushed_at,
     completedAt: row.completed_at,
     error: row.error_message,
+    autoPush,
+    suggestedTitle,
   });
 }
 

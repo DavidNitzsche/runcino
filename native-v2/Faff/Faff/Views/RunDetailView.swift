@@ -274,6 +274,13 @@ struct RunDetailView: View {
     }
 
     @State private var stravaPushState: StravaPushState = .idle
+    /// Auto-push on → show a published-status pill, never the editable push
+    /// button (David 2026-06-16). Seeded from the status GET in load().
+    @State private var stravaAutoPush = false
+    @State private var stravaSuggestedTitle: String? = nil
+    @State private var showStravaSheet = false
+    @State private var stravaEditTitle = ""
+    @State private var stravaEditDesc = ""
     /// Push state machine — matches the server's status vocabulary.
     /// idle    → not yet attempted (or run just opened)
     /// pushing → POST in flight
@@ -283,68 +290,94 @@ struct RunDetailView: View {
     /// failed  → error; tap again to retry
     enum StravaPushState { case idle, pushing, pending, done, dup, failed }
 
+    @ViewBuilder
     private var stravaPushButton: some View {
-        Button {
-            // Only allow taps from idle or failed — all other states are
-            // either in-flight (pushing/pending) or terminal (done/dup).
-            guard stravaPushState == .idle || stravaPushState == .failed else { return }
-            stravaPushState = .pushing
-            Task {
-                if let s = try? await API.pushRunToStrava(runId: runId) {
-                    await MainActor.run {
-                        switch s.status {
-                        case "uploaded":  stravaPushState = .done
-                        case "duplicate": stravaPushState = .dup
-                        case "pending":
-                            stravaPushState = .pending
-                            Task { await pollStravaPush() }
-                        default:          stravaPushState = .failed
-                        }
-                    }
+        Group {
+            switch stravaPushState {
+            case .done, .dup:
+                stravaStatusPill(icon: "checkmark.circle.fill",
+                                 text: "Published to Strava", dim: true)
+            case .pushing, .pending:
+                stravaStatusPill(icon: "ellipsis",
+                                 text: stravaAutoPush ? "Publishing to Strava…" : "Pushing…",
+                                 dim: false)
+            default:   // .idle / .failed
+                if stravaAutoPush {
+                    stravaStatusPill(
+                        icon: stravaPushState == .failed ? "exclamationmark.triangle.fill" : "clock.fill",
+                        text: stravaPushState == .failed ? "Couldn’t publish to Strava" : "Publishing to Strava…",
+                        dim: stravaPushState != .failed)
                 } else {
-                    await MainActor.run { stravaPushState = .failed }
+                    stravaEditButton
                 }
             }
+        }
+        .sheet(isPresented: $showStravaSheet) {
+            StravaPushSheet(
+                title: $stravaEditTitle,
+                description: $stravaEditDesc,
+                isPushing: stravaPushState == .pushing,
+                onPush: { performStravaPush() },
+                onCancel: { showStravaSheet = false }
+            )
+            .presentationDetents([.height(440), .large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
+        }
+    }
+
+    /// Editable-push CTA (manual mode) · tapping opens the title/description
+    /// sheet rather than pushing immediately.
+    private var stravaEditButton: some View {
+        Button {
+            stravaEditTitle = stravaSuggestedTitle ?? "Run"
+            stravaEditDesc = ""
+            showStravaSheet = true
         } label: {
             HStack(spacing: 9) {
-                Image(systemName: stravaIcon)
+                Image(systemName: "arrow.up.right.square.fill")
                     .font(.system(size: 13, weight: .bold))
-                Text(stravaLabel)
-                    .font(.body(14, weight: .extraBold))
-                    .tracking(0.3)
+                Text(stravaPushState == .failed ? "PUSH FAILED · TAP TO RETRY" : "PUSH TO STRAVA")
+                    .font(.body(14, weight: .extraBold)).tracking(0.3)
             }
             .foregroundStyle(Theme.txt)
             .frame(maxWidth: .infinity, minHeight: 46)
-            .background(
-                Color(hex: 0xFC4D24).opacity(
-                    (stravaPushState == .done || stravaPushState == .dup) ? 0.18 : 0.32
-                ),
-                in: RoundedRectangle(cornerRadius: 14)
-            )
+            .background(Color(hex: 0xFC4D24).opacity(0.32), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xFC4D24).opacity(0.6), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .disabled([.pushing, .pending, .done, .dup].contains(stravaPushState))
     }
 
-    private var stravaIcon: String {
-        switch stravaPushState {
-        case .idle:    return "arrow.up.right.square.fill"
-        case .pushing: return "ellipsis"
-        case .pending: return "clock.fill"
-        case .done:    return "checkmark"
-        case .dup:     return "checkmark.circle.fill"
-        case .failed:  return "exclamationmark.triangle.fill"
+    private func stravaStatusPill(icon: String, text: String, dim: Bool) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon).font(.system(size: 13, weight: .bold))
+            Text(text).font(.body(14, weight: .extraBold)).tracking(0.3)
         }
+        .foregroundStyle(Theme.txt)
+        .frame(maxWidth: .infinity, minHeight: 46)
+        .background(Color(hex: 0xFC4D24).opacity(dim ? 0.16 : 0.28), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xFC4D24).opacity(0.4), lineWidth: 1))
     }
-    private var stravaLabel: String {
-        switch stravaPushState {
-        case .idle:    return "PUSH TO STRAVA"
-        case .pushing: return "PUSHING..."
-        case .pending: return "PROCESSING..."
-        case .done:    return "PUSHED"
-        case .dup:     return "ALREADY ON STRAVA"
-        case .failed:  return "PUSH FAILED · TAP TO RETRY"
+
+    /// Push with the sheet's edited title + description, then dismiss.
+    private func performStravaPush() {
+        guard stravaPushState != .pushing else { return }
+        stravaPushState = .pushing
+        let title = stravaEditTitle
+        let desc = stravaEditDesc
+        Task {
+            let s = try? await API.pushRunToStrava(runId: runId, title: title, description: desc)
+            await MainActor.run {
+                switch s?.status {
+                case "uploaded":  stravaPushState = .done
+                case "duplicate": stravaPushState = .dup
+                case "pending":
+                    stravaPushState = .pending
+                    Task { await pollStravaPush() }
+                default:          stravaPushState = .failed
+                }
+                showStravaSheet = false
+            }
         }
     }
 
@@ -864,6 +897,8 @@ struct RunDetailView: View {
             if let r, r.source != "strava",
                let s = try? await API.fetchStravaPushStatus(runId: runId) {
                 await MainActor.run {
+                    stravaAutoPush = s.autoPush ?? false
+                    if let t = s.suggestedTitle { stravaSuggestedTitle = t }
                     guard stravaPushState == .idle else { return }
                     switch s.status {
                     case "uploaded":  stravaPushState = .done

@@ -234,6 +234,32 @@ export async function pushRunToStrava(
     : resolved;
 }
 
+/**
+ * The default Strava title we'd use for a run, without pushing. Lets the
+ * iPhone pre-fill the edit sheet with the same smart title ("Intervals ·
+ * 4×1mi @ 6:45") the auto/manual push would generate. Returns null when the
+ * run can't be found.
+ */
+export async function suggestTitleForRun(userId: string, runId: string): Promise<string | null> {
+  const runRow = (await pool.query(
+    `SELECT data FROM runs
+      WHERE user_uuid = $1 AND (data->>'id' = $2 OR data->>'activityId' = $2)
+      LIMIT 1`,
+    [userId, runId],
+  )).rows[0];
+  if (!runRow?.data) return null;
+  const run = runRow.data;
+  let runType: string | null = run.type ?? null;
+  if (!runType && run.date) {
+    runType = (await pool.query(
+      `SELECT pw.type FROM plan_workouts pw JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND pw.date_iso = $2 LIMIT 1`,
+      [userId, run.date],
+    )).rows[0]?.type ?? null;
+  }
+  return titleFor({ ...run, type: runType ?? run.type }, 'type_phases');
+}
+
 async function markFailed(pushId: number, message: string) {
   await pool.query(
     `UPDATE strava_pushes SET status = 'failed', error_message = $1, completed_at = NOW()
