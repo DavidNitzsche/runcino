@@ -1075,7 +1075,12 @@ private struct RepsPostPanel: View {
         let slowTol = 4.0   // slack on the slow edge (≈ heat-adjusted)
         let inRange = Double(delta) >= -fastTol && Double(delta) <= Double(adjOff) + slowTol
         let markColor: Color = inRange ? Color(hex: 0x2FA876) : Color(hex: 0xE0913A)
-        let deltaStr: String = delta == 0 ? "±0" : (delta > 0 ? "+\(delta)" : "\(delta)")
+        // Label speaks the range, not a raw delta: "in range" when the rep
+        // landed in the band, else how far past the slow edge ("Ns over") or
+        // the fast edge ("Ns fast").
+        let rangeLabel: String = inRange
+            ? "in range"
+            : (Double(delta) > Double(adjOff) + slowTol ? "\(delta - adjOff)s over" : "\(abs(delta))s fast")
         // Map a pace delta (s vs raw target · + = slower) to an x fraction.
         // Slower → left, faster → right (matches the SLOWER ◂ ▸ FASTER legend).
         let window = Double(adjOff) + 20
@@ -1123,11 +1128,10 @@ private struct RepsPostPanel: View {
                 Text(rep.actual_pace ?? "—")
                     .font(.body(15, weight: .bold))
                     .foregroundStyle(primaryText)
-                // Plain data · vs the prescribed target. Muted so it reads as a
-                // number on a report, not a verdict (the needle carries that).
-                Text("\(deltaStr) vs target")
-                    .font(.body(9.5, weight: .semibold))
-                    .foregroundStyle(inRange ? mutedText : markColor)
+                // Range-relative status · "in range" (green) or how far out.
+                Text(rangeLabel)
+                    .font(.body(9.5, weight: .extraBold)).tracking(0.3)
+                    .foregroundStyle(markColor)
             }
             .frame(width: 78, alignment: .trailing)
         }
