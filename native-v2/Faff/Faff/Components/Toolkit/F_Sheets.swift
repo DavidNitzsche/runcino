@@ -488,8 +488,11 @@ struct SetGoalSheet: View {
         guard let wks = planWeeks, let seeded = planSeededSeconds else { return nil }
         let delta = seeded - goalTotalSeconds  // positive = user went faster than plan projects
         if delta <= 0 { return nil }
+        let hasLongerOption = planOptions(for: distance).contains { $0.weeks > wks }
         if delta < 30 { return "Stretch goal for \(wks) weeks. You'll need to execute every session." }
-        return "Well beyond what \(wks) weeks typically delivers. Consider a longer plan."
+        return hasLongerOption
+            ? "Well beyond what \(wks) weeks typically delivers. Consider a longer plan."
+            : "Very ambitious for \(wks) weeks. You can still aim for it, but expect it to be tough."
     }
 
     var body: some View {
