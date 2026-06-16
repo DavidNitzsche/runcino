@@ -467,6 +467,7 @@ struct SetGoalSheet: View {
     @State private var minutes: Int = 45
     @State private var seconds: Int = 0
     @State private var planWeeks: Int? = nil
+    @State private var planSeededSeconds: Int? = nil  // exact value seeded on plan select
     @State private var currentVdot: Double? = nil
     @State private var saving: Bool = false
     @State private var error: String? = nil
@@ -481,15 +482,11 @@ struct SetGoalSheet: View {
     private var isValid: Bool { hours > 0 || minutes > 0 }
     @State private var showTimePicker: Bool = false
 
-    // Only warns when the runner has SELECTED a plan AND manually adjusted
-    // the wheels faster than that plan's projection.
+    // Warns only when the runner has manually moved the wheels faster than
+    // the value that was seeded when they picked the plan.
     private var stretchWarning: String? {
-        guard let wks = planWeeks,
-              let v = currentVdot,
-              let opt = planOptions(for: distance).first(where: { $0.weeks == wks }),
-              let projected = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance)
-        else { return nil }
-        let delta = projected - goalTotalSeconds
+        guard let wks = planWeeks, let seeded = planSeededSeconds else { return nil }
+        let delta = seeded - goalTotalSeconds  // positive = user went faster than plan projects
         if delta <= 0 { return nil }
         if delta < 30 { return "Stretch goal for \(wks) weeks. You'll need to execute every session." }
         return "Well beyond what \(wks) weeks typically delivers. Consider a longer plan."
@@ -532,6 +529,7 @@ struct SetGoalSheet: View {
                                 if let v = currentVdot,
                                    let pred = Self.predictSeconds(vdot: v + opt.vdotGain, distance: distance) {
                                     let rounded = (pred / 5) * 5
+                                    planSeededSeconds = rounded
                                     hours = rounded / 3600
                                     minutes = (rounded % 3600) / 60
                                     seconds = rounded % 60
@@ -627,9 +625,10 @@ struct SetGoalSheet: View {
             }
         }
         .onAppear { seedValues(); Task { await loadVdot() } }
-        .onChange(of: distance) { _, d in
+        .onChange(of: distance) { _, _ in
             if existingGoal == nil {
                 planWeeks = nil
+                planSeededSeconds = nil
                 hours = 0; minutes = 0; seconds = 0
                 showTimePicker = false
             }
