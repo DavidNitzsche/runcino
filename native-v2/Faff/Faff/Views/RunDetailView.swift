@@ -495,7 +495,8 @@ struct RunDetailView: View {
             polyline: run?.route_polyline ?? "",
             accent: effort.dot,
             distanceMi: run?.distance_mi ?? 0,
-            elevGainFt: run?.elev_gain_ft ?? 0
+            elevGainFt: run?.elev_gain_ft ?? 0,
+            splits: run?.splits ?? []
         )
         .frame(height: 196)
     }

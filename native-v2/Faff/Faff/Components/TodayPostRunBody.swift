@@ -459,7 +459,8 @@ struct TodayPostRunBody: View {
                 polyline: polyline,
                 accent: accent,
                 distanceMi: detail?.distance_mi ?? 0,
-                elevGainFt: detail?.elev_gain_ft ?? 0
+                elevGainFt: detail?.elev_gain_ft ?? 0,
+                splits: detail?.splits ?? []
             )
             .frame(height: 196)
             .padding(.horizontal, 18)
@@ -1110,34 +1111,34 @@ struct RoutePolylineCard: View {
     let accent: Color
     let distanceMi: Double
     let elevGainFt: Int
+    /// Per-mile splits drive the pace-graded coloring + legend. Optional so a
+    /// caller without split data still gets the plain coral route.
+    var splits: [RunSplit] = []
+
+    private var hasPaceData: Bool {
+        splits.count >= 2 && splits.contains { $0.pace != nil }
+    }
 
     var body: some View {
         let points = decodePolyline(polyline)
         let coords = points.map { CLLocationCoordinate2D(latitude: $0.0, longitude: $0.1) }
         ZStack {
             if coords.count >= 2 {
-                // 2026-06-02 round 11 · MapKit basemap with the route
-                // overlaid · matches the web's RouteMap.tsx (Leaflet +
-                // CartoDB dark tiles) by using MapKit's standard
-                // dark-emphasis style. Apple's basemap renders street
-                // grid + parks + freeways under the polyline so the
-                // run reads with real geography. Polyline = coral
-                // stroke; start = green ring; finish = coral dot.
-                routeMap(coords: coords)
+                // Native mirror of the web's RouteMap.tsx · a pace-graded route
+                // on CartoDB dark tiles. Those tiles' street labels are muted
+                // enough to recede instead of crowding the line, which the
+                // Apple basemap did not (David 2026-06-16). See RouteMapView.
+                RouteMapView(coords: coords, splits: splits)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    // Force dark color scheme so the standard map
-                    // renders dark tiles (per the design's dark theme).
-                    .environment(\.colorScheme, .dark)
-                    // 2026-06-02 round 63 · David: "this completed run
-                    // panel tries to scroll or move off screen left to
-                    // right." The Map view was intercepting touches even
-                    // though interactionModes is []. MapKit still hit-
-                    // tests the view region for gesture recognition; that
-                    // pulled the page's vertical scroll into a horizontal
-                    // drag whenever the finger landed on the map. Killing
-                    // hit-testing makes the map purely visual — touches
-                    // pass through to the parent ScrollView's pan.
+                    // 2026-06-02 round 63 · MapKit hit-tests its region even
+                    // when non-interactive, which hijacked the parent
+                    // ScrollView's vertical pan into a horizontal drag. The map
+                    // is purely visual, so touches pass straight through.
                     .allowsHitTesting(false)
+                    // Pace key · FASTER ▢▢▢▢▢ SLOWER, only with split data.
+                    .overlay(alignment: .bottomLeading) {
+                        if hasPaceData { paceLegend.padding(10) }
+                    }
             } else {
                 // True no-GPS state · matches the web's "NO GPS TRACK
                 // FOR THIS RUN" empty card. RoutePolylineCard is a
@@ -1167,73 +1168,24 @@ struct RoutePolylineCard: View {
         }
     }
 
-    @ViewBuilder
-    private func routeMap(coords: [CLLocationCoordinate2D]) -> some View {
-        let region = boundingRegion(for: coords, paddingFactor: 1.18)
-        Map(initialPosition: .region(region), interactionModes: []) {
-            // Dark casing under the route · a wider near-black stroke gives the
-            // coral line a clean outline so it reads clearly ABOVE the basemap's
-            // street labels instead of tangling with them (David 2026-06-16 ·
-            // "street names over the route is weird"). Declared first so the
-            // coral stroke draws on top.
-            MapPolyline(coordinates: coords)
-                .stroke(Color(hex: 0x080B0F), style: StrokeStyle(
-                    lineWidth: 9, lineCap: .round, lineJoin: .round
-                ))
-            MapPolyline(coordinates: coords)
-                .stroke(BASELINE_UNDER_COLOR, style: StrokeStyle(
-                    lineWidth: 5, lineCap: .round, lineJoin: .round
-                ))
-            if let first = coords.first {
-                // Empty title string suppresses MapKit's default label
-                // floater · the custom circle IS the marker, we don't
-                // want "Start" / "Finish" text floating next to it.
-                Annotation("", coordinate: first, anchor: .center) {
-                    Circle()
-                        .fill(Color(hex: 0x080B0F))
-                        .frame(width: 14, height: 14)
-                        .overlay(Circle().stroke(START_RING_COLOR, lineWidth: 2.5))
-                        .accessibilityLabel("Start")
-                }
+    /// FASTER ▢▢▢▢▢ SLOWER pace key · mirrors the web legend. RouteMapView
+    /// colors the line by the same five quintile buckets.
+    private var paceLegend: some View {
+        HStack(spacing: 5) {
+            Text("FASTER")
+            ForEach(Array(RouteMapView.bucketColors.enumerated()), id: \.offset) { _, c in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color(uiColor: c))
+                    .frame(width: 8, height: 8)
             }
-            if let last = coords.last {
-                Annotation("", coordinate: last, anchor: .center) {
-                    Circle()
-                        .fill(FINISH_FILL_COLOR)
-                        .frame(width: 14, height: 14)
-                        .accessibilityLabel("Finish")
-                }
-            }
+            Text("SLOWER")
         }
-        // Standard map style, muted emphasis, POIs excluded · the muted
-        // emphasis quiets road labels and excludingAll drops the point-of-
-        // interest clutter (golf course, school, park, sports center, basin)
-        // that crowded the route. Dark colorScheme (above) gives the dark-tile
-        // look that mirrors the web's CartoDB dark base.
-        .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-    }
-
-    /// MKCoordinateRegion fitting all points with a padding multiplier
-    /// (1.18 = ~9% breathing room on each edge).
-    private func boundingRegion(for coords: [CLLocationCoordinate2D], paddingFactor: Double) -> MKCoordinateRegion {
-        let lats = coords.map { $0.latitude }
-        let lons = coords.map { $0.longitude }
-        let minLat = lats.min() ?? 0
-        let maxLat = lats.max() ?? 0
-        let minLon = lons.min() ?? 0
-        let maxLon = lons.max() ?? 0
-        let center = CLLocationCoordinate2D(
-            latitude: (minLat + maxLat) / 2,
-            longitude: (minLon + maxLon) / 2
-        )
-        // Minimum span keeps very short runs from zooming in to a
-        // single building (where the polyline becomes invisible).
-        let latDelta = max(0.0035, (maxLat - minLat) * paddingFactor)
-        let lonDelta = max(0.0035, (maxLon - minLon) * paddingFactor)
-        return MKCoordinateRegion(
-            center: center,
-            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
-        )
+        .font(.label(9)).tracking(0.4)
+        .foregroundStyle(.white.opacity(0.7))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color(hex: 0x080C14).opacity(0.72))
+        .clipShape(Capsule())
     }
 
     private var overlayText: String {
