@@ -566,7 +566,7 @@ struct SetGoalSheet: View {
                         .buttonStyle(.plain)
                     }
                 } header: {
-                    Text("HOW LONG DO YOU HAVE?")
+                    Text("TRAINING PLAN")
                 }
 
                 // 3. YOUR GOAL — shows after plan picked, wheels expand for manual adjust
@@ -676,40 +676,42 @@ struct SetGoalSheet: View {
         }
     }
 
-    // vdotGain per plan: ~1 VDOT point per 8 weeks of focused training (Daniels).
+    // vdotGain per plan: Daniels J&D — each quality phase (~4 wks) adds ~0.75 VDOT for a
+    // dedicated trained runner. Longer plans compound phases; the gap between options reflects
+    // roughly one full phase (~0.75-1.0 VDOT) so users can see a meaningful time difference.
     private func planOptions(for d: String) -> [PlanOption] {
         switch d {
         case "5K":
             return [
-                PlanOption(weeks: 8,  rationale: "A focused speed block. Works if you're already running regularly.", vdotGain: 1.0),
-                PlanOption(weeks: 12, rationale: "Builds your base first, then sharpens speed. Better starting point for most runners.", vdotGain: 1.5),
+                PlanOption(weeks: 8,  rationale: "A focused speed block. Works if you're already running regularly.", vdotGain: 1.5),
+                PlanOption(weeks: 12, rationale: "Builds your base first, then sharpens speed. Better results for most runners.", vdotGain: 2.5),
             ]
         case "10K":
             return [
-                PlanOption(weeks: 10, rationale: "A steady build with a speed focus in the final weeks.", vdotGain: 1.25),
-                PlanOption(weeks: 14, rationale: "A complete build from base to race-ready. More time, better results.", vdotGain: 1.75),
+                PlanOption(weeks: 10, rationale: "A steady build with a speed focus in the final weeks.", vdotGain: 1.75),
+                PlanOption(weeks: 14, rationale: "A complete build from base to race-ready. More time, better results.", vdotGain: 2.75),
             ]
         case "Half Marathon":
             return [
-                PlanOption(weeks: 12, rationale: "The minimum for a well-prepared half marathon. Works best if you already have a solid base.", vdotGain: 1.5),
-                PlanOption(weeks: 16, rationale: "The standard choice. Enough time to build fitness and sharpen race pace.", vdotGain: 2.0),
-                PlanOption(weeks: 20, rationale: "More base time before race training. Best if you're coming off a down period.", vdotGain: 2.5),
+                PlanOption(weeks: 12, rationale: "Solid prep if you already have a strong base. Jump straight into quality work.", vdotGain: 2.0),
+                PlanOption(weeks: 16, rationale: "The standard choice. Time to build fitness and sharpen race pace.", vdotGain: 3.0),
+                PlanOption(weeks: 20, rationale: "More base before race training. Best if you're coming off a down period.", vdotGain: 4.0),
             ]
         case "Marathon":
             return [
-                PlanOption(weeks: 16, rationale: "The minimum for a serious marathon. Assumes you're already running regularly.", vdotGain: 2.0),
-                PlanOption(weeks: 20, rationale: "The most popular choice. Enough time to build and peak properly.", vdotGain: 2.5),
-                PlanOption(weeks: 24, rationale: "Six months of work. Gives your body time to fully adapt to marathon training.", vdotGain: 3.0),
+                PlanOption(weeks: 16, rationale: "The minimum for a serious marathon. Assumes you're already running consistently.", vdotGain: 2.5),
+                PlanOption(weeks: 20, rationale: "The most popular choice. Enough time to build and peak properly.", vdotGain: 4.0),
+                PlanOption(weeks: 24, rationale: "Six months of work. Gives your body the most time to adapt to marathon training.", vdotGain: 5.5),
             ]
         case "50K":
             return [
-                PlanOption(weeks: 18, rationale: "A solid intro to ultra distance. Builds on marathon-level fitness.", vdotGain: 2.25),
-                PlanOption(weeks: 24, rationale: "More time on your feet, more confidence on race day.", vdotGain: 3.0),
+                PlanOption(weeks: 18, rationale: "A solid intro to ultra distance. Builds on marathon-level fitness.", vdotGain: 3.0),
+                PlanOption(weeks: 24, rationale: "More time on your feet, more confidence on race day.", vdotGain: 4.5),
             ]
         default: // 100K
             return [
-                PlanOption(weeks: 24, rationale: "High mileage across six months. The foundation a 100K demands.", vdotGain: 3.0),
-                PlanOption(weeks: 32, rationale: "Eight months to fully prepare. Builds volume and time-on-feet gradually.", vdotGain: 4.0),
+                PlanOption(weeks: 24, rationale: "High mileage across six months. The foundation a 100K demands.", vdotGain: 4.0),
+                PlanOption(weeks: 32, rationale: "Eight months to fully prepare. Builds volume and time-on-feet gradually.", vdotGain: 6.0),
             ]
         }
     }
