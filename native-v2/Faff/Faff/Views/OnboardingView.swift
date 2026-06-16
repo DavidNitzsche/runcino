@@ -14,7 +14,7 @@ struct OnboardingView: View {
     let onComplete: () -> Void
 
     @State private var step: Int = 0
-    @State private var mode: TargetMode = .race
+    @State private var mode: TargetMode = .just
     @State private var distance: Distance = .marathon
     @State private var goalSec: Int = 14400
     @State private var raceName: String = ""
@@ -168,7 +168,7 @@ struct OnboardingView: View {
         FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xD6263C, c4: 0x9E1733, c5: 0xC01030, base: 0x420A1E)
     ]
 
-    private let stepCount = 6
+    private let stepCount = 5
 
     var body: some View {
         ZStack {
@@ -182,10 +182,9 @@ struct OnboardingView: View {
                 ZStack {
                     welcomePanel.opacity(step == 0 ? 1 : 0)
                     connectPanel.opacity(step == 1 ? 1 : 0)
-                    targetPanel.opacity(step == 2 ? 1 : 0)
-                    trainingPanel.opacity(step == 3 ? 1 : 0)
-                    profilePanel.opacity(step == 4 ? 1 : 0)
-                    confirmPanel.opacity(step == 5 ? 1 : 0)
+                    trainingPanel.opacity(step == 2 ? 1 : 0)
+                    profilePanel.opacity(step == 3 ? 1 : 0)
+                    confirmPanel.opacity(step == 4 ? 1 : 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(Theme.Motion.smooth, value: step)
@@ -551,7 +550,7 @@ struct OnboardingView: View {
 
     private var profilePanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("STEP 4")
+            Text("STEP 3")
                 .font(.label(11)).tracking(3)
                 .foregroundStyle(Theme.txt.opacity(0.66))
             Text("A bit about\nyou.")
@@ -621,7 +620,7 @@ struct OnboardingView: View {
 
             Spacer(minLength: 0)
             ctaButton(title: "Continue") {
-                withAnimation(Theme.Motion.smooth) { step = 5 }
+                withAnimation(Theme.Motion.smooth) { step = 4 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -634,7 +633,7 @@ struct OnboardingView: View {
     private var trainingPanel: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("STEP 3")
+                Text("STEP 2")
                     .font(.label(11)).tracking(3)
                     .foregroundStyle(Theme.txt.opacity(0.66))
                 Text(mode == .coached ? "Your coach\nowns the week." : "Your week.")
@@ -701,7 +700,7 @@ struct OnboardingView: View {
 
                 Spacer(minLength: 24)
                 ctaButton(title: "Continue") {
-                    withAnimation(Theme.Motion.smooth) { step = 4 }
+                    withAnimation(Theme.Motion.smooth) { step = 3 }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -842,7 +841,7 @@ struct OnboardingView: View {
 
     private var confirmPanel: some View {
         return VStack(alignment: .leading, spacing: 0) {
-            Text(mode == .just || mode == .coached ? "YOU'RE ALL SET" : "YOUR STARTING LINE")
+            Text("YOU'RE ALL SET")
                 .font(.label(11)).tracking(3)
                 .foregroundStyle(Theme.txt.opacity(0.66))
             Text(headline)
@@ -852,27 +851,11 @@ struct OnboardingView: View {
                 .lineSpacing(-4)
                 .padding(.top, 12)
 
-            if mode == .coached {
-                Text("Your coach owns the plan. Faff tracks every run, your readiness and your trends from your very next run.")
-                    .font(.body(15, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.84))
-                    .lineSpacing(3)
-                    .padding(.top, 14)
-            } else if mode == .just {
-                Text("No clock to beat · just steady, healthy miles. Your readiness and trends start tracking from your very next run.")
-                    .font(.body(15, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.84))
-                    .lineSpacing(3)
-                    .padding(.top, 14)
-            } else {
-                goalBlock
-                    .padding(.top, 26)
-                Text("Projection starts after your first runs. Log a few and we'll show where you stand.")
-                    .font(.body(15, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.92))
-                    .lineSpacing(3)
-                    .padding(.top, 24)
-            }
+            Text("Your training starts now. Add a race or set a goal from the Goals tab whenever you're ready.")
+                .font(.body(15, weight: .semibold))
+                .foregroundStyle(Theme.txt.opacity(0.84))
+                .lineSpacing(3)
+                .padding(.top, 14)
 
             Spacer(minLength: 0)
 
@@ -884,7 +867,7 @@ struct OnboardingView: View {
                     .padding(.bottom, 8)
             }
 
-            ctaButton(title: submitting ? "Saving…" : (mode == .coached ? "Start tracking" : (mode == .just ? "Start running" : "Build my plan"))) {
+            ctaButton(title: submitting ? "Saving…" : "Start running") {
                 guard !submitting else { return }
                 submitting = true
                 onboardingError = nil
