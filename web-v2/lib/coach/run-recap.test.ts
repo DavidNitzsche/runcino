@@ -360,7 +360,7 @@ describe('deriveRecap · type=intervals', () => {
     expect(r.facts.join(' ')).toMatch(/Building the top end|Reps done ·/);
   });
 
-  it('intervals in hot weather adds "go by feel and HR" fact', () => {
+  it('intervals in hot weather: no prospective "go by feel" fact (heat lives in conditions_note)', () => {
     const r = deriveRecap({
       type: 'intervals',
       phase: 'PEAK',
@@ -376,7 +376,9 @@ describe('deriveRecap · type=intervals', () => {
         tempF: 82, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10,
       },
     });
-    expect(r.facts.join(' ')).toMatch(/Heat makes interval pace harder|Go by feel and HR|workout still counted/);
+    // Recap facts describe a finished run · they must not hand out
+    // prospective "go by feel" advice. Heat is explained by conditions_note.
+    expect(r.facts.join(' ')).not.toMatch(/Go by feel and HR|workout still counted|Heat makes interval pace harder/);
   });
 });
 

@@ -336,9 +336,11 @@ export function deriveRecap(input: RecapInput): RecapPayload {
             : `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
       facts.push(leadLine);
       facts.push(`Building the top end · these stack.`);
-      if (heatExplainsDrift) {
-        facts.push(`Heat makes interval pace harder. Go by feel and HR · the workout still counted.`);
-      }
+      // Heat is already covered once by conditions_note ("cost ~X% on
+      // pace, not lost fitness") and again by coach_tip. A third mention
+      // here read as weird: it gave prospective advice ("go by feel and
+      // HR") in the recap of a run already finished, and "still counted"
+      // sounded defensive. Dropped — the conditions note tells it better.
       return {
         verdict: 'Reps done.',
         facts,
