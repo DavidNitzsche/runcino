@@ -70,6 +70,7 @@ struct TrainingCalendarView: View {
     @ViewBuilder
     private func weekSection(_ week: PlanWeek) -> some View {
         let totalMi = week.days.reduce(0.0) { $0 + $1.distance_mi }
+        let doneMi = week.days.reduce(0.0) { $0 + ($1.done_mi ?? 0) }
         let dateRange = weekRangeLabel(week)
 
         VStack(spacing: 0) {
@@ -80,7 +81,11 @@ struct TrainingCalendarView: View {
                         .font(.body(14, weight: .extraBold))
                         .foregroundStyle(Theme.txt)
                     if totalMi > 0 {
-                        Text("Total: \(formatMi(totalMi)) mi")
+                        // Progress when the week has activity (run-so-far over
+                        // planned); plain planned total for untouched weeks.
+                        Text(doneMi > 0.05
+                             ? "\(formatMi(doneMi)) / \(formatMi(totalMi)) mi"
+                             : "\(formatMi(totalMi)) mi planned")
                             .font(.body(12, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.55))
                     }

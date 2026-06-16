@@ -22,6 +22,15 @@
 
 import SwiftUI
 
+/// Distance label · whole miles show clean ("6"), half/odd miles keep one
+/// decimal ("7.5"). Matches Today + the calendar so a 7.5 mi session never
+/// reads as "8" on one screen and "7.5" on another (David, 2026-06-16).
+private func trainMi(_ m: Double) -> String {
+    m.truncatingRemainder(dividingBy: 1) == 0
+        ? String(format: "%.0f", m)
+        : String(format: "%.1f", m)
+}
+
 struct TrainView: View {
     let onProfile: () -> Void
 
@@ -205,7 +214,9 @@ struct TrainView: View {
                         .tracking(1.4)
                         .foregroundStyle(Theme.txt.opacity(0.66))
                     Spacer()
-                    Text("\(Int(curWeek.plannedMi.rounded())) MI PLANNED")
+                    // Progress, not just the plan · miles run so far this week
+                    // (sum of actuals) over the planned total.
+                    Text("\(trainMi((curWeek.days.reduce(0.0) { $0 + $1.doneMi } * 10).rounded() / 10)) / \(trainMi(curWeek.plannedMi)) mi")
                         .font(.body(11, weight: .bold))
                         .tracking(0.3)
                         .foregroundStyle(Theme.txt.opacity(0.78))
@@ -530,7 +541,7 @@ struct TrainView: View {
                         .frame(width: 7, height: 7)
                 }
             }
-            Text(isRest ? "—" : "\(Int(day.mi.rounded()))")
+            Text(isRest ? "—" : trainMi(day.mi))
                 .font(.body(11, weight: .extraBold))
                 .foregroundStyle(Theme.txt)
         }
@@ -894,14 +905,13 @@ struct TrainView: View {
             .sorted { (priority[$0.type.lowercased()] ?? 99) < (priority[$1.type.lowercased()] ?? 99) }
         if let pick = workouts.first {
             let typeWord = FaffEffort.fromType(pick.type).title
-            let miles = Int(pick.mi.rounded())
-            if pick.type.lowercased() == "race" { return "Race · \(miles)mi" }
-            if miles > 0 { return "\(typeWord) · \(miles)mi" }
+            if pick.type.lowercased() == "race" { return "Race · \(trainMi(pick.mi))mi" }
+            if pick.mi > 0 { return "\(typeWord) · \(trainMi(pick.mi))mi" }
             return typeWord
         }
         // Pure easy week → describe the long run instead.
         if let long = week.days.max(by: { $0.mi < $1.mi }), long.mi > 0 {
-            return "Long · \(Int(long.mi.rounded()))mi"
+            return "Long · \(trainMi(long.mi))mi"
         }
         return "Easy + base"
     }
@@ -1114,7 +1124,7 @@ struct TrainView: View {
                 return goal.isEmpty ? "Race" : goal
             }
             if day.type.lowercased() == "rest" { return "Sleep + mobility" }
-            return "\(Int(day.mi.rounded())) mi"
+            return "\(trainMi(day.mi)) mi"
         }()
         return CalSelected(day: day, dateHeader: dateHeader, title: title, meta: meta, isRace: isRace)
     }
@@ -1253,7 +1263,7 @@ private struct TrainWeekRow: View {
 
     private func metaLabel() -> String {
         if day.type.lowercased() == "rest" { return "—" }
-        return "\(Int(day.mi.rounded())) mi"
+        return "\(trainMi(day.mi)) mi"
     }
 }
 
