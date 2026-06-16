@@ -305,7 +305,7 @@ struct RootTabView: View {
             // first visit and never destroyed — SwiftUI preserves their
             // @State so returning to a tab is instant.
             if visitedTabs.contains(.today) {
-                tabStack(.today) { TodayView(onProfile: { pushProfile = true }) }
+                tabStack(.today) { TodayView(onProfile: { pushProfile = true }, selectedTab: $selected) }
             }
             if visitedTabs.contains(.train) {
                 tabStack(.train) { TrainView(onProfile: { pushProfile = true }) }
