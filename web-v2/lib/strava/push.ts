@@ -16,8 +16,6 @@
 import { pool } from '@/lib/db/pool';
 import { getStravaToken } from './auth';
 import { buildTcx } from './build-tcx';
-import { deriveRecap, type RecapPayload } from '@/lib/coach/run-recap';
-import type { WorkoutType, Phase } from '@/lib/coach/run-purpose';
 import { toUtcIso as resolveStartUtc } from '@/lib/runs/normalize-time';
 import { enqueueNotification } from '@/lib/notifications/enqueue';
 import { renderStravaReconnect } from '@/lib/notifications/templates';
@@ -108,27 +106,23 @@ export async function pushRunToStrava(
     [userId]
   )).rows[0];
 
-  // Resolve workout type + the prescribed spec (target pace + rep count) for
-  // the title and the recap-voice description. Watch ingest doesn't stamp
-  // data.type, so fall back to the planned workout for this date.
+  // Resolve the workout type for the title. Watch ingest doesn't stamp
+  // data.type, so fall back to the planned workout's type for this date.
   let runType: string | null = run.type ?? null;
-  let planSpec: any = null;
-  if (run.date) {
-    const planRow = (await pool.query(
-      `SELECT pw.type, pw.workout_spec FROM plan_workouts pw JOIN training_plans tp ON tp.id = pw.plan_id
+  if (!runType && run.date) {
+    runType = (await pool.query(
+      `SELECT pw.type FROM plan_workouts pw JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND pw.date_iso = $2 LIMIT 1`,
       [userId, run.date],
-    )).rows[0];
-    runType = runType ?? planRow?.type ?? null;
-    planSpec = planRow?.workout_spec ?? null;
+    )).rows[0]?.type ?? null;
   }
 
-  // 3. Build title + description. Description reuses the in-app recap engine
-  //    so Strava gets the same coach-voice read ("All 4 in range, 6:45 avg.
-  //    Went out a touch fast, then settled.") instead of a bare distance line.
-  const recap = buildRunRecap(run, runType, planSpec);
+  // 3. Build title + description. Strava is title-driven (David): a sharp
+  //    descriptive title carries the post — "Intervals · 4×1mi @ 6:45" — and
+  //    no auto-description paragraph (that read like a bot). Empty unless a
+  //    caller passes one.
   const title = opts.title ?? titleFor({ ...run, type: runType ?? run.type }, prefs?.strava_push_title_format ?? 'type_phases');
-  const description = opts.description ?? stravaDescription(recap, run);
+  const description = opts.description ?? '';
   const privacy = opts.privacy ?? prefs?.strava_push_privacy ?? 'private';
 
   // 4. Build TCX.
@@ -392,6 +386,21 @@ function titleFor(run: any, _template: string): string {
   const dist = Number(run.distanceMi ?? 0);
   const distStr = dist > 0 ? (dist % 1 === 0 ? dist.toFixed(0) : dist.toFixed(1)) : null;
 
+  // Work-phase average pace → "6:45" for the title's "@ pace" tag. Title-only
+  // posts (David) lean on this carrying the quality, so include it.
+  const workPace = (() => {
+    const paces = work
+      .map((p) => {
+        const d = Number(p.actualDistanceMi);
+        const t = Number(p.actualDurationSec);
+        return d > 0 && t > 0 ? t / d : 0;
+      })
+      .filter((n) => n > 0);
+    if (!paces.length) return null;
+    const avg = Math.round(paces.reduce((a, b) => a + b, 0) / paces.length);
+    return `${Math.floor(avg / 60)}:${String(avg % 60).padStart(2, '0')}`;
+  })();
+
   if (type === 'race') return 'Race';
   if (type === 'intervals' || type === 'threshold' || type === 'quality') {
     if (work.length >= 2) {
@@ -399,13 +408,15 @@ function titleFor(run: any, _template: string): string {
       const repStr = repMi <= 0 ? null
         : repMi < 1 ? `${Math.round((repMi * 1609) / 100) * 100}m`
         : `${repMi % 1 === 0 ? repMi.toFixed(0) : repMi.toFixed(1)}mi`;
-      return repStr ? `Intervals · ${work.length}×${repStr}` : `Intervals · ${work.length} reps`;
+      const base = repStr ? `Intervals · ${work.length}×${repStr}` : `Intervals · ${work.length} reps`;
+      return workPace ? `${base} @ ${workPace}` : base;
     }
     return 'Intervals';
   }
   if (type === 'tempo') {
     const wMi = work.reduce((s, p) => s + (Number(p.actualDistanceMi) || 0), 0);
-    return wMi > 0 ? `Tempo · ${wMi % 1 === 0 ? wMi.toFixed(0) : wMi.toFixed(1)}mi` : 'Tempo';
+    const base = wMi > 0 ? `Tempo · ${wMi % 1 === 0 ? wMi.toFixed(0) : wMi.toFixed(1)}mi` : 'Tempo';
+    return workPace ? `${base} @ ${workPace}` : base;
   }
   if (type === 'long') return distStr ? `Long run · ${distStr}mi` : 'Long run';
   if (type === 'recovery') return distStr ? `Recovery · ${distStr}mi` : 'Recovery';
@@ -418,124 +429,7 @@ function titleFor(run: any, _template: string): string {
   return distStr ? `${cap(type)} · ${distStr}mi` : cap(type);
 }
 
-/**
- * Build the run's recap (verdict + facts) by feeding the run + plan spec
- * into the SAME deriveRecap engine the in-app HOW IT WENT uses — so Strava
- * speaks the same voice. Rep paces are derived from the run's work phases
- * (duration ÷ distance); the target + rep count come from the plan spec.
- */
-function buildRunRecap(run: any, runType: string | null, planSpec: any): RecapPayload {
-  const phases: any[] = Array.isArray(run.phases) ? run.phases : [];
-  const workPhases = phases.filter((p) => String(p.type) === 'work');
-  const repPaces = workPhases
-    .map((p) => {
-      const d = Number(p.actualDistanceMi);
-      const t = Number(p.actualDurationSec);
-      return d > 0 && t > 0 ? Math.round(t / d) : 0;
-    })
-    .filter((n) => n > 0);
-  const workPaceSPerMi = repPaces.length
-    ? Math.round(repPaces.reduce((a, b) => a + b, 0) / repPaces.length)
-    : null;
-  const target = planSpec
-    ? Number(planSpec.rep_pace_s_per_mi) || Number(planSpec.tempo_pace_s_per_mi) || Number(planSpec.pace_target_s_per_mi) || null
-    : null;
-  const prescribedRepCount = planSpec ? Number(planSpec.rep_count) || null : null;
-  const w = run.weather;
-  const weather = w
-    ? {
-        tempF: Number(w.temp_f) || Number(run.tempF) || null,
-        tempF_start: Number(w.temp_f_start) || null,
-        tempF_end: Number(w.temp_f_end) || null,
-        tempF_peak: Number(w.temp_f_peak) || null,
-        humidityPct: Number(w.humidity_pct) || null,
-        windMph: Number(w.wind_mph) || null,
-        conditions: typeof w.conditions === 'string' ? w.conditions : null,
-        cloudCoverPct: Number(w.cloud_cover_pct) || null,
-        durationS: Number(run.durationSec) || null,
-      }
-    : null;
-  const dMi = Number(run.distanceMi) || 0;
-  const actualPaceSPerMi = Number(run.paceSPerMi)
-    || (dMi > 0 && Number(run.durationSec) > 0 ? Math.round(Number(run.durationSec) / dMi) : null);
-  // Light type normalize · quality → intervals; everything else passes through.
-  const t = (runType ?? 'unplanned').toLowerCase();
-  const normType = (t === 'quality' ? 'intervals' : t) as WorkoutType;
-  return deriveRecap({
-    type: normType,
-    phase: null as Phase | null,
-    plannedMi: dMi,
-    plannedPaceSPerMi: target,
-    plannedHrCap: null,
-    actualMi: dMi,
-    actualPaceSPerMi,
-    workPaceSPerMi,
-    repCount: workPhases.length || null,
-    repPaces,
-    prescribedRepCount,
-    actualAvgHr: Number(run.avgHr) || null,
-    actualMaxHr: Number(run.maxHr) || null,
-    splits: Array.isArray(run.splits) ? run.splits : undefined,
-    weather: weather as any,
-  });
-}
-
-/**
- * Compose the Strava description from the recap · the result + the read,
- * tightened for a public caption: take the lead + pattern facts and drop
- * the in-app "HR N says the effort was right" coda (it duplicates HR and
- * reads as a private nudge). Falls back to the verdict, then the old line.
- */
-function stravaDescription(recap: RecapPayload, run: any): string {
-  const facts = (recap.facts ?? [])
-    .slice(0, 2)
-    .map((f) => f.replace(/\s*HR \d+ says the effort was right\.?/i, '').trim())
-    .filter(Boolean);
-  const body = facts.join(' ').replace(/\s+/g, ' ').trim();
-  return body || recap.verdict || autoDescription(run);
-}
-
 function cap(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-function autoDescription(run: any): string {
-  const type = (run.type ?? 'run').toLowerCase();
-  const dist = Number(run.distanceMi ?? 0);
-  const distStr = dist > 0 ? `${dist % 1 === 0 ? dist.toFixed(0) : dist.toFixed(1)} miles` : null;
-
-  if (type === 'race') {
-    return distStr ?? 'Race.';
-  }
-
-  if (type === 'long') {
-    return distStr ? `${distStr}.` : 'Long run.';
-  }
-
-  if (type === 'tempo' || type === 'threshold' || type === 'intervals') {
-    const phases = Array.isArray(run.phases) ? run.phases : [];
-    const work = phases.filter((p: any) =>
-      !['warmup','cooldown','recovery','rest'].includes(p.type)
-    );
-    if (work.length > 1) {
-      const repDist = Number(work[0]?.actualDistanceMi ?? work[0]?.distanceMi ?? 0);
-      const repStr = repDist > 0
-        ? `${work.length}×${repDist < 1 ? Math.round(repDist * 5280) + 'm' : repDist.toFixed(0) + ' mile'} repeats`
-        : `${work.length} reps`;
-      const total = distStr ? ` — ${distStr} total` : '';
-      return `${repStr}${total}.`;
-    }
-    if (work.length === 1) {
-      const workDist = Number(work[0]?.actualDistanceMi ?? 0);
-      if (workDist > 0 && dist > workDist + 0.5) {
-        return `${distStr} with ${workDist.toFixed(0)} at ${type}.`;
-      }
-      return workDist > 0 ? `${workDist.toFixed(0)} miles at ${type}.` : `${cap(type)} workout.`;
-    }
-    return distStr ? `${cap(type)}, ${distStr}.` : `${cap(type)} workout.`;
-  }
-
-  // Easy / recovery
-  return distStr ? `${distStr}.` : 'Easy run.';
-}
 
 /**
  * Normalize a run's per-mile splits to { mile, durationSec } for the TCX
