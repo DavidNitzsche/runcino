@@ -44,7 +44,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { isoDaysBefore } from '@/lib/runs/volume';
-import { predictRaceTime, vdotFromRace, tPaceFromVdot, vdotFromTpace } from './vdot';
+import { predictRaceTime, vdotFromRace, tPaceFromVdot, vdotFromTpace, parseRaceTime } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
@@ -746,46 +746,59 @@ async function detectRecentRaceDrift(
   const minDist = raceDistanceMi * 0.7;
   const maxDist = raceDistanceMi * 1.3;
 
-  // FASTEST qualifying race · ranked by pace (s/mi). The runner has
-  // proven this fitness · we use it as the "current fitness" anchor.
-  const r = (await pool.query<{
+  // FASTEST qualifying race · ranked by distance-normalized pace. The runner
+  // has proven this fitness · we use it as the "current fitness" anchor.
+  //
+  // 2026-06-16 · finish seconds are resolved in JS, NOT cast in SQL.
+  // meta.finishTime is an H:MM:SS display string ("1:32:45"); the old
+  // `NULLIF(meta->>'finishTime','')::numeric` threw `invalid input syntax for
+  // type numeric` whenever actual_result.finishS was unset (every inline-edited
+  // race row). The throw was swallowed by .catch + the detector loop, so the
+  // single STRONG signal that flips a goal off-track silently never fired.
+  // Parse the string the canonical way (parseRaceTime), then rank in JS.
+  const rows = (await pool.query<{
     slug: string;
     name: string | null;
     date: string;
     dist: string | null;
     finish_s: number | string | null;
+    finish_time: string | null;
   }>(
     `SELECT slug,
             meta->>'name' AS name,
             meta->>'date' AS date,
             meta->>'distanceMi' AS dist,
-            COALESCE(
-              (actual_result->>'finishS')::numeric,
-              NULLIF(meta->>'finishTime','')::numeric
-            ) AS finish_s
+            (actual_result->>'finishS')::numeric AS finish_s,
+            NULLIF(meta->>'finishTime','') AS finish_time
        FROM races
       WHERE user_uuid = $1::uuid
         AND meta->>'priority' IN ('A','B')
         AND meta->>'date' < $2
         AND meta->>'date' >= $3
         AND (meta->>'distanceMi')::numeric BETWEEN $4 AND $5
-        AND COALESCE(
-              (actual_result->>'finishS')::numeric,
-              NULLIF(meta->>'finishTime','')::numeric
-            ) IS NOT NULL
-      ORDER BY (
-        COALESCE(
-          (actual_result->>'finishS')::numeric,
-          NULLIF(meta->>'finishTime','')::numeric
-        ) / NULLIF((meta->>'distanceMi')::numeric, 0)
-      ) ASC
-      LIMIT 1`,
+        AND (
+          (actual_result->>'finishS') IS NOT NULL
+          OR NULLIF(meta->>'finishTime','') IS NOT NULL
+        )`,
     [userUuid, today, cutoff, minDist, maxDist],
-  ).catch(() => ({ rows: [] }))).rows[0];
+  ).catch(() => ({ rows: [] }))).rows;
 
-  if (!r || !r.finish_s || !r.dist) return null;
-  const dist = Number(r.dist);
-  const finishS = Number(r.finish_s);
+  // Resolve finish seconds (finishS, else parse the HMS string) and rank by
+  // distance-normalized pace — all in JS, so a string finish can never throw.
+  let best: { slug: string; name: string | null; date: string; dist: number; finishS: number; pace: number } | null = null;
+  for (const row of rows) {
+    const d = Number(row.dist);
+    if (!d || d <= 0) continue;
+    const fs = row.finish_s != null ? Number(row.finish_s) : parseRaceTime(row.finish_time);
+    if (!fs || fs <= 0) continue;
+    const pace = fs / d;
+    if (!best || pace < best.pace) best = { slug: row.slug, name: row.name, date: row.date, dist: d, finishS: fs, pace };
+  }
+
+  if (!best) return null;
+  const r = { slug: best.slug, name: best.name, date: best.date };
+  const dist = best.dist;
+  const finishS = best.finishS;
 
   // 2026-06-04 · compare DISTANCE-NORMALIZED times, not raw paces.
   // Comparing marathon pace (484 s/mi) to half-marathon goal pace

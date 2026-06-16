@@ -146,7 +146,14 @@ function intervalPacing(
   if (!targetSPerMi || clean.length < 2) {
     return { fact: null, adjTarget: targetSPerMi ?? null };
   }
-  const adjTarget = Math.round(targetSPerMi * (1 + slowdownPct / 100));
+  // Research/06 §2 (interval-vs-continuous rule): rep-based work with ≥1:1
+  // work:rest gets HALF the continuous heat slowdown — recovery jogs allow
+  // partial cooling, so reps don't slow as much as a steady effort would.
+  // Adjust the rep target by the halved amount; still surface the heat framing
+  // whenever it's genuinely warm (keyed on the full slowdown), so a hot day
+  // still reads "heat-adjusted" even though the magnitude is halved.
+  const repSlowdownPct = slowdownPct / 2;
+  const adjTarget = Math.round(targetSPerMi * (1 + repSlowdownPct / 100));
   const heat = slowdownPct >= 2;
   const targetPhrase = heat
     ? `the heat-adjusted ~${paceLabel(adjTarget)}`

@@ -261,10 +261,10 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       // 2026-06-09 · race-killer F3 — also pull geometry_json: the authored
       // phase profile feeds course-aware goal splits (lib/race/pacing.ts).
       pool.query(
-        `SELECT source, contributor_count, start_label, finish_label, notes, geometry_json
+        `SELECT source, contributor_count, start_label, finish_label, notes, geometry_json, net_elevation_ft
            FROM course_library WHERE slug = $1`,
         [slug]
-      ).catch(() => ({ rows: [] as Array<{ source: string | null; contributor_count: number | null; start_label: string | null; finish_label: string | null; notes: string | null; geometry_json: unknown }> })),
+      ).catch(() => ({ rows: [] as Array<{ source: string | null; contributor_count: number | null; start_label: string | null; finish_label: string | null; notes: string | null; geometry_json: unknown; net_elevation_ft: number | null }> })),
     ]);
     const row = geoRow.rows[0] ?? null;
     const geom = row?.course_geometry ?? null;
@@ -288,7 +288,26 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
     const startTime = (meta as { startTime?: string }).startTime || '·';
     const wave = (meta as { wave?: string }).wave || (aGoal !== '·' ? `Seed ${aGoal}` : '·');
     const bib = (meta as { bib?: string }).bib || '#pending';
-    const netElevFt = geom?.elevation_gain_ft ? -Math.round(geom.elevation_gain_ft * 0.24) : 0;
+    // Net elevation · curated course_library.net_elevation_ft wins (editorially
+    // verified — e.g. Big Sur is +260 ft net UPHILL), else measure from the
+    // geometry trackpoints (first vs last ele), mirroring seed.ts:2345-2349.
+    // NEVER the old -0.24 * gross heuristic: gross gain is always positive, so
+    // it fabricated a net downhill for every course and fed inverted pacing +
+    // "bank nothing" coach copy off a guessed profile.
+    const curatedNet = (lib as { net_elevation_ft?: number | null } | null)?.net_elevation_ft;
+    let netElevFt = 0;
+    if (curatedNet != null) {
+      netElevFt = Number(curatedNet);
+    } else {
+      const tp = Array.isArray((geom as { trackPoints?: unknown })?.trackPoints)
+        ? (geom as { trackPoints: Array<{ ele?: number }> }).trackPoints
+        : null;
+      if (tp && tp.length >= 2) {
+        const firstEle = Number(tp[0]?.ele ?? 0);
+        const lastEle = Number(tp[tp.length - 1]?.ele ?? 0);
+        netElevFt = Math.round((lastEle - firstEle) * 3.28084);
+      }
+    }
 
     // 2026-05-30: post-race retro fields. Source of truth per CLAUDE.md is
     // races.actual_result (curated chip times beat raw Strava elapsed).
