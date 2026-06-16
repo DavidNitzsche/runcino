@@ -411,9 +411,17 @@ struct TargetsProjectionPanel: View {
         if summary.aheadOfGoal != true,
            let traj = summary.trajectoryProjectedSec,
            traj > 0, traj != summary.projectionSec {
-            Text("Plan projects \(formatTime(traj)) by race day.")
+            // Goal-relative + honest (David 2026-06-16): the trajectory is a
+            // forward model (current fitness + projected build gain), NOT pinned
+            // to the goal. If it lands short, say so and by how much — the plan
+            // projecting 1:30:59 against a 1:30:00 goal is a miss, not a hit.
+            let goal = summary.goalSec ?? 0
+            let short = goal > 0 && traj > goal
+            Text(short
+                 ? "Plan projects \(formatTime(traj)) by race day — \(formatGap(traj - goal)) short of your \(formatTime(goal)) goal."
+                 : "Plan projects \(formatTime(traj)) by race day — on track for \(formatTime(goal)).")
                 .font(.body(13, weight: .semibold))
-                .foregroundStyle(Theme.goal)
+                .foregroundStyle(short ? Theme.over : Theme.green)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
