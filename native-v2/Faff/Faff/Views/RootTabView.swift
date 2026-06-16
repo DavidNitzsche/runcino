@@ -98,14 +98,18 @@ struct RootTabView: View {
     /// Drives hiding the Train tab (no plan to show). Defaults true so the
     /// tab never flash-hides before the first profile fetch resolves.
     @State private var hasTarget: Bool = true
-    /// Pending navigation set by the run-menu mode buttons · triggers a
-    /// push into the active tab's NavigationStack via the .navigationDestination(item:)
-    /// hook below. Cleared once the push lands.
-    @State private var pendingRoute: FaffRoute? = nil
+    // Run-menu pushes (watchMirror / treadmill) and all NavigationLink(value:)
+    // pushes go through the per-tab `tabPaths` stacks below — a single,
+    // poppable navigation mechanism. (Was a separate `pendingRoute` +
+    // navigationDestination(item:), which couldn't be cleared by a tab tap.)
     /// Per-tab hideFaffTabBar preference — only the selected tab's value
     /// drives actual bar visibility, so a hidden tab with a pushed run
     /// screen doesn't bleed its hide-request onto other tabs.
     @State private var tabBarHiddenPerTab: [FaffTab: Bool] = [:]
+    /// Per-tab navigation path. Tapping a tab clears its path back to root
+    /// (standard iOS "tap the active tab → pop to root"), so a pushed route
+    /// like Activity or a run detail can always be escaped via the tab bar.
+    @State private var tabPaths: [FaffTab: [FaffRoute]] = [:]
     /// Tracks which tabs have been visited at least once. Non-visited tabs
     /// are excluded from the ZStack so SwiftUI doesn't pay their layout
     /// cost until first visit. Once in the ZStack they're never removed,
@@ -144,8 +148,8 @@ struct RootTabView: View {
                 // AFC fix 2 · was a hardcoded one-off orange (#EE6038) ·
                 // the run accent is the race/tempo slot of the locked palette.
                 accent: Theme.race,
-                onOutdoor: { pendingRoute = .watchMirror },
-                onTreadmill: { pendingRoute = .treadmill },
+                onOutdoor: { tabPaths[selected, default: []].append(.watchMirror) },
+                onTreadmill: { tabPaths[selected, default: []].append(.treadmill) },
                 onNiggle: { showSymptomSheet = true },
                 onNonRun: { showLogNonRunSheet = true }
             )
@@ -329,16 +333,13 @@ struct RootTabView: View {
 
     @ViewBuilder
     private func tabStack<Content: View>(_ tab: FaffTab, @ViewBuilder _ root: () -> Content) -> some View {
-        NavigationStack {
+        NavigationStack(path: Binding(
+            get: { tabPaths[tab] ?? [] },
+            set: { tabPaths[tab] = $0 }
+        )) {
             root()
                 .navigationBarHidden(true)
                 .navigationDestination(for: FaffRoute.self) { routeDestination($0) }
-                // Route pendingRoute only to the currently selected tab so
-                // multiple NavigationStacks in the ZStack don't all respond.
-                .navigationDestination(item: Binding(
-                    get: { selected == tab ? pendingRoute : nil },
-                    set: { pendingRoute = $0 }
-                )) { routeDestination($0) }
         }
         .opacity(selected == tab ? 1 : 0)
         .allowsHitTesting(selected == tab)
@@ -408,6 +409,10 @@ struct RootTabView: View {
             // while it's open · matches the design's expectation that
             // any nav action collapses the menu.
             if showRunMenu { showRunMenu = false }
+            // Tapping a tab always returns it to its root — pops any pushed
+            // route (Activity, run detail, …) so the runner is never stuck
+            // on a sub-page with no visible way back.
+            tabPaths[tab] = []
             selected = tab
         } label: {
             VStack(spacing: 4) {
