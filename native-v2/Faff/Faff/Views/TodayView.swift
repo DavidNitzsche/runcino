@@ -1823,8 +1823,24 @@ struct TodayView: View {
     /// nor a fitness goal — the new-user cold state after onboarding completes
     /// without race/goal entry. TODAY shows a hero empty state instead of the
     /// normal pre-run body so the runner has a clear path to starting a plan.
+    /// True only when the runner has a real training plan (any planned run
+    /// or any completed run across the loaded weeks). A planless account is
+    /// the ONLY case that should ever see the "just run" empty state — a
+    /// runner with a plan must see the plan even if nextARace / fitnessGoal
+    /// aren't populated in profile state.
+    private var hasPlan: Bool {
+        let allDays = (prevWeekPlan?.days ?? [])
+            + (plan?.days ?? [])
+            + futureWeekPlans.flatMap { $0.days }
+        return allDays.contains {
+            ($0.type != "rest" && $0.distance_mi > 0) || $0.completedRunId != nil
+        }
+    }
+
     private var isNoGoalState: Bool {
         guard let p = profile else { return false }
+        // A plan trumps everything — never replace it with "just run".
+        if hasPlan { return false }
         let hasRace = !(p.nextARace?.slug ?? "").isEmpty
         let hasGoal = p.fitnessGoal != nil
         return !hasRace && !hasGoal

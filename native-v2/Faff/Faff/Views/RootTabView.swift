@@ -360,7 +360,7 @@ struct RootTabView: View {
     @ViewBuilder
     private func routeDestination(_ route: FaffRoute) -> some View {
         switch route {
-        case .runDetail(let id):   RunDetailView(runId: id).navigationBarHidden(true)
+        case .runDetail(let id):   RunRecapView(runId: id).navigationBarHidden(true)
         case .planned(let d):      PlannedView(date: d).navigationBarHidden(true)
         case .watchMirror:         WatchMirrorView().navigationBarHidden(true)
         case .treadmill:           TreadmillView().navigationBarHidden(true)
@@ -380,11 +380,19 @@ struct RootTabView: View {
     /// launch, on foreground, and whenever a goal/race is added or cleared
     /// (those surfaces post .faffForegroundRefresh after saving).
     private func refreshTarget() async {
-        guard let p = try? await API.fetchProfileState() else { return }
-        let hasRace = !((p.nextARace?.slug ?? "").isEmpty)
-        let hasGoal = p.fitnessGoal != nil
+        async let pState = (try? await API.fetchProfileState())
+        async let pWeek = (try? await API.fetchPlanWeek())
+        let (p, week) = await (pState, pWeek)
+        // A real plan (any planned or completed run) is the primary signal —
+        // a runner with a plan keeps Train even if nextARace / fitnessGoal
+        // aren't populated. Goal/race also count (a plan is being built).
+        let hasPlan = (week?.days ?? []).contains {
+            ($0.type != "rest" && $0.distance_mi > 0) || $0.completedRunId != nil
+        }
+        let hasRace = !((p?.nextARace?.slug ?? "").isEmpty)
+        let hasGoal = p?.fitnessGoal != nil
         await MainActor.run {
-            let next = hasRace || hasGoal
+            let next = hasPlan || hasRace || hasGoal
             if next != hasTarget { hasTarget = next }
             // If Train got hidden out from under the selection, fall back.
             if !next && selected == .train { selected = .today }

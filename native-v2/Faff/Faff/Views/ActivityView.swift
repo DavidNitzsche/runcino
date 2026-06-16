@@ -583,6 +583,9 @@ struct ActivityView: View {
             .padding(14)
             }
             .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
+            // Clip so the full-height effort accent bar (left edge) follows
+            // the card's rounded corners instead of poking out past them.
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.1)))
         }
         .buttonStyle(.plain)
