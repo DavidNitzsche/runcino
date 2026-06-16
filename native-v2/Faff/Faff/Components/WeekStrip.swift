@@ -64,9 +64,19 @@ struct WeekStrip: View {
     private func cell(_ d: WeekStripDay) -> some View {
         let isSelected = d.id == selectedID
         VStack(spacing: 7) {
-            Text(d.dow)
-                .font(.label(10)).tracking(0.5).textCase(.uppercase)
-                .foregroundStyle(Theme.txt.opacity(isSelected || d.isToday ? 1 : 0.65))
+            if d.isToday {
+                // Today's day letter in a small blue circle · a clear "you are
+                // here" marker distinct from the grey selection box.
+                Text(d.dow)
+                    .font(.label(10)).tracking(0.5).textCase(.uppercase)
+                    .foregroundStyle(.white)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(Color(hex: 0x3AB0CF)))
+            } else {
+                Text(d.dow)
+                    .font(.label(10)).tracking(0.5).textCase(.uppercase)
+                    .foregroundStyle(Theme.txt.opacity(isSelected ? 1 : 0.65))
+            }
             Text("\(d.date)")
                 .font(.body(15, weight: .semibold))
                 .tracking(-0.3)

@@ -855,17 +855,18 @@ struct TodayView: View {
                         .foregroundStyle(Theme.txt.opacity(0.55))
                 }
                 .padding(.top, 16)
-            } else if selectedIsToday && strengthSuppressed {
-                // Strength was paused by the readiness gate this week · say so
-                // (yellow · caution, not alarm) instead of showing nothing.
+            } else if strengthPausedDays.contains(selectedDayID) {
+                // This was a strength day, paused by the readiness gate · same
+                // nudge as "recommended" but yellow + "paused · readiness low"
+                // so the runner sees it's intentional, not missing.
                 HStack(spacing: 8) {
                     Image(systemName: "dumbbell.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color(hex: 0xF3AD38))
-                    Text("Strength paused this week")
+                    Text("Strength")
                         .font(.body(13, weight: .bold))
                         .foregroundStyle(Theme.txt)
-                    Text("· readiness low")
+                    Text("paused · readiness low")
                         .font(.body(12, weight: .medium))
                         .foregroundStyle(Color(hex: 0xF3AD38))
                 }
