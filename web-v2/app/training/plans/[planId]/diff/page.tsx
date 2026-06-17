@@ -142,7 +142,7 @@ const KIND_COLOR: Record<ChangeKind, string> = {
   distance:  '#F3AD38',
   type:      '#FF5722',
   sub_label: 'rgba(255,255,255,.72)',
-  added:     '#5fd06a',
+  added:     '#3EBD41', // --green
   removed:   '#FC4D64',
 };
 
@@ -223,7 +223,7 @@ export default async function PlanDiffPage({
               <SummaryChip
                 label="MILES"
                 value={fmtSignedMiles(data.summary.milesDelta)}
-                color={data.summary.milesDelta > 0 ? '#5fd06a' : data.summary.milesDelta < 0 ? '#F3AD38' : undefined}
+                color={data.summary.milesDelta > 0 ? '#3EBD41' /* --green */ : data.summary.milesDelta < 0 ? '#F3AD38' : undefined}
               />
               <SummaryChip label="QUALITY DAYS CHANGED" value={data.summary.qualityDaysChanged.toString()} />
             </div>
@@ -308,7 +308,7 @@ export default async function PlanDiffPage({
               No prior plan to compare against. The auto-adapter rebuilt your
               plan without a previous baseline (likely a first-time generation
               or a goal change before the original archived). View the active
-              plan on <Link href="/train" style={{ color: '#5fd06a' }}>/train</Link>.
+              plan on <Link href="/train" style={{ color: '#3EBD41' /* --green */ }}>/train</Link>.
             </div>
           </>
         ) : null}

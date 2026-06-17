@@ -17,7 +17,22 @@
      eleventh. brand1/brand2 (purple/corporate-blue) are deleted. */
   --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64; --dist:#27B4E0; --rest:#27B4E0; --race:#FF5722;
   --intervals:#F43F5E; --watch:#F3AD38; --gold:#F5C518; --eyebrow:#FFCE8A;
-  --positive:#7BE8A0;
+  /* Bright text-on-dark siblings of the fill tokens (David's ruling
+     2026-06-16: bright warn/miss TEXT gets its own token, do NOT
+     force-route to the --goal/--over fills which are too dark for
+     small text on the mesh). --warn-text pairs with --goal, --over-text
+     pairs with --over. */
+  --warn-text:#FFB24D; --over-text:#FF6A6A;
+  /* Strava brand orange · lock-exempt (external brand, not a semantic
+     slot). The locked palette stays ten colors; this is brand chrome. */
+  --strava:#FC4C02;
+  /* Calm/neutral teal · "gone/settled/neutral" health states + the
+     WATCHING accent. Distinct from --dist (recovery cyan) and
+     --eff-easy (the brighter easy green-teal). */
+  --neutral-teal:#5BBFB0;
+  /* --positive aliased to --mint-glow (zero direct consumers; new uses
+     standardize on --mint-glow from faff-toolkit.css). */
+  --positive:var(--mint-glow);
   /* canonical effort temperature scale (= the palette, per brief v2) */
   --eff-recovery:#27B4E0; --eff-easy:#14C08C; --eff-long:#F3AD38;
   --eff-tempo:#FF5722; --eff-intervals:#F43F5E; --eff-race:#FF5722;
@@ -1264,7 +1279,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-03 · "on track · 0 sec ahead" green text sits in the
    header on top of the Targets ember mesh.  Brighter green + shadow
    so it punches through the warm mesh tint. */
-.ok2{color:#7CE085;font-weight:700;letter-spacing:.5px;text-shadow:0 1px 4px rgba(0,0,0,.5);}
+.ok2{color:var(--mint-readiness);font-weight:700;letter-spacing:.5px;text-shadow:0 1px 4px rgba(0,0,0,.5);}
 /* 2026-06-03 · gauge sat directly on the page mesh · the green
    PROJECTED time read fine on the calmer Today/Train meshes but
    vanished on the Targets ember mesh (green-on-red).  Wrap it in
@@ -1293,7 +1308,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-03 · signal pills · same outline-on-mesh wash problem we
    fixed on FOCUS/LONG-RUN CAP/CONDITIONS · dark fill so the colored
    text reads on any mesh hue. */
-.onpath-sig-strong{color:#FF8090;background:rgba(0,0,0,.55);border:1px solid rgba(252,77,100,.55);}
+.onpath-sig-strong{color:var(--over);background:rgba(0,0,0,.55);border:1px solid rgba(252,77,100,.55);}
 .onpath-sig-medium{color:#FFC25C;background:rgba(0,0,0,.55);border:1px solid rgba(243,173,56,.55);}
 .onpath-sig-weak{color:rgba(220,230,228,.95);background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.22);}
 .onpath-diag{margin-top:16px;padding-top:14px;border-top:1px dashed rgba(255,255,255,.08);font-size:11.5px;font-style:italic;color:rgba(159,179,173,.7);letter-spacing:.1px;line-height:1.5;}
@@ -1305,7 +1320,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .onpath-tests{margin-top:18px;padding-top:18px;border-top:1px dashed rgba(255,255,255,.1);}
 .onpath-tests-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(159,179,173,.85);margin-bottom:10px;}
 .onpath-test{display:flex;gap:14px;font-size:13px;font-weight:500;line-height:1.5;color:var(--txt);margin-bottom:4px;}
-.onpath-test-d{font-family:Inter,sans-serif;font-size:13px;font-weight:600;letter-spacing:.5px;color:#5fd06a;flex:0 0 140px;text-transform:uppercase;}
+.onpath-test-d{font-family:Inter,sans-serif;font-size:13px;font-weight:600;letter-spacing:.5px;color:var(--green);flex:0 0 140px;text-transform:uppercase;}
 .onpath-test-l{flex:1;}
 
 /* 2026-06-04 · WHAT MOVES THE GAUGE · plain-English transitions.
@@ -1318,7 +1333,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-03 · ON-TRACK/OFF-TRACK pills · was 8%-alpha colored fill,
    washed on dark mesh AND on red mesh.  Dark fill so the green/amber
    arrow text always pops. */
-.onpath-trans-up{color:#7CE085;background:rgba(0,0,0,.55);border:1px solid rgba(95,208,106,.55);}
+.onpath-trans-up{color:var(--mint-readiness);background:rgba(0,0,0,.55);border:1px solid rgba(95,208,106,.55);}
 .onpath-trans-down{color:#FFC25C;background:rgba(0,0,0,.55);border:1px solid rgba(243,173,56,.55);}
 
 /* 2026-06-04 · workout proposal banner · "we'd swap tomorrow's tempo
@@ -1328,7 +1343,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .wpb{background:rgba(8,12,18,.5);border:1px solid rgba(243,173,56,.32);border-radius:14px;padding:18px 20px;margin-bottom:10px;}
 .wpb-done{border-color:rgba(95,208,106,.35);background:rgba(8,18,12,.45);}
 .wpb-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.5px;color:#F3AD38;margin-bottom:8px;}
-.wpb-done .wpb-eyebrow{color:#5fd06a;}
+.wpb-done .wpb-eyebrow{color:var(--green);}
 .wpb-headline{font-size:18px;font-weight:700;line-height:1.3;color:var(--txt);margin-bottom:6px;}
 .wpb-reason{font-size:13.5px;font-weight:500;line-height:1.45;color:rgba(255,255,255,.82);margin-bottom:14px;}
 .wpb-body{font-size:14px;font-weight:600;line-height:1.4;color:var(--txt);}
@@ -1386,8 +1401,8 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .se-two{display:flex;gap:12px;margin-top:20px;}
 .se-two>div{flex:1;}
 .se-acts{display:flex;gap:11px;margin-top:26px;align-items:center;}
-.se-del{background:none;border:none;color:#FC6076;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:8px 4px;}
-.se-del:hover{color:#ff8095;}
+.se-del{background:none;border:none;color:var(--over);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:8px 4px;}
+.se-del:hover{color:var(--over);}
 .se-save{margin-left:auto;background:#fff;color:#10131A;border:none;border-radius:13px;padding:13px 28px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:transform .12s;}
 .se-save:active{transform:scale(.98);}
 .conn-list{display:flex;flex-direction:column;gap:10px;}
@@ -1411,13 +1426,13 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .wc-entry .ico{width:40px;height:40px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#34C194,#1F8A68);}
 .wc-entry .ico svg{width:20px;height:20px;}
 .wc-entry .tx{flex:1;}
-.wc-entry .el{font-size:10px;font-weight:700;letter-spacing:1.5px;color:#8EF0B0;}
+.wc-entry .el{font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--mint-readiness);}
 .wc-entry .et{font-size:15px;font-weight:700;margin-top:3px;}
 .wc-entry .arr{font-size:22px;opacity:.5;font-weight:700;}
 .ovcard.weekci{width:600px;max-width:94vw;padding:0;overflow:hidden auto;background:
   radial-gradient(120% 80% at 0% 0%, rgba(52,193,148,.22), transparent 60%),#101410;}
 .wc-body{padding:32px 34px 30px;}
-.wc-tag{font-size:11px;font-weight:700;letter-spacing:2.5px;color:#8EF0B0;}
+.wc-tag{font-size:11px;font-weight:700;letter-spacing:2.5px;color:var(--mint-readiness);}
 .wc-h{font-family:'Oswald',sans-serif;font-size:48px;font-weight:600;text-transform:uppercase;line-height:.9;letter-spacing:-1px;margin-top:12px;}
 .wc-sub{font-size:13px;font-weight:600;opacity:.6;margin-top:12px;letter-spacing:.3px;}
 .wc-stats{display:flex;gap:30px;margin-top:24px;padding-bottom:24px;border-bottom:1px solid rgba(255,255,255,.1);}
@@ -1449,7 +1464,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .sb-recap:hover{background:linear-gradient(100deg,rgba(52,193,148,.3),rgba(31,138,104,.18));}
 .sb-recap .dot{width:9px;height:9px;border-radius:50%;background:#86efa0;box-shadow:0 0 8px #86efa0;flex:0 0 auto;}
 .sb-recap .tx{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;}
-.sb-recap .el{font-size:9.5px;font-weight:700;letter-spacing:1px;color:#8EF0B0;}
+.sb-recap .el{font-size:9.5px;font-weight:700;letter-spacing:1px;color:var(--mint-readiness);}
 .sb-recap .et{font-size:13px;font-weight:700;}
 .sb-recap .arr{opacity:.5;font-weight:700;font-size:16px;}
 .win.sb-collapsed .sb-recap{justify-content:center;padding:11px 0;}
@@ -1633,9 +1648,9 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    (20 all sides), flex-column with --label-gap so internal tag→tx
    stacking inherits the system rhythm (no inline margin-tops). */
 .hsynth{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid #F3AD38;border-radius:14px;padding:var(--card-padding);display:flex;flex-direction:column;gap:var(--label-gap);}
-.hwatch{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid #5bbfb0;border-radius:14px;padding:var(--card-padding);display:flex;flex-direction:column;gap:var(--label-gap);}
+.hwatch{background:rgba(4,18,16,.42);border:1px solid rgba(255,255,255,.1);border-left:3px solid var(--neutral-teal);border-radius:14px;padding:var(--card-padding);display:flex;flex-direction:column;gap:var(--label-gap);}
 .hsynth-tag{font-size:10px;font-weight:800;letter-spacing:2px;color:#F3AD38;}
-.hsynth-tag.watch-tag{color:#5bbfb0;}
+.hsynth-tag.watch-tag{color:var(--neutral-teal);}
 /* margin-top stripped · .hsynth's flex+gap handles tag→tx spacing. */
 .hsynth-tx{font-size:16px;font-weight:500;line-height:1.55;max-width:920px;color:var(--txt);}
 .hsynth-tx b{color:#fff;font-weight:700;}
@@ -1706,13 +1721,13 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* Aerobic fitness card · sits above the 7-day trend in the hero right col */
 .haero{margin-bottom:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;}
 .haero-k{font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(159,179,173,.85);}
-.haero-v{font-family:'Oswald',sans-serif;font-size:24px;font-weight:600;color:#5fd06a;white-space:nowrap;}
+.haero-v{font-family:'Oswald',sans-serif;font-size:24px;font-weight:600;color:var(--green);white-space:nowrap;}
 .haero-m{font-size:12px;font-weight:500;line-height:1.45;color:rgba(255,255,255,.8);}
 /* 2026-06-03 · zone chip + band reference + what-it-is. */
 .haero-zone{display:flex;flex-direction:column;gap:4px;margin-top:2px;}
 .haero-chip{align-self:flex-start;font-size:9.5px;font-weight:800;letter-spacing:.8px;padding:3px 8px;border-radius:4px;text-transform:uppercase;}
-.haero-chip-race-ready{background:rgba(95,208,106,.18);color:#7ee08c;}
-.haero-chip-building{background:rgba(95,208,106,.12);color:#5fd06a;}
+.haero-chip-race-ready{background:rgba(95,208,106,.18);color:var(--mint-readiness);}
+.haero-chip-building{background:rgba(95,208,106,.12);color:var(--green);}
 .haero-chip-developing{background:rgba(243,173,56,.16);color:#F3AD38;}
 .haero-chip-early-base{background:rgba(252,77,100,.14);color:#FC4D64;}
 .haero-zone-bands{font-size:10.5px;font-weight:500;color:rgba(159,179,173,.7);letter-spacing:.1px;}
@@ -1720,7 +1735,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-03 · delta-direction indicator under the headline numbers ·
    makes "lower is better" visible without needing the footer. */
 .haero-delta{font-size:12px;font-weight:700;letter-spacing:.3px;margin-top:-2px;}
-.haero-delta-good{color:#5fd06a;}
+.haero-delta-good{color:var(--green);}
 .haero-delta-bad{color:#FC4D64;}
 .haero-delta-flat{color:rgba(159,179,173,.85);}
 
@@ -1731,7 +1746,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-03 · color the FORECAST chip by direction. Good trajectory
    (sleep recovering, RHR settling) → green. Bad (RHR climbing, sleep
    slipping, wrist temp rising, HRV CV destabilizing) → yellow. */
-.hfc-ic-good{color:#5fd06a;border-color:rgba(95,208,106,.45);}
+.hfc-ic-good{color:var(--green);border-color:rgba(95,208,106,.45);}
 .hfc-ic-bad{color:#F3AD38;border-color:rgba(243,173,56,.45);}
 .hfc b{color:#fff;}
 
@@ -1745,7 +1760,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hact-pri-high{color:#F3AD38;border:1px solid rgba(243,173,56,.45);background:rgba(243,173,56,.08);}
 .hact-pri-medium{color:#F3AD38;border:1px solid rgba(243,173,56,.32);}
 .hact-pri-low{color:rgba(159,179,173,.95);border:1px solid rgba(255,255,255,.16);}
-.hact-pri-on-course{color:#5fd06a;border:1px solid rgba(95,208,106,.45);background:rgba(95,208,106,.08);}
+.hact-pri-on-course{color:var(--green);border:1px solid rgba(95,208,106,.45);background:rgba(95,208,106,.08);}
 .hact-body{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0;}
 .hact-action{font-size:14px;font-weight:600;line-height:1.4;color:var(--txt);}
 .hact-cite{font-size:11.5px;font-weight:500;line-height:1.35;color:rgba(159,179,173,.78);letter-spacing:.1px;}
@@ -1773,11 +1788,11 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    side) carries tag→anchor.  Wrap parent in flex column. */
 .hrecov-anchor{font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;color:var(--txt);}
 .hrecov-tl{text-align:right;}
-.hrecov-pct{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;color:#5bbfb0;line-height:.9;}
+.hrecov-pct{font-family:'Oswald',sans-serif;font-size:34px;font-weight:600;color:var(--neutral-teal);line-height:.9;}
 .hrecov-day{font-size:11px;font-weight:700;color:rgba(159,179,173,.85);}
 /* margin stripped · .hrecov's flex+section-gap handles separation. */
 .hrecov-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden;}
-.hrecov-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#5bbfb0,#5fd06a);}
+.hrecov-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--neutral-teal),var(--green));}
 .hrecov-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;}
 @media (max-width:880px){.hrecov-grid{grid-template-columns:repeat(3,1fr);}}
 .hrcp{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;}
@@ -1803,7 +1818,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .hrecov-muscle{font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.86);display:flex;gap:var(--label-gap);align-items:baseline;}
 .hrecov-muscle .md{width:6px;height:6px;border-radius:50%;background:#F3AD38;flex:0 0 auto;margin-top:6px;}
 .hrecov-green{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1);font-size:14px;font-weight:600;color:var(--txt);}
-.hrecov-green b{color:#5fd06a;}
+.hrecov-green b{color:var(--green);}
 /* 2026-06-03 · doctrine reference line · muted, smaller, italic to read
    as informational sidenote rather than a directive. */
 .hrecov-doc{margin-top:8px;font-size:12px;font-weight:500;font-style:italic;color:rgba(159,179,173,.7);letter-spacing:.1px;}
@@ -1852,9 +1867,9 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .drv-bar .z{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:rgba(255,255,255,.4);}
 .drv-bar .f{position:absolute;top:0;bottom:0;border-radius:5px;}
 .drv-bar .f.pos{left:50%;background:linear-gradient(90deg,rgba(123,232,160,.45),#7be8a0);}
-.drv-bar .f.neg{right:50%;background:linear-gradient(270deg,rgba(255,178,77,.45),#ffb24d);}
+.drv-bar .f.neg{right:50%;background:linear-gradient(270deg,rgba(255,178,77,.45),var(--warn-text));}
 .drv-pts{width:30px;flex:0 0 auto;text-align:right;font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;}
-.drv-pts.pos{color:#7be8a0;}.drv-pts.neg{color:#ffb24d;}
+.drv-pts.pos{color:#7be8a0;}.drv-pts.neg{color:var(--warn-text);}
 .hr-base{font-size:10px;font-weight:700;letter-spacing:.5px;opacity:.55;margin-top:18px;}
 .dbaseline{margin-top:18px;font-size:13px;font-weight:600;opacity:.78;letter-spacing:.2px;}
 .hr-bottom{display:grid;grid-template-columns:180px 1fr;gap:34px;margin-top:20px;align-items:end;min-width:0;}
@@ -2055,7 +2070,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    sat above · eyebrow JSX removed app-wide). Title now anchors at the
    top of its drawer. */
 .wk-title{font-family:'Oswald',sans-serif;font-size:48px;font-weight:600;text-transform:uppercase;line-height:.9;letter-spacing:-1px;margin-top:0;}
-.wk-win{display:flex;align-items:center;gap:9px;margin-top:14px;font-size:14px;font-weight:700;color:#c4f5d6;}
+.wk-win{display:flex;align-items:center;gap:9px;margin-top:14px;font-size:14px;font-weight:700;color:var(--mint-readiness);}
 .wk-win .c{width:18px;height:18px;border-radius:50%;background:#3EBD41;color:#06210a;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .wk-win .c svg{width:11px;height:11px;}
 .wk-win small{font-weight:500;opacity:.8;color:#fff;margin-left:4px;}
@@ -2310,7 +2325,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .season-racestats .rc .k{font-size:9px;font-weight:700;letter-spacing:1px;opacity:.6;}
 .season-racestats .rc .v{font-family:'Oswald',sans-serif;font-size:28px;font-weight:600;margin-top:7px;letter-spacing:-.5px;}
 #mesh,#mesh .blob{transition:background .5s ease;}
-.hwin{display:flex;align-items:center;gap:9px;margin-top:14px;font-size:15px;font-weight:700;color:#c4f5d6;}
+.hwin{display:flex;align-items:center;gap:9px;margin-top:14px;font-size:15px;font-weight:700;color:var(--mint-readiness);}
 .hwin.hide{display:none;}
 .hwin .c{width:18px;height:18px;border-radius:50%;background:#3EBD41;color:#06210a;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .hwin .c svg{width:11px;height:11px;}
@@ -2621,7 +2636,7 @@ background:radial-gradient(120% 80% at 50% -10%, rgba(255,193,94,.18), transpare
 .reach-beam{margin-top:22px;}
 .reach-beamrow{display:flex;justify-content:space-between;font-size:11px;font-weight:600;opacity:.7;margin-bottom:9px;}
 .reach-track{height:10px;border-radius:6px;background:rgba(255,255,255,.12);position:relative;}
-.reach-fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:linear-gradient(90deg,#FFE9B0,#FFB24D);width:92%;}
+.reach-fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:linear-gradient(90deg,#FFE9B0,var(--warn-text));width:92%;}
 .reach-now{position:absolute;top:50%;left:92%;transform:translate(-50%,-50%);width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px rgba(255,233,176,.4);}
 .reach-goaltick{position:absolute;right:-1px;top:-4px;bottom:-4px;width:3px;border-radius:2px;background:#FFE9B0;box-shadow:0 0 8px rgba(255,233,176,.7);}
 .reach-coach{display:flex;gap:11px;margin-top:26px;}
@@ -2917,7 +2932,7 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .rb-gap-closes .dcl{margin:0 0 8px;}
 .rb-gap-bullet{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.45;padding:3px 0;}
 .rb-gap-bullet .dot{flex:0 0 auto;width:5px;height:5px;border-radius:50%;background:var(--mute);margin-top:7px;}
-.rb-gap-bullet .rb-gap-risk-dot{background:#FFB24D;}
+.rb-gap-bullet .rb-gap-risk-dot{background:var(--warn-text);}
 
 /* Alternative ranges · informational or with Choose buttons */
 .rb-gap-ranges{margin-bottom:14px;}
@@ -2973,8 +2988,8 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .spill.ontrack .d{background:#86efa0;box-shadow:0 0 10px rgba(134,239,160,.8);}
 .targets2 .spill.watch{background:rgba(255,206,138,.16);border:1px solid rgba(255,206,138,.5);color:#FFCE8A;}
 .targets2 .spill.watch .d{background:#FFCE8A;box-shadow:0 0 10px rgba(255,206,138,.8);}
-.targets2 .spill.off{background:rgba(252,77,100,.16);border:1px solid rgba(252,77,100,.5);color:#ff9aa8;}
-.targets2 .spill.off .d{background:#ff9aa8;box-shadow:0 0 10px rgba(252,77,100,.8);}
+.targets2 .spill.off{background:rgba(252,77,100,.16);border:1px solid rgba(252,77,100,.5);color:var(--over-text);}
+.targets2 .spill.off .d{background:var(--over-text);box-shadow:0 0 10px rgba(252,77,100,.8);}
 .targets2 .statusrow .stx{font-size:14px;font-weight:600;color:rgba(255,255,255,.9);}
 .targets2 .statusrow .dot{opacity:.4;}
 .targets2 .statusrow .days{font-size:14px;font-weight:600;color:rgba(255,255,255,.84);}
@@ -3015,7 +3030,7 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .bpt.fit .cap .k{color:rgba(252,77,100,.92);}
 .targets2 .bgaplab{position:absolute;top:calc(50% - 27px);transform:translateX(-50%);font-family:'Inter',sans-serif;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#1a1206;background:#FFCE8A;padding:4px 10px;border-radius:7px;white-space:nowrap;}
 .targets2 .bgaplab.ontrack{background:#86efa0;}
-.targets2 .bgaplab.off{background:#ff9aa8;color:#1a0606;}
+.targets2 .bgaplab.off{background:var(--over-text);color:#1a0606;}
 .targets2 .bandcap{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.82);margin-top:8px;line-height:1.5;}
 .targets2 .bandcap b{color:#fff;font-weight:700;}
 /* 2026-06-08 · confidence-interval zone on the current-fitness marker.
@@ -3029,7 +3044,7 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .goalconf .confword{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;padding:3px 9px;border-radius:6px;}
 .targets2 .goalconf .confword.high{background:#86efa0;color:#06210f;}
 .targets2 .goalconf .confword.medium{background:#FFCE8A;color:#1a1206;}
-.targets2 .goalconf .confword.low{background:#ff9aa8;color:#1a0606;}
+.targets2 .goalconf .confword.low{background:var(--over-text);color:#1a0606;}
 .targets2 .goalconf .confdesc{font-size:14px;font-weight:600;color:rgba(255,255,255,.9);}
 .targets2 .goalconf .confdetail{flex-basis:100%;font-size:12px;font-weight:500;color:rgba(255,255,255,.62);margin-top:2px;}
 
@@ -3060,7 +3075,7 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .trow .tl small{color:rgba(255,255,255,.55);font-weight:500;font-size:12px;}
 .targets2 .trow .verdict{display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;font-family:'Inter',sans-serif;font-size:11px;font-weight:800;letter-spacing:.6px;color:#86efa0;justify-self:end;}
 .targets2 .trow .verdict.fast{color:#86efa0;}
-.targets2 .trow .verdict.slow{color:#ff9aa8;}
+.targets2 .trow .verdict.slow{color:var(--over-text);}
 .targets2 .trow .verdict svg{width:14px;height:14px;}
 .targets2 .trow .tpace{font-family:Inter,sans-serif;font-weight:600;font-size:14px;color:#fff;text-align:right;}
 
@@ -3081,16 +3096,16 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .rung.here.off{background:rgba(252,77,100,.09);}
 .targets2 .rung.here .rl{color:#FFCE8A;}
 .targets2 .rung.here.ontrack .rl{color:#86efa0;}
-.targets2 .rung.here.off .rl{color:#ff9aa8;}
+.targets2 .rung.here.off .rl{color:var(--over-text);}
 .targets2 .rung.here .ic{background:rgba(255,206,138,.2);color:#FFCE8A;}
 .targets2 .rung.here.ontrack .ic{background:rgba(62,189,65,.2);color:#86efa0;}
-.targets2 .rung.here.off .ic{background:rgba(252,77,100,.2);color:#ff9aa8;}
+.targets2 .rung.here.off .ic{background:rgba(252,77,100,.2);color:var(--over-text);}
 .targets2 .rung.here .here-tag{position:absolute;top:13px;right:14px;white-space:nowrap;font-family:'Inter',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;color:#1a1206;background:#FFCE8A;padding:3px 7px;border-radius:6px;text-transform:uppercase;}
 .targets2 .rung.here.ontrack .here-tag{background:#86efa0;}
-.targets2 .rung.here.off .here-tag{background:#ff9aa8;}
+.targets2 .rung.here.off .here-tag{background:var(--over-text);}
 .targets2 .rung.here .rx{padding-right:104px;}
-.targets2 .rung.down .rl{color:#ff9aa8;}
-.targets2 .rung.down .ic{background:rgba(252,77,100,.16);color:#ff9aa8;}
+.targets2 .rung.down .rl{color:var(--over-text);}
+.targets2 .rung.down .ic{background:rgba(252,77,100,.16);color:var(--over-text);}
 
 /* === SECTION 3 · THE WORK · VDOT === */
 .targets2 .vdotcard{padding:24px 28px;display:flex;align-items:stretch;gap:0;}
@@ -3099,7 +3114,7 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .targets2 .vdotrow{display:flex;align-items:baseline;gap:12px;margin-top:10px;}
 .targets2 .vdotrow .big{font-family:'Oswald',sans-serif;font-weight:600;font-size:66px;line-height:.85;letter-spacing:-1px;}
 .targets2 .vdotrow .delta{display:inline-flex;align-items:center;gap:4px;font-family:'Oswald',sans-serif;font-weight:600;font-size:18px;color:#86efa0;}
-.targets2 .vdotrow .delta.down{color:#ff9aa8;}
+.targets2 .vdotrow .delta.down{color:var(--over-text);}
 .targets2 .vdotrow .delta.flat{color:rgba(255,255,255,.6);}
 .targets2 .vdotaside{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;border-left:1px solid rgba(255,255,255,.1);padding-left:36px;min-width:0;}
 .targets2 .vdotsub{font-size:13.5px;font-weight:500;color:rgba(255,255,255,.84);line-height:1.55;max-width:600px;}

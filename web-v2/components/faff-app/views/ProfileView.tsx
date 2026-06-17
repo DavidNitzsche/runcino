@@ -121,7 +121,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
               </span>
               <div className="shrow">
                 <span className="shn">{s.nm} <i className="shr">{s.role}</i></span>
-                <span className="shm" style={worn ? { color: '#FC6076' } : undefined}>{s.mi}<small> / {s.max} mi</small></span>
+                <span className="shm" style={worn ? { color: '#FC4D64' /* --over */ } : undefined}>{s.mi}<small> / {s.max} mi</small></span>
               </div>
               <div className="shtrk"><div className="shfill" style={{ width: `${pct}%`, background: col }} /></div>
             </div>

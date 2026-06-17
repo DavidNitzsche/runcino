@@ -2005,7 +2005,7 @@ function adaptConnections(profile: Profile | null): ConnectionRow[] {
   const watch = profile?.connections.appleWatch.connected ?? false;
   return [
     { id: 'health',     nm: 'Apple Health', sub: profile?.connections.appleHealth.note || 'HRV, sleep, RHR, weight', bg: 'linear-gradient(135deg,#ff5a6e,#ff2d55)', gl: '♥', on: health, lastSyncIso: profile?.connections.appleHealth.lastSync ?? null },
-    { id: 'strava',     nm: 'Strava',       sub: profile?.connections.strava.note      || 'Run history',             bg: 'linear-gradient(135deg,#fc7e3c,#fc4c02)', gl: '▲', on: strava, lastSyncIso: profile?.connections.strava.lastSync ?? null },
+    { id: 'strava',     nm: 'Strava',       sub: profile?.connections.strava.note      || 'Run history',             bg: 'linear-gradient(135deg,#fc7e3c,#fc4c02)' /* --strava brand gradient */, gl: '▲', on: strava, lastSyncIso: profile?.connections.strava.lastSync ?? null },
     { id: 'watch',      nm: 'Apple Watch',  sub: profile?.connections.appleWatch.note  || 'Live workouts',           bg: 'linear-gradient(135deg,#3aa0e0,#0a66a8)', gl: '⌚', on: watch, lastSyncIso: profile?.connections.appleWatch.lastSync ?? null },
     { id: 'finalsurge', nm: 'FinalSurge',   sub: 'Coming soon',                                                       bg: 'linear-gradient(135deg,#5b8def,#2a5fd0)', gl: 'FS', on: false, lastSyncIso: null },
   ];
@@ -2136,7 +2136,7 @@ function emptySeed(): FaffSeed {
     shoeRecByType: {},
     connections: [
       { id: 'health',     nm: 'Apple Health', sub: 'Sign in to connect', bg: 'linear-gradient(135deg,#ff5a6e,#ff2d55)', gl: '♥',  on: false },
-      { id: 'strava',     nm: 'Strava',       sub: 'Sign in to connect', bg: 'linear-gradient(135deg,#fc7e3c,#fc4c02)', gl: '▲',  on: false },
+      { id: 'strava',     nm: 'Strava',       sub: 'Sign in to connect', bg: 'linear-gradient(135deg,#fc7e3c,#fc4c02)' /* --strava brand gradient */, gl: '▲',  on: false },
       { id: 'watch',      nm: 'Apple Watch',  sub: 'Sign in to connect', bg: 'linear-gradient(135deg,#3aa0e0,#0a66a8)', gl: '⌚', on: false },
       { id: 'finalsurge', nm: 'FinalSurge',   sub: 'Coming soon',        bg: 'linear-gradient(135deg,#5b8def,#2a5fd0)', gl: 'FS', on: false },
     ],

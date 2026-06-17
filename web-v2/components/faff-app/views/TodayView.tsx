@@ -1965,7 +1965,7 @@ function deriveRecap(d: FaffSeed['week'][number], runData: RunSummary | null): s
 // target-zone range bar (zone = target ± tolerance, dot = actual pace ·
 // slower left, faster right); warm-up / cool-down get a simple proportional
 // bar (longer = slower). Dark-surface variant — the wcard is dark.
-const PHASED_SPLIT_TEAL = '#5BBFB0';
+const PHASED_SPLIT_TEAL = '#5BBFB0'; // --neutral-teal
 
 function PhasedSplitRow({
   mile, pace, hr, tint, paceSec, fastest, denom, targetSec, tolSec,
@@ -2483,7 +2483,7 @@ function CompletedHeroV2({
               display: 'inline-flex', alignItems: 'center', gap: 5,
               fontSize: 11, fontWeight: 700, letterSpacing: 2,
               whiteSpace: 'nowrap', marginTop: 7, flex: '0 0 auto',
-              color: '#8af0a6',
+              color: '#86efa0' /* --mint-readiness */,
             }}>
               <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
               ON PLAN
@@ -2505,7 +2505,7 @@ function CompletedHeroV2({
               display: 'inline-flex', alignItems: 'center', gap: 5,
               fontSize: 11, fontWeight: 700, letterSpacing: 2,
               whiteSpace: 'nowrap', marginTop: 7, flex: '0 0 auto',
-              color: '#ff6a6a',
+              color: '#FF6A6A' /* --over-text */,
             }}>OFF PLAN</span>
           )}
         </div>
@@ -2715,7 +2715,7 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
           justifyContent: 'space-between',
           fontSize: 8, fontWeight: 700, letterSpacing: 1.2,
         }}>
-          <span style={{ color: '#ffb24d', opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{ color: '#FFB24D' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
           <span style={{
             position: 'absolute', left: '50%', transform: 'translateX(-50%)',
             color: 'rgba(255,255,255,.45)',
@@ -2781,8 +2781,8 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
             const delta = actualSec > 0 && goalSec > 0 ? actualSec - goalSec : null;
             const beat = delta != null && delta < 0;
             const onTarget = delta != null && delta === 0;
-            const fillColor = beat ? '#86efa0' /* --mint-readiness */ : '#ffb24d';
-            const deltaColor = beat ? '#86efa0' /* --mint-readiness */ : '#ffb24d';
+            const fillColor = beat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */;
+            const deltaColor = beat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */;
             // 2026-06-04 · center-anchored marker · same model as
             // TempoPanel. White tick slides along the bar to the
             // runner's actual position; the colored fill connects
@@ -2915,7 +2915,7 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
             {avgWorkDelta != null && (
               <span style={{
                 fontSize: 12, fontWeight: 700,
-                color: avgWorkBeat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
+                color: avgWorkBeat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
               }}>{avgWorkDelta > 0 ? `+${avgWorkDelta}` : avgWorkDelta} vs goal</span>
             )}
           </div>
@@ -2982,7 +2982,7 @@ function EasyPanel({
       ? easyPct >= 70 ? 'good' : easyPct >= 40 ? 'warn' : 'bad'
       // Pace was out of band · use the stricter HR-only thresholds.
       : easyPct >= 85 ? 'good' : easyPct >= 70 ? 'warn' : 'bad';
-  const easyColor = easyTone === 'good' ? '#86efa0' /* --mint-readiness */ : easyTone === 'warn' ? '#ffb24d' : '#ff6a6a';
+  const easyColor = easyTone === 'good' ? '#86efa0' /* --mint-readiness */ : easyTone === 'warn' ? '#FFB24D' /* --warn-text */ : '#FF6A6A' /* --over-text */;
 
   // HR halves · only when splits carry HR per mile.
   const splitsWithHr = splits.filter(s => typeof s.hr === 'number' && (s.hr ?? 0) > 0);
@@ -2997,8 +2997,8 @@ function EasyPanel({
   const rawDriftBand: DriftBand | null = hrDelta == null
     ? null
     : Math.abs(hrDelta) <= 4 ? { text: 'STAYED FLAT', color: '#86efa0' /* --mint-readiness */ }
-    : Math.abs(hrDelta) <= 8 ? { text: 'SOME DRIFT', color: '#ffb24d' }
-    : { text: 'LATE FADE', color: '#ff6a6a' };
+    : Math.abs(hrDelta) <= 8 ? { text: 'SOME DRIFT', color: '#FFB24D' /* --warn-text */ }
+    : { text: 'LATE FADE', color: '#FF6A6A' /* --over-text */ };
   // 2026-06-08 · heat-aware relabel · a back-half HR rise on a warm+ day
   // (slowdownPct >= 2) is thermoregulation, not decoupling · show HEAT DRIFT.
   const driftBand = rawDriftBand ? heatAwareDrift(rawDriftBand, heatSlowdownPct ?? 0) : null;
@@ -3323,8 +3323,8 @@ function LongPanel({
   const rawDriftBand: DriftBand | null = hrDelta == null
     ? null
     : hrDelta <= 4 ? { text: 'HELD STEADY', color: '#86efa0' /* --mint-readiness */ }
-    : hrDelta <= 8 ? { text: 'SOME DRIFT', color: '#ffb24d' }
-    : { text: 'LATE FADE', color: '#ff6a6a' };
+    : hrDelta <= 8 ? { text: 'SOME DRIFT', color: '#FFB24D' /* --warn-text */ }
+    : { text: 'LATE FADE', color: '#FF6A6A' /* --over-text */ };
   const driftBand = rawDriftBand ? heatAwareDrift(rawDriftBand, heatSlowdownPct ?? 0) : null;
 
   // Find the mile where HR drift crossed +8 bpm vs first third · for the
@@ -3358,11 +3358,11 @@ function LongPanel({
               }}>{labels[i]}</div>
               <div style={{
                 fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600,
-                marginTop: 8, lineHeight: 1, color: warn ? '#ffb24d' : undefined,
+                marginTop: 8, lineHeight: 1, color: warn ? '#FFB24D' /* --warn-text */ : undefined,
               }}>{t.paceSec > 0 ? fmtSecAsPace(t.paceSec) : '·'}</div>
               <div style={{
                 fontSize: 11, fontWeight: 600, opacity: 0.78, marginTop: 8,
-                color: warn ? '#ffb24d' : undefined,
+                color: warn ? '#FFB24D' /* --warn-text */ : undefined,
               }}>{t.hr != null ? `${t.hr} ♥` : '·'}</div>
             </div>
           );
@@ -3451,7 +3451,7 @@ function LongPanel({
             }}>/mi</small>
             {heldMile != null && hrDelta != null && hrDelta > 8 ? (
               <span style={{
-                fontSize: 11, fontWeight: 700, marginLeft: 5, color: '#ffb24d',
+                fontSize: 11, fontWeight: 700, marginLeft: 5, color: '#FFB24D' /* --warn-text */,
               }}>· held to mi {heldMile - 1}</span>
             ) : null}
           </span>
@@ -3631,7 +3631,7 @@ function TempoPanel({
             <div style={{
               position: 'absolute', top: 1, bottom: 1,
               left: `${fillLeft}%`, width: `${fillW}%`,
-              background: beat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
+              background: beat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
               borderRadius: 3, zIndex: 2,
             }} />
           )}
@@ -3658,7 +3658,7 @@ function TempoPanel({
           display: 'flex', justifyContent: 'space-between',
           fontSize: 8, fontWeight: 700, letterSpacing: 1.1, marginTop: 6,
         }}>
-          <span style={{ color: '#ffb24d', opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{ color: '#FFB24D' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
           <span style={{ color: 'rgba(255,255,255,.45)' }}>TARGET</span>
           <span style={{ color: '#86efa0' /* --mint-readiness */, opacity: 0.9 }}>FASTER ▸</span>
         </div>
@@ -3701,11 +3701,11 @@ function TempoPanel({
                 }}>{card.label}</div>
                 <div style={{
                   fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600,
-                  marginTop: 8, lineHeight: 1, color: card.warn ? '#ffb24d' : undefined,
+                  marginTop: 8, lineHeight: 1, color: card.warn ? '#FFB24D' /* --warn-text */ : undefined,
                 }}>{card.bpm}</div>
                 <div style={{
                   fontSize: 11, fontWeight: 600, opacity: 0.78, marginTop: 8,
-                  color: card.warn ? '#ffb24d' : undefined,
+                  color: card.warn ? '#FFB24D' /* --warn-text */ : undefined,
                 }}>bpm</div>
               </div>
             ))}
@@ -3773,7 +3773,7 @@ function TempoPanel({
             ) : (
               <span style={{
                 fontSize: 11, fontWeight: 700, marginLeft: 5,
-                color: beat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
+                color: beat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
               }}>
                 · {delta > 0 ? `+${delta}` : delta} vs goal
               </span>
@@ -3838,7 +3838,7 @@ function LongMpPanel({
   const shiftTone = shiftDrop == null ? '#86efa0' /* --mint-readiness */
     : shiftDrop >= 45 ? '#86efa0' /* --mint-readiness */
     : shiftDrop >= 30 ? '#86efa0' /* --mint-readiness */
-    : '#ffb24d';
+    : '#FFB24D' /* --warn-text */;
   const shiftSign = (shiftDrop ?? 0) > 0 ? '−' : '+';
   const shiftMm = Math.floor(Math.abs(shiftDrop ?? 0) / 60);
   const shiftSs = Math.abs(shiftDrop ?? 0) % 60;
@@ -3976,7 +3976,7 @@ function LongMpPanel({
             <div style={{
               position: 'absolute', top: 1, bottom: 1,
               left: `${mpFillLeft}%`, width: `${mpFillW}%`,
-              background: mpBeat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
+              background: mpBeat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
               borderRadius: 3,
             }} />
           )}
@@ -3990,7 +3990,7 @@ function LongMpPanel({
           display: 'flex', justifyContent: 'space-between',
           fontSize: 8, fontWeight: 700, letterSpacing: 1.1, marginTop: 6,
         }}>
-          <span style={{ color: '#ffb24d', opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{ color: '#FFB24D' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
           <span style={{ color: 'rgba(255,255,255,.45)' }}>TARGET</span>
           <span style={{ color: '#86efa0' /* --mint-readiness */, opacity: 0.9 }}>FASTER ▸</span>
         </div>
@@ -4010,7 +4010,7 @@ function LongMpPanel({
                 {chip.label}
                 <b style={{
                   fontFamily: FONT_DISP, fontWeight: 600,
-                  color: chip.warn ? '#ffb24d' : '#fff', marginLeft: 3,
+                  color: chip.warn ? '#FFB24D' /* --warn-text */ : '#fff', marginLeft: 3,
                 }}>{chip.pace}</b>
               </span>
             ))}
@@ -4037,7 +4037,7 @@ function LongMpPanel({
           {mpDelta != null ? (
             <span style={{
               fontSize: 11, fontWeight: 700, marginLeft: 5,
-              color: mpBeat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
+              color: mpBeat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
             }}>
               · {mpDelta > 0 ? `+${mpDelta}` : mpDelta} vs goal
             </span>

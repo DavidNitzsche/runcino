@@ -437,7 +437,7 @@
 .fa-source svg { width: 13px; height: 13px; }
 .fa-source--watch  svg { stroke: var(--txt); }
 .fa-source--health svg { stroke: var(--over); fill: var(--over); }
-.fa-source--strava { background: rgba(252,82,0,.16); border-color: rgba(252,82,0,.4); } .fa-source--strava svg { stroke: #FC5200; }
+.fa-source--strava { background: rgba(252,82,0,.16); border-color: rgba(252,82,0,.4); } .fa-source--strava svg { stroke: var(--strava); }
 .fa-source--manual svg { stroke: var(--fa-mute); }
 
 .fa-rpe .scale { display: flex; gap: 5px; }

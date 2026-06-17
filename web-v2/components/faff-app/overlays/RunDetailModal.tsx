@@ -331,7 +331,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                 }}>
                   <span style={{
                     display: 'inline-block', marginRight: 8, fontSize: 9, fontWeight: 800, letterSpacing: 1,
-                    color: data.hr_on_pace_delta_bpm > 0 ? '#FF9088' : '#7BE8A0',
+                    color: data.hr_on_pace_delta_bpm > 0 ? '#FC4D64' /* --over */ : '#7BE8A0',
                     border: data.hr_on_pace_delta_bpm > 0 ? '1px solid rgba(252,77,100,.4)' : '1px solid rgba(123,232,160,.4)',
                     borderRadius: 4, padding: '2px 6px',
                   }}>HR vs USUAL</span>

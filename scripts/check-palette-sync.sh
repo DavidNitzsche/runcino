@@ -64,6 +64,13 @@ need "$WEB_CSS" '\-\-eff-easy:#14C08C'    'web --eff-easy = #14C08C (Easy)'
 need "$WEB_CSS" '\-\-eff-tempo:#FF5722'   'web --eff-tempo = #FF5722'
 need "$WEB_CSS" '\-\-eff-intervals:#F43F5E' 'web --eff-intervals = #F43F5E'
 need "$WEB_CSS" '\-\-eff-race:#FF5722'    'web --eff-race = #FF5722'
+# Consolidation tokens (web color pass 2026-06-16) · bright text-on-dark
+# siblings + Strava brand. Not part of the locked ten — these are
+# accent/brand-chrome tokens the consolidation standardized on so the
+# rogue spellings (#5fd06a / #ff9aa8 / loose Strava hexes) can't return.
+need "$WEB_CSS" '\-\-warn-text:#FFB24D'   'web --warn-text = #FFB24D (bright warn text)'
+need "$WEB_CSS" '\-\-over-text:#FF6A6A'   'web --over-text = #FF6A6A (bright miss text)'
+need "$WEB_CSS" '\-\-strava:#FC4C02'      'web --strava = #FC4C02 (Strava brand, lock-exempt)'
 
 # Web effort dots (constants.ts)
 need "$WEB_CONST" "easy:.*dot: '#14C08C'"      'web EFF.easy.dot = #14C08C'
@@ -122,7 +129,11 @@ need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF5C518\)'  'watch Faff.bonus = #F5
 #   2FAF7C · time-of-day morning mesh stop (gradient ingredient, exempt)
 #   56E0B0 · TrainView phase-identity taper color (categorical phase
 #            palette · pending brief-v2 ruling, tracked in the AFC recap)
-RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D03F3F|D63E4E|EE6038|FF8870|34D058'
+# 5FD06A · the rogue 4th green, fully eliminated in the 2026-06-16 web
+#          color consolidation (snapped to --green #3EBD41). Tripwire so
+#          it can never return. NOTE: FFB24D / FF6A6A are NOT retired —
+#          they're now the legit --warn-text / --over-text token values.
+RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D03F3F|D63E4E|EE6038|FF8870|34D058|5FD06A'
 HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→'
 
 hits=$(grep -rinE "(#|0x)($RETIRED)" \

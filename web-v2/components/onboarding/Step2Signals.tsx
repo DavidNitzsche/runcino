@@ -90,7 +90,7 @@ export function Step2Signals({ initial }: { initial: OnboardingState }) {
       }}>
         <SignalTile
           icon="S"
-          iconBg="#FC4C02"
+          iconBg="#FC4C02" /* --strava */
           name="Strava"
           meta="Run history · pace · routes"
           connected={initial.stravaConnected}

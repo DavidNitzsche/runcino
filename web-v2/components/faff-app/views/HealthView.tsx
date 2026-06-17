@@ -67,14 +67,14 @@ interface EpisodeRow {
 // has no equivalent · `warn` covers both watch and bad cases per the
 // existing data shape.
 const STATUS: Record<'good' | 'warn' | 'neutral', string> = {
-  good: '#5fd06a', warn: '#F3AD38', neutral: '#5bbfb0',
+  good: '#3EBD41' /* --green */, warn: '#F3AD38', neutral: '#5BBFB0' /* --neutral-teal */,
 };
 // Standalone colors for the non-HealthMetric paths (gauge bands, driver
 // thresholds, recovery percentages).
 const COLOR_BAD = '#FC4D64';
-const COLOR_GOOD = '#5fd06a';
+const COLOR_GOOD = '#3EBD41'; // --green
 const COLOR_WATCH = '#F3AD38';
-const COLOR_TEAL = '#5bbfb0';
+const COLOR_TEAL = '#5BBFB0'; // --neutral-teal
 // Readiness band colors · also from the design
 const BAND: Record<string, string> = {
   sharp: '#3EBD41', ready: '#3EBD41', moderate: '#F3AD38',
@@ -345,7 +345,7 @@ function NiggleHistory({ onLogNiggle }: { onLogNiggle: () => void }) {
   }, []);
 
   const sevColor = (s: number) =>
-    s <= 3 ? '#5fd06a' : s <= 6 ? '#F3AD38' : '#FC4D64';
+    s <= 3 ? '#3EBD41' /* --green */ : s <= 6 ? '#F3AD38' : '#FC4D64';
 
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -356,8 +356,8 @@ function NiggleHistory({ onLogNiggle }: { onLogNiggle: () => void }) {
   };
 
   const TREND_COLOR: Record<string, string> = {
-    better: '#5fd06a', same: 'rgba(255,255,255,.5)',
-    worse: '#F3AD38', gone: '#5bbfb0',
+    better: '#3EBD41' /* --green */, same: 'rgba(255,255,255,.5)',
+    worse: '#F3AD38', gone: '#5BBFB0' /* --neutral-teal */,
   };
 
   return (

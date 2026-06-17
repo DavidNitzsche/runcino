@@ -292,6 +292,7 @@ const css = `
 }
 .tw-badge-on  { background: #4caf5020; color: var(--tw-pass); border: 1px solid #4caf5040; }
 .tw-badge-pend{ background: #f9900020; color: var(--tw-warn); border: 1px solid #f9900040; }
+/* #fc4c02 = --strava (brand orange); #fc6a2a = lighter text companion */
 .tw-badge-strava { background: #fc4c0220; color: #fc6a2a; border: 1px solid #fc4c0235; }
 .tw-badge-hk  { background: #f4433620; color: #ff7070;  border: 1px solid #f4433635; }
 .tw-badge-skip{ background: #66666620; color: var(--tw-muted); border: 1px solid var(--tw-border); }

@@ -153,7 +153,9 @@ export function StravaPushButton({
   // solid-filled, smaller footprint — designed to sit in the modal
   // header's top-right corner next to the close (X) button rather
   // than mid-modal. Title-case label so it doesn't shout.
-  const STRAVA = '#FC4C02';
+  const STRAVA = '#FC4C02'; // --strava (brand orange)
+  // Darker companion for the hover/pressed state · one-off gradient-ish
+  // shade of --strava, not a palette token.
   const STRAVA_HOVER = '#E54300';
   const bg = errored ? 'rgba(252,77,100,0.12)'
     : success ? 'rgba(252,76,2,0.15)'

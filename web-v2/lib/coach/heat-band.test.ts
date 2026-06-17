@@ -3,15 +3,15 @@ import { heatAwareDrift, heatAdjustedStatus, type DriftBand } from './heat-band'
 
 const FLAT: DriftBand = { text: 'STAYED FLAT', color: '#86efa0' }; // --mint-readiness
 const HELD: DriftBand = { text: 'HELD STEADY', color: '#86efa0' }; // --mint-readiness
-const SOME: DriftBand = { text: 'SOME DRIFT', color: '#ffb24d' };
-const FADE: DriftBand = { text: 'LATE FADE', color: '#ff6a6a' };
+const SOME: DriftBand = { text: 'SOME DRIFT', color: '#FFB24D' /* --warn-text */ };
+const FADE: DriftBand = { text: 'LATE FADE', color: '#FF6A6A' /* --over-text */ };
 
 describe('heatAwareDrift', () => {
   it('relabels LATE FADE -> HEAT DRIFT on a warm+ day (>=2%)', () => {
     const r = heatAwareDrift(FADE, 2);
     expect(r.text).toBe('HEAT DRIFT');
     expect(r.heatExpected).toBe(true);
-    expect(r.color).toBe('#ffb24d');
+    expect(r.color).toBe('#FFB24D');
   });
 
   it('relabels SOME DRIFT -> HEAT DRIFT on a warm+ day', () => {

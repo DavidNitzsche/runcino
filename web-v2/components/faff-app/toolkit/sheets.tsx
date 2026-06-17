@@ -155,7 +155,7 @@ export function ManualHealthSheet({
               background: 'rgba(95, 208, 106, .18)',
               border: '1px solid rgba(95, 208, 106, .55)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 28, lineHeight: 1, color: '#5fd06a',
+              fontSize: 28, lineHeight: 1, color: '#3EBD41' /* --green */,
             }}
             aria-hidden
           >

@@ -59,7 +59,7 @@ export type DriftBand = { text: string; color: string; heatExpected?: boolean };
 export function heatAwareDrift(raw: DriftBand, slowdownPct: number): DriftBand {
   const isRise = raw.text === 'SOME DRIFT' || raw.text === 'LATE FADE';
   if (slowdownPct >= 2 && isRise) {
-    return { text: 'HEAT DRIFT', color: '#ffb24d', heatExpected: true };
+    return { text: 'HEAT DRIFT', color: '#FFB24D' /* --warn-text */, heatExpected: true };
   }
   return raw;
 }
