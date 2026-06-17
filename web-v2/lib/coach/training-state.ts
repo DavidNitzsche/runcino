@@ -10,8 +10,10 @@
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { getCanonicalRunIds } from '@/lib/runs/volume';
+import { getCanonicalRunIds, mileageByDay } from '@/lib/runs/volume';
 import { loadActivePlan } from '@/lib/plan/lookup';
+import { loadSettings } from '@/lib/coach/settings';
+import { weekWindowFor } from '@/lib/coach/week-window';
 
 export interface PlanWeek {
   idx: number;
@@ -89,7 +91,7 @@ export interface TrainingState {
   currentPhase: string | null;
   currentWeekIdx: number | null;
   nextQuality: { date: string; dow: number; type: string; label: string | null; mi: number } | null;
-  weekDone: number;            // strava sum Mon→today for current week
+  weekDone: number;            // canonical mileage, week-start→today (long_run_day window)
   weekPlanned: number | null;
   /** ISO timestamp of the last run-adaptations cron pass. Drives the
    *  "Plan refreshed Xh ago" freshness line on the Train tab. Added
@@ -326,26 +328,22 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     label: upcoming.sub_label, mi: Number(upcoming.distance_mi) || 0,
   } : null;
 
-  // Week mileage done so far
-  const monday = (() => {
-    const d = new Date(today + 'T12:00:00Z');
-    const dow = d.getUTCDay();
-    const shift = dow === 0 ? -6 : 1 - dow;
-    return new Date(d.getTime() + shift * 86400000).toISOString().slice(0, 10);
-  })();
-  // 2026-06-01 - MAX-per-day dedupe (see lib/plan/generate.ts comment).
-  const weekRuns = await pool.query(
-    `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
-            MAX((data->>'distanceMi')::numeric) AS mi
-       FROM runs
-      WHERE user_uuid = $1
-        AND NOT (data ? 'mergedIntoId')
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))
-            BETWEEN $2::text AND $3::text
-      GROUP BY day`,
-    [userId, monday, today]
-  );
-  const weekDone = Math.round(weekRuns.rows.reduce((s: number, r: any) => s + Number(r.mi), 0) * 10) / 10;
+  // Week mileage done so far.
+  // #9 (audit 2026-06-16) · the "this week" window now derives from
+  // user_settings.long_run_day (week ENDS on the long-run day) via the shared
+  // weekWindowFor helper — the same boundary /api/plan/week + plan_weeks use.
+  // Was hardcoded Monday, which mislabeled the week for non-Sunday-long
+  // runners. No-op for David (long=Sun → Mon–Sun, identical to the old Monday).
+  // #52 (audit 2026-06-16) · sum the CANONICAL deduper (mileageByDay, the single
+  // volume source-of-truth per CLAUDE.md) over that window instead of the
+  // deprecated MAX-per-day heuristic, so weekDone matches Today's "WEEK MI"
+  // (glance-state already sums canonicalMileageByDay).
+  const settings = await loadSettings(userId);
+  const { startISO: weekStartISO } = weekWindowFor(settings.long_run_day, today);
+  const weekByDay = await mileageByDay(userId, weekStartISO, today).catch(() => new Map());
+  let weekDoneSum = 0;
+  for (const { mi } of weekByDay.values()) weekDoneSum += mi;
+  const weekDone = Math.round(weekDoneSum * 10) / 10;
   const weekPlanned = current?.plannedMi ?? null;
 
   // Race

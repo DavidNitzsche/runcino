@@ -15,6 +15,8 @@ import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { loadSettings } from '@/lib/coach/settings';
+import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
 import { heatAdjustedStatus } from './heat-band';
 
@@ -70,7 +72,7 @@ export interface GlanceState {
   greetingName: string;
   weekDone: number;
   weekPlanned: number | null;
-  weekDays: GlanceWeekDay[];   // 7 entries, Monday → Sunday
+  weekDays: GlanceWeekDay[];   // 7 entries, week-start → long-run day (long_run_day window)
   phaseLabel: string | null;
   sleep7Avg: number | null;
   sleep7Deficit: number;
@@ -280,15 +282,18 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   let nextARaceName: string | null = null;
   let weekDays: GlanceWeekDay[] = [];
 
-  // Compute the Mon-Sun window around today regardless of plan presence.
-  const monday = (() => {
-    const d = new Date(today + 'T12:00:00Z');
-    const dow = d.getUTCDay();
-    const shift = dow === 0 ? -6 : 1 - dow;
-    return new Date(d.getTime() + shift * 86400000).toISOString().slice(0, 10);
-  })();
+  // #9 (audit 2026-06-16) · the 7-day "this week" window now derives from
+  // user_settings.long_run_day (week ENDS on the long-run day) via the shared
+  // weekWindowFor helper — the same boundary /api/plan/week + plan_weeks use.
+  // Was hardcoded Monday, which mislabeled the strip for non-Sunday-long
+  // runners (and made the strip disagree with the calendar). No-op for David
+  // (long=Sun → Mon–Sun, byte-identical to the old Monday boundary).
+  // weekDates[0].date is the week start, consumed below as the strength
+  // recommender's week-start arg (#24), so strength derives the same window.
+  const settings = await loadSettings(userId);
+  const { startISO: weekStartISO } = weekWindowFor(settings.long_run_day, today);
   const weekDates = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(Date.parse(monday + 'T12:00:00Z') + i * 86400000);
+    const d = new Date(Date.parse(weekStartISO + 'T12:00:00Z') + i * 86400000);
     return { date: d.toISOString().slice(0, 10), dow: d.getUTCDay() };
   });
 
@@ -732,9 +737,9 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // 2026-06-01 · strength-day recommender (web agent brief
   // strength-recommender-backend-brief.md). Replaces the frontend's
   // pure-week-shape pickStrengthDays() heuristic. Computed off the
-  // Mon-Sun week (weekDays[0].date is the Monday). Best-effort · null
-  // when plan or signals aren't available, frontend falls back to its
-  // local heuristic.
+  // long_run_day week window (weekDays[0].date is the week start · #24).
+  // Best-effort · null when plan or signals aren't available, frontend
+  // falls back to its local heuristic.
   let strengthRecommendation: import('./strength-recommender').StrengthRecommendation | null = null;
   let strengthWeekStatus: import('./strength-status').StrengthWeekStatus | null = null;
   try {

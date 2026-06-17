@@ -484,6 +484,11 @@ function composeWeekProgress(
   state: CoachState,
   today: string,
 ): RecoveryBrief['weekProgress'] {
+  // #52 (audit 2026-06-16) · banked mi prefers trainingState.weekDone, which now
+  // sums the canonical deduper (mileageByDay) over the long_run_day week window —
+  // not the deprecated MAX-per-day heuristic it used before. The state.weekDone
+  // fallback is also canonical (state-loader → canonicalMileageByDay), so both
+  // arms agree with Today's "WEEK MI." Per the volume source-of-truth rule.
   const bankedMi = +Number(trainingState?.weekDone ?? state.weekDone ?? 0).toFixed(1);
   const targetMi = +Number(trainingState?.weekPlanned ?? state.weekPlanned ?? 0).toFixed(1);
 
