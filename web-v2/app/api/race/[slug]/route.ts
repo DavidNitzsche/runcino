@@ -11,6 +11,8 @@ import { loadRacesState } from '@/lib/coach/races-state';
 import { requireUserId } from '@/lib/auth/session';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
+import { computeRaceFueling } from '@/lib/race/execution-plan';
+import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,12 +29,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
     // Scope course-geometry lookup by user_uuid so a slug guess can't leak
     // another runner's GPX even if a name collision would otherwise match.
-    const geoRow = await pool.query(
-      `SELECT course_geometry, course_source FROM races WHERE slug = $1 AND user_uuid = $2`,
+    // Also pull meta — the per-race fuel keys (fuelProduct etc.) live there
+    // and loadRacesState doesn't surface them.
+    const geoRow = await pool.query<{ course_geometry: unknown; course_source: string | null; meta: Record<string, unknown> | null }>(
+      `SELECT course_geometry, course_source, meta FROM races WHERE slug = $1 AND user_uuid = $2`,
       [slug, userId],
-    ).catch(() => ({ rows: [] }));
+    ).catch(() => ({ rows: [] as Array<{ course_geometry: unknown; course_source: string | null; meta: Record<string, unknown> | null }> }));
     const courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
     const courseSource = geoRow.rows[0]?.course_source ?? null;
+    const raceMeta = geoRow.rows[0]?.meta ?? null;
 
     // Course-library provenance (2026-05-30 audit) — when the course came
     // from the shared library, surface `source` + `contributor_count` so
@@ -73,6 +78,31 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       : (race as any).days <= 60 ? 'sharpening'
       : 'building';
 
+    // Structured fuel recommendation · servings + schedule + target rate +
+    // product. Per-race meta (fuelProduct etc.) overrides the runner-level
+    // default (users.fuel_*); documented defaults + isDefault when neither.
+    // Same resolver + math as /execution-plan, so the two surfaces agree.
+    // Cite Research/18 §1/§11.
+    let fueling = null;
+    try {
+      const goalSec = parseRaceTime((race as { goal?: string | null }).goal);
+      const distanceMi = Number((race as { distance_mi?: number | null }).distance_mi);
+      if (goalSec && distanceMi > 0) {
+        const fuelDefaults = (await pool.query<{ fuel_brand: string | null; fuel_gel_carbs_g: number | null; fuel_target_g_per_hr: number | null }>(
+          `SELECT fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr FROM users WHERE id = $1 LIMIT 1`,
+          [userId],
+        ).then((r) => r.rows[0] ?? null).catch(() => null));
+        const { fuel, fuelIsDefault } = resolveRaceFuel(raceMeta, fuelDefaults);
+        fueling = computeRaceFueling({
+          goalSec,
+          distanceMi,
+          goalPaceSPerMi: goalSec / distanceMi,
+          fuel,
+          isDefault: fuelIsDefault,
+        });
+      }
+    } catch { /* fueling is additive — never fail the detail over it */ }
+
     return NextResponse.json({
       race,
       proximity,
@@ -80,6 +110,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       course_source: courseSource,
       course_library: courseLibrary,
       pacing,
+      fueling,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });

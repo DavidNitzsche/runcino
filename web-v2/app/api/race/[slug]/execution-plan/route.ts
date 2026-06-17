@@ -22,6 +22,7 @@ import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { composeRaceExecutionPlan } from '@/lib/race/execution-plan';
+import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     const startTimeLocal =
       (meta.startTime as string) ?? (meta.gun_time as string) ?? (meta.start_time as string) ?? null;
 
-    const [profileRow, maxHrEff, snapRow] = await Promise.all([
+    const [profileRow, maxHrEff, snapRow, fuelDefaults] = await Promise.all([
       pool.query<{ lthr: number | null }>(
         `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
         [userId],
@@ -67,9 +68,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
           ORDER BY snapshot_date DESC LIMIT 1`,
         [userId, distanceMi],
       ).then((r) => r.rows[0] ?? null).catch(() => null),
+      pool.query<{ fuel_brand: string | null; fuel_gel_carbs_g: number | null; fuel_target_g_per_hr: number | null }>(
+        `SELECT fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      ).then((r) => r.rows[0] ?? null).catch(() => null),
     ]);
 
     const vdot = snapRow?.vdot != null ? Number(snapRow.vdot) : null;
+
+    // Resolve fuel: per-race meta (this race) overrides the runner-level
+    // default (users.fuel_*). isDefault flags when BOTH are empty so the
+    // phone can prompt "enter your fueling". Cite Research/18 §1/§11.
+    const { fuel, fuelIsDefault } = resolveRaceFuel(meta, fuelDefaults);
 
     // CI band for the honesty note · same math the Targets page shows
     // (computeConfidenceInterval) without re-running drift detection —
@@ -96,6 +106,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       vdot,
       ci,
       startTimeLocal,
+      fuel,
+      fuelIsDefault,
     });
     if (!plan) {
       return NextResponse.json({ error: 'plan composition failed' }, { status: 500 });

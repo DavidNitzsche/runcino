@@ -148,6 +148,21 @@ export async function PATCH(req: NextRequest) {
     for (const k of ['finishTime', 'pb', 'retroFelt', 'retroExecution', 'retroNotes', 'avgHrBpm']) {
       if (body[k] !== undefined) meta[k] = body[k];
     }
+    // Per-race fueling (camelCase) — the runner's planned race fuel. Feeds
+    // composeRaceExecutionPlan's structured fuel recommendation + the watch
+    // gel schedule. Distinct from the runner-level default in users.fuel_*:
+    // these override for THIS race. Cite Research/18 §1/§11.
+    //   fuelProduct            "Maurten Gel 100"
+    //   fuelCarbsPerServingG   25
+    //   fuelCadenceMin         25  (take one every N min)
+    //   fuelCarbsPerHourTargetG 75 (optional · direct rate, beats cadence)
+    // Plus race-morning logistics for a later phone edit sheet (passthrough).
+    for (const k of [
+      'fuelProduct', 'fuelCarbsPerServingG', 'fuelCadenceMin', 'fuelCarbsPerHourTargetG',
+      'shuttle', 'packetPickup', 'officialUrl',
+    ]) {
+      if (body[k] !== undefined) meta[k] = body[k];
+    }
     await pool.query(
       `UPDATE races SET meta = $1 WHERE slug = $2 AND user_uuid = $3`,
       [meta, body.slug, userId],

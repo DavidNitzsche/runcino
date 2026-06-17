@@ -24,6 +24,8 @@ import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
+import { computeRaceFueling } from '@/lib/race/execution-plan';
+import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -655,12 +657,46 @@ export async function buildWatchToday(
     // authored spec's fuel_mi, dropping cues inside the final 2 miles
     // (the generator emits fixed spacing — AFC's spec says [5, 9, 13],
     // and a gel at mile 13.0 of 13.1 is a cue nobody can use).
+    // Gel-mile precedence (most specific wins):
+    //   1. The runner's ENTERED race fuel (races.meta.fuelProduct / cadence
+    //      / serving / rate) → computeRaceFueling places servings on THEIR
+    //      cadence and we convert to course miles. This is David's "enter
+    //      the fueling we will use" → the watch prompts at those miles.
+    //   2. The authored spec's fuel_mi (generic generator spacing).
+    //   3. The runner-level default fueling fallback (below).
+    let enteredGelsMi: number[] | null = null;
+    if (raceGoalSec && raceDistMi > 0) {
+      const fuelDefaults = (await pool.query<{ fuel_brand: string | null; fuel_gel_carbs_g: number | null; fuel_target_g_per_hr: number | null }>(
+        `SELECT fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      ).then((r) => r.rows[0] ?? null).catch(() => null));
+      const { fuel, fuelIsDefault } = resolveRaceFuel(raceMeta, fuelDefaults);
+      // Only honor entries that are actually the runner's choice (per-race
+      // OR runner-default); pure documented-default falls through to the
+      // spec's authored fuel_mi so we don't override a hand-tuned plan with
+      // a generic 60 g/hr ladder.
+      if (!fuelIsDefault) {
+        const fp = computeRaceFueling({
+          goalSec: raceGoalSec,
+          distanceMi: raceDistMi,
+          goalPaceSPerMi: raceGoalSec / raceDistMi,
+          fuel,
+          isDefault: false,
+        });
+        const gels = fp.scheduleMi
+          .map((s) => s.mi)
+          .filter((mi) => mi >= 2 && mi <= raceDistMi - 2);
+        if (gels.length > 0) enteredGelsMi = gels;
+      }
+    }
+
     const fuelMi = Array.isArray((wo.workout_spec as Record<string, unknown> | null)?.fuel_mi)
       ? ((wo.workout_spec as Record<string, unknown>).fuel_mi as unknown[])
           .map(Number)
           .filter((m) => Number.isFinite(m) && m >= 2 && m <= distanceMi - 2)
       : [];
-    if (fuelMi.length > 0) workout.gelsMi = fuelMi;
+    if (enteredGelsMi) workout.gelsMi = enteredGelsMi;
+    else if (fuelMi.length > 0) workout.gelsMi = fuelMi;
 
     // RK-1 · strategy line for the race face — goal + B-target in one
     // glance. Sourced from the same plan-race meta as goalSec.

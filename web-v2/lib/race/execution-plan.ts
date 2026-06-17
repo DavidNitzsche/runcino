@@ -71,6 +71,50 @@ export interface WarmupStep {
   step: string;
 }
 
+/** One scheduled fuel intake during the race. */
+export interface FuelScheduleStop {
+  /** Mile to take the serving (rounded to 0.1). */
+  mi: number;
+  /** Elapsed minutes at that mile, at goal pace. */
+  atMin: number;
+}
+
+/**
+ * Structured race-fueling recommendation · the coach amount + schedule.
+ *
+ * Derived from the runner's entered product (races.meta.fuelProduct /
+ * fuelCarbsPerServingG / fuelCadenceMin / fuelCarbsPerHourTargetG) when
+ * present, else the runner-level default product (users.fuel_*), else a
+ * research-grounded default rate (Research/18 §1: 60 g/hr single-source
+ * floor, up to 90 with a trained gut on a glucose:fructose blend).
+ *
+ * The phone renders servings + schedule + target rate + product; the
+ * watch maps `scheduleMi` to gel haptics.
+ */
+export interface RaceFuelingPlan {
+  /** Carbs-per-hour target the plan is built to (g/hr). */
+  targetCarbsPerHourG: number;
+  /** Total servings to carry for the whole race at goal pace. */
+  recommendedServings: number;
+  /** Product the schedule is built around ("Maurten Gel 100" / "gel"). */
+  productName: string;
+  /** Carbs in one serving (g). */
+  carbsPerServingG: number;
+  /** Total carbs the schedule delivers (g) · servings × carbsPerServing. */
+  totalCarbsG: number;
+  /** Mile-anchored intake schedule (the watch reads `mi`). */
+  scheduleMi: FuelScheduleStop[];
+  /** Minute-anchored intake schedule (mirror of scheduleMi, for prose). */
+  scheduleMin: number[];
+  /** True when nothing was entered and these are research defaults the
+   *  phone should prompt the runner to confirm ("enter your fueling"). */
+  isDefault: boolean;
+  /** Coach one-liner · "5 Maurten Gel 100s · ~75 g/hr · every 25 min." */
+  shortLine: string;
+  /** Research citation for the target rate. */
+  citation: string;
+}
+
 export interface RaceExecutionPlan {
   goalSec: number;
   goalPaceSPerMi: number;
@@ -85,11 +129,37 @@ export interface RaceExecutionPlan {
   bGoalTriggers: BGoalTrigger[];
   heatRules: HeatRule[];
   warmup: WarmupStep[];
+  /** Doctrine prose lines (carb-load, breakfast, caffeine). Kept for the
+   *  briefing surfaces; the structured amount/schedule is `fuelingPlan`. */
   fueling: string[];
+  /** Structured fuel recommendation · servings + schedule + rate (the
+   *  phone + watch consume this). Never null — defaults when no entry. */
+  fuelingPlan: RaceFuelingPlan;
   /** One-paragraph strategy line for the briefing surfaces. */
   strategyLine: string;
   /** CI context · "fitness says 1:31:56–1:37:52" · null at cold start. */
   ciNote: string | null;
+}
+
+/** Research/18 §1 default during-race carb rate when nothing is entered.
+ *  60 g/hr is the single-source glucose floor above which most runners
+ *  hit GI distress; a trained gut on a 1:0.8 glucose:fructose blend goes
+ *  to ~90. We default to 60 (safe, broadly tolerated) and the coach copy
+ *  notes the higher ceiling. Cite: Research/18-fueling-products.md §1. */
+export const DEFAULT_RACE_CARBS_PER_HOUR_G = 60;
+/** Default serving size (g carbs) when no product entered · matches the
+ *  mid-pack gel (GU/SiS GO ≈ 22 g). Cite: Research/18 §3. */
+export const DEFAULT_SERVING_CARBS_G = 22;
+
+export interface RaceFuelingInput {
+  /** Product name, e.g. "Maurten Gel 100". */
+  product?: string | null;
+  /** Carbs per serving (g), e.g. 25 for a Maurten 100. */
+  carbsPerServingG?: number | null;
+  /** Take one serving every N minutes (the runner's cadence). */
+  cadenceMin?: number | null;
+  /** Direct g/hr target if the runner sets the rate, not the cadence. */
+  carbsPerHourTargetG?: number | null;
 }
 
 const fmtPace = (s: number): string => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -112,6 +182,122 @@ function clockFromGun(startTimeLocal: string | null | undefined, minutesBefore: 
 }
 
 /**
+ * Compute the structured fuel recommendation for a race.
+ *
+ * The math, all from Research/18-fueling-products.md:
+ *   1. Target rate (g/hr): the runner's entered rate, else the rate
+ *      implied by (servingCarbs ÷ cadence × 60), else the §1 default 60.
+ *      Distances under ~50 min need no fuel (§11 · 5K/10K: 0 g/hr).
+ *   2. Total carbs = targetRate × raceDurationHours (goalSec).
+ *   3. Servings = ceil(totalCarbs ÷ servingCarbs) — round UP so the
+ *      runner never under-carries the target.
+ *   4. Schedule: place servings on the runner's cadence (every N min),
+ *      first at ~cadence min, none inside the last ~10 min (a gel at the
+ *      line is a cue nobody can use). When no cadence is entered, derive
+ *      it from servings spread evenly across the race.
+ *
+ * `entered`/runner-default precedence is the caller's job (it passes the
+ * resolved product); `isDefault` flags when EVERYTHING fell through to
+ * documented defaults so the phone can prompt the runner to confirm.
+ */
+export function computeRaceFueling(args: {
+  goalSec: number;
+  distanceMi: number;
+  goalPaceSPerMi: number;
+  fuel?: RaceFuelingInput | null;
+  /** True when no per-race AND no runner-default product was supplied. */
+  isDefault?: boolean;
+}): RaceFuelingPlan {
+  const { goalSec, goalPaceSPerMi } = args;
+  const fuel = args.fuel ?? {};
+  const durationHr = goalSec / 3600;
+  const durationMin = goalSec / 60;
+
+  const servingCarbs = fuel.carbsPerServingG && fuel.carbsPerServingG > 0
+    ? fuel.carbsPerServingG
+    : DEFAULT_SERVING_CARBS_G;
+  const productName = fuel.product?.trim() ? fuel.product.trim() : 'gel';
+
+  // ── Target rate (g/hr) ────────────────────────────────────────────
+  // Under ~50 min (5K/10K) no fuel is needed · Research/18 §11.
+  let targetRate: number;
+  if (durationMin < 50) {
+    targetRate = 0;
+  } else if (fuel.carbsPerHourTargetG && fuel.carbsPerHourTargetG > 0) {
+    targetRate = fuel.carbsPerHourTargetG;
+  } else if (fuel.cadenceMin && fuel.cadenceMin > 0) {
+    // Cadence + serving size implies a rate.
+    targetRate = Math.round((servingCarbs * 60) / fuel.cadenceMin);
+  } else {
+    targetRate = DEFAULT_RACE_CARBS_PER_HOUR_G;
+  }
+
+  if (targetRate <= 0) {
+    return {
+      targetCarbsPerHourG: 0,
+      recommendedServings: 0,
+      productName,
+      carbsPerServingG: servingCarbs,
+      totalCarbsG: 0,
+      scheduleMi: [],
+      scheduleMin: [],
+      isDefault: args.isDefault ?? false,
+      shortLine: 'No on-course fuel needed — pre-race breakfast covers a race this short.',
+      citation: 'Research/18-fueling-products.md §11 (5K/10K: 0 g/hr)',
+    };
+  }
+
+  // ── Total carbs + servings (round UP so target is always met) ─────
+  const totalCarbsTarget = targetRate * durationHr;
+  const recommendedServings = Math.max(1, Math.ceil(totalCarbsTarget / servingCarbs));
+  const totalCarbsG = Math.round(recommendedServings * servingCarbs);
+
+  // ── Schedule on cadence ───────────────────────────────────────────
+  // Use the entered cadence; else spread servings evenly. First gel at
+  // the cadence mark (not mile 0), and clamp the last to ~10 min before
+  // the finish so every cue is actionable.
+  const lastUsableMin = Math.max(0, durationMin - 10);
+  const cadence = fuel.cadenceMin && fuel.cadenceMin > 0
+    ? fuel.cadenceMin
+    : Math.max(15, Math.round(lastUsableMin / recommendedServings));
+
+  const scheduleMin: number[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < recommendedServings; i++) {
+    const at = Math.min(lastUsableMin, Math.round((i + 1) * cadence));
+    if (seen.has(at)) continue;       // dedupe when the clamp folds two together
+    seen.add(at);
+    scheduleMin.push(at);
+  }
+
+  const scheduleMi: FuelScheduleStop[] = scheduleMin.map((min) => ({
+    // mile reached at goal pace by `min` minutes.
+    mi: Math.round(((min * 60) / goalPaceSPerMi) * 10) / 10,
+    atMin: min,
+  }));
+
+  const servings = scheduleMin.length;
+  const plural = servings === 1 ? productName : `${productName}s`;
+  const cadenceTxt = fuel.cadenceMin && fuel.cadenceMin > 0
+    ? `every ${fuel.cadenceMin} min`
+    : `~every ${cadence} min`;
+  const shortLine = `${servings} ${plural} · ~${targetRate} g/hr · ${cadenceTxt}.`;
+
+  return {
+    targetCarbsPerHourG: targetRate,
+    recommendedServings: servings,
+    productName,
+    carbsPerServingG: servingCarbs,
+    totalCarbsG,
+    scheduleMi,
+    scheduleMin,
+    isDefault: args.isDefault ?? false,
+    shortLine,
+    citation: 'Research/18-fueling-products.md §1 + §11 (60 g/hr floor; trained gut to 90 on glucose:fructose 1:0.8)',
+  };
+}
+
+/**
  * Compose the execution plan. All inputs optional except goal +
  * distance; everything else degrades to documented defaults.
  */
@@ -126,6 +312,12 @@ export function composeRaceExecutionPlan(args: {
   ci?: { loSec: number; hiSec: number } | null;
   /** "HH:MM" local gun time (races.meta.startTimeLocal). */
   startTimeLocal?: string | null;
+  /** Resolved fuel product (per-race meta → runner default → none). The
+   *  caller resolves precedence; pass what was found. */
+  fuel?: RaceFuelingInput | null;
+  /** True when neither a per-race nor runner-default product was found,
+   *  so the structured plan is built on documented defaults. */
+  fuelIsDefault?: boolean;
 }): RaceExecutionPlan | null {
   const { goalSec, distanceMi } = args;
   if (!goalSec || goalSec <= 0 || !distanceMi || distanceMi <= 0) return null;
@@ -229,15 +421,32 @@ export function composeRaceExecutionPlan(args: {
     { minutesBeforeGun: 15, clock: clockFromGun(args.startTimeLocal, 15), step: 'In the corral. Sips of water only from here.' },
   ];
 
-  // ── Fueling · Research/08 §10.1 ───────────────────────────────────
+  // ── Fueling · Research/08 §10.1 (race-morning) + structured plan ──
+  // Structured amount/schedule (the phone + watch consume this). Carb
+  // intake during the race is grounded in Research/18 §1/§11; the prose
+  // below covers carb-load + breakfast + caffeine which are separate
+  // (Research/08 §10.1).
+  const fuelingPlan = computeRaceFueling({
+    goalSec,
+    distanceMi,
+    goalPaceSPerMi: goalPace,
+    fuel: args.fuel,
+    isDefault: args.fuelIsDefault ?? (args.fuel == null),
+  });
+  const onCourseLine = fuelingPlan.targetCarbsPerHourG > 0
+    ? `On course: ${fuelingPlan.shortLine}`
+    : (distanceMi >= 12
+        ? 'On course: one gel ~10 min before the gun, one at ~mile 7-8 with water.'
+        : 'On course: one gel ~10 min before the gun if the race runs past 50 minutes.');
   const fueling: string[] = [
     'Carb load 7-8 g/kg across the 24-36h before. Plain food you know.',
     'Race morning: normal breakfast 2.5-3h out. Nothing new.',
-    distanceMi >= 12
-      ? 'One gel ~10 min before the gun, one at ~mile 7-8 with water.'
-      : 'One gel ~10 min before the gun if the race runs past 50 minutes.',
+    onCourseLine,
     'Caffeine: normal coffee at breakfast. Optional caffeinated gel at mile 8.',
   ];
+  if (fuelingPlan.isDefault && fuelingPlan.targetCarbsPerHourG > 0) {
+    fueling.push('Enter your race fuel to lock the exact product and schedule.');
+  }
 
   // ── Strategy line + CI context ────────────────────────────────────
   const strategyLine =
@@ -261,6 +470,7 @@ export function composeRaceExecutionPlan(args: {
     heatRules,
     warmup,
     fueling,
+    fuelingPlan,
     strategyLine,
     ciNote,
   };
