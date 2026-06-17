@@ -92,6 +92,30 @@ Each line: what each surface shows → the audit-canonical answer → proposed d
 
 ---
 
+## Projection panel redesign (locked 2026-06-16) — build as one unit, both surfaces
+
+David-approved across the design dialogue. The canonical projection panel (iPhone `K_TargetsProjection.swift` + web `GapPanel.tsx`):
+
+**Header (sparse — each fact once, no repetition):**
+- Status chip (IN REACH / WATCHING / OFF / etc.)
+- Eyebrow `AT TODAY'S FITNESS` + hero number = current-fitness projection (1:34:54)
+- One line: `Plan projects 1:30:59 by race day — 59s short of 1:30:00.` (goal-relative + honest; ✅ already shipped on iPhone)
+- Re-anchored confidence band (see below) — **drop the `MEDIUM` word** (the readout carries confidence)
+- CUT: "Goal X. 4:54 to close. Most of it is movable." + "doable, not banked" (redundant)
+
+**THE READOUT (replaces the 4:54-TO-CLOSE attribution bar):** four rows + closing line, all from the trajectory object —
+- `EXECUTION` · Nailing every session · `100%` (executionQuality)
+- `PLAN` · Built for it · trains to VDOT 51 · `✓` (planBuiltForGoal + plannedTargetVdot)
+- `PROJECTED GAIN` · +2.3 VDOT of the +3.0 needed · `−0.7` (projectedGainVdot vs goalVdot−currentVdot)
+- `THE LIMITER` · The calendar, not your effort · `6.7 wk` (buildWeeks; the synthesis)
+- line: "6.7 build weeks at plan pace adds +2.3. To reach 1:30: build a touch faster, or confirm it early — beat threshold paces under HR, or a tune-up."
+
+**Confidence band — RE-ANCHOR to the race-day projection** (David: re-anchor). Today it centers on the current-fitness projection (`vdotProjectionSec`, 1:34:54) so the band (1:31:56–1:37:52) is slower than the projection shown above it. Center it on `trajectory.projectedSec` (1:30:59 → ~1:28:15–1:33:43) so the band means "where you'll likely finish" and the goal sitting inside it IS the "in reach, not banked" signal. Backend: in `computeGoalProjection`, compute the trajectory BEFORE `computeConfidenceInterval` and pass `centerSec: trajectory?.projectedSec ?? vdotProjectionSec`.
+
+**Backend payload:** surface the readout fields (executionQuality, planBuiltForGoal, plannedTargetVdot, projectedGainVdot, goalVdot, currentVdot, buildWeeks, gapVdot) into `ProjectionSummary` (iPhone) + the web seed so both render the readout from one source.
+
+**Status:** ✅ show-both line + goal-relative honesty shipped on iPhone. ⬜ header de-dup, ⬜ THE READOUT, ⬜ band re-anchor, ⬜ drop MEDIUM, ⬜ web mirror — build together.
+
 ## Part 5 — Additions (David)
 
 - [ ] **Web ← iPhone parity (design · content · tone) — standing goal.** The iPhone is the most-polished surface and is the reference now: the run-recap "HOW IT WENT" panel (per-rep range bars + needle, `TARGET 6:43 · +10s heat → 6:53`, "in range" labels, the coach-voice facts, the heat-context line — "63°F · a bit warm. Cost you about 2% on pace. Heat does that · your fitness is fine."), the information it surfaces, and the tone are all where they should be. **Bring the web up to mirror the iPhone wherever the web equivalent is behind or diverges.** This is the general form of Part 1's "web matches iPhone" — elevated from the disagreement fixes to a standing principle: when web and iPhone differ on *how something looks or reads* (not just the number), default to the iPhone.
