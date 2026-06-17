@@ -248,7 +248,7 @@ function paceLabelFor(t: string): string {
   switch (t) {
     case 'easy':       return 'E';
     case 'long':       return 'L';
-    case 'tempo':      return 'M';
+    case 'tempo':      return 'T';   // tempo is run at threshold effort (Daniels T), not marathon
     case 'threshold':  return 'T';
     case 'intervals':  return 'I';
     case 'race':       return 'R';

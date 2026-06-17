@@ -872,7 +872,7 @@ async function detectVdotTrendDrift(userUuid: string): Promise<DriftSignal | nul
         GROUP BY vdot, snapshot_date
      )
      SELECT
-       (SELECT vdot::text FROM ranked WHERE rn <= 7 ORDER BY snapshot_date DESC LIMIT 1) AS recent,
+       (SELECT AVG(vdot)::text FROM ranked WHERE rn <= 7) AS recent,
        (SELECT vdot::text FROM ranked WHERE snapshot_date <= CURRENT_DATE - INTERVAL '28 days' ORDER BY snapshot_date DESC LIMIT 1) AS older`,
     [userUuid],
   ).catch(() => ({ rows: [] }))).rows[0];
