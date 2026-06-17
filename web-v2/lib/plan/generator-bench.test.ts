@@ -223,12 +223,21 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
       it('long-run race-pace label matches race distance', () => {
         // HM races · expect "@ HM" not "@ MP" on RACE-SPECIFIC long runs
         // (if any race-pace insert at all). Marathon races expect "@ MP".
-        // 5K / 10K shouldn't carry race-pace inserts.
+        // 5K / 10K / ULTRA shouldn't carry race-pace inserts.
+        // #12 (audit 2026-06-16) · ultra (>30mi) is its own category now —
+        // ultra race pace sits well below marathon pace, so a long-run finish
+        // must NOT be tagged "MP" (was: the old `>=25 → MP` bucket conflated a
+        // 50K with a marathon). Marathon is 20..30mi.
         const labels = result.weeks
           .filter((w) => w.phase === 'RACE-SPECIFIC')
           .flatMap((w) => w.days.filter((d) => d.type === 'long').map((d) => d.subLabel ?? ''));
         if (labels.length === 0) return;
-        if (p.race.distanceMi >= 25) {
+        if (p.race.distanceMi > 30) {
+          // Ultra · no race-pace insert (builds via the long run / time-on-feet)
+          const hasMP = labels.some((l) => l.includes('@ MP'));
+          const hasHM = labels.some((l) => l.includes('@ HM'));
+          expect(hasMP || hasHM).toBe(false);
+        } else if (p.race.distanceMi >= 20) {
           // Marathon · expect MP inserts
           const hasMP = labels.some((l) => l.includes('MP'));
           expect(hasMP).toBe(true);

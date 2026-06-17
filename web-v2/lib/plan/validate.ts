@@ -46,19 +46,29 @@ interface PlanConstraints {
 }
 
 const CONSTRAINTS: Record<DistCategory, PlanConstraints> = {
-  '5k':  { longRunWoWMaxPct: 30, taperDropMinPct: 20, weeklyVolWoWMaxPct: 50 },
-  '10k': { longRunWoWMaxPct: 30, taperDropMinPct: 25, weeklyVolWoWMaxPct: 50 },
-  'hm':  { longRunWoWMaxPct: 30, taperDropMinPct: 30, weeklyVolWoWMaxPct: 50 },
-  'm':   { longRunWoWMaxPct: 30, taperDropMinPct: 30, weeklyVolWoWMaxPct: 50 },
+  '5k':    { longRunWoWMaxPct: 30, taperDropMinPct: 20, weeklyVolWoWMaxPct: 50 },
+  '10k':   { longRunWoWMaxPct: 30, taperDropMinPct: 25, weeklyVolWoWMaxPct: 50 },
+  'hm':    { longRunWoWMaxPct: 30, taperDropMinPct: 30, weeklyVolWoWMaxPct: 50 },
+  'm':     { longRunWoWMaxPct: 30, taperDropMinPct: 30, weeklyVolWoWMaxPct: 50 },
+  // #12 (audit 2026-06-16) · 'ultra' is now its own category (was bucketed as
+  // 'm' by generate's old categorizer, which capped the ultra long run at the
+  // marathon ceiling). Same WoW/taper caps as the marathon; the long-run CAP
+  // itself is raised in longRunCapMi below to the ultra peak-long band.
+  'ultra': { longRunWoWMaxPct: 30, taperDropMinPct: 30, weeklyVolWoWMaxPct: 50 },
 };
 
 // Context-aware long-run cap. Kept separate from CONSTRAINTS because it
 // isn't a single value per distance — it varies by experience + horizon.
 function longRunCapMi(cat: DistCategory, ctx: PlanValidationContext): number {
   switch (cat) {
-    case '5k':  return 10;
-    case '10k': return 13;
-    case 'm':   return 22;
+    case '5k':    return 10;
+    case '10k':   return 13;
+    case 'm':     return 22;
+    // #12 · ultra long runs go well past the marathon. Cap at the ultra tier's
+    // peak-long upper band (32 mi, goal-tiers TIER_TARGETS.ultra) so a legit
+    // 50K+ plan isn't rejected against the marathon 22-mi ceiling.
+    // Cite: Research/22 §Ultramarathon (peak long 22-32 mi / 5-7 hr on feet).
+    case 'ultra': return 32;
     case 'hm':
       if (ctx.isSteppingStoneToMarathon) return 20;
       return ctx.level === 'beginner' ? 14 : 16;

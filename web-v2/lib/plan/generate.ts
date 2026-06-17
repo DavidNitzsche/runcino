@@ -34,7 +34,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRac
 // profile.max_hr is NOT the source of truth per task #141.
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
-import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode } from './goal-tiers';
+import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 import { validateComposedPlan } from './validate';
 
@@ -378,23 +378,33 @@ export interface BlockPlan {
  * Cite: Research/22-plan-templates.md (per-distance template tables);
  *       Research/00a §7-Race-Specific (taper length by distance).  // was §race-specific-prep · heading: ### 7. Race-specific (inside ## The Seven Workout Categories)
  */
-export type DistCategory = '5k' | '10k' | 'hm' | 'm';
+// #12 (audit 2026-06-16) · ONE categorizer across the whole generator.
+// generate.ts previously kept its own distanceCategoryOf (everything ≥20mi
+// collapsed to 'm', no 'ultra' case) while goal-tiers.ts maps >30mi → 'ultra'.
+// The divergence meant a 50K goal got the marathon BLOCK_SHAPE (3-wk taper, MP
+// race-pace tag, full-distance race-day row) while its volume/long bands came
+// from the ultra tier — internally inconsistent, and an ultra's long-run
+// finishes were tagged "MP" though ultra race pace is well below marathon pace.
+// Re-export goal-tiers' categorizer (which already includes 'ultra') as the
+// single source so block shape, taper length, and the race-pace tag all agree
+// with the tier the plan is sized for. DistCategory now carries 'ultra'.
+export type { DistCategory };
+const distanceCategoryOf = distanceCategoryOfTier;
 export function distanceCategoryOfPublic(raceDistanceMi: number): DistCategory {
   return distanceCategoryOf(raceDistanceMi);
-}
-function distanceCategoryOf(raceDistanceMi: number): DistCategory {
-  if (raceDistanceMi >= 20) return 'm';
-  if (raceDistanceMi >= 11) return 'hm';
-  if (raceDistanceMi >= 5)  return '10k';
-  return '5k';
 }
 
 /** Per-category structural numbers per Research/22 + canonical Daniels. */
 const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: number }> = {
-  '5k':  { taperWeeks: 1, raceSpecificCap: 2 }, // short, fast races · minimal taper
-  '10k': { taperWeeks: 2, raceSpecificCap: 3 },
-  'hm':  { taperWeeks: 2, raceSpecificCap: 3 },
-  'm':   { taperWeeks: 3, raceSpecificCap: 4 },
+  '5k':    { taperWeeks: 1, raceSpecificCap: 2 }, // short, fast races · minimal taper
+  '10k':   { taperWeeks: 2, raceSpecificCap: 3 },
+  'hm':    { taperWeeks: 2, raceSpecificCap: 3 },
+  'm':     { taperWeeks: 3, raceSpecificCap: 4 },
+  // #12 · ultra mirrors the marathon block shape (3-wk taper, deep race-
+  // specific block for time-on-feet + race-pace integration). Research/22
+  // §Ultramarathon — taper is a marathon-style 3 weeks; the long run, not a
+  // pace insert, is the race-specific stimulus (see racePaceTag below).
+  'ultra': { taperWeeks: 3, raceSpecificCap: 4 },
 };
 
 function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBlock: boolean = false): BlockPlan {
@@ -459,6 +469,26 @@ function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBlock: bool
 }
 
 // ── Volume curve ────────────────────────────────────────────────────────
+
+/**
+ * Cutback (deload) cadence · how many weeks between recovery weeks.
+ * 2026-06-03 · mid-block doctrine RULE 8: when Banister TSB at generate-
+ * time is < -10 (high cumulative load), deload every 3rd week instead of
+ * every 4th. null/cold-start → mod-4. Cite docs/PLAN_ENGINE_MID_BLOCK_
+ * DOCTRINE.md §Rule 8; Pfitzinger Faster Road Racing §"recovery weeks
+ * under load".
+ *
+ * #13 (audit 2026-06-16) · ONE definition shared by volumeCurve (which
+ * cuts the weekly mileage) and layoutWeek (which relaxes the long-run
+ * floor on cut weeks). They previously diverged — volumeCurve cut at
+ * this cadence while layoutWeek hardcoded mod-4 — so on a TSB<-10
+ * runner's deloaded week (mod-3) the long run was pinned to full peak
+ * against a reduced budget and the easy days absorbed the cut, the
+ * opposite of a deload.
+ */
+function cutbackCadence(tsbAtStart?: number): number {
+  return (typeof tsbAtStart === 'number' && tsbAtStart < -10) ? 3 : 4;
+}
 
 /** Experience-level volume floor + ramp tuning (Q-01 / SIM-02).
  *
@@ -533,11 +563,9 @@ function volumeCurve(
   const buildPhases = blocks.phases.filter((p) => p.label !== 'TAPER');
   const buildWeeks = buildPhases.reduce((s, p) => s + p.weeks, 0);
   // 2026-06-03 · mid-block doctrine RULE 8 (cutback frequency).
-  // When tsbAtStart < -10, runner has high cumulative load · shift
-  // cutbacks from every 4th week to every 3rd week. Otherwise mod-4.
-  // Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 8
-  // Cite: Pfitzinger Faster Road Racing §"recovery weeks under load"
-  const cutbackEveryN = (typeof tsbAtStart === 'number' && tsbAtStart < -10) ? 3 : 4;
+  // #13 · shared cadence so layoutWeek's long-run-floor relaxation lands
+  // on the SAME weeks this curve actually deloads. Cite §Rule 8.
+  const cutbackEveryN = cutbackCadence(tsbAtStart);
   const deloadMask: boolean[] = [];
   for (let i = 0; i < buildWeeks; i++) {
     deloadMask.push(i > 0 && (i + 1) % cutbackEveryN === 0);
@@ -724,7 +752,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -754,6 +782,10 @@ function layoutWeek({
   /** 2026-06-10 · cap total running days to the runner's stated
    *  frequency (excess easy slots become rest). NULL → fill all slots. */
   trainingDaysPerWeek?: number | null;
+  /** #13 (audit 2026-06-16) · deload cadence shared with volumeCurve so the
+   *  long-run-floor relaxation lands on the weeks the volume curve actually
+   *  cut. 3 under TSB<-10, else 4. Defaults to 4 (legacy mod-4) when omitted. */
+  cutbackEveryN?: number;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -837,7 +869,12 @@ function layoutWeek({
   //     they just did · 2026-06-03 fix · David's plan was sizing
   //     Sun 6/7 at 9mi when his 5/31 long was 12.36mi).
   // Allow cutback weeks to step slightly below the recentLong floor.
-  const isCutback = weekIdx > 0 && (weekIdx + 1) % 4 === 0;
+  // #13 · cadence threaded from volumeCurve (same cutbackCadence(tsb)) so a
+  // TSB<-10 runner's mod-3 deload weeks relax the long-run floor on the weeks
+  // the volume curve actually cut — not the stale hardcoded mod-4. For
+  // non-taper weeks layoutWeek's absolute weekIdx equals volumeCurve's build-
+  // week index (build phases precede TAPER), so the masks line up exactly.
+  const isCutback = weekIdx > 0 && (weekIdx + 1) % cutbackEveryN === 0;
   const longMiRaw = Math.round(weeklyMi * longShare);
   const longCap = tierTarget.peakLongMiBand[1];
   const longFloor = recentLongMi && recentLongMi >= 8
@@ -865,9 +902,15 @@ function layoutWeek({
   // makes sense for a marathon target. HM target → HM pace. 5K/10K
   // target → no MP insert at all (those distances train via reps, not
   // long-run pace inserts).
-  const racePaceTag = raceDistanceMi >= 25 ? 'MP'
-                    : raceDistanceMi >= 12 ? 'HM'
-                    : null;
+  // #12 (audit 2026-06-16) · keyed on the shared category, not a raw mileage
+  // threshold, so an ULTRA (>30mi) no longer trips the old `>=25 → 'MP'` arm.
+  // Ultra race pace sits well below marathon pace, so tagging a long-run finish
+  // (or race day) "MP" is wrong; ultras build via the long run / time-on-feet,
+  // so they take the null branch (no race-pace long-run insert), same as 5K/10K.
+  const cat = distanceCategoryOf(raceDistanceMi);
+  const racePaceTag = cat === 'm'  ? 'MP'
+                    : cat === 'hm' ? 'HM'
+                    : null;  // 5k / 10k / ultra → no long-run pace insert
   // 2026-06-07 · Audit D follow-up · race-pace finish for late-build longs.
   // RACE-SPECIFIC keeps its 40% finish; the last three QUALITY weeks now
   // also carry the M→HMP warm-in (Research/22 §3). Encoded into the
@@ -892,19 +935,23 @@ function layoutWeek({
     // HM threshold-dominant + race-specific MP; M long-run + threshold +
     // marathon-pace integration. Race-specific phase still steers harder
     // toward race-specific quality regardless of distance.
-    const cat = distanceCategoryOf(raceDistanceMi);
+    // #12 · `cat` is the shared categorizer hoisted above (includes 'ultra').
+    // The `/* m / ultra */` arms are the explicit fall-through: an ultra trains
+    // aerobic-dominant with threshold support (Research/22 §Ultramarathon), so
+    // the marathon quality mix is the right default — but the long-run finish is
+    // NOT tagged MP (racePaceTag is null for ultra above).
     const qualityTypes: Array<DayPlan['type']> =
         phase === 'TAPER'         ? ['race_week_tuneup']                               // tune-up · same for all distances
       : phase === 'RACE-SPECIFIC'
           ? (cat === '5k'   ? ['intervals', 'intervals']
            : cat === '10k'  ? ['threshold', 'intervals']
            : cat === 'hm'   ? ['threshold', 'intervals']
-           : /* m */          ['tempo', 'threshold'])
+           : /* m / ultra */  ['tempo', 'threshold'])
       : phase === 'QUALITY'
           ? (cat === '5k'   ? (weekIdx % 2 === 0 ? ['intervals', 'intervals'] : ['intervals', 'threshold'])
            : cat === '10k'  ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
            : cat === 'hm'   ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
-           : /* m */          (weekIdx % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
+           : /* m / ultra */  (weekIdx % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
       : [];
     // Prescription strings are resolved up-front from workout_library
     // (Research/04 + 22) via resolvePrescriptions() — falls back to the
@@ -1207,6 +1254,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   } : baseTierTarget;
 
   const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level, tierTarget, input.tsbAtStart);
+  // #13 · the cadence volumeCurve used to deload, threaded into layoutWeek so
+  // its long-run-floor relaxation lands on the same weeks. Same helper, same
+  // input → guaranteed agreement.
+  const cutbackEveryN = cutbackCadence(input.tsbAtStart);
 
   // 2026-06-03 · mid-block doctrine RULE 5 (quality density ramp).
   // When the runner's recent quality habit is below their prefs/tier
@@ -1312,6 +1363,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       recentQualityDistanceMi: input.recentQualityDistanceMi,
       tierTarget,
       trainingDaysPerWeek: input.trainingDaysPerWeek,
+      cutbackEveryN,  // #13 · same cadence as volumeCurve's deload mask
     });
     // P34 · cross-training opt-in · rotate enabled modes across the
     // rest day. Same logic that used to live in generatePlan's loop.
@@ -1527,10 +1579,17 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
 
   for (let wi = 0; wi < TOTAL_WEEKS; wi++) {
     const startISO = addDays(input.startMondayISO, wi * 7);
+    // #14 (audit 2026-06-16) · the `weeks[wi]?.weeklyMi ??` self-reference was
+    // dead: `weeks[wi]` is read before THIS iteration's push, so it was always
+    // undefined and the fallback always ran. The fallback IS the real value and
+    // matches maintenanceWeek(wi)'s internal `isCutback = weekIdx === 3 →
+    // targetWeekly * 0.80`. (Pattern was copied from the race-prep composer
+    // where `weeklyMi: vols[wi]` reads a genuinely pre-computed array.) Drop the
+    // dead clause so the cutback factor lives in one place per week.
     weeks.push({
       startISO,
       phase: 'MAINTENANCE',
-      weeklyMi: weeks[wi]?.weeklyMi ?? (wi === 3 ? Math.round(targetWeekly * 0.80) : targetWeekly),
+      weeklyMi: wi === 3 ? Math.round(targetWeekly * 0.80) : targetWeekly,
       days: maintenanceWeek(wi),
       isRaceWeek: false,
       tPaceSec: input.tPaceSec,
@@ -2051,7 +2110,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       // minimums mirror validate.ts CONSTRAINTS.taperDropMinPct
       // (5k:20 · 10k:25 · hm:30 · m:30 — literal here, runtime import
       // cycle as above). +2pct margin clears rounding.
-      const taperDrop: Record<string, number> = { '5k': 20, '10k': 25, 'hm': 30, 'm': 30 };
+      const taperDrop: Record<string, number> = { '5k': 20, '10k': 25, 'hm': 30, 'm': 30, 'ultra': 30 };  // #12 · ultra mirrors marathon taper-drop floor
       const minDrop = (taperDrop[distanceCategoryOfPublic(inputs.compose.raceDistanceMi)] ?? 30) + 2;
       const nonTaperPeak = Math.max(0, ...composed.weeks
         .filter((w) => w.phase !== 'TAPER' && !w.isRaceWeek)
