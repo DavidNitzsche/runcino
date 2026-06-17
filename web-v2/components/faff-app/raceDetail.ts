@@ -165,6 +165,21 @@ function insightFor(name: string, distMi: number, netElevFt: number): string {
   return `<b>${name}</b> · run controlled. The race opens up if you arrive at the final third with legs left.`;
 }
 
+/** #40 · start/finish elevation in feet from the trackpoints (first/last ele
+ *  with a real value), ×3.28084 m→ft. Mirrors the net-elevation read at
+ *  raceDetail.ts:302-309 and seed.ts:2345-2349. null when no usable trackpoint
+ *  elevations — the caption then drops the ft line instead of lying "360→20". */
+function elevEndpointsFt(geom: CourseGeom | null): { startFt: number | null; finishFt: number | null } {
+  const tp = geom?.trackPoints;
+  if (!Array.isArray(tp) || tp.length < 2) return { startFt: null, finishFt: null };
+  const withEle = tp.filter((p): p is typeof p & { ele: number } => p?.ele != null);
+  if (withEle.length < 2) return { startFt: null, finishFt: null };
+  return {
+    startFt: Math.round(withEle[0].ele * 3.28084),
+    finishFt: Math.round(withEle[withEle.length - 1].ele * 3.28084),
+  };
+}
+
 function elevPathFromGeometry(geom: CourseGeom | null): string {
   const fallback = 'M0,58 L40,40 L80,70 L120,46 L160,78 L200,54 L240,86 L280,68 L320,96 L360,84 L400,104 L440,96 L480,112 L520,108 L560,120 L600,116 L640,128';
   if (!geom?.trackPoints?.length) return fallback;
@@ -316,6 +331,7 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
     const isPast = race.days < 0;
     const finishTime = race.finishTime ?? null;
     const pb = Boolean((meta as { pb?: boolean }).pb);
+    const elevEnds = elevEndpointsFt(geom);  // #40 · caption start/finish ft
 
     return {
       slug: race.slug,
@@ -356,6 +372,8 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       pickup:  { value: '·', detail: 'Reserve ahead via race site' },
       finish:  { value: race.location ?? '·', detail: '·' },
       elevPath: elevPathFromGeometry(geom),
+      elevStartFt: elevEnds.startFt,
+      elevFinishFt: elevEnds.finishFt,
       ...(() => {
         const r = routePathFromGeometry(geom);
         return {

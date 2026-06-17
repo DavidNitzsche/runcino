@@ -88,6 +88,12 @@ export type RaceDetailSeed = {
   pickup: { value: string; detail: string };
   finish: { value: string; detail: string };
   elevPath: string;
+  // #40 · start/finish elevation in feet, read from the course_geometry
+  // trackpoints (first/last ele × 3.28084) — drives the elevation-profile
+  // caption. null when no GPX is on file (caption then omits the ft line).
+  // Replaces the hardcoded "Start 360 ft → Finish 20 ft" literal.
+  elevStartFt: number | null;
+  elevFinishFt: number | null;
   // 2026-05-30: real route shape projected from course_geometry trackPoints.
   // null when GPX hasn't been uploaded for this race — the map renders an
   // "Route unavailable" panel instead of the old hardcoded zigzag.
@@ -140,6 +146,8 @@ const FALLBACK: RaceDetailSeed = {
   pickup:  { value: '·', detail: '·' },
   finish:  { value: '·', detail: '·' },
   elevPath: 'M0,58 L40,40 L80,70 L120,46 L160,78 L200,54 L240,86 L280,68 L320,96 L360,84 L400,104 L440,96 L480,112 L520,108 L560,120 L600,116 L640,128',
+  elevStartFt: null,
+  elevFinishFt: null,
   routePath: null,
   routeStart: null,
   routeEnd: null,
@@ -590,14 +598,23 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
 
       <div className="rp-2col">
         <div className="rp-panel rp-elev">
-          <div className="rp-elevhead"><div className="t">Elevation profile</div><div className="s">Start 360 ft → Finish 20 ft</div></div>
+          {/* #40 · caption from real trackpoint start/finish ele (was the
+              hardcoded "Start 360 ft → Finish 20 ft" on every race). Falls back
+              to a net summary when GPX elevation isn't on file. */}
+          <div className="rp-elevhead"><div className="t">Elevation profile</div><div className="s">
+            {r.elevStartFt != null && r.elevFinishFt != null
+              ? `Start ${r.elevStartFt.toLocaleString()} ft → Finish ${r.elevFinishFt.toLocaleString()} ft`
+              : (r.netElevFt < -100 ? 'Net downhill' : r.netElevFt > 100 ? 'Net uphill' : 'Net flat')}
+          </div></div>
           <svg className="rp-elevsvg" viewBox="0 0 640 150" preserveAspectRatio="none">
             <defs><linearGradient id="elevfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FF5722" stopOpacity=".42"/><stop offset="1" stopColor="#FF5722" stopOpacity="0"/></linearGradient></defs>
             <path d={`${r.elevPath} L640,150 L0,150 Z`} fill="url(#elevfill)" />
             <path d={r.elevPath} fill="none" stroke="#FF5722" strokeWidth="2.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             <line x1="320" y1="0" x2="320" y2="150" stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="3 4" />
           </svg>
-          <div className="rp-elevx"><span>START</span><span>10K</span><span>HALF · 13.1</span><span>30K</span><span>FINISH</span></div>
+          {/* #40 · axis ticks scaled to the race distance (was the static
+              marathon set "START / 10K / HALF · 13.1 / 30K / FINISH"). */}
+          <div className="rp-elevx">{elevAxisTicks(r.distanceMi).map((t, i) => <span key={i}>{t}</span>)}</div>
         </div>
         <div className="rp-panel">
           <div className="rp-elevhead"><div className="t">Notable miles</div></div>
@@ -837,6 +854,24 @@ function distLabel(mi: number): string {
   if (mi >= 3 && mi <= 3.5) return '5K';
   if (mi > 0) return `${mi.toFixed(1)} MI`;
   return 'RACE';
+}
+/** #40 · elevation-profile x-axis labels SCALED to the race distance. The old
+ *  axis was the static marathon set ("START / 10K / HALF · 13.1 / 30K /
+ *  FINISH") on every race, so a half rendered a "30K" tick past its own
+ *  distance. START + FINISH always; intermediate ticks at the quarter points,
+ *  in km for the marathon family (familiar split markers) else in miles. */
+function elevAxisTicks(distMi: number): string[] {
+  const d = distMi > 0 ? distMi : 26.2;
+  const km = d * 1.609344;
+  const mid = `${d.toFixed(1)} MI`;
+  // Marathon family (≥ ~13 mi): label the quarter/half/three-quarter in km.
+  if (d >= 13) {
+    const q = (frac: number) => `${Math.round((km * frac) / 5) * 5}K`;
+    return ['START', q(0.25), mid, q(0.75), 'FINISH'];
+  }
+  // Shorter races: quarter points in miles.
+  const q = (frac: number) => `${(d * frac).toFixed(1)}`;
+  return ['START', q(0.25), mid, q(0.75), 'FINISH'];
 }
 /** 2026-06-09 · race-killer F2 — shared parser. The local 2-part branch
  *  forced H:MM, so a sub-hour goal typed "45:00" (10K) normalized to 45
