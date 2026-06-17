@@ -25,6 +25,19 @@
  *     goal exactly — the output is *how the goal distributes over the
  *     course*, not a re-prediction of the goal.
  *
+ * 2026-06-17 · ONE plan (David's call). The page used to carry two pace
+ * tables — this terrain plan and a separate per-mile negative-split arc
+ * from execution-plan.ts — that averaged the same goal but distributed it
+ * differently ("what do I actually follow"). They are now merged here: on
+ * top of the terrain pace we lay a gentle negative-split EFFORT arc
+ * (start ~+2% slower = bank nothing early, finish ~-2% faster = empty the
+ * tank), linear and symmetric about mid-race, then renormalize so the
+ * plan still sums to the goal exactly. Net on AFC: the early climb runs
+ * slow (terrain + settle), The Drop banks, and the late Balboa climb
+ * holds ~goal pace (terrain-slow offset by the closing push). Each phase
+ * also carries a position-based STRATEGY CUE so the intent reads, not
+ * just the numbers.
+ *
  * This is split *arithmetic* on an already-chosen goal, not a training
  * prescription — the doctrine inputs are the cited grade-cost numbers.
  */
@@ -56,6 +69,12 @@ export interface PacingPhase {
   end_mi: number;
   pace_s_per_mi: number;
   display: string;      // "6:58/mi"
+  /** Position-based race-arc intent for this phase · "Settle in" /
+   *  "Find the rhythm" / "Lock goal pace" / "Empty the tank". Optional on
+   *  the wire — older consumers ignore it; the iPhone renders it as the
+   *  segment sub-label so the merged plan carries the negative-split
+   *  intent alongside the terrain pace. */
+  cue?: string;
 }
 
 export interface RacePacing {
@@ -69,6 +88,22 @@ export interface RacePacing {
 const GRADE_COST_PER_PCT = 0.033;
 /** Max per-mile credit a descent may take, in seconds (AFC course doctrine). */
 const MAX_DESCENT_CREDIT_S_PER_MI = 15;
+/** Negative-split EFFORT-arc amplitude (fraction of pace) · start ≈ +2%
+ *  slower, finish ≈ −2% faster, linear and symmetric about mid-race. The
+ *  arc is renormalized to the goal afterward, so this shapes distribution,
+ *  not the average. Cite: Research/08 §3.4 (controlled even/negative
+ *  split — a half opens ~+10-15s/mi and closes faster). */
+const NEG_SPLIT_ARC_K = 0.02;
+
+/** Position-based strategy cue for a phase, keyed on its mid-race fraction
+ *  p ∈ [0,1]. Mirrors the negative-split arc's intent so the merged plan
+ *  reads as a story, not a number column. Cite: Research/08 §3.4. */
+function phaseCue(p: number): string {
+  if (p < 0.15) return 'Settle in';
+  if (p < 0.40) return 'Find the rhythm';
+  if (p < 0.80) return 'Lock goal pace';
+  return 'Empty the tank';
+}
 
 const CHECKPOINTS: ReadonlyArray<{ label: string; mi: number }> = [
   { label: '5K', mi: 3.1069 },
@@ -137,7 +172,8 @@ export function buildRacePacing(input: {
   const phases = usablePhases(input.geometry, distanceMi);
 
   // Per-phase raw multipliers, then normalize total time back to goalSec.
-  let phasePaces: Array<{ p: CoursePhaseInput; pace: number }> | null = null;
+  // `pos` is the phase's mid-race fraction, used for the strategy cue.
+  let phasePaces: Array<{ p: CoursePhaseInput; pace: number; pos: number }> | null = null;
   if (phases) {
     const raw = phases.map((p) => {
       const grade = phaseGradePct(p);
@@ -158,7 +194,27 @@ export function buildRacePacing(input: {
       0,
     );
     const scale = goalSec / rawTotal;
-    phasePaces = raw.map(({ p, mult }) => ({ p, pace: flatPace * mult * scale }));
+    // Terrain-only pace per phase (even effort, sums to goal).
+    const terrainPaced = raw.map(({ p, mult }) => ({ p, pace: flatPace * mult * scale }));
+
+    // ── Negative-split effort arc, layered on the terrain pace ────────
+    // m = 1 + K·(1 − 2p) at the phase midpoint p ∈ [0,1]: start ≈ +K
+    // (slower), finish ≈ −K (faster), linear and symmetric about mid-race.
+    // Then renormalize so Σ(mi·pace) is still exactly the goal — the arc is
+    // ~symmetric so the rescale is ≈1, but we renormalize regardless so the
+    // average stays the goal pace.
+    const arced = terrainPaced.map(({ p, pace }) => {
+      const mid = ((p.start_mi! + p.end_mi!) / 2) / distanceMi;
+      const pos = Math.min(1, Math.max(0, mid));
+      const m = 1 + NEG_SPLIT_ARC_K * (1 - 2 * pos);
+      return { p, pace: pace * m, pos };
+    });
+    const arcedTotal = arced.reduce(
+      (s, { p, pace }) => s + ((p.end_mi! - p.start_mi!) * pace),
+      0,
+    );
+    const arcScale = goalSec / arcedTotal;
+    phasePaces = arced.map(({ p, pace, pos }) => ({ p, pace: pace * arcScale, pos }));
   }
 
   /** Elapsed seconds at mile m, integrating across phases (or linear). */
@@ -195,12 +251,13 @@ export function buildRacePacing(input: {
     goal_sec: goalSec,
     splits,
     phases: phasePaces
-      ? phasePaces.map(({ p, pace }) => ({
+      ? phasePaces.map(({ p, pace, pos }) => ({
           label: p.label ?? `${p.start_mi}–${p.end_mi} mi`,
           start_mi: p.start_mi!,
           end_mi: p.end_mi!,
           pace_s_per_mi: Math.round(pace),
           display: fmtPace(pace),
+          cue: phaseCue(pos),
         }))
       : null,
   };

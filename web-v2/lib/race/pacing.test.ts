@@ -2,6 +2,15 @@
  * 2026-06-09 · race-killer F3 (splits half) — course-aware goal splits.
  * Fixture = the REAL AFC geometry from course_library.geometry_json
  * (slug americas-finest-city) and the real stored goal (1:30 → 5400s).
+ *
+ * 2026-06-17 · ONE plan — buildRacePacing now lays a negative-split effort
+ * arc on top of the terrain pace (NEG_SPLIT_ARC_K = 0.02, ~+2% slower
+ * start → ~−2% faster finish, renormalized to the goal). The terrain shape
+ * is preserved (climb slow, descent banks) but the front of the race is
+ * settled and the close is pushed, so the per-phase paces and the early
+ * cumulative splits shift vs the even-effort plan. Assertions below are
+ * updated to the merged values; the terrain ordering (climb > goal pace,
+ * descent < goal pace, capped credit) is NOT weakened.
  */
 import { describe, expect, it } from 'vitest';
 import { buildRacePacing } from './pacing';
@@ -32,24 +41,61 @@ describe('buildRacePacing — AFC 1:30', () => {
     expect(finish.display).toBe('1:30:00');
   });
 
-  it('shapes the race like the course: bank on The Drop, repay on Balboa', () => {
+  it('shapes the race like the course: bank on The Drop, terrain on the climbs', () => {
     const byLabel = Object.fromEntries(pacing.phases!.map((p) => [p.label, p.pace_s_per_mi]));
-    expect(byLabel['Point Loma Climb']).toBeGreaterThan(FLAT_PACE + 5);  // slower on the climb
-    expect(byLabel['The Drop']).toBeLessThan(FLAT_PACE - 10);            // faster on the descent…
+    // Climb (terrain + the early-settle arc) is the slowest region.
+    expect(byLabel['Point Loma Climb']).toBeGreaterThan(FLAT_PACE + 10); // ≈ 429 s/mi
+    expect(byLabel['The Drop']).toBeLessThan(FLAT_PACE - 10);            // faster on the descent…  ≈ 400
     expect(byLabel['The Drop']).toBeGreaterThanOrEqual(FLAT_PACE - 17);  // …but capped ~15 s/mi credit
-    expect(byLabel['Balboa Finish']).toBeGreaterThan(FLAT_PACE + 5);     // the sting in the tail priced in
+    // Balboa is still terrain-slow (over goal pace) but the closing push
+    // ("empty the tank") trims the sting vs the even-effort plan — it now
+    // sits between goal pace and FLAT+5, no longer beyond FLAT+5.  ≈ 414
+    expect(byLabel['Balboa Finish']).toBeGreaterThan(FLAT_PACE);
+    expect(byLabel['Balboa Finish']).toBeLessThan(byLabel['Point Loma Climb']);
   });
 
-  it('puts the runner ahead of linear splits at 10K (descent banked)', () => {
-    const tenK = pacing.splits.find((s) => s.label === '10K')!;
-    const linear10K = 6.2137 * FLAT_PACE; // ≈ 42:41
-    expect(tenK.cum_sec).toBeLessThan(linear10K - 10);
-    expect(tenK.cum_sec).toBeGreaterThan(linear10K - 45);
+  it('carries the negative-split arc: front of race slower than the close', () => {
+    const byLabel = Object.fromEntries(pacing.phases!.map((p) => [p.label, p.pace_s_per_mi]));
+    // The first phase (settle) runs slower than the final phase (push),
+    // even though the final phase is the harder terrain (Balboa climb).
+    expect(byLabel['Point Loma Climb']).toBeGreaterThan(byLabel['Balboa Finish']);
   });
 
-  it('keeps the 5K split near-linear (climb cost ≈ early-descent credit)', () => {
+  it('tags each phase with its position-based strategy cue', () => {
+    const byLabel = Object.fromEntries(pacing.phases!.map((p) => [p.label, p.cue]));
+    expect(byLabel['Point Loma Climb']).toBe('Settle in');     // p ≈ 0.08
+    expect(byLabel['The Drop']).toBe('Find the rhythm');       // p ≈ 0.25
+    expect(byLabel['Mission Bay']).toBe('Lock goal pace');     // p ≈ 0.55
+    expect(byLabel['Balboa Finish']).toBe('Empty the tank');   // p ≈ 0.92
+  });
+
+  it('keeps the merged plan summing to the goal time', () => {
+    // Σ(phaseMi · paceSec) ≈ goalSec — the arc redistributes, the
+    // renormalize preserves the average. The published paces are rounded
+    // to whole s/mi, so the displayed sum carries a few seconds of
+    // per-phase rounding residue across 13.1 mi (the underlying float
+    // math sums to the goal exactly — see the FINISH check below).
+    const sum = pacing.phases!.reduce(
+      (s, p) => s + (p.end_mi - p.start_mi) * p.pace_s_per_mi,
+      0,
+    );
+    expect(Math.abs(sum - GOAL)).toBeLessThan(5); // ~3s rounding on AFC
+    // The integrated FINISH checkpoint (unrounded paces) lands on the
+    // goal exactly — the renormalize is the guarantee, not the rounding.
+    expect(pacing.splits.find((s) => s.label === 'FINISH')!.cum_sec).toBe(GOAL);
+  });
+
+  it('settles the early miles: 5K/10K no longer ahead of linear', () => {
+    // The even-effort plan banked the descent and was near/ahead of linear
+    // by 10K. The arc settles the front, so the early checkpoints sit on or
+    // just behind linear (the time comes back over the closing push).
+    const linear5K = 3.1069 * FLAT_PACE;
+    const linear10K = 6.2137 * FLAT_PACE;
     const fiveK = pacing.splits.find((s) => s.label === '5K')!;
-    expect(Math.abs(fiveK.cum_sec - 3.1069 * FLAT_PACE)).toBeLessThan(20);
+    const tenK = pacing.splits.find((s) => s.label === '10K')!;
+    expect(fiveK.cum_sec).toBeGreaterThanOrEqual(Math.round(linear5K)); // ≈ +20s (settled)
+    expect(fiveK.cum_sec).toBeLessThan(linear5K + 35);
+    expect(Math.abs(tenK.cum_sec - linear10K)).toBeLessThan(15);        // ≈ on linear by 10K
   });
 
   it('filters checkpoints past the distance (no 30K/40K rungs on a half)', () => {

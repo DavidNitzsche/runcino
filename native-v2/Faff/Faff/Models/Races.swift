@@ -117,6 +117,11 @@ struct RacePacingPhase: Decodable {
     let end_mi: Double
     let pace_s_per_mi: Int
     let display: String        // "6:58/mi"
+    /// Position-based race-arc cue · "Settle in" / "Find the rhythm" /
+    /// "Lock goal pace" / "Empty the tank". Optional on the wire (older
+    /// servers omit it); rendered as the segment sub-label so the merged
+    /// plan carries the negative-split intent next to the terrain pace.
+    let cue: String?
 }
 
 struct CourseLibraryProvenance: Decodable {

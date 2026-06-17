@@ -126,19 +126,14 @@ struct RaceDayView: View {
                     }
 
                     // 1b · THE BRIEF — the race-morning execution brief from
-                    // /api/race/[slug]/execution-plan. The named pacing above is
-                    // always shown; the morning brief (splits / trigger / heat /
-                    // warm-up) is the payoff and renders inside a sensible
-                    // proximity window so it's not a wall of numbers months out.
+                    // /api/race/[slug]/execution-plan. THE PLAN above is now the
+                    // single, merged pace table (terrain + negative-split arc),
+                    // so the redundant per-mile SPLITS card is dropped (David
+                    // 2026-06-17 · "what do I actually follow"). The conflict-free
+                    // parts of the brief — B-goal trigger / heat / warm-up — still
+                    // render inside a sensible proximity window so it's not a wall
+                    // of numbers months out.
                     if showMorningBrief, let plan = execPlan {
-                        // THE SPLITS — per-mile targets, segment-coloured.
-                        if !plan.splits.isEmpty {
-                            section(title: "THE SPLITS", right: splitsRightLabel(plan)) {
-                                splitTargetsCard(plan.splits)
-                            }
-                            .padding(.top, 30)
-                        }
-
                         // IF IT GOES SIDEWAYS — the objective B-goal trigger.
                         if let trigger = plan.bGoalTriggers.first {
                             section(title: "IF IT GOES SIDEWAYS", right: nil) {
@@ -601,24 +596,35 @@ struct RaceDayView: View {
             .trimmingCharacters(in: .whitespaces)
     }
 
-    /// THE PLAN, course-aware. One row per named segment: "Point Loma Climb /
-    /// miles 1–4" on the left, the segment pace on the right. The fastest
-    /// segment reads in race orange so the surge stretch is obvious at a
-    /// glance.
+    /// THE PLAN, merged · terrain pace + the negative-split race arc, one
+    /// table (David 2026-06-17 · the page used to show two competing pace
+    /// tables). One row per named course segment: the course name + its mile
+    /// range on the left, the position-based strategy cue ("Settle in" /
+    /// "Empty the tank") as the sub-label, and the merged pace on the right.
+    /// Each segment therefore carries BOTH the terrain pace and the race-arc
+    /// intent. The fastest (lowest s/mi) segment reads in race orange so the
+    /// surge stretch is obvious at a glance.
     private func coursePhasesCard(_ phases: [RacePacingPhase]) -> some View {
-        // Fastest (lowest s/mi) segment gets the accent — the push.
+        // Fastest (lowest s/mi) segment gets the accent — the surge.
         let fastestIdx = phases.enumerated().min(by: { $0.element.pace_s_per_mi < $1.element.pace_s_per_mi })?.offset
         return VStack(spacing: 0) {
             ForEach(Array(phases.enumerated()), id: \.offset) { i, ph in
                 HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(ph.label.uppercased())
-                            .font(.body(12, weight: .extraBold)).tracking(0.6)
+                    VStack(alignment: .leading, spacing: 3) {
+                        // Course name + mile range on one line · the where.
+                        (Text(ph.label.uppercased())
                             .foregroundStyle(Theme.txt)
-                            .lineLimit(1).minimumScaleFactor(0.8)
-                        Text(milesRange(ph.start_mi, ph.end_mi))
-                            .font(.body(11, weight: .semibold))
-                            .foregroundStyle(Theme.txt.opacity(0.6))
+                         + Text("  ·  \(milesRange(ph.start_mi, ph.end_mi))")
+                            .foregroundStyle(Theme.txt.opacity(0.5)))
+                            .font(.body(12, weight: .extraBold))
+                            .tracking(0.4)
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                        // Strategy cue · the how (the negative-split intent).
+                        if let cue = ph.cue, !cue.isEmpty {
+                            Text(cue)
+                                .font(.body(11, weight: .semibold))
+                                .foregroundStyle(Theme.txt.opacity(0.7))
+                        }
                     }
                     Spacer(minLength: 12)
                     Text("\(paceNumber(from: ph.display))/mi")
@@ -1179,17 +1185,10 @@ struct RaceDayView: View {
         }
     }
 
-    /// Format seconds-per-mile → "m:ss". Shared by the splits + heat cards
+    /// Format seconds-per-mile → "m:ss". Shared by the B-goal + heat cards
     /// which carry raw s/mi from the composer.
     private func fmtPacePerMi(_ secPerMi: Int) -> String {
         String(format: "%d:%02d", secPerMi / 60, secPerMi % 60)
-    }
-
-    /// Right-rail label for THE SPLITS · "AVG 6:51/mi" off the plan's goal
-    /// pace when present.
-    private func splitsRightLabel(_ plan: RaceExecutionPlan) -> String? {
-        guard let p = plan.goalPaceSPerMi, p > 0 else { return nil }
-        return "AVG \(fmtPacePerMi(p))/mi"
     }
 
     /// Right-rail label for WARM-UP · "DONE 15 MIN OUT" so the runner knows
@@ -1201,88 +1200,13 @@ struct RaceDayView: View {
         return "DONE \(m) MIN OUT"
     }
 
-    /// THE SPLITS · per-mile target ladder. Pace per mile on the left, the
-    /// segment label as a quiet tag, cumulative elapsed on the right. Rows
-    /// in the "push" segment read in race orange · that's where the race is
-    /// won.
-    private func splitTargetsCard(_ splits: [RaceSplitTarget]) -> some View {
-        // Collapse the per-mile list to readable segments so a marathon
-        // isn't 26 rows · group consecutive miles that share a label.
-        let groups = groupedSplits(splits)
-        return VStack(spacing: 0) {
-            ForEach(Array(groups.enumerated()), id: \.offset) { i, g in
-                let isPush = g.label.lowercased() == "push"
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(g.range)
-                            .font(.body(12, weight: .extraBold)).tracking(0.6)
-                            .foregroundStyle(Theme.txt)
-                        Text(segmentIntent(g.label))
-                            .font(.body(11, weight: .semibold))
-                            .foregroundStyle(Theme.txt.opacity(0.6))
-                    }
-                    Spacer(minLength: 12)
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(fmtPacePerMi(g.paceSPerMi))/mi")
-                            .font(.display(18, weight: .bold)).tracking(-0.3)
-                            .foregroundStyle(isPush ? Theme.race : Theme.txt)
-                        if let cum = g.cumulativeSec {
-                            Text("at \(fmtRaceTime(cum))")
-                                .font(.body(10, weight: .bold))
-                                .foregroundStyle(Theme.txt.opacity(0.5))
-                        }
-                    }
-                }
-                .padding(.horizontal, 14).padding(.vertical, 13)
-                if i < groups.count - 1 {
-                    Divider().background(Color.white.opacity(0.08))
-                }
-            }
-        }
-        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
-    }
-
-    private struct SplitGroup {
-        let range: String; let label: String; let paceSPerMi: Int; let cumulativeSec: Int?
-    }
-
-    /// Group consecutive per-mile splits that share a label + pace into one
-    /// readable row ("MILES 4–12 / goal pace / 6:51"), keeping the cumulative
-    /// from the group's final mile.
-    private func groupedSplits(_ splits: [RaceSplitTarget]) -> [SplitGroup] {
-        var out: [SplitGroup] = []
-        var i = 0
-        while i < splits.count {
-            let s = splits[i]
-            let label = s.label ?? ""
-            let pace = s.paceSPerMi ?? 0
-            let startMi = s.mile ?? (i + 1)
-            var j = i
-            while j + 1 < splits.count,
-                  (splits[j + 1].label ?? "") == label,
-                  (splits[j + 1].paceSPerMi ?? 0) == pace {
-                j += 1
-            }
-            let endMi = splits[j].mile ?? (j + 1)
-            let range = startMi == endMi ? "MILE \(startMi)" : "MILES \(startMi)–\(endMi)"
-            out.append(SplitGroup(range: range, label: label, paceSPerMi: pace,
-                                  cumulativeSec: splits[j].cumulativeSec))
-            i = j + 1
-        }
-        return out
-    }
-
-    /// Map the composer's split label to coach intent copy.
-    private func segmentIntent(_ label: String) -> String {
-        switch label.lowercased() {
-        case "settle":      return "Settle in · bank nothing"
-        case "find rhythm": return "Find the rhythm"
-        case "goal pace":   return "Lock goal pace"
-        case "push":        return "Empty the tank"
-        default:            return label.isEmpty ? "Hold pace" : label.capitalized
-        }
-    }
+    // THE SPLITS card removed 2026-06-17 · the per-mile negative-split
+    // ladder (splitTargetsCard / groupedSplits / segmentIntent) was a
+    // second pace table competing with THE PLAN. THE PLAN now carries the
+    // negative-split arc folded onto the terrain pace (one merged table,
+    // each segment tagged with its strategy cue), so the splits renderer is
+    // gone. The execution-plan fetch + model stay — IF IT GOES SIDEWAYS,
+    // HEAT, and WARM-UP below still consume it; only `splits` goes unrendered.
 
     /// IF IT GOES SIDEWAYS · the objective B-goal trigger. The condition
     /// (HR + pace by the checkpoint mile) up top, the action below. This is
