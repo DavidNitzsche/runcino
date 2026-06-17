@@ -9,6 +9,8 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
+import { loadSettings } from '@/lib/coach/settings';
+import { weekWindowFor } from '@/lib/coach/week-window';
 
 export interface LogRun {
   id: string;
@@ -62,7 +64,11 @@ export interface LogFilters {
 }
 
 export interface LogWeek {
-  monday: string;           // YYYY-MM-DD
+  /** ISO week-start (YYYY-MM-DD). The training week ENDS on long_run_day, so
+   *  this is the day after it — Monday for a Sunday-long runner (David), but
+   *  Sunday for a Saturday-long runner. Field kept named `monday` for the
+   *  existing LogTable key + seed.ts bucket contract (#39, audit 2026-06-16). */
+  monday: string;
   label: string;            // e.g. "MAY 25 → MAY 31" or "THIS WEEK"
   totalMi: number;
   totalDuration: string | null;
@@ -107,13 +113,11 @@ function dowOf(iso: string): number {
   return new Date(iso + 'T12:00:00Z').getUTCDay();
 }
 
-function mondayOf(iso: string): string {
-  const d = new Date(iso + 'T12:00:00Z');
-  const dow = d.getUTCDay();
-  const shift = dow === 0 ? -6 : 1 - dow;
-  const m = new Date(d.getTime() + shift * 86400000);
-  return m.toISOString().slice(0, 10);
-}
+// #39 (audit 2026-06-16) · the week-start boundary is no longer a hardcoded
+// Monday — it derives from the runner's user_settings.long_run_day (week ENDS
+// on the long-run day) via the shared weekWindowFor helper, computed inside
+// loadLogState where the runner's settings are loaded. See weekStartOf there.
+// For David (long=Sun) the week-start IS Monday, so /log groups identically.
 
 function addDays(iso: string, days: number): string {
   return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000).toISOString().slice(0, 10);
@@ -135,6 +139,14 @@ export async function loadLogState(
 ): Promise<LogState> {
   const today = await runnerToday(userId);
   const limit = opts?.limit ?? 200; // ~6 months of running
+
+  // #39 (audit 2026-06-16) · group runs into weeks on the long_run_day boundary
+  // (week ENDS on the long-run day, starts the day after) — the same window
+  // /api/plan/week + the rest of the coach layer use. weekStartOf(iso) returns
+  // the week-start containing that ISO date. No-op for David (long=Sun → the
+  // week-start is Monday, identical to the old hardcoded mondayOf).
+  const settings = await loadSettings(userId);
+  const weekStartOf = (iso: string): string => weekWindowFor(settings.long_run_day, iso).startISO;
 
   const filters: LogFilters = {
     source: opts?.filters?.source ?? null,
@@ -292,29 +304,29 @@ export async function loadLogState(
     return true;
   });
 
-  // Group by Monday-of-week (filtered set)
+  // Group by week-start (long_run_day boundary · #39), filtered set.
   const byWeek = new Map<string, LogRun[]>();
   for (const r of runs) {
     if (!r.date) continue;
-    const m = mondayOf(r.date);
-    const arr = byWeek.get(m) ?? [];
+    const wk = weekStartOf(r.date);
+    const arr = byWeek.get(wk) ?? [];
     arr.push(r);
-    byWeek.set(m, arr);
+    byWeek.set(wk, arr);
   }
 
-  const thisMonday = mondayOf(today);
+  const thisWeekStart = weekStartOf(today);
   const weeks: LogWeek[] = [...byWeek.entries()]
     .sort((a, b) => b[0].localeCompare(a[0])) // most-recent first
-    .map(([monday, ws]) => {
+    .map(([weekStart, ws]) => {
       const totalMi = Math.round(ws.reduce((s, x) => s + x.distance_mi, 0) * 10) / 10;
       // 2026-06-01 · sum moving times across the week's runs · skip
       // null values (runs that never carried movingTimeS).
       const totalSec = ws.reduce((s, x) => s + (x.time_moving_sec ?? 0), 0);
-      const isCurrent = monday === thisMonday;
-      const sunday = addDays(monday, 6);
+      const isCurrent = weekStart === thisWeekStart;
+      const weekEnd = addDays(weekStart, 6); // the long-run day
       return {
-        monday,
-        label: isCurrent ? 'THIS WEEK' : `${fmtDay(monday)} → ${fmtDay(sunday)}`,
+        monday: weekStart, // ISO week-start (long_run_day boundary; Monday for David)
+        label: isCurrent ? 'THIS WEEK' : `${fmtDay(weekStart)} → ${fmtDay(weekEnd)}`,
         totalMi,
         totalDuration: totalSec > 0 ? fmtDuration(totalSec) : null,
         runs: ws.sort((a, b) => b.date.localeCompare(a.date)), // newest day first within the week
