@@ -112,11 +112,15 @@ struct RunDetailView: View {
                     }
 
                     if !splitBars.isEmpty {
-                        section(title: "MILE SPLITS", right: fastestSplitLabel) {
+                        section(title: "MILE SPLITS", right: splitsRightLabel) {
                             VStack(alignment: .leading, spacing: 8) {
-                                MileBars(bars: splitBars, target: Double(splitTargetSecs), readout: $splitReadout)
+                                MileBars(bars: splitBars,
+                                         target: hrSplitMode ? run?.hr_avg.map(Double.init) : Double(splitTargetSecs),
+                                         readout: $splitReadout)
                                     .frame(height: 150)
-                                Text(splitReadout ?? "Tap a mile to read its pace · HR · effort")
+                                Text(splitReadout ?? (hrSplitMode
+                                     ? "Tap a mile to read its HR · pace · zone"
+                                     : "Tap a mile to read its pace · HR · effort"))
                                     .font(.body(11, weight: .bold))
                                     .foregroundStyle(Theme.txt.opacity(0.72))
                                     .padding(.top, 4)
@@ -700,8 +704,40 @@ struct RunDetailView: View {
     /// to an 8-mile fabricated tempo block (7:18, 6:58, 6:36, 6:33, 6:35,
     /// 6:34, 6:37, 7:05) any time the actual run had no splits or hadn't
     /// loaded yet · gave every run that fake CIM-rehearsal look.
+    /// True when the splits should lead with HR, not pace · easy / long /
+    /// recovery with per-mile HR + LTHR zones present (David 2026-06-17, mirrors
+    /// the route map's HR-zone axis). Structured runs stay pace-led — pace is
+    /// the target there.
+    private var hrSplitMode: Bool {
+        guard [.easy, .long, .recovery].contains(effort) else { return false }
+        guard (run?.hr_zones_from_lthr?.ranges?.count ?? 0) >= 2 else { return false }
+        return run?.splits.contains { ($0.hr ?? 0) > 0 } ?? false
+    }
+
     private var splitBars: [MileBar] {
         guard let splits = run?.splits, !splits.isEmpty else { return [] }
+        if hrSplitMode {
+            // HR-PRIMARY · easy/steady runs. The bar height + bold label are HR
+            // (zone-colored · same Z1-Z5 palette as the route map); pace drops to
+            // the secondary sub-label. On an easy day zone discipline is the
+            // story, not the few-second pace wiggle.
+            return splits.map { s in
+                let hr = s.hr ?? 0
+                let zi = hrZoneIndex(hr)
+                let parts: [String] = [
+                    s.pace.map { "\($0)/mi" } ?? "",
+                    elevDeltaLabel(s.elev_change_ft),
+                ].filter { !$0.isEmpty }
+                return MileBar(
+                    id: s.mile,
+                    value: Double(max(0, hr)),       // taller = higher HR
+                    label: hr > 0 ? "\(hr)" : "—",   // HR is the headline number
+                    subLabel: parts.isEmpty ? nil : parts.joined(separator: " · "),
+                    color: zoneColor(forIndex: zi),
+                    isHighlight: zi >= 2             // crept into Z3+ on an easy day
+                )
+            }
+        }
         return splits.map { s in
             let secs = paceToSeconds(s.pace) ?? 400
             let color = colorForSplit(secs: secs)
@@ -724,6 +760,25 @@ struct RunDetailView: View {
         }
     }
 
+    /// 0-based HR zone index (Z1=0 … Z5=4) from the run's LTHR bands.
+    private func hrZoneIndex(_ hr: Int) -> Int {
+        let ranges = run?.hr_zones_from_lthr?.ranges ?? []
+        guard hr > 0, !ranges.isEmpty else { return 1 }
+        for (i, z) in ranges.enumerated() {
+            let lo = z.lower ?? 0
+            let hi = z.upper ?? .greatestFiniteMagnitude
+            if Double(hr) < lo { return i }
+            if Double(hr) <= hi { return i }
+        }
+        return ranges.count - 1
+    }
+
+    /// Z1-Z5 color · = Theme.Zone (= the route map's zoneColors).
+    private func zoneColor(forIndex i: Int) -> Color {
+        let cs = [Theme.Zone.z1, Theme.Zone.z2, Theme.Zone.z3, Theme.Zone.z4, Theme.Zone.z5]
+        return cs[min(max(0, i), cs.count - 1)]
+    }
+
     /// "+24 ft" / "-15 ft" / "" · empty when null or trivially flat (< 3 ft).
     private func elevDeltaLabel(_ ft: Int?) -> String {
         guard let ft, abs(ft) >= 3 else { return "" }
@@ -741,6 +796,13 @@ struct RunDetailView: View {
         }
         guard let fastest = timed.min(by: { $0.1 < $1.1 }) else { return nil }
         return "FASTEST \(fastest.2) · MI \(fastest.0)"
+    }
+
+    /// Splits-section header label · HR-led runs show the avg HR (the headline
+    /// metric on an easy day); pace-led runs show the fastest split.
+    private var splitsRightLabel: String? {
+        if hrSplitMode { return run?.hr_avg.map { "AVG \($0) bpm" } ?? fastestSplitLabel }
+        return fastestSplitLabel
     }
 
     /// Target line on the splits chart · the planned work-block pace from
