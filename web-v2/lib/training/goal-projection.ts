@@ -391,11 +391,26 @@ async function computeOverPerformanceBonus(
                                  AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date)
                  AND phase->>'type' = 'work' AND (phase->>'actualPaceSPerMi')::numeric > 0
             ) AS work_pace_s,
-            ( SELECT (r.data->>'avgHr')::numeric FROM runs r
-               WHERE r.user_uuid = $1::uuid AND r.data->>'date' = pw.date_iso
-                 AND NOT (r.data ? 'mergedIntoId') AND r.absorbed_into_canonical_at IS NULL
-                 AND (r.data->>'avgHr') IS NOT NULL
-               LIMIT 1
+            -- AUDIT #35 · read the WORK-PHASE avg HR, not the whole-run avg HR.
+            -- The honesty gate ("ran hot → overcooked") must compare HR from the
+            -- SAME phase the pace is credited from. Whole-run avgHr is diluted by
+            -- warm-up/cool-down (the route documents ~168 work-weighted → ~156
+            -- whole-run), so an overcooked work block could clear hr > lthr.
+            -- Mirrors the work_pace_s subquery above exactly: same latest
+            -- watch_completion intent for the day, same phase->>'type' = 'work'
+            -- filter, AVG across the work phases.
+            ( SELECT AVG((phase->>'avgHr')::numeric)
+                FROM coach_intents ci, jsonb_array_elements(
+                  CASE jsonb_typeof(ci.value::jsonb) WHEN 'object'
+                    THEN ci.value::jsonb->'phases' ELSE '[]'::jsonb END) AS phase
+               WHERE COALESCE(ci.user_uuid, ci.user_id::uuid) = $1::uuid
+                 AND ci.reason = 'watch_completion'
+                 AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date
+                 AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
+                               WHERE COALESCE(ci2.user_uuid, ci2.user_id::uuid) = $1::uuid
+                                 AND ci2.reason = 'watch_completion'
+                                 AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date)
+                 AND phase->>'type' = 'work' AND (phase->>'avgHr')::numeric > 0
             ) AS avg_hr
        FROM plan_workouts pw JOIN training_plans tp ON tp.id = pw.plan_id
       WHERE tp.user_uuid = $1::uuid AND tp.archived_iso IS NULL
@@ -409,11 +424,11 @@ async function computeOverPerformanceBonus(
   for (const r of rows) {
     const target = r.target_s != null ? Number(r.target_s) : null;
     const work = r.work_pace_s != null ? Number(r.work_pace_s) : null;
-    const hr = r.avg_hr != null ? Number(r.avg_hr) : null;
+    const hr = r.avg_hr != null ? Number(r.avg_hr) : null; // AUDIT #35 · work-phase HR
     if (target == null || work == null || hr == null) continue;
     const beatBy = target - work;      // +ve = faster than prescribed
     if (beatBy < BEAT_FLOOR) continue; // not meaningfully faster
-    if (hr > lthr) continue;           // ran hot → overcooked, not a fitness read
+    if (hr > lthr) continue;           // work-phase HR over LTHR → overcooked, not a fitness read
     const demonstrated = vdotFromTpace(work);
     if (demonstrated == null) continue;
     bonuses.push(Math.max(0, demonstrated - currentVdot));
