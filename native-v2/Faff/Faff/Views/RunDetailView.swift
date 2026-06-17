@@ -529,7 +529,8 @@ struct RunDetailView: View {
             accent: effort.dot,
             distanceMi: run?.distance_mi ?? 0,
             elevGainFt: run?.elev_gain_ft ?? 0,
-            splits: run?.splits ?? []
+            splits: run?.splits ?? [],
+            phases: RouteMapView.phaseSamples(from: run?.phase_breakdown)
         )
         .frame(height: 196)
     }

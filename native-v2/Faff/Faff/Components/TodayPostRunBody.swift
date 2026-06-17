@@ -468,7 +468,8 @@ struct TodayPostRunBody: View {
                 accent: accent,
                 distanceMi: detail?.distance_mi ?? 0,
                 elevGainFt: detail?.elev_gain_ft ?? 0,
-                splits: detail?.splits ?? []
+                splits: detail?.splits ?? [],
+                phases: RouteMapView.phaseSamples(from: detail?.phase_breakdown)
             )
             .frame(height: 196)
             .padding(.horizontal, 18)
@@ -1181,6 +1182,9 @@ struct RoutePolylineCard: View {
     /// Per-mile splits drive the pace-graded coloring + legend. Optional so a
     /// caller without split data still gets the plain coral route.
     var splits: [RunSplit] = []
+    /// Workout phases (reps / tempo block) · drive the route heat map's
+    /// structure-aware coloring when present. Empty → per-mile pace gradient.
+    var phases: [PhaseSample] = []
 
     private var hasPaceData: Bool {
         splits.count >= 2 && splits.contains { $0.pace != nil }
@@ -1195,7 +1199,7 @@ struct RoutePolylineCard: View {
                 // on CartoDB dark tiles. Those tiles' street labels are muted
                 // enough to recede instead of crowding the line, which the
                 // Apple basemap did not (David 2026-06-16). See RouteMapView.
-                RouteMapView(coords: coords, splits: splits)
+                RouteMapView(coords: coords, splits: splits, phases: phases)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     // 2026-06-02 round 63 · MapKit hit-tests its region even
                     // when non-interactive, which hijacked the parent

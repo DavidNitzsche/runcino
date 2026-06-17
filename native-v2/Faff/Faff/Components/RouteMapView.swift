@@ -26,6 +26,26 @@ import UIKit
 struct RouteMapView: UIViewRepresentable {
     let coords: [CLLocationCoordinate2D]
     let splits: [RunSplit]
+    /// Workout phases (distance + pace). When present (intervals / tempo) the
+    /// route colors by PHASE — so the reps and the tempo block read at their
+    /// true pace instead of being smeared into mile-split averages. Empty for
+    /// easy / long runs → the per-mile pace gradient. (David 2026-06-16: "the
+    /// heat map should show what was important to that run.")
+    var phases: [PhaseSample] = []
+
+    /// Build phase samples (per-mile pace, in seconds) from a run's phase
+    /// breakdown. Prefers duration/distance; falls back to the pace string.
+    static func phaseSamples(from phases: [PhaseBreakdown]?) -> [PhaseSample] {
+        guard let phases else { return [] }
+        return phases.compactMap { p in
+            guard let mi = p.actual_distance_mi, mi > 0 else { return nil }
+            var sec = 0
+            if let d = p.actual_duration_sec, d > 0 { sec = Int(Double(d) / mi) }
+            else if let parsed = paceToSec(p.actual_pace) { sec = parsed }
+            guard sec > 0 else { return nil }
+            return PhaseSample(mi: mi, sec: sec)
+        }
+    }
 
     /// Quintile palette · fastest → slowest. Byte-identical to the web's
     /// BUCKET_COLORS (rose · coral · amber · green · blue).
@@ -127,49 +147,64 @@ struct RouteMapView: UIViewRepresentable {
 
     // MARK: - Pace gradient
 
-    /// Short colored segments whose color varies continuously with pace, so
-    /// the route fades smoothly through the warm→cool ramp. Per-mile paces are
-    /// gap-filled and interpolated across mile centers (no hard step at a mile
-    /// boundary), then mapped through a robust 10th–90th-percentile range.
+    /// Short colored segments along the route, colored by what mattered in the
+    /// run. Workout phases win when present (a 6:45 rep reads red even though
+    /// the mile split that contains it averages ~8:00 with its recovery jog);
+    /// otherwise per-mile splits drive an easy/long pace gradient. Per-mile uses
+    /// a STEP per mile, not cross-mile interpolation — interpolation washed fast
+    /// reps into the surrounding recovery (David 2026-06-16).
     private func gradientSegments() -> [(coords: [CLLocationCoordinate2D], color: UIColor)] {
         guard coords.count >= 2 else { return [] }
-        let raw = splits.map { paceToSec($0.pace) }
-        guard raw.contains(where: { ($0 ?? 0) > 0 }) else { return [] }
-
-        // Gap-fill per-mile paces · forward then back, so every mile has one.
-        var filled: [Double?] = raw.map { $0.flatMap { $0 > 0 ? Double($0) : nil } }
-        var last: Double? = nil
-        for i in filled.indices { if filled[i] == nil { filled[i] = last } else { last = filled[i] } }
-        var nxt: Double? = nil
-        for i in stride(from: filled.count - 1, through: 0, by: -1) {
-            if filled[i] == nil { filled[i] = nxt } else { nxt = filled[i] }
-        }
-        let mile = filled.compactMap { $0 }
-        guard mile.count == filled.count, !mile.isEmpty else { return [] }
-        let sorted = mile.sorted()
-        // Robust color range · one very slow/fast mile shouldn't flatten the
-        // whole gradient, so anchor on the 10th/90th percentiles.
-        let lo = sorted[Int(Double(sorted.count - 1) * 0.1)]
-        let hi = sorted[Int(Double(sorted.count - 1) * 0.9)]
-        let span = max(1, hi - lo)
-
-        func milePaceAt(_ idx: Int) -> Double { mile[max(0, min(mile.count - 1, idx))] }
-        func paceAt(_ d: Double) -> Double {       // interpolate across mile centers
-            let x = d - 0.5
-            let i0 = Int(floor(x))
-            let f = max(0, min(1, x - Double(i0)))
-            return milePaceAt(i0) + (milePaceAt(i0 + 1) - milePaceAt(i0)) * f
-        }
-        func colorAt(_ d: Double) -> UIColor {
-            RouteMapView.rampColor((paceAt(d) - lo) / span)
-        }
 
         // Cumulative distance per GPS point.
         var dist = [Double](repeating: 0, count: coords.count)
         for i in 1..<coords.count { dist[i] = dist[i - 1] + haversineMi(coords[i - 1], coords[i]) }
+        let total = dist.last ?? 0
 
-        // Chunk into ~90 short segments · each colored by its midpoint pace,
-        // sharing the boundary vertex with the next so the line stays joined.
+        // Build pace-at-distance + the run's pace values, from PHASES (reps /
+        // tempo block) when there are ≥2, else per-mile splits (easy / long).
+        var paceFn: ((Double) -> Double)?
+        var paceValues: [Double] = []
+
+        let validPhases = phases.filter { $0.mi > 0 && $0.sec > 0 }
+        if validPhases.count >= 2 {
+            let phaseSum = validPhases.reduce(0.0) { $0 + $1.mi }
+            let scale = phaseSum > 0 ? total / phaseSum : 1
+            var bounds: [(end: Double, sec: Double)] = []
+            var cum = 0.0
+            for p in validPhases { cum += p.mi * scale; bounds.append((cum, Double(p.sec))) }
+            paceValues = validPhases.map { Double($0.sec) }
+            paceFn = { d in
+                for b in bounds where d <= b.end + 0.0001 { return b.sec }
+                return bounds.last?.sec ?? 0
+            }
+        } else {
+            let raw = splits.map { paceToSec($0.pace) }
+            guard raw.contains(where: { ($0 ?? 0) > 0 }) else { return [] }
+            var filled: [Double?] = raw.map { $0.flatMap { $0 > 0 ? Double($0) : nil } }
+            var last: Double? = nil
+            for i in filled.indices { if filled[i] == nil { filled[i] = last } else { last = filled[i] } }
+            var nxt: Double? = nil
+            for i in stride(from: filled.count - 1, through: 0, by: -1) {
+                if filled[i] == nil { filled[i] = nxt } else { nxt = filled[i] }
+            }
+            let mile = filled.compactMap { $0 }
+            guard mile.count == filled.count, !mile.isEmpty else { return [] }
+            paceValues = mile
+            paceFn = { d in mile[max(0, min(mile.count - 1, Int(floor(d))))] }
+        }
+
+        guard let pace = paceFn, !paceValues.isEmpty else { return [] }
+        let sorted = paceValues.sorted()
+        // Robust color range · one very fast/slow segment shouldn't flatten the
+        // whole gradient, so anchor on the 10th/90th percentiles.
+        let lo = sorted[Int(Double(sorted.count - 1) * 0.1)]
+        let hi = sorted[Int(Double(sorted.count - 1) * 0.9)]
+        let span = max(1, hi - lo)
+        func colorAt(_ d: Double) -> UIColor { RouteMapView.rampColor((pace(d) - lo) / span) }
+
+        // Chunk into ~90 short segments · color by midpoint pace, sharing the
+        // boundary vertex with the next so the line stays joined.
         let maxSegs = 90
         let chunk = max(1, Int(ceil(Double(coords.count - 1) / Double(maxSegs))))
         var segs: [(coords: [CLLocationCoordinate2D], color: UIColor)] = []
@@ -228,6 +263,13 @@ struct RouteMapView: UIViewRepresentable {
             return view
         }
     }
+}
+
+/// A workout phase reduced to what the route map needs: its distance and its
+/// pace (seconds per mile). Built by RouteMapView.phaseSamples(from:).
+struct PhaseSample {
+    let mi: Double
+    let sec: Int
 }
 
 // MARK: - Overlay / annotation carriers
