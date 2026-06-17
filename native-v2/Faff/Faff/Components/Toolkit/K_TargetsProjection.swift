@@ -575,26 +575,14 @@ struct TargetsProjectionPanel: View {
 
     @ViewBuilder
     private var metaPills: some View {
-        // Up to 5 chips (VDOT / GOAL / B / HELD / MOVE) exceed the panel
-        // width. A plain HStack would stretch the card's layout past the
-        // screen and let the whole page drag sideways — contain the overflow
-        // in a horizontal scroll so only the chip row scrolls, never the page.
-        ScrollView(.horizontal, showsIndicators: false) {
+        // 2026-06-16 · trimmed to just GOAL. Current VDOT / HELD / last-MOVE all
+        // restate a number that's frozen during a build (VDOT only moves on a
+        // race or time-trial, never weekly) — static noise on a projection
+        // panel (David). The B-goal pill wasn't needed. The readout already
+        // carries the execution / plan-intensity / build-to-goal VDOT story.
+        if let goalV = summary.goalVdot ?? summary.confidenceLabel?.evidence?.goalVdot {
             HStack(spacing: 6) {
-                VdotMetaPill(key: "VDOT", value: formatVdot(summary.vdot))
-                if let goalV = summary.confidenceLabel?.evidence?.goalVdot {
-                    VdotMetaPill(key: "GOAL", value: formatVdot(goalV))
-                }
-                if let bSec = summary.goalSafeSec, bSec > 0 {
-                    VdotMetaPill(key: "B", value: formatTime(bSec))
-                }
-                if summary.heldDays > 0 {
-                    VdotMetaPill(key: "HELD", value: "\(summary.heldDays)d")
-                }
-                if let mv = summary.lastMove {
-                    let arrow = mv.deltaVdot >= 0 ? "+" : ""
-                    VdotMetaPill(key: "MOVE", value: "\(arrow)\(String(format: "%.1f", mv.deltaVdot)) · \(relativeDate(mv.iso))")
-                }
+                VdotMetaPill(key: "GOAL", value: formatVdot(goalV))
             }
             .padding(.vertical, 1)
         }
