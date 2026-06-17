@@ -575,7 +575,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .session .seg .ss{font-size:13px;font-weight:500;color:rgba(255,255,255,.7);margin-left:auto;text-align:right;}
 .hero-v2 .session .seg .ss .mono{font-family:Inter,sans-serif;font-weight:600;color:#fff;letter-spacing:.3px;}
 .hero-v2 .session .scue{margin-top:auto;padding-top:20px;font-size:13px;font-weight:500;line-height:1.55;color:rgba(255,255,255,.82);}
-.hero-v2 .session .scue .ct{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:1px;color:#9af0bf;border:1px solid rgba(154,240,191,.4);border-radius:5px;padding:2px 6px;margin-right:8px;vertical-align:middle;}
+.hero-v2 .session .scue .ct{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:1px;color:var(--mint-readiness);border:1px solid rgba(154,240,191,.4);border-radius:5px;padding:2px 6px;margin-right:8px;vertical-align:middle;}
 
 /* SESSION blueprint card · 2026-06-02 redesign (v2 refined) per
    designs/from Design agent/session-card/README.md. Replaces the
@@ -633,7 +633,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .sb-coach-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.7);flex:0 0 auto;}
 .hero-v2 .sb-coach-tx{flex:1 1 auto;}
 
-.hero-v2 .wcl .tag{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:1px;color:#9af0bf;border:1px solid rgba(154,240,191,.35);border-radius:6px;padding:3px 8px;}
+.hero-v2 .wcl .tag{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:1px;color:var(--mint-readiness);border:1px solid rgba(154,240,191,.35);border-radius:6px;padding:3px 8px;}
 .hero-v2 .tgts-h{font-family:Inter,sans-serif;font-size:15px;font-weight:600;letter-spacing:.4px;margin:6px 0 4px;}
 .hero-v2 .tgt{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);}
 .hero-v2 .tgt:last-child{border-bottom:none;}
@@ -731,8 +731,8 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-11 · strength logged → the dumbbell simply turns green (David
    call · replaces the old check-overlay treatment and the removed "X/Y
    this week" chip). Same green as the run-done glyph for one done signal. */
-.wkstrip-v2 .wc-ic .gly.str.strdone{background:rgba(62,189,65,.18);color:#62e08a;}
-.wkstrip-v2 .wc-ic .gly.done{background:rgba(62,189,65,.18);color:#62e08a;}
+.wkstrip-v2 .wc-ic .gly.str.strdone{background:rgba(62,189,65,.18);color:var(--green);}
+.wkstrip-v2 .wc-ic .gly.done{background:rgba(62,189,65,.18);color:var(--green);}
 
 .wkstrip-v2 .wc-name{font-size:18px;font-weight:700;letter-spacing:-.3px;line-height:1;margin-top:11px;display:flex;align-items:center;gap:8px;}
 .wkstrip-v2 .wc.rest .wc-name{font-weight:600;opacity:.78;}
@@ -1140,11 +1140,12 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .gaprow{display:flex;align-items:center;gap:18px;margin-top:2px;}
 .gauge{width:184px;height:auto;flex:0 0 auto;}
 .gauge text{font-family:'Inter',sans-serif;}
-/* 2026-06-03 · brighter green (#3EBD41 → #5BE066) + text-shadow ·
+/* 2026-06-03 · bright triumphant DONE text on dark + text-shadow ·
    the PROJECTED block sits inside the gauge scrim now but the colored
-   digits still want extra punch so they read at a glance. */
-.grbig{font-family:'Oswald',sans-serif;font-size:40px;font-weight:600;color:#5BE066;line-height:.9;text-shadow:0 1px 6px rgba(0,0,0,.5);}
-.grstat{font-size:12px;font-weight:700;letter-spacing:1.2px;color:#5BE066;margin-top:7px;text-shadow:0 1px 4px rgba(0,0,0,.5);}
+   digits still want extra punch so they read at a glance. Routed to the
+   canonical bright good-state text token (was a rogue #5BE066). */
+.grbig{font-family:'Oswald',sans-serif;font-size:40px;font-weight:600;color:var(--mint-readiness);line-height:.9;text-shadow:0 1px 6px rgba(0,0,0,.5);}
+.grstat{font-size:12px;font-weight:700;letter-spacing:1.2px;color:var(--mint-readiness);margin-top:7px;text-shadow:0 1px 4px rgba(0,0,0,.5);}
 .tbody.gapv{justify-content:flex-start;gap:0;}
 .gapv-main{flex:1;display:flex;flex-direction:column;justify-content:center;gap:11px;width:100%;}
 .gapv-num{font-family:'Oswald',sans-serif;font-size:42px;font-weight:600;line-height:.85;letter-spacing:-1px;color:#3EBD41;text-align:center;}
@@ -1154,7 +1155,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .gapv-goal{position:absolute;left:66%;top:-5px;bottom:-5px;width:2px;border-radius:2px;background:#fff;box-shadow:0 0 6px rgba(255,255,255,.6);}
 .gapv-goal::after{content:'GOAL';position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:7px;font-weight:800;letter-spacing:.5px;color:rgba(255,255,255,.8);}
 .gapv-you{position:absolute;left:80%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:#3EBD41;border:2.5px solid #fff;box-shadow:0 0 10px rgba(62,189,65,.6);}
-.gapv-chip{align-self:center;font-size:10px;font-weight:700;letter-spacing:.4px;color:#7be89a;background:rgba(62,189,65,.14);border:1px solid rgba(62,189,65,.32);border-radius:9px;padding:6px 11px;white-space:nowrap;}
+.gapv-chip{align-self:center;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--green);background:rgba(62,189,65,.14);border:1px solid rgba(62,189,65,.32);border-radius:9px;padding:6px 11px;white-space:nowrap;}
 /* 2026-06-04 · margin-bottom stripped · the grid handles vertical
    rhythm now.  When .fll is used inside a card the local layout takes
    over (each card can space its eyebrow internally). */
@@ -1433,7 +1434,7 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .wc-day .dm{font-size:9px;font-weight:600;opacity:.5;}
 .wc-day.miss .bar{background:repeating-linear-gradient(45deg,rgba(255,255,255,.16) 0 5px,rgba(255,255,255,.04) 5px 10px)!important;}
 .wc-coach{display:flex;gap:12px;}
-.wc-coach .ct{flex:0 0 auto;font-size:9px;font-weight:700;letter-spacing:1px;color:#9af0bf;border:1px solid rgba(154,240,191,.4);border-radius:6px;padding:4px 8px;height:fit-content;margin-top:2px;}
+.wc-coach .ct{flex:0 0 auto;font-size:9px;font-weight:700;letter-spacing:1px;color:var(--mint-readiness);border:1px solid rgba(154,240,191,.4);border-radius:6px;padding:4px 8px;height:fit-content;margin-top:2px;}
 .wc-coach .cx{font-size:14.5px;font-weight:500;line-height:1.55;opacity:.92;}
 .wc-coach .cx b{color:#ffd27a;font-weight:700;}
 .wc-next{background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:15px;padding:17px 18px;margin-top:14px;}
@@ -1863,10 +1864,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .feeder .fv .fg{color:#7be8a0;}
 .hr-trendhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;min-width:0;}
 .hr-trendhead .l{font-size:10px;font-weight:700;letter-spacing:2px;opacity:.55;}
-.hr-trendhead .r .now{color:#9af0bf;font-size:10px;font-weight:700;}
+.hr-trendhead .r .now{color:var(--mint-readiness);font-size:10px;font-weight:700;}
 .hr-trendhead .r .avg{opacity:.5;margin-left:10px;font-size:10px;font-weight:700;}
 .hr-days{display:flex;justify-content:space-between;margin-top:6px;font-size:8.5px;font-weight:700;opacity:.42;}
-.hr-days .tw{color:#9af0bf;opacity:1;}
+.hr-days .tw{color:var(--mint-readiness);opacity:1;}
 /* 2026-06-04 · margin stripped · spacing from parent .band / .main grid. */
 .hseclbl{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--fg-faint);}
 .cardgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:13px;}

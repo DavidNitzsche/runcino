@@ -515,7 +515,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
           {r.courseSource === 'promoted' && r.contributorCount > 1 && (
             <span style={{
               marginLeft: 10, fontSize: 9, fontWeight: 800, letterSpacing: 1,
-              color: '#9af0bf', border: '1px solid rgba(154,240,191,.4)',
+              color: '#86efa0' /* --mint-readiness */, border: '1px solid rgba(154,240,191,.4)',
               borderRadius: 5, padding: '2px 6px', textTransform: 'uppercase',
             }}>Crowd-sourced · {r.contributorCount} runners</span>
           )}

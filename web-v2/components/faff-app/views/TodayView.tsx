@@ -2720,7 +2720,7 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
             position: 'absolute', left: '50%', transform: 'translateX(-50%)',
             color: 'rgba(255,255,255,.45)',
           }}>TARGET</span>
-          <span style={{ color: '#3ED06a', opacity: 0.9 }}>FASTER ▸</span>
+          <span style={{ color: '#86efa0' /* --mint-readiness */, opacity: 0.9 }}>FASTER ▸</span>
         </div>
         <div />
       </div>
@@ -2781,8 +2781,8 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
             const delta = actualSec > 0 && goalSec > 0 ? actualSec - goalSec : null;
             const beat = delta != null && delta < 0;
             const onTarget = delta != null && delta === 0;
-            const fillColor = beat ? '#3ED06a' : '#ffb24d';
-            const deltaColor = beat ? '#3ED06a' : '#ffb24d';
+            const fillColor = beat ? '#86efa0' /* --mint-readiness */ : '#ffb24d';
+            const deltaColor = beat ? '#86efa0' /* --mint-readiness */ : '#ffb24d';
             // 2026-06-04 · center-anchored marker · same model as
             // TempoPanel. White tick slides along the bar to the
             // runner's actual position; the colored fill connects
@@ -2915,7 +2915,7 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
             {avgWorkDelta != null && (
               <span style={{
                 fontSize: 12, fontWeight: 700,
-                color: avgWorkBeat ? '#3ED06a' : '#ffb24d',
+                color: avgWorkBeat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
               }}>{avgWorkDelta > 0 ? `+${avgWorkDelta}` : avgWorkDelta} vs goal</span>
             )}
           </div>
@@ -2982,7 +2982,7 @@ function EasyPanel({
       ? easyPct >= 70 ? 'good' : easyPct >= 40 ? 'warn' : 'bad'
       // Pace was out of band · use the stricter HR-only thresholds.
       : easyPct >= 85 ? 'good' : easyPct >= 70 ? 'warn' : 'bad';
-  const easyColor = easyTone === 'good' ? '#3ED06a' : easyTone === 'warn' ? '#ffb24d' : '#ff6a6a';
+  const easyColor = easyTone === 'good' ? '#86efa0' /* --mint-readiness */ : easyTone === 'warn' ? '#ffb24d' : '#ff6a6a';
 
   // HR halves · only when splits carry HR per mile.
   const splitsWithHr = splits.filter(s => typeof s.hr === 'number' && (s.hr ?? 0) > 0);
@@ -2996,7 +2996,7 @@ function EasyPanel({
   const hrDelta = firstHalfHr != null && secondHalfHr != null ? secondHalfHr - firstHalfHr : null;
   const rawDriftBand: DriftBand | null = hrDelta == null
     ? null
-    : Math.abs(hrDelta) <= 4 ? { text: 'STAYED FLAT', color: '#3ED06a' }
+    : Math.abs(hrDelta) <= 4 ? { text: 'STAYED FLAT', color: '#86efa0' /* --mint-readiness */ }
     : Math.abs(hrDelta) <= 8 ? { text: 'SOME DRIFT', color: '#ffb24d' }
     : { text: 'LATE FADE', color: '#ff6a6a' };
   // 2026-06-08 · heat-aware relabel · a back-half HR rise on a warm+ day
@@ -3322,7 +3322,7 @@ function LongPanel({
 
   const rawDriftBand: DriftBand | null = hrDelta == null
     ? null
-    : hrDelta <= 4 ? { text: 'HELD STEADY', color: '#3ED06a' }
+    : hrDelta <= 4 ? { text: 'HELD STEADY', color: '#86efa0' /* --mint-readiness */ }
     : hrDelta <= 8 ? { text: 'SOME DRIFT', color: '#ffb24d' }
     : { text: 'LATE FADE', color: '#ff6a6a' };
   const driftBand = rawDriftBand ? heatAwareDrift(rawDriftBand, heatSlowdownPct ?? 0) : null;
@@ -3631,7 +3631,7 @@ function TempoPanel({
             <div style={{
               position: 'absolute', top: 1, bottom: 1,
               left: `${fillLeft}%`, width: `${fillW}%`,
-              background: beat ? '#3ED06a' : '#ffb24d',
+              background: beat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
               borderRadius: 3, zIndex: 2,
             }} />
           )}
@@ -3660,7 +3660,7 @@ function TempoPanel({
         }}>
           <span style={{ color: '#ffb24d', opacity: 0.85 }}>◂ SLOWER</span>
           <span style={{ color: 'rgba(255,255,255,.45)' }}>TARGET</span>
-          <span style={{ color: '#3ED06a', opacity: 0.9 }}>FASTER ▸</span>
+          <span style={{ color: '#86efa0' /* --mint-readiness */, opacity: 0.9 }}>FASTER ▸</span>
         </div>
       </div>
 
@@ -3773,7 +3773,7 @@ function TempoPanel({
             ) : (
               <span style={{
                 fontSize: 11, fontWeight: 700, marginLeft: 5,
-                color: beat ? '#3ED06a' : '#ffb24d',
+                color: beat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
               }}>
                 · {delta > 0 ? `+${delta}` : delta} vs goal
               </span>
@@ -3835,9 +3835,9 @@ function LongMpPanel({
   const shiftAvail = lastEasyPace && firstMpPace;
   const shiftDrop = shiftAvail
     ? paceToSec(lastEasyPace) - paceToSec(firstMpPace) : null;
-  const shiftTone = shiftDrop == null ? '#3ED06a'
-    : shiftDrop >= 45 ? '#3ED06a'
-    : shiftDrop >= 30 ? '#3ED06a'
+  const shiftTone = shiftDrop == null ? '#86efa0' /* --mint-readiness */
+    : shiftDrop >= 45 ? '#86efa0' /* --mint-readiness */
+    : shiftDrop >= 30 ? '#86efa0' /* --mint-readiness */
     : '#ffb24d';
   const shiftSign = (shiftDrop ?? 0) > 0 ? '−' : '+';
   const shiftMm = Math.floor(Math.abs(shiftDrop ?? 0) / 60);
@@ -3976,7 +3976,7 @@ function LongMpPanel({
             <div style={{
               position: 'absolute', top: 1, bottom: 1,
               left: `${mpFillLeft}%`, width: `${mpFillW}%`,
-              background: mpBeat ? '#3ED06a' : '#ffb24d',
+              background: mpBeat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
               borderRadius: 3,
             }} />
           )}
@@ -3992,7 +3992,7 @@ function LongMpPanel({
         }}>
           <span style={{ color: '#ffb24d', opacity: 0.85 }}>◂ SLOWER</span>
           <span style={{ color: 'rgba(255,255,255,.45)' }}>TARGET</span>
-          <span style={{ color: '#3ED06a', opacity: 0.9 }}>FASTER ▸</span>
+          <span style={{ color: '#86efa0' /* --mint-readiness */, opacity: 0.9 }}>FASTER ▸</span>
         </div>
 
         {/* Per-mile chips */}
@@ -4037,7 +4037,7 @@ function LongMpPanel({
           {mpDelta != null ? (
             <span style={{
               fontSize: 11, fontWeight: 700, marginLeft: 5,
-              color: mpBeat ? '#3ED06a' : '#ffb24d',
+              color: mpBeat ? '#86efa0' /* --mint-readiness */ : '#ffb24d',
             }}>
               · {mpDelta > 0 ? `+${mpDelta}` : mpDelta} vs goal
             </span>

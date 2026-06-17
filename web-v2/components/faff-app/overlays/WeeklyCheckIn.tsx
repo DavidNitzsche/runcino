@@ -47,7 +47,8 @@ export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose:
                   {dist > 0 ? (
                     <div className="bar" style={{ height: `${h}%`, background: c ?? 'transparent' }}>
                       {d.done && (
-                        <svg className="chk" viewBox="0 0 24 24" fill="none" stroke="#9af0bf" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        // stroke = --green (#3EBD41) · solid good-state done glyph
+                        <svg className="chk" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                       )}
                     </div>
                   ) : (

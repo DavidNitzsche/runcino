@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { heatAwareDrift, heatAdjustedStatus, type DriftBand } from './heat-band';
 
-const FLAT: DriftBand = { text: 'STAYED FLAT', color: '#3ED06a' };
-const HELD: DriftBand = { text: 'HELD STEADY', color: '#3ED06a' };
+const FLAT: DriftBand = { text: 'STAYED FLAT', color: '#86efa0' }; // --mint-readiness
+const HELD: DriftBand = { text: 'HELD STEADY', color: '#86efa0' }; // --mint-readiness
 const SOME: DriftBand = { text: 'SOME DRIFT', color: '#ffb24d' };
 const FADE: DriftBand = { text: 'LATE FADE', color: '#ff6a6a' };
 
