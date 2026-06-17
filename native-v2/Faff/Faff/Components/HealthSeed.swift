@@ -102,22 +102,25 @@ enum HealthSeed {
             out.append(noDataMetric(id: "resp", label: "RESP RATE", unit: " /min"))
         }
 
-        // WRIST TEMP
+        // WRIST TEMP · stored °C from HealthKit, displayed °F (US, app-wide).
         if let cur = healthState?.wristTemp?.current {
             let base = healthState?.wristTemp?.baseline
-            let delta = healthState?.wristTemp?.delta
-            let s = (healthState?.wristTempSeries ?? []).map { $0.tempC }
+            let delta = healthState?.wristTemp?.delta   // °C deviation · keep the 0.4°C warn threshold
+            let cF: (Double) -> Double = { $0 * 9 / 5 + 32 }
+            let curF = cF(cur)
+            let baseF = base.map(cF)
+            let s = (healthState?.wristTempSeries ?? []).map { cF($0.tempC) }
             out.append(metric(
-                id: "wtemp", label: "WRIST TEMP", value: String(format: "%.2f", cur), unit: " °C",
+                id: "wtemp", label: "WRIST TEMP", value: String(format: "%.1f", curF), unit: " °F",
                 history: Array(s.suffix(14)), chart28: realChart(s),
                 target: nil,
                 status: abs(delta ?? 0) >= 0.4 ? .warn : .good,
-                direction: trendDir(cur: cur, base: base),
-                caption: base.map { "baseline \(String(format: "%.2f", $0))" } ?? "30-day",
-                coach: coachForDelta(noun: "Skin temp", cur: cur, base: base,
-                                     unit: "°C", higherIsBetter: false, decimals: 2)))
+                direction: trendDir(cur: curF, base: baseF),
+                caption: baseF.map { "baseline \(String(format: "%.1f", $0))" } ?? "30-day",
+                coach: coachForDelta(noun: "Skin temp", cur: curF, base: baseF,
+                                     unit: "°F", higherIsBetter: false, decimals: 1)))
         } else {
-            out.append(noDataMetric(id: "wtemp", label: "WRIST TEMP", unit: " °C"))
+            out.append(noDataMetric(id: "wtemp", label: "WRIST TEMP", unit: " °F"))
         }
 
         // WEIGHT
