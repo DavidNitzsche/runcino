@@ -27,6 +27,79 @@
 /** Distance in km from a label. */
 function kmFromMi(mi: number): number { return mi * 1.609344; }
 
+/**
+ * AUDIT #7 (2026-06-16) · published Daniels MILE column, used to correct the
+ * raw-equation divergence at short distances.
+ *
+ * The Daniels & Gilbert %VO2max curve (vo2Cost/pctVO2 below) reproduces the
+ * published table within ~0.1 VDOT for 5K–marathon, but systematically
+ * OVER-reads at the ~4–7 min mile: the raw inversion of 5:24 → VDOT 54.5 where
+ * the published table maps 5:24 → VDOT 50 (+4.5), growing to ~+5.6 by VDOT 74,
+ * and returning null (raw > 85 clamp) for sub-3:38 miles. A mile-goal runner's
+ * required VDOT therefore reads ~4–5 points too high and the readiness verdict
+ * fires pessimistically (goal-ready.ts:116).
+ *
+ * Fix: for distances near the mile, interpolate the PUBLISHED mile column
+ * (Research/01 §VDOT lookup table — "Interpolate linearly between rows if
+ * needed") instead of the raw equation. The 5K–marathon path is untouched.
+ *
+ * Column is the literal `Mile` column from Research/01, [VDOT, seconds],
+ * sorted by VDOT ascending (so seconds descend).
+ */
+const MILE_VDOT_TABLE: ReadonlyArray<readonly [number, number]> = [
+  [30, 510], [32, 481], [34, 456], [36, 434], [38, 414], [40, 395], [42, 379],
+  [44, 363], [45, 356], [46, 349], [48, 336], [50, 324], [52, 313], [54, 303],
+  [55, 298], [56, 293], [58, 284], [60, 276], [62, 269], [64, 262], [65, 258],
+  [66, 255], [68, 249], [70, 243], [72, 238], [74, 232], [75, 230], [76, 227],
+  [78, 223], [80, 218], [82, 214], [84, 210], [85, 208],
+];
+
+/** Distances (mi) for which the mile-table correction applies. The published
+ *  short-distance anchor is the mile column; the next column (3K, 1.864mi) is
+ *  far enough that the raw equation has nearly converged, and 5K+ is accurate.
+ *  Covers 1500m (0.93mi)…~2km so the mile-goal path (always 1.0mi) and nearby
+ *  short distances use the table; everything ≥ this stays on the raw equation. */
+const MILE_CORRECTION_MAX_MI = 1.3;
+const MILE_CORRECTION_MIN_MI = 0.9;
+function isMileRange(distanceMi: number): boolean {
+  return distanceMi >= MILE_CORRECTION_MIN_MI && distanceMi <= MILE_CORRECTION_MAX_MI;
+}
+
+/** AUDIT #7 · VDOT from a mile finish via linear interpolation of the published
+ *  table. Clamps to the table edges (slower than 8:30 → 30, faster than 3:28 →
+ *  85). Returns a 1-decimal VDOT, matching vdotFromRace's precision. */
+function mileVdotFromSec(finishSeconds: number): number {
+  const T = MILE_VDOT_TABLE;
+  if (finishSeconds >= T[0][1]) return T[0][0];
+  if (finishSeconds <= T[T.length - 1][1]) return T[T.length - 1][0];
+  for (let i = 0; i < T.length - 1; i++) {
+    const [v1, s1] = T[i];
+    const [v2, s2] = T[i + 1]; // s1 > s2 (faster row)
+    if (finishSeconds <= s1 && finishSeconds >= s2) {
+      const f = (s1 - finishSeconds) / (s1 - s2);
+      return Math.round((v1 + f * (v2 - v1)) * 10) / 10;
+    }
+  }
+  return T[T.length - 1][0];
+}
+
+/** AUDIT #7 · mile finish (seconds) from a VDOT via linear interpolation of the
+ *  published table. Clamps to the table edges. Inverse of mileVdotFromSec. */
+function mileSecFromVdot(vdot: number): number {
+  const T = MILE_VDOT_TABLE;
+  if (vdot <= T[0][0]) return T[0][1];
+  if (vdot >= T[T.length - 1][0]) return T[T.length - 1][1];
+  for (let i = 0; i < T.length - 1; i++) {
+    const [v1, s1] = T[i];
+    const [v2, s2] = T[i + 1];
+    if (vdot >= v1 && vdot <= v2) {
+      const f = (vdot - v1) / (v2 - v1);
+      return Math.round(s1 + f * (s2 - s1));
+    }
+  }
+  return T[T.length - 1][1];
+}
+
 /** Daniels' VO2 cost of running at speed s (m/min). */
 function vo2Cost(metersPerMin: number): number {
   return -4.6 + 0.182258 * metersPerMin + 0.000104 * metersPerMin * metersPerMin;
@@ -56,6 +129,9 @@ function rawVdot(finishSeconds: number, distanceMi: number): number | null {
  *  exactly that finish time. Returns null if outside [30, 85]. */
 export function vdotFromRace(finishSeconds: number, distanceMi: number): number | null {
   if (!finishSeconds || finishSeconds < 60) return null;
+  // AUDIT #7 · the raw %VO2max equation over-reads the mile ~4–5 VDOT; use the
+  // published table for mile-range distances. Already table-clamped to [30,85].
+  if (distanceMi > 0 && isMileRange(distanceMi)) return mileVdotFromSec(finishSeconds);
   const vdot = rawVdot(finishSeconds, distanceMi);
   if (vdot == null) return null;
   if (vdot < 30 || vdot > 85) return null;
@@ -76,6 +152,9 @@ export function vdotFromRace(finishSeconds: number, distanceMi: number): number 
  */
 export function predictRaceTime(vdot: number, distanceMi: number): number | null {
   if (!vdot || vdot <= 0 || !distanceMi || distanceMi <= 0) return null;
+  // AUDIT #7 · invert via the published mile table for mile-range distances so
+  // the mile projection matches the table (50 → 5:24, not the raw eqn's 5:50).
+  if (isMileRange(distanceMi)) return mileSecFromVdot(vdot);
   let lo = distanceMi * 150;   // 2:30/mi floor
   let hi = distanceMi * 1500;  // 25:00/mi ceiling
   let mid = (lo + hi) / 2;
@@ -404,6 +483,33 @@ export function vdotFromRun(input: {
 const FADE_PER_14D = 0.1;
 const FADE_TAIL_DAYS = 120;
 
+/**
+ * AUDIT #8 (2026-06-16) · TRAINING-ESTIMATE SOFT CAP.
+ *
+ * Research/01 §"Triggers to retest" is explicit: only a RACE/TT (all-out,
+ * well-paced) UPDATES VDOT. A tempo that "feels notably easier at the same
+ * target pace" is a SOFT LEAD — "+1 VDOT estimated; field-test within 2 weeks",
+ * NOT a fresh fitness number. `vdotFromRun` (via vdotFromTpace/vdotFromMpace)
+ * reads a sustained sub-maximal effort into its full zone-implied VDOT, which is
+ * mathematically right for a runner running AT their true pace — but it lets a
+ * single good-day / cool-weather / slightly-fast tempo manufacture a multi-point
+ * race-grade jump off an UNCONFIRMED effort. Because `bestRecentVdot` takes the
+ * MAX, that jump can only inflate current fitness, never correct back down.
+ *
+ * Fix: when a recent RACE anchor exists, bound any TRAINING-derived candidate to
+ * `bestRaceRaw + 1.0` — the doctrinal soft-estimate quantum above the last hard
+ * proof of fitness. Training can nudge the read up by +1 (the LEAD), but cannot
+ * stand in for the race/field-test the doctrine requires for more. With NO race
+ * anchor, nothing to cap against and the gated training read stands (a 5K TT IS
+ * a valid VDOT input — Research/01 §"Field-test protocols").
+ *
+ * This is the live current-VDOT snapshot path (snapshot-projections cron, plan
+ * generator, drift monitor). The doctrine-correct projection-space over-read
+ * (goal-projection.ts, commit 3ba8529a) is a SEPARATE, intentionally-capped
+ * mechanism and is unaffected.
+ */
+const TRAINING_ESTIMATE_SOFT_CAP_VDOT = 1.0;
+
 export function bestRecentVdot(
   races: Array<{ slug: string; name: string; date: string; priority: 'A'|'B'|'C'|null; distance_mi: number | null; finish_seconds: number | null }>,
   todayISO: string,
@@ -452,6 +558,15 @@ export function bestRecentVdot(
     });
   }
 
+  // AUDIT #8 · soft-cap ceiling for training-derived candidates. The best RAW
+  // race VDOT in scope is the last hard proof of fitness; a training estimate
+  // may exceed it by at most the doctrinal +1 LEAD. Null when no race anchor
+  // exists → training reads are uncapped (see TRAINING_ESTIMATE_SOFT_CAP_VDOT).
+  const bestRaceRaw = raceCandidates.reduce<number | null>(
+    (max, c) => (max == null || c.vdot_raw > max ? c.vdot_raw : max), null);
+  const trainingCeiling = bestRaceRaw != null
+    ? bestRaceRaw + TRAINING_ESTIMATE_SOFT_CAP_VDOT : null;
+
   const runCandidates: RunVdotCandidate[] = [];
   if (runs && runs.length > 0) {
     for (const r of runs) {
@@ -468,13 +583,17 @@ export function bestRecentVdot(
       });
       if (v == null) continue;
       const age = ageDays(r.date);
+      // AUDIT #8 · cap the training read at race-anchor + the soft-estimate
+      // quantum before the stale fade. Math.round keeps the 1-decimal contract.
+      const capped = trainingCeiling != null
+        ? Math.round(Math.min(v, trainingCeiling) * 10) / 10 : v;
       runCandidates.push({
         source: 'run',
         id: r.id, date: r.date, workout_type: r.workout_type,
         distance_mi: r.distance_mi, finish_seconds: r.finish_seconds,
         // Run candidates live in a 60-day loader window — well inside
         // lookbackDays, so effective ≡ raw today; kept uniform anyway.
-        vdot: effective(v, age), vdot_raw: v, age_days: age,
+        vdot: effective(capped, age), vdot_raw: capped, age_days: age,
       });
     }
   }
