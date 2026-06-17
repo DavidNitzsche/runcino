@@ -659,9 +659,14 @@ struct RunDetailView: View {
         }()
         let typeLabel = (r.type ?? "RUN").uppercased()
         var pieces = [dateLabel]
-        if let start = r.start_local, let timeOnly = start.split(separator: "T").last,
-           let parsed = timeOnly.split(separator: ":").first {
-            pieces.append("\(parsed):\(timeOnly.split(separator: ":").dropFirst().first ?? "") AM".replacingOccurrences(of: "  ", with: " "))
+        if let start = r.start_local, let timeOnly = start.split(separator: "T").last {
+            let hm = timeOnly.split(separator: ":")
+            if let h = hm.first.flatMap({ Int($0) }), let m = hm.dropFirst().first {
+                // Real 12-hour clock — a 17:30 start reads "5:30 PM", not "17:30 AM".
+                let ampm = h < 12 ? "AM" : "PM"
+                let h12 = h % 12 == 0 ? 12 : h % 12
+                pieces.append("\(h12):\(m) \(ampm)")
+            }
         }
         pieces.append(typeLabel)
         return pieces.joined(separator: " · ")
