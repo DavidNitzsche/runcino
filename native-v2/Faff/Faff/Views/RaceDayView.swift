@@ -703,8 +703,7 @@ struct RaceDayView: View {
     /// not a status colour — they ride Theme.goal (the amber milestone token),
     /// not a green/over semantic.
     private func fuelingPlanCard(_ f: RaceFueling) -> some View {
-        let totalMi = detail?.race.distance_mi ?? 0
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 12) {
             // Headline · what to carry, how often, what rate it hits.
             Text(fuelHeadline(f))
                 .font(.body(14, weight: .bold))
@@ -712,37 +711,16 @@ struct RaceDayView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(2)
 
-            // Mile-anchored gel timeline (skipped if we have no distance to
-            // place the stops against · the headline still carries the plan).
-            if totalMi > 0, !f.scheduleMi.isEmpty {
-                GeometryReader { geo in
-                    let w = geo.size.width
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.12)).frame(height: 3)
-                        ForEach(Array(f.scheduleMi.enumerated()), id: \.offset) { _, stop in
-                            let x = CGFloat(min(1, max(0, stop.mi / totalMi))) * w
-                            Circle()
-                                .fill(Theme.goal)
-                                .frame(width: 11, height: 11)
-                                .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
-                                .position(x: max(5, min(w - 5, x)), y: 6)
-                        }
-                    }
-                }
-                .frame(height: 12)
-                HStack {
-                    Text("START").font(.body(9, weight: .extraBold)).tracking(1)
-                        .foregroundStyle(Theme.txt.opacity(0.5))
-                    Spacer()
-                    Text("FINISH · \(miLabel(totalMi)) MI").font(.body(9, weight: .extraBold)).tracking(1)
-                        .foregroundStyle(Theme.txt.opacity(0.5))
-                }
-                Text(f.scheduleMi.enumerated().map { i, stop in
-                        "Gel \(i + 1) · mi \(Int(stop.mi.rounded()))"
-                    }.joined(separator: "   "))
-                    .font(.body(11, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.65))
+            // The schedule · ONE clean line of mile markers. (Was a dot timeline
+            // PLUS a verbose "Gel 1 · mi 3 …" list — two redundant reads of the
+            // same thing, which made the card hard to parse · David 2026-06-17.)
+            if !f.scheduleMi.isEmpty {
+                let miles = f.scheduleMi.map { "\(Int($0.mi.rounded()))" }.joined(separator: " · ")
+                (Text("Take one at mile  ").foregroundStyle(Theme.txt.opacity(0.5))
+                 + Text(miles).foregroundStyle(Theme.txt.opacity(0.9)))
+                    .font(.body(13, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(3)
             }
 
             // Default-plan prompt · the runner hasn't entered their fuel, so
@@ -774,8 +752,10 @@ struct RaceDayView: View {
     /// cadence (~N min) is recovered from the first schedule gap; the rate is
     /// the server's targetCarbsPerHourG.
     private func fuelHeadline(_ f: RaceFueling) -> String {
-        let product = (f.productName.isEmpty || f.productName == "gel") ? "gel" : f.productName
-        var line = "Carry \(f.recommendedServings) × \(product)"
+        let isGeneric = f.productName.isEmpty || f.productName.lowercased() == "gel"
+        var line = isGeneric
+            ? "Carry \(f.recommendedServings) gels"
+            : "Carry \(f.recommendedServings) × \(f.productName)"
         if let gap = fuelCadenceMin(f) {
             line += " · one every ~\(gap) min"
         }

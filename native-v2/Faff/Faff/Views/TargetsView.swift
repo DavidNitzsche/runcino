@@ -94,15 +94,8 @@ struct TargetsView: View {
                             }
                         }
 
-                        // ── The road to the race ──────────────────────────
-                        // Compact bridge to the full plan (race P4). Only when
-                        // there's an actual plan loaded (phases/weeks present).
-                        if hasUpcomingRace, let ts = trainingState, ts.plan_id != nil,
-                           !ts.weeks.isEmpty {
-                            section("THE ROAD TO \(roadRaceLabel)") {
-                                roadToRaceCard(ts)
-                            }
-                        }
+                        // (THE ROAD TO … moved up, directly under the trajectory
+                        // card — see heroBlock.)
                     }
 
                     // ── Fitness goal · between upcoming and past races ─────
@@ -609,9 +602,18 @@ struct TargetsView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, 4)
                         }
-                        // Supporting depth (race P3) · other-distance equivalents,
-                        // likely range, B-goal, gap breakdown. Each renders only
-                        // when its data is present — restrained, not a dashboard.
+                        // The road to the race · plan bridge, directly UNDER the
+                        // trajectory card (David 2026-06-17 — it was floating after
+                        // RACES). Reads the already-fetched TrainingState; renders
+                        // only when a real plan is loaded.
+                        if let ts = trainingState, ts.plan_id != nil, !ts.weeks.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                SpecLabel(text: "THE ROAD TO \(roadRaceLabel)", size: 11, tracking: 2, color: Theme.txt.opacity(0.6))
+                                roadToRaceCard(ts)
+                            }
+                            .padding(.top, 8)
+                        }
+                        // Supporting depth (race P3) · other-distance equivalents.
                         TargetsProjectionDepth(summary: p)
                             .padding(.top, 6)
                     }
