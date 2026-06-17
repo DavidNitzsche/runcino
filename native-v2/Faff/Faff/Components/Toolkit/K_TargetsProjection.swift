@@ -365,11 +365,6 @@ struct TargetsProjectionPanel: View {
     }
     private var fitOk: Bool { buildRatio >= 0.95 }
 
-    /// VDOT gain sub · "+2.1 of +3.0 VDOT".
-    private var buildGainSub: String {
-        String(format: "+%.1f of +%.1f VDOT", gotVdot, needVdot)
-    }
-
     // MARK: Summary line (per-state · coach voice · filled with real times)
 
     private var summaryLine: String {
@@ -611,18 +606,16 @@ struct TargetsProjectionPanel: View {
             readCard(title: "EXECUTION",
                      ok: execOk,
                      value: execPctText,
-                     sub: "key runs hit",
                      accent: st.accent)
             readCard(title: "FITNESS",
                      ok: fitOk,
                      value: fitVerdict,
-                     sub: buildGainSub,
                      accent: st.accent)
         }
         .padding(.top, 18)
     }
 
-    private func readCard(title: String, ok: Bool, value: String, sub: String, accent: Color) -> some View {
+    private func readCard(title: String, ok: Bool, value: String, accent: Color) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
                 .font(.body(9.5, weight: .extraBold))
@@ -637,11 +630,6 @@ struct TargetsProjectionPanel: View {
                     .lineLimit(1)
             }
             .padding(.top, 11)
-            Text(sub)
-                .font(.body(10.5))
-                .foregroundStyle(Color(hex: 0x737985))
-                .monospacedDigit()
-                .padding(.top, 7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(EdgeInsets(top: 13, leading: 14, bottom: 13, trailing: 14))
