@@ -46,14 +46,17 @@ export interface ReadinessHistory {
      *  over prior 60 days. A drop of ≥ SWC for ≥3 consecutive days
      *  is the early-overreach flag. */
     swc: number | null;
-    /** Coefficient of variation (CV) of the 7-day rolling, in %.
-     *  Rising CV = destabilization · early functional overreach. */
+    /** RMSSDcv · coefficient of variation of RAW RMSSD, in %.
+     *  Research/03 §CV: CV = SD(RMSSD)/mean(RMSSD)×100. Rising CV =
+     *  destabilization · early functional overreach. 2026-06-16 · #20 ·
+     *  computed on raw RMSSD (was: rolling LnRMSSD, which never reached
+     *  the bands). Bands (Research/03): recreational 8–12%, intensified
+     *  8–14%, NFOR >14%. */
     cv: number | null;
     /** 2026-06-01 · 14-day CV series for the Health-page trend strip.
-     *  Each entry computes CV using the prior 14d of 7d-rolling values
-     *  ending on that date. Lets the runner SEE CV climbing before
-     *  HRV ms itself drops. Empty when < 21d of HRV history (need 7d
-     *  for the rolling + 14d to compute SD of those rollings). */
+     *  Each entry is the RMSSDcv over the trailing 14d of raw RMSSD ending
+     *  on that date. Lets the runner SEE CV climbing before HRV ms itself
+     *  drops. Empty until ≥14d of HRV history (need a full window). */
     cvSeries: { date: string; pct: number }[];
   } | null;
 }
@@ -134,6 +137,11 @@ export async function loadReadinessHistory(userId: string): Promise<ReadinessHis
   return { sleep, rhr, hrv, hrRecovery, wristTemp, hrvPlews };
 }
 
+// 2026-06-16 · #20 · window (days of raw readings) for the RMSSD CV.
+// 14 trailing days gives a stable SD estimate and matches the length of
+// the CV trend strip below.
+const CV_WINDOW_DAYS = 14;
+
 /**
  * Plews approach to HRV (Research/15 §Plews).
  *
@@ -143,8 +151,10 @@ export async function loadReadinessHistory(userId: string): Promise<ReadinessHis
  *   2. 7-day rolling average of LnRMSSD over the entire 60-day window.
  *      (Yields ~54 rolling values for 60 days of data.)
  *   3. SWC = 0.5 × SD of those rolling values (ex. the most recent 7).
- *   4. CV = SD / mean × 100 of the rolling values.
- *   5. Delta = (today's rolling) − (yesterday's rolling).
+ *   4. Delta = (today's rolling) − (yesterday's rolling).
+ *
+ * CV is computed SEPARATELY on RAW RMSSD (NOT the rolling LnRMSSD) — see
+ * computeRmssdCv and the #20 note below.
  *
  * Returns null when fewer than 7 days of HRV history · the brief uses
  * the per-night value with no Plews context in that case.
@@ -163,34 +173,46 @@ function computePlewsHRV(hrv: PillarPoint[]): ReadinessHistory['hrvPlews'] {
   const yesterday = rolling.length >= 2 ? rolling[rolling.length - 2] : null;
   const deltaLn = rollingLn != null && yesterday != null ? rollingLn - yesterday : null;
 
-  // SWC and CV on the PRIOR 60d of rolling values (excludes today so today's
-  // dip doesn't deflate the SD it's being measured against).
+  // SWC on the PRIOR 60d of rolling LnRMSSD values (excludes today so
+  // today's dip doesn't deflate the SD it's measured against). SWC stays
+  // on LnRMSSD per Research/15 §Plews — only CV moves to raw RMSSD.
   const priorRolling = rolling.slice(0, -1);
   const sd = priorRolling.length >= 7 ? stddev(priorRolling) : null;
-  const mean = priorRolling.length >= 7 ? priorRolling.reduce((s, v) => s + v, 0) / priorRolling.length : null;
   const swc = sd != null ? 0.5 * sd : null;
-  const cv = sd != null && mean != null && mean !== 0 ? (sd / mean) * 100 : null;
 
-  // 2026-06-01 · 14-day CV series. For each day in the last 14, recompute
-  // CV using THAT day's prior 14-day rolling window. Lets the runner see
-  // CV climbing before HRV ms drops (the whole point of the Plews framework).
+  // 2026-06-16 · #20 · CV on RAW RMSSD, not the rolling LnRMSSD.
+  //
+  // The doctrine for RMSSDcv is Research/03 §CV (Coefficient of
+  // Variation): `CV = SD(RMSSD) / mean(RMSSD) × 100%`, computed on RAW
+  // RMSSD. Its population bands (Research/03): elite 5–8%, recreational
+  // 8–12%, intensified block 8–14%, NFOR >14% (and line 371: >10–14% =
+  // increased acute perturbation, persistent → overload).
+  //
+  // The old code computed CV on the 7-day rolling average of LnRMSSD.
+  // That double variance-suppression (log transform + 7d smoothing)
+  // drove CV to ~sub-1% on a normal series, so the 5%/7% display/action
+  // bands — which themselves came from the raw-RMSSD literature — could
+  // never fire (a 7% CV-of-rolling-Ln needs a ~±32% week-over-week
+  // swing). Both the INPUT (rolling-Ln → raw RMSSD) and the BANDS (5/7 →
+  // 10/14 per Research/03) were wrong. Fixed here + in the consuming
+  // band/action thresholds (readiness-brief.ts, health-actions.ts).
+  //
+  // Computed over the trailing CV_WINDOW_DAYS of raw readings, excluding
+  // today (same "today's dip doesn't deflate its own SD" property the
+  // old code had via priorRolling).
+  const priorRaw = hrv.slice(0, -1).map((p) => p.value);
+  const cv = computeRmssdCv(priorRaw.slice(-CV_WINDOW_DAYS));
+
+  // 2026-06-01 · CV trend strip. For each recent day, recompute RMSSDcv
+  // over THAT day's trailing CV_WINDOW_DAYS of raw RMSSD. Lets the runner
+  // see CV climbing before HRV ms drops (the point of the Plews/RMSSDcv
+  // framework).
   const cvSeries: { date: string; pct: number }[] = [];
-  // Need >= 21 rollings to compute 14 CV values · each CV needs the prior 14
-  // rollings for SD. Start at index 14 so prior-window has 14 elements.
-  for (let i = Math.max(14, rolling.length - 14); i < rolling.length; i++) {
-    const window = rolling.slice(Math.max(0, i - 14), i);
-    if (window.length < 7) continue;
-    const wMean = window.reduce((s, v) => s + v, 0) / window.length;
-    const wSd = stddev(window);
-    if (wMean === 0) continue;
-    const wCv = (wSd / wMean) * 100;
-    // hrv array is aligned: rolling[i] corresponds to hrv[i + 6] (window
-    // started at i-6, ended at i in the original loop · so the 7d-rolling
-    // at position i in `rolling` is "as of" hrv[i + 6].date).
-    const dateIdx = i + 6;
-    if (dateIdx < hrv.length) {
-      cvSeries.push({ date: hrv[dateIdx].date, pct: round(wCv, 2) });
-    }
+  for (let i = Math.max(CV_WINDOW_DAYS, hrv.length - 14); i < hrv.length; i++) {
+    const window = hrv.slice(Math.max(0, i - CV_WINDOW_DAYS), i).map((p) => p.value);
+    const wCv = computeRmssdCv(window);
+    if (wCv == null) continue;
+    cvSeries.push({ date: hrv[i].date, pct: round(wCv, 2) });
   }
 
   return {
@@ -200,6 +222,19 @@ function computePlewsHRV(hrv: PillarPoint[]): ReadinessHistory['hrvPlews'] {
     cv: cv != null ? round(cv, 2) : null,
     cvSeries,
   };
+}
+
+/**
+ * 2026-06-16 · #20 · RMSSDcv per Research/03 §CV.
+ *   CV = SD(RMSSD) / mean(RMSSD) × 100%  (raw RMSSD, NOT LnRMSSD)
+ * Needs ≥7 readings for a meaningful SD; returns null below that.
+ */
+function computeRmssdCv(rawRmssd: number[]): number | null {
+  const xs = rawRmssd.filter((v) => Number.isFinite(v) && v > 0);
+  if (xs.length < 7) return null;
+  const mean = xs.reduce((s, v) => s + v, 0) / xs.length;
+  if (mean === 0) return null;
+  return (stddev(xs) / mean) * 100;
 }
 
 function stddev(arr: number[]): number {

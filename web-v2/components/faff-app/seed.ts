@@ -1301,10 +1301,14 @@ function adaptHealth(
   if (hrvCv?.pct != null) {
     const cvStatus: 'good' | 'warn' = hrvCv.band === 'destabilizing' ? 'warn' : 'good';
     // 2026-06-01 · pass the 14d CV series for the trend strip · empty
-    // until 21d of HRV history exists, in which case the tile renders
+    // until 14d of HRV history exists, in which case the tile renders
     // bare current-vs-band.
     const cvSeriesPct = (hrvCv.series ?? []).map((p) => p.pct);
-    body.push(mk('hrv_cv', 'HRV CV', '%', hrvCv.pct, undefined, [0, 10], cvSeriesPct, cvStatus, 1));
+    // 2026-06-16 · #20 · axis widened [0,10] → [0,20]. CV is now RMSSDcv
+    // on raw RMSSD (Research/03 §CV): recreational-normal is 8–12% and
+    // the NFOR band is >14%, so real values exceed the old single-digit
+    // axis built for the (never-firing) rolling-LnRMSSD CV.
+    body.push(mk('hrv_cv', 'HRV CV', '%', hrvCv.pct, undefined, [0, 20], cvSeriesPct, cvStatus, 1));
   }
   // 2026-06-01 · Max HR tile · 30-day true max (informs zone math + HRR).
   // Health-state computes MAX over 30d so a single low-effort walk doesn't

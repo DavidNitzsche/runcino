@@ -114,15 +114,20 @@ function forecastHrvCv(history: ReadinessHistory): Forecast | null {
   const currentValue = recent.at(-1)!.pct;
   const dirMatch = last3MatchDirection(recent.map((p) => p.pct), fit.slope);
 
-  // Bands per Research/15: < 5 stable · 5-7 watch · >= 7 destabilizing.
+  // 2026-06-16 · #20 · bands per Research/03 §CV (RMSSDcv, raw RMSSD):
+  // ≤10 stable · 10–14 watch (acute perturbation) · >14 destabilizing
+  // (NFOR). cvSeries is now raw-RMSSD CV (readiness-history.ts). The old
+  // 5/7 cutoffs were raw-RMSSD-literature numbers applied to the rolling-
+  // LnRMSSD CV, so this forecaster could never project a real crossing.
+  const WATCH = 10, DESTABILIZING = 14;
   let threshold: number, projectedBand: string;
-  if (currentValue < 5 && fit.slope > 0) {
-    threshold = 5; projectedBand = 'watch';
-  } else if (currentValue < 7 && fit.slope > 0) {
-    threshold = 7; projectedBand = 'destabilizing';
-  } else if (currentValue >= 5 && fit.slope < 0) {
-    threshold = currentValue >= 7 ? 7 : 5;
-    projectedBand = currentValue >= 7 ? 'watch' : 'stable';
+  if (currentValue < WATCH && fit.slope > 0) {
+    threshold = WATCH; projectedBand = 'watch';
+  } else if (currentValue < DESTABILIZING && fit.slope > 0) {
+    threshold = DESTABILIZING; projectedBand = 'destabilizing';
+  } else if (currentValue >= WATCH && fit.slope < 0) {
+    threshold = currentValue >= DESTABILIZING ? DESTABILIZING : WATCH;
+    projectedBand = currentValue >= DESTABILIZING ? 'watch' : 'stable';
   } else {
     return null;
   }
@@ -134,7 +139,7 @@ function forecastHrvCv(history: ReadinessHistory): Forecast | null {
   const ratePerDay = Math.abs(fit.slope).toFixed(2);
   const trendDir: 'good' | 'bad' = fit.slope > 0 ? 'bad' : 'good';
   const message = fit.slope > 0
-    ? `HRV variability is rising · +${ratePerDay}%/day. On pace to cross the ${projectedBand === 'destabilizing' ? '7%' : '5%'} line in about ${days} day${days === 1 ? '' : 's'} · watch for nervous system destabilization.`
+    ? `HRV variability is rising · +${ratePerDay}%/day. On pace to cross the ${projectedBand === 'destabilizing' ? `${DESTABILIZING}%` : `${WATCH}%`} line in about ${days} day${days === 1 ? '' : 's'} · watch for nervous system destabilization.`
     : `HRV variability is settling · −${ratePerDay}%/day. On pace to drop back into the ${projectedBand === 'stable' ? 'stable' : 'normal'} band in about ${days} day${days === 1 ? '' : 's'}.`;
   return {
     pillar: 'hrv_cv',
