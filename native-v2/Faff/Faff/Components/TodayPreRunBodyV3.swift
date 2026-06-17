@@ -624,24 +624,33 @@ struct TodayPreRunBodyV3: View {
     }
 
     private var heartRateTarget: String {
+        // #44 · prefer the server-computed per-phase HR targets, which are
+        // grounded in THIS runner's physiology (HRmax/LTHR). When physiology
+        // is missing the server omits them — fall back to the zone LABEL, not
+        // a fabricated population bpm band ("160-168" is meaningless for a
+        // runner whose HRmax we don't know). The runner adds HRmax in Profile
+        // to unlock real numbers; we never invent them, and we never run a
+        // second zone engine on the client that could diverge from the server.
         switch effort {
-        case .recovery:  return "<125 bpm · Z1"
+        case .recovery:
+            if let bpm = workout?.hrCeilingBpm { return "<\(bpm) bpm · Z1" }
+            return "Z1 · very easy"
         case .easy:
             if let bpm = workout?.hrCeilingBpm { return "<\(bpm) bpm · Z2" }
-            return "<140 bpm · Z2"
+            return "Z2 · easy"
         case .long:
             if let bpm = workout?.hrCeilingBpm { return "<\(bpm) bpm · Z2" }
-            return "140-155 · Z2 to MP"
+            return "Z2 to MP"
         case .tempo:
             if let bpm = workout?.phases.first(where: { $0.type == .work })?.hrTargetBpm {
                 return "~\(bpm) bpm · threshold"
             }
-            return "160-168 · Z4"
+            return "Z4 · threshold"
         case .intervals:
             if let bpm = workout?.phases.first(where: { $0.type == .work })?.hrTargetBpm {
                 return "\(bpm)+ bpm · VO2max"
             }
-            return "175+ · Z5"
+            return "Z5 · VO2max"
         case .rest:      return "—"
         case .race:      return "Race effort"
         }

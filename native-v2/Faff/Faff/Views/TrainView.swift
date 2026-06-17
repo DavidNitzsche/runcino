@@ -1316,7 +1316,9 @@ private struct TrainWeekRowSummary: View {
                         .font(.body(8, weight: .extraBold)).tracking(0.8)
                         .foregroundStyle(Color(hex: 0xFFCE8A))
                 } else {
-                    Text("\(Int(week.plannedMi.rounded()))")
+                    // #47 · trainMi → 1 decimal only when fractional (no noisy
+                    // .0 on whole-mile weeks), matching the WK header + app convention.
+                    Text(trainMi(week.plannedMi))
                         .font(.body(12.5, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.78))
                 }
@@ -1418,7 +1420,7 @@ private struct ExecStripRow: View {
                         .font(.body(12, weight: .bold))
                         .foregroundStyle(Theme.txt)
                     +
-                    Text("/\(Int(row.plannedMi.rounded()))mi")
+                    Text("/\(trainMi(row.plannedMi))mi")
                         .font(.body(10, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.44))
                 )
