@@ -10,7 +10,7 @@
  * 2026-05-30 P2 #9: added HR Recovery 5% pillar from Apple Watch post-workout
  * 60s drop):
  *   - Sleep        28%  → 7-night avg vs 7.5h target. ±2 per 0.25h.
- *   - HRV          28%  → 7-day rolling avg vs 30-day baseline. ±1 per 2%.
+ *   - HRV          28%  → 7-day median vs 30-day baseline. ±1 per 2%.
  *   - RHR          24%  → 3-day rolling avg vs 30-day baseline. −2 per bpm above.
  *   - Load         15%  → A:C ratio (7d:28d). >1.5 = -8 per Gabbett.
  *   - HR Recovery   5%  → most recent vs 30d baseline. ±1 per 2 bpm delta.
@@ -39,12 +39,12 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
   let score = BASELINE;
   const inputs: ReadinessInput[] = [];
 
-  // SLEEP (30%)
+  // SLEEP (28%)
   if (state.sleep7Avg != null) {
     const target = 7.5;
     const delta = state.sleep7Avg - target;
     const debt = Math.max(0, -delta * 7); // approx weekly debt
-    // ±2 per 0.25h, clamp -18 / +10 (scaled from old ±15/+8 for new 30% weight)
+    // ±2 per 0.25h, clamp -18 / +10 (scaled from old ±15/+8 for new 28% weight)
     const w = Math.max(-18, Math.min(10, Math.round(delta / 0.25 * 2)));
     score += w;
     const meaning = delta >= 0
@@ -70,7 +70,7 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     inputs.push({ key: 'sleep', label: 'SLEEP · 28%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No sleep data yet. Wear the watch overnight.' });
   }
 
-  // HRV (30%)
+  // HRV (28%)
   if (state.hrvCurrent != null && state.hrvBaseline != null && state.hrvBaseline > 0) {
     // 2026-06-01 · Luteal-phase adjustment (Research/13 §1-Menstrual-Cycle-and-Training).  // was §sex-specific · heading: ## 1. The Menstrual Cycle and Training
     // Luteal HRV runs 5-10ms lower regardless of fitness · subtract 5ms
@@ -81,7 +81,7 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
       ? Math.max(1, state.hrvBaseline - 5)
       : state.hrvBaseline;
     const pct = ((state.hrvCurrent - lutealAdjusted) / lutealAdjusted) * 100;
-    // ±1 per 2%, clamp ±18 (scaled from old ±15 for new 30% weight)
+    // ±1 per 2%, clamp ±18 (scaled from old ±15 for new 28% weight)
     const w = Math.max(-18, Math.min(18, Math.round(pct / 2)));
     score += w;
     const lutealNote = state.cyclePhase === 'luteal'
