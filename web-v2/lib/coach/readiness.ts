@@ -35,20 +35,85 @@ export interface ReadinessInput {
 
 const BASELINE = 70;
 
-export function computeReadiness(state: CoachState): ReadinessBreakdown {
+/**
+ * 2026-06-16 · #16 fix · load-scaled sleep target.
+ *
+ * Research/00b §284 ("recovery requirements scale with absolute training
+ * load") + §290 (20–40 mpw sleep band 7.5–9h). Under high acute:chronic
+ * load the recovery bar rises: 8.0h at ACWR>1.0, 8.5h at >1.3; otherwise
+ * the 7.5h floor.
+ *
+ * Lives here (the score module) rather than in readiness-brief because
+ * the SCORE must use the same target the displayed baseline label does.
+ * Before this fix the score hardcoded 7.5h while the brief's baseline
+ * label showed the elevated target, so a 7.8h sleeper under load read
+ * "+0.3h vs target" (scored as surplus) next to a baseline implying
+ * "target 8.5h" (−0.7h short) — the score credited phantom surplus and
+ * contradicted the delta. computeReadiness now derives this internally
+ * so EVERY score consumer (brief, glance, watch, /api/readiness) agrees,
+ * and the brief's label reads the same value.
+ */
+export function computeDynamicSleepTarget(acwr: number | null | undefined): number {
+  if (acwr == null) return 7.5;
+  if (acwr > 1.3) return 8.5;
+  if (acwr > 1.0) return 8.0;
+  return 7.5;
+}
+
+/**
+ * 2026-06-16 · #19 · luteal-phase HRV baseline allowance.
+ *
+ * Luteal HRV runs 5-10ms lower regardless of fitness (Research/13
+ * §1-Menstrual-Cycle-and-Training · HRV "trends with phase"), so subtract
+ * 5ms from the baseline a luteal female is compared against — only when
+ * biologicalSex === 'female' AND cyclePhase === 'luteal'. Floored at 1 so
+ * the bar can never go non-positive. For everyone else the baseline is
+ * unchanged.
+ *
+ * Lives here (the score module, alongside computeReadiness which applies
+ * the same shift inline) so EVERY HRV-vs-baseline comparator can import
+ * one canonical implementation — the streak detector, the [N/M] threshold
+ * line, and recovery-phase. Per CLAUDE.md per-finding context filters,
+ * the luteal adjustment must propagate to every HRV consumer, not just
+ * the score. Without this a luteal female reads "at baseline" on the
+ * score pillar while STREAKS / the recovery tile flag the same HRV below
+ * baseline. A 5ms shift on a ~60ms baseline ≈ 8.3% — enough to flip a
+ * borderline reading.
+ */
+export function lutealAdjustedHrvBaseline(
+  baseline: number,
+  biologicalSex: CoachState['biologicalSex'] | undefined,
+  cyclePhase: CoachState['cyclePhase'] | undefined,
+): number {
+  return biologicalSex === 'female' && cyclePhase === 'luteal'
+    ? Math.max(1, baseline - 5)
+    : baseline;
+}
+
+export function computeReadiness(
+  state: CoachState,
+  // 2026-06-16 · #16 · explicit override lets the brief pass its already-
+  // computed dynamicSleepTarget (identical value, avoids a recompute).
+  // When omitted, derive the load-scaled target from state.loadAcwr so
+  // the score and the baseline label always agree, on every surface.
+  sleepTargetOverride?: number,
+): ReadinessBreakdown {
   let score = BASELINE;
   const inputs: ReadinessInput[] = [];
+  const sleepTarget = sleepTargetOverride ?? computeDynamicSleepTarget(state.loadAcwr);
 
   // SLEEP (28%)
   if (state.sleep7Avg != null) {
-    const target = 7.5;
+    const target = sleepTarget;
     const delta = state.sleep7Avg - target;
     const debt = Math.max(0, -delta * 7); // approx weekly debt
     // ±2 per 0.25h, clamp -18 / +10 (scaled from old ±15/+8 for new 28% weight)
     const w = Math.max(-18, Math.min(10, Math.round(delta / 0.25 * 2)));
     score += w;
     const meaning = delta >= 0
-      ? `You're at or above the 7.5h target. Strong recovery foundation.`
+      // 2026-06-16 · #16 · name the actual (possibly load-scaled) target,
+      // not a hardcoded 7.5h, so the prose agrees with the scored delta.
+      ? `You're at or above the ${target.toFixed(1)}h target. Strong recovery foundation.`
       : debt >= 7
         ? `Roughly ${debt.toFixed(0)}h of sleep debt across the week. Recovery cost compounds.`
         : debt >= 3
@@ -77,9 +142,10 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     // from the baseline so the runner isn't penalized for biology. Only
     // applies when biologicalSex === 'female' AND cyclePhase === 'luteal'.
     // For non-female users or non-luteal phases, baseline is unchanged.
-    const lutealAdjusted = state.biologicalSex === 'female' && state.cyclePhase === 'luteal'
-      ? Math.max(1, state.hrvBaseline - 5)
-      : state.hrvBaseline;
+    // 2026-06-16 · #19 · now via the shared lutealAdjustedHrvBaseline so
+    // the score, the streak detector, the threshold line, and recovery-
+    // phase all apply byte-identical luteal logic (can't drift apart).
+    const lutealAdjusted = lutealAdjustedHrvBaseline(state.hrvBaseline, state.biologicalSex, state.cyclePhase);
     const pct = ((state.hrvCurrent - lutealAdjusted) / lutealAdjusted) * 100;
     // ±1 per 2%, clamp ±18 (scaled from old ±15 for new 28% weight)
     const w = Math.max(-18, Math.min(18, Math.round(pct / 2)));

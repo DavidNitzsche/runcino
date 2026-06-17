@@ -51,6 +51,9 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
+import { lutealAdjustedHrvBaseline } from './readiness';
+import { loadBiologicalSex } from './biological-sex';
+import type { CoachState } from '@/lib/topics/types';
 
 export type AnchorType = 'race' | 'long' | 'intervals' | 'tempo' | 'threshold';
 
@@ -202,6 +205,26 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
   // 2026-06-03 · runner TZ instead of server UTC · see lib/runtime/runner-tz.ts.
   const today = await runnerToday(userUuid);
 
+  // 2026-06-16 · #19 · resolve biological sex + cycle phase so the HRV
+  // pillar status line applies the SAME luteal allowance the score, the
+  // streak detector, and the threshold line use (CLAUDE.md per-finding
+  // context filters). Best-effort · defaults to no adjustment. Same
+  // source + mapping as state-loader.ts:468-483.
+  const biologicalSex = await loadBiologicalSex(userUuid).catch(() => 'not_specified' as const);
+  const cyclePhaseRow = (await pool.query<{ value: number | string }>(
+    `SELECT value FROM health_samples
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'menstrual_cycle_phase'
+        AND sample_date >= $2::date - interval '2 days'
+      ORDER BY sample_date DESC, recorded_at DESC LIMIT 1`,
+    [userUuid, today],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const cyclePhaseNum = cyclePhaseRow?.value != null ? Number(cyclePhaseRow.value) : null;
+  const cyclePhase: CoachState['cyclePhase'] = (cyclePhaseNum === 1 ? 'menstrual'
+    : cyclePhaseNum === 2 ? 'follicular'
+    : cyclePhaseNum === 3 ? 'ovulatory'
+    : cyclePhaseNum === 4 ? 'luteal'
+    : null);
+
   // 1 · Find the most recent anchor hard session in the last 14 days.
   const runRows = await pool.query<{
     id: string; date: string; type: string | null; dist: number | string;
@@ -256,7 +279,9 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
   // 2 · Per-pillar bounce-back tracking.
   // For each pillar, compute the value on anchor date, today, and a
   // 30-day baseline excluding the post-anchor window.
-  const pillars = await loadPillarBounceBack(userUuid, anchor.date, today);
+  // 2026-06-16 · #19 · pass sex + cycle phase so the HRV status line
+  // compares against the luteal-adjusted baseline (matches the score).
+  const pillars = await loadPillarBounceBack(userUuid, anchor.date, today, biologicalSex, cyclePhase);
 
   // 3 · Recovery % weighted by Plews-style importance.
   // 2026-06-01 · brief response: count how many pillars have full
@@ -323,6 +348,9 @@ async function loadPillarBounceBack(
   userUuid: string,
   anchorDate: string,
   today: string,
+  // 2026-06-16 · #19 · luteal-phase context for the HRV status line.
+  biologicalSex: CoachState['biologicalSex'],
+  cyclePhase: CoachState['cyclePhase'],
 ): Promise<RecoveryPhase['pillars']> {
   // 2026-06-03 · dropped wrist_temp + resp_rate from the recovery pillar
   // list. Both already appear as standalone tiles in the BODY section
@@ -434,7 +462,9 @@ async function loadPillarBounceBack(
     // 2026-06-03 · plain-English status line + severity color · replaces
     // the "% back" jargon. The runner reads a concrete delta instead of
     // a percentage they have to interpret.
-    const { statusLine, severity } = computeStatusLine(spec, current, baseline);
+    // 2026-06-16 · #19 · pass sex + cycle phase so the HRV delta is
+    // measured against the luteal-adjusted baseline.
+    const { statusLine, severity } = computeStatusLine(spec, current, baseline, biologicalSex, cyclePhase);
 
     out.push({
       key: spec.key,
@@ -467,6 +497,9 @@ function computeStatusLine(
   spec: { key: 'hrv' | 'rhr' | 'sleep' | 'hr_recovery' | 'wrist_temp' | 'resp_rate'; isLowerBetter: boolean },
   current: number | null,
   baseline: number | null,
+  // 2026-06-16 · #19 · luteal-phase context · applied to the HRV branch.
+  biologicalSex?: CoachState['biologicalSex'],
+  cyclePhase?: CoachState['cyclePhase'],
 ): { statusLine: string; severity: 'good' | 'watch' | 'bad' | 'no-data' } {
   if (current == null || baseline == null) {
     return { statusLine: '', severity: 'no-data' };
@@ -487,10 +520,15 @@ function computeStatusLine(
     return { statusLine: `${shortBy.toFixed(1)}h short of target`, severity: 'bad' };
   }
   if (spec.key === 'hrv') {
-    const delta = Math.round(current - baseline);
+    // 2026-06-16 · #19 · compare against the luteal-adjusted baseline so a
+    // luteal female isn't flagged "below baseline" for the biological
+    // 5-10ms luteal dip — matching the score / streak / threshold-line
+    // treatment. No-op for everyone else.
+    const adjBaseline = lutealAdjustedHrvBaseline(baseline, biologicalSex, cyclePhase);
+    const delta = Math.round(current - adjBaseline);
     if (delta >= 0) return { statusLine: 'at baseline', severity: 'good' };
     const abs = Math.abs(delta);
-    if (abs < Math.round(baseline * 0.07)) return { statusLine: `${abs}ms below baseline`, severity: 'watch' };
+    if (abs < Math.round(adjBaseline * 0.07)) return { statusLine: `${abs}ms below baseline`, severity: 'watch' };
     return { statusLine: `${abs}ms below baseline`, severity: 'bad' };
   }
   if (spec.key === 'rhr') {

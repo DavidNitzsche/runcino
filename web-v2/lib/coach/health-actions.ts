@@ -33,6 +33,7 @@
  */
 
 import type { ReadinessBreakdown } from './readiness';
+import { lutealAdjustedHrvBaseline } from './readiness';
 import type { CoachState } from '@/lib/topics/types';
 import type { ReadinessHistory } from './readiness-history';
 import type { ReadinessStreak } from './readiness-brief';
@@ -158,7 +159,14 @@ export function buildThresholdLine(args: {
   // already at 2/5). Now we count from the tail using the same unified
   // baseline + threshold the streak detector uses, but report ANY
   // length so the runner sees real progress.
-  const hrvBaseline = args.state.hrvBaseline;
+  // 2026-06-16 · #19 · apply the luteal-phase HRV allowance so this line
+  // counts "HRV low days" against the SAME (luteal-adjusted) baseline the
+  // score + the streak detector use. Without it a luteal female's [N/M]
+  // line could climb toward the trigger while the score pillar still read
+  // "at baseline" — the per-finding context filter must reach here too.
+  const hrvBaseline = args.state.hrvBaseline != null
+    ? lutealAdjustedHrvBaseline(args.state.hrvBaseline, args.state.biologicalSex, args.state.cyclePhase)
+    : null;
   const rhrBaseline = args.state.rhrBaseline;
 
   const countTrailingHrvLow = (): number => {
@@ -498,15 +506,20 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       }
     }
 
-    // HRV CV destabilizing band (Plews · > 7%).
-    if (history.hrvPlews?.cv != null && history.hrvPlews.cv > 7) {
+    // HRV CV destabilizing band.
+    // 2026-06-16 · #20 · threshold is Research/03 §CV: RMSSDcv > 14% is
+    // the non-functional-overreaching band (recreational-normal is 8–12%,
+    // intensified 8–14%). cv is now computed on RAW RMSSD (readiness-
+    // history.ts). The old > 7% gate was a raw-RMSSD-literature number
+    // applied to CV-of-rolling-LnRMSSD, so it never fired.
+    if (history.hrvPlews?.cv != null && history.hrvPlews.cv > 14) {
       out.push({
         signal: 'hrv_cv_destabilizing',
         priority: 'medium',
         action: isInformational
           ? `HRV CV ${history.hrvPlews.cv.toFixed(1)}% · destabilizing band.`
           : 'Hold this week at easy · let your HRV variability settle.',
-        cite: `HRV rolling CV ${history.hrvPlews.cv.toFixed(1)}% · Plews threshold > 7%.`,
+        cite: `RMSSD CV ${history.hrvPlews.cv.toFixed(1)}% · overreach band > 14%.`,
       });
     }
 

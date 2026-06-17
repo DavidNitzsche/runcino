@@ -12,9 +12,11 @@
  *   · Citations · per-pillar research path (drawer can deep-link)
  *
  * Doctrine-grounded:
- *   · Research/15 §HRV (Plews 7d rolling + SWC + CV)
+ *   · Research/15 §HRV (Plews 7d rolling LnRMSSD + SWC)
+ *   · Research/03 §CV (RMSSDcv on raw RMSSD · bands 8–12% rec / >14% NFOR)  // #20
+ *   · Research/13 §1-Menstrual-Cycle (luteal HRV −5ms allowance)  // #19
  *   · Research/15 §RHR (60d baseline · nocturnal preferred)
- *   · Research/00b §Sleep (7-9h healthy band · 8h+ under high load)
+ *   · Research/00b §Sleep (7-9h healthy band · 8h+ under high load · load-scaled target)  // #16
  *   · Research/15 §ACWR (directional, NOT deterministic per Impellizzeri critique)
  *   · Research/15 §When-Wearable-Disagrees-Subjective (Saw et al. · subjective beats objective when they disagree)  // was §Subjective Measures · heading: ## When Wearable Data Agrees vs. Disagrees with Subjective State
  *
@@ -26,7 +28,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { computeReadiness, type ReadinessBreakdown, type ReadinessInput } from './readiness';
+import { computeReadiness, computeDynamicSleepTarget, lutealAdjustedHrvBaseline, type ReadinessBreakdown, type ReadinessInput } from './readiness';
 import { loadReadinessHistory, type PillarPoint, type ReadinessHistory } from './readiness-history';
 import type { CoachState } from '@/lib/topics/types';
 import { buildSynthesis } from './synthesis';
@@ -309,9 +311,13 @@ export async function loadReadinessBrief(
   // Score today with the (existing) computeReadiness function · scale
   // the sleep target by ACWR per Research/00b ("recovery requirements
   // scale with absolute training load").
+  // 2026-06-16 · #16 fix · feed dynamicSleepTarget INTO the score (not
+  // just the label). Before this the score used a hardcoded 7.5h while
+  // the baseline label showed the elevated target, so the scored delta
+  // and the displayed baseline disagreed. Now both read this one value.
   const dynamicSleepTarget = computeDynamicSleepTarget(state.loadAcwr);
   const stateForScore: CoachState = { ...state };
-  const breakdown = computeReadiness(stateForScore);
+  const breakdown = computeReadiness(stateForScore, dynamicSleepTarget);
 
   // 2026-06-01 · cold-start no longer short-circuits to null · the
   // drawer needs the coldStart envelope to render the "Building your
@@ -359,13 +365,22 @@ export async function loadReadinessBrief(
   // reading on yesterday's date, sleep avg ending yesterday, etc.) and
   // run them through computeReadiness. Mover delta = today.weight -
   // yesterday.weight using the same formula on both sides.
-  const yesterdaySnap = await computeYesterdayPillars(userId, date, stateForScore);
+  // 2026-06-16 · #16 · pass the SAME dynamicSleepTarget so the mover
+  // delta (today.sleepWeight − yesterday.sleepWeight) measures both
+  // sides against one bar. Yesterday clones today's ACWR (below), so the
+  // target is identical for both — no phantom mover swing from the fix.
+  const yesterdaySnap = await computeYesterdayPillars(userId, date, stateForScore, dynamicSleepTarget);
 
   // 14-day score trend.
   const scoreTrend = await loadScoreTrend(userId, date, 14, breakdown);
 
   // Streaks per pillar (3-day persistence rule).
-  const streaks = detectStreaks(history, breakdown);
+  // 2026-06-16 · #18 + #19 · pass `state` so the RHR streak reads the
+  // canonical `state.rhrBaseline` (same baseline the [N/M] threshold line
+  // uses) and the HRV streak applies the luteal-phase allowance, matching
+  // the score. Per CLAUDE.md per-finding context filters, the luteal
+  // adjustment propagates to every HRV consumer, not just the score.
+  const streaks = detectStreaks(history, breakdown, state);
 
   // Movers · biggest delta vs yesterday's score.
   const movers = computeMovers(breakdown, yesterdaySnap);
@@ -411,16 +426,21 @@ export async function loadReadinessBrief(
   // truth for BASELINE / NET / TODAY math row.
   const composition = buildComposition(scoreTrend, breakdown.score ?? 0);
 
-  // 2026-06-01 · HRV CV surface. Plews early-overreach signal already
-  // computed in readiness-history · expose it here as a top-level field
-  // so the Health page can render a tile. Bands per Research/15: <5%
-  // stable · 5-7% watch · ≥7% destabilizing.
+  // 2026-06-01 · HRV CV surface. Early-overreach signal already computed
+  // in readiness-history · expose it here as a top-level field so the
+  // Health page can render a tile.
+  // 2026-06-16 · #20 · bands recalibrated to Research/03 §CV (RMSSDcv,
+  // computed on RAW RMSSD): recreational-normal up to ~10%; 10–14% is
+  // increased acute perturbation (watch · Research/03 line 371); >14% is
+  // the non-functional-overreaching band (destabilizing · Research/03
+  // line 385). The old 5/7 cutoffs were raw-RMSSD-literature numbers
+  // applied to CV-of-rolling-LnRMSSD, so the bands never fired.
   const hrvCv = history.hrvPlews?.cv != null
     ? {
         pct: history.hrvPlews.cv,
-        band: (history.hrvPlews.cv < 5
+        band: (history.hrvPlews.cv <= 10
           ? 'stable'
-          : history.hrvPlews.cv < 7 ? 'watch' : 'destabilizing') as 'stable' | 'watch' | 'destabilizing',
+          : history.hrvPlews.cv <= 14 ? 'watch' : 'destabilizing') as 'stable' | 'watch' | 'destabilizing',
         swcMs: history.hrvPlews.swc,
         series: history.hrvPlews.cvSeries ?? [],
       }
@@ -702,14 +722,9 @@ function breakdownIsEmpty(b: ReadinessBreakdown): boolean {
   return true;
 }
 
-function computeDynamicSleepTarget(acwr: number | null | undefined): number {
-  // Research/00b: 7-9h healthy band. 8-9h+ under high training load.
-  // High load (ACWR > 1.2) → bump the bar; otherwise stay at 7.5h.
-  if (acwr == null) return 7.5;
-  if (acwr > 1.3) return 8.5;
-  if (acwr > 1.0) return 8.0;
-  return 7.5;
-}
+// 2026-06-16 · #16 · computeDynamicSleepTarget moved to readiness.ts so
+// the SCORE and the displayed baseline label use one canonical target.
+// Imported above; the local copy was removed to prevent drift.
 
 /**
  * 2026-06-03 · compute yesterday's pillar weights from raw signals.
@@ -736,6 +751,9 @@ async function computeYesterdayPillars(
   userId: string,
   todayISO: string,
   todayState: CoachState,
+  // 2026-06-16 · #16 · same sleep target as today's score so the mover
+  // delta compares like-for-like (ACWR is cloned from today below).
+  sleepTarget = 7.5,
 ): Promise<{ score: number; pillars: Record<string, number> } | null> {
   try {
     const yesterdayISO = new Date(Date.parse(todayISO + 'T00:00:00Z') - 86400000)
@@ -797,7 +815,7 @@ async function computeYesterdayPillars(
       hrRecoveryCurrent: hrRecR.rows[0]?.v != null ? Number(hrRecR.rows[0].v) : null,
     };
 
-    const yesterdayBreakdown = computeReadiness(yesterdayState);
+    const yesterdayBreakdown = computeReadiness(yesterdayState, sleepTarget);
     const pillars: Record<string, number> = {};
     for (const i of yesterdayBreakdown.inputs) pillars[i.key] = i.weight;
     return { score: yesterdayBreakdown.score ?? 0, pillars };
@@ -870,10 +888,15 @@ async function loadScoreTrend(
  *   · RHR: > baseline + 3 bpm for ≥3 days
  *   · HR recovery: < baseline by ≥4 bpm for ≥3 days
  *   · Load: ACWR > 1.3 for ≥3 days (read from snapshot history)
+ *
+ * 2026-06-16 · takes `state` so the RHR/HRV streaks read the SAME
+ * canonical baselines the [N/M] threshold line + the score use (#18),
+ * and the HRV comparison applies the luteal allowance (#19).
  */
 function detectStreaks(
   history: ReadinessHistory,
   breakdown: ReadinessBreakdown,
+  state: CoachState,
 ): ReadinessStreak[] {
   const streaks: ReadinessStreak[] = [];
 
@@ -895,7 +918,14 @@ function detectStreaks(
     });
   }
 
-  // HRV streak · Plews-flavored when we have the rolling
+  // HRV streak · Plews-flavored when we have the rolling.
+  // 2026-06-16 · #19 · the Plews path compares each day's LnRMSSD to the
+  // PRECEDING 7-day rolling (a self-relative delta vs SWC), not to an
+  // absolute baseline. A luteal level shift moves today and the rolling
+  // window equally, so it cancels in the delta — the luteal allowance is
+  // a genuine no-op here and is intentionally NOT applied. It belongs
+  // only on absolute-baseline comparisons (the fallback branch below,
+  // the threshold line, recovery-phase).
   if (history.hrvPlews?.swc != null && history.hrvPlews.deltaLn != null) {
     const drops = lastConsecutivePlewsDrops(history.hrv, history.hrvPlews.swc);
     if (drops >= STREAK_MIN_DAYS) {
@@ -911,7 +941,20 @@ function detectStreaks(
     }
   } else if (history.hrv.length >= STREAK_MIN_DAYS) {
     // Fallback to simple below-baseline streak when we lack rolling.
-    const hrvBaseline = history.hrv.reduce((s, p) => s + p.value, 0) / history.hrv.length;
+    // 2026-06-16 · #18 + #19 · prefer the canonical state.hrvBaseline
+    // (the 30d, recent-7-excluded value the threshold line + score use)
+    // so the STREAKS card and the [N/M] line agree, and apply the luteal
+    // allowance. #17 · when state.hrvBaseline is null (cold start), fall
+    // back to a history mean that EXCLUDES the recent window — mirroring
+    // the RHR branch — so a genuine multi-day HRV suppression isn't
+    // partly absorbed into its own baseline (self-referential drift).
+    const rawHrvBaseline = state.hrvBaseline != null
+      ? state.hrvBaseline
+      : history.hrv.length >= 7
+        ? history.hrv.slice(0, -7).reduce((s, p) => s + p.value, 0) /
+          Math.max(1, history.hrv.length - 7)
+        : history.hrv.reduce((s, p) => s + p.value, 0) / history.hrv.length;
+    const hrvBaseline = lutealAdjustedHrvBaseline(rawHrvBaseline, state.biologicalSex, state.cyclePhase);
     const streakLen = countTailRunLength(
       history.hrv.map((p) => p.value),
       (v) => v < hrvBaseline,
@@ -922,8 +965,12 @@ function detectStreaks(
         direction: 'below',
         days: streakLen,
         startDate: history.hrv.at(-streakLen)?.date ?? '',
-        short: `HRV below 60-day average ${streakLen} days running.`,
-        meaning: `HRV below your 60-day average ${streakLen} days in a row. ` +
+        // 2026-06-16 · copy says "baseline" (not "60-day average") · the
+        // value now comes from the canonical state.hrvBaseline (a 30d,
+        // recent-excluded baseline) when available, so the old window
+        // label would misdescribe it.
+        short: `HRV below baseline ${streakLen} days running.`,
+        meaning: `HRV below your baseline ${streakLen} days in a row. ` +
           `Could be stress, sleep, or accumulating load · Single days are noise, ` +
           `streaks are signal.`,
       });
@@ -932,10 +979,20 @@ function detectStreaks(
 
   // RHR streak
   if (history.rhr.length >= STREAK_MIN_DAYS) {
-    const rhrBaseline = history.rhr.length >= 7
-      ? history.rhr.slice(0, -7).reduce((s, p) => s + p.value, 0) /
-        Math.max(1, history.rhr.length - 7)
-      : history.rhr.reduce((s, p) => s + p.value, 0) / history.rhr.length;
+    // 2026-06-16 · #18 · read the canonical state.rhrBaseline — the SAME
+    // baseline buildThresholdLine uses for the [N/M] line — so the
+    // STREAKS card and the progress line can't disagree on the trailing
+    // length. Before this, detectStreaks computed its own baseline off
+    // the 60d history (excl-7) while the line used the 30d state value,
+    // so the two windows averaged differently and the cards contradicted
+    // near the cutoff. Falls back to a recent-7-excluded history mean
+    // only when state.rhrBaseline is null (cold start).
+    const rhrBaseline = state.rhrBaseline != null
+      ? state.rhrBaseline
+      : history.rhr.length >= 7
+        ? history.rhr.slice(0, -7).reduce((s, p) => s + p.value, 0) /
+          Math.max(1, history.rhr.length - 7)
+        : history.rhr.reduce((s, p) => s + p.value, 0) / history.rhr.length;
     const above = countTailRunLength(
       history.rhr.map((p) => p.value),
       (v) => v - rhrBaseline >= 3,
@@ -947,7 +1004,7 @@ function detectStreaks(
         days: above,
         startDate: history.rhr.at(-above)?.date ?? '',
         short: `RHR up ${above} days running.`,
-        meaning: `Resting HR ≥3 bpm above your 60-day baseline ${above} days ` +
+        meaning: `Resting HR ≥3 bpm above your baseline ${above} days ` +
           `in a row. Common culprits: brewing illness, dehydration, alcohol, ` +
           `or accumulating load.`,
       });
