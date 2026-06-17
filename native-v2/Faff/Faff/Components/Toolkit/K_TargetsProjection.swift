@@ -385,20 +385,33 @@ struct TargetsProjectionPanel: View {
     /// Macro-cycle phases present in the plan, in canonical order, each carrying
     /// its display weight. Always appends a trailing Race segment. Falls back to
     /// the current phase alone when no plan weeks are loaded.
+    ///
+    /// David's rule (2026-06-17): "if the phase was or is part of the plan it
+    /// should be visible as completed/filled at all times." So presence is the
+    /// UNION of two sources — the plan WEEKS (which the backend returns in full,
+    /// completed weeks included) AND the plan PHASES blocks (`phases[]`, the
+    /// canonical phase ledger). Reading both means an earlier completed phase
+    /// like Base stays in the spine — and renders filled by the you-marker
+    /// completed fill — even if a future weeks-array were ever pruned to
+    /// current+future. We never drop a phase that was part of the build.
     private var spinePhases: [SpinePhase] {
         let order: [TrainPhase] = [.base, .build, .peak, .taper]
-        // Which phases the plan actually contains (from plan weeks).
         var present: Set<TrainPhase> = []
-        if let weeks = trainingState?.weeks, !weeks.isEmpty {
-            for w in weeks { present.insert(TrainPhase(phaseKey: w.phase)) }
-        } else if let pk = trainingState?.currentPhase {
-            present.insert(TrainPhase(phaseKey: pk))
-        } else {
-            // TODO(data): no TrainingState reachable here · show the current
-            // phase from the projection status as a one-segment fallback so the
-            // spine still renders. Wired from TargetsView in practice.
-            present.insert(youPhase)
+        // 1) Phase ledger · the authoritative set of phase blocks (incl. done).
+        if let phases = trainingState?.phases {
+            for p in phases { present.insert(TrainPhase(phaseKey: p.label)) }
         }
+        // 2) Plan weeks · the backend returns ALL weeks (completed included),
+        //    so this also carries earlier phases. Union with (1) for safety.
+        if let weeks = trainingState?.weeks {
+            for w in weeks { present.insert(TrainPhase(phaseKey: w.phase)) }
+        }
+        // 3) Always include the phase the runner is currently in.
+        present.insert(youPhase)
+        // Drop the standalone race phase if it leaked into the ledger — the
+        // spine appends its own trailing Race segment below.
+        present.remove(.race)
+
         var out: [SpinePhase] = order
             .filter { present.contains($0) }
             .map { SpinePhase(key: $0, label: $0.label.capitalizedPhase, dw: kPhaseDisplayWeight[$0] ?? 1.5, isRace: false) }

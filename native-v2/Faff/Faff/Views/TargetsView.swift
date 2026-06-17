@@ -9,6 +9,10 @@ import UniformTypeIdentifiers
 
 struct TargetsView: View {
     let onProfile: () -> Void
+    /// Tab selection · lets the plan-bridge block ("THE ROAD TO …") switch
+    /// to the Train tab, the canonical full-plan surface (race P4). Default
+    /// binding so previews / any caller without a tab host still compile.
+    @Binding var selectedTab: FaffTab
 
     @State private var races: RaceListResponse? =
         AppCache.read(.raceList, as: RaceListResponse.self)
@@ -87,6 +91,16 @@ struct TargetsView: View {
                         } else {
                             section("RACES") {
                                 addButton("+ ADD RACE") { showAddRaceSheet = true }
+                            }
+                        }
+
+                        // ── The road to the race ──────────────────────────
+                        // Compact bridge to the full plan (race P4). Only when
+                        // there's an actual plan loaded (phases/weeks present).
+                        if hasUpcomingRace, let ts = trainingState, ts.plan_id != nil,
+                           !ts.weeks.isEmpty {
+                            section("THE ROAD TO \(roadRaceLabel)") {
+                                roadToRaceCard(ts)
                             }
                         }
                     }
@@ -622,6 +636,158 @@ struct TargetsView: View {
             }
             .padding(.top, 18)
         }
+    }
+
+    // ── The road to the race · plan bridge (race P4) ─────────────────────
+    //
+    // A compact summary of the build that leads to the A-race, reading the
+    // already-fetched TrainingState (the same source the projection spine
+    // uses). Taps through to the Train tab — the canonical full-plan surface.
+    // It is a BRIDGE to the plan, not the plan itself: current phase, week
+    // position, weeks-to-race, this-week mileage progress, next quality.
+
+    /// Short race identity for the section header ("THE ROAD TO AFC").
+    private var roadRaceLabel: String {
+        let n = trainingState?.race?.name ?? hero.name
+        let s = RaceName.short(n, abbreviateAlways: (n?.count ?? 0) > 12)
+        return s.isEmpty ? "RACE" : s.uppercased()
+    }
+
+    private func roadToRaceCard(_ ts: TrainingState) -> some View {
+        let phase = TrainPhase(phaseKey: ts.currentPhase ?? "base")
+        // Locked categorical phase palette · the same source TrainView uses,
+        // so the bridge card and the plan it links to read identically.
+        let phaseColor = TrainView.phaseAccent(phase)
+        // Overall week position · "Week X of Y" across the whole plan.
+        let totalWeeks = ts.weeks.count
+        let curOverall = (ts.currentWeekIdx ?? ts.weeks.first(where: { $0.isCurrent })?.idx)
+        let weekNumber: Int? = curOverall.flatMap { ci in
+            ts.weeks.firstIndex(where: { $0.idx == ci }).map { $0 + 1 }
+        }
+        // Within-phase position · "Phase wk a of b".
+        let phaseWeeks = ts.weeks.filter { TrainPhase(phaseKey: $0.phase) == phase }
+        let inPhase: (Int, Int)? = {
+            guard let ci = curOverall, !phaseWeeks.isEmpty,
+                  let pos = phaseWeeks.firstIndex(where: { $0.idx == ci }) else { return nil }
+            return (pos + 1, phaseWeeks.count)
+        }()
+        // Weeks to race · prefer days_to_race → weeks; else weeks remaining.
+        let weeksToRace: Int? = {
+            if let d = ts.race?.days_to_race, d >= 0 { return max(0, Int((Double(d) / 7).rounded())) }
+            if let n = weekNumber, totalWeeks > 0 { return max(0, totalWeeks - n) }
+            return nil
+        }()
+
+        return Button {
+            // Switch to the Train tab · the full multi-week plan surface.
+            selectedTab = .train
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                // Phase + week position row.
+                HStack(alignment: .center, spacing: 12) {
+                    Capsule().fill(phaseColor)
+                        .frame(width: 4, height: 38)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(phase.label) PHASE")
+                            .font(.body(10, weight: .extraBold)).tracking(1.6)
+                            .foregroundStyle(phaseColor)
+                        if let n = weekNumber, totalWeeks > 0 {
+                            Text("Week \(n) of \(totalWeeks)"
+                                 + (inPhase.map { " · phase wk \($0.0) of \($0.1)" } ?? ""))
+                                .font(.body(14, weight: .extraBold)).tracking(-0.2)
+                                .foregroundStyle(Theme.txt)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    if let w = weeksToRace {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(w)")
+                                .font(.display(26, weight: .bold)).tracking(-1)
+                                .foregroundStyle(Theme.txt)
+                            Text(w == 1 ? "WEEK TO GO" : "WEEKS TO GO")
+                                .font(.body(8.5, weight: .extraBold)).tracking(1)
+                                .foregroundStyle(Theme.txt.opacity(0.55))
+                        }
+                    }
+                }
+
+                // This-week mileage progress.
+                if let planned = ts.weekPlanned, planned > 0 {
+                    let done = ts.weekDone
+                    let frac = min(max(done / planned, 0), 1)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("THIS WEEK")
+                                .font(.body(9, weight: .extraBold)).tracking(1.4)
+                                .foregroundStyle(Theme.txt.opacity(0.5))
+                            Spacer()
+                            Text("\(road1(done)) / \(road1(planned)) mi")
+                                .font(.body(11, weight: .bold))
+                                .foregroundStyle(Theme.txt.opacity(0.8))
+                        }
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.white.opacity(0.10))
+                                    .frame(height: 5)
+                                Capsule().fill(phaseColor)
+                                    .frame(width: geo.size.width * frac, height: 5)
+                            }
+                        }
+                        .frame(height: 5)
+                    }
+                }
+
+                // Next quality session.
+                if let nq = ts.nextQuality, nq.type != "rest" {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(phaseColor)
+                        Text("Next quality")
+                            .font(.body(11, weight: .semibold))
+                            .foregroundStyle(Theme.txt.opacity(0.55))
+                        Text(roadNextQuality(nq))
+                            .font(.body(11, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.85))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                }
+
+                // Footer · the bridge affordance.
+                HStack(spacing: 6) {
+                    Text("See the full plan")
+                        .font(.body(12, weight: .extraBold)).tracking(0.2)
+                        .foregroundStyle(phaseColor)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(phaseColor)
+                }
+                .padding(.top, 2)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous)
+                .stroke(phaseColor.opacity(0.28), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Whole miles clean, fractional miles to one decimal (matches TrainView).
+    private func road1(_ m: Double) -> String {
+        m.truncatingRemainder(dividingBy: 1) == 0
+            ? String(format: "%.0f", m)
+            : String(format: "%.1f", m)
+    }
+
+    /// "Tempo · Tue · 7 mi" line for the next quality session.
+    private func roadNextQuality(_ nq: TrainingNextQuality) -> String {
+        let dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        let day = (nq.dow >= 0 && nq.dow < 7) ? dows[nq.dow] : ""
+        let name = (nq.label?.isEmpty == false) ? nq.label! : nq.type.capitalized
+        let miStr = nq.mi > 0 ? " · \(road1(nq.mi)) mi" : ""
+        return day.isEmpty ? "\(name)\(miStr)" : "\(name) · \(day)\(miStr)"
     }
 
     private func raceTile(_ race: RaceListItem) -> some View {

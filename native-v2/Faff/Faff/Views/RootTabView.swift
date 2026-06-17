@@ -335,7 +335,7 @@ struct RootTabView: View {
                 tabStack(.health) { HealthView(onProfile: { pushProfile = true }) }
             }
             if visitedTabs.contains(.targets) {
-                tabStack(.targets) { TargetsView(onProfile: { pushProfile = true }) }
+                tabStack(.targets) { TargetsView(onProfile: { pushProfile = true }, selectedTab: $selected) }
             }
         }
     }
