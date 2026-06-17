@@ -99,6 +99,24 @@ function mondayOf(iso: string): string {
   return addDays(iso, shift);
 }
 
+/**
+ * #10 (audit 2026-06-16) · the most-recent training-week start on-or-before
+ * `iso`, where the week STARTS on `weekStartDow` (0=Sun..6=Sat). Generalizes
+ * mondayOf — `weekStartBoundaryOf(iso, 1)` IS mondayOf.
+ *
+ * The training week ENDS on the runner's long-run day, so it STARTS the day
+ * after: weekStartDow = (longRunDow + 1) % 7. This is the exact convention
+ * /api/plan/week/route.ts uses (weekStartDow = (longRunDow + 1) % 7), so a
+ * plan_weeks row now spans the SAME 7 days as the WeekStrip window instead of
+ * straddling it for non-Sunday-long runners. For David (long=Sun → start=Mon)
+ * this returns the most-recent Monday — byte-identical to mondayOf, a no-op.
+ */
+function weekStartBoundaryOf(iso: string, weekStartDow: number): string {
+  const dow = new Date(iso + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
+  const shift = -(((dow - weekStartDow) % 7 + 7) % 7);   // days back to the boundary
+  return addDays(iso, shift);
+}
+
 // 2026-06-03 · delegate to lib/training/vdot.parseRaceTime (single
 // canonical parser, imported at the top of this file). Re-exported so
 // the generator-bench keeps its existing test surface. Was a local
@@ -2354,13 +2372,26 @@ async function loadGeneratorInputs(
   // 2026-06-10 · onboarding anchors week 0 at the runner's chosen start
   // day (startDateISO, clamped to ≥ today), else TODAY (startAnchor),
   // so a mid-week signup never sees runs dated before they existed.
-  // Lifecycle regens keep Monday anchoring for clean Mon-Sun weeks. The
-  // race-week math is anchor-agnostic: race day always falls in the final
-  // 7-day block regardless of where week 0 starts.
+  // Lifecycle regens anchor each plan_weeks row to the training-week
+  // boundary. The race-week math is anchor-agnostic: race day always
+  // falls in the final 7-day block regardless of where week 0 starts.
+  //
+  // #10 (audit 2026-06-16) · the lifecycle-regen anchor is now the runner's
+  // training-week-start (day AFTER long_run_day), matching /api/plan/week,
+  // instead of a hardcoded Monday. So a plan_weeks row spans the same 7 days
+  // as the WeekStrip window for non-Sunday-long runners (was: Monday-anchored
+  // rows straddled the strip). For David (long=Sun → start=Mon) the boundary
+  // IS Monday, so weekStartBoundaryOf == mondayOf — a provable no-op. The
+  // onboarding (startDateISO) and start-today paths stay literal: forcing them
+  // to a boundary would date runs before signup / shift the runner's chosen
+  // start. Both runway endpoints snap to the SAME boundary so totalWeeks stays
+  // an exact multiple of 7 (fractional weeks broke phase advancement, the C1
+  // bug class — see composePlan).
+  const weekStartDow = (longRunDow + 1) % 7;  // day after the long run, per /api/plan/week
   const startMondayISO = (startDateISO && startDateISO >= todayISO)
     ? startDateISO
-    : startAnchor === 'today' ? todayISO : mondayOf(todayISO);
-  const totalWeeks = daysBetween(startMondayISO, mondayOf(raceDateISO)) / 7 + 1;
+    : startAnchor === 'today' ? todayISO : weekStartBoundaryOf(todayISO, weekStartDow);
+  const totalWeeks = daysBetween(startMondayISO, weekStartBoundaryOf(raceDateISO, weekStartDow)) / 7 + 1;
   if (totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 
   const isMidBlock = await detectMidBlock(userId);
@@ -2437,8 +2468,10 @@ async function loadGeneratorInputs(
   // 2026-06-02 · ensure totalWeeks is an integer here too · matches
   // the same fix in composePlan. Was producing fractional totalWeeks
   // that broke phase advancement.
+  // #10 · same training-week boundary as startMondayISO above so the runway
+  // count stays an exact multiple of 7 (no-op for David: boundary == Monday).
   const integerTotalWeeks = Math.max(3,
-    Math.floor(daysBetween(startMondayISO, mondayOf(raceDateISO)) / 7) + 1
+    Math.floor(daysBetween(startMondayISO, weekStartBoundaryOf(raceDateISO, weekStartDow)) / 7) + 1
   );
   void integerTotalWeeks;  // computed for the early-return check below
 
