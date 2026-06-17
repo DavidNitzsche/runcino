@@ -4679,6 +4679,37 @@ function GoalReadyBody({ ready }: { ready: NonNullable<FaffSeed['goalReady']> })
 
 function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void }) {
   const goal = seed.goalRace;
+  // AUDIT #34 · the THE GAP tile must read the SAME trajectory-derived status +
+  // projected number the Targets gap panel shows, or the same runner can read
+  // OFF TRACK (red) here and ON TRACK on Targets in one page load. The drift
+  // ladder (goal.goalStatus / .projected / .onTrack / .delta) and the forward
+  // trajectory are two independent engines (TargetsView.tsx documents the
+  // hazard). Canonical = the trajectory; mirror TargetsView's derivation here
+  // and fall back to the drift fields only when there's no trajectory.
+  const goalTraj = goal?.trajectory ?? null;
+  const goalStatusReconciled: 'on-track' | 'watching' | 'off-track' | undefined = goalTraj
+    ? (goalTraj.reachable ? 'on-track' : goalTraj.gapVdot <= 1.5 ? 'watching' : 'off-track')
+    : goal?.goalStatus;
+  // Race-day projected finish = the trajectory hero number Targets renders
+  // (traj.projectedSec). Falls back to the drift-ladder projected string.
+  const goalProjected: string | undefined = goalTraj?.projectedSec != null
+    ? (formatRaceTime(goalTraj.projectedSec) ?? goal?.projected)
+    : goal?.projected;
+  // Delta vs goal from the trajectory gap (positive gapSec = slower than goal =
+  // behind), formatted like seed.ts's drift delta. Falls back to goal.delta.
+  const goalDelta: string | undefined = (() => {
+    if (goalTraj?.gapSec == null) return goal?.delta;
+    const ahead = goalTraj.gapSec <= 0; // gapSec ≤ 0 means projected at/under goal
+    const abs = Math.abs(goalTraj.gapSec);
+    const mins = Math.floor(abs / 60);
+    const secs = Math.round(abs % 60);
+    const mag = mins > 0 ? `${mins} min` : `${secs} sec`;
+    return `${mag} ${ahead ? 'ahead' : 'behind'}`;
+  })();
+  // On-track flag the tile's color/footer branches read, reconciled to the
+  // trajectory status (so green/red here matches Targets' pill).
+  const goalOnTrackReconciled: boolean =
+    goalStatusReconciled != null ? goalStatusReconciled === 'on-track' : Boolean(goal?.onTrack);
   const ready = !goal ? seed.goalReady : null;
   const [hoverBar, setHoverBar] = useState<number | null>(null);
   const bar = hoverBar != null ? seed.volumeBars[hoverBar] : null;
@@ -4710,40 +4741,43 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
               AFC fix 9 · the no-goal state is a real affordance now: the
               tile is clickable (routes to the Goal page) and the copy says
               what tapping does instead of quoting a URL path. */}
+          {/* AUDIT #34 · status / projected / delta below are the reconciled,
+              trajectory-derived values (goalStatusReconciled / goalProjected /
+              goalDelta / goalOnTrackReconciled) so this tile agrees with Targets. */}
           <div className="cdbig" style={{
             color: !goal?.projected ? '#9099A8'
-              : goal?.goalStatus === 'off-track' ? '#FC4D64'
-              : goal?.goalStatus === 'watching' ? '#FFCE8A'
-              : goal.onTrack ? '#3EBD41'
+              : goalStatusReconciled === 'off-track' ? '#FC4D64'
+              : goalStatusReconciled === 'watching' ? '#FFCE8A'
+              : goalOnTrackReconciled ? '#3EBD41'
               : '#FC4D64',
           }}>
-            {goal?.projected ?? goal?.goal ?? '—'}
+            {goalProjected ?? goal?.goal ?? '—'}
           </div>
           <div className="cdlab">{goal?.projected ? 'PROJECTED FINISH' : (goal ? 'TARGET FINISH' : 'NO GOAL SET')}</div>
           {goal?.projected
-            ? (goal.goalStatus === 'watching'
+            ? (goalStatusReconciled === 'watching'
                 ? <div className="cdsub">Goal {goal.goal} · watching</div>
-                : <div className="cdsub">Goal {goal.goal} · {goal.delta}</div>)
+                : <div className="cdsub">Goal {goal.goal} · {goalDelta}</div>)
             : (goal ? <div className="cdsub" style={{ opacity: 0.7 }}>Log a recent race to project</div> : <div className="cdsub" style={{ opacity: 0.7 }}>Pick a goal race ›</div>)}
           <div className="cdbar"><div className="cdfill" style={{
             width: `${goal?.goalPct ?? 0}%`,
-            background: goal?.goalStatus === 'off-track' ? '#FC4D64'
-              : goal?.goalStatus === 'watching' ? '#FFCE8A'
-              : goal?.onTrack ? '#3EBD41'
+            background: goalStatusReconciled === 'off-track' ? '#FC4D64'
+              : goalStatusReconciled === 'watching' ? '#FFCE8A'
+              : goalOnTrackReconciled ? '#3EBD41'
               : '#FC4D64',
           }} /></div>
           <div className="cdwk" style={{
-            color: goal?.goalStatus === 'off-track' ? '#FC4D64'
-              : goal?.goalStatus === 'watching' ? '#FFCE8A'
-              : goal?.onTrack ? '#3EBD41'
+            color: goalStatusReconciled === 'off-track' ? '#FC4D64'
+              : goalStatusReconciled === 'watching' ? '#FFCE8A'
+              : goalOnTrackReconciled ? '#3EBD41'
               : '#FFCE8A',
             opacity: 1,
           }}>
             {goal
               ? (goal.projected
-                  ? (goal.goalStatus === 'watching'
+                  ? (goalStatusReconciled === 'watching'
                       ? `Watching · ${goal.goal} still in play`
-                      : goal.onTrack ? `On track for ${goal.goal}` : `${goal.delta}`)
+                      : goalOnTrackReconciled ? `On track for ${goal.goal}` : `${goalDelta}`)
                   : 'Projection pending')
               : 'No goal race set'}
           </div>
