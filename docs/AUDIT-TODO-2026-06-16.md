@@ -103,12 +103,13 @@ David-approved across the design dialogue. The canonical projection panel (iPhon
 - Re-anchored confidence band (see below) — **drop the `MEDIUM` word** (the readout carries confidence)
 - CUT: "Goal X. 4:54 to close. Most of it is movable." + "doable, not banked" (redundant)
 
-**THE READOUT (replaces the 4:54-TO-CLOSE attribution bar):** four rows + closing line, all from the trajectory object —
-- `EXECUTION` · Nailing every session · `100%` (executionQuality)
-- `PLAN` · Built for it · trains to VDOT 51 · `✓` (planBuiltForGoal + plannedTargetVdot)
-- `PROJECTED GAIN` · +2.3 VDOT of the +3.0 needed · `−0.7` (projectedGainVdot vs goalVdot−currentVdot)
-- `THE LIMITER` · The calendar, not your effort · `6.7 wk` (buildWeeks; the synthesis)
-- line: "6.7 build weeks at plan pace adds +2.3. To reach 1:30: build a touch faster, or confirm it early — beat threshold paces under HR, or a tune-up."
+**THE READOUT (replaces the 4:54-TO-CLOSE attribution bar):** THREE levers + closing line — reframed so they don't contradict (David 2026-06-16: "if the plan trains to 51 how is it too short?"). The old "PLAN: built for it ✓" overclaimed — it means the plan's INTENSITY is goal-capable, not that it delivers the goal in time. Separate intensity (a ✓) from runway (the ✗):
+- `EXECUTION` · Nailing every session · `100%` ✓ (executionQuality)
+- `PLAN INTENSITY` · Hard enough · trains to VDOT 51 (> goal 50.9) · ✓ (planBuiltForGoal + plannedTargetVdot — difficulty is sufficient)
+- `RUNWAY` · 6.7 wks realizes +2.3 of the +3.0 needed · `short` (the ✗ — buildWeeks × rate is the binding constraint, NOT the plan's difficulty or the runner's effort)
+- line: "Not your effort, not the plan — the calendar. To reach 1:30: more build weeks/volume, or confirm fitness early (beat threshold paces under HR, or a tune-up)."
+
+Mechanic to preserve in the copy: the plan's intensity ceiling (51) exceeds the goal (50.9), but adaptation is rate-limited (~0.35 VDOT/wk), so 6.7 weeks realizes +2.3 of the available +3.1 ceiling-gain — short of the +3.0 the goal needs. Intensity sufficient, time insufficient.
 
 **Confidence band — RE-ANCHOR to the race-day projection** (David: re-anchor). Today it centers on the current-fitness projection (`vdotProjectionSec`, 1:34:54) so the band (1:31:56–1:37:52) is slower than the projection shown above it. Center it on `trajectory.projectedSec` (1:30:59 → ~1:28:15–1:33:43) so the band means "where you'll likely finish" and the goal sitting inside it IS the "in reach, not banked" signal. Backend: in `computeGoalProjection`, compute the trajectory BEFORE `computeConfidenceInterval` and pass `centerSec: trajectory?.projectedSec ?? vdotProjectionSec`.
 
