@@ -393,13 +393,26 @@ export function reciteRaceDetail(
 
   // FINISH (past races)
   if (race.is_past && race.finishTime) {
-    const meta = race.matchedRun?.pace ? `pace ${race.matchedRun.pace}` : undefined;
-    facts.push({
-      label: 'FINISH',
-      value: race.finishTime,
-      valueColor: race.pb ? 'green' : 'default',
-      meta: race.pb ? `PB${meta ? ' · ' + meta : ''}` : meta,
-    });
+    const paceMeta = race.matchedRun?.pace ? `pace ${race.matchedRun.pace}` : undefined;
+    // #29 · a provisional finish was auto-filled from a date+distance-matched
+    // Strava/HK run, not a curated chip time. Per CLAUDE.md Race-data Rule 3
+    // it must read as provisional ("Strava elapsed · race to lock in"), never
+    // as an authoritative finish or PB. Suppress the green PB treatment too.
+    if (race.finishProvisional) {
+      facts.push({
+        label: 'FINISH',
+        value: race.finishTime,
+        valueColor: 'default',
+        meta: `Strava elapsed · race to lock in${paceMeta ? ' · ' + paceMeta : ''}`,
+      });
+    } else {
+      facts.push({
+        label: 'FINISH',
+        value: race.finishTime,
+        valueColor: race.pb ? 'green' : 'default',
+        meta: race.pb ? `PB${paceMeta ? ' · ' + paceMeta : ''}` : paceMeta,
+      });
+    }
   }
 
   // TAPER (upcoming)

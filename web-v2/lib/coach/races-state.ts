@@ -17,6 +17,14 @@ export interface RaceRow {
   is_past: boolean;
   days: number;          // negative if past
   finishTime: string | null;
+  // #29 · true when finishTime did NOT come from a curated result
+  // (races.actual_result.finishS or meta.finishTime) but was auto-filled
+  // from a date+distance-matched Strava/HK run's raw moving/elapsed time.
+  // Per CLAUDE.md Race-data Rule 3 (Strava-source data must never display
+  // as authoritative race performance) + Rule 4 (a matched run can be a
+  // GPS over/under-measured activity), consumers must NOT render a
+  // provisional finish as an authoritative PR / personal record.
+  finishProvisional: boolean;
   pb: boolean | null;
   // Race-morning logistics — read from races.meta (camelCase writer) with
   // snake_case fallbacks for older rows written before the naming settled.
@@ -88,6 +96,9 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       is_past,
       days,
       finishTime,
+      // #29 · finishTime here is curated (actual_result.finishS or
+      // meta.finishTime). The Strava-match path below flips this to true.
+      finishProvisional: false,
       pb: m.pb ?? null,
       gun_time: m.startTime ?? m.gun_time ?? m.start_time ?? null,
       wave: m.wave ?? null,
@@ -135,9 +146,18 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       }
       if (best) {
         // Auto-fill finish time + pace from the matched run if not already set.
-        const movingSec = Number(best.movingTimeS) || Number(best.elapsedTimeS) || null;
+        // #2 · COALESCE the moving-time key — webhook-ingested runs carry
+        // movingSec/durationSec, not movingTimeS, so a strict movingTimeS read
+        // returns null for them. Order: movingTimeS (pullSync/watch/HK) →
+        // movingSec (webhook) → elapsedTimeS (last resort).
+        const movingSec = Number(best.movingTimeS) || Number(best.movingSec) || Number(best.elapsedTimeS) || null;
+        // #29 · only mark provisional when we actually fall back to the matched
+        // run's raw time (race.finishTime was null). A curated finish already
+        // present stays authoritative.
+        const wasCurated = race.finishTime != null;
         const finish = race.finishTime ?? fmtDuration(movingSec);
         race.finishTime = finish;
+        if (!wasCurated && finish != null) race.finishProvisional = true;
         race.matchedRun = {
           activity_id: best.id ?? best.activityId ?? `${best.date}-${Number(best.distanceMi).toFixed(2)}`,
           pace: best.avgPaceMinPerMi ?? fmtPace(Number(best.paceSPerMi) || null),

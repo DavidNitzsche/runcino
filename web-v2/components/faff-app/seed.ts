@@ -1498,6 +1498,13 @@ function adaptPRs(races: Races | null, log: LogT | null): PR[] {
   const byDist: Record<string, { val: string; date: string; source: 'race' | 'training' }> = {};
   for (const r of (races?.past ?? [])) {
     if (!r.finishTime) continue;
+    // #29 · skip provisional finishes (auto-filled from a date+distance-matched
+    // Strava/HK run, not a curated chip time). Per CLAUDE.md Race-data Rule 3 a
+    // Strava-source time must never surface as an authoritative personal record;
+    // Rule 4 — the matched run may be a GPS over/under-measured activity. The
+    // training-derived fallback below can still fill the bucket (labeled
+    // "· training"); the race detail page keeps showing the matched effort.
+    if (r.finishProvisional) continue;
     const lbl = (r.distance_label || '').toUpperCase();
     const key = lbl.includes('5K') ? '5K'
       : lbl.includes('10K') ? '10K'
