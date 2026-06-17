@@ -19,6 +19,11 @@ struct TargetsView: View {
     /// `nil` while loading; cold-state when ok but no VDOT yet.
     @State private var projection: ProjectionSummary?
     @State private var projectionLoaded: Bool = false
+    /// Macro-cycle phases + current week · drives the projection card's
+    /// PHASE SPINE (the app's existing training-state source). Seeded from
+    /// cache so the spine paints immediately on cold launch.
+    @State private var trainingState: TrainingState? =
+        AppCache.read(.trainingState, as: TrainingState.self)
     /// New-goal sheet (Volume / Speed / Distance / Habit / Strength / Health).
     /// Toolkit · Family F · POSTs to /api/goals.
     @State private var showNewGoalSheet: Bool = false
@@ -182,7 +187,7 @@ struct TargetsView: View {
 
             // Projection panel if available
             if let p = projection, p.vdot != nil {
-                TargetsProjectionPanel(summary: p)
+                TargetsProjectionPanel(summary: p, trainingState: trainingState)
                 if let age = profile?.physiology.vdot_anchor_age_days {
                     let stale = age >= 120
                     Text("ANCHOR · \((profile?.physiology.vdot_anchor_name ?? "RACE EFFORT").uppercased()) · \(age)D\(stale ? " · STALE" : "")")
@@ -291,12 +296,14 @@ struct TargetsView: View {
         async let r = (try? await API.fetchRaces())
         async let p = (try? await API.fetchProfileState())
         async let f = (try? await API.fetchCoachFacts(surface: "races"))
-        let (rs, pr, fc) = await (r, p, f)
+        async let ts = (try? await API.fetchTrainingState())
+        let (rs, pr, fc, tst) = await (r, p, f, ts)
         await MainActor.run {
             // Preserve cached state on transient failures.
             if let rs { self.races = rs }
             if let pr { self.profile = pr }
             if let fc { self.raceFacts = fc }
+            if let tst { self.trainingState = tst }
         }
         // Projection panel · derive distance from the A-race or fall back
         // to half. Run after races/profile so we can pick up the right
@@ -544,7 +551,7 @@ struct TargetsView: View {
             Group {
                 if let p = projection, p.vdot != nil {
                     VStack(alignment: .leading, spacing: 8) {
-                        TargetsProjectionPanel(summary: p)
+                        TargetsProjectionPanel(summary: p, trainingState: trainingState)
                         // 2026-06-09 · Phase 2 F9 — anchor provenance. The
                         // VDOT rendered with no hint its anchor was months
                         // old (adversarial audit F9: 47.9 was a February
@@ -688,7 +695,7 @@ struct TargetsView: View {
     private func heatColor(_ d: Int) -> Color {
         switch d {
         case ..<75:   return Color(hex: 0xFF5A3C)
-        case ..<140:  return Color(hex: 0xFFA94D)
+        case ..<140:  return Theme.goal
         default:      return Color(hex: 0x5FC9C0)
         }
     }

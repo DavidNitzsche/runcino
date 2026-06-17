@@ -1,640 +1,675 @@
 //
 //  K_TargetsProjection.swift
-//  Family K · Targets projection panel ("Closing the gap").
+//  Family K · Targets PACE PROJECTION card.
 //
-//  Companion to the web GapPanel (web-v2/components/faff-app/views/
-//  GapPanel.tsx). Both surfaces read the SAME composed numbers from
-//  the SAME helpers · iPhone via GET /api/targets/projection.
+//  Rebuilt 2026-06-17 per the design handoff
+//  (design_handoff_pace_projection). The card answers five questions at a
+//  glance, sitting BELOW the big ON PACE / WATCHING / OFF PACE hero on
+//  TargetsView (the hero is out of scope · owned by TargetsView):
 //
-//  Replaces the "PROJECTED · waiting for projection wire" placeholder
-//  + the legacy GapBeam fallback on TargetsView. Direction E from
-//  designs/from Design agent/Targets page/Targets phone reframed
-//  around honesty: steady is the truth, here's what the gap is made
-//  of, here's the cheapest way to close it.
+//    1. Where am I today?      → Today time (equivalent race at current fitness)
+//    2. Where on race day?     → race-day projection + likely range
+//    3. Am I executing?        → EXECUTION read · % of key runs hit
+//    4. Is fitness responding? → FITNESS read · got/need VDOT verdict
+//    5. Where in the build?    → PHASE SPINE · macro-cycle phases + you-marker
+//
+//  Design premise (from the handoff): the plan is ASSUMED to be built to
+//  reach the goal. So the card does not ask "is the plan good enough" · it
+//  isolates the two levers that actually knock a runner off track —
+//  EXECUTION (are you doing the work) and FITNESS (is your body responding).
+//  The state (on / watch / off) recolors the gap value, race-day time,
+//  current-phase highlight, you-marker, and ok-icons/values together.
 //
 //  Layout (top → bottom):
-//    1. Status chip (on_track / watch / off / race_week / cold)
-//    2. Truth headline · one coach sentence, no hype
-//    3. VDOT meta pills · current · held N days · last move
-//    4. Stacked gap bar · Fitness / Conditions / Course / Execution
-//       with controllability tags + provenance footnote
-//    5. Hit list · the cheapest movable seconds (server-composed via
-//       computeProjectionLevers · 5-rule decision tree)
+//    1+2. Today → GAP → Race-day row (3-col)
+//    Summary line · one centered coach sentence, per-state
+//    5.   WHERE YOU ARE IN THE BUILD · phase spine + blurb
+//    3+4. EXECUTION & FITNESS reads · two equal cards
 //
-//  Doctrine: every number is server-derived. There is no client-side
-//  fabrication. The provenance fields (courseSource, conditionsSource,
-//  executionSource) drive the doctrine copy so each chunk says how
-//  honest it is.
+//  Doctrine: display-only. State drives everything. fitnessTime / projTime /
+//  range / execution / VDOT gains are REAL from ProjectionSummary; the phase
+//  spine reads the app's existing TrainingState (phases + currentWeekIdx).
+//  No client-side fabrication — see per-field wiring notes inline.
 //
 
 import SwiftUI
 
-// MARK: - SWATCH palette (matches the HTML mockup)
-
-private enum GapColor {
-    static let fitness    = Color(hex: 0xF3AD38)   // Theme.goal · trainable yellow
-    static let conditions = Theme.race                 // race/tempo slot · partly orange
-    static let course     = Color(hex: 0xD6263C)   // fixed red
-    static let execution  = Color(hex: 0x8A90A0)   // Theme.mute · neutral grey
-
-    static func of(_ key: String) -> Color {
-        switch key {
-        case "fitness":    return fitness
-        case "conditions": return conditions
-        case "course":     return course
-        case "execution":  return execution
-        default:           return Theme.mute
-        }
-    }
-}
-
-// MARK: - Local gap-segment model
+// MARK: - State palette
 //
-// Derived from `ProjectionSummary`'s named fields. The wire model uses
-// named fields (matches the web GoalRace contract); the panel collapses
-// them into rows for rendering.
+// Three states, each carrying its own accent set. Base accents map to the
+// CI-locked Theme tokens (green/goal/over · byte-for-byte with web); the
+// soft/dim/line variants are literal per the handoff (no Theme alias exists).
 
-private struct GapRow: Identifiable {
-    let key: String          // "fitness" | "conditions" | "course" | "execution"
-    let name: String
-    let sec: Int
-    let tag: String          // "Trainable" | "Partly" | "Fixed"
-    let doctrine: String
-    var id: String { key }
-}
+private enum ProjState {
+    case on, watch, off
 
-private func gapRows(from s: ProjectionSummary) -> [GapRow] {
-    var rows: [GapRow] = []
-
-    // Fitness · the residual after the 3 doctrine-priced chunks. Always
-    // surface · "0s · holding fitness" is itself a finding.
-    let fitnessDoctrine = "Pure VDOT math against a flat, neutral-weather reference. The only piece training moves directly."
-    rows.append(GapRow(
-        key: "fitness", name: "Fitness", sec: s.fitnessSec,
-        tag: "Trainable", doctrine: fitnessDoctrine
-    ))
-
-    // Conditions · null when forecast + climate-normals both unknown.
-    // Web GapPanel hides the chunk in that case; iPhone matches.
-    if let c = s.conditionsImpactSec, c > 0 {
-        let provenance = s.conditionsSource == "forecast"
-            ? "Race-day forecast (≤14d window)."
-            : "Climate normals · typical morning at this location, this month."
-        rows.append(GapRow(
-            key: "conditions", name: "Conditions", sec: c,
-            tag: "Partly",
-            doctrine: "\(provenance) Heat above 60°F costs roughly 1% per 5°F. Earlier corral or cooler course recovers some."
-        ))
-    }
-
-    // Course · null when course_library is a stub for this race.
-    if let co = s.courseImpactSec, co > 0 {
-        let elevHint = (s.courseElevGainFtPerMi ?? 0) > 0
-            ? " · \(Int((s.courseElevGainFtPerMi ?? 0).rounded())) ft/mi"
-            : ""
-        rows.append(GapRow(
-            key: "course", name: "Course", sec: co,
-            tag: "Fixed",
-            doctrine: "Net elevation\(elevHint). Fixed by the route · plan for it, do not fight it."
-        ))
-    }
-
-    // Execution · always populated · doctrine copy reflects observed vs default.
-    let execDoctrine: String = {
-        if s.executionSource == "observed", let cv = s.executionCV {
-            let band: String
-            if cv < 0.02 { band = "tight · CV under 2%" }
-            else if cv < 0.04 { band = "typical · CV around 3%" }
-            else { band = "drift · CV above 4%" }
-            return "Pacing-discipline buffer · \(band) across your last \(s.executionN) typed efforts. The most winnable seconds on the list."
-        }
-        return "Pacing-discipline buffer · 30s doctrine default. Will light up as your plan adds typed tempo/threshold work."
-    }()
-    rows.append(GapRow(
-        key: "execution", name: "Execution", sec: s.executionBufferSec,
-        tag: "Trainable", doctrine: execDoctrine
-    ))
-
-    return rows
-}
-
-// MARK: - Status chip
-
-private struct ProjectionStatusChip: View {
-    let status: String
-
-    private var copy: (label: String, tint: Color) {
-        switch status {
-        case "on_track":  return ("ON PACE",  Theme.green)
-        case "watch":     return ("IN REACH", Theme.goal)
-        case "off":       return ("BEHIND",   Theme.over)
-        case "race_week": return ("RACE WEEK", Theme.race)
-        case "cold":      return ("BASELINE NEEDED", Theme.mute)
-        default:          return (status.uppercased(), Theme.mute)
+    var accent: Color {
+        switch self {
+        case .on:    return Theme.green          // 0x3EBD41
+        case .watch: return Theme.goal           // 0xF3AD38
+        case .off:   return Theme.over           // 0xFC4D64
         }
     }
+    /// Soft tint for highlighted phase + race labels.
+    var accentSoft: Color {
+        switch self {
+        case .on:    return Color(hex: 0x86EFA0)
+        case .watch: return Color(hex: 0xFFCE8A)
+        case .off:   return Color(hex: 0xFF9DA8)
+        }
+    }
+    /// Dim fill behind the current phase segment.
+    var accentDim: Color {
+        switch self {
+        case .on:    return Color(hex: 0x3EBD41, alpha: 0.16)
+        case .watch: return Color(hex: 0xF3AD38, alpha: 0.16)
+        case .off:   return Color(hex: 0xFC4D64, alpha: 0.15)
+        }
+    }
+    /// Stroke on the current phase + race segments.
+    var accentLine: Color {
+        switch self {
+        case .on:    return Color(hex: 0x3EBD41, alpha: 0.34)
+        case .watch: return Color(hex: 0xF3AD38, alpha: 0.34)
+        case .off:   return Color(hex: 0xFC4D64, alpha: 0.34)
+        }
+    }
+}
+
+// MARK: - Phase-spine geometry model
+
+private struct SpinePhase {
+    let key: TrainPhase
+    let label: String
+    let dw: Double
+    let isRace: Bool
+}
+
+/// Display weights tuned so late phases don't cram (from the handoff PLAN).
+/// These are render weights, NOT real week counts.
+private let kPhaseDisplayWeight: [TrainPhase: Double] = [
+    .base: 3.0, .build: 2.5, .peak: 1.7, .taper: 1.5, .race: 1.7,
+]
+
+// MARK: - Status icon (check / alert in a circle)
+
+private struct ProjTick: View {
+    let ok: Bool
+    let accent: Color
 
     var body: some View {
-        Text(copy.label)
-            .font(.body(10, weight: .extraBold)).tracking(1.4)
-            .foregroundStyle(copy.tint)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(copy.tint.opacity(0.14), in: Capsule())
-            .overlay(Capsule().stroke(copy.tint.opacity(0.4), lineWidth: 0.6))
-    }
-}
-
-// MARK: - VDOT meta pill
-
-private struct VdotMetaPill: View {
-    let key: String
-    let value: String
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(key.uppercased())
-                .font(.body(9, weight: .bold)).tracking(1.0)
-                .foregroundStyle(Theme.mute)
-            Text(value)
-                .font(.body(11, weight: .extraBold))
-                .foregroundStyle(Theme.ink)
-        }
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(Theme.Glass.fill, in: Capsule())
-        .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 0.8))
-    }
-}
-
-// MARK: - Stacked gap bar
-
-private struct StackedGapBar: View {
-    let rows: [GapRow]
-    let totalSec: Int
-
-    var body: some View {
-        if totalSec <= 0 || rows.isEmpty {
-            EmptyView()
-        } else {
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(rows.filter { $0.sec > 0 }) { row in
-                        let w = max(0, geo.size.width * CGFloat(row.sec) / CGFloat(totalSec))
-                        Rectangle()
-                            .fill(GapColor.of(row.key))
-                            .frame(width: w)
-                    }
-                }
-            }
-            .frame(height: 18)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-        }
-    }
-}
-
-// MARK: - Segment legend rows
-
-private struct GapSegmentRow: View {
-    let row: GapRow
-
-    private var tagTint: Color {
-        switch row.tag {
-        case "Trainable": return Theme.green
-        case "Partly":    return Theme.goal
-        case "Fixed":     return Theme.over
-        default:          return Theme.mute
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
+        ZStack {
             Circle()
-                .fill(GapColor.of(row.key))
-                .frame(width: 8, height: 8)
-            Text(row.name.uppercased())
-                .font(.body(11, weight: .extraBold)).tracking(1.0)
-                .foregroundStyle(Theme.ink)
-            Spacer(minLength: 4)
-            Text(row.tag.uppercased())
-                .font(.body(9, weight: .bold)).tracking(1.0)
-                .foregroundStyle(tagTint)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(tagTint.opacity(0.12), in: Capsule())
-            Text(formatGap(row.sec))
-                .font(.body(12, weight: .extraBold))
-                .foregroundStyle(Theme.ink)
-                .frame(width: 50, alignment: .trailing)
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Hit-list row (server-composed lever)
-
-private struct LeverRow: View {
-    let lever: ProjectionLever
-
-    private var icon: String {
-        // The wire `icon` field is a doctrine name; map to an SF Symbol.
-        switch lever.icon {
-        case "flag":   return "flag.fill"
-        case "bolt":   return "bolt.fill"
-        case "clock":  return "clock.fill"
-        case "shield": return "shield.fill"
-        case "spark":  return "sparkles"
-        default:       return "circle.fill"
-        }
-    }
-
-    private var controlTint: Color {
-        switch lever.controllability {
-        case "Trainable":  return Theme.green
-        case "Logistics":  return Theme.goal
-        case "Smart":      return Theme.race
-        default:           return Theme.mute
-        }
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(controlTint)
-                .frame(width: 22, alignment: .leading)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(lever.title.uppercased())
-                        .font(.body(12, weight: .extraBold)).tracking(0.6)
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text(deltaText)
-                        .font(.body(14, weight: .bold))
-                        .foregroundStyle(deltaTint)
-                }
-                Text(lever.detail)
-                    .font(.body(11, weight: .regular))
-                    .foregroundStyle(Theme.mute)
-                    .lineSpacing(1.5)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 6) {
-                    Text(lever.controllability.uppercased())
-                        .font(.body(9, weight: .bold)).tracking(1.0)
-                        .foregroundStyle(controlTint)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(controlTint.opacity(0.12), in: Capsule())
-                    if !lever.lvtag.isEmpty {
-                        Text(lever.lvtag)
-                            .font(.body(10, weight: .medium))
-                            .foregroundStyle(Theme.mute)
-                    }
-                    Spacer(minLength: 0)
-                    if !lever.projectedTime.isEmpty {
-                        Text("→ \(lever.projectedTime)")
-                            .font(.body(10, weight: .bold))
-                            .foregroundStyle(Theme.mute)
-                    }
+                .fill(ok ? accent.opacity(0.18) : Color(hex: 0x8A90A0, alpha: 0.16))
+                .frame(width: 16, height: 16)
+            if ok {
+                // Check stroked in the accent.
+                CheckShape()
+                    .stroke(accent, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    .frame(width: 16, height: 16)
+            } else {
+                // "!" · vertical stroke + dot, in neutral grey.
+                VStack(spacing: 1.6) {
+                    Capsule()
+                        .fill(Color(hex: 0xC9CED8))
+                        .frame(width: 1.8, height: 4.2)
+                    Circle()
+                        .fill(Color(hex: 0xC9CED8))
+                        .frame(width: 2, height: 2)
                 }
             }
         }
-        .padding(.vertical, 8)
-    }
-
-    private var deltaText: String {
-        let d = lever.deltaSec
-        if d == 0 { return "·" }
-        let sign = d < 0 ? "−" : "+"
-        return "\(sign)\(formatGap(abs(d)))"
-    }
-
-    private var deltaTint: Color {
-        if lever.deltaSec < 0 { return Theme.goal }   // faster = good
-        return Theme.mute
+        .frame(width: 16, height: 16)
     }
 }
 
-// MARK: - Helpers
+/// Check mark matching the handoff path "M4.6 8.2l2.1 2.1 4.7-4.8" in a 16-box.
+private struct CheckShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 16
+        var p = Path()
+        p.move(to: CGPoint(x: 4.6 * s, y: 8.2 * s))
+        p.addLine(to: CGPoint(x: 6.7 * s, y: 10.3 * s))
+        p.addLine(to: CGPoint(x: 11.4 * s, y: 5.5 * s))
+        return p
+    }
+}
 
-private func formatGap(_ sec: Int) -> String {
+// MARK: - Gap arrow (horizontal line + triangle head)
+
+private struct GapArrow: View {
+    let accent: Color
+
+    var body: some View {
+        Canvas { ctx, size in
+            // Scale the 46×10 design coordinate system to the rendered box.
+            let sx = size.width / 46
+            let sy = size.height / 10
+            var line = Path()
+            line.move(to: CGPoint(x: 0, y: 5 * sy))
+            line.addLine(to: CGPoint(x: 40 * sx, y: 5 * sy))
+            ctx.stroke(line, with: .color(accent), lineWidth: 1.6)
+
+            var head = Path()
+            head.move(to: CGPoint(x: 40 * sx, y: 1.5 * sy))
+            head.addLine(to: CGPoint(x: 45 * sx, y: 5 * sy))
+            head.addLine(to: CGPoint(x: 40 * sx, y: 8.5 * sy))
+            head.closeSubpath()
+            ctx.fill(head, with: .color(accent))
+        }
+        .frame(width: 46, height: 10)
+    }
+}
+
+// MARK: - Phase spine (segmented rail + you-marker)
+
+private struct PhaseSpine: View {
+    let st: ProjState
+    let phases: [SpinePhase]
+    let youPhase: TrainPhase
+    let youProgress: Double   // 0…1 fraction through the current phase
+
+    // Design constants (handoff): rail height 13, gap 3, rx 3, y=16, total H=60.
+    private let railH: CGFloat = 13
+    private let railY: CGFloat = 16
+    private let segGap: CGFloat = 3
+    private let totalH: CGFloat = 60
+
+    /// Cumulative segment x-extents + the you-marker x, computed imperatively
+    /// (outside the ViewBuilder · result builders can't take a `for` loop).
+    private func layout(railW: CGFloat) -> (segs: [(SpinePhase, CGFloat, CGFloat)], youX: CGFloat) {
+        let totalDw = phases.reduce(0) { $0 + $1.dw }
+        let scale = totalDw > 0 ? railW / CGFloat(totalDw) : 0
+        var cum: CGFloat = 0
+        var segs: [(SpinePhase, CGFloat, CGFloat)] = []
+        var youX: CGFloat = 0
+        for ph in phases {
+            let x0 = cum * scale
+            cum += CGFloat(ph.dw)
+            let x1 = cum * scale
+            if ph.key == youPhase && !ph.isRace {
+                youX = x0 + (x1 - x0) * CGFloat(min(max(youProgress, 0), 1))
+            }
+            segs.append((ph, x0, x1))
+        }
+        return (segs, youX)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let computed = layout(railW: geo.size.width)
+            let segs = computed.segs
+            let youX = computed.youX
+
+            ZStack(alignment: .topLeading) {
+                // Phase segments + labels.
+                ForEach(Array(segs.enumerated()), id: \.offset) { _, item in
+                    let (ph, x0, x1) = item
+                    let isCurrent = ph.key == youPhase && !ph.isRace
+                    let highlighted = isCurrent || ph.isRace
+                    let w = max(2, x1 - x0 - segGap)
+
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(isCurrent ? st.accentDim : Color.white.opacity(0.07))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .stroke(highlighted ? st.accentLine : Color.clear, lineWidth: 1)
+                        )
+                        .frame(width: w, height: railH)
+                        .offset(x: x0 + segGap / 2, y: railY)
+
+                    Text(ph.label)
+                        .font(.body(9.5, weight: highlighted ? .extraBold : .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(highlighted ? st.accentSoft : Color(hex: 0x737985))
+                        .frame(width: x1 - x0, alignment: .center)
+                        .offset(x: x0, y: railY + railH + 6)
+                }
+
+                // Completed fill up to the you-marker.
+                if youX > segGap / 2 {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(st.accent.opacity(0.32))
+                        .frame(width: youX - segGap / 2, height: railH)
+                        .offset(x: segGap / 2, y: railY)
+                }
+
+                // YOU marker · vertical line + filled circle + label.
+                // Vertical white line spanning the rail (+ overshoot per handoff).
+                Rectangle()
+                    .fill(Color.white)
+                    .frame(width: 2, height: railH + 10)
+                    .offset(x: youX - 1, y: railY - 6)
+                Circle()
+                    .fill(st.accent)
+                    .overlay(Circle().stroke(Theme.card, lineWidth: 2))
+                    .frame(width: 11, height: 11)
+                    .offset(x: youX - 5.5, y: railY + railH / 2 - 5.5)
+                Text("YOU")
+                    .font(.body(8.5, weight: .extraBold))
+                    .tracking(1.0)
+                    .foregroundStyle(Color.white)
+                    .fixedSize()
+                    .frame(width: 40, alignment: .center)
+                    .offset(x: youX - 20, y: 0)
+            }
+        }
+        .frame(height: totalH)
+    }
+}
+
+// MARK: - Time helpers (h:mm:ss / m:ss · mirror pace-data.js sec()/clock())
+
+private func projFormatTime(_ sec: Int?) -> String {
+    guard let sec, sec > 0 else { return "—" }
+    let h = sec / 3600
+    let m = (sec % 3600) / 60
+    let s = sec % 60
+    if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+    return String(format: "%d:%02d", m, s)
+}
+
+/// "m:ss" of an absolute second-delta (the gap / residual values).
+private func projClock(_ sec: Int) -> String {
     let a = Swift.abs(sec)
     let m = a / 60
     let s = a % 60
     return String(format: "%d:%02d", m, s)
 }
 
-private func formatTime(_ sec: Int?) -> String {
-    guard let sec, sec > 0 else { return "—" }
-    let h = sec / 3600
-    let m = (sec % 3600) / 60
-    let s = sec % 60
-    if h > 0 {
-        return String(format: "%d:%02d:%02d", h, m, s)
-    }
-    return String(format: "%d:%02d", m, s)
-}
-
-private func formatVdot(_ v: Double?) -> String {
-    guard let v else { return "—" }
-    return String(format: "%.1f", v)
-}
-
-private func relativeDate(_ iso: String) -> String {
-    guard !iso.isEmpty,
-          let d = ISO8601DateFormatter().date(from: iso + "T12:00:00Z") ??
-                  ISO8601DateFormatter().date(from: iso) else {
-        return iso
-    }
-    let days = Int(Date().timeIntervalSince(d) / 86400)
-    if days < 1 { return "today" }
-    if days < 7 { return "\(days)d ago" }
-    if days < 60 { return "\(days / 7)w ago" }
-    return "\(days / 30)mo ago"
-}
-
-// MARK: - Public panel
+// MARK: - Public panel · the PACE PROJECTION card
 
 struct TargetsProjectionPanel: View {
     let summary: ProjectionSummary
+    /// Optional · drives the phase spine. When nil, a single-phase fallback
+    /// renders so the build never blocks on training-state being present.
+    var trainingState: TrainingState? = nil
 
-    private var rows: [GapRow] { gapRows(from: summary) }
+    // MARK: Derived state (on / watch / off)
+    //
+    // Mirror the ON PACE hero's resolution (TargetsView.goalStatusHeadline)
+    // so hero + card never disagree: aheadOfGoal / on_track / race_week → on,
+    // watch → watch, off → off. The handoff's "execution + fitness levers"
+    // model is preserved inside the reads (each colors independently); the
+    // top-level state follows the server status, the same single source the
+    // hero reads.
+    private var state: ProjState {
+        if summary.aheadOfGoal == true { return .on }
+        switch summary.status {
+        case "on_track", "race_week": return .on
+        case "watch":                 return .watch
+        case "off":                   return .off
+        default:
+            // cold / unknown · fall back to the execution+fitness levers.
+            if !execOk { return .off }
+            return fitOk ? .on : .watch
+        }
+    }
+
+    // MARK: Times
+
+    /// REAL · current-fitness equivalent race time ("if you raced today").
+    private var fitnessSec: Int? { summary.projectionSec }
+    /// REAL · race-day / trajectory projection. Falls back to current-fitness
+    /// when the server has no separate trajectory value.
+    private var projSec: Int? { summary.trajectoryProjectedSec ?? summary.projectionSec }
+    /// REAL · goal finish.
+    private var goalSec: Int? { summary.goalSec }
+
+    /// GAP shown in the connector = today − race-day projection (what the plan
+    /// closes). Mirrors pace-data.js `improveStr`.
+    private var improveSec: Int? {
+        guard let f = fitnessSec, let p = projSec else { return nil }
+        return f - p
+    }
+    /// Residual at race day = projection − goal. Mirrors `projGapStr`.
+    private var projGapSec: Int? {
+        guard let p = projSec, let g = goalSec else { return nil }
+        return p - g
+    }
+    /// reachesGoal = residual ≤ 4s. Toggles "projected finish" vs "+… vs goal".
+    private var reachesGoal: Bool {
+        guard let r = projGapSec else { return true }
+        return r <= 4
+    }
+
+    // MARK: Execution & Fitness reads
+
+    /// REAL · executionQuality (0…1) → percentage. ok ≥ 0.80 (matches the
+    /// handoff: on 100% ok, watch 96% ok, off 72% not-ok).
+    private var execPctText: String {
+        guard let e = summary.executionQuality else { return "—" }
+        return "\(Int((e * 100).rounded()))%"
+    }
+    private var execOk: Bool { (summary.executionQuality ?? 1.0) >= 0.80 }
+
+    /// got = the plan's MODELED projected gain (projectedGainVdot), NOT a fresh
+    /// measured read — David's VDOT is frozen, so a measured read would falsely
+    /// show "Lagging". This keeps the card consistent with the "plan trusts
+    /// itself" model + the ON PACE hero.
+    private var gotVdot: Double { summary.projectedGainVdot ?? 0 }
+    /// need = goalVdot − currentVdot (the gain the plan must deliver).
+    private var needVdot: Double {
+        guard let g = summary.goalVdot, let c = summary.currentVdot else { return 0 }
+        return max(0, g - c)
+    }
+    private var buildRatio: Double {
+        needVdot > 0 ? gotVdot / needVdot : 1.0
+    }
+    /// FITNESS verdict from got/need ratio (handoff thresholds):
+    /// ≥0.95 → Responding (ok) · 0.6–0.95 → Lagging · <0.6 → Stalled.
+    private var fitVerdict: String {
+        if buildRatio >= 0.95 { return "Responding" }
+        if buildRatio >= 0.60 { return "Lagging" }
+        return "Stalled"
+    }
+    private var fitOk: Bool { buildRatio >= 0.95 }
+
+    /// VDOT gain sub · "+2.1 of +3.0 VDOT".
+    private var buildGainSub: String {
+        String(format: "+%.1f of +%.1f VDOT", gotVdot, needVdot)
+    }
+
+    // MARK: Summary line (per-state · coach voice · filled with real times)
+
+    private var summaryLine: String {
+        let goal = projFormatTime(goalSec)
+        let proj = projFormatTime(projSec)
+        switch state {
+        case .on:
+            return "On track for \(goal). You're doing the work and your fitness is responding on schedule."
+        case .watch:
+            return "Tracking to \(proj). Execution's there, but your fitness is responding slower than the plan needs."
+        case .off:
+            return "Slipped to \(proj). Missed key runs are stalling the fitness gains the plan was built on."
+        }
+    }
+
+    // MARK: Phase spine wiring (from TrainingState · the app's existing source)
+
+    /// Macro-cycle phases present in the plan, in canonical order, each carrying
+    /// its display weight. Always appends a trailing Race segment. Falls back to
+    /// the current phase alone when no plan weeks are loaded.
+    private var spinePhases: [SpinePhase] {
+        let order: [TrainPhase] = [.base, .build, .peak, .taper]
+        // Which phases the plan actually contains (from plan weeks).
+        var present: Set<TrainPhase> = []
+        if let weeks = trainingState?.weeks, !weeks.isEmpty {
+            for w in weeks { present.insert(TrainPhase(phaseKey: w.phase)) }
+        } else if let pk = trainingState?.currentPhase {
+            present.insert(TrainPhase(phaseKey: pk))
+        } else {
+            // TODO(data): no TrainingState reachable here · show the current
+            // phase from the projection status as a one-segment fallback so the
+            // spine still renders. Wired from TargetsView in practice.
+            present.insert(youPhase)
+        }
+        var out: [SpinePhase] = order
+            .filter { present.contains($0) }
+            .map { SpinePhase(key: $0, label: $0.label.capitalizedPhase, dw: kPhaseDisplayWeight[$0] ?? 1.5, isRace: false) }
+        if out.isEmpty {
+            out = [SpinePhase(key: youPhase, label: youPhase.label.capitalizedPhase, dw: 2.5, isRace: false)]
+        }
+        out.append(SpinePhase(key: .race, label: "Race", dw: kPhaseDisplayWeight[.race] ?? 1.7, isRace: true))
+        return out
+    }
+
+    /// Current phase · from TrainingState.currentPhase, else the current plan
+    /// week, else base.
+    private var youPhase: TrainPhase {
+        if let pk = trainingState?.currentPhase { return TrainPhase(phaseKey: pk) }
+        if let cur = trainingState?.weeks.first(where: { $0.isCurrent }) {
+            return TrainPhase(phaseKey: cur.phase)
+        }
+        return .base
+    }
+
+    /// Fraction through the current phase, by week position within the phase.
+    private var youProgress: Double {
+        guard let weeks = trainingState?.weeks, !weeks.isEmpty else { return 0.42 }
+        let phaseWeeks = weeks.enumerated().filter {
+            TrainPhase(phaseKey: $0.element.phase) == youPhase
+        }
+        guard !phaseWeeks.isEmpty else { return 0.42 }
+        let firstOffset = phaseWeeks.first!.offset
+        let count = phaseWeeks.count
+        let curOffset = trainingState?.currentWeekIdx
+            ?? weeks.firstIndex(where: { $0.isCurrent })
+            ?? firstOffset
+        // Position the marker mid-way through the current week within the phase.
+        let into = Double(curOffset - firstOffset) + 0.5
+        return min(max(into / Double(count), 0), 1)
+    }
+
+    /// "Build · Week X of Y" meta.
+    private var phaseMeta: String {
+        let name = youPhase.label.capitalizedPhase
+        guard let weeks = trainingState?.weeks, !weeks.isEmpty else {
+            return name
+        }
+        let phaseWeeks = weeks.enumerated().filter {
+            TrainPhase(phaseKey: $0.element.phase) == youPhase
+        }
+        guard !phaseWeeks.isEmpty else { return name }
+        let firstOffset = phaseWeeks.first!.offset
+        let count = phaseWeeks.count
+        let curOffset = trainingState?.currentWeekIdx
+            ?? weeks.firstIndex(where: { $0.isCurrent })
+            ?? firstOffset
+        let weekInPhase = max(1, curOffset - firstOffset + 1)
+        return "\(name) · Week \(min(weekInPhase, count)) of \(count)"
+    }
+
+    /// Phase blurb · short factual description per phase (matches TrainView's
+    /// phaseContextBody voice). Used when no server blurb is available.
+    private var phaseBlurb: String {
+        switch youPhase {
+        case .base:
+            return "Easy miles and long runs build the aerobic base the rest of the plan stacks on."
+        case .build:
+            return "Sharpening speed at threshold and VO2 pace. This is where the big fitness gains are made, turning the aerobic base into race-specific sharpness."
+        case .peak:
+            return "Race-pace work at peak volume. The plan's hardest, most specific block before the taper."
+        case .taper:
+            return "Volume drops, intensity holds. Banking the fitness so you're sharp by race morning."
+        case .race:
+            return "Light activation keeps the legs fresh. The work is done."
+        }
+    }
+
+    // MARK: Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
-            // Trajectory states get the honest race-day line + THE READOUT;
-            // cold / race-week keep the status copy + the gap-attribution bar.
-            if hasReadout { raceDayLine } else { truthHeadline }
-            confidenceBand
-            metaPills
-            if hasReadout {
-                readout
-            } else if summary.totalGapSec > 0 {
-                gapBlock
-            }
+        let st = state
+        VStack(alignment: .leading, spacing: 0) {
+            todayToRaceRow(st)
+            summarySection
+            buildSection(st)
+            readsSection(st)
         }
-        .padding(18)
-        .background(Theme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(EdgeInsets(top: 20, leading: 22, bottom: 18, trailing: 22))
+        .background(Theme.card)            // 0x11141A
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Theme.line, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
 
-    // 1 — Title row + status chip
+    // 1+2 · Today → GAP → Race-day row
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            // The hero number is current fitness ("if you raced today"); the
-            // race-day projection lives on its own line below. Relabel so the
-            // two stop both reading as "the projection" (David 2026-06-16).
-            Text(hasReadout ? "AT TODAY'S FITNESS" : "YOUR PROJECTION")
-                .font(.body(11, weight: .extraBold)).tracking(2.0)
-                .foregroundStyle(Theme.mute)
-            Text(formatTime(summary.projectionSec))
-                .font(.display(30, weight: .bold))
-                .foregroundStyle(Theme.ink)
-        }
-    }
-
-    // 2 — Truth headline + confidence band (range · tier label)
-
-    private var truthHeadline: some View {
-        Text(headlineText)
-            .font(.display(20, weight: .bold))
-            .foregroundStyle(Theme.ink)
-            .lineSpacing(2)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    // "Show both" · the big number is current fitness ("if you raced today");
-    // this states the goal-seeking projection explicitly so the runner sees
-    // BOTH where they are now and where the plan lands them by race day
-    // (David 2026-06-16). Hidden when ahead of goal — the headline already
-    // leads with the trajectory there — and when there's no separate
-    // trajectory value to add.
-    @ViewBuilder
-    private var raceDayLine: some View {
-        if let traj = summary.trajectoryProjectedSec, traj > 0,
-           traj != summary.projectionSec,
-           let goal = summary.goalSec, goal > 0 {
-            // Goal-relative + honest (David 2026-06-16): the trajectory is a
-            // forward model (current fitness + projected build gain), NOT pinned
-            // to the goal. Say plainly whether it lands short or beats it.
-            let short = traj > goal + 4
-            let ahead = traj < goal - 4
-            Text(short
-                 ? "Race day \(formatTime(traj)) · \(formatGap(traj - goal)) short of \(formatTime(goal))."
-                 : ahead
-                   ? "Race day \(formatTime(traj)) · beats \(formatTime(goal)) by \(formatGap(goal - traj))."
-                   : "On track for \(formatTime(goal)) by race day.")
-                .font(.body(14, weight: .semibold))
-                .foregroundStyle(short ? Theme.over : Theme.green)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    // 2026-06-16 · THE READOUT · the three trajectory levers (execution / plan
-    // intensity / runway) — shows WHY, not just the outcome. Replaces the old
-    // gap-attribution bar. Gated to the trajectory states (off cold/race-week).
-    private var hasReadout: Bool {
-        summary.projectedGainVdot != nil && summary.goalVdot != nil
-            && summary.currentVdot != nil
-            && summary.status != "cold" && summary.status != "race_week"
-    }
-
-    @ViewBuilder
-    private var readout: some View {
-        if let exec = summary.executionQuality,
-           let gain = summary.projectedGainVdot,
-           let goalV = summary.goalVdot,
-           let curV = summary.currentVdot {
-            let needed = goalV - curV
-            let isShort = (needed - gain) > 0.15
-            // Three one-line levers + one short synthesis line. Tight enough for
-            // a phone — the label-over-sentence layout was too cramped/wordy
-            // (David 2026-06-16). A thin rule replaces the "THE READOUT" header.
-            VStack(alignment: .leading, spacing: 9) {
-                Rectangle().fill(Color.white.opacity(0.10))
-                    .frame(height: 0.5).padding(.bottom, 2)
-
-                readoutRow("Execution",
-                           exec >= 0.95 ? "nailing it" : exec >= 0.80 ? "on plan" : "slipping",
-                           "\(Int((exec * 100).rounded()))%",
-                           exec >= 0.85 ? Theme.green : Theme.goal)
-                readoutRow("Plan",
-                           summary.planBuiltForGoal == true
-                               ? "hard enough (→\(vdotInt(summary.plannedTargetVdot)))"
-                               : "under-built (\(vdotInt(summary.plannedTargetVdot)))",
-                           summary.planBuiltForGoal == true ? "✓" : "—",
-                           summary.planBuiltForGoal == true ? Theme.green : Theme.goal)
-                readoutRow("Build",
-                           "+\(vdot1(gain)) of +\(vdot1(needed)) to goal",
-                           isShort ? "short" : "on track",
-                           isShort ? Theme.goal : Theme.green)
-
-                Text(!isShort
-                     ? "Executing a goal-built plan — you're on track. Stay on it."
-                     : summary.planBuiltForGoal == false
-                       ? "The plan tops out below goal — it needs a more aggressive build."
-                       : "Behind the plan — hitting the sessions is what closes the gap.")
-                    .font(.body(12)).foregroundStyle(Theme.mute)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 1)
+    private func todayToRaceRow(_ st: ProjState) -> some View {
+        HStack(alignment: .center, spacing: 0) {
+            // LEFT · Today
+            VStack(alignment: .leading, spacing: 0) {
+                eyebrow("TODAY")
+                Text(projFormatTime(fitnessSec))
+                    .font(.display(38, weight: .semibold))
+                    .tracking(-1)
+                    .foregroundStyle(Color.white)
+                    .monospacedDigit()
+                    .padding(.top, 4)
+                Text("at today's fitness")
+                    .font(.body(10.5))
+                    .foregroundStyle(Color(hex: 0x8A90A0))
+                    .padding(.top, 4)
             }
-        }
-    }
 
-    @ViewBuilder
-    private func readoutRow(_ label: String, _ verdict: String, _ chip: String, _ tint: Color) -> some View {
-        HStack(spacing: 8) {
-            Circle().fill(tint).frame(width: 6, height: 6)
-            (Text(label).font(.body(13, weight: .semibold)).foregroundColor(Theme.ink)
-             + Text(" · \(verdict)").font(.body(13)).foregroundColor(Theme.mute))
-                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            Text(chip).font(.body(13, weight: .semibold)).foregroundStyle(tint)
-        }
-    }
 
-    private func vdot1(_ v: Double?) -> String {
-        guard let v else { return "—" }
-        return String(format: "%.1f", v)
-    }
-    private func vdotInt(_ v: Double?) -> String {
-        guard let v else { return "—" }
-        return String(Int(v.rounded()))
-    }
-
-    private func ciTint(_ tier: String) -> Color {
-        tier == "high" ? Theme.green : tier == "medium" ? Theme.goal : Theme.over
-    }
-
-    @ViewBuilder
-    private var confidenceBand: some View {
-        if let ci = summary.confidenceInterval {
-            if hasReadout {
-                // Re-anchored to race day · the range IS the confidence signal
-                // (the goal sits inside it); the readout carries the tier + why,
-                // so no separate MEDIUM word here (David 2026-06-16).
-                Text("likely \(formatTime(ci.lo)) – \(formatTime(ci.hi))")
-                    .font(.body(12, weight: .medium))
-                    .foregroundStyle(Theme.mute)
-            } else if let cl = summary.confidenceLabel {
-                HStack(spacing: 8) {
-                    Text("\(formatTime(ci.lo)) – \(formatTime(ci.hi))")
-                        .font(.body(13, weight: .extraBold))
-                        .foregroundStyle(Theme.ink)
-                    Text("·")
-                        .font(.body(12, weight: .regular))
-                        .foregroundStyle(Theme.mute)
-                    Text("\(cl.word) · \(cl.descriptor)")
-                        .font(.body(11, weight: .medium))
-                        .foregroundStyle(ciTint(cl.tier))
-                }
-            }
-        }
-    }
-
-    private var headlineText: String {
-        // Over-performing · the goal-seeking trajectory leads, mirroring web.
-        // Reframes positively rather than dropping the trajectory time into the
-        // current-fitness gap copy below (which would read as a contradiction).
-        if summary.aheadOfGoal == true {
-            let traj = formatTime(summary.trajectoryProjectedSec ?? summary.projectionSec)
-            let goal = formatTime(summary.goalSec)
-            if let t = summary.trajectoryProjectedSec, let g = summary.goalSec, g > t {
-                return "Trajectory hits \(traj) by race day · \(formatGap(g - t)) faster than \(goal). Recent quality is landing ahead of plan."
-            }
-            return "Tracking to beat \(goal) by race day. Recent quality is landing ahead of plan."
-        }
-        let goal = formatTime(summary.goalSec)
-        let gapSec = summary.totalGapSec
-        switch summary.status {
-        case "cold":
-            return "Need a clean baseline run to project. Race a 5K or threshold rep in the next 10 days."
-        case "race_week":
-            if gapSec == 0 {
-                return "Goal \(goal). Fitness is set. Race week is execution and conditions."
-            }
-            return "Goal \(goal). Fitness is set. \(formatGap(gapSec)) left — pacing and cooling, not training."
-        case "off":
-            return "Goal \(goal). You're \(formatGap(gapSec)) off. The gap below shows where it lives."
-        case "watch":
-            return "Goal \(goal). \(formatGap(gapSec)) to close. Most of it is movable."
-        case "on_track":
-            if gapSec == 0 {
-                return "At \(goal). Hold the plan."
-            }
-            return "Goal \(goal). \(formatGap(gapSec)) to close. Mix below."
-        default:
-            return "Goal \(goal)."
-        }
-    }
-
-    // 3 — VDOT meta pills
-
-    @ViewBuilder
-    private var metaPills: some View {
-        // 2026-06-16 · trimmed to just GOAL. Current VDOT / HELD / last-MOVE all
-        // restate a number that's frozen during a build (VDOT only moves on a
-        // race or time-trial, never weekly) — static noise on a projection
-        // panel (David). The B-goal pill wasn't needed. The readout already
-        // carries the execution / plan-intensity / build-to-goal VDOT story.
-        if let goalV = summary.goalVdot ?? summary.confidenceLabel?.evidence?.goalVdot {
-            HStack(spacing: 6) {
-                VdotMetaPill(key: "GOAL", value: formatVdot(goalV))
-            }
-            .padding(.vertical, 1)
-        }
-    }
-
-    // 4 — Gap bar + segment legend
-
-    @ViewBuilder
-    private var gapBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(formatGap(summary.totalGapSec))
-                    .font(.display(26, weight: .bold))
-                    .foregroundStyle(Theme.ink)
-                Text("TO CLOSE")
-                    .font(.body(10, weight: .extraBold)).tracking(1.6)
-                    .foregroundStyle(Theme.mute)
-                Spacer()
-            }
-            StackedGapBar(rows: rows, totalSec: summary.totalGapSec)
+            // CENTER · gap connector
             VStack(spacing: 0) {
-                let visible = rows.filter { $0.sec > 0 }
-                ForEach(visible) { row in
-                    GapSegmentRow(row: row)
-                    if row.id != visible.last?.id {
-                        Divider().background(Theme.line2)
-                    }
-                }
+                Text("GAP")
+                    .font(.body(8.5, weight: .extraBold))
+                    .tracking(1.0)
+                    .foregroundStyle(Color(hex: 0x737985))
+                Text(improveSec.map { "−\(projClock($0))" } ?? "—")
+                    .font(.display(17, weight: .semibold))
+                    .foregroundStyle(st.accent)
+                    .monospacedDigit()
+                    .padding(.top, 2)
+                GapArrow(accent: st.accent)
+                    .padding(.top, 3)
+            }
+            .padding(.horizontal, 8)
+            .fixedSize()
+
+            Spacer(minLength: 8)
+
+            // RIGHT · Race day
+            VStack(alignment: .trailing, spacing: 0) {
+                eyebrow("RACE DAY")
+                Text(projFormatTime(projSec))
+                    .font(.display(38, weight: .semibold))
+                    .tracking(-1)
+                    .foregroundStyle(st.accent)
+                    .monospacedDigit()
+                    .padding(.top, 4)
+                Text(reachesGoal
+                     ? "projected finish"
+                     : "+\(projClock(projGapSec ?? 0)) vs goal")
+                    .font(.body(10.5))
+                    .foregroundStyle(Color(hex: 0x8A90A0))
+                    .multilineTextAlignment(.trailing)
+                    .padding(.top, 4)
             }
         }
     }
 
-    // 5 — Hit list · server-composed levers from computeProjectionLevers
+    // Summary line · centered coach sentence.
 
-    @ViewBuilder
-    private var hitsBlock: some View {
-        if !summary.levers.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("HIT LIST")
-                    .font(.body(10, weight: .extraBold)).tracking(1.6)
-                    .foregroundStyle(Theme.mute)
-                VStack(spacing: 0) {
-                    ForEach(summary.levers) { lv in
-                        LeverRow(lever: lv)
-                        if lv.id != summary.levers.last?.id {
-                            Divider().background(Theme.line2)
-                        }
-                    }
-                }
+    private var summarySection: some View {
+        Text(summaryLine)
+            .font(.body(13, weight: .medium))
+            .foregroundStyle(Color(hex: 0xC9CED8))
+            .lineSpacing(3)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 14)
+    }
+
+    // 5 · Where you are in the build
+
+    private func buildSection(_ st: ProjState) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
+                .padding(.top, 20)
+
+            HStack(alignment: .firstTextBaseline) {
+                eyebrow("WHERE YOU ARE IN THE BUILD")
+                Spacer(minLength: 8)
+                Text(phaseMeta)
+                    .font(.body(11, weight: .semibold))
+                    .foregroundStyle(Color(hex: 0xC9CED8))
             }
-            .padding(.top, 4)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            PhaseSpine(st: st,
+                       phases: spinePhases,
+                       youPhase: youPhase,
+                       youProgress: youProgress)
+
+            Text(phaseBlurb)
+                .font(.body(12))
+                .foregroundStyle(Color(hex: 0x9AA0AE))
+                .lineSpacing(3)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 12)
         }
+    }
+
+    // 3+4 · Execution & Fitness reads
+
+    private func readsSection(_ st: ProjState) -> some View {
+        HStack(spacing: 10) {
+            readCard(title: "EXECUTION",
+                     ok: execOk,
+                     value: execPctText,
+                     sub: "key runs hit",
+                     accent: st.accent)
+            readCard(title: "FITNESS",
+                     ok: fitOk,
+                     value: fitVerdict,
+                     sub: buildGainSub,
+                     accent: st.accent)
+        }
+        .padding(.top, 18)
+    }
+
+    private func readCard(title: String, ok: Bool, value: String, sub: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.body(9.5, weight: .extraBold))
+                .tracking(1.2)
+                .foregroundStyle(Color(hex: 0x737985))
+            HStack(spacing: 8) {
+                ProjTick(ok: ok, accent: accent)
+                Text(value)
+                    .font(.body(15, weight: .bold))
+                    .tracking(0.1)
+                    .foregroundStyle(ok ? accent : Color(hex: 0xD4D8DF))
+                    .lineLimit(1)
+            }
+            .padding(.top, 11)
+            Text(sub)
+                .font(.body(10.5))
+                .foregroundStyle(Color(hex: 0x737985))
+                .monospacedDigit()
+                .padding(.top, 7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(EdgeInsets(top: 13, leading: 14, bottom: 13, trailing: 14))
+        .background(Color.white.opacity(0.035))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    // Eyebrow label recipe · 10px / 800 / tracked / muted.
+    private func eyebrow(_ text: String) -> some View {
+        Text(text)
+            .font(.body(10, weight: .extraBold))
+            .tracking(1.6)
+            .foregroundStyle(Color(hex: 0x737985))
+    }
+}
+
+// MARK: - Title-case phase label helper
+
+private extension String {
+    /// "BUILD" → "Build" · the spine + meta want title-case from the uppercase
+    /// TrainPhase.label.
+    var capitalizedPhase: String {
+        guard let first = self.first else { return self }
+        return String(first).uppercased() + self.dropFirst().lowercased()
     }
 }
 
@@ -644,11 +679,10 @@ struct TargetsProjectionColdState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("CLOSING THE GAP")
+                Text("PACE PROJECTION")
                     .font(.body(11, weight: .extraBold)).tracking(2.0)
                     .foregroundStyle(Theme.mute)
                 Spacer()
-                ProjectionStatusChip(status: "cold")
             }
             Text("No projection yet · need a clean baseline run.")
                 .font(.display(18, weight: .bold))
@@ -660,12 +694,12 @@ struct TargetsProjectionColdState: View {
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(18)
+        .padding(20)
         .background(Theme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Theme.line, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
 }
