@@ -91,8 +91,16 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
   const snapshots: Array<{ distance: number; sec: number | null }> = [];
   for (const d of distancesToSnapshot) {
     const projSec = vdot != null ? predictRaceTime(vdot, d) : null;
+    // #N1 (audit 2026-06-16) · attach the race slug ONLY to the row whose
+    // distance matches the anchored race. The other canonical distances are
+    // generic fitness-trend projections and must carry race_slug = null —
+    // tagging them with the anchor's slug mislabeled e.g. the 26.2 marathon
+    // row as belonging to a 13.1 half (americas-finest-city). Distance-keyed
+    // readers were unaffected, but the slug column was lying about which race
+    // a projection belonged to.
+    const slugForDistance = (anchorDistance != null && d === anchorDistance) ? anchorSlug : null;
     await recordProjectionSnapshot(
-      userUuid, today, d, vdot, projSec, anchorSlug,
+      userUuid, today, d, vdot, projSec, slugForDistance,
       best?.date ?? null, best?.distance_mi ?? null, 'cron-daily',
     );
     snapshots.push({ distance: d, sec: projSec });
