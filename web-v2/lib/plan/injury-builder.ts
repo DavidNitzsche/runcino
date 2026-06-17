@@ -26,6 +26,14 @@
 import { pool } from '@/lib/db/pool';
 import { randomBytes } from 'crypto';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { loadSettings } from '@/lib/coach/settings';
+
+// 0=Sun..6=Sat · same convention as plan_workouts.dow and generate.ts.
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+const dowOf = (k: string): number => {
+  const i = DAY_KEYS.indexOf(k as (typeof DAY_KEYS)[number]);
+  return i >= 0 ? i : 6; // default Saturday rest (matches DEFAULT_SETTINGS.rest_day)
+};
 
 export interface InjuryBuildInput {
   userId: string;
@@ -47,10 +55,16 @@ function addDays(iso: string, days: number): string {
   return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 }
 
-function mondayOf(iso: string): string {
-  const d = new Date(iso + 'T12:00:00Z');
-  const dow = d.getUTCDay();
-  const shift = dow === 0 ? -6 : 1 - dow;
+/**
+ * #11 · the most-recent training-week start on-or-before `iso`, where the week
+ * starts on `weekStartDow` (0=Sun..6=Sat). Mirrors generate.ts and the
+ * /api/plan/week convention (weekStartDow = (longRunDow + 1) % 7). For David
+ * (long=Sun → start=Mon) this is the most-recent Monday — identical to the old
+ * mondayOf, a no-op.
+ */
+function weekStartBoundaryOf(iso: string, weekStartDow: number): string {
+  const dow = new Date(iso + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
+  const shift = -(((dow - weekStartDow) % 7 + 7) % 7);
   return addDays(iso, shift);
 }
 
@@ -64,14 +78,24 @@ interface DayShape {
 
 /**
  * 7-day shape for one week of INJURY mode, severity-scaled.
- * Returns the same Mon-Sun layout used by plan_workouts.
+ *
+ * #11 (audit 2026-06-16) · honors the runner's preferences instead of a
+ * hardcoded Mon-rest / Fri-rest / Wed-cross-train week with a fixed ~5 active
+ * days. The walk-run CONTENT (severity-scaled phase prescription) stays
+ * protocol-driven per Research/05 §General-Principles; only day PLACEMENT and
+ * the active-day COUNT follow prefs:
+ *   · restDow            — the runner's chosen rest day (was Mon+Fri hardcoded)
+ *   · maxSessions        — cap on walk-run days (profile.weekly_frequency);
+ *                          null preserves the legacy ~4-session shape.
+ * An injured 3-day runner was being prescribed 5 walk-run sessions, and a
+ * Sunday-rest runner was forced onto a Mon/Fri-rest week — both fixed here.
  */
-function injuryWeekShape(weekIdx: number, severity: 'minor' | 'moderate' | 'major'): DayShape[] {
-  // Common 7-day pattern: Mon rest, Tue session, Wed cross-train,
-  // Thu session, Fri rest, Sat session, Sun session.
-  const sessionDays = [1, 2, 3, 5, 6]; // Mon..Sat indices for "active" days
-  void sessionDays;
-
+function injuryWeekShape(
+  weekIdx: number,
+  severity: 'minor' | 'moderate' | 'major',
+  restDow: number,
+  maxSessions: number | null,
+): DayShape[] {
   // Pick this week's prescription based on severity + weekIdx.
   const phase = severity === 'minor'
     ? (weekIdx === 0 ? 'walk-run-4-1' : 'walk-run-2-3')
@@ -92,21 +116,38 @@ function injuryWeekShape(weekIdx: number, severity: 'minor' | 'moderate' | 'majo
   };
   const detail = phaseDetails[phase];
 
-  // Mon: rest. Tue/Thu/Sat: active session. Wed: cross-train. Fri: rest.
-  // Sun: optional active session for moderate+ in later weeks.
+  // Walk-run protocol shape: 1 primary rest day (restDow), 1 cross-train day
+  // (non-impact aerobic, Research/05), and the rest are active walk-run days
+  // capped at the runner's frequency. We always keep ≥1 rest + 1 cross-train
+  // (recovery is the work in a return-to-run block); the cap then trims active
+  // days down to (frequency) by converting the lowest-priority active days back
+  // to rest, never below 1 active day.
+  const crossTrainDow = ((restDow + 3) % 7);  // space the non-impact day from rest
+  // Candidate active days · everything that's not the rest or cross-train day.
+  const activeCandidates: number[] = [];
+  for (let dow = 0; dow < 7; dow++) {
+    if (dow === restDow || dow === crossTrainDow) continue;
+    activeCandidates.push(dow);
+  }
+  // Cap active walk-run days at the stated frequency (when set). Keep the
+  // EARLIEST-in-week candidates so the week front-loads sessions; trailing
+  // candidates beyond the cap become rest. Always keep at least 1 active day.
+  // NULL frequency → preserve the legacy shape: ~2 rest days total (the chosen
+  // rest + one trimmed) + 1 cross-train + the remaining ~4 as walk-run, so a
+  // pre-frequency / Strava-only runner's active-day COUNT is unchanged; only
+  // the rest day moves to their chosen day (was hardcoded Mon/Fri).
+  const activeCount = maxSessions != null
+    ? Math.max(1, Math.min(activeCandidates.length, maxSessions))
+    : Math.max(1, activeCandidates.length - 1);
+  const activeSet = new Set(activeCandidates.slice(0, activeCount));
+
   const days: DayShape[] = [];
   for (let dow = 0; dow < 7; dow++) {
-    if (dow === 1 || dow === 5) {
-      // Mon, Fri = rest
+    if (dow === restDow) {
       days.push({ dow, type: 'rest', subLabel: 'REST', notes: 'Off. Mobility + ice if symptoms warrant.', distance_mi: 0 });
-    } else if (dow === 3) {
-      // Wed = cross-train
+    } else if (dow === crossTrainDow) {
       days.push({ dow, type: 'rest', subLabel: 'CROSS-TRAIN', notes: 'Bike, swim, or pool-run 30-45 min easy. Non-impact aerobic.', distance_mi: 0 });
-    } else if (dow === 0 && severity === 'minor') {
-      // Minor: Sun off in week 0
-      days.push({ dow, type: 'rest', subLabel: 'REST', notes: 'Off.', distance_mi: 0 });
-    } else {
-      // Active session day
+    } else if (activeSet.has(dow)) {
       days.push({
         dow,
         type: 'easy',
@@ -115,6 +156,9 @@ function injuryWeekShape(weekIdx: number, severity: 'minor' | 'moderate' | 'majo
         // Approximate the mileage from duration at ~12 min/mi walk-jog pace
         distance_mi: Math.round((detail.durationMin / 12) * 10) / 10,
       });
+    } else {
+      // Trimmed by the frequency cap → extra rest (rest is the work here).
+      days.push({ dow, type: 'rest', subLabel: 'REST', notes: 'Off. Extra recovery — building back carefully.', distance_mi: 0 });
     }
   }
   return days;
@@ -139,6 +183,28 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
   const severity = (injury.severity ?? 'moderate') as 'minor' | 'moderate' | 'major';
   const totalWeeks = severity === 'minor' ? 2 : severity === 'moderate' ? 3 : 4;
 
+  // #11 (audit 2026-06-16) · honor the runner's layout prefs, same as the race
+  // generator (generate.ts) and seed-from-onboarding. Was hardcoded Mon/Fri
+  // rest + a fixed ~5-session week.
+  //   · rest_day      → which day is REST (loadSettings defaults Saturday).
+  //   · long_run_day  → the training-week boundary (week ENDS on it, starts the
+  //                     day after), matching /api/plan/week so the injury week
+  //                     lands in the WeekStrip window like every other plan.
+  //   · weekly_frequency (profile) → caps the walk-run session count so an
+  //                     injured 3-day runner isn't handed 5 sessions. NULL
+  //                     (David, Strava-only signups, pre-frequency profiles)
+  //                     preserves the legacy active-day shape.
+  const prefs = await loadSettings(userId).catch(() => null);
+  const restDow = dowOf(prefs?.rest_day ?? 'sat');
+  const longRunDow = dowOf(prefs?.long_run_day ?? 'sun');
+  const weekStartDow = (longRunDow + 1) % 7;  // day after the long run, per /api/plan/week
+  const freqRow = (await pool.query<{ f: number | null }>(
+    `SELECT weekly_frequency AS f FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as Array<{ f: number | null }> }))).rows[0];
+  const maxSessions = freqRow?.f != null && Number(freqRow.f) >= 3 && Number(freqRow.f) <= 7
+    ? Number(freqRow.f) : null;
+
   // Archive any active plan for this user first.
   await pool.query(
     `UPDATE training_plans SET archived_iso = NOW()
@@ -149,7 +215,9 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
   // Create the new INJURY plan.
   const planId = id('pln');
   const today = await runnerToday(userId);
-  const startMonday = mondayOf(today);
+  // Anchor week 0 at the runner's training-week boundary (day after long-run
+  // day), not a hardcoded Monday — same convention as /api/plan/week + #10.
+  const startMonday = weekStartBoundaryOf(today, weekStartDow);
   const goalISO = addDays(startMonday, totalWeeks * 7 - 1); // end-of-plan date
 
   await pool.query(
@@ -191,11 +259,14 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
       [weekId, planId, wi, weekStart, phaseId, `INJURY-RETURN · week ${wi + 1} of ${totalWeeks}`],
     );
 
-    const days = injuryWeekShape(wi, severity);
+    const days = injuryWeekShape(wi, severity, restDow, maxSessions);
     for (const d of days) {
       if (d.distance_mi === 0 && d.type !== 'rest') continue;
       const wkoId = id('wko');
-      const dateISO = addDays(weekStart, ((d.dow - 1 + 7) % 7));
+      // #11 · date offset is relative to the week's actual start weekday
+      // (weekStartDow), not a hardcoded Monday, so each day lands on its true
+      // calendar date in the boundary-anchored week (same as generate.ts persist).
+      const dateISO = addDays(weekStart, ((d.dow - weekStartDow + 7) % 7));
       await pool.query(
         `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
                                     is_quality, is_long, notes, sub_label,
