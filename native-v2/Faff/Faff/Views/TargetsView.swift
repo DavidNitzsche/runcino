@@ -210,6 +210,10 @@ struct TargetsView: View {
                         .foregroundStyle(stale ? Theme.Accent.amberBright : Theme.txt.opacity(0.55))
                         .padding(.horizontal, 4)
                 }
+                // Supporting depth (race P3) · same sections as the race-runner
+                // path. Renders per-section only when its data is present.
+                TargetsProjectionDepth(summary: p)
+                    .padding(.top, 4)
             }
         }
     }
@@ -591,6 +595,11 @@ struct TargetsView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, 4)
                         }
+                        // Supporting depth (race P3) · other-distance equivalents,
+                        // likely range, B-goal, gap breakdown. Each renders only
+                        // when its data is present — restrained, not a dashboard.
+                        TargetsProjectionDepth(summary: p)
+                            .padding(.top, 6)
                     }
                 } else if projectionLoaded {
                     TargetsProjectionColdState()
