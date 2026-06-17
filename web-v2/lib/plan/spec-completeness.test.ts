@@ -59,21 +59,25 @@ describe('D1 · buildWorkoutSpec long-finish derivation', () => {
 });
 
 describe('D1 · expandSpecToPhases long-finish (active-plan spec shapes)', () => {
-  it('Jul 19 wk6 falsifier: 17mi + 7mi@HM 412 → [10.0mi easy @ 480, 7.0mi @ HM pace 412]', () => {
+  it('Jul 19 wk6 falsifier: 17mi + 7mi@HM 412 → [10.0mi easy @ 480, 7.0mi @ half marathon pace 412]', () => {
     const spec = { kind: 'long', ...EASY_BAND, finish_mi: 7, finish_pace_s_per_mi: 412, finish_label: 'HM' };
     const phases = expandSpecToPhases({ spec, totalMi: 17, easyPaceSec: 540, recoveryPaceSec: 540, toleranceSec: 20 });
     expect(phases).toHaveLength(2);
     expect(phases![0]).toMatchObject({ type: 'work', label: '10.0 mi easy', distanceMi: 10, targetPaceSPerMi: 480 });
-    expect(phases![1]).toMatchObject({ type: 'work', label: '7.0 mi @ HM pace', distanceMi: 7, targetPaceSPerMi: 412 });
+    // 2026-06-15 · finish tag spells out the full pace name ('half marathon pace',
+    // not 'HM pace') per David's label change (commit aef713df). expand-spec.ts
+    // is authoritative; this assertion tracks the shipped human-readable label.
+    expect(phases![1]).toMatchObject({ type: 'work', label: '7.0 mi @ half marathon pace', distanceMi: 7, targetPaceSPerMi: 412 });
     expect(phases![1].tolerancePaceSPerMi).toBe(12); // tighter than easy build (race-pace quality)
   });
 
-  it('Jun 28 wk3 falsifier: 14mi + 4mi@M 434 → [10.0mi easy @ 480, 4.0mi @ M pace 434]', () => {
+  it('Jun 28 wk3 falsifier: 14mi + 4mi@M 434 → [10.0mi easy @ 480, 4.0mi @ marathon pace 434]', () => {
     const spec = { kind: 'long', ...EASY_BAND, finish_mi: 4, finish_pace_s_per_mi: 434, finish_label: 'M' };
     const phases = expandSpecToPhases({ spec, totalMi: 14, easyPaceSec: 540, recoveryPaceSec: 540, toleranceSec: 20 });
     expect(phases).toHaveLength(2);
     expect(phases![0]).toMatchObject({ label: '10.0 mi easy', distanceMi: 10, targetPaceSPerMi: 480 });
-    expect(phases![1]).toMatchObject({ label: '4.0 mi @ M pace', distanceMi: 4, targetPaceSPerMi: 434 });
+    // 2026-06-15 · 'marathon pace', not 'M pace' (commit aef713df). See above.
+    expect(phases![1]).toMatchObject({ label: '4.0 mi @ marathon pace', distanceMi: 4, targetPaceSPerMi: 434 });
   });
 
   it('plain long (no finish): single flat phase (unchanged behaviour)', () => {
