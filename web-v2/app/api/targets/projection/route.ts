@@ -180,15 +180,24 @@ export async function GET(req: NextRequest) {
     // while the panel asks at the 13.1 default, even though a perfectly good
     // anchor VDOT existed at another distance. The web never saw this because
     // its seed already reads the distance-agnostic anchor.
+    // AUDIT #36 · capture the VDOT ANCHOR (date + distance), not just the VDOT.
+    // computeConfidenceInterval applies a §13.7 ±8% override when the anchor is
+    // >180 days stale (Research/02); the web seed threads it but this route
+    // dropped it, so the iPhone showed a falsely-confident ±2.5% band for the
+    // same stale anchor. Load the anchor unconditionally (one cheap query) so we
+    // have the date even when vdot came from the series — same snapshot source.
+    const anchor = await loadLatestVdotWithAnchor(userId).catch(() => null);
+    if (vdot == null && anchor?.vdot != null) vdot = anchor.vdot;
+    // Last resort · the profile-state VDOT (also carries the anchor fallback).
+    const profileState = await loadProfileState(userId).catch(() => null);
     if (vdot == null) {
-      const anchor = await loadLatestVdotWithAnchor(userId).catch(() => null);
-      if (anchor?.vdot != null) vdot = anchor.vdot;
-    }
-    // Last resort · the profile-state VDOT.
-    if (vdot == null) {
-      const profileState = await loadProfileState(userId).catch(() => null);
       vdot = profileState?.physiology?.vdot ?? null;
     }
+    // Anchor date/distance · snapshot first, profile fallback (mirrors seed.ts).
+    const vdotAnchorDateISO =
+      anchor?.anchorDateISO ?? profileState?.physiology?.vdot_anchor_date ?? null;
+    const vdotAnchorDistanceMi =
+      anchor?.anchorDistanceMi ?? profileState?.physiology?.vdot_anchor_distance_mi ?? null;
     // Derive today's projected race time from whatever VDOT resolved.
     if (projectionSec == null && vdot != null) {
       projectionSec = predictRaceTime(vdot, distanceMi) ?? null;
@@ -203,6 +212,9 @@ export async function GET(req: NextRequest) {
     const gp = (vdot != null && goalSec != null && daysAway != null)
       ? await computeGoalProjection({
           userUuid: userId, goalSec, raceDistanceMi: distanceMi, vdot, daysToRace: daysAway,
+          // AUDIT #36 · thread the anchor so the projection's internal CI gets
+          // the §13.7 stale override, matching the web seed.
+          vdotAnchorDateISO, vdotAnchorDistanceMi,
         }).catch(() => null)
       : null;
     const traj = gp?.trajectory ?? null;
@@ -336,6 +348,9 @@ export async function GET(req: NextRequest) {
       raceDistanceMi: distanceMi,
       status: goalStatus,
       pacing: { cv: executionCV, source: executionSource },
+      // AUDIT #36 · stale-anchor ±8% override (Research/02 §13.7) — the web seed
+      // passes this; without it the iPhone band stayed falsely narrow.
+      vdotAnchorDateISO, vdotAnchorDistanceMi,
     });
     const confidenceLabel = (vdot != null && goalSec != null)
       ? computeConfidenceLabel({
