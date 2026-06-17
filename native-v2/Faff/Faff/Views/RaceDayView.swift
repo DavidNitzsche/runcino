@@ -908,8 +908,10 @@ struct RaceDayView: View {
     private var courseProvenanceLabel: String? {
         guard let lib = detail?.course_library else { return nil }
         let n = lib.contributor_count
-        guard n > 0 else { return nil }
-        if n == 1 { return "CROWD-SOURCED · 1 RUNNER" }
+        // Only surface provenance when it's genuinely a crowd (≥2 runners).
+        // "Crowd-sourced · 1 runner" is just the runner's own imported GPX —
+        // odd to badge as crowd-sourced (David 2026-06-17).
+        guard n >= 2 else { return nil }
         return "CROWD-SOURCED · \(n) RUNNERS"
     }
 
