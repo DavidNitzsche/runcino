@@ -444,7 +444,7 @@ struct TargetsView: View {
         guard let p = projection, p.vdot != nil else { return Theme.race }
         if p.aheadOfGoal == true { return Theme.Accent.mintReady }
         switch p.status {
-        case "on_track":  return Color(hex: 0x5FD08A)
+        case "on_track":  return Theme.green   // app green (#14C08C), not the pastel 0x5FD08A
         case "watch":     return Color(hex: 0xF3AD38)
         case "off":       return Color(hex: 0xFC4D64)
         case "race_week": return Color(hex: 0xF3AD38)

@@ -6,11 +6,14 @@ Master action list from the full-app audit ([FULL-APP-AUDIT-2026-06-16.md](FULL-
 
 - **P1:** #28 drift detector throw · #31 interval heat half-slowdown · #38 race net-elevation
 - **P2:** #6/#54 easy-pace band · #30 paceLabel carry · #32 long-run actual mi · #1 Strava cadence ×2 · #50 tempo paceLabel T · #45 readiness 1-decimal
-- **P3:** #37 VDOT-trend smoothing · #49 run-detail AM/PM · #23 + #56 readiness comments/docstring
+- **P3:** #37 VDOT-trend smoothing · #49 run-detail AM/PM · #23 + #56 readiness comments/docstring · #17 HRV streak baseline
+- **Readiness-math cluster:** #16 dynamic sleep target → score · #18 unified RHR baseline · #19 luteal HRV propagated to every consumer · #20 HRV CV on raw RMSSD + Research/03 bands (commits 72c59af6, 5680fd87; tsc clean, coach suite 135/135)
 - **Projection panel (#51 + David's redesign):** re-anchored confidence band to race-day, THE READOUT (execution/plan/runway→build), "plan trusts itself" projection (on track → project the goal), trimmed pills. **Data + logic shipped; final VISUAL is with David in design** (build-progress climb + range graphic mocked, not yet built).
 - **Heat map:** run-structure-aware route coloring (color by workout phases — reps/tempo — not mile splits; per-mile fallback fixed).
 
-**Remaining (~18, mostly moderate — need careful passes):** #7 mile VDOT · #8 training-VDOT over-reach · #29 Strava PR provisional · #33 work-pace weighting · #34 Today-vs-Targets status · #35 HR gate phase · #36 iPhone CI stale override · #40 race elev caption · #41/#42/#43 Overview volume tiles · #11/#12/#13/#10 plan-gen (injury/ultra/deload/plan_weeks boundary) · #16/#18/#19/#20 readiness math · #2/#3/#4 volume keys · #24/#25/#27 strength · #9/#39/#46/#52 week-boundary readers (Monday → long_run_day) · #14/#17/#22/#26/#48 dead code. Each carries its fix guidance in Parts 1–4 below.
+**Remaining (~13, mostly moderate — need careful passes):** #7 mile VDOT · #8 training-VDOT over-reach · #29 Strava PR provisional · #33 work-pace weighting · #34 Today-vs-Targets status · #35 HR gate phase · #36 iPhone CI stale override · #40 race elev caption · #41/#42/#43 Overview volume tiles · #11/#12/#13/#10 plan-gen (injury/ultra/deload/plan_weeks boundary) · #2/#3/#4 volume keys · #24/#25/#27 strength · #9/#39/#46/#52 week-boundary readers (Monday → long_run_day) · #14/#22/#26/#48 dead code. Each carries its fix guidance in Parts 1–4 below.
+
+> Note: `lib/plan/spec-completeness.test.ts` has 2 PRE-EXISTING failures (not from any audit fix — confirmed by stash-and-rerun during the readiness pass). Worth a look alongside the plan-gen cluster (#11/#12/#13).
 
 **How to read it.** Part 1 is the cross-surface reconciliations: where web and iPhone/watch compute the same metric differently, so a direction has to be picked. Default per David: iPhone is the most-invested surface, so **web changes to match iPhone** — but confirm each, because two items are the reverse (the iPhone is the wrong side, flagged ⚠️). Parts 2–4 are single-source fixes with no direction question.
 
