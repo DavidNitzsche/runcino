@@ -24,6 +24,8 @@ import type { PlannedDay, CompletedRun, EffortKey } from './constants';
 import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { loadSettings } from '@/lib/coach/settings';
+import { weekWindowFor } from '@/lib/coach/week-window';
 import { redirect } from 'next/navigation';
 
 /* ─────────────────────────  Pure helpers  ───────────────────────── */
@@ -917,7 +919,7 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
   return null;
 }
 
-function adaptVolumeBars(log: LogT | null, training: Training | null, today: string): { bars: VolumeBar[]; thisWeek: number; avg: number } {
+function adaptVolumeBars(log: LogT | null, training: Training | null, today: string, longRunDay: Parameters<typeof weekWindowFor>[0]): { bars: VolumeBar[]; thisWeek: number; avg: number } {
   // Prefer real Strava-driven weeks (log-state) for trailing-8 volume —
   // they reflect ACTUAL run mileage and span back well before the active
   // plan started. Fall back to training weeks (plan_workouts.distance_mi
@@ -929,14 +931,20 @@ function adaptVolumeBars(log: LogT | null, training: Training | null, today: str
   // showing ~0 while the real week read a day stale. Noon-UTC anchoring
   // keeps toISOString().slice(0,10) stable through the date math and lines
   // up with log-state's mondayOf() keys. Affects all non-UTC runners.
-  const anchor = new Date(today + 'T12:00:00Z');
-  const dow = (anchor.getUTCDay() + 6) % 7;            // 0=Mon … 6=Sun
-  const monday = new Date(anchor); monday.setUTCDate(anchor.getUTCDate() - dow);
+  // #9/#39 (audit 2026-06-16) · anchor the 8-week window on the runner's
+  // long_run_day boundary (the training week ENDS on the long-run day) via the
+  // shared weekWindowFor helper — the SAME key log-state emits in
+  // log.weeks[].monday. The old hardcoded-Monday anchor matched only
+  // Sunday-long runners (Mon-Sun coincide); a Saturday-long runner's Monday
+  // keys missed log-state's Sun-start keys, so every volume bar read 0.
+  const curStartMs = new Date(weekWindowFor(longRunDay, today).startISO + 'T12:00:00Z').getTime();
 
-  // Build 8 contiguous Mon-Sun buckets ending on the current week.
+  // Build 8 contiguous week buckets ending on the current week. The `monday`
+  // field name is kept for back-compat; it now holds the long_run_day
+  // week-start (= Monday for a Sunday-long runner like David).
   const weeks: { monday: Date; mi: number; isCurrent: boolean }[] = [];
   for (let i = 7; i >= 0; i--) {
-    const m = new Date(monday); m.setUTCDate(monday.getUTCDate() - i * 7);
+    const m = new Date(curStartMs - i * 7 * 86400000);
     weeks.push({ monday: m, mi: 0, isCurrent: i === 0 });
   }
 
@@ -2462,7 +2470,8 @@ export async function buildSeed(): Promise<FaffSeed> {
     }
   }
   const volumeToday = await runnerToday(userId);
-  const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training, volumeToday);
+  const volumeSettings = await loadSettings(userId);
+  const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training, volumeToday, volumeSettings.long_run_day);
   // Load plan adapts AFTER training so we have plan_id to scope the query.
   const planAdapts = await loadPlanAdapts(userId, training?.plan_id ?? null);
   const season = adaptSeason(training, planAdapts.value, goalRace?.distanceMi ?? null);
