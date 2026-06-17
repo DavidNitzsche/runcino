@@ -34,8 +34,8 @@ export interface StrengthDay {
 }
 
 export interface StrengthWeekStatus {
-  weekStartISO: string;          // Monday of the week
-  weekEndISO: string;            // Sunday of the week
+  weekStartISO: string;          // long_run_day window start (Monday for David)
+  weekEndISO: string;            // the long-run day (window start + 6)
   recommended: string[];         // dates the recommender picked
   /** Days where session was logged on a recommended day. */
   confirmed: StrengthDay[];
@@ -54,8 +54,9 @@ export interface StrengthWeekStatus {
  * The recommendedDays must come from the recommender (or
  * glance.recommendedStrengthDays) · this function doesn't re-derive.
  *
- * weekStartISO is the Monday. weekEndISO derived as +6 days. Sessions
- * are pulled from strength_sessions with date in the range.
+ * weekStartISO is the long_run_day window start (#24 · Monday for a
+ * Sunday-long runner). weekEndISO derived as +6 days (the long-run day).
+ * Sessions are pulled from strength_sessions with date in the range.
  */
 export async function loadStrengthWeekStatus(
   userUuid: string,
@@ -174,26 +175,46 @@ function buildSummary(
   bonusCount: number,
   skippedCount: number,
 ): string {
-  if (recommendedCount === 0 && bonusCount === 0) {
+  // #26 (audit 2026-06-16) · the weekly strength target is a COUNT, and the
+  // recommender is logged-aware: once the runner logs a session it stops
+  // recommending that slot, so a session logged on a day that was viable lands
+  // in `bonus`, not `confirmed`. The total work actually done is therefore
+  // confirmed + bonus — NOT confirmed alone. Leading with confirmedCount/
+  // recommendedCount let a fully-trained week read "0/1 · 1 day missed" or
+  // "1 bonus (none scheduled)", both of which understate a met goal. We lead
+  // with sessions DONE vs the week's target and never emit a "0/N missed" line
+  // when bonus sessions already cover it.
+  const sessionsDone = confirmedCount + bonusCount;
+
+  if (recommendedCount === 0 && sessionsDone === 0) {
     return 'No strength surfaced this week';
   }
-  if (recommendedCount === 0 && bonusCount > 0) {
-    return `${bonusCount} bonus session${bonusCount === 1 ? '' : 's'} this week (none scheduled)`;
+  // Nothing scheduled (or the count was already satisfied before any
+  // recommendation surfaced) but the runner trained — credit it plainly,
+  // never as the old understating "N bonus (none scheduled)".
+  if (recommendedCount === 0) {
+    return `${sessionsDone} session${sessionsDone === 1 ? '' : 's'} this week`;
   }
-  const base = `${confirmedCount}/${recommendedCount} this week`;
-  if (bonusCount > 0 && skippedCount > 0) {
-    return `${base} · ${skippedCount} skipped · ${bonusCount} bonus`;
+
+  // The weekly target is a COUNT. `recommendedCount` is the still-open slots
+  // after the logged-aware reduction, so the week's effective target is the
+  // open slots PLUS the sessions already banked. A banked session that filled
+  // an open slot counts toward the target, not "on top of" it.
+  const target = Math.max(recommendedCount, sessionsDone);
+  const base = `${sessionsDone}/${target} this week`;
+
+  // Target met (sessions done cover every still-open recommended day) — read
+  // it confirmed, never as a miss. A recommended day can still be "skipped"
+  // here if a session elsewhere already filled the count; that's not a miss.
+  if (sessionsDone >= target || skippedCount === 0) {
+    return base;
   }
-  if (bonusCount > 0) {
-    return `${base} + ${bonusCount} bonus`;
-  }
-  if (skippedCount > 0 && confirmedCount === 0) {
+
+  // Genuinely under target with recommended days still missed.
+  if (sessionsDone === 0) {
     return `0/${recommendedCount} this week · ${skippedCount} day${skippedCount === 1 ? '' : 's'} missed`;
   }
-  if (skippedCount > 0) {
-    return `${base} · ${skippedCount} skipped`;
-  }
-  return base;
+  return `${base} · ${skippedCount} skipped`;
 }
 
 function addDaysISO(iso: string, n: number): string {
