@@ -141,9 +141,9 @@ export interface GlanceState {
     days_active: number;
   } | null;
   /** 2026-06-01 · per-runner strength day picker output. ISO YYYY-MM-DD
-   *  dates for this week (Mon-Sun), 0-2 entries. Empty array = no
-   *  strength surfaced (race week, plan dormant, no acceptable slot).
-   *  Frontend renders as "+ STRENGTH" annotation on week-strip chips. */
+   *  dates for this week (long_run_day window · #24), 0-2 entries. Empty
+   *  array = no strength surfaced (race week, plan dormant, no acceptable
+   *  slot). Frontend renders as "+ STRENGTH" annotation on week-strip chips. */
   recommendedStrengthDays: string[];
   /** Full strength recommendation envelope · reason + habit +
    *  coachIntent. Null when the recommender failed (frontend falls back

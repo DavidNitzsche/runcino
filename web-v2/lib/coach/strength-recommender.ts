@@ -88,11 +88,12 @@ export interface StrengthPick {
 }
 
 export interface StrengthRecommendation {
-  /** ISO YYYY-MM-DD dates for the target Mon-Sun week. 0-2 entries.
-   *  Empty when: race week within 7d, runner has active injury we know
-   *  about, plan loaded but week is all rest with no good slot.
-   *  Kept for back-compat · prefer `picks` for new consumers (carries
-   *  intensity + timing tags). */
+  /** ISO YYYY-MM-DD dates for the target training week (the long_run_day
+   *  window: weekStartISO .. +6, where the week ENDS on the long-run day · #24,
+   *  audit 2026-06-16). 0-2 entries. Empty when: race week within 7d, runner
+   *  has active injury we know about, plan loaded but week is all rest with no
+   *  good slot. Kept for back-compat · prefer `picks` for new consumers
+   *  (carries intensity + timing tags). */
   recommendedDays: string[];
   /** 2026-06-03 · Rule 14 · enriched picks with intensity + timing. */
   picks: StrengthPick[];
@@ -169,8 +170,16 @@ function sessionFor(intensity: StrengthIntensity): StrengthPick['session'] {
 // ─── Top-level entry ────────────────────────────────────────────────────
 
 /**
- * Recommend strength days for the runner's Mon-Sun week starting on
+ * Recommend strength days for the runner's training week starting on
  * `weekStartISO`. Reads plan + race + history; returns the decision.
+ *
+ * #24 (audit 2026-06-16) · `weekStartISO` is the long_run_day window start —
+ * the recommender inherits whatever start it's handed and windows
+ * weekStartISO..+6. Callers MUST pass the long_run_day-anchored week start so
+ * the strength week agrees with the /api/plan/week strip: glance-state hands
+ * weekDays[0].date (now weekWindowFor-derived), training-state hands
+ * plan_weeks.week_start_iso (long_run_day-anchored by #10). For David (long=Sun)
+ * the start is Monday, so nothing changes.
  *
  * Stable across the week · same (userId, weekStartISO) always returns
  * the same recommendation, so the "+ STRENGTH" chip doesn't jitter
@@ -385,7 +394,14 @@ function phaseFrequencyCap(phaseCtx: PhaseContext, raceCtx: RaceContext): number
   if (raceCtx.kind === 'race_week') return 0;
   // Mode-driven first
   if (phaseCtx.mode === 'recovery') return 0;        // week 1 post-race · 0
-  if (phaseCtx.mode === 'maintenance') return 3;     // off-season · can go higher
+  // #27 (audit 2026-06-16) · off-season allows 2-3/wk (Research/07 §2.1). This
+  // returns the doctrine ceiling of 3, but `target` (recommendStrengthDays)
+  // takes Math.min(this, prefs.daysPerWeek, …), and loadPreferences currently
+  // returns a fixed 2 because profile.strength_days_per_week doesn't exist yet
+  // (see loadPreferences). So the 3 here is INTENTIONALLY INERT until that
+  // column is wired — 2 is a valid off-season cap meanwhile. Wire the column in
+  // loadPreferences (the single binding lever) to let off-season reach 3.
+  if (phaseCtx.mode === 'maintenance') return 3;     // off-season · doctrine ceiling (gated by prefs · #27)
   // Race-prep phase-driven
   if (raceCtx.kind === 'taper_week') return 1;
   const phase = phaseCtx.phaseLabel.toUpperCase();
@@ -429,17 +445,26 @@ async function loadHabit(userUuid: string): Promise<StrengthHabit> {
     return Number(anyEver?.n ?? 0) > 0 ? 'dormant' : 'unknown';
   }
 
-  // Days since most recent session
-  const mostRecent = sessions[0].date;
-  const daysSince = Math.floor((Date.now() - mostRecent.getTime()) / 86400000);
+  // #25 (audit 2026-06-16) · anchor the day math to runner-local today
+  // (calendar-day basis), matching the SQL window above and this file's TZ
+  // discipline. Was using server Date.now() against UTC-midnight DATE values,
+  // so the habit bucket + the 14d/21d dormant trigger could flip by ~1 day
+  // when the server TZ differs from the runner's. todayMs is runner-local
+  // today at UTC-noon (DST-safe); each session date is normalised the same way.
+  const todayMs = Date.parse(today + 'T12:00:00Z');
+  const dayMsOf = (d: Date) => Date.parse(d.toISOString().slice(0, 10) + 'T12:00:00Z');
+  const calDaysSince = (d: Date) => Math.floor((todayMs - dayMsOf(d)) / 86400000);
+
+  // Days since most recent session (calendar days, runner-local).
+  const daysSince = calDaysSince(sessions[0].date);
 
   if (daysSince >= DORMANT_THRESHOLD_DAYS) return 'dormant';
   if (daysSince >= 14) return 'lapsed';
 
-  // Count distinct days (multiple sessions same day = 1 for habit)
-  const distinct7 = new Set(sessions.filter(s => Date.now() - s.date.getTime() <= 7 * 86400000)
+  // Count distinct days (multiple sessions same day = 1 for habit).
+  const distinct7 = new Set(sessions.filter(s => calDaysSince(s.date) <= 7)
                                    .map(s => s.date.toISOString().slice(0, 10))).size;
-  const distinct14 = new Set(sessions.filter(s => Date.now() - s.date.getTime() <= 14 * 86400000)
+  const distinct14 = new Set(sessions.filter(s => calDaysSince(s.date) <= 14)
                                     .map(s => s.date.toISOString().slice(0, 10))).size;
   if (distinct7 >= 1 && distinct14 >= 2) return 'on_track';
   return 'building';
@@ -507,8 +532,14 @@ async function loadPreferences(userUuid: string): Promise<Prefs> {
     `SELECT cross_training_modes FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userUuid],
   ).catch(() => ({ rows: [] }))).rows[0];
-  // profile.strength_days_per_week column doesn't exist yet; default to 2.
-  // When it lands, switch to: r?.strength_days_per_week ?? DEFAULT
+  // #27 (audit 2026-06-16) · this is the SINGLE binding lever on the weekly
+  // strength cap: target = Math.min(daysPerWeek, phaseFrequencyCap, …). The
+  // profile.strength_days_per_week column doesn't exist yet, so we return a
+  // fixed 2 — which clamps phaseFrequencyCap's off-season 3-branch down to 2
+  // (still a valid off-season cap per Research/07 §2.1's 2-3 range). When the
+  // column lands, switch to `r?.strength_days_per_week ?? DEFAULT` here and
+  // off-season can reach 3. Do NOT raise DEFAULT to 3 globally — that would
+  // also bump build/quality weeks (capped at 2 by doctrine).
   return {
     daysPerWeek: DEFAULT_STRENGTH_DAYS_PER_WEEK,
     crossTrainModes: Array.isArray(r?.cross_training_modes) ? r.cross_training_modes : [],
