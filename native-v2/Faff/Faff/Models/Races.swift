@@ -20,9 +20,16 @@ struct RaceDetailResponse: Decodable {
     /// splits (lib/race/pacing.ts). nil on older servers; consumers fall
     /// back to local linear interpolation.
     let pacing: RacePacing?
+    /// Race P5 · the structured fuel recommendation (computeRaceFueling).
+    /// Top-level `fueling` block: target rate, recommended servings, the
+    /// product, and the per-mile / per-minute intake schedule. nil when the
+    /// race has no goal time (an amount with no duration is fiction) or on
+    /// an older server. `isDefault` flags a research default the runner
+    /// hasn't confirmed — the UI then prompts them to enter their own fuel.
+    let fueling: RaceFueling?
 
     enum CodingKeys: String, CodingKey {
-        case race, proximity, course_geometry, course_source, course_library, pacing
+        case race, proximity, course_geometry, course_source, course_library, pacing, fueling
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -32,6 +39,58 @@ struct RaceDetailResponse: Decodable {
         self.course_source = try c.decodeIfPresent(String.self, forKey: .course_source)
         self.course_library = try c.decodeIfPresent(CourseLibraryProvenance.self, forKey: .course_library)
         self.pacing = try? c.decodeIfPresent(RacePacing.self, forKey: .pacing)
+        self.fueling = try? c.decodeIfPresent(RaceFueling.self, forKey: .fueling)
+    }
+}
+
+/// Race P5 · structured race-fueling recommendation from the backend
+/// `fueling` block (mirrors lib/race/execution-plan.ts RaceFuelingPlan).
+/// Every field decode-robust: `recommendedServings` 0 means "no on-course
+/// fuel" (a sub-50-min 5K/10K), `scheduleMi` empty in that case. When
+/// `isDefault` is true the runner hasn't entered their fuel and these are
+/// research defaults the UI prompts them to confirm.
+struct RaceFueling: Decodable {
+    let targetCarbsPerHourG: Int
+    let recommendedServings: Int
+    let productName: String
+    let carbsPerServingG: Int
+    let totalCarbsG: Int
+    let scheduleMi: [FuelStop]
+    let scheduleMin: [Int]
+    let isDefault: Bool
+    let shortLine: String?
+    let citation: String?
+
+    enum CodingKeys: String, CodingKey {
+        case targetCarbsPerHourG, recommendedServings, productName, carbsPerServingG
+        case totalCarbsG, scheduleMi, scheduleMin, isDefault, shortLine, citation
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.targetCarbsPerHourG = c.decodeFlexInt(forKey: .targetCarbsPerHourG) ?? 0
+        self.recommendedServings = c.decodeFlexInt(forKey: .recommendedServings) ?? 0
+        self.productName = (try? c.decodeIfPresent(String.self, forKey: .productName)) ?? "gel"
+        self.carbsPerServingG = c.decodeFlexInt(forKey: .carbsPerServingG) ?? 0
+        self.totalCarbsG = c.decodeFlexInt(forKey: .totalCarbsG) ?? 0
+        self.scheduleMi = (try? c.decodeIfPresent([FuelStop].self, forKey: .scheduleMi)) ?? []
+        self.scheduleMin = (try? c.decodeIfPresent([Int].self, forKey: .scheduleMin)) ?? []
+        self.isDefault = (try? c.decodeIfPresent(Bool.self, forKey: .isDefault)) ?? false
+        self.shortLine = try? c.decodeIfPresent(String.self, forKey: .shortLine)
+        self.citation = try? c.decodeIfPresent(String.self, forKey: .citation)
+    }
+}
+
+/// One scheduled intake stop · the mile to take a serving + elapsed minutes
+/// at goal pace. The watch reads `mi`; the phone shows both.
+struct FuelStop: Decodable {
+    let mi: Double
+    let atMin: Int
+
+    enum CodingKeys: String, CodingKey { case mi, atMin }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.mi = (try? c.decodeIfPresent(Double.self, forKey: .mi)) ?? 0
+        self.atMin = c.decodeFlexInt(forKey: .atMin) ?? 0
     }
 }
 

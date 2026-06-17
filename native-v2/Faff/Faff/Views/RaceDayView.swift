@@ -15,10 +15,6 @@ struct RaceDayView: View {
     @State private var detail: RaceDetailResponse?
     @State private var raceFacts: CoachFactsBlock?
     @State private var projection: ProjectionSummary?
-    /// Watch workout payload for the race date · carries gelsMi for the
-    /// fueling strip on race-week. nil when no workout is scheduled or
-    /// the race is past.
-    @State private var raceWatchWorkout: WatchWorkout?
     /// GPX file-picker toggle · drives the .fileImporter sheet under the
     /// CourseAnnotations.stub upload affordance.
     @State private var showGpxPicker: Bool = false
@@ -33,6 +29,9 @@ struct RaceDayView: View {
     /// (race P2) · per-mile splits, B-goal trigger, heat tree, warm-up
     /// timeline. nil before load, or when the server 404s (no goal set).
     @State private var execPlan: RaceExecutionPlan?
+    /// Post-race retro sheet toggle (race P5) · opens RaceRetroSheet for a
+    /// PAST race so the runner can log their finish time + how it went.
+    @State private var showRetroSheet: Bool = false
 
     var body: some View {
         ZStack {
@@ -157,12 +156,18 @@ struct RaceDayView: View {
                         .padding(.top, 30)
                     }
 
-                    // 3 · FUELING — clean gel timeline across the course.
-                    if let gels = raceGelsMi, !gels.isEmpty,
-                       let totalMi = detail?.race.distance_mi, totalMi > 0,
+                    // 3 · FUELING — the real backend recommendation (race P5).
+                    // Reads the top-level `fueling` block: target rate, servings
+                    // to carry, the product, and the per-mile intake schedule.
+                    // When isDefault the runner hasn't entered their fuel, so we
+                    // show the sensible default plan with a prompt to enter their
+                    // own. recommendedServings 0 = a sub-50-min race that needs no
+                    // on-course fuel; we skip the section rather than show "0 gels".
+                    if let fuel = detail?.fueling,
+                       fuel.recommendedServings > 0,
                        detail?.race.is_past != true {
-                        section(title: "FUELING", right: "\(gels.count) GELS") {
-                            fuelingCard(gelsMi: gels, totalMi: totalMi)
+                        section(title: "FUELING", right: fuelingRightLabel(fuel)) {
+                            fuelingPlanCard(fuel)
                         }
                         .padding(.top, 30)
                     }
@@ -201,6 +206,19 @@ struct RaceDayView: View {
                         .padding(.top, 30)
                     }
 
+                    // Past race · the retrospective. Today the page only SHOWS
+                    // the finish + PB chip with no way to enter the result or
+                    // reflect on it (race P5). This surfaces a log-it / how-it-
+                    // went affordance: the finish time → POST /api/race/result
+                    // (authoritative chip time, fires the recalc + next plan),
+                    // and felt / execution / notes → PATCH /api/race.
+                    if detail?.race.is_past == true {
+                        section(title: "THE RETRO", right: nil) {
+                            retroCard
+                        }
+                        .padding(.top, 30)
+                    }
+
                     Spacer(minLength: 80)
                 }
             }
@@ -230,6 +248,20 @@ struct RaceDayView: View {
                     // Reload detail + projection · the server already ran the
                     // auto-rebuild + VDOT/LTHR recalc, so a fresh GET reflects
                     // the new distance / date / goal and the re-paced splits.
+                    Task { await load() }
+                }
+            )
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showRetroSheet) {
+            RaceRetroSheet(
+                slug: raceSlug,
+                raceName: detail?.race.name ?? "Race",
+                seedFinish: detail?.race.finishTime,
+                onSaved: {
+                    // The result POST fires a fresh projection + VDOT recalc
+                    // and the next-race plan server-side, so reload to pull
+                    // the locked finish + PB state.
                     Task { await load() }
                 }
             )
@@ -690,38 +722,165 @@ struct RaceDayView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
     }
 
-    private func fuelingCard(gelsMi: [Double], totalMi: Double) -> some View {
-        let distLabel = totalMi.truncatingRemainder(dividingBy: 1) == 0
-            ? "\(Int(totalMi))" : String(format: "%.1f", totalMi)
+    // MARK: - Fueling (race P5 · backend `fueling` block)
+
+    /// Right-rail label · servings to carry. "5 GELS" / "1 GEL". The product
+    /// noun is generic ("gel") on the default plan, so keep it as GELS there.
+    private func fuelingRightLabel(_ f: RaceFueling) -> String {
+        let n = f.recommendedServings
+        return n == 1 ? "1 GEL" : "\(n) GELS"
+    }
+
+    /// FUELING · the coach amount + the per-mile gel timeline. The headline
+    /// line reads "Carry 5 × Maurten Gel 100 · one every ~25 min ≈ 75 g/hr",
+    /// then the schedule strip places each gel on the course by mile. When
+    /// the runner hasn't entered fuel (isDefault) the same plan shows under a
+    /// clear "Enter your race fuel →" prompt that opens the editor. Gels are
+    /// not a status colour — they ride Theme.goal (the amber milestone token),
+    /// not a green/over semantic.
+    private func fuelingPlanCard(_ f: RaceFueling) -> some View {
+        let totalMi = detail?.race.distance_mi ?? 0
         return VStack(alignment: .leading, spacing: 14) {
-            GeometryReader { geo in
-                let w = geo.size.width
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.12)).frame(height: 3)
-                    ForEach(Array(gelsMi.enumerated()), id: \.offset) { _, mi in
-                        let x = CGFloat(min(1, max(0, mi / totalMi))) * w
-                        Circle()
-                            .fill(Theme.goal)
-                            .frame(width: 11, height: 11)
-                            .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
-                            .position(x: max(5, min(w - 5, x)), y: 6)
+            // Headline · what to carry, how often, what rate it hits.
+            Text(fuelHeadline(f))
+                .font(.body(14, weight: .bold))
+                .foregroundStyle(Theme.txt)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(2)
+
+            // Mile-anchored gel timeline (skipped if we have no distance to
+            // place the stops against · the headline still carries the plan).
+            if totalMi > 0, !f.scheduleMi.isEmpty {
+                GeometryReader { geo in
+                    let w = geo.size.width
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.12)).frame(height: 3)
+                        ForEach(Array(f.scheduleMi.enumerated()), id: \.offset) { _, stop in
+                            let x = CGFloat(min(1, max(0, stop.mi / totalMi))) * w
+                            Circle()
+                                .fill(Theme.goal)
+                                .frame(width: 11, height: 11)
+                                .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                                .position(x: max(5, min(w - 5, x)), y: 6)
+                        }
                     }
                 }
+                .frame(height: 12)
+                HStack {
+                    Text("START").font(.body(9, weight: .extraBold)).tracking(1)
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                    Spacer()
+                    Text("FINISH · \(miLabel(totalMi)) MI").font(.body(9, weight: .extraBold)).tracking(1)
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                }
+                Text(f.scheduleMi.enumerated().map { i, stop in
+                        "Gel \(i + 1) · mi \(Int(stop.mi.rounded()))"
+                    }.joined(separator: "   "))
+                    .font(.body(11, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(height: 12)
-            HStack {
-                Text("START").font(.body(9, weight: .extraBold)).tracking(1)
-                    .foregroundStyle(Theme.txt.opacity(0.5))
-                Spacer()
-                Text("FINISH · \(distLabel) MI").font(.body(9, weight: .extraBold)).tracking(1)
+
+            // Default-plan prompt · the runner hasn't entered their fuel, so
+            // this is a research default. Invite them to make it theirs.
+            if f.isDefault {
+                Divider().background(Color.white.opacity(0.08))
+                Button { showEditSheet = true } label: {
+                    HStack(spacing: 6) {
+                        Text("Enter your race fuel")
+                            .font(.body(12, weight: .extraBold))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.goal)
+                }
+                .buttonStyle(.plain)
+                Text("Showing a sensible default until you set your gel.")
+                    .font(.body(10.5, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.5))
             }
-            Text(gelsMi.enumerated().map { i, mi in "Gel \(i + 1) · mi \(Int(mi.rounded()))" }
-                    .joined(separator: "   "))
-                .font(.body(11, weight: .semibold))
-                .foregroundStyle(Theme.txt.opacity(0.65))
-                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(14)
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    /// "Carry 5 × Maurten Gel 100 · one every ~25 min ≈ 75 g/hr". Built from
+    /// the structured block so the noun + count agree with the schedule. The
+    /// cadence (~N min) is recovered from the first schedule gap; the rate is
+    /// the server's targetCarbsPerHourG.
+    private func fuelHeadline(_ f: RaceFueling) -> String {
+        let product = (f.productName.isEmpty || f.productName == "gel") ? "gel" : f.productName
+        var line = "Carry \(f.recommendedServings) × \(product)"
+        if let gap = fuelCadenceMin(f) {
+            line += " · one every ~\(gap) min"
+        }
+        if f.targetCarbsPerHourG > 0 {
+            line += " ≈ \(f.targetCarbsPerHourG) g/hr"
+        }
+        return line + "."
+    }
+
+    /// Recover the intake cadence (minutes between gels) from the schedule's
+    /// first gap. nil when there's only one stop.
+    private func fuelCadenceMin(_ f: RaceFueling) -> Int? {
+        guard f.scheduleMin.count >= 2 else { return nil }
+        let gap = f.scheduleMin[1] - f.scheduleMin[0]
+        return gap > 0 ? gap : nil
+    }
+
+    // MARK: - Post-race retro (race P5)
+
+    /// THE RETRO card · two states. With a logged finish it reads back the
+    /// time + PB chip and offers "Edit result". With no finish yet it invites
+    /// the runner to log it. Either way the button opens RaceRetroSheet, which
+    /// owns the finish-time → /api/race/result write and the felt / execution
+    /// / notes → PATCH /api/race write.
+    private var retroCard: some View {
+        let hasFinish = (detail?.race.finishTime?.isEmpty == false)
+        let isPB = detail?.race.pb == true
+        let pbHex: UInt32 = 0xF5C518
+        return VStack(alignment: .leading, spacing: 12) {
+            if hasFinish, let finish = detail?.race.finishTime {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(finish)
+                        .font(.display(28, weight: .bold)).tracking(-0.5)
+                        .foregroundStyle(isPB ? Color(hex: pbHex) : Theme.txt)
+                    Text(isPB ? "FINISHED · PERSONAL BEST" : "FINISHED")
+                        .font(.body(9.5, weight: .extraBold)).tracking(1.4)
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                    Spacer()
+                }
+                Text("Tap below to add how it went, or correct the time.")
+                    .font(.body(11, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Log your result")
+                    .font(.body(14, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+                Text("Add your chip time so the coach can recalibrate fitness off the race. You can note how it went too.")
+                    .font(.body(11, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+            Divider().background(Color.white.opacity(0.08))
+            Button { showRetroSheet = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: hasFinish ? "pencil" : "flag.checkered")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(hasFinish ? "Edit result" : "Log result")
+                        .font(.body(13, weight: .extraBold))
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(Theme.race)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
@@ -823,15 +982,6 @@ struct RaceDayView: View {
         await MainActor.run {
             self.detail = rd; self.raceFacts = fc; self.projection = pj
             self.execPlan = xp?.plan
-        }
-        // Pull the watch workout for the race date so we can read
-        // gelsMi for GelMileMarkers. Fires only when the race is
-        // upcoming AND within ~6 weeks (avoid the cost on far-out races).
-        if let date = rd?.race.date,
-           rd?.race.is_past != true,
-           let days = rd?.race.days, days >= 0, days <= 42 {
-            let w = try? await API.fetchWatchWorkout(date: date)
-            await MainActor.run { self.raceWatchWorkout = w }
         }
     }
 
@@ -996,25 +1146,14 @@ struct RaceDayView: View {
             .stroke(Theme.Glass.line, lineWidth: 1))
     }
 
-    // MARK: - Toolkit helpers (CountdownLadder + VDOTPredictionTable + GelMileMarkers)
-
-    /// Client-side gel schedule when the watch workout payload doesn't carry
-    /// gelsMi. ~1.7 gels/hr, evenly spaced, last two are caffeine.
-    /// Mirrors web raceDetail.ts:buildGels.
-    private var computedGelsMi: [Double]? {
-        guard let gs = parsedGoalSec,
-              let dist = detail?.race.distance_mi, dist > 0,
-              detail?.race.is_past != true else { return nil }
-        let hours = Double(gs) / 3600.0
-        let total = max(1, Int((hours * 1.7).rounded()))
-        return (1...total).map { i in Double(i) / Double(total + 1) * dist }
-    }
-
-    /// Gel mile points — watch payload first, computed schedule as fallback.
-    private var raceGelsMi: [Double]? {
-        if let gels = raceWatchWorkout?.gelsMi, !gels.isEmpty { return gels }
-        return computedGelsMi
-    }
+    // MARK: - Toolkit helpers (CountdownLadder + VDOTPredictionTable)
+    //
+    // The fueling strip now reads the backend `fueling` block (race P5 ·
+    // fuelingPlanCard) — the coach's amount + schedule, not a client-side
+    // gels-per-hour guess. The old `computedGelsMi` / `raceGelsMi` heuristic
+    // (and the watch-workout fetch that fed them) are removed: two sources of
+    // truth for the same gel timeline is exactly the "competing fueling UI"
+    // the spec calls out.
 
     // MARK: - Race header status (RaceStatusDot)
 
@@ -1328,4 +1467,146 @@ struct RaceDayView: View {
         return ""
     }
 
+}
+
+// MARK: - Post-race retro sheet (race P5)
+
+/// Log a race result + reflection for a PAST race. Two writes, sequenced:
+///   1. The finish time (+ optional avg HR) → POST /api/race/result. That's
+///      the authoritative chip-time write — it beats raw Strava elapsed (the
+///      race-data source-of-truth rule), fires fresh projection snapshots +
+///      a VDOT recalc, archives the active plan, and auto-generates the next
+///      A/B race's plan. The runner types "1:29:45"; the server parses it.
+///   2. How it went (felt / execution / notes) → PATCH /api/race (meta
+///      passthrough). Sent only when the runner filled something in.
+/// Either write can stand alone — a runner can log just the time, or just a
+/// reflection on a finish Strava already matched.
+struct RaceRetroSheet: View {
+    let slug: String
+    let raceName: String
+    /// Prefill the finish field from a finish already on the race (a curated
+    /// result or a Strava-matched time the runner is confirming).
+    var seedFinish: String? = nil
+    var onSaved: () -> Void = {}
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var finish: String = ""
+    @State private var avgHr: String = ""
+    @State private var felt: String = ""          // "great" / "ok" / "rough"
+    @State private var execution: String = ""     // free text · how the plan held
+    @State private var notes: String = ""
+    @State private var saving: Bool = false
+    @State private var error: String? = nil
+
+    // Coach-voice felt options · no hype, plain words.
+    private let feltOptions = ["", "strong", "solid", "even", "tough", "fell apart"]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Finish time · e.g. 1:29:45", text: $finish)
+                        .keyboardType(.numbersAndPunctuation)
+                    TextField("Average HR · bpm (optional)", text: $avgHr)
+                        .keyboardType(.numberPad)
+                } header: {
+                    Text("RESULT")
+                } footer: {
+                    Text("Your chip time. The coach recalibrates fitness off it and updates the plan for your next race. Adding HR also recalibrates your threshold.")
+                        .font(.body(11))
+                }
+                Section {
+                    Picker("How it felt", selection: $felt) {
+                        ForEach(feltOptions, id: \.self) { opt in
+                            Text(opt.isEmpty ? "—" : opt.capitalized).tag(opt)
+                        }
+                    }
+                    TextField("How the plan held up", text: $execution, axis: .vertical)
+                        .lineLimit(2...4)
+                    TextField("Anything to remember", text: $notes, axis: .vertical)
+                        .lineLimit(2...5)
+                } header: {
+                    Text("HOW IT WENT (optional)")
+                }
+                if let err = error {
+                    Section { Text(err).foregroundStyle(.red).font(.body(13)) }
+                }
+            }
+            .navigationTitle(raceName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "Saving…" : "Save") {
+                        Task { await save() }
+                    }
+                    .disabled(saving || !hasSomething)
+                }
+            }
+            .onAppear {
+                if finish.isEmpty, let s = seedFinish, !s.isEmpty { finish = s }
+            }
+        }
+    }
+
+    /// Save is enabled when the runner entered a finish time OR any reflection
+    /// field · a blank sheet has nothing to write.
+    private var hasSomething: Bool {
+        !trimmed(finish).isEmpty || !trimmed(felt).isEmpty
+            || !trimmed(execution).isEmpty || !trimmed(notes).isEmpty
+    }
+
+    private func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
+
+    private func save() async {
+        saving = true
+        error = nil
+        let hrInt = Int(trimmed(avgHr))
+        let hr: Int? = (hrInt ?? 0) > 0 ? hrInt : nil
+
+        var ok = true
+
+        // 1 · authoritative finish time → /api/race/result (carries HR).
+        let finishStr = trimmed(finish)
+        if !finishStr.isEmpty {
+            // Guard the format so we don't POST garbage · RaceClock mirrors the
+            // server's h:mm:ss / m:ss parser.
+            guard RaceClock.seconds(from: finishStr) != nil else {
+                await MainActor.run {
+                    error = "That finish time doesn't look right. Use 1:29:45 or 45:12."
+                    saving = false
+                }
+                return
+            }
+            ok = await API.postRaceResult(slug: slug, finishDisplay: finishStr, avgHrBpm: hr)
+        }
+
+        // 2 · reflection → PATCH /api/race (only the filled fields). avgHr is
+        // also passed here so a reflection-only save (no finish) still records
+        // it · the result POST already wrote it when a finish was present.
+        if ok {
+            var retro: [String: Any] = [:]
+            if !trimmed(felt).isEmpty { retro["retroFelt"] = trimmed(felt) }
+            if !trimmed(execution).isEmpty { retro["retroExecution"] = trimmed(execution) }
+            if !trimmed(notes).isEmpty { retro["retroNotes"] = trimmed(notes) }
+            if finishStr.isEmpty, let hr { retro["avgHrBpm"] = hr }
+            if !retro.isEmpty {
+                do { try await API.submitRaceRetro(slug: slug, body: retro) }
+                catch { ok = false }
+            }
+        }
+
+        await MainActor.run {
+            if ok {
+                onSaved()
+                dismiss()
+            } else {
+                error = "Could not save. Check your connection and try again."
+                saving = false
+            }
+        }
+    }
 }

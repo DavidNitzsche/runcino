@@ -516,6 +516,12 @@ enum API {
     /// blank B-goal or bib never clobbers an existing value (the backend only
     /// touches keys present in the payload). Pass an explicit empty string to
     /// clear a field the runner deleted.
+    /// Race P5 extends this with the per-race fuel keys (fuelProduct,
+    /// fuelCarbsPerServingG, fuelCadenceMin, fuelCarbsPerHourTargetG) and the
+    /// race-morning logistics keys (shuttle, packetPickup, officialUrl). All
+    /// pass straight through onto meta server-side (route.ts:160) and feed
+    /// composeRaceFueling + the watch gel schedule. Number fuel fields go in
+    /// only when non-nil so a blank entry never overwrites a stored value.
     static func updateRace(
         slug: String,
         name: String? = nil,
@@ -527,7 +533,14 @@ enum API {
         bib: String? = nil,
         wave: String? = nil,
         startTime: String? = nil,
-        location: String? = nil
+        location: String? = nil,
+        fuelProduct: String? = nil,
+        fuelCarbsPerServingG: Int? = nil,
+        fuelCadenceMin: Int? = nil,
+        fuelCarbsPerHourTargetG: Int? = nil,
+        shuttle: String? = nil,
+        packetPickup: String? = nil,
+        officialUrl: String? = nil
     ) async -> Bool {
         var body: [String: Any] = [:]
         if let v = name { body["name"] = v }
@@ -540,9 +553,39 @@ enum API {
         if let v = wave { body["wave"] = v }
         if let v = startTime { body["startTime"] = v }
         if let v = location { body["location"] = v }
+        if let v = fuelProduct { body["fuelProduct"] = v }
+        if let v = fuelCarbsPerServingG { body["fuelCarbsPerServingG"] = v }
+        if let v = fuelCadenceMin { body["fuelCadenceMin"] = v }
+        if let v = fuelCarbsPerHourTargetG { body["fuelCarbsPerHourTargetG"] = v }
+        if let v = shuttle { body["shuttle"] = v }
+        if let v = packetPickup { body["packetPickup"] = v }
+        if let v = officialUrl { body["officialUrl"] = v }
         do {
             try await submitRaceRetro(slug: slug, body: body)
             return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Race P5 · log an authoritative finish time for a past race.
+    /// POST /api/race/result · writes actual_result (the curated chip time
+    /// that beats raw Strava elapsed, per the race-data source-of-truth
+    /// rule), fires fresh projection snapshots + a VDOT recalc, and
+    /// auto-generates the next A/B race plan. `finishDisplay` is the
+    /// "1:29:45" the runner types; the server parses it. `avgHrBpm`
+    /// optionally calibrates LTHR. Returns true on a 2xx.
+    static func postRaceResult(slug: String, finishDisplay: String, avgHrBpm: Int? = nil) async -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/race/result"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["slug": slug, "finishDisplay": finishDisplay]
+        if let hr = avgHrBpm { body["avgHrBpm"] = hr }
+        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return false }
+        req.httpBody = data
+        do {
+            let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+            return (200..<300).contains(http.statusCode)
         } catch {
             return false
         }

@@ -45,6 +45,22 @@ struct RaceEditSheet: View {
     @State private var startTime: String = ""
     @State private var location: String = ""
 
+    // Race P5 · per-race fuel. Prefills from the detail's `fueling` block
+    // when the runner has already entered fuel (isDefault == false). The
+    // product + serving carbs round-trip directly; cadence is recovered from
+    // the schedule's first gap (the server builds the schedule from cadence).
+    @State private var fuelProduct: String = ""
+    @State private var fuelCarbs: String = ""     // g per serving
+    @State private var fuelCadence: String = ""   // every N min
+    @State private var fuelRate: String = ""      // optional direct g/hr
+
+    // Race P5 · logistics. `shuttle` / `packetPickup` / `officialUrl` aren't
+    // surfaced by the detail GET yet, so they start blank and are write-only
+    // (PATCH preserves untouched meta either way). `location` round-trips.
+    @State private var shuttle: String = ""
+    @State private var packetPickup: String = ""
+    @State private var officialUrl: String = ""
+
     @State private var loaded: Bool = false
     @State private var saving: Bool = false
     @State private var error: String? = nil
@@ -83,6 +99,30 @@ struct RaceEditSheet: View {
                     TextField("Wave / corral", text: $wave)
                     TextField("Bib number", text: $bib)
                     TextField("Location", text: $location)
+                }
+                Section {
+                    TextField("Product · e.g. Maurten Gel 100", text: $fuelProduct)
+                    TextField("Carbs per serving · g", text: $fuelCarbs)
+                        .keyboardType(.numberPad)
+                    TextField("Take one every · min", text: $fuelCadence)
+                        .keyboardType(.numberPad)
+                    TextField("Target rate · g/hr (optional)", text: $fuelRate)
+                        .keyboardType(.numberPad)
+                } header: {
+                    Text("RACE FUEL (optional)")
+                } footer: {
+                    Text("Your gel and how often you take it. The coach builds the amount and schedule around it.")
+                        .font(.body(11))
+                }
+                Section {
+                    TextField("Packet pickup · where and when", text: $packetPickup)
+                    TextField("Shuttle / parking", text: $shuttle)
+                    TextField("Official site", text: $officialUrl)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("LOGISTICS (optional)")
                 }
                 if let err = error {
                     Section { Text(err).foregroundStyle(.red).font(.body(13)) }
@@ -162,7 +202,18 @@ struct RaceEditSheet: View {
                 if let w = r.wave, !w.isEmpty { wave = w }
                 if let st = r.gun_time, !st.isEmpty { startTime = st }
                 if let loc = r.location, !loc.isEmpty { location = loc }
-            } else if name.isEmpty && seedName == nil {
+            }
+            // Race P5 · prefill fuel from the resolved `fueling` block, but
+            // only when the runner has actually entered fuel (isDefault ==
+            // false). A default plan must stay blank in the form so saving an
+            // untouched sheet never persists the research default as the
+            // runner's own choice.
+            if let f = detail?.fueling, !f.isDefault {
+                if !f.productName.isEmpty, f.productName != "gel" { fuelProduct = f.productName }
+                if f.carbsPerServingG > 0 { fuelCarbs = String(f.carbsPerServingG) }
+                if let gap = cadenceFromSchedule(f.scheduleMin) { fuelCadence = String(gap) }
+            }
+            if detail?.race == nil && name.isEmpty && seedName == nil {
                 // No seed and the detail failed to load · surface it rather
                 // than letting the runner edit a blank form into existence.
                 error = "Couldn't load this race. Check your connection and try again."
@@ -182,10 +233,26 @@ struct RaceEditSheet: View {
         if let v = seedLocation { location = v }
     }
 
+    /// Recover the runner's cadence from a built schedule · the gap between
+    /// the first two stops. The server places stops every N minutes, so the
+    /// first gap is the cadence the runner originally entered. Single-stop
+    /// or empty schedules yield nil (no cadence to recover).
+    private func cadenceFromSchedule(_ mins: [Int]) -> Int? {
+        guard mins.count >= 2 else { return nil }
+        let gap = mins[1] - mins[0]
+        return gap > 0 ? gap : nil
+    }
+
     private func save() async {
         saving = true
         error = nil
         func tidy(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
+        /// Send a number field only when the runner typed a positive value ·
+        /// a blank or zero passes nil so it never clobbers a stored value.
+        func num(_ s: String) -> Int? {
+            let v = Int(tidy(s))
+            return (v ?? 0) > 0 ? v : nil
+        }
         // distance_label · "Other" is stored as null (mirrors createRace), so
         // pass nil for it · everything else passes the picked label through.
         let distanceLabel: String? = distance == "Other" ? "" : distance
@@ -200,7 +267,19 @@ struct RaceEditSheet: View {
             bib: tidy(bib),
             wave: tidy(wave),
             startTime: tidy(startTime),
-            location: tidy(location)
+            location: tidy(location),
+            // Race P5 · per-race fuel. Product passes through as typed (an
+            // empty string is a deliberate clear); the numbers go in only
+            // when positive so a half-filled fuel form is non-destructive.
+            fuelProduct: tidy(fuelProduct).isEmpty ? nil : tidy(fuelProduct),
+            fuelCarbsPerServingG: num(fuelCarbs),
+            fuelCadenceMin: num(fuelCadence),
+            fuelCarbsPerHourTargetG: num(fuelRate),
+            // Race P5 · logistics. Sent only when typed so an untouched field
+            // never overwrites stored meta.
+            shuttle: tidy(shuttle).isEmpty ? nil : tidy(shuttle),
+            packetPickup: tidy(packetPickup).isEmpty ? nil : tidy(packetPickup),
+            officialUrl: tidy(officialUrl).isEmpty ? nil : tidy(officialUrl)
         )
         await MainActor.run {
             if ok {
