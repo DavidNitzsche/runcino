@@ -42,6 +42,14 @@ export function isTrustworthy(row: RunRow): boolean {
 // ── field accessors ───────────────────────────────────────────────────────
 const localDay = (r: RunRow): string =>
   String(r.data?.date ?? String(r.data?.startLocal ?? '').slice(0, 10));
+// #3 · durationSec has MIXED semantics across ingest paths: strava_webhook
+// writes ELAPSED here (webhook/route.ts), watch/HK write MOVING/active, and
+// pullSync omits it entirely (so the fallback chain reaches movingTimeS). This
+// is safe for span-overlap dedup specifically: a longer elapsed span only WIDENS
+// [start,end], which makes spansOverlap MORE likely — it can never produce a
+// dedup false-negative. Do NOT "normalize" this read without re-checking the
+// ±120s duration-equality fallback in isSameRun (used only when a timestamp is
+// untrustworthy); tightening durSec there could break legacy-row merging.
 const durSec = (r: RunRow): number =>
   Number(r.data?.durationSec ?? r.data?.movingTimeS ?? r.data?.elapsedTimeS ?? 0);
 const distMi = (r: RunRow): number => Number(r.data?.distanceMi ?? 0);

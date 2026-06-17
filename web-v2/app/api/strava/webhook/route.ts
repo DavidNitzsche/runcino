@@ -517,6 +517,12 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
     date,
     startLocal: startLocal.replace('Z', ''),
     distanceMi: Number(distanceMi.toFixed(3)),
+    // #3 · NOTE the mixed semantics: durationSec here is ELAPSED (wall-clock,
+    // includes stops); watch/HK/pullSync store MOVING/active time in their
+    // duration field. Moving time lives in `movingSec` below — display readers
+    // that want "time moving" must COALESCE movingTimeS|movingSec|durationSec
+    // (see lib/runs/identity.ts durSec for why elapsed-in-durationSec is safe
+    // for span-overlap dedup). Keep elapsed here: it widens the overlap span.
     durationSec: elapsedSec,
     movingSec,
     timeMoving: paceMm ? `${Math.floor(movingSec / 60)}:${String(movingSec % 60).padStart(2, '0')}` : null,

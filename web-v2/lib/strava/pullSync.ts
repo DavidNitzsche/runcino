@@ -23,6 +23,7 @@ import { getStravaToken } from '@/lib/strava/auth';
 import { SOURCE_TIER } from '@/lib/runs/canonical';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { isSubThresholdRun } from '@/lib/runs/length-guard';
+import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
 // Shared gear matcher · also used by the ingest-time auto-assign hook
 // (lib/shoe/auto-assign.ts) so there is ONE gear-match source, not two.
 import { matchShoeByGear as tryShoeFromGear } from '@/lib/shoe/gear-match';
@@ -237,11 +238,16 @@ async function findCanonicalRow(args: {
     provenance: Record<string, string>;
     shoe_id: number | null;
   }>(
+    // #4 · CANONICAL_ROW_SQL is the shared canonical-row predicate (see
+    // lib/runs/volume.ts). This query previously used the stricter
+    // "absorbed_into_canonical_at IS NULL AND mergedIntoId = false", which made
+    // it the outlier vs the volume reader and could skip a stale-stamped-but-
+    // canonical row. Keying only on mergedIntoId matches volume; a true loser
+    // still always carries mergedIntoId, so it can never be picked here.
     `SELECT id::text AS id, data, provenance, shoe_id
        FROM runs
       WHERE user_uuid = $1
-        AND absorbed_into_canonical_at IS NULL
-        AND (data ? 'mergedIntoId') = false
+        AND ${CANONICAL_ROW_SQL}
         AND COALESCE(
               (data->>'date')::timestamptz,
               (data->>'startLocal')::timestamptz,

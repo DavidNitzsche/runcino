@@ -19,6 +19,28 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { clusterRuns, pickCanonical, type RunRow } from '@/lib/runs/identity';
 
+/**
+ * #4 · The ONE canonical-row predicate, shared by the volume reader and
+ * pullSync's findCanonicalRow so the two paths can't disagree on what counts
+ * as a "live" (non-loser) run.
+ *
+ * The authoritative loser marker is `data ? 'mergedIntoId'` — merge.ts always
+ * sets it on the row that lost a dedup. `absorbed_into_canonical_at` is NOT a
+ * reliable canonical/loser discriminator on its own: a row that lost a merge
+ * then got PROMOTED back to canonical can carry a stale stamp (merge.ts:66
+ * clears it on promotion, but pre-2026-06-11 residue exists — verified: 1 such
+ * row in prod, the 2026-06-14 13.13mi run, which IS the canonical for its day
+ * and whose two siblings both point mergedIntoId → it). Filtering on the stamp
+ * would WRONGLY drop that canonical and zero the day. So the shared predicate
+ * keys ONLY on mergedIntoId. (pullSync previously also filtered the stamp,
+ * which made it the stricter outlier; aligning it here can only let it FIND a
+ * stale-stamped canonical to write into — never pick a true loser, since true
+ * losers always carry mergedIntoId.)
+ *
+ * Uses bare `data` (no table alias) — both call sites query `runs` unaliased.
+ */
+export const CANONICAL_ROW_SQL = `NOT (data ? 'mergedIntoId')`;
+
 const distMi = (r: RunRow): number => Number(r.data?.distanceMi ?? 0);
 const dayOf = (r: RunRow): string =>
   String(r.data?.date ?? String(r.data?.startLocal ?? '').slice(0, 10));
@@ -37,7 +59,7 @@ export async function mileageByDay(
     `SELECT id::text AS id, user_uuid::text AS user_uuid, data
        FROM runs
       WHERE user_uuid = $1
-        AND NOT (data ? 'mergedIntoId')
+        AND ${CANONICAL_ROW_SQL}
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3`,
     [userUuid, fromISO, toISO],
   )).rows as RunRow[];
