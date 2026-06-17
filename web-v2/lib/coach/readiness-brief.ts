@@ -824,30 +824,12 @@ async function computeYesterdayPillars(
   }
 }
 
-async function loadYesterdaySnapshot(
-  userId: string,
-  todayISO: string,
-): Promise<{ score: number; pillars: Record<string, number> } | null> {
-  try {
-    const yesterdayISO = new Date(Date.parse(todayISO + 'T00:00:00Z') - 86400000)
-      .toISOString().slice(0, 10);
-    const row = (await pool.query<{ score: number; pillars: Record<string, { weight: number }> }>(
-      `SELECT score, pillars FROM readiness_snapshots
-        WHERE user_uuid = $1 AND snapshot_date = $2`,
-      [userId, yesterdayISO],
-    ).catch(() => ({ rows: [] }))).rows[0];
-    if (!row) return null;
-    const weights: Record<string, number> = {};
-    for (const [key, val] of Object.entries(row.pillars ?? {})) {
-      weights[key] = typeof val === 'object' && val != null && 'weight' in val
-        ? Number((val as { weight: number }).weight)
-        : 0;
-    }
-    return { score: row.score, pillars: weights };
-  } catch {
-    return null;
-  }
-}
+// #22 · loadYesterdaySnapshot was removed here — it was dead (zero call sites)
+// and superseded by computeYesterdayPillars above. It read yesterday's row from
+// readiness_snapshots, which is written by an early-morning cron and is one day
+// stale on each pillar, producing systematically understated mover deltas. Do
+// NOT re-add it for the mover calc; use computeYesterdayPillars (raw-signal,
+// not snapshot) so the deltas reflect yesterday's actual signals.
 
 async function loadScoreTrend(
   userId: string,
