@@ -328,8 +328,11 @@ export async function GET(req: NextRequest) {
       : traj ? (traj.reachable ? 'on_track' : traj.gapVdot <= 1.5 ? 'watch' : 'off')
       : statusFor(projectionSec, goalSec, daysAway);
     const goalStatus = toGoalStatus(status);
+    // 2026-06-16 · band re-anchored to the race-day projection (the
+    // goal-seeking trajectory) so it reads "where you'll likely finish" with
+    // the goal sitting inside it, not the frozen current-fitness number.
     const confidenceInterval = computeConfidenceInterval({
-      centerSec: projectionSec,
+      centerSec: traj?.projectedSec ?? projectionSec,
       raceDistanceMi: distanceMi,
       status: goalStatus,
       pacing: { cv: executionCV, source: executionSource },
@@ -400,6 +403,17 @@ export async function GET(req: NextRequest) {
       planUnderBuilt: traj?.planUnderBuilt ?? null,
       overPerformanceBonusVdot: traj?.overPerformanceBonusVdot ?? 0,
       trajectoryProjectedSec: traj?.projectedSec ?? null,
+      // 2026-06-16 · THE READOUT · the trajectory levers, surfaced so the
+      // native Goal panel can show WHY (execution / plan intensity / runway),
+      // not just the outcome.
+      executionQuality: traj?.executionQuality ?? null,
+      planBuiltForGoal: traj?.planBuiltForGoal ?? null,
+      plannedTargetVdot: traj?.plannedTargetVdot ?? null,
+      projectedGainVdot: traj?.projectedGainVdot ?? null,
+      goalVdot: traj?.goalVdot ?? null,
+      currentVdot: traj?.currentVdot ?? vdot,
+      buildWeeks: traj?.buildWeeks ?? null,
+      gapVdot: traj?.gapVdot ?? null,
     });
   } catch (err: any) {
     console.error('[api/targets/projection] failed:', err);

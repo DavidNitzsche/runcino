@@ -457,6 +457,16 @@ struct ProjectionSummary: Decodable {
     let overPerformanceBonusVdot: Double?  // unconfirmed training-derived fitness (diagnostic)
     let trajectoryProjectedSec: Int?    // goal-seeking projected race-day time
 
+    // 2026-06-16 · THE READOUT levers (execution / plan intensity / runway).
+    let executionQuality: Double?       // 0…1 · how well recent quality work lands
+    let planBuiltForGoal: Bool?         // plan's prescribed ceiling reaches the goal
+    let plannedTargetVdot: Double?      // VDOT the plan's peak work trains toward
+    let projectedGainVdot: Double?      // VDOT the build is projected to deliver
+    let goalVdot: Double?               // VDOT the goal time demands
+    let currentVdot: Double?            // responsive current fitness (echo of vdot)
+    let buildWeeks: Double?             // build weeks left (weeksToRace − taper)
+    let gapVdot: Double?                // goalVdot − projectedVdot (>0 = short)
+
     enum CodingKeys: String, CodingKey {
         case ok, status, vdot, projectionSec, goalSec, goalSafeSec,
              raceSlug, raceName, raceDate, daysAway, distanceMi, location,
@@ -466,7 +476,9 @@ struct ProjectionSummary: Decodable {
              executionBufferSec, executionSource, executionCV, executionN,
              levers, heldDays, lastMove, raceProjections,
              confidenceInterval, confidenceLabel,
-             aheadOfGoal, planUnderBuilt, overPerformanceBonusVdot, trajectoryProjectedSec
+             aheadOfGoal, planUnderBuilt, overPerformanceBonusVdot, trajectoryProjectedSec,
+             executionQuality, planBuiltForGoal, plannedTargetVdot, projectedGainVdot,
+             goalVdot, currentVdot, buildWeeks, gapVdot
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -510,5 +522,13 @@ struct ProjectionSummary: Decodable {
         self.planUnderBuilt           = try c.decodeIfPresent(Bool.self,   forKey: .planUnderBuilt)
         self.overPerformanceBonusVdot = try c.decodeIfPresent(Double.self, forKey: .overPerformanceBonusVdot)
         self.trajectoryProjectedSec   = try c.decodeIfPresent(Int.self,    forKey: .trajectoryProjectedSec)
+        self.executionQuality  = try c.decodeIfPresent(Double.self, forKey: .executionQuality)
+        self.planBuiltForGoal  = try c.decodeIfPresent(Bool.self,   forKey: .planBuiltForGoal)
+        self.plannedTargetVdot = try c.decodeIfPresent(Double.self, forKey: .plannedTargetVdot)
+        self.projectedGainVdot = try c.decodeIfPresent(Double.self, forKey: .projectedGainVdot)
+        self.goalVdot          = try c.decodeIfPresent(Double.self, forKey: .goalVdot)
+        self.currentVdot       = try c.decodeIfPresent(Double.self, forKey: .currentVdot)
+        self.buildWeeks        = try c.decodeIfPresent(Double.self, forKey: .buildWeeks)
+        self.gapVdot           = try c.decodeIfPresent(Double.self, forKey: .gapVdot)
     }
 }

@@ -360,11 +360,14 @@ struct TargetsProjectionPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
-            truthHeadline
-            raceDayLine
+            // Trajectory states get the honest race-day line + THE READOUT;
+            // cold / race-week keep the status copy + the gap-attribution bar.
+            if hasReadout { raceDayLine } else { truthHeadline }
             confidenceBand
             metaPills
-            if summary.totalGapSec > 0 {
+            if hasReadout {
+                readout
+            } else if summary.totalGapSec > 0 {
                 gapBlock
             }
         }
@@ -381,7 +384,10 @@ struct TargetsProjectionPanel: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("YOUR PROJECTION")
+            // The hero number is current fitness ("if you raced today"); the
+            // race-day projection lives on its own line below. Relabel so the
+            // two stop both reading as "the projection" (David 2026-06-16).
+            Text(hasReadout ? "AT TODAY'S FITNESS" : "YOUR PROJECTION")
                 .font(.body(11, weight: .extraBold)).tracking(2.0)
                 .foregroundStyle(Theme.mute)
             Text(formatTime(summary.projectionSec))
@@ -408,22 +414,97 @@ struct TargetsProjectionPanel: View {
     // trajectory value to add.
     @ViewBuilder
     private var raceDayLine: some View {
-        if summary.aheadOfGoal != true,
-           let traj = summary.trajectoryProjectedSec,
-           traj > 0, traj != summary.projectionSec {
+        if let traj = summary.trajectoryProjectedSec, traj > 0,
+           traj != summary.projectionSec,
+           let goal = summary.goalSec, goal > 0 {
             // Goal-relative + honest (David 2026-06-16): the trajectory is a
             // forward model (current fitness + projected build gain), NOT pinned
-            // to the goal. If it lands short, say so and by how much — the plan
-            // projecting 1:30:59 against a 1:30:00 goal is a miss, not a hit.
-            let goal = summary.goalSec ?? 0
-            let short = goal > 0 && traj > goal
+            // to the goal. Say plainly whether it lands short or beats it.
+            let short = traj > goal
             Text(short
                  ? "Plan projects \(formatTime(traj)) by race day — \(formatGap(traj - goal)) short of your \(formatTime(goal)) goal."
-                 : "Plan projects \(formatTime(traj)) by race day — on track for \(formatTime(goal)).")
-                .font(.body(13, weight: .semibold))
+                 : "Plan projects \(formatTime(traj)) by race day — beats \(formatTime(goal)) by \(formatGap(goal - traj)).")
+                .font(.body(14, weight: .semibold))
                 .foregroundStyle(short ? Theme.over : Theme.green)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    // 2026-06-16 · THE READOUT · the three trajectory levers (execution / plan
+    // intensity / runway) — shows WHY, not just the outcome. Replaces the old
+    // gap-attribution bar. Gated to the trajectory states (off cold/race-week).
+    private var hasReadout: Bool {
+        summary.projectedGainVdot != nil && summary.goalVdot != nil
+            && summary.currentVdot != nil
+            && summary.status != "cold" && summary.status != "race_week"
+    }
+
+    @ViewBuilder
+    private var readout: some View {
+        if let exec = summary.executionQuality,
+           let gain = summary.projectedGainVdot,
+           let goalV = summary.goalVdot,
+           let curV = summary.currentVdot {
+            let needed = goalV - curV
+            let isShort = (needed - gain) > 0.15
+            VStack(alignment: .leading, spacing: 13) {
+                Text("THE READOUT")
+                    .font(.label(11)).tracking(1.5)
+                    .foregroundStyle(Theme.mute)
+
+                readoutRow("EXECUTION",
+                           exec >= 0.95 ? "Nailing every session"
+                               : exec >= 0.80 ? "Hitting the plan" : "Some sessions slipping",
+                           "\(Int((exec * 100).rounded()))%",
+                           exec >= 0.85 ? Theme.green : Theme.goal)
+
+                readoutRow("PLAN INTENSITY",
+                           summary.planBuiltForGoal == true
+                               ? "Hard enough · trains to VDOT \(vdotInt(summary.plannedTargetVdot)), above goal"
+                               : "Under-built · tops out at VDOT \(vdotInt(summary.plannedTargetVdot))",
+                           summary.planBuiltForGoal == true ? "✓" : "—",
+                           summary.planBuiltForGoal == true ? Theme.green : Theme.goal)
+
+                readoutRow("RUNWAY",
+                           "\(vdot1(summary.buildWeeks)) wks realizes +\(vdot1(gain)) of +\(vdot1(needed)) needed",
+                           isShort ? "short" : "on track",
+                           isShort ? Theme.goal : Theme.green)
+
+                Text(isShort
+                     ? "Not your effort, not the plan — the calendar. To reach \(formatTime(goalSecForCopy)): more build weeks or volume, or confirm fitness early — beat threshold paces under HR, or a tune-up."
+                     : "Execution and the plan are landing it. Hold the build.")
+                    .font(.body(13))
+                    .foregroundStyle(Theme.mute)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    private var goalSecForCopy: Int? { summary.goalSec }
+
+    @ViewBuilder
+    private func readoutRow(_ label: String, _ text: String, _ chip: String, _ tint: Color) -> some View {
+        HStack(alignment: .center, spacing: 11) {
+            Circle().fill(tint).frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.label(10)).tracking(1.0).foregroundStyle(Theme.mute)
+                Text(text).font(.body(14, weight: .semibold)).foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Text(chip).font(.body(13, weight: .semibold)).foregroundStyle(tint)
+        }
+    }
+
+    private func vdot1(_ v: Double?) -> String {
+        guard let v else { return "—" }
+        return String(format: "%.1f", v)
+    }
+    private func vdotInt(_ v: Double?) -> String {
+        guard let v else { return "—" }
+        return String(Int(v.rounded()))
     }
 
     private func ciTint(_ tier: String) -> Color {
@@ -432,17 +513,26 @@ struct TargetsProjectionPanel: View {
 
     @ViewBuilder
     private var confidenceBand: some View {
-        if let ci = summary.confidenceInterval, let cl = summary.confidenceLabel {
-            HStack(spacing: 8) {
-                Text("\(formatTime(ci.lo)) – \(formatTime(ci.hi))")
-                    .font(.body(13, weight: .extraBold))
-                    .foregroundStyle(Theme.ink)
-                Text("·")
-                    .font(.body(12, weight: .regular))
+        if let ci = summary.confidenceInterval {
+            if hasReadout {
+                // Re-anchored to race day · the range IS the confidence signal
+                // (the goal sits inside it); the readout carries the tier + why,
+                // so no separate MEDIUM word here (David 2026-06-16).
+                Text("likely \(formatTime(ci.lo)) – \(formatTime(ci.hi))")
+                    .font(.body(12, weight: .medium))
                     .foregroundStyle(Theme.mute)
-                Text("\(cl.word) · \(cl.descriptor)")
-                    .font(.body(11, weight: .medium))
-                    .foregroundStyle(ciTint(cl.tier))
+            } else if let cl = summary.confidenceLabel {
+                HStack(spacing: 8) {
+                    Text("\(formatTime(ci.lo)) – \(formatTime(ci.hi))")
+                        .font(.body(13, weight: .extraBold))
+                        .foregroundStyle(Theme.ink)
+                    Text("·")
+                        .font(.body(12, weight: .regular))
+                        .foregroundStyle(Theme.mute)
+                    Text("\(cl.word) · \(cl.descriptor)")
+                        .font(.body(11, weight: .medium))
+                        .foregroundStyle(ciTint(cl.tier))
+                }
             }
         }
     }

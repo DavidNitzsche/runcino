@@ -238,26 +238,6 @@ export async function computeGoalProjection(args: {
   ]);
   const transitions = composeTransitions(status, driftSignals);
 
-  // 2026-06-08 · confidence band (on the current-fitness projection) +
-  // confidence label (on the goal). Computed once here so web / iPhone /
-  // watch all read one number. See computeConfidenceInterval /
-  // computeConfidenceLabel.
-  const confidenceInterval = computeConfidenceInterval({
-    centerSec: vdotProjectionSec,
-    raceDistanceMi,
-    status,
-    pacing: pacing ?? null,
-    vdotAnchorDateISO: vdotAnchorDateISO ?? null,
-    vdotAnchorDistanceMi: vdotAnchorDistanceMi ?? null,
-  });
-  const confidenceLabel = computeConfidenceLabel({
-    goalSec,
-    raceDistanceMi,
-    vdot,
-    daysToRace: daysToRace ?? null,
-    status,
-  });
-
   // 2026-06-11 · the goal-seeking trajectory. Current fitness + the planned
   // build, scaled by how the runner is actually executing the plan, projected
   // to race day. executionQuality reads the recent quality-session verdicts +
@@ -265,6 +245,8 @@ export async function computeGoalProjection(args: {
   // ceiling (so the gain can't exceed what the plan trains toward, and an
   // under-built plan gets flagged). Null when there's no current VDOT or the
   // race date is unknown — the display falls back to the static projection.
+  // 2026-06-16 · computed BEFORE the confidence band so the band can center on
+  // the race-day projection, not the frozen current-fitness number.
   const executionQuality = executionQualityFromTestPoints(
     recentTestPoints,
     driftSignals.some((s) => s.kind === 'missed_key_workouts'),
@@ -291,6 +273,29 @@ export async function computeGoalProjection(args: {
         overPerformanceBonusVdot: overPerf.bonusVdot,
       })
     : null;
+
+  // 2026-06-08 · confidence band + 2026-06-16 · RE-ANCHORED to the race-day
+  // projection. The band centers on trajectory.projectedSec so it reads "where
+  // you'll likely finish" with the goal sitting inside it — not the frozen
+  // current-fitness number (whose band sat slower than the projection shown
+  // above it, which read as a contradiction). Falls back to vdotProjectionSec
+  // when there's no trajectory. The confidence label (goal attainment) is
+  // computed once here so web / iPhone / watch all read one number.
+  const confidenceInterval = computeConfidenceInterval({
+    centerSec: trajectory?.projectedSec ?? vdotProjectionSec,
+    raceDistanceMi,
+    status,
+    pacing: pacing ?? null,
+    vdotAnchorDateISO: vdotAnchorDateISO ?? null,
+    vdotAnchorDistanceMi: vdotAnchorDistanceMi ?? null,
+  });
+  const confidenceLabel = computeConfidenceLabel({
+    goalSec,
+    raceDistanceMi,
+    vdot,
+    daysToRace: daysToRace ?? null,
+    status,
+  });
 
   return {
     status,
