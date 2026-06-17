@@ -492,6 +492,49 @@ enum API {
         }
     }
 
+    /// Edit an existing race (race P1 · RaceEditSheet). PATCH /api/race with
+    /// the edited plain fields — the backend keys are exactly: name, date,
+    /// distance_label, priority, goal (A-goal display), goal_safe (B-goal),
+    /// bib, wave, startTime, location (see web-v2/app/api/race/route.ts PATCH).
+    /// The server fires the auto-rebuild + VDOT/LTHR recalc when date / goal /
+    /// priority change, so the caller just needs to refresh after a true return.
+    ///
+    /// Every argument is optional · only non-nil fields go in the body so a
+    /// blank B-goal or bib never clobbers an existing value (the backend only
+    /// touches keys present in the payload). Pass an explicit empty string to
+    /// clear a field the runner deleted.
+    static func updateRace(
+        slug: String,
+        name: String? = nil,
+        date: String? = nil,
+        distanceLabel: String? = nil,
+        priority: String? = nil,
+        goal: String? = nil,
+        goalSafe: String? = nil,
+        bib: String? = nil,
+        wave: String? = nil,
+        startTime: String? = nil,
+        location: String? = nil
+    ) async -> Bool {
+        var body: [String: Any] = [:]
+        if let v = name { body["name"] = v }
+        if let v = date { body["date"] = v }
+        if let v = distanceLabel { body["distance_label"] = v }
+        if let v = priority { body["priority"] = v }
+        if let v = goal { body["goal"] = v }
+        if let v = goalSafe { body["goal_safe"] = v }
+        if let v = bib { body["bib"] = v }
+        if let v = wave { body["wave"] = v }
+        if let v = startTime { body["startTime"] = v }
+        if let v = location { body["location"] = v }
+        do {
+            try await submitRaceRetro(slug: slug, body: body)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Fetch today's WatchWorkout shape as raw Data so we can forward it
     /// unchanged to the watch via applicationContext (preserves field shape
     /// exactly — the watch decodes from Data into its own WatchWorkout).

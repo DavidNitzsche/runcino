@@ -25,6 +25,10 @@ struct RaceDayView: View {
     /// Banner shown after a successful GPX upload · reloads the detail
     /// in the background so the new course geometry pops in.
     @State private var gpxUploadStatus: String?
+    /// Race-edit sheet toggle · the pencil in the header pill opens
+    /// RaceEditSheet prefilled from the loaded detail (race P1). On save
+    /// the detail + projection reload so distance / date / goal changes pop.
+    @State private var showEditSheet: Bool = false
 
     var body: some View {
         ZStack {
@@ -156,6 +160,26 @@ struct RaceDayView: View {
                       allowedContentTypes: [.xml, .data],
                       allowsMultipleSelection: false) { result in
             handleGpxPick(result)
+        }
+        .sheet(isPresented: $showEditSheet) {
+            RaceEditSheet(
+                slug: raceSlug,
+                seedName: detail?.race.name,
+                seedDate: detail?.race.date,
+                seedDistanceLabel: detail?.race.distance_label,
+                seedPriority: detail?.race.priority,
+                seedGoal: detail?.race.goal,
+                seedWave: detail?.race.wave,
+                seedStartTime: detail?.race.gun_time,
+                seedLocation: detail?.race.location,
+                onSaved: {
+                    // Reload detail + projection · the server already ran the
+                    // auto-rebuild + VDOT/LTHR recalc, so a fresh GET reflects
+                    // the new distance / date / goal and the re-paced splits.
+                    Task { await load() }
+                }
+            )
+            .presentationDetents([.large])
         }
         .overlay(alignment: .top) {
             if let msg = gpxUploadStatus {
@@ -459,6 +483,22 @@ struct RaceDayView: View {
                         .font(.body(10.5, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
                 }
+            }
+            // Edit affordance · the page had no way to change distance / date /
+            // goal before this (race P1). Opens RaceEditSheet prefilled from the
+            // loaded detail. Hidden for past races · their meta is locked behind
+            // the finish-time / retro surfaces, not this editor.
+            if detail?.race.is_past != true {
+                Button { showEditSheet = true } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.txt)
+                        .frame(width: 30, height: 30)
+                        .background(Theme.Glass.fill, in: Circle())
+                        .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit race")
             }
         }
         .padding(.horizontal, 15)

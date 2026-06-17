@@ -28,6 +28,9 @@ struct TargetsView: View {
     /// Toolkit · Family F · POSTs to /api/goals.
     @State private var showNewGoalSheet: Bool = false
     @State private var showAddRaceSheet: Bool = false
+    /// Race-edit sheet · long-press a race tile → "Edit race". Holds the
+    /// tile the runner picked so RaceEditSheet prefills from it (race P1).
+    @State private var editingRace: RaceListItem? = nil
 
     /// True when there is at least one upcoming race.
     private var hasUpcomingRace: Bool {
@@ -146,6 +149,18 @@ struct TargetsView: View {
         .sheet(isPresented: $showAddRaceSheet) {
             AddRaceSheet(onSaved: { Task { await reload() }; afterTargetChange() })
                 .presentationDetents([.large])
+        }
+        .sheet(item: $editingRace) { race in
+            RaceEditSheet(
+                slug: race.slug,
+                seedName: race.name,
+                seedDate: race.date,
+                seedDistanceLabel: race.distance_label,
+                seedPriority: race.priority,
+                seedLocation: race.location,
+                onSaved: { Task { await reload() }; afterTargetChange() }
+            )
+            .presentationDetents([.large])
         }
     }
 
@@ -634,6 +649,16 @@ struct TargetsView: View {
                 .stroke(race.priority == "A" ? Color(hex: 0xFF965A).opacity(0.6) : Color.white.opacity(0.14)))
         }
         .buttonStyle(.plain)
+        // Long-press to edit · the tile pushes the detail on tap, so the
+        // editor rides a context menu (race P1). RaceDayView also carries a
+        // pencil for the runner already on the detail page.
+        .contextMenu {
+            Button {
+                editingRace = race
+            } label: {
+                Label("Edit race", systemImage: "pencil")
+            }
+        }
     }
 
     private func standingGoalTile(_ g: StandingGoal) -> some View {
