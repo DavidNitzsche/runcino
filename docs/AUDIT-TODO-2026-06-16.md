@@ -115,7 +115,7 @@ Mechanic to preserve in the copy: the plan's intensity ceiling (51) exceeds the 
 
 **Backend payload:** surface the readout fields (executionQuality, planBuiltForGoal, plannedTargetVdot, projectedGainVdot, goalVdot, currentVdot, buildWeeks, gapVdot) into `ProjectionSummary` (iPhone) + the web seed so both render the readout from one source.
 
-**Status:** ✅ show-both line + goal-relative honesty shipped on iPhone. ⬜ header de-dup, ⬜ THE READOUT, ⬜ band re-anchor, ⬜ drop MEDIUM, ⬜ web mirror — build together.
+**Status:** ✅ iPhone SHIPPED 2026-06-16 — backend reorder + band re-anchor (goal-projection.ts + targets/projection route), readout fields in payload, and the full panel (de-duped header, race-day line, re-anchored band, THE READOUT replacing the bar, drop MEDIUM). On the sim for David's review. ⬜ Web mirror (GapPanel.tsx) — next.
 
 ## Part 5 — Additions (David)
 
