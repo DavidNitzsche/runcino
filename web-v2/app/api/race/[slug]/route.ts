@@ -11,6 +11,7 @@ import { loadRacesState } from '@/lib/coach/races-state';
 import { requireUserId } from '@/lib/auth/session';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
+import { elevationGainFt } from '@/lib/race/gpx-parser';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 
@@ -35,7 +36,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       `SELECT course_geometry, course_source, meta FROM races WHERE slug = $1 AND user_uuid = $2`,
       [slug, userId],
     ).catch(() => ({ rows: [] as Array<{ course_geometry: unknown; course_source: string | null; meta: Record<string, unknown> | null }> }));
-    const courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
+    let courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
+    // Recompute elevation gain from the trackpoints with the noise threshold —
+    // stored values were raw-summed, which GPS/barometric jitter inflated (AFC
+    // read 923 ft vs Strava's 724). Overriding on read corrects every existing
+    // course's displayed gain without a data backfill; new uploads are already
+    // thresholded at parse time. (2026-06-17)
+    if (courseGeometry && typeof courseGeometry === 'object') {
+      const g = courseGeometry as { trackPoints?: Array<{ ele?: number | null }> };
+      const eles = (g.trackPoints ?? [])
+        .map((p) => p?.ele)
+        .filter((e): e is number => typeof e === 'number');
+      if (eles.length >= 2) {
+        courseGeometry = { ...g, elevation_gain_ft: elevationGainFt(eles) };
+      }
+    }
     const courseSource = geoRow.rows[0]?.course_source ?? null;
     const raceMeta = geoRow.rows[0]?.meta ?? null;
 
