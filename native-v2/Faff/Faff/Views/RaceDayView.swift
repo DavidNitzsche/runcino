@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 struct RaceDayView: View {
     let raceSlug: String
@@ -59,6 +60,49 @@ struct RaceDayView: View {
                             .foregroundStyle(Theme.txt.opacity(0.7))
                             .padding(.horizontal, 24)
                             .padding(.top, 2)
+                    }
+
+                    // THE COURSE — the route is the most visually important
+                    // thing on this page, so it LEADS, right under the countdown.
+                    // Dark CartoDB-tile map (the same RouteMapView as the post-run
+                    // route), not the old flat path render. David 2026-06-17.
+                    if let geo = detail?.course_geometry,
+                       let pts = geo.trackPoints, pts.count > 5 {
+                        let coords = pts.compactMap { p -> CLLocationCoordinate2D? in
+                            guard let lat = p.lat, let lon = p.lon else { return nil }
+                            return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                        }
+                        section(title: "THE COURSE", right: courseStat) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                // No run splits/HR for a not-yet-run course →
+                                // RouteMapView draws the clean route line on the
+                                // CartoDB dark tiles + start/finish dots.
+                                RouteMapView(coords: coords, splits: [])
+                                    .frame(height: 200)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .allowsHitTesting(false)
+                                HStack(spacing: 12) {
+                                    if let elev = geo.elevation_gain_ft, elev > 0 {
+                                        Text("\(Int(elev)) FT GAIN")
+                                            .font(.body(10, weight: .extraBold)).tracking(1.2)
+                                            .foregroundStyle(Theme.txt.opacity(0.7))
+                                    }
+                                    if let prov = courseProvenanceLabel {
+                                        Text(prov)
+                                            .font(.body(10, weight: .bold)).tracking(0.5)
+                                            .foregroundStyle(Theme.txt.opacity(0.5))
+                                    }
+                                    Spacer()
+                                }
+                            }
+                        }
+                        .padding(.top, 24)
+                    } else if detail?.race.is_past != true {
+                        // No course geometry yet · let the runner upload a GPX.
+                        section(title: "THE COURSE", right: nil) {
+                            CourseAnnotations(variant: .stub(onUpload: { showGpxPicker = true }))
+                        }
+                        .padding(.top, 24)
                     }
 
                     // 1 · THE PLAN — how to run it, stretch by stretch.
@@ -120,41 +164,8 @@ struct RaceDayView: View {
                         }
                     }
 
-                    // THE COURSE — only render when we actually have course
-                    // geometry from /api/race/[slug]. The old "mapPlaceholder"
-                    // + "elevationPlaceholder" + "366 ft / 26 ft / THE ROLLERS"
-                    // was a hardcoded mock that rendered for every race. The
-                    // fueling line ("4 gels · PF 30 at miles 5 · 10 · 15 · 20")
-                    // was the same · gone until per-race fueling ships.
-                    if let geo = detail?.course_geometry,
-                       let pts = geo.trackPoints, pts.count > 5 {
-                        section(title: "THE COURSE", right: courseStat) {
-                            VStack(alignment: .leading, spacing: 12) {
-                                courseRoute(points: pts)
-                                    .frame(height: 188)
-                                HStack(spacing: 12) {
-                                    if let elev = geo.elevation_gain_ft, elev > 0 {
-                                        Text("\(Int(elev)) FT GAIN")
-                                            .font(.body(10, weight: .extraBold)).tracking(1.2)
-                                            .foregroundStyle(Theme.txt.opacity(0.7))
-                                    }
-                                    if let prov = courseProvenanceLabel {
-                                        Text(prov)
-                                            .font(.body(10, weight: .bold)).tracking(0.5)
-                                            .foregroundStyle(Theme.txt.opacity(0.5))
-                                    }
-                                    Spacer()
-                                }
-                            }
-                        }
-                        .padding(.top, 30)
-                    } else if detail?.race.is_past != true {
-                        // No course geometry yet · let the runner upload a GPX.
-                        section(title: "THE COURSE", right: nil) {
-                            CourseAnnotations(variant: .stub(onUpload: { showGpxPicker = true }))
-                        }
-                        .padding(.top, 30)
-                    }
+                    // (THE COURSE moved to the top, under the countdown — the
+                    // route is the page's hero. See above.)
 
                     // 3 · FUELING — the real backend recommendation (race P5).
                     // Reads the top-level `fueling` block: target rate, servings
@@ -452,57 +463,8 @@ struct RaceDayView: View {
         return nil
     }
 
-    /// Real GPX route from /api/race/[slug].course_geometry.trackPoints.
-    /// Projects lat/lon onto a 2D viewport using min/max of the bbox so
-    /// it fits the visible frame regardless of which race we're looking
-    /// at. Replaces the hardcoded `mapPlaceholder` that drew an abstract
-    /// CIM-shaped curve for every race.
-    private func courseRoute(points pts: [CourseTrackPoint]) -> some View {
-        let lats = pts.compactMap { $0.lat }
-        let lons = pts.compactMap { $0.lon }
-        let minLat = lats.min() ?? 0, maxLat = lats.max() ?? 1
-        let minLon = lons.min() ?? 0, maxLon = lons.max() ?? 1
-        let latSpan = max(0.0001, maxLat - minLat)
-        let lonSpan = max(0.0001, maxLon - minLon)
-        return GeometryReader { geo in
-            // Inset + preserve aspect ratio. The old version stretched the
-            // route edge-to-edge so it ran off the rounded corners ("cut
-            // off"); this fits it whole inside the frame with a margin.
-            let inset: CGFloat = 18
-            let availW = geo.size.width - inset * 2
-            let availH = geo.size.height - inset * 2
-            let scale = min(availW / lonSpan, availH / latSpan)
-            let drawW = lonSpan * scale, drawH = latSpan * scale
-            let offX = inset + (availW - drawW) / 2
-            let offY = inset + (availH - drawH) / 2
-            let projected: [CGPoint] = pts.compactMap { pt in
-                guard let lat = pt.lat, let lon = pt.lon else { return nil }
-                return CGPoint(x: offX + CGFloat(lon - minLon) * scale,
-                               y: offY + drawH - CGFloat(lat - minLat) * scale)
-            }
-            ZStack {
-                Path { p in
-                    guard let first = projected.first else { return }
-                    p.move(to: first)
-                    for xy in projected.dropFirst() { p.addLine(to: xy) }
-                }
-                .stroke(
-                    LinearGradient(colors: [Color(hex: 0xFFD27A), Color(hex: 0xFF5A52)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing),
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
-                )
-                if let s = projected.first {
-                    Circle().fill(Theme.Accent.mintGlow).frame(width: 9, height: 9).position(s)
-                }
-                if let e = projected.last {
-                    Circle().fill(Theme.race).frame(width: 9, height: 9).position(e)
-                }
-            }
-        }
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
-    }
+    // courseRoute(points:) removed 2026-06-17 — THE COURSE now renders via
+    // RouteMapView (CartoDB dark tiles), the same map as the post-run route.
 
     // MARK: - Facelift · countdown · pill · plan · fueling
 
@@ -526,7 +488,9 @@ struct RaceDayView: View {
             return detail?.race.pb == true ? "FINISHED · PERSONAL BEST" : "FINISHED"
         }
         guard let d = detail?.race.days, d > 0 else { return "Race day. Trust the work." }
-        return "TO \(raceShortCode)"
+        // No "TO {code}" days-out subtitle — the name lives in the header pill;
+        // the course map leads right under the countdown (David 2026-06-17).
+        return nil
     }
 
     /// Race + goal summary for the shared header pill. The countdown owns the
