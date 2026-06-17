@@ -940,19 +940,22 @@ function adaptVolumeBars(log: LogT | null, training: Training | null, today: str
     weeks.push({ monday: m, mi: 0, isCurrent: i === 0 });
   }
 
+  // #41 · keep 1 decimal everywhere (was Math.round → whole miles), matching
+  // /log + the iPhone strip + the rest of the app's mileage convention.
+  const round1 = (n: number) => Math.round(n * 10) / 10;
   if (log?.weeks?.length) {
     // log-state's weeks have a `monday` field — index by ISO date for fast lookup.
     const byMon: Record<string, number> = {};
     for (const w of log.weeks) byMon[w.monday] = (byMon[w.monday] ?? 0) + (w.totalMi || 0);
     for (const w of weeks) {
       const iso = w.monday.toISOString().slice(0, 10);
-      w.mi = Math.round(byMon[iso] ?? 0);
+      w.mi = round1(byMon[iso] ?? 0);
     }
   } else if (training?.weeks?.length) {
     const byMon: Record<string, number> = {};
     for (const tw of training.weeks) {
       const totalDone = (tw.days ?? []).reduce((s, d) => s + (d.doneMi || 0), 0);
-      byMon[tw.startDate] = Math.round(totalDone || tw.plannedMi || 0);
+      byMon[tw.startDate] = round1(totalDone || tw.plannedMi || 0);
     }
     for (const w of weeks) {
       const iso = w.monday.toISOString().slice(0, 10);
@@ -966,8 +969,16 @@ function adaptVolumeBars(log: LogT | null, training: Training | null, today: str
     current: w.isCurrent,
   }));
   const thisWeek = bars.at(-1)?.mi ?? 0;
-  const prior = bars.slice(0, -1).filter(b => b.mi > 0);
-  const avg = prior.length ? Math.round(prior.reduce((s, b) => s + b.mi, 0) / prior.length) : 0;
+  // #42 · TRUE trailing-weeks average — divide by the FULL count of prior weeks
+  // in the window, not just the non-zero ones. The old `.filter(b => b.mi > 0)`
+  // dropped zero-mileage (off / down) weeks from the denominator, inflating the
+  // "8-wk avg" above the runner's real recent average. A skipped week is real
+  // training load (zero), so it belongs in the mean.
+  // #41 · 1 decimal, matching the bars + the rest of the app.
+  const prior = bars.slice(0, -1);
+  const avg = prior.length
+    ? Math.round((prior.reduce((s, b) => s + b.mi, 0) / prior.length) * 10) / 10
+    : 0;
   return { bars, thisWeek, avg };
 }
 
