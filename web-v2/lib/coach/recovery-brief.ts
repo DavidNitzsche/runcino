@@ -676,7 +676,15 @@ async function loadTodayRunTiming(userUuid: string, todayISO: string): Promise<T
         LIMIT 1
      )
      SELECT (t.data->>'startLocal') AS start_local,
-            (t.data->>'movingTimeS') AS moving_s,
+            -- #2 · COALESCE the moving-time key. Webhook-ingested runs carry
+            -- movingSec/durationSec, not movingTimeS, so a strict movingTimeS
+            -- read returned null and the recovery-window end anchor silently
+            -- fell back to "midpoint of today" for Strava-webhook runs.
+            COALESCE(
+              t.data->>'movingTimeS',
+              t.data->>'movingSec',
+              t.data->>'durationSec'
+            ) AS moving_s,
             (t.data->>'distanceMi')  AS distance_mi,
             p.type AS type_hint
        FROM today_runs t

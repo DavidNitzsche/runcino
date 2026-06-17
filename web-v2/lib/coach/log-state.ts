@@ -235,8 +235,12 @@ export async function loadLogState(
       type: activityType,
       distance_mi: Number(a.distanceMi) || 0,
       pace: a.avgPaceMinPerMi || fmtPaceFromSec(sPerMi) || null,
-      time_moving: fmtDuration(Number(a.movingTimeS) || null),
-      time_moving_sec: Number(a.movingTimeS) || null,
+      // #2 · COALESCE the moving-time key. Webhook-ingested runs carry
+      // movingSec/durationSec, not movingTimeS, so time_moving rendered blank
+      // for them. Order: movingTimeS (pullSync/watch/HK) → movingSec (webhook)
+      // → durationSec (webhook elapsed, last resort).
+      time_moving: fmtDuration(Number(a.movingTimeS) || Number(a.movingSec) || Number(a.durationSec) || null),
+      time_moving_sec: Number(a.movingTimeS) || Number(a.movingSec) || Number(a.durationSec) || null,
       avg_hr: Number(a.avgHr) || null,
       max_hr: Number(a.maxHr) || null,
       cadence: Number(a.avgCadence) || null,

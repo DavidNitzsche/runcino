@@ -232,7 +232,13 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
   }>(
     `SELECT id::text, data->>'date' AS date, data->>'type' AS type,
             (data->>'distanceMi')::numeric AS dist,
-            (data->>'movingTimeS')::numeric AS moving
+            -- #2 · COALESCE the moving-time key; webhook runs carry
+            -- movingSec/durationSec, not movingTimeS.
+            COALESCE(
+              NULLIF(data->>'movingTimeS','')::numeric,
+              NULLIF(data->>'movingSec','')::numeric,
+              NULLIF(data->>'durationSec','')::numeric
+            ) AS moving
        FROM runs
       WHERE user_uuid = $1::uuid
         AND NOT (data ? 'mergedIntoId')

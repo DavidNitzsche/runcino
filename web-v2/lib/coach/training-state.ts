@@ -164,7 +164,13 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
                 (data->>'distanceMi')::numeric AS mi,
                 NULLIF(data->>'paceSPerMi','')::numeric AS pace_sec,
                 NULLIF(data->>'avgPaceMinPerMi','')             AS pace_str,
-                NULLIF(data->>'movingTimeS','')::numeric AS moving_s,
+                -- #2 · COALESCE the moving-time key; webhook runs carry
+                -- movingSec/durationSec, not movingTimeS.
+                COALESCE(
+                  NULLIF(data->>'movingTimeS','')::numeric,
+                  NULLIF(data->>'movingSec','')::numeric,
+                  NULLIF(data->>'durationSec','')::numeric
+                ) AS moving_s,
                 NULLIF(data->>'avgHr','')::numeric AS avg_hr,
                 data->'splits' AS splits
            FROM runs
