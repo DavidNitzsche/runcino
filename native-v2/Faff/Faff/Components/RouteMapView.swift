@@ -29,9 +29,32 @@ struct RouteMapView: UIViewRepresentable {
     /// Workout phases (distance + pace). When present (intervals / tempo) the
     /// route colors by PHASE — so the reps and the tempo block read at their
     /// true pace instead of being smeared into mile-split averages. Empty for
-    /// easy / long runs → the per-mile pace gradient. (David 2026-06-16: "the
+    /// easy / long runs → the per-mile gradient. (David 2026-06-16: "the
     /// heat map should show what was important to that run.")
     var phases: [PhaseSample] = []
+
+    /// The run's effort decides the color AXIS (David 2026-06-17):
+    ///   · steady runs (easy / long / recovery) color by HR ZONE — on those
+    ///     days the story is zone discipline (am I holding Z2?), not pace wiggle,
+    ///     so a faster→slower pace gradient there is just noise.
+    ///   · structured runs (tempo / intervals / race) color by pace / phase —
+    ///     pace IS the target, and the reps must read at their true pace.
+    var effort: FaffEffort = .easy
+
+    /// LTHR-derived zone bands · enables HR-zone coloring on steady runs. Empty
+    /// (no physiology) → falls back to the per-mile pace gradient.
+    var hrZones: [HRZoneRange] = []
+
+    /// True when this run colors by HR zone (steady effort + per-mile HR + zone
+    /// bands present, and not a structured/phase workout). The single rule, used
+    /// by both the route coloring and the card's legend so they never diverge.
+    static func usesHrZones(effort: FaffEffort, hrZones: [HRZoneRange],
+                            splits: [RunSplit], phases: [PhaseSample]) -> Bool {
+        guard phases.filter({ $0.mi > 0 && $0.sec > 0 }).count < 2 else { return false }
+        guard [.easy, .long, .recovery].contains(effort) else { return false }
+        guard hrZones.count >= 2 else { return false }
+        return splits.contains { ($0.hr ?? 0) > 0 }
+    }
 
     /// Build phase samples (per-mile pace, in seconds) from a run's phase
     /// breakdown. Prefers duration/distance; falls back to the pace string.
@@ -75,6 +98,26 @@ struct RouteMapView: UIViewRepresentable {
                        blue: ab + (bb - ab) * f, alpha: aa + (ba - aa) * f)
     }
 
+    /// HR-zone palette · Z1→Z5 (teal → green → cream → orange → red). = the
+    /// app's Theme.Zone time-in-zones colors, deliberately distinct from the
+    /// pace bucketColors so HR mode reads as a different axis at a glance.
+    static let zoneColors: [UIColor] = [
+        UIColor(Color(hex: 0x54DDD0)),   // Z1
+        UIColor(Color(hex: 0x8EF0B0)),   // Z2
+        UIColor(Color(hex: 0xFFE0A0)),   // Z3
+        UIColor(Color(hex: 0xFF9560)),   // Z4
+        UIColor(Color(hex: 0xFF5A52)),   // Z5
+    ]
+
+    /// Continuous Z1→Z5 ramp · t in 0…1. Lets HR drift fade across the zone
+    /// colors instead of hard-switching at zone edges.
+    static func zoneRampColor(_ t: Double) -> UIColor {
+        let cs = zoneColors
+        let tt = max(0, min(1, t)) * Double(cs.count - 1)
+        let i = min(Int(floor(tt)), cs.count - 2)
+        return lerp(cs[i], cs[i + 1], CGFloat(tt - Double(i)))
+    }
+
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
@@ -101,6 +144,7 @@ struct RouteMapView: UIViewRepresentable {
         map.addOverlay(overlay, level: .aboveLabels)
 
         drawRoute(on: map)
+        hideAttribution(map)
         return map
     }
 
@@ -109,14 +153,36 @@ struct RouteMapView: UIViewRepresentable {
         map.removeOverlays(map.overlays.filter { !($0 is MKTileOverlay) })
         map.removeAnnotations(map.annotations)
         drawRoute(on: map)
+        hideAttribution(map)
+    }
+
+    /// Hide MapKit's "Legal" attribution link. We replace the basemap entirely
+    /// with CartoDB tiles (canReplaceMapContent), so Apple's map data — and the
+    /// legal link it requires — isn't used; the web RouteMap shows no attribution
+    /// either (parity · David 2026-06-17). Apple exposes no public API to remove
+    /// it, so locate the label among the map's subviews and hide it. Re-run after
+    /// a tick because MapKit adds it lazily on first layout.
+    private func hideAttribution(_ map: MKMapView) {
+        func hide(in view: UIView) {
+            for sub in view.subviews {
+                let name = String(describing: type(of: sub))
+                if name.contains("Attribution") || name.contains("Legal") { sub.isHidden = true }
+                hide(in: sub)
+            }
+        }
+        hide(in: map)
+        DispatchQueue.main.async { hide(in: map) }
     }
 
     private func drawRoute(on map: MKMapView) {
         guard coords.count >= 2 else { return }
 
-        // Baseline coral line drawn first (always visible · belt + suspenders).
+        // Baseline line drawn first (always visible · belt + suspenders). Match
+        // the color axis so it never peeks the wrong hue at segment joints:
+        // mid-zone green under an HR route, coral under a pace route.
+        let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases)
         let baseline = ColoredPolyline(coordinates: coords, count: coords.count)
-        baseline.strokeColor = UIColor(Color(hex: 0xFF5722))
+        baseline.strokeColor = hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xFF5722))
         baseline.strokeWidth = 5
         map.addOverlay(baseline, level: .aboveLabels)
 
@@ -148,11 +214,17 @@ struct RouteMapView: UIViewRepresentable {
     // MARK: - Pace gradient
 
     /// Short colored segments along the route, colored by what mattered in the
-    /// run. Workout phases win when present (a 6:45 rep reads red even though
-    /// the mile split that contains it averages ~8:00 with its recovery jog);
-    /// otherwise per-mile splits drive an easy/long pace gradient. Per-mile uses
-    /// a STEP per mile, not cross-mile interpolation — interpolation washed fast
-    /// reps into the surrounding recovery (David 2026-06-16).
+    /// run. Three axes (David 2026-06-17):
+    ///   · structured (phases ≥2 · intervals / tempo) → PACE per phase. Each rep
+    ///     reads at its true pace (a 6:45 rep stays red even though its mile
+    ///     averages ~8:00 with the recovery jog), with a SHORT eased boundary so
+    ///     the join to the recovery fades instead of hard-switching.
+    ///   · steady + HR + zones (easy / long / recovery) → HR ZONE per mile,
+    ///     smoothly interpolated, on the zone palette.
+    ///   · else → per-mile PACE, smoothly interpolated, on the pace palette.
+    /// Segments are short and share boundary vertices; with a continuous value
+    /// function the colors FADE between buckets ("the small gradient transition
+    /// needs to be on all maps" · David 2026-06-17), without re-washing reps.
     private func gradientSegments() -> [(coords: [CLLocationCoordinate2D], color: UIColor)] {
         guard coords.count >= 2 else { return [] }
 
@@ -160,51 +232,51 @@ struct RouteMapView: UIViewRepresentable {
         var dist = [Double](repeating: 0, count: coords.count)
         for i in 1..<coords.count { dist[i] = dist[i - 1] + haversineMi(coords[i - 1], coords[i]) }
         let total = dist.last ?? 0
+        guard total > 0 else { return [] }
 
-        // Build pace-at-distance + the run's pace values, from PHASES (reps /
-        // tempo block) when there are ≥2, else per-mile splits (easy / long).
-        var paceFn: ((Double) -> Double)?
-        var paceValues: [Double] = []
+        // valueFn(d) → scalar at distance d · colorFn(value) → UIColor.
+        var valueFn: ((Double) -> Double)?
+        var colorFn: ((Double) -> UIColor)?
 
         let validPhases = phases.filter { $0.mi > 0 && $0.sec > 0 }
         if validPhases.count >= 2 {
+            // Structured · phase pace, SHARP with a short eased boundary.
             let phaseSum = validPhases.reduce(0.0) { $0 + $1.mi }
             let scale = phaseSum > 0 ? total / phaseSum : 1
-            var bounds: [(end: Double, sec: Double)] = []
+            var spans: [(start: Double, end: Double, v: Double)] = []
             var cum = 0.0
-            for p in validPhases { cum += p.mi * scale; bounds.append((cum, Double(p.sec))) }
-            paceValues = validPhases.map { Double($0.sec) }
-            paceFn = { d in
-                for b in bounds where d <= b.end + 0.0001 { return b.sec }
-                return bounds.last?.sec ?? 0
-            }
+            for p in validPhases { let s = cum; cum += p.mi * scale; spans.append((s, cum, Double(p.sec))) }
+            let w = max(0.03, min(0.10, total * 0.02))   // boundary-fade width · ~2% of route
+            valueFn = { d in RouteMapView.phaseValue(d, spans, w) }
+            let vals = validPhases.map { Double($0.sec) }.sorted()
+            let lo = vals[Int(Double(vals.count - 1) * 0.1)]
+            let hi = vals[Int(Double(vals.count - 1) * 0.9)]
+            let span = max(1, hi - lo)
+            colorFn = { v in RouteMapView.rampColor((v - lo) / span) }
+        } else if RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases) {
+            // Steady · per-mile HR → zone position, SMOOTH, on the zone palette.
+            let hrs = RouteMapView.perMileFilled(splits.map { ($0.hr).flatMap { $0 > 0 ? Double($0) : nil } })
+            guard !hrs.isEmpty else { return [] }
+            let zones = hrZones
+            let denom = Double(max(1, zones.count - 1))
+            valueFn = { d in RouteMapView.mileSmooth(d, hrs) }
+            colorFn = { hr in RouteMapView.zoneRampColor(RouteMapView.zonePosition(hr, zones) / denom) }
         } else {
-            let raw = splits.map { paceToSec($0.pace) }
-            guard raw.contains(where: { ($0 ?? 0) > 0 }) else { return [] }
-            var filled: [Double?] = raw.map { $0.flatMap { $0 > 0 ? Double($0) : nil } }
-            var last: Double? = nil
-            for i in filled.indices { if filled[i] == nil { filled[i] = last } else { last = filled[i] } }
-            var nxt: Double? = nil
-            for i in stride(from: filled.count - 1, through: 0, by: -1) {
-                if filled[i] == nil { filled[i] = nxt } else { nxt = filled[i] }
-            }
-            let mile = filled.compactMap { $0 }
-            guard mile.count == filled.count, !mile.isEmpty else { return [] }
-            paceValues = mile
-            paceFn = { d in mile[max(0, min(mile.count - 1, Int(floor(d))))] }
+            // Per-mile PACE, SMOOTH, on the pace palette.
+            let paces = RouteMapView.perMileFilled(splits.map { paceToSec($0.pace).flatMap { $0 > 0 ? Double($0) : nil } })
+            guard !paces.isEmpty else { return [] }
+            let sorted = paces.sorted()
+            let lo = sorted[Int(Double(sorted.count - 1) * 0.1)]
+            let hi = sorted[Int(Double(sorted.count - 1) * 0.9)]
+            let span = max(1, hi - lo)
+            valueFn = { d in RouteMapView.mileSmooth(d, paces) }
+            colorFn = { v in RouteMapView.rampColor((v - lo) / span) }
         }
 
-        guard let pace = paceFn, !paceValues.isEmpty else { return [] }
-        let sorted = paceValues.sorted()
-        // Robust color range · one very fast/slow segment shouldn't flatten the
-        // whole gradient, so anchor on the 10th/90th percentiles.
-        let lo = sorted[Int(Double(sorted.count - 1) * 0.1)]
-        let hi = sorted[Int(Double(sorted.count - 1) * 0.9)]
-        let span = max(1, hi - lo)
-        func colorAt(_ d: Double) -> UIColor { RouteMapView.rampColor((pace(d) - lo) / span) }
+        guard let value = valueFn, let color = colorFn else { return [] }
 
-        // Chunk into ~90 short segments · color by midpoint pace, sharing the
-        // boundary vertex with the next so the line stays joined.
+        // ~90 short segments · color by the value at the segment midpoint, each
+        // sharing its boundary vertex with the next so the line stays joined.
         let maxSegs = 90
         let chunk = max(1, Int(ceil(Double(coords.count - 1) / Double(maxSegs))))
         var segs: [(coords: [CLLocationCoordinate2D], color: UIColor)] = []
@@ -212,10 +284,74 @@ struct RouteMapView: UIViewRepresentable {
         while i < coords.count - 1 {
             let end = min(i + chunk, coords.count - 1)
             let mid = (dist[i] + dist[end]) / 2
-            segs.append((Array(coords[i...end]), colorAt(mid)))
+            segs.append((Array(coords[i...end]), color(value(mid))))
             i = end
         }
         return segs
+    }
+
+    /// HR (bpm) → continuous zone position 0…(n-1): zone index + fraction
+    /// through that zone's band. Drives the zone ramp so HR drift inside Z2
+    /// shifts gently and crossing into Z3 lands on amber.
+    private static func zonePosition(_ hr: Double, _ zones: [HRZoneRange]) -> Double {
+        guard !zones.isEmpty else { return 0 }
+        for (i, z) in zones.enumerated() {
+            let lo = z.lower ?? 0
+            let hi = z.upper ?? .greatestFiniteMagnitude
+            if hr < lo { return Double(i) }
+            if hr <= hi {
+                let frac = hi > lo ? (hr - lo) / (hi - lo) : 0
+                return Double(i) + min(1, max(0, frac))
+            }
+        }
+        return Double(zones.count - 1)
+    }
+
+    /// Forward-then-backward fill so every mile has a value (a missing split
+    /// borrows its nearest neighbor). Returns [] if nothing is fillable.
+    private static func perMileFilled(_ raw: [Double?]) -> [Double] {
+        var filled = raw
+        var last: Double? = nil
+        for i in filled.indices { if filled[i] == nil { filled[i] = last } else { last = filled[i] } }
+        var nxt: Double? = nil
+        for i in stride(from: filled.count - 1, through: 0, by: -1) {
+            if filled[i] == nil { filled[i] = nxt } else { nxt = filled[i] }
+        }
+        let out = filled.compactMap { $0 }
+        return out.count == filled.count ? out : []
+    }
+
+    /// SMOOTH per-mile value · linear interpolation between mile CENTERS (mile i
+    /// centered at i + 0.5), clamped at the ends. Adjacent miles on an easy/long
+    /// run are close, so this reads as a continuous gradient.
+    private static func mileSmooth(_ d: Double, _ vals: [Double]) -> Double {
+        guard let first = vals.first, let lastV = vals.last else { return 0 }
+        let x = d - 0.5
+        if x <= 0 { return first }
+        let i = Int(floor(x))
+        if i >= vals.count - 1 { return lastV }
+        return vals[i] + (vals[i + 1] - vals[i]) * (x - Double(i))
+    }
+
+    /// SHARP-with-eased-boundary value for phases · the phase's value across its
+    /// body, ramping to the neighbor only within ±w/2 of each internal boundary.
+    /// Keeps a 6:45 rep true-red through its length, fading only at the join.
+    private static func phaseValue(_ d: Double, _ spans: [(start: Double, end: Double, v: Double)], _ w: Double) -> Double {
+        guard !spans.isEmpty else { return 0 }
+        var idx = spans.count - 1
+        for (k, s) in spans.enumerated() where d <= s.end + 0.0001 { idx = k; break }
+        let cur = spans[idx]
+        if idx < spans.count - 1, d > cur.end - w / 2 {
+            let nxt = spans[idx + 1]
+            let f = min(1, max(0, (d - (cur.end - w / 2)) / w))
+            return cur.v + (nxt.v - cur.v) * f
+        }
+        if idx > 0, d < cur.start + w / 2 {
+            let prv = spans[idx - 1]
+            let f = min(1, max(0, ((cur.start + w / 2) - d) / w))
+            return cur.v + (prv.v - cur.v) * f
+        }
+        return cur.v
     }
 
     // MARK: - Delegate

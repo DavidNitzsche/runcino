@@ -530,7 +530,9 @@ struct RunDetailView: View {
             distanceMi: run?.distance_mi ?? 0,
             elevGainFt: run?.elev_gain_ft ?? 0,
             splits: run?.splits ?? [],
-            phases: RouteMapView.phaseSamples(from: run?.phase_breakdown)
+            phases: RouteMapView.phaseSamples(from: run?.phase_breakdown),
+            effort: effort,
+            hrZones: run?.hr_zones_from_lthr?.ranges ?? []
         )
         .frame(height: 196)
     }

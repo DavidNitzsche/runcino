@@ -469,7 +469,9 @@ struct TodayPostRunBody: View {
                 distanceMi: detail?.distance_mi ?? 0,
                 elevGainFt: detail?.elev_gain_ft ?? 0,
                 splits: detail?.splits ?? [],
-                phases: RouteMapView.phaseSamples(from: detail?.phase_breakdown)
+                phases: RouteMapView.phaseSamples(from: detail?.phase_breakdown),
+                effort: hiwEffort,
+                hrZones: detail?.hr_zones_from_lthr?.ranges ?? []
             )
             .frame(height: 196)
             .padding(.horizontal, 18)
@@ -1166,9 +1168,18 @@ struct RoutePolylineCard: View {
     /// Workout phases (reps / tempo block) · drive the route heat map's
     /// structure-aware coloring when present. Empty → per-mile pace gradient.
     var phases: [PhaseSample] = []
+    /// Effort + LTHR zone bands · steady runs (easy/long/recovery) color by HR
+    /// zone, structured runs by pace/phase (David 2026-06-17). Threaded into
+    /// RouteMapView; the legend reads the same rule so it never diverges.
+    var effort: FaffEffort = .easy
+    var hrZones: [HRZoneRange] = []
 
     private var hasPaceData: Bool {
         splits.count >= 2 && splits.contains { $0.pace != nil }
+    }
+
+    private var hrMode: Bool {
+        RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases)
     }
 
     var body: some View {
@@ -1180,16 +1191,18 @@ struct RoutePolylineCard: View {
                 // on CartoDB dark tiles. Those tiles' street labels are muted
                 // enough to recede instead of crowding the line, which the
                 // Apple basemap did not (David 2026-06-16). See RouteMapView.
-                RouteMapView(coords: coords, splits: splits, phases: phases)
+                RouteMapView(coords: coords, splits: splits, phases: phases, effort: effort, hrZones: hrZones)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     // 2026-06-02 round 63 · MapKit hit-tests its region even
                     // when non-interactive, which hijacked the parent
                     // ScrollView's vertical pan into a horizontal drag. The map
                     // is purely visual, so touches pass straight through.
                     .allowsHitTesting(false)
-                    // Pace key · FASTER ▢▢▢▢▢ SLOWER, only with split data.
+                    // Key · Z1 ▢▢▢▢▢ Z5 on HR-zone (steady) runs, else
+                    // FASTER ▢▢▢▢▢ SLOWER pace key when split data exists.
                     .overlay(alignment: .bottomLeading) {
-                        if hasPaceData { paceLegend.padding(10) }
+                        if hrMode { zoneLegend.padding(10) }
+                        else if hasPaceData { paceLegend.padding(10) }
                     }
             } else {
                 // True no-GPS state · matches the web's "NO GPS TRACK
@@ -1231,6 +1244,25 @@ struct RoutePolylineCard: View {
                     .frame(width: 8, height: 8)
             }
             Text("SLOWER")
+        }
+        .font(.label(9)).tracking(0.4)
+        .foregroundStyle(.white.opacity(0.7))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color(hex: 0x080C14).opacity(0.72))
+        .clipShape(Capsule())
+    }
+
+    /// Z1 ▢▢▢▢▢ Z5 zone key · shown when a steady run colors by HR zone.
+    private var zoneLegend: some View {
+        HStack(spacing: 5) {
+            Text("Z1")
+            ForEach(Array(RouteMapView.zoneColors.enumerated()), id: \.offset) { _, c in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color(uiColor: c))
+                    .frame(width: 8, height: 8)
+            }
+            Text("Z5")
         }
         .font(.label(9)).tracking(0.4)
         .foregroundStyle(.white.opacity(0.7))
