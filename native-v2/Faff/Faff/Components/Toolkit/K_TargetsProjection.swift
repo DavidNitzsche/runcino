@@ -422,8 +422,8 @@ struct TargetsProjectionPanel: View {
             // to the goal. Say plainly whether it lands short or beats it.
             let short = traj > goal
             Text(short
-                 ? "Plan projects \(formatTime(traj)) by race day — \(formatGap(traj - goal)) short of your \(formatTime(goal)) goal."
-                 : "Plan projects \(formatTime(traj)) by race day — beats \(formatTime(goal)) by \(formatGap(goal - traj)).")
+                 ? "Race day \(formatTime(traj)) · \(formatGap(traj - goal)) short of \(formatTime(goal))."
+                 : "Race day \(formatTime(traj)) · beats \(formatTime(goal)) by \(formatGap(goal - traj)).")
                 .font(.body(14, weight: .semibold))
                 .foregroundStyle(short ? Theme.over : Theme.green)
                 .fixedSize(horizontal: false, vertical: true)
@@ -447,52 +447,45 @@ struct TargetsProjectionPanel: View {
            let curV = summary.currentVdot {
             let needed = goalV - curV
             let isShort = (needed - gain) > 0.15
-            VStack(alignment: .leading, spacing: 13) {
-                Text("THE READOUT")
-                    .font(.label(11)).tracking(1.5)
-                    .foregroundStyle(Theme.mute)
+            // Three one-line levers + one short synthesis line. Tight enough for
+            // a phone — the label-over-sentence layout was too cramped/wordy
+            // (David 2026-06-16). A thin rule replaces the "THE READOUT" header.
+            VStack(alignment: .leading, spacing: 9) {
+                Rectangle().fill(Color.white.opacity(0.10))
+                    .frame(height: 0.5).padding(.bottom, 2)
 
-                readoutRow("EXECUTION",
-                           exec >= 0.95 ? "Nailing every session"
-                               : exec >= 0.80 ? "Hitting the plan" : "Some sessions slipping",
+                readoutRow("Execution",
+                           exec >= 0.95 ? "nailing it" : exec >= 0.80 ? "on plan" : "slipping",
                            "\(Int((exec * 100).rounded()))%",
                            exec >= 0.85 ? Theme.green : Theme.goal)
-
-                readoutRow("PLAN INTENSITY",
+                readoutRow("Plan",
                            summary.planBuiltForGoal == true
-                               ? "Hard enough · trains to VDOT \(vdotInt(summary.plannedTargetVdot)), above goal"
-                               : "Under-built · tops out at VDOT \(vdotInt(summary.plannedTargetVdot))",
+                               ? "hard enough (→\(vdotInt(summary.plannedTargetVdot)))"
+                               : "under-built (\(vdotInt(summary.plannedTargetVdot)))",
                            summary.planBuiltForGoal == true ? "✓" : "—",
                            summary.planBuiltForGoal == true ? Theme.green : Theme.goal)
-
-                readoutRow("RUNWAY",
-                           "\(vdot1(summary.buildWeeks)) wks realizes +\(vdot1(gain)) of +\(vdot1(needed)) needed",
+                readoutRow("Runway",
+                           "\(vdot1(summary.buildWeeks)) wk → +\(vdot1(gain)) of +\(vdot1(needed))",
                            isShort ? "short" : "on track",
                            isShort ? Theme.goal : Theme.green)
 
                 Text(isShort
-                     ? "Not your effort, not the plan — the calendar. To reach \(formatTime(goalSecForCopy)): more build weeks or volume, or confirm fitness early — beat threshold paces under HR, or a tune-up."
+                     ? "Out of runway, not effort — a bigger build or an early tune-up closes it."
                      : "Execution and the plan are landing it. Hold the build.")
-                    .font(.body(13))
-                    .foregroundStyle(Theme.mute)
-                    .lineSpacing(2)
+                    .font(.body(12)).foregroundStyle(Theme.mute)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
+                    .padding(.top, 1)
             }
         }
     }
 
-    private var goalSecForCopy: Int? { summary.goalSec }
-
     @ViewBuilder
-    private func readoutRow(_ label: String, _ text: String, _ chip: String, _ tint: Color) -> some View {
-        HStack(alignment: .center, spacing: 11) {
-            Circle().fill(tint).frame(width: 7, height: 7)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.label(10)).tracking(1.0).foregroundStyle(Theme.mute)
-                Text(text).font(.body(14, weight: .semibold)).foregroundStyle(Theme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    private func readoutRow(_ label: String, _ verdict: String, _ chip: String, _ tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(tint).frame(width: 6, height: 6)
+            (Text(label).font(.body(13, weight: .semibold)).foregroundColor(Theme.ink)
+             + Text(" · \(verdict)").font(.body(13)).foregroundColor(Theme.mute))
+                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Text(chip).font(.body(13, weight: .semibold)).foregroundStyle(tint)
         }
