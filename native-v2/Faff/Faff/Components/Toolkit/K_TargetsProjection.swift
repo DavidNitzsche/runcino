@@ -420,10 +420,13 @@ struct TargetsProjectionPanel: View {
             // Goal-relative + honest (David 2026-06-16): the trajectory is a
             // forward model (current fitness + projected build gain), NOT pinned
             // to the goal. Say plainly whether it lands short or beats it.
-            let short = traj > goal
+            let short = traj > goal + 4
+            let ahead = traj < goal - 4
             Text(short
                  ? "Race day \(formatTime(traj)) · \(formatGap(traj - goal)) short of \(formatTime(goal))."
-                 : "Race day \(formatTime(traj)) · beats \(formatTime(goal)) by \(formatGap(goal - traj)).")
+                 : ahead
+                   ? "Race day \(formatTime(traj)) · beats \(formatTime(goal)) by \(formatGap(goal - traj))."
+                   : "On track for \(formatTime(goal)) by race day.")
                 .font(.body(14, weight: .semibold))
                 .foregroundStyle(short ? Theme.over : Theme.green)
                 .fixedSize(horizontal: false, vertical: true)
@@ -464,14 +467,16 @@ struct TargetsProjectionPanel: View {
                                : "under-built (\(vdotInt(summary.plannedTargetVdot)))",
                            summary.planBuiltForGoal == true ? "✓" : "—",
                            summary.planBuiltForGoal == true ? Theme.green : Theme.goal)
-                readoutRow("Runway",
-                           "\(vdot1(summary.buildWeeks)) wk → +\(vdot1(gain)) of +\(vdot1(needed))",
+                readoutRow("Build",
+                           "+\(vdot1(gain)) of +\(vdot1(needed)) to goal",
                            isShort ? "short" : "on track",
                            isShort ? Theme.goal : Theme.green)
 
-                Text(isShort
-                     ? "Out of runway, not effort — a bigger build or an early tune-up closes it."
-                     : "Execution and the plan are landing it. Hold the build.")
+                Text(!isShort
+                     ? "Executing a goal-built plan — you're on track. Stay on it."
+                     : summary.planBuiltForGoal == false
+                       ? "The plan tops out below goal — it needs a more aggressive build."
+                       : "Behind the plan — hitting the sessions is what closes the gap.")
                     .font(.body(12)).foregroundStyle(Theme.mute)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 1)

@@ -161,21 +161,27 @@ export function projectFitnessTrajectory(args: {
   // What the runner has actually shown they are, for sizing the remaining build.
   const effectiveCurrentVdot = currentVdot + overPerfBonus;
 
-  // The plan is the stimulus ceiling for the BUILD gain — measured from where
-  // they've shown they are, not the stale anchor. Once over-performance reaches
-  // that ceiling, the build adds nothing more and planUnderBuilt fires below.
-  const planGainCap = plannedTargetVdot != null
-    ? Math.max(0, plannedTargetVdot - effectiveCurrentVdot)
-    : Infinity;
-
   const buildWeeks = Math.max(0, weeksToRace - TAPER_WEEKS);
-  const plannedGainVdot = clamp(
-    buildWeeks * BASE_BUILD_RATE * executionQuality,
-    0,
-    Math.min(MAX_BLOCK_GAIN, planGainCap),
-  );
-  // Total gain from the anchor = unconfirmed over-performance + the planned build.
-  const projectedGainVdot = overPerfBonus + plannedGainVdot;
+  // 2026-06-16 · "the plan trusts itself" (David's doctrine). When the plan is
+  // built for the goal and the runner is executing it, project that they REACH
+  // the goal — do NOT tax a sound, well-executed plan with a generic population
+  // build rate. The old `buildWeeks × 0.35 × exec` undershot even a goal-built,
+  // perfectly-executed plan, which both contradicted the doctrine and read as
+  // a contradiction next to "plan trains above goal."
+  //
+  // The gain the goal needs is (goalVdot − currentVdot). executionQuality
+  // credits how much of it the projection trusts — and since executionQuality
+  // is driven by recent test-point verdicts + missed-workout signal, REAL
+  // evidence (a slow session, skipped work) is what pulls the projection short,
+  // not a generic rate. The plan's prescribed ceiling caps the gain (an
+  // under-built plan can't deliver the goal no matter the effort), and
+  // over-performance rides on top, up to that same ceiling.
+  const planCeilingGain = plannedTargetVdot != null
+    ? Math.max(0, plannedTargetVdot - currentVdot)
+    : Infinity;
+  const gainCap = Math.min(MAX_BLOCK_GAIN, planCeilingGain);
+  const plannedGainVdot = clamp((goalVdot - currentVdot) * executionQuality, 0, gainCap);
+  const projectedGainVdot = clamp(plannedGainVdot + overPerfBonus, 0, gainCap);
   const projectedVdot = Math.round((currentVdot + projectedGainVdot) * 10) / 10;
 
   const currentSec = predictRaceTime(currentVdot, raceDistanceMi);
@@ -192,11 +198,13 @@ export function projectFitnessTrajectory(args: {
   const planBuiltForGoal = plannedTargetVdot != null
     ? plannedTargetVdot >= goalVdot - 0.3
     : null;
-  // 2026-06-12 · the trajectory has reached/passed the plan's prescribed ceiling
-  // — the plan now trains for LESS than the runner is tracking toward. The signal
-  // to offer a faster goal + rebuild. null when no plan signal supplied.
+  // 2026-06-12 · the runner's DEMONSTRATED fitness (anchor + over-performance)
+  // has reached/passed what the plan trains for — the plan now asks for LESS
+  // than they're already showing. The signal to offer a faster goal + rebuild.
+  // (2026-06-16 · keyed off effectiveCurrentVdot, not projectedVdot, since the
+  // gain now caps AT the ceiling so projectedVdot can't exceed it.)
   const planUnderBuilt = plannedTargetVdot != null
-    ? projectedVdot > plannedTargetVdot + 0.3
+    ? effectiveCurrentVdot > plannedTargetVdot + 0.3
     : null;
 
   // What rate would close the remaining gap over the build window — the
