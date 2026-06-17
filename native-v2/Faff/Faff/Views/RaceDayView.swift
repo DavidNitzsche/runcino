@@ -304,7 +304,7 @@ struct RaceDayView: View {
                     if let pr = pbChip {
                         Text(pr)
                             .font(.body(11, weight: .bold))
-                            .foregroundStyle(Color(hex: 0x9AF0BF))
+                            .foregroundStyle(Theme.Accent.mintReady)
                     }
                 }
                 .padding(.top, 22)
@@ -382,7 +382,7 @@ struct RaceDayView: View {
                     style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
                 )
                 if let s = projected.first {
-                    Circle().fill(Color(hex: 0x9AF0BF)).frame(width: 9, height: 9).position(s)
+                    Circle().fill(Theme.Accent.mintGlow).frame(width: 9, height: 9).position(s)
                 }
                 if let e = projected.last {
                     Circle().fill(Theme.race).frame(width: 9, height: 9).position(e)

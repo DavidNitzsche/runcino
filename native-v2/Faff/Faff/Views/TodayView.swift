@@ -830,16 +830,16 @@ struct TodayView: View {
                 HStack(spacing: 7) {
                     Image(systemName: "dumbbell.fill")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                        .foregroundStyle(Theme.Accent.mintReady)
                     Text("Strength")
                         .font(.body(13, weight: .bold))
                         .foregroundStyle(Theme.txt)
                     Text("done")
                         .font(.body(12, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                        .foregroundStyle(Theme.Accent.mintReady)
                     Image(systemName: "checkmark")
                         .font(.system(size: 9, weight: .black))
-                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                        .foregroundStyle(Theme.Accent.mintReady)
                 }
                 .padding(.top, 16)
             } else if strengthDays.contains(selectedDayID) {
@@ -1101,7 +1101,7 @@ struct TodayView: View {
                         .frame(width: 22, height: 22)
                     Image(systemName: "checkmark")
                         .font(.system(size: 12, weight: .black))
-                        .foregroundStyle(Color(hex: 0x1F9A6F))
+                        .foregroundStyle(Theme.green)
                 }
             } else if selectedEffort != .rest {
                 Circle()
@@ -1123,7 +1123,7 @@ struct TodayView: View {
             if isDone {
                 Text("DONE")
                     .font(.body(10, weight: .extraBold)).tracking(1.4)
-                    .foregroundStyle(Color(hex: 0x1F9A6F))
+                    .foregroundStyle(Theme.green)
                     .padding(.horizontal, 9).padding(.vertical, 4)
                     .background(.white, in: Capsule())
             } else {
@@ -1564,7 +1564,7 @@ struct TodayView: View {
     /// a "watch your effort" cue), recovery-cyan for cooler (a "you might
     /// surprise yourself" cue).
     private var weatherTagColor: Color {
-        guard let d = weather?.deltaF, d > 0 else { return Color(hex: 0x9AF0BF) }
+        guard let d = weather?.deltaF, d > 0 else { return Theme.green }
         return Color(hex: 0xFFD27A)
     }
 

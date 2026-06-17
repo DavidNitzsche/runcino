@@ -93,7 +93,7 @@ struct NudgeSheet: View {
                     .stroke(Color.white.opacity(0.16), lineWidth: 7)
                 Circle()
                     .trim(from: 0, to: CGFloat(frac))
-                    .stroke(score < 65 ? Color(hex: 0xFFB24D) : Color(hex: 0x62E08A),
+                    .stroke(score < 65 ? Color(hex: 0xFFB24D) : Theme.green,
                             style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 5) {
@@ -103,7 +103,7 @@ struct NudgeSheet: View {
                         .foregroundStyle(Theme.txt)
                     Text(label)
                         .font(.label(8)).tracking(2)
-                        .foregroundStyle(score < 65 ? Color(hex: 0xFFCE8A) : Color(hex: 0x9AF0BF))
+                        .foregroundStyle(score < 65 ? Color(hex: 0xFFCE8A) : Theme.Accent.mintReady)
                 }
             }
             .frame(width: 104, height: 104)
@@ -188,7 +188,7 @@ struct NudgeSheet: View {
                         .position(x: half, y: 4)
                     // Signed bar lobe · pushes left or right from center.
                     Capsule()
-                        .fill(bad ? Color(hex: 0xFFB24D) : Color(hex: 0x62E08A))
+                        .fill(bad ? Color(hex: 0xFFB24D) : Theme.green)
                         .frame(width: w * 0.5 * CGFloat(magnitude), height: 8)
                         .offset(x: bad ? (half - w * 0.5 * CGFloat(magnitude)) : half)
                 }
@@ -207,10 +207,10 @@ struct NudgeSheet: View {
         HStack(alignment: .top, spacing: 11) {
             Text("COACH")
                 .font(.label(9)).tracking(1)
-                .foregroundStyle(Color(hex: 0x9AF0BF))
+                .foregroundStyle(Theme.Accent.mintReady)
                 .padding(.horizontal, 7).padding(.vertical, 4)
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color(hex: 0x9AF0BF).opacity(0.4), lineWidth: 1))
+                    .stroke(Theme.Accent.mintGlow.opacity(0.4), lineWidth: 1))
                 .padding(.top, 2)
             Text(coachMessage)
                 .font(.body(16, weight: .semibold))
@@ -250,9 +250,9 @@ struct NudgeSheet: View {
                 .foregroundStyle(Color(hex: 0x06302A))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 17)
-                .background(Color(hex: 0x9AF0BF),
+                .background(Theme.green,
                             in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: Color(hex: 0x62E08A).opacity(0.5), radius: 30, y: 12)
+                .shadow(color: Theme.green.opacity(0.5), radius: 30, y: 12)
         }
         .buttonStyle(.plain)
     }

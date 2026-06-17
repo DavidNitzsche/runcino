@@ -84,14 +84,14 @@ struct PRSheet: View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.up")
                 .font(.system(size: 13, weight: .heavy))
-                .foregroundStyle(Color(hex: 0x9AF0BF))
+                .foregroundStyle(Theme.Accent.mintReady)
             Text("2:22 faster · first sub-1:30")
                 .font(.body(14, weight: .bold))
-                .foregroundStyle(Color(hex: 0x9AF0BF))
+                .foregroundStyle(Theme.Accent.mintReady)
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
-        .background(Color(hex: 0x9AF0BF).opacity(0.16), in: Capsule())
-        .overlay(Capsule().stroke(Color(hex: 0x9AF0BF).opacity(0.4), lineWidth: 1))
+        .background(Theme.green.opacity(0.16), in: Capsule())
+        .overlay(Capsule().stroke(Theme.Accent.mintGlow.opacity(0.4), lineWidth: 1))
     }
 
     private var compareRow: some View {
@@ -115,7 +115,7 @@ struct PRSheet: View {
                 .font(.label(9)).tracking(1)
                 .foregroundStyle(Color(hex: 0x3A0F06))
                 .padding(.horizontal, 7).padding(.vertical, 4)
-                .background(Color(hex: 0x9AF0BF),
+                .background(Theme.green,
                             in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .padding(.top, 2)
             Text("That's a 2:22 PR and your first sub-1:30. Even splits, negative second half · the threshold work is paying off. CIM's sub-3 is right on track.")

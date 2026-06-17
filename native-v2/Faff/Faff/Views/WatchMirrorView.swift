@@ -80,7 +80,7 @@ struct WatchMirrorView: View {
     /// The watch still owns pause/lap/end — Cancel only closes this screen.
     private var mirrorPill: some View {
         HStack(spacing: 11) {
-            LivePulseDot(color: liveOk ? Color(hex: 0x9AF0BF) : Color(hex: 0xFF5A52), size: 8)
+            LivePulseDot(color: liveOk ? Theme.Accent.mintGlow : Color(hex: 0xFF5A52), size: 8)
                 .frame(width: 14, height: 14)
             VStack(alignment: .leading, spacing: 2) {
                 Text(workout != nil ? "TODAY'S PLAN" : "STANDING BY")

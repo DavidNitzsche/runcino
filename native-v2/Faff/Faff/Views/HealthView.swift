@@ -310,7 +310,7 @@ struct HealthView: View {
         case "urgent":    return Color(hex: 0xFC4D64)
         case "high":      return Color(hex: 0xF3AD38)
         case "medium":    return Color(hex: 0xE7C24A)
-        case "on-course": return Color(hex: 0x5fd06a)
+        case "on-course": return Theme.green
         default:          return Color(hex: 0x8A90A0)
         }
     }
@@ -364,11 +364,11 @@ struct HealthView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(String(format: "VO₂ %.1f", vo2))
                     .font(.display(24, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x5fd06a))
+                    .foregroundStyle(Theme.Accent.mintReady)
                 if let p = pct {
                     Text(String(format: "%+.1f%% / 30d", p))
                         .font(.body(11, weight: .extraBold)).tracking(0.4)
-                        .foregroundStyle(p >= 0 ? Color(hex: 0x5fd06a) : Color(hex: 0xFC4D64))
+                        .foregroundStyle(p >= 0 ? Theme.Accent.mintReady : Color(hex: 0xFC4D64))
                 }
             }
             if let coach {
@@ -423,7 +423,7 @@ struct HealthView: View {
     private func sleepSummaryCard(label: String, value: Double?) -> some View {
         let dotColor: Color = {
             guard let h = value else { return Color(hex: 0x8A90A0) }
-            if h >= 7.0 { return Color(hex: 0x5fd06a) }
+            if h >= 7.0 { return Theme.green }
             if h >= 6.0 { return Color(hex: 0xF3AD38) }
             return Color(hex: 0xFC4D64)
         }()
@@ -648,7 +648,7 @@ struct HealthView: View {
         let baseline = comp.baseline
         let delta = score - baseline
         let sign = delta >= 0 ? "+" : ""
-        let deltaColor: Color = delta >= 0 ? Color(hex: 0x5fd06a) : Color(hex: 0xFC4D64)
+        let deltaColor: Color = delta >= 0 ? Theme.Accent.mintReady : Color(hex: 0xFC4D64)
         return Text("baseline ")
             + Text("\(baseline)").bold().foregroundColor(.white)
             + Text(" · today ")
@@ -822,7 +822,7 @@ struct HealthDriversList: View {
     private func statusColor(for weight: Int) -> Color {
         if weight <= -8  { return Color(hex: 0xFC4D64) }   // bad / over
         if weight <= -3  { return Color(hex: 0xF3AD38) }   // warn / goal
-        if weight >= 4   { return Color(hex: 0x5fd06a) }   // good / green
+        if weight >= 4   { return Theme.green }   // good / green
         return Color(hex: 0x8A90A0)                         // neutral / mute
     }
 }

@@ -157,7 +157,7 @@ struct ShoePickerRow: View {
                 if selected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x62E08A))
+                        .foregroundStyle(Theme.green)
                 }
             }
             .padding(.vertical, 12)

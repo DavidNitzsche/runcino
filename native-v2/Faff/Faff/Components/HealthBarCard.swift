@@ -41,7 +41,7 @@ struct HealthMetric: Identifiable, Equatable {
         case good, warn, bad, neutral
         var color: Color {
             switch self {
-            case .good:    return Color(hex: 0x5fd06a)
+            case .good:    return Theme.green
             case .warn:    return Color(hex: 0xF3AD38)
             case .bad:     return Color(hex: 0xFC4D64)
             case .neutral: return Color(hex: 0x8A90A0)

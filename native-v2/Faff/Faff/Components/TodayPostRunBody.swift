@@ -306,7 +306,7 @@ struct TodayPostRunBody: View {
             // tightened so the pill reads as a confident pill, not a
             // shy chip.
             let pillBg: Color = onMesh ? Color.white : Color(hex: 0xE9F7EE)
-            let inkColor: Color = Color(hex: 0x1F9A6F)   // dark green both contexts
+            let inkColor: Color = Theme.green   // dark green both contexts (readable on white + pale-mint pill)
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
@@ -901,7 +901,7 @@ struct TodayPostRunBody: View {
     private var verdictTint: Color {
         let v = (recap?.verdict ?? "").lowercased()
         if v.contains("off plan") || v.contains("dnf") { return Color(hex: 0xFC4D64) }
-        return Color(hex: 0x1F9A6F)
+        return Theme.green
     }
 
     // MARK: - Strava push

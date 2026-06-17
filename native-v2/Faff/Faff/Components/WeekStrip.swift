@@ -84,7 +84,7 @@ struct WeekStrip: View {
                 .overlay(alignment: .bottom) {
                     if d.strengthDone {
                         Capsule()
-                            .fill(Color(hex: 0x9AF0BF))   // green · strength logged
+                            .fill(Theme.green)   // green · strength logged
                             .frame(width: 14, height: 2.5)
                             .offset(y: 2)
                     } else if d.strengthSuggested {
@@ -113,14 +113,14 @@ struct WeekStrip: View {
             } else if d.isDone {
                 ZStack {
                     Circle()
-                        .fill(Color(hex: 0x9AF0BF).opacity(0.18))
+                        .fill(Theme.green.opacity(0.18))
                         .frame(width: 14, height: 14)
                     Circle()
-                        .stroke(Color(hex: 0x9AF0BF).opacity(0.6), lineWidth: 1)
+                        .stroke(Theme.Accent.mintGlow.opacity(0.6), lineWidth: 1)
                         .frame(width: 14, height: 14)
                     Image(systemName: "checkmark")
                         .font(.system(size: 7, weight: .black))
-                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                        .foregroundStyle(Theme.Accent.mintReady)
                 }
             } else {
                 Circle()

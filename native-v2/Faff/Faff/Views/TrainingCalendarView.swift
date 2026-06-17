@@ -176,7 +176,7 @@ struct TrainingCalendarView: View {
             if isDone {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x9AF0BF))
+                    .foregroundStyle(Theme.Accent.mintReady)
             }
         }
         .padding(.horizontal, 12)
@@ -193,7 +193,7 @@ struct TrainingCalendarView: View {
         if strengthDoneDays.contains(dateIso) {
             Image(systemName: "dumbbell.fill")
                 .font(.system(size: 12.5, weight: .bold))
-                .foregroundStyle(Color(hex: 0x9AF0BF))
+                .foregroundStyle(Theme.Accent.mintReady)
         } else if strengthDays.contains(dateIso) {
             Image(systemName: "dumbbell.fill")
                 .font(.system(size: 12.5, weight: .bold))

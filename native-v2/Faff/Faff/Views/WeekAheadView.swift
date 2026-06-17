@@ -321,8 +321,8 @@ private struct AgendaRow: View {
             HStack(spacing: 9) {
                 if day.isDone {
                     ZStack {
-                        Circle().fill(Color(hex: 0x9AF0BF).opacity(0.18)).frame(width: 20, height: 20)
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Color(hex: 0x9AF0BF))
+                        Circle().fill(Theme.green.opacity(0.18)).frame(width: 20, height: 20)
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.Accent.mintReady)
                     }
                 } else if day.isToday {
                     Text("TODAY")

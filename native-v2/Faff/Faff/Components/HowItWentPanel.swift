@@ -132,7 +132,7 @@ enum HIWTone {
 
     var color: Color {
         switch self {
-        case .good:    return Color(hex: 0x1F9A6F)
+        case .good:    return Theme.green
         case .warn:    return Color(hex: 0xBD7A16)
         case .bad:     return Color(hex: 0xD6483F)
         case .neutral: return Color(hex: 0x6B6358)
@@ -279,7 +279,7 @@ private struct ThirdCard: View {
 
     private var thirdBg: Color {
         switch tone {
-        case .good: return onMesh ? Color(hex: 0x1F9A6F).opacity(0.18) : Color(hex: 0x1F9A6F).opacity(0.10)
+        case .good: return onMesh ? Theme.green.opacity(0.18) : Theme.green.opacity(0.10)
         case .warn: return onMesh ? Color(hex: 0xBD7A16).opacity(0.18) : Color(hex: 0xBD7A16).opacity(0.10)
         case .bad:  return onMesh ? Color(hex: 0xD6483F).opacity(0.18) : Color(hex: 0xD6483F).opacity(0.10)
         case .neutral: return onMesh ? Color.white.opacity(0.10) : Color(hex: 0xF6EFE2)
@@ -287,7 +287,7 @@ private struct ThirdCard: View {
     }
     private var thirdBorder: Color {
         switch tone {
-        case .good: return Color(hex: 0x1F9A6F).opacity(0.38)
+        case .good: return Theme.green.opacity(0.38)
         case .warn: return Color(hex: 0xBD7A16).opacity(0.40)
         case .bad:  return Color(hex: 0xD6483F).opacity(0.36)
         case .neutral: return dividerColor
@@ -415,7 +415,7 @@ private struct CmpBar: View {
                 Spacer()
                 Text("FASTER ▸")
                     .font(.body(8, weight: .extraBold)).tracking(1)
-                    .foregroundStyle(Color(hex: 0x1F9A6F))
+                    .foregroundStyle(Theme.green)
             }
         }
     }
@@ -984,7 +984,7 @@ private struct RepsPostPanel: View {
             Spacer()
             Text("FASTER ▸")
                 .font(.body(8, weight: .extraBold)).tracking(1)
-                .foregroundStyle(Color(hex: 0x1F9A6F))
+                .foregroundStyle(Theme.green)
         }
         .padding(.top, -4)
     }
@@ -1077,7 +1077,7 @@ private struct RepsPostPanel: View {
         let fastTol = 6.0   // slack on the fast edge of the range
         let slowTol = 4.0   // slack on the slow edge (≈ heat-adjusted)
         let inRange = Double(delta) >= -fastTol && Double(delta) <= Double(adjOff) + slowTol
-        let markColor: Color = inRange ? Color(hex: 0x2FA876) : Color(hex: 0xE0913A)
+        let markColor: Color = inRange ? Theme.green : Color(hex: 0xE0913A)
         // Label speaks the range, not a raw delta: "in range" when the rep
         // landed in the band, else how far past the slow edge ("Ns over") or
         // the fast edge ("Ns fast").
@@ -1108,7 +1108,7 @@ private struct RepsPostPanel: View {
                     Capsule().fill(dividerColor).frame(height: 6)
                     // green acceptable range · solid, confident
                     Capsule()
-                        .fill(Color(hex: 0x2FA876).opacity(onMesh ? 0.55 : 0.32))
+                        .fill(Theme.green.opacity(onMesh ? 0.55 : 0.32))
                         .frame(width: max(0, w * (xFast - xSlow)), height: 11)
                         .offset(x: w * xSlow)
                     // prescribed-target tick (the fast edge of the range)

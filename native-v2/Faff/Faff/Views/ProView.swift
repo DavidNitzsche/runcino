@@ -110,7 +110,7 @@ struct ProView: View {
              title: "Full analytics & trends", sub: "form, cadence, GCT, every history chart"),
         Feat(icon: "sun.max.fill", tint: Color(hex: 0xFFCE8A),
              title: "Heat & weather recalibration", sub: "targets & HR read adjusted to conditions"),
-        Feat(icon: "target", tint: Color(hex: 0x9AF0BF),
+        Feat(icon: "target", tint: Theme.Accent.mintReady,
              title: "Unlimited race goals", sub: "every distance, projections & the gap"),
         Feat(icon: "person.2.fill", tint: Color(hex: 0x9BC0FF),
              title: "Spectator sharing", sub: "let family follow you live on race day")
@@ -197,7 +197,7 @@ struct ProView: View {
                         .font(.label(8.5)).tracking(0.5)
                         .foregroundStyle(Color(hex: 0x0A3A2A))
                         .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Color(hex: 0x9AF0BF), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .background(Theme.green, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .offset(x: -12, y: -9)
                 }
             }

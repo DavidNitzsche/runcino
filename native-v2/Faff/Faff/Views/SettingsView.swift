@@ -376,7 +376,7 @@ struct SettingsView: View {
             if !value.isEmpty {
                 Text(value)
                     .font(.body(12, weight: .bold))
-                    .foregroundStyle(good ? Color(hex: 0x9AF0BF) : Theme.txt.opacity(0.7))
+                    .foregroundStyle(good ? Theme.Accent.mintReady : Theme.txt.opacity(0.7))
             }
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .bold))

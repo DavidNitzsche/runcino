@@ -173,7 +173,7 @@ struct StatRow: View {
 
 struct FaffToggle: View {
     @Binding var isOn: Bool
-    var onColor: Color = Color(hex: 0x62E08A)
+    var onColor: Color = Theme.green
 
     var body: some View {
         Button { withAnimation(Theme.Motion.smooth) { isOn.toggle() } } label: {
@@ -221,7 +221,7 @@ struct LivePulseDot: View {
 struct ReadinessRing: View {
     let score: Int
     var size: CGFloat = 54
-    var color: Color = Color(hex: 0x62E08A)
+    var color: Color = Theme.green
     var trackColor: Color = Color.white.opacity(0.22)
     /// Override the sub-label (otherwise auto-classifies score → EASY/STEADY/READY/PRIMED/PEAK).
     var subLabel: String? = nil

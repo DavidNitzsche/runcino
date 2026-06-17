@@ -433,14 +433,14 @@ struct RunDetailView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                        .foregroundStyle(Theme.Accent.mintReady)
                     Text("COMPLETED")
                         .font(.label(10)).tracking(1)
-                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                        .foregroundStyle(Theme.Accent.mintReady)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(Color(hex: 0x9AF0BF).opacity(0.2), in: Capsule())
-                .overlay(Capsule().stroke(Color(hex: 0x9AF0BF).opacity(0.4), lineWidth: 1))
+                .background(Theme.green.opacity(0.2), in: Capsule())
+                .overlay(Capsule().stroke(Theme.Accent.mintGlow.opacity(0.4), lineWidth: 1))
 
                 // RunSourceBadge · "watch / health / strava / manual"
                 // marker so the runner knows where a run's numbers came
@@ -556,7 +556,7 @@ struct RunDetailView: View {
             HStack(spacing: 7) {
                 Text(v)
                     .font(.body(13, weight: .bold))
-                    .foregroundStyle(good ? Color(hex: 0x9AF0BF) : Theme.txt)
+                    .foregroundStyle(good ? Theme.Accent.mintReady : Theme.txt)
                 if chev {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 10, weight: .bold))
@@ -983,7 +983,7 @@ struct RunDetailView: View {
 
     private func phaseStatusColor(_ ph: PhaseBreakdown) -> Color {
         switch (ph.status ?? "").lowercased() {
-        case "on":   return Color(hex: 0x9AF0BF)
+        case "on":   return Theme.green
         case "slow": return Color(hex: 0xFFB24D)
         case "fast": return Color(hex: 0x86E0FF)
         default:     return Color.white.opacity(0.4)
@@ -1116,7 +1116,7 @@ private enum TraceMetric: String, CaseIterable {
         case .pace: return Color(hex: 0xFF7A45)
         case .hr:   return Color(hex: 0xFF5A6E)
         case .elev: return Color(hex: 0xFFCE8A)
-        case .cad:  return Color(hex: 0x9AF0BF)
+        case .cad:  return Theme.Accent.mintGlow
         }
     }
 }

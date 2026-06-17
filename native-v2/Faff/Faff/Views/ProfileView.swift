@@ -542,7 +542,7 @@ struct ProfileView: View {
             Spacer()
             Text(reconnecting ? "Opening…" : (on ? "SYNCED" : "CONNECT"))
                 .font(.body(12, weight: .semibold))
-                .foregroundStyle(on ? Color(hex: 0x9AF0BF) : Theme.txt.opacity(0.7))
+                .foregroundStyle(on ? Theme.Accent.mintReady : Theme.txt.opacity(0.7))
         }
         .padding(14)
     }
