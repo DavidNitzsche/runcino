@@ -1147,32 +1147,13 @@ private struct SplitRow: View {
 
 // MARK: - Route polyline card
 //
-// Renders the Google-polyline route as a stroked path on a dark card.
-// Visual parity with the web's RouteMap.tsx (Leaflet + CartoDB tiles) ·
-// same coloring + endpoint markers + mile dots, just no basemap. The
-// MapKit-with-tiles upgrade can come later · this gets the line clean.
-//
-// Web parity:
-//   · 5 pace quintile buckets across the polyline's own progress
-//     · coral #FC4D64 → orange #FF8847 → amber #F3AD38 → teal #48B3B5 → blue #27B4E0
-//   · start marker · green ring #14C08C around a dark fill
-//   · finish marker · coral #FC4D64 fill
-//   · mile markers · white dots along the line at integer-mile crossings
-//     (Haversine walk)
-//   · coral baseline underlayer drawn first · belt-and-suspenders so
-//     the line is always visible even if the bucket walker errors
-//   · 5pt stroke · round caps + joins
-
-private let PACE_BUCKETS: [Color] = [
-    Color(hex: 0xFC4D64),  // fastest · coral
-    Color(hex: 0xFF5722),  // orange
-    Color(hex: 0xF3AD38),  // amber
-    Color(hex: 0x14C08C),  // easy teal
-    Color(hex: 0x27B4E0),  // slowest · blue
-]
-let START_RING_COLOR = Color(hex: 0x14C08C)
-let FINISH_FILL_COLOR = Color(hex: 0xFC4D64)
-let BASELINE_UNDER_COLOR = Color(hex: 0xFC4D64)
+// RoutePolylineCard · the run-detail route card. Wraps RouteMapView
+// (MKMapView + CartoDB dark tiles + pace-graded polyline + endpoint
+// markers, mirror of the web RouteMap.tsx) in a titled dark card with the
+// pace legend. RouteMapView owns the coloring — its `bucketColors` are the
+// single source of truth for the pace ramp + endpoint dots — so this card
+// is layout + legend only (the old self-drawn PACE_BUCKETS / START_RING /
+// FINISH_FILL / BASELINE_UNDER constants were retired with that move).
 
 struct RoutePolylineCard: View {
     let polyline: String
