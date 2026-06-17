@@ -29,32 +29,13 @@ import SwiftUI
 
 // MARK: - Band → tint
 
+// Band → color now routes to the ONE canonical map (Theme.ReadinessBand).
+// `tint` = the tag color (bright text sibling); `arc` = the ring stroke
+// (same bright sibling · the old split between a calm tag and a punchier
+// arc collapsed onto the single luminous text token).
 private enum ReadinessBand {
-    static func tint(_ raw: String?) -> Color {
-        switch (raw ?? "").uppercased() {
-        case "SHARP", "PRIMED":          return Color(hex: 0x62E08A)   // green
-        case "READY", "HOLD EASY":       return Color(hex: 0x8FD0FF)   // blue
-        case "MODERATE":                 return Color(hex: 0xFFCE8A)   // amber
-        case "PULL-BACK", "PULL BACK", "BACK OFF":
-                                         return Color(hex: 0xFF7A66)   // red-orange
-        case "NO-DATA", "NO DATA", "":   return Color(hex: 0xB8B0A6)   // mute
-        default:                         return Color(hex: 0xFFCE8A)   // moderate fallback
-        }
-    }
-
-    /// Arc stroke · slightly punchier than the band tag color so the ring
-    /// reads on the mesh. Mirrors the HTML prototype's `arc` color.
-    static func arc(_ raw: String?) -> Color {
-        switch (raw ?? "").uppercased() {
-        case "SHARP", "PRIMED":          return Color(hex: 0x3CD370)
-        case "READY", "HOLD EASY":       return Color(hex: 0x58B8FF)
-        case "MODERATE":                 return Color(hex: 0xFFB24D)
-        case "PULL-BACK", "PULL BACK", "BACK OFF":
-                                         return Color(hex: 0xFC4D64)
-        case "NO-DATA", "NO DATA", "":   return Color(hex: 0xB8B0A6)
-        default:                         return Color(hex: 0xFFB24D)
-        }
-    }
+    static func tint(_ raw: String?) -> Color { Theme.ReadinessBand.text(raw) }
+    static func arc(_ raw: String?)  -> Color { Theme.ReadinessBand.text(raw) }
 }
 
 // MARK: - Public panel
@@ -222,10 +203,10 @@ private struct TodaySignalTile: View {
 
     private var tint: Color {
         let w = input.weight
-        if w <= -8 { return Color(hex: 0xFC4D64) }
-        if w <  0  { return Color(hex: 0xF3AD38) }
-        if w >  0  { return Color(hex: 0x3EBD41) }
-        return Color(hex: 0x8A90A0)
+        if w <= -8 { return Theme.over }
+        if w <  0  { return Theme.goal }
+        if w >  0  { return Theme.green }
+        return Theme.mute
     }
 
     private var isNoData: Bool {

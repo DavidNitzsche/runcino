@@ -153,7 +153,7 @@ struct ProfileView: View {
         } label: {
             Text("Sign out")
                 .font(.body(14, weight: .extraBold))
-                .foregroundStyle(Color(hex: 0xFF8A82))
+                .foregroundStyle(Theme.over)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(Color(hex: 0xFF5A52).opacity(0.14),

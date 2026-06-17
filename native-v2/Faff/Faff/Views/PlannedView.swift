@@ -205,7 +205,7 @@ struct PlannedView: View {
             HStack(spacing: 9) {
                 Image(systemName: "sun.max.fill")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color(hex: 0xFF8C5A))
+                    .foregroundStyle(Theme.race)
                 Text("Heat-adjusted")
                     .font(.body(14, weight: .extraBold))
                     .foregroundStyle(Theme.txt)
@@ -219,12 +219,12 @@ struct PlannedView: View {
         }
         .padding(15)
         .background(
-            LinearGradient(colors: [Color(hex: 0xFF5A28).opacity(0.22), Color(hex: 0xD6261C).opacity(0.16)],
+            LinearGradient(colors: [Theme.race.opacity(0.22), Color(hex: 0xD6261C).opacity(0.16)],
                            startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .stroke(Color(hex: 0xFF8C5A).opacity(0.4), lineWidth: 1))
+            .stroke(Theme.race.opacity(0.4), lineWidth: 1))
     }
 
     private var shapeBar: some View {
@@ -491,10 +491,10 @@ struct PlannedView: View {
 
     private func colorFor(_ t: WatchPhaseType) -> Color {
         switch t {
-        case .warmup:   return Color(hex: 0x34C194)
-        case .cooldown: return Color(hex: 0x22B8C4)
+        case .warmup:   return Theme.neutralTeal
+        case .cooldown: return Theme.neutralTeal
         case .work:     return effort.dot
-        case .recovery: return Color(hex: 0x22B8C4)
+        case .recovery: return Theme.neutralTeal
         }
     }
 

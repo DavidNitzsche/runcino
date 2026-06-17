@@ -41,6 +41,34 @@ enum Theme {
     static let race      = Color(hex: 0xFF5722)     // race day / tempo (the brand hero color)
     static let intervals = Color(hex: 0xF43F5E)     // intervals / max-quality effort
 
+    // ───── Bright-on-dark TEXT siblings of the fill accents ─────
+    // `goal`/`over` are tuned as FILLS (dots, bars, badge bodies). On dark
+    // backgrounds a bright text/mark wants a lighter, more luminous tone so
+    // the glyph reads. These legitimize the shadow-amber/coral found in 14+
+    // call sites (readiness tags, slow-pace marks, attention copy) that were
+    // each hand-rolling the same lighter value. Per David: warn/miss get
+    // their own bright-text token rather than being force-routed to goal/over.
+    static let warnText  = Color(hex: 0xFFB24D)     // bright warn/attention TEXT on dark
+    static let overText  = Color(hex: 0xFF6A6A)     // bright miss/over TEXT on dark
+
+    // ───── Calm / neutral teal · warmup-cool segment color ─────
+    // Tokenizes the existing 0x5BBFB0 used for warmup/cooldown ticks, OK
+    // recovery state, and other "neutral teal" marks. Zero visual change.
+    static let neutralTeal = Color(hex: 0x5BBFB0)
+
+    // ───── Phase identity · CI-LOCKED with web (check-palette-sync.sh) ─────
+    // Categorical training-phase hues. NOT the effort temperature scale ·
+    // these label which mesocycle a week belongs to (Base/Build/Peak/Taper).
+    // Byte-for-byte identical with the web phase palette. iOS had two
+    // hand-rolled phase switches drifting off these values · both now point
+    // here, closing a cross-surface CI-lock violation.
+    enum Phase {
+        static let base  = Color(hex: 0x5BD8D2)
+        static let build = Color(hex: 0xFFCB47)
+        static let peak  = Color(hex: 0xFF7733)
+        static let taper = Color(hex: 0x56E0B0)
+    }
+
     // ───── Shape · matches colors_and_type.css --r-* ─────
     static let rChip:  CGFloat = 14
     static let rCard:  CGFloat = 18
@@ -95,6 +123,11 @@ enum Theme {
         static let dot = Color(hex: 0xF5C518)       // gold middot
         static let skewDegrees: Double = -9
         static let sweepDuration: TimeInterval = 6
+
+        // Strava's brand orange · used for the Strava connect/push/reconnect
+        // chrome only. A DELIBERATE near-twin of `over` (#FC4D64), NOT a typo:
+        // it must match Strava's actual brand mark, so it stays its own token.
+        static let strava = Color(hex: 0xFC4C02)
     }
 
     // ───── HR zones · stacked bar palette (completed run TIME IN ZONES) ─────
@@ -145,6 +178,51 @@ enum Theme {
         static let solidText   = Color(hex: 0x86EFA0)
         static let prBorder    = Color(hex: 0xF5C518).opacity(0.50)
         static let prText      = Color(hex: 0xF5C518)
+    }
+
+    // ───── Readiness band → color · THE one source ─────
+    // Collapses six hand-rolled verdict→color switches (TodayReadinessPanel
+    // tint+arc, TodayView arc, HealthView bandColor, plus the already-canonical
+    // ReadinessBriefSheet + HealthCompactGauge) onto one map. `fill` is the
+    // canonical accent (dots, bars, body). `text` is the bright-on-dark
+    // sibling for tags/arcs where a more luminous glyph was intended.
+    // Normalizes case + all backend aliases ("sharp"/"primed", "ready"/
+    // "hold easy", "pull-back"/"pullback"/"back off", "no-data"/"nodata").
+    enum ReadinessBand {
+        case sharp, ready, moderate, pullback, noData
+
+        static func from(_ raw: String?) -> ReadinessBand {
+            switch (raw ?? "").lowercased().replacingOccurrences(of: " ", with: "-") {
+            case "sharp", "primed", "good":               return .sharp
+            case "ready", "hold-easy":                    return .ready
+            case "moderate", "watch":                     return .moderate
+            case "pull-back", "pullback", "back-off", "low": return .pullback
+            // "ok" is the design's neutral pillar alias · greys out like no-data.
+            case "no-data", "nodata", "ok", "":           return .noData
+            default:                                      return .moderate
+            }
+        }
+
+        /// Canonical accent fill (arc body, dots, bars).
+        static func fill(_ raw: String?) -> Color {
+            switch from(raw) {
+            case .sharp, .ready: return Theme.green   // READY is GREEN, not blue
+            case .moderate:      return Theme.goal
+            case .pullback:      return Theme.over
+            case .noData:        return Theme.mute
+            }
+        }
+
+        /// Bright-on-dark sibling · for the tag text + ring arc where the
+        /// design wanted a punchier glyph than the fill.
+        static func text(_ raw: String?) -> Color {
+            switch from(raw) {
+            case .sharp, .ready: return Theme.Accent.mintReady
+            case .moderate:      return Theme.warnText
+            case .pullback:      return Theme.overText
+            case .noData:        return Theme.mute
+            }
+        }
     }
 
     // ───── Tweaks-panel accent options (the user-selectable accent recolors goal + race) ─────

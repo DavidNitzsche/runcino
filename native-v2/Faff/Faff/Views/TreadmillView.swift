@@ -466,7 +466,7 @@ struct TreadmillView: View {
             if let err = postError {
                 Text(err)
                     .font(.body(11, weight: .medium))
-                    .foregroundStyle(Color(hex: 0xFF7A66))
+                    .foregroundStyle(Theme.over)
                     .multilineTextAlignment(.center)
                 // Escape hatch · the console hides the tab bar, so a failed
                 // save would otherwise trap the runner here. Let them leave

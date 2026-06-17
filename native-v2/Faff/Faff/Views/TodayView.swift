@@ -744,7 +744,7 @@ struct TodayView: View {
                     Text("Undo skip")
                         .font(.body(15, weight: .semibold))
                 }
-                .foregroundStyle(Color(hex: 0x8FD0FF))
+                .foregroundStyle(Theme.dist)
             }
             .buttonStyle(.plain)
         }
@@ -816,7 +816,7 @@ struct TodayView: View {
                     }
                     if let win = forecast?.best_window, !win.isEmpty {
                         heroChip(icon: "clock.fill",
-                                 iconColor: Color(hex: 0x8FD0FF),
+                                 iconColor: Theme.dist,
                                  text: win.uppercased())
                     }
                 }
@@ -884,7 +884,7 @@ struct TodayView: View {
                             .foregroundStyle(Theme.txt.opacity(0.5))
                         Text("Skip \u{203A}")
                             .font(.body(12.5, weight: .semibold))
-                            .foregroundStyle(Color(hex: 0x8FD0FF))
+                            .foregroundStyle(Theme.dist)
                     }
                 }
                 .buttonStyle(.plain)
@@ -977,10 +977,10 @@ struct TodayView: View {
                 return HeroSeg(weight: w, color: selectedEffort.dot,
                                topLabel: workPhaseShortLabel(p), bottomLabel: segDistLabel(p))
             case .warmup:
-                return HeroSeg(weight: w, color: Color(hex: 0x5BBFB0),
+                return HeroSeg(weight: w, color: Theme.neutralTeal,
                                topLabel: "Warm Up", bottomLabel: segDistLabel(p))
             case .cooldown:
-                return HeroSeg(weight: w, color: Color(hex: 0x5BBFB0),
+                return HeroSeg(weight: w, color: Theme.neutralTeal,
                                topLabel: "Cool Down", bottomLabel: segDistLabel(p))
             case .recovery:
                 return HeroSeg(weight: w, color: Color(hex: 0x8AA0A8),
@@ -1922,7 +1922,7 @@ struct TodayView: View {
 
                 // Tertiary soft nudge · set a goal to unlock a plan.
                 Button { selectedTab = .targets } label: {
-                    noGoalRow(title: "Set a goal for a plan", system: "flag.fill", tint: Color(hex: 0x8FD0FF))
+                    noGoalRow(title: "Set a goal for a plan", system: "flag.fill", tint: Theme.dist)
                 }
                 .buttonStyle(.plain)
             }
@@ -1987,15 +1987,8 @@ struct TodayView: View {
     }
 
     /// Readiness band → arc stroke color for the compact ring in the peek.
-    private var readinessBandArc: Color {
-        switch (readiness?.band ?? "").uppercased() {
-        case "SHARP", "PRIMED":                    return Color(hex: 0x3CD370)
-        case "READY", "HOLD EASY":                 return Color(hex: 0x58B8FF)
-        case "MODERATE":                           return Color(hex: 0xFFB24D)
-        case "PULL-BACK", "PULL BACK", "BACK OFF": return Color(hex: 0xFC4D64)
-        default:                                   return Color(hex: 0x8AA0A8)
-        }
-    }
+    /// Routes to the ONE canonical map (Theme.ReadinessBand) · bright sibling.
+    private var readinessBandArc: Color { Theme.ReadinessBand.text(readiness?.band) }
 
     /// One-line readiness summary for the peek strip.
     private var readinessPeekHeadline: String {
@@ -2053,7 +2046,7 @@ struct TodayView: View {
                 } label: {
                     Text("Skip today's run")
                         .font(.body(15, weight: .extraBold))
-                        .foregroundStyle(Color(hex: 0xFF8A82))
+                        .foregroundStyle(Theme.over)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
                         .background(Color(hex: 0xFF5A52).opacity(0.14),
                                     in: RoundedRectangle(cornerRadius: 16, style: .continuous))

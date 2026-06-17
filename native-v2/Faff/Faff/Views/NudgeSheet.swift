@@ -70,7 +70,7 @@ struct NudgeSheet: View {
 
     private var topLabel: some View {
         HStack(spacing: 9) {
-            Circle().fill(Color(hex: 0xFFB24D)).frame(width: 8, height: 8)
+            Circle().fill(Theme.goal).frame(width: 8, height: 8)
             Text(headerLabel)
                 .font(.label(13)).tracking(2.5)
                 .foregroundStyle(Theme.txt)
@@ -93,7 +93,7 @@ struct NudgeSheet: View {
                     .stroke(Color.white.opacity(0.16), lineWidth: 7)
                 Circle()
                     .trim(from: 0, to: CGFloat(frac))
-                    .stroke(score < 65 ? Color(hex: 0xFFB24D) : Theme.green,
+                    .stroke(score < 65 ? Theme.warnText : Theme.green,
                             style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 5) {
@@ -188,7 +188,7 @@ struct NudgeSheet: View {
                         .position(x: half, y: 4)
                     // Signed bar lobe · pushes left or right from center.
                     Capsule()
-                        .fill(bad ? Color(hex: 0xFFB24D) : Theme.green)
+                        .fill(bad ? Theme.goal : Theme.green)
                         .frame(width: w * 0.5 * CGFloat(magnitude), height: 8)
                         .offset(x: bad ? (half - w * 0.5 * CGFloat(magnitude)) : half)
                 }

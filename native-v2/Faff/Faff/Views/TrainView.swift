@@ -866,13 +866,19 @@ struct TrainView: View {
         }
     }
 
-    private func accent(for phase: TrainPhase) -> Color {
+    private func accent(for phase: TrainPhase) -> Color { TrainView.phaseAccent(phase) }
+
+    /// Phase identity color · the ONE source for both TrainView phase switches.
+    /// base/build/peak/taper come from the CI-locked Theme.Phase palette
+    /// (synced byte-for-byte with web · check-palette-sync.sh). `.race` keeps
+    /// the amberBright accent (no race hue in the categorical phase scale).
+    static func phaseAccent(_ phase: TrainPhase) -> Color {
         switch phase {
-        case .base:  return Color(hex: 0x3FB6B0)
-        case .build: return Color(hex: 0xE0A23A)
-        case .peak:  return Color(hex: 0xFF7A45)
-        case .taper: return Color(hex: 0x34C194)
-        case .race:  return Color(hex: 0xFFCE8A)
+        case .base:  return Theme.Phase.base
+        case .build: return Theme.Phase.build
+        case .peak:  return Theme.Phase.peak
+        case .taper: return Theme.Phase.taper
+        case .race:  return Theme.Accent.amberBright
         }
     }
 
@@ -1278,15 +1284,7 @@ private struct TrainWeekRowSummary: View {
 
     var body: some View {
         let phase = TrainPhase(phaseKey: week.phase)
-        let phaseAccent: Color = {
-            switch phase {
-            case .base:  return Color(hex: 0x3FB6B0)
-            case .build: return Color(hex: 0xE0A23A)
-            case .peak:  return Color(hex: 0xFF7A45)
-            case .taper: return Color(hex: 0x34C194)
-            case .race:  return Color(hex: 0xFFCE8A)
-            }
-        }()
+        let phaseAccent: Color = TrainView.phaseAccent(phase)
         let cur = week.isCurrent
         let pct = max(0.05, min(1.0, week.plannedMi / maxMi))
         return Button(action: onTap) {

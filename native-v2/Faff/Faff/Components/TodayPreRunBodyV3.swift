@@ -456,7 +456,7 @@ struct TodayPreRunBodyV3: View {
     private func accentForPhase(_ type: WatchPhaseType) -> Color {
         switch type {
         case .work:               return accent
-        case .warmup, .cooldown:  return Color(hex: 0x5BBFB0)
+        case .warmup, .cooldown:  return Theme.neutralTeal
         case .recovery:           return Color(hex: 0x8AA0A8)
         }
     }

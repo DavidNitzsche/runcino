@@ -26,35 +26,20 @@ import SwiftUI
 
 // MARK: - Color tokens (per the README spec)
 
+// Both band maps now route to the ONE canonical map (Theme.ReadinessBand).
+// The canonical `from()` already absorbs the design's {good/ok/watch/low}
+// aliases, so older envelopes still resolve.
 private enum BriefBand {
     static func tint(_ raw: String) -> Color {
-        switch raw.lowercased() {
-        case "sharp":     return Color(hex: 0x3EBD41)
-        case "ready":     return Color(hex: 0x3EBD41)
-        case "moderate":  return Color(hex: 0xF3AD38)
-        case "pull-back", "pullback", "pull_back":
-                          return Color(hex: 0xFC4D64)
-        case "no-data", "no_data", "":
-                          return Color(hex: 0x8A90A0)
-        default:          return Color(hex: 0x8A90A0)
-        }
+        // "pull_back" underscore variant → canonical handles "pull-back".
+        Theme.ReadinessBand.fill(raw.replacingOccurrences(of: "_", with: "-"))
     }
 }
 
 private enum PillarBand {
-    /// Tint for the pillar dot + today's history bar. Maps both the
-    /// {sharp/ready/moderate/pull-back} band names AND the design's
-    /// {good/ok/watch/low} aliases so older envelopes don't grey out.
+    /// Tint for the pillar dot + today's history bar.
     static func tint(_ raw: String) -> Color {
-        switch raw.lowercased() {
-        case "good", "sharp", "ready":  return Color(hex: 0x3EBD41)
-        case "ok":                       return Color(hex: 0x8A90A0)
-        case "watch", "moderate":        return Color(hex: 0xF3AD38)
-        case "low", "pull-back", "pullback", "pull_back":
-                                         return Color(hex: 0xFC4D64)
-        case "no-data", "no_data", "":   return Color(hex: 0x8A90A0)
-        default:                         return Color(hex: 0x8A90A0)
-        }
+        Theme.ReadinessBand.fill(raw.replacingOccurrences(of: "_", with: "-"))
     }
 }
 
@@ -227,7 +212,7 @@ struct ReadinessBriefSheet: View {
             Spacer().frame(height: 60)
             Image(systemName: "exclamationmark.circle")
                 .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(Color(hex: 0xFFB24D))
+                .foregroundStyle(Theme.warnText)
             Text(message)
                 .font(.body(13, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.82))

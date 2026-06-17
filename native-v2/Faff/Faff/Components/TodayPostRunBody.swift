@@ -617,7 +617,7 @@ struct TodayPostRunBody: View {
     }
 
     private func tintForPhase(_ phase: PhaseBreakdown) -> Color {
-        phase.type.lowercased() == "work" ? accent : Color(hex: 0x5BBFB0)
+        phase.type.lowercased() == "work" ? accent : Theme.neutralTeal
     }
 
     /// Color a split by phase position when no phase_breakdown is available.
@@ -626,7 +626,7 @@ struct TodayPostRunBody: View {
         let i = split.mile - 1
         let warm = max(1, total / 6)
         let cool = max(1, total / 6)
-        if i < warm || i >= (total - cool) { return Color(hex: 0x5BBFB0) }
+        if i < warm || i >= (total - cool) { return Theme.neutralTeal }
         return accent
     }
 
@@ -965,10 +965,10 @@ struct TodayPostRunBody: View {
             }
             .foregroundStyle(Theme.txt)
             .frame(maxWidth: .infinity, minHeight: 46)
-            .background(Color(hex: 0xFC4D24).opacity(0.32), in: RoundedRectangle(cornerRadius: 14))
+            .background(Theme.Brand.strava.opacity(0.32), in: RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color(hex: 0xFC4D24).opacity(0.6), lineWidth: 1)
+                    .stroke(Theme.Brand.strava.opacity(0.6), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -986,12 +986,12 @@ struct TodayPostRunBody: View {
         .foregroundStyle(Theme.txt)
         .frame(maxWidth: .infinity, minHeight: 46)
         .background(
-            Color(hex: 0xFC4D24).opacity(dim ? 0.16 : 0.28),
+            Theme.Brand.strava.opacity(dim ? 0.16 : 0.28),
             in: RoundedRectangle(cornerRadius: 14)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color(hex: 0xFC4D24).opacity(0.4), lineWidth: 1)
+                .stroke(Theme.Brand.strava.opacity(0.4), lineWidth: 1)
         )
     }
 

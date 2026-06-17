@@ -346,8 +346,8 @@ struct RunDetailView: View {
             }
             .foregroundStyle(Theme.txt)
             .frame(maxWidth: .infinity, minHeight: 46)
-            .background(Color(hex: 0xFC4D24).opacity(0.32), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xFC4D24).opacity(0.6), lineWidth: 1))
+            .background(Theme.Brand.strava.opacity(0.32), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.Brand.strava.opacity(0.6), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -359,8 +359,8 @@ struct RunDetailView: View {
         }
         .foregroundStyle(Theme.txt)
         .frame(maxWidth: .infinity, minHeight: 46)
-        .background(Color(hex: 0xFC4D24).opacity(dim ? 0.16 : 0.28), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xFC4D24).opacity(0.4), lineWidth: 1))
+        .background(Theme.Brand.strava.opacity(dim ? 0.16 : 0.28), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.Brand.strava.opacity(0.4), lineWidth: 1))
     }
 
     /// Push with the sheet's edited title + description, then dismiss.
@@ -1048,8 +1048,8 @@ struct RunDetailView: View {
     private func phaseStatusColor(_ ph: PhaseBreakdown) -> Color {
         switch (ph.status ?? "").lowercased() {
         case "on":   return Theme.green
-        case "slow": return Color(hex: 0xFFB24D)
-        case "fast": return Color(hex: 0x86E0FF)
+        case "slow": return Theme.warnText
+        case "fast": return Theme.dist
         default:     return Color.white.opacity(0.4)
         }
     }
@@ -1178,7 +1178,7 @@ private enum TraceMetric: String, CaseIterable {
     var color: Color {
         switch self {
         case .pace: return Color(hex: 0xFF7A45)
-        case .hr:   return Color(hex: 0xFF5A6E)
+        case .hr:   return Theme.intervals
         case .elev: return Color(hex: 0xFFCE8A)
         case .cad:  return Theme.Accent.mintGlow
         }

@@ -265,7 +265,7 @@ struct HealthView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("WHAT TO DO")
                 .font(.body(9.5, weight: .extraBold)).tracking(0.8)
-                .foregroundStyle(Color(hex: 0x5BBFB0))
+                .foregroundStyle(Theme.neutralTeal)
             ForEach(actions) { a in
                 HStack(alignment: .top, spacing: 10) {
                     Text(priorityLabel(a.priority))
@@ -295,7 +295,7 @@ struct HealthView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(red: 0.016, green: 0.071, blue: 0.063).opacity(0.40))
                 .overlay(
-                    HStack { Rectangle().fill(Color(hex: 0x5BBFB0)).frame(width: 3); Spacer() }
+                    HStack { Rectangle().fill(Theme.neutralTeal).frame(width: 3); Spacer() }
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -307,11 +307,11 @@ struct HealthView: View {
 
     private func priorityColor(_ p: String) -> Color {
         switch p {
-        case "urgent":    return Color(hex: 0xFC4D64)
-        case "high":      return Color(hex: 0xF3AD38)
-        case "medium":    return Color(hex: 0xE7C24A)
+        case "urgent":    return Theme.over
+        case "high":      return Theme.goal
+        case "medium":    return Theme.goal
         case "on-course": return Theme.green
-        default:          return Color(hex: 0x8A90A0)
+        default:          return Theme.mute
         }
     }
     private func priorityLabel(_ p: String) -> String {
@@ -911,15 +911,7 @@ struct HealthWeekBars: View {
         }
     }
 
-    private var bandColor: Color {
-        switch (snapshot?.band ?? "").lowercased() {
-        case "sharp":     return Color(hex: 0x3EBD41)
-        case "ready":     return Color(hex: 0x3EBD41)
-        case "moderate":  return Color(hex: 0xF3AD38)
-        case "pullback":  return Color(hex: 0xFC4D64)
-        default:          return Color(hex: 0x8A90A0)
-        }
-    }
+    private var bandColor: Color { Theme.ReadinessBand.fill(snapshot?.band) }
 }
 
 // MARK: - HealthLogSheet
@@ -1032,15 +1024,7 @@ private struct ReadinessTrendPill: View {
         }
     }
 
-    private var bandColor: Color {
-        switch (snapshot?.band ?? "").lowercased() {
-        case "sharp":                   return Color(hex: 0x3CD370)
-        case "ready":                   return Color(hex: 0x58B8FF)
-        case "moderate":                return Color(hex: 0xFFB24D)
-        case "pull-back", "pullback":   return Color(hex: 0xFC4D64)
-        default:                        return Color(hex: 0x8A90A0)
-        }
-    }
+    private var bandColor: Color { Theme.ReadinessBand.fill(snapshot?.band) }
 
     var body: some View {
         let s = series

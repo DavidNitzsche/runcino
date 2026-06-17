@@ -109,7 +109,7 @@ struct ShoeDetail: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.1)).frame(height: 7)
                         Capsule()
-                            .fill(shoe.warn ? Color(hex: 0xFFB24D) : shoe.roleColor)
+                            .fill(shoe.warn ? Theme.goal : shoe.roleColor)
                             .frame(width: max(4, w * shoe.lifePct), height: 7)
                     }
                 }
@@ -121,7 +121,7 @@ struct ShoeDetail: View {
                     Spacer()
                     Text("\(Int(shoe.lifeMi - shoe.miles)) mi left")
                         .font(.body(9.5, weight: .semibold))
-                        .foregroundStyle(shoe.warn ? Color(hex: 0xFFB24D) : Theme.txt.opacity(0.6))
+                        .foregroundStyle(shoe.warn ? Theme.warnText : Theme.txt.opacity(0.6))
                 }
             }
             .padding(.vertical, 14)

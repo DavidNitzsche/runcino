@@ -112,7 +112,7 @@ struct ProView: View {
              title: "Heat & weather recalibration", sub: "targets & HR read adjusted to conditions"),
         Feat(icon: "target", tint: Theme.Accent.mintReady,
              title: "Unlimited race goals", sub: "every distance, projections & the gap"),
-        Feat(icon: "person.2.fill", tint: Color(hex: 0x9BC0FF),
+        Feat(icon: "person.2.fill", tint: Theme.dist,
              title: "Spectator sharing", sub: "let family follow you live on race day")
     ]
 

@@ -486,7 +486,7 @@ private extension TodayRecoveryPanel {
     func acwrBadge(_ raw: String) -> (label: String, color: Color) {
         switch raw.uppercased() {
         case "OK":      return ("OK", Color(hex: 0x3FB6B0))     // saturated teal
-        case "WATCH":   return ("WATCH", Color(hex: 0xE0A23A))  // amber
+        case "WATCH":   return ("WATCH", Theme.goal)           // amber
         case "RAMP_UP": return ("RAMP", Color(hex: 0xD6483F))   // coral
         default:        return ("OK", Color(hex: 0x3FB6B0))
         }

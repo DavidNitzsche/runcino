@@ -44,14 +44,14 @@ struct StravaPushSheet: View {
                         TextField("", text: $title, axis: .vertical)
                             .font(.body(16, weight: .semibold))
                             .foregroundStyle(.white)
-                            .tint(Color(hex: 0xFC4D24))
+                            .tint(Theme.Brand.strava)
                             .lineLimit(1...2)
                     }
                     field("DESCRIPTION") {
                         TextField("Add a note (optional)", text: $description, axis: .vertical)
                             .font(.body(15))
                             .foregroundStyle(.white)
-                            .tint(Color(hex: 0xFC4D24))
+                            .tint(Theme.Brand.strava)
                             .lineLimit(4...10)
                     }
                 }
@@ -73,7 +73,7 @@ struct StravaPushSheet: View {
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 52)
-                .background(Color(hex: 0xFC4D24), in: RoundedRectangle(cornerRadius: 14))
+                .background(Theme.Brand.strava, in: RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(.plain)
             .disabled(isPushing || titleEmpty)

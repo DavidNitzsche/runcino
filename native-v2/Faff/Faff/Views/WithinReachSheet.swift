@@ -94,7 +94,7 @@ struct WithinReachSheet: View {
             GapBeam(
                 progress: 0.92,
                 height: 10,
-                fillStops: [Color(hex: 0xFFE9B0), Color(hex: 0xFFB24D)],
+                fillStops: [Color(hex: 0xFFE9B0), Theme.goal],
                 gapColor: Color(hex: 0xFFE9B0)
             )
         }

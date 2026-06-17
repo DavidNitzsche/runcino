@@ -22,19 +22,9 @@ struct HealthCompactGauge: View {
     /// "sharp" / "nodata"). Drives the arc + glow color.
     let band: String?
 
-    /// Maps band string → progress arc color. Mirrors the BAND map in
-    /// health-lib.js. Falls back to muted grey when band is empty or
-    /// unrecognized.
-    private var bandColor: Color {
-        switch (band ?? "").lowercased() {
-        case "sharp":     return Color(hex: 0x3EBD41)
-        case "ready":     return Color(hex: 0x3EBD41)
-        case "moderate":  return Color(hex: 0xF3AD38)
-        case "pullback":  return Color(hex: 0xFC4D64)
-        case "nodata":    return Color(hex: 0x8A90A0)
-        default:          return Color(hex: 0x8A90A0)
-        }
-    }
+    /// Maps band string → progress arc color via the ONE canonical map
+    /// (Theme.ReadinessBand). Falls back to muted grey for empty/unknown.
+    private var bandColor: Color { Theme.ReadinessBand.fill(band) }
 
     private var displayScore: Int { max(0, min(100, score ?? 0)) }
 

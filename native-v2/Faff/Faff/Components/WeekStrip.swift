@@ -71,13 +71,13 @@ struct WeekStrip: View {
             Text(d.dow)
                 .font(.label(10)).tracking(0.5).textCase(.uppercase)
                 .foregroundStyle(d.isToday
-                    ? Color(hex: 0x3AB0CF)
+                    ? Theme.dist
                     : Theme.txt.opacity(isSelected ? 1 : 0.65))
             Text("\(d.date)")
                 .font(.body(15, weight: .semibold))
                 .tracking(-0.3)
                 .foregroundStyle(d.isToday
-                    ? Color(hex: 0x3AB0CF)
+                    ? Theme.dist
                     : Theme.txt.opacity(isSelected ? 1 : 0.8))
                 // Strength day · a thin underline below the number. Overlay (not
                 // a stacked element) so it never shifts the cell's layout.

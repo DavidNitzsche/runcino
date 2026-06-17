@@ -23,7 +23,7 @@ struct StravaReconnectBanner: View {
                 HStack(spacing: 11) {
                     Image(systemName: openingURL ? "ellipsis" : "exclamationmark.triangle.fill")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xFC4D24))
+                        .foregroundStyle(Theme.Brand.strava)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(title(for: s))
                             .font(.body(13, weight: .extraBold))
@@ -36,13 +36,13 @@ struct StravaReconnectBanner: View {
                     Spacer(minLength: 0)
                     Text(cta(for: s))
                         .font(.label(10)).tracking(1.2)
-                        .foregroundStyle(Color(hex: 0xFC4D24))
+                        .foregroundStyle(Theme.Brand.strava)
                 }
                 .padding(.vertical, 11).padding(.horizontal, 14)
-                .background(Color(hex: 0xFC4D24).opacity(0.10),
+                .background(Theme.Brand.strava.opacity(0.10),
                             in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color(hex: 0xFC4D24).opacity(0.45), lineWidth: 1))
+                    .stroke(Theme.Brand.strava.opacity(0.45), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .disabled(openingURL)
