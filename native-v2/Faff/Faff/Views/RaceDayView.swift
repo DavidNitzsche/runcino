@@ -29,6 +29,10 @@ struct RaceDayView: View {
     /// RaceEditSheet prefilled from the loaded detail (race P1). On save
     /// the detail + projection reload so distance / date / goal changes pop.
     @State private var showEditSheet: Bool = false
+    /// Composed race-morning brief from /api/race/[slug]/execution-plan
+    /// (race P2) · per-mile splits, B-goal trigger, heat tree, warm-up
+    /// timeline. nil before load, or when the server 404s (no goal set).
+    @State private var execPlan: RaceExecutionPlan?
 
     var body: some View {
         ZStack {
@@ -58,13 +62,63 @@ struct RaceDayView: View {
                             .padding(.top, 2)
                     }
 
-                    // 1 · THE PLAN — how to run it, phase by phase (replaces the
-                    // splits ladder · what pace for which stretch, with intent).
-                    if !planPhases.isEmpty, detail?.race.is_past != true {
-                        section(title: "THE PLAN", right: planRightLabel) {
-                            planPhasesCard
+                    // 1 · THE PLAN — how to run it, stretch by stretch.
+                    // Prefer the backend's course-aware named segments
+                    // (pacing.phases · "Point Loma Climb · 6:58/mi", grade-
+                    // weighted over the authored course). Fall back to the
+                    // local generic negative-split block ONLY when the server
+                    // has no course geometry to phase against (phases empty).
+                    if detail?.race.is_past != true {
+                        if let phases = coursePhases, !phases.isEmpty {
+                            section(title: "THE PLAN", right: planRightLabel) {
+                                coursePhasesCard(phases)
+                            }
+                            .padding(.top, 30)
+                        } else if !planPhases.isEmpty {
+                            section(title: "THE PLAN", right: planRightLabel) {
+                                planPhasesCard
+                            }
+                            .padding(.top, 30)
                         }
-                        .padding(.top, 30)
+                    }
+
+                    // 1b · THE BRIEF — the race-morning execution brief from
+                    // /api/race/[slug]/execution-plan. The named pacing above is
+                    // always shown; the morning brief (splits / trigger / heat /
+                    // warm-up) is the payoff and renders inside a sensible
+                    // proximity window so it's not a wall of numbers months out.
+                    if showMorningBrief, let plan = execPlan {
+                        // THE SPLITS — per-mile targets, segment-coloured.
+                        if !plan.splits.isEmpty {
+                            section(title: "THE SPLITS", right: splitsRightLabel(plan)) {
+                                splitTargetsCard(plan.splits)
+                            }
+                            .padding(.top, 30)
+                        }
+
+                        // IF IT GOES SIDEWAYS — the objective B-goal trigger.
+                        if let trigger = plan.bGoalTriggers.first {
+                            section(title: "IF IT GOES SIDEWAYS", right: nil) {
+                                bGoalTriggerCard(trigger)
+                            }
+                            .padding(.top, 30)
+                        }
+
+                        // HEAT — the decision tree at the start-line temp.
+                        if !plan.heatRules.isEmpty {
+                            section(title: "HEAT", right: "AT THE GUN") {
+                                heatTreeCard(plan.heatRules)
+                            }
+                            .padding(.top, 30)
+                        }
+
+                        // WARM-UP — the gun-anchored timeline.
+                        if !plan.warmup.isEmpty {
+                            section(title: "WARM-UP", right: warmupRightLabel) {
+                                warmupCard(plan.warmup)
+                            }
+                            .padding(.top, 30)
+                        }
                     }
 
                     // THE COURSE — only render when we actually have course
@@ -534,6 +588,68 @@ struct RaceDayView: View {
         goalPace == "—" ? nil : "AVG \(goalPace)/mi"
     }
 
+    // MARK: - Course-aware pacing (backend RacePacing.phases · race P2)
+
+    /// The backend's named, grade-weighted course segments. nil when the
+    /// server has no course geometry to phase against · the body then falls
+    /// back to the local generic negative-split block.
+    private var coursePhases: [RacePacingPhase]? {
+        detail?.pacing?.phases
+    }
+
+    /// Format a server pace-string. The composer already emits "6:58/mi" in
+    /// `display`; strip a trailing "/mi" so the card owns the unit and the
+    /// number sits clean next to it.
+    private func paceNumber(from display: String) -> String {
+        display.replacingOccurrences(of: "/mi", with: "")
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// THE PLAN, course-aware. One row per named segment: "Point Loma Climb /
+    /// miles 1–4" on the left, the segment pace on the right. The fastest
+    /// segment reads in race orange so the surge stretch is obvious at a
+    /// glance.
+    private func coursePhasesCard(_ phases: [RacePacingPhase]) -> some View {
+        // Fastest (lowest s/mi) segment gets the accent — the push.
+        let fastestIdx = phases.enumerated().min(by: { $0.element.pace_s_per_mi < $1.element.pace_s_per_mi })?.offset
+        return VStack(spacing: 0) {
+            ForEach(Array(phases.enumerated()), id: \.offset) { i, ph in
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ph.label.uppercased())
+                            .font(.body(12, weight: .extraBold)).tracking(0.6)
+                            .foregroundStyle(Theme.txt)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                        Text(milesRange(ph.start_mi, ph.end_mi))
+                            .font(.body(11, weight: .semibold))
+                            .foregroundStyle(Theme.txt.opacity(0.6))
+                    }
+                    Spacer(minLength: 12)
+                    Text("\(paceNumber(from: ph.display))/mi")
+                        .font(.display(18, weight: .bold)).tracking(-0.3)
+                        .foregroundStyle(i == fastestIdx ? Theme.race : Theme.txt)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 13)
+                if i < phases.count - 1 {
+                    Divider().background(Color.white.opacity(0.08))
+                }
+            }
+        }
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    /// "MILES 1–4" / "MILE 6" — humanised range label for a course segment.
+    private func milesRange(_ start: Double, _ end: Double) -> String {
+        let s = miLabel(start), e = miLabel(end)
+        return s == e ? "MILE \(s)" : "MILES \(s)–\(e)"
+    }
+
+    private func miLabel(_ mi: Double) -> String {
+        mi.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(mi))" : String(format: "%.1f", mi)
+    }
+
     private var planPhasesCard: some View {
         VStack(spacing: 0) {
             ForEach(Array(planPhases.enumerated()), id: \.offset) { i, ph in
@@ -702,9 +818,11 @@ struct RaceDayView: View {
         async let r = (try? await API.fetchRaceDetail(slug: raceSlug))
         async let f = (try? await API.fetchCoachFacts(surface: "race_detail", raceSlug: raceSlug))
         async let proj = (try? await API.fetchTargetsProjection(raceSlug: raceSlug))
-        let (rd, fc, pj) = await (r, f, proj)
+        async let ep = (try? await API.fetchRaceExecutionPlan(slug: raceSlug))
+        let (rd, fc, pj, xp) = await (r, f, proj, ep)
         await MainActor.run {
             self.detail = rd; self.raceFacts = fc; self.projection = pj
+            self.execPlan = xp?.plan
         }
         // Pull the watch workout for the race date so we can read
         // gelsMi for GelMileMarkers. Fires only when the race is
@@ -959,6 +1077,255 @@ struct RaceDayView: View {
                 isRace:  p.n == 0
             )
         }
+    }
+
+    // MARK: - Race-morning brief (execution-plan · race P2)
+
+    /// Gate for the morning brief (splits / trigger / heat / warm-up). The
+    /// named pacing strategy shows always; the brief is the race-execution
+    /// payoff, so it surfaces inside a sensible proximity window rather than
+    /// dumping the full plan months out. Window: within 14 days of the gun,
+    /// or whenever the server already calls it race-week / sharpening. Never
+    /// for past races.
+    private var showMorningBrief: Bool {
+        guard detail?.race.is_past != true else { return false }
+        if let d = detail?.race.days, d >= 0, d <= 14 { return true }
+        switch (detail?.proximity ?? "").lowercased() {
+        case "race-week", "sharpening": return true
+        default: return false
+        }
+    }
+
+    /// Format seconds-per-mile → "m:ss". Shared by the splits + heat cards
+    /// which carry raw s/mi from the composer.
+    private func fmtPacePerMi(_ secPerMi: Int) -> String {
+        String(format: "%d:%02d", secPerMi / 60, secPerMi % 60)
+    }
+
+    /// Right-rail label for THE SPLITS · "AVG 6:51/mi" off the plan's goal
+    /// pace when present.
+    private func splitsRightLabel(_ plan: RaceExecutionPlan) -> String? {
+        guard let p = plan.goalPaceSPerMi, p > 0 else { return nil }
+        return "AVG \(fmtPacePerMi(p))/mi"
+    }
+
+    /// Right-rail label for WARM-UP · "DONE 15 MIN OUT" so the runner knows
+    /// the timeline lands them in the corral.
+    private var warmupRightLabel: String? {
+        guard let plan = execPlan,
+              let last = plan.warmup.min(by: { ($0.minutesBeforeGun ?? 0) < ($1.minutesBeforeGun ?? 0) }),
+              let m = last.minutesBeforeGun else { return nil }
+        return "DONE \(m) MIN OUT"
+    }
+
+    /// THE SPLITS · per-mile target ladder. Pace per mile on the left, the
+    /// segment label as a quiet tag, cumulative elapsed on the right. Rows
+    /// in the "push" segment read in race orange · that's where the race is
+    /// won.
+    private func splitTargetsCard(_ splits: [RaceSplitTarget]) -> some View {
+        // Collapse the per-mile list to readable segments so a marathon
+        // isn't 26 rows · group consecutive miles that share a label.
+        let groups = groupedSplits(splits)
+        return VStack(spacing: 0) {
+            ForEach(Array(groups.enumerated()), id: \.offset) { i, g in
+                let isPush = g.label.lowercased() == "push"
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(g.range)
+                            .font(.body(12, weight: .extraBold)).tracking(0.6)
+                            .foregroundStyle(Theme.txt)
+                        Text(segmentIntent(g.label))
+                            .font(.body(11, weight: .semibold))
+                            .foregroundStyle(Theme.txt.opacity(0.6))
+                    }
+                    Spacer(minLength: 12)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(fmtPacePerMi(g.paceSPerMi))/mi")
+                            .font(.display(18, weight: .bold)).tracking(-0.3)
+                            .foregroundStyle(isPush ? Theme.race : Theme.txt)
+                        if let cum = g.cumulativeSec {
+                            Text("at \(fmtRaceTime(cum))")
+                                .font(.body(10, weight: .bold))
+                                .foregroundStyle(Theme.txt.opacity(0.5))
+                        }
+                    }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 13)
+                if i < groups.count - 1 {
+                    Divider().background(Color.white.opacity(0.08))
+                }
+            }
+        }
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    private struct SplitGroup {
+        let range: String; let label: String; let paceSPerMi: Int; let cumulativeSec: Int?
+    }
+
+    /// Group consecutive per-mile splits that share a label + pace into one
+    /// readable row ("MILES 4–12 / goal pace / 6:51"), keeping the cumulative
+    /// from the group's final mile.
+    private func groupedSplits(_ splits: [RaceSplitTarget]) -> [SplitGroup] {
+        var out: [SplitGroup] = []
+        var i = 0
+        while i < splits.count {
+            let s = splits[i]
+            let label = s.label ?? ""
+            let pace = s.paceSPerMi ?? 0
+            let startMi = s.mile ?? (i + 1)
+            var j = i
+            while j + 1 < splits.count,
+                  (splits[j + 1].label ?? "") == label,
+                  (splits[j + 1].paceSPerMi ?? 0) == pace {
+                j += 1
+            }
+            let endMi = splits[j].mile ?? (j + 1)
+            let range = startMi == endMi ? "MILE \(startMi)" : "MILES \(startMi)–\(endMi)"
+            out.append(SplitGroup(range: range, label: label, paceSPerMi: pace,
+                                  cumulativeSec: splits[j].cumulativeSec))
+            i = j + 1
+        }
+        return out
+    }
+
+    /// Map the composer's split label to coach intent copy.
+    private func segmentIntent(_ label: String) -> String {
+        switch label.lowercased() {
+        case "settle":      return "Settle in · bank nothing"
+        case "find rhythm": return "Find the rhythm"
+        case "goal pace":   return "Lock goal pace"
+        case "push":        return "Empty the tank"
+        default:            return label.isEmpty ? "Hold pace" : label.capitalized
+        }
+    }
+
+    /// IF IT GOES SIDEWAYS · the objective B-goal trigger. The condition
+    /// (HR + pace by the checkpoint mile) up top, the action below. This is
+    /// the single most important line on race morning · render it as one
+    /// clear decision, not a data table.
+    private func bGoalTriggerCard(_ t: BGoalTrigger) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // The trip condition.
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("BY MILE \(t.atMile ?? 5)")
+                    .font(.body(10, weight: .extraBold)).tracking(1.2)
+                    .foregroundStyle(Theme.over)
+                Spacer()
+            }
+            Text(triggerConditionLine(t))
+                .font(.body(13, weight: .bold))
+                .foregroundStyle(Theme.txt)
+                .fixedSize(horizontal: false, vertical: true)
+            if let action = t.action, !action.isEmpty {
+                Divider().background(Color.white.opacity(0.08))
+                Text(action)
+                    .font(.body(12, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Theme.over.opacity(0.07), in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.over.opacity(0.30), lineWidth: 1))
+    }
+
+    /// "If HR is over 169 or pace is slower than 7:14/mi" — built from the
+    /// trigger's HR + pace thresholds. HR clause drops when the runner has
+    /// no LTHR / maxHr anchor (hrAboveBpm null).
+    private func triggerConditionLine(_ t: BGoalTrigger) -> String {
+        var clauses: [String] = []
+        if let hr = t.hrAboveBpm, hr > 0 {
+            clauses.append("HR is over \(hr)")
+        }
+        if let pace = t.paceSlowerThanSPerMi, pace > 0 {
+            clauses.append("pace is slower than \(fmtPacePerMi(pace))/mi")
+        }
+        if clauses.isEmpty { return "If the effort is already at the edge here, ease off." }
+        return "If " + clauses.joined(separator: " or ") + ":"
+    }
+
+    /// HEAT · the decision tree at the start-line temp. One row per
+    /// threshold (65 / 70 / 75 / 80°F), each with the seconds to add and the
+    /// coach note. Hotter rows tint toward warn so the escalation reads.
+    private func heatTreeCard(_ rules: [HeatRule]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rules.enumerated()), id: \.offset) { i, r in
+                let hot = (r.ifStartTempAtLeastF ?? 0) >= 75
+                HStack(alignment: .center) {
+                    Text("\(r.ifStartTempAtLeastF ?? 0)°F+")
+                        .font(.display(17, weight: .bold)).tracking(-0.3)
+                        .foregroundStyle(hot ? Theme.over : Theme.txt)
+                        .frame(width: 58, alignment: .leading)
+                    Text(heatNoteShort(r))
+                        .font(.body(11, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 10)
+                    Text("+\(r.addSPerMi ?? 0)s")
+                        .font(.body(13, weight: .extraBold))
+                        .foregroundStyle(hot ? Theme.over : Theme.goal)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                if i < rules.count - 1 {
+                    Divider().background(Color.white.opacity(0.08))
+                }
+            }
+        }
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    /// The composer's heat note carries the "65°F at the gun · " prefix; the
+    /// row already shows the temp, so strip the redundant lead and keep the
+    /// coaching tail.
+    private func heatNoteShort(_ r: HeatRule) -> String {
+        guard let note = r.note, !note.isEmpty else {
+            return "Add to every split. The heat is physics, not fitness."
+        }
+        if let dot = note.range(of: " · ") {
+            return String(note[dot.upperBound...])
+        }
+        return note
+    }
+
+    /// WARM-UP · the gun-anchored timeline. The clock time leads when known
+    /// (server emits "6:15 AM" off the gun); otherwise the minutes-before
+    /// chip carries it. Each step is a short coach instruction.
+    private func warmupCard(_ steps: [WarmupStep]) -> some View {
+        // Show in run order: furthest-out step first.
+        let ordered = steps.sorted { ($0.minutesBeforeGun ?? 0) > ($1.minutesBeforeGun ?? 0) }
+        return VStack(spacing: 0) {
+            ForEach(Array(ordered.enumerated()), id: \.offset) { i, s in
+                HStack(alignment: .top, spacing: 12) {
+                    Text(warmupTimeLabel(s))
+                        .font(.body(11, weight: .extraBold)).tracking(0.4)
+                        .foregroundStyle(Theme.race)
+                        .frame(width: 64, alignment: .leading)
+                    Text(s.step ?? "")
+                        .font(.body(12, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                if i < ordered.count - 1 {
+                    Divider().background(Color.white.opacity(0.08))
+                }
+            }
+        }
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    /// Clock time when the gun is known ("6:15 AM"); else "T-45" minutes-out.
+    private func warmupTimeLabel(_ s: WarmupStep) -> String {
+        if let clock = s.clock, !clock.isEmpty { return clock }
+        if let m = s.minutesBeforeGun { return "T-\(m)" }
+        return ""
     }
 
 }

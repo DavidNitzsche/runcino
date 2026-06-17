@@ -378,6 +378,19 @@ enum API {
         return try? JSONDecoder().decode(RaceDetailResponse.self, from: data)
     }
 
+    /// Race-morning brief (race P2). GET /api/race/[slug]/execution-plan ·
+    /// composeRaceExecutionPlan returns the per-mile splits, B-goal trigger,
+    /// heat decision tree, and gun-anchored warm-up. The server 404s when no
+    /// goal time is set (an execution plan without a goal is fiction), so a
+    /// nil return is the expected "no goal yet" state — the view falls back
+    /// to the local pacing block.
+    static func fetchRaceExecutionPlan(slug: String) async throws -> RaceExecutionPlanResponse? {
+        let url = baseURL.appendingPathComponent("api/race/\(slug)/execution-plan")
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(RaceExecutionPlanResponse.self, from: data)
+    }
+
     // MARK: - P32 shoe assignment
 
     static func fetchShoes() async throws -> ShoesResponse? {

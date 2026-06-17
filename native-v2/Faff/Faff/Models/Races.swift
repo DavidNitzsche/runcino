@@ -182,3 +182,154 @@ struct CourseBBox: Decodable {
     let minLon: Double?
     let maxLon: Double?
 }
+
+// MARK: - Race execution plan (race P2)
+//
+// GET /api/race/[slug]/execution-plan → composeRaceExecutionPlan
+// (lib/race/execution-plan.ts). The composed race-morning brief: per-mile
+// split targets, the objective B-goal trigger, the heat decision tree, and
+// the warm-up timeline anchored to the gun. One endpoint, every surface.
+//
+// Decode-robust by design: every field is optional and unknown keys are
+// ignored. A parallel agent is enhancing the server's fueling block, so the
+// response shape is still evolving — we decode only splits / bGoal / heat /
+// warmup / strategy prose and never throw on a present-but-unexpected blob.
+// Fueling (`plan.fuelingPlan` / `plan.fueling`) is left for the fueling
+// phase, which owns entry + display; it is intentionally NOT modeled here.
+
+struct RaceExecutionPlanResponse: Decodable {
+    let slug: String?
+    let raceName: String?
+    let raceDateISO: String?
+    let startTimeLocal: String?
+    let plan: RaceExecutionPlan?
+
+    enum CodingKeys: String, CodingKey {
+        case slug, raceName, raceDateISO, startTimeLocal, plan
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.slug = try? c.decodeIfPresent(String.self, forKey: .slug)
+        self.raceName = try? c.decodeIfPresent(String.self, forKey: .raceName)
+        self.raceDateISO = try? c.decodeIfPresent(String.self, forKey: .raceDateISO)
+        self.startTimeLocal = try? c.decodeIfPresent(String.self, forKey: .startTimeLocal)
+        self.plan = try? c.decodeIfPresent(RaceExecutionPlan.self, forKey: .plan)
+    }
+}
+
+struct RaceExecutionPlan: Decodable {
+    let goalSec: Int?
+    let goalPaceSPerMi: Int?
+    let distanceMi: Double?
+    let bGoalSec: Int?
+    let bGoalPaceSPerMi: Int?
+    let firstMileAllowanceSPerMi: Int?
+    let splits: [RaceSplitTarget]
+    let bGoalTriggers: [BGoalTrigger]
+    let heatRules: [HeatRule]
+    let warmup: [WarmupStep]
+    let strategyLine: String?
+    let ciNote: String?
+
+    enum CodingKeys: String, CodingKey {
+        case goalSec, goalPaceSPerMi, distanceMi, bGoalSec, bGoalPaceSPerMi
+        case firstMileAllowanceSPerMi, splits, bGoalTriggers, heatRules
+        case warmup, strategyLine, ciNote
+        // Intentionally unmodeled: fueling, fuelingPlan — owned by the
+        // fueling phase. Unknown keys decode-skip via decodeIfPresent.
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.goalSec = c.decodeFlexInt(forKey: .goalSec)
+        self.goalPaceSPerMi = c.decodeFlexInt(forKey: .goalPaceSPerMi)
+        self.distanceMi = try? c.decodeIfPresent(Double.self, forKey: .distanceMi)
+        self.bGoalSec = c.decodeFlexInt(forKey: .bGoalSec)
+        self.bGoalPaceSPerMi = c.decodeFlexInt(forKey: .bGoalPaceSPerMi)
+        self.firstMileAllowanceSPerMi = c.decodeFlexInt(forKey: .firstMileAllowanceSPerMi)
+        self.splits = (try? c.decodeIfPresent([RaceSplitTarget].self, forKey: .splits)) ?? []
+        self.bGoalTriggers = (try? c.decodeIfPresent([BGoalTrigger].self, forKey: .bGoalTriggers)) ?? []
+        self.heatRules = (try? c.decodeIfPresent([HeatRule].self, forKey: .heatRules)) ?? []
+        self.warmup = (try? c.decodeIfPresent([WarmupStep].self, forKey: .warmup)) ?? []
+        self.strategyLine = try? c.decodeIfPresent(String.self, forKey: .strategyLine)
+        self.ciNote = try? c.decodeIfPresent(String.self, forKey: .ciNote)
+    }
+}
+
+/// One per-mile split target. `label` is "settle" | "find rhythm" |
+/// "goal pace" | "push"; kept as a String so a future label can't break
+/// the decode.
+struct RaceSplitTarget: Decodable {
+    let mile: Int?
+    let distanceMi: Double?
+    let paceSPerMi: Int?
+    let cumulativeSec: Int?
+    let label: String?
+
+    enum CodingKeys: String, CodingKey {
+        case mile, distanceMi, paceSPerMi, cumulativeSec, label
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.mile = c.decodeFlexInt(forKey: .mile)
+        self.distanceMi = try? c.decodeIfPresent(Double.self, forKey: .distanceMi)
+        self.paceSPerMi = c.decodeFlexInt(forKey: .paceSPerMi)
+        self.cumulativeSec = c.decodeFlexInt(forKey: .cumulativeSec)
+        self.label = try? c.decodeIfPresent(String.self, forKey: .label)
+    }
+}
+
+/// Objective mid-race abort criterion. `hrAboveBpm` is null when the runner
+/// has no LTHR / maxHr anchor.
+struct BGoalTrigger: Decodable {
+    let atMile: Int?
+    let hrAboveBpm: Int?
+    let paceSlowerThanSPerMi: Int?
+    let action: String?
+
+    enum CodingKeys: String, CodingKey {
+        case atMile, hrAboveBpm, paceSlowerThanSPerMi, action
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.atMile = c.decodeFlexInt(forKey: .atMile)
+        self.hrAboveBpm = c.decodeFlexInt(forKey: .hrAboveBpm)
+        self.paceSlowerThanSPerMi = c.decodeFlexInt(forKey: .paceSlowerThanSPerMi)
+        self.action = try? c.decodeIfPresent(String.self, forKey: .action)
+    }
+}
+
+/// One row of the heat decision tree: at-or-above this start temp, add this
+/// to every split.
+struct HeatRule: Decodable {
+    let ifStartTempAtLeastF: Int?
+    let addSPerMi: Int?
+    let note: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ifStartTempAtLeastF, addSPerMi, note
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.ifStartTempAtLeastF = c.decodeFlexInt(forKey: .ifStartTempAtLeastF)
+        self.addSPerMi = c.decodeFlexInt(forKey: .addSPerMi)
+        self.note = try? c.decodeIfPresent(String.self, forKey: .note)
+    }
+}
+
+/// One warm-up step. `clock` ("6:15 AM") is null when the gun time is unknown,
+/// in which case the surface leans on `minutesBeforeGun`.
+struct WarmupStep: Decodable {
+    let minutesBeforeGun: Int?
+    let clock: String?
+    let step: String?
+
+    enum CodingKeys: String, CodingKey {
+        case minutesBeforeGun, clock, step
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.minutesBeforeGun = c.decodeFlexInt(forKey: .minutesBeforeGun)
+        self.clock = try? c.decodeIfPresent(String.self, forKey: .clock)
+        self.step = try? c.decodeIfPresent(String.self, forKey: .step)
+    }
+}
