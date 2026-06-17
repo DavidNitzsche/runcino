@@ -227,11 +227,27 @@ export async function GET(
   // Work-phase pace + distance for tempo recap copy. Both derived from the
   // same work-phase filter so the "4.0 mi @ 7:18" pair is always consistent.
   const workPhases = winPhases.filter((p) => p.type === 'work' && p.actualPaceSPerMi);
-  const workPaceSPerMi: number | null = workPhases.length > 0
-    ? workPhases.reduce((s, p) => s + (p.actualPaceSPerMi as number), 0) / workPhases.length
-    : null;
   const workDistMiRaw = workPhases.reduce((s, p) => s + (p.actualDistanceMi ?? 0), 0);
   const workDistanceMi: number | null = workDistMiRaw > 0 ? workDistMiRaw : null;
+  // AUDIT #33 · DISTANCE-WEIGHTED work pace = total work time / total work
+  // distance. The old unweighted mean of rep paces over-/under-weighted short
+  // reps (1mi@6:00 + 0.5mi@7:00 → mean 6:30 but true avg 6:20) and disagreed
+  // with the workDistanceMi printed beside it. For equal-length reps the
+  // weighted value EQUALS the mean, so this is a no-op on the standard set.
+  // Weight only phases that carry a real distance; fall back to the unweighted
+  // mean when none do (so we never lose a value we previously had).
+  const weightablePhases = workPhases.filter((p) => (p.actualDistanceMi ?? 0) > 0);
+  const workPaceSPerMi: number | null = (() => {
+    if (workPhases.length === 0) return null;
+    if (weightablePhases.length > 0) {
+      const totalDist = weightablePhases.reduce((s, p) => s + (p.actualDistanceMi as number), 0);
+      const totalTime = weightablePhases.reduce(
+        (s, p) => s + (p.actualPaceSPerMi as number) * (p.actualDistanceMi as number), 0);
+      return totalDist > 0 ? totalTime / totalDist : null;
+    }
+    // No phase carries a distance — keep the legacy unweighted mean.
+    return workPhases.reduce((s, p) => s + (p.actualPaceSPerMi as number), 0) / workPhases.length;
+  })();
   const repCount: number | null = workPhases.length > 0 ? workPhases.length : null;
   // Per-rep actual paces (in rep order) for the interval pacing-pattern read.
   const repPaces: number[] = workPhases
