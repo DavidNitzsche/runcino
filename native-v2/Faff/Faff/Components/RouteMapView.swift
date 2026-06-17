@@ -246,7 +246,7 @@ struct RouteMapView: UIViewRepresentable {
             var spans: [(start: Double, end: Double, v: Double)] = []
             var cum = 0.0
             for p in validPhases { let s = cum; cum += p.mi * scale; spans.append((s, cum, Double(p.sec))) }
-            let w = max(0.03, min(0.10, total * 0.02))   // boundary-fade width · ~2% of route
+            let w = max(0.05, min(0.12, total * 0.022))  // boundary fade · short but multi-segment
             valueFn = { d in RouteMapView.phaseValue(d, spans, w) }
             let vals = validPhases.map { Double($0.sec) }.sorted()
             let lo = vals[Int(Double(vals.count - 1) * 0.1)]
@@ -275,9 +275,13 @@ struct RouteMapView: UIViewRepresentable {
 
         guard let value = valueFn, let color = colorFn else { return [] }
 
-        // ~90 short segments · color by the value at the segment midpoint, each
-        // sharing its boundary vertex with the next so the line stays joined.
-        let maxSegs = 90
+        // Fine segments · ~one per 0.025 mi so a color transition spans several
+        // segments and renders as a visible SHORT fade, not a hard line (David
+        // 2026-06-17: "they can be short, but I don't like the hardlines"). The
+        // old fixed 90 made each segment ~0.067 mi on a 6 mi route, so an eased
+        // boundary covered barely one segment → still read hard. Bounded 100…320
+        // (limited in practice by GPS point density).
+        let maxSegs = min(320, max(100, Int(total / 0.025)))
         let chunk = max(1, Int(ceil(Double(coords.count - 1) / Double(maxSegs))))
         var segs: [(coords: [CLLocationCoordinate2D], color: UIColor)] = []
         var i = 0
