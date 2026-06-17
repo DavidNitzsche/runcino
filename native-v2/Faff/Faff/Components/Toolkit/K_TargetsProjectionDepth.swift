@@ -96,10 +96,14 @@ struct TargetsProjectionDepth: View {
     // ── 2 · LIKELY RANGE ──────────────────────────────────────────────────
 
     private func likelyRangeSection(_ ci: ProjectionConfidenceInterval) -> some View {
-        // Confidence percentage as an integer ("80% range"). pct arrives 0…1.
+        // Server `pct` is ALREADY a percent — the interval half-width as ±% of
+        // the projection (e.g. 2.5 → ±2.5%), NOT a 0…1 fraction. Render it as a
+        // ± band, not ×100 (which read as a nonsensical "250% range").
         let pctText: String = {
             guard ci.pct > 0 else { return "" }
-            return "\(Int((ci.pct * 100).rounded()))% range"
+            let s = ci.pct == ci.pct.rounded() ? String(format: "%.0f", ci.pct)
+                                               : String(format: "%.1f", ci.pct)
+            return "± \(s)%"
         }()
         return depthSection("LIKELY RANGE", caption: confidenceCaption) {
             VStack(alignment: .leading, spacing: 8) {
