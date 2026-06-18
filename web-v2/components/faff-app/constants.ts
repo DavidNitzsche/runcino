@@ -20,7 +20,7 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   // easy was #48B3B5 here while iPhone shipped #14C08C "per --eff-easy" ·
   // both surfaces now read #14C08C, byte-for-byte with Theme.swift.
   recovery:  { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
-  easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#14C08C', mark: 26, lbl: 'EASY' },
+  easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#3EBD41', mark: 26, lbl: 'EASY' },
   long:      { mesh: ['#FFE7B0','#F8BC4E','#F0A638','#EC8C2A','#D9791C','#A85A14'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
   // 2026-06-03 · tempo + intervals meshes · second iteration.
   //   v1 (#FFD2A4 / #FF9A54 / …) was too bright · washed cards out.

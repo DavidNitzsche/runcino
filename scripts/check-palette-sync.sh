@@ -60,7 +60,7 @@ need "$WEB_CSS" '\-\-intervals:#F43F5E'   'web --intervals = #F43F5E (Intervals)
 need "$WEB_CSS" '\-\-watch:#F3AD38'       'web --watch = #F3AD38 (Watch attention)'
 need "$WEB_CSS" '\-\-gold:#F5C518'        'web --gold = #F5C518 (PR gold)'
 need "$WEB_CSS" '\-\-eyebrow:#FFCE8A'     'web --eyebrow = #FFCE8A (Eyebrow)'
-need "$WEB_CSS" '\-\-eff-easy:#14C08C'    'web --eff-easy = #14C08C (Easy)'
+need "$WEB_CSS" '\-\-eff-easy:#3EBD41'    'web --eff-easy = #3EBD41 (Easy)'
 need "$WEB_CSS" '\-\-eff-tempo:#FF5722'   'web --eff-tempo = #FF5722'
 need "$WEB_CSS" '\-\-eff-intervals:#F43F5E' 'web --eff-intervals = #F43F5E'
 need "$WEB_CSS" '\-\-eff-race:#FF5722'    'web --eff-race = #FF5722'
@@ -73,7 +73,7 @@ need "$WEB_CSS" '\-\-over-text:#FF6A6A'   'web --over-text = #FF6A6A (bright mis
 need "$WEB_CSS" '\-\-strava:#FC4C02'      'web --strava = #FC4C02 (Strava brand, lock-exempt)'
 
 # Web effort dots (constants.ts)
-need "$WEB_CONST" "easy:.*dot: '#14C08C'"      'web EFF.easy.dot = #14C08C'
+need "$WEB_CONST" "easy:.*dot: '#3EBD41'"      'web EFF.easy.dot = #3EBD41'
 need "$WEB_CONST" "tempo:.*dot: '#FF5722'"     'web EFF.tempo.dot = #FF5722'
 need "$WEB_CONST" "intervals:.*dot: '#F43F5E'" 'web EFF.intervals.dot = #F43F5E'
 need "$WEB_CONST" "race:.*dot: '#FF5722'"      'web EFF.race.dot = #FF5722'
@@ -87,7 +87,7 @@ need "$IOS_THEME" 'over *= Color\(hex: 0xFC4D64\)'      'iOS Theme.over = #FC4D6
 need "$IOS_THEME" 'dist *= Color\(hex: 0x27B4E0\)'      'iOS Theme.dist = #27B4E0'
 need "$IOS_THEME" 'race *= Color\(hex: 0xFF5722\)'      'iOS Theme.race = #FF5722'
 need "$IOS_THEME" 'intervals *= Color\(hex: 0xF43F5E\)' 'iOS Theme.intervals = #F43F5E'
-need "$IOS_THEME" 'case \.easy: *return Color\(hex: 0x14C08C\)'      'iOS easy dot = #14C08C'
+need "$IOS_THEME" 'case \.easy: *return Color\(hex: 0x3EBD41\)'      'iOS easy dot = #3EBD41'
 need "$IOS_THEME" 'case \.tempo: *return Color\(hex: 0xFF5722\)'     'iOS tempo dot = #FF5722'
 need "$IOS_THEME" 'case \.intervals: *return Color\(hex: 0xF43F5E\)' 'iOS intervals dot = #F43F5E'
 need "$IOS_THEME" 'case \.race: *return Color\(hex: 0xFF5722\)'      'iOS race dot = #FF5722'

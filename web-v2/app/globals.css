@@ -34,7 +34,7 @@
      standardize on --mint-glow from faff-toolkit.css). */
   --positive:var(--mint-glow);
   /* canonical effort temperature scale (= the palette, per brief v2) */
-  --eff-recovery:#27B4E0; --eff-easy:#14C08C; --eff-long:#F3AD38;
+  --eff-recovery:#27B4E0; --eff-easy:#3EBD41; --eff-long:#F3AD38;
   --eff-tempo:#FF5722; --eff-intervals:#F43F5E; --eff-race:#FF5722;
   /* ────────────────────────────────────────────────────────────────
      Effort Mesh Background · canonical defaults (handoff spec locked

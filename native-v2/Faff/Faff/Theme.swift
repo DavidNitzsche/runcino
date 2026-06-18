@@ -145,7 +145,7 @@ enum Theme {
     // with web ZC (constants.ts) + RunDetailModal ZONE_COLOR.
     enum ZoneSplit {
         static let z1 = Color(hex: 0x27B4E0)
-        static let z2 = Color(hex: 0x14C08C)
+        static let z2 = Color(hex: 0x3EBD41)
         static let z3 = Color(hex: 0xF3AD38)
         static let z4 = Color(hex: 0xFF5722)
         static let z5 = Color(hex: 0xF43F5E)
@@ -159,7 +159,7 @@ enum Theme {
         static let race      = Color(hex: 0xFF5722)
         static let tempo     = Color(hex: 0xFF5722)
         static let long      = Color(hex: 0xF3AD38)
-        static let easy      = Color(hex: 0x14C08C)
+        static let easy      = Color(hex: 0x3EBD41)
         static let recovery  = Color(hex: 0x27B4E0)
     }
 
@@ -168,14 +168,14 @@ enum Theme {
         static let amberBright = Color(hex: 0xFFCE8A) // primary eyebrow / COACH tag
         static let amberPale   = Color(hex: 0xFFE7C2) // gradient highlight end
         static let amberGold   = Color(hex: 0xF5C518) // PR gold pill
-        static let mintReady   = Color(hex: 0x86EFA0) // good-state text
-        static let mintGlow    = Color(hex: 0x7BE8A0) // gap-chip glow / paths
+        static let mintReady   = Color(hex: 0x3EBD41) // good-state text · = Success green (palette consolidation 2026-06-17)
+        static let mintGlow    = Color(hex: 0x3EBD41) // gap-chip glow / paths · = Success green
     }
 
     // ───── Status tints (PR badges, log row badges) ─────
     enum Status {
         static let solidBorder = Color(hex: 0x3EBD41).opacity(0.40)
-        static let solidText   = Color(hex: 0x86EFA0)
+        static let solidText   = Color(hex: 0x3EBD41)
         static let prBorder    = Color(hex: 0xF5C518).opacity(0.50)
         static let prText      = Color(hex: 0xF5C518)
     }
@@ -295,7 +295,7 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
         // AFC fix 2 · = web constants.ts EFF[*].dot, byte-for-byte.
         switch self {
         case .recovery:  return Color(hex: 0x27B4E0)
-        case .easy:      return Color(hex: 0x14C08C)  // per --eff-easy
+        case .easy:      return Color(hex: 0x3EBD41)  // per --eff-easy · = Success green (consolidation 2026-06-17)
         case .long:      return Color(hex: 0xF3AD38)
         case .tempo:     return Color(hex: 0xFF5722)
         case .intervals: return Color(hex: 0xF43F5E)

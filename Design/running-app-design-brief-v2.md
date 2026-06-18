@@ -20,7 +20,7 @@ This is the entire permitted semantic color set. Every pixel outside this table 
 |----------|-----|-------|
 | **Race/Tempo** | `#FF5722` | Race-day celebrate, tempo pace, race-morning hero, race mesh |
 | **Long** | `#F3AD38` | Long-run effort, long mesh, goal-distance thinking |
-| **Easy** | `#14C08C` | Easy-effort dot and label, recovery identity |
+| **Easy** | `#3EBD41` | Easy-effort dot and label · = Good-state green (palette consolidation 2026-06-17, David's canonical palette: one green) |
 | **Recovery** | `#27B4E0` | Recovery effort, detraining signal (cool/info), recovery mesh |
 | **Intervals** | `#F43F5E` | Interval/quality effort, quality mesh, VO₂ work |
 | **Good state** | `#3EBD41` | On-track, readiness "good", execution ≥95%, strength-done badge |
