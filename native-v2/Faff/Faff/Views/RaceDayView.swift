@@ -108,8 +108,7 @@ struct RaceDayView: View {
                             .font(.body(14))
                             .foregroundStyle(Theme.txt.opacity(0.85))
                             .lineSpacing(3)
-                            .lineLimit(4)
-                            .truncationMode(.tail)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
                             .padding(.top, 16)
@@ -775,7 +774,7 @@ struct RaceDayView: View {
                         Text(ph.cue.map { "\(ph.label) · \($0)" } ?? ph.label)
                             .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.55))
-                            .lineLimit(1).minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
                     Text("\(paceNumber(from: ph.display))/mi")
@@ -815,7 +814,7 @@ struct RaceDayView: View {
                         Text(ph.intent)
                             .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.55))
-                            .lineLimit(1).minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
                     Text("\(ph.pace)/mi")
@@ -907,8 +906,8 @@ struct RaceDayView: View {
                 (Text("On course  ").foregroundStyle(Theme.txt.opacity(0.4))
                  + Text(aid).foregroundStyle(Theme.txt.opacity(0.6)))
                     .font(.body(11))
-                    .lineLimit(2)
                     .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

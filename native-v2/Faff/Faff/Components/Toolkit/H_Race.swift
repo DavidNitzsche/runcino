@@ -813,6 +813,7 @@ struct RaceDetailsCard: View {
                             .font(.body(15, weight: .bold))
                             .foregroundStyle(f == .website ? Theme.race : Theme.txt)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                             .truncationMode(.tail)
                     }
                 }
