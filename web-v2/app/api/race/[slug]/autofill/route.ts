@@ -90,14 +90,14 @@ const EXTRACT_TOOL = {
       packetPickup: { type: ['string', 'null'], description: 'Packet/bib pickup — where and when (expo dates/times). Note if no race-day pickup.' },
       officialUrl: { type: ['string', 'null'], description: 'The canonical official race website URL.' },
       notes: { type: ['string', 'null'], description: 'Other important race-day notes: gear check, corral cutoff, course closures, weather norms. Keep to a couple of sentences.' },
-      aidStations: { type: ['string', 'null'], description: 'On-course aid: where water/electrolyte stations are (mile markers or spacing like "every ~2 mi") and what is provided (water, sports drink, gels, etc.). One concise line.' },
-      summary: { type: ['string', 'null'], description: 'A 2-3 sentence "what to expect": the course\'s character and TERRAIN REALITY (use the provided GPX terrain data, not the website), plus one tactical note that fits the terrain. Coach voice: direct, factual, no hype, no exclamation marks, no emoji, no em dashes.' },
-      notableMiles: { type: ['string', 'null'], description: 'Landmark and terrain callouts by mile, e.g. "Mi 1-3: descent off Point Loma. Mi 8.5: narrows to bikeway. Mi 12: climb to the finish." Tie elevation claims to the provided GPX terrain. One compact paragraph.' },
-      weatherNorms: { type: ['string', 'null'], description: 'TYPICAL conditions for this date and place (historical NORMS, not a forecast): start temp, humidity, marine layer, shade/exposure. Neutral and factual, never alarming. One line.' },
-      timeLimit: { type: ['string', 'null'], description: 'Course time limit / cutoffs / required pace, e.g. "3:15 (14:53/mi); 6.3 mi cutoff at 90 min". null if none stated.' },
-      gearCheck: { type: ['string', 'null'], description: 'Bag/gear check: where, when, rules, or that there is none. One line.' },
-      pacers: { type: ['string', 'null'], description: 'Official pace groups and their times, e.g. "1:30, 1:35, 1:40". null if none.' },
-      spectators: { type: ['string', 'null'], description: 'Best viewing spots and where crowd support is strongest (and where it is sparse). One line.' },
+      aidStations: { type: ['string', 'null'], description: 'ONE short line: spacing + what is poured. e.g. "Water + electrolyte every ~2 mi; gels at 7 and 11." Do NOT list individual station addresses or cross-streets.' },
+      summary: { type: ['string', 'null'], description: 'EXACTLY 2-3 short sentences, ~45 words max. The course character + TERRAIN REALITY (use the provided GPX terrain, not the website) + one tactical note. Tight, no filler.' },
+      notableMiles: { type: ['string', 'null'], description: '3-5 SHORT segments, one per line feel, terse. e.g. "Mi 1-4: descent off Point Loma, -340 ft. Mi 4-10: flat along the bay. Mi 10-13: climb into Balboa Park." Ground elevation in the provided GPX terrain. NOT a run-on paragraph.' },
+      weatherNorms: { type: ['string', 'null'], description: 'ONE short line of TYPICAL conditions for this date + place (historical norm, not a forecast). e.g. "Low-to-mid 60s at the coast, marine layer common, second half exposed." Neutral, never alarming.' },
+      timeLimit: { type: ['string', 'null'], description: 'ONE short line: limit + any cutoff, e.g. "3:15 (14:53/mi); 6.3 mi cutoff at 90 min". null if none.' },
+      gearCheck: { type: ['string', 'null'], description: 'ONE short line: where/when, or "None" if there is no gear check. null if not stated.' },
+      pacers: { type: ['string', 'null'], description: 'Just the times, e.g. "1:30, 1:35, 1:40". null if none offered.' },
+      spectators: { type: ['string', 'null'], description: 'ONE short line: best viewing spot + where support is strong. e.g. "Crowds thin; best at the Balboa Park finish."' },
     },
     required: ['startTime', 'wave', 'bib', 'location', 'parking', 'shuttle', 'packetPickup', 'officialUrl', 'notes', 'aidStations', 'summary', 'notableMiles', 'weatherNorms', 'timeLimit', 'gearCheck', 'pacers', 'spectators'],
   },
@@ -154,8 +154,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     'You research OFFICIAL race websites for a running app and extract race-day facts. ' +
     'Use web_search to find and read the official source; prefer the official race site over aggregators, registration portals, or news. ' +
     'Extract only facts you can confirm from the source — if a field is not stated, return null. Never guess. ' +
-    'Coach voice for any prose: direct and factual, no hype, no exclamation marks, no emoji, no em dashes. ' +
-    'Values render in a small mobile card, so keep them short. When done, call the race_logistics tool exactly once.';
+    'Coach voice: direct and factual, no hype, no exclamation marks, no emoji, no em dashes. ' +
+    'BREVITY IS THE PRIORITY. A runner scans this on a phone. Keep EVERY value to one short line or a few terse fragments — never a paragraph, never a list of addresses. Cut filler words. When done, call the race_logistics tool exactly once.';
 
   const userMsg =
     `Find the race-day details for ${target}. ` +

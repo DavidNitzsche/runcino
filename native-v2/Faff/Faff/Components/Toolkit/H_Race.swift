@@ -751,36 +751,55 @@ struct RaceDetailsCard: View {
     @ViewBuilder
     private func displayRow(_ f: Field) -> some View {
         let v = value(f)
-        HStack(spacing: 10) {
-            HStack(spacing: 10) {
+        if f.multiline && !v.isEmpty {
+            // Prose reads top-down: small label, then a full-width wrapping
+            // value. The width clamp (fixedSize h:false + maxWidth) keeps a long
+            // value from blowing out the row and scrolling the page sideways.
+            VStack(alignment: .leading, spacing: 5) {
                 SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
-                Spacer(minLength: 12)
-                if v.isEmpty {
-                    Text("Add").font(.body(13, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.3))
-                    Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.3))
-                } else {
-                    Text(f == .website ? Self.prettyHost(v) : v)
-                        .font(.body(15, weight: .bold))
-                        .foregroundStyle(f == .website ? Theme.race : Theme.txt)
-                        .multilineTextAlignment(.trailing)
-                        .lineLimit(f.multiline ? 4 : 1)
-                        .truncationMode(f == .website ? .middle : .tail)
-                }
+                Text(v)
+                    .font(.body(14))
+                    .foregroundStyle(Theme.txt.opacity(0.9))
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
             .contentShape(Rectangle())
             .onTapGesture { begin(f, current: v) }
-
-            // Website open glyph · a sibling Link (not nested in the edit tap).
-            if f == .website, !v.isEmpty, let url = Self.normalizedURL(v) {
-                Link(destination: url) {
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Theme.race)
+        } else {
+            // Short fields: label left, value right, single line.
+            HStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
+                    Spacer(minLength: 12)
+                    if v.isEmpty {
+                        Text("Add").font(.body(13, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.3))
+                        Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.3))
+                    } else {
+                        Text(f == .website ? Self.prettyHost(v) : v)
+                            .font(.body(15, weight: .bold))
+                            .foregroundStyle(f == .website ? Theme.race : Theme.txt)
+                            .lineLimit(1)
+                            .truncationMode(f == .website ? .middle : .tail)
+                    }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onTapGesture { begin(f, current: v) }
+
+                // Website open glyph · a sibling Link (not nested in the edit tap).
+                if f == .website, !v.isEmpty, let url = Self.normalizedURL(v) {
+                    Link(destination: url) {
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.race)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
+            .padding(14)
         }
-        .padding(14)
     }
 
     // Edit · inline field with Save / Cancel.
