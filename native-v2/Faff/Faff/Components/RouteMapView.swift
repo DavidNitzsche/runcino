@@ -45,6 +45,12 @@ struct RouteMapView: UIViewRepresentable {
     /// (no physiology) → falls back to the per-mile pace gradient.
     var hrZones: [HRZoneRange] = []
 
+    /// Place labels on the basemap. The post-run route keeps them (small area,
+    /// names recede). The race course map spans a whole city, where CartoDB's
+    /// baked "SAN DIEGO / CORONADO" labels render huge — pass false there to use
+    /// the dark_nolabels tiles for a clean route (David 2026-06-17).
+    var showLabels: Bool = true
+
     /// True when this run colors by HR zone (steady effort + per-mile HR + zone
     /// bands present, and not a structured/phase workout). The single rule, used
     /// by both the route coloring and the card's legend so they never diverge.
@@ -136,8 +142,9 @@ struct RouteMapView: UIViewRepresentable {
         // CartoDB Dark Matter raster tiles. canReplaceMapContent = true tells
         // MapKit the overlay covers everything, so it skips drawing its own
         // basemap (and labels) entirely — only the muted CartoDB tiles show.
+        let style = showLabels ? "dark_all" : "dark_nolabels"
         let overlay = MKTileOverlay(
-            urlTemplate: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png"
+            urlTemplate: "https://a.basemaps.cartocdn.com/\(style)/{z}/{x}/{y}@2x.png"
         )
         overlay.canReplaceMapContent = true
         overlay.tileSize = CGSize(width: 512, height: 512)   // @2x retina tiles

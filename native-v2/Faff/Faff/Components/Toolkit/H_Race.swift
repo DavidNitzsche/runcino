@@ -665,7 +665,6 @@ struct RaceDetailsCard: View {
     @State private var editing: Field? = nil
     @State private var draft: String = ""
     @State private var saving: Field? = nil
-    @State private var expanded: Bool = false
     @FocusState private var focused: Bool
 
     private func value(_ f: Field) -> String {
@@ -690,11 +689,12 @@ struct RaceDetailsCard: View {
     }
 
     // Empty rows collapse behind an "Add more" expander when collapseEmpty.
-    private var emptyFields: [Field] { fields.filter { value($0).isEmpty } }
     private var shownFields: [Field] {
-        guard collapseEmpty else { return fields }
-        let populated = fields.filter { !value($0).isEmpty }
-        return expanded ? populated + emptyFields : populated
+        // collapseEmpty (the GOOD TO KNOW intel card) shows ONLY what we have —
+        // no empty "Add" rows, no expander. THE DETAILS (logistics) shows every
+        // row so the runner can fill them (David 2026-06-17: "just show them if
+        // we have it").
+        collapseEmpty ? fields.filter { !value($0).isEmpty } : fields
     }
 
     var body: some View {
@@ -720,22 +720,6 @@ struct RaceDetailsCard: View {
                 if i < shownFields.count - 1 {
                     Divider().background(Color.white.opacity(0.08))
                 }
-            }
-            // Collapsed empties · one compact invite to fill the rest.
-            if collapseEmpty && !expanded && !emptyFields.isEmpty {
-                if !shownFields.isEmpty { Divider().background(Color.white.opacity(0.08)) }
-                Button { withAnimation { expanded = true } } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .bold))
-                        Text(shownFields.isEmpty ? "Add race details" : "Add \(emptyFields.count) more")
-                            .font(.body(12, weight: .extraBold))
-                        Spacer()
-                    }
-                    .foregroundStyle(Theme.txt.opacity(0.5))
-                    .padding(14)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
             }
         }
         .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))

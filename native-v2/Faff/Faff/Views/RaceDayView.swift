@@ -111,7 +111,7 @@ struct RaceDayView: View {
                                 // No run splits/HR for a not-yet-run course →
                                 // RouteMapView draws the clean route line on the
                                 // CartoDB dark tiles + start/finish dots.
-                                RouteMapView(coords: coords, splits: [])
+                                RouteMapView(coords: coords, splits: [], showLabels: false)
                                     .frame(height: 200)
                                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                                     .allowsHitTesting(false)
@@ -272,15 +272,25 @@ struct RaceDayView: View {
                     // collapse behind an "Add more" so a sparse race stays
                     // clean; every row is runner-fillable (David 2026-06-17:
                     // "less is more, let the runner fill any other data needed").
-                    if let d = detail, d.race.is_past != true {
+                    if let d = detail, d.race.is_past != true, raceHasIntel(d.race) {
                         section(title: "GOOD TO KNOW", right: nil) {
-                            RaceDetailsCard(
-                                race: d.race,
-                                slug: raceSlug,
-                                fields: [.weather, .timeLimit, .gearCheck, .pacers, .spectators],
-                                collapseEmpty: true,
-                                onSaved: { Task { await load() } }
-                            )
+                            VStack(alignment: .leading, spacing: 8) {
+                                RaceDetailsCard(
+                                    race: d.race,
+                                    slug: raceSlug,
+                                    fields: [.weather, .timeLimit, .gearCheck, .pacers, .spectators],
+                                    collapseEmpty: true,
+                                    onSaved: { Task { await load() } }
+                                )
+                                // Weather is a historical NORM until race week,
+                                // when the live forecast loads (David 2026-06-17).
+                                if let w = d.race.weather_norms?.trimmingCharacters(in: .whitespaces), !w.isEmpty {
+                                    Text("Weather is typical for the date. The live forecast loads in race week.")
+                                        .font(.body(10.5))
+                                        .foregroundStyle(Theme.txt.opacity(0.45))
+                                        .padding(.horizontal, 4)
+                                }
+                            }
                         }
                         .padding(.top, 30)
                     }
@@ -736,20 +746,17 @@ struct RaceDayView: View {
             ForEach(Array(phases.enumerated()), id: \.offset) { i, ph in
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 3) {
-                        // Course name + mile range on one line · the where.
-                        (Text(ph.label.uppercased())
+                        // MILES lead — mid-race, the mile is what you scan to
+                        // find your row (David 2026-06-17). Big, first.
+                        Text(milesRange(ph.start_mi, ph.end_mi))
+                            .font(.display(17, weight: .bold)).tracking(-0.2)
                             .foregroundStyle(Theme.txt)
-                         + Text("  ·  \(milesRange(ph.start_mi, ph.end_mi))")
-                            .foregroundStyle(Theme.txt.opacity(0.5)))
-                            .font(.body(12, weight: .extraBold))
-                            .tracking(0.4)
-                            .lineLimit(1).minimumScaleFactor(0.75)
-                        // Strategy cue · the how (the negative-split intent).
-                        if let cue = ph.cue, !cue.isEmpty {
-                            Text(cue)
-                                .font(.body(11, weight: .semibold))
-                                .foregroundStyle(Theme.txt.opacity(0.7))
-                        }
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                        // Segment name + strategy cue · the context, demoted.
+                        Text(ph.cue.map { "\(ph.label) · \($0)" } ?? ph.label)
+                            .font(.body(11, weight: .semibold))
+                            .foregroundStyle(Theme.txt.opacity(0.55))
+                            .lineLimit(1).minimumScaleFactor(0.8)
                     }
                     Spacer(minLength: 12)
                     Text("\(paceNumber(from: ph.display))/mi")
@@ -781,13 +788,15 @@ struct RaceDayView: View {
         VStack(spacing: 0) {
             ForEach(Array(planPhases.enumerated()), id: \.offset) { i, ph in
                 HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(ph.range)
-                            .font(.body(12, weight: .extraBold)).tracking(0.6)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(ph.range)   // MILES lead — big, first.
+                            .font(.display(17, weight: .bold)).tracking(-0.2)
                             .foregroundStyle(Theme.txt)
+                            .lineLimit(1).minimumScaleFactor(0.8)
                         Text(ph.intent)
                             .font(.body(11, weight: .semibold))
-                            .foregroundStyle(Theme.txt.opacity(0.6))
+                            .foregroundStyle(Theme.txt.opacity(0.55))
+                            .lineLimit(1).minimumScaleFactor(0.8)
                     }
                     Spacer(minLength: 12)
                     Text("\(ph.pace)/mi")
@@ -835,45 +844,27 @@ struct RaceDayView: View {
     /// not a green/over semantic.
     private func fuelingPlanCard(_ f: RaceFueling) -> some View {
         return VStack(alignment: .leading, spacing: 12) {
-            // Headline · what to carry, how often, what rate it hits.
+            // LEAD · the gel plan — what to carry, how often, what rate it hits.
             Text(fuelHeadline(f))
-                .font(.body(14, weight: .bold))
+                .font(.body(15, weight: .bold))
                 .foregroundStyle(Theme.txt)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(2)
 
-            // The schedule · ONE clean line of mile markers. (Was a dot timeline
-            // PLUS a verbose "Gel 1 · mi 3 …" list — two redundant reads of the
-            // same thing, which made the card hard to parse · David 2026-06-17.)
+            // The actionable · where to take each gel. Mile markers in amber so
+            // the numbers you act on pop.
             if !f.scheduleMi.isEmpty {
                 let miles = f.scheduleMi.map { "\(Int($0.mi.rounded()))" }.joined(separator: " · ")
                 (Text("Take one at mile  ").foregroundStyle(Theme.txt.opacity(0.5))
-                 + Text(miles).foregroundStyle(Theme.txt.opacity(0.9)))
-                    .font(.body(13, weight: .semibold))
+                 + Text(miles).foregroundStyle(Theme.goal))
+                    .font(.body(14, weight: .bold))
                     .fixedSize(horizontal: false, vertical: true)
                     .lineSpacing(3)
-            }
-
-            // ON COURSE · the race's own water / aid stations (from auto-fill),
-            // so the gel timeline above can be taken with the water you'll pass.
-            if let aid = detail?.race.aid_stations?.trimmingCharacters(in: .whitespaces), !aid.isEmpty {
-                Divider().background(Color.white.opacity(0.08))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("ON COURSE")
-                        .font(.body(9.5, weight: .extraBold)).tracking(1.2)
-                        .foregroundStyle(Theme.txt.opacity(0.5))
-                    Text(aid)
-                        .font(.body(12, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.8))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineSpacing(2)
-                }
             }
 
             // Default-plan prompt · the runner hasn't entered their fuel, so
             // this is a research default. Invite them to make it theirs.
             if f.isDefault {
-                Divider().background(Color.white.opacity(0.08))
                 Button { showEditSheet = true } label: {
                     HStack(spacing: 6) {
                         Text("Enter your race fuel")
@@ -887,6 +878,19 @@ struct RaceDayView: View {
                 Text("Showing a sensible default until you set your gel.")
                     .font(.body(10.5, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.5))
+            }
+
+            // Footnote · the race's own water/aid. A nice-to-have (where the
+            // stations overlap your gels), kept small + muted + 2 lines so the
+            // gel plan stays the lead (David 2026-06-17).
+            if let aid = detail?.race.aid_stations?.trimmingCharacters(in: .whitespaces), !aid.isEmpty {
+                Divider().background(Color.white.opacity(0.06))
+                (Text("On course  ").foregroundStyle(Theme.txt.opacity(0.4))
+                 + Text(aid).foregroundStyle(Theme.txt.opacity(0.6)))
+                    .font(.body(11))
+                    .lineLimit(2)
+                    .lineSpacing(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(14)
@@ -999,6 +1003,13 @@ struct RaceDayView: View {
                 .filter { !$0.isEmpty }
                 .prefix(5)
         )
+    }
+
+    /// True when the crawl filled ≥1 GOOD TO KNOW intel field. The section
+    /// hides entirely otherwise — no empty card (David 2026-06-17).
+    private func raceHasIntel(_ r: RaceDetail) -> Bool {
+        [r.weather_norms, r.time_limit, r.gear_check, r.pacers, r.spectators]
+            .contains { ($0?.trimmingCharacters(in: .whitespaces).isEmpty == false) }
     }
 
     private func section<C: View>(title: String, right: String?, @ViewBuilder content: () -> C) -> some View {
