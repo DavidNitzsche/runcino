@@ -72,6 +72,27 @@ export function sanitizeElevGain(input: ElevSanityInput): ElevSanityResult {
     return { value: Math.round(raw), source: 'raw' };
   }
   const ftPerMi = raw / distMi;
+
+  // Barometric-drift outlier check: fires even when the total ft/mi looks
+  // credible. A pressure swing during a flat run can spike ONE split while
+  // leaving the total below the 250ft/mi threshold. If any single split's
+  // elevation delta is > 3× the per-mile average (and > 150ft absolute),
+  // both the total and splits derive from the same drifted source — they
+  // agree but both are wrong. Return absent so GPS-DEM fires instead.
+  // Today's tempo run: split0 = 502ft on a flat LA route (avg = 68ft/mi,
+  // threshold = 204ft) → this correctly flags it for DEM fallback.
+  const splitsForDriftCheck = input.splits ?? [];
+  if (splitsForDriftCheck.length > 0) {
+    const driftThreshold = Math.max(150, ftPerMi * 3);
+    const maxSingleDelta = splitsForDriftCheck.reduce((m, sp) => {
+      const c = Math.abs(Number(sp.elev_change_ft ?? sp.elevation_difference ?? sp.elev_ft ?? 0));
+      return Math.max(m, c);
+    }, 0);
+    if (maxSingleDelta > driftThreshold) {
+      return { value: null, source: 'absent' };
+    }
+  }
+
   if (ftPerMi <= SUSPICION_THRESHOLD_FT_PER_MI) {
     return { value: Math.round(raw), source: 'raw' };
   }
