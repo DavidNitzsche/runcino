@@ -165,7 +165,7 @@ struct OnboardingView: View {
         FaffMesh(c1: 0x8EF0B0, c2: 0x34C194, c3: 0x1F8A8A, c4: 0x128A64, c5: 0x137259, base: 0x06382E),
         FaffMesh(c1: 0xE6E89A, c2: 0xC9C45E, c3: 0xA8B048, c4: 0x8E9A3C, c5: 0x7A8836, base: 0x3A3E14),
         FaffMesh(c1: 0xFFE0A0, c2: 0xF8B85F, c3: 0xE08A36, c4: 0xC96E2A, c5: 0xB46026, base: 0x5E2F12),
-        FaffMesh(c1: 0xFFD27A, c2: 0xE88021, c3: 0xD6263C, c4: 0x9E1733, c5: 0xC01030, base: 0x420A1E)
+        FaffMesh(c1: 0xFFD27A, c2: 0xD03F3F, c3: 0xD6263C, c4: 0x9E1733, c5: 0xC01030, base: 0x420A1E)
     ]
 
     private let stepCount = 5
@@ -235,7 +235,7 @@ struct OnboardingView: View {
             LinearGradient(
                 colors: [
                     Color(hex: 0x3AB0CF), Color(hex: 0x34C194), Color(hex: 0xF8B85F),
-                    Color(hex: 0xE88021), Color(hex: 0xD6263C)
+                    Color(hex: 0xD03F3F), Color(hex: 0xD6263C)
                 ],
                 startPoint: .leading, endPoint: .trailing
             )

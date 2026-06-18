@@ -24,7 +24,7 @@ struct PageHeader: View {
                         .foregroundStyle(Theme.txt)
                         .frame(width: 32, height: 32)
                         .background(
-                            LinearGradient(colors: [Color(hex: 0xE88021), Color(hex: 0xD6263C)],
+                            LinearGradient(colors: [Color(hex: 0xD03F3F), Color(hex: 0xD6263C)],
                                            startPoint: .topLeading, endPoint: .bottomTrailing),
                             in: Circle()
                         )

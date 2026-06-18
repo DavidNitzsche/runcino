@@ -178,7 +178,7 @@ struct WatchMirrorView: View {
     private func phaseColor(_ type: WatchPhaseType) -> Color {
         switch type {
         case .warmup:   return Theme.neutralTeal
-        case .work:     return Color(hex: 0xE88021)
+        case .work:     return Color(hex: 0xD03F3F)
         case .recovery: return Color(hex: 0x27B4E0)
         case .cooldown: return Color(hex: 0x14C08C)
         default:        return Theme.mute

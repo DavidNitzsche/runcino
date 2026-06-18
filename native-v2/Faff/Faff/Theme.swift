@@ -38,7 +38,7 @@ enum Theme {
     static let over      = Color(hex: 0xFC4D64)     // off / warn
     static let dist      = Color(hex: 0x27B4E0)     // distance / recovery / info
     static let rest      = Color(hex: 0x27B4E0)     // rest chrome (= recovery blue · corporate #008FEC deleted)
-    static let race      = Color(hex: 0xE88021)     // race day / tempo (the brand hero color)
+    static let race      = Color(hex: 0xD03F3F)     // race day / tempo (the brand hero color)
     static let intervals = Color(hex: 0xFC4D64)     // intervals / max-quality effort
 
     // ───── Bright-on-dark TEXT siblings of the fill accents ─────
@@ -114,7 +114,7 @@ enum Theme {
     enum Brand {
         static let sweepStops: [Color] = [
             Color(hex: 0xFC4D64),     // 0%   hot pink
-            Color(hex: 0xE88021),     // 17%  ember
+            Color(hex: 0xD03F3F),     // 17%  ember
             Color(hex: 0xF0DF47),     // 35%  gold
             Color(hex: 0x14C08C),     // 55%  emerald
             Color(hex: 0x4F8FF7),     // 75%  blue
@@ -135,7 +135,7 @@ enum Theme {
         static let z1 = Color(hex: 0x27B4E0)   // Light Blue (palette)
         static let z2 = Color(hex: 0x3EBD41)   // Success green (palette)
         static let z3 = Color(hex: 0xF3AD38)   // Attention amber (palette)
-        static let z4 = Color(hex: 0xE88021)   // Dark Orange (palette)
+        static let z4 = Color(hex: 0xD03F3F)   // Redish (palette · orange retired 2026-06-18, reads Strava)
         static let z5 = Color(hex: 0xFC4D64)   // Warning red (palette)
     }
 
@@ -147,17 +147,17 @@ enum Theme {
         static let z1 = Color(hex: 0x27B4E0)
         static let z2 = Color(hex: 0x3EBD41)
         static let z3 = Color(hex: 0xF3AD38)
-        static let z4 = Color(hex: 0xE88021)
+        static let z4 = Color(hex: 0xD03F3F)
         static let z5 = Color(hex: 0xFC4D64)
     }
 
     // ───── Shoe role colors (Garage chips, picker dots) ─────
-    // AFC fix 2 · per the locked palette RACE and TEMPO share #E88021
+    // AFC fix 2 · per the locked palette RACE and TEMPO share #D03F3F
     // (one semantic slot) · the two role chips are color-identical and
     // differentiated by their text label. Synced with web ROLECOL.
     enum Shoe {
-        static let race      = Color(hex: 0xE88021)
-        static let tempo     = Color(hex: 0xE88021)
+        static let race      = Color(hex: 0xD03F3F)
+        static let tempo     = Color(hex: 0xD03F3F)
         static let long      = Color(hex: 0xF3AD38)
         static let easy      = Color(hex: 0x3EBD41)
         static let recovery  = Color(hex: 0x27B4E0)
@@ -241,7 +241,7 @@ enum Theme {
             // AFC fix 2 · the DEFAULT (ember) tweak now returns the locked
             // race hex. gold/violet/cool remain opt-in recolors via the
             // Tweaks panel (out-of-palette by design · flagged in recap).
-            case .ember:  return Color(hex: 0xE88021)
+            case .ember:  return Color(hex: 0xD03F3F)
             case .gold:   return Color(hex: 0xF0DF47)
             case .violet: return Color(hex: 0xB794F4)
             case .cool:   return Color(hex: 0x3AA0E0)
@@ -297,10 +297,10 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
         case .recovery:  return Color(hex: 0x27B4E0)
         case .easy:      return Color(hex: 0x3EBD41)  // per --eff-easy · = Success green (consolidation 2026-06-17)
         case .long:      return Color(hex: 0xF3AD38)
-        case .tempo:     return Color(hex: 0xE88021)
+        case .tempo:     return Color(hex: 0xD03F3F)
         case .intervals: return Color(hex: 0xFC4D64)
         case .rest:      return Color(hex: 0x8A90A0)
-        case .race:      return Color(hex: 0xE88021)  // per --eff-race
+        case .race:      return Color(hex: 0xD03F3F)  // per --eff-race
         }
     }
 
@@ -332,7 +332,7 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
         case .rest:
             return FaffMesh(c1: 0xC4C8D2, c2: 0x9CA2B0, c3: 0x787E8E, c4: 0x58606E, c5: 0x3E4350, base: 0x252935)
         case .race:
-            return FaffMesh(c1: 0xFFD27A, c2: 0xE88021, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+            return FaffMesh(c1: 0xFFD27A, c2: 0xD03F3F, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
         }
     }
 
@@ -406,7 +406,7 @@ struct FaffMesh: Equatable {
         case .spectator: return FaffMesh(c1: 0x8FF0E0, c2: 0x46CFC6, c3: 0x2FC0E6, c4: 0x23A98E, c5: 0x1B8C7C, base: 0x0E5A54)
         // AFC fix 6 · dedicated race mesh (= web MESH.race), no longer
         // borrowing the intervals stops.
-        case .race:      return FaffMesh(c1: 0xFFD27A, c2: 0xE88021, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+        case .race:      return FaffMesh(c1: 0xFFD27A, c2: 0xD03F3F, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
         }
     }
 

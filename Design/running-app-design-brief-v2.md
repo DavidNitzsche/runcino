@@ -18,7 +18,7 @@ This is the entire permitted semantic color set. Every pixel outside this table 
 
 | Semantic | Hex | Usage |
 |----------|-----|-------|
-| **Race/Tempo** | `#E88021` | Race-day celebrate, tempo pace, race-morning hero, race mesh (Dark Orange · palette pass 2026-06-17, David's canonical palette has no `#FF5722`) |
+| **Race/Tempo** | `#D03F3F` | Race-day celebrate, tempo pace, race-morning hero, race mesh (Redish · 2026-06-18: David ruled ANY orange reads "Strava", so race/tempo is the deep race-red — distinct from the brighter Warning red on intervals) |
 | **Long** | `#F3AD38` | Long-run effort, long mesh, goal-distance thinking |
 | **Easy** | `#3EBD41` | Easy-effort dot and label · = Good-state green (palette consolidation 2026-06-17, David's canonical palette: one green) |
 | **Recovery** | `#27B4E0` | Recovery effort, detraining signal (cool/info), recovery mesh |
@@ -31,9 +31,9 @@ This is the entire permitted semantic color set. Every pixel outside this table 
 
 **Retired tokens from v1:** `#FF8847`, `#14C08C` (easy → `#3EBD41`), `#4F8FF7` — all merge into the table above.
 
-**Retired in the 2026-06-17 canonical-palette pass** (David handed the full brand palette: "every color from this; only rule is never Aquamarine `#27E087`"). The effort + zone scale now reads as a single temperature line — Recovery `#27B4E0` → Easy `#3EBD41` → Long `#F3AD38` → Tempo/Race `#E88021` → Intervals `#FC4D64`:
+**Retired in the 2026-06-17 canonical-palette pass** (David handed the full brand palette: "every color from this; only rule is never Aquamarine `#27E087`"). The effort + zone scale now reads as a single temperature line — Recovery `#27B4E0` → Easy `#3EBD41` → Long `#F3AD38` → Tempo/Race `#D03F3F` → Intervals `#FC4D64`:
 
-- `#FF5722` / `#FF7A45` (race/tempo orange) → **`#E88021`** Dark Orange
+- `#FF5722` / `#FF7A45` / `#E88021` (race/tempo · orange retired 2026-06-18 — David ruled any orange reads "Strava") → **`#D03F3F`** Redish (deep race-red, distinct from the brighter Warning red on intervals)
 - `#F43F5E` (intervals) → **`#FC4D64`** Warning red
 - `#F5C518` / `#F5A518` (PR gold + gold tweak) → **`#F0DF47`** Light Yellow
 - `#FFCE8A` (eyebrow) · `#FFB24D` (bright warn text) → **`#F3AD38`** Attention

@@ -87,7 +87,7 @@ type Status = { kind: 'good' | 'watch' | 'off' | 'info'; text: string };
 
 const SWATCH: Record<SegKey, string> = {
   fitness: '#F3AD38',
-  conditions: '#E88021',
+  conditions: '#D03F3F',
   course: '#D6263C',
   execution: '#8A90A0',
 };

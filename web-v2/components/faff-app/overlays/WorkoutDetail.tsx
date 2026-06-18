@@ -348,9 +348,9 @@ function RouteMap({ dist, gain, activityId }: { dist: string; gain: number; acti
         </svg>
         {routePath ? (
           <svg viewBox="0 0 700 168" preserveAspectRatio="xMidYMid meet">
-            <path d={routePath} fill="none" stroke="#E88021" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={routePath} fill="none" stroke="#D03F3F" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
             {endpoints && <circle cx={endpoints.start[0]} cy={endpoints.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
-            {endpoints && <circle cx={endpoints.end[0]} cy={endpoints.end[1]} r="6" fill="#E88021" stroke="#fff" strokeWidth="2" />}
+            {endpoints && <circle cx={endpoints.end[0]} cy={endpoints.end[1]} r="6" fill="#D03F3F" stroke="#fff" strokeWidth="2" />}
           </svg>
         ) : (
           <div style={{

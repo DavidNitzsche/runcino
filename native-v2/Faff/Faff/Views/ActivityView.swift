@@ -364,12 +364,12 @@ struct ActivityView: View {
         }
         if let t = temposLast, let p = t.pace {
             prs.append(PR(key: "LAST THRESHOLD", value: p,
-                          caption: shortDate(t.date), color: Color(hex: 0xE88021), unit: "/mi"))
+                          caption: shortDate(t.date), color: Color(hex: 0xD03F3F), unit: "/mi"))
         }
         let rangeTotalMi = runs.reduce(0.0) { $0 + $1.distance_mi }
         if rangeTotalMi > 0 {
             prs.append(PR(key: "RANGE TOTAL", value: String(format: "%.0f", rangeTotalMi),
-                          caption: rangeLabel.capitalized, color: Color(hex: 0xE88021), unit: "mi"))
+                          caption: rangeLabel.capitalized, color: Color(hex: 0xD03F3F), unit: "mi"))
         }
         return prs
     }

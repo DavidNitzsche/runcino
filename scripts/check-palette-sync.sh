@@ -51,7 +51,7 @@ need() { # $1=file  $2=grep -E pattern (case-insensitive)  $3=label
 
 # ── 1 · LOCK CHECK · the ten colors, per surface ────────────────────────────
 # Web tokens
-need "$WEB_CSS" '\-\-race:#E88021'        'web --race = #E88021 (Race/Tempo · Dark Orange)'
+need "$WEB_CSS" '\-\-race:#D03F3F'        'web --race = #D03F3F (Race/Tempo · Redish · orange retired, reads Strava)'
 need "$WEB_CSS" '\-\-goal:#F3AD38'        'web --goal = #F3AD38 (Long)'
 need "$WEB_CSS" '\-\-green:#3EBD41'       'web --green = #3EBD41 (Good state)'
 need "$WEB_CSS" '\-\-over:#FC4D64'        'web --over = #FC4D64 (Off/warn)'
@@ -61,9 +61,9 @@ need "$WEB_CSS" '\-\-watch:#F3AD38'       'web --watch = #F3AD38 (Watch attentio
 need "$WEB_CSS" '\-\-gold:#F0DF47'        'web --gold = #F0DF47 (PR gold · Light Yellow)'
 need "$WEB_CSS" '\-\-eyebrow:#F3AD38'     'web --eyebrow = #F3AD38 (Eyebrow · = Attention amber)'
 need "$WEB_CSS" '\-\-eff-easy:#3EBD41'    'web --eff-easy = #3EBD41 (Easy)'
-need "$WEB_CSS" '\-\-eff-tempo:#E88021'   'web --eff-tempo = #E88021'
+need "$WEB_CSS" '\-\-eff-tempo:#D03F3F'   'web --eff-tempo = #D03F3F'
 need "$WEB_CSS" '\-\-eff-intervals:#FC4D64' 'web --eff-intervals = #FC4D64'
-need "$WEB_CSS" '\-\-eff-race:#E88021'    'web --eff-race = #E88021'
+need "$WEB_CSS" '\-\-eff-race:#D03F3F'    'web --eff-race = #D03F3F'
 # Consolidation tokens · bright text-on-dark siblings + Strava brand. Not
 # part of the locked ten. The 2026-06-17 palette pass (David's canonical
 # palette) collapsed --warn-text -> Attention #F3AD38 and --over-text ->
@@ -75,9 +75,9 @@ need "$WEB_CSS" '\-\-strava:#FC4C02'      'web --strava = #FC4C02 (Strava brand,
 
 # Web effort dots (constants.ts)
 need "$WEB_CONST" "easy:.*dot: '#3EBD41'"      'web EFF.easy.dot = #3EBD41'
-need "$WEB_CONST" "tempo:.*dot: '#E88021'"     'web EFF.tempo.dot = #E88021'
+need "$WEB_CONST" "tempo:.*dot: '#D03F3F'"     'web EFF.tempo.dot = #D03F3F'
 need "$WEB_CONST" "intervals:.*dot: '#FC4D64'" 'web EFF.intervals.dot = #FC4D64'
-need "$WEB_CONST" "race:.*dot: '#E88021'"      'web EFF.race.dot = #E88021'
+need "$WEB_CONST" "race:.*dot: '#D03F3F'"      'web EFF.race.dot = #D03F3F'
 need "$WEB_CONST" "recovery:.*dot: '#27B4E0'"  'web EFF.recovery.dot = #27B4E0'
 need "$WEB_CONST" "long:.*dot: '#F3AD38'"      'web EFF.long.dot = #F3AD38'
 
@@ -86,17 +86,17 @@ need "$IOS_THEME" 'green *= Color\(hex: 0x3EBD41\)'     'iOS Theme.green = #3EBD
 need "$IOS_THEME" 'goal *= Color\(hex: 0xF3AD38\)'      'iOS Theme.goal = #F3AD38'
 need "$IOS_THEME" 'over *= Color\(hex: 0xFC4D64\)'      'iOS Theme.over = #FC4D64'
 need "$IOS_THEME" 'dist *= Color\(hex: 0x27B4E0\)'      'iOS Theme.dist = #27B4E0'
-need "$IOS_THEME" 'race *= Color\(hex: 0xE88021\)'      'iOS Theme.race = #E88021'
+need "$IOS_THEME" 'race *= Color\(hex: 0xD03F3F\)'      'iOS Theme.race = #D03F3F'
 need "$IOS_THEME" 'intervals *= Color\(hex: 0xFC4D64\)' 'iOS Theme.intervals = #FC4D64'
 need "$IOS_THEME" 'case \.easy: *return Color\(hex: 0x3EBD41\)'      'iOS easy dot = #3EBD41'
-need "$IOS_THEME" 'case \.tempo: *return Color\(hex: 0xE88021\)'     'iOS tempo dot = #E88021'
+need "$IOS_THEME" 'case \.tempo: *return Color\(hex: 0xD03F3F\)'     'iOS tempo dot = #D03F3F'
 need "$IOS_THEME" 'case \.intervals: *return Color\(hex: 0xFC4D64\)' 'iOS intervals dot = #FC4D64'
-need "$IOS_THEME" 'case \.race: *return Color\(hex: 0xE88021\)'      'iOS race dot = #E88021'
+need "$IOS_THEME" 'case \.race: *return Color\(hex: 0xD03F3F\)'      'iOS race dot = #D03F3F'
 
 # TweakAccent · ruled exempt 2026-06-09 · ember default = locked palette,
 # variant values byte-synced web↔iPhone.
 need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xF3AD38\)' 'TweakAccent ember.goal = locked #F3AD38'
-need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xE88021\)' 'TweakAccent ember.race = locked #E88021'
+need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xD03F3F\)' 'TweakAccent ember.race = locked #D03F3F'
 need "$WEB_CSS" 'data-accent="gold"\]\{--goal:#F0DF47;--race:#F0DF47;\}'   'web gold accent = iPhone gold (Light Yellow)'
 need "$WEB_CSS" 'data-accent="violet"\]\{--goal:#A78BFA;--race:#B794F4;\}' 'web violet accent = iPhone violet'
 need "$WEB_CSS" 'data-accent="cool"\]\{--goal:#27B4E0;--race:#3AA0E0;\}'   'web cool accent = iPhone cool'
@@ -115,7 +115,7 @@ need "$WEB_TRAIN" "return '#56E0B0'" 'phase TAPER = #56E0B0'
 # Watch tokens
 need "$WATCH_THEME"   'green *= Color\(hex: 0x3EBD41\)'  'watch C.green = #3EBD41'
 need "$WATCH_THEME"   'amber *= Color\(hex: 0xF3AD38\)'  'watch C.amber = #F3AD38'
-need "$WATCH_THEME"   'orange *= Color\(hex: 0xE88021\)' 'watch C.orange = #E88021'
+need "$WATCH_THEME"   'orange *= Color\(hex: 0xD03F3F\)' 'watch C.orange = #D03F3F (Redish · race/now · token name kept)'
 need "$WATCH_THEME"   'warn *= Color\(hex: 0xFC4D64\)'   'watch C.warn = #FC4D64'
 need "$WATCH_FACEKIT" 'live *= Color\(hex: 0x3EBD41\)'   'watch Faff.live = #3EBD41'
 need "$WATCH_FACEKIT" 'goal *= Color\(hex: 0xF3AD38\)'   'watch Faff.goal = #F3AD38'
@@ -137,14 +137,19 @@ need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF0DF47\)'  'watch Faff.bonus = #F0
 #          this color anywhere ever"). Never to appear in any surface.
 # 2026-06-17 PALETTE PASS retirees (David's canonical palette · the design
 # finesse pass collapsed each off-palette hue to its one canonical value):
-#   FF5722 / FF7A45 · race+tempo orange -> Dark Orange #E88021
 #   F43F5E           · intervals -> Warning #FC4D64 (the ceiling red; merges
 #                      the two divergent Zone/ZoneSplit ladders into one)
 #   F5C518 / F5A518  · PR gold + gold tweak -> Light Yellow #F0DF47
 #   FFCE8A           · eyebrow -> Attention #F3AD38
 #   FFB24D           · bright warn text -> Attention #F3AD38
 #   FF6A6A / FF5A52  · bright over text + live pulse -> Warning #FC4D64
-RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D03F3F|D63E4E|EE6038|FF8870|34D058|5FD06A|27E087|FF5722|FF7A45|F43F5E|F5C518|F5A518|FFCE8A|FFB24D|FF6A6A|FF5A52'
+# 2026-06-18 · ORANGE RETIRED. race/tempo went #FF5722 -> #E88021 (Dark
+# Orange) on the 17th, but David ruled ANY orange reads "Strava" regardless
+# of shade. race/tempo is now Redish #D03F3F (un-retired below; it is the
+# deep race-red, distinct from the brighter Warning #FC4D64 on intervals).
+# #E88021 retired app-wide; no orange anywhere.
+#   FF5722 / FF7A45 / E88021 · race+tempo -> Redish #D03F3F
+RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D63E4E|EE6038|FF8870|34D058|5FD06A|27E087|FF5722|FF7A45|E88021|F43F5E|F5C518|F5A518|FFCE8A|FFB24D|FF6A6A|FF5A52'
 HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→'
 
 hits=$(grep -rinE "(#|0x)($RETIRED)" \

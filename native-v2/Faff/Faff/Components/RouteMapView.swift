@@ -80,7 +80,7 @@ struct RouteMapView: UIViewRepresentable {
     /// BUCKET_COLORS (rose · coral · amber · green · blue).
     static let bucketColors: [UIColor] = [
         UIColor(Color(hex: 0xFC4D64)),
-        UIColor(Color(hex: 0xE88021)),
+        UIColor(Color(hex: 0xD03F3F)),
         UIColor(Color(hex: 0xF3AD38)),
         UIColor(Color(hex: 0x3EBD41)),   // green · = Success (was #14C08C teal)
         UIColor(Color(hex: 0x27B4E0)),
@@ -111,7 +111,7 @@ struct RouteMapView: UIViewRepresentable {
         UIColor(Color(hex: 0x27B4E0)),   // Z1 · Light Blue (palette)
         UIColor(Color(hex: 0x3EBD41)),   // Z2 · Success green (palette)
         UIColor(Color(hex: 0xF3AD38)),   // Z3 · Attention amber (palette)
-        UIColor(Color(hex: 0xE88021)),   // Z4 · Dark Orange (palette)
+        UIColor(Color(hex: 0xD03F3F)),   // Z4 · Redish (palette · orange retired 2026-06-18)
         UIColor(Color(hex: 0xFC4D64)),   // Z5 · Warning red (palette)
     ]
 
@@ -189,7 +189,7 @@ struct RouteMapView: UIViewRepresentable {
         // mid-zone green under an HR route, coral under a pace route.
         let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases)
         let baseline = ColoredPolyline(coordinates: coords, count: coords.count)
-        baseline.strokeColor = hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xE88021))
+        baseline.strokeColor = hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xD03F3F))
         baseline.strokeWidth = 5
         map.addOverlay(baseline, level: .aboveLabels)
 

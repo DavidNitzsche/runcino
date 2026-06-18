@@ -11,7 +11,7 @@ struct ScrubbableTrace: View {
     let points: [Double]
     /// Display labels for each point (for the scrub readout).
     var labels: [String] = []
-    var color: Color = Color(hex: 0xE88021)
+    var color: Color = Color(hex: 0xD03F3F)
     var fill: Bool = true
     /// Optional horizontal target line value.
     var target: Double? = nil

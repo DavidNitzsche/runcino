@@ -476,7 +476,7 @@ struct CourseAnnotations: View {
 // The course terrain plotted by TRUE cumulative distance. GPS samples cluster
 // on hills / slow stretches, so plotting by index stretches the busy parts and
 // squashes the rest — we resample by great-circle distance so the x-axis is
-// honest. Filled race-orange area + line (Theme.race == web's #E88021), a
+// honest. Filled race-orange area + line (Theme.race == web's #D03F3F), a
 // dashed halfway marker, and distance ticks scaled to the race distance. Mirror
 // of the web race-page profile (RaceView.tsx · #40). Terrain-only and static —
 // it does NOT change as the race approaches (David 2026-06-17).

@@ -80,7 +80,7 @@ interface PhaseMeta {
 // AFC fix 2 · effort colors come from the locked ten-color palette.
 // easy was a fourth one-off green (#2faf7c) found nowhere else.
 const PHASE_TYPE_COLOR: Record<string, string> = {
-  easy: '#14C08C', long: '#F3AD38', tempo: '#E88021', threshold: '#E88021',
+  easy: '#14C08C', long: '#F3AD38', tempo: '#D03F3F', threshold: '#D03F3F',
   intervals: '#FC4D64', recovery: '#27B4E0', rest: '#8A90A0',
 };
 
@@ -120,7 +120,7 @@ function phaseColor(p: PhaseKey): string {
   if (p === 'base')  return '#5BD8D2';
   if (p === 'build') return '#FFCB47';
   // 2026-06-03 · PEAK was peach (#FF9866) · David flagged off-brand.
-  // Brand orange (--race in globals) is #E88021; using a slightly more
+  // Brand orange (--race in globals) is #D03F3F; using a slightly more
   // saturated cousin #FF7733 so PEAK reads as "peak intensity" and
   // stays distinct from the race-day peach #F3AD38.
   if (p === 'peak')  return '#FF7733';

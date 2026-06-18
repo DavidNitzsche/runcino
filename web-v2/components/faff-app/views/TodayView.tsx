@@ -2141,7 +2141,7 @@ function CompletedHeroV2({
   // local set used the good-state green as Z2 and a one-off #7DD8E0 as
   // Z1 · if #27B4E0 proves too dim against the dark bar trough, raise it
   // in the palette, not per-site.
-  const zoneColors = ['#27B4E0', '#14C08C', '#F3AD38', '#E88021', '#FC4D64'];
+  const zoneColors = ['#27B4E0', '#14C08C', '#F3AD38', '#D03F3F', '#FC4D64'];
   const peakHr = runData?.hr_max ?? result?.peak ?? null;
 
   // Render every split the run carries (was capped at 8 · landed
@@ -2519,7 +2519,7 @@ function CompletedHeroV2({
           <PhasedMileSplits
             phases={runData.phase_breakdown}
             splits={splits}
-            accent={d.type === 'intervals' ? '#FC4D64' : '#E88021'}
+            accent={d.type === 'intervals' ? '#FC4D64' : '#D03F3F'}
             effort={d.type}
           />
         ) : null}
@@ -4490,7 +4490,7 @@ function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes
  * AND the race isn't logged yet).
  *
  * Surface = the one sanctioned filled-accent surface (design brief §Surface):
- * the race-orange gradient (160deg #FF8A3D → #E88021 → #E03E00). Countdown
+ * the race-orange gradient (160deg #FF8A3D → #D03F3F → #E03E00). Countdown
  * collapses to TODAY. Goal time + goal pace + B-goal (the canonical A+7:00
  * derivation, matching raceDetail.ts). Projection vs goal. Logistics,
  * pacing splits, fueling and course stay one tap away via "Full race plan"
@@ -4538,7 +4538,7 @@ function RaceDayHero({
         position: 'relative',
         borderRadius: 22,
         overflow: 'hidden',
-        background: 'linear-gradient(160deg, #FF8A3D 0%, #E88021 55%, #E03E00 100%)',
+        background: 'linear-gradient(160deg, #FF8A3D 0%, #D03F3F 55%, #E03E00 100%)',
         color: '#FFFFFF',
         padding: '34px 32px 30px',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,.20)',

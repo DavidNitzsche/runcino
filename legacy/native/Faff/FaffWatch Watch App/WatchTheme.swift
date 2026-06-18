@@ -30,7 +30,7 @@ enum WatchTheme {
         static let track   = Color.white.opacity(0.14) // progress track
         static let green   = Color(hex: 0x3EBD41)   // on-pace / good state
         static let amber   = Color(hex: 0xF3AD38)   // drift / watch attention
-        static let orange  = Color(hex: 0xE88021)   // race / now (brand hero)
+        static let orange  = Color(hex: 0xD03F3F)   // race / now (brand hero)
         static let warn    = Color(hex: 0xFC4D64)   // over / off
     }
 

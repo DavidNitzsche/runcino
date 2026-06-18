@@ -6,7 +6,7 @@ import { StreakPill } from '../toolkit';
 
 const EC: Record<string,string> = {
   recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38',
-  tempo: '#E88021', intervals: '#FC4D64', race: '#E88021',
+  tempo: '#D03F3F', intervals: '#FC4D64', race: '#D03F3F',
 };
 // 2026-06-04 · level 0 lifted from rgba(255,255,255,.07) → .14
 // after the Activity mesh moved to charcoal · the old level-0 cell

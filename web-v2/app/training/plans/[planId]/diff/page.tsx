@@ -140,7 +140,7 @@ const KIND_LABEL: Record<ChangeKind, string> = {
 const KIND_COLOR: Record<ChangeKind, string> = {
   unchanged: 'rgba(255,255,255,.32)',
   distance:  '#F3AD38',
-  type:      '#E88021',
+  type:      '#D03F3F',
   sub_label: 'rgba(255,255,255,.72)',
   added:     '#3EBD41', // --green
   removed:   '#FC4D64',

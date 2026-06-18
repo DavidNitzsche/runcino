@@ -751,7 +751,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             ) : null}
             {sc.banking ? (
               <div style={{ marginTop: sc.flag ? 12 : 0 }}>
-                <div style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--race, #E88021)', fontWeight: 600 }}>
+                <div style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--race, #D03F3F)', fontWeight: 600 }}>
                   SLEEP BANKING · {sc.banking.raceName.toUpperCase()} · {sc.banking.daysToRace}d
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{sc.banking.targetLine}</div>

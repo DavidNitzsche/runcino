@@ -12,7 +12,7 @@ struct ProView: View {
     @State private var plan: Plan = .annual
 
     private let mesh = FaffMesh(
-        c1: 0xF3AD38, c2: 0xE88021, c3: 0x9E3AA0,
+        c1: 0xF3AD38, c2: 0xD03F3F, c3: 0x9E3AA0,
         c4: 0x5A1C8A, c5: 0x5A1C8A, base: 0x1C0C20
     )
 
@@ -75,7 +75,7 @@ struct ProView: View {
             }
             .padding(.horizontal, 14).padding(.vertical, 6)
             .background(
-                LinearGradient(colors: [Color(hex: 0xF3AD38), Color(hex: 0xE88021)],
+                LinearGradient(colors: [Color(hex: 0xF3AD38), Color(hex: 0xD03F3F)],
                                startPoint: .leading, endPoint: .trailing),
                 in: Capsule()
             )
@@ -215,11 +215,11 @@ struct ProView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
                 .background(
-                    LinearGradient(colors: [Color(hex: 0xF3AD38), Color(hex: 0xE88021)],
+                    LinearGradient(colors: [Color(hex: 0xF3AD38), Color(hex: 0xD03F3F)],
                                    startPoint: .leading, endPoint: .trailing),
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
-                .shadow(color: Color(hex: 0xE88021).opacity(0.6), radius: 34, y: 14)
+                .shadow(color: Color(hex: 0xD03F3F).opacity(0.6), radius: 34, y: 14)
         }
         .buttonStyle(.plain)
     }

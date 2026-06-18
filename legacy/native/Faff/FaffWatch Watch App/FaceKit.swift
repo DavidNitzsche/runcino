@@ -37,7 +37,7 @@ extension Color {
 enum Faff {
     static let live   = Color(hex: 0x3EBD41) // Good state — on-pace / governed
     static let goal   = Color(hex: 0xF3AD38) // Watch attention — target / "act now" (fuel)
-    static let race   = Color(hex: 0xE88021) // Race / now — brand hero (--race web token)
+    static let race   = Color(hex: 0xD03F3F) // Race / now — brand hero (--race web token)
     static let dist   = Color(hex: 0x27B4E0) // Recovery blue — DISTANCE, always
     static let over   = Color(hex: 0xFC4D64) // Off/warn — behind / over ceiling (LIVE DATA)
     static let redish = Color(hex: 0xFC4D64) // Destructive-action red (= warn slot · #D03F3F deleted)
