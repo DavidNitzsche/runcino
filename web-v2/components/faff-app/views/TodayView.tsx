@@ -1970,15 +1970,15 @@ function deriveRecap(d: FaffSeed['week'][number], runData: RunSummary | null): s
 const EFFORT_GRADIENT: Record<string, string> = {
   tempo:     'linear-gradient(90deg,#F3AD38,#FC4D64)',
   intervals: 'linear-gradient(90deg,#FC4D64,#D03F3F)',
-  recovery:  'linear-gradient(90deg,#27B4E0,#48B3B5)',
-  easy:      'linear-gradient(90deg,#27B4E0,#48B3B5)',
-  long:      'linear-gradient(90deg,#27B4E0,#48B3B5)',
+  recovery:  'linear-gradient(90deg,#27B4E0,#2FC0E6)',
+  easy:      'linear-gradient(90deg,#27B4E0,#2FC0E6)',
+  long:      'linear-gradient(90deg,#27B4E0,#2FC0E6)',
 };
 const EFFORT_DOT: Record<string, string> = {
-  tempo:     '#FF8847',
+  tempo:     '#F3AD38',
   intervals: '#FC4D64',
 };
-const RECOVERY_GRAD = 'linear-gradient(90deg,#27B4E0,#48B3B5)';
+const RECOVERY_GRAD = 'linear-gradient(90deg,#27B4E0,#2FC0E6)';
 const RECOVERY_DOT  = '#27B4E0';
 
 function PhasedSplitRow({
@@ -2153,7 +2153,7 @@ function CompletedHeroV2({
   // 'stacked time-in-zones' set) to the canonical -b brand zone
   // Zone colors. Chosen for legibility on BOTH dark cards (planned/rest)
   // AND bright-background cards (easy=teal, tempo=orange mesh).
-  // Z1 upgraded from the retired #48B3B5 (same teal as easy-run card = invisible)
+  // Z1 upgraded from the retired #2FC0E6 (same teal as easy-run card = invisible)
   // to a lighter, higher-contrast blue-white that reads against the
   // dark bar trough (rgba(0,0,0,.28) background) and the bright card.
   // AFC fix 2 (2026-06-09) · synced to the ONE canonical zone ladder
