@@ -422,7 +422,7 @@ struct HealthView: View {
 
     private func sleepSummaryCard(label: String, value: Double?) -> some View {
         let dotColor: Color = {
-            guard let h = value else { return Color(hex: 0x8A90A0) }
+            guard let h = value else { return Color(hex: 0x646464) }
             if h >= 7.0 { return Theme.green }
             if h >= 6.0 { return Color(hex: 0xF3AD38) }
             return Color(hex: 0xFC4D64)
@@ -555,7 +555,7 @@ struct HealthView: View {
         case "sharp", "ready": return Color(hex: 0x3EBD41)
         case "moderate":       return Color(hex: 0xF3AD38)
         case "pullback":       return Color(hex: 0xFC4D64)
-        default:               return Color(hex: 0x8A90A0)
+        default:               return Color(hex: 0x646464)
         }
     }
 
@@ -823,7 +823,7 @@ struct HealthDriversList: View {
         if weight <= -8  { return Color(hex: 0xFC4D64) }   // bad / over
         if weight <= -3  { return Color(hex: 0xF3AD38) }   // warn / goal
         if weight >= 4   { return Theme.green }   // good / green
-        return Color(hex: 0x8A90A0)                         // neutral / mute
+        return Color(hex: 0x646464)                         // neutral / mute
     }
 }
 

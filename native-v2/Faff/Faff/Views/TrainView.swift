@@ -306,7 +306,7 @@ struct TrainView: View {
             "consistent": Color(hex: 0x86EFA0),
             "working":    Color(hex: 0xF3AD38),
             "slipping":   Color(hex: 0xF3AD38),
-            "compromised":Color(hex: 0x8A90A0),
+            "compromised":Color(hex: 0x646464),
         ]
         var rows: [ExecRow] = []
         for (i, week) in weeks.enumerated() {

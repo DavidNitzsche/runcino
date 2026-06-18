@@ -27,7 +27,7 @@ enum Theme {
     static let line2  = Color.white.opacity(0.04)
     static let ink    = Color(hex: 0xF6F7F8)        // alias of txt
     static let txt    = Color(hex: 0xF6F7F8)        // primary text
-    static let mute   = Color(hex: 0x8A90A0)        // secondary text
+    static let mute   = Color(hex: 0x646464)        // secondary text
     static let dim    = Color(hex: 0x4B505E)        // tertiary text
 
     // ───── Semantic accents · LOCKED TEN-COLOR PALETTE (brief v2, AFC 2026-06-09) ─────
@@ -299,7 +299,7 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
         case .long:      return Color(hex: 0xF3AD38)
         case .tempo:     return Color(hex: 0xD03F3F)
         case .intervals: return Color(hex: 0xFC4D64)
-        case .rest:      return Color(hex: 0x8A90A0)
+        case .rest:      return Color(hex: 0x646464)
         case .race:      return Color(hex: 0xD03F3F)  // per --eff-race
         }
     }
@@ -332,7 +332,7 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
                 startPoint: .leading, endPoint: .trailing)
         case .rest:
             return LinearGradient(
-                colors: [Color(hex: 0x8A90A0)],
+                colors: [Color(hex: 0x646464)],
                 startPoint: .leading, endPoint: .trailing)
         case .race:
             return LinearGradient(

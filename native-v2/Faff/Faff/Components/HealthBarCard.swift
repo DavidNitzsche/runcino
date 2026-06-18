@@ -44,7 +44,7 @@ struct HealthMetric: Identifiable, Equatable {
             case .good:    return Theme.green
             case .warn:    return Color(hex: 0xF3AD38)
             case .bad:     return Color(hex: 0xFC4D64)
-            case .neutral: return Color(hex: 0x8A90A0)
+            case .neutral: return Color(hex: 0x646464)
             }
         }
         var word: String {

@@ -100,7 +100,7 @@ private struct ProjTick: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(ok ? accent.opacity(0.18) : Color(hex: 0x8A90A0, alpha: 0.16))
+                .fill(ok ? accent.opacity(0.18) : Color(hex: 0x646464, alpha: 0.16))
                 .frame(width: 16, height: 16)
             if ok {
                 // Check stroked in the accent.
@@ -519,7 +519,7 @@ struct TargetsProjectionPanel: View {
                     .padding(.top, 4)
                 Text("at today's fitness")
                     .font(.body(10.5))
-                    .foregroundStyle(Color(hex: 0x8A90A0))
+                    .foregroundStyle(Color(hex: 0x646464))
                     .padding(.top, 4)
             }
 
@@ -557,7 +557,7 @@ struct TargetsProjectionPanel: View {
                      ? "projected finish"
                      : "+\(projClock(projGapSec ?? 0)) vs goal")
                     .font(.body(10.5))
-                    .foregroundStyle(Color(hex: 0x8A90A0))
+                    .foregroundStyle(Color(hex: 0x646464))
                     .multilineTextAlignment(.trailing)
                     .padding(.top, 4)
             }

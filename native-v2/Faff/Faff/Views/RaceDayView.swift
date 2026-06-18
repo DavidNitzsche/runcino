@@ -88,7 +88,7 @@ struct RaceDayView: View {
                     Text(countdownHeadline)
                         .font(.heroDisplay(88))
                         .tracking(-2)
-                        .foregroundStyle(countdownColor)
+                        .foregroundStyle(countdownHeroStyle)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -646,6 +646,17 @@ struct RaceDayView: View {
             return detail?.race.pb == true ? Color(hex: 0xF0DF47) : Theme.txt
         }
         return Theme.race
+    }
+
+    private var countdownHeroStyle: AnyShapeStyle {
+        if detail?.race.is_past == true {
+            return detail?.race.pb == true
+                ? AnyShapeStyle(LinearGradient(
+                    colors: [Color(hex: 0xF3AD38), Color(hex: 0xF0DF47)],
+                    startPoint: .leading, endPoint: .trailing))
+                : AnyShapeStyle(Theme.txt)
+        }
+        return AnyShapeStyle(FaffEffort.race.heroGradient)
     }
 
     private var countdownSub: String? {

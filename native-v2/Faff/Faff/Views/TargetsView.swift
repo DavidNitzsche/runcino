@@ -62,7 +62,7 @@ struct TargetsView: View {
                         Text(goalStatusHeadline)
                             .font(.heroDisplay(88))
                             .tracking(-2)
-                            .foregroundStyle(goalStatusColor)
+                            .foregroundStyle(goalStatusHeroStyle)
                             .minimumScaleFactor(0.5)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -484,13 +484,34 @@ struct TargetsView: View {
     /// red behind. Race-orange when cold (the AFC fallback).
     private var goalStatusColor: Color {
         guard let p = projection, p.vdot != nil else { return Theme.race }
-        if p.aheadOfGoal == true { return Theme.Accent.mintReady }
+        if p.aheadOfGoal == true { return Theme.green }
         switch p.status {
-        case "on_track":  return Theme.green   // app green (#14C08C), not the pastel 0x5FD08A
+        case "on_track":  return Theme.green
         case "watch":     return Color(hex: 0xF3AD38)
         case "off":       return Color(hex: 0xFC4D64)
         case "race_week": return Color(hex: 0xF3AD38)
         default:          return Theme.race
+        }
+    }
+
+    private var goalStatusHeroStyle: AnyShapeStyle {
+        guard let p = projection, p.vdot != nil else {
+            return AnyShapeStyle(FaffEffort.race.heroGradient)
+        }
+        if p.aheadOfGoal == true {
+            return AnyShapeStyle(LinearGradient(
+                colors: [Color(hex: 0xF3AD38), Color(hex: 0xF0DF47)],
+                startPoint: .leading, endPoint: .trailing))
+        }
+        switch p.status {
+        case "on_track":
+            return AnyShapeStyle(LinearGradient(
+                colors: [Color(hex: 0xF3AD38), Color(hex: 0xF0DF47)],
+                startPoint: .leading, endPoint: .trailing))
+        case "race_week":
+            return AnyShapeStyle(FaffEffort.race.heroGradient)
+        default:
+            return AnyShapeStyle(goalStatusColor)
         }
     }
 
