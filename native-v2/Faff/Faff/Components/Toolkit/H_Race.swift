@@ -1126,3 +1126,85 @@ struct RaceAutofillSheet: View {
         }
     }
 }
+
+// MARK: - RaceFuelSheet · focused race-fuel entry
+//
+// The FUELING card's "Enter your race fuel" used to open the whole race editor
+// (distance/date/goal/logistics) — way too much. This is a small, single-purpose
+// sheet: just the gel + cadence, which is all the coach needs to build the
+// amount + the watch countdown (David 2026-06-17). PATCHes only the fuel meta
+// keys via API.updateRace, so it never triggers a plan rebuild.
+
+struct RaceFuelSheet: View {
+    let slug: String
+    var seedProduct: String? = nil
+    var seedCarbs: Int? = nil
+    var seedCadence: Int? = nil
+    var seedRate: Int? = nil
+    var onSaved: () -> Void = {}
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var product = ""
+    @State private var carbs = ""
+    @State private var cadence = ""
+    @State private var rate = ""
+    @State private var saving = false
+    @State private var error: String? = nil
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Product · e.g. Maurten Gel 100", text: $product)
+                    TextField("Carbs per serving · g", text: $carbs)
+                        .keyboardType(.numberPad)
+                    TextField("Take one every · min", text: $cadence)
+                        .keyboardType(.numberPad)
+                    TextField("Target rate · g/hr (optional)", text: $rate)
+                        .keyboardType(.numberPad)
+                } header: {
+                    Text("RACE FUEL")
+                } footer: {
+                    Text("Your gel and how often you take it. The coach builds the amount and schedule around it, and the watch counts you down to each one.")
+                        .font(.body(11))
+                }
+                if let e = error {
+                    Section { Text(e).foregroundStyle(.red).font(.body(13)) }
+                }
+            }
+            .navigationTitle("Race fuel")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "Saving…" : "Save") { Task { await save() } }
+                        .disabled(saving)
+                }
+            }
+            .onAppear {
+                if product.isEmpty, let p = seedProduct { product = p }
+                if carbs.isEmpty, let c = seedCarbs, c > 0 { carbs = String(c) }
+                if cadence.isEmpty, let c = seedCadence, c > 0 { cadence = String(c) }
+                if rate.isEmpty, let r = seedRate, r > 0 { rate = String(r) }
+            }
+        }
+    }
+
+    private func save() async {
+        await MainActor.run { saving = true; error = nil }
+        func tidy(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
+        func num(_ s: String) -> Int? { let v = Int(tidy(s)); return (v ?? 0) > 0 ? v : nil }
+        let ok = await API.updateRace(
+            slug: slug,
+            fuelProduct: tidy(product).isEmpty ? nil : tidy(product),
+            fuelCarbsPerServingG: num(carbs),
+            fuelCadenceMin: num(cadence),
+            fuelCarbsPerHourTargetG: num(rate)
+        )
+        await MainActor.run {
+            saving = false
+            if ok { onSaved(); dismiss() }
+            else { error = "Could not save. Check your connection and try again." }
+        }
+    }
+}

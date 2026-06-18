@@ -41,6 +41,9 @@ struct RaceDayView: View {
     /// AI auto-fill sheet · reads the race site (or finds it by name) and
     /// proposes the logistics for review before saving (race "THE DETAILS").
     @State private var showAutofill: Bool = false
+    /// Focused race-fuel sheet · the FUELING card's entry point (not the whole
+    /// race editor) (David 2026-06-17).
+    @State private var showFuelSheet: Bool = false
 
     init(raceSlug: String) {
         self.raceSlug = raceSlug
@@ -425,6 +428,20 @@ struct RaceDayView: View {
                 onApplied: { Task { await load() } }
             )
             .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showFuelSheet) {
+            // Seed only from REAL runner fuel (not the research default), so a
+            // first entry opens clean.
+            let f = (detail?.fueling?.isDefault == false) ? detail?.fueling : nil
+            RaceFuelSheet(
+                slug: raceSlug,
+                seedProduct: f.flatMap { $0.productName == "gel" ? nil : $0.productName },
+                seedCarbs: f?.carbsPerServingG,
+                seedCadence: f.flatMap { fuelCadenceMin($0) },
+                seedRate: f?.targetCarbsPerHourG,
+                onSaved: { Task { await load() } }
+            )
+            .presentationDetents([.medium, .large])
         }
         .overlay(alignment: .top) {
             if let msg = gpxUploadStatus {
@@ -880,19 +897,20 @@ struct RaceDayView: View {
                     .lineSpacing(3)
             }
 
-            // Default-plan prompt · the runner hasn't entered their fuel, so
-            // this is a research default. Invite them to make it theirs.
-            if f.isDefault {
-                Button { showEditSheet = true } label: {
-                    HStack(spacing: 6) {
-                        Text("Enter your race fuel")
-                            .font(.body(12, weight: .extraBold))
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    .foregroundStyle(Theme.goal)
+            // Fuel entry · opens the FOCUSED fuel sheet (not the whole race
+            // editor). Always available so set fuel stays editable; the default
+            // note shows only until the runner enters their own (David 2026-06-17).
+            Button { showFuelSheet = true } label: {
+                HStack(spacing: 6) {
+                    Text(f.isDefault ? "Enter your race fuel" : "Edit fuel")
+                        .font(.body(12, weight: .extraBold))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
                 }
-                .buttonStyle(.plain)
+                .foregroundStyle(Theme.goal)
+            }
+            .buttonStyle(.plain)
+            if f.isDefault {
                 Text("Showing a sensible default until you set your gel.")
                     .font(.body(10.5, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.5))
