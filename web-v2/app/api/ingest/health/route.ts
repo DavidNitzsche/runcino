@@ -92,6 +92,37 @@ export async function POST(req: NextRequest) {
   } catch {
     // Best-effort.
   }
+  // Pre-aggregate active_energy samples by calendar date.
+  //
+  // The iPhone sends ~15-second HK buckets (each 0.01–3 kcal). The health_samples
+  // table has a UNIQUE constraint on (user_id, sample_type, sample_date), so
+  // last-write-wins in the upsert loop below — every previous bucket gets
+  // overwritten and only the last tiny fragment (~1 kcal) survives per day.
+  // health-state.ts reads `SUM(value)` per date, so one row = SUM of 1 = wrong.
+  //
+  // Fix: collapse all active_energy samples in this batch to one row per date
+  // (the true daily total). re-syncs correctly replace the stored total with the
+  // new batch total. resolveCalories Tier 2 is unaffected — it was already
+  // falling through to the Tier 3 estimator because the last-bucket value was
+  // never inside a run's time window anyway.
+  const aeByDate = new Map<string, number>();
+  for (const s of samples) {
+    if (s?.sample_type === 'active_energy' && typeof s.value === 'number' && s.value > 0) {
+      const d: string = s.sample_date ?? (s.recorded_at ?? new Date().toISOString()).slice(0, 10);
+      aeByDate.set(d, (aeByDate.get(d) ?? 0) + s.value);
+    }
+  }
+  const ingestBatchTime = new Date().toISOString();
+  const effectiveSamples: any[] = [
+    ...samples.filter((s: any) => s?.sample_type !== 'active_energy'),
+    ...Array.from(aeByDate.entries()).map(([d, total]) => ({
+      sample_type: 'active_energy',
+      value: Math.round(total * 10) / 10,
+      sample_date: d,
+      recorded_at: ingestBatchTime,
+    })),
+  ];
+
   let inserted = 0;
   let updated = 0;
   let skipped = 0;
@@ -99,7 +130,7 @@ export async function POST(req: NextRequest) {
   let insertedSignal = 0;  // count of newly-stored readiness-relevant samples
   let updatedSignal  = 0;  // count of value-changing updates to readiness samples
 
-  for (const s of samples) {
+  for (const s of effectiveSamples) {
     if (!s?.sample_type || !ALLOWED_TYPES.has(s.sample_type)) { skipped++; continue; }
     if (typeof s.value !== 'number' || !isFinite(s.value)) { skipped++; continue; }
     // 2026-06-09 · regression-audit G3 · physiological bounds on the two
