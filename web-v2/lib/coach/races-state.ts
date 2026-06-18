@@ -38,6 +38,12 @@ export interface RaceRow {
   notes: string | null;      // general race-day notes
   aid_stations: string | null; // on-course water / aid / support
   summary: string | null;    // AI "what to expect" blurb (terrain-grounded)
+  notable_miles: string | null; // landmark/terrain callouts by mile
+  weather_norms: string | null; // typical conditions for the date + place
+  time_limit: string | null; // course time limit / cutoffs
+  gear_check: string | null; // bag/gear check
+  pacers: string | null;     // official pace groups
+  spectators: string | null; // viewing spots / crowd support
   // Past-race enrichment from the matching run in the log:
   matchedRun?: {
     activity_id: string;
@@ -118,6 +124,12 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       notes: m.notes ?? null,
       aid_stations: m.aidStations ?? m.aid_stations ?? null,
       summary: m.summary ?? null,
+      notable_miles: m.notableMiles ?? m.notable_miles ?? null,
+      weather_norms: m.weatherNorms ?? m.weather_norms ?? null,
+      time_limit: m.timeLimit ?? m.time_limit ?? null,
+      gear_check: m.gearCheck ?? m.gear_check ?? null,
+      pacers: m.pacers ?? null,
+      spectators: m.spectators ?? null,
     };
   });
 

@@ -585,6 +585,13 @@ struct CourseElevationProfile: View {
 struct RaceDetailsCard: View {
     let race: RaceDetail
     let slug: String
+    /// Which rows this card manages — lets ONE card drive both THE DETAILS
+    /// (logistics) and the GOOD TO KNOW intel card.
+    var fields: [Field] = [.start, .corral, .bib, .location, .parking, .shuttle, .packet, .website, .notes]
+    /// When true, empty rows hide behind an "Add more" expander so a sparse
+    /// race stays clean (David 2026-06-17: "less is more, let the runner fill
+    /// any other data needed").
+    var collapseEmpty: Bool = false
     /// Parent-owned · opens the AI auto-fill flow. Hidden when nil.
     var onAutofill: (() -> Void)? = nil
     /// Reload the detail after a successful field save.
@@ -592,6 +599,7 @@ struct RaceDetailsCard: View {
 
     enum Field: String, CaseIterable, Identifiable {
         case start, corral, bib, location, parking, shuttle, packet, website, notes
+        case weather, timeLimit, gearCheck, pacers, spectators
         var id: String { rawValue }
         var label: String {
             switch self {
@@ -604,6 +612,11 @@ struct RaceDetailsCard: View {
             case .packet:   return "PACKET PICKUP"
             case .website:  return "WEBSITE"
             case .notes:    return "NOTES"
+            case .weather:    return "WEATHER"
+            case .timeLimit:  return "TIME LIMIT"
+            case .gearCheck:  return "GEAR CHECK"
+            case .pacers:     return "PACERS"
+            case .spectators: return "SPECTATORS"
             }
         }
         /// Backend meta key for the PATCH.
@@ -618,6 +631,11 @@ struct RaceDetailsCard: View {
             case .packet:   return "packetPickup"
             case .website:  return "officialUrl"
             case .notes:    return "notes"
+            case .weather:    return "weatherNorms"
+            case .timeLimit:  return "timeLimit"
+            case .gearCheck:  return "gearCheck"
+            case .pacers:     return "pacers"
+            case .spectators: return "spectators"
             }
         }
         var placeholder: String {
@@ -631,14 +649,23 @@ struct RaceDetailsCard: View {
             case .packet:   return "Where + when"
             case .website:  return "Race website"
             case .notes:    return "Anything to remember"
+            case .weather:    return "Typical conditions"
+            case .timeLimit:  return "Cutoff / required pace"
+            case .gearCheck:  return "Bag drop"
+            case .pacers:     return "Pace groups + times"
+            case .spectators: return "Where to watch"
             }
         }
-        var multiline: Bool { self == .notes }
+        var multiline: Bool {
+            self == .notes || self == .weather || self == .spectators
+                || self == .gearCheck || self == .pacers
+        }
     }
 
     @State private var editing: Field? = nil
     @State private var draft: String = ""
     @State private var saving: Field? = nil
+    @State private var expanded: Bool = false
     @FocusState private var focused: Bool
 
     private func value(_ f: Field) -> String {
@@ -653,8 +680,21 @@ struct RaceDetailsCard: View {
         case .packet:   raw = race.packet_pickup
         case .website:  raw = race.website
         case .notes:    raw = race.notes
+        case .weather:    raw = race.weather_norms
+        case .timeLimit:  raw = race.time_limit
+        case .gearCheck:  raw = race.gear_check
+        case .pacers:     raw = race.pacers
+        case .spectators: raw = race.spectators
         }
         return raw?.trimmingCharacters(in: .whitespaces) ?? ""
+    }
+
+    // Empty rows collapse behind an "Add more" expander when collapseEmpty.
+    private var emptyFields: [Field] { fields.filter { value($0).isEmpty } }
+    private var shownFields: [Field] {
+        guard collapseEmpty else { return fields }
+        let populated = fields.filter { !value($0).isEmpty }
+        return expanded ? populated + emptyFields : populated
     }
 
     var body: some View {
@@ -675,11 +715,27 @@ struct RaceDetailsCard: View {
                 .buttonStyle(.plain)
                 Divider().background(Color.white.opacity(0.08))
             }
-            ForEach(Array(Field.allCases.enumerated()), id: \.element.id) { i, f in
+            ForEach(Array(shownFields.enumerated()), id: \.element.id) { i, f in
                 row(f)
-                if i < Field.allCases.count - 1 {
+                if i < shownFields.count - 1 {
                     Divider().background(Color.white.opacity(0.08))
                 }
+            }
+            // Collapsed empties · one compact invite to fill the rest.
+            if collapseEmpty && !expanded && !emptyFields.isEmpty {
+                if !shownFields.isEmpty { Divider().background(Color.white.opacity(0.08)) }
+                Button { withAnimation { expanded = true } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .bold))
+                        Text(shownFields.isEmpty ? "Add race details" : "Add \(emptyFields.count) more")
+                            .font(.body(12, weight: .extraBold))
+                        Spacer()
+                    }
+                    .foregroundStyle(Theme.txt.opacity(0.5))
+                    .padding(14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
         .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
@@ -834,8 +890,11 @@ struct RaceAutofillSheet: View {
 
     private let order: [(key: String, label: String)] = [
         ("summary", "What to expect"),
+        ("notableMiles", "Notable miles"),
         ("startTime", "Start time"), ("wave", "Corral / wave"), ("location", "Where"),
         ("aidStations", "Water / aid"),
+        ("weatherNorms", "Weather"), ("timeLimit", "Time limit"),
+        ("gearCheck", "Gear check"), ("pacers", "Pacers"), ("spectators", "Spectators"),
         ("parking", "Parking"), ("shuttle", "Shuttle"), ("packetPickup", "Packet pickup"),
         ("officialUrl", "Website"), ("notes", "Notes"),
     ]
@@ -973,6 +1032,9 @@ struct RaceAutofillSheet: View {
                 if let val, !val.trimmingCharacters(in: .whitespaces).isEmpty { v[key] = val; inc.insert(key) }
             }
             put("summary", p.summary); put("aidStations", p.aidStations)
+            put("notableMiles", p.notableMiles); put("weatherNorms", p.weatherNorms)
+            put("timeLimit", p.timeLimit); put("gearCheck", p.gearCheck)
+            put("pacers", p.pacers); put("spectators", p.spectators)
             put("startTime", p.startTime); put("wave", p.wave); put("location", p.location)
             put("parking", p.parking); put("shuttle", p.shuttle); put("packetPickup", p.packetPickup)
             put("officialUrl", p.officialUrl); put("notes", p.notes)

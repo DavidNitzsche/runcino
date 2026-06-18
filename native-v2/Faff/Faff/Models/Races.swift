@@ -161,6 +161,12 @@ struct RaceDetail: Decodable {
     let notes: String?
     let aid_stations: String?
     let summary: String?
+    let notable_miles: String?
+    let weather_norms: String?
+    let time_limit: String?
+    let gear_check: String?
+    let pacers: String?
+    let spectators: String?
 
     /// Empty fallback used by RaceDetailResponse when the wire emits a
     /// null race object (rare but seen during race-CRUD overlap windows).
@@ -180,7 +186,10 @@ struct RaceDetail: Decodable {
          bib: String? = nil, website: String? = nil,
          packet_pickup: String? = nil, shuttle: String? = nil,
          parking: String? = nil, notes: String? = nil,
-         aid_stations: String? = nil, summary: String? = nil) {
+         aid_stations: String? = nil, summary: String? = nil,
+         notable_miles: String? = nil, weather_norms: String? = nil,
+         time_limit: String? = nil, gear_check: String? = nil,
+         pacers: String? = nil, spectators: String? = nil) {
         self.slug = slug; self.name = name; self.date = date
         self.priority = priority; self.goal = goal
         self.distance_label = distance_label; self.distance_mi = distance_mi
@@ -191,6 +200,9 @@ struct RaceDetail: Decodable {
         self.packet_pickup = packet_pickup; self.shuttle = shuttle
         self.parking = parking; self.notes = notes
         self.aid_stations = aid_stations; self.summary = summary
+        self.notable_miles = notable_miles; self.weather_norms = weather_norms
+        self.time_limit = time_limit; self.gear_check = gear_check
+        self.pacers = pacers; self.spectators = spectators
     }
 
     enum CodingKeys: String, CodingKey {
@@ -198,6 +210,7 @@ struct RaceDetail: Decodable {
         case location, is_past, days, finishTime, pb, matchedRun
         case gun_time, wave, bib, website, packet_pickup, shuttle, parking, notes
         case aid_stations, summary
+        case notable_miles, weather_norms, time_limit, gear_check, pacers, spectators
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -224,6 +237,12 @@ struct RaceDetail: Decodable {
         self.notes = try c.decodeIfPresent(String.self, forKey: .notes)
         self.aid_stations = try c.decodeIfPresent(String.self, forKey: .aid_stations)
         self.summary = try c.decodeIfPresent(String.self, forKey: .summary)
+        self.notable_miles = try c.decodeIfPresent(String.self, forKey: .notable_miles)
+        self.weather_norms = try c.decodeIfPresent(String.self, forKey: .weather_norms)
+        self.time_limit = try c.decodeIfPresent(String.self, forKey: .time_limit)
+        self.gear_check = try c.decodeIfPresent(String.self, forKey: .gear_check)
+        self.pacers = try c.decodeIfPresent(String.self, forKey: .pacers)
+        self.spectators = try c.decodeIfPresent(String.self, forKey: .spectators)
     }
 }
 
@@ -297,6 +316,12 @@ struct RaceAutofillProposal: Decodable {
     let notes: String?
     let aidStations: String?
     let summary: String?
+    let notableMiles: String?
+    let weatherNorms: String?
+    let timeLimit: String?
+    let gearCheck: String?
+    let pacers: String?
+    let spectators: String?
 }
 
 // MARK: - Race execution plan (race P2)

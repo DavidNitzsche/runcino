@@ -160,6 +160,7 @@ export async function PATCH(req: NextRequest) {
     for (const k of [
       'fuelProduct', 'fuelCarbsPerServingG', 'fuelCadenceMin', 'fuelCarbsPerHourTargetG',
       'shuttle', 'packetPickup', 'officialUrl', 'parking', 'notes', 'aidStations', 'summary',
+      'notableMiles', 'weatherNorms', 'timeLimit', 'gearCheck', 'pacers', 'spectators',
     ]) {
       if (body[k] !== undefined) meta[k] = body[k];
     }

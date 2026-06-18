@@ -37,6 +37,12 @@ interface AutofillProposal {
   notes: string | null;
   summary: string | null; // "what to expect" blurb, grounded in OUR terrain
   aidStations: string | null; // water / aid / on-course support
+  notableMiles: string | null; // landmark/terrain callouts by mile
+  weatherNorms: string | null; // typical conditions for the date + place (NORMS, not a forecast)
+  timeLimit: string | null; // course time limit / cutoffs / required pace
+  gearCheck: string | null; // bag/gear check + rules
+  pacers: string | null; // official pace groups + times
+  spectators: string | null; // viewing spots / where crowd support is
 }
 
 /**
@@ -86,8 +92,14 @@ const EXTRACT_TOOL = {
       notes: { type: ['string', 'null'], description: 'Other important race-day notes: gear check, corral cutoff, course closures, weather norms. Keep to a couple of sentences.' },
       aidStations: { type: ['string', 'null'], description: 'On-course aid: where water/electrolyte stations are (mile markers or spacing like "every ~2 mi") and what is provided (water, sports drink, gels, etc.). One concise line.' },
       summary: { type: ['string', 'null'], description: 'A 2-3 sentence "what to expect": the course\'s character and TERRAIN REALITY (use the provided GPX terrain data, not the website), plus one tactical note that fits the terrain. Coach voice: direct, factual, no hype, no exclamation marks, no emoji, no em dashes.' },
+      notableMiles: { type: ['string', 'null'], description: 'Landmark and terrain callouts by mile, e.g. "Mi 1-3: descent off Point Loma. Mi 8.5: narrows to bikeway. Mi 12: climb to the finish." Tie elevation claims to the provided GPX terrain. One compact paragraph.' },
+      weatherNorms: { type: ['string', 'null'], description: 'TYPICAL conditions for this date and place (historical NORMS, not a forecast): start temp, humidity, marine layer, shade/exposure. Neutral and factual, never alarming. One line.' },
+      timeLimit: { type: ['string', 'null'], description: 'Course time limit / cutoffs / required pace, e.g. "3:15 (14:53/mi); 6.3 mi cutoff at 90 min". null if none stated.' },
+      gearCheck: { type: ['string', 'null'], description: 'Bag/gear check: where, when, rules, or that there is none. One line.' },
+      pacers: { type: ['string', 'null'], description: 'Official pace groups and their times, e.g. "1:30, 1:35, 1:40". null if none.' },
+      spectators: { type: ['string', 'null'], description: 'Best viewing spots and where crowd support is strongest (and where it is sparse). One line.' },
     },
-    required: ['startTime', 'wave', 'bib', 'location', 'parking', 'shuttle', 'packetPickup', 'officialUrl', 'notes', 'aidStations', 'summary'],
+    required: ['startTime', 'wave', 'bib', 'location', 'parking', 'shuttle', 'packetPickup', 'officialUrl', 'notes', 'aidStations', 'summary', 'notableMiles', 'weatherNorms', 'timeLimit', 'gearCheck', 'pacers', 'spectators'],
   },
 } as const;
 
@@ -147,9 +159,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
   const userMsg =
     `Find the race-day details for ${target}. ` +
-    'Return start time, corral/wave, start-line location, parking, shuttle, packet pickup, the official URL, on-course aid/water stations, a short "what to expect" summary, and any concise general notes. ' +
+    'Fill every race_logistics field you can confirm: start time, corral/wave, start-line location, parking, shuttle, packet pickup, official URL, on-course aid/water stations, a short "what to expect" summary, notable miles, typical weather norms, time limit/cutoffs, gear check, official pacers, spectator viewing, and concise general notes. Use null for anything the source does not state. ' +
     (terrainHint
-      ? `\n\n${terrainHint}\nUse this terrain data for the summary and any elevation claims.`
+      ? `\n\n${terrainHint}\nUse this terrain data for the summary, notable miles, and any elevation claim.`
       : '');
 
   try {
@@ -207,6 +219,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       notes: clean(p.notes),
       aidStations: clean(p.aidStations),
       summary: clean(p.summary),
+      notableMiles: clean(p.notableMiles),
+      weatherNorms: clean(p.weatherNorms),
+      timeLimit: clean(p.timeLimit),
+      gearCheck: clean(p.gearCheck),
+      pacers: clean(p.pacers),
+      spectators: clean(p.spectators),
     };
 
     const anyFound = Object.values(proposed).some((v) => v != null);

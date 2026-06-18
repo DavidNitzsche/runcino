@@ -132,8 +132,29 @@ struct RaceDayView: View {
                        pts.contains(where: { $0.ele != nil }) {
                         section(title: "ELEVATION",
                                 right: CourseElevationProfile.startFinishLabel(pts)) {
-                            CourseElevationProfile(trackPoints: pts,
-                                                   distanceMi: detail?.race.distance_mi ?? 0)
+                            VStack(alignment: .leading, spacing: 12) {
+                                CourseElevationProfile(trackPoints: pts,
+                                                       distanceMi: detail?.race.distance_mi ?? 0)
+                                // Notable miles · landmark/terrain callouts from
+                                // the crawl, pinned under the chart so the shape
+                                // and the story read together (David 2026-06-17).
+                                if let nm = detail?.race.notable_miles?.trimmingCharacters(in: .whitespaces), !nm.isEmpty {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text("NOTABLE MILES")
+                                            .font(.body(9.5, weight: .extraBold)).tracking(1.2)
+                                            .foregroundStyle(Theme.txt.opacity(0.5))
+                                        Text(nm)
+                                            .font(.body(13, weight: .semibold))
+                                            .foregroundStyle(Theme.txt.opacity(0.85))
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .lineSpacing(3)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(14)
+                                    .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+                                }
+                            }
                         }
                         .padding(.top, 30)
                     }
@@ -216,6 +237,24 @@ struct RaceDayView: View {
                        detail?.race.is_past != true {
                         section(title: "RACE WEEK", right: nil) {
                             CountdownLadder(rungs: makeCountdownRungs(daysToRace: days))
+                        }
+                        .padding(.top, 30)
+                    }
+
+                    // GOOD TO KNOW — race intel from the crawl: weather norms,
+                    // time limit, gear check, pacers, spectators. Empties
+                    // collapse behind an "Add more" so a sparse race stays
+                    // clean; every row is runner-fillable (David 2026-06-17:
+                    // "less is more, let the runner fill any other data needed").
+                    if let d = detail, d.race.is_past != true {
+                        section(title: "GOOD TO KNOW", right: nil) {
+                            RaceDetailsCard(
+                                race: d.race,
+                                slug: raceSlug,
+                                fields: [.weather, .timeLimit, .gearCheck, .pacers, .spectators],
+                                collapseEmpty: true,
+                                onSaved: { Task { await load() } }
+                            )
                         }
                         .padding(.top, 30)
                     }
