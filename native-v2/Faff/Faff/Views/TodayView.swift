@@ -383,7 +383,9 @@ struct TodayView: View {
                             Text(isSkippedToday ? "SKIPPED" : selectedEffort.title.uppercased())
                                 .font(.heroDisplay(88))
                                 .tracking(-2)
-                                .foregroundStyle(isSkippedToday ? Color(hex: 0x7E8794) : selectedEffort.dot)
+                                .foregroundStyle(isSkippedToday
+                                    ? AnyShapeStyle(Color(hex: 0x7E8794))
+                                    : AnyShapeStyle(selectedEffort.gradient))
                                 .minimumScaleFactor(0.55)
                                 .lineLimit(1)
                                 .padding(.horizontal, Theme.Space.pageH)

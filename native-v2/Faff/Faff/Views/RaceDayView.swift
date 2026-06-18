@@ -88,7 +88,7 @@ struct RaceDayView: View {
                     Text(countdownHeadline)
                         .font(.heroDisplay(88))
                         .tracking(-2)
-                        .foregroundStyle(countdownColor)
+                        .foregroundStyle(countdownColor.sheen)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)

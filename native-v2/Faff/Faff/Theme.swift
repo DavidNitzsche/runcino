@@ -304,6 +304,11 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Same-hue sheen gradient for this effort · the signature treatment
+    /// (David 2026-06-17). The dot color cascading into a deep shade of
+    /// itself — never flat, never to black. Use on hero display type.
+    var gradient: LinearGradient { dot.sheen }
+
     /// 6-color mesh palette [c1, c2, c3, c4, c5, mBase] painting the
     /// animated background. Cool to hot. mBase is the deep wash behind the
     /// blobs. Per locked design: Today re-tints to the selected day's effort
@@ -568,6 +573,41 @@ extension Color {
         #else
         return (0, 0, 0, 1)
         #endif
+    }
+
+    // ───── Signature same-hue gradient · "the sheen" ─────
+    // David 2026-06-17: flat saturated fills read "Strava"; a shade-to-shade
+    // cascade of the SAME color reads high-end. The System-palette swatch is
+    // the inspiration — each hue deepening into darker shades of itself,
+    // NEVER to black/background. Built by scaling the base toward a deep tint
+    // of itself (with a floor so it can never reach #000) and a faint lift
+    // toward white at the top. Computed from the base so it stays on-palette
+    // automatically — no new hex literals.
+
+    /// A deeper shade of the SAME hue. `t` 0→1 deepens; floored at 0.22 so
+    /// even the deepest stop stays a tinted shade, never pure black.
+    func deepened(_ t: Double = 0.55) -> Color {
+        let c = rgba
+        let k = 1 - min(max(t, 0), 0.78)
+        return Color(.sRGB, red: c.r * k, green: c.g * k, blue: c.b * k, opacity: c.a)
+    }
+
+    /// A lighter tint of the same hue (lerp toward white) — the top sheen.
+    func lightened(_ t: Double = 0.12) -> Color {
+        let c = rgba, k = min(max(t, 0), 1)
+        return Color(.sRGB, red: c.r + (1 - c.r) * k,
+                            green: c.g + (1 - c.g) * k,
+                            blue: c.b + (1 - c.b) * k, opacity: c.a)
+    }
+
+    /// The signature faff gradient (vertical): faint sheen → full hue → deep
+    /// shade of the SAME color. Never fades to black or the background.
+    var sheen: LinearGradient { sheen(.top, .bottom) }
+
+    /// The sheen with an explicit direction (for routes, fills, bars).
+    func sheen(_ start: UnitPoint, _ end: UnitPoint) -> LinearGradient {
+        LinearGradient(colors: [lightened(0.12), self, deepened(0.55)],
+                       startPoint: start, endPoint: end)
     }
 }
 

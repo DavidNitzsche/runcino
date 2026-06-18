@@ -246,7 +246,17 @@ struct RouteMapView: UIViewRepresentable {
         var colorFn: ((Double) -> UIColor)?
 
         let validPhases = phases.filter { $0.mi > 0 && $0.sec > 0 }
-        if validPhases.count >= 2 {
+        if splits.isEmpty && validPhases.isEmpty {
+            // Course preview · a race route with no pace/HR/phase data. Color
+            // by PROGRESS on the race hue's sheen ramp: a light shade at the
+            // start deepening into a deep shade of the SAME color at the
+            // finish. Same-hue gradient, never to black (David 2026-06-17).
+            let base = Color(hex: 0xE88021)
+            let lightUI = UIColor(base.lightened(0.14))
+            let deepUI  = UIColor(base.deepened(0.55))
+            valueFn = { d in total > 0 ? d / total : 0 }
+            colorFn = { p in RouteMapView.lerpUIColor(lightUI, deepUI, CGFloat(min(1, max(0, p)))) }
+        } else if validPhases.count >= 2 {
             // Structured · phase pace, SHARP with a short eased boundary.
             let phaseSum = validPhases.reduce(0.0) { $0 + $1.mi }
             let scale = phaseSum > 0 ? total / phaseSum : 1
@@ -299,6 +309,17 @@ struct RouteMapView: UIViewRepresentable {
             i = end
         }
         return segs
+    }
+
+    /// Linear RGBA interpolation between two UIColors · powers the course
+    /// progress sheen (light start → deep finish, same hue).
+    private static func lerpUIColor(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
+        var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+        b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        return UIColor(red: ar + (br - ar) * t, green: ag + (bg - ag) * t,
+                       blue: ab + (bb - ab) * t, alpha: aa + (ba - aa) * t)
     }
 
     /// HR (bpm) → continuous zone position 0…(n-1): zone index + fraction
