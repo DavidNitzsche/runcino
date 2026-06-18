@@ -179,9 +179,13 @@ struct HealthBarCard: View {
                 .font(.body(10, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.55))
             Spacer(minLength: 0)
-            Text(metric.status.word.uppercased())
-                .font(.body(9.5, weight: .extraBold)).tracking(0.8)
-                .foregroundStyle(metric.status.color)
+            // Suppress the em-dash for neutral metrics — no target means
+            // no verdict to show, and "context —" reads as broken output.
+            if metric.status != .neutral {
+                Text(metric.status.word.uppercased())
+                    .font(.body(9.5, weight: .extraBold)).tracking(0.8)
+                    .foregroundStyle(metric.status.color)
+            }
         }
     }
 

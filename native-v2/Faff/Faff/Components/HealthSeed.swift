@@ -277,9 +277,9 @@ enum HealthSeed {
                      ? "REM tracks total sleep · it returns when hours do."
                      : "REM in a healthy range."),
             tile("light", "LIGHT", s.lightMin, s.lightSeries, target: nil, warnBelow: nil,
-                 captionTarget: "context", coach: "Light sleep in its normal range."),
+                 captionTarget: "normal range", coach: "Light sleep in its normal range."),
             tile("awake", "AWAKE", s.awakeMin, s.awakeSeries, target: nil, warnBelow: nil,
-                 captionTarget: "context", coach: "Brief wake-ups · within normal."),
+                 captionTarget: "normal range", coach: "Brief wake-ups · within normal."),
         ]
     }
 
