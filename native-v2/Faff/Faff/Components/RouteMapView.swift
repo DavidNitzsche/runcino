@@ -253,7 +253,7 @@ struct RouteMapView: UIViewRepresentable {
             var spans: [(start: Double, end: Double, v: Double)] = []
             var cum = 0.0
             for p in validPhases { let s = cum; cum += p.mi * scale; spans.append((s, cum, Double(p.sec))) }
-            let w = max(0.05, min(0.12, total * 0.022))  // boundary fade · short but multi-segment
+            let w = max(0.35, min(0.65, total * 0.08))  // boundary fade wide enough to be visible at map scale
             valueFn = { d in RouteMapView.phaseValue(d, spans, w) }
             let vals = validPhases.map { Double($0.sec) }.sorted()
             let lo = vals[Int(Double(vals.count - 1) * 0.1)]
