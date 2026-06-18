@@ -571,3 +571,238 @@ struct CourseElevationProfile: View {
         return 2 * R * asin(min(1, sqrt(hv)))
     }
 }
+
+// MARK: - RaceDetailsCard · inline-edit logistics ("THE DETAILS")
+//
+// The practical race-day facts, each editable IN PLACE — tap a row, the value
+// turns into a field, commit saves just that one key. The logistics PATCH
+// carries no date/goal/priority, so it never triggers a plan rebuild. Replaces
+// the read-only list + giant edit sheet (David 2026-06-17: "not so hard to
+// edit ... this has to be a killer feature"). The website opens as a link;
+// empty rows take an Add tap. The Auto-fill action (parent-owned) populates
+// everything from the race site.
+
+struct RaceDetailsCard: View {
+    let race: RaceDetail
+    let slug: String
+    /// Parent-owned · opens the AI auto-fill flow. Hidden when nil.
+    var onAutofill: (() -> Void)? = nil
+    /// Reload the detail after a successful field save.
+    var onSaved: () -> Void = {}
+
+    enum Field: String, CaseIterable, Identifiable {
+        case start, corral, bib, location, parking, shuttle, packet, website, notes
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .start:    return "START"
+            case .corral:   return "CORRAL"
+            case .bib:      return "BIB"
+            case .location: return "WHERE"
+            case .parking:  return "PARKING"
+            case .shuttle:  return "SHUTTLE"
+            case .packet:   return "PACKET PICKUP"
+            case .website:  return "WEBSITE"
+            case .notes:    return "NOTES"
+            }
+        }
+        /// Backend meta key for the PATCH.
+        var key: String {
+            switch self {
+            case .start:    return "startTime"
+            case .corral:   return "wave"
+            case .bib:      return "bib"
+            case .location: return "location"
+            case .parking:  return "parking"
+            case .shuttle:  return "shuttle"
+            case .packet:   return "packetPickup"
+            case .website:  return "officialUrl"
+            case .notes:    return "notes"
+            }
+        }
+        var placeholder: String {
+            switch self {
+            case .start:    return "7:00 AM"
+            case .corral:   return "Corral / wave"
+            case .bib:      return "Bib number"
+            case .location: return "Start line / venue"
+            case .parking:  return "Where to park"
+            case .shuttle:  return "Shuttle / transport"
+            case .packet:   return "Where + when"
+            case .website:  return "Race website"
+            case .notes:    return "Anything to remember"
+            }
+        }
+        var multiline: Bool { self == .notes }
+    }
+
+    @State private var editing: Field? = nil
+    @State private var draft: String = ""
+    @State private var saving: Field? = nil
+    @FocusState private var focused: Bool
+
+    private func value(_ f: Field) -> String {
+        let raw: String?
+        switch f {
+        case .start:    raw = race.gun_time
+        case .corral:   raw = race.wave
+        case .bib:      raw = race.bib
+        case .location: raw = race.location
+        case .parking:  raw = race.parking
+        case .shuttle:  raw = race.shuttle
+        case .packet:   raw = race.packet_pickup
+        case .website:  raw = race.website
+        case .notes:    raw = race.notes
+        }
+        return raw?.trimmingCharacters(in: .whitespaces) ?? ""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let onAutofill {
+                Button { onAutofill() } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles").font(.system(size: 12, weight: .bold))
+                        Text("Auto-fill from the race website")
+                            .font(.body(12, weight: .extraBold))
+                        Spacer()
+                        Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.race)
+                    .padding(14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Divider().background(Color.white.opacity(0.08))
+            }
+            ForEach(Array(Field.allCases.enumerated()), id: \.element.id) { i, f in
+                row(f)
+                if i < Field.allCases.count - 1 {
+                    Divider().background(Color.white.opacity(0.08))
+                }
+            }
+        }
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func row(_ f: Field) -> some View {
+        if editing == f { editRow(f) } else { displayRow(f) }
+    }
+
+    // Display · tap the label/value to edit; the website also opens as a link.
+    @ViewBuilder
+    private func displayRow(_ f: Field) -> some View {
+        let v = value(f)
+        HStack(spacing: 10) {
+            HStack(spacing: 10) {
+                SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
+                Spacer(minLength: 12)
+                if v.isEmpty {
+                    Text("Add").font(.body(13, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.3))
+                    Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.3))
+                } else {
+                    Text(f == .website ? Self.prettyHost(v) : v)
+                        .font(.body(15, weight: .bold))
+                        .foregroundStyle(f == .website ? Theme.race : Theme.txt)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(f.multiline ? 4 : 1)
+                        .truncationMode(f == .website ? .middle : .tail)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { begin(f, current: v) }
+
+            // Website open glyph · a sibling Link (not nested in the edit tap).
+            if f == .website, !v.isEmpty, let url = Self.normalizedURL(v) {
+                Link(destination: url) {
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.race)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+    }
+
+    // Edit · inline field with Save / Cancel.
+    @ViewBuilder
+    private func editRow(_ f: Field) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.race)
+                Spacer()
+                if saving == f { ProgressView().controlSize(.mini).tint(Theme.mute) }
+            }
+            Group {
+                if f.multiline {
+                    TextField(f.placeholder, text: $draft, axis: .vertical)
+                        .lineLimit(2...5)
+                } else {
+                    TextField(f.placeholder, text: $draft)
+                        .keyboardType(f == .website ? .URL : (f == .bib ? .numbersAndPunctuation : .default))
+                        .autocorrectionDisabled(f == .website)
+                        .textInputAutocapitalization(f == .website ? .never : .sentences)
+                        .submitLabel(.done)
+                        .onSubmit { Task { await commit(f) } }
+                }
+            }
+            .focused($focused)
+            .font(.body(15, weight: .semibold))
+            .foregroundStyle(Theme.txt)
+            .padding(.vertical, 8).padding(.horizontal, 10)
+            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+
+            HStack(spacing: 16) {
+                Button("Save") { Task { await commit(f) } }
+                    .font(.body(12, weight: .extraBold)).foregroundStyle(Theme.race)
+                Button("Cancel") { cancel() }
+                    .font(.body(12, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.5))
+                Spacer()
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+    }
+
+    private func begin(_ f: Field, current: String) {
+        draft = current
+        editing = f
+        focused = true
+    }
+    private func cancel() {
+        editing = nil
+        focused = false
+    }
+    private func commit(_ f: Field) async {
+        let val = draft.trimmingCharacters(in: .whitespaces)
+        await MainActor.run { saving = f }
+        let ok = await API.patchRaceMeta(slug: slug, [f.key: val])
+        await MainActor.run {
+            saving = nil
+            if ok {
+                editing = nil
+                focused = false
+                onSaved()
+            }
+        }
+    }
+
+    // URL helpers · normalize a typed site to a tappable URL + a clean host.
+    static func normalizedURL(_ raw: String) -> URL? {
+        var s = raw.trimmingCharacters(in: .whitespaces)
+        if s.isEmpty { return nil }
+        let low = s.lowercased()
+        if !low.hasPrefix("http://") && !low.hasPrefix("https://") { s = "https://" + s }
+        return URL(string: s)
+    }
+    static func prettyHost(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespaces)
+        for p in ["https://", "http://"] where s.lowercased().hasPrefix(p) { s = String(s.dropFirst(p.count)) }
+        if s.lowercased().hasPrefix("www.") { s = String(s.dropFirst(4)) }
+        if s.hasSuffix("/") { s = String(s.dropLast()) }
+        return s
+    }
+}

@@ -505,6 +505,16 @@ enum API {
         }
     }
 
+    /// Lightweight logistics PATCH · sends ONLY the given meta keys to
+    /// /api/race. Because it never carries name/date/goal/priority, the server
+    /// skips the plan auto-rebuild + VDOT recalc — safe for one-field-at-a-time
+    /// inline edits. Keys are the backend meta keys: startTime, wave, bib,
+    /// location, parking, shuttle, packetPickup, officialUrl, notes.
+    static func patchRaceMeta(slug: String, _ fields: [String: Any]) async -> Bool {
+        do { try await submitRaceRetro(slug: slug, body: fields); return true }
+        catch { return false }
+    }
+
     /// Edit an existing race (race P1 · RaceEditSheet). PATCH /api/race with
     /// the edited plain fields — the backend keys are exactly: name, date,
     /// distance_label, priority, goal (A-goal display), goal_safe (B-goal),

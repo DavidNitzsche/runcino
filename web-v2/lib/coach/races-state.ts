@@ -33,7 +33,9 @@ export interface RaceRow {
   bib: string | null;        // bib number once assigned
   website: string | null;    // official race site (meta.officialUrl)
   packet_pickup: string | null; // packet pickup · where + when
-  shuttle: string | null;    // shuttle / parking notes
+  shuttle: string | null;    // shuttle info
+  parking: string | null;    // parking info
+  notes: string | null;      // general race-day notes
   // Past-race enrichment from the matching run in the log:
   matchedRun?: {
     activity_id: string;
@@ -110,6 +112,8 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       website: m.officialUrl ?? m.website ?? null,
       packet_pickup: m.packetPickup ?? m.packet_pickup ?? null,
       shuttle: m.shuttle ?? null,
+      parking: m.parking ?? null,
+      notes: m.notes ?? null,
     };
   });
 

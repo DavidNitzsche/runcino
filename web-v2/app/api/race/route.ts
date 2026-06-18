@@ -159,7 +159,7 @@ export async function PATCH(req: NextRequest) {
     // Plus race-morning logistics for a later phone edit sheet (passthrough).
     for (const k of [
       'fuelProduct', 'fuelCarbsPerServingG', 'fuelCadenceMin', 'fuelCarbsPerHourTargetG',
-      'shuttle', 'packetPickup', 'officialUrl',
+      'shuttle', 'packetPickup', 'officialUrl', 'parking', 'notes',
     ]) {
       if (body[k] !== undefined) meta[k] = body[k];
     }
