@@ -180,12 +180,12 @@ struct DragSheet<Header: View, Body: View>: View {
 
                         content()
                             // 2026-06-02 round 55 · 170 → 100.
-                            // 2026-06-02 round 57 · 100 → 120. Signature
-                            // row was reading too close to the tab bar pill ·
-                            // 20pt more bottom gap pushes the last visible
-                            // content row clear of the pill with comfortable
-                            // breathing room.
-                            .padding(.bottom, 120)
+                            // 2026-06-02 round 57 · 100 → 120.
+                            // 2026-06-18 · 120 → 150. Stat chips were
+                            // landing with ~26pt clearance above the
+                            // floating tab bar pill · tighter than it
+                            // reads.
+                            .padding(.bottom, 150)
                     }
                 }
                 .coordinateSpace(name: "dragSheetScroll")
@@ -260,7 +260,7 @@ struct DragSheet<Header: View, Body: View>: View {
                 .frame(maxWidth: .infinity)
             header()
                 .padding(.horizontal, 24)
-                .padding(.bottom, 16)
+                .padding(.bottom, 8)
         }
         .contentShape(Rectangle())
         .onTapGesture {

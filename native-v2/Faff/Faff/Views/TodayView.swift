@@ -1194,7 +1194,7 @@ struct TodayView: View {
             onTap: { onReadinessTap() }
         )
         .padding(.horizontal, Theme.Space.pageH)
-        .padding(.top, 22)
+        .padding(.top, 10)
         .padding(.bottom, 20)
     }
 
