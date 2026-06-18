@@ -11,6 +11,11 @@ import CoreLocation
 struct RaceDayView: View {
     let raceSlug: String
 
+    /// In-memory cache of the last-loaded detail per slug. Re-opening a race
+    /// seeds from this at init so it renders instantly instead of flashing the
+    /// cold "upload your GPX" state while the fresh fetch runs (David 2026-06-17).
+    private static var detailCache: [String: RaceDetailResponse] = [:]
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var detail: RaceDetailResponse?
@@ -36,6 +41,13 @@ struct RaceDayView: View {
     /// AI auto-fill sheet · reads the race site (or finds it by name) and
     /// proposes the logistics for review before saving (race "THE DETAILS").
     @State private var showAutofill: Bool = false
+
+    init(raceSlug: String) {
+        self.raceSlug = raceSlug
+        // Seed from the cache so a re-opened race is fully rendered on the first
+        // frame — no cold flash. load() still fetches fresh and refreshes.
+        _detail = State(initialValue: RaceDayView.detailCache[raceSlug])
+    }
 
     var body: some View {
         ZStack {
@@ -117,8 +129,11 @@ struct RaceDayView: View {
                             }
                         }
                         .padding(.top, 24)
-                    } else if detail?.race.is_past != true {
-                        // No course geometry yet · let the runner upload a GPX.
+                    } else if let d = detail, d.race.is_past != true {
+                        // Course geometry is KNOWN-absent (detail loaded, no GPX)
+                        // — only now offer the upload. Gating on `let d = detail`
+                        // stops the cold "upload your GPX" flash while the fetch
+                        // is still in flight (David 2026-06-17).
                         section(title: "THE COURSE", right: nil) {
                             CourseAnnotations(variant: .stub(onUpload: { showGpxPicker = true }))
                         }
@@ -1076,8 +1091,12 @@ struct RaceDayView: View {
         async let ep = (try? await API.fetchRaceExecutionPlan(slug: raceSlug))
         let (rd, fc, pj, xp) = await (r, f, proj, ep)
         await MainActor.run {
-            self.detail = rd; self.raceFacts = fc; self.projection = pj
-            self.execPlan = xp?.plan
+            // Keep the cached/seeded detail if the fresh fetch failed, so a
+            // transient error never drops a populated page back to cold.
+            if let rd { self.detail = rd; RaceDayView.detailCache[raceSlug] = rd }
+            self.raceFacts = fc ?? self.raceFacts
+            self.projection = pj ?? self.projection
+            self.execPlan = xp?.plan ?? self.execPlan
         }
     }
 
