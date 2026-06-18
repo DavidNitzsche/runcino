@@ -41,6 +41,9 @@ struct RaceDayView: View {
         ZStack {
             FaffMeshView(mesh: .neutral)
 
+            // Clamp the scroll content to the viewport width so nothing can push
+            // the page into a horizontal scroll (David 2026-06-17).
+            GeometryReader { geo in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     // Header-pill clearance (bar 50 + pill 84), matching the tabs.
@@ -74,7 +77,8 @@ struct RaceDayView: View {
                             .font(.body(14))
                             .foregroundStyle(Theme.txt.opacity(0.85))
                             .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(4)
+                            .truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
                             .padding(.top, 16)
@@ -139,15 +143,22 @@ struct RaceDayView: View {
                                 // the crawl, pinned under the chart so the shape
                                 // and the story read together (David 2026-06-17).
                                 if let nm = detail?.race.notable_miles?.trimmingCharacters(in: .whitespaces), !nm.isEmpty {
-                                    VStack(alignment: .leading, spacing: 6) {
+                                    VStack(alignment: .leading, spacing: 9) {
                                         Text("NOTABLE MILES")
                                             .font(.body(9.5, weight: .extraBold)).tracking(1.2)
                                             .foregroundStyle(Theme.txt.opacity(0.5))
-                                        Text(nm)
-                                            .font(.body(13, weight: .semibold))
-                                            .foregroundStyle(Theme.txt.opacity(0.85))
-                                            .fixedSize(horizontal: false, vertical: true)
-                                            .lineSpacing(3)
+                                        ForEach(Array(notableMileLines(nm).enumerated()), id: \.offset) { _, line in
+                                            HStack(alignment: .top, spacing: 8) {
+                                                Circle().fill(Theme.race.opacity(0.7))
+                                                    .frame(width: 4, height: 4).padding(.top, 7)
+                                                Text(line)
+                                                    .font(.body(13))
+                                                    .foregroundStyle(Theme.txt.opacity(0.85))
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                                    .lineSpacing(2)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                            }
+                                        }
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(14)
@@ -315,8 +326,10 @@ struct RaceDayView: View {
 
                     Spacer(minLength: 80)
                 }
+                .frame(width: geo.size.width, alignment: .leading)
             }
             .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
+            }
         }
         // Shared frosted header pill · race + goal summary, in the slot the
         // tabs use. The countdown owns the days, so the pill drops "days out".
@@ -959,6 +972,19 @@ struct RaceDayView: View {
     // GPX from /api/race/[slug].course_geometry via courseRoute(); the rest
     // of the sections stay hidden until backend endpoints emit per-race
     // plan steps / fueling / morning data.
+
+    /// Split the notable-miles blurb into scannable segments. Splits on ". "
+    /// (period-space) so mile-range decimals like "13.1" / "6.3" stay intact.
+    /// Caps at 5 so a verbose stored value can't run long; the runner re-fills
+    /// to get the tight version (David 2026-06-17).
+    private func notableMileLines(_ s: String) -> [String] {
+        Array(
+            s.components(separatedBy: ". ")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .prefix(5)
+        )
+    }
 
     private func section<C: View>(title: String, right: String?, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 14) {
