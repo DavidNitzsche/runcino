@@ -81,18 +81,16 @@ struct RaceDayView: View {
                                     .frame(height: 200)
                                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                                     .allowsHitTesting(false)
-                                HStack(spacing: 12) {
-                                    if let elev = geo.elevation_gain_ft, elev > 0 {
-                                        Text("\(Int(elev)) FT GAIN")
-                                            .font(.body(10, weight: .extraBold)).tracking(1.2)
-                                            .foregroundStyle(Theme.txt.opacity(0.7))
-                                    }
-                                    if let prov = courseProvenanceLabel {
+                                // Elevation moved up to the header (next to the
+                                // distance). Only a real crowd (≥2 runners) leaves
+                                // anything under the map — usually nothing.
+                                if let prov = courseProvenanceLabel {
+                                    HStack {
                                         Text(prov)
                                             .font(.body(10, weight: .bold)).tracking(0.5)
                                             .foregroundStyle(Theme.txt.opacity(0.5))
+                                        Spacer()
                                     }
-                                    Spacer()
                                 }
                             }
                         }
@@ -897,9 +895,14 @@ struct RaceDayView: View {
         return String(format: "%d:%02d", perMile / 60, perMile % 60)
     }
     private var courseStat: String {
-        let mi = detail?.race.distance_mi.map { String(format: "%.1f MI", $0) }
-        // RaceDetail has no elev field today; fall back to "" if absent.
-        return mi ?? ""
+        var parts: [String] = []
+        if let d = detail?.race.distance_mi, d > 0 { parts.append(String(format: "%.1f MI", d)) }
+        // Elevation lives in the header next to the distance (David 2026-06-17) —
+        // the recomputed (noise-thresholded) course gain, not stranded below the map.
+        if let elev = detail?.course_geometry?.elevation_gain_ft, elev > 0 {
+            parts.append("↗ \(Int(elev)) FT")
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// Crowd-sourced provenance line shown under the route. Drawn only when
