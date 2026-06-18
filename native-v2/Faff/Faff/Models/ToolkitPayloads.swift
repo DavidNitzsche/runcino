@@ -456,6 +456,10 @@ struct ProjectionSummary: Decodable {
     let planUnderBuilt: Bool?           // trajectory passed what the plan trains for
     let overPerformanceBonusVdot: Double?  // unconfirmed training-derived fitness (diagnostic)
     let trajectoryProjectedSec: Int?    // goal-seeking projected race-day time
+    // 2026-06-18 · the "TODAY" accrued estimate · anchor VDOT + gain accrued
+    // so far based on plan completion fraction. Moves week-by-week; converges
+    // toward trajectoryProjectedSec by race day. nil → falls back to projectionSec.
+    let trajectoryAccruedSec: Int?
 
     // 2026-06-16 · THE READOUT levers (execution / plan intensity / runway).
     let executionQuality: Double?       // 0…1 · how well recent quality work lands
@@ -477,6 +481,7 @@ struct ProjectionSummary: Decodable {
              levers, heldDays, lastMove, raceProjections,
              confidenceInterval, confidenceLabel,
              aheadOfGoal, planUnderBuilt, overPerformanceBonusVdot, trajectoryProjectedSec,
+             trajectoryAccruedSec,
              executionQuality, planBuiltForGoal, plannedTargetVdot, projectedGainVdot,
              goalVdot, currentVdot, buildWeeks, gapVdot
     }
@@ -522,6 +527,7 @@ struct ProjectionSummary: Decodable {
         self.planUnderBuilt           = try c.decodeIfPresent(Bool.self,   forKey: .planUnderBuilt)
         self.overPerformanceBonusVdot = try c.decodeIfPresent(Double.self, forKey: .overPerformanceBonusVdot)
         self.trajectoryProjectedSec   = try c.decodeIfPresent(Int.self,    forKey: .trajectoryProjectedSec)
+        self.trajectoryAccruedSec     = try c.decodeIfPresent(Int.self,    forKey: .trajectoryAccruedSec)
         self.executionQuality  = try c.decodeIfPresent(Double.self, forKey: .executionQuality)
         self.planBuiltForGoal  = try c.decodeIfPresent(Bool.self,   forKey: .planBuiltForGoal)
         self.plannedTargetVdot = try c.decodeIfPresent(Double.self, forKey: .plannedTargetVdot)

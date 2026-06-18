@@ -333,6 +333,30 @@ export async function GET(req: NextRequest) {
       }).catch(() => []);
     }
 
+    // ─── 4. Accrued estimate · the "TODAY" column that moves week by week ───
+    // Replaces the frozen current-fitness snapshot with a training-progress
+    // estimate: anchor VDOT + the gain accrued so far in the build (based on
+    // fraction of plan completed × execution quality from the trajectory).
+    // Converges toward trajectoryProjectedSec by race day.
+    const planSpanQ = await pool.query<{ total_weeks: number | string }>(
+      `SELECT ((MAX(pw.date_iso::date) - MIN(pw.date_iso::date)) / 7 + 1)::int AS total_weeks
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1::uuid AND tp.archived_iso IS NULL`,
+      [userId],
+    ).catch(() => ({ rows: [] }));
+    const totalPlanWeeks = planSpanQ.rows[0]?.total_weeks != null
+      ? Number(planSpanQ.rows[0].total_weeks) : null;
+
+    let trajectoryAccruedSec: number | null = null;
+    if (traj && totalPlanWeeks && totalPlanWeeks > 0 && daysAway != null && vdot != null) {
+      const weeksToRace = daysAway / 7;
+      const completedWeeks = Math.max(0, totalPlanWeeks - weeksToRace);
+      const completedFraction = Math.min(1, completedWeeks / totalPlanWeeks);
+      const accruedVdot = vdot + traj.projectedGainVdot * completedFraction;
+      trajectoryAccruedSec = predictRaceTime(accruedVdot, distanceMi) ?? null;
+    }
+
     // Status from the trajectory — the SAME logic web's TargetsView uses — so
     // native and web agree. Race-week stays a time-based override; statusFor is
     // the cold fallback only when there's no trajectory (no vdot/goal/date).
@@ -418,6 +442,10 @@ export async function GET(req: NextRequest) {
       planUnderBuilt: traj?.planUnderBuilt ?? null,
       overPerformanceBonusVdot: traj?.overPerformanceBonusVdot ?? 0,
       trajectoryProjectedSec: traj?.projectedSec ?? null,
+      // 2026-06-18 · the "TODAY" accrued estimate · anchor VDOT + gain accrued
+      // so far based on fraction of plan completed. Moves week-by-week as training
+      // accumulates; converges toward trajectoryProjectedSec by race day.
+      trajectoryAccruedSec,
       // 2026-06-16 · THE READOUT · the trajectory levers, surfaced so the
       // native Goal panel can show WHY (execution / plan intensity / runway),
       // not just the outcome.

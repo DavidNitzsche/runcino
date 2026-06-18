@@ -308,8 +308,11 @@ struct TargetsProjectionPanel: View {
 
     // MARK: Times
 
-    /// REAL · current-fitness equivalent race time ("if you raced today").
-    private var fitnessSec: Int? { summary.projectionSec }
+    /// Training-accrual estimate · anchor fitness + gain accrued so far in the
+    /// build (completedFraction × projectedGain). Moves week-by-week as training
+    /// accumulates; converges toward projSec by race day. Falls back to the
+    /// frozen current-fitness snapshot when the server hasn't supplied it yet.
+    private var fitnessSec: Int? { summary.trajectoryAccruedSec ?? summary.projectionSec }
     /// REAL · race-day / trajectory projection. Falls back to current-fitness
     /// when the server has no separate trajectory value.
     private var projSec: Int? { summary.trajectoryProjectedSec ?? summary.projectionSec }
@@ -333,14 +336,24 @@ struct TargetsProjectionPanel: View {
         return r <= 4
     }
 
-    /// Replaces the static "at today's fitness" label with how long the
-    /// fitness number has been frozen — answers "when does this update?"
-    /// directly from the projection payload's heldDays counter.
-    private var fitnessStaleLabel: String {
-        let d = summary.heldDays
-        if d == 0 { return "updated today" }
-        if d == 1 { return "updated yesterday" }
-        return "held \(d) days"
+    /// Phase + week context for the TODAY sublabel — "Build · wk 4/13".
+    /// Replaces the frozen "held N days" label with something that advances
+    /// week by week alongside the accrued estimate above it.
+    private var todaySubLabel: String {
+        guard let weeks = trainingState?.weeks, !weeks.isEmpty else {
+            return "training estimate"
+        }
+        let phaseWeeks = weeks.enumerated().filter {
+            TrainPhase(phaseKey: $0.element.phase) == youPhase
+        }
+        guard !phaseWeeks.isEmpty else { return "training estimate" }
+        let firstOffset = phaseWeeks.first!.offset
+        let count = phaseWeeks.count
+        let curOffset = trainingState?.currentWeekIdx
+            ?? weeks.firstIndex(where: { $0.isCurrent })
+            ?? firstOffset
+        let weekInPhase = max(1, curOffset - firstOffset + 1)
+        return "\(youPhase.label.capitalizedPhase) · wk \(min(weekInPhase, count))/\(count)"
     }
 
     // MARK: Execution & Fitness reads
@@ -527,7 +540,7 @@ struct TargetsProjectionPanel: View {
                     .foregroundStyle(Color.white)
                     .monospacedDigit()
                     .padding(.top, 4)
-                Text(fitnessStaleLabel)
+                Text(todaySubLabel)
                     .font(.body(10.5))
                     .foregroundStyle(Color(hex: 0x646464))
                     .padding(.top, 4)
