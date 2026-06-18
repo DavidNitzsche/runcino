@@ -336,24 +336,23 @@ struct TargetsProjectionPanel: View {
         return r <= 4
     }
 
-    /// Phase + week context for the TODAY sublabel — "Build · wk 4/13".
-    /// Replaces the frozen "held N days" label with something that advances
-    /// week by week alongside the accrued estimate above it.
-    private var todaySubLabel: String {
+    /// Eyebrow for the TODAY column — "BUILD WK 3/6" when training state is
+    /// present; falls back to "TODAY" for cold state.
+    private var todayEyebrow: String {
         guard let weeks = trainingState?.weeks, !weeks.isEmpty else {
-            return "training estimate"
+            return "TODAY"
         }
         let phaseWeeks = weeks.enumerated().filter {
             TrainPhase(phaseKey: $0.element.phase) == youPhase
         }
-        guard !phaseWeeks.isEmpty else { return "training estimate" }
+        guard !phaseWeeks.isEmpty else { return "TODAY" }
         let firstOffset = phaseWeeks.first!.offset
         let count = phaseWeeks.count
         let curOffset = trainingState?.currentWeekIdx
             ?? weeks.firstIndex(where: { $0.isCurrent })
             ?? firstOffset
         let weekInPhase = max(1, curOffset - firstOffset + 1)
-        return "\(youPhase.label.capitalizedPhase) · wk \(min(weekInPhase, count))/\(count)"
+        return "BUILD WK \(min(weekInPhase, count))/\(count)"
     }
 
     // MARK: Execution & Fitness reads
@@ -530,19 +529,15 @@ struct TargetsProjectionPanel: View {
     // 1+2 · Today → GAP → Race-day row
 
     private func todayToRaceRow(_ st: ProjState) -> some View {
-        HStack(alignment: .center, spacing: 0) {
-            // LEFT · Today
+        HStack(alignment: .top, spacing: 0) {
+            // LEFT · Build week
             VStack(alignment: .leading, spacing: 0) {
-                eyebrow("TODAY")
+                eyebrow(todayEyebrow)
                 Text(projFormatTime(fitnessSec))
                     .font(.display(38, weight: .semibold))
                     .tracking(-1)
                     .foregroundStyle(Color.white)
                     .monospacedDigit()
-                    .padding(.top, 4)
-                Text(todaySubLabel)
-                    .font(.body(10.5))
-                    .foregroundStyle(Color(hex: 0x646464))
                     .padding(.top, 4)
             }
 
