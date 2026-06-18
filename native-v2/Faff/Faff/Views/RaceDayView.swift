@@ -91,6 +91,10 @@ struct RaceDayView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 24)
                         .padding(.top, 6)
+                        // Crop the heroDisplay line-box's empty descender space so
+                        // the blurb/course sits close under the glyphs, not way
+                        // below them (David 2026-06-17).
+                        .padding(.bottom, -16)
                     if let sub = countdownSub {
                         Text(sub)
                             .font(.body(13, weight: .bold))
@@ -111,7 +115,7 @@ struct RaceDayView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
-                            .padding(.top, 16)
+                            .padding(.top, 6)
                     }
 
                     // THE COURSE — the route is the most visually important
