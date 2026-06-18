@@ -34,6 +34,9 @@ struct TodayPostRunBody: View {
     let detail: RunDetail?
     /// Post-run coach voice (verdict + facts + win line when backend ships it).
     let recap: RunRecap?
+    /// Gradient style for the 88pt effort hero. Defaults to flat accent when nil.
+    var heroStyle: AnyShapeStyle? = nil
+
     /// Run accent color · matches the pre-run effort accent so the
     /// peek + ticks + splits stay in one palette.
     let accent: Color
@@ -219,7 +222,7 @@ struct TodayPostRunBody: View {
             Text(headerTitle.uppercased())
                 .font(.heroDisplay(88))
                 .tracking(-2)
-                .foregroundStyle(accent)
+                .foregroundStyle(heroStyle ?? AnyShapeStyle(accent))
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
             if let sub = subtitleText {

@@ -1213,6 +1213,7 @@ struct TodayView: View {
         TodayPostRunBody(
             detail: completedDetail,
             recap: completedRecap,
+            heroStyle: AnyShapeStyle(selectedEffort.heroGradient),
             accent: selectedEffort.dot,
             runId: completedRunId,
             // 2026-06-02 round 45 · type word for eyebrow + hero
