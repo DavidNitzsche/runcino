@@ -842,9 +842,18 @@ struct TrainView: View {
     // MARK: Loaders
 
     private func reload() async {
+        // Compute the ISO start of the current training week (Monday) so the
+        // "Plan adjustments this week" expander only shows this week's intents.
+        // ISO-8601 week always starts Monday, matching David's Mon-Sun boundary.
+        var isoCal = Calendar(identifier: .iso8601)
+        isoCal.timeZone = TimeZone.current
+        let weekMonday = isoCal.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; df.timeZone = isoCal.timeZone
+        let weekStartISO = df.string(from: weekMonday)
+
         async let s  = (try? await API.fetchTrainingState())
         async let p  = (try? await API.fetchProfileState())
-        async let ai = (try? await API.fetchCoachIntents(limit: 10, reasonLike: "plan_adapt_"))
+        async let ai = (try? await API.fetchCoachIntents(limit: 20, since: weekStartISO, reasonLike: "plan_adapt_"))
         let (st, pf, ints) = await (s, p, ai)
         await MainActor.run {
             if let st { self.state = st }
