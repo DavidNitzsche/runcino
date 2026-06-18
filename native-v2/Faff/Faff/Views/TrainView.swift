@@ -253,6 +253,7 @@ struct TrainView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .contentShape(Rectangle())
                         }
                     }
                 }
@@ -545,6 +546,7 @@ struct TrainView: View {
                         peekCell(day: day)
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                 }
             }
         }
@@ -802,6 +804,7 @@ struct TrainView: View {
                         calSelectionRow(sel)
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                 }
             } else {
                 Text("Tap a day to see its session")
