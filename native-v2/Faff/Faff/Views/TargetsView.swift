@@ -505,9 +505,7 @@ struct TargetsView: View {
         }
         switch p.status {
         case "on_track":
-            return AnyShapeStyle(LinearGradient(
-                colors: [Color(hex: 0xF3AD38), Color(hex: 0xF0DF47)],
-                startPoint: .leading, endPoint: .trailing))
+            return AnyShapeStyle(Theme.green)
         case "race_week":
             return AnyShapeStyle(FaffEffort.race.heroGradient)
         default:
