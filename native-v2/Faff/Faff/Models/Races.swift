@@ -167,6 +167,9 @@ struct RaceDetail: Decodable {
     let gear_check: String?
     let pacers: String?
     let spectators: String?
+    /// Live race-day forecast · injected by the detail GET only within 7 days of
+    /// the gun (Open-Meteo). nil otherwise → the page shows the typical norm.
+    let weather_forecast: String?
 
     /// Empty fallback used by RaceDetailResponse when the wire emits a
     /// null race object (rare but seen during race-CRUD overlap windows).
@@ -189,7 +192,8 @@ struct RaceDetail: Decodable {
          aid_stations: String? = nil, summary: String? = nil,
          notable_miles: String? = nil, weather_norms: String? = nil,
          time_limit: String? = nil, gear_check: String? = nil,
-         pacers: String? = nil, spectators: String? = nil) {
+         pacers: String? = nil, spectators: String? = nil,
+         weather_forecast: String? = nil) {
         self.slug = slug; self.name = name; self.date = date
         self.priority = priority; self.goal = goal
         self.distance_label = distance_label; self.distance_mi = distance_mi
@@ -203,6 +207,7 @@ struct RaceDetail: Decodable {
         self.notable_miles = notable_miles; self.weather_norms = weather_norms
         self.time_limit = time_limit; self.gear_check = gear_check
         self.pacers = pacers; self.spectators = spectators
+        self.weather_forecast = weather_forecast
     }
 
     enum CodingKeys: String, CodingKey {
@@ -211,6 +216,7 @@ struct RaceDetail: Decodable {
         case gun_time, wave, bib, website, packet_pickup, shuttle, parking, notes
         case aid_stations, summary
         case notable_miles, weather_norms, time_limit, gear_check, pacers, spectators
+        case weather_forecast
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -243,6 +249,7 @@ struct RaceDetail: Decodable {
         self.gear_check = try c.decodeIfPresent(String.self, forKey: .gear_check)
         self.pacers = try c.decodeIfPresent(String.self, forKey: .pacers)
         self.spectators = try c.decodeIfPresent(String.self, forKey: .spectators)
+        self.weather_forecast = try c.decodeIfPresent(String.self, forKey: .weather_forecast)
     }
 }
 

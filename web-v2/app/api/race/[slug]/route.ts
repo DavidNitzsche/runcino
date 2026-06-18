@@ -17,6 +17,53 @@ import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 
 export const dynamic = 'force-dynamic';
 
+// ── Race-week live forecast (Open-Meteo · free, no API key) ──────────────────
+// The race page shows TYPICAL weather (the crawl's historical norm) until the
+// race is within 7 days, where the REAL race-day forecast loads and tracks
+// (David 2026-06-17). Cached in-memory so we don't refetch on every page load.
+const FORECAST_TTL_MS = 3 * 60 * 60 * 1000; // 3h
+const forecastCache = new Map<string, { at: number; value: string | null }>();
+
+function weatherWord(code: number): string {
+  if (code === 0) return 'clear';
+  if (code <= 3) return 'partly cloudy';
+  if (code === 45 || code === 48) return 'fog';
+  if (code <= 57) return 'drizzle';
+  if (code <= 67) return 'rain';
+  if (code <= 77) return 'snow';
+  if (code <= 82) return 'showers';
+  if (code <= 86) return 'snow showers';
+  return 'storms';
+}
+
+async function raceDayForecast(lat: number, lon: number, dateISO: string): Promise<string | null> {
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)},${dateISO}`;
+  const hit = forecastCache.get(key);
+  if (hit && Date.now() - hit.at < FORECAST_TTL_MS) return hit.value;
+  try {
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code` +
+      `&temperature_unit=fahrenheit&timezone=auto&start_date=${dateISO}&end_date=${dateISO}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!resp.ok) return null;
+    const d = ((await resp.json()) as {
+      daily?: { temperature_2m_max?: number[]; temperature_2m_min?: number[]; precipitation_probability_max?: number[]; weather_code?: number[] };
+    }).daily;
+    if (!d?.temperature_2m_max?.length) return null;
+    const hi = Math.round(d.temperature_2m_max[0]);
+    const lo = Math.round(d.temperature_2m_min?.[0] ?? hi);
+    const pop = d.precipitation_probability_max?.[0];
+    const cond = weatherWord(d.weather_code?.[0] ?? 0);
+    let value = `${lo}-${hi}°F, ${cond}`;
+    if (typeof pop === 'number') value += `, ${pop}% rain`;
+    forecastCache.set(key, { at: Date.now(), value });
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
@@ -118,8 +165,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       }
     } catch { /* fueling is additive — never fail the detail over it */ }
 
+    // Race-week live forecast · only within 7 days, only with course coords.
+    // Falls back silently to the typical norm (shown client-side) otherwise.
+    let weatherForecast: string | null = null;
+    try {
+      if (proximity === 'race-week') {
+        const g = courseGeometry as { trackPoints?: Array<{ lat?: number | null; lon?: number | null }> } | null;
+        const tp = g?.trackPoints?.find((p) => typeof p?.lat === 'number' && typeof p?.lon === 'number');
+        const raceDate = (race as { date?: string | null }).date;
+        if (tp?.lat != null && tp?.lon != null && raceDate) {
+          weatherForecast = await raceDayForecast(tp.lat, tp.lon, String(raceDate).slice(0, 10));
+        }
+      }
+    } catch { /* forecast is additive — never fail the detail over it */ }
+
     return NextResponse.json({
-      race,
+      race: { ...race, weather_forecast: weatherForecast },
       proximity,
       course_geometry: courseGeometry,
       course_source: courseSource,

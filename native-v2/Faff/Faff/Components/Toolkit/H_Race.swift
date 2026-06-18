@@ -679,7 +679,7 @@ struct RaceDetailsCard: View {
         case .packet:   raw = race.packet_pickup
         case .website:  raw = race.website
         case .notes:    raw = race.notes
-        case .weather:    raw = race.weather_norms
+        case .weather:    raw = race.weather_forecast ?? race.weather_norms  // live forecast in race week, else the norm
         case .timeLimit:  raw = race.time_limit
         case .gearCheck:  raw = race.gear_check
         case .pacers:     raw = race.pacers

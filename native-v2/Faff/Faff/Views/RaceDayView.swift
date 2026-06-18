@@ -284,8 +284,8 @@ struct RaceDayView: View {
                                 )
                                 // Weather is a historical NORM until race week,
                                 // when the live forecast loads (David 2026-06-17).
-                                if let w = d.race.weather_norms?.trimmingCharacters(in: .whitespaces), !w.isEmpty {
-                                    Text("Weather is typical for the date. The live forecast loads in race week.")
+                                if let cap = weatherCaption(d.race) {
+                                    Text(cap)
                                         .font(.body(10.5))
                                         .foregroundStyle(Theme.txt.opacity(0.45))
                                         .padding(.horizontal, 4)
@@ -1008,8 +1008,21 @@ struct RaceDayView: View {
     /// True when the crawl filled ≥1 GOOD TO KNOW intel field. The section
     /// hides entirely otherwise — no empty card (David 2026-06-17).
     private func raceHasIntel(_ r: RaceDetail) -> Bool {
-        [r.weather_norms, r.time_limit, r.gear_check, r.pacers, r.spectators]
+        [r.weather_forecast, r.weather_norms, r.time_limit, r.gear_check, r.pacers, r.spectators]
             .contains { ($0?.trimmingCharacters(in: .whitespaces).isEmpty == false) }
+    }
+
+    /// Race-week → the live-forecast caption; otherwise the typical-norm
+    /// caption that promises the forecast loads in race week. nil with no
+    /// weather to caption (David 2026-06-17).
+    private func weatherCaption(_ r: RaceDetail) -> String? {
+        if r.weather_forecast?.trimmingCharacters(in: .whitespaces).isEmpty == false {
+            return "Live race-day forecast, updates daily."
+        }
+        if r.weather_norms?.trimmingCharacters(in: .whitespaces).isEmpty == false {
+            return "Weather is typical for the date. The live forecast loads in race week."
+        }
+        return nil
     }
 
     private func section<C: View>(title: String, right: String?, @ViewBuilder content: () -> C) -> some View {
