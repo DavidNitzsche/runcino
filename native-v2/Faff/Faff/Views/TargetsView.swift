@@ -722,8 +722,9 @@ struct TargetsView: View {
                             .font(.body(10, weight: .extraBold)).tracking(1.6)
                             .foregroundStyle(phaseColor)
                         if let n = weekNumber, totalWeeks > 0 {
-                            Text("Week \(n) of \(totalWeeks)"
-                                 + (inPhase.map { " · phase wk \($0.0) of \($0.1)" } ?? ""))
+                            let weekLabel: String = inPhase.map { "Week \($0.0) of \($0.1)" }
+                                ?? "Week \(n) of \(totalWeeks)"
+                            Text(weekLabel)
                                 .font(.body(14, weight: .extraBold)).tracking(-0.2)
                                 .foregroundStyle(Theme.txt)
                         }
