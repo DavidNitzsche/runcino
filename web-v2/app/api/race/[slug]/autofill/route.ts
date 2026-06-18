@@ -66,10 +66,12 @@ function buildTerrainHint(geo: unknown, distMi: number | null): string | null {
   const q = (a: number, b: number) => ft(at(b) - at(a));
   const sgn = (n: number) => (n > 0 ? `+${n}` : `${n}`);
   const distStr = distMi && distMi > 0 ? `${distMi.toFixed(1)} mi, ` : '';
+  const loss = gain - net; // total descent (ft): gain - net
   return (
-    `AUTHORITATIVE course terrain from the runner's GPX (use THIS for any elevation claim, not the website): ` +
-    `${distStr}${gain} ft total climb, net ${sgn(net)} ft (${startFt} ft start to ${finishFt} ft finish). ` +
-    `Net elevation change by quarter: Q1 ${sgn(q(0, 0.25))} ft, Q2 ${sgn(q(0.25, 0.5))} ft, Q3 ${sgn(q(0.5, 0.75))} ft, Q4 ${sgn(q(0.75, 1))} ft.`
+    `AUTHORITATIVE course terrain from the runner's GPX (use THIS for elevation claims, not the website): ` +
+    `${distStr}${gain} ft total CLIMB and ${loss} ft total DESCENT — a net ${net <= 0 ? 'downhill' : 'uphill'} course finishing ${Math.abs(net)} ft ${net <= 0 ? 'lower' : 'higher'}. ` +
+    `By quarter, net change: Q1 ${sgn(q(0, 0.25))}, Q2 ${sgn(q(0.25, 0.5))}, Q3 ${sgn(q(0.5, 0.75))}, Q4 ${sgn(q(0.75, 1))} ft. ` +
+    `When describing elevation, give the climb and descent (or the shape) — do not lead with a bare "net" figure, it misleads.`
   );
 }
 

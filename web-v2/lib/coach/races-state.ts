@@ -65,11 +65,12 @@ export interface RacesState {
   totalPast: number;
 }
 
-/** Time limit · keep only the headline clause (limit + required pace). Drops
- *  the trailing "; chip time enforced … cutoff …" detail the runner does not
- *  need — and which truncated mid-line on the race card. Cleans stored verbose
- *  values on read, so no re-crawl is needed (David 2026-06-17). */
-function shortTimeLimit(v: unknown): string | null {
+/** Keep only the headline clause (before the first ";"). Drops verbose tails —
+ *  the time limit's "; chip time … cutoff …" and the aid line's "; confirmed
+ *  locations near Dupont & …" address list — that the runner does not need and
+ *  that truncated mid-line on the card. Cleans stored values on read, so no
+ *  re-crawl is needed (David 2026-06-17). */
+function firstClause(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const s = v.split(';')[0].trim();
   return s || null;
@@ -132,11 +133,11 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       shuttle: m.shuttle ?? null,
       parking: m.parking ?? null,
       notes: m.notes ?? null,
-      aid_stations: m.aidStations ?? m.aid_stations ?? null,
+      aid_stations: firstClause(m.aidStations ?? m.aid_stations),
       summary: m.summary ?? null,
       notable_miles: m.notableMiles ?? m.notable_miles ?? null,
       weather_norms: m.weatherNorms ?? m.weather_norms ?? null,
-      time_limit: shortTimeLimit(m.timeLimit ?? m.time_limit),
+      time_limit: firstClause(m.timeLimit ?? m.time_limit),
       gear_check: m.gearCheck ?? m.gear_check ?? null,
       pacers: m.pacers ?? null,
       spectators: m.spectators ?? null,

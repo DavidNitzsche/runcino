@@ -169,7 +169,7 @@ struct RaceDayView: View {
                        pts.count > 5,
                        pts.contains(where: { $0.ele != nil }) {
                         section(title: "ELEVATION",
-                                right: geo.elevation_gain_ft.map { "↗ \(Int($0)) FT GAIN" }) {
+                                right: elevationSummary(geo)) {
                             VStack(alignment: .leading, spacing: 12) {
                                 CourseElevationProfile(trackPoints: pts,
                                                        distanceMi: detail?.race.distance_mi ?? 0)
@@ -1099,6 +1099,20 @@ struct RaceDayView: View {
         // confused — David 2026-06-17).
         guard let d = detail?.race.distance_mi, d > 0 else { return "" }
         return String(format: "%.1f MI", d)
+    }
+
+    /// Elevation header · total climb AND total descent, e.g. "↑ 722 · ↓ 852 FT".
+    /// Net alone (-130) reads as confusing next to 722 ft of climb (David
+    /// 2026-06-17); showing both up and down tells the real story. Total descent
+    /// ≈ gain − net (net = finish − start).
+    private func elevationSummary(_ geo: CourseGeometry) -> String? {
+        guard let gainD = geo.elevation_gain_ft, gainD > 0 else { return nil }
+        let gain = Int(gainD.rounded())
+        let eles = (geo.trackPoints ?? []).compactMap { $0.ele }
+        guard let first = eles.first, let last = eles.last else { return "↑ \(gain) FT" }
+        let netFt = (last - first) * 3.28084
+        let loss = max(0, Int((gainD - netFt).rounded()))
+        return "↑ \(gain) · ↓ \(loss) FT"
     }
 
     /// Crowd-sourced provenance line shown under the route. Drawn only when
