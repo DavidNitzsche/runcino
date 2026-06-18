@@ -326,7 +326,16 @@ struct TargetsView: View {
         let (rs, pr, fc, tst) = await (r, p, f, ts)
         await MainActor.run {
             // Preserve cached state on transient failures.
-            if let rs { self.races = rs }
+            if let rs {
+                self.races = rs
+                // Warm the race-detail cache so tapping a race opens INSTANTLY
+                // instead of cold-loading to "—" → pop. The Goal tab loads at
+                // launch (tabs pre-create), so this usually finishes well before
+                // the tap (David 2026-06-17).
+                for race in rs.races where (race.days_to_race ?? 1) >= 0 {
+                    RaceDayView.prefetch(race.slug)
+                }
+            }
             if let pr { self.profile = pr }
             if let fc { self.raceFacts = fc }
             if let tst { self.trainingState = tst }

@@ -49,6 +49,25 @@ struct RaceDayView: View {
         _detail = State(initialValue: RaceDayView.detailCache[raceSlug])
     }
 
+    /// In-flight prefetch guard so concurrent warmups don't double-fetch.
+    private static var prefetching: Set<String> = []
+
+    /// Warm the detail cache so tapping a race from the list opens INSTANTLY
+    /// instead of cold-loading to "—". The Goal tab calls this when its race
+    /// list loads (and the tabs pre-create at launch, so it usually runs well
+    /// before the tap). No-op if already cached or in flight (David 2026-06-17).
+    static func prefetch(_ slug: String) {
+        guard detailCache[slug] == nil, !prefetching.contains(slug) else { return }
+        prefetching.insert(slug)
+        Task {
+            let rd = try? await API.fetchRaceDetail(slug: slug)
+            await MainActor.run {
+                if let rd { detailCache[slug] = rd }
+                prefetching.remove(slug)
+            }
+        }
+    }
+
     var body: some View {
         ZStack {
             FaffMeshView(mesh: .neutral)
