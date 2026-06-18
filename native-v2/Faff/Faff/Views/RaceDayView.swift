@@ -103,6 +103,23 @@ struct RaceDayView: View {
                         .padding(.top, 24)
                     }
 
+                    // ELEVATION — the course terrain, right under the route and
+                    // above the plan, so "how hard is this course" reads before
+                    // "how to run it". Plotted by true cumulative distance; the
+                    // start → finish drop is the section's right label. Shows
+                    // whenever the course has elevation data (David 2026-06-17).
+                    if let geo = detail?.course_geometry,
+                       let pts = geo.trackPoints,
+                       pts.count > 5,
+                       pts.contains(where: { $0.ele != nil }) {
+                        section(title: "ELEVATION",
+                                right: CourseElevationProfile.startFinishLabel(pts)) {
+                            CourseElevationProfile(trackPoints: pts,
+                                                   distanceMi: detail?.race.distance_mi ?? 0)
+                        }
+                        .padding(.top, 30)
+                    }
+
                     // 1 · THE PLAN — how to run it, stretch by stretch.
                     // Prefer the backend's course-aware named segments
                     // (pacing.phases · "Point Loma Climb · 6:58/mi", grade-

@@ -425,3 +425,149 @@ struct CourseAnnotations: View {
         }
     }
 }
+
+// MARK: - CourseElevationProfile
+//
+// The course terrain plotted by TRUE cumulative distance. GPS samples cluster
+// on hills / slow stretches, so plotting by index stretches the busy parts and
+// squashes the rest — we resample by great-circle distance so the x-axis is
+// honest. Filled race-orange area + line (Theme.race == web's #FF5722), a
+// dashed halfway marker, and distance ticks scaled to the race distance. Mirror
+// of the web race-page profile (RaceView.tsx · #40). Terrain-only and static —
+// it does NOT change as the race approaches (David 2026-06-17).
+
+struct CourseElevationProfile: View {
+    let trackPoints: [CourseTrackPoint]
+    let distanceMi: Double
+
+    var body: some View {
+        let samples = Self.resampleByDistance(trackPoints, count: 160)
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geo in
+                let w = geo.size.width, h = geo.size.height
+                if samples.count >= 2 {
+                    let lo = samples.min() ?? 0
+                    let hi = samples.max() ?? 1
+                    // Floor the visual span so a pancake-flat course renders
+                    // flat near the baseline, not as amplified GPS noise.
+                    let span = max(hi - lo, 25)
+                    ZStack {
+                        area(samples, w: w, h: h, lo: lo, span: span)
+                            .fill(LinearGradient(
+                                colors: [Theme.race.opacity(0.42), Theme.race.opacity(0.0)],
+                                startPoint: .top, endPoint: .bottom))
+                        line(samples, w: w, h: h, lo: lo, span: span)
+                            .stroke(Theme.race, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                        // Halfway marker · the dashed centerline.
+                        Path { p in
+                            p.move(to: CGPoint(x: w / 2, y: 0))
+                            p.addLine(to: CGPoint(x: w / 2, y: h))
+                        }
+                        .stroke(Color.white.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+                    }
+                }
+            }
+            .frame(height: 112)
+
+            // Distance ticks · space-between so START sits at 0 and FINISH at the
+            // far edge, the rest distributed across the course.
+            let ticks = Self.axisTicks(distanceMi)
+            HStack(spacing: 0) {
+                ForEach(Array(ticks.enumerated()), id: \.offset) { i, t in
+                    Text(t)
+                        .font(.body(9.5, weight: .bold)).tracking(0.5)
+                        .foregroundStyle(Theme.txt.opacity(0.45))
+                    if i < ticks.count - 1 { Spacer(minLength: 0) }
+                }
+            }
+        }
+        .padding(14)
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    private func line(_ s: [Double], w: CGFloat, h: CGFloat, lo: Double, span: Double) -> Path {
+        Path { p in
+            for (i, v) in s.enumerated() {
+                let x = CGFloat(i) / CGFloat(s.count - 1) * w
+                let y = (1 - CGFloat((v - lo) / span)) * h
+                if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
+            }
+        }
+    }
+
+    private func area(_ s: [Double], w: CGFloat, h: CGFloat, lo: Double, span: Double) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: 0, y: h))
+            for (i, v) in s.enumerated() {
+                let x = CGFloat(i) / CGFloat(s.count - 1) * w
+                let y = (1 - CGFloat((v - lo) / span)) * h
+                p.addLine(to: CGPoint(x: x, y: y))
+            }
+            p.addLine(to: CGPoint(x: w, y: h))
+            p.closeSubpath()
+        }
+    }
+
+    // MARK: - Model helpers (static · the section caption reuses startFinishLabel)
+
+    /// First/last valid elevation in feet → "357 → 227 FT". nil with no ele.
+    static func startFinishLabel(_ trackPoints: [CourseTrackPoint]) -> String? {
+        let eles = trackPoints.compactMap { $0.ele }
+        guard let first = eles.first, let last = eles.last else { return nil }
+        return "\(Int((first * 3.28084).rounded())) → \(Int((last * 3.28084).rounded())) FT"
+    }
+
+    /// Resample elevation (→ feet) to `count` points evenly spaced by cumulative
+    /// great-circle distance. Linear-interpolates ele at each distance target.
+    static func resampleByDistance(_ pts: [CourseTrackPoint], count: Int) -> [Double] {
+        let valid = pts.compactMap { p -> (lat: Double, lon: Double, ele: Double)? in
+            guard let la = p.lat, let lo = p.lon, let e = p.ele else { return nil }
+            return (la, lo, e)
+        }
+        guard valid.count >= 2, count >= 2 else { return [] }
+        var cum: [Double] = [0]
+        cum.reserveCapacity(valid.count)
+        for i in 1..<valid.count { cum.append(cum[i - 1] + haversine(valid[i - 1], valid[i])) }
+        let total = cum.last ?? 0
+        guard total > 0 else { return valid.map { $0.ele * 3.28084 } }
+        var out: [Double] = []
+        out.reserveCapacity(count)
+        var j = 0
+        for k in 0..<count {
+            let target = Double(k) / Double(count - 1) * total
+            while j < valid.count - 2 && cum[j + 1] < target { j += 1 }
+            let d0 = cum[j], d1 = cum[j + 1]
+            let t = d1 > d0 ? (target - d0) / (d1 - d0) : 0
+            let e = valid[j].ele + (valid[j + 1].ele - valid[j].ele) * t
+            out.append(e * 3.28084)   // metres → feet
+        }
+        return out
+    }
+
+    /// X-axis ticks scaled to the race distance. START + FINISH always; the
+    /// three interior ticks at the quarter / HALF / three-quarter points — in km
+    /// for the marathon family (familiar split markers), else in miles. NOTE:
+    /// the center tick is the HALFWAY distance (0.5), unlike the web's #40 which
+    /// mislabeled the center with the full distance.
+    static func axisTicks(_ distMi: Double) -> [String] {
+        let d = distMi > 0 ? distMi : 26.2
+        let km = d * 1.609344
+        if d >= 13 {
+            func q(_ f: Double) -> String { "\(Int((km * f / 5).rounded()) * 5)K" }
+            return ["START", q(0.25), q(0.5), q(0.75), "FINISH"]
+        }
+        func q(_ f: Double) -> String { String(format: "%.1f", d * f) }
+        return ["START", q(0.25), q(0.5), q(0.75), "FINISH"]
+    }
+
+    private static func haversine(_ a: (lat: Double, lon: Double, ele: Double),
+                                  _ b: (lat: Double, lon: Double, ele: Double)) -> Double {
+        let R = 6_371_000.0
+        let toRad = { (x: Double) in x * .pi / 180 }
+        let dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon)
+        let la1 = toRad(a.lat), la2 = toRad(b.lat)
+        let hv = sin(dLat / 2) * sin(dLat / 2) + cos(la1) * cos(la2) * sin(dLon / 2) * sin(dLon / 2)
+        return 2 * R * asin(min(1, sqrt(hv)))
+    }
+}

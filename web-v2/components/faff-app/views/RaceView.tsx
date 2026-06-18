@@ -863,15 +863,16 @@ function distLabel(mi: number): string {
 function elevAxisTicks(distMi: number): string[] {
   const d = distMi > 0 ? distMi : 26.2;
   const km = d * 1.609344;
-  const mid = `${d.toFixed(1)} MI`;
-  // Marathon family (≥ ~13 mi): label the quarter/half/three-quarter in km.
+  // The center tick is the HALFWAY distance, NOT the full distance — the old
+  // `${d} MI` put "13.1 MI" at the center of a half (the finish) with "15K"
+  // to its right, which is spatially impossible. Quarter / half / three-quarter
+  // in km for the marathon family (familiar split markers), else in miles.
   if (d >= 13) {
     const q = (frac: number) => `${Math.round((km * frac) / 5) * 5}K`;
-    return ['START', q(0.25), mid, q(0.75), 'FINISH'];
+    return ['START', q(0.25), q(0.5), q(0.75), 'FINISH'];
   }
-  // Shorter races: quarter points in miles.
   const q = (frac: number) => `${(d * frac).toFixed(1)}`;
-  return ['START', q(0.25), mid, q(0.75), 'FINISH'];
+  return ['START', q(0.25), q(0.5), q(0.75), 'FINISH'];
 }
 /** 2026-06-09 · race-killer F2 — shared parser. The local 2-part branch
  *  forced H:MM, so a sub-hour goal typed "45:00" (10K) normalized to 45
