@@ -712,11 +712,11 @@ struct RaceDayView: View {
     /// range on the left, the position-based strategy cue ("Settle in" /
     /// "Empty the tank") as the sub-label, and the merged pace on the right.
     /// Each segment therefore carries BOTH the terrain pace and the race-arc
-    /// intent. The fastest (lowest s/mi) segment reads in race orange so the
-    /// surge stretch is obvious at a glance.
+    /// intent. Paces read in ONE weight — no per-segment colour. The old
+    /// "fastest segment in orange" accent landed on the early downhill, the one
+    /// place the plan says to stay CONTROLLED, so it read as "push here" (David
+    /// 2026-06-17). The cue carries the intent; the number carries the pace.
     private func coursePhasesCard(_ phases: [RacePacingPhase]) -> some View {
-        // Fastest (lowest s/mi) segment gets the accent — the surge.
-        let fastestIdx = phases.enumerated().min(by: { $0.element.pace_s_per_mi < $1.element.pace_s_per_mi })?.offset
         return VStack(spacing: 0) {
             ForEach(Array(phases.enumerated()), id: \.offset) { i, ph in
                 HStack(alignment: .center) {
@@ -739,7 +739,7 @@ struct RaceDayView: View {
                     Spacer(minLength: 12)
                     Text("\(paceNumber(from: ph.display))/mi")
                         .font(.display(18, weight: .bold)).tracking(-0.3)
-                        .foregroundStyle(i == fastestIdx ? Theme.race : Theme.txt)
+                        .foregroundStyle(Theme.txt)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 13)
                 if i < phases.count - 1 {
@@ -777,7 +777,7 @@ struct RaceDayView: View {
                     Spacer(minLength: 12)
                     Text("\(ph.pace)/mi")
                         .font(.display(18, weight: .bold)).tracking(-0.3)
-                        .foregroundStyle(i == 1 ? Theme.race : Theme.txt)
+                        .foregroundStyle(Theme.txt)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 13)
                 if i < planPhases.count - 1 {
