@@ -12,9 +12,10 @@
 //  Stack (matches RouteMap.tsx):
 //   · CartoDB dark_all @2x raster tiles · canReplaceMapContent hides Apple's
 //     own basemap so ONLY these tiles render (no Apple labels at all).
-//   · Per-mile pace bucketing · five quintile buckets across the run's own
-//     splits, colored warm→cool (fastest → slowest). Baseline coral underlay
-//     drawn first so the line shows even if the bucket walk degenerates.
+//   · Per-coordinate gradient · MKGradientPolylineRenderer (iOS 14+) with a
+//     color computed at every GPS point → pixel-smooth transitions, not
+//     flat-color segment steps. Baseline coral underlay drawn first so the
+//     line shows even if the gradient walk degenerates.
 //   · Endpoints · start = green ring, finish = coral dot.
 //   · Non-interactive · reads as a still image embedded in the card.
 //
@@ -87,7 +88,6 @@ struct RouteMapView: UIViewRepresentable {
     ]
 
     /// Continuous warm→cool ramp across the five bucket colors · t in 0…1.
-    /// Lets the pace line fade between buckets instead of hard-switching.
     static func rampColor(_ t: Double) -> UIColor {
         let cs = bucketColors
         let tt = max(0, min(1, t)) * Double(cs.count - 1)
@@ -115,8 +115,7 @@ struct RouteMapView: UIViewRepresentable {
         UIColor(Color(hex: 0xFC4D64)),   // Z5 · Warning red (palette)
     ]
 
-    /// Continuous Z1→Z5 ramp · t in 0…1. Lets HR drift fade across the zone
-    /// colors instead of hard-switching at zone edges.
+    /// Continuous Z1→Z5 ramp · t in 0…1.
     static func zoneRampColor(_ t: Double) -> UIColor {
         let cs = zoneColors
         let tt = max(0, min(1, t)) * Double(cs.count - 1)
@@ -139,15 +138,12 @@ struct RouteMapView: UIViewRepresentable {
         map.overrideUserInterfaceStyle = .dark
         map.backgroundColor = UIColor(Color(hex: 0x0A0E16))
 
-        // CartoDB Dark Matter raster tiles. canReplaceMapContent = true tells
-        // MapKit the overlay covers everything, so it skips drawing its own
-        // basemap (and labels) entirely — only the muted CartoDB tiles show.
         let style = showLabels ? "dark_all" : "dark_nolabels"
         let overlay = MKTileOverlay(
             urlTemplate: "https://a.basemaps.cartocdn.com/\(style)/{z}/{x}/{y}@2x.png"
         )
         overlay.canReplaceMapContent = true
-        overlay.tileSize = CGSize(width: 512, height: 512)   // @2x retina tiles
+        overlay.tileSize = CGSize(width: 512, height: 512)
         map.addOverlay(overlay, level: .aboveLabels)
 
         drawRoute(on: map)
@@ -156,19 +152,12 @@ struct RouteMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
-        // Re-draw the route on data change · keep the tile overlay in place.
         map.removeOverlays(map.overlays.filter { !($0 is MKTileOverlay) })
         map.removeAnnotations(map.annotations)
         drawRoute(on: map)
         hideAttribution(map)
     }
 
-    /// Hide MapKit's "Legal" attribution link. We replace the basemap entirely
-    /// with CartoDB tiles (canReplaceMapContent), so Apple's map data — and the
-    /// legal link it requires — isn't used; the web RouteMap shows no attribution
-    /// either (parity · David 2026-06-17). Apple exposes no public API to remove
-    /// it, so locate the label among the map's subviews and hide it. Re-run after
-    /// a tick because MapKit adds it lazily on first layout.
     private func hideAttribution(_ map: MKMapView) {
         func hide(in view: UIView) {
             for sub in view.subviews {
@@ -184,27 +173,27 @@ struct RouteMapView: UIViewRepresentable {
     private func drawRoute(on map: MKMapView) {
         guard coords.count >= 2 else { return }
 
-        // Baseline line drawn first (always visible · belt + suspenders). Match
-        // the color axis so it never peeks the wrong hue at segment joints:
-        // mid-zone green under an HR route, coral under a pace route.
-        let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases)
+        let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones,
+                                              splits: splits, phases: phases)
+
+        // Baseline underlay — always visible, correct hue for the axis.
         let baseline = ColoredPolyline(coordinates: coords, count: coords.count)
-        baseline.strokeColor = hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xD03F3F))
+        baseline.strokeColor = hrMode
+            ? RouteMapView.zoneColors[1]
+            : UIColor(Color(hex: 0xD03F3F))
         baseline.strokeWidth = 5
         map.addOverlay(baseline, level: .aboveLabels)
 
-        // Pace-graded line · many short segments, each a continuously
-        // interpolated color, so the buckets fade into each other instead of
-        // hard-switching (David 2026-06-16). Consecutive segments share a
-        // boundary vertex and round caps blend the joints.
-        for seg in gradientSegments() where seg.coords.count >= 2 {
-            let line = ColoredPolyline(coordinates: seg.coords, count: seg.coords.count)
-            line.strokeColor = seg.color
-            line.strokeWidth = 6
-            map.addOverlay(line, level: .aboveLabels)
+        // Gradient line — one polyline with a color at every GPS coordinate.
+        // MKGradientPolylineRenderer (iOS 14+) pixel-interpolates between them,
+        // so transitions are smooth regardless of GPS point density.
+        if let gd = gradientData() {
+            let gradLine = GradientPolyline(coordinates: coords, count: coords.count)
+            gradLine.gradientColors = gd.colors
+            gradLine.gradientLocations = gd.locations
+            map.addOverlay(gradLine, level: .aboveLabels)
         }
 
-        // Endpoints last · annotations always render above overlays.
         let start = RouteEndpoint(coordinate: coords.first!, kind: .start)
         let finish = RouteEndpoint(coordinate: coords.last!, kind: .finish)
         map.addAnnotations([start, finish])
@@ -218,60 +207,60 @@ struct RouteMapView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    // MARK: - Pace gradient
+    // MARK: - Gradient data
 
-    /// Short colored segments along the route, colored by what mattered in the
-    /// run. Three axes (David 2026-06-17):
-    ///   · structured (phases ≥2 · intervals / tempo) → PACE per phase. Each rep
-    ///     reads at its true pace (a 6:45 rep stays red even though its mile
-    ///     averages ~8:00 with the recovery jog), with a SHORT eased boundary so
-    ///     the join to the recovery fades instead of hard-switching.
-    ///   · steady + HR + zones (easy / long / recovery) → HR ZONE per mile,
-    ///     smoothly interpolated, on the zone palette.
-    ///   · else → per-mile PACE, smoothly interpolated, on the pace palette.
-    /// Segments are short and share boundary vertices; with a continuous value
-    /// function the colors FADE between buckets ("the small gradient transition
-    /// needs to be on all maps" · David 2026-06-17), without re-washing reps.
-    private func gradientSegments() -> [(coords: [CLLocationCoordinate2D], color: UIColor)] {
-        guard coords.count >= 2 else { return [] }
+    /// Compute one UIColor per GPS coordinate, plus its normalized location
+    /// (0…1) along the route. Fed directly into MKGradientPolylineRenderer so
+    /// MapKit interpolates the colors pixel-by-pixel between GPS points — no
+    /// discrete segment steps, no hard color joins.
+    private func gradientData() -> (colors: [UIColor], locations: [CGFloat])? {
+        guard coords.count >= 2 else { return nil }
 
-        // Cumulative distance per GPS point.
         var dist = [Double](repeating: 0, count: coords.count)
         for i in 1..<coords.count { dist[i] = dist[i - 1] + haversineMi(coords[i - 1], coords[i]) }
         let total = dist.last ?? 0
-        guard total > 0 else { return [] }
+        guard total > 0 else { return nil }
 
-        // valueFn(d) → scalar at distance d · colorFn(value) → UIColor.
         var valueFn: ((Double) -> Double)?
         var colorFn: ((Double) -> UIColor)?
 
         let validPhases = phases.filter { $0.mi > 0 && $0.sec > 0 }
         if validPhases.count >= 2 {
-            // Structured · phase pace, SHARP with a short eased boundary.
+            // Structured · phase pace with short eased boundary.
             let phaseSum = validPhases.reduce(0.0) { $0 + $1.mi }
             let scale = phaseSum > 0 ? total / phaseSum : 1
             var spans: [(start: Double, end: Double, v: Double)] = []
             var cum = 0.0
-            for p in validPhases { let s = cum; cum += p.mi * scale; spans.append((s, cum, Double(p.sec))) }
-            let w = max(0.05, min(0.12, total * 0.022))  // boundary fade · short but multi-segment
+            for p in validPhases {
+                let s = cum; cum += p.mi * scale
+                spans.append((s, cum, Double(p.sec)))
+            }
+            let w = max(0.05, min(0.12, total * 0.022))
             valueFn = { d in RouteMapView.phaseValue(d, spans, w) }
             let vals = validPhases.map { Double($0.sec) }.sorted()
             let lo = vals[Int(Double(vals.count - 1) * 0.1)]
             let hi = vals[Int(Double(vals.count - 1) * 0.9)]
             let span = max(1, hi - lo)
             colorFn = { v in RouteMapView.rampColor((v - lo) / span) }
-        } else if RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases) {
-            // Steady · per-mile HR → zone position, SMOOTH, on the zone palette.
-            let hrs = RouteMapView.perMileFilled(splits.map { ($0.hr).flatMap { $0 > 0 ? Double($0) : nil } })
-            guard !hrs.isEmpty else { return [] }
+
+        } else if RouteMapView.usesHrZones(effort: effort, hrZones: hrZones,
+                                            splits: splits, phases: phases) {
+            // Steady · per-mile HR → zone position.
+            let hrs = RouteMapView.perMileFilled(
+                splits.map { ($0.hr).flatMap { $0 > 0 ? Double($0) : nil } })
+            guard !hrs.isEmpty else { return nil }
             let zones = hrZones
             let denom = Double(max(1, zones.count - 1))
             valueFn = { d in RouteMapView.mileSmooth(d, hrs) }
-            colorFn = { hr in RouteMapView.zoneRampColor(RouteMapView.zonePosition(hr, zones) / denom) }
+            colorFn = { hr in
+                RouteMapView.zoneRampColor(RouteMapView.zonePosition(hr, zones) / denom)
+            }
+
         } else {
-            // Per-mile PACE, SMOOTH, on the pace palette.
-            let paces = RouteMapView.perMileFilled(splits.map { paceToSec($0.pace).flatMap { $0 > 0 ? Double($0) : nil } })
-            guard !paces.isEmpty else { return [] }
+            // Per-mile PACE, smooth.
+            let paces = RouteMapView.perMileFilled(
+                splits.map { paceToSec($0.pace).flatMap { $0 > 0 ? Double($0) : nil } })
+            guard !paces.isEmpty else { return nil }
             let sorted = paces.sorted()
             let lo = sorted[Int(Double(sorted.count - 1) * 0.1)]
             let hi = sorted[Int(Double(sorted.count - 1) * 0.9)]
@@ -280,30 +269,15 @@ struct RouteMapView: UIViewRepresentable {
             colorFn = { v in RouteMapView.rampColor((v - lo) / span) }
         }
 
-        guard let value = valueFn, let color = colorFn else { return [] }
+        guard let value = valueFn, let color = colorFn else { return nil }
 
-        // Fine segments · ~one per 0.025 mi so a color transition spans several
-        // segments and renders as a visible SHORT fade, not a hard line (David
-        // 2026-06-17: "they can be short, but I don't like the hardlines"). The
-        // old fixed 90 made each segment ~0.067 mi on a 6 mi route, so an eased
-        // boundary covered barely one segment → still read hard. Bounded 100…320
-        // (limited in practice by GPS point density).
-        let maxSegs = min(320, max(100, Int(total / 0.025)))
-        let chunk = max(1, Int(ceil(Double(coords.count - 1) / Double(maxSegs))))
-        var segs: [(coords: [CLLocationCoordinate2D], color: UIColor)] = []
-        var i = 0
-        while i < coords.count - 1 {
-            let end = min(i + chunk, coords.count - 1)
-            let mid = (dist[i] + dist[end]) / 2
-            segs.append((Array(coords[i...end]), color(value(mid))))
-            i = end
-        }
-        return segs
+        // One color per GPS coordinate + its normalized distance location.
+        let colors = dist.map { color(value($0)) }
+        let locations = dist.map { CGFloat($0 / total) }
+        return (colors, locations)
     }
 
-    /// HR (bpm) → continuous zone position 0…(n-1): zone index + fraction
-    /// through that zone's band. Drives the zone ramp so HR drift inside Z2
-    /// shifts gently and crossing into Z3 lands on amber.
+    /// HR (bpm) → continuous zone position 0…(n-1).
     private static func zonePosition(_ hr: Double, _ zones: [HRZoneRange]) -> Double {
         guard !zones.isEmpty else { return 0 }
         for (i, z) in zones.enumerated() {
@@ -318,8 +292,6 @@ struct RouteMapView: UIViewRepresentable {
         return Double(zones.count - 1)
     }
 
-    /// Forward-then-backward fill so every mile has a value (a missing split
-    /// borrows its nearest neighbor). Returns [] if nothing is fillable.
     private static func perMileFilled(_ raw: [Double?]) -> [Double] {
         var filled = raw
         var last: Double? = nil
@@ -332,9 +304,6 @@ struct RouteMapView: UIViewRepresentable {
         return out.count == filled.count ? out : []
     }
 
-    /// SMOOTH per-mile value · linear interpolation between mile CENTERS (mile i
-    /// centered at i + 0.5), clamped at the ends. Adjacent miles on an easy/long
-    /// run are close, so this reads as a continuous gradient.
     private static func mileSmooth(_ d: Double, _ vals: [Double]) -> Double {
         guard let first = vals.first, let lastV = vals.last else { return 0 }
         let x = d - 0.5
@@ -344,10 +313,9 @@ struct RouteMapView: UIViewRepresentable {
         return vals[i] + (vals[i + 1] - vals[i]) * (x - Double(i))
     }
 
-    /// SHARP-with-eased-boundary value for phases · the phase's value across its
-    /// body, ramping to the neighbor only within ±w/2 of each internal boundary.
-    /// Keeps a 6:45 rep true-red through its length, fading only at the join.
-    private static func phaseValue(_ d: Double, _ spans: [(start: Double, end: Double, v: Double)], _ w: Double) -> Double {
+    private static func phaseValue(_ d: Double,
+                                   _ spans: [(start: Double, end: Double, v: Double)],
+                                   _ w: Double) -> Double {
         guard !spans.isEmpty else { return 0 }
         var idx = spans.count - 1
         for (k, s) in spans.enumerated() where d <= s.end + 0.0001 { idx = k; break }
@@ -371,6 +339,16 @@ struct RouteMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let tile = overlay as? MKTileOverlay {
                 return MKTileOverlayRenderer(tileOverlay: tile)
+            }
+            if let line = overlay as? GradientPolyline {
+                // MKGradientPolylineRenderer (iOS 14+): pixel-smooth gradient
+                // between every GPS point — no hard segment joins.
+                let r = MKGradientPolylineRenderer(polyline: line)
+                r.setColors(line.gradientColors, locations: line.gradientLocations)
+                r.lineWidth = 6
+                r.lineCap = .round
+                r.lineJoin = .round
+                return r
             }
             if let line = overlay as? ColoredPolyline {
                 let r = MKPolylineRenderer(polyline: line)
@@ -396,14 +374,11 @@ struct RouteMapView: UIViewRepresentable {
             view.backgroundColor = .clear
             view.centerOffset = .zero
 
-            // Solid dot with a thin white ring · start green, finish coral.
-            // (Was a green ring around a near-black center, which David found
-            // weird · 2026-06-16.) Symmetric with the finish marker.
             let dot = UIView(frame: view.bounds)
             dot.layer.cornerRadius = size / 2
             dot.backgroundColor = ep.kind == .start
-                ? UIColor(Color(hex: 0x3EBD41))   // start · Success green (palette)
-                : UIColor(Color(hex: 0xFC4D64))   // finish · Warning red (palette)
+                ? UIColor(Color(hex: 0x3EBD41))
+                : UIColor(Color(hex: 0xFC4D64))
             dot.layer.borderColor = UIColor.white.cgColor
             dot.layer.borderWidth = 1.5
             view.addSubview(dot)
@@ -421,11 +396,18 @@ struct PhaseSample {
 
 // MARK: - Overlay / annotation carriers
 
-/// MKPolyline that carries its own stroke color + width so the single
-/// delegate can render many differently-colored pace segments.
+/// Single-color baseline underlay (belt-and-suspenders, drawn under gradient).
 final class ColoredPolyline: MKPolyline {
     var strokeColor: UIColor = .systemRed
     var strokeWidth: CGFloat = 5
+}
+
+/// One polyline carrying per-GPS-point colors for MKGradientPolylineRenderer.
+/// gradientColors[i] is the color at coordinate[i]; gradientLocations[i] is
+/// the normalized distance (0…1) of that point along the full route.
+final class GradientPolyline: MKPolyline {
+    var gradientColors: [UIColor] = []
+    var gradientLocations: [CGFloat] = []
 }
 
 final class RouteEndpoint: NSObject, MKAnnotation {
@@ -440,7 +422,6 @@ final class RouteEndpoint: NSObject, MKAnnotation {
 
 // MARK: - Pace + distance helpers (mirror RouteMap.tsx)
 
-/// "7:42" → 462 seconds. nil for missing/garbled paces.
 private func paceToSec(_ s: String?) -> Int? {
     guard let s, let colon = s.firstIndex(of: ":") else { return nil }
     let mm = Int(s[s.startIndex..<colon])
