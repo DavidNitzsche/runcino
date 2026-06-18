@@ -150,7 +150,9 @@ need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF0DF47\)'  'watch Faff.bonus = #F0
 # #E88021 retired app-wide; no orange anywhere.
 #   FF5722 / FF7A45 / E88021 · race+tempo -> Redish #D03F3F
 RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D63E4E|EE6038|FF8870|34D058|5FD06A|27E087|FF5722|FF7A45|E88021|F43F5E|F5C518|F5A518|FFCE8A|FFB24D|FF6A6A|FF5A52'
-HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→'
+# gstop · hero gradient stop ingredient (FaffEffort.heroGradient 2026-06-18).
+# Same exemption logic as FaffMesh: blend ingredients, not semantic colors.
+HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→|gstop'
 
 hits=$(grep -rinE "(#|0x)($RETIRED)" \
   "$ROOT/web-v2/app" "$ROOT/web-v2/components" "$ROOT/web-v2/lib" \

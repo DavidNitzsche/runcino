@@ -304,6 +304,47 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Horizontal gradient for hero Oswald display text (leading → trailing).
+    /// Designer gradient text system (2026-06-18): multi-hue blends across
+    /// each effort word. Gradient stop hexes are CI-exempt (gstop marker)
+    /// — they are blend ingredients, not semantic accent colors.
+    var heroGradient: LinearGradient {
+        switch self {
+        case .recovery:
+            return LinearGradient(
+                colors: [Color(hex: 0x27B4E0), Color(hex: 0x48B3B5)], // gstop
+                startPoint: .leading, endPoint: .trailing)
+        case .easy:
+            return LinearGradient(
+                colors: [Color(hex: 0x9013FE), Color(hex: 0x008FEC)], // gstop
+                startPoint: .leading, endPoint: .trailing)
+        case .long:
+            return LinearGradient(
+                colors: [Color(hex: 0xF5C518), Color(hex: 0xF3AD38)], // gstop
+                startPoint: .leading, endPoint: .trailing)
+        case .tempo:
+            return LinearGradient(
+                colors: [Color(hex: 0xFF8847), Color(hex: 0xF3AD38)], // gstop
+                startPoint: .leading, endPoint: .trailing)
+        case .intervals:
+            return LinearGradient(
+                colors: [Color(hex: 0xFC4D64), Color(hex: 0xF3AD38)],
+                startPoint: .leading, endPoint: .trailing)
+        case .rest:
+            return LinearGradient(
+                colors: [Color(hex: 0x8A90A0)],
+                startPoint: .leading, endPoint: .trailing)
+        case .race:
+            return LinearGradient(
+                stops: [
+                    .init(color: Color(hex: 0xFFD27A), location: 0),
+                    .init(color: Color(hex: 0xFF7A45), location: 0.5), // gstop
+                    .init(color: Color(hex: 0xFC4D64), location: 1),
+                ],
+                startPoint: .leading, endPoint: .trailing)
+        }
+    }
+
     /// 6-color mesh palette [c1, c2, c3, c4, c5, mBase] painting the
     /// animated background. Cool to hot. mBase is the deep wash behind the
     /// blobs. Per locked design: Today re-tints to the selected day's effort
