@@ -169,7 +169,7 @@ struct RaceDayView: View {
                        pts.count > 5,
                        pts.contains(where: { $0.ele != nil }) {
                         section(title: "ELEVATION",
-                                right: CourseElevationProfile.startFinishLabel(pts)) {
+                                right: geo.elevation_gain_ft.map { "↗ \(Int($0)) FT GAIN" }) {
                             VStack(alignment: .leading, spacing: 12) {
                                 CourseElevationProfile(trackPoints: pts,
                                                        distanceMi: detail?.race.distance_mi ?? 0)
@@ -1094,14 +1094,11 @@ struct RaceDayView: View {
         return String(format: "%d:%02d", perMile / 60, perMile % 60)
     }
     private var courseStat: String {
-        var parts: [String] = []
-        if let d = detail?.race.distance_mi, d > 0 { parts.append(String(format: "%.1f MI", d)) }
-        // Elevation lives in the header next to the distance (David 2026-06-17) —
-        // the recomputed (noise-thresholded) course gain, not stranded below the map.
-        if let elev = detail?.course_geometry?.elevation_gain_ft, elev > 0 {
-            parts.append("↗ \(Int(elev)) FT")
-        }
-        return parts.joined(separator: " · ")
+        // Distance only · total gain moved to the ELEVATION header where it
+        // belongs (and reads as total climb, not the net start→finish that
+        // confused — David 2026-06-17).
+        guard let d = detail?.race.distance_mi, d > 0 else { return "" }
+        return String(format: "%.1f MI", d)
     }
 
     /// Crowd-sourced provenance line shown under the route. Drawn only when

@@ -657,8 +657,13 @@ struct RaceDetailsCard: View {
             }
         }
         var multiline: Bool {
-            self == .notes || self == .weather || self == .spectators
-                || self == .gearCheck || self == .pacers
+            // Anything that can be a phrase/sentence wraps (label on top,
+            // full-width value below) so it NEVER truncates. Only the genuinely
+            // short facts (start time, bib) and the website link stay one-line.
+            switch self {
+            case .start, .bib, .website: return false
+            default: return true
+            }
         }
     }
 
@@ -762,11 +767,11 @@ struct RaceDetailsCard: View {
                         Text("Add").font(.body(13, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.3))
                         Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.3))
                     } else {
-                        Text(f == .website ? Self.prettyHost(v) : v)
+                        Text(f == .website ? Self.hostOnly(v) : v)
                             .font(.body(15, weight: .bold))
                             .foregroundStyle(f == .website ? Theme.race : Theme.txt)
                             .lineLimit(1)
-                            .truncationMode(f == .website ? .middle : .tail)
+                            .truncationMode(.tail)
                     }
                 }
                 .contentShape(Rectangle())
@@ -862,6 +867,15 @@ struct RaceDetailsCard: View {
         for p in ["https://", "http://"] where s.lowercased().hasPrefix(p) { s = String(s.dropFirst(p.count)) }
         if s.lowercased().hasPrefix("www.") { s = String(s.dropFirst(4)) }
         if s.hasSuffix("/") { s = String(s.dropLast()) }
+        return s
+    }
+
+    /// Just the domain for a tappable link label — "inmotionevents.com" — so it
+    /// never trails off with a long path. The full URL still opens via
+    /// normalizedURL (David 2026-06-17: "don't list the URL").
+    static func hostOnly(_ raw: String) -> String {
+        var s = prettyHost(raw)
+        if let slash = s.firstIndex(of: "/") { s = String(s[..<slash]) }
         return s
     }
 }
