@@ -543,22 +543,11 @@ struct TargetsProjectionPanel: View {
 
             Spacer(minLength: 8)
 
-            // CENTER · gap connector
-            VStack(spacing: 0) {
-                Text("GAP")
-                    .font(.body(8.5, weight: .extraBold))
-                    .tracking(1.0)
-                    .foregroundStyle(Color(hex: 0x737985))
-                Text(improveSec.map { "−\(projClock($0))" } ?? "—")
-                    .font(.display(17, weight: .semibold))
-                    .foregroundStyle(st.accent)
-                    .monospacedDigit()
-                    .padding(.top, 2)
-                GapArrow(accent: st.accent)
-                    .padding(.top, 3)
-            }
-            .padding(.horizontal, 8)
-            .fixedSize()
+            // CENTER · gap connector — arrow only
+            GapArrow(accent: st.accent)
+                .frame(width: 52, height: 11)
+                .padding(.horizontal, 12)
+                .padding(.top, 24)
 
             Spacer(minLength: 8)
 
