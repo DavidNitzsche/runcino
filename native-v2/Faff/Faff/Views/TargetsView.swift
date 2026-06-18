@@ -787,9 +787,12 @@ struct TargetsView: View {
     private func roadNextQuality(_ nq: TrainingNextQuality) -> String {
         let dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
         let day = (nq.dow >= 0 && nq.dow < 7) ? dows[nq.dow] : ""
-        let name = (nq.label?.isEmpty == false) ? nq.label! : nq.type.capitalized
-        let miStr = nq.mi > 0 ? " · \(road1(nq.mi)) mi" : ""
-        return day.isEmpty ? "\(name)\(miStr)" : "\(name) · \(day)\(miStr)"
+        // Plain coach voice — the workout TYPE word (Tempo / Intervals / Long),
+        // not the jargon breakdown ("2 mi WU · 4 mi @ T · 2 mi CD"). The full
+        // structure lives in the plan; this is a one-line glance (David 2026-06-17).
+        let typeWord = FaffEffort.fromType(nq.type).title
+        let miStr = nq.mi > 0 ? "\(road1(nq.mi)) mi" : ""
+        return [typeWord, day, miStr].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     private func raceTile(_ race: RaceListItem) -> some View {

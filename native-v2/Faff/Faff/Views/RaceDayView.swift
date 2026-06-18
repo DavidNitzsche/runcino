@@ -140,13 +140,11 @@ struct RaceDayView: View {
                             .padding(.top, 30)
                         }
 
-                        // HEAT — the decision tree at the start-line temp.
-                        if !plan.heatRules.isEmpty {
-                            section(title: "HEAT", right: "AT THE GUN") {
-                                heatTreeCard(plan.heatRules)
-                            }
-                            .padding(.top, 30)
-                        }
+                        // HEAT decision-tree removed (David 2026-06-17): a generic
+                        // "if 75°F add 19s · consider the B plan" table is
+                        // premature and plants doubt months out. The smart move is
+                        // to pull the ACTUAL race-week forecast and give one
+                        // concrete adjustment — a forecast-driven note, future work.
 
                         // WARM-UP — the gun-anchored timeline.
                         if !plan.warmup.isEmpty {
@@ -1183,11 +1181,11 @@ struct RaceDayView: View {
     /// for past races.
     private var showMorningBrief: Bool {
         guard detail?.race.is_past != true else { return false }
-        if let d = detail?.race.days, d >= 0, d <= 14 { return true }
-        switch (detail?.proximity ?? "").lowercased() {
-        case "race-week", "sharpening": return true
-        default: return false
-        }
+        // Race-week only. The warm-up timeline + B-goal contingency are
+        // race-morning tactical — premature (and doubt-inducing) months out
+        // (David 2026-06-17). Tightened from the old 14-day / "sharpening" gate.
+        if let d = detail?.race.days, d >= 0, d <= 7 { return true }
+        return (detail?.proximity ?? "").lowercased() == "race-week"
     }
 
     /// Format seconds-per-mile → "m:ss". Shared by the B-goal + heat cards
@@ -1260,49 +1258,10 @@ struct RaceDayView: View {
         return "If " + clauses.joined(separator: " or ") + ":"
     }
 
-    /// HEAT · the decision tree at the start-line temp. One row per
-    /// threshold (65 / 70 / 75 / 80°F), each with the seconds to add and the
-    /// coach note. Hotter rows tint toward warn so the escalation reads.
-    private func heatTreeCard(_ rules: [HeatRule]) -> some View {
-        VStack(spacing: 0) {
-            ForEach(Array(rules.enumerated()), id: \.offset) { i, r in
-                let hot = (r.ifStartTempAtLeastF ?? 0) >= 75
-                HStack(alignment: .center) {
-                    Text("\(r.ifStartTempAtLeastF ?? 0)°F+")
-                        .font(.display(17, weight: .bold)).tracking(-0.3)
-                        .foregroundStyle(hot ? Theme.over : Theme.txt)
-                        .frame(width: 58, alignment: .leading)
-                    Text(heatNoteShort(r))
-                        .font(.body(11, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.7))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 10)
-                    Text("+\(r.addSPerMi ?? 0)s")
-                        .font(.body(13, weight: .extraBold))
-                        .foregroundStyle(hot ? Theme.over : Theme.goal)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 12)
-                if i < rules.count - 1 {
-                    Divider().background(Color.white.opacity(0.08))
-                }
-            }
-        }
-        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
-    }
-
-    /// The composer's heat note carries the "65°F at the gun · " prefix; the
-    /// row already shows the temp, so strip the redundant lead and keep the
-    /// coaching tail.
-    private func heatNoteShort(_ r: HeatRule) -> String {
-        guard let note = r.note, !note.isEmpty else {
-            return "Add to every split. The heat is physics, not fitness."
-        }
-        if let dot = note.range(of: " · ") {
-            return String(note[dot.upperBound...])
-        }
-        return note
-    }
+    // heatTreeCard / heatNoteShort removed 2026-06-17 — the generic heat
+    // decision tree is gone (premature + doubt-inducing months out). The future
+    // move is a forecast-driven note (real race-week weather → one adjustment);
+    // the HeatRule model is kept for that.
 
     /// WARM-UP · the gun-anchored timeline. The clock time leads when known
     /// (server emits "6:15 AM" off the gun); otherwise the minutes-before
