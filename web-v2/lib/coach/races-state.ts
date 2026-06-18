@@ -30,6 +30,10 @@ export interface RaceRow {
   // snake_case fallbacks for older rows written before the naming settled.
   gun_time: string | null;   // '7:00 AM' / '7:00' / null if not entered
   wave: string | null;       // 'Wave A' / 'Corral 1' / null
+  bib: string | null;        // bib number once assigned
+  website: string | null;    // official race site (meta.officialUrl)
+  packet_pickup: string | null; // packet pickup · where + when
+  shuttle: string | null;    // shuttle / parking notes
   // Past-race enrichment from the matching run in the log:
   matchedRun?: {
     activity_id: string;
@@ -102,6 +106,10 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       pb: m.pb ?? null,
       gun_time: m.startTime ?? m.gun_time ?? m.start_time ?? null,
       wave: m.wave ?? null,
+      bib: m.bib ?? null,
+      website: m.officialUrl ?? m.website ?? null,
+      packet_pickup: m.packetPickup ?? m.packet_pickup ?? null,
+      shuttle: m.shuttle ?? null,
     };
   });
 

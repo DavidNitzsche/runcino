@@ -54,9 +54,9 @@ struct RaceEditSheet: View {
     @State private var fuelCadence: String = ""   // every N min
     @State private var fuelRate: String = ""      // optional direct g/hr
 
-    // Race P5 · logistics. `shuttle` / `packetPickup` / `officialUrl` aren't
-    // surfaced by the detail GET yet, so they start blank and are write-only
-    // (PATCH preserves untouched meta either way). `location` round-trips.
+    // Race P5 · logistics. `shuttle` / `packetPickup` / `officialUrl` now
+    // round-trip — the detail GET surfaces them (races-state) so prefill()
+    // seeds them from the race. `location` round-trips too.
     @State private var shuttle: String = ""
     @State private var packetPickup: String = ""
     @State private var officialUrl: String = ""
@@ -181,10 +181,10 @@ struct RaceEditSheet: View {
     }
 
     /// Seed the form from the caller's instant values first, then refine with
-    /// the fresh GET so goal / wave / start-time reflect the server. goal_safe
-    /// and bib are not surfaced by the detail GET, so they only prefill from a
-    /// seed if the caller had them — otherwise they start blank and the runner
-    /// can set them (PATCH preserves untouched meta fields either way).
+    /// the fresh GET so goal / wave / start-time / bib / website / packet /
+    /// shuttle reflect the server. goal_safe is the one field the detail GET
+    /// doesn't surface, so it only prefills from a seed if the caller had it —
+    /// otherwise it starts blank (PATCH preserves untouched meta either way).
     private func prefill() async {
         guard !loaded else { return }
         // 1 · instant seed from the caller.
@@ -202,6 +202,10 @@ struct RaceEditSheet: View {
                 if let w = r.wave, !w.isEmpty { wave = w }
                 if let st = r.gun_time, !st.isEmpty { startTime = st }
                 if let loc = r.location, !loc.isEmpty { location = loc }
+                if let b = r.bib, !b.isEmpty { bib = b }
+                if let u = r.website, !u.isEmpty { officialUrl = u }
+                if let pp = r.packet_pickup, !pp.isEmpty { packetPickup = pp }
+                if let sh = r.shuttle, !sh.isEmpty { shuttle = sh }
             }
             // Race P5 · prefill fuel from the resolved `fueling` block, but
             // only when the runner has actually entered fuel (isDefault ==

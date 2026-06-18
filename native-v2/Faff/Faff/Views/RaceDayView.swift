@@ -185,6 +185,19 @@ struct RaceDayView: View {
                         .padding(.top, 30)
                     }
 
+                    // 5 · THE DETAILS — the practical race-day facts: start
+                    // time, corral, where, the official site. They live in the
+                    // editor, but on race morning you want them in one place,
+                    // not buried in settings (David 2026-06-17: "feeling
+                    // confident and knowing what you need to know"). Surfaces
+                    // whatever the runner has entered + invites filling the rest.
+                    if detail?.race.is_past != true {
+                        section(title: "THE DETAILS", right: nil) {
+                            theDetailsCard()
+                        }
+                        .padding(.top, 30)
+                    }
+
                     // Past race · jump into the matched run for full splits/HR.
                     if detail?.race.is_past == true,
                        let mr = detail?.race.matchedRun,
@@ -830,6 +843,129 @@ struct RaceDayView: View {
         .padding(14)
         .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    // MARK: - THE DETAILS · race-day logistics (race P5)
+
+    private struct DetailRow {
+        let label: String
+        let value: String
+        let url: URL?   // non-nil → render as a tappable link (the website)
+    }
+
+    /// The practical facts the runner has entered, in race-morning order.
+    /// Only rows with a value render; the website becomes a tappable link.
+    private var detailRows: [DetailRow] {
+        var rows: [DetailRow] = []
+        func add(_ label: String, _ value: String?) {
+            let v = value?.trimmingCharacters(in: .whitespaces) ?? ""
+            if !v.isEmpty { rows.append(DetailRow(label: label, value: v, url: nil)) }
+        }
+        add("START", detail?.race.gun_time)
+        add("CORRAL", detail?.race.wave)
+        add("BIB", detail?.race.bib)
+        add("WHERE", detail?.race.location)
+        add("PACKET PICKUP", detail?.race.packet_pickup)
+        add("SHUTTLE", detail?.race.shuttle)
+        if let raw = detail?.race.website?.trimmingCharacters(in: .whitespaces), !raw.isEmpty {
+            rows.append(DetailRow(label: "WEBSITE", value: prettyHost(raw), url: normalizedURL(raw)))
+        }
+        return rows
+    }
+
+    private func theDetailsCard() -> some View {
+        let rows = detailRows
+        return VStack(alignment: .leading, spacing: 0) {
+            if rows.isEmpty {
+                Text("Start time, corral, the race website — keep them here so it's all in one place on race morning.")
+                    .font(.body(13, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+            } else {
+                ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
+                    detailRowView(row)
+                    if i < rows.count - 1 {
+                        Divider().background(Color.white.opacity(0.08))
+                    }
+                }
+            }
+            // Edit / add affordance · opens the same editor as the header pencil.
+            Divider().background(Color.white.opacity(0.08))
+            Button { showEditSheet = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(rows.isEmpty ? "Add details" : "Edit details")
+                        .font(.body(12, weight: .extraBold))
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(Theme.txt.opacity(0.7))
+                .padding(14)
+            }
+            .buttonStyle(.plain)
+        }
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func detailRowView(_ row: DetailRow) -> some View {
+        if let url = row.url {
+            Link(destination: url) {
+                HStack {
+                    SpecLabel(text: row.label, size: 10, tracking: 1.5,
+                              color: Theme.txt.opacity(0.55))
+                    Spacer(minLength: 12)
+                    HStack(spacing: 5) {
+                        Text(row.value)
+                            .font(.body(15, weight: .bold))
+                            .foregroundStyle(Theme.race)
+                            .lineLimit(1).truncationMode(.middle)
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Theme.race)
+                    }
+                }
+                .padding(14)
+            }
+            .buttonStyle(.plain)
+        } else {
+            HStack {
+                SpecLabel(text: row.label, size: 10, tracking: 1.5,
+                          color: Theme.txt.opacity(0.55))
+                Spacer(minLength: 12)
+                Text(row.value)
+                    .font(.body(15, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+                    .multilineTextAlignment(.trailing)
+            }
+            .padding(14)
+        }
+    }
+
+    /// Normalize a user-typed site into a tappable URL · prepend https:// when
+    /// no scheme. nil when it still can't form a URL (the row then stays plain).
+    private func normalizedURL(_ raw: String) -> URL? {
+        var s = raw.trimmingCharacters(in: .whitespaces)
+        if s.isEmpty { return nil }
+        let low = s.lowercased()
+        if !low.hasPrefix("http://") && !low.hasPrefix("https://") { s = "https://" + s }
+        return URL(string: s)
+    }
+
+    /// Display host for a site link — strip scheme / "www." / trailing slash so
+    /// "https://www.sandiego-marathon.com/" reads "sandiego-marathon.com".
+    private func prettyHost(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespaces)
+        for p in ["https://", "http://"] where s.lowercased().hasPrefix(p) { s = String(s.dropFirst(p.count)) }
+        if s.lowercased().hasPrefix("www.") { s = String(s.dropFirst(4)) }
+        if s.hasSuffix("/") { s = String(s.dropLast()) }
+        return s
     }
 
     // Note: removed `mapPlaceholder`, `elevationPlaceholder`, `fuelLine`,
