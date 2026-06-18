@@ -183,12 +183,13 @@ enum HealthSeed {
         }
 
         // HRV CV · derived client-side from the REAL hrv series (Plews CV).
-        // Value-only · no on-device band (the research-grounded destabilizing
-        // threshold lives server-side and we won't invent one here).
+        // Rolling 7-day CV series gives a trend of how stable HRV has been.
+        // No on-device band — the destabilizing threshold lives server-side.
         if let cv = hrvCV(healthState?.hrvSeries ?? []) {
+            let cvSeries = hrvCVSeries(healthState?.hrvSeries ?? [])
             out.append(metric(
                 id: "hrv_cv", label: "HRV CV", value: String(format: "%.1f", cv), unit: " %",
-                history: [], chart28: [],
+                history: Array(cvSeries.suffix(14)), chart28: realChart(cvSeries),
                 target: nil, status: .neutral, direction: .flat,
                 caption: "variability · 14-day",
                 coach: "Night-to-night HRV spread. A rising spread can precede an HRV drop."))
@@ -254,15 +255,27 @@ enum HealthSeed {
                 direction: target.map { Double(m) < $0 ? .down : .flat } ?? .flat,
                 caption: captionTarget, coach: coach)
         }
+        // Percentage-based targets: Deep ~16% / REM ~21% of true sleep time.
+        // Total sleep = deep + rem + light (excludes awake, which is time-in-bed awake).
+        // Hardcoded minute targets fail short/long sleepers; percentages stay proportional.
+        let totalSleepMin = (s.deepMin ?? 0) + (s.remMin ?? 0) + (s.lightMin ?? 0)
+        let deepTarget  = totalSleepMin > 0 ? max(60, Int(Double(totalSleepMin) * 0.16)) : 75
+        let deepWarn    = totalSleepMin > 0 ? max(52, Int(Double(totalSleepMin) * 0.13)) : 70
+        let remTarget   = totalSleepMin > 0 ? max(72, Int(Double(totalSleepMin) * 0.21)) : 100
+        let remWarn     = totalSleepMin > 0 ? max(61, Int(Double(totalSleepMin) * 0.17)) : 90
         return [
-            tile("deep", "DEEP", s.deepMin, s.deepSeries, target: 75, warnBelow: 70,
-                 captionTarget: "target 1:15",
-                 coach: (s.deepMin ?? 99) < 75 ? "Light on deep sleep · an earlier night usually helps."
-                                               : "Deep sleep on target."),
-            tile("rem", "REM", s.remMin, s.remSeries, target: 100, warnBelow: 90,
-                 captionTarget: "target 1:40",
-                 coach: (s.remMin ?? 999) < 100 ? "REM tracks total sleep · it returns when hours do."
-                                                : "REM in a healthy range."),
+            tile("deep", "DEEP", s.deepMin, s.deepSeries,
+                 target: Double(deepTarget), warnBelow: deepWarn,
+                 captionTarget: "target \(clock(deepTarget))",
+                 coach: (s.deepMin ?? 99) < deepTarget
+                     ? "Light on deep sleep · an earlier night usually helps."
+                     : "Deep sleep on target."),
+            tile("rem", "REM", s.remMin, s.remSeries,
+                 target: Double(remTarget), warnBelow: remWarn,
+                 captionTarget: "target \(clock(remTarget))",
+                 coach: (s.remMin ?? 999) < remTarget
+                     ? "REM tracks total sleep · it returns when hours do."
+                     : "REM in a healthy range."),
             tile("light", "LIGHT", s.lightMin, s.lightSeries, target: nil, warnBelow: nil,
                  captionTarget: "context", coach: "Light sleep in its normal range."),
             tile("awake", "AWAKE", s.awakeMin, s.awakeSeries, target: nil, warnBelow: nil,
@@ -284,7 +297,6 @@ enum HealthSeed {
             formMetric(m: form?.strideLengthM,   id: "stride", label: "STRIDE",         unit: " m",   decimals: 2, target: nil, lower: 0.8, upper: 2.0, prefer: .higher,  noun: "Stride"),
             formMetric(m: form?.vertOscCm,       id: "vosc",   label: "VERT OSC",       unit: " cm",  decimals: 1, target: 8.5, lower: 4,   upper: 14,  prefer: .lower,   noun: "Vertical oscillation"),
             formMetric(m: form?.groundContactMs, id: "gct",    label: "GROUND CONTACT", unit: " ms",  decimals: 0, target: 235, lower: 180, upper: 350, prefer: .lower,   noun: "Ground contact"),
-            formMetric(m: form?.lrBalancePct,    id: "bal",    label: "L / R BALANCE",  unit: nil,    decimals: 1, target: nil, lower: 40,  upper: 60,  prefer: .neutral, noun: "L/R balance"),
         ]
     }
 
@@ -379,8 +391,7 @@ enum HealthSeed {
 
     /// HRV coefficient of variation (Plews) from the REAL hrv series ·
     /// stdev/mean × 100 over the last 7-14 nights (sample stdev). nil when
-    /// fewer than 7 real nights. SDNN, not RMSSD — same metric-identity
-    /// caveat as readiness 2.5; the value is honest, no band judged here.
+    /// fewer than 7 real nights.
     private static func hrvCV(_ series: [HealthDayMs]) -> Double? {
         let vals = series.suffix(14).map { Double($0.ms) }
         guard vals.count >= 7 else { return nil }
@@ -388,6 +399,19 @@ enum HealthSeed {
         guard mean > 0 else { return nil }
         let variance = vals.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(vals.count - 1)
         return (variance.squareRoot() / mean) * 100
+    }
+
+    /// Rolling 7-day CV series — one value per day once 7 nights are available.
+    /// Gives a trend line showing whether HRV stability is rising or falling.
+    private static func hrvCVSeries(_ series: [HealthDayMs]) -> [Double] {
+        guard series.count >= 7 else { return [] }
+        return (6..<series.count).compactMap { i in
+            let window = series[(i - 6)...i].map { Double($0.ms) }
+            let mean = window.reduce(0, +) / Double(window.count)
+            guard mean > 0 else { return nil }
+            let variance = window.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(window.count - 1)
+            return (variance.squareRoot() / mean) * 100
+        }
     }
 
     private static func metric(
