@@ -68,20 +68,20 @@ struct TrainView: View {
                     // scrolls and dissolves behind the pill like TEMPO does.
                     Color.clear.frame(height: 132)
                     header
-                        .padding(.horizontal, 22)
+                        .padding(.horizontal, Theme.Space.pageH)
                         .padding(.top, 6)
                     thisWeekCard
-                        .padding(.horizontal, 22)
-                        .padding(.top, 16)
+                        .padding(.horizontal, Theme.Space.pageH)
+                        .padding(.top, Theme.Space.section)
                     execStripCard
-                        .padding(.horizontal, 22)
-                        .padding(.top, 16)
+                        .padding(.horizontal, Theme.Space.pageH)
+                        .padding(.top, Theme.Space.section)
                     adjustmentsBlock
-                        .padding(.horizontal, 22)
-                        .padding(.top, 16)
+                        .padding(.horizontal, Theme.Space.pageH)
+                        .padding(.top, Theme.Space.section)
                     fullPlanCard
-                        .padding(.horizontal, 22)
-                        .padding(.top, 16)
+                        .padding(.horizontal, Theme.Space.pageH)
+                        .padding(.top, Theme.Space.section)
                     Spacer(minLength: 110) // tab bar clearance
                 }
             }

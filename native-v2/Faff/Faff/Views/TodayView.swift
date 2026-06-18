@@ -223,12 +223,12 @@ struct TodayView: View {
                 Color.clear.frame(height: 132)
 
                 StravaReconnectBanner(status: stravaStatus)
-                    .padding(.horizontal, 22)
+                    .padding(.horizontal, Theme.Space.pageH)
                     .padding(.top, 10)
 
                 if let msg = loadState.failureMessage, plan == nil {
                     FailedLoadBanner(message: msg, retry: { Task { await loadAll() } })
-                        .padding(.horizontal, 22)
+                        .padding(.horizontal, Theme.Space.pageH)
                         .padding(.top, 10)
                 }
 
@@ -246,7 +246,7 @@ struct TodayView: View {
                 // or decline routes through /api/coach/proposal (singular).
                 ForEach(pendingProposals) { p in
                     proposalCard(p)
-                        .padding(.horizontal, 22)
+                        .padding(.horizontal, Theme.Space.pageH)
                         .padding(.top, 10)
                 }
 
@@ -255,7 +255,7 @@ struct TodayView: View {
                     DailyCheckChip(bodyPart: n.body_part,
                                    selection: $niggleCheck,
                                    onSelect: { handleNiggleCheck($0) })
-                        .padding(.horizontal, 22)
+                        .padding(.horizontal, Theme.Space.pageH)
                         .padding(.top, 10)
                 }
 
@@ -269,7 +269,7 @@ struct TodayView: View {
                         onReturn: { Task { await handleSickReturn() } },
                         onStillResting: { Task { await handleStillResting() } }
                     )
-                    .padding(.horizontal, 22)
+                    .padding(.horizontal, Theme.Space.pageH)
                     .padding(.top, 10)
                 }
 
@@ -386,10 +386,10 @@ struct TodayView: View {
                                 .foregroundStyle(isSkippedToday ? Color(hex: 0x7E8794) : selectedEffort.dot)
                                 .minimumScaleFactor(0.55)
                                 .lineLimit(1)
-                                .padding(.horizontal, 22)
+                                .padding(.horizontal, Theme.Space.pageH)
                                 .padding(.top, 6)
                             heroBlock
-                                .padding(.horizontal, 22)
+                                .padding(.horizontal, Theme.Space.pageH)
                                 // Pull up into the 88pt headline's line-box
                                 // whitespace (descender) so the gap below EASY
                                 // matches the gap above it — was +16, which on
@@ -1193,7 +1193,7 @@ struct TodayView: View {
             nextHardLabel: nextHardLabel,
             onTap: { onReadinessTap() }
         )
-        .padding(.horizontal, 22)
+        .padding(.horizontal, Theme.Space.pageH)
         .padding(.top, 22)
         .padding(.bottom, 20)
     }
@@ -1247,7 +1247,7 @@ struct TodayView: View {
                 .foregroundStyle(Color.white.opacity(0.78))
                 .padding(.top, 2)
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, Theme.Space.pageH)
         .padding(.top, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1879,7 +1879,7 @@ struct TodayView: View {
                 .foregroundStyle(Theme.txt)
                 .minimumScaleFactor(0.55)
                 .lineLimit(1)
-                .padding(.horizontal, 22)
+                .padding(.horizontal, Theme.Space.pageH)
                 .padding(.top, 6)
 
             VStack(alignment: .leading, spacing: 0) {
@@ -1926,8 +1926,8 @@ struct TodayView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 22)
+            .padding(.horizontal, Theme.Space.pageH)
+            .padding(.top, Theme.Space.section)
 
             Spacer(minLength: 0)
         }
@@ -2054,7 +2054,7 @@ struct TodayView: View {
                             .stroke(Color(hex: 0xFF5A52).opacity(0.3), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, 22)
+                .padding(.horizontal, Theme.Space.pageH)
                 Button { showSkipConfirm = false } label: {
                     Text("Cancel")
                         .font(.body(14, weight: .bold))

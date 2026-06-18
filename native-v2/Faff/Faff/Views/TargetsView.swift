@@ -66,16 +66,16 @@ struct TargetsView: View {
                             .minimumScaleFactor(0.5)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 24)
+                            .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, 6)
 
                         // ── Goal block (always first) ─────────────────────
                         if hasUpcomingRace {
                             heroBlock
-                                .padding(.horizontal, 24).padding(.top, -12)
+                                .padding(.horizontal, Theme.Space.pageH).padding(.top, -12)
                         } else if let g = fitnessGoal {
                             goalHeroBlock(g)
-                                .padding(.horizontal, 24).padding(.top, -12)
+                                .padding(.horizontal, Theme.Space.pageH).padding(.top, -12)
                         }
 
                         // ── Races ─────────────────────────────────────────
@@ -257,7 +257,7 @@ struct TargetsView: View {
                 .tracking(-0.5)
                 .foregroundStyle(Theme.txt)
                 .lineSpacing(2)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, Theme.Space.pageH)
                 .padding(.top, 32)
                 .padding(.bottom, 6)
 
@@ -265,7 +265,7 @@ struct TargetsView: View {
                 .font(.body(15))
                 .foregroundStyle(Theme.txt.opacity(0.5))
                 .lineSpacing(3)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, Theme.Space.pageH)
                 .padding(.bottom, 32)
 
             coldOptionCard(
@@ -311,7 +311,7 @@ struct TargetsView: View {
             .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, Theme.Space.pageH)
         .padding(.bottom, 12)
     }
 
@@ -879,7 +879,7 @@ struct TargetsView: View {
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 22).padding(.top, 24)
+        .padding(.horizontal, Theme.Space.pageH).padding(.top, Theme.Space.section)
     }
 
     private func addButton(_ title: String, action: @escaping () -> Void = {}) -> some View {

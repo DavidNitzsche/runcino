@@ -39,17 +39,17 @@ struct RunDetailView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     header
-                        .padding(.horizontal, 22)
+                        .padding(.horizontal, Theme.Space.pageH)
                         .padding(.top, 8)
 
                     if let msg = loadState.failureMessage, run == nil {
                         FailedLoadBanner(message: msg, retry: { Task { await load() } })
-                            .padding(.horizontal, 22)
+                            .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, 12)
                     }
 
                     hero
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, Theme.Space.pageH)
                         .padding(.top, 18)
 
                     // HOW IT WENT · coach engine's "what this run did"
@@ -107,8 +107,8 @@ struct RunDetailView: View {
                             accent: hiwEffort.dot,
                             onMesh: true
                         )
-                        .padding(.horizontal, 22)
-                        .padding(.top, 26)
+                        .padding(.horizontal, Theme.Space.pageH)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     if !splitBars.isEmpty {
@@ -126,7 +126,7 @@ struct RunDetailView: View {
                                     .padding(.top, 4)
                             }
                         }
-                        .padding(.top, 26)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // PLAN VS ACTUAL · per-phase breakdown. Backend's
@@ -142,7 +142,7 @@ struct RunDetailView: View {
                                 }
                             }
                         }
-                        .padding(.top, 26)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     section(title: "TRACE", right: traceAvgLabel) {
@@ -167,7 +167,7 @@ struct RunDetailView: View {
                             }
                         }
                     }
-                    .padding(.top, 26)
+                    .padding(.top, Theme.Space.section)
 
                     // ROUTE section · only render when the run actually has
                     // a captured route (apple_watch / strava with GPS). The
@@ -179,7 +179,7 @@ struct RunDetailView: View {
                         section(title: "ROUTE", right: routeStatLabel) {
                             routePanel
                         }
-                        .padding(.top, 26)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     if let zones = zonePcts {
@@ -199,7 +199,7 @@ struct RunDetailView: View {
                                 ZoneBar(zones: zones, height: 14, legend: true)
                             }
                         }
-                        .padding(.top, 26)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // WORK SEGMENTS · stats over just the work intervals
@@ -212,7 +212,7 @@ struct RunDetailView: View {
                         section(title: "WORK SEGMENTS", right: workSecondsLabel) {
                             workSegmentTile
                         }
-                        .padding(.top, 26)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // FORM · cadence_spm + ground_contact_ms + stride_length_m
@@ -224,7 +224,7 @@ struct RunDetailView: View {
                         section(title: "FORM", right: nil) {
                             formGrid
                         }
-                        .padding(.top, 26)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // RPE entry · post-run subjective effort. Loads any
@@ -233,7 +233,7 @@ struct RunDetailView: View {
                     section(title: "HOW HARD WAS IT?", right: nil) {
                         RPEEntryCard(runId: runId)
                     }
-                    .padding(.top, 26)
+                    .padding(.top, Theme.Space.section)
 
                     if let planSpec = vsPlanLabel {
                         section(title: "VS PLAN", right: nil) {
@@ -251,7 +251,7 @@ struct RunDetailView: View {
                                 Spacer()
                             }
                         }
-                        .padding(.top, 26)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     section(title: "DETAILS", right: nil) {
@@ -585,7 +585,7 @@ struct RunDetailView: View {
             }
             content()
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, Theme.Space.pageH)
     }
 
     // MARK: - Data

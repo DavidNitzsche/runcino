@@ -72,7 +72,7 @@ struct HealthView: View {
                             healthSectionDivider("INSIGHTS"); insightsPane
                         }
                     }
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, Theme.Space.pageH)
                     .padding(.top, 18)
                     .padding(.bottom, 110)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,7 +115,7 @@ struct HealthView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 22)
+            .padding(.horizontal, Theme.Space.pageH)
             .padding(.top, 8)
             .padding(.bottom, 10)
 
@@ -141,7 +141,7 @@ struct HealthView: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 22)
+            .padding(.horizontal, Theme.Space.pageH)
             .padding(.top, 4)
             .padding(.bottom, 14)
 
@@ -180,7 +180,7 @@ struct HealthView: View {
                     }
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, Theme.Space.pageH)
             .padding(.top, 16)
             .padding(.bottom, 70)        // clear of floating tab bar
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,21 +197,21 @@ struct HealthView: View {
             .padding(.bottom, 10)
         HealthDriversList(inputs: readiness?.inputs ?? [])
         if let b = brief, !b.actions.isEmpty {
-            whatToDoCard(b.actions, threshold: b.actionsThreshold).padding(.top, 14)
+            whatToDoCard(b.actions, threshold: b.actionsThreshold).padding(.top, Theme.Space.section)
         }
         SectionLabel(title: "7-DAY READINESS")
-            .padding(.top, 22).padding(.bottom, 10)
+            .padding(.top, Theme.Space.section).padding(.bottom, 10)
         HealthWeekBars(snapshot: readiness, state: state)
         // Aerobic fitness mini-card
         if let vo2 = state?.vo2.current {
             aerobicCard(vo2: vo2)
-                .padding(.top, 18)
+                .padding(.top, Theme.Space.section)
         }
         if let story = state?.overview?.story, story.paragraph?.isEmpty == false {
-            storyCard(story).padding(.top, 14)
+            storyCard(story).padding(.top, Theme.Space.section)
         }
         if let rec = state?.overview?.recoveryPhase, rec.anchor?.isEmpty == false {
-            recoveryPhaseCard(rec).padding(.top, 14)
+            recoveryPhaseCard(rec).padding(.top, Theme.Space.section)
         }
     }
 
@@ -583,7 +583,7 @@ struct HealthView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.top, isFirst ? 0 : 28)
+        .padding(.top, isFirst ? 0 : Theme.Space.section)
         .padding(.bottom, 10)
     }
 
@@ -958,7 +958,7 @@ struct HealthLogSheet: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, Theme.Space.pageH)
         .padding(.bottom, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(hex: 0x06302E))
