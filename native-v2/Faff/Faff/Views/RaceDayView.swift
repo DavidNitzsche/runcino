@@ -33,6 +33,9 @@ struct RaceDayView: View {
     /// Post-race retro sheet toggle (race P5) · opens RaceRetroSheet for a
     /// PAST race so the runner can log their finish time + how it went.
     @State private var showRetroSheet: Bool = false
+    /// AI auto-fill sheet · reads the race site (or finds it by name) and
+    /// proposes the logistics for review before saving (race "THE DETAILS").
+    @State private var showAutofill: Bool = false
 
     var body: some View {
         ZStack {
@@ -213,6 +216,7 @@ struct RaceDayView: View {
                             RaceDetailsCard(
                                 race: d.race,
                                 slug: raceSlug,
+                                onAutofill: { showAutofill = true },
                                 onSaved: { Task { await load() } }
                             )
                         }
@@ -300,6 +304,15 @@ struct RaceDayView: View {
                     // the locked finish + PB state.
                     Task { await load() }
                 }
+            )
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showAutofill) {
+            RaceAutofillSheet(
+                slug: raceSlug,
+                seedName: detail?.race.name,
+                seedUrl: detail?.race.website,
+                onApplied: { Task { await load() } }
             )
             .presentationDetents([.large])
         }

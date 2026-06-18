@@ -265,6 +265,31 @@ struct CourseBBox: Decodable {
     let maxLon: Double?
 }
 
+// MARK: - Race auto-fill (AI · POST /api/race/[slug]/autofill)
+//
+// Claude reads the official race site (or finds it by name) and returns a
+// PROPOSAL of race-day logistics the runner reviews before anything saves.
+// `available` is false when the backend has no ANTHROPIC_API_KEY set.
+
+struct RaceAutofillResult: Decodable {
+    let available: Bool
+    let proposed: RaceAutofillProposal?
+    let error: String?
+    let sources: [String]?
+}
+
+struct RaceAutofillProposal: Decodable {
+    let startTime: String?
+    let wave: String?
+    let bib: String?
+    let location: String?
+    let parking: String?
+    let shuttle: String?
+    let packetPickup: String?
+    let officialUrl: String?
+    let notes: String?
+}
+
 // MARK: - Race execution plan (race P2)
 //
 // GET /api/race/[slug]/execution-plan → composeRaceExecutionPlan

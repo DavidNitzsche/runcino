@@ -806,3 +806,198 @@ struct RaceDetailsCard: View {
         return s
     }
 }
+
+// MARK: - RaceAutofillSheet · AI fill from the race site (review-before-save)
+//
+// The killer affordance: paste the race URL (or leave blank to find it by name)
+// → Claude reads the official site → a PROPOSAL of race-day logistics the
+// runner reviews, edits, and toggles before any save. Nothing writes until the
+// runner taps Apply. Gated server-side on ANTHROPIC_API_KEY; when it's off the
+// sheet degrades to a clear "not switched on" message (David 2026-06-17).
+
+struct RaceAutofillSheet: View {
+    let slug: String
+    var seedName: String? = nil
+    var seedUrl: String? = nil
+    var onApplied: () -> Void = {}
+
+    @Environment(\.dismiss) private var dismiss
+
+    enum Phase { case input, loading, review, message }
+    @State private var phase: Phase = .input
+    @State private var url: String = ""
+    @State private var message: (title: String, body: String) = ("", "")
+    @State private var sources: [String] = []
+    @State private var include: Set<String> = []
+    @State private var values: [String: String] = [:]
+    @State private var saving = false
+
+    private let order: [(key: String, label: String)] = [
+        ("startTime", "Start time"), ("wave", "Corral / wave"), ("location", "Where"),
+        ("parking", "Parking"), ("shuttle", "Shuttle"), ("packetPickup", "Packet pickup"),
+        ("officialUrl", "Website"), ("notes", "Notes"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch phase {
+                case .input:   inputForm
+                case .loading: loadingView
+                case .review:  reviewForm
+                case .message: messageView
+                }
+            }
+            .navigationTitle("Auto-fill details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { confirmButton }
+            }
+            .onAppear { if url.isEmpty, let s = seedUrl { url = s } }
+        }
+    }
+
+    @ViewBuilder private var confirmButton: some View {
+        switch phase {
+        case .input:
+            Button("Fill") { Task { await runFill() } }
+        case .review:
+            Button(saving ? "Saving…" : "Apply") { Task { await apply() } }
+                .disabled(saving || include.isEmpty)
+        default:
+            EmptyView()
+        }
+    }
+
+    private var inputForm: some View {
+        Form {
+            Section {
+                TextField("Race website (optional)", text: $url)
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            } header: {
+                Text("RACE SITE")
+            } footer: {
+                Text(seedName?.isEmpty == false
+                     ? "Paste the official site, or leave it blank and we'll find \(seedName!) by name. Claude reads the page and fills in start time, corral, parking, shuttle, packet pickup and notes — you review before anything saves."
+                     : "Paste the official race site. Claude reads the page and fills in the details — you review before anything saves.")
+                    .font(.body(11))
+            }
+        }
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 14) {
+            ProgressView().controlSize(.large).tint(Theme.race)
+            Text("Reading the race site…")
+                .font(.body(14, weight: .bold)).foregroundStyle(Theme.txt)
+            Text("Finding start time, corral, parking and more. This can take a moment.")
+                .font(.body(12)).foregroundStyle(Theme.txt.opacity(0.6))
+                .multilineTextAlignment(.center).padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var reviewForm: some View {
+        Form {
+            Section {
+                ForEach(order, id: \.key) { item in
+                    if values[item.key] != nil { reviewRow(item.key, item.label) }
+                }
+            } header: {
+                Text("Found — review before saving")
+            } footer: {
+                if let src = sources.first {
+                    Text("Source: \(RaceDetailsCard.prettyHost(src))").font(.body(11))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func reviewRow(_ key: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: Binding(
+                get: { include.contains(key) },
+                set: { on in if on { include.insert(key) } else { include.remove(key) } }
+            )) {
+                Text(label).font(.body(13, weight: .bold))
+            }
+            TextField(label, text: Binding(
+                get: { values[key] ?? "" },
+                set: { values[key] = $0 }
+            ), axis: .vertical)
+                .lineLimit(1...4)
+                .font(.body(14))
+                .foregroundStyle(include.contains(key) ? Theme.txt : Theme.txt.opacity(0.4))
+                .disabled(!include.contains(key))
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var messageView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 28, weight: .bold)).foregroundStyle(Theme.race.opacity(0.7))
+            Text(message.title).font(.body(16, weight: .bold)).foregroundStyle(Theme.txt)
+            Text(message.body).font(.body(12)).foregroundStyle(Theme.txt.opacity(0.6))
+                .multilineTextAlignment(.center).padding(.horizontal, 36)
+            Button("Try again") { phase = .input }
+                .font(.body(13, weight: .extraBold)).foregroundStyle(Theme.race).padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func runFill() async {
+        await MainActor.run { phase = .loading }
+        let res = await API.autofillRace(slug: slug, url: url, name: seedName)
+        await MainActor.run {
+            guard let res else {
+                message = ("Couldn't reach the assistant", "Check your connection and try again. You can also enter the details by hand.")
+                phase = .message; return
+            }
+            if !res.available {
+                message = ("Auto-fill isn't switched on", "This feature needs a one-time setup on the server. Until then, you can enter the details by hand.")
+                phase = .message; return
+            }
+            guard let p = res.proposed else {
+                message = ("Couldn't find the details", "Try pasting the exact race website URL, or enter the details by hand.")
+                phase = .message; return
+            }
+            var v: [String: String] = [:]
+            var inc: Set<String> = []
+            func put(_ key: String, _ val: String?) {
+                if let val, !val.trimmingCharacters(in: .whitespaces).isEmpty { v[key] = val; inc.insert(key) }
+            }
+            put("startTime", p.startTime); put("wave", p.wave); put("location", p.location)
+            put("parking", p.parking); put("shuttle", p.shuttle); put("packetPickup", p.packetPickup)
+            put("officialUrl", p.officialUrl); put("notes", p.notes)
+            // bib intentionally skipped — personal, not on the public site.
+            sources = res.sources ?? []
+            values = v
+            include = inc
+            if v.isEmpty {
+                message = ("Couldn't find the details", "Try pasting the exact race website URL, or enter the details by hand.")
+                phase = .message
+            } else {
+                phase = .review
+            }
+        }
+    }
+
+    private func apply() async {
+        await MainActor.run { saving = true }
+        var fields: [String: Any] = [:]
+        for key in include {
+            let val = (values[key] ?? "").trimmingCharacters(in: .whitespaces)
+            if !val.isEmpty { fields[key] = val }
+        }
+        let ok = fields.isEmpty ? true : await API.patchRaceMeta(slug: slug, fields)
+        await MainActor.run {
+            saving = false
+            if ok { onApplied(); dismiss() }
+            else { message = ("Save failed", "Check your connection and try again."); phase = .message }
+        }
+    }
+}

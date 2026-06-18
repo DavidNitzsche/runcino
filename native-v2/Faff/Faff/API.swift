@@ -515,6 +515,28 @@ enum API {
         catch { return false }
     }
 
+    /// AI auto-fill · POST /api/race/[slug]/autofill. Claude reads the official
+    /// race site (or finds it by name) and returns a PROPOSAL of race-day
+    /// logistics for the runner to review — it never writes. Returns nil on a
+    /// transport failure; the result's `available` is false when the backend
+    /// has no LLM key set. Allows a long timeout · web search + extraction can
+    /// take 10-40s.
+    static func autofillRace(slug: String, url: String?, name: String?) async -> RaceAutofillResult? {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/race/\(slug)/autofill"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 75
+        var body: [String: Any] = [:]
+        if let u = url?.trimmingCharacters(in: .whitespaces), !u.isEmpty { body["url"] = u }
+        if let n = name?.trimmingCharacters(in: .whitespaces), !n.isEmpty { body["name"] = n }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+            guard (200..<300).contains(http.statusCode) else { return nil }
+            return try? JSONDecoder().decode(RaceAutofillResult.self, from: data)
+        } catch { return nil }
+    }
+
     /// Edit an existing race (race P1 · RaceEditSheet). PATCH /api/race with
     /// the edited plain fields — the backend keys are exactly: name, date,
     /// distance_label, priority, goal (A-goal display), goal_safe (B-goal),
