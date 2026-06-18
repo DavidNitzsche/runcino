@@ -197,6 +197,7 @@ final class HealthKitImporter: ObservableObject {
     /// HKObserverQuery kept alive for the process. Guards once-per-launch
     /// registration so repeated calls (every didFinishLaunching) are cheap.
     private var workoutObserver: HKObserverQuery?
+    private var sleepObserver:   HKObserverQuery?
 
     /// Register the workout observer and turn on HK background delivery.
     /// Idempotent per process. No-op until the runner has connected Health
@@ -226,6 +227,56 @@ final class HealthKitImporter: ObservableObject {
         store.enableBackgroundDelivery(for: workoutType, frequency: .immediate) { _, error in
             if let error { print("[HKImporter] enableBackgroundDelivery(workout) failed: \(error)") }
         }
+    }
+
+    /// Register an observer for sleep analysis so Apple Health reconciliation
+    /// (which settles 1–2 hours after waking as the Watch finalises sleep
+    /// stages) delivers the corrected reading without requiring the runner
+    /// to open Faff. Same contract as startWorkoutBackgroundDelivery.
+    func startSleepBackgroundDelivery() {
+        guard isAvailable, hasConnected, sleepObserver == nil else { return }
+        let sleepType = HKCategoryType(.sleepAnalysis)
+        let q = HKObserverQuery(sampleType: sleepType, predicate: nil) { [weak self] _, completionHandler, error in
+            if let error {
+                print("[HKImporter] sleep observer error: \(error)")
+                completionHandler()
+                return
+            }
+            Task { [weak self] in
+                await self?.backgroundSleepSync()
+                completionHandler()
+            }
+        }
+        store.execute(q)
+        sleepObserver = q
+        store.enableBackgroundDelivery(for: sleepType, frequency: .immediate) { _, error in
+            if let error { print("[HKImporter] enableBackgroundDelivery(sleep) failed: \(error)") }
+        }
+    }
+
+    /// Re-sync overnight biometrics when Apple Health reconciles sleep.
+    /// Scoped to the types that actually update during morning reconciliation;
+    /// active_energy and form metrics are deliberately excluded to stay inside
+    /// iOS's background-delivery budget. Does NOT mutate @Published status.
+    private func backgroundSleepSync() async {
+        guard isAvailable, hasConnected else { return }
+        let overnightTypes: Set<String> = [
+            "sleep_hours", "sleep_deep_minutes", "sleep_rem_minutes",
+            "sleep_light_minutes", "sleep_awake_minutes", "sleep_unspecified_minutes",
+            "hrv", "resting_hr", "hr_recovery",
+        ]
+        let all = await collectVitalSamples(daysBack: 2)
+        let samples = all.filter { overnightTypes.contains($0.sample_type) }
+        // Keep the last-night chip current without showing a sync toast.
+        if let latestSleep = samples
+            .filter({ $0.sample_type == "sleep_hours" })
+            .max(by: { $0.recorded_at < $1.recorded_at })
+        {
+            let v = latestSleep.value
+            await MainActor.run { self.lastNightHours = v > 0 ? v : nil }
+        }
+        guard !samples.isEmpty else { return }
+        try? await postHealthSamples(samples)
     }
 
     /// Focused background import · workouts + strength only. Deliberately

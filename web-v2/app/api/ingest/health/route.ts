@@ -93,9 +93,11 @@ export async function POST(req: NextRequest) {
     // Best-effort.
   }
   let inserted = 0;
+  let updated = 0;
   let skipped = 0;
   let errors = 0;
   let insertedSignal = 0;  // count of newly-stored readiness-relevant samples
+  let updatedSignal  = 0;  // count of value-changing updates to readiness samples
 
   for (const s of samples) {
     if (!s?.sample_type || !ALLOWED_TYPES.has(s.sample_type)) { skipped++; continue; }
@@ -169,9 +171,12 @@ export async function POST(req: NextRequest) {
           inserted++;
           if (READINESS_SIGNAL_TYPES.has(s.sample_type)) insertedSignal++;
         } else {
-          // Re-sync updated an existing row · count separately so we
-          // can see HK-correction volume in the response metrics.
-          skipped++;
+          // Re-sync updated an existing row. Count separately for metrics.
+          // Apple Health reconciles sleep/HRV/RHR 1-2h after waking, so a
+          // value-changing UPDATE on a readiness type IS a meaningful event
+          // that should bust the readiness brief — same as a fresh INSERT.
+          updated++;
+          if (READINESS_SIGNAL_TYPES.has(s.sample_type)) updatedSignal++;
         }
       } else {
         // rowCount=0 means ON CONFLICT fired but the partial-update
@@ -195,6 +200,6 @@ export async function POST(req: NextRequest) {
   // arriving within seconds) collapses into at most 2 LLM regens
   // instead of one per sample. Weight / VO2 / body_fat arrivals do
   // NOT bust — they don't move today's voice.
-  if (insertedSignal > 0) bustBriefingCacheDebounced(userId);
-  return NextResponse.json({ ok: true, inserted, skipped, errors, signalSamples: insertedSignal });
+  if (insertedSignal > 0 || updatedSignal > 0) bustBriefingCacheDebounced(userId);
+  return NextResponse.json({ ok: true, inserted, updated, skipped, errors, signalSamples: insertedSignal + updatedSignal });
 }

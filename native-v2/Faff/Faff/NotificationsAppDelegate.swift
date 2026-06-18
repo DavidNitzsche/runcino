@@ -51,6 +51,7 @@ final class NotificationsAppDelegate: NSObject, UIApplicationDelegate, UNUserNot
         // UIApplicationDelegate is @MainActor; HealthKitImporter is @MainActor;
         // the call is synchronous (it only registers — the drain runs async).
         HealthKitImporter.shared.startWorkoutBackgroundDelivery()
+        HealthKitImporter.shared.startSleepBackgroundDelivery()
         return true
     }
 
