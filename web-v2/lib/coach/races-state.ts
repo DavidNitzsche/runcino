@@ -65,6 +65,16 @@ export interface RacesState {
   totalPast: number;
 }
 
+/** Time limit · keep only the headline clause (limit + required pace). Drops
+ *  the trailing "; chip time enforced … cutoff …" detail the runner does not
+ *  need — and which truncated mid-line on the race card. Cleans stored verbose
+ *  values on read, so no re-crawl is needed (David 2026-06-17). */
+function shortTimeLimit(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.split(';')[0].trim();
+  return s || null;
+}
+
 export async function loadRacesState(userId: string): Promise<RacesState> {
   const today = await runnerToday(userId);
 
@@ -126,7 +136,7 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       summary: m.summary ?? null,
       notable_miles: m.notableMiles ?? m.notable_miles ?? null,
       weather_norms: m.weatherNorms ?? m.weather_norms ?? null,
-      time_limit: m.timeLimit ?? m.time_limit ?? null,
+      time_limit: shortTimeLimit(m.timeLimit ?? m.time_limit),
       gear_check: m.gearCheck ?? m.gear_check ?? null,
       pacers: m.pacers ?? null,
       spectators: m.spectators ?? null,
