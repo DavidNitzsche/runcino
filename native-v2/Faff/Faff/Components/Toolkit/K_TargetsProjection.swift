@@ -327,10 +327,20 @@ struct TargetsProjectionPanel: View {
         guard let p = projSec, let g = goalSec else { return nil }
         return p - g
     }
-    /// reachesGoal = residual ≤ 4s. Toggles "projected finish" vs "+… vs goal".
+    /// reachesGoal = residual ≤ 4s. Hides the "+X vs goal" sublabel when on track.
     private var reachesGoal: Bool {
         guard let r = projGapSec else { return true }
         return r <= 4
+    }
+
+    /// Replaces the static "at today's fitness" label with how long the
+    /// fitness number has been frozen — answers "when does this update?"
+    /// directly from the projection payload's heldDays counter.
+    private var fitnessStaleLabel: String {
+        let d = summary.heldDays
+        if d == 0 { return "updated today" }
+        if d == 1 { return "updated yesterday" }
+        return "held \(d) days"
     }
 
     // MARK: Execution & Fitness reads
@@ -517,7 +527,7 @@ struct TargetsProjectionPanel: View {
                     .foregroundStyle(Color.white)
                     .monospacedDigit()
                     .padding(.top, 4)
-                Text("at today's fitness")
+                Text(fitnessStaleLabel)
                     .font(.body(10.5))
                     .foregroundStyle(Color(hex: 0x646464))
                     .padding(.top, 4)
@@ -553,13 +563,13 @@ struct TargetsProjectionPanel: View {
                     .foregroundStyle(st.accent)
                     .monospacedDigit()
                     .padding(.top, 4)
-                Text(reachesGoal
-                     ? "projected finish"
-                     : "+\(projClock(projGapSec ?? 0)) vs goal")
-                    .font(.body(10.5))
-                    .foregroundStyle(Color(hex: 0x646464))
-                    .multilineTextAlignment(.trailing)
-                    .padding(.top, 4)
+                if !reachesGoal, let gap = projGapSec {
+                    Text("+\(projClock(gap)) vs goal")
+                        .font(.body(10.5))
+                        .foregroundStyle(Color(hex: 0x646464))
+                        .multilineTextAlignment(.trailing)
+                        .padding(.top, 4)
+                }
             }
         }
     }
