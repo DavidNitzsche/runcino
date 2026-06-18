@@ -7,6 +7,51 @@
 //
 
 import SwiftUI
+import UIKit
+
+// MARK: - DetectingText · free text with tappable addresses / phones / links
+//
+// SwiftUI Text can't auto-link addresses. A non-editable, non-scrolling
+// UITextView with data detectors does: addresses open Apple Maps, phone numbers
+// the dialer, URLs Safari. Used for the prose DETAILS / GOOD TO KNOW values so
+// addresses are ALWAYS tappable (David 2026-06-17).
+
+struct DetectingText: UIViewRepresentable {
+    let text: String
+    var textColor: Color = Theme.txt
+    var fontSize: CGFloat = 14
+
+    func makeUIView(context: Context) -> UITextView {
+        let tv = UITextView()
+        tv.isEditable = false
+        tv.isScrollEnabled = false
+        tv.isSelectable = true
+        tv.backgroundColor = .clear
+        tv.textContainerInset = .zero
+        tv.textContainer.lineFragmentPadding = 0
+        tv.dataDetectorTypes = [.address, .link, .phoneNumber]
+        tv.setContentCompressionResistancePriority(.required, for: .vertical)
+        tv.setContentHuggingPriority(.required, for: .vertical)
+        return tv
+    }
+
+    func updateUIView(_ tv: UITextView, context: Context) {
+        let para = NSMutableParagraphStyle()
+        para.lineSpacing = 2
+        tv.attributedText = NSAttributedString(string: text, attributes: [
+            .font: UIFont.systemFont(ofSize: fontSize),
+            .foregroundColor: UIColor(textColor),
+            .paragraphStyle: para,
+        ])
+        tv.linkTextAttributes = [.foregroundColor: UIColor(Theme.race)]
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let width = proposal.width ?? 320
+        let fit = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: ceil(fit.height))
+    }
+}
 
 // MARK: - RaceResultHero
 //
@@ -741,16 +786,13 @@ struct RaceDetailsCard: View {
     private func displayRow(_ f: Field) -> some View {
         let v = value(f)
         if f.multiline && !v.isEmpty {
-            // Prose reads top-down: small label, then a full-width wrapping
-            // value. The width clamp (fixedSize h:false + maxWidth) keeps a long
-            // value from blowing out the row and scrolling the page sideways.
+            // Prose reads top-down: small label, then a full-width value that
+            // auto-links addresses (→ Apple Maps), phones, and URLs via
+            // DetectingText. Tap the label/padding to edit; the value owns its
+            // own link taps (David 2026-06-17).
             VStack(alignment: .leading, spacing: 5) {
                 SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
-                Text(v)
-                    .font(.body(14))
-                    .foregroundStyle(Theme.txt.opacity(0.9))
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                DetectingText(text: v, textColor: Theme.txt.opacity(0.9))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
