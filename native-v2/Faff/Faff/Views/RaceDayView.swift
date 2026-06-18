@@ -89,17 +89,13 @@ struct RaceDayView: View {
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, Theme.Space.pageH)
                         .padding(.top, 6)
-                        // Crop the heroDisplay line-box's empty descender space so
-                        // the blurb/course sits close under the glyphs, not way
-                        // below them (David 2026-06-17).
-                        .padding(.bottom, -16)
                     if let sub = countdownSub {
                         Text(sub)
                             .font(.body(13, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.7))
-                            .padding(.horizontal, 24)
+                            .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, 2)
                     }
 
@@ -114,7 +110,7 @@ struct RaceDayView: View {
                             .lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 24)
+                            .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, 6)
                     }
 
@@ -150,7 +146,7 @@ struct RaceDayView: View {
                                 }
                             }
                         }
-                        .padding(.top, 24)
+                        .padding(.top, Theme.Space.section)
                     } else if let d = detail, d.race.is_past != true {
                         // Course geometry is KNOWN-absent (detail loaded, no GPX)
                         // — only now offer the upload. Gating on `let d = detail`
@@ -159,7 +155,7 @@ struct RaceDayView: View {
                         section(title: "THE COURSE", right: nil) {
                             CourseAnnotations(variant: .stub(onUpload: { showGpxPicker = true }))
                         }
-                        .padding(.top, 24)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // ELEVATION — the course terrain, right under the route and
@@ -204,7 +200,7 @@ struct RaceDayView: View {
                                 }
                             }
                         }
-                        .padding(.top, 30)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // 1 · THE PLAN — how to run it, stretch by stretch.
@@ -218,12 +214,12 @@ struct RaceDayView: View {
                             section(title: "THE PLAN", right: planRightLabel) {
                                 coursePhasesCard(phases)
                             }
-                            .padding(.top, 30)
+                            .padding(.top, Theme.Space.section)
                         } else if !planPhases.isEmpty {
                             section(title: "THE PLAN", right: planRightLabel) {
                                 planPhasesCard
                             }
-                            .padding(.top, 30)
+                            .padding(.top, Theme.Space.section)
                         }
                     }
 
@@ -241,7 +237,7 @@ struct RaceDayView: View {
                             section(title: "IF IT GOES SIDEWAYS", right: nil) {
                                 bGoalTriggerCard(trigger)
                             }
-                            .padding(.top, 30)
+                            .padding(.top, Theme.Space.section)
                         }
 
                         // HEAT decision-tree removed (David 2026-06-17): a generic
@@ -255,7 +251,7 @@ struct RaceDayView: View {
                             section(title: "WARM-UP", right: warmupRightLabel) {
                                 warmupCard(plan.warmup)
                             }
-                            .padding(.top, 30)
+                            .padding(.top, Theme.Space.section)
                         }
                     }
 
@@ -275,7 +271,7 @@ struct RaceDayView: View {
                         section(title: "FUELING", right: fuelingRightLabel(fuel)) {
                             fuelingPlanCard(fuel)
                         }
-                        .padding(.top, 30)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // 4 · RACE WEEK — the final-7-days ladder, mirrors the push
@@ -286,7 +282,7 @@ struct RaceDayView: View {
                         section(title: "RACE WEEK", right: nil) {
                             CountdownLadder(rungs: makeCountdownRungs(daysToRace: days))
                         }
-                        .padding(.top, 30)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // GOOD TO KNOW — race intel from the crawl: weather norms,
@@ -314,7 +310,7 @@ struct RaceDayView: View {
                                 }
                             }
                         }
-                        .padding(.top, 30)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // 5 · THE DETAILS — the practical race-day facts, each
@@ -332,7 +328,7 @@ struct RaceDayView: View {
                                 onSaved: { Task { await load() } }
                             )
                         }
-                        .padding(.top, 30)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // Past race · jump into the matched run for full splits/HR.
@@ -355,7 +351,7 @@ struct RaceDayView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        .padding(.top, 30)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // Past race · the retrospective. Today the page only SHOWS
@@ -368,7 +364,7 @@ struct RaceDayView: View {
                         section(title: "THE RETRO", right: nil) {
                             retroCard
                         }
-                        .padding(.top, 30)
+                        .padding(.top, Theme.Space.section)
                     }
 
                     Spacer(minLength: 80)
@@ -1058,7 +1054,7 @@ struct RaceDayView: View {
             }
             content()
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, Theme.Space.pageH)
     }
 
     // MARK: - Data
