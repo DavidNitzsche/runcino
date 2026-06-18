@@ -1238,7 +1238,9 @@ struct TodayView: View {
             dowLabel: selectedIsToday ? "TODAY" : shortDOWLabel,
             titleText: peekTitleWord,
             nameSubtitle: plainWorkoutName,
-            onMesh: true
+            onMesh: true,
+            strengthToday: selectedIsToday && strengthDays.contains(todayISO),
+            strengthDone: selectedIsToday && strengthDoneDays.contains(todayISO)
         )
     }
 

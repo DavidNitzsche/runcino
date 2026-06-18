@@ -69,6 +69,12 @@ struct TodayPostRunBody: View {
     /// mesh page instead of a hard cream slab welded onto it.
     var onMesh: Bool = false
 
+    /// Whether today is a recommended strength day and whether it has been
+    /// completed. Both default false so callers that don't pass them (RunRecapView)
+    /// see no change. Only meaningful when rendering today's completed run.
+    var strengthToday: Bool = false
+    var strengthDone: Bool = false
+
     // MARK: - Context-aware colors (round 62)
     //
     // Five tokens drive every surface decision. Each gets a literal
@@ -123,6 +129,7 @@ struct TodayPostRunBody: View {
             statsTrio
             secondaryStats
             shoeSection
+            strengthSection
             // Route map · only render the section when there's actual
             // polyline data. The Today v2 feedback caught the old
             // unconditional render leaving a black card on runs without
@@ -163,6 +170,39 @@ struct TodayPostRunBody: View {
             }
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Strength nudge
+
+    @ViewBuilder
+    private var strengthSection: some View {
+        if strengthToday {
+            HStack(spacing: 8) {
+                Image(systemName: "dumbbell.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(strengthDone ? Theme.Accent.mintReady : Color(hex: 0x27B4E0))
+                Text("Strength")
+                    .font(.body(13, weight: .bold))
+                    .foregroundStyle(primaryText)
+                if strengthDone {
+                    Text("done")
+                        .font(.body(12, weight: .bold))
+                        .foregroundStyle(Theme.Accent.mintReady)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(Theme.Accent.mintReady)
+                } else {
+                    Text("recommended")
+                        .font(.body(12, weight: .medium))
+                        .foregroundStyle(mutedText)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 22).padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(sectionBg)
+            .overlay(Rectangle().fill(dividerColor).frame(height: 1), alignment: .bottom)
         }
     }
 
