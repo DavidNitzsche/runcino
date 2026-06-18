@@ -12,7 +12,7 @@ struct NudgeSheet: View {
     var healthFacts: CoachFactsBlock? = nil
 
     private let mesh = FaffMesh(
-        c1: 0x3FB6B0, c2: 0xFFB24D, c3: 0x0E4F4C,
+        c1: 0x3FB6B0, c2: 0xF3AD38, c3: 0x0E4F4C,
         c4: 0x155A4A, c5: 0x155A4A, base: 0x0A2622
     )
 
@@ -103,7 +103,7 @@ struct NudgeSheet: View {
                         .foregroundStyle(Theme.txt)
                     Text(label)
                         .font(.label(8)).tracking(2)
-                        .foregroundStyle(score < 65 ? Color(hex: 0xFFCE8A) : Theme.Accent.mintReady)
+                        .foregroundStyle(score < 65 ? Color(hex: 0xF3AD38) : Theme.Accent.mintReady)
                 }
             }
             .frame(width: 104, height: 104)
@@ -196,7 +196,7 @@ struct NudgeSheet: View {
             .frame(height: 8)
             Text(r.observedV ?? "—")
                 .font(.body(11, weight: .bold))
-                .foregroundStyle(bad ? Color(hex: 0xFFCE8A) : Theme.txt)
+                .foregroundStyle(bad ? Color(hex: 0xF3AD38) : Theme.txt)
                 .frame(width: 80, alignment: .trailing)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)

@@ -79,8 +79,8 @@ struct RouteMapView: UIViewRepresentable {
     /// Quintile palette · fastest → slowest. Byte-identical to the web's
     /// BUCKET_COLORS (rose · coral · amber · green · blue).
     static let bucketColors: [UIColor] = [
-        UIColor(Color(hex: 0xF43F5E)),
-        UIColor(Color(hex: 0xFF5722)),
+        UIColor(Color(hex: 0xFC4D64)),
+        UIColor(Color(hex: 0xE88021)),
         UIColor(Color(hex: 0xF3AD38)),
         UIColor(Color(hex: 0x3EBD41)),   // green · = Success (was #14C08C teal)
         UIColor(Color(hex: 0x27B4E0)),
@@ -189,7 +189,7 @@ struct RouteMapView: UIViewRepresentable {
         // mid-zone green under an HR route, coral under a pace route.
         let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases)
         let baseline = ColoredPolyline(coordinates: coords, count: coords.count)
-        baseline.strokeColor = hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xFF5722))
+        baseline.strokeColor = hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xE88021))
         baseline.strokeWidth = 5
         map.addOverlay(baseline, level: .aboveLabels)
 

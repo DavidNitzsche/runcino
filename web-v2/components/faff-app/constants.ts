@@ -30,15 +30,15 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   // it because the base only fills the void around blobs, not the
   // foreground. Result: still clearly orange-red / pink-red and alive,
   // just the brightest peak isn't blasting through anymore.
-  tempo:     { mesh: ['#F5C297','#F18847','#E15F30','#D04525','#C2303E','#8A1E30'], dot: '#FF5722', mark: 80, lbl: 'HARD' },
-  intervals: { mesh: ['#F2C878','#F07A48','#EB4560','#CD2540','#A91A3E','#6D1129'], dot: '#F43F5E', mark: 94, lbl: 'MAX' },
+  tempo:     { mesh: ['#F5C297','#F18847','#E15F30','#D04525','#C2303E','#8A1E30'], dot: '#E88021', mark: 80, lbl: 'HARD' },
+  intervals: { mesh: ['#F2C878','#F07A48','#EB4560','#CD2540','#A91A3E','#6D1129'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
   rest:      { mesh: ['#C4C8D2','#9CA2B0','#787E8E','#58606E','#3E4350','#252935'], dot: '#8A90A0', mark: 4,  lbl: 'OFF' },
   // 2026-06-08 · race effort · the brand's race-orange mesh (same palette as
   // MESH.race / the Targets→race page surface). Dot is the canonical --race
-  // accent (#FF5722). Max effort mark. Wires the long-orphaned race surface:
+  // accent (#E88021). Max effort mark. Wires the long-orphaned race surface:
   // before this, EffortKey had no 'race' and mapType('race') laundered to
   // 'easy', so race morning rendered a cyan EASY hero. See TodayView RaceDayHero.
-  race:      { mesh: ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'], dot: '#FF5722', mark: 100, lbl: 'RACE' },
+  race:      { mesh: ['#FFD27A','#E88021','#FC4D64','#D6263C','#9E1733','#3A0E12'], dot: '#E88021', mark: 100, lbl: 'RACE' },
 };
 
 // View meshes · canonical "you" green for personal surfaces (health/profile),
@@ -56,7 +56,7 @@ export const MESH: Record<Exclude<ViewKey,'today'>, Mesh> = {
   targets:   ['#363B45','#2B2F38','#21242B','#191C22','#121419','#0C0D11'],
   profile:   ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
   spectator: ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
-  race:      ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'],
+  race:      ['#FFD27A','#E88021','#FC4D64','#D6263C','#9E1733','#3A0E12'],
 };
 
 export type Segment = { l: string; sub: string; w: number; c: string };
@@ -90,7 +90,7 @@ export const KIT: Record<EffortKey, { weather: string; shoe: string; fuel: strin
 // tempo → intervals). One zone palette app-wide (AFC fix 2) · replaces the
 // old ladder that used the good-state green (#3EBD41) as Z2 and is synced
 // byte-for-byte with Theme.swift ZoneSplit + RunDetailModal ZONE_COLORS.
-export const ZC = ['#27B4E0','#14C08C','#F3AD38','#FF5722','#F43F5E'];
+export const ZC = ['#27B4E0','#14C08C','#F3AD38','#E88021','#FC4D64'];
 
 export type PlannedDay = {
   dw: string; dn: number; full: string;
@@ -232,12 +232,12 @@ export type CompletedRun = {
 // it was David's literal garage hardcoded — the shoes table (user-scoped
 // via user_uuid) is the only shoe source.
 
-// Per the locked palette, RACE and TEMPO share #FF5722 (one semantic slot).
+// Per the locked palette, RACE and TEMPO share #E88021 (one semantic slot).
 // Shoe chips for the two roles are now color-identical · differentiated by
 // their text label. Flagged in the AFC recap for David's review.
 export const ROLECOL: Record<string,string> = {
-  RACE: '#FF5722', TEMPO: '#FF5722', LONG: '#F3AD38', EASY: '#14C08C', RECOVERY: '#27B4E0',
-  INTERVALS: '#F43F5E',
+  RACE: '#E88021', TEMPO: '#E88021', LONG: '#F3AD38', EASY: '#14C08C', RECOVERY: '#27B4E0',
+  INTERVALS: '#FC4D64',
 };
 
 export type PhaseKey = 'base'|'build'|'peak'|'taper'|'race'|'maintenance'|'recovery';
@@ -250,7 +250,7 @@ export const PHASE: Record<PhaseKey, { lab: string; name: string; sub: string; f
     mesh: MESH.train },
   peak:  { lab: 'PHASE 03 · WEEKS 17–22', name: 'PEAK',    sub: 'Max volume & race simulation',
     focus: 'Your highest weekly load of the block. Top-end fitness and full race-day rehearsals before the taper.',
-    mesh: ['#FFA566','#FF5A52','#EC2F54','#C01D48','#A8163F','#4E0A22'] },
+    mesh: ['#FFA566','#FC4D64','#EC2F54','#C01D48','#A8163F','#4E0A22'] },
   taper: { lab: 'PHASE 04 · WEEKS 23–26', name: 'TAPER',   sub: 'Freshen, sharpen, arrive primed',
     focus: 'Cut the volume, hold the intensity sharp, and roll into Sacramento rested, fresh, and hungry to race.',
     mesh: ['#8EF0B0','#34C194','#1F8A68','#128A64','#137259','#06382E'] },
@@ -270,8 +270,8 @@ export const PHASE: Record<PhaseKey, { lab: string; name: string; sub: string; f
 
 export type SeasonType = 'easy'|'recovery'|'intervals'|'tempo'|'mp'|'long'|'vo2'|'sharp'|'rest';
 export const SEASON_TYPE_COLOR: Record<SeasonType, string | null> = {
-  easy: '#14C08C', recovery: '#27B4E0', intervals: '#F43F5E', tempo: '#FF5722',
-  mp: '#F3AD38',   long: '#F3AD38',     vo2: '#F43F5E',       sharp: '#3EBD41',
+  easy: '#14C08C', recovery: '#27B4E0', intervals: '#FC4D64', tempo: '#E88021',
+  mp: '#F3AD38',   long: '#F3AD38',     vo2: '#FC4D64',       sharp: '#3EBD41',
   rest: null,
 };
 export const SEASON_TYPE_NAME: Record<SeasonType, [string,string]> = {

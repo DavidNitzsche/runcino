@@ -525,7 +525,7 @@ struct RaceDayView: View {
             // dig into splits / HR / cadence on race day.
             if let finish = detail?.race.finishTime, detail?.race.is_past == true {
                 let isPB = detail?.race.pb == true
-                let pbHex: UInt32 = 0xF5C518
+                let pbHex: UInt32 = 0xF0DF47
                 VStack(alignment: .leading, spacing: 9) {
                     Text(finish)
                         .font(.display(58, weight: .bold))
@@ -643,7 +643,7 @@ struct RaceDayView: View {
 
     private var countdownColor: Color {
         if detail?.race.is_past == true {
-            return detail?.race.pb == true ? Color(hex: 0xF5C518) : Theme.txt
+            return detail?.race.pb == true ? Color(hex: 0xF0DF47) : Theme.txt
         }
         return Theme.race
     }
@@ -970,7 +970,7 @@ struct RaceDayView: View {
     private var retroCard: some View {
         let hasFinish = (detail?.race.finishTime?.isEmpty == false)
         let isPB = detail?.race.pb == true
-        let pbHex: UInt32 = 0xF5C518
+        let pbHex: UInt32 = 0xF0DF47
         return VStack(alignment: .leading, spacing: 12) {
             if hasFinish, let finish = detail?.race.finishTime {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {

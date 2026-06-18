@@ -54,7 +54,7 @@ private enum ProjState {
     var accentSoft: Color {
         switch self {
         case .on:    return Color(hex: 0x86EFA0)
-        case .watch: return Color(hex: 0xFFCE8A)
+        case .watch: return Color(hex: 0xF3AD38)
         case .off:   return Color(hex: 0xFF9DA8)
         }
     }

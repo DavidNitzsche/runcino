@@ -707,7 +707,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             return (
               <div
                 className="haero-what"
-                style={va.tier === 'stale' ? { color: 'var(--warn, #F43F5E)' } : undefined}
+                style={va.tier === 'stale' ? { color: 'var(--warn, #FC4D64)' } : undefined}
                 data-testid="vdot-anchor-staleness"
               >
                 {line}
@@ -751,7 +751,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             ) : null}
             {sc.banking ? (
               <div style={{ marginTop: sc.flag ? 12 : 0 }}>
-                <div style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--race, #FF5722)', fontWeight: 600 }}>
+                <div style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--race, #E88021)', fontWeight: 600 }}>
                   SLEEP BANKING · {sc.banking.raceName.toUpperCase()} · {sc.banking.daysToRace}d
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{sc.banking.targetLine}</div>

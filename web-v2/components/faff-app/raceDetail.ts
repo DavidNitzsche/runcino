@@ -48,7 +48,7 @@ function buildPacing(goalSec: number, distMi: number, netElevFt: number): RaceDe
   const blocks = [
     { start: 0,            end: distMi * 0.25, factor: 1.012, color: '#14C08C', sub: 'controlled · ease in' },
     { start: distMi * 0.25, end: distMi * 0.50, factor: 1.0,   color: '#F3AD38', sub: 'settle into rhythm' },
-    { start: distMi * 0.50, end: distMi * 0.80, factor: downhill ? 0.998 : 1.0, color: '#FF5722', sub: 'locked in · work the middle' },
+    { start: distMi * 0.50, end: distMi * 0.80, factor: downhill ? 0.998 : 1.0, color: '#E88021', sub: 'locked in · work the middle' },
     { start: distMi * 0.80, end: distMi,        factor: downhill ? 0.985 : 0.992, color: '#FC4D64', sub: 'empty the tank' },
   ];
   const out: RaceDetailSeed['pacing'] = [];

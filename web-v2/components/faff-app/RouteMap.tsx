@@ -91,7 +91,7 @@ export function RouteMap({
       // Baseline route · single coral polyline drawn first so the line is
       // visible regardless of bucket logic outcomes.
       L.polyline(points as LeafletNS.LatLngTuple[], {
-        color: '#FF5722',
+        color: '#E88021',
         weight: 5,
         opacity: 0.95,
         lineCap: 'round',
@@ -206,7 +206,7 @@ export function RouteMap({
   );
 }
 
-const BUCKET_COLORS = ['#F43F5E', '#FF5722', '#F3AD38', '#14C08C', '#27B4E0'];
+const BUCKET_COLORS = ['#FC4D64', '#E88021', '#F3AD38', '#14C08C', '#27B4E0'];
 
 function paceToSec(s: string | null): number | null {
   if (!s || typeof s !== 'string') return null;

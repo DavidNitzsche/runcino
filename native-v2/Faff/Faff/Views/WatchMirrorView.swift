@@ -80,7 +80,7 @@ struct WatchMirrorView: View {
     /// The watch still owns pause/lap/end — Cancel only closes this screen.
     private var mirrorPill: some View {
         HStack(spacing: 11) {
-            LivePulseDot(color: liveOk ? Theme.Accent.mintGlow : Color(hex: 0xFF5A52), size: 8)
+            LivePulseDot(color: liveOk ? Theme.Accent.mintGlow : Color(hex: 0xFC4D64), size: 8)
                 .frame(width: 14, height: 14)
             VStack(alignment: .leading, spacing: 2) {
                 Text(workout != nil ? "TODAY'S PLAN" : "STANDING BY")
@@ -178,7 +178,7 @@ struct WatchMirrorView: View {
     private func phaseColor(_ type: WatchPhaseType) -> Color {
         switch type {
         case .warmup:   return Theme.neutralTeal
-        case .work:     return Color(hex: 0xFF5722)
+        case .work:     return Color(hex: 0xE88021)
         case .recovery: return Color(hex: 0x27B4E0)
         case .cooldown: return Color(hex: 0x14C08C)
         default:        return Theme.mute

@@ -13,7 +13,7 @@ struct RolePickView: View {
     @State private var selected: Role = .runner
 
     private let warm = FaffMesh(
-        c1: 0xFFCE8A, c2: 0xFF8A4D, c3: 0xEF4F2A,
+        c1: 0xF3AD38, c2: 0xFF8A4D, c3: 0xEF4F2A,
         c4: 0xD6263C, c5: 0xD6263C, base: 0x3A0E12
     )
     private let cool = FaffMesh(

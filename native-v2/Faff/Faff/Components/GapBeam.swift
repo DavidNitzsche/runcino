@@ -11,7 +11,7 @@ struct GapBeam: View {
     let progress: Double
     var height: CGFloat = 14
     /// Colors for filled portion (gradient) and gap tail.
-    var fillStops: [Color] = [Color(hex: 0xFFD27A).opacity(0.55), Color(hex: 0xFF7A45).opacity(0.92)]
+    var fillStops: [Color] = [Color(hex: 0xFFD27A).opacity(0.55), Color(hex: 0xE88021).opacity(0.92)]
     var gapColor: Color = Theme.goal
     /// Show the "now" knob.
     var showKnob: Bool = true

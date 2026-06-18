@@ -18,18 +18,28 @@ This is the entire permitted semantic color set. Every pixel outside this table 
 
 | Semantic | Hex | Usage |
 |----------|-----|-------|
-| **Race/Tempo** | `#FF5722` | Race-day celebrate, tempo pace, race-morning hero, race mesh |
+| **Race/Tempo** | `#E88021` | Race-day celebrate, tempo pace, race-morning hero, race mesh (Dark Orange · palette pass 2026-06-17, David's canonical palette has no `#FF5722`) |
 | **Long** | `#F3AD38` | Long-run effort, long mesh, goal-distance thinking |
 | **Easy** | `#3EBD41` | Easy-effort dot and label · = Good-state green (palette consolidation 2026-06-17, David's canonical palette: one green) |
 | **Recovery** | `#27B4E0` | Recovery effort, detraining signal (cool/info), recovery mesh |
-| **Intervals** | `#F43F5E` | Interval/quality effort, quality mesh, VO₂ work |
+| **Intervals** | `#FC4D64` | Interval/quality effort, quality mesh, VO₂ work (= the ceiling/Warning red · 2026-06-17 merged the Zone + ZoneSplit ladders into one; intervals is the hottest rung, differentiated from off/warn by context not a second near-red) |
 | **Good state** | `#3EBD41` | On-track, readiness "good", execution ≥95%, strength-done badge |
 | **Off/warn** | `#FC4D64` | Behind goal, off-track, warning signal, VO₂ MAX ceiling breach |
 | **Watch attention** | `#F3AD38` | Watch hero numbers, in-run pace alerts, emphasis |
-| **PR gold** | `#F5C518` | Personal record, milestone unlock, peak achievement |
-| **Eyebrow** | `#FFCE8A` | Inline annotation, time-of-day label, secondary metadata |
+| **PR gold** | `#F0DF47` | Personal record, milestone unlock, peak achievement (Light Yellow · palette pass 2026-06-17) |
+| **Eyebrow** | `#F3AD38` | Inline annotation, time-of-day label, secondary metadata (= Attention amber, dialed back via alpha where it reads loud · palette pass 2026-06-17) |
 
-**Retired tokens from v1:** `#FF8847`, `#14C08C` (easy, use `#14C08C` above), `#4F8FF7`, `#F5C518`, `#F43F5E` — all merge into the table above.
+**Retired tokens from v1:** `#FF8847`, `#14C08C` (easy → `#3EBD41`), `#4F8FF7` — all merge into the table above.
+
+**Retired in the 2026-06-17 canonical-palette pass** (David handed the full brand palette: "every color from this; only rule is never Aquamarine `#27E087`"). The effort + zone scale now reads as a single temperature line — Recovery `#27B4E0` → Easy `#3EBD41` → Long `#F3AD38` → Tempo/Race `#E88021` → Intervals `#FC4D64`:
+
+- `#FF5722` / `#FF7A45` (race/tempo orange) → **`#E88021`** Dark Orange
+- `#F43F5E` (intervals) → **`#FC4D64`** Warning red
+- `#F5C518` / `#F5A518` (PR gold + gold tweak) → **`#F0DF47`** Light Yellow
+- `#FFCE8A` (eyebrow) · `#FFB24D` (bright warn text) → **`#F3AD38`** Attention
+- `#FF6A6A` (bright over text) · `#FF5A52` (live pulse) → **`#FC4D64`** Warning
+
+Depth comes from alpha steps of these hues, not new hexes. The brand gradient is XP→Corporate (`#9013FE`→`#008FEC`), reserved for gate / launch / brandmark only.
 
 ---
 

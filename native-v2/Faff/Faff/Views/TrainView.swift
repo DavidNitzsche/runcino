@@ -305,7 +305,7 @@ struct TrainView: View {
             "on_track":   Color(hex: 0x86EFA0),
             "consistent": Color(hex: 0x86EFA0),
             "working":    Color(hex: 0xF3AD38),
-            "slipping":   Color(hex: 0xFFCE8A),
+            "slipping":   Color(hex: 0xF3AD38),
             "compromised":Color(hex: 0x8A90A0),
         ]
         var rows: [ExecRow] = []
@@ -550,7 +550,7 @@ struct TrainView: View {
 
     @ViewBuilder
     private func raceDividerAndRow(race: TrainingRace) -> some View {
-        let gold = Color(hex: 0xFFCE8A)
+        let gold = Color(hex: 0xF3AD38)
         HStack(spacing: 10) {
             Text("RACE")
                 .font(.body(10, weight: .extraBold)).tracking(1.6)
@@ -674,7 +674,7 @@ struct TrainView: View {
     @ViewBuilder
     private func calendarCell(_ cell: CalCell) -> some View {
         let isSelected = (selectedCalDate == cell.dateISO && cell.dateISO != nil)
-        let gold = Color(hex: 0xFFCE8A)
+        let gold = Color(hex: 0xF3AD38)
         let bg: Color = {
             if cell.isRace { return gold.opacity(0.2) }
             if isSelected { return Color.white.opacity(0.2) }
@@ -734,7 +734,7 @@ struct TrainView: View {
             ("Intervals", FaffEffort.intervals.dot),
             ("Long",      FaffEffort.long.dot),
             ("Rest",      FaffEffort.rest.dot),
-            ("Race",      Color(hex: 0xFFCE8A))
+            ("Race",      Color(hex: 0xF3AD38))
         ]
         // Wrap manually so the row doesn't overflow on small phones.
         FlowRow(spacing: 11) {
@@ -780,7 +780,7 @@ struct TrainView: View {
     private func calSelectionRow(_ sel: CalSelected) -> some View {
         HStack(spacing: 12) {
             Circle()
-                .fill(sel.isRace ? Color(hex: 0xFFCE8A) : FaffEffort.fromType(sel.day.type).dot)
+                .fill(sel.isRace ? Color(hex: 0xF3AD38) : FaffEffort.fromType(sel.day.type).dot)
                 .frame(width: 11, height: 11)
             VStack(alignment: .leading, spacing: 2) {
                 Text(sel.dateHeader)
@@ -1079,7 +1079,7 @@ struct TrainView: View {
                 return .normal // unplanned days (shouldn't happen if plan covers all dates)
             }()
             let tint: Color = {
-                if isRace { return Color(hex: 0xFFCE8A) }
+                if isRace { return Color(hex: 0xF3AD38) }
                 if let p = plannedDay { return FaffEffort.fromType(p.type).dot }
                 return .clear
             }()
@@ -1220,7 +1220,7 @@ private struct TrainWeekRow: View {
                     } else if isToday {
                         Text("TODAY")
                             .font(.body(8.5, weight: .extraBold)).tracking(1)
-                            .foregroundStyle(Color(hex: 0xFFCE8A))
+                            .foregroundStyle(Color(hex: 0xF3AD38))
                             .fixedSize()
                     }
                 }
@@ -1307,12 +1307,12 @@ private struct TrainWeekRowSummary: View {
                 if starred {
                     Text("★")
                         .font(.body(11, weight: .extraBold))
-                        .foregroundStyle(Color(hex: 0xFFCE8A))
+                        .foregroundStyle(Color(hex: 0xF3AD38))
                 }
                 if cur {
                     Text("NOW")
                         .font(.body(8, weight: .extraBold)).tracking(0.8)
-                        .foregroundStyle(Color(hex: 0xFFCE8A))
+                        .foregroundStyle(Color(hex: 0xF3AD38))
                 } else {
                     // #47 · trainMi → 1 decimal only when fractional (no noisy
                     // .0 on whole-mile weeks), matching the WK header + app convention.
@@ -1361,9 +1361,9 @@ private struct ExecStripRow: View {
             ? min(1.0, row.actualMi / row.plannedMi)
             : 0
         let barFill: Color = {
-            if row.isCurrent { return Color(hex: 0xFFCE8A).opacity(0.55) }
+            if row.isCurrent { return Color(hex: 0xF3AD38).opacity(0.55) }
             if pct >= 0.95 { return Color(hex: 0x3EBD41) }  // good state
-            if pct >= 0.80 { return Color(hex: 0xFFCE8A) }  // amber
+            if pct >= 0.80 { return Color(hex: 0xF3AD38) }  // amber
             return Color(hex: 0xFC4D64)                       // off/warn
         }()
         let dateLabel: String = {
@@ -1394,7 +1394,7 @@ private struct ExecStripRow: View {
                     .font(.body(10, weight: .extraBold))
                     .tracking(row.isCurrent ? 0.5 : 0.3)
                     .foregroundStyle(row.isCurrent
-                                     ? Color(hex: 0xFFCE8A)
+                                     ? Color(hex: 0xF3AD38)
                                      : Theme.txt.opacity(0.65))
                     .frame(width: 66, alignment: .leading)
                     .lineLimit(1)

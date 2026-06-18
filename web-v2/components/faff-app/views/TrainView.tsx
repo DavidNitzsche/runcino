@@ -56,11 +56,11 @@ function phaseMeshGradient(p: PhaseKey): React.CSSProperties {
   if (p === 'build')         { light = '#FFCB47'; mid = '#D6A12B'; dark = '#9C7218'; }
   else if (p === 'peak')     { light = '#FF7733'; mid = '#D04525'; dark = '#9E2820'; }
   else if (p === 'taper')    { light = '#56E0B0'; mid = '#2DB386'; dark = '#1A8862'; }
-  else if (p === 'race')     { light = '#FFCE8A'; mid = '#D89A5A'; dark = '#9E6B30'; }
+  else if (p === 'race')     { light = '#F3AD38'; mid = '#D89A5A'; dark = '#9E6B30'; }
   else if (p === 'base')     { light = '#5BD8D2'; mid = '#2BA8A4'; dark = '#1A7878'; }
   else if (p === 'maintenance') { light = '#88B8C8'; mid = '#5A8898'; dark = '#3A5868'; }
   else if (p === 'recovery')    { light = '#5DD0F0'; mid = '#2DA0C8'; dark = '#1A7090'; }
-  else                       { light = '#FFCE8A'; mid = '#D89A5A'; dark = '#9E6B30'; }
+  else                       { light = '#F3AD38'; mid = '#D89A5A'; dark = '#9E6B30'; }
   return {
     ['--pg-1' as string]: light,
     ['--pg-2' as string]: mid,
@@ -80,15 +80,15 @@ interface PhaseMeta {
 // AFC fix 2 · effort colors come from the locked ten-color palette.
 // easy was a fourth one-off green (#2faf7c) found nowhere else.
 const PHASE_TYPE_COLOR: Record<string, string> = {
-  easy: '#14C08C', long: '#F3AD38', tempo: '#FF5722', threshold: '#FF5722',
-  intervals: '#F43F5E', recovery: '#27B4E0', rest: '#8A90A0',
+  easy: '#14C08C', long: '#F3AD38', tempo: '#E88021', threshold: '#E88021',
+  intervals: '#FC4D64', recovery: '#27B4E0', rest: '#8A90A0',
 };
 
 // Execution strip + WeeksList: influence kind → display color and sort rank.
 // AFC fix 2 · good = #3EBD41 (was out-of-palette mint), working = #F3AD38.
 const EXEC_INF_COLOR: Record<string, string> = {
   on_track: '#3EBD41', consistent: '#3EBD41', working: '#F3AD38',
-  slipping: '#FFCE8A', compromised: '#8A90A0',
+  slipping: '#F3AD38', compromised: '#8A90A0',
 };
 const EXEC_INF_RANK: Record<string, number> = {
   compromised: 0, slipping: 1, working: 2, consistent: 3, on_track: 4,
@@ -120,14 +120,14 @@ function phaseColor(p: PhaseKey): string {
   if (p === 'base')  return '#5BD8D2';
   if (p === 'build') return '#FFCB47';
   // 2026-06-03 · PEAK was peach (#FF9866) · David flagged off-brand.
-  // Brand orange (--race in globals) is #FF5722; using a slightly more
+  // Brand orange (--race in globals) is #E88021; using a slightly more
   // saturated cousin #FF7733 so PEAK reads as "peak intensity" and
-  // stays distinct from the race-day peach #FFCE8A.
+  // stays distinct from the race-day peach #F3AD38.
   if (p === 'peak')  return '#FF7733';
   if (p === 'taper') return '#56E0B0';
   if (p === 'maintenance') return '#88B8C8';
   if (p === 'recovery')    return '#5DD0F0';
-  return '#FFCE8A'; // race
+  return '#F3AD38'; // race
 }
 
 /** Group weeks by the REAL plan_phases data from training-state. Falls
@@ -513,7 +513,7 @@ export function TrainView({
     });
     if (goal) {
       out.push({
-        wkLabel: 'RACE', dot: '#FFCE8A',
+        wkLabel: 'RACE', dot: '#F3AD38',
         title: goal.name, sub: `${goal.goal ? goal.goal + ' · ' : ''}${formatDate(goal.date)}`,
         state: 'RACE', raceRow: true,
       });
@@ -540,7 +540,7 @@ export function TrainView({
       const authored = phaseFocus(g.phase, goal);
       out.push({ key: g.phase, flex: g.to - g.from + 1, color: phaseColor(g.phase), label: authored.name });
     });
-    out.push({ key: 'race', flex: 1, color: '#FFCE8A', label: 'Race' });
+    out.push({ key: 'race', flex: 1, color: '#F3AD38', label: 'Race' });
     return out;
   }, [raceIdx, realPhases]);
 
@@ -605,7 +605,7 @@ export function TrainView({
               // the chip lost legibility.  Fill with a dark backdrop so peach
               // text always reads.
               background: 'rgba(0, 0, 0, .55)', border: '1px solid rgba(0, 0, 0, .35)',
-              color: '#FFCE8A',
+              color: '#F3AD38',
             }}>
               <span style={{ fontWeight: 700 }}>LONG-RUN CAP · {seed.season.horizonRaise.toLongCapMi}mi</span>
               <span>
@@ -751,9 +751,9 @@ export function TrainView({
             // AFC fix 2 · ≥95% = good-state green, <80% = warn. The old
             // #FF8870 was a near-race-orange signaling failure.
             const barColor = r.isCurrent
-              ? '#FFCE8A88'
+              ? '#F3AD3888'
               : pct >= 95 ? '#3EBD41'
-              : pct >= 80 ? '#FFCE8A'
+              : pct >= 80 ? '#F3AD38'
               : '#FC4D64';
             const dateLabel = r.isCurrent
               ? 'THIS WEEK'
@@ -877,7 +877,7 @@ export function TrainView({
                         <svg className="tck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                       </span>
                     ) : d.today ? (
-                      <span style={{ marginLeft: 10, fontSize: 9, fontWeight: 800, letterSpacing: 1, color: '#FFCE8A' }}>TODAY</span>
+                      <span style={{ marginLeft: 10, fontSize: 9, fontWeight: 800, letterSpacing: 1, color: '#F3AD38' }}>TODAY</span>
                     ) : null}
                   </div>
                 );
@@ -1028,7 +1028,7 @@ export function TrainView({
                 <div className="pjlab">NO RACE GOAL SET</div>
                 {/* AFC fix 9 · a real affordance instead of quoting a URL
                     path at the runner. Routes to the Goal page. */}
-                <Link href="/races" className="pjnote" style={{ display: 'inline-block', color: '#FFCE8A', textDecoration: 'none', cursor: 'pointer' }}>
+                <Link href="/races" className="pjnote" style={{ display: 'inline-block', color: '#F3AD38', textDecoration: 'none', cursor: 'pointer' }}>
                   Pick a goal race to see the projection ›
                 </Link>
               </>
@@ -1058,10 +1058,10 @@ export function TrainView({
                           m.influence.kind === 'on_track'   ? '#86efa0' :
                           m.influence.kind === 'consistent' ? '#86efa0' :
                           m.influence.kind === 'working'    ? '#F3AD38' :  // amber · matches EXEC_INF working
-                          m.influence.kind === 'slipping'   ? '#FFCE8A' :
+                          m.influence.kind === 'slipping'   ? '#F3AD38' :
                           m.influence.kind === 'compromised'? '#8A90A0' :
                           m.influence.kind === 'hit'        ? '#86efa0' :
-                          m.influence.kind === 'close'      ? '#FFCE8A' :
+                          m.influence.kind === 'close'      ? '#F3AD38' :
                           /* off */                           '#FF9560',
                       }}>
                         → {m.influence.copy}
@@ -1074,7 +1074,7 @@ export function TrainView({
                     )}
                   </div>
                   {m.state && (
-                    <span className="mst" style={m.state === 'NOW' ? { color: '#FFCE8A', opacity: 0.95 } : undefined}>
+                    <span className="mst" style={m.state === 'NOW' ? { color: '#F3AD38', opacity: 0.95 } : undefined}>
                       {m.state}
                     </span>
                   )}
@@ -1271,7 +1271,7 @@ function MonthCalendar({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun: (id: st
           if (isRace) {
             body = (
               <div className="cwk">
-                <span className="ctag" style={tint('#FFCE8A')}>Race</span>
+                <span className="ctag" style={tint('#F3AD38')}>Race</span>
                 <div className="cmeta">Race<small> · {goal!.goal}</small></div>
                 <div className="cdet">{goal!.name}</div>
               </div>
@@ -1304,7 +1304,7 @@ function MonthCalendar({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun: (id: st
                         marginLeft: 5,
                         width: 6, height: 6,
                         borderRadius: '50%',
-                        background: '#FFCE8A',
+                        background: '#F3AD38',
                         verticalAlign: 'middle',
                       }}
                     />
@@ -1615,9 +1615,9 @@ function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: numbe
             const completionPct = mi > 0 ? actualMi / mi : 0;
             // AFC fix 2 · same palette thresholds as the EXECUTION strip.
             const fillColor = isCurrent
-              ? '#FFCE8A88'
+              ? '#F3AD3888'
               : completionPct >= 0.95 ? '#3EBD41'
-              : completionPct >= 0.80 ? '#FFCE8A'
+              : completionPct >= 0.80 ? '#F3AD38'
               : '#FC4D64';
 
             return (
@@ -1652,7 +1652,7 @@ function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: numbe
                 </span>
                 {/* Session ratio for past; in-progress badge for current */}
                 {isCurrent && (
-                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, color: '#FFCE8A', flexShrink: 0, marginLeft: -4 }}>
+                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, color: '#F3AD38', flexShrink: 0, marginLeft: -4 }}>
                     {sessDone}/{nonRest.length}
                   </span>
                 )}
@@ -1674,8 +1674,8 @@ function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: numbe
       ))}
       {goal && (
         <>
-          <div className="phlabel" style={{ color: '#FFCE8A' }}>
-            RACE<span className="pl-line" style={{ background: '#FFCE8A33' }} />
+          <div className="phlabel" style={{ color: '#F3AD38' }}>
+            RACE<span className="pl-line" style={{ background: '#F3AD3833' }} />
           </div>
           <div className="wkrow race">
             <span className="wn">★</span>

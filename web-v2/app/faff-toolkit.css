@@ -32,9 +32,9 @@
   --glass-strong: rgba(17,20,26,.92);
 
   /* Amber accents */
-  --amber-bright: #FFCE8A;
+  --amber-bright: #F3AD38;
   --amber-pale: #FFE7C2;
-  --amber-gold: #F5C518;
+  --amber-gold: #F0DF47;
   --mint-readiness: #86efa0;
   --mint-glow: #7be8a0;
 
@@ -42,7 +42,7 @@
   --status-good-border: rgba(62,189,65,.4);
   --status-good-text: #86efa0;
   --status-pr-border: rgba(245,197,24,.5);
-  --status-pr-text: #F5C518;
+  --status-pr-text: #F0DF47;
 
   /* Radii / elevation / motion */
   --r-chip: 14px;

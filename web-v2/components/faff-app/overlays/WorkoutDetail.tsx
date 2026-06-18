@@ -348,9 +348,9 @@ function RouteMap({ dist, gain, activityId }: { dist: string; gain: number; acti
         </svg>
         {routePath ? (
           <svg viewBox="0 0 700 168" preserveAspectRatio="xMidYMid meet">
-            <path d={routePath} fill="none" stroke="#FF5722" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={routePath} fill="none" stroke="#E88021" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
             {endpoints && <circle cx={endpoints.start[0]} cy={endpoints.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
-            {endpoints && <circle cx={endpoints.end[0]} cy={endpoints.end[1]} r="6" fill="#FF5722" stroke="#fff" strokeWidth="2" />}
+            {endpoints && <circle cx={endpoints.end[0]} cy={endpoints.end[1]} r="6" fill="#E88021" stroke="#fff" strokeWidth="2" />}
           </svg>
         ) : (
           <div style={{
@@ -430,7 +430,7 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
     >
       <div style={{
         fontSize: 10, letterSpacing: '1.6px', fontWeight: 700,
-        color: '#FFCE8A',
+        color: '#F3AD38',
       }}>
         HOW IT CHANGED
       </div>
@@ -508,7 +508,7 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
               display: 'inline-flex', alignItems: 'center', gap: 6,
               background: 'transparent',
               border: '1px solid rgba(255,206,138,0.42)',
-              color: '#FFCE8A',
+              color: '#F3AD38',
               borderRadius: 8,
               padding: '8px 14px',
               fontSize: 11, fontWeight: 700, letterSpacing: '0.8px',
@@ -526,7 +526,7 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
       ) : null}
 
       {restored ? (
-        <div style={{ fontSize: 12, color: '#FFCE8A' }}>
+        <div style={{ fontSize: 12, color: '#F3AD38' }}>
           Restored to original. Refreshing…
         </div>
       ) : null}

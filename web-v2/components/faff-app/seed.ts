@@ -77,7 +77,7 @@ function humanName(eff: EffortKey, distMi: number): string {
   return 'Easy';
 }
 const EFFORT_COLOR: Record<EffortKey, string> = {
-  recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38', tempo: '#FF5722', intervals: '#F43F5E', rest: '#8A90A0', race: '#FF5722',
+  recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38', tempo: '#E88021', intervals: '#FC4D64', rest: '#8A90A0', race: '#E88021',
 };
 
 /* ─────────────────────────  Fallbacks  ───────────────────────── */

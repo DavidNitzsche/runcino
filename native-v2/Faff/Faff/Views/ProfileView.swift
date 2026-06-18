@@ -156,10 +156,10 @@ struct ProfileView: View {
                 .foregroundStyle(Theme.over)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color(hex: 0xFF5A52).opacity(0.14),
+                .background(Color(hex: 0xFC4D64).opacity(0.14),
                             in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color(hex: 0xFF5A52).opacity(0.3), lineWidth: 1))
+                    .stroke(Color(hex: 0xFC4D64).opacity(0.3), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .confirmationDialog("Sign out of Faff?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {

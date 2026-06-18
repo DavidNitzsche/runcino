@@ -898,7 +898,7 @@ struct TargetsView: View {
     private func emptyState(_ title: String, _ cta: String) -> some View {
         VStack(spacing: 8) {
             Text(title).font(.body(13, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.8))
-            Text(cta).font(.body(12, weight: .extraBold)).tracking(0.5).foregroundStyle(Color(hex: 0xFFCE8A))
+            Text(cta).font(.body(12, weight: .extraBold)).tracking(0.5).foregroundStyle(Color(hex: 0xF3AD38))
         }
         .frame(maxWidth: .infinity)
         .padding(20)

@@ -101,7 +101,7 @@ function stripCitations(s: string | null | undefined): string {
 
 function contributionColor(c: number): string {
   if (c <= -8) return '#FC4D64'; // --over
-  if (c < 0)   return '#FFB24D'; // --warn-text
+  if (c < 0)   return '#F3AD38'; // --warn-text
   if (c > 0)   return '#3EBD41'; // --green
   return '#8A90A0';
 }

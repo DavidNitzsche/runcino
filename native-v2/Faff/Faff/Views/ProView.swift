@@ -12,7 +12,7 @@ struct ProView: View {
     @State private var plan: Plan = .annual
 
     private let mesh = FaffMesh(
-        c1: 0xFFCE8A, c2: 0xFF7A45, c3: 0x9E3AA0,
+        c1: 0xF3AD38, c2: 0xE88021, c3: 0x9E3AA0,
         c4: 0x5A1C8A, c5: 0x5A1C8A, base: 0x1C0C20
     )
 
@@ -75,7 +75,7 @@ struct ProView: View {
             }
             .padding(.horizontal, 14).padding(.vertical, 6)
             .background(
-                LinearGradient(colors: [Color(hex: 0xFFCE8A), Color(hex: 0xFF7A45)],
+                LinearGradient(colors: [Color(hex: 0xF3AD38), Color(hex: 0xE88021)],
                                startPoint: .leading, endPoint: .trailing),
                 in: Capsule()
             )
@@ -108,7 +108,7 @@ struct ProView: View {
              title: "Adaptive AI plan", sub: "retunes daily from readiness, sleep & load"),
         Feat(icon: "chart.xyaxis.line", tint: Color(hex: 0xFFAE7A),
              title: "Full analytics & trends", sub: "form, cadence, GCT, every history chart"),
-        Feat(icon: "sun.max.fill", tint: Color(hex: 0xFFCE8A),
+        Feat(icon: "sun.max.fill", tint: Color(hex: 0xF3AD38),
              title: "Heat & weather recalibration", sub: "targets & HR read adjusted to conditions"),
         Feat(icon: "target", tint: Theme.Accent.mintReady,
              title: "Unlimited race goals", sub: "every distance, projections & the gap"),
@@ -186,11 +186,11 @@ struct ProView: View {
                 .padding(EdgeInsets(top: 16, leading: 14, bottom: 16, trailing: 14))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    on ? Color(hex: 0xFFCE8A).opacity(0.12) : Color.white.opacity(0.07),
+                    on ? Color(hex: 0xF3AD38).opacity(0.12) : Color.white.opacity(0.07),
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(on ? Color(hex: 0xFFCE8A) : Color.white.opacity(0.16), lineWidth: 1.5))
+                    .stroke(on ? Color(hex: 0xF3AD38) : Color.white.opacity(0.16), lineWidth: 1.5))
 
                 if let save {
                     Text(save)
@@ -215,11 +215,11 @@ struct ProView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
                 .background(
-                    LinearGradient(colors: [Color(hex: 0xFFCE8A), Color(hex: 0xFF7A45)],
+                    LinearGradient(colors: [Color(hex: 0xF3AD38), Color(hex: 0xE88021)],
                                    startPoint: .leading, endPoint: .trailing),
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
-                .shadow(color: Color(hex: 0xFF7A45).opacity(0.6), radius: 34, y: 14)
+                .shadow(color: Color(hex: 0xE88021).opacity(0.6), radius: 34, y: 14)
         }
         .buttonStyle(.plain)
     }

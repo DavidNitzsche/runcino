@@ -176,7 +176,7 @@ struct ActivityView: View {
                     .font(.display(96, weight: .bold))
                     .tracking(-6)
                     .foregroundStyle(
-                        LinearGradient(colors: [Color(hex: 0xFFE0A0), Color(hex: 0xFF8A45), Color(hex: 0xFF5A52)],
+                        LinearGradient(colors: [Color(hex: 0xFFE0A0), Color(hex: 0xFF8A45), Color(hex: 0xFC4D64)],
                                        startPoint: .topLeading, endPoint: .bottomTrailing)
                     )
                     .shadow(color: Color(hex: 0xFF783C).opacity(0.4), radius: 26, y: 6)
@@ -214,7 +214,7 @@ struct ActivityView: View {
             HStack {
                 Text("21-DAY RUN STREAK")
                     .font(.body(12, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0xFFCE8A))
+                    .foregroundStyle(Color(hex: 0xF3AD38))
                 Spacer()
                 Text("LAST 18 WEEKS")
                     .font(.body(10, weight: .semibold))
@@ -239,7 +239,7 @@ struct ActivityView: View {
             if let tip = heatmapTip {
                 Text(tip)
                     .font(.body(12, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0xFFCE8A))
+                    .foregroundStyle(Color(hex: 0xF3AD38))
                     .padding(.top, 8)
             }
         }
@@ -364,12 +364,12 @@ struct ActivityView: View {
         }
         if let t = temposLast, let p = t.pace {
             prs.append(PR(key: "LAST THRESHOLD", value: p,
-                          caption: shortDate(t.date), color: Color(hex: 0xFF5722), unit: "/mi"))
+                          caption: shortDate(t.date), color: Color(hex: 0xE88021), unit: "/mi"))
         }
         let rangeTotalMi = runs.reduce(0.0) { $0 + $1.distance_mi }
         if rangeTotalMi > 0 {
             prs.append(PR(key: "RANGE TOTAL", value: String(format: "%.0f", rangeTotalMi),
-                          caption: rangeLabel.capitalized, color: Color(hex: 0xFF5722), unit: "mi"))
+                          caption: rangeLabel.capitalized, color: Color(hex: 0xE88021), unit: "mi"))
         }
         return prs
     }

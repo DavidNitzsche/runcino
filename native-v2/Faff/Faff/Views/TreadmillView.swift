@@ -633,7 +633,7 @@ struct TreadmillView: View {
     private func meshFor(_ kind: TreadSegKind) -> FaffMesh {
         switch kind {
         case .warm: return FaffMesh(c1: 0x62E3D4, c2: 0x3AB0CF, c3: 0x1C6F9A, c4: 0x0F8F93, c5: 0x0F6A84, base: 0x07323F)
-        case .work: return FaffMesh(c1: 0xFFA566, c2: 0xFF5A52, c3: 0xEC2F54, c4: 0xC01D48, c5: 0xA8163F, base: 0x4E0A22)
+        case .work: return FaffMesh(c1: 0xFFA566, c2: 0xFC4D64, c3: 0xEC2F54, c4: 0xC01D48, c5: 0xA8163F, base: 0x4E0A22)
         case .rec:  return FaffMesh(c1: 0x8EF0B0, c2: 0x34C194, c3: 0x1F8A68, c4: 0x128A64, c5: 0x137259, base: 0x06382E)
         case .cool: return FaffMesh(c1: 0x7FE0D0, c2: 0x34B0A0, c3: 0x1F8A8A, c4: 0x127A72, c5: 0x0F6A64, base: 0x06322E)
         }

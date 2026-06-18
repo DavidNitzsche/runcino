@@ -607,9 +607,9 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
               : (r.netElevFt < -100 ? 'Net downhill' : r.netElevFt > 100 ? 'Net uphill' : 'Net flat')}
           </div></div>
           <svg className="rp-elevsvg" viewBox="0 0 640 150" preserveAspectRatio="none">
-            <defs><linearGradient id="elevfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FF5722" stopOpacity=".42"/><stop offset="1" stopColor="#FF5722" stopOpacity="0"/></linearGradient></defs>
+            <defs><linearGradient id="elevfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#E88021" stopOpacity=".42"/><stop offset="1" stopColor="#E88021" stopOpacity="0"/></linearGradient></defs>
             <path d={`${r.elevPath} L640,150 L0,150 Z`} fill="url(#elevfill)" />
-            <path d={r.elevPath} fill="none" stroke="#FF5722" strokeWidth="2.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            <path d={r.elevPath} fill="none" stroke="#E88021" strokeWidth="2.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             <line x1="320" y1="0" x2="320" y2="150" stroke="rgba(255,255,255,.18)" strokeWidth="1" strokeDasharray="3 4" />
           </svg>
           {/* #40 · axis ticks scaled to the race distance (was the static
@@ -834,7 +834,7 @@ function LogisticsItem({ icon, label, value, detail }: { icon: React.ReactNode; 
   return (
     <div className="rp-li">
       <div className="k">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#FFCE8A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icon}</svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#F3AD38" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icon}</svg>
         {label}
       </div>
       <div className="v">{value}</div>

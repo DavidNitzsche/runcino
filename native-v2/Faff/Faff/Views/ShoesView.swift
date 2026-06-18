@@ -101,7 +101,7 @@ struct ShoesView: View {
             stat(label: "FLEET MILES", value: formatMileage(totalActiveMi))
             stat(label: "RETIRE SOON",
                  value: "\(retireSoon)",
-                 tint: retireSoon > 0 ? Color(hex: 0xFFCE8A) : Theme.txt)
+                 tint: retireSoon > 0 ? Color(hex: 0xF3AD38) : Theme.txt)
         }
     }
 

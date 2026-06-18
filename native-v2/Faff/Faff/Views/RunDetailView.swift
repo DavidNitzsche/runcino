@@ -1177,9 +1177,9 @@ private enum TraceMetric: String, CaseIterable {
 
     var color: Color {
         switch self {
-        case .pace: return Color(hex: 0xFF7A45)
+        case .pace: return Color(hex: 0xE88021)
         case .hr:   return Theme.intervals
-        case .elev: return Color(hex: 0xFFCE8A)
+        case .elev: return Color(hex: 0xF3AD38)
         case .cad:  return Theme.Accent.mintGlow
         }
     }

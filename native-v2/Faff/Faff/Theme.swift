@@ -38,8 +38,8 @@ enum Theme {
     static let over      = Color(hex: 0xFC4D64)     // off / warn
     static let dist      = Color(hex: 0x27B4E0)     // distance / recovery / info
     static let rest      = Color(hex: 0x27B4E0)     // rest chrome (= recovery blue · corporate #008FEC deleted)
-    static let race      = Color(hex: 0xFF5722)     // race day / tempo (the brand hero color)
-    static let intervals = Color(hex: 0xF43F5E)     // intervals / max-quality effort
+    static let race      = Color(hex: 0xE88021)     // race day / tempo (the brand hero color)
+    static let intervals = Color(hex: 0xFC4D64)     // intervals / max-quality effort
 
     // ───── Bright-on-dark TEXT siblings of the fill accents ─────
     // `goal`/`over` are tuned as FILLS (dots, bars, badge bodies). On dark
@@ -48,8 +48,8 @@ enum Theme {
     // call sites (readiness tags, slow-pace marks, attention copy) that were
     // each hand-rolling the same lighter value. Per David: warn/miss get
     // their own bright-text token rather than being force-routed to goal/over.
-    static let warnText  = Color(hex: 0xFFB24D)     // bright warn/attention TEXT on dark
-    static let overText  = Color(hex: 0xFF6A6A)     // bright miss/over TEXT on dark
+    static let warnText  = Color(hex: 0xF3AD38)     // bright warn/attention TEXT on dark
+    static let overText  = Color(hex: 0xFC4D64)     // bright miss/over TEXT on dark
 
     // ───── Calm / neutral teal · warmup-cool segment color ─────
     // Tokenizes the existing 0x5BBFB0 used for warmup/cooldown ticks, OK
@@ -113,14 +113,14 @@ enum Theme {
     // ───── Brandmark sweep · FAFF·RUN (Anton, skew −9°, 6s linear ∞) ─────
     enum Brand {
         static let sweepStops: [Color] = [
-            Color(hex: 0xF43F5E),     // 0%   hot pink
-            Color(hex: 0xFF5722),     // 17%  ember
-            Color(hex: 0xF5C518),     // 35%  gold
+            Color(hex: 0xFC4D64),     // 0%   hot pink
+            Color(hex: 0xE88021),     // 17%  ember
+            Color(hex: 0xF0DF47),     // 35%  gold
             Color(hex: 0x14C08C),     // 55%  emerald
             Color(hex: 0x4F8FF7),     // 75%  blue
-            Color(hex: 0xF43F5E)      // 100% back to hot pink
+            Color(hex: 0xFC4D64)      // 100% back to hot pink
         ]
-        static let dot = Color(hex: 0xF5C518)       // gold middot
+        static let dot = Color(hex: 0xF0DF47)       // gold middot
         static let skewDegrees: Double = -9
         static let sweepDuration: TimeInterval = 6
 
@@ -147,17 +147,17 @@ enum Theme {
         static let z1 = Color(hex: 0x27B4E0)
         static let z2 = Color(hex: 0x3EBD41)
         static let z3 = Color(hex: 0xF3AD38)
-        static let z4 = Color(hex: 0xFF5722)
-        static let z5 = Color(hex: 0xF43F5E)
+        static let z4 = Color(hex: 0xE88021)
+        static let z5 = Color(hex: 0xFC4D64)
     }
 
     // ───── Shoe role colors (Garage chips, picker dots) ─────
-    // AFC fix 2 · per the locked palette RACE and TEMPO share #FF5722
+    // AFC fix 2 · per the locked palette RACE and TEMPO share #E88021
     // (one semantic slot) · the two role chips are color-identical and
     // differentiated by their text label. Synced with web ROLECOL.
     enum Shoe {
-        static let race      = Color(hex: 0xFF5722)
-        static let tempo     = Color(hex: 0xFF5722)
+        static let race      = Color(hex: 0xE88021)
+        static let tempo     = Color(hex: 0xE88021)
         static let long      = Color(hex: 0xF3AD38)
         static let easy      = Color(hex: 0x3EBD41)
         static let recovery  = Color(hex: 0x27B4E0)
@@ -165,9 +165,9 @@ enum Theme {
 
     // ───── Accents · amber + mint (Coach tags, gap chip, callouts) ─────
     enum Accent {
-        static let amberBright = Color(hex: 0xFFCE8A) // primary eyebrow / COACH tag
+        static let amberBright = Color(hex: 0xF3AD38) // primary eyebrow / COACH tag
         static let amberPale   = Color(hex: 0xFFE7C2) // gradient highlight end
-        static let amberGold   = Color(hex: 0xF5C518) // PR gold pill
+        static let amberGold   = Color(hex: 0xF0DF47) // PR gold pill
         static let mintReady   = Color(hex: 0x3EBD41) // good-state text · = Success green (palette consolidation 2026-06-17)
         static let mintGlow    = Color(hex: 0x3EBD41) // gap-chip glow / paths · = Success green
     }
@@ -176,8 +176,8 @@ enum Theme {
     enum Status {
         static let solidBorder = Color(hex: 0x3EBD41).opacity(0.40)
         static let solidText   = Color(hex: 0x3EBD41)
-        static let prBorder    = Color(hex: 0xF5C518).opacity(0.50)
-        static let prText      = Color(hex: 0xF5C518)
+        static let prBorder    = Color(hex: 0xF0DF47).opacity(0.50)
+        static let prText      = Color(hex: 0xF0DF47)
     }
 
     // ───── Readiness band → color · THE one source ─────
@@ -231,7 +231,7 @@ enum Theme {
         var goal: Color {
             switch self {
             case .ember:  return Color(hex: 0xF3AD38)
-            case .gold:   return Color(hex: 0xF5C518)
+            case .gold:   return Color(hex: 0xF0DF47)
             case .violet: return Color(hex: 0xA78BFA)
             case .cool:   return Color(hex: 0x27B4E0)
             }
@@ -241,8 +241,8 @@ enum Theme {
             // AFC fix 2 · the DEFAULT (ember) tweak now returns the locked
             // race hex. gold/violet/cool remain opt-in recolors via the
             // Tweaks panel (out-of-palette by design · flagged in recap).
-            case .ember:  return Color(hex: 0xFF5722)
-            case .gold:   return Color(hex: 0xF5A518)
+            case .ember:  return Color(hex: 0xE88021)
+            case .gold:   return Color(hex: 0xF0DF47)
             case .violet: return Color(hex: 0xB794F4)
             case .cool:   return Color(hex: 0x3AA0E0)
             }
@@ -297,10 +297,10 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
         case .recovery:  return Color(hex: 0x27B4E0)
         case .easy:      return Color(hex: 0x3EBD41)  // per --eff-easy · = Success green (consolidation 2026-06-17)
         case .long:      return Color(hex: 0xF3AD38)
-        case .tempo:     return Color(hex: 0xFF5722)
-        case .intervals: return Color(hex: 0xF43F5E)
+        case .tempo:     return Color(hex: 0xE88021)
+        case .intervals: return Color(hex: 0xFC4D64)
         case .rest:      return Color(hex: 0x8A90A0)
-        case .race:      return Color(hex: 0xFF5722)  // per --eff-race
+        case .race:      return Color(hex: 0xE88021)  // per --eff-race
         }
     }
 
@@ -332,7 +332,7 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
         case .rest:
             return FaffMesh(c1: 0xC4C8D2, c2: 0x9CA2B0, c3: 0x787E8E, c4: 0x58606E, c5: 0x3E4350, base: 0x252935)
         case .race:
-            return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+            return FaffMesh(c1: 0xFFD27A, c2: 0xE88021, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
         }
     }
 
@@ -406,7 +406,7 @@ struct FaffMesh: Equatable {
         case .spectator: return FaffMesh(c1: 0x8FF0E0, c2: 0x46CFC6, c3: 0x2FC0E6, c4: 0x23A98E, c5: 0x1B8C7C, base: 0x0E5A54)
         // AFC fix 6 · dedicated race mesh (= web MESH.race), no longer
         // borrowing the intervals stops.
-        case .race:      return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+        case .race:      return FaffMesh(c1: 0xFFD27A, c2: 0xE88021, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
         }
     }
 
@@ -456,7 +456,7 @@ struct FaffMesh: Equatable {
         switch p {
         case .base:  return forView(.health)
         case .build: return forView(.train)
-        case .peak:  return FaffMesh(c1: 0xFFA566, c2: 0xFF5A52, c3: 0xEC2F54, c4: 0xC01D48, c5: 0xA8163F, base: 0x4E0A22)
+        case .peak:  return FaffMesh(c1: 0xFFA566, c2: 0xFC4D64, c3: 0xEC2F54, c4: 0xC01D48, c5: 0xA8163F, base: 0x4E0A22)
         case .taper: return FaffMesh(c1: 0x8EF0B0, c2: 0x34C194, c3: 0x1F8A68, c4: 0x128A64, c5: 0x137259, base: 0x06382E)
         case .race:  return forView(.race)
         }

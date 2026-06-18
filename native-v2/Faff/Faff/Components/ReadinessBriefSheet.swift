@@ -261,12 +261,12 @@ struct ReadinessBriefSheet: View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(Color(hex: 0xFFCE8A))
+                    .fill(Color(hex: 0xF3AD38))
                     .frame(width: 8, height: 8)
                 Text("SUBJECTIVE OVERRIDE")
                     .font(.body(10, weight: .extraBold))
                     .tracking(1.4)
-                    .foregroundStyle(Color(hex: 0xFFCE8A))
+                    .foregroundStyle(Color(hex: 0xF3AD38))
             }
             HStack(alignment: .center, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {

@@ -488,7 +488,7 @@ export function TodayView({
                   <span className="wc-skipped">SKIPPED</span>
                 ) : wasAdapted && wasText ? (
                   <>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#ffce8a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="wc-was-icn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#F3AD38" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="wc-was-icn">
                       <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>
                     </svg>
                     <span className="wc-was-tx">{wasText}</span>
@@ -2141,7 +2141,7 @@ function CompletedHeroV2({
   // local set used the good-state green as Z2 and a one-off #7DD8E0 as
   // Z1 · if #27B4E0 proves too dim against the dark bar trough, raise it
   // in the palette, not per-site.
-  const zoneColors = ['#27B4E0', '#14C08C', '#F3AD38', '#FF5722', '#F43F5E'];
+  const zoneColors = ['#27B4E0', '#14C08C', '#F3AD38', '#E88021', '#FC4D64'];
   const peakHr = runData?.hr_max ?? result?.peak ?? null;
 
   // Render every split the run carries (was capped at 8 · landed
@@ -2505,7 +2505,7 @@ function CompletedHeroV2({
               display: 'inline-flex', alignItems: 'center', gap: 5,
               fontSize: 11, fontWeight: 700, letterSpacing: 2,
               whiteSpace: 'nowrap', marginTop: 7, flex: '0 0 auto',
-              color: '#FF6A6A' /* --over-text */,
+              color: '#FC4D64' /* --over-text */,
             }}>OFF PLAN</span>
           )}
         </div>
@@ -2519,7 +2519,7 @@ function CompletedHeroV2({
           <PhasedMileSplits
             phases={runData.phase_breakdown}
             splits={splits}
-            accent={d.type === 'intervals' ? '#F43F5E' : '#FF5722'}
+            accent={d.type === 'intervals' ? '#FC4D64' : '#E88021'}
             effort={d.type}
           />
         ) : null}
@@ -2715,7 +2715,7 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
           justifyContent: 'space-between',
           fontSize: 8, fontWeight: 700, letterSpacing: 1.2,
         }}>
-          <span style={{ color: '#FFB24D' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{ color: '#F3AD38' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
           <span style={{
             position: 'absolute', left: '50%', transform: 'translateX(-50%)',
             color: 'rgba(255,255,255,.45)',
@@ -2781,8 +2781,8 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
             const delta = actualSec > 0 && goalSec > 0 ? actualSec - goalSec : null;
             const beat = delta != null && delta < 0;
             const onTarget = delta != null && delta === 0;
-            const fillColor = beat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */;
-            const deltaColor = beat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */;
+            const fillColor = beat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */;
+            const deltaColor = beat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */;
             // 2026-06-04 · center-anchored marker · same model as
             // TempoPanel. White tick slides along the bar to the
             // runner's actual position; the colored fill connects
@@ -2915,7 +2915,7 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
             {avgWorkDelta != null && (
               <span style={{
                 fontSize: 12, fontWeight: 700,
-                color: avgWorkBeat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
+                color: avgWorkBeat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */,
               }}>{avgWorkDelta > 0 ? `+${avgWorkDelta}` : avgWorkDelta} vs goal</span>
             )}
           </div>
@@ -2982,7 +2982,7 @@ function EasyPanel({
       ? easyPct >= 70 ? 'good' : easyPct >= 40 ? 'warn' : 'bad'
       // Pace was out of band · use the stricter HR-only thresholds.
       : easyPct >= 85 ? 'good' : easyPct >= 70 ? 'warn' : 'bad';
-  const easyColor = easyTone === 'good' ? '#86efa0' /* --mint-readiness */ : easyTone === 'warn' ? '#FFB24D' /* --warn-text */ : '#FF6A6A' /* --over-text */;
+  const easyColor = easyTone === 'good' ? '#86efa0' /* --mint-readiness */ : easyTone === 'warn' ? '#F3AD38' /* --warn-text */ : '#FC4D64' /* --over-text */;
 
   // HR halves · only when splits carry HR per mile.
   const splitsWithHr = splits.filter(s => typeof s.hr === 'number' && (s.hr ?? 0) > 0);
@@ -2997,8 +2997,8 @@ function EasyPanel({
   const rawDriftBand: DriftBand | null = hrDelta == null
     ? null
     : Math.abs(hrDelta) <= 4 ? { text: 'STAYED FLAT', color: '#86efa0' /* --mint-readiness */ }
-    : Math.abs(hrDelta) <= 8 ? { text: 'SOME DRIFT', color: '#FFB24D' /* --warn-text */ }
-    : { text: 'LATE FADE', color: '#FF6A6A' /* --over-text */ };
+    : Math.abs(hrDelta) <= 8 ? { text: 'SOME DRIFT', color: '#F3AD38' /* --warn-text */ }
+    : { text: 'LATE FADE', color: '#FC4D64' /* --over-text */ };
   // 2026-06-08 · heat-aware relabel · a back-half HR rise on a warm+ day
   // (slowdownPct >= 2) is thermoregulation, not decoupling · show HEAT DRIFT.
   const driftBand = rawDriftBand ? heatAwareDrift(rawDriftBand, heatSlowdownPct ?? 0) : null;
@@ -3323,8 +3323,8 @@ function LongPanel({
   const rawDriftBand: DriftBand | null = hrDelta == null
     ? null
     : hrDelta <= 4 ? { text: 'HELD STEADY', color: '#86efa0' /* --mint-readiness */ }
-    : hrDelta <= 8 ? { text: 'SOME DRIFT', color: '#FFB24D' /* --warn-text */ }
-    : { text: 'LATE FADE', color: '#FF6A6A' /* --over-text */ };
+    : hrDelta <= 8 ? { text: 'SOME DRIFT', color: '#F3AD38' /* --warn-text */ }
+    : { text: 'LATE FADE', color: '#FC4D64' /* --over-text */ };
   const driftBand = rawDriftBand ? heatAwareDrift(rawDriftBand, heatSlowdownPct ?? 0) : null;
 
   // Find the mile where HR drift crossed +8 bpm vs first third · for the
@@ -3358,11 +3358,11 @@ function LongPanel({
               }}>{labels[i]}</div>
               <div style={{
                 fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600,
-                marginTop: 8, lineHeight: 1, color: warn ? '#FFB24D' /* --warn-text */ : undefined,
+                marginTop: 8, lineHeight: 1, color: warn ? '#F3AD38' /* --warn-text */ : undefined,
               }}>{t.paceSec > 0 ? fmtSecAsPace(t.paceSec) : '·'}</div>
               <div style={{
                 fontSize: 11, fontWeight: 600, opacity: 0.78, marginTop: 8,
-                color: warn ? '#FFB24D' /* --warn-text */ : undefined,
+                color: warn ? '#F3AD38' /* --warn-text */ : undefined,
               }}>{t.hr != null ? `${t.hr} ♥` : '·'}</div>
             </div>
           );
@@ -3451,7 +3451,7 @@ function LongPanel({
             }}>/mi</small>
             {heldMile != null && hrDelta != null && hrDelta > 8 ? (
               <span style={{
-                fontSize: 11, fontWeight: 700, marginLeft: 5, color: '#FFB24D' /* --warn-text */,
+                fontSize: 11, fontWeight: 700, marginLeft: 5, color: '#F3AD38' /* --warn-text */,
               }}>· held to mi {heldMile - 1}</span>
             ) : null}
           </span>
@@ -3631,7 +3631,7 @@ function TempoPanel({
             <div style={{
               position: 'absolute', top: 1, bottom: 1,
               left: `${fillLeft}%`, width: `${fillW}%`,
-              background: beat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
+              background: beat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */,
               borderRadius: 3, zIndex: 2,
             }} />
           )}
@@ -3658,7 +3658,7 @@ function TempoPanel({
           display: 'flex', justifyContent: 'space-between',
           fontSize: 8, fontWeight: 700, letterSpacing: 1.1, marginTop: 6,
         }}>
-          <span style={{ color: '#FFB24D' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{ color: '#F3AD38' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
           <span style={{ color: 'rgba(255,255,255,.45)' }}>TARGET</span>
           <span style={{ color: '#86efa0' /* --mint-readiness */, opacity: 0.9 }}>FASTER ▸</span>
         </div>
@@ -3701,11 +3701,11 @@ function TempoPanel({
                 }}>{card.label}</div>
                 <div style={{
                   fontFamily: FONT_DISP, fontSize: 19, fontWeight: 600,
-                  marginTop: 8, lineHeight: 1, color: card.warn ? '#FFB24D' /* --warn-text */ : undefined,
+                  marginTop: 8, lineHeight: 1, color: card.warn ? '#F3AD38' /* --warn-text */ : undefined,
                 }}>{card.bpm}</div>
                 <div style={{
                   fontSize: 11, fontWeight: 600, opacity: 0.78, marginTop: 8,
-                  color: card.warn ? '#FFB24D' /* --warn-text */ : undefined,
+                  color: card.warn ? '#F3AD38' /* --warn-text */ : undefined,
                 }}>bpm</div>
               </div>
             ))}
@@ -3773,7 +3773,7 @@ function TempoPanel({
             ) : (
               <span style={{
                 fontSize: 11, fontWeight: 700, marginLeft: 5,
-                color: beat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
+                color: beat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */,
               }}>
                 · {delta > 0 ? `+${delta}` : delta} vs goal
               </span>
@@ -3838,7 +3838,7 @@ function LongMpPanel({
   const shiftTone = shiftDrop == null ? '#86efa0' /* --mint-readiness */
     : shiftDrop >= 45 ? '#86efa0' /* --mint-readiness */
     : shiftDrop >= 30 ? '#86efa0' /* --mint-readiness */
-    : '#FFB24D' /* --warn-text */;
+    : '#F3AD38' /* --warn-text */;
   const shiftSign = (shiftDrop ?? 0) > 0 ? '−' : '+';
   const shiftMm = Math.floor(Math.abs(shiftDrop ?? 0) / 60);
   const shiftSs = Math.abs(shiftDrop ?? 0) % 60;
@@ -3976,7 +3976,7 @@ function LongMpPanel({
             <div style={{
               position: 'absolute', top: 1, bottom: 1,
               left: `${mpFillLeft}%`, width: `${mpFillW}%`,
-              background: mpBeat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
+              background: mpBeat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */,
               borderRadius: 3,
             }} />
           )}
@@ -3990,7 +3990,7 @@ function LongMpPanel({
           display: 'flex', justifyContent: 'space-between',
           fontSize: 8, fontWeight: 700, letterSpacing: 1.1, marginTop: 6,
         }}>
-          <span style={{ color: '#FFB24D' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
+          <span style={{ color: '#F3AD38' /* --warn-text */, opacity: 0.85 }}>◂ SLOWER</span>
           <span style={{ color: 'rgba(255,255,255,.45)' }}>TARGET</span>
           <span style={{ color: '#86efa0' /* --mint-readiness */, opacity: 0.9 }}>FASTER ▸</span>
         </div>
@@ -4010,7 +4010,7 @@ function LongMpPanel({
                 {chip.label}
                 <b style={{
                   fontFamily: FONT_DISP, fontWeight: 600,
-                  color: chip.warn ? '#FFB24D' /* --warn-text */ : '#fff', marginLeft: 3,
+                  color: chip.warn ? '#F3AD38' /* --warn-text */ : '#fff', marginLeft: 3,
                 }}>{chip.pace}</b>
               </span>
             ))}
@@ -4037,7 +4037,7 @@ function LongMpPanel({
           {mpDelta != null ? (
             <span style={{
               fontSize: 11, fontWeight: 700, marginLeft: 5,
-              color: mpBeat ? '#86efa0' /* --mint-readiness */ : '#FFB24D' /* --warn-text */,
+              color: mpBeat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */,
             }}>
               · {mpDelta > 0 ? `+${mpDelta}` : mpDelta} vs goal
             </span>
@@ -4490,7 +4490,7 @@ function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes
  * AND the race isn't logged yet).
  *
  * Surface = the one sanctioned filled-accent surface (design brief §Surface):
- * the race-orange gradient (160deg #FF8A3D → #FF5722 → #E03E00). Countdown
+ * the race-orange gradient (160deg #FF8A3D → #E88021 → #E03E00). Countdown
  * collapses to TODAY. Goal time + goal pace + B-goal (the canonical A+7:00
  * derivation, matching raceDetail.ts). Projection vs goal. Logistics,
  * pacing splits, fueling and course stay one tap away via "Full race plan"
@@ -4538,7 +4538,7 @@ function RaceDayHero({
         position: 'relative',
         borderRadius: 22,
         overflow: 'hidden',
-        background: 'linear-gradient(160deg, #FF8A3D 0%, #FF5722 55%, #E03E00 100%)',
+        background: 'linear-gradient(160deg, #FF8A3D 0%, #E88021 55%, #E03E00 100%)',
         color: '#FFFFFF',
         padding: '34px 32px 30px',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,.20)',
@@ -4644,9 +4644,9 @@ function GoalReadyBody({ ready }: { ready: NonNullable<FaffSeed['goalReady']> })
       foot: 'Trend says race it — book one', footColor: '#3EBD41',
     },
     'projectable': {
-      big: `~${fmtMon(ready.readyEarliestISO!)}`, color: '#FFCE8A', lab: 'IN RANGE BY',
+      big: `~${fmtMon(ready.readyEarliestISO!)}`, color: '#F3AD38', lab: 'IN RANGE BY',
       sub: `Goal ${goalTime} · window ${fmtMon(ready.readyEarliestISO!)}–${fmtMon(ready.readyLatestISO!)}`,
-      foot: `On your trend · +${ready.observedPerWeek} VDOT/wk`, footColor: '#FFCE8A',
+      foot: `On your trend · +${ready.observedPerWeek} VDOT/wk`, footColor: '#F3AD38',
     },
     'trend-flat': {
       big: goalTime, color: '#9099A8', lab: 'GOAL',
@@ -4747,7 +4747,7 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           <div className="cdbig" style={{
             color: !goal?.projected ? '#9099A8'
               : goalStatusReconciled === 'off-track' ? '#FC4D64'
-              : goalStatusReconciled === 'watching' ? '#FFCE8A'
+              : goalStatusReconciled === 'watching' ? '#F3AD38'
               : goalOnTrackReconciled ? '#3EBD41'
               : '#FC4D64',
           }}>
@@ -4762,15 +4762,15 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           <div className="cdbar"><div className="cdfill" style={{
             width: `${goal?.goalPct ?? 0}%`,
             background: goalStatusReconciled === 'off-track' ? '#FC4D64'
-              : goalStatusReconciled === 'watching' ? '#FFCE8A'
+              : goalStatusReconciled === 'watching' ? '#F3AD38'
               : goalOnTrackReconciled ? '#3EBD41'
               : '#FC4D64',
           }} /></div>
           <div className="cdwk" style={{
             color: goalStatusReconciled === 'off-track' ? '#FC4D64'
-              : goalStatusReconciled === 'watching' ? '#FFCE8A'
+              : goalStatusReconciled === 'watching' ? '#F3AD38'
               : goalOnTrackReconciled ? '#3EBD41'
-              : '#FFCE8A',
+              : '#F3AD38',
             opacity: 1,
           }}>
             {goal
@@ -4842,7 +4842,7 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           OVERREACH:    '#FC4D64',  // off/warn · sustained negative load
           LOADED:       '#F3AD38',  // amber · high stress but productive
           PRODUCTIVE:   '#3EBD41',  // good state · balanced
-          'RACE-READY': '#F5C518',  // gold · post-taper primed
+          'RACE-READY': '#F0DF47',  // gold · post-taper primed
           DETRAINING:   '#27B4E0',  // recovery blue · too fresh too long
           BUILDING:     '#8A90A0',  // neutral grey · cold-start
         };

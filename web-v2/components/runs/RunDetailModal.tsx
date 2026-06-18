@@ -883,7 +883,7 @@ type ZonePcts = Record<ZoneKey, number>;
 // see constants.ts ZC + Theme.swift ZoneSplit). The old map used the
 // corporate blue for Z1 and the same red for both Z4 and Z5.
 const ZONE_COLOR: Record<ZoneKey, string> = {
-  z1: '#27B4E0', z2: '#14C08C', z3: '#F3AD38', z4: '#FF5722', z5: '#F43F5E',
+  z1: '#27B4E0', z2: '#14C08C', z3: '#F3AD38', z4: '#E88021', z5: '#FC4D64',
 };
 const ZONE_NAME: Record<ZoneKey, string> = {
   z1: 'Z1', z2: 'Z2', z3: 'Z3', z4: 'Z4', z5: 'Z5',
@@ -1107,8 +1107,8 @@ function HRSection({ d }: { d: RunDetail }) {
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
           <linearGradient id="zoneTraceGrad" x1="0" y1="0" x2="0" y2="80" gradientUnits="userSpaceOnUse">
-            <stop offset="0"     stopColor="#F43F5E" />
-            <stop offset="0.16"  stopColor="#FF5722" />
+            <stop offset="0"     stopColor="#FC4D64" />
+            <stop offset="0.16"  stopColor="#E88021" />
             <stop offset="0.34"  stopColor="#F3AD38" />
             <stop offset="0.55"  stopColor="#14C08C" />
             <stop offset="0.85"  stopColor="#27B4E0" />

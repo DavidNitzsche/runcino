@@ -196,7 +196,7 @@ struct WorkSegmentRow: View {
 }
 
 extension Theme {
-    static let amberBright = Color(hex: 0xFFCE8A)
+    static let amberBright = Color(hex: 0xF3AD38)
 }
 
 // MARK: - ConditionsLine

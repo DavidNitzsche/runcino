@@ -195,7 +195,7 @@ struct FaffToggle: View {
 // MARK: - LivePulseDot
 
 struct LivePulseDot: View {
-    var color: Color = Color(hex: 0xFF5A52)
+    var color: Color = Color(hex: 0xFC4D64)
     var size: CGFloat = 8
 
     var body: some View {
@@ -293,7 +293,7 @@ struct EffortMeter: View {
             Color(hex: 0x8EF0B0),
             Color(hex: 0xFFE0A0),
             Color(hex: 0xFF9560),
-            Color(hex: 0xFF5A52)
+            Color(hex: 0xFC4D64)
         ]
         VStack(alignment: .leading, spacing: 12) {
             ZStack(alignment: .leading) {
