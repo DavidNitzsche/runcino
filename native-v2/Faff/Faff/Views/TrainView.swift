@@ -230,7 +230,9 @@ struct TrainView: View {
                                 isToday: day.date == (state?.today ?? "")
                             )
                         } else {
-                            NavigationLink(value: FaffRoute.planned(date: day.date)) {
+                            let weekRoute: FaffRoute = day.activityId.map { .runDetail(id: $0) }
+                                ?? .planned(date: day.date)
+                            NavigationLink(value: weekRoute) {
                                 TrainWeekRow(
                                     day: day,
                                     isFirst: idx == 0,
@@ -515,7 +517,9 @@ struct TrainView: View {
                 if day.type.lowercased() == "rest" {
                     peekCell(day: day)
                 } else {
-                    NavigationLink(value: FaffRoute.planned(date: day.date)) {
+                    let peekRoute: FaffRoute = day.activityId.map { .runDetail(id: $0) }
+                        ?? .planned(date: day.date)
+                    NavigationLink(value: peekRoute) {
                         peekCell(day: day)
                     }
                     .buttonStyle(.plain)
@@ -761,7 +765,9 @@ struct TrainView: View {
                 if isRest || sel.isRace {
                     calSelectionRow(sel)
                 } else {
-                    NavigationLink(value: FaffRoute.planned(date: iso)) {
+                    let calRoute: FaffRoute = sel.day.activityId.map { .runDetail(id: $0) }
+                        ?? .planned(date: iso)
+                    NavigationLink(value: calRoute) {
                         calSelectionRow(sel)
                     }
                     .buttonStyle(.plain)
