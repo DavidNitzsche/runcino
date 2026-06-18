@@ -133,7 +133,9 @@ need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF5C518\)'  'watch Faff.bonus = #F5
 #          color consolidation (snapped to --green #3EBD41). Tripwire so
 #          it can never return. NOTE: FFB24D / FF6A6A are NOT retired —
 #          they're now the legit --warn-text / --over-text token values.
-RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D03F3F|D63E4E|EE6038|FF8870|34D058|5FD06A'
+# 27E087 · "Aquamarine" — David BANNED it outright 2026-06-17 ("do not use
+#          this color anywhere ever"). Never to appear in any surface.
+RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D03F3F|D63E4E|EE6038|FF8870|34D058|5FD06A|27E087'
 HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→'
 
 hits=$(grep -rinE "(#|0x)($RETIRED)" \
