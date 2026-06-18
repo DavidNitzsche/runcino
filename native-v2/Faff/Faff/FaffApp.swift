@@ -182,6 +182,10 @@ extension Notification.Name {
     /// RootContainer holds the FAFF splash until every tab has signaled, so the
     /// app reveals fully painted — nothing pops as the user navigates.
     static let faffSurfaceReady = Notification.Name("faff.surface.ready")
+    /// Posted by TrainView when the runner taps an upcoming (not-yet-completed)
+    /// run. RootTabView switches to the TODAY tab; TodayView jumps to that date.
+    /// userInfo: ["date": "yyyy-MM-dd"]
+    static let faffJumpToDay = Notification.Name("faff.jump.to.day")
 }
 
 /// Routes the user between the auth/onboarding gate and the main app.

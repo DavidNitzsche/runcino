@@ -519,11 +519,24 @@ struct TodayView: View {
             timeOfDay = TimeOfDay.current()
             Task { await loadAll() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faffJumpToDay)) { notification in
+            guard let date = notification.userInfo?["date"] as? String, !date.isEmpty else { return }
+            // Set the day first, then scroll the strip to the matching week.
+            // .onChange(of: selectedWeekIndex) won't clobber selectedDayID because
+            // we patched it to skip the override when the day is already in the week.
+            selectedDayID = date
+            if let idx = allStripWeeks.firstIndex(where: { $0.contains(where: { $0.id == date }) }) {
+                selectedWeekIndex = idx
+            }
+        }
         .onChange(of: selectedWeekIndex) { _, newIdx in
             // User swiped to a different week · update the selected day.
             // Prefer today if this week contains it, else land on the first day.
+            // Skip the override when selectedDayID is already in this week — this
+            // happens on a faffJumpToDay notification that sets both fields together.
             guard newIdx < allStripWeeks.count else { return }
             let week = allStripWeeks[newIdx]
+            if week.contains(where: { $0.id == selectedDayID }) { return }
             if let today = week.first(where: { $0.isToday }) {
                 withAnimation(Theme.Motion.smooth) { selectedDayID = today.id }
             } else if let first = week.first {

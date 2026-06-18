@@ -221,6 +221,9 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .faffShowRunMenu)) { _ in
             showRunMenu = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faffJumpToDay)) { _ in
+            withAnimation { selected = .today }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .faffReachabilityLost)) { _ in
             withAnimation(.easeInOut(duration: 0.25)) { showReachabilityBanner = true }
             Task { @MainActor in

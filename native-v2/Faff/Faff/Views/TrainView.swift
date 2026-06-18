@@ -229,10 +229,23 @@ struct TrainView: View {
                                 isFirst: idx == 0,
                                 isToday: day.date == (state?.today ?? "")
                             )
+                        } else if let actId = day.activityId {
+                            NavigationLink(value: FaffRoute.runDetail(id: actId)) {
+                                TrainWeekRow(
+                                    day: day,
+                                    isFirst: idx == 0,
+                                    isToday: day.date == (state?.today ?? "")
+                                )
+                            }
+                            .buttonStyle(.plain)
                         } else {
-                            let weekRoute: FaffRoute = day.activityId.map { .runDetail(id: $0) }
-                                ?? .planned(date: day.date)
-                            NavigationLink(value: weekRoute) {
+                            Button {
+                                NotificationCenter.default.post(
+                                    name: .faffJumpToDay,
+                                    object: nil,
+                                    userInfo: ["date": day.date]
+                                )
+                            } label: {
                                 TrainWeekRow(
                                     day: day,
                                     isFirst: idx == 0,
@@ -516,10 +529,19 @@ struct TrainView: View {
             ForEach(week.days, id: \.id) { day in
                 if day.type.lowercased() == "rest" {
                     peekCell(day: day)
+                } else if let actId = day.activityId {
+                    NavigationLink(value: FaffRoute.runDetail(id: actId)) {
+                        peekCell(day: day)
+                    }
+                    .buttonStyle(.plain)
                 } else {
-                    let peekRoute: FaffRoute = day.activityId.map { .runDetail(id: $0) }
-                        ?? .planned(date: day.date)
-                    NavigationLink(value: peekRoute) {
+                    Button {
+                        NotificationCenter.default.post(
+                            name: .faffJumpToDay,
+                            object: nil,
+                            userInfo: ["date": day.date]
+                        )
+                    } label: {
                         peekCell(day: day)
                     }
                     .buttonStyle(.plain)
@@ -764,10 +786,19 @@ struct TrainView: View {
                 let isRest = sel.day.type.lowercased() == "rest"
                 if isRest || sel.isRace {
                     calSelectionRow(sel)
+                } else if let actId = sel.day.activityId {
+                    NavigationLink(value: FaffRoute.runDetail(id: actId)) {
+                        calSelectionRow(sel)
+                    }
+                    .buttonStyle(.plain)
                 } else {
-                    let calRoute: FaffRoute = sel.day.activityId.map { .runDetail(id: $0) }
-                        ?? .planned(date: iso)
-                    NavigationLink(value: calRoute) {
+                    Button {
+                        NotificationCenter.default.post(
+                            name: .faffJumpToDay,
+                            object: nil,
+                            userInfo: ["date": iso]
+                        )
+                    } label: {
                         calSelectionRow(sel)
                     }
                     .buttonStyle(.plain)
