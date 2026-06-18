@@ -251,9 +251,10 @@ struct TrainView: View {
                                     isFirst: idx == 0,
                                     isToday: day.date == (state?.today ?? "")
                                 )
+                                .frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .contentShape(Rectangle())
                         }
                     }
                 }
@@ -544,9 +545,10 @@ struct TrainView: View {
                         )
                     } label: {
                         peekCell(day: day)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .contentShape(Rectangle())
                 }
             }
         }
@@ -802,9 +804,10 @@ struct TrainView: View {
                         )
                     } label: {
                         calSelectionRow(sel)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .contentShape(Rectangle())
                 }
             } else {
                 Text("Tap a day to see its session")
