@@ -82,7 +82,7 @@ struct RouteMapView: UIViewRepresentable {
         UIColor(Color(hex: 0xF43F5E)),
         UIColor(Color(hex: 0xFF5722)),
         UIColor(Color(hex: 0xF3AD38)),
-        UIColor(Color(hex: 0x14C08C)),
+        UIColor(Color(hex: 0x3EBD41)),   // green · = Success (was #14C08C teal)
         UIColor(Color(hex: 0x27B4E0)),
     ]
 
@@ -108,11 +108,11 @@ struct RouteMapView: UIViewRepresentable {
     /// app's Theme.Zone time-in-zones colors, deliberately distinct from the
     /// pace bucketColors so HR mode reads as a different axis at a glance.
     static let zoneColors: [UIColor] = [
-        UIColor(Color(hex: 0x54DDD0)),   // Z1
-        UIColor(Color(hex: 0x8EF0B0)),   // Z2
-        UIColor(Color(hex: 0xFFE0A0)),   // Z3
-        UIColor(Color(hex: 0xFF9560)),   // Z4
-        UIColor(Color(hex: 0xFF5A52)),   // Z5
+        UIColor(Color(hex: 0x27B4E0)),   // Z1 · Light Blue (palette)
+        UIColor(Color(hex: 0x3EBD41)),   // Z2 · Success green (palette)
+        UIColor(Color(hex: 0xF3AD38)),   // Z3 · Attention amber (palette)
+        UIColor(Color(hex: 0xE88021)),   // Z4 · Dark Orange (palette)
+        UIColor(Color(hex: 0xFC4D64)),   // Z5 · Warning red (palette)
     ]
 
     /// Continuous Z1→Z5 ramp · t in 0…1. Lets HR drift fade across the zone
@@ -402,8 +402,8 @@ struct RouteMapView: UIViewRepresentable {
             let dot = UIView(frame: view.bounds)
             dot.layer.cornerRadius = size / 2
             dot.backgroundColor = ep.kind == .start
-                ? UIColor(Color(hex: 0x14C08C))
-                : UIColor(Color(hex: 0xFC4D64))
+                ? UIColor(Color(hex: 0x3EBD41))   // start · Success green (palette)
+                : UIColor(Color(hex: 0xFC4D64))   // finish · Warning red (palette)
             dot.layer.borderColor = UIColor.white.cgColor
             dot.layer.borderWidth = 1.5
             view.addSubview(dot)

@@ -132,11 +132,11 @@ enum Theme {
 
     // ───── HR zones · stacked bar palette (completed run TIME IN ZONES) ─────
     enum Zone {
-        static let z1 = Color(hex: 0x54DDD0)
-        static let z2 = Color(hex: 0x8EF0B0)
-        static let z3 = Color(hex: 0xFFE0A0)
-        static let z4 = Color(hex: 0xFF9560)
-        static let z5 = Color(hex: 0xFF5A52)
+        static let z1 = Color(hex: 0x27B4E0)   // Light Blue (palette)
+        static let z2 = Color(hex: 0x3EBD41)   // Success green (palette)
+        static let z3 = Color(hex: 0xF3AD38)   // Attention amber (palette)
+        static let z4 = Color(hex: 0xE88021)   // Dark Orange (palette)
+        static let z5 = Color(hex: 0xFC4D64)   // Warning red (palette)
     }
 
     // ───── HR zones · split bars / pacing segments palette ─────
