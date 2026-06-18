@@ -1965,22 +1965,35 @@ function deriveRecap(d: FaffSeed['week'][number], runData: RunSummary | null): s
 // target-zone range bar (zone = target ± tolerance, dot = actual pace ·
 // slower left, faster right); warm-up / cool-down get a simple proportional
 // bar (longer = slower). Dark-surface variant — the wcard is dark.
-const PHASED_SPLIT_TEAL = '#5BBFB0'; // --neutral-teal
+// Effort → gradient + dot color. These mirror the effort-mesh tokens in the design brief.
+// Recovery/warmup/cooldown: RECOVERY mesh (teal). Tempo: orange → race-pink. Intervals: race-pink → red.
+const EFFORT_GRADIENT: Record<string, string> = {
+  tempo:     'linear-gradient(90deg,#F3AD38,#FC4D64)',
+  intervals: 'linear-gradient(90deg,#FC4D64,#D03F3F)',
+  recovery:  'linear-gradient(90deg,#27B4E0,#48B3B5)',
+  easy:      'linear-gradient(90deg,#27B4E0,#48B3B5)',
+  long:      'linear-gradient(90deg,#27B4E0,#48B3B5)',
+};
+const EFFORT_DOT: Record<string, string> = {
+  tempo:     '#FF8847',
+  intervals: '#FC4D64',
+};
+const RECOVERY_GRAD = 'linear-gradient(90deg,#27B4E0,#48B3B5)';
+const RECOVERY_DOT  = '#27B4E0';
 
 function PhasedSplitRow({
-  mile, pace, hr, tint, paceSec, fastest, denom, targetSec, tolSec,
+  mile, pace, hr, gradient, dotColor, paceSec, fastest, denom, targetSec, tolSec,
 }: {
-  mile: number; pace: string | null; hr: number | null; tint: string;
+  mile: number; pace: string | null; hr: number | null;
+  gradient: string; dotColor: string;
   paceSec: number; fastest: number; denom: number;
   targetSec: number | null; tolSec: number | null;
 }) {
-  const track = 'rgba(255,255,255,.12)';
+  const track = 'rgba(255,255,255,.1)';
   const isRange = targetSec != null && tolSec != null && tolSec > 0 && paceSec > 0;
-  // Range-bar geometry · track spans target ± 2·tol, zone is the middle 50%.
   const span = (tolSec ?? 0) * 4;
   const trackLeft = (targetSec ?? 0) + (tolSec ?? 0) * 2;
   const dotFrac = span > 0 ? Math.max(0, Math.min(1, (trackLeft - paceSec) / span)) : 0.5;
-  // Simple-bar geometry · longer = slower.
   const simpleW = Math.max(14, 25 + 75 * (denom > 0 ? (paceSec - fastest) / denom : 0));
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1989,12 +2002,15 @@ function PhasedSplitRow({
         <div style={{ position: 'relative', height: 8, borderRadius: 4, background: track }}>
           {isRange ? (
             <>
-              <div style={{ position: 'absolute', left: '25%', width: '50%', top: 0, bottom: 0, background: `${tint}38` }} />
-              <div style={{ position: 'absolute', left: 'calc(50% - 0.75px)', width: 1.5, top: 0, bottom: 0, background: `${tint}73` }} />
-              <div style={{ position: 'absolute', left: `calc(${(dotFrac * 100).toFixed(2)}% - 4.5px)`, top: -0.5, width: 9, height: 9, borderRadius: '50%', background: tint }} />
+              {/* tolerance zone — gradient fill at low opacity */}
+              <div style={{ position: 'absolute', left: '25%', width: '50%', top: 0, bottom: 0, borderRadius: 2, background: gradient, opacity: 0.28 }} />
+              {/* target center line */}
+              <div style={{ position: 'absolute', left: 'calc(50% - 0.75px)', width: 1.5, top: 0, bottom: 0, background: dotColor + '90' }} />
+              {/* actual-pace dot */}
+              <div style={{ position: 'absolute', left: `calc(${(dotFrac * 100).toFixed(2)}% - 4.5px)`, top: -0.5, width: 9, height: 9, borderRadius: '50%', background: dotColor, boxShadow: `0 0 5px ${dotColor}80` }} />
             </>
           ) : (
-            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${simpleW.toFixed(1)}%`, borderRadius: 4, background: `${tint}D9` }} />
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${simpleW.toFixed(1)}%`, borderRadius: 4, background: gradient }} />
           )}
         </div>
       </div>
@@ -2043,7 +2059,12 @@ function PhasedMileSplits({
       {phases.map((phase, idx) => {
         const group = splits.filter(s => phaseIdxForMile(s.mile) === idx);
         if (!group.length) return null;
-        const tint = phase.type === 'work' ? accent : PHASED_SPLIT_TEAL;
+        const phaseGradient = phase.type === 'work'
+          ? (EFFORT_GRADIENT[effort] ?? RECOVERY_GRAD)
+          : RECOVERY_GRAD;
+        const dotColor = phase.type === 'work'
+          ? (EFFORT_DOT[effort] ?? accent)
+          : RECOVERY_DOT;
         const targetSec = phase.type === 'work'
           ? (phase.target_pace_sec ?? (phase.target_pace ? paceToSec(phase.target_pace) : null))
           : null;
@@ -2051,7 +2072,7 @@ function PhasedMileSplits({
         return (
           <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: 'rgba(255,255,255,.72)' }}>{phaseLabel(phase)}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, background: phaseGradient, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{phaseLabel(phase)}</span>
               {phase.actual_distance_mi != null && <span style={sub}>{phase.actual_distance_mi.toFixed(1)} mi</span>}
               <span style={{ flex: 1 }} />
               {phase.avg_hr != null && <span style={sub}>{phase.avg_hr} bpm</span>}
@@ -2060,7 +2081,8 @@ function PhasedMileSplits({
               {group.map(s => (
                 <PhasedSplitRow
                   key={s.mile}
-                  mile={s.mile} pace={s.pace} hr={s.hr ?? null} tint={tint}
+                  mile={s.mile} pace={s.pace} hr={s.hr ?? null}
+                  gradient={phaseGradient} dotColor={dotColor}
                   paceSec={paceToSec(s.pace ?? '')} fastest={fastest} denom={denom}
                   targetSec={targetSec} tolSec={tolSec}
                 />
