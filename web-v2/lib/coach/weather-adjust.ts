@@ -259,8 +259,11 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
       coachTipForNextTime = isPost
         ? `Next time it's this warm, start earlier and run by feel — the pace looks after itself.`
         : `Run these by effort, not the watch · let the pace drift slower and keep it truly easy. A little salt before the long ones helps.`;
+    } else if (input.workoutType === 'tempo' || input.workoutType === 'threshold' || input.workoutType === 'intervals') {
+      // Quality runs: don't push long-run hydration advice — the session is defined by pace.
+      coachTipForNextTime = `Try to start earlier when it's warm like this. Quality work costs more in the heat — HR is a better gauge than the clock.`;
     } else {
-      coachTipForNextTime = `Try to start earlier next time when it's warm like this. Drink something with salt in it before long ones.`;
+      coachTipForNextTime = `Try to start earlier next time when it's warm like this. Drink something with salt in it before the long ones.`;
     }
   } else if (heatBand === 'hot') {
     coachTipForNextTime = effort

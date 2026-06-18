@@ -259,6 +259,70 @@ function detectPaceFade(splits: RecapInput['splits']): number | null {
   return Math.round(backAvg - frontAvg);
 }
 
+/**
+ * Assess how a tempo / threshold block actually went: pace consistency and
+ * vs-target read from the work-phase splits. Returns null when there isn't
+ * enough split signal (Strava / cold-start runs with no phase data).
+ *
+ * Identifies work splits by proximity to workPaceSPerMi — warmup and
+ * cooldown are typically 60-90 s/mi slower, so a ±45 s window cleanly
+ * separates them from the tempo block.
+ */
+function tempoExecution(input: RecapInput): string | null {
+  const workPace = input.workPaceSPerMi;
+  if (!workPace || workPace <= 0) return null;
+  const splits = input.splits ?? [];
+  if (splits.length < 2) return null;
+
+  const WORK_WINDOW_S = 45;
+  const workSplits = splits
+    .map(s => splitPaceS(s))
+    .filter((p): p is number => p != null && p > 0 && Math.abs(p - workPace) <= WORK_WINDOW_S);
+  if (workSplits.length < 2) return null;
+
+  const fastest = Math.min(...workSplits);
+  const slowest = Math.max(...workSplits);
+  const spread = slowest - fastest;
+  const avgWork = Math.round(workSplits.reduce((s, p) => s + p, 0) / workSplits.length);
+  const target = input.plannedPaceSPerMi;
+
+  // Even vs faded vs built: compare first and last work split halves.
+  const half = Math.max(1, Math.floor(workSplits.length / 2));
+  const firstAvg = Math.round(workSplits.slice(0, half).reduce((s, p) => s + p, 0) / half);
+  const lastAvg  = Math.round(workSplits.slice(-half).reduce((s, p) => s + p, 0) / half);
+  const drift = lastAvg - firstAvg; // >0 = faded, <0 = built
+
+  const spreadDesc = spread <= 8 ? 'very even' : spread <= 16 ? 'consistent' : `${spread}s of spread`;
+
+  if (target) {
+    const vsTarget = avgWork - target; // + = slower than target
+    if (Math.abs(vsTarget) <= 5) {
+      // Right on target — just report consistency
+      return drift >= 8
+        ? `Hit the target early but faded ${drift}s across the block. Still a solid effort.`
+        : drift <= -8
+          ? `Built into it — back half ${Math.abs(drift)}s quicker. ${spreadDesc} overall.`
+          : `Work miles landed on the ${paceLabel(target) ?? 'target'} mark · ${spreadDesc} through the block.`;
+    } else if (vsTarget < -5) {
+      // Ran under target
+      return `Ran ${Math.abs(vsTarget)}s/mi under the target · pushed the tempo today. ${spreadDesc}.`;
+    } else if (vsTarget <= 18) {
+      // Slightly short — note the gap without being harsh
+      return `Work pace averaged ${paceLabel(avgWork)} · ${vsTarget}s/mi off the ${paceLabel(target) ?? 'target'}. ${spreadDesc}.`;
+    } else {
+      // Significantly short — HR is the honest read
+      return `Tempo pace fell short of the ${paceLabel(target) ?? 'target'} · HR is the honest grade here. ${spreadDesc}.`;
+    }
+  }
+
+  // No target — consistency is the story.
+  return drift >= 10
+    ? `${spread}s between fastest and slowest work mile · faded a bit in the back half.`
+    : drift <= -10
+      ? `Built into the block — back half ${Math.abs(drift)}s stronger. ${spreadDesc}.`
+      : `${workSplits.length} work miles · ${spreadDesc}.`;
+}
+
 export function deriveRecap(input: RecapInput): RecapPayload {
   // E6: pass the workout type so the conditions copy reframes around effort
   // for easy/long/recovery/shakeout (pace-cost framing only for quality/race).
@@ -395,13 +459,12 @@ export function deriveRecap(input: RecapInput): RecapPayload {
           ? `Tempo done · ${workPaceStr} tempo block${hrPart}.`
           : `Tempo done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
       facts.push(leadLine);
-      facts.push(`These build up over weeks · one alone doesn't change much, but the bank pays off.`);
-      // 2026-06-04 · don't repeat the heat percentage here · the
-      // CONDITIONS card already owns the "Got from 69°F to 74°F ·
-      // Costs you about X% on pace" quantitative read. Recap keeps
-      // the runner-facing "ignore the clock" framing without
-      // triple-mentioning the same number across recap + conditions
-      // + coach-tip surfaces (David's QC).
+      // Execution analysis: how did the work block actually go?
+      // Reads work-phase splits vs target — specific to this run.
+      const execFact = tempoExecution(input);
+      if (execFact) {
+        facts.push(execFact);
+      }
       if (heatExplainsDrift && weather!.slowdownPct >= 4) {
         facts.push(`Heat was working against the clock today. If your HR was right, the stimulus was right · go by effort.`);
       }
