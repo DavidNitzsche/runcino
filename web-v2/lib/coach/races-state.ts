@@ -36,6 +36,8 @@ export interface RaceRow {
   shuttle: string | null;    // shuttle info
   parking: string | null;    // parking info
   notes: string | null;      // general race-day notes
+  aid_stations: string | null; // on-course water / aid / support
+  summary: string | null;    // AI "what to expect" blurb (terrain-grounded)
   // Past-race enrichment from the matching run in the log:
   matchedRun?: {
     activity_id: string;
@@ -114,6 +116,8 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       shuttle: m.shuttle ?? null,
       parking: m.parking ?? null,
       notes: m.notes ?? null,
+      aid_stations: m.aidStations ?? m.aid_stations ?? null,
+      summary: m.summary ?? null,
     };
   });
 

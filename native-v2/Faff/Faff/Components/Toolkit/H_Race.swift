@@ -833,7 +833,9 @@ struct RaceAutofillSheet: View {
     @State private var saving = false
 
     private let order: [(key: String, label: String)] = [
+        ("summary", "What to expect"),
         ("startTime", "Start time"), ("wave", "Corral / wave"), ("location", "Where"),
+        ("aidStations", "Water / aid"),
         ("parking", "Parking"), ("shuttle", "Shuttle"), ("packetPickup", "Packet pickup"),
         ("officialUrl", "Website"), ("notes", "Notes"),
     ]
@@ -970,6 +972,7 @@ struct RaceAutofillSheet: View {
             func put(_ key: String, _ val: String?) {
                 if let val, !val.trimmingCharacters(in: .whitespaces).isEmpty { v[key] = val; inc.insert(key) }
             }
+            put("summary", p.summary); put("aidStations", p.aidStations)
             put("startTime", p.startTime); put("wave", p.wave); put("location", p.location)
             put("parking", p.parking); put("shuttle", p.shuttle); put("packetPickup", p.packetPickup)
             put("officialUrl", p.officialUrl); put("notes", p.notes)

@@ -65,6 +65,21 @@ struct RaceDayView: View {
                             .padding(.top, 2)
                     }
 
+                    // Scouting blurb · "what to expect", terrain-grounded, from
+                    // the AI auto-fill. Sits right under the countdown so it
+                    // frames the whole page before the course + plan. Only shows
+                    // once the runner has auto-filled (David 2026-06-17).
+                    if let blurb = detail?.race.summary?.trimmingCharacters(in: .whitespaces), !blurb.isEmpty {
+                        Text(blurb)
+                            .font(.body(14))
+                            .foregroundStyle(Theme.txt.opacity(0.85))
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 16)
+                    }
+
                     // THE COURSE — the route is the most visually important
                     // thing on this page, so it LEADS, right under the countdown.
                     // Dark CartoDB-tile map (the same RouteMapView as the post-run
@@ -770,6 +785,22 @@ struct RaceDayView: View {
                     .font(.body(13, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
                     .lineSpacing(3)
+            }
+
+            // ON COURSE · the race's own water / aid stations (from auto-fill),
+            // so the gel timeline above can be taken with the water you'll pass.
+            if let aid = detail?.race.aid_stations?.trimmingCharacters(in: .whitespaces), !aid.isEmpty {
+                Divider().background(Color.white.opacity(0.08))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ON COURSE")
+                        .font(.body(9.5, weight: .extraBold)).tracking(1.2)
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                    Text(aid)
+                        .font(.body(12, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                }
             }
 
             // Default-plan prompt · the runner hasn't entered their fuel, so

@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { elevationGainFt } from '@/lib/race/gpx-parser';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // web search + extraction can take 10-40s
@@ -34,6 +35,36 @@ interface AutofillProposal {
   packetPickup: string | null;
   officialUrl: string | null;
   notes: string | null;
+  summary: string | null; // "what to expect" blurb, grounded in OUR terrain
+  aidStations: string | null; // water / aid / on-course support
+}
+
+/**
+ * Compact, AUTHORITATIVE terrain summary from the stored GPX so the blurb's
+ * elevation claims come from the runner's actual course, not the website's
+ * marketing copy. Net change by quarter gives Claude the course's shape
+ * ("drops hard early, flat middle, rise at the finish") to write something
+ * specific. Returns null when there's no usable elevation track.
+ */
+function buildTerrainHint(geo: unknown, distMi: number | null): string | null {
+  if (!geo || typeof geo !== 'object') return null;
+  const tp = (geo as { trackPoints?: Array<{ ele?: number | null }> }).trackPoints ?? [];
+  const eles = tp.map((p) => p?.ele).filter((e): e is number => typeof e === 'number');
+  if (eles.length < 4) return null;
+  const ft = (m: number) => Math.round(m * 3.28084);
+  const startFt = ft(eles[0]);
+  const finishFt = ft(eles[eles.length - 1]);
+  const net = finishFt - startFt;
+  const gain = elevationGainFt(eles);
+  const at = (frac: number) => eles[Math.min(eles.length - 1, Math.max(0, Math.round(frac * (eles.length - 1))))];
+  const q = (a: number, b: number) => ft(at(b) - at(a));
+  const sgn = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  const distStr = distMi && distMi > 0 ? `${distMi.toFixed(1)} mi, ` : '';
+  return (
+    `AUTHORITATIVE course terrain from the runner's GPX (use THIS for any elevation claim, not the website): ` +
+    `${distStr}${gain} ft total climb, net ${sgn(net)} ft (${startFt} ft start to ${finishFt} ft finish). ` +
+    `Net elevation change by quarter: Q1 ${sgn(q(0, 0.25))} ft, Q2 ${sgn(q(0.25, 0.5))} ft, Q3 ${sgn(q(0.5, 0.75))} ft, Q4 ${sgn(q(0.75, 1))} ft.`
+  );
 }
 
 // Forced extraction tool · Claude calls this exactly once with what it found.
@@ -53,14 +84,19 @@ const EXTRACT_TOOL = {
       packetPickup: { type: ['string', 'null'], description: 'Packet/bib pickup — where and when (expo dates/times). Note if no race-day pickup.' },
       officialUrl: { type: ['string', 'null'], description: 'The canonical official race website URL.' },
       notes: { type: ['string', 'null'], description: 'Other important race-day notes: gear check, corral cutoff, course closures, weather norms. Keep to a couple of sentences.' },
+      aidStations: { type: ['string', 'null'], description: 'On-course aid: where water/electrolyte stations are (mile markers or spacing like "every ~2 mi") and what is provided (water, sports drink, gels, etc.). One concise line.' },
+      summary: { type: ['string', 'null'], description: 'A 2-3 sentence "what to expect": the course\'s character and TERRAIN REALITY (use the provided GPX terrain data, not the website), plus one tactical note that fits the terrain. Coach voice: direct, factual, no hype, no exclamation marks, no emoji, no em dashes.' },
     },
-    required: ['startTime', 'wave', 'bib', 'location', 'parking', 'shuttle', 'packetPickup', 'officialUrl', 'notes'],
+    required: ['startTime', 'wave', 'bib', 'location', 'parking', 'shuttle', 'packetPickup', 'officialUrl', 'notes', 'aidStations', 'summary'],
   },
 } as const;
 
 function clean(v: unknown): string | null {
   if (typeof v !== 'string') return null;
-  const s = v.trim();
+  // House style (coach voice): no em dashes; en dashes collapse to a hyphen so
+  // ranges like "12-4 PM" still read right. Enforced here so the LLM can't
+  // smuggle them in regardless of the prompt.
+  let s = v.replace(/\s*—\s*/g, ', ').replace(/–/g, '-').trim();
   if (!s) return null;
   const low = s.toLowerCase();
   return low === 'null' || low === 'unknown' || low === 'n/a' ? null : s;
@@ -79,37 +115,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   let url: string | null = (body.url ?? '').trim() || null;
   let name: string | null = (body.name ?? '').trim() || null;
 
-  // Backfill name/url from the stored race when the client didn't pass them.
-  if (!name || !url) {
-    const row = (
-      await pool
-        .query<{ meta: Record<string, unknown> | null }>(
-          `SELECT meta FROM races WHERE slug = $1 AND user_uuid = $2`,
-          [slug, userId],
-        )
-        .catch(() => ({ rows: [] as Array<{ meta: Record<string, unknown> | null }> }))
-    ).rows[0];
-    const m = (row?.meta ?? {}) as Record<string, string | undefined>;
-    name = name ?? (m.name ?? null);
-    url = url ?? (m.officialUrl ?? m.website ?? null);
-  }
+  // Load the stored race once · meta backfills name/url, course_geometry feeds
+  // the authoritative terrain hint for the "what to expect" blurb.
+  const row = (
+    await pool
+      .query<{ meta: Record<string, unknown> | null; course_geometry: unknown }>(
+        `SELECT meta, course_geometry FROM races WHERE slug = $1 AND user_uuid = $2`,
+        [slug, userId],
+      )
+      .catch(() => ({ rows: [] as Array<{ meta: Record<string, unknown> | null; course_geometry: unknown }> }))
+  ).rows[0];
+  const m = (row?.meta ?? {}) as Record<string, string | undefined>;
+  name = name ?? (m.name ?? null);
+  url = url ?? (m.officialUrl ?? m.website ?? null);
   if (!name && !url) {
     return NextResponse.json({ available: true, error: 'no_source', proposed: null });
   }
+  const distMi = m.distanceMi != null ? Number(m.distanceMi) : null;
+  const terrainHint = buildTerrainHint(row?.course_geometry, Number.isFinite(distMi) ? distMi : null);
 
   const target = url
     ? `the official race website ${url}${name ? ` (race name: "${name}")` : ''}`
     : `the race named "${name}" — find its official website first`;
 
   const system =
-    'You extract race-day logistics from OFFICIAL race websites for a running app. ' +
+    'You research OFFICIAL race websites for a running app and extract race-day facts. ' +
     'Use web_search to find and read the official source; prefer the official race site over aggregators, registration portals, or news. ' +
     'Extract only facts you can confirm from the source — if a field is not stated, return null. Never guess. ' +
+    'Coach voice for any prose: direct and factual, no hype, no exclamation marks, no emoji, no em dashes. ' +
     'Values render in a small mobile card, so keep them short. When done, call the race_logistics tool exactly once.';
 
   const userMsg =
-    `Find the standard race-day logistics for ${target}. ` +
-    'Return start time, corral/wave, start-line location, parking, shuttle, packet pickup, the official URL, and any concise general notes.';
+    `Find the race-day details for ${target}. ` +
+    'Return start time, corral/wave, start-line location, parking, shuttle, packet pickup, the official URL, on-course aid/water stations, a short "what to expect" summary, and any concise general notes. ' +
+    (terrainHint
+      ? `\n\n${terrainHint}\nUse this terrain data for the summary and any elevation claims.`
+      : '');
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -164,6 +205,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       packetPickup: clean(p.packetPickup),
       officialUrl: clean(p.officialUrl) ?? url,
       notes: clean(p.notes),
+      aidStations: clean(p.aidStations),
+      summary: clean(p.summary),
     };
 
     const anyFound = Object.values(proposed).some((v) => v != null);

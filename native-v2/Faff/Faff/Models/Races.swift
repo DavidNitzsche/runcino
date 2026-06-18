@@ -159,6 +159,8 @@ struct RaceDetail: Decodable {
     let shuttle: String?
     let parking: String?
     let notes: String?
+    let aid_stations: String?
+    let summary: String?
 
     /// Empty fallback used by RaceDetailResponse when the wire emits a
     /// null race object (rare but seen during race-CRUD overlap windows).
@@ -177,7 +179,8 @@ struct RaceDetail: Decodable {
          gun_time: String? = nil, wave: String? = nil,
          bib: String? = nil, website: String? = nil,
          packet_pickup: String? = nil, shuttle: String? = nil,
-         parking: String? = nil, notes: String? = nil) {
+         parking: String? = nil, notes: String? = nil,
+         aid_stations: String? = nil, summary: String? = nil) {
         self.slug = slug; self.name = name; self.date = date
         self.priority = priority; self.goal = goal
         self.distance_label = distance_label; self.distance_mi = distance_mi
@@ -187,12 +190,14 @@ struct RaceDetail: Decodable {
         self.bib = bib; self.website = website
         self.packet_pickup = packet_pickup; self.shuttle = shuttle
         self.parking = parking; self.notes = notes
+        self.aid_stations = aid_stations; self.summary = summary
     }
 
     enum CodingKeys: String, CodingKey {
         case slug, name, date, priority, goal, distance_label, distance_mi
         case location, is_past, days, finishTime, pb, matchedRun
         case gun_time, wave, bib, website, packet_pickup, shuttle, parking, notes
+        case aid_stations, summary
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -217,6 +222,8 @@ struct RaceDetail: Decodable {
         self.shuttle = try c.decodeIfPresent(String.self, forKey: .shuttle)
         self.parking = try c.decodeIfPresent(String.self, forKey: .parking)
         self.notes = try c.decodeIfPresent(String.self, forKey: .notes)
+        self.aid_stations = try c.decodeIfPresent(String.self, forKey: .aid_stations)
+        self.summary = try c.decodeIfPresent(String.self, forKey: .summary)
     }
 }
 
@@ -288,6 +295,8 @@ struct RaceAutofillProposal: Decodable {
     let packetPickup: String?
     let officialUrl: String?
     let notes: String?
+    let aidStations: String?
+    let summary: String?
 }
 
 // MARK: - Race execution plan (race P2)
