@@ -88,7 +88,9 @@ struct ProfileView: View {
                         .padding(.horizontal, 22).padding(.top, 30)
                     NotificationPrefsList(
                         prefs: $notifPrefs,
-                        stravaAutoPush: profileFields == nil ? nil : Binding(
+                        // Auto-push toggle only when Strava is linked (passing
+                        // nil hides the row · product rule 2026-06-20).
+                        stravaAutoPush: (profileFields == nil || profile?.connections.strava.connected != true) ? nil : Binding(
                             get: { profileFields?.strava_auto_push ?? false },
                             set: { v in
                                 profileFields?.strava_auto_push = v
@@ -179,6 +181,7 @@ struct ProfileView: View {
         let d = UserDefaults.standard
         d.removeObject(forKey: "faff.onboarded")
         d.removeObject(forKey: "faff.health.connected.v2")
+        StravaConnection.clear()
         AppCache.clearAll()
         NotificationCenter.default.post(name: .faffGateReset, object: nil)
     }
@@ -193,6 +196,7 @@ struct ProfileView: View {
         let (pr, fc, intents, prefs, fields) = await (p, f, ci, np, pf)
         await MainActor.run {
             self.profile = pr
+            if let pr { StravaConnection.set(pr.connections.strava.connected) }
             self.meFacts = fc
             self.coachIntents = intents ?? []
             self.notifPrefs = prefs ?? NotificationPrefs.defaults
@@ -505,21 +509,27 @@ struct ProfileView: View {
         GlassTile(padding: 0) {
             VStack(spacing: 0) {
                 connectionRow("Apple Health", state: profile?.connections.appleHealth)
-                Divider().background(Color.white.opacity(0.08))
-                Button { Task { await startStravaConnect() } } label: {
-                    connectionRow("Strava",
-                                  state: profile?.connections.strava,
-                                  reconnecting: stravaReconnecting)
-                }
-                .buttonStyle(.plain)
-                .disabled(stravaReconnecting)
-                if let toast = stravaToast {
-                    Text(toast)
-                        .font(.body(12, weight: .medium))
-                        .foregroundStyle(Theme.txt.opacity(0.7))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // Strava row only when linked (product rule 2026-06-20:
+                // Strava is hidden until connected; the connect door lives in
+                // Settings → Connections, not here). A linked runner still
+                // sees it so they can check sync / reconnect.
+                if profile?.connections.strava.connected == true {
+                    Divider().background(Color.white.opacity(0.08))
+                    Button { Task { await startStravaConnect() } } label: {
+                        connectionRow("Strava",
+                                      state: profile?.connections.strava,
+                                      reconnecting: stravaReconnecting)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(stravaReconnecting)
+                    if let toast = stravaToast {
+                        Text(toast)
+                            .font(.body(12, weight: .medium))
+                            .foregroundStyle(Theme.txt.opacity(0.7))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 Divider().background(Color.white.opacity(0.08))
                 connectionRow("Apple Watch", state: profile?.connections.appleWatch)
@@ -558,7 +568,7 @@ struct ProfileView: View {
         switch outcome {
         case .connected:
             stravaToast = "Strava connected · refreshing…"
-            if let p = try? await API.fetchProfileState() { self.profile = p }
+            if let p = try? await API.fetchProfileState() { self.profile = p; StravaConnection.set(p.connections.strava.connected) }
             stravaToast = "Strava connected"
         case .failed(let reason):
             stravaToast = "Couldn't connect Strava: \(reason)"

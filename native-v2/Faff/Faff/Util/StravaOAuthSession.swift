@@ -84,6 +84,10 @@ final class StravaOAuthSession: NSObject, ASWebAuthenticationPresentationContext
                 let status = items.first(where: { $0.name == "status" })?.value ?? "failed"
                 if status == "connected" {
                     let scope = items.first(where: { $0.name == "scope" })?.value ?? ""
+                    // Flip the synchronous mirror immediately so Strava UI
+                    // (post-run push, etc.) unhides without waiting for the
+                    // next profile refetch.
+                    StravaConnection.set(true)
                     continuation.resume(returning: .connected(scope: scope))
                 } else {
                     let msg = items.first(where: { $0.name == "msg" })?.value ?? "Strava reconnect failed"

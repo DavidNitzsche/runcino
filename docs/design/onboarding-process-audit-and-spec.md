@@ -9,6 +9,9 @@
 - Account model: **invite-only** (email + password sign-in · "Request access" door). No open self-serve signup, no Sign in with Apple.
 - Capture depth: **Standard** (running level + self-reported race history + light schedule + optional physiology).
 - Goal/race is **set later, in-app** (Goals/Targets tab), NOT during onboarding.
+- Capture **start date** in onboarding (David, 2026-06-20 follow-up) — both start day and long-run day live in onboarding.
+
+**Implementation status:** the iOS changes in this spec are implemented on branch `claude/onboarding-process-audit-mxhekq` (OnboardingView rewrite + Strava gating). This doc is both the audit and the as-built reference. Build/verify in Xcode locally.
 
 This doc is the audit of what exists, the broken bits, the data-capture list, the Strava "hide unless connected" design, and an implementation checklist. The backend is already ahead of the iOS UI, so most of this is client-side wiring and flow cleanup, not new API work.
 
@@ -142,12 +145,14 @@ Note: `histAvg` (recent actual) and `weeklyMi` (target/current) overlap conceptu
 | Threshold HR (LTHR) | number, optional | PATCH `/api/profile` `lthr` (120–210) | direct zone anchor when known from a test | optional |
 | Height | number cm, optional | `height_cm` (120–230) | cadence/overstriding coaching | optional |
 
-### E. Schedule — light (Step 3 tail or merged)
+### E. Schedule — captured in onboarding (end of the running step)
 
 | Item | UI | Backend field | Notes |
 |---|---|---|---|
-| Long-run day | day chips sun–sat | `longRunDay` → `user_settings.long_run_day` + `user_prefs` | durable preference; OK to capture now |
-| Start day | — | `startDate` | **DEFER to goal/race setup** (plan-specific; no plan exists at onboarding) |
+| Start day | chips Today / Tomorrow / In 2 days | `startDate` (backend clamps to [today, +21d]) | when the first plan anchors week 0 |
+| Long-run day | day chips sun–sat | `longRunDay` → `user_settings.long_run_day` + `user_prefs` | durable preference |
+
+Both ride the payload even though no plan is authored at onboarding (the `none` branch). They pre-seed `user_prefs` / `user_settings` so the first plan — built when a goal/race is added in-app — honors them without re-asking.
 
 ### F. Derived — never asked
 
@@ -157,16 +162,18 @@ VDOT seed (from race_history/goal/best Strava effort), experience/auto-level (fr
 
 ## 4. Target onboarding flow (Standard)
 
-Five steps, renumber dots accordingly:
+Five steps (progress dots = 5):
 
 ```
-0 · Welcome           "Welcome to Faff" + start          (no capture)
-1 · Connect           Apple Health · Strava · skip        Step 1
-2 · Running level      freq · mileage · history · PRs      Step 2
-3 · About you          DOB · sex · (LTHR) · (height) ·     Step 3
-                       long-run day
-4 · Confirm           "You're all set" → Start running     (submit)
+0 · Welcome      "Welcome to Faff" + start                       (no capture)
+1 · Connect      Apple Health · Strava · "I'll start fresh"      STEP 1
+2 · Your running  freq · mileage · longest run · years ·          STEP 2
+                  race history (≤3 PRs) · start day · long-run day  (scroll)
+3 · About you     DOB · sex · (height) · (LTHR)                  STEP 3 (scroll)
+4 · Confirm      "Let's build a base" → Start running           (submit)
 ```
+
+Schedule (start day + long-run day) sits at the tail of the running step since it is training-shaped; physiology stays isolated on step 3.
 
 Submit payload (no goal/race):
 
@@ -175,10 +182,13 @@ distance:            "none"
 date/time/tt*:       null
 weeklyFreq:          3..6
 weeklyMi:            15/25/35/45/55
-histAvg/histLong/histYears
-raceHistory:         [{distance,timeSec,whenRaced}, ...]   // ≤3
+histAvg:             derived from weeklyMi (recent ≈ current at cold start)
+histLong/histYears:  chips (nullable)
+raceHistory:         [{distance,timeSec,whenRaced}, ...]   // ≤3, "I've raced"
 birthday/sex/height_cm                                      // optional
+startDate:           today / +1 / +2   (from start chips)
 longRunDay:          "sun".."sat"
+name:                "Runner" placeholder (real name set at signup, preserved)
 timezone:            TimeZone.current.identifier
 connectionsSkipped:  !anyConnected
 // then PATCH /api/profile { lthr?, health_connected_at? }
@@ -240,7 +250,7 @@ In `native-v2/Faff/Faff`:
 1. **`OnboardingView.swift` — remove dead target/goal code.** Delete `targetPanel`, `TargetMode`/`Distance` usage tied to it, `modeChips`, `distanceChips`, `stepper`, `goalBlock`, `headline`, `defaultGoal`, `ttBucket`, `ttDistanceCode`, and the `mode/distance/goalSec/raceName/raceDate` state. Hard-set the payload to `distance:"none"` with all goal/TT fields null. Confirm the `none` branch in route.ts still fires.
 2. **Restructure to the 5 steps in §4.** Reorder panels (Connect → Running level → About you → Confirm), fix STEP labels and the progress capsules.
 3. **Add race-history capture UI** (Standard): up to 3 entries, each distance + time + when, serialize to `raceHistory[]`.
-4. **Keep physiology** (DOB/sex/LTHR already present); optionally add height. Keep long-run day; **remove start-day** from onboarding (it moves to goal/race setup).
+4. **Keep physiology** (DOB/sex/LTHR already present); add optional height. Keep **both** start day and long-run day in onboarding (David: capture start date).
 5. **Name:** prefill from profile (read-only) or omit. Stop overloading the `name` payload key as a person name.
 6. **Strava gating (§5):**
    - Add `faff.strava.connected.v1` mirror + `isStravaConnected` accessor; set/clear on OAuth success, status refresh, and sign-out.
@@ -258,6 +268,7 @@ No backend changes required for the Standard flow — every field already lands.
 
 - Strava history prefill on the running-level step (mirror web `lib/onboarding/strava-history.ts`) so connected users skip the chips.
 - First-morning coach voice band wiring from `race_history` (calibration/guided/challenge per the master brief).
-- Decide whether long-run day should also defer to goal/race setup (currently kept in onboarding as a durable pref).
+- Prefill the runner's real name on the confirm step (read profile) instead of the `"Runner"` placeholder, and surface it ("You're all set, {name}").
+- `raceHistory` "other" distance is intentionally omitted from the onboarding picker (5K/10K/half/marathon only) to keep the editor compact; the backend supports `otherDistanceMi` if we want it later.
 </content>
 </invoke>

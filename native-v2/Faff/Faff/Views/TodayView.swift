@@ -2372,7 +2372,7 @@ struct TodayView: View {
             if let watch { self.workout = watch }
             if let ready { self.readiness = ready }
             if let brief { self.briefing = brief }
-            if let prof { self.profile = prof }
+            if let prof { self.profile = prof; StravaConnection.set(prof.connections.strava.connected) }
             if let wx { self.weather = wx }
             // Snap the strip to the current week AND select today in ONE
             // silent (non-animated) transaction, so the first painted frame is

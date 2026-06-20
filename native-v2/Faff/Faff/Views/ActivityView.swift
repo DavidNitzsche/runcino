@@ -122,7 +122,7 @@ struct ActivityView: View {
                     // swallow the future case.
                     self.loadState = .failed("Couldn't read the run log.")
                 }
-                if let pf { self.profile = pf }
+                if let pf { self.profile = pf; StravaConnection.set(pf.connections.strava.connected) }
                 if let sst { self.stravaStatus = sst }
             }
         } catch {
@@ -133,7 +133,7 @@ struct ActivityView: View {
             let (pf, sst) = await (p, ss)
             await MainActor.run {
                 self.loadState = .failed(msg)
-                if let pf { self.profile = pf }
+                if let pf { self.profile = pf; StravaConnection.set(pf.connections.strava.connected) }
                 if let sst { self.stravaStatus = sst }
             }
         }

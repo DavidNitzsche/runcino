@@ -14,9 +14,12 @@ struct StravaReconnectBanner: View {
     @State private var openingURL: Bool = false
 
     var body: some View {
-        // Hide when status is nil OR healthy ("connected"). Only render
-        // when the runner needs to act.
-        if let s = status, s.state != "connected" {
+        // Render ONLY for "needs_reauth" — a runner who WAS linked and whose
+        // token expired. A never-connected runner ("disconnected") must see
+        // NO Strava prompt here (product rule 2026-06-20: Strava is hidden
+        // until connected, and connecting happens in Settings/onboarding, not
+        // via a surprise banner). nil / "connected" / "disconnected" hide.
+        if let s = status, s.state == "needs_reauth" {
             Button {
                 Task { await openOAuth() }
             } label: {

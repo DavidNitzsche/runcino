@@ -261,8 +261,10 @@ struct RunDetailView: View {
 
                     // SHARE · hidden for Strava-origin runs — pushing a run
                     // that already came FROM Strava back to Strava is a no-op
-                    // at best and confusing at worst.
-                    if run?.source != "strava" {
+                    // at best and confusing at worst — and hidden entirely
+                    // when Strava isn't connected (product rule 2026-06-20:
+                    // no Strava UI until linked; connect from Settings).
+                    if run?.source != "strava", StravaConnection.isConnected {
                         section(title: "SHARE", right: nil) {
                             stravaPushButton
                         }

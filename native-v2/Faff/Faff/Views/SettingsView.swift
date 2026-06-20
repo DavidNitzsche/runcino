@@ -201,6 +201,7 @@ struct SettingsView: View {
             await MainActor.run {
                 self.settings = st
                 self.profile = pf
+                StravaConnection.set(pf.connections.strava.connected)
                 self.profileFields = fields
                 seedVals(fields, st)
             }
@@ -233,6 +234,7 @@ struct SettingsView: View {
             // .task on appear, but a manual refresh is cheap.
             if let p = try? await API.fetchProfileState() {
                 self.profile = p
+                StravaConnection.set(p.connections.strava.connected)
             }
             stravaToast = "Strava connected"
         case .failed(let reason):
@@ -446,6 +448,7 @@ struct SettingsView: View {
             let d = UserDefaults.standard
             d.removeObject(forKey: "faff.onboarded")
             d.removeObject(forKey: "faff.health.connected.v2")
+            StravaConnection.clear()
             // User-tied metric stash · without this the NEXT account to
             // sign in on this device briefly renders the previous
             // runner's last-night sleep (multi-user hygiene, 2026-06-10).

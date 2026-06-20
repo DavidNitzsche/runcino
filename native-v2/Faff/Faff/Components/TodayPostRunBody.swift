@@ -153,8 +153,10 @@ struct TodayPostRunBody: View {
             formGrid
             howItWent
             // Strava push — hidden for Strava-origin runs (pushing back
-            // is a no-op) and when there's no runId.
-            if let id = runId, detail?.source != "strava" {
+            // is a no-op), when there's no runId, and when Strava isn't
+            // connected (product rule 2026-06-20: no Strava UI until linked;
+            // the runner connects from Settings).
+            if let id = runId, detail?.source != "strava", StravaConnection.isConnected {
                 stravaPushSection(runId: id)
             }
         }
