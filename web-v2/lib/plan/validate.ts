@@ -95,6 +95,10 @@ export interface PlanValidationContext {
   priorPlanPeakLongMi: number | null;
   /** Caller-supplied today (YYYY-MM-DD) — keeps this function pure. */
   todayISO: string;
+  /** 2026-06-20 · stated training frequency (profile.weekly_frequency). A
+   *  1-day-a-week runner gets a single run — the long/base run, not a separate
+   *  quality session — so the quality-coverage rule is skipped at <= 1. */
+  trainingDaysPerWeek?: number | null;
   /**
    * Runner's trailing 28-day average weekly mileage, computed from actual runs
    * immediately before generation. Used for peak-vs-trailing ramp check (F13):
@@ -263,6 +267,9 @@ export function validateComposedPlan(
     if (!qualityPhases.has(week.phase) || week.isRaceWeek) continue;
     // Past week: last day (startISO + 6) is before today → sealed, skip.
     if (addDays(week.startISO, 6) < ctx.todayISO) continue;
+    // 1-day-a-week runners get a single run (the long/base run), not a separate
+    // quality session — they can't have both. Skip the requirement for them.
+    if (ctx.trainingDaysPerWeek != null && ctx.trainingDaysPerWeek <= 1) continue;
     if (!week.days.some(d => d.isQuality)) {
       violations.push(
         `Week ${week.startISO} (${week.phase}): no quality sessions prescribed — ` +

@@ -2174,6 +2174,24 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
           }
         }
       }
+
+      // 2026-06-20 · FINAL easy≤long invariant sweep. The long-smoothing and
+      // taper rescale above can trim the long run AFTER layoutWeek already
+      // clamped easy days to the (then larger) long — re-introducing the
+      // inversion (easy ends up 0.5mi over a trimmed long on cutback / taper
+      // weeks · caught by the full audit matrix). Re-cap every easy day at its
+      // week's training long so the long is always the longest run, trimming
+      // the week total to match. Race-day rows are skipped (not training longs).
+      for (const w of composed.weeks) {
+        const longMi = Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi));
+        if (longMi <= 0) continue;
+        for (const d of w.days) {
+          if (d.type === 'easy' && d.distanceMi > longMi) {
+            w.weeklyMi = Math.max(0, Math.round((w.weeklyMi - (d.distanceMi - longMi)) * 10) / 10);
+            d.distanceMi = longMi;
+          }
+        }
+      }
     }
     validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
       level: inputs.compose.level,
@@ -2186,6 +2204,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       priorPlanPeakLongMi: freshTarget ? null : (priorPeakRow?.peak_long != null ? Number(priorPeakRow.peak_long) : null),
       todayISO,
       trailingAvgWeeklyMi,
+      trainingDaysPerWeek: inputs.compose.trainingDaysPerWeek,
     });
   }
 
