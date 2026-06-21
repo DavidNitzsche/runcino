@@ -1739,7 +1739,13 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       : emptySlots;
     const runningPlaced = slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length;
     const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - runningPlaced));
-    const perEasy = targetEasyCount > 0 ? Math.max(easyFloor, Math.round(easyMiBudget / targetEasyCount)) : 0;
+    const perEasyRaw = targetEasyCount > 0 ? Math.max(easyFloor, Math.round(easyMiBudget / targetEasyCount)) : 0;
+    // 2026-06-21 · N2 · easy never exceeds the long run. A sparse availableDows
+    // (few easy slots) + a high peak can spike per-easy above the long (same
+    // class as recovery N2); clamp to wkLong, mirroring layoutWeek's easyCeiling.
+    // The week runs lighter instead — the correct gentler outcome. null-avail /
+    // ample-slot weeks sit well under the long, so this is a no-op for them.
+    const perEasy = wkLong > 0 ? Math.min(perEasyRaw, wkLong) : perEasyRaw;
     for (let i = 0; i < easySlots.length; i++) {
       const { dow } = easySlots[i];
       if (i < targetEasyCount) {
@@ -1769,6 +1775,20 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
             running--;
           }
         }
+      }
+    }
+    // 2026-06-21 · #4b · any slot still empty is a NON-available day: when the
+    // runner gave available_days, the easy-fill above only touches available
+    // empties, so the rest stay null. layoutWeek rests every empty slot and
+    // returns a full 7-day week — mirror that here so the persisted week has 7
+    // contiguous days. Without this the null slots drop out at filter(Boolean)
+    // below → a <7-day week → INV2 gaps in the strip (the live non-race harness
+    // caught M·avail at days=4). No-op for null-available runners: the easy-fill
+    // already covered every empty slot, so nothing is left to rest (David byte-
+    // for-byte unchanged).
+    for (let dow = 0; dow < 7; dow++) {
+      if (slots[dow] == null) {
+        slots[dow] = { dow: dow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off.' };
       }
     }
     return slots.filter(Boolean) as DayPlan[];
@@ -1859,6 +1879,10 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // rest day → a 6-running-day "recovery" week. Pick a medium day that is
     // NOT either rest day (and, when the runner gave available days, IS one of
     // them). Prefer the long-run slot, then mid-week, then any free day.
+    // The recovery week's longest run · the optional mid-week medium AND the
+    // ceiling for every easy day below (easy never exceeds the longest run,
+    // mirroring layoutWeek's easy≤long clamp). 2026-06-21 · N2.
+    const mediumMi = Math.max(6, Math.round(wkWeekly * 0.20));
     if (wkPct >= 0.50) {
       const isFree = (d: number) =>
         d !== input.restDow && d !== extraRestDow && slots[d] == null &&
@@ -1867,7 +1891,7 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       const candidates = [input.longRunDow, 3, 4, 2, 5, 1, 6, 0];
       const mediumDow = candidates.find(isFree);
       if (mediumDow != null) {
-        slots[mediumDow] = { dow: mediumDow as DOW, type: 'easy', distanceMi: Math.max(6, Math.round(wkWeekly * 0.20)), isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
+        slots[mediumDow] = { dow: mediumDow as DOW, type: 'easy', distanceMi: mediumMi, isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
       }
     }
     // Fill rest with easies.
@@ -1899,13 +1923,29 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // day-sum tracks wkWeekly. Floor never inflates the week above its target.
     const RECOVERY_MIN_EASY = 2;
     const perEasyRaw = targetEasyCount > 0 ? Math.round(easyMiBudget / targetEasyCount) : 0;
-    const perEasy = Math.max(RECOVERY_MIN_EASY, perEasyRaw);
+    // 2026-06-21 · N2 · cap each easy at the week's longest (medium) run. With a
+    // sparse availableDows the budget/slot-count math could spike perEasyRaw into
+    // a 24-31mi "recovery easy" (there was no ceiling before this); clamp it and
+    // let the week run lighter — the correct gentler outcome for recovery, and a
+    // mirror of layoutWeek's easy≤long. null-avail recovery already sits under
+    // mediumMi, so this is a no-op there.
+    const perEasy = Math.min(Math.max(RECOVERY_MIN_EASY, perEasyRaw), mediumMi);
     for (let i = 0; i < easySlots.length; i++) {
       const { dow } = easySlots[i];
       if (i < targetEasyCount) {
         slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Recovery easy · conversational, no surges.' };
       } else {
         slots[dow] = { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Still recovering.' };
+      }
+    }
+    // 2026-06-21 · #4b · rest any slot the easy-fill left untouched (non-
+    // available days when available_days is set). Mirrors layoutWeek's full
+    // 7-day week so the persisted recovery week has 7 contiguous days, not a
+    // gap-riddled <7 (the same INV2 hole the maintenance composer had). No-op
+    // for null-available runners — the easy-fill covered every empty slot.
+    for (let dow = 0; dow < 7; dow++) {
+      if (slots[dow] == null) {
+        slots[dow] = { dow: dow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Still recovering.' };
       }
     }
     weeks.push({
