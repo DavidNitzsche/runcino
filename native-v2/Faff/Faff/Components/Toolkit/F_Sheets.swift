@@ -468,6 +468,9 @@ struct SetGoalSheet: View {
     @State private var seconds: Int = 0
     @State private var planWeeks: Int? = nil
     @State private var planSeededSeconds: Int? = nil  // exact value seeded on plan select
+    // 2026-06-20 · "when do you want to start" (David). The plan's week 0
+    // anchors here; the goal deadline = start + plan weeks.
+    @State private var startDate: Date = Date()
     @State private var currentVdot: Double? = nil
     @State private var saving: Bool = false
     @State private var error: String? = nil
@@ -608,6 +611,20 @@ struct SetGoalSheet: View {
                         if let w = stretchWarning {
                             Text(w).foregroundStyle(.orange)
                         }
+                    }
+                }
+
+                // 4. WHEN DO YOU WANT TO START — anchors the plan's first week.
+                if planWeeks != nil || existingGoal != nil {
+                    Section {
+                        DatePicker("Start date",
+                                   selection: $startDate,
+                                   in: Date()...,
+                                   displayedComponents: .date)
+                    } header: {
+                        Text("WHEN DO YOU WANT TO START?")
+                    } footer: {
+                        Text("Your plan's first week begins on this date.")
                     }
                 }
 
@@ -759,10 +776,12 @@ struct SetGoalSheet: View {
     private func save() async {
         saving = true; error = nil
         let weeks = planWeeks ?? planOptions(for: distance).first?.weeks ?? 12
+        let isoF = DateFormatter(); isoF.dateFormat = "yyyy-MM-dd"
         let ok = (try? await API.setFitnessGoal(
             distanceLabel: distance,
             goalTime: goalTimeString,
-            planWeeks: weeks
+            planWeeks: weeks,
+            startDate: isoF.string(from: startDate)
         )) ?? false
         await MainActor.run {
             if ok { onSubmitted(); dismiss() }

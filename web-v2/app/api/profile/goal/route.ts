@@ -60,6 +60,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // 2026-06-20 · "when do you want to start" (David). SetGoalSheet now sends a
+  // start_date; the plan anchors week 0 there and the goal deadline = start +
+  // plan_weeks. Clamp to >= today so a goal can't back-date the plan. Falls back
+  // to today when omitted (older clients / no pick).
+  const todayISO = await runnerToday(userId);
+  const startRaw = String(body?.start_date ?? '').trim();
+  const startDateISO = /^\d{4}-\d{2}-\d{2}$/.test(startRaw) && startRaw >= todayISO
+    ? startRaw : todayISO;
+
   await pool.query(
     `UPDATE profile
         SET tt_goal_distance        = $1,
@@ -81,13 +90,15 @@ export async function POST(req: NextRequest) {
   try {
     const distMi = goalDistanceMiFromCode(distanceLabel);
     if (distMi) {
-      const today = await runnerToday(userId);
       const weeks = planWeeks ?? 16;
-      const raceDateISO = new Date(Date.parse(today + 'T12:00:00Z') + weeks * 7 * 86400000)
+      // Deadline = chosen start + plan_weeks (was today + plan_weeks). The plan
+      // anchors week 0 at startDateISO via generatePlan (clamped >= today there).
+      const raceDateISO = new Date(Date.parse(startDateISO + 'T12:00:00Z') + weeks * 7 * 86400000)
         .toISOString().slice(0, 10);
       plan = await generatePlan({
         userId,
         goalTarget: { distanceMi: distMi, goalSec: goalSeconds, raceDateISO },
+        startDateISO,
         startAnchor: 'today',
       });
     }

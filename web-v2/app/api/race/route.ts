@@ -84,7 +84,16 @@ export async function POST(req: NextRequest) {
         [userId],
       ).catch(() => ({ rows: [] }))).rows[0];
       if (!active) {
-        plan = await generatePlan({ userId, raceSlug: slug }).catch((e: unknown) => ({
+        // 2026-06-20 · optional "when do you want to start" for races (David).
+        // Defaults to the upcoming Monday (startAnchor) when omitted; a chosen
+        // start anchors week 0 there (clamped >= today in generatePlan). The
+        // runway is start → race date either way.
+        const startRaw = String(body?.start_date ?? '').trim();
+        const startDateISO = /^\d{4}-\d{2}-\d{2}$/.test(startRaw) ? startRaw : undefined;
+        plan = await generatePlan({
+          userId, raceSlug: slug,
+          ...(startDateISO ? { startDateISO, startAnchor: 'today' as const } : {}),
+        }).catch((e: unknown) => ({
           ok: false, reason: e instanceof Error ? e.message : String(e),
         }));
       }

@@ -974,6 +974,9 @@ struct AddRaceSheet: View {
 
     @State private var name: String = ""
     @State private var date: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
+    // 2026-06-20 · "when do you want to start" for races (David). Defaults to
+    // today; the plan's runway is start → race date.
+    @State private var startDate: Date = Date()
     @State private var distance: String = "Half Marathon"
     @State private var priority: String = "A"
     @State private var goal: String = ""
@@ -991,7 +994,8 @@ struct AddRaceSheet: View {
             Form {
                 Section("RACE") {
                     TextField("Race name", text: $name)
-                    DatePicker("Date", selection: $date, displayedComponents: .date)
+                    DatePicker("Race date", selection: $date, displayedComponents: .date)
+                    DatePicker("Start training", selection: $startDate, in: Date()..., displayedComponents: .date)
                     Picker("Distance", selection: $distance) {
                         ForEach(distances, id: \.self) { Text($0) }
                     }
@@ -1076,6 +1080,12 @@ struct AddRaceSheet: View {
         return f.string(from: date)
     }
 
+    private var isoStartDate: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: startDate)
+    }
+
     private func save() async {
         saving = true
         error = nil
@@ -1084,7 +1094,8 @@ struct AddRaceSheet: View {
             date: isoDate,
             distanceLabel: distance == "Other" ? nil : distance,
             priority: priority,
-            goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal
+            goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal,
+            startDate: isoStartDate
         ) else {
             error = "Could not save race. Check your connection and try again."
             saving = false

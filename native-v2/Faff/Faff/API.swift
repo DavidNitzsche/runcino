@@ -898,27 +898,30 @@ enum API {
         return (200..<300).contains(http.statusCode)
     }
 
-    static func setFitnessGoal(distanceLabel: String, goalTime: String, planWeeks: Int) async throws -> Bool {
+    static func setFitnessGoal(distanceLabel: String, goalTime: String, planWeeks: Int, startDate: String? = nil) async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/profile/goal"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "distance_label": distanceLabel,
             "goal_time": goalTime,
             "plan_weeks": planWeeks,
-        ])
+        ]
+        if let s = startDate, !s.isEmpty { body["start_date"] = s }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
         return (200..<300).contains(http.statusCode)
     }
 
     /// Returns the new race slug on success, nil on failure.
-    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?) async throws -> String? {
+    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?, startDate: String? = nil) async throws -> String? {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/race"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var body: [String: Any] = ["name": name, "date": date, "priority": priority]
         if let d = distanceLabel, !d.isEmpty { body["distance_label"] = d }
         if let g = goal, !g.isEmpty { body["goal"] = g }
+        if let s = startDate, !s.isEmpty { body["start_date"] = s }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
         guard (200..<300).contains(http.statusCode) else { return nil }
