@@ -228,39 +228,40 @@ struct OnboardingView: View {
     // MARK: welcome panel
 
     private var welcomePanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("WELCOME TO")
-                .font(.label(11))
-                .tracking(3)
-                .foregroundStyle(Theme.txt.opacity(0.66))
-            HStack(spacing: 0) {
-                Brandmark(size: 52, style: .swept)
-                Spacer()
-            }
-            .padding(.top, 6)
-            Text("Your training, built around what you're chasing · and honest about where you stand today.")
-                .font(.body(15, weight: .semibold))
-                .foregroundStyle(Theme.txt.opacity(0.84))
-                .lineSpacing(4)
-                .padding(.top, 18)
-            LinearGradient(
-                colors: [
-                    Color(hex: 0x3AB0CF), Color(hex: 0x34C194), Color(hex: 0xF8B85F),
-                    Color(hex: 0xD03F3F), Color(hex: 0xD6263C)
-                ],
-                startPoint: .leading, endPoint: .trailing
-            )
-            .frame(height: 10)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .padding(.top, 22)
+        VStack(spacing: 0) {
             Spacer(minLength: 0)
+
+            // Logo block — upper portion of the screen
+            VStack(alignment: .leading, spacing: 0) {
+                Text("WELCOME TO")
+                    .font(.label(11))
+                    .tracking(3)
+                    .foregroundStyle(Theme.txt.opacity(0.55))
+                Brandmark(size: 72, style: .swept)
+                    .padding(.top, 10)
+                Text("Your training, built around\nwhat you're chasing.")
+                    .font(.display(26, weight: .bold))
+                    .foregroundStyle(Theme.txt)
+                    .lineSpacing(2)
+                    .padding(.top, 28)
+                Text("Honest about where you stand today.")
+                    .font(.body(15, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.55))
+                    .padding(.top, 10)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 26)
+
+            Spacer(minLength: 0)
+            Spacer(minLength: 0)
+
             ctaButton(title: "Get started") {
                 withAnimation(Theme.Motion.smooth) { step = 1 }
             }
+            .padding(.horizontal, 26)
+            .padding(.bottom, 30)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, 26)
-        .padding(.bottom, 30)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: connect panel
