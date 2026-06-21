@@ -316,16 +316,26 @@ export function buildWorkoutSpec(
       const repCount = parsed?.reps ?? 4;
       const repMi = parsed?.repDistanceMi ?? 1.0;
       const restS = parsed?.restS ?? 60;
-      const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
+      // 2026-06-20 · scale the session to the budget (distance_mi = the week's
+      // quality-day allocation). Established runners have a large budget so the
+      // floors stay 1.5/1.0 and the rep count is unchanged (byte-for-byte). A
+      // low-volume beginner's small budget shrinks the warmup/cooldown and caps
+      // the rep count, so a quality session can't balloon to 3× their weekly
+      // volume / longer than their long run.
+      const budget = distance_mi ?? 7;
+      const wuFloor = Math.max(0.5, Math.min(1.5, budget * 0.3));
+      const cdFloor = Math.max(0.5, Math.min(1.0, budget * 0.25));
+      const reps = Math.min(repCount, Math.max(2, Math.floor((budget - wuFloor - cdFloor) / repMi)));
+      const wu = (budget - reps * repMi - 1) / 2;
       return {
         spec: {
           kind: 'threshold',
-          warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
-          rep_count: repCount,
+          warmup_mi: Number(Math.max(wuFloor, wu).toFixed(1)),
+          rep_count: reps,
           rep_distance_mi: repMi,
           rep_pace_s_per_mi: tPaceSec,
           rep_rest_s: restS,
-          cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
+          cooldown_mi: Number(Math.max(cdFloor, wu).toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
@@ -339,19 +349,27 @@ export function buildWorkoutSpec(
       const repCount = parsed?.reps ?? 5;
       const repMi = parsed?.repDistanceMi ?? 0.62;
       const restS = parsed?.restS ?? 90;
-      const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
+      // 2026-06-20 · scale to the budget (see threshold branch). Large budget →
+      // floors stay 1.5/1.0, rep count unchanged (established runners identical);
+      // small beginner budget → shrink warmup/cooldown + cap reps so the
+      // interval session doesn't dwarf the runner's long run / weekly volume.
+      const budget = distance_mi ?? 7;
+      const wuFloor = Math.max(0.5, Math.min(1.5, budget * 0.3));
+      const cdFloor = Math.max(0.5, Math.min(1.0, budget * 0.25));
+      const reps = Math.min(repCount, Math.max(2, Math.floor((budget - wuFloor - cdFloor) / repMi)));
+      const wu = (budget - reps * repMi - 1) / 2;
       // True I-pace when the caller threaded a VDOT-derived one (goal builds);
       // else the legacy T−18 cruise-interval offset (marathon / maintenance).
       const repPace = iPaceSec ?? interval;
       return {
         spec: {
           kind: 'intervals',
-          warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
-          rep_count: repCount,
+          warmup_mi: Number(Math.max(wuFloor, wu).toFixed(1)),
+          rep_count: reps,
           rep_distance_mi: repMi,
           rep_pace_s_per_mi: repPace,
           rep_rest_s: restS,
-          cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
+          cooldown_mi: Number(Math.max(cdFloor, wu).toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
