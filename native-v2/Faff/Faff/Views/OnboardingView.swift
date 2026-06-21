@@ -37,7 +37,7 @@ struct OnboardingView: View {
 
     // Running level. weeklyFreq + weeklyMi seed plan shape and volume;
     // histLong seeds the long-run floor.
-    @State private var weeklyFreq: Int = 4          // 3...6 days/week
+    @State private var weeklyFreq: Int? = nil        // 1...6 days/week
     @State private var weeklyMi: Int = 25           // 15/25/35/45/55 mi/week
     @State private var histLong: String? = nil      // "0-3"|"3-6"|"6-10"|"10+"
 
@@ -100,7 +100,7 @@ struct OnboardingView: View {
             "ttTime": NSNull(),
             "ttTimeSeconds": NSNull(),
             "weeklyMi": weeklyMi,
-            "weeklyFreq": weeklyFreq,
+            "weeklyFreq": weeklyFreq ?? 3,
             "histAvg": histAvg,
             "histLong": (histLong as Any?) ?? NSNull(),
             "histYears": NSNull(),
@@ -593,9 +593,10 @@ struct OnboardingView: View {
     // Q1 — days per week
     private var runQ_daysPerWeek: some View {
         runQ("How many days a week\ndo you run?",
-             context: "Count days you actually run, not strength or cross-training.") {
-            chipRow([3, 4, 5, 6].map { n in ("\(n)", weeklyFreq == n) }) { idx in
-                withAnimation(Theme.Motion.smooth) { weeklyFreq = [3, 4, 5, 6][idx] }
+             context: "Count days you actually run, not strength or cross-training.",
+             enabled: weeklyFreq != nil) {
+            chipRow([1, 2, 3, 4, 5, 6].map { n in ("\(n)", weeklyFreq == n) }) { idx in
+                withAnimation(Theme.Motion.smooth) { weeklyFreq = [1, 2, 3, 4, 5, 6][idx] }
             }
         }
     }
