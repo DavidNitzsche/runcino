@@ -45,24 +45,19 @@ struct EmailSignInSheet: View {
     private enum Field { case name, email, password }
 
     var body: some View {
-        let mesh = FaffMesh(
-            c1: 0x7FE6D6, c2: 0x3FB6B0, c3: 0x27B4E0,
-            c4: 0x1F8F76, c5: 0x11605E, base: 0x072A28
-        )
         ZStack {
-            FaffMeshView(mesh: mesh)
+            Theme.bg.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 0) {
                 header
                     .padding(.top, 18)
 
-                Spacer(minLength: 0)
-
                 if requestSent {
+                    Spacer(minLength: 0)
                     requestSentView
                 } else {
                     hero
-                        .padding(.top, 4)
+                        .padding(.top, 36)
 
                     form
                         .padding(.top, 28)
@@ -70,14 +65,13 @@ struct EmailSignInSheet: View {
                     Spacer(minLength: 0)
 
                     submitButton
-                        .padding(.top, 18)
 
                     modeToggle
                         .padding(.top, 14)
                 }
             }
             .padding(.horizontal, 30)
-            .padding(.bottom, 30)
+            .padding(.bottom, 36)
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -133,21 +127,18 @@ struct EmailSignInSheet: View {
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(mode == .signIn ? "Welcome\nback." : "Request\naccess.")
                 .font(.heroDisplay(46))
                 .tracking(-2)
                 .foregroundStyle(Theme.txt)
-                .lineSpacing(-6)
-                .shadow(color: .black.opacity(0.3), radius: 26, y: 2)
                 .fixedSize(horizontal: false, vertical: true)
             Text(mode == .signIn
-                 ? "Sign in with the email and password you already use on faff.run."
-                 : "Faff is invite-only. Leave your name and email and we'll send a login when you're approved.")
+                 ? "Sign in with your email and password."
+                 : "Faff is invite-only. Leave your name and email — we'll send a login when you're approved.")
                 .font(.body(15, weight: .semibold))
-                .foregroundStyle(Theme.txt.opacity(0.78))
+                .foregroundStyle(Theme.txt.opacity(0.55))
                 .lineSpacing(3)
-                .frame(maxWidth: 320, alignment: .leading)
         }
     }
 
