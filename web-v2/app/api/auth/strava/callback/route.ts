@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { pool } from '@/lib/db/pool';
+import { pullSyncOneUser } from '@/lib/strava/pullSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -240,6 +241,27 @@ export async function GET(req: NextRequest) {
   } catch (e: any) {
     return appRedirect(req, platform, 'failed', { msg: `db: ${e?.message?.slice(0, 160)}` });
   }
+
+  // Connect-time backfill — pull a full year of history right now so the
+  // runner's volume / VDOT / training-state are alive from minute one, the way
+  // Apple Health's 365-day import already is. Previously connecting Strava only
+  // stored a token and nothing reached `runs` until the nightly cron (up to
+  // ~24h later).
+  //
+  // Fire-and-forget: do NOT block the OAuth redirect on a paginated, rate-
+  // limited fetch (the runner is staring at the auth sheet). Railway runs a
+  // persistent Node process, so the promise resolves in the background after
+  // the redirect; the nightly cron is the safety net if the process restarts
+  // mid-pull. pullSyncOneUser is idempotent (matched, not double-inserted), so
+  // a 365-day pull on every connect / reconnect is safe.
+  void pullSyncOneUser({ userUuid: state, windowDays: 365 })
+    .then((r) => console.log(
+      `[strava/callback] connect-time backfill ${state}:`,
+      JSON.stringify({ fetched: r.fetched, inserted: r.inserted, matched: r.matched, errors: r.errors.slice(0, 3) }),
+    ))
+    .catch((e) => console.error(
+      `[strava/callback] connect-time backfill failed ${state}:`, e?.message ?? e,
+    ));
 
   return appRedirect(req, platform, 'connected', { scope: grantedScope });
 }
