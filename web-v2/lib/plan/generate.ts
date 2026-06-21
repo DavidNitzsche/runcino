@@ -35,6 +35,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRac
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
+import { isBaseBuildingPlan } from './plan-templates';
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 import { validateComposedPlan } from './validate';
 
@@ -788,7 +789,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -822,6 +823,11 @@ function layoutWeek({
    *  long-run-floor relaxation lands on the weeks the volume curve actually
    *  cut. 3 under TSB<-10, else 4. Defaults to 4 (legacy mod-4) when omitted. */
   cutbackEveryN?: number;
+  /** 2026-06-20 · base-building (beginner) plan: quality days are LIGHT (a
+   *  short tempo / fartlek with surges), never structured I/R reps, and only
+   *  in the sharpen phase. Gated to level==='beginner' (templateFor), so
+   *  intermediate/advanced are unchanged. Research/22 §5K/10K/HM/M Beginner. */
+  baseBuilding?: boolean;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -976,7 +982,15 @@ function layoutWeek({
     // aerobic-dominant with threshold support (Research/22 §Ultramarathon), so
     // the marathon quality mix is the right default — but the long-run finish is
     // NOT tagged MP (racePaceTag is null for ultra above).
-    const qualityTypes: Array<DayPlan['type']> =
+    const qualityTypes: Array<DayPlan['type']> = baseBuilding
+      // Base-building (beginner): a single LIGHT tempo/fartlek in the sharpen
+      // phase only; BASE weeks are pure easy + strides + long. No structured
+      // I/R reps — Research/22 §Beginner (Higdon Novice / Mayo). Sized small
+      // below (the 3mi tempo floor is lifted for base-building).
+      ? ( phase === 'TAPER' ? ['race_week_tuneup']
+        : (phase === 'QUALITY' || phase === 'RACE-SPECIFIC') ? ['tempo']
+        : [] )
+      :
         phase === 'TAPER'         ? ['race_week_tuneup']                               // tune-up · same for all distances
       : phase === 'RACE-SPECIFIC'
           ? (cat === '5k'   ? ['intervals', 'intervals']
@@ -998,7 +1012,12 @@ function layoutWeek({
       const sub =
         qt === 'intervals'        ? rx.intervals
       : qt === 'threshold'        ? rx.threshold
-      : qt === 'tempo'            ? `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`
+      : qt === 'tempo'            ? (baseBuilding
+                                      // Beginner sharpen day = a light fartlek: an easy run with a
+                                      // few short surges at T effort, sized to the runner (no 3mi
+                                      // tempo floor). Research/22 §Beginner ("2.5mi E w/ 4×1 min @ T").
+                                      ? `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ 5×1 min surges @ T effort`
+                                      : `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`)
       : qt === 'race_week_tuneup' ? 'WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi'
       :                              'QUALITY';
       // 2026-06-02 · the workout_library uses family='threshold' for
@@ -1409,6 +1428,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       tierTarget,
       trainingDaysPerWeek: input.trainingDaysPerWeek,
       cutbackEveryN,  // #13 · same cadence as volumeCurve's deload mask
+      // 2026-06-20 · beginner = base-building structure (light fartlek, no
+      // structured I/R reps). Gated to level==='beginner', so intermediate/
+      // advanced (incl. David) are unchanged.
+      baseBuilding: isBaseBuildingPlan(distanceCategoryOf(input.raceDistanceMi), input.level),
     });
     // P34 · cross-training opt-in · rotate enabled modes across the
     // rest day. Same logic that used to live in generatePlan's loop.
