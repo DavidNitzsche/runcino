@@ -26,7 +26,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
-import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRace, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
@@ -666,7 +666,7 @@ function volumeCurve(
 
 // ── Weekly layout ───────────────────────────────────────────────────────
 
-interface DayPlan {
+export interface DayPlan {
   dow: DOW;
   type: 'easy' | 'long' | 'threshold' | 'intervals' | 'tempo' | 'race' | 'rest' | 'shakeout' | 'race_week_tuneup';
   distanceMi: number;
@@ -2031,6 +2031,13 @@ async function persistPlan(client: PoolClient, args: {
       // sub_label said "2 mi WU · 4 mi @ T · 2 mi CD" (= 8 mi). The
       // runner's math didn't tie. See spec-builder.totalDistanceMiFromSpec
       // for the inclusion rules.
+      // 2026-06-21 · cap the spec's REALIZED distance at the clamped day
+      // distance. The post-compose easy/quality≤long sweep clamps
+      // d.distanceMi, but the PERSISTED distance is the spec's summed segments
+      // — which can exceed it (fixed-shape tempo, float-jog overshoot) and ship
+      // a quality run longer than the week's long on short-race plans (round-2
+      // CRITICAL). No-op when the spec already fits (David byte-for-byte same).
+      workoutSpec = capSpecToDistance(workoutSpec, d.distanceMi);
       const totalDistanceMi = totalDistanceMiFromSpec(workoutSpec, d.distanceMi);
       // 2026-06-03 · iPhone agent Tier 2.d brief · sub_label derived
       // from spec instead of the rx template string. The spec is the

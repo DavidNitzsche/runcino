@@ -172,7 +172,14 @@ export function validateComposedPlan(
       if (day.isLong && day.type !== 'race' && day.distanceMi > longPeak) longPeak = day.distanceMi;
     }
   }
-  if (longPeak > cap) {
+  // 2026-06-21 · the long-run cap is a RACE-PREP concept (don't over-distance
+  // the long beyond what the upcoming race needs). In maintenance/recovery the
+  // long is BASE-anchored (recentLongMi × tier longPctOfPeak), so a marathoner
+  // holding fitness toward a far-off 5K legitimately runs a 14mi long that the
+  // 5K's 10mi cap would reject — blocking the whole DB write and leaving the
+  // runner with a saved race and ZERO plans (round-2 dead-end). Only enforce
+  // the cap when building TO the race.
+  if (mode === 'race-prep' && longPeak > cap) {
     const ctxNote = cat === 'hm'
       ? ctx.isSteppingStoneToMarathon
         ? ' (HM stepping-stone cap)'
@@ -279,8 +286,15 @@ export function validateComposedPlan(
   }
 
   // ── 6. Weekly volume arc (no week > 150% of prior) ────────────────────────
+  // 2026-06-21 · the WoW build ceiling is a RACE-PREP concept (a safe ramp TO
+  // the race). A RECOVERY block deliberately rebuilds from a deep cutback
+  // (e.g. 30%→55% of peak = 83% WoW by design) and MAINTENANCE holds a flat
+  // base; applying the race-prep 50% ceiling to them rejected a just-finished
+  // marathoner's mandatory recovery plan and left them with ZERO plans (round-2
+  // CRITICAL). Only enforce the build ceiling when building to the race —
+  // matching the section-4 taper check, which is already race-prep-only.
   const nonRaceWeeks = weeks.filter(w => !w.isRaceWeek);
-  for (let i = 1; i < nonRaceWeeks.length; i++) {
+  for (let i = 1; mode === 'race-prep' && i < nonRaceWeeks.length; i++) {
     const prev = nonRaceWeeks[i - 1].weeklyMi;
     const curr = nonRaceWeeks[i].weeklyMi;
     if (prev > 0 && curr > prev * (1 + c.weeklyVolWoWMaxPct / 100)) {

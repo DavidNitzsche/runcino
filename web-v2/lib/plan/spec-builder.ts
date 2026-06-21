@@ -292,11 +292,29 @@ export function buildWorkoutSpec(
       // T · 2 mi CD" → wu=2, tempo=4, cd=2). Falls back to historical
       // math when the prescription string is absent or unparseable.
       const parsedTempo = parseTempoShape(prescription);
-      const tempoDist = parsedTempo?.tempoMi
-        ?? Math.max(2, Math.min(7, (distance_mi ?? 8) - 3));
-      const wu = parsedTempo?.warmupMi
-        ?? ((distance_mi ?? 8) - tempoDist) / 2;
-      const cd = parsedTempo?.cooldownMi ?? wu;
+      const budget = distance_mi ?? 8;
+      let tempoDist = parsedTempo?.tempoMi
+        ?? Math.max(2, Math.min(7, budget - 3));
+      let wu = parsedTempo?.warmupMi
+        ?? (budget - tempoDist) / 2;
+      let cd = parsedTempo?.cooldownMi ?? wu;
+      // 2026-06-21 · budget-scale to distance_mi (the week's clamped quality
+      // allocation), mirroring threshold/intervals. The parsed library shape is
+      // a FIXED 8mi (2·WU + 4·T + 2·CD); on a short-race plan whose long the
+      // post-compose sweep clamped to ~6mi, persisting the unscaled spec total
+      // shipped a "tempo" LONGER than the long run — because the persisted
+      // distance is totalDistanceMiFromSpec(spec), not the clamped headline
+      // (round-2 CRITICAL · partial regression of the quality≤long fix). Scale
+      // proportionally to budget; tempoDist absorbs rounding so wu+core+cd ==
+      // budget exactly. Established runners' budget ≥ shape → no scale (byte-
+      // for-byte unchanged).
+      const rawTotal = wu + tempoDist + cd;
+      if (rawTotal > budget && rawTotal > 0) {
+        const k = budget / rawTotal;
+        wu = Number((wu * k).toFixed(1));
+        cd = Number((cd * k).toFixed(1));
+        tempoDist = Number(Math.max(0.5, budget - wu - cd).toFixed(1));
+      }
       return {
         spec: {
           kind: 'tempo',
@@ -527,6 +545,48 @@ export function totalDistanceMiFromSpec(
     default:
       return fallbackDistanceMi;
   }
+}
+
+/**
+ * 2026-06-21 · cap a quality spec's REALIZED distance at maxMi.
+ *
+ * The persisted plan_workouts.distance_mi is totalDistanceMiFromSpec(spec) — the
+ * sum of the spec's segments — NOT the DayPlan.distanceMi the post-compose
+ * easy/quality≤long sweep clamps. So a structured session whose WU/reps/float-
+ * jog/CD sum past the (clamped) headline ships a quality run LONGER than the
+ * week's long run on short-race plans (round-2 CRITICAL). Call this at persist
+ * with maxMi = the clamped day distance: it scales the spec's segments down to
+ * fit so the persisted total honours the clamp. A no-op when the spec already
+ * fits (every budget-scaled spec for established runners → byte-for-byte same).
+ */
+export function capSpecToDistance(spec: WorkoutSpec, maxMi: number): WorkoutSpec {
+  if (!spec || typeof spec !== 'object' || !(maxMi > 0)) return spec;
+  const realized = totalDistanceMiFromSpec(spec, maxMi);
+  if (realized <= maxMi + 0.05) return spec;
+  const s: Record<string, unknown> = { ...(spec as Record<string, unknown>) };
+  const kind = String(s.kind ?? '');
+  if (kind === 'tempo') {
+    const k = maxMi / realized;
+    const wu = Number((Number(s.warmup_mi ?? 0) * k).toFixed(1));
+    const cd = Number((Number(s.cooldown_mi ?? 0) * k).toFixed(1));
+    s.warmup_mi = wu;
+    s.cooldown_mi = cd;
+    s.tempo_distance_mi = Number(Math.max(0.5, maxMi - wu - cd).toFixed(1));
+  } else if (kind === 'threshold' || kind === 'intervals') {
+    const repMi = (Number(s.rep_distance_mi ?? 0) || 0) > 0
+      ? Number(s.rep_distance_mi)
+      : (Number(s.rep_distance_m ?? 0) || 0) / 1609.34 || 1;
+    const floatPer = (Number(s.rep_rest_s ?? 0) || 0) / 540;
+    let reps = Number(s.rep_count ?? 0) || 0;
+    const wuMin = 0.5, cdMin = 0.5;
+    while (reps > 2 && (reps * repMi + Math.max(0, reps - 1) * floatPer + wuMin + cdMin) > maxMi) reps--;
+    const floatTotal = Math.max(0, reps - 1) * floatPer;
+    const slack = Math.max(wuMin + cdMin, maxMi - reps * repMi - floatTotal);
+    s.rep_count = reps;
+    s.warmup_mi = Number(Math.max(wuMin, slack / 2).toFixed(1));
+    s.cooldown_mi = Number(Math.max(cdMin, slack / 2).toFixed(1));
+  }
+  return s as WorkoutSpec;
 }
 
 /**
