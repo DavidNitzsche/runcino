@@ -43,4 +43,3 @@ enum StravaConnection {
         UserDefaults.standard.removeObject(forKey: key)
     }
 }
-</content>

@@ -110,6 +110,7 @@
 		BB4BDF90BCB0400D90CCC711 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = 563BE14031D81E39DC6ED1EB /* Fonts */; };
 		BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E036C5FD2EC231D2FCDC1A /* Watch.swift */; };
 		BE1AE0E4AC08E6B55B1B87D7 /* StravaOAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC9DAF37D0E9B3DAE9FFDF1 /* StravaOAuthSession.swift */; };
+		BF2A1C3D7E4F9A0C85D6E12B /* StravaConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* StravaConnection.swift */; };
 		C04EABC1AFE4F8CEAC64F2F5 /* TodayPostRunBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1BDC045093EBA34631A9F1 /* TodayPostRunBody.swift */; };
 		C0C9C212380204BE7BCDCC04 /* RouteMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480DB4BC3388D23D601E5EB3 /* RouteMapView.swift */; };
 		C1961C2571F61331D7688A9F /* RolePickView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 726282D996DBB67B81D4C203 /* RolePickView.swift */; };
@@ -313,6 +314,7 @@
 		C7DCC89200E2D445651FD810 /* RunRecapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunRecapView.swift; sourceTree = "<group>"; };
 		C8A9245F66AE1A50C76E2FF3 /* NudgeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NudgeSheet.swift; sourceTree = "<group>"; };
 		CAC9DAF37D0E9B3DAE9FFDF1 /* StravaOAuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaOAuthSession.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* StravaConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaConnection.swift; sourceTree = "<group>"; };
 		CD71B88D7D0751ABFACD1479 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRStreamer.swift; sourceTree = "<group>"; };
 		CE323D928DA355934197F38B /* G_Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = G_Settings.swift; sourceTree = "<group>"; };
@@ -588,6 +590,7 @@
 				A946A92F47DD42163C1A409F /* RaceName.swift */,
 				7664FBCD6CBCAE37BCC24B3B /* SettingsCache.swift */,
 				CAC9DAF37D0E9B3DAE9FFDF1 /* StravaOAuthSession.swift */,
+				A1B2C3D4E5F60718293A4B5C /* StravaConnection.swift */,
 			);
 			path = Util;
 			sourceTree = "<group>";
@@ -847,6 +850,7 @@
 				EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */,
 				ED8A185C9C02773FFC2E41D6 /* StickyCTABar.swift in Sources */,
 				BE1AE0E4AC08E6B55B1B87D7 /* StravaOAuthSession.swift in Sources */,
+				BF2A1C3D7E4F9A0C85D6E12B /* StravaConnection.swift in Sources */,
 				82583B8BEA1A55C53A47687D /* StravaPushHistorySheet.swift in Sources */,
 				0326FC753B14C5D8D88F0047 /* StravaPushSheet.swift in Sources */,
 				D1097CBDA1F05F55910B5163 /* StravaReconnectBanner.swift in Sources */,

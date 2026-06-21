@@ -197,7 +197,7 @@ struct OnboardingView: View {
         }
         .task {
             // Invite signup already captured the name; surface it.
-            if let n = (try? await API.fetchProfileState())?.full_name,
+            if let n = (try? await API.fetchProfileState())?.identity.full_name,
                !n.trimmingCharacters(in: .whitespaces).isEmpty {
                 runnerName = n
             }
@@ -872,4 +872,3 @@ struct OnboardingView: View {
         .disabled(!enabled)
     }
 }
-</content>

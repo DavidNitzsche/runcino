@@ -201,7 +201,7 @@ struct SettingsView: View {
             await MainActor.run {
                 self.settings = st
                 self.profile = pf
-                StravaConnection.set(pf.connections.strava.connected)
+                if let pf { StravaConnection.set(pf.connections.strava.connected) }
                 self.profileFields = fields
                 seedVals(fields, st)
             }
