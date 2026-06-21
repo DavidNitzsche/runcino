@@ -85,9 +85,10 @@ struct OnboardingView: View {
 
         let histAvg: String = {
             switch weeklyMi {
-            case ..<20: return "5-15"
-            case ..<30: return "15-25"
-            case ..<40: return "25-35"
+            case ..<5:  return "0-5"
+            case ..<15: return "5-15"
+            case ..<25: return "15-25"
+            case ..<35: return "25-35"
             default:    return "35+"
             }
         }()
@@ -595,8 +596,8 @@ struct OnboardingView: View {
         runQ("How many days a week\ndo you run?",
              context: "Count days you actually run, not strength or cross-training.",
              enabled: weeklyFreq != nil) {
-            chipRow([1, 2, 3, 4, 5, 6].map { n in ("\(n)", weeklyFreq == n) }) { idx in
-                withAnimation(Theme.Motion.smooth) { weeklyFreq = [1, 2, 3, 4, 5, 6][idx] }
+            chipRow([0, 1, 2, 3, 4, 5, 6].map { n in (n == 0 ? "0" : "\(n)", weeklyFreq == n) }) { idx in
+                withAnimation(Theme.Motion.smooth) { weeklyFreq = [0, 1, 2, 3, 4, 5, 6][idx] }
             }
         }
     }
@@ -605,9 +606,10 @@ struct OnboardingView: View {
     private var runQ_mileage: some View {
         runQ("What's your weekly\nmileage right now?",
              context: "Approximate is fine. Your current base, not a peak or goal.") {
-            let opts = [15, 25, 35, 45, 55]
-            chipRow(opts.map { n in (n == 55 ? "55+" : "\(n)", weeklyMi == n) }) { idx in
-                withAnimation(Theme.Motion.smooth) { weeklyMi = opts[idx] }
+            let labels = ["<5", "5-15", "15-25", "25-35", "35-45", "45+"]
+            let vals   = [0,    5,      15,      25,      35,      45]
+            chipRow(labels.enumerated().map { i, l in (l, weeklyMi == vals[i]) }) { idx in
+                withAnimation(Theme.Motion.smooth) { weeklyMi = vals[idx] }
             }
         }
     }
