@@ -595,11 +595,24 @@ struct OnboardingView: View {
 
     // Q1 — days per week
     private var runQ_daysPerWeek: some View {
-        runQ("How many days a week\ndo you run?",
-             context: "Count days you actually run — not strength or cross-training.",
-             enabled: weeklyFreq != nil) {
-            bigNumberRow([0, 1, 2, 3, 4, 5, 6], selected: weeklyFreq) { n in
-                withAnimation(Theme.Motion.smooth) { weeklyFreq = n }
+        let opts: [(Int, String)] = [
+            (0, "Not running right now"),
+            (1, "1 day a week"),
+            (2, "2 days a week"),
+            (3, "3 days a week"),
+            (4, "4 days a week"),
+            (5, "5 days a week"),
+            (6, "6 days a week")
+        ]
+        return runQ("How many days a week\ndo you run?",
+                    context: "Count days you actually run — not strength or cross-training.",
+                    enabled: weeklyFreq != nil) {
+            VStack(spacing: 9) {
+                ForEach(opts, id: \.0) { n, label in
+                    selectRow(label, selected: weeklyFreq == n) {
+                        withAnimation(Theme.Motion.smooth) { weeklyFreq = n }
+                    }
+                }
             }
         }
     }
@@ -919,27 +932,8 @@ struct OnboardingView: View {
 
     // MARK: shared answer controls
 
-    /// A row of large circular number buttons. Used for days/week (0–6).
-    private func bigNumberRow(_ values: [Int], selected: Int?, action: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 6) {
-            ForEach(values, id: \.self) { n in
-                let on = selected == n
-                Button { action(n) } label: {
-                    Text("\(n)")
-                        .font(.display(20, weight: .bold))
-                        .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt)
-                        .frame(width: 40, height: 40)
-                        .background(on ? Color.white : Color.white.opacity(0.08), in: Circle())
-                        .overlay(Circle().stroke(on ? Color.white : Color.white.opacity(0.16), lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// A full-width selectable pill row. Used for mileage, longest run, and
-    /// long-run day — substantial, easy to tap, fills the canvas.
+    /// A full-width selectable pill row. Used for days/week, mileage, longest
+    /// run, and long-run day — substantial, easy to tap, fills the canvas.
     private func selectRow(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
