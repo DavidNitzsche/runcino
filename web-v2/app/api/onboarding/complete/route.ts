@@ -97,6 +97,7 @@ const VALID_DISTANCES = new Set(['5k', '10k', 'half', 'marathon', 'none', 'coach
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
 const VALID_WEEKLY_MI = new Set<WeeklyMileage>([15, 25, 35, 45, 55]);
 const VALID_FREQ = new Set<WeeklyFrequency>([3, 4, 5, 6]);
+const VALID_EXPERIENCE = new Set<string>(['beginner', 'intermediate', 'advanced', 'advanced_plus']);
 const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+']);
 const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
@@ -210,6 +211,14 @@ export async function POST(req: NextRequest) {
   const histYears = typeof body.histYears === 'string'
       && VALID_HIST_YEARS.has(body.histYears as HistYears)
     ? (body.histYears as HistYears) : null;
+  // Self-reported experience level (onboarding asks it directly now). Persists
+  // to profile.experience_level (migration 106) — the cold-start input that
+  // runner-calibration + the plan volume curve read. Previously this field was
+  // accepted by JSON parse and dropped on the floor, so every onboarded runner
+  // fell to the intermediate default regardless of what they picked.
+  const experienceLevel = (typeof body.experienceLevel === 'string'
+      && VALID_EXPERIENCE.has(body.experienceLevel))
+    ? body.experienceLevel : null;
 
   // 2026-06-03 · race history capture (TASK B4). Accepted on EITHER
   // path · first-race runners on either race or no-race path drive
@@ -377,7 +386,8 @@ export async function POST(req: NextRequest) {
           height_cm               = COALESCE(height_cm, $17),
           age                     = COALESCE(age, $18),
           race_history            = $19::jsonb,
-          user_settings           = user_settings || $20::jsonb
+          user_settings           = user_settings || $20::jsonb,
+          experience_level        = COALESCE(experience_level, $21)
         WHERE user_uuid = $14
         RETURNING user_uuid`,
       [
@@ -395,6 +405,7 @@ export async function POST(req: NextRequest) {
         // it) + long_run_day/rest_day when picked. Other user_settings
         // keys are never clobbered.
         JSON.stringify(settingsPatch),
+        experienceLevel,
       ]
     );
 
@@ -415,13 +426,15 @@ export async function POST(req: NextRequest) {
             history_avg_weekly_mi, history_longest_recent_mi, history_years_running,
             birthday, sex, height_cm, age,
             race_history,
-            user_settings
+            user_settings,
+            experience_level
           ) VALUES (
             $1::text, $1::uuid, $2, $3, $4, $5, $6, NOW(), NOW(), $7,
             $8, $9, $10, $11, $12, $13, $14,
             $15::date, $16, $17, $18,
             $19::jsonb,
-            $20::jsonb
+            $20::jsonb,
+            $21
           )`,
         [
           userId, goalDistanceForProfile, date, time, name, timezone, connectionsSkipped,
@@ -430,6 +443,7 @@ export async function POST(req: NextRequest) {
           birthday, sex, heightCm, ageNum,
           JSON.stringify(raceHistory.map((e) => ({ ...e, source: 'self_reported' }))),
           JSON.stringify(settingsPatch),
+          experienceLevel,
         ]
       );
     }
