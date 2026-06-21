@@ -108,11 +108,12 @@ enum Theme {
         static let spring: Animation = .timingCurve(0.32, 0.72, 0, 1, duration: 0.36)
         /// Smooth ease used for plan-card / chip selections.
         static let smooth: Animation = .timingCurve(0.4, 0, 0.2, 1, duration: 0.30)
-        /// Content arrival — a settled spring for staggered entrances. The
-        /// difference between elements that appear and elements that *arrive*.
-        static let enter: Animation = .spring(response: 0.55, dampingFraction: 0.86)
-        /// Directional page/step change in a wizard.
-        static let page: Animation = .timingCurve(0.32, 0.72, 0, 1, duration: 0.46)
+        /// Content arrival — a clean decelerating ease for staggered entrances.
+        /// Ends flat at rest (no overshoot, no wiggle); the difference between
+        /// elements that appear and elements that *arrive*.
+        static let enter: Animation = .timingCurve(0.22, 1, 0.36, 1, duration: 0.42)
+        /// Page/step change in a wizard — a soft crossfade, no horizontal slide.
+        static let page: Animation = .easeInOut(duration: 0.28)
     }
 
     // ───── Brandmark sweep · FAFF·RUN (Anton, skew −9°, 6s linear ∞) ─────
@@ -736,8 +737,8 @@ extension Theme {
 // is nil the entrance plays once on first appear.
 struct FaffEntrance: ViewModifier {
     var index: Int = 0
-    var step: Double = 0.055      // per-index delay
-    var yOffset: CGFloat = 16
+    var step: Double = 0.05       // per-index delay
+    var yOffset: CGFloat = 10
     var trigger: AnyHashable? = nil
 
     @State private var shown = false
@@ -763,16 +764,7 @@ struct FaffEntrance: ViewModifier {
 extension View {
     /// Stagger this element into view. `index` sets its place in the cascade;
     /// pass a `trigger` (e.g. the current step) so it re-plays on each screen.
-    func faffEntrance(_ index: Int = 0, trigger: AnyHashable? = nil, yOffset: CGFloat = 16) -> some View {
+    func faffEntrance(_ index: Int = 0, trigger: AnyHashable? = nil, yOffset: CGFloat = 10) -> some View {
         modifier(FaffEntrance(index: index, yOffset: yOffset, trigger: trigger))
-    }
-
-    /// Directional wizard transition — the new screen slides in from the lead
-    /// edge while the old one slides out the other way, both with a fade.
-    func faffPageSlide(forward: Bool) -> some View {
-        transition(.asymmetric(
-            insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
-            removal:   .move(edge: forward ? .leading : .trailing).combined(with: .opacity)
-        ))
     }
 }

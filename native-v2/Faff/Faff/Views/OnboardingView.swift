@@ -166,7 +166,7 @@ struct OnboardingView: View {
                 ZStack {
                     currentPanel
                         .id(step)
-                        .faffPageSlide(forward: navDir)
+                        .transition(.opacity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.top, 28)
@@ -509,7 +509,7 @@ struct OnboardingView: View {
         ZStack {
             runSubstepView
                 .id(runSubstep)
-                .faffPageSlide(forward: navDir)
+                .transition(.opacity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
