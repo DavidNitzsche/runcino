@@ -1155,6 +1155,10 @@ function layoutWeek({
   // BASE and CUTBACK weeks may legitimately step down · don't over-floor
   // a deliberate deload. CUTBACK = 4th week per volumeCurve.
   // Otherwise floor to the runner's real baseline rounded to .5.
+  // NOTE (2026-06-21): adding TAPER here deepens the taper (realized volume
+  // drops to match the tapered field — round-2 found the first taper week only
+  // drops ~13% vs ~25% doctrine), BUT it DRIFTS David's protected plan (wk14
+  // 58→40mi). Pending his sign-off — see the taper-improvements decision.
   const isDeloadOrBase = phase === 'BASE';
   const effectiveFloor = isDeloadOrBase
     ? mathFloor
@@ -1619,6 +1623,14 @@ export interface ComposeNonRaceInput {
   longRunDow: DOW;
   restDow: DOW;
   qualityDows: DOW[];
+  /** 2026-06-21 · days the runner can run (from available_days). When set,
+   *  the maintenance/recovery easy-fill places easy runs ONLY on these days
+   *  and rests every other empty slot — parity with composePlan's layoutWeek.
+   *  long/quality/rest already land on available days upstream (loadGenerator-
+   *  Inputs derives longRunDow/restDow/qualityDows from the same set), so only
+   *  the easy-fill needs this filter. NULL → fill every empty slot (David /
+   *  pre-available-days profiles unchanged). */
+  availableDows?: Set<number> | null;
   /** 2026-06-10 · runner's stated training frequency. When set, overrides
    *  the tier's daysPerWeek so a far-out-race runner's maintenance block
    *  honors the days/week they actually picked. NULL → tier default. */
@@ -1687,8 +1699,14 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       subLabel: 'LONG',
       notes: 'Conversational. Maintenance long · holding aerobic base.',
     };
-    // Quality day (skip when tier shape has qualityPerWeek=0)
-    if (shape.qualityPerWeek > 0 && input.qualityDows.length > 0) {
+    // Quality day (skip when tier shape has qualityPerWeek=0).
+    // 2026-06-21 · #5 · a 0-1 day/week runner can't fit a quality session on
+    // top of the long. When the stated frequency caps running below 2 days,
+    // drop quality entirely (the long IS the week's single hard effort). NULL
+    // frequency / freq>=2 keep the tier's quality. Uses the already-overridden
+    // shape.daysPerWeek so this reads the runner's stated number, not the tier.
+    const qualityAllowed = shape.qualityPerWeek > 0 && shape.daysPerWeek >= 2;
+    if (qualityAllowed && input.qualityDows.length > 0) {
       const qDow = input.qualityDows[0]; // single quality, first picked day
       if (slots[qDow] == null) {
         const qDist = Math.max(5, Math.round(wkWeekly * 0.16));
@@ -1711,10 +1729,19 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     const easyFloor = Math.max(3, input.easyDayMedianMi || 5);
     const allocated = slots.filter(Boolean).reduce((s, d) => s + (d?.distanceMi ?? 0), 0);
     const easyMiBudget = Math.max(0, wkWeekly - allocated);
-    const easySlots = slots
+    const emptySlots = slots
       .map((s, i) => ({ slot: s, dow: i as DOW }))
       .filter((x) => x.slot == null);
-    const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - (slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length)));
+    // 2026-06-21 · #4 · when the runner gave available days, easy runs may only
+    // land on those days; every other empty day stays rest. long/quality/rest
+    // already sit on available days (loadGeneratorInputs derives them from the
+    // same set). NULL → every empty slot is a candidate (legacy behavior). This
+    // mirrors composePlan's layoutWeek easy-candidate filter exactly.
+    const easySlots = input.availableDows
+      ? emptySlots.filter((e) => input.availableDows!.has(e.dow))
+      : emptySlots;
+    const runningPlaced = slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length;
+    const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - runningPlaced));
     const perEasy = targetEasyCount > 0 ? Math.max(easyFloor, Math.round(easyMiBudget / targetEasyCount)) : 0;
     for (let i = 0; i < easySlots.length; i++) {
       const { dow } = easySlots[i];
@@ -1723,6 +1750,28 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       } else {
         // Extra slot · rest day (we're holding daysPerWeek, not adding)
         slots[dow] = { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off.' };
+      }
+    }
+    // 2026-06-21 · #5 · frequency cap. The long (and a freq>=2 quality) are
+    // authored unconditionally above, so a 1-day runner could still end up with
+    // long+quality = 2 running days when they asked for 1 — the easy-fill can
+    // only ADD days, never trim the long/quality. Mirror the race-prep trim:
+    // demote running days in priority order (easy → quality, long always stays)
+    // until the running-day count meets the stated frequency. NULL → untouched.
+    if (input.trainingDaysPerWeek != null) {
+      let running = slots.filter((d) => d != null && d.distanceMi > 0).length;
+      const isQ = (d: DayPlan) => d.isQuality;
+      const isE = (d: DayPlan) => d.type === 'easy';
+      for (const matches of [isE, isQ] as const) {
+        if (running <= input.trainingDaysPerWeek) break;
+        for (let dow = 0; dow < 7; dow++) {
+          if (running <= input.trainingDaysPerWeek) break;
+          const d = slots[dow];
+          if (d != null && d.distanceMi > 0 && !d.isLong && matches(d)) {
+            slots[dow] = { dow: dow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off.' };
+            running--;
+          }
+        }
       }
     }
     return slots.filter(Boolean) as DayPlan[];
@@ -1806,23 +1855,61 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // 1 extra rest day adjacent · 2 rest in recovery weeks
     const extraRestDow = ((input.restDow + 3) % 7) as DOW;
     slots[extraRestDow] = { dow: extraRestDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Extra rest · still recovering.' };
-    // 1 medium easy mid-week (optional · only if Pfitz says >40% of peak)
-    let mediumEasy: DayPlan | null = null;
+    // 1 medium easy mid-week (optional · only if Pfitz says >40% of peak).
+    // 2026-06-21 · #7 · the medium-easy used to claim slots[longRunDow]
+    // unconditionally. When longRunDow coincides with restDow or the
+    // extraRestDow=(restDow+3)%7, it silently overwrote a rest day → only 1
+    // rest day → a 6-running-day "recovery" week. Pick a medium day that is
+    // NOT either rest day (and, when the runner gave available days, IS one of
+    // them). Prefer the long-run slot, then mid-week, then any free day.
     if (wkPct >= 0.50) {
-      const mediumDow = input.longRunDow; // use long-run slot for medium
-      mediumEasy = { dow: mediumDow, type: 'easy', distanceMi: Math.max(6, Math.round(wkWeekly * 0.20)), isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
-      slots[mediumDow] = mediumEasy;
+      const isFree = (d: number) =>
+        d !== input.restDow && d !== extraRestDow && slots[d] == null &&
+        (input.availableDows ? input.availableDows.has(d) : true);
+      // candidate order: long-run day, then mid-week-out (Wed-first), then any
+      const candidates = [input.longRunDow, 3, 4, 2, 5, 1, 6, 0];
+      const mediumDow = candidates.find(isFree);
+      if (mediumDow != null) {
+        slots[mediumDow] = { dow: mediumDow as DOW, type: 'easy', distanceMi: Math.max(6, Math.round(wkWeekly * 0.20)), isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
+      }
     }
-    // Fill rest with easies
-    const easyFloor = Math.max(3, Math.round((input.easyDayMedianMi || 5) * 0.7)); // shorter easies in recovery
+    // Fill rest with easies.
     const allocated = slots.filter(Boolean).reduce((s, d) => s + (d?.distanceMi ?? 0), 0);
     const easyMiBudget = Math.max(0, wkWeekly - allocated);
-    const easySlots = slots
+    const emptySlots = slots
       .map((s, i) => ({ slot: s, dow: i as DOW }))
       .filter((x) => x.slot == null);
-    const perEasy = easySlots.length > 0 ? Math.max(easyFloor, Math.round(easyMiBudget / easySlots.length)) : 0;
-    for (const { dow } of easySlots) {
-      slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Recovery easy · conversational, no surges.' };
+    // 2026-06-21 · #4 · respect available days — easy runs land only on days
+    // the runner can run; every other empty day stays rest. NULL → every empty
+    // slot is a candidate (legacy). Parity with composePlan's layoutWeek.
+    const easySlots = input.availableDows
+      ? emptySlots.filter((e) => input.availableDows!.has(e.dow))
+      : emptySlots;
+    // 2026-06-21 · #6 · honor stated frequency. The week is 2 rest + every other
+    // slot easy = ~5 running days regardless of what the runner picked. When a
+    // frequency is set, keep only enough easy days to hit it (running days
+    // already placed = long/medium count toward the budget); the rest become
+    // rest. NULL → fill every easy candidate (legacy 5-day recovery week).
+    const runningPlaced = slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length;
+    const targetEasyCount = input.trainingDaysPerWeek != null
+      ? Math.max(0, Math.min(easySlots.length, input.trainingDaysPerWeek - runningPlaced))
+      : easySlots.length;
+    // 2026-06-21 · #8 · the per-slot easyFloor (>= ~4mi each) decoupled the day-
+    // sum from wkWeekly: with N easy slots all pinned to the floor, the realized
+    // week ran ~2× the intended recovery volume — the opposite of a cutback. A
+    // recovery week is deliberately light, so size easy days off the budget
+    // (a small 2mi sanity floor only, no baseline floor) and ensure the realized
+    // day-sum tracks wkWeekly. Floor never inflates the week above its target.
+    const RECOVERY_MIN_EASY = 2;
+    const perEasyRaw = targetEasyCount > 0 ? Math.round(easyMiBudget / targetEasyCount) : 0;
+    const perEasy = Math.max(RECOVERY_MIN_EASY, perEasyRaw);
+    for (let i = 0; i < easySlots.length; i++) {
+      const { dow } = easySlots[i];
+      if (i < targetEasyCount) {
+        slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Recovery easy · conversational, no surges.' };
+      } else {
+        slots[dow] = { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Still recovering.' };
+      }
     }
     weeks.push({
       startISO: addDays(input.startMondayISO, wi * 7),
@@ -2190,6 +2277,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       longRunDow: inputs.compose.longRunDow,
       restDow: inputs.compose.restDow,
       qualityDows: inputs.compose.qualityDows,
+      availableDows: inputs.compose.availableDows ?? null,
       trainingDaysPerWeek: inputs.compose.trainingDaysPerWeek,
       crossModes: inputs.compose.crossModes,
       tier,
@@ -2460,7 +2548,13 @@ async function loadLastRaceFinished(
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!r) return { lastRaceFinished: null, lastRaceDistanceMi: null };
   const m = r.meta || {};
-  const dMi = Number(m.distanceMi);
+  // 2026-06-21 · meta.distanceMi is rarely populated on race rows (the editor
+  // stores a distanceLabel, not a numeric mile count), so reading it directly
+  // returned NaN → recovery mode never armed in production. distanceMiOf does
+  // the same label fallback loadGeneratorInputs already trusts for the race
+  // path (distanceMi → distanceLabel → name → 13.1), so a just-finished race
+  // resolves to a real distance and pickPlanMode can enter the recovery window.
+  const dMi = distanceMiOf(m);
   return {
     lastRaceFinished: {
       slug: r.slug,
