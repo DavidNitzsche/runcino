@@ -17,15 +17,6 @@ struct SignInView: View {
     /// main app instead of walking RolePick + Onboarding again.
     let onSignedIn: (_ skipOnboarding: Bool) -> Void
 
-    /// 5-blob mesh in the canonical RECOVERY teal palette (matches
-    /// color-system.md). FaffMeshView already paints the design's 4-blob
-    /// shape · the extra blob is a deeper base layer that adds weight at
-    /// the bottom and never conflicts with the spec.
-    private let mesh = FaffMesh(
-        c1: 0x7FE6D6, c2: 0x3FB6B0, c3: 0x27B4E0,
-        c4: 0x1F8F76, c5: 0x11605E, base: 0x072A28
-    )
-
     @State private var toast: String?
     @State private var emailSheet: Bool = false
     /// Which mode the email sheet opens in — sign-in (have an account) or
@@ -34,32 +25,36 @@ struct SignInView: View {
 
     var body: some View {
         ZStack {
-            FaffMeshView(mesh: mesh)
+            Theme.bg.ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 0) {
-                Brandmark(size: 22, style: .swept)
-                    .padding(.top, 56)
+            VStack(spacing: 0) {
+                // Logo — top-left, reasonably sized
+                HStack {
+                    Brandmark(size: 36, style: .swept)
+                    Spacer()
+                }
+                .padding(.top, 64)
+                .padding(.horizontal, 30)
 
                 Spacer(minLength: 0)
 
+                // Hero block — centered vertically
                 hero
-                    .padding(.top, 4)
+                    .padding(.horizontal, 30)
 
                 Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-                authStack
-                    .padding(.top, 22)
-
-                fine
-                    .padding(.top, 18)
+                // Auth + fine print — bottom
+                VStack(spacing: 0) {
+                    authStack
+                    fine.padding(.top, 16)
+                }
+                .padding(.horizontal, 30)
+                .padding(.bottom, 36)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.horizontal, 30)
-            .padding(.bottom, 34)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Bottom-anchored toast surface · slides in over the auth stack
-            // when Google / email fires; auto-dismisses after 2.4s. Lives
-            // above the main VStack so the layout never reflows.
             if let msg = toast {
                 ToastBar(text: msg)
                     .padding(.horizontal, 30)
@@ -75,19 +70,16 @@ struct SignInView: View {
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Your\nrunning,\ncoached.")
-                .font(.heroDisplay(50))
-                .tracking(-2.5)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Your running,\ncoached.")
+                .font(.heroDisplay(52))
+                .tracking(-2)
                 .foregroundStyle(Theme.txt)
-                .lineSpacing(-6)
-                .shadow(color: .black.opacity(0.3), radius: 26, y: 2)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("A plan that adapts every day, built from your own training. Let's find your starting line.")
+            Text("A plan that adapts every day, built from your own training.")
                 .font(.body(16, weight: .semibold))
-                .foregroundStyle(Theme.txt.opacity(0.78))
+                .foregroundStyle(Theme.txt.opacity(0.55))
                 .lineSpacing(3)
-                .frame(maxWidth: 300, alignment: .leading)
         }
     }
 
