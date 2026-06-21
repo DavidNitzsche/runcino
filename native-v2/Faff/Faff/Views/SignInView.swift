@@ -35,20 +35,22 @@ struct SignInView: View {
                 }
                 .padding(.top, 64)
                 .padding(.horizontal, 30)
+                .faffEntrance(0)
 
                 Spacer(minLength: 0)
 
                 // Hero block — centered vertically
                 hero
                     .padding(.horizontal, 30)
+                    .faffEntrance(1)
 
                 Spacer(minLength: 0)
                 Spacer(minLength: 0)
 
                 // Auth + fine print — bottom
                 VStack(spacing: 0) {
-                    authStack
-                    fine.padding(.top, 16)
+                    authStack.faffEntrance(2)
+                    fine.padding(.top, 16).faffEntrance(3)
                 }
                 .padding(.horizontal, 30)
                 .padding(.bottom, 36)
@@ -102,7 +104,7 @@ struct SignInView: View {
                     .padding(.vertical, 17)
                     .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FaffPressStyle())
 
             // Secondary: request access (invite-only door for new runners).
             Button {
@@ -115,7 +117,7 @@ struct SignInView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FaffPressStyle())
         }
     }
 

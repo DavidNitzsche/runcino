@@ -36,6 +36,10 @@ struct OnboardingView: View {
     // Sub-wizard position within step 2.
     @State private var runSubstep: Int = 0
 
+    // Wizard travel direction — drives which way screens slide (forward = new
+    // screen enters from the trailing edge, back = from the leading edge).
+    @State private var navDir: Bool = true
+
     // Experience level. beginner/intermediate/advanced — shapes plan density
     // and coach voice from day one.
     @State private var experienceLevel: String? = nil
@@ -160,15 +164,11 @@ struct OnboardingView: View {
                     .padding(.horizontal, 20)
 
                 ZStack {
-                    welcomePanel.opacity(step == 0 ? 1 : 0)
-                    connectPanel.opacity(step == 1 ? 1 : 0)
-                    runningPanel.opacity(step == 2 ? 1 : 0)
-                    profilePanel.opacity(step == 3 ? 1 : 0)
-                    confirmPanel.opacity(step == 4 ? 1 : 0)
+                    currentPanel
+                        .id(step)
+                        .faffPageSlide(forward: navDir)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(Theme.Motion.smooth, value: step)
-                .animation(Theme.Motion.smooth, value: runSubstep)
                 .padding(.top, 28)
             }
         }
@@ -190,6 +190,24 @@ struct OnboardingView: View {
         return n
     }
 
+    @ViewBuilder
+    private var currentPanel: some View {
+        switch step {
+        case 0: welcomePanel
+        case 1: connectPanel
+        case 2: runningPanel
+        case 3: profilePanel
+        default: confirmPanel
+        }
+    }
+
+    /// Move the wizard. `forward` picks the slide direction; the page change is
+    /// animated with the wizard curve so the slide + fade fire together.
+    private func go(forward: Bool, _ change: @escaping () -> Void) {
+        navDir = forward
+        withAnimation(Theme.Motion.page) { change() }
+    }
+
     // MARK: chrome
 
     private var topBar: some View {
@@ -198,7 +216,7 @@ struct OnboardingView: View {
                 let showBack = step > 0
                 if showBack {
                     BackChip {
-                        withAnimation(Theme.Motion.smooth) {
+                        go(forward: false) {
                             if step == 2 && runSubstep > 0 { runSubstep -= 1 }
                             else { step = max(0, step - 1) }
                         }
@@ -209,7 +227,7 @@ struct OnboardingView: View {
             HStack(spacing: 7) {
                 ForEach(0..<stepCount, id: \.self) { i in
                     Capsule()
-                        .fill(i == step ? Color.white : Color.white.opacity(0.25))
+                        .fill(i == step ? Color.white : Color.white.opacity(i < step ? 0.5 : 0.22))
                         .frame(width: i == step ? 30 : 22, height: 4)
                 }
             }
@@ -228,17 +246,21 @@ struct OnboardingView: View {
                     .font(.label(11))
                     .tracking(3)
                     .foregroundStyle(Theme.txt.opacity(0.55))
+                    .faffEntrance(0)
                 Brandmark(size: 72, style: .swept)
                     .padding(.top, 10)
+                    .faffEntrance(1)
                 Text("Your training, built around\nwhat you're chasing.")
                     .font(.display(26, weight: .bold))
                     .foregroundStyle(Theme.txt)
                     .lineSpacing(2)
                     .padding(.top, 28)
+                    .faffEntrance(2)
                 Text("Honest about where you stand today.")
                     .font(.body(15, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.55))
                     .padding(.top, 10)
+                    .faffEntrance(3)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 26)
@@ -247,10 +269,11 @@ struct OnboardingView: View {
             Spacer(minLength: 0)
 
             ctaButton(title: "Get started") {
-                withAnimation(Theme.Motion.smooth) { step = 1 }
+                go(forward: true) { step = 1 }
             }
             .padding(.horizontal, 26)
             .padding(.bottom, 30)
+            .faffEntrance(4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -306,30 +329,36 @@ struct OnboardingView: View {
                 .font(.label(11))
                 .tracking(3)
                 .foregroundStyle(Theme.txt.opacity(0.66))
+                .faffEntrance(0)
             Text("Bring your\nhistory in.")
                 .font(.heroDisplay(40))
                 .tracking(-1.5)
                 .foregroundStyle(Theme.txt)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
+                .faffEntrance(1)
             Text("Connect your watch and apps. We'll pull in every run so Faff is alive from minute one — and read your heart-rate history so we never have to ask you for numbers.")
                 .font(.body(15, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.84))
                 .lineSpacing(3)
                 .padding(.top, 14)
+                .faffEntrance(2)
 
             VStack(spacing: 11) {
-                ForEach(sources) { src in srcRow(src) }
+                ForEach(Array(sources.enumerated()), id: \.element.id) { idx, src in
+                    srcRow(src).faffEntrance(3 + idx)
+                }
             }
             .padding(.top, 22)
 
             Spacer(minLength: 0)
 
             ctaButton(title: "Continue", enabled: anyConnected) {
-                withAnimation(Theme.Motion.smooth) { step = 2 }
+                go(forward: true) { step = 2 }
             }
+            .faffEntrance(5)
             Button {
-                withAnimation(Theme.Motion.smooth) { step = 2 }
+                go(forward: true) { step = 2 }
             } label: {
                 Text("I'll start fresh")
                     .font(.body(13, weight: .bold))
@@ -338,6 +367,7 @@ struct OnboardingView: View {
                     .padding(.top, 14)
             }
             .buttonStyle(.plain)
+            .faffEntrance(6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
@@ -476,6 +506,16 @@ struct OnboardingView: View {
 
     @ViewBuilder
     private var runningPanel: some View {
+        ZStack {
+            runSubstepView
+                .id(runSubstep)
+                .faffPageSlide(forward: navDir)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var runSubstepView: some View {
         switch runSubstep {
         case 0: runQ_experience
         case 1: runQ_daysPerWeek
@@ -493,7 +533,7 @@ struct OnboardingView: View {
 
     private func runNext() {
         let last = hasRaced ? 7 : 6
-        withAnimation(Theme.Motion.smooth) {
+        go(forward: true) {
             if runSubstep >= last { step = 3 } else { runSubstep += 1 }
         }
     }
@@ -514,12 +554,14 @@ struct OnboardingView: View {
                 Text("STEP 2")
                     .font(.label(11)).tracking(3)
                     .foregroundStyle(Theme.txt.opacity(0.5))
+                    .faffEntrance(0)
                 Text(question)
                     .font(.heroDisplay(40))
                     .tracking(-1.5)
                     .foregroundStyle(Theme.txt)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 12)
+                    .faffEntrance(1)
                 if let ctx = context {
                     Text(ctx)
                         .font(.body(15, weight: .semibold))
@@ -527,6 +569,7 @@ struct OnboardingView: View {
                         .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 12)
+                        .faffEntrance(2)
                 }
             }
 
@@ -534,10 +577,12 @@ struct OnboardingView: View {
 
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .faffEntrance(3)
 
             Spacer(minLength: 24)
 
             ctaButton(title: "Continue", enabled: enabled) { runNext() }
+                .faffEntrance(4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
@@ -590,7 +635,7 @@ struct OnboardingView: View {
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(on ? Color.white : Color.white.opacity(0.14), lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FaffPressStyle())
     }
 
     // Q1 — days per week
@@ -691,7 +736,7 @@ struct OnboardingView: View {
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(on ? Color.white : Color.white.opacity(0.14), lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FaffPressStyle())
     }
 
     // Q5 (hasRaced) — race entries
@@ -769,22 +814,25 @@ struct OnboardingView: View {
                 Text("STEP 3")
                     .font(.label(11)).tracking(3)
                     .foregroundStyle(Theme.txt.opacity(0.66))
+                    .faffEntrance(0)
                 Text("A bit about\nyou.")
                     .font(.heroDisplay(40))
                     .tracking(-1.5)
                     .foregroundStyle(Theme.txt)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 12)
+                    .faffEntrance(1)
                 Text("This helps calibrate your paces and zones. Skip anything you'd rather not share.")
                     .font(.body(15, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.84))
                     .lineSpacing(3)
                     .padding(.top, 14)
+                    .faffEntrance(2)
 
-                fieldLabel("DATE OF BIRTH")
-                dobField
+                fieldLabel("DATE OF BIRTH").faffEntrance(3)
+                dobField.faffEntrance(3)
 
-                fieldLabel("SEX")
+                fieldLabel("SEX").faffEntrance(4)
                 HStack(spacing: 8) {
                     chip(text: "Male", on: sex == "M") {
                         withAnimation(Theme.Motion.smooth) { sex = "M" }
@@ -795,14 +843,16 @@ struct OnboardingView: View {
                     Spacer()
                 }
                 .padding(.top, 6)
+                .faffEntrance(4)
 
-                fieldLabel("HEIGHT · OPTIONAL")
-                heightField
+                fieldLabel("HEIGHT · OPTIONAL").faffEntrance(5)
+                heightField.faffEntrance(5)
 
                 Spacer(minLength: 32)
                 ctaButton(title: "Continue") {
-                    withAnimation(Theme.Motion.smooth) { step = 4 }
+                    go(forward: true) { step = 4 }
                 }
+                .faffEntrance(6)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(.horizontal, 26)
@@ -954,7 +1004,7 @@ struct OnboardingView: View {
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(selected ? Color.white : Color.white.opacity(0.12), lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FaffPressStyle())
     }
 
     private func chip(text: String, on: Bool, action: @escaping () -> Void) -> some View {
@@ -974,21 +1024,27 @@ struct OnboardingView: View {
 
     private var confirmPanel: some View {
         return VStack(alignment: .leading, spacing: 0) {
+            Brandmark(size: 52, style: .swept)
+                .padding(.bottom, 24)
+                .faffEntrance(0)
             Text("YOU'RE ALL SET")
                 .font(.label(11)).tracking(3)
                 .foregroundStyle(Theme.txt.opacity(0.66))
+                .faffEntrance(1)
             Text(firstName.map { "You're set,\n\($0)." } ?? "Let's build\na base.")
-                .font(.heroDisplay(40))
+                .font(.heroDisplay(44))
                 .tracking(-1.5)
                 .foregroundStyle(Theme.txt)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
+                .faffEntrance(2)
 
             Text("Your training starts now. Add a race or set a goal from the Goals tab whenever you're ready, and Faff builds the plan around it.")
                 .font(.body(15, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.84))
                 .lineSpacing(3)
                 .padding(.top, 14)
+                .faffEntrance(3)
 
             Spacer(minLength: 0)
 
@@ -1000,7 +1056,7 @@ struct OnboardingView: View {
                     .padding(.bottom, 8)
             }
 
-            ctaButton(title: submitting ? "Saving…" : "Start running") {
+            ctaButton(title: submitting ? "Saving…" : "Let's go") {
                 guard !submitting else { return }
                 submitting = true
                 onboardingError = nil
@@ -1027,6 +1083,7 @@ struct OnboardingView: View {
                     }
                 }
             }
+            .faffEntrance(4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
@@ -1045,8 +1102,22 @@ struct OnboardingView: View {
                 .background(Color.white.opacity(enabled ? 1.0 : 0.4),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FaffPressStyle())
         .disabled(!enabled)
+    }
+}
+
+// MARK: - Press style
+//
+// Snappy tactile press — a small scale + dim on 120ms ease, the multi-property
+// feedback that makes every tap feel responsive instead of flat.
+
+struct FaffPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.92 : 1)
+            .animation(Theme.Motion.tap, value: configuration.isPressed)
     }
 }
 

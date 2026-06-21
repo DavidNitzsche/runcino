@@ -105,7 +105,7 @@ struct EmailSignInSheet: View {
                     .padding(.vertical, 17)
                     .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FaffPressStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -120,7 +120,7 @@ struct EmailSignInSheet: View {
                     .background(Color.white.opacity(0.10), in: Circle())
                     .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FaffPressStyle())
             SpecLabel(text: mode == .signIn ? "EMAIL SIGN-IN" : "REQUEST ACCESS", size: 13, tracking: 2.5, color: Theme.txt)
             Spacer()
         }
@@ -237,7 +237,7 @@ struct EmailSignInSheet: View {
             .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .opacity(canSubmit ? 1 : 0.45)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FaffPressStyle())
         .disabled(!canSubmit)
     }
 
@@ -253,7 +253,7 @@ struct EmailSignInSheet: View {
                 .underline()
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FaffPressStyle())
     }
 
     private var canSubmit: Bool {
