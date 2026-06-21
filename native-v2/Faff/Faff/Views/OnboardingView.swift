@@ -28,21 +28,25 @@ struct OnboardingView: View {
     /// name rather than a placeholder. nil until the fetch lands.
     @State private var runnerName: String? = nil
 
-    // Running level (Standard depth). weeklyFreq + weeklyMi seed plan shape
-    // and volume; histLong/histYears seed the long-run floor + experience.
+    // Sub-wizard position within step 2.
+    @State private var runSubstep: Int = 0
+
+    // Experience level. beginner/intermediate/advanced — shapes plan density
+    // and coach voice from day one.
+    @State private var experienceLevel: String? = nil
+
+    // Running level. weeklyFreq + weeklyMi seed plan shape and volume;
+    // histLong seeds the long-run floor.
     @State private var weeklyFreq: Int = 4          // 3...6 days/week
     @State private var weeklyMi: Int = 25           // 15/25/35/45/55 mi/week
     @State private var histLong: String? = nil      // "0-3"|"3-6"|"6-10"|"10+"
-    @State private var histYears: String? = nil     // "<1"|"1-3"|"3-7"|"7+"
 
-    // Schedule. startOffset → startDate (today/tomorrow/+2d); longRunDay is a
-    // durable preference. Both ride the payload even though no plan is built
-    // at onboarding — they pre-seed user_prefs / user_settings so the first
-    // plan (built when a goal/race is added) honors them.
-    @State private var startOffset: Int = 0         // 0=today, 1=tomorrow, 2=+2d
+    // Schedule. startDate seeds the plan anchor; longRunDay is a durable
+    // preference that the first plan (built on goal/race add) honors.
+    @State private var startDate: Date = Date()
     @State private var longRunDay: String = "sun"   // sun..sat
 
-    // Race history (Standard). Self-reported PRs seed VDOT + coach voice band.
+    // Race history. Self-reported PRs seed VDOT + coach voice band.
     @State private var hasRaced: Bool = false
     @State private var raceEntries: [RaceEntry] = []
 
@@ -78,11 +82,7 @@ struct OnboardingView: View {
     private var onboardingPayload: [String: Any] {
         let isoF = DateFormatter(); isoF.dateFormat = "yyyy-MM-dd"
         let tz = TimeZone.current.identifier
-        let startDate = isoF.string(from: Calendar.current.date(byAdding: .day, value: startOffset, to: Date()) ?? Date())
 
-        // Recent average ≈ current weekly target at cold start, so we don't
-        // ask the same volume question twice. The precise baseline arrives
-        // from Strava/Health once a goal or race is set later.
         let histAvg: String = {
             switch weeklyMi {
             case ..<20: return "5-15"
@@ -93,34 +93,26 @@ struct OnboardingView: View {
         }()
 
         return [
-            // No goal/race at onboarding — backend authors nothing on this path.
             "distance": "none",
             "date": NSNull(),
             "time": NSNull(),
             "ttDistance": NSNull(),
             "ttTime": NSNull(),
             "ttTimeSeconds": NSNull(),
-            // Running level.
             "weeklyMi": weeklyMi,
             "weeklyFreq": weeklyFreq,
             "histAvg": histAvg,
             "histLong": (histLong as Any?) ?? NSNull(),
-            "histYears": (histYears as Any?) ?? NSNull(),
+            "histYears": NSNull(),
             "raceHistory": serializedRaceHistory,
-            // Schedule.
-            "startDate": startDate,
+            "startDate": isoF.string(from: startDate),
             "longRunDay": longRunDay,
-            // Identity — the person's name is set at signup. Send it when we
-            // have it (the server preserves an existing full_name via COALESCE
-            // either way); the placeholder only satisfies the required
-            // non-empty check for the rare row with no name yet.
+            "experienceLevel": (experienceLevel as Any?) ?? NSNull(),
             "name": (firstName != nil ? runnerName! : "Runner"),
             "timezone": tz,
-            // Physiology — only sent when the runner actually picked them.
             "birthday": birthdaySet ? isoF.string(from: birthday) as Any : NSNull(),
             "sex": (sex as Any?) ?? NSNull(),
             "height_cm": (parsedHeight as Any?) ?? NSNull(),
-            // Honest connection state: skipped == nothing connected.
             "connectionsSkipped": !anyConnected
         ]
     }
@@ -183,6 +175,7 @@ struct OnboardingView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(Theme.Motion.smooth, value: step)
+                .animation(Theme.Motion.smooth, value: runSubstep)
                 .padding(.top, 32)
             }
         }
@@ -209,8 +202,14 @@ struct OnboardingView: View {
     private var topBar: some View {
         ZStack {
             HStack {
-                if step > 0 {
-                    BackChip { withAnimation(Theme.Motion.smooth) { step = max(0, step - 1) } }
+                let showBack = step > 0
+                if showBack {
+                    BackChip {
+                        withAnimation(Theme.Motion.smooth) {
+                            if step == 2 && runSubstep > 0 { runSubstep -= 1 }
+                            else { step = max(0, step - 1) }
+                        }
+                    }
                 }
                 Spacer()
             }
@@ -471,121 +470,282 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: running panel (level · history · schedule)
+    // MARK: running sub-wizard
 
+    // Sub-step layout (accounts for hasRaced branch):
+    //  0  experience level
+    //  1  days/week
+    //  2  weekly mileage
+    //  3  longest run
+    //  4  have you raced?
+    //  5  race entries  (hasRaced) | start date (!hasRaced)
+    //  6  start date    (hasRaced) | long run day (!hasRaced → step 3)
+    //  7  long run day  (hasRaced → step 3)
+
+    @ViewBuilder
     private var runningPanel: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("STEP 2")
-                    .font(.label(11)).tracking(3)
-                    .foregroundStyle(Theme.txt.opacity(0.66))
-                Text("Your running.")
-                    .font(.display(38, weight: .bold))
-                    .tracking(-1.5)
-                    .foregroundStyle(Theme.txt)
-                    .lineSpacing(-4)
-                    .padding(.top, 12)
-                Text("Where you are now, so the first plan fits you and not a template.")
-                    .font(.body(15, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.84))
-                    .lineSpacing(3)
-                    .padding(.top, 14)
-
-                fieldLabel("DAYS PER WEEK")
-                chipRow([3, 4, 5, 6].map { ("\($0)", weeklyFreq == $0) }) { idx in
-                    withAnimation(Theme.Motion.smooth) { weeklyFreq = [3, 4, 5, 6][idx] }
-                }
-
-                fieldLabel("WEEKLY MILEAGE NOW")
-                chipRow([15, 25, 35, 45, 55].map { ($0 == 55 ? "55+" : "\($0)", weeklyMi == $0) }) { idx in
-                    withAnimation(Theme.Motion.smooth) { weeklyMi = [15, 25, 35, 45, 55][idx] }
-                }
-
-                fieldLabel("LONGEST RECENT RUN · MI")
-                let longOpts = ["0-3", "3-6", "6-10", "10+"]
-                chipRow(longOpts.map { ($0, histLong == $0) }) { idx in
-                    withAnimation(Theme.Motion.smooth) { histLong = longOpts[idx] }
-                }
-
-                fieldLabel("YEARS RUNNING")
-                let yearOpts = ["<1", "1-3", "3-7", "7+"]
-                chipRow(yearOpts.map { ($0, histYears == $0) }) { idx in
-                    withAnimation(Theme.Motion.smooth) { histYears = yearOpts[idx] }
-                }
-
-                raceHistorySection
-
-                fieldLabel("START")
-                let startOpts = ["Today", "Tomorrow", "In 2 days"]
-                chipRow(startOpts.enumerated().map { ($0.element, startOffset == $0.offset) }) { idx in
-                    withAnimation(Theme.Motion.smooth) { startOffset = idx }
-                }
-
-                fieldLabel("LONG RUN DAY")
-                HStack(spacing: 6) {
-                    ForEach(Array(["sun", "mon", "tue", "wed", "thu", "fri", "sat"].enumerated()), id: \.offset) { idx, key in
-                        chip(text: ["S", "M", "T", "W", "T", "F", "S"][idx], on: longRunDay == key) {
-                            withAnimation(Theme.Motion.smooth) { longRunDay = key }
-                        }
-                    }
-                }
-                .padding(.top, 6)
-
-                Spacer(minLength: 24)
-                ctaButton(title: "Continue") {
-                    withAnimation(Theme.Motion.smooth) { step = 3 }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(.horizontal, 26)
-            .padding(.bottom, 30)
+        switch runSubstep {
+        case 0: runQ_experience
+        case 1: runQ_daysPerWeek
+        case 2: runQ_mileage
+        case 3: runQ_longestRun
+        case 4: runQ_haveRaced
+        case 5:
+            if hasRaced { runQ_raceEntries } else { runQ_startDate }
+        case 6:
+            if hasRaced { runQ_startDate } else { runQ_longRunDay }
+        default:
+            runQ_longRunDay
         }
     }
 
-    // MARK: race history
-
-    @ViewBuilder
-    private var raceHistorySection: some View {
-        fieldLabel("RACE HISTORY")
-        HStack(spacing: 8) {
-            chip(text: "Haven't raced", on: !hasRaced) {
-                withAnimation(Theme.Motion.smooth) { hasRaced = false }
-            }
-            chip(text: "I've raced", on: hasRaced) {
-                withAnimation(Theme.Motion.smooth) {
-                    hasRaced = true
-                    if raceEntries.isEmpty { raceEntries = [RaceEntry()] }
-                }
-            }
-            Spacer()
+    private func runNext() {
+        let last = hasRaced ? 7 : 6
+        withAnimation(Theme.Motion.smooth) {
+            if runSubstep >= last { step = 3 } else { runSubstep += 1 }
         }
-        .padding(.top, 6)
+    }
 
-        if hasRaced {
+    // Shared chrome: step label, big question, optional context, answer block, Continue.
+    @ViewBuilder
+    private func runQ<C: View>(
+        _ question: String,
+        context: String? = nil,
+        enabled: Bool = true,
+        @ViewBuilder content: () -> C
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("STEP 2")
+                .font(.label(11)).tracking(3)
+                .foregroundStyle(Theme.txt.opacity(0.5))
+            Text(question)
+                .font(.display(34, weight: .bold))
+                .tracking(-1.5)
+                .foregroundStyle(Theme.txt)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+            if let ctx = context {
+                Text(ctx)
+                    .font(.body(14, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.5))
+                    .lineSpacing(2)
+                    .padding(.top, 10)
+            }
+            content()
+                .padding(.top, 24)
+            Spacer(minLength: 0)
+            ctaButton(title: "Continue", enabled: enabled) { runNext() }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 26)
+        .padding(.bottom, 30)
+    }
+
+    // Q0 — experience level
+    private var runQ_experience: some View {
+        runQ("How would you\ndescribe yourself?",
+             context: "Be honest — this shapes your first week.",
+             enabled: experienceLevel != nil) {
             VStack(spacing: 10) {
-                ForEach($raceEntries) { $entry in
-                    raceEntryCard(entry: $entry, canRemove: raceEntries.count > 1) {
-                        withAnimation(Theme.Motion.smooth) {
-                            raceEntries.removeAll { $0.id == entry.id }
+                levelCard("beginner",
+                          title: "Just getting started",
+                          desc: "New to running, or returning after a long break. Building the habit comes first.")
+                levelCard("intermediate",
+                          title: "Building consistency",
+                          desc: "Running regularly for a year or more. You've done a race or two and know what a tempo feels like.")
+                levelCard("advanced",
+                          title: "Structured training",
+                          desc: "You follow a plan, race often, and think in terms of phases and VDOT.")
+            }
+        }
+    }
+
+    private func levelCard(_ key: String, title: String, desc: String) -> some View {
+        let on = experienceLevel == key
+        return Button {
+            withAnimation(Theme.Motion.smooth) { experienceLevel = key }
+        } label: {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(.body(16, weight: .extraBold))
+                        .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt)
+                    Text(desc)
+                        .font(.body(13, weight: .medium))
+                        .foregroundStyle(on ? Color(hex: 0x0A0C10).opacity(0.72) : Theme.txt.opacity(0.55))
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt.opacity(0.3))
+            }
+            .padding(16)
+            .background(on ? Color.white : Color.white.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(on ? Color.white : Color.white.opacity(0.14), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Q1 — days per week
+    private var runQ_daysPerWeek: some View {
+        runQ("How many days a week\ndo you run?",
+             context: "Count days you actually run, not strength or cross-training.") {
+            chipRow([3, 4, 5, 6].map { n in ("\(n)", weeklyFreq == n) }) { idx in
+                withAnimation(Theme.Motion.smooth) { weeklyFreq = [3, 4, 5, 6][idx] }
+            }
+        }
+    }
+
+    // Q2 — weekly mileage
+    private var runQ_mileage: some View {
+        runQ("What's your weekly\nmileage right now?",
+             context: "Approximate is fine. Your current base, not a peak or goal.") {
+            let opts = [15, 25, 35, 45, 55]
+            chipRow(opts.map { n in (n == 55 ? "55+" : "\(n)", weeklyMi == n) }) { idx in
+                withAnimation(Theme.Motion.smooth) { weeklyMi = opts[idx] }
+            }
+        }
+    }
+
+    // Q3 — longest recent run
+    private var runQ_longestRun: some View {
+        runQ("What's the longest run\nyou've done recently?",
+             context: "In the last 4-6 weeks. This sets your long-run floor.",
+             enabled: histLong != nil) {
+            let opts = ["0-3", "3-6", "6-10", "10+"]
+            chipRow(opts.map { ($0, histLong == $0) }) { idx in
+                withAnimation(Theme.Motion.smooth) { histLong = opts[idx] }
+            }
+        }
+    }
+
+    // Q4 — have you raced?
+    private var runQ_haveRaced: some View {
+        runQ("Have you raced\nbefore?",
+             context: "A finish time helps us estimate your fitness baseline.") {
+            VStack(spacing: 10) {
+                raceToggleCard(false, label: "Not yet", sub: "I'll add results after my first race.")
+                raceToggleCard(true,  label: "Yes, I've raced", sub: "I can share a finish time.")
+            }
+        }
+    }
+
+    private func raceToggleCard(_ value: Bool, label: String, sub: String) -> some View {
+        let on = hasRaced == value
+        return Button {
+            withAnimation(Theme.Motion.smooth) {
+                hasRaced = value
+                if value && raceEntries.isEmpty { raceEntries = [RaceEntry()] }
+            }
+        } label: {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(label)
+                        .font(.body(16, weight: .extraBold))
+                        .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt)
+                    Text(sub)
+                        .font(.body(13, weight: .medium))
+                        .foregroundStyle(on ? Color(hex: 0x0A0C10).opacity(0.7) : Theme.txt.opacity(0.5))
+                }
+                Spacer()
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt.opacity(0.3))
+            }
+            .padding(16)
+            .background(on ? Color.white : Color.white.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(on ? Color.white : Color.white.opacity(0.14), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Q5 (hasRaced) — race entries
+    private var runQ_raceEntries: some View {
+        runQ("What are your\nbest results?",
+             context: "Add up to 3. Finish time only — we'll do the math.") {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 10) {
+                    ForEach($raceEntries) { $entry in
+                        raceEntryCard(entry: $entry, canRemove: raceEntries.count > 1) {
+                            withAnimation(Theme.Motion.smooth) {
+                                raceEntries.removeAll { $0.id == entry.id }
+                            }
                         }
                     }
+                    if raceEntries.count < 3 {
+                        Button {
+                            withAnimation(Theme.Motion.smooth) { raceEntries.append(RaceEntry()) }
+                        } label: {
+                            Text("+ Add another")
+                                .font(.body(13, weight: .bold))
+                                .foregroundStyle(Theme.txt.opacity(0.7))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.white.opacity(0.07),
+                                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                if raceEntries.count < 3 {
+            }
+        }
+    }
+
+    // Q5 (!hasRaced) / Q6 (hasRaced) — start date
+    private var runQ_startDate: some View {
+        runQ("When do you want\nto start?",
+             context: "Pick any upcoming date. Your first week will be waiting.") {
+            DatePicker("", selection: $startDate,
+                       in: Calendar.current.startOfDay(for: Date())...,
+                       displayedComponents: .date)
+                .datePickerStyle(.graphical)
+                .colorScheme(.dark)
+                .tint(Theme.txt)
+                .padding(.top, -8)
+        }
+    }
+
+    // Q6 (!hasRaced) / Q7 (hasRaced) — long run day
+    private var runQ_longRunDay: some View {
+        let days: [(String, String)] = [
+            ("sun","Sun"),("mon","Mon"),("tue","Tue"),("wed","Wed"),
+            ("thu","Thu"),("fri","Fri"),("sat","Sat")
+        ]
+        return runQ("Which day works\nfor your long run?",
+                    context: "This becomes the anchor of your training week.") {
+            VStack(spacing: 10) {
+                ForEach(days, id: \.0) { key, label in
                     Button {
-                        withAnimation(Theme.Motion.smooth) { raceEntries.append(RaceEntry()) }
+                        withAnimation(Theme.Motion.smooth) { longRunDay = key }
                     } label: {
-                        Text("+ Add another")
-                            .font(.body(13, weight: .bold))
-                            .foregroundStyle(Theme.txt.opacity(0.8))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.08),
-                                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        HStack {
+                            Text(label)
+                                .font(.body(15, weight: .extraBold))
+                                .foregroundStyle(longRunDay == key ? Color(hex: 0x0A0C10) : Theme.txt)
+                            Spacer()
+                            if longRunDay == key {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 13, weight: .black))
+                                    .foregroundStyle(Color(hex: 0x0A0C10))
+                            }
+                        }
+                        .padding(.horizontal, 18).padding(.vertical, 14)
+                        .background(
+                            longRunDay == key ? Color.white : Color.white.opacity(0.07),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(longRunDay == key ? Color.white : Color.white.opacity(0.12), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.top, 10)
         }
     }
 
