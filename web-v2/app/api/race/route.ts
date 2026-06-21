@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
         const startRaw = String(body?.start_date ?? '').trim();
         const startDateISO = /^\d{4}-\d{2}-\d{2}$/.test(startRaw) ? startRaw : undefined;
         plan = await generatePlan({
-          userId, raceSlug: slug,
+          userId, raceSlug: slug, freshTarget: true,
           ...(startDateISO ? { startDateISO, startAnchor: 'today' as const } : {}),
         }).catch((e: unknown) => ({
           ok: false, reason: e instanceof Error ? e.message : String(e),

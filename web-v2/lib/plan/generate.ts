@@ -68,6 +68,14 @@ export interface GenerateInput {
    *  picked at onboarding. Overrides startAnchor. Clamped to ≥ today.
    *  Day-of-week placement (long run etc.) still follows user prefs. */
   startDateISO?: string;
+  /** 2026-06-20 · this is a user-initiated NEW target (set a goal / add a
+   *  race), not an automatic adaptation regen of the same goal. When true the
+   *  corruption check (new peak long < 80% of the active prior plan's peak)
+   *  is skipped — the prior plan is a DIFFERENT goal that's about to be
+   *  replaced, so a legitimately smaller long (marathon→5K, or a cold-start
+   *  beginner) must not be flagged as "bad input data". The check still runs
+   *  for same-goal adaptation regens, which is what it's actually for. */
+  freshTarget?: boolean;
 }
 
 export interface GenerateResult {
@@ -2030,7 +2038,7 @@ async function persistPlan(client: PoolClient, args: {
 // ── Main entrypoint ─────────────────────────────────────────────────────
 
 export async function generatePlan(input: GenerateInput): Promise<GenerateResult> {
-  const { userId, raceSlug, startAnchor = 'monday', startDateISO, goalTarget } = input;
+  const { userId, raceSlug, startAnchor = 'monday', startDateISO, goalTarget, freshTarget } = input;
 
   // 1. Load all DB-sourced inputs into a pure-data bundle.
   const inputs = await loadGeneratorInputs(userId, raceSlug, startAnchor, startDateISO, goalTarget);
@@ -2170,7 +2178,12 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
       level: inputs.compose.level,
       isSteppingStoneToMarathon: (inputs.compose.horizonRaces ?? []).some(r => r.distanceMi >= 20),
-      priorPlanPeakLongMi: priorPeakRow?.peak_long != null ? Number(priorPeakRow.peak_long) : null,
+      // Corruption check compares against the active prior plan. On a fresh
+      // user-initiated target (set-goal / add-race) the prior plan is a
+      // DIFFERENT goal about to be replaced, so a legitimately smaller long
+      // (marathon→5K, cold-start beginner) must not be flagged as data loss —
+      // null skips it. Same-goal adaptation regens still get the check.
+      priorPlanPeakLongMi: freshTarget ? null : (priorPeakRow?.peak_long != null ? Number(priorPeakRow.peak_long) : null),
       todayISO,
       trailingAvgWeeklyMi,
     });

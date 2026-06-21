@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
         goalTarget: { distanceMi: distMi, goalSec: goalSeconds, raceDateISO },
         startDateISO,
         startAnchor: 'today',
+        freshTarget: true,
       });
     }
   } catch (e) {
