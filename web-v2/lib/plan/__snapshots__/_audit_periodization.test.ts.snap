@@ -32,8 +32,8 @@ exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: p
   "wk10:RACE-SPECIFIC:70mi:long20:tempo+threshold",
   "wk11:RACE-SPECIFIC:65mi:long17:tempo+threshold",
   "wk12:RACE-SPECIFIC:70mi:long20:tempo+threshold",
-  "wk13:TAPER:61mi:long15:race_week_tuneup+race_week_tuneup",
-  "wk14:TAPER:58mi:long14:race_week_tuneup+race_week_tuneup",
+  "wk13:TAPER:55mi:long15:race_week_tuneup+race_week_tuneup",
+  "wk14:TAPER:40mi:long11:race_week_tuneup+race_week_tuneup",
   "wk15:TAPER:44.2mi:long0:race+race_week_tuneup",
 ]
 `;

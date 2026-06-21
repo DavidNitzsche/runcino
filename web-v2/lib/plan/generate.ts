@@ -961,15 +961,13 @@ function layoutWeek({
   const isCutback = weekIdx > 0 && (weekIdx + 1) % cutbackEveryN === 0;
   const longMiRaw = Math.round(weeklyMi * longShare);
   const longCap = tierTarget.peakLongMiBand[1];
-  // NOTE (2026-06-21): the recent-long floor pins taper longs near recentLongMi,
-  // which makes for a weak taper (long barely reduces into the race) and, on
-  // some runways, an author-time taper rescale then turns the floored taper long
-  // into an illegal >30% WoW jump. The latter (a NO-PLAN failure) is fixed by
-  // re-running the long-run WoW smoother AFTER the taper rescale (see the post-
-  // compose block). The former (weak-taper quality) is left intentionally: a
-  // `phase !== 'TAPER'` guard here improves every taper but DRIFTS David's
-  // protected plan (wk14 long 14→11), so it needs his explicit sign-off first.
-  const longFloor = recentLongMi && recentLongMi >= 8
+  // 2026-06-21 (David signed off): the recent-long floor (don't author a shorter
+  // long than the runner just ran) must NOT apply in TAPER — the taper
+  // deliberately reduces the long into the race. Flooring it at recentLongMi
+  // pinned the taper long flat (wk14 long 14 instead of ~11), a weak taper.
+  // Skipping it in TAPER lets the long reduce; the post-compose WoW re-smoother
+  // keeps the descending sequence legal.
+  const longFloor = (phase !== 'TAPER' && recentLongMi && recentLongMi >= 8)
     ? Math.round(recentLongMi - (isCutback ? 2 : 0))
     : 0;
   const longMi = Math.min(
@@ -1152,14 +1150,13 @@ function layoutWeek({
 
   const mathFloor = 3;
   const baselineFloor = easyMileFloor && easyMileFloor > 0 ? easyMileFloor : 0;
-  // BASE and CUTBACK weeks may legitimately step down · don't over-floor
-  // a deliberate deload. CUTBACK = 4th week per volumeCurve.
-  // Otherwise floor to the runner's real baseline rounded to .5.
-  // NOTE (2026-06-21): adding TAPER here deepens the taper (realized volume
-  // drops to match the tapered field — round-2 found the first taper week only
-  // drops ~13% vs ~25% doctrine), BUT it DRIFTS David's protected plan (wk14
-  // 58→40mi). Pending his sign-off — see the taper-improvements decision.
-  const isDeloadOrBase = phase === 'BASE';
+  // BASE, TAPER and CUTBACK weeks may legitimately step down · don't over-floor
+  // a deliberate deload/taper. CUTBACK = 4th week per volumeCurve. 2026-06-21 ·
+  // TAPER added (David signed off): flooring taper easy days at the runner's
+  // baseline kept the REALIZED taper volume above the correctly-tapered weekly
+  // field, so the final week dropped only ~5% when doctrine wants ~25%. Now the
+  // taper actually lets down into the race (Pfitzinger/Daniels marathon taper).
+  const isDeloadOrBase = phase === 'BASE' || phase === 'TAPER';
   const effectiveFloor = isDeloadOrBase
     ? mathFloor
     : Math.max(mathFloor, baselineFloor);
