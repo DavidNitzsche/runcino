@@ -164,6 +164,13 @@ final class HealthKitImporter: ObservableObject {
             lastMessage = "Health auth failed: \(error.localizedDescription)"
             return
         }
+        // Begin hands-free delivery now. The app-launch registration in
+        // NotificationsAppDelegate no-ops for a brand-new user (hasConnected
+        // was false at launch), so a runner who connects mid-session — e.g.
+        // during onboarding — would otherwise get NO background import of new
+        // workouts / sleep until the next cold launch. Idempotent per process.
+        startWorkoutBackgroundDelivery()
+        startSleepBackgroundDelivery()
         await importRecent(daysBack: daysBack)
     }
 
@@ -300,7 +307,18 @@ final class HealthKitImporter: ObservableObject {
 
     // MARK: - Import flow
 
+    /// Guards against two overlapping importRecent passes running at once
+    /// (e.g. the onboarding step-1 import still in flight when the post-
+    /// onboarding deep re-import fires). Both would query the same HK data
+    /// and double-POST; the server is idempotent but the work is wasted and
+    /// the @Published status would flicker. @MainActor isolation makes the
+    /// check-and-set race-free.
+    private var importInFlight = false
+
     private func importRecent(daysBack: Int) async {
+        guard !importInFlight else { return }
+        importInFlight = true
+        defer { importInFlight = false }
         status = .importing
 
         // 1) Workouts → /api/ingest/workout
@@ -1458,7 +1476,25 @@ final class HealthKitImporter: ObservableObject {
         return f.string(from: d)
     }
 
+    /// POST the full sample set, chunked. A first-connect backfill can carry
+    /// a year of data — and per-bucket `active_energy` alone is tens of
+    /// thousands of rows — which as a single multi-MB POST is exactly the
+    /// payload the server rejects or times out on, leaving a brand-new
+    /// runner with nothing imported. Chunking keeps each request small and
+    /// lets most of the history land even if one chunk fails. Server dedupes
+    /// on (user, type, date), so a retry is safe.
     private func postHealthSamples(_ samples: [VitalSample]) async throws {
+        guard !samples.isEmpty else { return }
+        let chunkSize = 500
+        var index = 0
+        while index < samples.count {
+            let upper = min(index + chunkSize, samples.count)
+            try await postHealthSampleChunk(Array(samples[index..<upper]))
+            index = upper
+        }
+    }
+
+    private func postHealthSampleChunk(_ samples: [VitalSample]) async throws {
         let url = API.baseURL.appendingPathComponent("api/ingest/health")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"

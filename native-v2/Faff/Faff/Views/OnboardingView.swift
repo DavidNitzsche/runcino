@@ -23,6 +23,10 @@ struct OnboardingView: View {
     @State private var step: Int = 0
     @State private var submitting: Bool = false
     @State private var onboardingError: String? = nil
+    /// The runner's name (set at invite signup). Fetched on appear so the
+    /// confirm step can greet them by name and the payload carries the real
+    /// name rather than a placeholder. nil until the fetch lands.
+    @State private var runnerName: String? = nil
 
     // Running level (Standard depth). weeklyFreq + weeklyMi seed plan shape
     // and volume; histLong/histYears seed the long-run floor + experience.
@@ -106,10 +110,11 @@ struct OnboardingView: View {
             // Schedule.
             "startDate": startDate,
             "longRunDay": longRunDay,
-            // Identity — the person's name is set at signup; this placeholder
-            // only satisfies the backend's required non-empty check and is
-            // ignored when full_name already exists (COALESCE on the server).
-            "name": "Runner",
+            // Identity — the person's name is set at signup. Send it when we
+            // have it (the server preserves an existing full_name via COALESCE
+            // either way); the placeholder only satisfies the required
+            // non-empty check for the rare row with no name yet.
+            "name": (firstName != nil ? runnerName! : "Runner"),
             "timezone": tz,
             // Physiology — only sent when the runner actually picked them.
             "birthday": birthdaySet ? isoF.string(from: birthday) as Any : NSNull(),
@@ -190,6 +195,22 @@ struct OnboardingView: View {
                 .padding(.top, 32)
             }
         }
+        .task {
+            // Invite signup already captured the name; surface it.
+            if let n = (try? await API.fetchProfileState())?.full_name,
+               !n.trimmingCharacters(in: .whitespaces).isEmpty {
+                runnerName = n
+            }
+        }
+    }
+
+    /// First name for the confirm-step greeting, if we have one.
+    private var firstName: String? {
+        guard let n = runnerName?
+            .trimmingCharacters(in: .whitespaces)
+            .split(separator: " ").first.map(String.init),
+              !n.isEmpty else { return nil }
+        return n
     }
 
     // MARK: chrome
@@ -431,7 +452,10 @@ struct OnboardingView: View {
         switch id {
         case "health":
             healthTapped = true
-            Task { await HealthKitImporter.shared.requestAuthAndImport(daysBack: 180) }
+            // Pull a full year on first connect so the coach has real volume,
+            // sleep and HR history from day one. Chunked + idempotent server-
+            // side, and re-run after onboarding completes (RootContainer).
+            Task { await HealthKitImporter.shared.requestAuthAndImport(daysBack: 365) }
         case "strava":
             guard !stravaConnecting else { return }
             stravaConnecting = true
@@ -775,7 +799,7 @@ struct OnboardingView: View {
             Text("YOU'RE ALL SET")
                 .font(.label(11)).tracking(3)
                 .foregroundStyle(Theme.txt.opacity(0.66))
-            Text("Let's build\na base.")
+            Text(firstName.map { "You're set,\n\($0)." } ?? "Let's build\na base.")
                 .font(.display(38, weight: .bold))
                 .tracking(-1.5)
                 .foregroundStyle(Theme.txt)

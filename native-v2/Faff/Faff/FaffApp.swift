@@ -251,7 +251,7 @@ struct RootContainer: View {
                     }
                 })
             case .onboarding:
-                OnboardingView(onComplete: { complete() })
+                OnboardingView(onComplete: { complete(deepHealthImport: true) })
             case .main:
                 RootTabView()
                     .overlay {
@@ -354,8 +354,17 @@ struct RootContainer: View {
     private func enterMain() {
         step = .main
     }
-    private func complete() {
+    private func complete(deepHealthImport: Bool = false) {
         UserDefaults.standard.set(true, forKey: "faff.onboarded")
+        // Re-run a deep HealthKit import now the account is fully provisioned.
+        // The onboarding step-1 import can run before the profile/timezone
+        // exists or return partial on a transient failure; this guarantees a
+        // populate pass once the runner lands in the app. No-op when Health
+        // isn't connected, idempotent server-side, and skipped client-side if
+        // the step-1 import is still in flight (importRecent's guard).
+        if deepHealthImport {
+            Task { await HealthKitImporter.shared.importIfConnected(daysBack: 365) }
+        }
         enterMain()
     }
 }

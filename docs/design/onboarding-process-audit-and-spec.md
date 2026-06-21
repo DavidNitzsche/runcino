@@ -264,6 +264,22 @@ No backend changes required for the Standard flow — every field already lands.
 
 ---
 
+## 6b. HealthKit import — "nothing imported for Lilian"
+
+Audited the full import path (`HealthKitImporter.swift`) + backend ingest + entitlements. **No hard failure exists for a new user:** Info.plist has `NSHealthShareUsageDescription` / `NSHealthUpdateUsageDescription`; entitlements have `com.apple.developer.healthkit` + `…background-delivery`; `/api/ingest/health` + `/api/ingest/workout` auth on the Bearer token, need no pre-existing profile row, whitelist every `sample_type` the importer sends, and have no min-days gate. So the data *can* land.
+
+Two real client gaps fixed (both plausibly the cause, both fixed on this branch):
+
+1. **Background delivery never started for a new user's first session.** `startWorkout/SleepBackgroundDelivery` are registered in `NotificationsAppDelegate.didFinishLaunching`, but both guard on `hasConnected` — which is false at launch for a brand-new user. A runner who connects during onboarding got no hands-free import until the next cold launch. Fix: `requestAuthAndImport` now starts both observers right after a successful connect.
+
+2. **The first import POSTed everything in one request.** A 180-day (now 365-day) backfill includes per-bucket `active_energy` (tens of thousands of rows) — a multi-MB POST that the server can reject/time out, the classic silent "nothing imported." Fix: `postHealthSamples` now chunks at 500 samples/request; most history lands even if one chunk fails (server dedupes, so retry is safe).
+
+Other changes:
+- First-connect window deepened 180 → **365 days** ("import all the data it can").
+- **Post-onboarding deep re-import**: `RootContainer.complete(deepHealthImport:)` re-runs `importIfConnected(365)` once the account is fully provisioned, catching any step-1 transient failure. Guarded by a new `importInFlight` flag so it never double-runs with the step-1 import.
+
+**Still device-dependent (not a code bug):** if the runner taps through the HealthKit permission sheet without enabling reads, every query returns empty with no error — the import reports `0 runs · 0 vitals` and marks connected. That toast is the diagnostic: 0/0 means permission wasn't granted (or testing on a simulator with no Health data), not a transport failure.
+
 ## 7. Open follow-ups (not blocking this session)
 
 - Strava history prefill on the running-level step (mirror web `lib/onboarding/strava-history.ts`) so connected users skip the chips.
