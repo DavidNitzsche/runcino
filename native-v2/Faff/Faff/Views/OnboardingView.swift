@@ -1,6 +1,7 @@
 //
 //  OnboardingView.swift
-//  Welcome → connect → running → profile → confirm. Mesh migrates cool → hot.
+//  Welcome → connect → running → profile → confirm. A directed, one-question-
+//  at-a-time portal on the app's grey canvas (no color backgrounds).
 //
 //  Onboarding captures identity-adjacent setup only: data connections, the
 //  runner's current running level + history, light schedule, and optional
@@ -13,6 +14,10 @@
 //  Connect is real: Apple Health drives HealthKitImporter.requestAuthAndImport
 //  (genuine permission prompt + import, shows the real imported count) and
 //  Strava drives the live StravaOAuthSession. Nothing fabricates a count.
+//
+//  Nothing is typed where it can be picked: finish times, birthday, height,
+//  and start date are all wheels. Numbers a runner won't know (max HR, LTHR,
+//  RHR) are observed from connected history, not asked.
 //
 
 import SwiftUI
@@ -36,10 +41,11 @@ struct OnboardingView: View {
     @State private var experienceLevel: String? = nil
 
     // Running level. weeklyFreq + weeklyMi seed plan shape and volume;
-    // histLong seeds the long-run floor.
-    @State private var weeklyFreq: Int? = nil        // 1...6 days/week
-    @State private var weeklyMi: Int = 25           // 15/25/35/45/55 mi/week
-    @State private var histLong: String? = nil      // "0-3"|"3-6"|"6-10"|"10+"
+    // histLong seeds the long-run floor. Both nil until picked (no silent
+    // default — the runner chooses).
+    @State private var weeklyFreq: Int? = nil        // 0...6 days/week
+    @State private var weeklyMi: Int? = nil          // current weekly base, mi
+    @State private var histLong: String? = nil       // "0-3"|"3-6"|"6-10"|"10+"
 
     // Schedule. startDate seeds the plan anchor; longRunDay is a durable
     // preference that the first plan (built on goal/race add) honors.
@@ -53,19 +59,22 @@ struct OnboardingView: View {
     struct RaceEntry: Identifiable, Equatable {
         let id = UUID()
         var distance: String = "5k"     // 5k|10k|half|marathon
-        var timeText: String = ""       // "22:30" or "3:45:00"
+        var timeSec: Int = 0            // picked via wheel, not typed
         var when: String = "<6mo"       // <6mo|6-12mo|1-2yr|2+yr
     }
 
     // Physiology — all optional. age + sex persist via /onboarding/complete;
-    // height_cm rides the same payload; LTHR persists via PATCH /api/profile.
-    // RHR is HealthKit-derived (no manual entry); HRmax is estimated from age
-    // / set later in Settings — neither is asked here.
+    // height_cm rides the same payload. RHR is HealthKit-derived and HRmax is
+    // observed from connected workout history (validate-max-hr) — neither is
+    // asked here. Onboarding shouldn't quiz a runner on numbers they don't know.
     @State private var birthday: Date = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date()
     @State private var birthdaySet: Bool = false
+    @State private var dobExpanded: Bool = false
     @State private var sex: String? = nil           // "M" | "F"
-    @State private var lthrText: String = ""
-    @State private var heightText: String = ""
+    @State private var heightFt: Int = 5
+    @State private var heightIn: Int = 9
+    @State private var heightSet: Bool = false
+    @State private var heightExpanded: Bool = false
 
     // Connect state. Apple Health reflects the shared importer; Strava is
     // driven locally off the OAuth round-trip.
@@ -84,7 +93,7 @@ struct OnboardingView: View {
         let tz = TimeZone.current.identifier
 
         let histAvg: String = {
-            switch weeklyMi {
+            switch weeklyMi ?? 0 {
             case ..<5:  return "0-5"
             case ..<15: return "5-15"
             case ..<25: return "15-25"
@@ -100,7 +109,7 @@ struct OnboardingView: View {
             "ttDistance": NSNull(),
             "ttTime": NSNull(),
             "ttTimeSeconds": NSNull(),
-            "weeklyMi": weeklyMi,
+            "weeklyMi": weeklyMi ?? 0,
             "weeklyFreq": weeklyFreq ?? 3,
             "histAvg": histAvg,
             "histLong": (histLong as Any?) ?? NSNull(),
@@ -119,41 +128,24 @@ struct OnboardingView: View {
     }
 
     /// Validated, deduped race-history entries for the payload. Skips entries
-    /// with an unparseable / out-of-band time rather than failing the submit.
+    /// with an out-of-band time rather than failing the submit.
     private var serializedRaceHistory: [[String: Any]] {
         guard hasRaced else { return [] }
         var out: [[String: Any]] = []
         for e in raceEntries {
             guard out.count < 3 else { break }
-            guard let sec = parseTimeSec(e.timeText), sec >= 60, sec <= 180_000 else { continue }
-            out.append(["distance": e.distance, "timeSec": sec, "whenRaced": e.when])
+            guard e.timeSec >= 60, e.timeSec <= 180_000 else { continue }
+            out.append(["distance": e.distance, "timeSec": e.timeSec, "whenRaced": e.when])
         }
         return out
     }
 
-    /// Parse "mm:ss" or "h:mm:ss" into seconds. Returns nil on bad input.
-    private func parseTimeSec(_ s: String) -> Int? {
-        let parts = s.trimmingCharacters(in: .whitespaces).split(separator: ":")
-        guard parts.count == 2 || parts.count == 3 else { return nil }
-        let nums = parts.map { Int($0) }
-        guard !nums.contains(where: { $0 == nil }) else { return nil }
-        let v = nums.compactMap { $0 }
-        if v.count == 2 { return v[0] * 60 + v[1] }
-        return v[0] * 3600 + v[1] * 60 + v[2]
-    }
-
-    /// LTHR parsed from the optional field, clamped to a sane HR band.
-    private var parsedLthr: Int? {
-        guard let v = Int(lthrText.trimmingCharacters(in: .whitespaces)),
-              (120...210).contains(v) else { return nil }
-        return v
-    }
-
-    /// Height (cm) parsed from the optional field, clamped to the backend band.
+    /// Height (cm) from the ft/in wheels, clamped to the backend band. nil
+    /// when the runner never opened the height picker.
     private var parsedHeight: Int? {
-        guard let v = Int(heightText.trimmingCharacters(in: .whitespaces)),
-              (120...230).contains(v) else { return nil }
-        return v
+        guard heightSet else { return nil }
+        let cm = Int((Double(heightFt) * 12 + Double(heightIn)) * 2.54)
+        return (120...230).contains(cm) ? cm : nil
     }
 
     private let stepCount = 5
@@ -177,7 +169,7 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(Theme.Motion.smooth, value: step)
                 .animation(Theme.Motion.smooth, value: runSubstep)
-                .padding(.top, 32)
+                .padding(.top, 28)
             }
         }
         .task {
@@ -231,7 +223,6 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
 
-            // Logo block — upper portion of the screen
             VStack(alignment: .leading, spacing: 0) {
                 Text("WELCOME TO")
                     .font(.label(11))
@@ -316,12 +307,12 @@ struct OnboardingView: View {
                 .tracking(3)
                 .foregroundStyle(Theme.txt.opacity(0.66))
             Text("Bring your\nhistory in.")
-                .font(.display(38, weight: .bold))
+                .font(.heroDisplay(40))
                 .tracking(-1.5)
                 .foregroundStyle(Theme.txt)
-                .lineSpacing(-4)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
-            Text("Connect your watch and apps. We'll pull in every run so Faff is alive from minute one.")
+            Text("Connect your watch and apps. We'll pull in every run so Faff is alive from minute one — and read your heart-rate history so we never have to ask you for numbers.")
                 .font(.body(15, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.84))
                 .lineSpacing(3)
@@ -330,7 +321,7 @@ struct OnboardingView: View {
             VStack(spacing: 11) {
                 ForEach(sources) { src in srcRow(src) }
             }
-            .padding(.top, 18)
+            .padding(.top, 22)
 
             Spacer(minLength: 0)
 
@@ -507,7 +498,10 @@ struct OnboardingView: View {
         }
     }
 
-    // Shared chrome: step label, big question, optional context, answer block, Continue.
+    // Shared chrome for a single question: step label + big headline + optional
+    // context anchored at the top, answer block floating in the center of the
+    // flexible zone, Continue pinned to the bottom. This is what makes each
+    // screen use the whole device instead of a cramped band up top.
     @ViewBuilder
     private func runQ<C: View>(
         _ question: String,
@@ -516,25 +510,33 @@ struct OnboardingView: View {
         @ViewBuilder content: () -> C
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("STEP 2")
-                .font(.label(11)).tracking(3)
-                .foregroundStyle(Theme.txt.opacity(0.5))
-            Text(question)
-                .font(.display(34, weight: .bold))
-                .tracking(-1.5)
-                .foregroundStyle(Theme.txt)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 10)
-            if let ctx = context {
-                Text(ctx)
-                    .font(.body(14, weight: .semibold))
+            VStack(alignment: .leading, spacing: 0) {
+                Text("STEP 2")
+                    .font(.label(11)).tracking(3)
                     .foregroundStyle(Theme.txt.opacity(0.5))
-                    .lineSpacing(2)
-                    .padding(.top, 10)
+                Text(question)
+                    .font(.heroDisplay(40))
+                    .tracking(-1.5)
+                    .foregroundStyle(Theme.txt)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+                if let ctx = context {
+                    Text(ctx)
+                        .font(.body(15, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.55))
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 12)
+                }
             }
+
+            Spacer(minLength: 24)
+
             content()
-                .padding(.top, 24)
-            Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 24)
+
             ctaButton(title: "Continue", enabled: enabled) { runNext() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -556,7 +558,7 @@ struct OnboardingView: View {
                           desc: "Running regularly for a year or more. You've done a race or two and know what a tempo feels like.")
                 levelCard("advanced",
                           title: "Structured training",
-                          desc: "You follow a plan, race often, and think in terms of phases and VDOT.")
+                          desc: "You follow a plan, race often, and think in phases and paces.")
             }
         }
     }
@@ -569,7 +571,7 @@ struct OnboardingView: View {
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(title)
-                        .font(.body(16, weight: .extraBold))
+                        .font(.body(17, weight: .extraBold))
                         .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt)
                     Text(desc)
                         .font(.body(13, weight: .medium))
@@ -579,13 +581,13 @@ struct OnboardingView: View {
                 }
                 Spacer(minLength: 0)
                 Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt.opacity(0.3))
             }
-            .padding(16)
+            .padding(18)
             .background(on ? Color.white : Color.white.opacity(0.07),
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(on ? Color.white : Color.white.opacity(0.14), lineWidth: 1))
         }
         .buttonStyle(.plain)
@@ -594,34 +596,45 @@ struct OnboardingView: View {
     // Q1 — days per week
     private var runQ_daysPerWeek: some View {
         runQ("How many days a week\ndo you run?",
-             context: "Count days you actually run, not strength or cross-training.",
+             context: "Count days you actually run — not strength or cross-training.",
              enabled: weeklyFreq != nil) {
-            chipRow([0, 1, 2, 3, 4, 5, 6].map { n in (n == 0 ? "0" : "\(n)", weeklyFreq == n) }) { idx in
-                withAnimation(Theme.Motion.smooth) { weeklyFreq = [0, 1, 2, 3, 4, 5, 6][idx] }
+            bigNumberRow([0, 1, 2, 3, 4, 5, 6], selected: weeklyFreq) { n in
+                withAnimation(Theme.Motion.smooth) { weeklyFreq = n }
             }
         }
     }
 
     // Q2 — weekly mileage
     private var runQ_mileage: some View {
-        runQ("What's your weekly\nmileage right now?",
-             context: "Approximate is fine. Your current base, not a peak or goal.") {
-            let labels = ["<5", "5-15", "15-25", "25-35", "35-45", "45+"]
-            let vals   = [0,    5,      15,      25,      35,      45]
-            chipRow(labels.enumerated().map { i, l in (l, weeklyMi == vals[i]) }) { idx in
-                withAnimation(Theme.Motion.smooth) { weeklyMi = vals[idx] }
+        let labels = ["Under 5 miles", "5 to 15 miles", "15 to 25 miles",
+                      "25 to 35 miles", "35 to 45 miles", "45+ miles"]
+        let vals = [0, 5, 15, 25, 35, 45]
+        return runQ("What's your weekly\nmileage right now?",
+                    context: "Approximate is fine — your current base, not a peak or goal.",
+                    enabled: weeklyMi != nil) {
+            VStack(spacing: 10) {
+                ForEach(Array(labels.enumerated()), id: \.offset) { i, l in
+                    selectRow(l, selected: weeklyMi == vals[i]) {
+                        withAnimation(Theme.Motion.smooth) { weeklyMi = vals[i] }
+                    }
+                }
             }
         }
     }
 
     // Q3 — longest recent run
     private var runQ_longestRun: some View {
-        runQ("What's the longest run\nyou've done recently?",
-             context: "In the last 4-6 weeks. This sets your long-run floor.",
-             enabled: histLong != nil) {
-            let opts = ["0-3", "3-6", "6-10", "10+"]
-            chipRow(opts.map { ($0, histLong == $0) }) { idx in
-                withAnimation(Theme.Motion.smooth) { histLong = opts[idx] }
+        let opts = ["0-3", "3-6", "6-10", "10+"]
+        let labels = ["Up to 3 miles", "3 to 6 miles", "6 to 10 miles", "10+ miles"]
+        return runQ("What's the longest run\nyou've done lately?",
+                    context: "In the last 4 to 6 weeks. This sets your long-run floor.",
+                    enabled: histLong != nil) {
+            VStack(spacing: 10) {
+                ForEach(Array(opts.enumerated()), id: \.offset) { i, key in
+                    selectRow(labels[i], selected: histLong == key) {
+                        withAnimation(Theme.Motion.smooth) { histLong = key }
+                    }
+                }
             }
         }
     }
@@ -648,7 +661,7 @@ struct OnboardingView: View {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(label)
-                        .font(.body(16, weight: .extraBold))
+                        .font(.body(17, weight: .extraBold))
                         .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt)
                     Text(sub)
                         .font(.body(13, weight: .medium))
@@ -656,13 +669,13 @@ struct OnboardingView: View {
                 }
                 Spacer()
                 Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt.opacity(0.3))
             }
-            .padding(16)
+            .padding(18)
             .background(on ? Color.white : Color.white.opacity(0.07),
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(on ? Color.white : Color.white.opacity(0.14), lineWidth: 1))
         }
         .buttonStyle(.plain)
@@ -675,7 +688,7 @@ struct OnboardingView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 10) {
                     ForEach($raceEntries) { $entry in
-                        raceEntryCard(entry: $entry, canRemove: raceEntries.count > 1) {
+                        RaceEntryRow(entry: $entry, canRemove: raceEntries.count > 1) {
                             withAnimation(Theme.Motion.smooth) {
                                 raceEntries.removeAll { $0.id == entry.id }
                             }
@@ -686,7 +699,7 @@ struct OnboardingView: View {
                             withAnimation(Theme.Motion.smooth) { raceEntries.append(RaceEntry()) }
                         } label: {
                             Text("+ Add another")
-                                .font(.body(13, weight: .bold))
+                                .font(.body(14, weight: .bold))
                                 .foregroundStyle(Theme.txt.opacity(0.7))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
@@ -697,110 +710,42 @@ struct OnboardingView: View {
                     }
                 }
             }
+            .frame(maxHeight: 380)
         }
     }
 
-    // Q5 (!hasRaced) / Q6 (hasRaced) — start date
+    // Q5 (!hasRaced) / Q6 (hasRaced) — start date.
+    // Wheel style (month / day / year) so the answer never reflows the way the
+    // .graphical calendar jumps when a tapped date lands on a new week row.
     private var runQ_startDate: some View {
         runQ("When do you want\nto start?",
              context: "Pick any upcoming date. Your first week will be waiting.") {
             DatePicker("", selection: $startDate,
                        in: Calendar.current.startOfDay(for: Date())...,
                        displayedComponents: .date)
-                .datePickerStyle(.graphical)
+                .datePickerStyle(.wheel)
+                .labelsHidden()
                 .colorScheme(.dark)
-                .tint(Theme.txt)
-                .padding(.top, -8)
+                .frame(maxWidth: .infinity)
         }
     }
 
     // Q6 (!hasRaced) / Q7 (hasRaced) — long run day
     private var runQ_longRunDay: some View {
         let days: [(String, String)] = [
-            ("sun","Sun"),("mon","Mon"),("tue","Tue"),("wed","Wed"),
-            ("thu","Thu"),("fri","Fri"),("sat","Sat")
+            ("sun", "Sunday"), ("mon", "Monday"), ("tue", "Tuesday"),
+            ("wed", "Wednesday"), ("thu", "Thursday"), ("fri", "Friday"), ("sat", "Saturday")
         ]
         return runQ("Which day works\nfor your long run?",
                     context: "This becomes the anchor of your training week.") {
-            VStack(spacing: 10) {
+            VStack(spacing: 9) {
                 ForEach(days, id: \.0) { key, label in
-                    Button {
+                    selectRow(label, selected: longRunDay == key) {
                         withAnimation(Theme.Motion.smooth) { longRunDay = key }
-                    } label: {
-                        HStack {
-                            Text(label)
-                                .font(.body(15, weight: .extraBold))
-                                .foregroundStyle(longRunDay == key ? Color(hex: 0x0A0C10) : Theme.txt)
-                            Spacer()
-                            if longRunDay == key {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 13, weight: .black))
-                                    .foregroundStyle(Color(hex: 0x0A0C10))
-                            }
-                        }
-                        .padding(.horizontal, 18).padding(.vertical, 14)
-                        .background(
-                            longRunDay == key ? Color.white : Color.white.opacity(0.07),
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        )
-                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(longRunDay == key ? Color.white : Color.white.opacity(0.12), lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
-    }
-
-    private func raceEntryCard(entry: Binding<RaceEntry>, canRemove: Bool, onRemove: @escaping () -> Void) -> some View {
-        let distOpts = ["5k", "10k", "half", "marathon"]
-        let distLabels = ["5K", "10K", "HALF", "FULL"]
-        let whenOpts = ["<6mo", "6-12mo", "1-2yr", "2+yr"]
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                ForEach(Array(distOpts.enumerated()), id: \.offset) { idx, key in
-                    chip(text: distLabels[idx], on: entry.wrappedValue.distance == key) {
-                        withAnimation(Theme.Motion.smooth) { entry.wrappedValue.distance = key }
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 10) {
-                TextField("", text: entry.timeText,
-                          prompt: Text("time e.g. 22:30").foregroundColor(Color.white.opacity(0.4)))
-                    .font(.body(15, weight: .bold))
-                    .foregroundStyle(Theme.txt)
-                    .keyboardType(.numbersAndPunctuation)
-                    .padding(EdgeInsets(top: 11, leading: 14, bottom: 11, trailing: 14))
-                    .background(Color.white.opacity(0.08),
-                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1))
-                if canRemove {
-                    Button(action: onRemove) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Theme.txt.opacity(0.6))
-                            .frame(width: 42, height: 42)
-                            .background(Color.white.opacity(0.08), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            HStack(spacing: 6) {
-                ForEach(Array(whenOpts.enumerated()), id: \.offset) { idx, key in
-                    chip(text: key, on: entry.wrappedValue.when == key) {
-                        withAnimation(Theme.Motion.smooth) { entry.wrappedValue.when = key }
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.06),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .stroke(Color.white.opacity(0.12), lineWidth: 1))
     }
 
     // MARK: profile panel (physiology · optional)
@@ -812,38 +757,19 @@ struct OnboardingView: View {
                     .font(.label(11)).tracking(3)
                     .foregroundStyle(Theme.txt.opacity(0.66))
                 Text("A bit about\nyou.")
-                    .font(.display(38, weight: .bold))
+                    .font(.heroDisplay(40))
                     .tracking(-1.5)
                     .foregroundStyle(Theme.txt)
-                    .lineSpacing(-4)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 12)
-                Text("This calibrates your heart-rate zones and paces. Skip anything you'd rather not share.")
+                Text("This helps calibrate your paces and zones. Skip anything you'd rather not share.")
                     .font(.body(15, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.84))
                     .lineSpacing(3)
                     .padding(.top, 14)
 
                 fieldLabel("DATE OF BIRTH")
-                HStack {
-                    Text(birthdaySet ? "Sets your age" : "Tap to set")
-                        .font(.body(14, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.7))
-                    Spacer()
-                    DatePicker("", selection: $birthday,
-                               in: dobRange,
-                               displayedComponents: .date)
-                        .labelsHidden()
-                        .datePickerStyle(.compact)
-                        .colorScheme(.dark)
-                        .tint(.white)
-                        .onChange(of: birthday) { _, _ in birthdaySet = true }
-                }
-                .padding(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
-                .background(Color.white.opacity(0.08),
-                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1))
-                .padding(.top, 6)
+                dobField
 
                 fieldLabel("SEX")
                 HStack(spacing: 8) {
@@ -858,44 +784,9 @@ struct OnboardingView: View {
                 .padding(.top, 6)
 
                 fieldLabel("HEIGHT · OPTIONAL")
-                HStack(spacing: 10) {
-                    TextField("", text: $heightText, prompt: Text("e.g. 178")
-                        .foregroundColor(Color.white.opacity(0.4)))
-                        .font(.body(16, weight: .bold))
-                        .foregroundStyle(Theme.txt)
-                        .keyboardType(.numberPad)
-                        .frame(width: 96)
-                        .padding(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
-                        .background(Color.white.opacity(0.08),
-                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1))
-                    Text("cm · unlocks cadence coaching")
-                        .font(.body(12, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.55))
-                }
-                .padding(.top, 6)
+                heightField
 
-                fieldLabel("THRESHOLD HR · OPTIONAL")
-                HStack(spacing: 10) {
-                    TextField("", text: $lthrText, prompt: Text("e.g. 162")
-                        .foregroundColor(Color.white.opacity(0.4)))
-                        .font(.body(16, weight: .bold))
-                        .foregroundStyle(Theme.txt)
-                        .keyboardType(.numberPad)
-                        .frame(width: 96)
-                        .padding(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
-                        .background(Color.white.opacity(0.08),
-                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1))
-                    Text("bpm · only if you know it from a test")
-                        .font(.body(12, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.55))
-                }
-                .padding(.top, 6)
-
-                Spacer(minLength: 24)
+                Spacer(minLength: 32)
                 ctaButton(title: "Continue") {
                     withAnimation(Theme.Motion.smooth) { step = 4 }
                 }
@@ -904,6 +795,110 @@ struct OnboardingView: View {
             .padding(.horizontal, 26)
             .padding(.bottom, 30)
         }
+    }
+
+    /// Date of birth · a tappable row that discloses month/day/year wheels.
+    /// Collapsed until tapped so an untouched birthday stays honestly unset
+    /// (nothing is sent unless the runner actually spins a wheel).
+    @ViewBuilder
+    private var dobField: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(Theme.Motion.smooth) { dobExpanded.toggle() }
+            } label: {
+                HStack {
+                    Text(birthdaySet ? dobDisplay : "Tap to set your birthday")
+                        .font(.body(15, weight: .semibold))
+                        .foregroundStyle(birthdaySet ? Theme.txt : Theme.txt.opacity(0.6))
+                    Spacer()
+                    Image(systemName: dobExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
+            .buttonStyle(.plain)
+
+            if dobExpanded {
+                DatePicker("", selection: $birthday, in: dobRange, displayedComponents: .date)
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .colorScheme(.dark)
+                    .frame(maxWidth: .infinity)
+                    .onChange(of: birthday) { _, _ in birthdaySet = true }
+                    .padding(.bottom, 8)
+            }
+        }
+        .background(Color.white.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(Color.white.opacity(0.2), lineWidth: 1))
+        .padding(.top, 6)
+    }
+
+    private var dobDisplay: String {
+        let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"
+        return f.string(from: birthday)
+    }
+
+    /// Height · ft + in wheels behind a tappable disclosure. Stored as cm.
+    @ViewBuilder
+    private var heightField: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(Theme.Motion.smooth) { heightExpanded.toggle() }
+            } label: {
+                HStack {
+                    Text(heightSet ? "\(heightFt) ft \(heightIn) in" : "Add height")
+                        .font(.body(15, weight: .semibold))
+                        .foregroundStyle(heightSet ? Theme.txt : Theme.txt.opacity(0.6))
+                    Spacer()
+                    Text(heightSet ? heightCmCaption : "unlocks cadence coaching")
+                        .font(.body(12, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                    Image(systemName: heightExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                        .padding(.leading, 8)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
+            .buttonStyle(.plain)
+
+            if heightExpanded {
+                HStack(spacing: 0) {
+                    Picker("", selection: $heightFt) {
+                        ForEach(3...7, id: \.self) { Text("\($0) ft").tag($0) }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    Picker("", selection: $heightIn) {
+                        ForEach(0...11, id: \.self) { Text("\($0) in").tag($0) }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                }
+                .frame(height: 140)
+                .colorScheme(.dark)
+                .onChange(of: heightFt) { _, _ in heightSet = true }
+                .onChange(of: heightIn) { _, _ in heightSet = true }
+                .padding(.bottom, 8)
+            }
+        }
+        .background(Color.white.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(Color.white.opacity(0.2), lineWidth: 1))
+        .padding(.top, 6)
+    }
+
+    private var heightCmCaption: String {
+        let cm = Int((Double(heightFt) * 12 + Double(heightIn)) * 2.54)
+        return "\(cm) cm"
     }
 
     /// DOB bounds — age 13 to 100, matching the backend's accepted range.
@@ -919,26 +914,60 @@ struct OnboardingView: View {
         Text(text)
             .font(.label(11)).tracking(2)
             .foregroundStyle(Theme.txt.opacity(0.55))
-            .padding(.top, 24)
+            .padding(.top, 26)
     }
 
-    /// A horizontal row of selectable chips. `items` is (label, isOn); the
-    /// action gets the tapped index.
-    private func chipRow(_ items: [(String, Bool)], action: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 8) {
-            ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-                chip(text: item.0, on: item.1) { action(idx) }
+    // MARK: shared answer controls
+
+    /// A row of large circular number buttons. Used for days/week (0–6).
+    private func bigNumberRow(_ values: [Int], selected: Int?, action: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: 6) {
+            ForEach(values, id: \.self) { n in
+                let on = selected == n
+                Button { action(n) } label: {
+                    Text("\(n)")
+                        .font(.display(20, weight: .bold))
+                        .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt)
+                        .frame(width: 40, height: 40)
+                        .background(on ? Color.white : Color.white.opacity(0.08), in: Circle())
+                        .overlay(Circle().stroke(on ? Color.white : Color.white.opacity(0.16), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
             }
-            Spacer()
         }
-        .padding(.top, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A full-width selectable pill row. Used for mileage, longest run, and
+    /// long-run day — substantial, easy to tap, fills the canvas.
+    private func selectRow(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(label)
+                    .font(.body(16, weight: .extraBold))
+                    .foregroundStyle(selected ? Color(hex: 0x0A0C10) : Theme.txt)
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(Color(hex: 0x0A0C10))
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(selected ? Color.white : Color.white.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(selected ? Color.white : Color.white.opacity(0.12), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func chip(text: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text)
                 .font(.body(13, weight: .extraBold))
-                .foregroundStyle(on ? Color(hex: 0x2A0E08) : Theme.txt)
+                .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt)
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(on ? Color.white : Color.white.opacity(0.1),
                             in: Capsule())
@@ -955,10 +984,10 @@ struct OnboardingView: View {
                 .font(.label(11)).tracking(3)
                 .foregroundStyle(Theme.txt.opacity(0.66))
             Text(firstName.map { "You're set,\n\($0)." } ?? "Let's build\na base.")
-                .font(.display(38, weight: .bold))
+                .font(.heroDisplay(40))
                 .tracking(-1.5)
                 .foregroundStyle(Theme.txt)
-                .lineSpacing(-4)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
 
             Text("Your training starts now. Add a race or set a goal from the Goals tab whenever you're ready, and Faff builds the plan around it.")
@@ -987,7 +1016,6 @@ struct OnboardingView: View {
                         // Optional advanced fields that ride the profile PATCH
                         // (not part of the onboarding/complete contract).
                         var patch: [String: Any] = [:]
-                        if let lthr = parsedLthr { patch["lthr"] = lthr }
                         if case .connected = healthState {
                             let iso = ISO8601DateFormatter().string(from: Date())
                             patch["health_connected_at"] = iso
@@ -1026,4 +1054,175 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
     }
+}
+
+// MARK: - Race entry row
+//
+// One self-reported result: distance chips, a tappable finish-time row that
+// opens a wheel sheet (never typed), and a recency selector.
+
+private struct RaceEntryRow: View {
+    @Binding var entry: OnboardingView.RaceEntry
+    let canRemove: Bool
+    let onRemove: () -> Void
+
+    @State private var showTime = false
+
+    private let distOpts = ["5k", "10k", "half", "marathon"]
+    private let distLabels = ["5K", "10K", "HALF", "FULL"]
+    private let whenOpts = ["<6mo", "6-12mo", "1-2yr", "2+yr"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                ForEach(Array(distOpts.enumerated()), id: \.offset) { i, key in
+                    chip(distLabels[i], on: entry.distance == key) {
+                        withAnimation(Theme.Motion.smooth) { entry.distance = key }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            Button { showTime = true } label: {
+                HStack {
+                    Text(entry.timeSec > 0 ? faffFormatTime(entry.timeSec) : "Set finish time")
+                        .font(.body(17, weight: .bold))
+                        .foregroundStyle(entry.timeSec > 0 ? Theme.txt : Theme.txt.opacity(0.5))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.4))
+                }
+                .padding(.horizontal, 14).padding(.vertical, 13)
+                .background(Color.white.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 6) {
+                ForEach(Array(whenOpts.enumerated()), id: \.offset) { _, key in
+                    chip(key, on: entry.when == key) {
+                        withAnimation(Theme.Motion.smooth) { entry.when = key }
+                    }
+                }
+                Spacer(minLength: 0)
+                if canRemove {
+                    Button(action: onRemove) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.6))
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.08), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.06),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(Color.white.opacity(0.12), lineWidth: 1))
+        .sheet(isPresented: $showTime) {
+            TimeWheelSheet(distance: entry.distance, seconds: $entry.timeSec)
+                .presentationDetents([.height(320)])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func chip(_ t: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(t)
+                .font(.body(12, weight: .extraBold))
+                .foregroundStyle(on ? Color(hex: 0x0A0C10) : Theme.txt)
+                .padding(.horizontal, 13).padding(.vertical, 8)
+                .background(on ? Color.white : Color.white.opacity(0.1), in: Capsule())
+                .overlay(Capsule().stroke(on ? Color.white : Color.white.opacity(0.2), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Finish-time wheel sheet
+//
+// Distance-aware finish-time picker. 5K/10K show min:sec; half/marathon add an
+// hours wheel. Selecting beats typing — no keyboard, no parse errors.
+
+private struct TimeWheelSheet: View {
+    let distance: String
+    @Binding var seconds: Int
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var h = 0
+    @State private var m = 0
+    @State private var s = 0
+
+    private var showHours: Bool { distance == "half" || distance == "marathon" }
+
+    var body: some View {
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            VStack(spacing: 0) {
+                HStack {
+                    Text("FINISH TIME")
+                        .font(.label(12)).tracking(2.5)
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                    Spacer()
+                    Button {
+                        seconds = h * 3600 + m * 60 + s
+                        dismiss()
+                    } label: {
+                        Text("Done")
+                            .font(.body(15, weight: .bold))
+                            .foregroundStyle(Theme.txt)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 20)
+                .padding(.bottom, 4)
+
+                HStack(spacing: 0) {
+                    if showHours { wheel($h, range: 0...8, unit: "hr") }
+                    wheel($m, range: 0...59, unit: "min")
+                    wheel($s, range: 0...59, unit: "sec")
+                }
+                .frame(height: 190)
+                .colorScheme(.dark)
+
+                Spacer(minLength: 0)
+            }
+        }
+        .preferredColorScheme(.dark)
+        .onAppear {
+            h = seconds / 3600
+            m = (seconds % 3600) / 60
+            s = seconds % 60
+        }
+    }
+
+    private func wheel(_ sel: Binding<Int>, range: ClosedRange<Int>, unit: String) -> some View {
+        HStack(spacing: 2) {
+            Picker("", selection: sel) {
+                ForEach(range, id: \.self) { v in
+                    Text(String(format: "%02d", v)).tag(v)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            Text(unit)
+                .font(.body(13, weight: .semibold))
+                .foregroundStyle(Theme.txt.opacity(0.5))
+        }
+    }
+}
+
+/// Seconds → "m:ss" or "h:mm:ss".
+private func faffFormatTime(_ sec: Int) -> String {
+    let h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60
+    if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+    return String(format: "%d:%02d", m, s)
 }
