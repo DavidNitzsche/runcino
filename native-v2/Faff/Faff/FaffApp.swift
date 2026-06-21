@@ -186,6 +186,12 @@ extension Notification.Name {
     /// run. RootTabView switches to the TODAY tab; TodayView jumps to that date.
     /// userInfo: ["date": "yyyy-MM-dd"]
     static let faffJumpToDay = Notification.Name("faff.jump.to.day")
+    /// Posted after onboarding when the runner chose "Set up a goal" / "Set up
+    /// a race" on the confirm screen. RootTabView switches to the Goal tab and
+    /// TargetsView opens the matching setup sheet, so the chosen next step
+    /// happens automatically instead of dropping them on cold Today.
+    static let faffOpenGoalSetup = Notification.Name("faff.open.goal.setup")
+    static let faffOpenRaceSetup = Notification.Name("faff.open.race.setup")
 }
 
 /// Routes the user between the auth/onboarding gate and the main app.
@@ -251,7 +257,25 @@ struct RootContainer: View {
                     }
                 })
             case .onboarding:
-                OnboardingView(onComplete: { complete(deepHealthImport: true) })
+                OnboardingView(onComplete: { outcome in
+                    complete(deepHealthImport: true)
+                    // Route to the chosen next step. RootTabView + TargetsView
+                    // are created synchronously when .main mounts (behind the
+                    // splash), so they're already listening; the short delay
+                    // just lets the splash crossfade finish before the setup
+                    // sheet presents.
+                    switch outcome {
+                    case .justRun:
+                        break
+                    case .setupGoal, .setupRace:
+                        let name: Notification.Name = outcome == .setupRace
+                            ? .faffOpenRaceSetup : .faffOpenGoalSetup
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 1_100_000_000)
+                            NotificationCenter.default.post(name: name, object: nil)
+                        }
+                    }
+                })
             case .main:
                 RootTabView()
                     .overlay {

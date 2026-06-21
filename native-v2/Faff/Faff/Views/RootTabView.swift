@@ -224,6 +224,17 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .faffJumpToDay)) { _ in
             withAnimation { selected = .today }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faffOpenGoalSetup)) { _ in
+            // Onboarding finale → "Set up a goal". Land on the Goal tab; the
+            // sheet is opened by TargetsView's matching listener.
+            tabPaths[.targets] = []
+            withAnimation { selected = .targets }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .faffOpenRaceSetup)) { _ in
+            // Onboarding finale → "Set up a race".
+            tabPaths[.targets] = []
+            withAnimation { selected = .targets }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .faffReachabilityLost)) { _ in
             withAnimation(.easeInOut(duration: 0.25)) { showReachabilityBanner = true }
             Task { @MainActor in

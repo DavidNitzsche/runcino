@@ -22,16 +22,27 @@
 
 import SwiftUI
 
+/// What the runner chose on the confirm screen — drives where they land after
+/// onboarding saves. `justRun` → cold Today; the other two route to the Goal
+/// tab and open the matching setup sheet.
+enum OnboardingOutcome { case justRun, setupGoal, setupRace }
+
 struct OnboardingView: View {
-    let onComplete: () -> Void
+    let onComplete: (OnboardingOutcome) -> Void
 
     @State private var step: Int = 0
-    @State private var submitting: Bool = false
+    /// Non-nil while a confirm-screen choice is saving — drives the spinner on
+    /// the tapped card and disables the others.
+    @State private var submittingOutcome: OnboardingOutcome? = nil
     @State private var onboardingError: String? = nil
     /// The runner's name (set at invite signup). Fetched on appear so the
     /// confirm step can greet them by name and the payload carries the real
     /// name rather than a placeholder. nil until the fetch lands.
     @State private var runnerName: String? = nil
+    /// What the runner types when we DON'T already have their name (request-
+    /// access / some email signups arrive nameless). Asked on the profile
+    /// step so the confirm greeting is never a generic "Runner".
+    @State private var nameInput: String = ""
 
     // Sub-wizard position within step 2.
     @State private var runSubstep: Int = 0
@@ -51,9 +62,11 @@ struct OnboardingView: View {
     @State private var weeklyMi: Int? = nil          // current weekly base, mi
     @State private var histLong: String? = nil       // "0-3"|"3-6"|"6-10"|"10+"
 
-    // Schedule. startDate seeds the plan anchor; longRunDay is a durable
-    // preference that the first plan (built on goal/race add) honors.
-    @State private var startDate: Date = Date()
+    // Schedule. longRunDay is a durable preference that the first plan (built
+    // on goal/race add) honors. The plan START date is NOT asked here — there's
+    // no race or goal yet at onboarding, so "when do you want to start" belongs
+    // in the race/goal setup flow (David 2026-06-20). Onboarding just sets up
+    // the runner; the plan anchor is chosen when a goal/race is added.
     @State private var longRunDay: String = "sun"   // sun..sat
 
     // Race history. Self-reported PRs seed VDOT + coach voice band.
@@ -119,10 +132,9 @@ struct OnboardingView: View {
             "histLong": (histLong as Any?) ?? NSNull(),
             "histYears": NSNull(),
             "raceHistory": serializedRaceHistory,
-            "startDate": isoF.string(from: startDate),
             "longRunDay": longRunDay,
             "experienceLevel": (experienceLevel as Any?) ?? NSNull(),
-            "name": (firstName != nil ? runnerName! : "Runner"),
+            "name": (resolvedName ?? "Runner"),
             "timezone": tz,
             "birthday": birthdaySet ? isoF.string(from: birthday) as Any : NSNull(),
             "sex": (sex as Any?) ?? NSNull(),
@@ -181,10 +193,25 @@ struct OnboardingView: View {
         }
     }
 
+    /// True when the invite/signup gave us no usable name, so onboarding has
+    /// to ask for one (otherwise the confirm greeting falls back to "Runner").
+    private var needsName: Bool {
+        (runnerName ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The runner's full name from either source — the signup name if we have
+    /// it, otherwise what they typed on the profile step.
+    private var resolvedName: String? {
+        for c in [runnerName, nameInput] {
+            let n = (c ?? "").trimmingCharacters(in: .whitespaces)
+            if !n.isEmpty { return n }
+        }
+        return nil
+    }
+
     /// First name for the confirm-step greeting, if we have one.
     private var firstName: String? {
-        guard let n = runnerName?
-            .trimmingCharacters(in: .whitespaces)
+        guard let n = resolvedName?
             .split(separator: " ").first.map(String.init),
               !n.isEmpty else { return nil }
         return n
@@ -500,9 +527,10 @@ struct OnboardingView: View {
     //  2  weekly mileage
     //  3  longest run
     //  4  have you raced?
-    //  5  race entries  (hasRaced) | start date (!hasRaced)
-    //  6  start date    (hasRaced) | long run day (!hasRaced → step 3)
-    //  7  long run day  (hasRaced → step 3)
+    //  5  race entries  (hasRaced) | long run day (!hasRaced → step 3)
+    //  6  long run day  (hasRaced → step 3)
+    // No start-date question — there's no race/goal yet, so "when to start"
+    // belongs in the race/goal setup flow (David 2026-06-20).
 
     @ViewBuilder
     private var runningPanel: some View {
@@ -523,16 +551,14 @@ struct OnboardingView: View {
         case 3: runQ_longestRun
         case 4: runQ_haveRaced
         case 5:
-            if hasRaced { runQ_raceEntries } else { runQ_startDate }
-        case 6:
-            if hasRaced { runQ_startDate } else { runQ_longRunDay }
+            if hasRaced { runQ_raceEntries } else { runQ_longRunDay }
         default:
             runQ_longRunDay
         }
     }
 
     private func runNext() {
-        let last = hasRaced ? 7 : 6
+        let last = hasRaced ? 6 : 5
         go(forward: true) {
             if runSubstep >= last { step = 3 } else { runSubstep += 1 }
         }
@@ -772,23 +798,7 @@ struct OnboardingView: View {
         }
     }
 
-    // Q5 (!hasRaced) / Q6 (hasRaced) — start date.
-    // Wheel style (month / day / year) so the answer never reflows the way the
-    // .graphical calendar jumps when a tapped date lands on a new week row.
-    private var runQ_startDate: some View {
-        runQ("When do you want\nto start?",
-             context: "Pick any upcoming date. Your first week will be waiting.") {
-            DatePicker("", selection: $startDate,
-                       in: Calendar.current.startOfDay(for: Date())...,
-                       displayedComponents: .date)
-                .datePickerStyle(.wheel)
-                .labelsHidden()
-                .colorScheme(.dark)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    // Q6 (!hasRaced) / Q7 (hasRaced) — long run day
+    // Q5 (!hasRaced) / Q6 (hasRaced) — long run day
     private var runQ_longRunDay: some View {
         let days: [(String, String)] = [
             ("sun", "Sunday"), ("mon", "Monday"), ("tue", "Tuesday"),
@@ -829,6 +839,28 @@ struct OnboardingView: View {
                     .padding(.top, 14)
                     .faffEntrance(2)
 
+                // Name — only asked when the invite/signup didn't give us one.
+                // Without it the confirm greeting falls back to a generic
+                // "Runner", which reads as a bug.
+                if needsName {
+                    fieldLabel("YOUR NAME").faffEntrance(3)
+                    TextField("", text: $nameInput,
+                              prompt: Text("What should we call you?")
+                                .foregroundColor(Color.white.opacity(0.4)))
+                        .font(.body(16, weight: .semibold))
+                        .foregroundStyle(Theme.txt)
+                        .tint(Theme.txt)
+                        .textContentType(.givenName)
+                        .autocorrectionDisabled(true)
+                        .padding(.horizontal, 16).padding(.vertical, 15)
+                        .background(Color.white.opacity(0.08),
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1))
+                        .padding(.top, 6)
+                        .faffEntrance(3)
+                }
+
                 fieldLabel("DATE OF BIRTH").faffEntrance(3)
                 dobField.faffEntrance(3)
 
@@ -849,7 +881,8 @@ struct OnboardingView: View {
                 heightField.faffEntrance(5)
 
                 Spacer(minLength: 32)
-                ctaButton(title: "Continue") {
+                ctaButton(title: "Continue",
+                          enabled: !needsName || !nameInput.trimmingCharacters(in: .whitespaces).isEmpty) {
                     go(forward: true) { step = 4 }
                 }
                 .faffEntrance(6)
@@ -1024,70 +1057,129 @@ struct OnboardingView: View {
 
     private var confirmPanel: some View {
         return VStack(alignment: .leading, spacing: 0) {
-            Brandmark(size: 52, style: .swept)
-                .padding(.bottom, 24)
+            Brandmark(size: 48, style: .swept)
+                .padding(.bottom, 20)
                 .faffEntrance(0)
             Text("YOU'RE ALL SET")
                 .font(.label(11)).tracking(3)
                 .foregroundStyle(Theme.txt.opacity(0.66))
                 .faffEntrance(1)
-            Text(firstName.map { "You're set,\n\($0)." } ?? "Let's build\na base.")
-                .font(.heroDisplay(44))
+            Text(firstName.map { "You're set,\n\($0)." } ?? "You're\nall set.")
+                .font(.heroDisplay(40))
                 .tracking(-1.5)
                 .foregroundStyle(Theme.txt)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
                 .faffEntrance(2)
 
-            Text("Your training starts now. Add a race or set a goal from the Goals tab whenever you're ready, and Faff builds the plan around it.")
+            Text("How do you want to start?")
                 .font(.body(15, weight: .semibold))
-                .foregroundStyle(Theme.txt.opacity(0.84))
-                .lineSpacing(3)
-                .padding(.top, 14)
+                .foregroundStyle(Theme.txt.opacity(0.6))
+                .padding(.top, 12)
                 .faffEntrance(3)
 
-            Spacer(minLength: 0)
+            VStack(spacing: 10) {
+                setupCard(.setupRace,
+                          title: "Set up a race",
+                          sub: "Train for an event with a plan built around it.",
+                          icon: "flag.checkered", tint: Theme.race)
+                    .faffEntrance(4)
+                setupCard(.setupGoal,
+                          title: "Set up a goal",
+                          sub: "Chase a time or distance target.",
+                          icon: "target", tint: Theme.dist)
+                    .faffEntrance(5)
+                setupCard(.justRun,
+                          title: "Just run for now",
+                          sub: "Log runs casually. Add a goal whenever you want.",
+                          icon: "figure.run", tint: Color(hex: 0x3A4150))
+                    .faffEntrance(6)
+            }
+            .padding(.top, 22)
 
             if let err = onboardingError {
                 Text(err)
                     .font(.body(12, weight: .semibold))
                     .foregroundStyle(Color(hex: 0xFC4D64))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 8)
+                    .padding(.top, 12)
             }
 
-            ctaButton(title: submitting ? "Saving…" : "Let's go") {
-                guard !submitting else { return }
-                submitting = true
-                onboardingError = nil
-                Task {
-                    do {
-                        _ = try await API.completeOnboarding(payload: onboardingPayload)
-                        // Optional advanced fields that ride the profile PATCH
-                        // (not part of the onboarding/complete contract).
-                        var patch: [String: Any] = [:]
-                        if case .connected = healthState {
-                            let iso = ISO8601DateFormatter().string(from: Date())
-                            patch["health_connected_at"] = iso
-                        }
-                        if !patch.isEmpty { try? await API.updateProfile(patch) }
-                        await MainActor.run {
-                            submitting = false
-                            onComplete()
-                        }
-                    } catch {
-                        await MainActor.run {
-                            submitting = false
-                            onboardingError = "Couldn't save · check your connection"
-                        }
-                    }
-                }
-            }
-            .faffEntrance(4)
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
         .padding(.bottom, 30)
+    }
+
+    /// One of the three finale choices. Saves onboarding, then hands the chosen
+    /// outcome back so the app routes to "just run" Today / goal setup / race
+    /// setup. Shows a spinner on the tapped card while the save is in flight.
+    private func setupCard(_ outcome: OnboardingOutcome, title: String, sub: String, icon: String, tint: Color) -> some View {
+        let busy = submittingOutcome == outcome
+        return Button {
+            submit(outcome)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 42, height: 42)
+                    .background(tint, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.body(16, weight: .extraBold))
+                        .foregroundStyle(Theme.txt)
+                    Text(sub)
+                        .font(.body(12, weight: .medium))
+                        .foregroundStyle(Theme.txt.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if busy {
+                    ProgressView().tint(Theme.txt)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.4))
+                }
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.14), lineWidth: 1))
+        }
+        .buttonStyle(FaffPressStyle())
+        .disabled(submittingOutcome != nil)
+    }
+
+    private func submit(_ outcome: OnboardingOutcome) {
+        guard submittingOutcome == nil else { return }
+        submittingOutcome = outcome
+        onboardingError = nil
+        Task {
+            do {
+                _ = try await API.completeOnboarding(payload: onboardingPayload)
+                // Optional advanced fields that ride the profile PATCH
+                // (not part of the onboarding/complete contract).
+                var patch: [String: Any] = [:]
+                if case .connected = healthState {
+                    let iso = ISO8601DateFormatter().string(from: Date())
+                    patch["health_connected_at"] = iso
+                }
+                if !patch.isEmpty { try? await API.updateProfile(patch) }
+                await MainActor.run {
+                    submittingOutcome = nil
+                    onComplete(outcome)
+                }
+            } catch {
+                await MainActor.run {
+                    submittingOutcome = nil
+                    onboardingError = "Couldn't save · check your connection"
+                }
+            }
+        }
     }
 
     // MARK: shared

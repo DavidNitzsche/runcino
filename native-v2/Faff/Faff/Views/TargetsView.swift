@@ -146,6 +146,15 @@ struct TargetsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
             Task { await reload() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faffOpenGoalSetup)) { _ in
+            // Onboarding finale → "Set up a goal" opens the goal sheet here.
+            showAddRaceSheet = false
+            showNewGoalSheet = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .faffOpenRaceSetup)) { _ in
+            showNewGoalSheet = false
+            showAddRaceSheet = true
+        }
         .sheet(isPresented: $showNewGoalSheet) {
             NewGoalSheet(
                 onSubmitted: { Task { await reload() }; afterTargetChange() },
