@@ -26,11 +26,14 @@ export type RaceDistance = '5k' | '10k' | 'half' | 'marathon' | 'none' | 'coache
 /** Time-trial distance chip values (no-race path only). */
 export type TTDistance = '1mi' | '5k' | '10k';
 
-/** Weekly mileage chip values (no-race path only). */
-export type WeeklyMileage = 15 | 25 | 35 | 45 | 55;
+/** Weekly mileage chip values (no-race path only). 0 and 5 added 2026-06-20
+ *  for true-beginner support (David: support runners below 15 mi/week). */
+export type WeeklyMileage = 0 | 5 | 15 | 25 | 35 | 45 | 55;
 
-/** Frequency chip values (no-race path only). */
-export type WeeklyFrequency = 3 | 4 | 5 | 6;
+/** Frequency chip values (no-race path only). 0/1/2 added 2026-06-20 for
+ *  true-beginner support (0 = not running yet; goal-seekers get a gentle
+ *  build). The plan engine respects 1/2 as the day cap and floors 0. */
+export type WeeklyFrequency = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 /** Avg-weekly-mi history chip values. Strings because the chip *is* a range. */
 export type HistAvg = '0-5' | '5-15' | '15-25' | '25-35' | '35+';
@@ -123,8 +126,8 @@ const VALID_STEPS = new Set([
 ]);
 const VALID_DISTANCES = new Set<RaceDistance>(['5k', '10k', 'half', 'marathon', 'none', 'coached']);
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
-const VALID_WEEKLY_MI = new Set<WeeklyMileage>([15, 25, 35, 45, 55]);
-const VALID_FREQ = new Set<WeeklyFrequency>([3, 4, 5, 6]);
+const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55]);
+const VALID_FREQ = new Set<WeeklyFrequency>([0, 1, 2, 3, 4, 5, 6]);
 const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+']);
 const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);

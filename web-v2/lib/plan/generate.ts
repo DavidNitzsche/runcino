@@ -566,7 +566,17 @@ function volumeCurve(
   // already max(VOLUME_FLOOR, baseMi); the post-build sweep guarantees
   // non-cutback non-taper weeks stay ≥ baseMi - 1.
   // Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 4
-  const start = Math.max(floor, baseMi);
+  // 2026-06-20 · true-beginner volume floor. The research VOLUME_FLOOR (10
+  // mpw for 'beginner') is the minimum base for a *trained* beginner; a
+  // genuinely sedentary 0-5 mi/week runner shouldn't be floored up to 2-4×
+  // their reported base in week 1. For beginners, respect their reported base
+  // with a coherence minimum of 6 mpw instead of the 10 floor. Every other
+  // level is unchanged — start = max(tier floor, base) — so David /
+  // intermediate / advanced plans are byte-for-byte identical.
+  const TRUE_BEGINNER_MIN_MPW = 6;
+  const start = level === 'beginner'
+    ? Math.max(TRUE_BEGINNER_MIN_MPW, baseMi)
+    : Math.max(floor, baseMi);
   // Peak target · LOWER band of the tier so it's achievable from a
   // realistic base. If the runner already exceeds the lower band,
   // aim 10% above their current base (still respects tier doctrine).
@@ -2351,13 +2361,30 @@ async function loadGeneratorInputs(
     `SELECT weekly_frequency AS f FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] as Array<{ f: number | null }> }))).rows[0];
-  const trainingDaysPerWeek = freqRow?.f != null && Number(freqRow.f) >= 3 && Number(freqRow.f) <= 7
-    ? Number(freqRow.f) : null;
-  // Frequency-appropriate quality count: 3-4 days/wk → 1 quality day
-  // (1 long + 1 quality + N easy is the canonical low-frequency shape);
-  // 5+ days/wk supports the prefs' 2 quality days.
+  // 2026-06-20 · weekly_frequency now spans 0-6 (true-beginner support).
+  //   3-6  → respected exactly as before (existing users unchanged).
+  //   1-2  → respected as a hard cap so a low-frequency runner gets 1-2
+  //          running days, not the legacy fill-every-slot. (The old `>= 3`
+  //          clamp silently dropped 1/2 to null → cap disabled → 5-6 days,
+  //          badly over-prescribed for someone who runs twice a week.)
+  //   0    → "not running yet" + a goal → a gentle couch-to-X floor of 3
+  //          days (the standard beginner run-training frequency). An empty
+  //          week can't train toward a goal.
+  //   null → David / Strava-only / pre-frequency profiles: legacy fill-
+  //          every-slot + prefs' 2 quality days, byte-for-byte unchanged.
+  const rawFreq = freqRow?.f != null ? Number(freqRow.f) : null;
+  const trainingDaysPerWeek = rawFreq == null ? null
+    : rawFreq === 0 ? 3
+    : (rawFreq >= 1 && rawFreq <= 7) ? rawFreq
+    : null;
+  // Quality-day count scaled to the running-day budget so we never prescribe
+  // more hard days than the runner has sessions:
+  //   1 day  → 0 quality (the single run is just easy/long)
+  //   2-4    → 1 quality (the canonical low-frequency 1 long + 1 quality)
+  //   5+     → 2 quality
   if (trainingDaysPerWeek != null) {
-    qualityDows = qualityDows.slice(0, trainingDaysPerWeek >= 5 ? 2 : 1);
+    const qCount = trainingDaysPerWeek <= 1 ? 0 : trainingDaysPerWeek >= 5 ? 2 : 1;
+    qualityDows = qualityDows.slice(0, qCount);
   }
 
   // 3. Cross-training opt-in (P34)
