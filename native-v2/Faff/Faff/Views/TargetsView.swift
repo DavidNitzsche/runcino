@@ -977,6 +977,8 @@ struct AddRaceSheet: View {
     // 2026-06-20 · "when do you want to start" for races (David). Defaults to
     // today; the plan's runway is start → race date.
     @State private var startDate: Date = Date()
+    // 2026-06-20 · which days the runner can run (empty = engine defaults).
+    @State private var availableDays: Set<String> = []
     @State private var distance: String = "Half Marathon"
     @State private var priority: String = "A"
     @State private var goal: String = ""
@@ -1008,6 +1010,13 @@ struct AddRaceSheet: View {
                 Section("GOAL (optional)") {
                     TextField("e.g. 1:45:00", text: $goal)
                         .keyboardType(.numbersAndPunctuation)
+                }
+                Section {
+                    DayAvailabilityPickerRow(selected: $availableDays)
+                } header: {
+                    Text("WHICH DAYS CAN YOU RUN?")
+                } footer: {
+                    Text("Optional. We'll place your long run, workout, and easy days on these.")
                 }
                 Section {
                     TextField("Strava route URL", text: $stravaUrl)
@@ -1095,7 +1104,8 @@ struct AddRaceSheet: View {
             distanceLabel: distance == "Other" ? nil : distance,
             priority: priority,
             goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal,
-            startDate: isoStartDate
+            startDate: isoStartDate,
+            availableDays: Array(availableDays)
         ) else {
             error = "Could not save race. Check your connection and try again."
             saving = false

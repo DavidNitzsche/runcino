@@ -17,6 +17,17 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { generatePlan } from '@/lib/plan/generate';
 import { goalDistanceMiFromCode } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { patchSettings } from '@/lib/coach/settings';
+
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+/** Parse + persist available_days (which days the runner can run) to
+ *  user_settings before generating, so the plan places runs on those days. */
+async function persistAvailableDays(userId: string, body: any): Promise<void> {
+  const raw = Array.isArray(body?.available_days) ? body.available_days : null;
+  if (!raw) return;
+  const days = [...new Set(raw.filter((d: any) => DAY_KEYS.includes(d)))];
+  if (days.length >= 2) await patchSettings(userId, { available_days: days as any }).catch(() => {});
+}
 
 const ALLOWED_DISTANCES = ['5K', '10K', 'Half Marathon', 'Marathon', '50K', '100K'];
 
@@ -68,6 +79,8 @@ export async function POST(req: NextRequest) {
   const startRaw = String(body?.start_date ?? '').trim();
   const startDateISO = /^\d{4}-\d{2}-\d{2}$/.test(startRaw) && startRaw >= todayISO
     ? startRaw : todayISO;
+  // Persist available days BEFORE generating so the plan places runs on them.
+  await persistAvailableDays(userId, body);
 
   await pool.query(
     `UPDATE profile

@@ -10,6 +10,12 @@ export interface UserSettings {
   long_run_day: 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
   rest_day:     'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
   quality_days: ('sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat')[];
+  /** 2026-06-20 · days the runner can actually run (goal/race setup asks).
+   *  When set (>=2 days), the plan places long/quality/easy ONLY on these days
+   *  and rests the others — Research/22 "shift rest days to user schedule".
+   *  Undefined = unset → the engine keeps its long_run_day/quality_days/rest_day
+   *  defaults, so existing runners are unchanged. */
+  available_days?: ('sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat')[];
   briefing_time: string;            // 'HH:MM' local
   push_enabled: boolean;
   /** 2026-06-12 · timezone mode. 'manual' pins profile.timezone (Settings

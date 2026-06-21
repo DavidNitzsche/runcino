@@ -898,7 +898,7 @@ enum API {
         return (200..<300).contains(http.statusCode)
     }
 
-    static func setFitnessGoal(distanceLabel: String, goalTime: String, planWeeks: Int, startDate: String? = nil) async throws -> Bool {
+    static func setFitnessGoal(distanceLabel: String, goalTime: String, planWeeks: Int, startDate: String? = nil, availableDays: [String] = []) async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/profile/goal"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -908,13 +908,14 @@ enum API {
             "plan_weeks": planWeeks,
         ]
         if let s = startDate, !s.isEmpty { body["start_date"] = s }
+        if !availableDays.isEmpty { body["available_days"] = availableDays }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
         return (200..<300).contains(http.statusCode)
     }
 
     /// Returns the new race slug on success, nil on failure.
-    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?, startDate: String? = nil) async throws -> String? {
+    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?, startDate: String? = nil, availableDays: [String] = []) async throws -> String? {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/race"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -922,6 +923,7 @@ enum API {
         if let d = distanceLabel, !d.isEmpty { body["distance_label"] = d }
         if let g = goal, !g.isEmpty { body["goal"] = g }
         if let s = startDate, !s.isEmpty { body["start_date"] = s }
+        if !availableDays.isEmpty { body["available_days"] = availableDays }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
         guard (200..<300).contains(http.statusCode) else { return nil }

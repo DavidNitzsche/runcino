@@ -471,6 +471,9 @@ struct SetGoalSheet: View {
     // 2026-06-20 · "when do you want to start" (David). The plan's week 0
     // anchors here; the goal deadline = start + plan weeks.
     @State private var startDate: Date = Date()
+    // 2026-06-20 · which days the runner can run. The plan places runs on these
+    // days only (empty = let the engine use its defaults).
+    @State private var availableDays: Set<String> = []
     @State private var currentVdot: Double? = nil
     @State private var saving: Bool = false
     @State private var error: String? = nil
@@ -625,6 +628,15 @@ struct SetGoalSheet: View {
                         Text("WHEN DO YOU WANT TO START?")
                     } footer: {
                         Text("Your plan's first week begins on this date.")
+                    }
+
+                    // 5. WHICH DAYS CAN YOU RUN — the plan schedules around these.
+                    Section {
+                        DayAvailabilityPickerRow(selected: $availableDays)
+                    } header: {
+                        Text("WHICH DAYS CAN YOU RUN?")
+                    } footer: {
+                        Text("Optional. Pick the days you can run and we'll place your long run, workout, and easy days on them.")
                     }
                 }
 
@@ -781,11 +793,49 @@ struct SetGoalSheet: View {
             distanceLabel: distance,
             goalTime: goalTimeString,
             planWeeks: weeks,
-            startDate: isoF.string(from: startDate)
+            startDate: isoF.string(from: startDate),
+            availableDays: Array(availableDays)
         )) ?? false
         await MainActor.run {
             if ok { onSubmitted(); dismiss() }
             else { error = "Could not save. Try again."; saving = false }
         }
+    }
+}
+
+// MARK: - Day-availability picker
+//
+// A row of seven day toggles (Mon-Sun) for "which days can you run?" in the
+// goal + race setup sheets. Binds to a Set of day keys ("mon".."sun") sent to
+// the backend as available_days; the plan then places the long run, workout,
+// and easy days on the chosen days (Research/22 "shift rest days to user
+// schedule"). Empty selection = let the engine use its defaults.
+struct DayAvailabilityPickerRow: View {
+    @Binding var selected: Set<String>
+
+    private let days: [(key: String, letter: String)] = [
+        ("mon", "M"), ("tue", "T"), ("wed", "W"), ("thu", "T"),
+        ("fri", "F"), ("sat", "S"), ("sun", "S"),
+    ]
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(days, id: \.key) { day in
+                let on = selected.contains(day.key)
+                Button {
+                    if on { selected.remove(day.key) } else { selected.insert(day.key) }
+                } label: {
+                    Text(day.letter)
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .foregroundStyle(on ? Color.white : Color.secondary)
+                        .background(on ? Theme.dist : Color.gray.opacity(0.16),
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
     }
 }

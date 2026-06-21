@@ -789,7 +789,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -828,6 +828,10 @@ function layoutWeek({
    *  in the sharpen phase. Gated to level==='beginner' (templateFor), so
    *  intermediate/advanced are unchanged. Research/22 §5K/10K/HM/M Beginner. */
   baseBuilding?: boolean;
+  /** 2026-06-20 · days the runner can run. When set, easy days fill only these
+   *  and every other day is rest (long/quality already land on available days
+   *  via the upstream derivation). null = unrestricted (existing behaviour). */
+  availableDows?: Set<number> | null;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -1070,17 +1074,23 @@ function layoutWeek({
   // so a 3-day runner got a 6-day plan (the bug David hit 3 clicks into
   // onboarding). NULL frequency → fill all empties (legacy behavior).
   const runningPlaced = slots.filter(Boolean).filter((d) => d!.distanceMi > 0).length; // long + quality
+  // 2026-06-20 · when the runner gave available days, easy runs may only land
+  // on those days; every other empty day stays rest. Long/quality already sit
+  // on available days (upstream derivation). Unset → all empties are candidates.
+  const easyCandidates = availableDows
+    ? emptySlots.filter((e) => availableDows.has(e.dow))
+    : emptySlots;
   const easyCount = trainingDaysPerWeek != null
-    ? Math.max(0, Math.min(emptySlots.length, trainingDaysPerWeek - runningPlaced))
-    : emptySlots.length;
-  // Spread the chosen easy days across the empty slots (avoid clustering
+    ? Math.max(0, Math.min(easyCandidates.length, trainingDaysPerWeek - runningPlaced))
+    : easyCandidates.length;
+  // Spread the chosen easy days across the candidate slots (avoid clustering
   // every easy day adjacent to the long run). Even-stride pick.
   const easyDowSet = new Set<number>();
-  if (easyCount >= emptySlots.length) {
-    emptySlots.forEach((e) => easyDowSet.add(e.dow));
+  if (easyCount >= easyCandidates.length) {
+    easyCandidates.forEach((e) => easyDowSet.add(e.dow));
   } else if (easyCount > 0) {
-    const stride = emptySlots.length / easyCount;
-    for (let k = 0; k < easyCount; k++) easyDowSet.add(emptySlots[Math.floor(k * stride)].dow);
+    const stride = easyCandidates.length / easyCount;
+    for (let k = 0; k < easyCount; k++) easyDowSet.add(easyCandidates[Math.floor(k * stride)].dow);
   }
 
   const mathFloor = 3;
@@ -1203,6 +1213,9 @@ export interface ComposePlanInput {
   longRunDow: DOW;
   restDow: DOW;
   qualityDows: DOW[];
+  /** 2026-06-20 · days the runner can run (from available_days). When set,
+   *  layoutWeek places easy days only on these and rests the rest. */
+  availableDows?: Set<number> | null;
   /** 2026-06-10 · runner's stated training frequency (profile.
    *  weekly_frequency, captured at onboarding). When set, caps total
    *  running days per week so a 3-day runner never gets a 6-day plan.
@@ -1432,6 +1445,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // structured I/R reps). Gated to level==='beginner', so intermediate/
       // advanced (incl. David) are unchanged.
       baseBuilding: isBaseBuildingPlan(distanceCategoryOf(input.raceDistanceMi), input.level),
+      availableDows: input.availableDows ?? null,
     });
     // P34 · cross-training opt-in · rotate enabled modes across the
     // rest day. Same logic that used to live in generatePlan's loop.
@@ -2413,11 +2427,36 @@ async function loadGeneratorInputs(
 
   // 2. User prefs · layout
   const prefs = await loadSettings(userId).catch(() => null);
-  const longRunDow  = dayKeyToDow((prefs?.long_run_day ?? 'sun') as DayKey);
-  const restDow     = dayKeyToDow((prefs?.rest_day ?? 'sat') as DayKey);
+  let longRunDow  = dayKeyToDow((prefs?.long_run_day ?? 'sun') as DayKey);
+  let restDow     = dayKeyToDow((prefs?.rest_day ?? 'sat') as DayKey);
   // qualityDows comes from runner prefs · composePlan slices it per-
   // week via densityForWeek() to honor Rule 5 (density ramp).
   let qualityDows = (prefs?.quality_days ?? ['tue', 'thu']).map((d) => dayKeyToDow(d as DayKey));
+
+  // 2026-06-20 · available-days placement (goal/race setup asks which days the
+  // runner can run). When set (>=2 days), long/quality/easy land ONLY on those
+  // days and the rest are rest — Research/22 "shift rest days to user schedule".
+  // Unset → keep the prefs above, so existing runners (incl. David) are
+  // unchanged. availableDows is threaded to layoutWeek to force the easy days
+  // onto available days too.
+  let availableDows: Set<number> | null = null;
+  const avail = (prefs?.available_days ?? []).map((d) => dayKeyToDow(d as DayKey));
+  if (avail.length >= 2) {
+    const aset = new Set<number>(avail);
+    availableDows = aset;
+    // Long run: the runner's chosen long day if available, else the latest
+    // weekend day available (Sat > Sun), else the latest available day.
+    longRunDow = (aset.has(longRunDow) ? longRunDow
+      : aset.has(6) ? 6 : aset.has(0) ? 0 : Math.max(...avail)) as DOW;
+    // Rest: keep the runner's rest day if it's already unavailable; else pick
+    // the first day they CAN'T run as the (true) rest day.
+    const unavail = [0, 1, 2, 3, 4, 5, 6].filter((d) => !aset.has(d));
+    restDow = (!aset.has(restDow) ? restDow : (unavail[0] ?? restDow)) as DOW;
+    // Quality: available days other than the long day, midweek-first so hard
+    // days sit away from the long run. composePlan slices to weekly density.
+    qualityDows = avail.filter((d) => d !== longRunDow)
+      .sort((a, b) => Math.abs(a - 3) - Math.abs(b - 3)) as DOW[];
+  }
 
   // 2026-06-10 · stated training frequency (profile.weekly_frequency,
   // captured at onboarding). Drives BOTH the quality-day count and the
@@ -2625,6 +2664,7 @@ async function loadGeneratorInputs(
       longRunDow,
       restDow,
       qualityDows,
+      availableDows,
       trainingDaysPerWeek,
       crossModes,
       rxQuality,

@@ -12,6 +12,7 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { generatePlan } from '@/lib/plan/generate';
 import { requireUserId } from '@/lib/auth/session';
+import { patchSettings } from '@/lib/coach/settings';
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -90,6 +91,14 @@ export async function POST(req: NextRequest) {
         // runway is start → race date either way.
         const startRaw = String(body?.start_date ?? '').trim();
         const startDateISO = /^\d{4}-\d{2}-\d{2}$/.test(startRaw) ? startRaw : undefined;
+        // Persist available days (which days the runner can run) before the
+        // build so the plan places runs on them. Validated to known day keys.
+        const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+        const availRaw = Array.isArray(body?.available_days) ? body.available_days : null;
+        if (availRaw) {
+          const days = [...new Set(availRaw.filter((d: any) => DAY_KEYS.includes(d)))];
+          if (days.length >= 2) await patchSettings(userId, { available_days: days as any }).catch(() => {});
+        }
         plan = await generatePlan({
           userId, raceSlug: slug, freshTarget: true,
           ...(startDateISO ? { startDateISO, startAnchor: 'today' as const } : {}),
