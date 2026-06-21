@@ -89,7 +89,11 @@ add('race·5K·beginner·start+14d', { experienceLevel: 'beginner', weeklyFreq: 
 add('race·Marathon·advanced', { experienceLevel: 'advanced', weeklyFreq: 5, ...VOL.hi }, { race: 'Marathon', raceInDays: 140 });
 
 // ── plan sanity assertions ─────────────────────────────────────────────
-async function assertPlan(planId) {
+// statedWeeklyMi = the runner's onboarded weekly volume. Used to skip the
+// volume-ramp assertion when the plan's peak is already at/below it (an
+// over-volumed-for-the-goal runner — e.g. 25mi/wk training for a 28:00 5K —
+// correctly gets a flat volume curve; progression is intensity, not mileage).
+async function assertPlan(planId, statedWeeklyMi = 0) {
   const { rows } = await db.query(
     `SELECT week_id,
             round(sum(distance_mi),1)::float AS wk_mi,
@@ -120,8 +124,11 @@ async function assertPlan(planId) {
     if (r.q_no_pace) f.push(`wk${wk}: quality row missing pace+spec`);
     if (!(r.wk_mi >= 0)) f.push(`wk${wk}: wk_mi NaN/null`);
   });
-  // ramp: week0 below peak (plans > 4 wks)
-  if (rows.length > 4 && (rows[0].wk_mi ?? 0) >= peak) f.push(`no ramp: wk0 ${rows[0].wk_mi} >= peak ${peak}`);
+  // ramp: week0 below peak (plans > 4 wks). Skip when the plan peak is already
+  // <= the runner's stated weekly volume — they're over-volumed for the goal,
+  // so a flat volume curve is correct (no mileage to build; sharpen instead).
+  if (rows.length > 4 && (rows[0].wk_mi ?? 0) >= peak && peak > statedWeeklyMi)
+    f.push(`no ramp: wk0 ${rows[0].wk_mi} >= peak ${peak}`);
   // taper: final (race) week TRAINING (excl the race-day distance) below peak.
   // peak is also training-only (non-race weeks carry no race row).
   const last = rows[rows.length - 1];
@@ -160,7 +167,7 @@ for (const c of cases) {
       planId = r?.plan?.plan_id ?? null;
       if (!planId) genErr = `plan null (${r?.plan?.reason ?? 'no plan'})`;
     }
-    let fails = genErr ? [genErr] : await assertPlan(planId);
+    let fails = genErr ? [genErr] : await assertPlan(planId, c.profile?.weeklyMi ?? 0);
     const ok = fails.length === 0;
     results.push({ label: c.label, ok, fails });
     process.stdout.write(`[${n}/${cases.length}] ${ok ? 'PASS' : 'FAIL'} ${c.label}${ok ? '' : '  → ' + fails.join('; ')}\n`);
