@@ -1066,7 +1066,16 @@ function layoutWeek({
     ? mathFloor
     : Math.max(mathFloor, baselineFloor);
   const perEasyRaw = easyCount > 0 ? Math.round(remainingMi / easyCount) : 0;
-  const perEasy = Math.max(effectiveFloor, perEasyRaw);
+  // Invariant: an easy run is NEVER longer than the long run — the long run is
+  // the longest run of the week by definition. Without this, a cold-start or
+  // mismatched-tier plan whose long is pinned at the tier's small peakLong cap
+  // dumps the week's remaining volume onto the single easy day, producing the
+  // inverted "9mi EASY vs 3mi LONG" plan (Lilley, 2026-06-20). Clamping easy ≤
+  // long lowers the weekly total instead — the correct, gentler outcome for a
+  // runner whose long-run capacity is small. For established runners the long
+  // dwarfs any easy day, so this clamp never binds (no behaviour change).
+  const easyCeiling = longMi > 0 ? longMi : perEasyRaw;
+  const perEasy = Math.min(Math.max(effectiveFloor, perEasyRaw), easyCeiling);
   for (const { dow } of emptySlots) {
     slots[dow] = easyDowSet.has(dow)
       ? { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }

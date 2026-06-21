@@ -144,29 +144,72 @@ export async function GET(req: NextRequest) {
     // Best-effort · skip indicator just won't show this week.
   }
 
+  // 2026-06-20 · The strip is ONE pill per calendar day. A day can carry more
+  // than one plan_workouts row (e.g. an easy run + a strength session), so a
+  // naive rows.map() emitted a duplicate pill for that date ("21 21"), and a
+  // sparse plan left gaps (a rest day with no row, or only one authored row,
+  // produced a 1-day / non-contiguous strip — Lilley, 2026-06-20). Collapse to
+  // the primary RUNNING workout per day (strength/cross fold out), then emit
+  // EXACTLY 7 contiguous days from weekStart so the strip is always 7 pills,
+  // in order, no dupes, no gaps.
+  const TYPE_PRIORITY: Record<string, number> = {
+    race: 6, long: 5,
+    intervals: 4, tempo: 4, threshold: 4, quality: 4, repetition: 4, fartlek: 4,
+    easy: 3, recovery: 3,
+    cross: 2, xt: 2,
+    strength: 1,
+    rest: 0,
+  };
+  const prioOf = (t: string) => TYPE_PRIORITY[t] ?? 2;
+  const bestByDate = new Map<string, any>();
+  let anyStrengthByDate = new Map<string, boolean>();
+  for (const r of rows) {
+    if (r.type === 'strength') anyStrengthByDate.set(r.date_iso, true);
+    const prev = bestByDate.get(r.date_iso);
+    if (!prev
+        || prioOf(r.type) > prioOf(prev.type)
+        || (prioOf(r.type) === prioOf(prev.type) && Number(r.distance_mi) > Number(prev.distance_mi))) {
+      bestByDate.set(r.date_iso, r);
+    }
+  }
+
+  const addDaysISO = (iso: string, n: number): string => {
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const dISO = addDaysISO(weekStart, i);
+    const r = bestByDate.get(dISO);
+    const actual = actualByDate.get(dISO);
+    const dow = new Date(dISO + 'T12:00:00Z').getUTCDay();
+    return {
+      date_iso: dISO,
+      dow,
+      type: r?.type ?? 'rest',
+      distance_mi: r ? Number(r.distance_mi) || 0 : 0,
+      sub_label: r?.sub_label ?? (r ? null : 'REST'),
+      is_today: dISO === today,
+      is_past: dISO < today,
+      // Phase 17 — real signal, retires the iOS `is_past && type != "rest"`
+      // heuristic in FaffAdapter.buildWeekStrip. Emit even for rest days
+      // (recovery jogs can be logged on rest days).
+      completedRunId: actual?.id ?? null,
+      done_mi: actual ? actual.mi : null,
+      // 2026-05-31 · runner tapped Skip Today (day_actions row).
+      skipped: skippedDates.has(dISO),
+      // 2026-06-20 · a run day that also carries a strength session, so the
+      // strip can mark it without a second pill.
+      hasStrength: anyStrengthByDate.get(dISO) === true && (r?.type !== 'strength'),
+    };
+  });
+
   return NextResponse.json({
     plan_id: plan.id,
     week_start_iso: weekStart,
     week_end_iso: weekEnd,
     today_iso: today,
-    days: rows.map((r: any) => {
-      const actual = actualByDate.get(r.date_iso);
-      return {
-        date_iso: r.date_iso,
-        dow: r.dow,
-        type: r.type,
-        distance_mi: Number(r.distance_mi) || 0,
-        sub_label: r.sub_label,
-        is_today: r.date_iso === today,
-        is_past: r.date_iso < today,
-        // Phase 17 — real signal, retires the iOS `is_past && type != "rest"`
-        // heuristic in FaffAdapter.buildWeekStrip. Emit even for rest days
-        // (recovery jogs can be logged on rest days).
-        completedRunId: actual?.id ?? null,
-        done_mi: actual ? actual.mi : null,
-        // 2026-05-31 · runner tapped Skip Today (day_actions row).
-        skipped: skippedDates.has(r.date_iso),
-      };
-    }),
+    days,
   });
 }
