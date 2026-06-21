@@ -105,6 +105,15 @@ export async function POST(req: NextRequest) {
         }).catch((e: unknown) => ({
           ok: false, reason: e instanceof Error ? e.message : String(e),
         }));
+        // 2026-06-21 · fail-safe: if the chosen-start build failed validation,
+        // retry Monday-anchored so a created A-race never leaves the runner with
+        // a race row and zero plans (same hole as the goal route — workflow
+        // CRITICAL). The first failure's reason still rides in `plan` if both miss.
+        if (plan && plan.ok === false && startDateISO) {
+          const retry = await generatePlan({ userId, raceSlug: slug, freshTarget: true })
+            .catch(() => null);
+          if (retry && retry.ok) plan = retry;
+        }
       }
     }
 

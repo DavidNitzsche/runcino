@@ -1,0 +1,39 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: per-week structural fingerprint is byte-stable > david-marathon-quality-vocab 1`] = `
+[
+  "wk4: threshold="4×1mi @ T pace · 90s jog" ; tempo="4mi continuous tempo"",
+  "wk5: threshold="4×1mi @ T pace · 90s jog" ; intervals="5×1mi @ I-T transition · 2:00 jog"",
+  "wk6: threshold="4×1mi @ T pace · 90s jog" ; tempo="4mi continuous tempo"",
+  "wk7: threshold="4×1mi @ T pace · 90s jog" ; intervals="5×1mi @ I-T transition · 2:00 jog"",
+  "wk8: threshold="4×1mi @ T pace · 90s jog" ; tempo="4mi continuous tempo"",
+  "wk9: tempo="4mi continuous tempo" ; threshold="4×1mi @ T pace · 90s jog"",
+  "wk10: tempo="4mi continuous tempo" ; threshold="4×1mi @ T pace · 90s jog"",
+  "wk11: tempo="4mi continuous tempo" ; threshold="4×1mi @ T pace · 90s jog"",
+  "wk12: tempo="4mi continuous tempo" ; threshold="4×1mi @ T pace · 90s jog"",
+  "wk13: race_week_tuneup="WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi" ; race_week_tuneup="WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi"",
+  "wk14: race_week_tuneup="WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi" ; race_week_tuneup="WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi"",
+  "wk15: race="RACE" ; race_week_tuneup="4×1km @ race pace · 90s jog"",
+]
+`;
+
+exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: per-week structural fingerprint is byte-stable > david-marathon-structure 1`] = `
+[
+  "wk0:BASE:62mi:long17:none",
+  "wk1:BASE:62mi:long17:none",
+  "wk2:BASE:62mi:long17:none",
+  "wk3:BASE:50mi:long15:none",
+  "wk4:QUALITY:69mi:long19:threshold+tempo",
+  "wk5:QUALITY:69mi:long19:threshold+intervals",
+  "wk6:QUALITY:69mi:long19:threshold+tempo",
+  "wk7:QUALITY:64mi:long16:threshold+intervals",
+  "wk8:QUALITY:69mi:long19:threshold+tempo",
+  "wk9:RACE-SPECIFIC:70mi:long20:tempo+threshold",
+  "wk10:RACE-SPECIFIC:70mi:long20:tempo+threshold",
+  "wk11:RACE-SPECIFIC:65mi:long17:tempo+threshold",
+  "wk12:RACE-SPECIFIC:70mi:long20:tempo+threshold",
+  "wk13:TAPER:61mi:long15:race_week_tuneup+race_week_tuneup",
+  "wk14:TAPER:58mi:long14:race_week_tuneup+race_week_tuneup",
+  "wk15:TAPER:44.2mi:long0:race+race_week_tuneup",
+]
+`;

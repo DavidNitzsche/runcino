@@ -100,30 +100,53 @@ export async function POST(req: NextRequest) {
   // = today + plan_weeks. generatePlan reads volume/frequency/prefs itself.
   // Best-effort: a generation failure doesn't fail the save.
   let plan: Awaited<ReturnType<typeof generatePlan>> | null = null;
-  try {
-    const distMi = goalDistanceMiFromCode(distanceLabel);
-    if (distMi) {
-      const weeks = planWeeks ?? 16;
-      // Deadline = chosen start + plan_weeks (was today + plan_weeks). The plan
-      // anchors week 0 at startDateISO via generatePlan (clamped >= today there).
-      const raceDateISO = new Date(Date.parse(startDateISO + 'T12:00:00Z') + weeks * 7 * 86400000)
+  let planError: string | null = null;
+  const distMi = goalDistanceMiFromCode(distanceLabel);
+  if (distMi) {
+    const weeks = planWeeks ?? 16;
+    // Deadline = chosen start + plan_weeks. The plan anchors week 0 at the start.
+    const genWith = (anchor: 'today' | 'monday', startISO?: string) => {
+      const baseISO = startISO ?? startDateISO;
+      const raceDateISO = new Date(Date.parse(baseISO + 'T12:00:00Z') + weeks * 7 * 86400000)
         .toISOString().slice(0, 10);
-      plan = await generatePlan({
+      return generatePlan({
         userId,
         goalTarget: { distanceMi: distMi, goalSec: goalSeconds, raceDateISO },
-        startDateISO,
-        startAnchor: 'today',
+        startDateISO: startISO,
+        startAnchor: anchor,
         freshTarget: true,
       });
+    };
+    try {
+      plan = await genWith('today', startDateISO);
+    } catch (e) {
+      planError = e instanceof Error ? e.message : 'plan generation error';
+      console.error('[profile/goal] plan generation failed:', e);
     }
-  } catch (e) {
-    console.error('[profile/goal] plan generation failed:', e);
+    // 2026-06-21 · fail-safe: a runner must NEVER be left with a saved goal and
+    // zero plans (the workflow CRITICAL — a narrow runway/long alignment made a
+    // valid marathon goal fail validation, the error was swallowed, and TODAY
+    // went empty with no signal). If the chosen-start build did not produce a
+    // valid plan, retry once Monday-anchored (which generates cleanly) and, if
+    // it still fails, surface plan_error so the failure is visible, not silent.
+    if (!plan || plan.ok === false) {
+      if (plan && plan.ok === false) planError = plan.reason ?? planError ?? 'plan validation failed';
+      try {
+        const retry = await genWith('monday');
+        if (retry && retry.ok) { plan = retry; planError = null; }
+        else if (retry && retry.ok === false) planError = planError ?? retry.reason ?? 'plan validation failed';
+      } catch (e2) {
+        console.error('[profile/goal] Monday-anchored fallback also failed:', e2);
+      }
+    }
   }
 
   await bustBriefingCacheForEvent(userId, 'profile_edit');
 
   return NextResponse.json({
     ok: true, distance_label: distanceLabel, goal_time: goalTime, goal_seconds: goalSeconds,
-    plan_weeks: planWeeks, plan: plan ? { ok: plan.ok, plan_id: plan.plan_id, weeks: plan.weeks_generated } : null,
+    plan_weeks: planWeeks,
+    plan: plan && plan.ok ? { ok: plan.ok, plan_id: plan.plan_id, weeks: plan.weeks_generated } : null,
+    plan_error: planError,
   });
 }

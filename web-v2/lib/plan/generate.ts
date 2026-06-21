@@ -877,20 +877,58 @@ function layoutWeek({
         }
       }
     }
+    // 2026-06-21 · PLACE-A · availability in race week. The offset-based
+    // placement above is blind to availableDows — it could put the tune-up or
+    // a midweek easy on a day the runner said they can't run (the standard-week
+    // easy-fill respects availability; the race-week branch did not). When
+    // availableDows is set, relocate the shakeout + tune-up to the nearest
+    // available day in their window, and rest any non-race running day that
+    // isn't available. The RACE day is the sole exemption — it's fixed by the
+    // calendar. null availableDows → untouched (David / legacy).
+    const restRow = (dow: number, note: string): DayPlan => ({
+      dow: dow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: note,
+    });
+    if (availableDows != null) {
+      const isAvail = (dow: number) => availableDows.has(dow) || dow === raceDow;
+      for (const role of ['shakeout', 'race_week_tuneup'] as const) {
+        const idx = days.findIndex((d) => d.type === role);
+        if (idx < 0 || isAvail(idx)) continue;
+        const window = role === 'shakeout' ? [1, 2, 3] : [5, 4, 6];
+        for (const off of window) {
+          const dow: number = ((raceDow - off) % 7 + 7) % 7;
+          if (dow !== raceDow && isAvail(dow) && days[dow].distanceMi === 0) {
+            days[dow] = { ...days[idx], dow: dow as DOW };
+            break;
+          }
+        }
+        days[idx] = restRow(idx, 'Off. Taper week — rest is the work now.');
+      }
+      for (let d = 0; d < 7; d++) {
+        if (d !== raceDow && days[d].distanceMi > 0 && !isAvail(d)) {
+          days[d] = restRow(d, 'Off. Not one of your run days this week.');
+        }
+      }
+    }
     // 2026-06-10 · frequency cap also applies to race week. Without it a
     // 3-day runner saw 6 running days in their race week (race + shakeout
-    // + tune-up + 3 easies). Trim easy days (lowest priority) to rest
-    // until the running-day count hits the runner's stated frequency.
-    // Race / shakeout / tune-up are protected — they're the purposeful
-    // race-week touches. NULL frequency → untouched (legacy behavior).
+    // + tune-up + 3 easies). 2026-06-21 · PLACE-B · trim in priority order
+    // (easy → tune-up → shakeout) so a 1-2 day runner can reach their stated
+    // frequency: freq 1 → race only, freq 2 → race + shakeout. The race day
+    // always stays. NULL frequency → untouched (legacy behavior).
     if (trainingDaysPerWeek != null) {
       let running = days.filter((d) => d.distanceMi > 0).length;
-      for (const d of days) {
+      for (const role of ['easy', 'race_week_tuneup', 'shakeout'] as const) {
         if (running <= trainingDaysPerWeek) break;
-        if (d.type === 'easy' && d.distanceMi > 0) {
-          d.type = 'rest'; d.distanceMi = 0; d.subLabel = 'REST';
-          d.notes = 'Off. Taper week — rest is the work now.';
-          running--;
+        for (const d of days) {
+          if (running <= trainingDaysPerWeek) break;
+          if (d.type === role && d.distanceMi > 0) {
+            const wasTuneup = d.type === 'race_week_tuneup';
+            d.type = 'rest'; d.distanceMi = 0; d.subLabel = 'REST';
+            d.notes = wasTuneup
+              ? 'Off. Too few run days this week to fit the tune-up — rest is the work now.'
+              : 'Off. Taper week — rest is the work now.';
+            running--;
+          }
         }
       }
     }
@@ -923,6 +961,14 @@ function layoutWeek({
   const isCutback = weekIdx > 0 && (weekIdx + 1) % cutbackEveryN === 0;
   const longMiRaw = Math.round(weeklyMi * longShare);
   const longCap = tierTarget.peakLongMiBand[1];
+  // NOTE (2026-06-21): the recent-long floor pins taper longs near recentLongMi,
+  // which makes for a weak taper (long barely reduces into the race) and, on
+  // some runways, an author-time taper rescale then turns the floored taper long
+  // into an illegal >30% WoW jump. The latter (a NO-PLAN failure) is fixed by
+  // re-running the long-run WoW smoother AFTER the taper rescale (see the post-
+  // compose block). The former (weak-taper quality) is left intentionally: a
+  // `phase !== 'TAPER'` guard here improves every taper but DRIFTS David's
+  // protected plan (wk14 long 14→11), so it needs his explicit sign-off first.
   const longFloor = recentLongMi && recentLongMi >= 8
     ? Math.round(recentLongMi - (isCutback ? 2 : 0))
     : 0;
@@ -939,7 +985,18 @@ function layoutWeek({
   const qualityFloor = (recentQualityDistanceMi && recentQualityDistanceMi >= 5)
     ? Math.max(0, recentQualityDistanceMi - 1)
     : 0;
-  const qualityMiEach = Math.max(qualityRaw, qualityFloor);
+  // 2026-06-21 · quality never dwarfs the long run or the week (INV3/INV4).
+  // Symmetric to the easy-fill clamp (easyCeiling = longMi) that fixed the
+  // Lilley inversion — the easy clamp guarded easy days only, so a single
+  // collapsed quality day (few running days, high weekly budget, short race
+  // with a tier-capped small long) could still author a "tempo" LONGER than
+  // the long run (e.g. 55mpw weekends-only 5K → 12mi tempo vs 8mi long).
+  // Clamp to longMi (long stays the longest run) and 0.6×week (no dwarf);
+  // unplaceable residual lowers the weekly total instead of piling on quality.
+  // Only binds in the degenerate case — normal plans keep qualityRaw (David's
+  // long ≫ quality → min picks qualityRaw, byte-for-byte unchanged).
+  const qualityCeiling = Math.max(1, Math.min(longMi || Infinity, Math.round(weeklyMi * 0.6)));
+  const qualityMiEach = Math.min(Math.max(qualityRaw, qualityFloor), qualityCeiling);
 
   // Pre-allocate: rest = 0, long + quality slotted in
   const slots: (DayPlan | null)[] = new Array(7).fill(null);
@@ -1117,6 +1174,18 @@ function layoutWeek({
     slots[dow] = easyDowSet.has(dow)
       ? { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }
       : { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Sleep, mobility, fuel.' };
+  }
+
+  // 2026-06-21 · INV13 guard · never author a labeled running day with a non-
+  // positive distance. A degenerate budget (tiny taper week, 0-base cold start)
+  // can round a quality/tune-up/easy slot to 0mi — a "QUALITY 0mi" row is worse
+  // than no row. Demote any non-positive running day to rest. 'race' is exempt
+  // (always carries the race distance); 'rest' is already 0.
+  for (let d = 0; d < 7; d++) {
+    const s = slots[d];
+    if (s && s.type !== 'rest' && s.type !== 'race' && s.distanceMi <= 0) {
+      slots[d] = { dow: d as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Sleep, mobility, fuel.' };
+    }
   }
 
   return slots as DayPlan[];
@@ -2171,20 +2240,29 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     // generate→validate would be a runtime import cycle). Race-day rows
     // are not training longs and are skipped, matching the validator.
     {
-      let prevLong = 0;
-      for (const week of composed.weeks) {
-        const day = week.days.find((d) => d.isLong && d.type !== 'race' && d.distanceMi > 0);
-        if (!day) continue;
-        if (prevLong > 0) {
-          const ceil = Math.floor(prevLong * 1.30 * 2) / 2;
-          if (day.distanceMi > ceil) {
-            const trim = day.distanceMi - ceil;
-            day.distanceMi = ceil;
-            week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - trim) * 10) / 10);
+      // Long-run WoW smoother · clamp each training long to ≤ prev × 1.30
+      // (rounded down to 0.5mi), trimming the week total to match. Defined as a
+      // function so it can be RE-APPLIED after the taper rescale below — the
+      // rescale shrinks one taper week's long without touching the next, which
+      // can re-introduce the very >30% jump this smoother exists to prevent
+      // (workflow CRITICAL · marathon got zero plans on a ~17-week runway).
+      const smoothLongWoW = () => {
+        let prevLong = 0;
+        for (const week of composed.weeks) {
+          const day = week.days.find((d) => d.isLong && d.type !== 'race' && d.distanceMi > 0);
+          if (!day) continue;
+          if (prevLong > 0) {
+            const ceil = Math.floor(prevLong * 1.30 * 2) / 2;
+            if (day.distanceMi > ceil) {
+              const trim = day.distanceMi - ceil;
+              day.distanceMi = ceil;
+              week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - trim) * 10) / 10);
+            }
           }
+          prevLong = day.distanceMi;
         }
-        prevLong = day.distanceMi;
-      }
+      };
+      smoothLongWoW();
 
       // Long-trim lowers the peak, which can leave taper weeks (sized
       // against the ORIGINAL peak) under the validator's minimum drop.
@@ -2212,6 +2290,13 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
         }
       }
 
+      // 2026-06-21 · re-smooth long-run WoW AFTER the taper rescale. The rescale
+      // can shrink a taper week's long below its predecessor's-÷1.30 floor while
+      // leaving the next taper week untouched, re-creating an illegal jump. The
+      // smoother only ever trims DOWN, so it converges and never undoes the
+      // taper drop. Belt-and-suspenders with the no-floor-in-taper fix above.
+      smoothLongWoW();
+
       // 2026-06-20 · FINAL easy≤long invariant sweep. The long-smoothing and
       // taper rescale above can trim the long run AFTER layoutWeek already
       // clamped easy days to the (then larger) long — re-introducing the
@@ -2226,7 +2311,13 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
         const longMi = Math.max(0, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi));
         if (longMi <= 0) continue;
         for (const d of w.days) {
-          if (d.type === 'easy' && d.distanceMi > longMi) {
+          // 2026-06-21 · re-cap EASY *and* QUALITY at the (possibly trimmed)
+          // long. layoutWeek clamps quality ≤ long at compose time, but the WoW
+          // smoother + taper rescale above trim the long afterward, so a quality
+          // session sized to the original long can re-exceed the trimmed long.
+          // The long must stay the week's longest run for easy and quality alike
+          // (race day exempt — it's the longest run by design in a short race).
+          if ((d.type === 'easy' || (d.isQuality && d.type !== 'race')) && !d.isLong && d.distanceMi > longMi) {
             w.weeklyMi = Math.max(0, Math.round((w.weeklyMi - (d.distanceMi - longMi)) * 10) / 10);
             d.distanceMi = longMi;
           }

@@ -387,7 +387,14 @@ export async function POST(req: NextRequest) {
           age                     = COALESCE(age, $18),
           race_history            = $19::jsonb,
           user_settings           = user_settings || $20::jsonb,
-          experience_level        = COALESCE(experience_level, $21)
+          -- 2026-06-21 · incoming experience WINS (write-once was wrong here).
+          -- COALESCE(experience_level, $21) was copied from the physiology
+          -- guards above (birthday/sex/height/age — correctly write-once), but
+          -- experience is a field a runner must be able to correct: a re-
+          -- onboarding runner who fixes "advanced" → "beginner" was stuck at
+          -- advanced and handed the interval machine (workflow MAJOR). Keep the
+          -- existing value only when the new payload omits it ($21 IS NULL).
+          experience_level        = COALESCE($21, experience_level)
         WHERE user_uuid = $14
         RETURNING user_uuid`,
       [
