@@ -2183,7 +2183,10 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       // week's training long so the long is always the longest run, trimming
       // the week total to match. Race-day rows are skipped (not training longs).
       for (const w of composed.weeks) {
-        const longMi = Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi));
+        // Longest run of the week INCLUDING the race day — in a short-race
+        // (5K/10K) race week the race itself is the longest run, so an easy
+        // shakeout must not exceed it either.
+        const longMi = Math.max(0, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi));
         if (longMi <= 0) continue;
         for (const d of w.days) {
           if (d.type === 'easy' && d.distanceMi > longMi) {
