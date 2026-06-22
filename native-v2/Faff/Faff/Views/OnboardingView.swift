@@ -327,10 +327,15 @@ struct OnboardingView: View {
     /// Apple Health connection state, derived from the shared importer once
     /// the runner has tapped Connect (so a background sync can't flip the
     /// row before they ask for it).
+    /// Once HK auth is granted and the import starts (.importing), we treat the
+    /// source as connected so the runner can continue through onboarding — the
+    /// sync runs in the background and completes while they fill in the later
+    /// steps. The subtitle updates from "Syncing…" to the real count when done.
     private var healthState: ConnState {
         guard healthTapped else { return .idle }
         switch hk.status {
-        case .requesting, .importing, .idle: return .connecting
+        case .requesting, .idle: return .connecting
+        case .importing: return .connected("Syncing your history...")
         case .done: return .connected(hk.lastMessage)
         case .error: return .failed(hk.lastMessage ?? "Health didn't connect")
         }
