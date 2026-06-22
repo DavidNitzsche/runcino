@@ -196,7 +196,12 @@ export function validateComposedPlan(
   // Independent of doctrine caps. Fires when the new plan's peak long is
   // dramatically lower than the prior plan's peak — signals bad inputs or
   // a volume-signal bug, not a doctrine violation.
-  if (ctx.priorPlanPeakLongMi != null && ctx.priorPlanPeakLongMi > 0) {
+  // 2026-06-21 · round-4 · recovery mode IS supposed to be far shorter than
+  // the race plan it follows (a post-marathon recovery long is ~8-10mi vs the
+  // prior plan's 20mi peak → 10 < 0.80 × 20 = 16 → false-positive violation).
+  // Same gating rationale as sections 1 + 6: the corruption signal is only
+  // meaningful when building TO a race; skip it for maintenance and recovery.
+  if (mode === 'race-prep' && ctx.priorPlanPeakLongMi != null && ctx.priorPlanPeakLongMi > 0) {
     const floor = ctx.priorPlanPeakLongMi * 0.80;
     if (longPeak < floor) {
       violations.push(
