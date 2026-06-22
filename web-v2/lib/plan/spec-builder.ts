@@ -374,20 +374,32 @@ export function buildWorkoutSpec(
       const budget = distance_mi ?? 7;
       const wuFloor = Math.max(0.5, Math.min(1.5, budget * 0.3));
       const cdFloor = Math.max(0.5, Math.min(1.0, budget * 0.25));
-      const reps = Math.min(repCount, Math.max(2, Math.floor((budget - wuFloor - cdFloor) / repMi)));
-      const wu = (budget - reps * repMi - 1) / 2;
+      // 2026-06-21 · rep-count cap must account for float-jog cost so that
+      // reps*repMi + (reps-1)*floatPer + wuFloor + cdFloor <= budget exactly.
+      // Rearranged: reps <= (budget - wuFloor - cdFloor + floatPer) / (repMi + floatPer).
+      const floatPer = restS / 540;
+      const reps = Math.min(
+        repCount,
+        Math.max(2, Math.floor((budget - wuFloor - cdFloor + floatPer) / (repMi + floatPer))),
+      );
+      // Round wu once, derive cd as the exact remainder — no independent rounding
+      // that lets wu + cd overshoot the available slack after reps + float jogs.
+      const floatJogTotal = Math.max(0, reps - 1) * floatPer;
+      const wuRaw = Math.max(wuFloor, (budget - reps * repMi - floatJogTotal) / 2);
+      const wuVal = Number(wuRaw.toFixed(1));
+      const cdVal = Number(Math.max(cdFloor, budget - reps * repMi - floatJogTotal - wuVal).toFixed(1));
       // True I-pace when the caller threaded a VDOT-derived one (goal builds);
       // else the legacy T−18 cruise-interval offset (marathon / maintenance).
       const repPace = iPaceSec ?? interval;
       return {
         spec: {
           kind: 'intervals',
-          warmup_mi: Number(Math.max(wuFloor, wu).toFixed(1)),
+          warmup_mi: wuVal,
           rep_count: reps,
           rep_distance_mi: repMi,
           rep_pace_s_per_mi: repPace,
           rep_rest_s: restS,
-          cooldown_mi: Number(Math.max(cdFloor, wu).toFixed(1)),
+          cooldown_mi: cdVal,
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
@@ -460,15 +472,27 @@ export function buildWorkoutSpec(
       const repPace = wantsRacePace
         ? (goalPaceSPerMi ?? tPaceSec)
         : tPaceSec - 5;
+      // 2026-06-21 · budget-scale WU/CD so the spec sums to distance_mi exactly.
+      // Hardcoded 1.5/1.0 overshot when the day is short (e.g. 5mi tune-up with
+      // 4×1km = 4×0.621 + float + 1.5 + 1.0 → 5.5mi, a 0.5mi overshoot that
+      // forced capSpecToDistance to trim it back). Mirror the pattern used in the
+      // threshold and intervals branches: round wu once, derive cd as remainder.
+      const rwBudget = distance_mi ?? 5;
+      const rwWuFloor = 0.5, rwCdFloor = 0.5;
+      const rwFloatTotal = Math.max(0, repCount - 1) * (restS / 540);
+      const rwRepTotal = repCount * repMi;
+      const rwWuRaw = Math.max(rwWuFloor, Math.min(1.5, (rwBudget - rwRepTotal - rwFloatTotal) / 2));
+      const rwWu = Number(rwWuRaw.toFixed(1));
+      const rwCd = Number(Math.max(rwCdFloor, Math.min(1.0, rwBudget - rwRepTotal - rwFloatTotal - rwWu)).toFixed(1));
       return {
         spec: {
           kind: 'threshold',
-          warmup_mi: 1.5,
+          warmup_mi: rwWu,
           rep_count: repCount,
           rep_distance_mi: repMi,
           rep_pace_s_per_mi: repPace,
           rep_rest_s: restS,
-          cooldown_mi: 1.0,
+          cooldown_mi: rwCd,
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
@@ -583,8 +607,12 @@ export function capSpecToDistance(spec: WorkoutSpec, maxMi: number): WorkoutSpec
     const floatTotal = Math.max(0, reps - 1) * floatPer;
     const slack = Math.max(wuMin + cdMin, maxMi - reps * repMi - floatTotal);
     s.rep_count = reps;
-    s.warmup_mi = Number(Math.max(wuMin, slack / 2).toFixed(1));
-    s.cooldown_mi = Number(Math.max(cdMin, slack / 2).toFixed(1));
+    // 2026-06-21 · round wu once, derive cd as the exact remainder so
+    // wu + cd == slack exactly (no independent-rounding overshoot).
+    const wu = Number(Math.max(wuMin, slack / 2).toFixed(1));
+    const cdRaw = Math.max(cdMin, slack - wu);
+    s.warmup_mi = wu;
+    s.cooldown_mi = Number(cdRaw.toFixed(1));
   }
   return s as WorkoutSpec;
 }
