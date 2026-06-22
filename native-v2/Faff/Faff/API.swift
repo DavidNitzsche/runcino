@@ -898,7 +898,7 @@ enum API {
         return (200..<300).contains(http.statusCode)
     }
 
-    static func setFitnessGoal(distanceLabel: String, goalTime: String, planWeeks: Int, startDate: String? = nil, availableDays: [String] = []) async throws -> Bool {
+    static func setFitnessGoal(distanceLabel: String, goalTime: String, planWeeks: Int, startDate: String? = nil, availableDays: [String] = []) async throws -> (ok: Bool, planError: String?) {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/profile/goal"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -910,12 +910,16 @@ enum API {
         if let s = startDate, !s.isEmpty { body["start_date"] = s }
         if !availableDays.isEmpty { body["available_days"] = availableDays }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
-        return (200..<300).contains(http.statusCode)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return (false, nil) }
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let planError = json?["plan_error"] as? String
+        return (true, planError)
     }
 
-    /// Returns the new race slug on success, nil on failure.
-    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?, startDate: String? = nil, availableDays: [String] = []) async throws -> String? {
+    /// Returns (slug, planError). slug is nil on HTTP failure; planError is set when the race
+    /// was created but plan generation failed (e.g. runner's mileage too low).
+    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?, startDate: String? = nil, availableDays: [String] = []) async throws -> (slug: String?, planError: String?) {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/race"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -926,9 +930,11 @@ enum API {
         if !availableDays.isEmpty { body["available_days"] = availableDays }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
-        guard (200..<300).contains(http.statusCode) else { return nil }
+        guard (200..<300).contains(http.statusCode) else { return (nil, nil) }
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return json?["slug"] as? String
+        let slug = json?["slug"] as? String
+        let planError = json?["plan_error"] as? String
+        return (slug, planError)
     }
 
     /// /api/targets/projection — VDOT + projection_sec + held_days + gap

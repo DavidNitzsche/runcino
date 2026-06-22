@@ -1098,7 +1098,7 @@ struct AddRaceSheet: View {
     private func save() async {
         saving = true
         error = nil
-        guard let slug = try? await API.createRace(
+        let raceResult = try? await API.createRace(
             name: name.trimmingCharacters(in: .whitespaces),
             date: isoDate,
             distanceLabel: distance == "Other" ? nil : distance,
@@ -1106,8 +1106,17 @@ struct AddRaceSheet: View {
             goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal,
             startDate: isoStartDate,
             availableDays: Array(availableDays)
-        ) else {
+        )
+        guard let slug = raceResult?.slug else {
             error = "Could not save race. Check your connection and try again."
+            saving = false
+            return
+        }
+        if let planError = raceResult?.planError {
+            // Race was saved but plan generation failed (e.g. mileage too low).
+            // Call onSaved so the list refreshes, but stay in sheet to show the message.
+            onSaved()
+            error = planError
             saving = false
             return
         }

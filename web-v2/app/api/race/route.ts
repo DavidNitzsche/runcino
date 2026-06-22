@@ -14,6 +14,14 @@ import { generatePlan } from '@/lib/plan/generate';
 import { requireUserId } from '@/lib/auth/session';
 import { patchSettings } from '@/lib/coach/settings';
 
+function toFriendlyPlanError(raw: string | null): string | null {
+  if (!raw) return null;
+  if (raw.includes('plan ramp is unsupported by current fitness')) {
+    return "Faff doesn't currently support plans for runners at this mileage level. Build your base first, then try again.";
+  }
+  return raw;
+}
+
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
@@ -117,7 +125,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, slug, plan });
+    const planError = plan && !plan.ok ? toFriendlyPlanError(plan.reason ?? null) : null;
+    return NextResponse.json({ ok: true, slug, plan, plan_error: planError });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

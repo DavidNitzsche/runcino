@@ -789,16 +789,24 @@ struct SetGoalSheet: View {
         saving = true; error = nil
         let weeks = planWeeks ?? planOptions(for: distance).first?.weeks ?? 12
         let isoF = DateFormatter(); isoF.dateFormat = "yyyy-MM-dd"
-        let ok = (try? await API.setFitnessGoal(
+        let result = try? await API.setFitnessGoal(
             distanceLabel: distance,
             goalTime: goalTimeString,
             planWeeks: weeks,
             startDate: isoF.string(from: startDate),
             availableDays: Array(availableDays)
-        )) ?? false
+        )
+        let ok = result?.ok ?? false
+        let planError = result?.planError
         await MainActor.run {
-            if ok { onSubmitted(); dismiss() }
-            else { error = "Could not save. Try again."; saving = false }
+            if ok && planError == nil {
+                onSubmitted(); dismiss()
+            } else if ok, let msg = planError {
+                // Goal saved but plan couldn't be generated (e.g. mileage too low).
+                error = msg; saving = false
+            } else {
+                error = "Could not save. Try again."; saving = false
+            }
         }
     }
 }

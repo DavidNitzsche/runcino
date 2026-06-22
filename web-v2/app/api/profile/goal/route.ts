@@ -20,6 +20,14 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { patchSettings } from '@/lib/coach/settings';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+function toFriendlyPlanError(raw: string | null): string | null {
+  if (!raw) return null;
+  if (raw.includes('plan ramp is unsupported by current fitness')) {
+    return "Faff doesn't currently support plans for runners at this mileage level. Build your base first, then try again.";
+  }
+  return raw;
+}
 /** Parse + persist available_days (which days the runner can run) to
  *  user_settings before generating, so the plan places runs on those days. */
 async function persistAvailableDays(userId: string, body: any): Promise<void> {
@@ -147,6 +155,6 @@ export async function POST(req: NextRequest) {
     ok: true, distance_label: distanceLabel, goal_time: goalTime, goal_seconds: goalSeconds,
     plan_weeks: planWeeks,
     plan: plan && plan.ok ? { ok: plan.ok, plan_id: plan.plan_id, weeks: plan.weeks_generated } : null,
-    plan_error: planError,
+    plan_error: toFriendlyPlanError(planError),
   });
 }
