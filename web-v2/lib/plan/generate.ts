@@ -40,9 +40,9 @@ import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal
 import { validateComposedPlan } from './validate';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
-type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
 const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-const dayKeyToDow = (k: DayKey): DOW => DAY_KEYS.indexOf(k) as DOW;
+export const dayKeyToDow = (k: DayKey): DOW => DAY_KEYS.indexOf(k) as DOW;
 
 export interface GenerateInput {
   userId: string;
@@ -96,7 +96,7 @@ function addDays(iso: string, days: number): string {
   return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 }
 
-function daysBetween(a: string, b: string): number {
+export function daysBetween(a: string, b: string): number {
   return Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86400000);
 }
 
@@ -120,7 +120,7 @@ function mondayOf(iso: string): string {
  * straddling it for non-Sunday-long runners. For David (long=Sun → start=Mon)
  * this returns the most-recent Monday — byte-identical to mondayOf, a no-op.
  */
-function weekStartBoundaryOf(iso: string, weekStartDow: number): string {
+export function weekStartBoundaryOf(iso: string, weekStartDow: number): string {
   const dow = new Date(iso + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
   const shift = -(((dow - weekStartDow) % 7 + 7) % 7);   // days back to the boundary
   return addDays(iso, shift);
@@ -527,7 +527,7 @@ function cutbackCadence(tsbAtStart?: number): number {
  * Cite: Research/00a-distance-running-training.md §Volume-Guidelines-by-Experience  // was §volume-by-experience · heading: ## Volume Guidelines by Experience and Distance
  * Cite: Research/22-plan-templates.md §minimum-base-by-level  // TODO: no matching heading in Research/22 — content exists but heading not anchored
  */
-type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
+export type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
 const VOLUME_FLOOR_MPW: Record<Exclude<LevelKey, null>, number> = {
   beginner: 10,
   intermediate: 15,
@@ -2274,6 +2274,101 @@ async function persistPlan(client: PoolClient, args: {
 
 // ── Main entrypoint ─────────────────────────────────────────────────────
 
+/**
+ * Post-composition finalize · pure, mutates `composed` in place. Applies the
+ * refinements that sit between composePlan and validateComposedPlan: the
+ * long-run WoW smoother, the taper rescale, a second WoW smooth, and the final
+ * easy≤long invariant sweep. Extracted (2026-06-22) so generatePlan and the
+ * plan simulator (/api/plan/simulate) run the IDENTICAL post-processing and can
+ * never drift. No DB, no clock. Behavior-preserving lift of the former inline
+ * block — asserted byte-stable by the plan test suite.
+ */
+export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi: number): void {
+  // Long-run WoW smoother · clamp each training long to ≤ prev × 1.30
+  // (rounded down to 0.5mi), trimming the week total to match. Defined as a
+  // function so it can be RE-APPLIED after the taper rescale below — the
+  // rescale shrinks one taper week's long without touching the next, which
+  // can re-introduce the very >30% jump this smoother exists to prevent
+  // (workflow CRITICAL · marathon got zero plans on a ~17-week runway).
+  const smoothLongWoW = () => {
+    let prevLong = 0;
+    for (const week of composed.weeks) {
+      const day = week.days.find((d) => d.isLong && d.type !== 'race' && d.distanceMi > 0);
+      if (!day) continue;
+      if (prevLong > 0) {
+        const ceil = Math.floor(prevLong * 1.30 * 2) / 2;
+        if (day.distanceMi > ceil) {
+          const trim = day.distanceMi - ceil;
+          day.distanceMi = ceil;
+          week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - trim) * 10) / 10);
+        }
+      }
+      prevLong = day.distanceMi;
+    }
+  };
+  smoothLongWoW();
+
+  // Long-trim lowers the peak, which can leave taper weeks (sized
+  // against the ORIGINAL peak) under the validator's minimum drop.
+  // Rescale taper run days against the post-smoothing peak. Drop
+  // minimums mirror validate.ts CONSTRAINTS.taperDropMinPct
+  // (5k:20 · 10k:25 · hm:30 · m:30 — literal here, runtime import
+  // cycle as above). +2pct margin clears rounding.
+  const taperDrop: Record<string, number> = { '5k': 20, '10k': 25, 'hm': 30, 'm': 30, 'ultra': 30 };  // #12 · ultra mirrors marathon taper-drop floor
+  const minDrop = (taperDrop[distanceCategoryOfPublic(raceDistanceMi)] ?? 30) + 2;
+  const nonTaperPeak = Math.max(0, ...composed.weeks
+    .filter((w) => w.phase !== 'TAPER' && !w.isRaceWeek)
+    .map((w) => w.weeklyMi ?? 0));
+  if (nonTaperPeak > 0) {
+    for (const tw of composed.weeks.filter((w) => w.phase === 'TAPER')) {
+      const maxAllowed = nonTaperPeak * (1 - minDrop / 100);
+      if (tw.weeklyMi > maxAllowed) {
+        const scale = maxAllowed / tw.weeklyMi;
+        for (const d of tw.days) {
+          if (d.type !== 'race' && d.distanceMi > 0) {
+            d.distanceMi = Math.floor(d.distanceMi * scale * 2) / 2;
+          }
+        }
+        tw.weeklyMi = Math.round(tw.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
+      }
+    }
+  }
+
+  // 2026-06-21 · re-smooth long-run WoW AFTER the taper rescale. The rescale
+  // can shrink a taper week's long below its predecessor's-÷1.30 floor while
+  // leaving the next taper week untouched, re-creating an illegal jump. The
+  // smoother only ever trims DOWN, so it converges and never undoes the
+  // taper drop. Belt-and-suspenders with the no-floor-in-taper fix above.
+  smoothLongWoW();
+
+  // 2026-06-20 · FINAL easy≤long invariant sweep. The long-smoothing and
+  // taper rescale above can trim the long run AFTER layoutWeek already
+  // clamped easy days to the (then larger) long — re-introducing the
+  // inversion (easy ends up 0.5mi over a trimmed long on cutback / taper
+  // weeks · caught by the full audit matrix). Re-cap every easy day at its
+  // week's training long so the long is always the longest run, trimming
+  // the week total to match. Race-day rows are skipped (not training longs).
+  for (const w of composed.weeks) {
+    // Longest run of the week INCLUDING the race day — in a short-race
+    // (5K/10K) race week the race itself is the longest run, so an easy
+    // shakeout must not exceed it either.
+    const longMi = Math.max(0, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi));
+    if (longMi <= 0) continue;
+    for (const d of w.days) {
+      // 2026-06-21 · re-cap EASY *and* QUALITY at the (possibly trimmed)
+      // long. layoutWeek clamps quality ≤ long at compose time, but the WoW
+      // smoother + taper rescale above trim the long afterward, so a quality
+      // session sized to the original long can re-exceed the trimmed long.
+      // The long must stay the week's longest run for easy and quality alike
+      // (race day exempt — it's the longest run by design in a short race).
+      if ((d.type === 'easy' || (d.isQuality && d.type !== 'race')) && !d.isLong && d.distanceMi > longMi) {
+        w.weeklyMi = Math.max(0, Math.round((w.weeklyMi - (d.distanceMi - longMi)) * 10) / 10);
+        d.distanceMi = longMi;
+      }
+    }
+  }
+}
+
 export async function generatePlan(input: GenerateInput): Promise<GenerateResult> {
   const { userId, raceSlug, startAnchor = 'monday', startDateISO, goalTarget, freshTarget } = input;
 
@@ -2371,91 +2466,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     // (30 for all four distance categories — kept literal here because
     // generate→validate would be a runtime import cycle). Race-day rows
     // are not training longs and are skipped, matching the validator.
-    {
-      // Long-run WoW smoother · clamp each training long to ≤ prev × 1.30
-      // (rounded down to 0.5mi), trimming the week total to match. Defined as a
-      // function so it can be RE-APPLIED after the taper rescale below — the
-      // rescale shrinks one taper week's long without touching the next, which
-      // can re-introduce the very >30% jump this smoother exists to prevent
-      // (workflow CRITICAL · marathon got zero plans on a ~17-week runway).
-      const smoothLongWoW = () => {
-        let prevLong = 0;
-        for (const week of composed.weeks) {
-          const day = week.days.find((d) => d.isLong && d.type !== 'race' && d.distanceMi > 0);
-          if (!day) continue;
-          if (prevLong > 0) {
-            const ceil = Math.floor(prevLong * 1.30 * 2) / 2;
-            if (day.distanceMi > ceil) {
-              const trim = day.distanceMi - ceil;
-              day.distanceMi = ceil;
-              week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - trim) * 10) / 10);
-            }
-          }
-          prevLong = day.distanceMi;
-        }
-      };
-      smoothLongWoW();
-
-      // Long-trim lowers the peak, which can leave taper weeks (sized
-      // against the ORIGINAL peak) under the validator's minimum drop.
-      // Rescale taper run days against the post-smoothing peak. Drop
-      // minimums mirror validate.ts CONSTRAINTS.taperDropMinPct
-      // (5k:20 · 10k:25 · hm:30 · m:30 — literal here, runtime import
-      // cycle as above). +2pct margin clears rounding.
-      const taperDrop: Record<string, number> = { '5k': 20, '10k': 25, 'hm': 30, 'm': 30, 'ultra': 30 };  // #12 · ultra mirrors marathon taper-drop floor
-      const minDrop = (taperDrop[distanceCategoryOfPublic(inputs.compose.raceDistanceMi)] ?? 30) + 2;
-      const nonTaperPeak = Math.max(0, ...composed.weeks
-        .filter((w) => w.phase !== 'TAPER' && !w.isRaceWeek)
-        .map((w) => w.weeklyMi ?? 0));
-      if (nonTaperPeak > 0) {
-        for (const tw of composed.weeks.filter((w) => w.phase === 'TAPER')) {
-          const maxAllowed = nonTaperPeak * (1 - minDrop / 100);
-          if (tw.weeklyMi > maxAllowed) {
-            const scale = maxAllowed / tw.weeklyMi;
-            for (const d of tw.days) {
-              if (d.type !== 'race' && d.distanceMi > 0) {
-                d.distanceMi = Math.floor(d.distanceMi * scale * 2) / 2;
-              }
-            }
-            tw.weeklyMi = Math.round(tw.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
-          }
-        }
-      }
-
-      // 2026-06-21 · re-smooth long-run WoW AFTER the taper rescale. The rescale
-      // can shrink a taper week's long below its predecessor's-÷1.30 floor while
-      // leaving the next taper week untouched, re-creating an illegal jump. The
-      // smoother only ever trims DOWN, so it converges and never undoes the
-      // taper drop. Belt-and-suspenders with the no-floor-in-taper fix above.
-      smoothLongWoW();
-
-      // 2026-06-20 · FINAL easy≤long invariant sweep. The long-smoothing and
-      // taper rescale above can trim the long run AFTER layoutWeek already
-      // clamped easy days to the (then larger) long — re-introducing the
-      // inversion (easy ends up 0.5mi over a trimmed long on cutback / taper
-      // weeks · caught by the full audit matrix). Re-cap every easy day at its
-      // week's training long so the long is always the longest run, trimming
-      // the week total to match. Race-day rows are skipped (not training longs).
-      for (const w of composed.weeks) {
-        // Longest run of the week INCLUDING the race day — in a short-race
-        // (5K/10K) race week the race itself is the longest run, so an easy
-        // shakeout must not exceed it either.
-        const longMi = Math.max(0, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi));
-        if (longMi <= 0) continue;
-        for (const d of w.days) {
-          // 2026-06-21 · re-cap EASY *and* QUALITY at the (possibly trimmed)
-          // long. layoutWeek clamps quality ≤ long at compose time, but the WoW
-          // smoother + taper rescale above trim the long afterward, so a quality
-          // session sized to the original long can re-exceed the trimmed long.
-          // The long must stay the week's longest run for easy and quality alike
-          // (race day exempt — it's the longest run by design in a short race).
-          if ((d.type === 'easy' || (d.isQuality && d.type !== 'race')) && !d.isLong && d.distanceMi > longMi) {
-            w.weeklyMi = Math.max(0, Math.round((w.weeklyMi - (d.distanceMi - longMi)) * 10) / 10);
-            d.distanceMi = longMi;
-          }
-        }
-      }
-    }
+    finalizeComposedPlan(composed, inputs.compose.raceDistanceMi);
     validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
       level: inputs.compose.level,
       isSteppingStoneToMarathon: (inputs.compose.horizonRaces ?? []).some(r => r.distanceMi >= 20),
