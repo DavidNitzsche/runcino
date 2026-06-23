@@ -1559,6 +1559,24 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       baseBuilding: isBaseBuildingPlan(distanceCategoryOf(input.raceDistanceMi), input.level),
       availableDows: input.availableDows ?? null,
     });
+    // 2026-06-23 · SP-4 · race-week chronology guard. layoutWeek positions
+    // shakeout/tune-up/easy by a circular days-before-race offset that WRAPS, so for a
+    // race that is NOT the last day of its week the tune-up/easy aliased onto days
+    // AFTER the race (a tune-up 2 days post-race · was live on every mid-week race).
+    // Force every day whose calendar date is after the race to rest, keyed on the real
+    // week window (weekStart + dow offset) so it is correct whether or not the runway
+    // is boundary-aligned. Byte-identical when the race is the window's last day
+    // (David's Sunday race · nothing falls after it).
+    if (isRaceWeek) {
+      const weekStartDow = new Date(weekStart + 'T12:00:00Z').getUTCDay();
+      for (const d of days) {
+        const dayDate = addDays(weekStart, (d.dow - weekStartDow + 7) % 7);
+        if (d.type !== 'race' && daysBetween(input.raceDateISO, dayDate) > 0) {
+          d.type = 'rest'; d.distanceMi = 0; d.isQuality = false; d.isLong = false;
+          d.subLabel = 'REST'; d.notes = 'Off. Post-race recovery.';
+        }
+      }
+    }
     // P34 · cross-training opt-in · rotate enabled modes across the
     // rest day. Same logic that used to live in generatePlan's loop.
     if (input.crossModes.length > 0) {
