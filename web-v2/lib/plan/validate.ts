@@ -311,5 +311,77 @@ export function validateComposedPlan(
     }
   }
 
+  // ── 7. SP-7 · long-primacy (all modes) ───────────────────────────────────
+  // The long must be the week's longest run. A clustered week or an easy≥long
+  // inversion passes every other check but is structurally wrong. Tolerant of a
+  // ≤0.15mi rep-floor residual (a quality day's rounded reps can tie within a hair).
+  // Skip race weeks (the "long" may be a shakeout, the race is separate) + sealed past weeks.
+  for (const week of weeks) {
+    if (week.isRaceWeek) continue;
+    if (addDays(week.startISO, 6) < ctx.todayISO) continue;
+    const longMi = Math.max(0, ...week.days.filter(d => d.isLong && d.type !== 'race').map(d => d.distanceMi));
+    if (longMi <= 0) continue;
+    for (const d of week.days) {
+      if (d.isLong || d.type === 'race' || d.type === 'rest') continue;
+      if (d.distanceMi > longMi + 0.15) {
+        violations.push(
+          `Week ${week.startISO} (${week.phase}): ${d.type} ${d.distanceMi}mi exceeds the long ${longMi}mi — ` +
+          `the long must be the week's longest run`,
+        );
+      }
+    }
+  }
+
+  // ── 8. SP-7 · race-week chronology (race-prep) ────────────────────────────
+  // No running prescription may fall AFTER race day (composePlan's SP-4 guard
+  // already prevents it; this is the regression net).
+  if (mode === 'race-prep') {
+    for (const week of weeks) {
+      if (!week.isRaceWeek) continue;
+      const raceDay = week.days.find(d => d.type === 'race');
+      if (!raceDay) continue;
+      for (const d of week.days) {
+        const isPrescription = d.type !== 'race' && d.type !== 'rest' && d.distanceMi > 0;
+        if (isPrescription && d.dow > raceDay.dow) {
+          violations.push(
+            `Week ${week.startISO} (race week): ${d.type} on dow ${d.dow} is dated AFTER the race ` +
+            `(dow ${raceDay.dow}) — no prescription may fall after race day`,
+          );
+        }
+      }
+    }
+  }
+
+  // ── 9. SP-7 · stimulus-gap adjacency (race-prep) ──────────────────────────
+  // Hard days spaced per Research/00b:55-60 (intervals/VO2max → 2 easy days after;
+  // threshold/tempo/long → 1). Skip race weeks (taper structure differs), sealed past
+  // weeks, and OVER-CONSTRAINED weeks where the required recovery exceeds the available
+  // days (e.g. two VO2max sessions in a ≤6-day week) — the composer does best-achievable
+  // there (B3) and the violation is mathematically unavoidable, not a bug.
+  if (mode === 'race-prep') {
+    const reqGap = (t: string): number => (t === 'intervals' ? 2 : 1);
+    for (const week of weeks) {
+      if (week.isRaceWeek) continue;
+      if (addDays(week.startISO, 6) < ctx.todayISO) continue;
+      const hard = week.days
+        .filter(d => (d.isQuality || d.isLong) && d.type !== 'race' && d.type !== 'shakeout' && d.type !== 'race_week_tuneup')
+        .map(d => ({ dow: d.dow, type: d.type, g: reqGap(d.type) }))
+        .sort((a, b) => a.dow - b.dow);
+      if (hard.length < 2) continue;
+      const requiredTotal = hard.reduce((s, h) => s + h.g, 0);
+      if (requiredTotal > 7 - hard.length) continue; // over-constrained → best-achievable, don't flag
+      for (let i = 0; i < hard.length; i++) {
+        const cur = hard[i]; const nxt = hard[(i + 1) % hard.length];
+        const between = ((nxt.dow - cur.dow + 7) % 7) - 1;
+        if (between < cur.g) {
+          violations.push(
+            `Week ${week.startISO} (${week.phase}): ${cur.type}@${cur.dow} → ${nxt.type}@${nxt.dow} ` +
+            `only ${between} easy day(s), needs ${cur.g} (Research/00b:55-60)`,
+          );
+        }
+      }
+    }
+  }
+
   if (violations.length > 0) throw new PlanValidationError(violations);
 }

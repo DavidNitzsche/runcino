@@ -74,6 +74,66 @@ export function spacedQualityDowsFromAvailable(avail: number[], longRunDow: numb
   return out as DOW[];
 }
 
+/**
+ * 2026-06-23 · B3 (SCHED-03) · stimulus-gap-aware quality scheduling. Research/00b:55-60: a
+ * VO2max/intervals session needs 2 EASY days after; threshold/tempo and a plain long need 1.
+ * Two steps:
+ *   1. ORDER the week's quality types so intervals (gap 2) lands LAST — nearest the long's own
+ *      2-day buffer — and lighter threshold/tempo (gap 1) come first. With the default Tue/Thu +
+ *      Sun-long this makes the common configs gap-correct by construction (Tu threshold → Th
+ *      intervals → Fri/Sat easy → Sun long).
+ *   2. RE-PLACE the days only when the ordered assignment STILL violates a gap (over-constrained,
+ *      or a non-Sunday long), choosing the placement with the largest tightest-slack. Currently
+ *      legal weeks — including David's Su:long Tu/Th — keep their days byte-identical. Falls back
+ *      to best-achievable when unsatisfiable (e.g. two VO2max days in a ≤6-day week).
+ * qualityDows is returned ascending; types align by index (types[i] → i-th-earliest quality day).
+ */
+export function scheduleQuality(
+  qualityDows: number[],
+  qualityTypes: Array<DayPlan['type']>,
+  longRunDow: number,
+  restDow: number,
+  availableDows: Set<number> | null,
+): { dows: DOW[]; types: Array<DayPlan['type']> } {
+  const n = qualityDows.length;
+  const gapRank = (t: DayPlan['type']): number => (t === 'intervals' ? 2 : 1);
+  const types = qualityTypes.slice(0, n).sort((a, b) => gapRank(a) - gapRank(b)); // intervals last (stable)
+  if (n === 0) return { dows: qualityDows.slice().sort((a, b) => a - b) as DOW[], types };
+  const gaps = types.map(gapRank);
+  const between = (a: number, b: number): number => ((b - a + 7) % 7) - 1; // circular easy days strictly between hard a and next hard b
+  const score = (dows: number[]): { ok: boolean; minSlack: number } => {
+    const hard = dows.map((d, i) => ({ d, g: gaps[i] })).concat([{ d: longRunDow, g: 1 }]).sort((p, q) => p.d - q.d);
+    let ok = true; let minSlack = 99;
+    for (let i = 0; i < hard.length; i++) {
+      const cur = hard[i]; const nxt = hard[(i + 1) % hard.length];
+      const slack = between(cur.d, nxt.d) - cur.g;
+      if (slack < 0) ok = false;
+      minSlack = Math.min(minSlack, slack);
+    }
+    return { ok, minSlack };
+  };
+  const orig = qualityDows.slice().sort((a, b) => a - b);
+  if (score(orig).ok) return { dows: orig as DOW[], types }; // already legal → days unchanged (David + most)
+  const cand = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== longRunDow && d !== restDow && (!availableDows || availableDows.has(d)));
+  if (cand.length < n) return { dows: orig as DOW[], types };
+  const combos: number[][] = [];
+  const pick = (start: number, acc: number[]): void => {
+    if (acc.length === n) { combos.push(acc.slice()); return; }
+    for (let i = start; i < cand.length; i++) { acc.push(cand[i]); pick(i + 1, acc); acc.pop(); }
+  };
+  pick(0, []);
+  let best = orig; let bestS = score(orig); let bestShift = 0;
+  for (const c of combos) {
+    const s = score(c);
+    const shift = c.reduce((acc, d, i) => acc + Math.abs(d - (orig[i] ?? d)), 0);
+    const better = (s.ok && !bestS.ok)
+      || (s.ok === bestS.ok && s.minSlack > bestS.minSlack)
+      || (s.ok === bestS.ok && s.minSlack === bestS.minSlack && shift < bestShift);
+    if (better) { best = c; bestS = s; bestShift = shift; }
+  }
+  return { dows: best as DOW[], types };
+}
+
 export interface GenerateInput {
   userId: string;
   /** Race-anchored plan: the races-row slug (reads distance/date/goal from it).
@@ -1139,9 +1199,12 @@ function layoutWeek({
     // Prescription strings are resolved up-front from workout_library
     // (Research/04 + 22) via resolvePrescriptions() — falls back to the
     // historical inline catalog if the library has no matching row.
-    qualityDows.forEach((dow, i) => {
+    // B3 · stimulus-gap-aware scheduling: order intervals last (toward the long's buffer) and
+    // re-place days only when the default assignment violates a Research/00b:55-60 gap.
+    const scheduledQ = scheduleQuality(qualityDows, qualityTypes, longRunDow, restDow, availableDows);
+    scheduledQ.dows.forEach((dow, i) => {
       if (slots[dow] != null) return; // conflict · skip
-      const qt = qualityTypes[i % qualityTypes.length];
+      const qt = scheduledQ.types[i % scheduledQ.types.length];
       const sub =
         qt === 'intervals'        ? rx.intervals
       : qt === 'threshold'        ? rx.threshold
