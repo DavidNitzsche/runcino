@@ -92,16 +92,16 @@ const BASE_CTX: PlanValidationContext = {
 
 describe('validateComposedPlan · doctrine caps', () => {
 
-  it('F1 — 17mi long is REJECTED for experienced HM (cap 16mi)', () => {
+  it('F1 — 21mi long is REJECTED for experienced HM (cap 20mi; the advanced HM band tops at 17)', () => {
+    // COH-2 (2026-06-23): the experienced-HM cap was raised 16→20 to stop rejecting legitimate
+    // advanced-band longs (Research/22 HM advanced peakLong 15-17). 17 now PASSES; 21 is rejected.
     const plan = validHmPlan();
-    plan.weeks[4].days[0] = longDay(17);
+    plan.weeks[4].days[0] = longDay(21);
     let caught: unknown;
     try { validateComposedPlan(plan, 13.1, 'race-prep', BASE_CTX); }
     catch (e) { caught = e; }
     expect(caught).toBeInstanceOf(PlanValidationError);
-    const viol = (caught as PlanValidationError).violations[0];
-    expect(viol).toMatch(/17mi/);
-    expect(viol).toMatch(/16mi/);
+    expect((caught as PlanValidationError).violations.some(v => /exceeds 20mi limit for HM/.test(v))).toBe(true);
   });
 
   it('F2 — no TAPER phase is REJECTED', () => {
