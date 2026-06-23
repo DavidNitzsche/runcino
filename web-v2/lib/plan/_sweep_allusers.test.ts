@@ -24,7 +24,7 @@ const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6
 const catOf: Record<SimDistance, '5k' | '10k' | 'hm' | 'm' | 'ultra'> = { '5k': '5k', '10k': '10k', half: 'hm', marathon: 'm', '50k': 'ultra', '100k': 'ultra' };
 const WEEKS: Record<SimDistance, number> = { '5k': 10, '10k': 12, half: 14, marathon: 18, '50k': 22, '100k': 24 };
 
-type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string };
+type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string; availableDays?: string[] };
 
 function* matrix(): Generator<Arc> {
   for (const distance of DISTANCES)
@@ -41,6 +41,14 @@ function* matrix(): Generator<Arc> {
             // far-out race (≥26 weeks → maintenance until the build window opens)
             yield { ...common, goalMode: 'race', goalTimeSec: GOAL_SEC[distance], planWeeks: 0, raceDateISO: '2027-03-01' };
           }
+  // GOAL-1 · available_days geometry (the scheduler↔validator dead-end that left a saved goal with
+  // NO plan). Purely geometric, so a reduced cross over distance × constraining set × freq suffices:
+  // adjacent pairs (NOQ-mode fold), tight pairs (GAP-mode downgrade), weekday-only, full-week.
+  const AVAIL_SETS = [['sat', 'sun'], ['mon', 'fri'], ['sun', 'fri'], ['tue', 'thu', 'sat'], ['mon', 'tue', 'wed', 'thu', 'fri']];
+  for (const distance of DISTANCES)
+    for (const availableDays of AVAIL_SETS)
+      for (const weeklyFrequency of [3, 5])
+        yield { goalMode: 'goal', distance, experienceLevel: 'intermediate', weeklyFrequency, weeklyMileageBucket: 25, longestRunBucket: '6-10', goalTimeSec: GOAL_SEC[distance], planWeeks: WEEKS[distance], availableDays };
 }
 
 const FIRM: Record<string, number> = {};
@@ -53,7 +61,7 @@ const arcStr = (a: Arc) => `${a.distance}/${a.experienceLevel}/f${a.weeklyFreque
 function grade(a: Arc) {
   const built = buildSimPlan({
     ...a, startDateISO: '2026-07-06', raceDateISO: a.raceDateISO ?? '', lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
-    raceHistory: [], longRunDay: 'sun', availableDays: [],
+    raceHistory: [], longRunDay: 'sun', availableDays: a.availableDays ?? [],
   } as any);
   if (!built.ok) { firm(`GEN_FAIL: ${built.reason}`.slice(0, 60), a); return; }
 

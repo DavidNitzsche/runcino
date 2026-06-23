@@ -132,6 +132,15 @@ export function scheduleQuality(
       || (s.ok === bestS.ok && s.minSlack === bestS.minSlack && shift < bestShift);
     if (better) { best = c; bestS = s; bestShift = shift; }
   }
+  // GAP-mode (GOAL-1) · if even the best placement leaves a gap unsatisfied (over-constrained by too
+  // few available days — a tight 2-day pair can't give a VO2max session its 2 easy days), DOWNGRADE the
+  // latest intervals to threshold (gap 2→1, which a tight pair CAN satisfy) — a legal recoverable
+  // substitute (Research/00b · threshold needs only 1 easy day), far better than a rejected plan. Recurse
+  // until satisfiable or no intervals remain.
+  if (!bestS.ok && types.lastIndexOf('intervals') >= 0) {
+    const down = types.slice(); down[types.lastIndexOf('intervals')] = 'threshold';
+    return scheduleQuality(best, down, longRunDow, restDow, availableDows);
+  }
   return { dows: best as DOW[], types };
 }
 
@@ -2736,6 +2745,8 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       todayISO,
       trailingAvgWeeklyMi,
       trainingDaysPerWeek: inputs.compose.trainingDaysPerWeek,
+      // GOAL-1 · available_days stranded quality to empty → composer folds to long+easy (valid)
+      qualityStrandedByAvailability: inputs.compose.availableDows != null && (inputs.compose.qualityDows?.length ?? 0) === 0,
     });
   }
 

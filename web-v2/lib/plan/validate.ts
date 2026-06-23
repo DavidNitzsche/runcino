@@ -110,6 +110,10 @@ export interface PlanValidationContext {
    * Cite: Pfitzinger "Advanced Marathoning" §weekly volume escalation.
    */
   trailingAvgWeeklyMi: number | null;
+  /** 2026-06-23 · GOAL-1 · true when available_days constrain quality to empty by construction
+   *  (an adjacent-day pair → spacedQualityDowsFromAvailable returns []). The plan correctly folds to
+   *  long + easy only, so the quality-coverage check is skipped (mirrors trainingDaysPerWeek<=1). */
+  qualityStrandedByAvailability?: boolean;
 }
 
 // ── error type ────────────────────────────────────────────────────────────────
@@ -312,6 +316,11 @@ export function validateComposedPlan(
     // 1-day-a-week runners get a single run (the long/base run), not a separate
     // quality session — they can't have both. Skip the requirement for them.
     if (ctx.trainingDaysPerWeek != null && ctx.trainingDaysPerWeek <= 1) continue;
+    // NOQ-mode (GOAL-1) · when available_days strand quality by construction (e.g. two adjacent days →
+    // spacedQualityDowsFromAvailable returns []), the composer correctly folds to long + easy only
+    // (Research/00a:754 · 48h between hard sessions). Accept that fold — mirrors the trainingDaysPerWeek<=1
+    // allowance — instead of rejecting the ONLY doctrinally-safe plan and leaving the runner with NO plan.
+    if (ctx.qualityStrandedByAvailability) continue;
     if (!week.days.some(d => d.isQuality)) {
       violations.push(
         `Week ${week.startISO} (${week.phase}): no quality sessions prescribed — ` +

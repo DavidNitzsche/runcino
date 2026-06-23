@@ -91,6 +91,7 @@ export interface SimBuildOk {
     todayISO: string;
     trainingDaysPerWeek: number | null;
     trailingAvgWeeklyMi: number | null;
+    qualityStrandedByAvailability?: boolean;
   };
 }
 export type SimBuildResult = SimBuildOk | { ok: false; reason: string };
@@ -241,6 +242,8 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       level, isSteppingStoneToMarathon: false, priorPlanPeakLongMi: null,
       todayISO: startMondayISO, trainingDaysPerWeek,
       trailingAvgWeeklyMi: recentWeeklyMi > 0 ? recentWeeklyMi : null,
+      // GOAL-1 · available_days stranded quality to empty → composer folds to long+easy (valid)
+      qualityStrandedByAvailability: availableDows != null && qualityDows.length === 0,
     },
   };
 }
