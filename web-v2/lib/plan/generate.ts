@@ -1754,7 +1754,28 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     : tierShape;
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
   const targetWeekly = Math.round(peakAnchor * shape.weeklyPctOfPeak);
-  const targetLong = Math.max(8, Math.round(input.recentLongMi * shape.longPctOfPeak));
+  // 2026-06-23 · SP-6 · the maintenance long is bounded by doctrine, not a flat
+  // 8mi floor that over-distances low-mileage runners (a runner whose recent
+  // longest is 5mi was floored to 8mi = 160% of demonstrated capacity). Two
+  // ceilings apply:
+  //  · ≤110% of the runner's recent longest run — a single run >110% of the
+  //    30-day longest raises overuse-injury risk ~64% (Research/00a:752, :745).
+  //  · ≤~30% of weekly volume — the long-run share cap (Research/00a:184, :217).
+  // On a normal-volume week the 30% share is the active ceiling and the long
+  // backs off to the tier's maintenance share of the recent long. On a very low
+  // weekly target 30% is implausibly small for a maintenance hold (a 7mi week →
+  // 2mi long would de-train), so hold at the runner's demonstrated long instead,
+  // still bounded by the 110% progression ceiling. A small coherence floor keeps
+  // the long a real session on the smallest weeks.
+  const LONG_COHERENCE_FLOOR_MI = 4;
+  const longShareCap = Math.round(targetWeekly * 0.30);
+  const progressionCap = input.recentLongMi > 0
+    ? Math.round(input.recentLongMi * 1.10)
+    : LONG_COHERENCE_FLOOR_MI;
+  const desiredLong = Math.round(input.recentLongMi * shape.longPctOfPeak);
+  const targetLong = longShareCap >= LONG_COHERENCE_FLOOR_MI
+    ? Math.max(LONG_COHERENCE_FLOOR_MI, Math.min(desiredLong, progressionCap, longShareCap))
+    : Math.max(LONG_COHERENCE_FLOOR_MI, Math.min(input.recentLongMi, progressionCap));
 
   // 4-week rolling template. Days = tier's daysPerWeek. Rest = 7 -
   // daysPerWeek (so days held even though volume dropped).
@@ -1775,7 +1796,10 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   function maintenanceWeek(weekIdx: number): DayPlan[] {
     const isCutback = weekIdx === 3; // week 4 (zero-indexed) = recovery
     const wkWeekly = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
-    const wkLong = isCutback ? Math.max(8, Math.round(targetLong * 0.80)) : targetLong;
+    // Cutback week steps the long down ~20%, floored at the coherence minimum
+    // (not the old flat 8mi, which kept the cutback long at or above the base
+    // long for low-mileage runners). SP-6.
+    const wkLong = isCutback ? Math.max(LONG_COHERENCE_FLOOR_MI, Math.round(targetLong * 0.80)) : targetLong;
 
     const slots: (DayPlan | null)[] = new Array(7).fill(null);
     // Rest day
