@@ -1138,14 +1138,37 @@ function layoutWeek({
   const easyCount = trainingDaysPerWeek != null
     ? Math.max(0, Math.min(easyCandidates.length, trainingDaysPerWeek - runningPlaced))
     : easyCandidates.length;
-  // Spread the chosen easy days across the candidate slots (avoid clustering
-  // every easy day adjacent to the long run). Even-stride pick.
+  // Place the chosen easy days to MAXIMIZE spacing from the week's hard days
+  // (long + quality), not just spread among candidates in day order.
+  //
+  // 2026-06-22 · the old even-stride pick walked `easyCandidates` in dow order
+  // and took index 0 first, so a SINGLE easy day landed on the lowest empty dow
+  // — for a Sun-long / Tue-quality 3-day week that is Monday, right after the
+  // long run. Result: long + easy back-to-back (Sun→Mon) then a 4-day gap
+  // (Tue–Sat empty) — the "so many down days then back-to-back" pattern. Greedy
+  // farthest-point placement instead: each easy day goes to the candidate whose
+  // circular day-distance to the NEAREST already-occupied running day (long,
+  // quality, or an already-chosen easy) is largest, so a 3-day Sun/Tue week now
+  // puts the easy midweek (Thu). Only the stated-frequency path (easyCount <
+  // candidates) changes; null-frequency fills every slot below, byte-unchanged.
   const easyDowSet = new Set<number>();
   if (easyCount >= easyCandidates.length) {
     easyCandidates.forEach((e) => easyDowSet.add(e.dow));
   } else if (easyCount > 0) {
-    const stride = easyCandidates.length / easyCount;
-    for (let k = 0; k < easyCount; k++) easyDowSet.add(easyCandidates[Math.floor(k * stride)].dow);
+    const occupied = slots.map((s, i) => (s ? i : -1)).filter((i) => i >= 0); // long + quality dows
+    const circDist = (a: number, b: number) => Math.min((a - b + 7) % 7, (b - a + 7) % 7);
+    for (let k = 0; k < easyCount; k++) {
+      let bestDow = -1;
+      let bestScore = -1;
+      for (const cand of easyCandidates) {
+        if (easyDowSet.has(cand.dow)) continue;
+        let nearest = 7;
+        for (const o of occupied) nearest = Math.min(nearest, circDist(cand.dow, o));
+        for (const e of easyDowSet) nearest = Math.min(nearest, circDist(cand.dow, e));
+        if (nearest > bestScore) { bestScore = nearest; bestDow = cand.dow; } // first-wins keeps it deterministic
+      }
+      if (bestDow >= 0) easyDowSet.add(bestDow);
+    }
   }
 
   const mathFloor = 3;
