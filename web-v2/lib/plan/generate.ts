@@ -1000,9 +1000,22 @@ function layoutWeek({
   const longFloor = (phase !== 'TAPER' && recentLongMi && recentLongMi >= 8)
     ? Math.round(recentLongMi - (isCutback ? 2 : 0))
     : 0;
+  // 2026-06-23 · VAR-02 · ANCHOR the long to the runner's recent longest run and ramp it
+  // up, so the longest-run input actually drives the long (especially early). Without this,
+  // week 1 jumps to weeklyMi×longShare — a runner whose longest is 3mi got an 8mi long in
+  // week 1 (4× capacity), and the 0-3/3-6/6-10 buckets produced byte-identical plans. Ramp
+  // ceiling = recentLongMi × 1.20^weekIdx (under the 30% WoW the smoother allows): a
+  // low-recent-long runner starts near capacity and builds toward the cap; an established
+  // runner's recentLongMi is high enough that the ceiling clears the cap immediately and
+  // never binds (byte-unchanged — David is cap-bound). recentLongMi 0 (no self-report) →
+  // no anchor (volume-derived size as before).
+  const rampCeiling = recentLongMi && recentLongMi > 0
+    ? Math.max(longFloor, Math.round(recentLongMi * Math.pow(1.20, weekIdx + 1)))
+    : longCap;
   const longMi = Math.min(
     Math.max(longMiRaw, longFloor),
     longCap,
+    rampCeiling,
   );
   // 2026-06-03 · mid-block doctrine RULE 2 (quality distance floor).
   // Floor qualityMiEach at the runner's recent quality-day distance ·
