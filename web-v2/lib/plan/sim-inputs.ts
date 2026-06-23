@@ -39,7 +39,7 @@ import {
 } from './generate';
 import { lookupTierTarget, pickPlanMode, type PlanMode } from './goal-tiers';
 import { tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
-import { vdotFromRace, tPaceFromVdot } from '@/lib/training/vdot';
+import { vdotFromRace, tPaceFromVdot, predictRaceTime } from '@/lib/training/vdot';
 import {
   SIM_DISTANCE_MI,
   recentWeeklyMiFromBucket,
@@ -183,7 +183,12 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   // PACE-3 · guard an absurd implied pace (e.g. a wheel hours-truncation putting an HM
   // time onto a 5K goal → ~30 min/mi threading into every workout). Treat an implausibly
   // slow sub-HM goal as absent → it falls to the currentT fitness anchor below.
-  if (goalSec != null && raceDistanceMi < 13.1 && goalSec / raceDistanceMi > 900) goalSec = null;
+  // GOAL-4 · null an off-table goal (impossibly slow sub-HM, or off-the-top faster-than-VDOT-85) so
+  // it can't thread impossible paces; falls to the currentT anchor (VAR-05). Mirrors the loader.
+  if (goalSec != null && (
+    (raceDistanceMi < 13.1 && goalSec / raceDistanceMi > 900) ||
+    (vdotFromRace(goalSec, raceDistanceMi) == null && goalSec < (predictRaceTime(85, raceDistanceMi) ?? 0))
+  )) goalSec = null;
   const goalPaceSec = goalSec ? Math.round(goalSec / raceDistanceMi) : null;
   // VAR-05 · by-feel (no goal) or ultra (PACE-5 → tPaceFromGoal null) anchors T to the
   // runner's actual fitness (currentT), never the flat 480s/mi literal. Mirrors composePlan.

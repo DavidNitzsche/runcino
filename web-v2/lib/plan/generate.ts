@@ -28,7 +28,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRace, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
+import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -2101,7 +2101,12 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
 
   // Pfitz: week 1 = 25-40% of peak (5K/10K) or 30% (M). Week 2 (M only) = 50-60%.
-  const wkPctSeq = lastCat === 'm' ? [0.30, 0.55] : lastCat === 'ultra' ? [0.25, 0.40, 0.55] : [0.40];
+  // RECOVERY-1 (2026-06-23) · reverse taper per Research/00b:256-263 (wk1 10-20% → wk2 30-40% →
+  // wk3 50-60% → wk4 70-80% of normal). Was [0.30,0.55] for marathon — wk1 ~2× too hot AND 2 weeks
+  // too short (research returns to quality at week 3-4, not week 2).
+  const wkPctSeq = (lastCat === 'm' || lastCat === 'ultra') ? [0.15, 0.35, 0.55, 0.75]
+    : lastCat === 'hm' ? [0.20, 0.40]
+    : [0.30];
   const weeks: ComposedWeek[] = [];
   const blocks: BlockPlan = {
     totalWeeks: recoveryWeeks || 1,
@@ -2794,9 +2799,12 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       maxHr: inputs.compose.maxHr,
       // 2026-06-09 state-audit fix · goal pace for the race-day target.
       goalPaceSec: inputs.compose.goalPaceSec,
-      // R3 · 5K/10K race goals get true VO2 I-pace intervals (not the cruise
-      // default). Half/marathon keep the conservative ceiling-work pace.
-      goalIPaceEligible: ['5k', '10k'].includes(distanceCategoryOf(inputs.compose.raceDistanceMi)),
+      // R3 + PACE-I-1 (2026-06-23) · 5K/10K/HM race goals get true VO2max I-pace intervals. HM was
+      // excluded, but its quality day is explicitly labeled "6×800m @ I pace" (inlinePrescriptions) —
+      // with iPace null it shipped the cruise T−18 default: a +6..+28 s/mi too-slow "VO2max" rep that
+      // contradicts its own label (Research/22:187,194,206,213 · HM I-reps ≈ 5K-10K race pace).
+      // Marathon/ultra keep the cruise default (their label is "I-T transition", not "@ I pace").
+      goalIPaceEligible: ['5k', '10k', 'hm'].includes(distanceCategoryOf(inputs.compose.raceDistanceMi)),
       sealedSnapshot,
       authoredState: {
         ...composed.authoredState,
@@ -2936,7 +2944,16 @@ async function loadGeneratorInputs(
   // onto a 5K goal) can imply a >15:00/mi "race pace" that threads an absurd 30-min/mi
   // threshold into every workout. Treat an implausibly slow sub-HM goal as absent → it
   // falls to the currentT fitness anchor (VAR-05) instead of the bogus pace.
-  if (goalSec != null && raceDistanceMi < 13.1 && goalSec / raceDistanceMi > 900) goalSec = null;
+  // GOAL-4 (2026-06-23) · null a physiologically OFF-TABLE goal so it can't thread impossible paces
+  // into the plan — either implausibly SLOW on a sub-HM (a wheel hours-truncation → ~30 min/mi) OR
+  // OFF-THE-TOP (a fast wheel truncation: 45:00 entered for a 1:45 HM → 3:21/mi, or a sub-2:00
+  // marathon → 4:17/mi). vdotFromRace returns null outside VDOT[30,85]; the predictRaceTime(85,…)
+  // compare keeps only the off-the-TOP side (faster than world-class), leaving legit slow goals. A
+  // nulled goal falls to the currentT fitness anchor (VAR-05). Cite Research/01:138-145.
+  if (goalSec != null && (
+    (raceDistanceMi < 13.1 && goalSec / raceDistanceMi > 900) ||
+    (vdotFromRace(goalSec, raceDistanceMi) == null && goalSec < (predictRaceTime(85, raceDistanceMi) ?? 0))
+  )) goalSec = null;
   const goalPaceSec = goalSec ? Math.round(goalSec / raceDistanceMi) : null;
 
   // 2. User prefs · layout
