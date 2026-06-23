@@ -114,6 +114,9 @@ export interface PlanValidationContext {
    *  (an adjacent-day pair → spacedQualityDowsFromAvailable returns []). The plan correctly folds to
    *  long + easy only, so the quality-coverage check is skipped (mirrors trainingDaysPerWeek<=1). */
   qualityStrandedByAvailability?: boolean;
+  /** 2026-06-23 · CC-2 · onboarding-seeded recent weekly mileage (the cold-start base). Used as the
+   *  peak-vs-trailing ramp-check base when trailingAvg is null, so cold-start and Strava agree. */
+  recentWeeklyMi?: number | null;
 }
 
 // ── error type ────────────────────────────────────────────────────────────────
@@ -226,22 +229,24 @@ export function validateComposedPlan(
   // RACE-PREP only — the peak-vs-trailing check is about the BUILD ramp; maintenance/recovery hold
   // near current volume (no ramp), so applying it there false-rejected a far-race runner's 4-week
   // maintenance block (matches the §4 taper + §6 WoW race-prep gating).
-  if (mode === 'race-prep' && ctx.trailingAvgWeeklyMi != null && ctx.trailingAvgWeeklyMi > 0) {
+  // CC-2 (2026-06-23) · check against the best available base — the Strava trailing avg OR the
+  // onboarding-seeded recentWeeklyMi. Previously this gated on trailingAvg ONLY, so a cold-start
+  // signup (trailing null) skipped the ramp check entirely while the SAME runner, once Strava-
+  // connected (trailing set), was refused — the plan vanished on connect (bucket-0 marathon). Using
+  // max(seeded, trailing) makes cold and Strava AGREE (both cleanly refuse an infeasible ramp, e.g.
+  // a 3mpw marathon, up front). The ceiling is BUILD-LENGTH-AWARE — base × 1.10^buildWeeks (×1.15
+  // deload/realized margin, 8× anomaly cap) — tracking the curve's own ≤10%/week ramp doctrine
+  // (Pfitzinger); a flat 1.65× rejected any build >5 climb weeks. The per-week WoW check (§6) still
+  // bounds each step. Race-prep only — maintenance/recovery hold near current volume (no ramp).
+  const rampBase = Math.max(ctx.recentWeeklyMi ?? 0, ctx.trailingAvgWeeklyMi ?? 0);
+  if (mode === 'race-prep' && rampBase > 0) {
     const peakWeeklyMi = Math.max(0, ...weeks.map(w => w.weeklyMi ?? 0));
-    // 2026-06-23 · the ceiling must be BUILD-LENGTH-AWARE, not a flat 1.65×. The volume curve ramps
-    // at ≤10%/week (Pfitzinger escalation doctrine), so a plan that ramps SAFELY over N build weeks
-    // legitimately reaches trailing × 1.10^N — and the flat 1.65× rejected any build longer than ~5
-    // climb weeks (1.10^5 = 1.61), denying a plan to ~1,800 Strava-connected runners whose every
-    // week was a safe ≤10% step. Track the doctrine: ceiling = trailing × 1.10^buildWeeks (× a 1.15
-    // margin for deload/realized noise), capped at 8× as a gross-anomaly backstop. The per-week WoW
-    // check (§6) still bounds each individual step.
     const buildWeeks = weeks.filter(w => w.phase !== 'TAPER' && !w.isRaceWeek).length;
-    const ceiling = ctx.trailingAvgWeeklyMi * Math.min(8.0, Math.pow(1.10, Math.max(1, buildWeeks)) * 1.15);
+    const ceiling = rampBase * Math.min(8.0, Math.pow(1.10, Math.max(1, buildWeeks)) * 1.15);
     if (peakWeeklyMi > ceiling) {
       violations.push(
         `Peak weekly volume ${Math.round(peakWeeklyMi)}mi exceeds the ${buildWeeks}-week safe-ramp ceiling ` +
-        `${Math.round(ceiling)}mi (trailing ${Math.round(ctx.trailingAvgWeeklyMi)}mi) — ` +
-        `plan ramp is unsupported by current fitness`,
+        `${Math.round(ceiling)}mi (base ${Math.round(rampBase)}mi) — plan ramp is unsupported by current fitness`,
       );
     }
   }

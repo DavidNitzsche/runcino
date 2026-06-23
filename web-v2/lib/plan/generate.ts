@@ -2747,6 +2747,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       trainingDaysPerWeek: inputs.compose.trainingDaysPerWeek,
       // GOAL-1 · available_days stranded quality to empty → composer folds to long+easy (valid)
       qualityStrandedByAvailability: inputs.compose.availableDows != null && (inputs.compose.qualityDows?.length ?? 0) === 0,
+      recentWeeklyMi: inputs.compose.recentWeeklyMi, // CC-2 · cold-start ramp base
     });
   }
 
