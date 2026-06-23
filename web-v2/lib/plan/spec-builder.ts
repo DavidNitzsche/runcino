@@ -173,6 +173,10 @@ export function buildWorkoutSpec(
   // maintenance) keep the cruise-interval behavior unchanged.
   // Cite: Research/01-pace-zones-vdot.md §Daniels-I (I-pace ≈ 5K race pace).
   iPaceSec: number | null = null,
+  // 2026-06-23 · PACE-E-1 · current-fitness T anchor for the EASY/long/recovery bands (effort runs ·
+  // must track current fitness, not the goal-blended tPaceSec). null → uses tPaceSec (byte-identical).
+  // Quality (threshold/tempo/intervals/race) stays on tPaceSec.
+  easyAnchorTSec: number | null = null,
 ): SpecBuildResult {
   // 2026-06-02 · parse the prescription up front (e.g. "6×800m @ I
   // pace · 90s jog" → {reps:6, repDistanceMi:0.497, restS:90}). When
@@ -223,8 +227,12 @@ export function buildWorkoutSpec(
   const withRules = contingencyRules ? { rules: contingencyRules } : {};
   // Research/01 §VDOT-50 table: E = T+104 to T+156. T+80 floor lands within 7s of
   // Daniels' E minimum, moving easy runs out of GA/steady-state territory.
-  const easyLo = tPaceSec + 80, easyHi = tPaceSec + 120;
-  const longLo = tPaceSec + 55, longHi = tPaceSec + 90;
+  // PACE-E-1 · easy/long/recovery anchor to CURRENT fitness (easyAnchorTSec), not the goal-blended
+  // tPaceSec — otherwise a sub-fitness goal ramps "easy" faster every week (cold-start: easy can pass
+  // current MP, a physiological impossibility). Defaults to tPaceSec when unthreaded (byte-identical).
+  const easyAnchorT = easyAnchorTSec ?? tPaceSec;
+  const easyLo = easyAnchorT + 80, easyHi = easyAnchorT + 120;
+  const longLo = easyAnchorT + 55, longHi = easyAnchorT + 90;
   // PACE-T-1 (2026-06-23, David approved) · a "continuous tempo" is run AT threshold (Research/04:159,
   // 164,169 · "Continuous tempo | T"). The old +12 was the SEPARATE sub-threshold band (Research/04:14,
   // 161) shipped under a threshold label + family — the runner saw a threshold-effort label over a
@@ -235,7 +243,7 @@ export function buildWorkoutSpec(
   // rather than true VO2max intervals. Appropriate for a 40-50 mpw runner who
   // cannot absorb full Daniels I volume without injury risk. Cite: Research/01 §Daniels-I.
   const interval = tPaceSec - 18;
-  const recovery = tPaceSec + 100;      // very easy
+  const recovery = easyAnchorT + 100;   // very easy · PACE-E-1 · current-fitness anchor
   const mp = tPaceSec + 18;             // marathon pace
 
   switch (type) {
