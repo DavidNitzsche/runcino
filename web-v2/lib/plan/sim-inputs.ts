@@ -29,6 +29,7 @@ import {
   daysBetween,
   inlinePrescriptions,
   distanceCategoryOfPublic,
+  type ResolvedPrescriptions,
   composePlan,
   composeMaintenancePlan,
   composeRecoveryPlan,
@@ -93,7 +94,7 @@ export interface SimBuildOk {
 export type SimBuildResult = SimBuildOk | { ok: false; reason: string };
 
 /** Native onboarding answers → composed plan via the real engine. */
-export function buildSimPlan(sim: SimInputs): SimBuildResult {
+export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedPrescriptions; rxRaceSpecific: ResolvedPrescriptions }): SimBuildResult {
   const startMondayISO = sim.startDateISO;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startMondayISO)) return { ok: false, reason: 'invalid start date' };
 
@@ -177,8 +178,11 @@ export function buildSimPlan(sim: SimInputs): SimBuildResult {
   }
 
   const cat = distanceCategoryOfPublic(raceDistanceMi);
-  const rxQuality = inlinePrescriptions(cat);
-  const rxRaceSpecific = inlinePrescriptions(cat);
+  // FID-2 · prefer the real level + phase-aware prescriptions (resolved by the route
+  // from workout_library, matching the production engine); fall back to the inline
+  // catalog when not provided (e.g. unit tests with no DB).
+  const rxQuality = rxOverride?.rxQuality ?? inlinePrescriptions(cat);
+  const rxRaceSpecific = rxOverride?.rxRaceSpecific ?? inlinePrescriptions(cat);
 
   let composed: ComposePlanResult;
   if (mode === 'race-prep') {
