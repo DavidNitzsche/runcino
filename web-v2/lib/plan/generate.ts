@@ -1668,7 +1668,16 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // (conservativeVdotFromMileage ≥30) so the 480 fallback goes dead. PACE-5 · ultra
   // (≥31mi) also makes tPaceFromGoal return null → ultra T anchors to currentT here, not the
   // bogus goalPace−18. Cite: Research/01 §Daniels-T (T-pace is a function of VDOT).
-  const goalT = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? currentT ?? input.tPaceSec;
+  // GOAL-2 (2026-06-23) · clamp goal-T to an ACHIEVABLE floor so the per-week blend never prescribes
+  // paces faster than current fitness + a safe seasonal VDOT gain (Research/01:314-321 · retest deltas
+  // ~+2-3; scale with build length, cap ~+6). An in-table but over-ambitious goal (e.g. +8 VDOT in one
+  // block) otherwise drives every quality day to an unreachable pace. The aspirational goal stays on
+  // the UI; only the prescribed paces are floored. Derived from CURRENT fitness (never goalVdot, which
+  // is null off-table). Byte-safe for an at/near-goal runner (achievableFloorT faster ⇒ max keeps goalT).
+  const goalTraw = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? currentT ?? input.tPaceSec;
+  const maxSeasonalVdotGain = Math.min(6, 2 + totalWeeks * 0.22);
+  const achievableFloorT = tPaceFromVdot(estimatedCurrentVdot + maxSeasonalVdotGain);
+  const goalT = (achievableFloorT != null && goalTraw != null) ? Math.max(goalTraw, achievableFloorT) : goalTraw;
 
   // Goal-realism guard: flag when the entered goal implies a VDOT >15% above
   // the conservative current estimate. Written to authoredState for the plan
@@ -1676,9 +1685,18 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const goalVdot = input.goalSec != null
     ? vdotFromRace(input.goalSec, input.raceDistanceMi)
     : null;
+  // GOAL-3 (2026-06-23) · DIRECTION-AWARE realism flag. goalVdot is null OFF-TABLE (VDOT>85) — i.e. the
+  // MOST ambitious goals — so the old `goalVdot != null && >est×1.15` treated those (off-the-top) as
+  // NOT flagged (the flag inverted for the most absurd goals). When goalVdot is null, compare the goal
+  // TIME to the current-fitness predicted time: faster ⇒ off-the-top ⇒ flag; slower ⇒ off-the-bottom ⇒
+  // don't. (GOAL-2 already floors the prescribed paces; this makes the surfaced flag correct too.)
+  const currentPredicted = input.goalSec != null ? predictRaceTime(estimatedCurrentVdot, input.raceDistanceMi) : null;
+  const realismFlag = goalVdot != null
+    ? goalVdot > estimatedCurrentVdot * 1.15
+    : (input.goalSec != null && currentPredicted != null && input.goalSec < currentPredicted);
   const goalRealism: { flag: boolean; goalVdot?: number; estimatedCurrentVdot?: number } =
-    goalVdot != null && goalVdot > estimatedCurrentVdot * 1.15
-      ? { flag: true, goalVdot, estimatedCurrentVdot }
+    realismFlag
+      ? { flag: true, ...(goalVdot != null ? { goalVdot } : {}), estimatedCurrentVdot }
       : { flag: false };
 
   function tPaceForWeek(weekIdx: number, phase: string): number | null {
@@ -2105,6 +2123,10 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     : input.lastRaceFinished.distanceMi <= 30 ? 'm'
     : 'ultra';
   const recoveryWeeks = POST_RACE_RECOVERY_WEEKS[lastCat];
+  // RECOVERY-2 (2026-06-23) · a mid-recovery REGEN must not restart at week 1. Offset into the reverse
+  // taper by whole weeks elapsed since the race finished, and emit only the weeks that remain.
+  const recoveryOff = Math.floor(Math.max(0, daysBetween(input.lastRaceFinished.date, input.startMondayISO)) / 7);
+  const remainingWeeks = Math.max(1, recoveryWeeks - recoveryOff);
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
 
   // Pfitz: week 1 = 25-40% of peak (5K/10K) or 30% (M). Week 2 (M only) = 50-60%.
@@ -2116,17 +2138,17 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     : [0.30];
   const weeks: ComposedWeek[] = [];
   const blocks: BlockPlan = {
-    totalWeeks: recoveryWeeks || 1,
+    totalWeeks: remainingWeeks,
     phases: [{
       label: 'RECOVERY',
-      weeks: recoveryWeeks || 1,
+      weeks: remainingWeeks,
       rationale: `Post-race recovery · ${input.lastRaceFinished.name}. Easy running only · no quality.`,
       citation: 'Research/00a-distance-running-training.md §recovery + Pfitzinger Advanced Marathoning §Post-race recovery',
     }],
   };
 
-  for (let wi = 0; wi < (recoveryWeeks || 1); wi++) {
-    const wkPct = wkPctSeq[wi] ?? wkPctSeq[wkPctSeq.length - 1];
+  for (let wi = 0; wi < (remainingWeeks); wi++) {
+    const wkPct = wkPctSeq[wi + recoveryOff] ?? wkPctSeq[wkPctSeq.length - 1]; // RECOVERY-2 · elapsed offset
     const wkWeekly = Math.round(peakAnchor * wkPct);
     const slots: (DayPlan | null)[] = new Array(7).fill(null);
     slots[input.restDow] = { dow: input.restDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Recover.' };
@@ -3091,7 +3113,7 @@ async function loadGeneratorInputs(
          FROM profile WHERE user_uuid = $1 LIMIT 1`,
       [userId],
     ).catch(() => ({ rows: [] }))).rows[0];
-    if (recentMi <= 0) recentMi = Number(selfReport?.avg ?? selfReport?.target ?? 0) || 0;
+    if (recentMi <= 0) { recentMi = Number(selfReport?.avg ?? selfReport?.target ?? 0) || 0; if (recentMi > 50) recentMi = 50; } // CC-6 · collapse a 55 self-report target to the sim/gate's 50 cap (50 vs 55 yield identical paces)
     if (recentLong <= 0) recentLong = Number(selfReport?.long ?? 0) || 0;
   }
   // COH-1 · clamp the reported longest run to be coherent with weekly volume (the long anchors
