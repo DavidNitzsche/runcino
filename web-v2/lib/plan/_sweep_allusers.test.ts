@@ -24,7 +24,7 @@ const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6
 const catOf: Record<SimDistance, '5k' | '10k' | 'hm' | 'm' | 'ultra'> = { '5k': '5k', '10k': '10k', half: 'hm', marathon: 'm', '50k': 'ultra', '100k': 'ultra' };
 const WEEKS: Record<SimDistance, number> = { '5k': 10, '10k': 12, half: 14, marathon: 18, '50k': 22, '100k': 24 };
 
-type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string; availableDays?: string[] };
+type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string; availableDays?: string[]; bestRecentVdotOverride?: number };
 
 function* matrix(): Generator<Arc> {
   for (const distance of DISTANCES)
@@ -49,6 +49,18 @@ function* matrix(): Generator<Arc> {
     for (const availableDays of AVAIL_SETS)
       for (const weeklyFrequency of [3, 5])
         yield { goalMode: 'goal', distance, experienceLevel: 'intermediate', weeklyFrequency, weeklyMileageBucket: 25, longestRunBucket: '6-10', goalTimeSec: GOAL_SEC[distance], planWeeks: WEEKS[distance], availableDays };
+  // CC-5 · elite-tier coverage — the 5 elite (cat,tier) rows are otherwise never instantiated (a single
+  // moderate GOAL_SEC + by-feel only reaches intermediate/advanced). Elite goal × advanced experience
+  // (so the clamp doesn't fight) × high mileage so the band is reachable.
+  const ELITE_GOAL: Record<SimDistance, number> = { '5k': 1000, '10k': 2050, half: 4650, marathon: 9300, '50k': 16200, '100k': 39000 };
+  for (const distance of DISTANCES)
+    yield { goalMode: 'goal', distance, experienceLevel: 'advanced', weeklyFrequency: 6, weeklyMileageBucket: 45, longestRunBucket: '10+', goalTimeSec: ELITE_GOAL[distance], planWeeks: WEEKS[distance] };
+  // CC-4 · PR-seeded pace path (bestRecentVdotOverride) — the matrix otherwise always passes the empty
+  // raceHistory, so the fitness-anchored pace path ships ungraded. A slow + a fast fitness signal: a
+  // fast PR on a low base must not push peak above the safe ramp, and paces must stay sane.
+  for (const distance of DISTANCES)
+    for (const bestRecentVdotOverride of [38, 55])
+      yield { goalMode: 'goal', distance, experienceLevel: 'intermediate', weeklyFrequency: 5, weeklyMileageBucket: 25, longestRunBucket: '6-10', goalTimeSec: GOAL_SEC[distance], planWeeks: WEEKS[distance], bestRecentVdotOverride };
 }
 
 const FIRM: Record<string, number> = {};
