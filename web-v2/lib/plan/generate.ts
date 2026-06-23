@@ -719,7 +719,7 @@ export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
  * table. Falls back to the inline catalog on any miss so plan generation
  * never blocks.
  */
-async function resolvePrescriptions(
+export async function resolvePrescriptions(
   cat: DistCategory,
   phase: 'quality' | 'race_specific',
   level: LevelKey,
