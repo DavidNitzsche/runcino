@@ -62,12 +62,15 @@ export const BUILD_WINDOW_WEEKS: Record<DistCategory, number> = {
  * Cite: Pfitzinger Advanced Marathoning §"Post-race recovery"
  * Cite: Daniels Running Formula §"Recovery after racing"
  */
+// 2026-06-23 · RECOVERY-1 · post-race recovery duration per Research/00b:197-208 (marathon 21-28
+// days / return to quality wk3-4; HM 10-14 days). Was hm:1/m:2 — ~2 weeks too short → under-recovery
+// (this composer's own header warns under-recovery causes overtraining 80% of the time).
 export const POST_RACE_RECOVERY_WEEKS: Record<DistCategory, number> = {
   '5k': 0,    // 2-3 days easy, no full week needed
   '10k': 1,
-  'hm': 1,
-  'm': 2,
-  'ultra': 3,
+  'hm': 2,
+  'm': 4,
+  'ultra': 4,
 };
 
 /**
