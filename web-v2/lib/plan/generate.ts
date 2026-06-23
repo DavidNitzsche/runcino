@@ -1026,18 +1026,23 @@ function layoutWeek({
   const longFloor = (longCat !== 'm' && longCat !== 'ultra' && phase !== 'TAPER' && recentLongMi && recentLongMi >= 8)
     ? Math.round(recentLongMi - (isCutback ? 2 : 0))
     : 0;
-  // 2026-06-23 · VAR-02 · ANCHOR the long to the runner's recent longest run and ramp it
-  // up, so the longest-run input actually drives the long (especially early). Without this,
-  // week 1 jumps to weeklyMi×longShare — a runner whose longest is 3mi got an 8mi long in
-  // week 1 (4× capacity), and the 0-3/3-6/6-10 buckets produced byte-identical plans. Ramp
-  // ceiling = recentLongMi × 1.20^weekIdx (under the 30% WoW the smoother allows): a
-  // low-recent-long runner starts near capacity and builds toward the cap; an established
-  // runner's recentLongMi is high enough that the ceiling clears the cap immediately and
-  // never binds (byte-unchanged — David is cap-bound). recentLongMi 0 (no self-report) →
-  // no anchor (volume-derived size as before).
-  const rampCeiling = recentLongMi && recentLongMi > 0
-    ? Math.max(longFloor, Math.round(recentLongMi * Math.pow(1.20, weekIdx + 1)))
-    : longCap;
+  // 2026-06-23 · VAR-02 + A1 · ANCHOR the long to the runner's recent longest run and ramp it
+  // GRADUALLY. The longest-run input drives the early long (without this, week 1 jumped to
+  // weeklyMi×longShare — a 3mi-longest runner got an 8mi week-1 long, 4× capacity, and the
+  // 0-3/3-6/6-10 buckets were byte-identical). A1 fixes the ramp SHAPE: seed week-0 at ≤110% of
+  // the REAL recent long (Research/00a:752 · a single run >110% of prior-30d = 64% injury risk),
+  // then climb at ≤10%/step toward the doctrine cap, reaching it ~3-4 weeks before the race
+  // (Research/22:228 · the long peaks LATE). The old 1.20^(weekIdx+1) ceiling saturated the cap by
+  // BASE week 2 (parked at 19 for the whole build) and front-loaded a 117%-of-recent week-1 long.
+  // recentLongMi 0 (no self-report) → no anchor (volume-derived size as before).
+  const rampCeiling = (() => {
+    if (!recentLongMi || recentLongMi <= 0) return longCap;
+    const seed = Math.round(recentLongMi * 1.10);              // week-0 ≤110% of recent
+    const stepCeil = recentLongMi * Math.pow(1.10, weekIdx);   // ≤10%/step geometric climb
+    const peakWeekIdx = Math.max(1, totalWeeks - 4);           // reach the cap ~3-4 wk before race
+    const linearTarget = seed + Math.max(0, longCap - seed) * Math.min(1, weekIdx / peakWeekIdx);
+    return Math.max(longFloor, seed, Math.round(Math.min(stepCeil, linearTarget)));
+  })();
   const longMi = Math.min(
     Math.max(longMiRaw, longFloor),
     longCap,
