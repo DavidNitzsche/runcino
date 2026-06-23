@@ -44,7 +44,11 @@ const PHASE_COLOR: Record<string, string> = { BASE: C.green, QUALITY: C.gold, 'R
 const MODE_LABEL: Record<string, string> = { 'race-prep': 'RACE-PREP', maintenance: 'MAINTENANCE', recovery: 'RECOVERY' };
 const DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const LEVEL_DEFAULT_VDOT: Record<string, number> = { beginner: 38, intermediate: 46, advanced: 54 };
+// Native SetGoalSheet default goal times per distance (F_Sheets.swift) — used when
+// there is no measured fitness. Native has NO experience→VDOT map (PACE-2).
+const NATIVE_DEFAULT_GOAL_SEC: Record<SimDistance, number> = {
+  '5k': 1500, '10k': 3000, half: 6300, marathon: 12600, '50k': 18000, '100k': 32400,
+};
 
 const isoOf = (d: Date) => d.toISOString().slice(0, 10);
 function plusDays(iso: string, n: number): string { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return isoOf(d); }
@@ -63,14 +67,17 @@ function bestVdotFromHistory(rh: SimRaceHistoryEntry[]): number | undefined {
   for (const e of rh) { const v = vdotFromRace(e.timeSec, SIM_DISTANCE_MI[e.distance]); if (v != null && (best === undefined || v > best)) best = v; }
   return best;
 }
-function currentVdot(level: string, rh: SimRaceHistoryEntry[]): number {
-  return bestVdotFromHistory(rh) ?? LEVEL_DEFAULT_VDOT[level] ?? 46;
-}
-/** Seed the goal-time wheel from VDOT + the plan option's gain — mirrors native SetGoalSheet. */
-function seedGoalSec(distance: SimDistance, weeks: number, level: string, rh: SimRaceHistoryEntry[]): number | null {
-  const opt = PLAN_OPTIONS[distance].find((o) => o.weeks === weeks) ?? PLAN_OPTIONS[distance][0];
-  const t = predictRaceTime(currentVdot(level, rh) + (opt?.vdotGain ?? 0), SIM_DISTANCE_MI[distance]);
-  return t ? Math.floor(t / 5) * 5 : null;
+/** Seed the goal-time wheel the native way: from measured fitness (best race-history
+ *  VDOT) + the plan option's projected gain, else the static per-distance default.
+ *  Experience does NOT seed the time — native has no experience→VDOT map (PACE-2). */
+function seedGoalSec(distance: SimDistance, weeks: number, rh: SimRaceHistoryEntry[]): number | null {
+  const measured = bestVdotFromHistory(rh);
+  if (measured != null) {
+    const opt = PLAN_OPTIONS[distance].find((o) => o.weeks === weeks) ?? PLAN_OPTIONS[distance][0];
+    const t = predictRaceTime(measured + (opt?.vdotGain ?? 0), SIM_DISTANCE_MI[distance]);
+    if (t) return Math.floor(t / 5) * 5;
+  }
+  return NATIVE_DEFAULT_GOAL_SEC[distance];
 }
 
 export default function PlanSimulatorPage() {
@@ -79,7 +86,7 @@ export default function PlanSimulatorPage() {
     const start = isoOf(new Date());
     return {
       goalMode: 'goal', distance: 'marathon', startDateISO: start,
-      planWeeks: 20, goalTimeSec: seedGoalSec('marathon', 20, 'intermediate', []),
+      planWeeks: 20, goalTimeSec: seedGoalSec('marathon', 20, []),
       raceDateISO: plusDays(start, 112), lastRaceFinishedDaysAgo: null, lastRaceDistance: null,
       experienceLevel: 'intermediate', weeklyFrequency: 5, weeklyMileageBucket: 25, longestRunBucket: '6-10',
       raceHistory: [], longRunDay: 'sun', availableDays: null,
@@ -95,12 +102,12 @@ export default function PlanSimulatorPage() {
 
   // Pick a recommended plan-weeks option → also reseed the goal-time wheel (native behavior).
   function pickWeeks(weeks: number) {
-    setSim((s) => ({ ...s, planWeeks: weeks, goalTimeSec: seedGoalSec(s.distance, weeks, s.experienceLevel, s.raceHistory) }));
+    setSim((s) => ({ ...s, planWeeks: weeks, goalTimeSec: seedGoalSec(s.distance, weeks, s.raceHistory) }));
   }
   function pickGoalDistance(distance: SimDistance) {
     setSim((s) => {
       const weeks = PLAN_OPTIONS[distance].find((o) => o.weeks === s.planWeeks)?.weeks ?? PLAN_OPTIONS[distance][Math.min(1, PLAN_OPTIONS[distance].length - 1)].weeks;
-      return { ...s, distance, planWeeks: weeks, goalTimeSec: seedGoalSec(distance, weeks, s.experienceLevel, s.raceHistory) };
+      return { ...s, distance, planWeeks: weeks, goalTimeSec: seedGoalSec(distance, weeks, s.raceHistory) };
     });
   }
 
@@ -123,12 +130,55 @@ export default function PlanSimulatorPage() {
   const plan = result?.plan;
   const derived = result?.derived;
   const validation = result?.validation;
-  const cols = useMemo(() => {
-    const startDow = plan?.weeks?.[0] ? dowOf(plan.weeks[0].startISO) : dowOf(sim.startDateISO);
-    return Array.from({ length: 7 }, (_, k) => (startDow + k) % 7);
-  }, [plan, sim.startDateISO]);
-  const peakMi = plan ? Math.max(0, ...plan.weeks.map((w) => w.weeklyMi)) : 0;
-  const totalMi = plan ? Math.round(plan.weeks.reduce((s, w) => s + w.weeklyMi, 0)) : 0;
+  // Re-bucket the plan into fixed Sun→Sat calendar weeks (David: "the week should go
+  // sun-sat"). Each plan day is placed on its real date; rows are calendar weeks so
+  // dates read left-to-right. Per-row mileage = the SCHEDULED day-sum (FID-3), never
+  // the phantom weeklyMi budget.
+  const calendar = useMemo(() => {
+    type CalRow = { weekNum: number; phase: string; isRaceWeek: boolean; mileage: number; cells: Array<{ date: string; day: SimDay | null }> };
+    if (!plan) return [] as CalRow[];
+    const byDate = new Map<string, { day: SimDay; phase: string; isRaceWeek: boolean }>();
+    let minDate = '', maxDate = '';
+    for (const w of plan.weeks) {
+      const wStartDow = dowOf(w.startISO);
+      for (const d of w.days) {
+        const date = plusDays(w.startISO, (d.dow - wStartDow + 7) % 7);
+        byDate.set(date, { day: d, phase: w.phase, isRaceWeek: w.isRaceWeek });
+        if (!minDate || date < minDate) minDate = date;
+        if (!maxDate || date > maxDate) maxDate = date;
+      }
+    }
+    if (!minDate) return [] as CalRow[];
+    const rows: CalRow[] = [];
+    let cur = plusDays(minDate, -dowOf(minDate)); // Sunday on/before the first plan day
+    let wk = 1;
+    while (cur <= maxDate) {
+      const cells: Array<{ date: string; day: SimDay | null }> = [];
+      let mileage = 0, isRaceWeek = false, longPhase = '';
+      const phaseCount: Record<string, number> = {};
+      for (let k = 0; k < 7; k++) {
+        const date = plusDays(cur, k);
+        const entry = byDate.get(date);
+        cells.push({ date, day: entry?.day ?? null });
+        if (entry) {
+          mileage += entry.day.type === 'race' ? 0 : entry.day.distanceMi;
+          phaseCount[entry.phase] = (phaseCount[entry.phase] ?? 0) + 1;
+          if (entry.isRaceWeek) isRaceWeek = true;
+          if (entry.day.isLong) longPhase = entry.phase;
+        }
+      }
+      if (cells.some((c) => c.day)) {
+        const phase = longPhase || (Object.entries(phaseCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '');
+        rows.push({ weekNum: wk++, phase, isRaceWeek, mileage: Math.round(mileage * 10) / 10, cells });
+      }
+      cur = plusDays(cur, 7);
+    }
+    return rows;
+  }, [plan]);
+  // Stats from the SCHEDULED day-sum, not the phantom weeklyMi budget (FID-3).
+  const weekSched = (w: SimWeek) => w.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0);
+  const peakMi = plan ? Math.round(Math.max(0, ...plan.weeks.map(weekSched))) : 0;
+  const totalMi = plan ? Math.round(plan.weeks.reduce((s, w) => s + weekSched(w), 0)) : 0;
   const modeLabel = derived ? (MODE_LABEL[derived.mode] ?? derived.mode.toUpperCase()) : '';
   const goalDistances: SimDistance[] = ['5k', '10k', 'half', 'marathon', '50k', '100k'];
 
@@ -256,7 +306,7 @@ export default function PlanSimulatorPage() {
             <DayPicker value={sim.longRunDay} onChange={(d) => set('longRunDay', d)} />
           </Field>
           <Field label="Race history" hint="self-reported PRs → seeds current fitness (VDOT)">
-            <RaceHistoryEditor entries={sim.raceHistory} onChange={(e) => set('raceHistory', e)} />
+            <RaceHistoryEditor entries={sim.raceHistory} onChange={(e) => setSim((s) => ({ ...s, raceHistory: e, goalTimeSec: s.goalMode === 'goal' ? seedGoalSec(s.distance, s.planWeeks, e) : s.goalTimeSec }))} />
           </Field>
         </Group>
 
@@ -317,19 +367,17 @@ export default function PlanSimulatorPage() {
         {plan ? (
           <div className="sim-grid" style={{ gridTemplateColumns: `156px repeat(7, minmax(48px, 1fr))` }}>
             <div className="sim-ghead sim-wkhead">Week</div>
-            {cols.map((dow, i) => <div key={i} className={`sim-ghead ${dow === derived?.longRunDow ? 'islong' : ''}`}>{DAY_ABBR[dow]}</div>)}
-            {plan.weeks.map((w, wi) => {
-              const byDow = new Map<number, SimDay>();
-              for (const d of w.days) byDow.set(d.dow, d);
-              const phaseColor = w.isRaceWeek ? C.red : (PHASE_COLOR[w.phase] ?? C.mute);
+            {[0, 1, 2, 3, 4, 5, 6].map((dow) => <div key={dow} className={`sim-ghead ${dow === derived?.longRunDow ? 'islong' : ''}`}>{DAY_ABBR[dow]}</div>)}
+            {calendar.map((row) => {
+              const phaseColor = row.isRaceWeek ? C.red : (PHASE_COLOR[row.phase] ?? C.mute);
               return (
-                <Row key={wi}>
+                <Row key={row.weekNum}>
                   <div className="sim-wklabel">
-                    <span className="sim-wknum">W{wi + 1}</span>
-                    <span className="sim-phase" style={{ color: phaseColor, borderColor: phaseColor }}>{w.isRaceWeek ? 'RACE' : w.phase}</span>
-                    <span className="sim-wkmi">{w.weeklyMi}<i>mi</i></span>
+                    <span className="sim-wknum">W{row.weekNum}</span>
+                    <span className="sim-phase" style={{ color: phaseColor, borderColor: phaseColor }}>{row.isRaceWeek ? 'RACE' : row.phase}</span>
+                    <span className="sim-wkmi">{row.mileage}<i>mi</i></span>
                   </div>
-                  {cols.map((dow, ci) => <Cell key={ci} day={byDow.get(dow)} dom={domOf(plusDays(w.startISO, ci))} />)}
+                  {row.cells.map((c, ci) => <Cell key={ci} day={c.day ?? undefined} dom={domOf(c.date)} />)}
                 </Row>
               );
             })}
@@ -454,7 +502,7 @@ function Cell({ day, dom }: { day: SimDay | undefined; dom: number }) {
   const st = TYPE_STYLE[day.type] ?? { color: C.mute, tag: day.type.slice(0, 4).toUpperCase() };
   const isRace = day.type === 'race';
   return (
-    <div className={`sim-cell ${isRace ? 'race' : ''}`} style={{ background: isRace ? st.color : st.color + '1E', borderColor: st.color + (isRace ? 'FF' : '55') }}
+    <div className={`sim-cell ${isRace ? 'is-race' : ''}`} style={{ background: isRace ? st.color : st.color + '1E', borderColor: st.color + (isRace ? 'FF' : '55') }}
       title={[day.subLabel, day.notes].filter(Boolean).join(' · ') || st.tag}>
       <span className="sim-dom">{dom}</span>
       <span className="sim-dist" style={{ color: isRace ? '#fff' : st.color }}>{Number.isInteger(day.distanceMi) ? day.distanceMi : day.distanceMi.toFixed(1)}</span>
@@ -569,7 +617,7 @@ input.sim-text[type=date]{color-scheme:dark;}
 .sim-cell.rest{background:#0C0E13;}
 .sim-dom{position:absolute;top:3px;left:5px;font-size:8.5px;color:var(--dim);}
 .sim-dist{font-family:Oswald,sans-serif;font-size:18px;font-weight:500;line-height:1;}
-.sim-cell.race .sim-dist{font-size:15px;}
+.sim-cell.is-race .sim-dist{font-size:15px;}
 .sim-tag{font-size:7.5px;font-weight:800;letter-spacing:.5px;margin-top:2px;}
 .sim-restdash{color:var(--dim);font-size:16px;}
 .sim-empty{padding:60px;text-align:center;color:var(--mute);}
