@@ -27,6 +27,7 @@ import {
   type LevelKey,
   dayKeyToDow,
   daysBetween,
+  spacedQualityDowsFromAvailable,
   inlinePrescriptions,
   distanceCategoryOfPublic,
   type ResolvedPrescriptions,
@@ -119,7 +120,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     longRunDow = (aset.has(longRunDow) ? longRunDow : aset.has(6) ? 6 : aset.has(0) ? 0 : Math.max(...avail)) as DOW;
     const unavail = [0, 1, 2, 3, 4, 5, 6].filter((d) => !aset.has(d));
     restDow = (!aset.has(restDow) ? restDow : (unavail[0] ?? restDow)) as DOW;
-    qualityDows = avail.filter((d) => d !== longRunDow).sort((a, b) => Math.abs(a - 3) - Math.abs(b - 3)) as DOW[];
+    qualityDows = spacedQualityDowsFromAvailable(avail, longRunDow);
   }
   // stated frequency → trainingDaysPerWeek + quality-count slice
   const rawFreq = Number.isFinite(sim.weeklyFrequency) ? Number(sim.weeklyFrequency) : null;
