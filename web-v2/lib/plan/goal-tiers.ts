@@ -226,43 +226,50 @@ export const TIER_TARGETS: Record<DistCategory, Record<GoalTier, TierTarget>> = 
  * Falls back to 'intermediate' when goalPaceSec is null (no goal time
  * set yet · plan still needs a tier to build against).
  */
+/** Runner experience level for tier clamping · mirrors generate.ts LevelKey, kept local to avoid a circular import. */
+export type ExperienceLevelInput = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null | undefined;
+
+const TIER_ORD: Record<GoalTier, number> = { developing: 0, intermediate: 1, advanced: 2, elite: 3 };
+
 export function classifyGoalTier(
   goalPaceSec: number | null | undefined,
   raceDistanceMi: number,
+  level?: ExperienceLevelInput,
 ): GoalTier {
+  // VAR-01 · experience CLAMPS the pace-derived tier. Research/22 has distinct per-experience
+  // templates (5K Beginner 12-15mi/3day vs Advanced 40-70mi/6-7day; M Beginner 30-35mi/20-long vs
+  // Advanced 65-90mi/22-24-long). The tier reflects training CAPACITY (experience), not only goal
+  // AMBITION (pace): an advanced runner with a soft goal still has the base for advanced volume; a
+  // beginner with an aggressive goal can't absorb advanced bands.
   if (goalPaceSec == null || !Number.isFinite(goalPaceSec) || goalPaceSec <= 0) {
-    return 'intermediate';
+    // No goal yet → default off experience, not a hardcoded 'intermediate'.
+    return level === 'beginner' ? 'developing'
+      : (level === 'advanced' || level === 'advanced_plus') ? 'advanced'
+      : 'intermediate';
   }
   const cat = distanceCategoryOf(raceDistanceMi);
+  let tier: GoalTier = 'intermediate';
   switch (cat) {
-    case '5k':
-      if (goalPaceSec <= 330) return 'elite';        // sub-17:00 5K
-      if (goalPaceSec <= 360) return 'advanced';     // sub-18:30
-      if (goalPaceSec <= 480) return 'intermediate'; // sub-24:30
-      return 'developing';
-    case '10k':
-      if (goalPaceSec <= 345) return 'elite';        // sub-35:40 10K
-      if (goalPaceSec <= 390) return 'advanced';     // sub-40:24
-      if (goalPaceSec <= 510) return 'intermediate'; // sub-52:48
-      return 'developing';
-    case 'hm':
-      if (goalPaceSec <= 360) return 'elite';        // sub-1:18:35 HM
-      if (goalPaceSec <= 420) return 'advanced';     // sub-1:31:42 (covers 1:30)
-      if (goalPaceSec <= 555) return 'intermediate'; // sub-2:01:12
-      return 'developing';
-    case 'm':
-      if (goalPaceSec <= 360) return 'elite';        // sub-2:37:12 M
-      if (goalPaceSec <= 420) return 'advanced';     // sub-3:03:24 (covers sub-3)
-      if (goalPaceSec <= 555) return 'intermediate'; // sub-4:02:24
-      return 'developing';
-    case 'ultra':
-      // Ultra paces are slower than marathon · classify by goal pace
-      // tier shifted ~30s/mi slower than marathon equivalents.
-      if (goalPaceSec <= 420) return 'elite';
-      if (goalPaceSec <= 480) return 'advanced';
-      if (goalPaceSec <= 600) return 'intermediate';
-      return 'developing';
+    case '5k': // sub-17:00 elite · sub-18:30 advanced · sub-24:30 intermediate
+      tier = goalPaceSec <= 330 ? 'elite' : goalPaceSec <= 360 ? 'advanced' : goalPaceSec <= 480 ? 'intermediate' : 'developing';
+      break;
+    case '10k': // sub-35:40 elite · sub-40:24 advanced · sub-52:48 intermediate
+      tier = goalPaceSec <= 345 ? 'elite' : goalPaceSec <= 390 ? 'advanced' : goalPaceSec <= 510 ? 'intermediate' : 'developing';
+      break;
+    case 'hm': // sub-1:18:35 elite · sub-1:31:42 advanced (covers 1:30) · sub-2:01:12 intermediate
+      tier = goalPaceSec <= 360 ? 'elite' : goalPaceSec <= 420 ? 'advanced' : goalPaceSec <= 555 ? 'intermediate' : 'developing';
+      break;
+    case 'm': // sub-2:37:12 elite · sub-3:03:24 advanced (covers sub-3) · sub-4:02:24 intermediate
+      tier = goalPaceSec <= 360 ? 'elite' : goalPaceSec <= 420 ? 'advanced' : goalPaceSec <= 555 ? 'intermediate' : 'developing';
+      break;
+    case 'ultra': // ~30s/mi slower bands than marathon
+      tier = goalPaceSec <= 420 ? 'elite' : goalPaceSec <= 480 ? 'advanced' : goalPaceSec <= 600 ? 'intermediate' : 'developing';
+      break;
   }
+  // Clamp to experience capacity: advanced(+) never below advanced, beginner never above intermediate.
+  if (level === 'advanced' || level === 'advanced_plus') return TIER_ORD[tier] < TIER_ORD.advanced ? 'advanced' : tier;
+  if (level === 'beginner') return TIER_ORD[tier] > TIER_ORD.intermediate ? 'intermediate' : tier;
+  return tier;
 }
 
 /**
@@ -286,8 +293,9 @@ export function distanceCategoryOf(raceDistanceMi: number): DistCategory {
 export function lookupTierTarget(
   goalPaceSec: number | null | undefined,
   raceDistanceMi: number,
+  level?: ExperienceLevelInput,
 ): { tier: GoalTier; target: TierTarget } {
-  const tier = classifyGoalTier(goalPaceSec, raceDistanceMi);
+  const tier = classifyGoalTier(goalPaceSec, raceDistanceMi, level);
   const cat = distanceCategoryOf(raceDistanceMi);
   return { tier, target: TIER_TARGETS[cat][tier] };
 }

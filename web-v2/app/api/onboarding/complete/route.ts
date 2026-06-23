@@ -17,7 +17,7 @@
  *     ttTime:             string | null,   // bucketed range chip value
  *     weeklyMi:           15 | 25 | 35 | 45 | 55 | null,
  *     weeklyFreq:         3 | 4 | 5 | 6 | null,
- *     histAvg:            '0-5' | '5-15' | '15-25' | '25-35' | '35+' | null,
+ *     histAvg:            '0-5' | '5-15' | '15-25' | '25-35' | '35+' | '45+' | null,
  *     histLong:           '0-3' | '3-6' | '6-10' | '10+' | null,
  *     histYears:          '<1' | '1-3' | '3-7' | '7+' | null,
  *
@@ -98,7 +98,7 @@ const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
 const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55]);
 const VALID_FREQ = new Set<WeeklyFrequency>([0, 1, 2, 3, 4, 5, 6]);
 const VALID_EXPERIENCE = new Set<string>(['beginner', 'intermediate', 'advanced', 'advanced_plus']);
-const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+']);
+const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+', '45+']);
 const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
 const VALID_RACE_HIST_DISTANCES = new Set<RaceHistoryDistance>(['5k', '10k', 'half', 'marathon', 'other']);
