@@ -2459,16 +2459,16 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
     }
   }
 
-  // 2026-06-23 · VOL-1 · reconcile every week's reported weeklyMi to the ACTUAL
-  // scheduled day-sum. Until now weeklyMi carried the volume-curve BUDGET, but the
-  // per-day caps (long cap, easy≤long clamp, frequency cap) silently drop whatever the
-  // budget can't place — so a low-frequency plan advertised 40mi while the days summed
-  // to 24 (~40% phantom). The validator validated the lie and the UI rendered it. Make
-  // weeklyMi == realized so the reported number can never exceed the plan. Race weeks
-  // legitimately diverge (the race is not training mileage) and keep their taper budget
-  // — VOL-3's tripwire skips them for the same reason.
+  // 2026-06-23 · VOL-1 · reconcile EVERY week's reported weeklyMi to the ACTUAL
+  // scheduled day-sum (race day excluded — it is the event, not training mileage).
+  // Until now weeklyMi carried the volume-curve BUDGET, but the per-day caps (long cap,
+  // easy≤long clamp, frequency cap) silently drop whatever the budget can't place — so
+  // a low-frequency plan advertised 40mi while the days summed to 24 (~40% phantom).
+  // The validator validated the lie and the UI rendered it. Make weeklyMi == realized
+  // so the reported number can never exceed the plan AND the taper-drop check sees the
+  // race week's true (small) taper volume, not its phantom budget — otherwise a
+  // reconciled peak can fall below the un-reconciled race-week budget and false-fail.
   for (const w of composed.weeks) {
-    if (w.isRaceWeek) continue;
     w.weeklyMi = Math.round(w.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
   }
 }
