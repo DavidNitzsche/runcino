@@ -1459,6 +1459,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const { tier, target: baseTierTarget } = lookupTierTarget(
     input.goalPaceSec,
     input.raceDistanceMi,
+    input.level, // VAR-01 · experience clamps the pace-derived tier
   );
 
   // 2026-06-03 · Rule 11 · horizon-aware long-run dials.
@@ -1474,7 +1475,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     let bestShare = baseTierTarget.longRunShare;
     let bestRace: { slug: string; name: string; date: string; distanceMi: number } | null = null;
     for (const h of horizon) {
-      const { target: ht } = lookupTierTarget(h.goalPaceSec, h.distanceMi);
+      const { target: ht } = lookupTierTarget(h.goalPaceSec, h.distanceMi, input.level); // VAR-01
       // Only LARGER bands count · we extend up, never contract down.
       if (ht.peakLongMiBand[1] > bestCap || ht.longRunShare > bestShare) {
         if (ht.peakLongMiBand[1] > bestCap) bestCap = ht.peakLongMiBand[1];
@@ -1800,7 +1801,16 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     : tierShape;
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
   const targetWeekly = Math.round(peakAnchor * shape.weeklyPctOfPeak);
-  const targetLong = Math.max(8, Math.round(input.recentLongMi * shape.longPctOfPeak));
+  // SP-6 · maintenance long is PROPORTIONAL to recent fitness, not an absolute 8mi floor.
+  // The old `max(8, ...)` gave a 15mpw / 5mi-recent runner an 8mi long = 160% of recent +
+  // 35% of the week (over both the 110% injury cap and the ~30% proportion cap). Cap at
+  // ≤110% of recent long (Research/00a:752) AND ≤30% of the week (Research/00a:184), with a
+  // 4mi coherence floor (a 2mi "long" is incoherent · D2 default). The tier's longPctOfPeak
+  // intent still shapes the week via targetWeekly.
+  const targetLong = Math.max(
+    4,
+    Math.min(Math.round(input.recentLongMi * 1.10), Math.round(targetWeekly * 0.30)),
+  );
 
   // 4-week rolling template. Days = tier's daysPerWeek. Rest = 7 -
   // daysPerWeek (so days held even though volume dropped).
@@ -1821,7 +1831,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   function maintenanceWeek(weekIdx: number): DayPlan[] {
     const isCutback = weekIdx === 3; // week 4 (zero-indexed) = recovery
     const wkWeekly = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
-    const wkLong = isCutback ? Math.max(8, Math.round(targetLong * 0.80)) : targetLong;
+    const wkLong = isCutback ? Math.max(4, Math.round(targetLong * 0.80)) : targetLong; // SP-6 · 4mi coherence floor, not 8
 
     const slots: (DayPlan | null)[] = new Array(7).fill(null);
     // Rest day
@@ -2548,7 +2558,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   if (mode === 'race-prep') {
     composed = composePlan(inputs.compose);
   } else {
-    const tier = lookupTierTarget(inputs.compose.goalPaceSec, inputs.compose.raceDistanceMi).tier;
+    const tier = lookupTierTarget(inputs.compose.goalPaceSec, inputs.compose.raceDistanceMi, inputs.compose.level).tier; // VAR-01
     const nonRaceInput: ComposeNonRaceInput = {
       startMondayISO: inputs.compose.startMondayISO,
       level: inputs.compose.level,

@@ -36,7 +36,7 @@ export type WeeklyMileage = 0 | 5 | 15 | 25 | 35 | 45 | 55;
 export type WeeklyFrequency = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 /** Avg-weekly-mi history chip values. Strings because the chip *is* a range. */
-export type HistAvg = '0-5' | '5-15' | '15-25' | '25-35' | '35+';
+export type HistAvg = '0-5' | '5-15' | '15-25' | '25-35' | '35+' | '45+';
 
 /** Longest-recent-run history chip values. */
 export type HistLong = '0-3' | '3-6' | '6-10' | '10+';
@@ -128,7 +128,7 @@ const VALID_DISTANCES = new Set<RaceDistance>(['5k', '10k', 'half', 'marathon', 
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
 const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55]);
 const VALID_FREQ = new Set<WeeklyFrequency>([0, 1, 2, 3, 4, 5, 6]);
-const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+']);
+const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+', '45+']);
 const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
 
@@ -425,7 +425,8 @@ export const HIST_AVG_MIDPOINTS: Record<HistAvg, number> = {
   '5-15': 10,
   '15-25': 20,
   '25-35': 30,
-  '35+': 40,
+  '35+': 40,       // VAR-06pt2 · stays 40 (byte-stable); now means 35-45
+  '45+': 50,       // VAR-06pt2 · 45+ runners start/peak higher (Research/00a:194-206)
 };
 
 /** Midpoint mileage values for the longest-recent-run chip. */

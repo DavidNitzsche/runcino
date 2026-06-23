@@ -175,14 +175,15 @@ export const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sa
 /** weeklyMi bucket → recentWeeklyMi. Native maps the bucket to a histAvg range
  *  (OnboardingView.swift:112-120: <5→"0-5", <15→"5-15", <25→"15-25", <35→
  *  "25-35", else→"35+"), then the backend maps that range to a midpoint
- *  (state.ts HIST_AVG_MIDPOINTS: 3/10/20/30/40). This is the exact (lossy) value
- *  a new no-Strava signup's plan is seeded from — 35 and 45 both land on 40. */
+ *  (state.ts HIST_AVG_MIDPOINTS: 3/10/20/30/40/50). This is the exact (lossy) value
+ *  a new no-Strava signup's plan is seeded from. VAR-06pt2 · 45+ no longer collapses to 40. */
 export function recentWeeklyMiFromBucket(b: SimWeeklyMi): number {
   if (b < 5) return 3;
   if (b < 15) return 10;
   if (b < 25) return 20;
   if (b < 35) return 30;
-  return 40;
+  if (b < 45) return 40; // VAR-06pt2 · 35-45 bucket stays 40
+  return 50;             // VAR-06pt2 · 45+ runners start/peak higher (Research/00a:194-206)
 }
 
 /** longest-run bucket → recentLongMi (state.ts HIST_LONG_MIDPOINTS: 2/5/8/12). */

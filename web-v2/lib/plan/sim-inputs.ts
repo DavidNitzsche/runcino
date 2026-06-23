@@ -211,7 +211,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     };
     composed = composePlan(input);
   } else {
-    const tier = lookupTierTarget(goalPaceSec, raceDistanceMi).tier;
+    const tier = lookupTierTarget(goalPaceSec, raceDistanceMi, level).tier; // VAR-01 · experience clamps the tier
     if (mode !== 'recovery' && sim.goalMode === 'race') {
       nextRace = { slug: 'sim-race', name: 'Goal race', date: raceDateISO, distanceMi: raceDistanceMi, goalPaceSec };
     }
