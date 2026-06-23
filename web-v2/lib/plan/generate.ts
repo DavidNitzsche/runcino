@@ -134,6 +134,25 @@ export function scheduleQuality(
   return { dows: best as DOW[], types };
 }
 
+/**
+ * 2026-06-23 · COH-1 · clamp a reported longest run to be COHERENT with weekly volume.
+ * The long run ANCHORS the week (easy days are held < long, RP-5), so an incoherent long
+ * mis-sizes the entire plan: a 50mpw runner reporting a 2mi "longest" collapses to a ~5mpw plan
+ * (easy<2 crushes every day, VOL-1 reconciles the week down); a 10mpw runner reporting a 12mi
+ * "longest" inflates the week with a long the race never needs. Data-sanity bounds: a single long
+ * is ≤80% of the week (other runs exist) and ≥ the average run length (recentWeekly/days — the max
+ * of a set is ≥ its mean). Byte-safe for coherent runners (David: ~13mi long on ~50mpw, null freq
+ * → upper bound 40, no lower clamp → unchanged).
+ */
+export function coherentRecentLong(recentLongMi: number, recentWeeklyMi: number, trainingDaysPerWeek: number | null): number {
+  if (!recentWeeklyMi || recentWeeklyMi <= 0 || !recentLongMi || recentLongMi <= 0) return recentLongMi;
+  let v = Math.min(recentLongMi, Math.round(recentWeeklyMi * 0.8)); // a single long ≤ 80% of the week
+  if (trainingDaysPerWeek && trainingDaysPerWeek > 0) {
+    v = Math.max(v, Math.round(recentWeeklyMi / trainingDaysPerWeek)); // longest ≥ the average run
+  }
+  return v;
+}
+
 export interface GenerateInput {
   userId: string;
   /** Race-anchored plan: the races-row slug (reads distance/date/goal from it).
@@ -1096,6 +1115,12 @@ function layoutWeek({
   // BASE week 2 (parked at 19 for the whole build) and front-loaded a 117%-of-recent week-1 long.
   // recentLongMi 0 (no self-report) → no anchor (volume-derived size as before).
   const rampCeiling = (() => {
+    // COH-3 · the taper long DESCENDS with volume; the build's climbing ramp ceiling
+    // (recentLongMi × 1.10^weekIdx) must NOT govern it — for a low recent-long runner the still-
+    // climbing ceiling suppressed the FIRST taper long below its volume size, making the SECOND
+    // taper long larger (non-monotonic taper). In TAPER, only the doctrine cap + descending
+    // longMiRaw apply. Byte-safe for high recent-long runners (their stepCeil already cleared longCap).
+    if (phase === 'TAPER') return longCap;
     if (!recentLongMi || recentLongMi <= 0) return longCap;
     const seed = Math.round(recentLongMi * 1.10);              // week-0 ≤110% of recent
     const stepCeil = recentLongMi * Math.pow(1.10, weekIdx);   // ≤10%/step geometric climb
@@ -2522,31 +2547,8 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   };
   smoothLongWoW();
 
-  // Long-trim lowers the peak, which can leave taper weeks (sized
-  // against the ORIGINAL peak) under the validator's minimum drop.
-  // Rescale taper run days against the post-smoothing peak. Drop
-  // minimums mirror validate.ts CONSTRAINTS.taperDropMinPct
-  // (5k:20 · 10k:25 · hm:30 · m:30 — literal here, runtime import
-  // cycle as above). +2pct margin clears rounding.
-  const taperDrop: Record<string, number> = { '5k': 20, '10k': 25, 'hm': 30, 'm': 30, 'ultra': 30 };  // #12 · ultra mirrors marathon taper-drop floor
-  const minDrop = (taperDrop[distanceCategoryOfPublic(raceDistanceMi)] ?? 30) + 2;
-  const nonTaperPeak = Math.max(0, ...composed.weeks
-    .filter((w) => w.phase !== 'TAPER' && !w.isRaceWeek)
-    .map((w) => w.weeklyMi ?? 0));
-  if (nonTaperPeak > 0) {
-    for (const tw of composed.weeks.filter((w) => w.phase === 'TAPER')) {
-      const maxAllowed = nonTaperPeak * (1 - minDrop / 100);
-      if (tw.weeklyMi > maxAllowed) {
-        const scale = maxAllowed / tw.weeklyMi;
-        for (const d of tw.days) {
-          if (d.type !== 'race' && d.distanceMi > 0) {
-            d.distanceMi = Math.floor(d.distanceMi * scale * 2) / 2;
-          }
-        }
-        tw.weeklyMi = Math.round(tw.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
-      }
-    }
-  }
+  // (Progressive taper enforcement moved BELOW the VOL-1 reconcile — it must see each week's
+  // REALIZED day-sum, not the volume-curve budget · COH-4.)
 
   // 2026-06-21 · re-smooth long-run WoW AFTER the taper rescale. The rescale
   // can shrink a taper week's long below its predecessor's-÷1.30 floor while
@@ -2594,6 +2596,32 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   // reconciled peak can fall below the un-reconciled race-week budget and false-fail.
   for (const w of composed.weeks) {
     w.weeklyMi = Math.round(w.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
+  }
+
+  // 2026-06-23 · COH-4 · PROGRESSIVE taper enforcement, AFTER VOL-1 so it sees each week's REALIZED
+  // day-sum. The race week's pre-race easy volume often EXCEEDS the volume-curve budget (the layout
+  // places easy days the budget didn't account for), so running this on the budget missed it and
+  // left the race week ABOVE the preceding taper week (non-monotonic). Research/08 §9.2: the taper
+  // descends 80-90% → 60-70% → 40-50% of peak. Cap each taper week at BOTH its doctrine factor AND
+  // the prior taper week (strict monotonic descent); scaling all non-race days preserves easy<long.
+  const nonTaperPeakR = Math.max(0, ...composed.weeks.filter((w) => w.phase !== 'TAPER' && !w.isRaceWeek).map((w) => w.weeklyMi ?? 0));
+  if (nonTaperPeakR > 0) {
+    const taperWeeks = composed.weeks.filter((w) => w.phase === 'TAPER');
+    let priorTaper = Infinity;
+    for (let i = 0; i < taperWeeks.length; i++) {
+      const tw = taperWeeks[i];
+      const wksLeft = taperWeeks.length - i;
+      const factor = wksLeft === 1 ? 0.45 : wksLeft === 2 ? 0.60 : 0.82;
+      const target = Math.min(tw.weeklyMi, nonTaperPeakR * factor, priorTaper);
+      if (tw.weeklyMi > 0 && target < tw.weeklyMi - 0.05) {
+        const scale = target / tw.weeklyMi;
+        for (const d of tw.days) {
+          if (d.type !== 'race' && d.distanceMi > 0) d.distanceMi = Math.floor(d.distanceMi * scale * 2) / 2;
+        }
+        tw.weeklyMi = Math.round(tw.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
+      }
+      priorTaper = tw.weeklyMi;
+    }
   }
 }
 
@@ -3021,6 +3049,9 @@ async function loadGeneratorInputs(
     if (recentMi <= 0) recentMi = Number(selfReport?.avg ?? selfReport?.target ?? 0) || 0;
     if (recentLong <= 0) recentLong = Number(selfReport?.long ?? 0) || 0;
   }
+  // COH-1 · clamp the reported longest run to be coherent with weekly volume (the long anchors
+  // the week; an incoherent long mis-sizes the whole plan). Byte-safe for coherent runners.
+  recentLong = coherentRecentLong(recentLong, recentMi, trainingDaysPerWeek);
   // 2026-06-03 · mid-block doctrine carriers (Rules 2, 3, 5, 8).
   const recentQualityDist = await recentQualityDistanceMi(userId);
   const recentQualityPW = await recentQualityPerWeek(userId);

@@ -35,6 +35,7 @@ import {
   composeMaintenancePlan,
   composeRecoveryPlan,
   finalizeComposedPlan,
+  coherentRecentLong,
 } from './generate';
 import { lookupTierTarget, pickPlanMode, type PlanMode } from './goal-tiers';
 import { tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
@@ -102,7 +103,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   // ── shared runner-profile derivation (mirrors loadGeneratorInputs) ──
   const level = sim.experienceLevel as LevelKey;
   const recentWeeklyMi = recentWeeklyMiFromBucket(sim.weeklyMileageBucket);
-  const recentLongMi = recentLongMiFromBucket(sim.longestRunBucket);
+  let recentLongMi = recentLongMiFromBucket(sim.longestRunBucket);
   const easyDayMedianMi = sim.easyDayMedianMi != null && sim.easyDayMedianMi > 0 ? sim.easyDayMedianMi : 0;
   const bestRecentVdot = sim.bestRecentVdotOverride != null && sim.bestRecentVdotOverride > 0
     ? sim.bestRecentVdotOverride
@@ -132,6 +133,8 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     const qCount = trainingDaysPerWeek <= 1 ? 0 : trainingDaysPerWeek >= 5 ? 2 : 1;
     qualityDows = qualityDows.slice(0, qCount);
   }
+  // COH-1 · clamp the reported longest run to be coherent with weekly volume (mirrors the loader).
+  recentLongMi = coherentRecentLong(recentLongMi, recentWeeklyMi, trainingDaysPerWeek);
   const crossModes: string[] = [];
 
   // ── mode + horizon ──

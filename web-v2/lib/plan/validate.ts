@@ -60,18 +60,20 @@ const CONSTRAINTS: Record<DistCategory, PlanConstraints> = {
 // Context-aware long-run cap. Kept separate from CONSTRAINTS because it
 // isn't a single value per distance — it varies by experience + horizon.
 function longRunCapMi(cat: DistCategory, ctx: PlanValidationContext): number {
+  // 2026-06-23 · COH-2 · the validator cap is the BACKSTOP; the builder already caps the long
+  // at the runner's TIER band (TIER_TARGETS[cat][tier].peakLongMiBand[1] · VAR-01). These fixed
+  // caps were LOWER than the higher tiers' bands (5K advanced band is 12 but the cap was 10; HM
+  // advanced band is 17 but the cap was 16), rejecting legitimate band-reaching longs. Set each
+  // to the distance's MAX tier band so the validator never rejects a builder-legit long, while
+  // still catching genuine anomalies (a long beyond even the elite band). Cite: Research/22 bands.
   switch (cat) {
-    case '5k':    return 10;
-    case '10k':   return 13;
-    case 'm':     return 22;
-    // #12 · ultra long runs go well past the marathon. Cap at the ultra tier's
-    // peak-long upper band (32 mi, goal-tiers TIER_TARGETS.ultra) so a legit
-    // 50K+ plan isn't rejected against the marathon 22-mi ceiling.
-    // Cite: Research/22 §Ultramarathon (peak long 22-32 mi / 5-7 hr on feet).
-    case 'ultra': return 32;
+    case '5k':    return 14; // elite 5K band top
+    case '10k':   return 17; // elite 10K band top
+    case 'm':     return 25; // elite M band top
+    case 'ultra': return 32; // elite ultra band top (Research/22 §Ultramarathon)
     case 'hm':
-      if (ctx.isSteppingStoneToMarathon) return 20;
-      return ctx.level === 'beginner' ? 14 : 16;
+      if (ctx.isSteppingStoneToMarathon) return 22; // bridging to a marathon · builder lifts toward the M band
+      return ctx.level === 'beginner' ? 14 : 20;     // beginner band ≤12; advanced 17 / elite 20
   }
 }
 
@@ -255,13 +257,30 @@ export function validateComposedPlan(
       const peakVol = nonTaperNonRace.length > 0
         ? Math.max(...nonTaperNonRace.map(w => w.weeklyMi))
         : 0;
-      for (const tw of weeks.filter(w => w.phase === 'TAPER')) {
-        if (peakVol > 0) {
-          const dropPct = ((peakVol - tw.weeklyMi) / peakVol) * 100;
-          if (dropPct < c.taperDropMinPct) {
+      const taperW = weeks.filter(w => w.phase === 'TAPER');
+      if (peakVol > 0 && taperW.length > 0) {
+        // Research/08 §9.2 · the taper is PROGRESSIVE (80-90% → 60-70% → 40-50% of peak), NOT a flat
+        // ≥30% on every week — the first taper week legitimately drops only ~10-20%. Require (a) the
+        // taper BOTTOMS deep enough (deepest week ≥ taperDropMinPct below peak), (b) no taper week
+        // sits above peak, (c) it descends (each taper week ≤ the prior).
+        const deepest = Math.min(...taperW.map(w => w.weeklyMi));
+        const deepestDrop = ((peakVol - deepest) / peakVol) * 100;
+        if (deepestDrop < c.taperDropMinPct) {
+          violations.push(
+            `Taper bottoms at ${deepest}mi, only ${Math.round(deepestDrop)}% below peak ${peakVol}mi ` +
+            `(need ≥${c.taperDropMinPct}% by race) — taper too shallow`,
+          );
+        }
+        for (let i = 0; i < taperW.length; i++) {
+          if (taperW[i].weeklyMi > peakVol * 1.02) {
             violations.push(
-              `Taper week ${tw.startISO}: ${tw.weeklyMi}mi is only ${Math.round(dropPct)}% ` +
-              `below peak ${peakVol}mi (need ≥${c.taperDropMinPct}% drop)`,
+              `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi is ABOVE peak ${peakVol}mi — taper must reduce volume`,
+            );
+          }
+          if (i > 0 && taperW[i].weeklyMi > taperW[i - 1].weeklyMi * 1.05) {
+            violations.push(
+              `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi rises above the prior taper week ` +
+              `${taperW[i - 1].weeklyMi}mi — taper must descend`,
             );
           }
         }
@@ -302,7 +321,11 @@ export function validateComposedPlan(
   for (let i = 1; mode === 'race-prep' && i < nonRaceWeeks.length; i++) {
     const prev = nonRaceWeeks[i - 1].weeklyMi;
     const curr = nonRaceWeeks[i].weeklyMi;
-    if (prev > 0 && curr > prev * (1 + c.weeklyVolWoWMaxPct / 100)) {
+    // 2026-06-23 · small-absolute exemption: at very low volume the %-jump is misleading — a
+    // 6mi→9mi step is +50% but only +3mi, a safe ramp for a cold-start beginner. Flag only when
+    // the jump exceeds the % ceiling AND is more than 4mi in absolute terms (mirrors the taper
+    // rule's shift from %-only to a calibrated check).
+    if (prev > 0 && curr > prev * (1 + c.weeklyVolWoWMaxPct / 100) && curr - prev > 4) {
       const pct = Math.round(((curr - prev) / prev) * 100);
       violations.push(
         `Week ${nonRaceWeeks[i].startISO}: volume jumps ${prev}mi → ${curr}mi ` +
