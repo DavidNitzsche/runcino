@@ -92,6 +92,7 @@ export interface SimBuildOk {
     trainingDaysPerWeek: number | null;
     trailingAvgWeeklyMi: number | null;
     qualityStrandedByAvailability?: boolean;
+    recentWeeklyMi?: number | null;
   };
 }
 export type SimBuildResult = SimBuildOk | { ok: false; reason: string };
@@ -244,6 +245,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       trailingAvgWeeklyMi: recentWeeklyMi > 0 ? recentWeeklyMi : null,
       // GOAL-1 · available_days stranded quality to empty → composer folds to long+easy (valid)
       qualityStrandedByAvailability: availableDows != null && qualityDows.length === 0,
+      recentWeeklyMi, // CC-2 · cold-start ramp base
     },
   };
 }
