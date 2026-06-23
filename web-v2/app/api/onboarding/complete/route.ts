@@ -216,9 +216,18 @@ export async function POST(req: NextRequest) {
   // runner-calibration + the plan volume curve read. Previously this field was
   // accepted by JSON parse and dropped on the floor, so every onboarded runner
   // fell to the intermediate default regardless of what they picked.
-  const experienceLevel = (typeof body.experienceLevel === 'string'
+  const experienceLevelRaw = (typeof body.experienceLevel === 'string'
       && VALID_EXPERIENCE.has(body.experienceLevel))
     ? body.experienceLevel : null;
+  // CAP-2 (2026-06-23) · the WEB onboarding deck doesn't ask experience directly (native does), so a
+  // web signup would fall to the intermediate default → ±20mi/wk mis-tier vs native. Derive it from
+  // the years-running + mileage the web deck DOES capture: <1yr or sub-15mpw → beginner; experienced
+  // (3-7/7+yr) AND 35+mpw → advanced; else intermediate. Native (sends experienceLevel) is unaffected.
+  const experienceLevel = experienceLevelRaw ?? (
+    (histYears === '<1' || histAvg === '0-5' || histAvg === '5-15') ? 'beginner'
+    : ((histYears === '3-7' || histYears === '7+') && (histAvg === '35+' || histAvg === '45+')) ? 'advanced'
+    : 'intermediate'
+  );
 
   // 2026-06-03 · race history capture (TASK B4). Accepted on EITHER
   // path · first-race runners on either race or no-race path drive

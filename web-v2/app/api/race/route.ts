@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { normalizeGoalDisplay } from '@/lib/plan/goal-display'; // CAP-3 · distance-aware goal canonicalization
 import { generatePlan } from '@/lib/plan/generate';
 import { requireUserId } from '@/lib/auth/session';
 import { patchSettings } from '@/lib/coach/settings';
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
     date: body.date,
     distanceLabel: body.distance_label ?? null,
     priority: body.priority ?? 'A',
-    goalDisplay: body.goal ?? null,
+    goalDisplay: normalizeGoalDisplay(body.goal, body.distance_label), // CAP-3 · was raw → "7:45" 5K read as 7h45m
     location: body.location ?? null,
   };
 
@@ -177,7 +178,9 @@ export async function PATCH(req: NextRequest) {
           : k === 'goal' ? 'goalDisplay'
           : k === 'goal_safe' ? 'goalSafeDisplay'
           : k;
-        meta[metaKey] = body[k];
+        // CAP-3 · normalize a typed goal (distance_label is processed earlier in this loop, so
+        // meta.distanceLabel is already current). PATCH auto-rebuilds on goal change → must be canonical.
+        meta[metaKey] = (k === 'goal' || k === 'goal_safe') ? normalizeGoalDisplay(body[k], meta.distanceLabel) : body[k];
       }
     }
     // Retrospective fields — passed through as-is on the meta blob
