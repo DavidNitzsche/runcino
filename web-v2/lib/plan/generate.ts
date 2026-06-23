@@ -1138,36 +1138,49 @@ function layoutWeek({
   const easyCount = trainingDaysPerWeek != null
     ? Math.max(0, Math.min(easyCandidates.length, trainingDaysPerWeek - runningPlaced))
     : easyCandidates.length;
-  // Place the chosen easy days to MAXIMIZE spacing from the week's hard days
-  // (long + quality), not just spread among candidates in day order.
-  //
-  // 2026-06-22 · the old even-stride pick walked `easyCandidates` in dow order
-  // and took index 0 first, so a SINGLE easy day landed on the lowest empty dow
-  // — for a Sun-long / Tue-quality 3-day week that is Monday, right after the
-  // long run. Result: long + easy back-to-back (Sun→Mon) then a 4-day gap
-  // (Tue–Sat empty) — the "so many down days then back-to-back" pattern. Greedy
-  // farthest-point placement instead: each easy day goes to the candidate whose
-  // circular day-distance to the NEAREST already-occupied running day (long,
-  // quality, or an already-chosen easy) is largest, so a 3-day Sun/Tue week now
-  // puts the easy midweek (Thu). Only the stated-frequency path (easyCount <
-  // candidates) changes; null-frequency fills every slot below, byte-unchanged.
+  // Place the easy days for EVEN distribution across the week (audit RP-1/RP-2):
+  // maximize the minimum circular gap between run days, tie-break by MINIMIZING the
+  // maximum gap (so the runs don't collapse into one contiguous block with a long
+  // rest tail), then avoid the day immediately adjacent to the long, then lowest dow
+  // for determinism. `anchors` is the HARD days only (long + quality) — the rest day
+  // is deliberately NOT counted as a stressor to flee. The prior (2026-06-22) greedy
+  // counted rest in `occupied` and used a first-wins tie-break, so for a 3-day BASE
+  // week every midweek candidate tied at gap-1 and it dropped the easy on Monday, the
+  // day right after the Sunday long — the back-to-back David reported. Only the
+  // stated-frequency branch (easyCount < candidates) runs this; null-frequency fills
+  // every slot below, byte-unchanged (David's path).
   const easyDowSet = new Set<number>();
   if (easyCount >= easyCandidates.length) {
     easyCandidates.forEach((e) => easyDowSet.add(e.dow));
   } else if (easyCount > 0) {
-    const occupied = slots.map((s, i) => (s ? i : -1)).filter((i) => i >= 0); // long + quality dows
     const circDist = (a: number, b: number) => Math.min((a - b + 7) % 7, (b - a + 7) % 7);
+    const anchors = slots.map((s, i) => (s && s.type !== 'rest' ? i : -1)).filter((i) => i >= 0);
+    const maxGapOf = (run: number[]): number => {
+      const sorted = [...run].sort((a, b) => a - b);
+      let mg = 0;
+      for (let j = 0; j < sorted.length; j++) {
+        const g = ((sorted[(j + 1) % sorted.length] - sorted[j]) + 7) % 7 || 7;
+        if (g > mg) mg = g;
+      }
+      return mg;
+    };
     for (let k = 0; k < easyCount; k++) {
-      let bestDow = -1;
-      let bestScore = -1;
+      const placed = [...anchors, ...easyDowSet];
+      let best = -1, bestMin = -1, bestMax = 99, bestAdj = 9;
       for (const cand of easyCandidates) {
         if (easyDowSet.has(cand.dow)) continue;
-        let nearest = 7;
-        for (const o of occupied) nearest = Math.min(nearest, circDist(cand.dow, o));
-        for (const e of easyDowSet) nearest = Math.min(nearest, circDist(cand.dow, e));
-        if (nearest > bestScore) { bestScore = nearest; bestDow = cand.dow; } // first-wins keeps it deterministic
+        let minGap = 7;
+        for (const o of placed) minGap = Math.min(minGap, circDist(cand.dow, o));
+        const maxGap = maxGapOf([...placed, cand.dow]);
+        const longAdj = circDist(cand.dow, longRunDow) === 1 ? 1 : 0;
+        const better =
+          minGap > bestMin
+          || (minGap === bestMin && (maxGap < bestMax
+          || (maxGap === bestMax && (longAdj < bestAdj
+          || (longAdj === bestAdj && (best < 0 || cand.dow < best))))));
+        if (better) { best = cand.dow; bestMin = minGap; bestMax = maxGap; bestAdj = longAdj; }
       }
-      if (bestDow >= 0) easyDowSet.add(bestDow);
+      if (best >= 0) easyDowSet.add(best);
     }
   }
 
