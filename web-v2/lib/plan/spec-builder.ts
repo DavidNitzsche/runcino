@@ -225,7 +225,11 @@ export function buildWorkoutSpec(
   // Daniels' E minimum, moving easy runs out of GA/steady-state territory.
   const easyLo = tPaceSec + 80, easyHi = tPaceSec + 120;
   const longLo = tPaceSec + 55, longHi = tPaceSec + 90;
-  const tempo  = tPaceSec + 12;         // mid of T+5 to T+18
+  // PACE-T-1 (2026-06-23, David approved) · a "continuous tempo" is run AT threshold (Research/04:159,
+  // 164,169 · "Continuous tempo | T"). The old +12 was the SEPARATE sub-threshold band (Research/04:14,
+  // 161) shipped under a threshold label + family — the runner saw a threshold-effort label over a
+  // pace ~12 s/mi easy. Now the headline tempo pace == T.
+  const tempo  = tPaceSec;
   // Daniels I = T−33 (95-100% VO2max, ~3K-5K pace). T−18 is a deliberate
   // conservative deviation: ~10-12K pace, yielding more sub-VO2max ceiling work
   // rather than true VO2max intervals. Appropriate for a 40-50 mpw runner who

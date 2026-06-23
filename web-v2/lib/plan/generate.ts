@@ -1263,8 +1263,15 @@ function layoutWeek({
       if (qt === 'threshold' && /\d+\s*(?:mi)?\s*WU\s*[·•].*@\s*T[^·•]*[·•]\s*\d+\s*(?:mi)?\s*CD/i.test(sub)) {
         effectiveType = 'tempo';
       }
+      // CC-1 (2026-06-23, David approved) · a race-week tune-up is a 3-5mi SHARPENING session
+      // (Research/08:394-438), NOT a full quality slot. Cap its distance to the band so composed ==
+      // persisted — the spec realizer truncates a 10mi tune-up to ~3.6mi at persist, silently dropping
+      // taper volume the gate counted (51→44.6mi). The freed surplus flows into the easy-fill below.
+      const slotMi = effectiveType === 'race_week_tuneup'
+        ? Math.min(qualityMiEach, (cat === '5k' || cat === '10k') ? 4 : 5)
+        : qualityMiEach;
       slots[dow] = {
-        dow: dow as DOW, type: effectiveType, distanceMi: qualityMiEach, isQuality: true, isLong: false,
+        dow: dow as DOW, type: effectiveType, distanceMi: slotMi, isQuality: true, isLong: false,
         subLabel: sub,
         notes:
           effectiveType === 'intervals'        ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
