@@ -34,6 +34,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRac
 // profile.max_hr is NOT the source of truth per task #141.
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
 import { isBaseBuildingPlan } from './plan-templates';
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
@@ -3062,7 +3063,19 @@ async function loadGeneratorInputs(
   const runFloorMi = await goalRunFloorMiForUser(userId);
   const { raceCandidates, runCandidates } = await loadVdotInputs(userId, todayISO);
   const { best: bestVdotPick } = computeBestRecentVdot(raceCandidates, todayISO, 180, runCandidates, runFloorMi);
-  const bestRecentVdot = bestVdotPick?.vdot ?? undefined;
+  // PARITY-1 (2026-06-23) · when there is NO measured signal (empty races+runs → bestVdotPick
+  // undefined, the no-Strava cold-start case), seed bestRecentVdot from self-reported onboarding PRs
+  // (profile.race_history) — the canonical pace anchor (Research/01:3,115). Prod previously read ONLY
+  // races+runs and dropped the reported PR, pacing the runner ~96s/mi too slow; the sim already reads
+  // it (sim-inputs.bestVdotFromHistory), so this restores SIM↔PROD parity. Fires only when no measured
+  // signal exists — never overrides a real bestVdotPick. Raw vdotFromRace to match the sim exactly.
+  let bestRecentVdot = bestVdotPick?.vdot ?? undefined;
+  if (bestRecentVdot === undefined) {
+    const rhRow = (await pool.query<{ race_history: any }>(
+      `SELECT race_history FROM profile WHERE user_uuid = $1 LIMIT 1`, [userId],
+    ).catch(() => ({ rows: [] }))).rows[0];
+    bestRecentVdot = bestVdotFromRaceHistory(Array.isArray(rhRow?.race_history) ? rhRow.race_history : [], 365);
+  }
   // maxHr for Rule 16 (easy/long HR cap). loadVdotInputs resolves it
   // internally for the run-candidate gate; hoist separately for composePlan.
   const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
@@ -3084,23 +3097,29 @@ async function loadGeneratorInputs(
       WHERE user_uuid = $1
         AND (meta->>'date')::date > $2::date
         AND (meta->>'date')::date <= ($2::date + interval '168 days')
-        AND meta->>'priority' IN ('A','B')
-        AND (meta->>'distanceMi')::numeric > $3::numeric`,
-    [userId, raceDateISO, raceDistanceMi],
+        AND meta->>'priority' IN ('A','B')`,
+    [userId, raceDateISO],
   ).catch(() => ({ rows: [] }))).rows;
-  const horizonRaces: ComposePlanInput['horizonRaces'] = horizonRacesRows.map((r) => {
-    const m = r.meta || {};
-    const dMi = Number(m.distanceMi);
-    const goalSec = parseRaceTime(m.goalDisplay ?? m.goalTime);
-    return {
-      slug: r.slug,
-      name: String(m.name || r.slug),
-      date: String(m.date),
-      distanceMi: dMi,
-      goalPaceSec: goalSec && dMi > 0 ? Math.round(goalSec / dMi) : null,
-      priority: (m.priority === 'A' ? 'A' : 'B') as 'A' | 'B',
-    };
-  });
+  // HORIZON-1 (2026-06-23) · derive distance via distanceMiOf (its distanceLabel→name fallback), NOT
+  // the raw meta.distanceMi jsonb field — which is NULL for every label-only race (the standard write
+  // path writes distanceLabel only). The old SQL `(meta->>'distanceMi')::numeric > $3` excluded every
+  // label-only horizon, so the half→full bridge (Rule 11) never fired for those users; the same null
+  // leaked into Number(m.distanceMi)=NaN → wrong tier + a dead stepping-stone gate. Filter "longer than
+  // the current race" in TS via distanceMiOf. (David's CIM has a numeric distanceMi → identical result.)
+  const horizonRaces: ComposePlanInput['horizonRaces'] = horizonRacesRows
+    .map((r) => ({ r, m: r.meta || {}, dMi: distanceMiOf(r.meta || {}) }))
+    .filter((x) => x.dMi > raceDistanceMi)
+    .map(({ r, m, dMi }) => {
+      const goalSec = parseRaceTime(m.goalDisplay ?? m.goalTime);
+      return {
+        slug: r.slug,
+        name: String(m.name || r.slug),
+        date: String(m.date),
+        distanceMi: dMi,
+        goalPaceSec: goalSec && dMi > 0 ? Math.round(goalSec / dMi) : null,
+        priority: (m.priority === 'A' ? 'A' : 'B') as 'A' | 'B',
+      };
+    });
   // 2026-06-02 · ensure totalWeeks is an integer here too · matches
   // the same fix in composePlan. Was producing fractional totalWeeks
   // that broke phase advancement.
