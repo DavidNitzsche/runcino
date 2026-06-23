@@ -825,7 +825,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -833,7 +833,12 @@ function layoutWeek({
    *  long-run finish window in a plan-length-independent way. */
   weeksToPhaseEnd: number;
   totalWeeks: number;
-  weeklyMi: number; longRunDow: DOW; qualityDows: DOW[]; restDow: DOW;
+  weeklyMi: number;
+  /** 2026-06-23 · DIST-1 · peak weekly volume of the whole plan (max of the volume
+   *  curve). Scales the marathon/ultra long so it REACHES peakLongMiBand[1] when weekly
+   *  volume peaks, instead of topping out short via weeklyMi × longShare. */
+  peakWeeklyMi: number;
+  longRunDow: DOW; qualityDows: DOW[]; restDow: DOW;
   isRaceWeek: boolean; raceDow: DOW | null; raceDistanceMi: number;
   rx: ResolvedPrescriptions;
   /** 2026-06-03 · runner's recent peak long · floors longMi so plan
@@ -995,15 +1000,30 @@ function layoutWeek({
   // non-taper weeks layoutWeek's absolute weekIdx equals volumeCurve's build-
   // week index (build phases precede TAPER), so the masks line up exactly.
   const isCutback = weekIdx > 0 && (weekIdx + 1) % cutbackEveryN === 0;
-  const longMiRaw = Math.round(weeklyMi * longShare);
   const longCap = tierTarget.peakLongMiBand[1];
+  const longCat = distanceCategoryOf(raceDistanceMi);
+  // 2026-06-23 · DIST-1 · long-run SIZE, research-grounded:
+  //   5k/10k/hm — share of the week (Research/00a:184, ≤25-30%); weeklyMi × longShare
+  //     already lands inside the tier's peakLongMiBand, so keep it.
+  //   marathon/ultra — DISTANCE-driven toward the doctrine peak (Research/22:219-275 ·
+  //     marathon peak long 20-24mi). The marathon long is 45-67% of the week at peak — the
+  //     EXPLICIT exemption from the % cap, bounded by TIME not distance (Research/00a:217
+  //     "<3-3.5h for marathoners; ultra athletes go longer"). Scale it to REACH
+  //     peakLongMiBand[1] exactly when weekly volume peaks, ramping with the volume curve;
+  //     weeklyMi × longShare alone tops out ~5mi short of the doctrine peak.
+  const longMiRaw = (longCat === 'm' || longCat === 'ultra') && peakWeeklyMi > 0
+    ? Math.round(weeklyMi * (longCap / peakWeeklyMi))
+    : Math.round(weeklyMi * longShare);
   // 2026-06-21 (David signed off): the recent-long floor (don't author a shorter
   // long than the runner just ran) must NOT apply in TAPER — the taper
   // deliberately reduces the long into the race. Flooring it at recentLongMi
   // pinned the taper long flat (wk14 long 14 instead of ~11), a weak taper.
   // Skipping it in TAPER lets the long reduce; the post-compose WoW re-smoother
   // keeps the descending sequence legal.
-  const longFloor = (phase !== 'TAPER' && recentLongMi && recentLongMi >= 8)
+  // marathon/ultra · NO recent-long floor (the distance-driven ramp above sizes it; a flat
+  // floor at recentLongMi would pin every week at the runner's recent peak instead of
+  // ramping UP to it only 2-3 times near race day · Research/22:228). 5k/10k/hm keep it.
+  const longFloor = (longCat !== 'm' && longCat !== 'ultra' && phase !== 'TAPER' && recentLongMi && recentLongMi >= 8)
     ? Math.round(recentLongMi - (isCutback ? 2 : 0))
     : 0;
   // 2026-06-23 · VAR-02 · ANCHOR the long to the runner's recent longest run and ramp it
@@ -1492,6 +1512,8 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   } : baseTierTarget;
 
   const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level, tierTarget, input.tsbAtStart);
+  // DIST-1 · plan-wide peak weekly volume · scales the marathon/ultra long to its doctrine band.
+  const peakWeeklyMi = Math.max(1, ...vols);
   // #13 · the cadence volumeCurve used to deload, threaded into layoutWeek so
   // its long-run-floor relaxation lands on the same weeks. Same helper, same
   // input → guaranteed agreement.
@@ -1589,6 +1611,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       weeksToPhaseEnd: phaseWkRemaining - 1,
       totalWeeks,
       weeklyMi: vols[wi],
+      peakWeeklyMi,
       longRunDow: input.longRunDow,
       qualityDows: weekQualityDows,
       restDow: input.restDow,
