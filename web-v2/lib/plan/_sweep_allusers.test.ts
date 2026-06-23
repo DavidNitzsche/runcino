@@ -57,13 +57,16 @@ function grade(a: Arc) {
   } as any);
   if (!built.ok) { firm(`GEN_FAIL: ${built.reason}`.slice(0, 60), a); return; }
 
-  // validator (the engine's own research constraints incl. SP-7). Grade as a COLD-START signup:
-  // prod has no logged runs → trailingAvgWeeklyMi is null and the 1.65×-trailing peak check does
-  // not fire (it only applies to users with real run history). The curve's own ≤10%/week ramp is
-  // the cold-start safety. A separate has-history pass would set trailingAvg.
-  const coldCtx = { ...built.validateCtx, trailingAvgWeeklyMi: null };
-  try { validateComposedPlan(built.composed, built.raceDistanceMi, built.mode, coldCtx); }
-  catch (e) { if (e instanceof PlanValidationError) for (const v of e.violations) firm(`VALIDATOR: ${v.replace(/Week \S+/, 'Week X').replace(/\d+(\.\d+)?mi/g, 'Nmi').slice(0, 70)}`, a); else throw e; }
+  // Grade BOTH connection states a new runner can be in: a COLD-START signup (no Strava → prod sets
+  // trailingAvgWeeklyMi null, the peak-vs-trailing ramp check is skipped) AND a STRAVA-CONNECTED
+  // runner (trailingAvg = their recent volume → the ramp check applies). Both must produce a valid
+  // plan — a low-base runner who connects Strava must not be DENIED a plan.
+  const recentWk = built.derived.recentWeeklyMi;
+  for (const [conn, trailing] of [['cold', null], ['strava', recentWk > 0 ? recentWk : null]] as [string, number | null][]) {
+    const ctx = { ...built.validateCtx, trailingAvgWeeklyMi: trailing };
+    try { validateComposedPlan(built.composed, built.raceDistanceMi, built.mode, ctx); }
+    catch (e) { if (e instanceof PlanValidationError) for (const v of e.violations) firm(`VALIDATOR[${conn}]: ${v.replace(/Week \S+/, 'Week X').replace(/\d+(\.\d+)?mi/g, 'Nmi').slice(0, 64)}`, a); else throw e; }
+  }
 
   const cat = distanceCategoryOf(built.raceDistanceMi); // engine's actual distance (justRun → hm reference)
   const tier = classifyGoalTier(a.goalTimeSec ? Math.round(a.goalTimeSec / built.raceDistanceMi) : null, built.raceDistanceMi, a.experienceLevel as any);
