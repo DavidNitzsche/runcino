@@ -2274,6 +2274,11 @@ async function persistPlan(client: PoolClient, args: {
    *  goal time · spec-builder falls back to an inverse-offset
    *  derivation from T. */
   goalPaceSec: number | null;
+  /** 2026-06-23 · PACE-E-1 · current-fitness T-pace anchor for EASY/long/recovery bands. Those are
+   *  EFFORT runs and must track CURRENT fitness, not the goal-blended weekT — otherwise a sub-fitness
+   *  goal makes "easy" ramp faster every week (cold-start: easy can pass current MP). null → falls
+   *  back to weekT (byte-identical; at-goal runners have easyAnchorT == weekT). */
+  easyAnchorTSec: number | null;
   /** 2026-06-15 · R3 · use true Daniels I-pace (≈ current 5K race pace, from
    *  iPaceFromVdot) for intervals on a 5K/10K race goal — where VO2 at race
    *  pace IS the point — instead of spec-builder's tPaceSec-18 cruise default
@@ -2406,6 +2411,7 @@ async function persistPlan(client: PoolClient, args: {
           // 2026-06-09 · goal pace · only the race branch reads it.
           args.goalPaceSec ?? null,
           iPaceSec,
+          args.easyAnchorTSec ?? null,  // PACE-E-1 · easy/long/recovery anchor (current fitness)
         );
         paceTargetSPerMi = built.paceTargetSPerMi;
         workoutSpec = built.spec;
@@ -2798,6 +2804,8 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
         startISO: w.startISO, phase: w.phase, days: w.days, isRaceWeek: w.isRaceWeek, tPaceSec: w.tPaceSec,
       })),
       tPaceSec: inputs.compose.tPaceSec,
+      // PACE-E-1 · current-fitness anchor for easy/long/recovery (vs the goal-blended weekT).
+      easyAnchorTSec: tPaceFromVdot(inputs.compose.bestRecentVdot ?? conservativeVdotFromMileage(inputs.compose.recentWeeklyMi)),
       lthr: inputs.compose.lthr,
       // 2026-06-03 · Rule 16 · plumb maxHr through to spec-builder so
       // easy/long HR caps land at max(89% LTHR, 78% maxHR) instead of
