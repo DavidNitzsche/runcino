@@ -167,7 +167,7 @@ export default function PlanSimulatorPage() {
           if (entry.day.isLong) longPhase = entry.phase;
         }
       }
-      if (cells.some((c) => c.day)) {
+      if (cells.some((c) => c.day && c.day.type !== 'rest')) {
         const phase = longPhase || (Object.entries(phaseCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '');
         rows.push({ weekNum: wk++, phase, isRaceWeek, mileage: Math.round(mileage * 10) / 10, cells });
       }

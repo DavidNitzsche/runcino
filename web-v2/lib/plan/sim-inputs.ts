@@ -152,7 +152,12 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   } else if (sim.goalMode === 'goal') {
     raceDistanceMi = SIM_DISTANCE_MI[sim.distance];
     const weeks = Math.max(4, Math.min(52, Math.round(sim.planWeeks || 0)));
-    raceDateISO = addDaysISO(startMondayISO, weeks * 7); // /api/profile/goal: deadline = start + weeks·7
+    // Deadline = start + weeks·7, snapped FORWARD to the runner's long-run day so the goal
+    // "race" lands on the last day of its training week (like a real weekend race) instead
+    // of a mid-week date that strands post-race rest days in a trailing calendar week.
+    const rawDeadline = addDaysISO(startMondayISO, weeks * 7);
+    const toLong = (longRunDow - new Date(rawDeadline + 'T12:00:00Z').getUTCDay() + 7) % 7;
+    raceDateISO = addDaysISO(rawDeadline, toLong);
     goalSec = sim.goalTimeSec ?? null;
     mode = 'race-prep'; // goal-anchored is always a build
   } else {
