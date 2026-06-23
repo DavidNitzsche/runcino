@@ -1205,8 +1205,14 @@ function layoutWeek({
   // long lowers the weekly total instead — the correct, gentler outcome for a
   // runner whose long-run capacity is small. For established runners the long
   // dwarfs any easy day, so this clamp never binds (no behaviour change).
-  const easyCeiling = longMi > 0 ? longMi : perEasyRaw;
-  const perEasy = Math.min(Math.max(effectiveFloor, perEasyRaw), easyCeiling);
+  // RP-5 · strict separation: an easy day must be SHORTER than the long, never equal,
+  // so the long is visibly the week's longest run (David's "every run is the same
+  // distance" complaint — a small-tier 5K long pinned easy == long == 8mi). Cap easy
+  // at ~0.8×long (and ≥1 below it); separation overrides the floor when they conflict
+  // at tiny longs. For established runners the long dwarfs easy so this never binds —
+  // byte-unchanged for David.
+  const easySep = longMi > 0 ? Math.max(1, Math.min(longMi - 1, Math.round(0.8 * longMi))) : perEasyRaw;
+  const perEasy = Math.min(Math.max(effectiveFloor, perEasyRaw), easySep);
   for (const { dow } of emptySlots) {
     slots[dow] = easyDowSet.has(dow)
       ? { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }
@@ -2391,17 +2397,31 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
     const longMi = Math.max(0, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi));
     if (longMi <= 0) continue;
     for (const d of w.days) {
-      // 2026-06-21 · re-cap EASY *and* QUALITY at the (possibly trimmed)
-      // long. layoutWeek clamps quality ≤ long at compose time, but the WoW
-      // smoother + taper rescale above trim the long afterward, so a quality
-      // session sized to the original long can re-exceed the trimmed long.
-      // The long must stay the week's longest run for easy and quality alike
-      // (race day exempt — it's the longest run by design in a short race).
-      if ((d.type === 'easy' || (d.isQuality && d.type !== 'race')) && !d.isLong && d.distanceMi > longMi) {
-        w.weeklyMi = Math.max(0, Math.round((w.weeklyMi - (d.distanceMi - longMi)) * 10) / 10);
-        d.distanceMi = longMi;
+      // 2026-06-21 · re-cap EASY *and* QUALITY at the (possibly trimmed) long.
+      // layoutWeek clamps them at compose time, but the WoW smoother + taper rescale
+      // above trim the long afterward, so a session sized to the original long can
+      // re-exceed the trimmed long. 2026-06-23 · RP-5 · easy is held STRICTLY below the
+      // long (~0.8×) so the long stays visibly the longest run; quality may reach it.
+      // Race day exempt (longest by design in a short race).
+      const cap = d.type === 'easy' ? Math.max(1, Math.min(longMi - 1, Math.round(0.8 * longMi))) : longMi;
+      if ((d.type === 'easy' || (d.isQuality && d.type !== 'race')) && !d.isLong && d.distanceMi > cap) {
+        w.weeklyMi = Math.max(0, Math.round((w.weeklyMi - (d.distanceMi - cap)) * 10) / 10);
+        d.distanceMi = cap;
       }
     }
+  }
+
+  // 2026-06-23 · VOL-1 · reconcile every week's reported weeklyMi to the ACTUAL
+  // scheduled day-sum. Until now weeklyMi carried the volume-curve BUDGET, but the
+  // per-day caps (long cap, easy≤long clamp, frequency cap) silently drop whatever the
+  // budget can't place — so a low-frequency plan advertised 40mi while the days summed
+  // to 24 (~40% phantom). The validator validated the lie and the UI rendered it. Make
+  // weeklyMi == realized so the reported number can never exceed the plan. Race weeks
+  // legitimately diverge (the race is not training mileage) and keep their taper budget
+  // — VOL-3's tripwire skips them for the same reason.
+  for (const w of composed.weeks) {
+    if (w.isRaceWeek) continue;
+    w.weeklyMi = Math.round(w.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
   }
 }
 
