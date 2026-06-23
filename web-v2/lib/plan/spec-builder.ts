@@ -416,7 +416,7 @@ export function buildWorkoutSpec(
       // goal pace (legacy restore/adapt paths), invert tPaceFromGoal's
       // distance offsets to recover it from T.
       const dMi = distance_mi ?? 13.1;
-      const inverseOffset = dMi >= 25 ? 18 : dMi >= 12 ? 5 : dMi >= 5 ? -8 : -15;
+      const inverseOffset = dMi >= 31 ? 40 : dMi >= 25 ? 18 : dMi >= 12 ? 5 : dMi >= 5 ? -8 : -15; // PACE-5 · ultra races well below T
       const racePace = goalPaceSPerMi ?? (tPaceSec + inverseOffset);
       return {
         spec: {
@@ -631,6 +631,11 @@ export function tPaceFromGoal(
 ): number | null {
   if (!goalSeconds || !goalDistanceMi) return null;
   const goalSPerMi = Math.round(goalSeconds / goalDistanceMi);
+  // PACE-5 · ultra (50K+) T-pace is NOT goalPace−18 — an ultra finish pace is an arbitrary
+  // slow target far below threshold. Return null so the caller anchors T to VDOT instead
+  // (Research/22:289/297/316 · ultra runs at "race-paced effort", not MP; Research/00a:311-312
+  // · ultra threshold ≈ fitness-anchored steady tempo, never finish-pace-derived).
+  if (goalDistanceMi >= 31) return null;
   if (goalDistanceMi >= 25) return goalSPerMi - 18;   // marathon
   if (goalDistanceMi >= 12) return goalSPerMi - 5;    // half
   if (goalDistanceMi >= 5)  return goalSPerMi + 8;    // 10K
