@@ -24,16 +24,23 @@ const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6
 const catOf: Record<SimDistance, '5k' | '10k' | 'hm' | 'm' | 'ultra'> = { '5k': '5k', '10k': '10k', half: 'hm', marathon: 'm', '50k': 'ultra', '100k': 'ultra' };
 const WEEKS: Record<SimDistance, number> = { '5k': 10, '10k': 12, half: 14, marathon: 18, '50k': 22, '100k': 24 };
 
-type Arc = { goalMode: 'goal'; distance: SimDistance; experienceLevel: string; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number };
+type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string };
 
 function* matrix(): Generator<Arc> {
   for (const distance of DISTANCES)
     for (const experienceLevel of EXPERIENCE)
       for (const weeklyFrequency of FREQ)
         for (const weeklyMileageBucket of MILEAGE)
-          for (const longestRunBucket of LONGEST)
+          for (const longestRunBucket of LONGEST) {
+            const common = { distance, experienceLevel, weeklyFrequency, weeklyMileageBucket, longestRunBucket };
+            // goal mode (race-prep) — with a goal time and by-feel
             for (const goal of [GOAL_SEC[distance], null])
-              yield { goalMode: 'goal', distance, experienceLevel, weeklyFrequency, weeklyMileageBucket, longestRunBucket, goalTimeSec: goal, planWeeks: WEEKS[distance] };
+              yield { ...common, goalMode: 'goal', goalTimeSec: goal, planWeeks: WEEKS[distance] };
+            // just-run (maintenance / consistency block)
+            yield { ...common, goalMode: 'justRun', goalTimeSec: null, planWeeks: 0 };
+            // far-out race (≥26 weeks → maintenance until the build window opens)
+            yield { ...common, goalMode: 'race', goalTimeSec: GOAL_SEC[distance], planWeeks: 0, raceDateISO: '2027-03-01' };
+          }
 }
 
 const FIRM: Record<string, number> = {};
@@ -45,7 +52,7 @@ const arcStr = (a: Arc) => `${a.distance}/${a.experienceLevel}/f${a.weeklyFreque
 
 function grade(a: Arc) {
   const built = buildSimPlan({
-    ...a, startDateISO: '2026-07-06', raceDateISO: '', lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
+    ...a, startDateISO: '2026-07-06', raceDateISO: a.raceDateISO ?? '', lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
     raceHistory: [], longRunDay: 'sun', availableDays: [],
   } as any);
   if (!built.ok) { firm(`GEN_FAIL: ${built.reason}`.slice(0, 60), a); return; }
@@ -58,8 +65,8 @@ function grade(a: Arc) {
   try { validateComposedPlan(built.composed, built.raceDistanceMi, built.mode, coldCtx); }
   catch (e) { if (e instanceof PlanValidationError) for (const v of e.violations) firm(`VALIDATOR: ${v.replace(/Week \S+/, 'Week X').replace(/\d+(\.\d+)?mi/g, 'Nmi').slice(0, 70)}`, a); else throw e; }
 
-  const cat = catOf[a.distance];
-  const tier = classifyGoalTier(a.goalTimeSec ? Math.round(a.goalTimeSec / SIM_DISTANCE_MI[a.distance]) : null, SIM_DISTANCE_MI[a.distance], a.experienceLevel as any);
+  const cat = distanceCategoryOf(built.raceDistanceMi); // engine's actual distance (justRun → hm reference)
+  const tier = classifyGoalTier(a.goalTimeSec ? Math.round(a.goalTimeSec / built.raceDistanceMi) : null, built.raceDistanceMi, a.experienceLevel as any);
   const band = TIER_TARGETS[cat][tier];
   const recentLong = built.derived.recentLongMi;       // ENGINE-derived (post coherence-clamp)
   const recentWeekly = built.derived.recentWeeklyMi;
@@ -70,8 +77,9 @@ function grade(a: Arc) {
   const longs = weeks.flatMap((w: any) => w.days.filter((d: any) => d.isLong && d.type !== 'race').map((d: any) => d.distanceMi));
   const peakLong = Math.max(0, ...longs);
 
-  // ── FIRM research-conformance ──
-  if (peakLong > band.peakLongMiBand[1] + 3) firm(`LONG_OVERSHOOT ${cat}/${tier} peak>${band.peakLongMiBand[1]}+3`, a);
+  // ── FIRM research-conformance ── (band overshoot is a RACE-PREP concept; maintenance/recovery
+  // hold a base-proportional long, not a band-bound one — SP-6, validated separately)
+  if (built.mode === 'race-prep' && peakLong > band.peakLongMiBand[1] + 3) firm(`LONG_OVERSHOOT ${cat}/${tier} peak>${band.peakLongMiBand[1]}+3`, a);
   // overshoot only if the peak exceeds BOTH the band ceiling AND a safe ramp from the reported
   // base — a runner who genuinely reports 45mpw legitimately builds to ~base×1.15 even if their
   // experience tier's band is lower (respecting the base is correct, not over-building).
@@ -91,10 +99,12 @@ function grade(a: Arc) {
   // ramp: week-0 long must be ≤110% of recent (+1mi rounding) when recent is meaningful
   if (recentLong >= 6 && longs.length && longs[0] > recentLong * 1.10 + 1.0) firm('RAMP_HOT_WK1', a);
 
-  // ── WARN (band-reaching, gated on runway/base) ──
-  if (recentLong >= band.peakLongMiBand[0] && peakLong < band.peakLongMiBand[0] * 0.75) warn(`LONG_UNDERREACH ${cat}/${tier}`, a);
-  if (recentWeekly >= band.peakWeeklyMileageBand[0] && peakWk < band.peakWeeklyMileageBand[0] * 0.75) warn(`WK_UNDERREACH ${cat}/${tier}`, a);
-  if (a.goalTimeSec && peakLong === 0) warn('NO_LONG', a);
+  // ── WARN (band-reaching, race-prep only — maintenance/recovery hold BELOW the band by design) ──
+  if (built.mode === 'race-prep') {
+    if (recentLong >= band.peakLongMiBand[0] && peakLong < band.peakLongMiBand[0] * 0.75) warn(`LONG_UNDERREACH ${cat}/${tier}`, a);
+    if (recentWeekly >= band.peakWeeklyMileageBand[0] && peakWk < band.peakWeeklyMileageBand[0] * 0.75) warn(`WK_UNDERREACH ${cat}/${tier}`, a);
+    if (a.goalTimeSec && peakLong === 0) warn('NO_LONG', a);
+  }
 }
 
 describe('ALL-USER conformance sweep', () => {
