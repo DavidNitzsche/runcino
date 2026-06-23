@@ -44,6 +44,36 @@ export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
 const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 export const dayKeyToDow = (k: DayKey): DOW => DAY_KEYS.indexOf(k) as DOW;
 
+/**
+ * 2026-06-23 · A1/A2 (SCHED-01/02) · derive quality days from a runner's
+ * available_days, spaced off the long run. Drops any available day within 1 of the
+ * long (a hard session must never sit back-to-back with the long), then greedily
+ * orders the rest to maximize spacing from {long + already-chosen} so the downstream
+ * frequency slice takes a well-separated 1 or 2. A 2-adjacent-available-day runner
+ * (e.g. Sat/Sun) yields ZERO quality → the week folds to long + easy (the only
+ * doctrinally-safe option · Research/00a:754, 48h between hard sessions). Replaces the
+ * old proximity-to-Wednesday sort, which was blind to the long and put quality
+ * back-to-back with it for weekend-only runners.
+ */
+export function spacedQualityDowsFromAvailable(avail: number[], longRunDow: number): DOW[] {
+  const cd = (d: number, ref: number) => Math.min((d - ref + 7) % 7, (ref - d + 7) % 7);
+  const cands = avail.filter((d) => d !== longRunDow && cd(d, longRunDow) >= 2);
+  const out: number[] = [];
+  while (out.length < cands.length) {
+    let best = -1;
+    let bestMin = -1;
+    for (const c of cands) {
+      if (out.includes(c)) continue;
+      let m = 7;
+      for (const a of [longRunDow, ...out]) m = Math.min(m, cd(c, a));
+      if (m > bestMin) { bestMin = m; best = c; }
+    }
+    if (best < 0) break;
+    out.push(best);
+  }
+  return out as DOW[];
+}
+
 export interface GenerateInput {
   userId: string;
   /** Race-anchored plan: the races-row slug (reads distance/date/goal from it).
@@ -2768,8 +2798,7 @@ async function loadGeneratorInputs(
     restDow = (!aset.has(restDow) ? restDow : (unavail[0] ?? restDow)) as DOW;
     // Quality: available days other than the long day, midweek-first so hard
     // days sit away from the long run. composePlan slices to weekly density.
-    qualityDows = avail.filter((d) => d !== longRunDow)
-      .sort((a, b) => Math.abs(a - 3) - Math.abs(b - 3)) as DOW[];
+    qualityDows = spacedQualityDowsFromAvailable(avail, longRunDow);
   }
 
   // 2026-06-10 · stated training frequency (profile.weekly_frequency,
