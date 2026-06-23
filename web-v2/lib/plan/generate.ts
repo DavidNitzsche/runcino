@@ -1542,18 +1542,22 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     return Math.min(desiredDensity, Math.round(recentQ + (desiredDensity - recentQ) * (stepsUp / 4)));
   }
 
-  // 2026-06-03 · mid-block doctrine RULE 3 (pace anchor blend).
-  // When bestRecentVdot implies a T-pace slower than goal-T, anchor
-  // early-week paces to currentT and blend toward goalT by mid-build.
-  // Cite: §Rule 3.
-  const goalT = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? input.tPaceSec;
-
-  // Cold-start VDOT floor · conservativeVdotFromMileage lifted to
-  // spec-builder.ts 2026-06-10 (shared with the maintenance seeder) ·
+  // Cold-start VDOT floor · conservativeVdotFromMileage lifted to spec-builder.ts
+  // 2026-06-10 (shared with the maintenance seeder). Moved ABOVE goalT for VAR-05.
   // Cite: Daniels Running Formula §"VDOT and Training" — mileage-band heuristic.
   const estimatedCurrentVdot = input.bestRecentVdot
     ?? conservativeVdotFromMileage(input.recentWeeklyMi);
   const currentT = tPaceFromVdot(estimatedCurrentVdot);
+
+  // 2026-06-03 · mid-block doctrine RULE 3 (pace anchor blend) · when bestRecentVdot
+  // implies a T-pace slower than goal-T, anchor early-week paces to currentT and blend
+  // toward goalT by mid-build (Cite: §Rule 3). 2026-06-23 · VAR-05 · a by-feel runner (no
+  // goal) now paces off their ACTUAL fitness (currentT), never the flat 480s/mi (8:00/mi)
+  // literal — tPaceFromGoal returns null with no goal, and currentT always resolves
+  // (conservativeVdotFromMileage ≥30) so the 480 fallback goes dead. PACE-5 · ultra
+  // (≥31mi) also makes tPaceFromGoal return null → ultra T anchors to currentT here, not the
+  // bogus goalPace−18. Cite: Research/01 §Daniels-T (T-pace is a function of VDOT).
+  const goalT = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? currentT ?? input.tPaceSec;
 
   // Goal-realism guard: flag when the entered goal implies a VDOT >15% above
   // the conservative current estimate. Written to authoredState for the plan
@@ -1569,7 +1573,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   function tPaceForWeek(weekIdx: number, phase: string): number | null {
     if (goalT == null) return null;
     if (currentT == null || currentT <= goalT) return goalT; // at/above goal
-    if (phase === 'BASE' || phase === 'TAPER') return goalT; // late blend complete
+    if (phase === 'TAPER') return goalT; // VAR-07 · keep TAPER; BASE carries no T-session so its blend is free to track currentT
     // Blend over first 60% of the build · weekIdx ramps in [0, 1].
     const buildWeeks = blocks.phases.filter((p) => p.label !== 'TAPER')
       .reduce((s, p) => s + p.weeks, 0);
@@ -2809,6 +2813,11 @@ async function loadGeneratorInputs(
   if (totalDays < 14) return { ok: false, reason: 'target < 2 weeks away; use race-week briefing only' };
   if (totalDays > 365) return { ok: false, reason: 'target > 1 year out; plan only when within a year' };
 
+  // PACE-3 · sanity-guard the implied pace. A wheel/entry error (e.g. an HM time pasted
+  // onto a 5K goal) can imply a >15:00/mi "race pace" that threads an absurd 30-min/mi
+  // threshold into every workout. Treat an implausibly slow sub-HM goal as absent → it
+  // falls to the currentT fitness anchor (VAR-05) instead of the bogus pace.
+  if (goalSec != null && raceDistanceMi < 13.1 && goalSec / raceDistanceMi > 900) goalSec = null;
   const goalPaceSec = goalSec ? Math.round(goalSec / raceDistanceMi) : null;
 
   // 2. User prefs · layout
@@ -3017,10 +3026,14 @@ async function loadGeneratorInputs(
   //            → hybrid 12-mo observed → users.max_hr → null). Reading
   //            profile.max_hr directly would miss the observed peak ·
   //            per task #141 the profile column is not source of truth.
-  // 2026-06-06 · Audit C C5 · 480s/mi (8:00) default when no goal time is
-  // set, per spec-builder.tPaceFromGoal's contract. Without it, tPaceSec
-  // stays null → buildWorkoutSpec null-coercion → garbage paces.
-  const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi) ?? 480;
+  // 2026-06-06 · Audit C C5 · plan-wide T-pace. 2026-06-23 · VAR-05 · when no goal is set
+  // (by-feel) OR an ultra makes tPaceFromGoal return null (PACE-5), anchor to the runner's
+  // ACTUAL fitness (currentT from bestRecentVdot, else the conservative mileage estimate),
+  // never the flat 480s/mi (8:00/mi) literal — this value feeds authoredState.t_pace_s_per_mi
+  // + the per-week blend fallback. conservativeVdotFromMileage is always ≥30 so 480 is now a
+  // dead last-ditch. Cite: Research/01 §Daniels-T (T is a function of VDOT, never a constant).
+  const currentTLoader = tPaceFromVdot(bestRecentVdot ?? conservativeVdotFromMileage(recentMi));
+  const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi) ?? currentTLoader ?? 480;
   const lthrRow = (await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
