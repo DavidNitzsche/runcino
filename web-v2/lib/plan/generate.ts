@@ -612,10 +612,16 @@ function volumeCurve(
   // with a coherence minimum of 6 mpw instead of the 10 floor. Every other
   // level is unchanged — start = max(tier floor, base) — so David /
   // intermediate / advanced plans are byte-for-byte identical.
+  // 2026-06-23 · VAR-06 · respect the runner's reported base at EVERY level (generalizing
+  // the beginner carve-out below), not just beginners. The old non-beginner `max(floor,
+  // base)` jumped a detrained sub-floor runner (e.g. 10mi/wk intermediate) up to the tier
+  // floor in week 1 — a big leap that skips the safe ramp and flattened the low
+  // weekly-mileage buckets together (David's "weekly mileage doesn't do anything"). A
+  // runner already at/above the tier floor (David, any trained runner) is byte-unchanged:
+  // max(6, base) == base == max(floor, base) when base >= floor >= 6.
   const TRUE_BEGINNER_MIN_MPW = 6;
-  const start = level === 'beginner'
-    ? Math.max(TRUE_BEGINNER_MIN_MPW, baseMi)
-    : Math.max(floor, baseMi);
+  void floor;
+  const start = Math.max(TRUE_BEGINNER_MIN_MPW, baseMi);
   // Peak target · LOWER band of the tier so it's achievable from a
   // realistic base. If the runner already exceeds the lower band,
   // aim 10% above their current base (still respects tier doctrine).
