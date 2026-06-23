@@ -218,9 +218,12 @@ describe('NON-RACE composers · maintenance + recovery sweep', () => {
 
   it('fix (l) · recovery length varies by last-race distance', () => {
     const mk = (mi: number) => composeRecoveryPlan(baseInput({ tier: 'advanced', recentPeakWeeklyMi: 55, recentLongMi: 20, lastRaceFinished: { slug: 'l', name: 'x', date: '2026-01-01', distanceMi: mi } })).weeks.length;
+    // RECOVERY-1 (2026-06-23) · durations corrected to Research/00b:197-208 (marathon 21-28d → 4wk,
+    // HM 10-14d → 2wk, ultra → 4wk). 5K still falls to the 1-week placeholder (POST_RACE=0).
     expect(mk(3.1)).toBe(1);
-    expect(mk(26.2)).toBe(2);
-    expect(mk(31.0)).toBe(3);
+    expect(mk(13.1)).toBe(2);
+    expect(mk(26.2)).toBe(4);
+    expect(mk(31.0)).toBe(4);
   });
 
   it('fix (l) · recovery week is a real cutback (day-sum tracks weekly, < base, ≥2 rest) when avail unrestricted', () => {
