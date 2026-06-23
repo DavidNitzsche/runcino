@@ -110,12 +110,16 @@ struct OnboardingView: View {
         let tz = TimeZone.current.identifier
 
         let histAvg: String = {
+            // The "35 to 45 miles" row sets weeklyMi=35 → "35+" (seeds 40 mpw); the "45+ miles"
+            // row sets weeklyMi=45 → "45+" (seeds 50 mpw). Before 2026-06-23 both folded into
+            // "35+", reading a 45+ runner as 38 mpw. Backend accepts "45+" since web-v2 d08847ee.
             switch weeklyMi ?? 0 {
             case ..<5:  return "0-5"
             case ..<15: return "5-15"
             case ..<25: return "15-25"
             case ..<35: return "25-35"
-            default:    return "35+"
+            case ..<45: return "35+"
+            default:    return "45+"
             }
         }()
 
