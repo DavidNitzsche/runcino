@@ -377,6 +377,12 @@ export function validateComposedPlan(
   for (let i = 1; mode === 'race-prep' && i < nonRaceWeeks.length; i++) {
     const prev = nonRaceWeeks[i - 1].weeklyMi;
     const curr = nonRaceWeeks[i].weeklyMi;
+    // RC2-4 · Returning from a planned cutback week is an expected volume jump, NOT a ramp
+    // error. The cutback deliberately drops 20% below the prior peak; the following week
+    // returns to the normal climbing curve. Flagging this as a WoW violation would
+    // incorrectly penalise the doctrinal 20% deload → return pattern.
+    // Cite: Pfitzinger Advanced Marathoning §"Cutback Weeks".
+    if (nonRaceWeeks[i - 1].isCutback) continue;
     // 2026-06-23 · small-absolute exemption: at very low volume the %-jump is misleading — a
     // 6mi→9mi step is +50% but only +3mi, a safe ramp for a cold-start beginner. Flag only when
     // the jump exceeds the % ceiling AND is more than 4mi in absolute terms (mirrors the taper

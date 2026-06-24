@@ -767,17 +767,29 @@ function volumeCurve(
 
   // Walk climb weeks · target = start * climbFactor^N where N is
   // the climbing-week index (skips deloads). Deload weeks = previous
-  // climb week × 0.85.
+  // climb week × 0.80 (RC2-4 · doctrine is 20-30% reduction; prior 0.85 = 15% — too shallow).
+  // Cite: Pfitzinger Advanced Marathoning §"Cutback Weeks" (20-25% drop).
   let climbIdx = 0;
   let lastClimb = start;
   let lastPeak = start;
+  let lastDeloadVol: number | null = null; // RC2-4 post-deload WoW guard (see below)
   for (let i = 0; i < buildWeeks; i++) {
     if (deloadMask[i]) {
-      const deload = Math.round(lastClimb * 0.85);
+      const deload = Math.round(lastClimb * 0.80);
+      lastDeloadVol = deload;
       vols.push(deload);
     } else {
-      const target = start * Math.pow(climbFactor, climbIdx);
-      const rounded = Math.round(Math.min(target, peakTarget));
+      const geometricTarget = start * Math.pow(climbFactor, climbIdx);
+      // RC2-4 post-deload WoW cap · 20% deload can create a >50% jump when the geometric
+      // curve climbs aggressively (e.g. 5mpw → 25mi peak in 14 wks). Cap the FIRST climbing
+      // week after a deload to deload × 1.45 so the WoW validator's 50% limit never fires.
+      // The cap only bites on that one week; subsequent weeks continue the uncapped curve.
+      // Cite: Pfitzinger Advanced Marathoning §"Cutback Weeks" + §"Week-over-Week 10% Rule".
+      const cappedTarget = lastDeloadVol != null
+        ? Math.min(geometricTarget, lastDeloadVol * 1.45)
+        : geometricTarget;
+      lastDeloadVol = null;
+      const rounded = Math.round(Math.min(cappedTarget, peakTarget));
       vols.push(rounded);
       lastClimb = rounded;
       lastPeak = Math.max(lastPeak, rounded);
@@ -1307,7 +1319,11 @@ function layoutWeek({
     // historical inline catalog if the library has no matching row.
     // B3 · stimulus-gap-aware scheduling: order intervals last (toward the long's buffer) and
     // re-place days only when the default assignment violates a Research/00b:55-60 gap.
-    const scheduledQ = scheduleQuality(qualityDows, qualityTypes, longRunDow, restDow, availableDows);
+    // PP-3 (2026-06-23, David approved) · non-race taper weeks get exactly 1 tune-up, not 2.
+    // Pfitzinger §taper: "reduce volume, preserve intensity, one quality session." Two tune-ups
+    // in a non-race taper week accumulate fatigue and blunt the taper effect.
+    const effectiveQDows = (phase === 'TAPER' && !isRaceWeek) ? qualityDows.slice(0, 1) : qualityDows;
+    const scheduledQ = scheduleQuality(effectiveQDows, qualityTypes, longRunDow, restDow, availableDows);
     scheduledQ.dows.forEach((dow, i) => {
       if (slots[dow] != null) return; // conflict · skip
       const qt = scheduledQ.types[i % scheduledQ.types.length];
@@ -1635,6 +1651,11 @@ export interface ComposedWeek {
    *  goalT blend. persistPlan writes this into each quality row's
    *  pace_target_s_per_mi instead of the plan-wide tPaceSec. */
   tPaceSec?: number | null;
+  /** RC2-4 · planned cutback (deload) week. The validator exempts the
+   *  FOLLOWING week from the WoW jump check — returning from a planned
+   *  deload to normal training is an EXPECTED jump, not a ramp error.
+   *  Cite: Pfitzinger Advanced Marathoning §"Cutback Weeks". */
+  isCutback?: boolean;
 }
 
 export interface ComposePlanResult {
@@ -1907,7 +1928,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         restDay.notes = `Cross-training: ${mode}. Easy effort. Not a run replacement · keeps the engine humming on a non-impact day.`;
       }
     }
-    weeks.push({ startISO: weekStart, phase: phaseLabel, weeklyMi: vols[wi], days, isRaceWeek, tPaceSec: weekT });
+    weeks.push({ startISO: weekStart, phase: phaseLabel, weeklyMi: vols[wi], days, isRaceWeek, tPaceSec: weekT, isCutback: wi > 0 && (wi + 1) % cutbackEveryN === 0 });
     phaseWkRemaining--;
   }
 
