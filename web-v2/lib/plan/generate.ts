@@ -2091,7 +2091,10 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     const buildCat = distanceCategoryOfTier(input.nextRace.distanceMi);
     const buildWindow = BUILD_WINDOW_WEEKS[buildCat];
     if (weeksToRace > buildWindow) {
-      TOTAL_WEEKS = Math.max(1, Math.round(weeksToRace - buildWindow));
+      // MAINT-SKIP-1 (2026-06-24) · floor not round — rounding up would let maintenance
+      // eat into the build window. pickPlanMode already routes floor=0 to race-prep,
+      // so this is guaranteed ≥ 1 when composeMaintenancePlan is called.
+      TOTAL_WEEKS = Math.max(1, Math.floor(weeksToRace - buildWindow));
     }
   }
   const weeks: ComposedWeek[] = [];

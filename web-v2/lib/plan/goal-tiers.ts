@@ -147,12 +147,17 @@ export function pickPlanMode(
   }
   // 2. No next race · maintenance by default
   if (!nextRaceDateISO || !nextRaceDistanceMi) return 'maintenance';
-  // 3. Race-prep when next race is within build window
+  // 3. Race-prep when next race is within build window (or < 1 full maintenance week outside it)
+  // MAINT-SKIP-1 (2026-06-24): when weeksOut - buildWindow < 1 (floors to 0), there is
+  // less than one full maintenance week available before race-prep should start. Showing
+  // a fractional-week maintenance block is misleading and wastes onboarding attention —
+  // route to race-prep instead and let the composer fit the plan to the actual race date.
   const nextCat = distanceCategoryOf(nextRaceDistanceMi);
-  const buildWindowMs = BUILD_WINDOW_WEEKS[nextCat] * 7 * 86400000;
+  const buildWindowWeeks = BUILD_WINDOW_WEEKS[nextCat];
   const raceMs = new Date(nextRaceDateISO + 'T12:00:00Z').getTime();
   const weeksOut = (raceMs - today) / (7 * 86400000);
-  if (weeksOut > 0 && (raceMs - today) <= buildWindowMs) return 'race-prep';
+  const maintWeeks = Math.floor(weeksOut - buildWindowWeeks);
+  if (weeksOut > 0 && maintWeeks <= 0) return 'race-prep';
   // 4. Too far out · maintenance until build window opens
   return 'maintenance';
 }
