@@ -173,7 +173,13 @@ export function coherentRecentLong(recentLongMi: number, recentWeeklyMi: number,
   if (!recentWeeklyMi || recentWeeklyMi <= 0 || !recentLongMi || recentLongMi <= 0) return recentLongMi;
   let v = Math.min(recentLongMi, Math.round(recentWeeklyMi * 0.8)); // a single long ≤ 80% of the week
   if (trainingDaysPerWeek && trainingDaysPerWeek > 0) {
-    v = Math.max(v, Math.round(recentWeeklyMi / trainingDaysPerWeek)); // longest ≥ the average run
+    // longest ≥ the average run (arithmetic minimum: the max of a set ≥ its mean). When a runner
+    // reports longestRunBucket='0-3' (2mi) but weeklyMileageBucket=45 (50mpw) on 3 days, it is
+    // MATHEMATICALLY IMPOSSIBLE for their longest run to be 2mi — the mean alone is 17mi. Raising
+    // the seed to the mean resolves the contradiction by trusting the weekly mileage over the longest-
+    // run self-report (mileage is what runners know; longest-run bucket is often underreported).
+    // The rampCeiling in layoutWeek then governs week-1 growth from this seed (max 10% above seed).
+    v = Math.max(v, Math.round(recentWeeklyMi / trainingDaysPerWeek));
   }
   return v;
 }
@@ -877,7 +883,11 @@ export async function resolvePrescriptions(
 
   return {
     intervals:        intervalsT?.prescriptionText  ?? fallback.intervals,
-    threshold:        thresholdT?.prescriptionText  ?? fallback.threshold,
+    // HM-RSPEC-1 (2026-06-23): HM race-specific threshold should be 5×1mi (Research/00a §309
+    // "5–6×1mi at half-marathon pace"), not the quality-phase 3×1mi. The DB row wins when present;
+    // fallback distinguishes race-specific from quality for the HM inline prescription.
+    threshold:        thresholdT?.prescriptionText
+                   ?? (phase === 'race_specific' && cat === 'hm' ? '5×1mi @ T pace · 90s jog' : fallback.threshold),
     tempo:            fallback.tempo,
     citationInterval: intervalsT?.citation          ?? fallback.citationInterval,
     citationThreshold: thresholdT?.citation         ?? fallback.citationThreshold,
