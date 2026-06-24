@@ -193,7 +193,9 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   // VAR-05 · by-feel (no goal) or ultra (PACE-5 → tPaceFromGoal null) anchors T to the
   // runner's actual fitness (currentT), never the flat 480s/mi literal. Mirrors composePlan.
   const currentT = tPaceFromVdot(bestRecentVdot ?? conservativeVdotFromMileage(recentWeeklyMi));
-  const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi) ?? currentT ?? 480;
+  // NEW-A · floor tPaceSec at currentT (mirrors the loader) so maintenance/recovery don't inherit a slow soft goal.
+  const goalTpSim = tPaceFromGoal(goalSec, raceDistanceMi);
+  const tPaceSec = (goalTpSim != null && currentT != null ? Math.min(goalTpSim, currentT) : goalTpSim) ?? currentT ?? 480;
 
   if (mode === 'race-prep') {
     const d = daysBetween(startMondayISO, raceDateISO);

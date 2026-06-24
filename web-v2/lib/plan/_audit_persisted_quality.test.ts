@@ -325,17 +325,16 @@ describe('PERSISTED quality≤long · fix (g) regression guard', () => {
     expect(tinyRealized).toBeLessThanOrEqual(2.5 + QUALITY_FLOOR_RESIDUAL);
   });
 
-  it('1-mile threshold reps hit the documented floor (not below ~3.1mi) — characterization', () => {
-    // Locks the mechanism behind the bounded residual: a "3×1mi @ T" session
-    // cannot be compressed below ~3.1mi (2 reps × 1mi + 2×0.5 WU/CD + float).
-    // Asserting it here makes the residual a TESTED, intentional bound rather
-    // than a surprise. If the spec-builder ever shrinks 1-mile reps (e.g. swaps
-    // to a continuous tempo on a tiny budget), this characterization flips and
-    // QUALITY_FLOOR_RESIDUAL can go to 0.
+  it('1-mile threshold reps compress to the budget on a tiny clamp (PP-1, no overshoot over the long)', () => {
+    // PP-1 (2026-06-23) flipped the old "irreducible ~3.1mi floor" characterization: capSpecToDistance
+    // now drops to 1 rep AND shrinks the rep distance, so a clamped rep-based quality realizes ≤ its
+    // budget instead of ballooning ~3.1mi over a 3mi long. (The residual that motivated this test → 0.)
     const built = buildWorkoutSpec('threshold', 3, 350, null, '3×1mi @ T pace · 60s jog', null, null, null);
     const realized = totalDistanceMiFromSpec(capSpecToDistance(built.spec, 3), 3);
-    expect(realized).toBeGreaterThan(3); // confirms the floor really does exceed 3.0
-    expect(realized).toBeLessThanOrEqual(3 + QUALITY_FLOOR_RESIDUAL);
+    expect(realized).toBeLessThanOrEqual(3 + 0.05); // realizes to the budget, no overshoot
+    // a tiny budget shrinks below the old 3.1 floor
+    const tiny = totalDistanceMiFromSpec(capSpecToDistance(buildWorkoutSpec('threshold', 2, 350, null, '3×1mi @ T pace · 60s jog', null, null, null).spec, 2), 2);
+    expect(tiny).toBeLessThanOrEqual(2 + 0.05);
   });
 
   it('established-runner specs are unaffected (no spurious cap engagement)', () => {

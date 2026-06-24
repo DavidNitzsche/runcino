@@ -11,8 +11,8 @@ exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: p
   "wk10: tempo="4mi continuous tempo" ; threshold="4×1mi @ T pace · 90s jog"",
   "wk11: tempo="4mi continuous tempo" ; threshold="4×1mi @ T pace · 90s jog"",
   "wk12: tempo="4mi continuous tempo" ; threshold="4×1mi @ T pace · 90s jog"",
-  "wk13: race_week_tuneup="WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi" ; race_week_tuneup="WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi"",
-  "wk14: race_week_tuneup="WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi" ; race_week_tuneup="WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi"",
+  "wk13: race_week_tuneup="4×1km @ race pace · 90s jog" ; race_week_tuneup="4×1km @ race pace · 90s jog"",
+  "wk14: race_week_tuneup="4×1km @ race pace · 90s jog" ; race_week_tuneup="4×1km @ race pace · 90s jog"",
   "wk15: race="RACE" ; race_week_tuneup="4×1km @ race pace · 90s jog"",
 ]
 `;

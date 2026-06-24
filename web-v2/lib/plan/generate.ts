@@ -1100,9 +1100,17 @@ function layoutWeek({
   //     "<3-3.5h for marathoners; ultra athletes go longer"). Scale it to REACH
   //     peakLongMiBand[1] exactly when weekly volume peaks, ramping with the volume curve;
   //     weeklyMi × longShare alone tops out ~5mi short of the doctrine peak.
+  // DIST-1 · marathon/ultra are distance-driven to peakLongMiBand[1]. RC2-2 (2026-06-23) · HM-advanced
+  // (longShare 0.25, peak ~56) reaches only 14 < band[0]=15 via the share path — so for 5k/10k/hm, when
+  // the share would underreach band[0] AT PEAK, use the distance-driven size too. Byte-safe: only lifts
+  // when the peak share is short of the band floor (elite/int/dev + David's horizon HM stay in-band).
+  const drivenLongRaw = peakWeeklyMi > 0 ? Math.round(weeklyMi * (longCap / peakWeeklyMi)) : 0;
+  const shareLongRaw = Math.round(weeklyMi * longShare);
   const longMiRaw = (longCat === 'm' || longCat === 'ultra') && peakWeeklyMi > 0
-    ? Math.round(weeklyMi * (longCap / peakWeeklyMi))
-    : Math.round(weeklyMi * longShare);
+    ? drivenLongRaw
+    : (peakWeeklyMi > 0 && Math.round(peakWeeklyMi * longShare) < tierTarget.peakLongMiBand[0])
+      ? Math.max(shareLongRaw, drivenLongRaw)
+      : shareLongRaw;
   // 2026-06-21 (David signed off): the recent-long floor (don't author a shorter
   // long than the runner just ran) must NOT apply in TAPER — the taper
   // deliberately reduces the long into the race. Flooring it at recentLongMi
@@ -1249,7 +1257,7 @@ function layoutWeek({
                                       // tempo floor). Research/22 §Beginner ("2.5mi E w/ 4×1 min @ T").
                                       ? `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ 5×1 min surges @ T effort`
                                       : `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`)
-      : qt === 'race_week_tuneup' ? 'WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi'
+      : qt === 'race_week_tuneup' ? (raceDistanceMi >= 12 ? '4×1km @ race pace · 90s jog' : 'WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi') // PP-2 · hm/m use the doctrinal 4×1km (realizes to budget exactly; the 2×0.5mi WU/CD capped ~3.6)
       :                              'QUALITY';
       // 2026-06-02 · the workout_library uses family='threshold' for
       // BOTH rep-based cruise intervals AND continuous tempos (both
@@ -1701,7 +1709,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
 
   function tPaceForWeek(weekIdx: number, phase: string): number | null {
     if (goalT == null) return null;
-    if (currentT == null || currentT <= goalT) return goalT; // at/above goal
+    if (currentT == null) return goalT;
+    // BRK-1 (2026-06-23) · a SOFT goal (currentT <= goalT · runner already fitter than the goal) trains
+    // QUALITY at CURRENT fitness — NOT the slower goalT — otherwise easy (PACE-E-1-anchored to currentT)
+    // ends up FASTER than the VO2max/MP work (a Daniels-order violation). The soft goal time stays the
+    // RACE-DAY target (the race row reads goalPaceSPerMi, not this blend). David is sub-fitness → unaffected.
+    if (currentT <= goalT) return currentT;
     if (phase === 'TAPER') return goalT; // VAR-07 · keep TAPER; BASE carries no T-session so its blend is free to track currentT
     // Blend over first 60% of the build · weekIdx ramps in [0, 1].
     const buildWeeks = blocks.phases.filter((p) => p.label !== 'TAPER')
@@ -3091,6 +3104,13 @@ async function loadGeneratorInputs(
   const startMondayISO = (startDateISO && startDateISO >= todayISO)
     ? startDateISO
     : startAnchor === 'today' ? todayISO : weekStartBoundaryOf(todayISO, weekStartDow);
+  // LSP2-1 (2026-06-23) · a goalTarget race date is start+weeks*7 with NO weekday snap, so it lands on
+  // day-0 of its week → SP-4 strips every tune-up/shakeout/easy that wraps onto the post-race days and
+  // the final week collapses to a bare race day (all 7 start weekdays, prod-only — the sim snaps and
+  // hid it). Snap a goalTarget race to the END of its week (weekStartBoundary + 6 = the long-run day) so
+  // the pre-race days fit. goalTarget ONLY — a real race honors its chosen date. totalWeeks is unchanged
+  // (the snap stays within the same week). David is a real race → no-op.
+  if (goalTarget) raceDateISO = addDays(weekStartBoundaryOf(raceDateISO, weekStartDow), 6);
   const totalWeeks = daysBetween(startMondayISO, weekStartBoundaryOf(raceDateISO, weekStartDow)) / 7 + 1;
   if (totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 
@@ -3227,7 +3247,11 @@ async function loadGeneratorInputs(
   // + the per-week blend fallback. conservativeVdotFromMileage is always ≥30 so 480 is now a
   // dead last-ditch. Cite: Research/01 §Daniels-T (T is a function of VDOT, never a constant).
   const currentTLoader = tPaceFromVdot(bestRecentVdot ?? conservativeVdotFromMileage(recentMi));
-  const tPaceSec = tPaceFromGoal(goalSec, raceDistanceMi) ?? currentTLoader ?? 480;
+  // NEW-A (2026-06-23) · floor the plan-wide tPaceSec at currentT so the MAINTENANCE/RECOVERY composers
+  // (which read input.tPaceSec, not tPaceForWeek) can't inherit a SLOW soft-goal pace → threshold quality
+  // ~70s/mi slower than easy. Race-prep is unaffected (its goalT derives from input.goalSec, not tPaceSec).
+  const goalTpLoader = tPaceFromGoal(goalSec, raceDistanceMi);
+  const tPaceSec = (goalTpLoader != null && currentTLoader != null ? Math.min(goalTpLoader, currentTLoader) : goalTpLoader) ?? currentTLoader ?? 480;
   const lthrRow = (await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],

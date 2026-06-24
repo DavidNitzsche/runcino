@@ -280,7 +280,10 @@ export function buildWorkoutSpec(
       const finishFields = finish
         ? {
             finish_mi: finish.mi,
-            finish_pace_s_per_mi: finish.tag === 'HM' ? tPaceSec + 5 : tPaceSec + 18,
+            // BRK-1 · the long FINISH (MP/HMP) must never be slower than easy. easyAnchorT is the
+            // current-fitness anchor (PACE-E-1); min() keeps the finish ≤ the easy band even when weekT
+            // is a soft goal. Unthreaded callers (easyAnchorT==tPaceSec) → byte-identical. Research/04:85-87.
+            finish_pace_s_per_mi: Math.min(tPaceSec, easyAnchorT) + (finish.tag === 'HM' ? 5 : 18),
             finish_label: finish.tag,
           }
         : {};
@@ -609,14 +612,24 @@ export function capSpecToDistance(spec: WorkoutSpec, maxMi: number): WorkoutSpec
     s.cooldown_mi = cd;
     s.tempo_distance_mi = Number(Math.max(0.5, maxMi - wu - cd).toFixed(1));
   } else if (kind === 'threshold' || kind === 'intervals') {
-    const repMi = (Number(s.rep_distance_mi ?? 0) || 0) > 0
+    let repMi = (Number(s.rep_distance_mi ?? 0) || 0) > 0
       ? Number(s.rep_distance_mi)
       : (Number(s.rep_distance_m ?? 0) || 0) / 1609.34 || 1;
     const floatPer = (Number(s.rep_rest_s ?? 0) || 0) / 540;
     let reps = Number(s.rep_count ?? 0) || 0;
     const wuMin = 0.5, cdMin = 0.5;
-    while (reps > 2 && (reps * repMi + Math.max(0, reps - 1) * floatPer + wuMin + cdMin) > maxMi) reps--;
+    // PP-1 (2026-06-23) · drop to 1 rep (was floored at 2 — a no-op at reps=2 that let a clamped
+    // quality day realize ~3.1mi over a 3mi long, violating long-primacy in the PERSISTED plan).
+    while (reps > 1 && (reps * repMi + Math.max(0, reps - 1) * floatPer + wuMin + cdMin) > maxMi) reps--;
     const floatTotal = Math.max(0, reps - 1) * floatPer;
+    // PP-1 · if even the minimum rep set + WU/CD floor still overshoots a tiny budget, SHRINK the rep
+    // distance (mirrors tempo's continuous scaling) so the day fits under the long. Byte-safe — only
+    // engages when realized still exceeds maxMi at a tiny budget (established runners untouched).
+    if (reps * repMi + floatTotal + wuMin + cdMin > maxMi) {
+      repMi = Math.max(0.1, (maxMi - wuMin - cdMin - floatTotal) / Math.max(1, reps));
+      s.rep_distance_mi = Number(repMi.toFixed(2));
+      if (s.rep_distance_m != null) s.rep_distance_m = Math.round(repMi * 1609.34);
+    }
     const slack = Math.max(wuMin + cdMin, maxMi - reps * repMi - floatTotal);
     s.rep_count = reps;
     // 2026-06-21 · round wu once, derive cd as the exact remainder so
