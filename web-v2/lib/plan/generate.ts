@@ -2043,7 +2043,12 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     // shape.daysPerWeek so this reads the runner's stated number, not the tier.
     const qualityAllowed = shape.qualityPerWeek > 0 && shape.daysPerWeek >= 2;
     if (qualityAllowed && input.qualityDows.length > 0) {
-      const qDow = input.qualityDows[0]; // single quality, first picked day
+      // MAINT-QUAL-ADJACENT (2026-06-23) · route through scheduleQuality so the selected DOW is
+      // guaranteed to be at least 1 day away from the long run (§5). The previous direct use of
+      // qualityDows[0] had no gap check: sat-quality + sun-long = 0 recovery days between them.
+      const qType: DayPlan['type'] = shape.qualityType === 'threshold' ? 'threshold' : 'tempo';
+      const { dows: scheduledQ } = scheduleQuality(input.qualityDows, [qType], input.longRunDow, input.restDow, input.availableDows ?? null);
+      const qDow = scheduledQ.length > 0 ? scheduledQ[0] : input.qualityDows[0];
       if (slots[qDow] == null) {
         // MAINT-QLONG-1 (2026-06-23) · cap at wkLong to preserve long-primacy (§7).
         // The prior 5mi floor exceeded the long for small-base runners (e.g. 15mpw → wkLong=4,
@@ -2084,7 +2089,12 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       : emptySlots;
     const runningPlaced = slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length;
     const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - runningPlaced));
-    const perEasyRaw = targetEasyCount > 0 ? Math.max(2, Math.round(easyMiBudget / targetEasyCount)) : 0;
+    // MAINT-EASY-1-REGRESS (2026-06-23) · the 2mi floor must not fire when easyMiBudget is
+    // exhausted (long already consumed all of targetWeekly). Without this guard, a 2mi-target
+    // week with 4 easy slots → 4×2mi=8mi on top of a 2mi long = 10mi realized vs 2mi target.
+    const perEasyRaw = targetEasyCount > 0
+      ? (easyMiBudget > 0 ? Math.max(2, Math.round(easyMiBudget / targetEasyCount)) : 0)
+      : 0;
     // 2026-06-21 · N2 · easy never exceeds the long run. A sparse availableDows
     // (few easy slots) + a high peak can spike per-easy above the long (same
     // class as recovery N2); clamp to wkLong, mirroring layoutWeek's easyCeiling.
