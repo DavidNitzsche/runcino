@@ -35,7 +35,6 @@ import {
   composeMaintenancePlan,
   composeRecoveryPlan,
   finalizeComposedPlan,
-  coherentRecentLong,
 } from './generate';
 import { lookupTierTarget, pickPlanMode, type PlanMode } from './goal-tiers';
 import { tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
@@ -140,7 +139,17 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     qualityDows = qualityDows.slice(0, qCount);
   }
   // COH-1 · clamp the reported longest run to be coherent with weekly volume (mirrors the loader).
-  recentLongMi = coherentRecentLong(recentLongMi, recentWeeklyMi, trainingDaysPerWeek);
+  // SIM-COH-1 · cap the coherence floor to the bucket's upper bound so switching buckets
+  // always produces a visibly different plan (prevents "nothing changes" when
+  // avg-run-distance > bucket ceiling — e.g. 30mpw / 3 days → avg=10mi overrides both
+  // "0-3mi" and "3-6mi" to 10mi, making them identical).
+  const SIM_LONG_BUCKET_MAX: Record<string, number> = { '0-3': 3, '3-6': 6, '6-10': 10, '10+': 999 };
+  const _bucketMax = SIM_LONG_BUCKET_MAX[sim.longestRunBucket as string] ?? 999;
+  const _avgRun = trainingDaysPerWeek ? Math.round(recentWeeklyMi / trainingDaysPerWeek) : 0;
+  recentLongMi = Math.min(
+    Math.max(recentLongMi, Math.min(_avgRun, _bucketMax)),
+    Math.round(recentWeeklyMi * 0.8),
+  );
   const crossModes: string[] = [];
 
   // ── mode + horizon ──

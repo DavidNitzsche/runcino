@@ -135,8 +135,18 @@ function grade(a: Arc) {
 
   // ── WARN (band-reaching, race-prep only — maintenance/recovery hold BELOW the band by design) ──
   if (built.mode === 'race-prep') {
-    if (recentLong >= band.peakLongMiBand[0] && peakLong < band.peakLongMiBand[0] * 0.75) warn(`LONG_UNDERREACH ${cat}/${tier}`, a);
-    if (recentWeekly >= band.peakWeeklyMileageBand[0] && peakWk < band.peakWeeklyMileageBand[0] * 0.75) warn(`WK_UNDERREACH ${cat}/${tier}`, a);
+    // SIM-COH-1 exemption: skip underreach checks when the archetype's inputs are inherently
+    // inconsistent (weekly mileage × frequency implies an average run longer than the longest-run
+    // bucket allows). These archetypes represent impossible self-reports; the engine now caps the
+    // long at the bucket ceiling (correct), so the plan legitimately underreaches — that's expected
+    // behaviour, not a defect. Consistent inputs still trigger underreach as before.
+    const BUCKET_CEIL: Record<string, number> = { '0-3': 3, '3-6': 6, '6-10': 10, '10+': 999 };
+    const impliedAvgRun = recentWeekly / (a.weeklyFrequency || 1);
+    const inputsConsistent = impliedAvgRun <= (BUCKET_CEIL[a.longestRunBucket] ?? 999);
+    if (inputsConsistent) {
+      if (recentLong >= band.peakLongMiBand[0] && peakLong < band.peakLongMiBand[0] * 0.75) warn(`LONG_UNDERREACH ${cat}/${tier}`, a);
+      if (recentWeekly >= band.peakWeeklyMileageBand[0] && peakWk < band.peakWeeklyMileageBand[0] * 0.75) warn(`WK_UNDERREACH ${cat}/${tier}`, a);
+    }
     if (a.goalTimeSec && peakLong === 0) warn('NO_LONG', a);
   }
 }
