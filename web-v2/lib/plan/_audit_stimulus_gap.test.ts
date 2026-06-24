@@ -48,8 +48,9 @@ describe('B3 + SP-7', () => {
     // corrupt a future, non-race week: push an easy day above the long
     const wk = r.composed.weeks.find((w: any) => !w.isRaceWeek && w.days.some((d: any) => d.isLong && d.type !== 'race') && w.days.some((d: any) => d.type === 'easy'));
     expect(wk).toBeTruthy();
-    const long = wk.days.find((d: any) => d.isLong && d.type !== 'race');
-    const easy = wk.days.find((d: any) => d.type === 'easy');
+    if (!wk) return;
+    const long = wk.days.find((d: any) => d.isLong && d.type !== 'race')!;
+    const easy = wk.days.find((d: any) => d.type === 'easy')!;
     easy.distanceMi = long.distanceMi + 5;
     expect(() => validateComposedPlan(r.composed, r.raceDistanceMi, r.mode, r.validateCtx)).toThrow(PlanValidationError);
   });

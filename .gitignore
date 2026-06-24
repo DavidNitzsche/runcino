@@ -36,3 +36,4 @@ native/.asc.env
 
 # App Store Connect API key · MUST never be committed
 legacy/native/.asc-keys/
+native-v2/build/

@@ -419,7 +419,11 @@ export function validateComposedPlan(
   // weeks, and OVER-CONSTRAINED weeks where the required recovery exceeds the available
   // days (e.g. two VO2max sessions in a ≤6-day week) — the composer does best-achievable
   // there (B3) and the violation is mathematically unavoidable, not a bug.
-  if (mode === 'race-prep') {
+  // VAL-1 (2026-06-23) · extend stimulus-gap §9 to maintenance mode. The maintenance composer places
+  // a single quality session per week, so a gap violation is possible only if qualityDows puts quality
+  // adjacent to the long. The over-constrained skip guard (requiredTotal > 7 - hard.length) still applies.
+  // Recovery has no quality sessions and trivially passes. 'race-prep' keeps its existing check unchanged.
+  if (mode === 'race-prep' || mode === 'maintenance') {
     const reqGap = (t: string): number => (t === 'intervals' ? 2 : 1);
     for (const week of weeks) {
       if (week.isRaceWeek) continue;
