@@ -2319,13 +2319,17 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // day-sum tracks wkWeekly. Floor never inflates the week above its target.
     const RECOVERY_MIN_EASY = 2;
     const perEasyRaw = targetEasyCount > 0 ? Math.round(easyMiBudget / targetEasyCount) : 0;
-    // 2026-06-21 · N2 · cap each easy at the week's longest (medium) run. With a
-    // sparse availableDows the budget/slot-count math could spike perEasyRaw into
-    // a 24-31mi "recovery easy" (there was no ceiling before this); clamp it and
-    // let the week run lighter — the correct gentler outcome for recovery, and a
-    // mirror of layoutWeek's easy≤long. null-avail recovery already sits under
-    // mediumMi, so this is a no-op there.
-    const perEasy = Math.min(Math.max(RECOVERY_MIN_EASY, perEasyRaw), mediumMi);
+    // REC-EASY-CAP-1 (2026-06-23) · the mediumMi ceiling (originally added to prevent "recovery
+    // easy" spikes when available_days constrains slots) was applied unconditionally. In early
+    // recovery weeks (wkPct < 0.50) no medium/long run is placed, so mediumMi is synthetic
+    // (= max(2, wkWeekly*0.20)) — 2mi for a week-1 55mpw runner. Capping perEasy at 2mi when
+    // there are 2 easy slots and an 8mi budget produces 4mi realized vs 8mi target (50% gap).
+    // Fix: only apply the mediumMi ceiling when a medium or long run was actually placed this week
+    // (i.e. the slot is not zero). When the week is all-easy, the natural perEasyRaw from the
+    // budget computation is the correct ceiling (no ceiling needed — it's the budget itself).
+    const mediumRunPlaced = wkPct >= 0.50 || isFinalRecoveryWeek;
+    const perEasyCeiling = mediumRunPlaced ? mediumMi : wkWeekly; // without medium: easy up to full budget
+    const perEasy = Math.min(Math.max(RECOVERY_MIN_EASY, perEasyRaw), perEasyCeiling);
     for (let i = 0; i < easySlots.length; i++) {
       const { dow } = easySlots[i];
       if (i < targetEasyCount) {
