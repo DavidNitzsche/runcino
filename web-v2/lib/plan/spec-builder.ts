@@ -283,13 +283,15 @@ export function buildWorkoutSpec(
             // BRK-1 · the long FINISH (MP/HMP) must never be slower than easy. easyAnchorT is the
             // current-fitness anchor (PACE-E-1); min() keeps the finish ≤ the easy band even when weekT
             // is a soft goal. Unthreaded callers (easyAnchorT==tPaceSec) → byte-identical. Research/04:85-87.
-            // PACE-M1 (2026-06-23) · the M-finish must be goal MP "exactly — not faster" (Research/04:121);
-            // the old default ran ~4 s/mi FASTER than goal MP for at-goal marathoners. Use the threaded goal
-            // pace when present AND not a soft-goal inversion (goalPace ≤ easyLo); soft goals keep the
-            // moderate default (goalPace > easyLo would invert). HM tag (David) unchanged.
+            // PACE-M1/MFIN-T1/LONGFIN-1 (2026-06-23) · the M-finish is goal MP "exactly" (Research/04:121)
+            // ONLY when MP genuinely sits in the marathon zone: SLOWER than the week's threshold (tPaceSec —
+            // else T<M inverts during the early-build ramp, where weekT can exceed goal MP for a fit runner)
+            // AND FASTER than the long-run bulk's fast edge (longLo — else it lands in the easy/long band, a
+            // soft-goal inversion). Outside that window, the moderate default (≈ tPaceSec+18, always in-zone:
+            // T < default < long). HM tag rides tPaceSec (correct, never inverts). Research/01:130-134 order.
             finish_pace_s_per_mi: finish.tag === 'HM'
               ? Math.min(tPaceSec, easyAnchorT) + 5
-              : (goalPaceSPerMi != null && goalPaceSPerMi <= easyLo ? goalPaceSPerMi : Math.min(tPaceSec, easyAnchorT) + 18),
+              : (goalPaceSPerMi != null && goalPaceSPerMi > tPaceSec && goalPaceSPerMi < longLo ? goalPaceSPerMi : Math.min(tPaceSec, easyAnchorT) + 18),
             finish_label: finish.tag,
           }
         : {};
@@ -365,16 +367,22 @@ export function buildWorkoutSpec(
       const wuFloor = Math.max(0.5, Math.min(1.5, budget * 0.3));
       const cdFloor = Math.max(0.5, Math.min(1.0, budget * 0.25));
       const reps = Math.min(repCount, Math.max(2, Math.floor((budget - wuFloor - cdFloor) / repMi)));
-      const wu = (budget - reps * repMi - 1) / 2;
+      // PERSIST-THRESH-UNDERFILL (2026-06-23) · derive WU/CD from the REAL float-jog total, not a hardcoded
+      // 1mi reserve — a 3-rep/120s session's float is only 0.44mi, so ~0.56mi went unallocated and the day
+      // realized ~0.6mi under the composer's budget every threshold week. slack splits WU/CD so the spec sums
+      // to budget exactly (mirrors the intervals branch's remainder-derivation).
+      const floatTotalT = Math.max(0, reps - 1) * (restS / 540);
+      const wu = Math.max(wuFloor, (budget - reps * repMi - floatTotalT) / 2);
+      const cd = Math.max(cdFloor, budget - reps * repMi - floatTotalT - wu);
       return {
         spec: {
           kind: 'threshold',
-          warmup_mi: Number(Math.max(wuFloor, wu).toFixed(1)),
+          warmup_mi: Number(wu.toFixed(1)),
           rep_count: reps,
           rep_distance_mi: repMi,
           rep_pace_s_per_mi: tPaceSec,
           rep_rest_s: restS,
-          cooldown_mi: Number(Math.max(cdFloor, wu).toFixed(1)),
+          cooldown_mi: Number(cd.toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
@@ -495,7 +503,13 @@ export function buildWorkoutSpec(
       // + /08:590-593 "race pace OR FASTER"). Same class as BRK-1. When the goal pace would invert, prime at
       // current threshold (tPaceSec — a real sharpener) instead. Byte-safe: only soft goals trip the guard;
       // at-goal/hard/by-feel (goalPace <= easyLo, or null) are unchanged.
-      const repPace = wantsRacePace
+      // TAPER-SHARP-1 (2026-06-23) · "@ 5K pace" tune-ups (marathon/ultra sharpener, §9.3) run at I-pace —
+      // a neuromuscular primer faster than race pace. Threaded iPaceSec carries it; falls back to T-5 only
+      // if I-pace is unavailable. HM "@ race pace" still reads HMP via the goal-pace branch below.
+      const wants5kPace = /5\s*k\s*pace|@\s*I\b/i.test(String(prescription ?? ''));
+      const repPace = (wants5kPace && iPaceSec != null)
+        ? iPaceSec
+        : wantsRacePace
         ? (goalPaceSPerMi != null && goalPaceSPerMi > easyLo ? tPaceSec : (goalPaceSPerMi ?? tPaceSec))
         : tPaceSec - 5;
       // 2026-06-21 · budget-scale WU/CD so the spec sums to distance_mi exactly.
