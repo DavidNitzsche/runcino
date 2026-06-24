@@ -283,7 +283,13 @@ export function buildWorkoutSpec(
             // BRK-1 · the long FINISH (MP/HMP) must never be slower than easy. easyAnchorT is the
             // current-fitness anchor (PACE-E-1); min() keeps the finish ≤ the easy band even when weekT
             // is a soft goal. Unthreaded callers (easyAnchorT==tPaceSec) → byte-identical. Research/04:85-87.
-            finish_pace_s_per_mi: Math.min(tPaceSec, easyAnchorT) + (finish.tag === 'HM' ? 5 : 18),
+            // PACE-M1 (2026-06-23) · the M-finish must be goal MP "exactly — not faster" (Research/04:121);
+            // the old default ran ~4 s/mi FASTER than goal MP for at-goal marathoners. Use the threaded goal
+            // pace when present AND not a soft-goal inversion (goalPace ≤ easyLo); soft goals keep the
+            // moderate default (goalPace > easyLo would invert). HM tag (David) unchanged.
+            finish_pace_s_per_mi: finish.tag === 'HM'
+              ? Math.min(tPaceSec, easyAnchorT) + 5
+              : (goalPaceSPerMi != null && goalPaceSPerMi <= easyLo ? goalPaceSPerMi : Math.min(tPaceSec, easyAnchorT) + 18),
             finish_label: finish.tag,
           }
         : {};
@@ -484,8 +490,13 @@ export function buildWorkoutSpec(
       // Race pace comes from the threaded goal pace; the no-goal fallback
       // is plain T — an honest race-week primer for any distance, never
       // hotter than the runner's threshold.
+      // PINV-1 (2026-06-23) · for a SOFT goal (race pace slower than the slowest easy, easyLo) a tune-up at
+      // goalPace inverts — the 'race pace' sharpener runs SLOWER than easy (no stimulus, Research/01:130-134
+      // + /08:590-593 "race pace OR FASTER"). Same class as BRK-1. When the goal pace would invert, prime at
+      // current threshold (tPaceSec — a real sharpener) instead. Byte-safe: only soft goals trip the guard;
+      // at-goal/hard/by-feel (goalPace <= easyLo, or null) are unchanged.
       const repPace = wantsRacePace
-        ? (goalPaceSPerMi ?? tPaceSec)
+        ? (goalPaceSPerMi != null && goalPaceSPerMi > easyLo ? tPaceSec : (goalPaceSPerMi ?? tPaceSec))
         : tPaceSec - 5;
       // 2026-06-21 · budget-scale WU/CD so the spec sums to distance_mi exactly.
       // Hardcoded 1.5/1.0 overshot when the day is short (e.g. 5mi tune-up with

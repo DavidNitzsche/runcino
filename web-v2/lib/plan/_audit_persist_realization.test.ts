@@ -56,15 +56,20 @@ describe('PERSIST realization · no inversion + persist≤long', () => {
         const longMi = Math.max(0, ...w.days.filter((d: any) => d.isLong && d.type !== 'race').map((d: any) => d.distanceMi));
         const longPersisted = longMi > 0 ? realize('long', longMi, weekT, w.days.find((d: any) => d.isLong)?.subLabel ?? '', r.derived.goalPaceSec, cat).persisted : Infinity;
         for (const d of w.days) {
-          if (!d.isQuality || d.type === 'race' || d.type === 'race_week_tuneup' || d.type === 'shakeout') continue;
+          // PINV-1 (2026-06-23) · race_week_tuneup IS checked now — a soft-goal '@ race pace' tune-up that
+          // realized SLOWER than easy is exactly the inversion that slipped past this guard before.
+          if (!d.isQuality || d.type === 'race' || d.type === 'shakeout') continue;
           const { paceTarget, persisted } = realize(d.type, d.distanceMi, weekT, d.subLabel ?? '', r.derived.goalPaceSec, cat);
           checks++;
-          // BRK-1 · quality work-pace strictly faster than the easy floor (lower s/mi)
+          // BRK-1/PINV-1 · quality work-pace strictly faster than the easy floor (ALL quality incl. tune-up)
           expect(paceTarget, `${c.tag}/${distance} ${d.type} pace ${paceTarget} not < easy ${easyFloor}`).toBeLessThan(easyFloor);
-          // PP-1 · persisted ≈ composed
-          expect(Math.abs(persisted - d.distanceMi), `${c.tag}/${distance} ${d.type} persisted ${persisted} vs composed ${d.distanceMi}`).toBeLessThanOrEqual(0.55);
-          // long-primacy in the PERSISTED plan
+          // long-primacy in the PERSISTED plan (ALL quality)
           expect(persisted, `${c.tag}/${distance} ${d.type} persisted ${persisted} > long ${longPersisted}`).toBeLessThanOrEqual(longPersisted + 0.15);
+          // PP-1 · persisted ≈ composed. Exempt race_week_tuneup: its fixed WU/CD/rep footprint (~1.1mi)
+          // legitimately exceeds a sub-footprint tiny-budget composed allocation (TUNE-FOOTPRINT, flagged).
+          if (d.type !== 'race_week_tuneup') {
+            expect(Math.abs(persisted - d.distanceMi), `${c.tag}/${distance} ${d.type} persisted ${persisted} vs composed ${d.distanceMi}`).toBeLessThanOrEqual(0.55);
+          }
         }
       }
     }

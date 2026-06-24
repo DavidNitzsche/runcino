@@ -247,8 +247,16 @@ export function validateComposedPlan(
   if (mode === 'race-prep' && rampBase > 0) {
     const peakWeeklyMi = Math.max(0, ...weeks.map(w => w.weeklyMi ?? 0));
     const buildWeeks = weeks.filter(w => w.phase !== 'TAPER' && !w.isRaceWeek).length;
-    const ceiling = rampBase * Math.min(8.0, Math.pow(1.10, Math.max(1, buildWeeks)) * 1.15);
-    if (peakWeeklyMi > ceiling) {
+    // VCP-2 (2026-06-23) · the flat 8× anomaly backstop collides with ULTRA: a 100K needs a 50+ peak from a
+    // small base (6×8=48 < 50) and the composer is STRUCTURALLY forced to author it. Ultra plans are long +
+    // ramp big, so let the build-length curve govern (1.10^buildWeeks) with a higher backstop; non-ultra
+    // keeps 8×. (Mirrors longRunCapMi already being raised per distance.)
+    const flatCap = cat === 'ultra' ? 20.0 : 8.0;
+    const ceiling = rampBase * Math.min(flatCap, Math.pow(1.10, Math.max(1, buildWeeks)) * 1.15);
+    // VCP-1 (2026-06-23) · allow a small absolute slack so a peak the composer floored to a clean whole mile
+    // that lands a fraction over the exponential ceiling (15.0 vs 14.79) isn't rejected on a display-equal
+    // boundary — a genuine multi-mile overshoot still fires. Mirrors the §6 WoW small-absolute exemption.
+    if (peakWeeklyMi > ceiling + Math.max(0.5, ceiling * 0.03)) {
       violations.push(
         `Peak weekly volume ${Math.round(peakWeeklyMi)}mi exceeds the ${buildWeeks}-week safe-ramp ceiling ` +
         `${Math.round(ceiling)}mi (base ${Math.round(rampBase)}mi) — plan ramp is unsupported by current fitness`,

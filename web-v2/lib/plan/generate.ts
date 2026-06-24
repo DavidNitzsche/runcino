@@ -1648,6 +1648,11 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // (qualityDows.length), not the tier table. Tier informs ramp
   // CEILING, not floor. Cite: §Rule 5 (refined 2026-06-03).
   const tierQ = tierTarget.qualityPerWeek;
+  // BANDS-ULTRA-Q1 is a KNOWN-OPEN defect (ultra ships 2 quality/wk; Research/22 wants 1) — but the naive
+  // clamp here re-introduces the easy-slot inflation this density=prefs design fixed (2026-06-03): the
+  // displaced quality slot becomes a FLOORED easy → 5 easies → week 117 > band 110. The correct fix routes
+  // the displaced ultra slot to a MEDIUM-LONG (back-to-back-long doctrine), a layout change tracked for a
+  // focused follow-up, NOT a one-line density clamp. Keep prefs (tier informs ramp CEILING, not floor).
   const desiredDensity = input.qualityDows.length;
   const recentQ = (typeof input.recentQualityPerWeek === 'number' && input.recentQualityPerWeek >= 0)
     ? input.recentQualityPerWeek
@@ -1976,7 +1981,12 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   function maintenanceWeek(weekIdx: number): DayPlan[] {
     const isCutback = weekIdx === 3; // week 4 (zero-indexed) = recovery
     const wkWeekly = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
-    const wkLong = isCutback ? Math.max(4, Math.round(targetLong * 0.80)) : targetLong; // SP-6 · 4mi coherence floor, not 8
+    // SP-6 · 4mi coherence floor, not 8. NS-2 (2026-06-23, ext) · the cutback floor must ALSO respect the
+    // true-beginner cap (recentLong 3 → cutback Math.max(4,2)=4 → smoothed 3.5 = 117% = the plan's LONGEST
+    // run, over the 110% injury cap). Cutback is never longer than the base long (targetLong, already ≤110%
+    // recent); the 4mi coherence floor only engages once recentLong ≥ 4. Byte-safe for recentLong ≥ 4.
+    const cutFloor = (input.recentLongMi > 0 && input.recentLongMi < 4) ? Math.max(2, Math.round(input.recentLongMi)) : 4;
+    const wkLong = isCutback ? Math.min(targetLong, Math.max(cutFloor, Math.round(targetLong * 0.80))) : targetLong;
 
     const slots: (DayPlan | null)[] = new Array(7).fill(null);
     // Rest day
@@ -2183,22 +2193,28 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // ceiling for every easy day below (easy never exceeds the longest run,
     // mirroring layoutWeek's easy≤long clamp). 2026-06-21 · N2.
     const mediumMi = Math.max(6, Math.round(wkWeekly * 0.20));
+    const isFinalRecoveryWeek = (wi + recoveryOff) === recoveryWeeks - 1;
+    const isFree = (d: number) =>
+      d !== input.restDow && d !== extraRestDow && slots[d] == null &&
+      (input.availableDows ? input.availableDows.has(d) : true);
+    // candidate order: long-run day, then mid-week-out (Wed-first), then any
+    const longBackDow = [input.longRunDow, 3, 4, 2, 5, 1, 6, 0].find(isFree);
     if (wkPct >= 0.50) {
-      const isFree = (d: number) =>
-        d !== input.restDow && d !== extraRestDow && slots[d] == null &&
-        (input.availableDows ? input.availableDows.has(d) : true);
-      // candidate order: long-run day, then mid-week-out (Wed-first), then any
-      const candidates = [input.longRunDow, 3, 4, 2, 5, 1, 6, 0];
-      const mediumDow = candidates.find(isFree);
-      if (mediumDow != null) {
+      if (longBackDow != null) {
         // BRK-3 (2026-06-23) · reintroduce a LONG run on the FINAL recovery week so the runner carries one
         // into maintenance/race-prep (RECOVERY-1's 4-week reverse taper otherwise ended long-less for
         // marathon/ultra). Earlier weeks keep the day as a building-back medium.
-        const isFinalRecoveryWeek = (wi + recoveryOff) === recoveryWeeks - 1;
-        slots[mediumDow] = isFinalRecoveryWeek
-          ? { dow: mediumDow as DOW, type: 'long', distanceMi: mediumMi, isQuality: false, isLong: true, subLabel: 'LONG (EASY)', notes: 'Long run back · easy effort.' }
-          : { dow: mediumDow as DOW, type: 'easy', distanceMi: mediumMi, isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
+        slots[longBackDow] = isFinalRecoveryWeek
+          ? { dow: longBackDow as DOW, type: 'long', distanceMi: mediumMi, isQuality: false, isLong: true, subLabel: 'LONG (EASY)', notes: 'Long run back · easy effort.' }
+          : { dow: longBackDow as DOW, type: 'easy', distanceMi: mediumMi, isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
       }
+    } else if (isFinalRecoveryWeek && longBackDow != null) {
+      // MT-REC-1 (2026-06-23) · HM (wkPct [0.20,0.40]) and 10K (wkPct [0.30]) recovery NEVER reach wkPct≥0.50,
+      // so BRK-3 above never fired → a long was never reintroduced (realized long = 0mi all block). Place a
+      // GENTLE long on the final recovery week, sized to recent long capped to ~40% of the week's volume.
+      // Research/00b:200-201 (long reintroduced day 7-10, ~45-60min easy). Marathon/ultra unaffected (≥0.50).
+      const reLongMi = Math.max(3, Math.min(input.recentLongMi || 6, Math.round(wkWeekly * 0.40)));
+      slots[longBackDow] = { dow: longBackDow as DOW, type: 'long', distanceMi: reLongMi, isQuality: false, isLong: true, subLabel: 'LONG (EASY)', notes: 'Long run back · easy effort.' };
     }
     // Fill rest with easies.
     const allocated = slots.filter(Boolean).reduce((s, d) => s + (d?.distanceMi ?? 0), 0);
