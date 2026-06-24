@@ -237,6 +237,44 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       tier, nextRace, lastRaceFinished, rxQuality, tPaceSec, lthr: sim.lthr ?? null,
     };
     composed = mode === 'recovery' ? composeRecoveryPlan(nonRace) : composeMaintenancePlan(nonRace);
+
+    // MAINT+RACE-PREP CHAIN (2026-06-24) · when a race is scheduled outside the build
+    // window, show maintenance weeks THEN the full race-prep plan in a single calendar.
+    // The user sees the complete picture: "maintenance until the build window opens, then
+    // your race plan." Without this, the sim only shows the maintenance block and the
+    // race-prep plan is invisible.
+    if (mode === 'maintenance' && sim.goalMode === 'race') {
+      const maintWeeksArr = composed.weeks;
+      const racePrepStartISO = addDaysISO(startMondayISO, maintWeeksArr.length * 7);
+      const daysTillRace = daysBetween(racePrepStartISO, raceDateISO);
+      if (daysTillRace >= 14 && daysTillRace <= 365) {
+        const maintPeakWeekly = maintWeeksArr.reduce((mx, w) => Math.max(mx, w.weeklyMi), recentWeeklyMi);
+        const maintPeakLong = maintWeeksArr.reduce(
+          (mx, w) => Math.max(mx, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi), 0),
+          recentLongMi,
+        );
+        const racePrepInput: ComposePlanInput = {
+          raceDistanceMi, goalSec, goalPaceSec, raceDateISO,
+          startMondayISO: racePrepStartISO, level,
+          recentWeeklyMi: maintPeakWeekly, easyDayMedianMi,
+          recentLongMi: Math.max(maintPeakLong, 1),
+          recentQualityDistanceMi: undefined, recentQualityPerWeek: undefined,
+          bestRecentVdot, tsbAtStart: undefined, horizonRaces: undefined, isMidBlock: false,
+          longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
+          rxQuality, rxRaceSpecific, tPaceSec, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
+        };
+        try {
+          const racePrepPlan = composePlan(racePrepInput);
+          finalizeComposedPlan(racePrepPlan, raceDistanceMi);
+          composed = {
+            ...racePrepPlan,
+            weeks: [...maintWeeksArr, ...racePrepPlan.weeks],
+            totalWeeks: maintWeeksArr.length + racePrepPlan.weeks.length,
+            vols: [...composed.vols, ...racePrepPlan.vols],
+          };
+        } catch { /* compose failed · show maintenance block only */ }
+      }
+    }
   }
   finalizeComposedPlan(composed, raceDistanceMi);
 
