@@ -3171,9 +3171,19 @@ async function loadGeneratorInputs(
   // marathon → 4:17/mi). vdotFromRace returns null outside VDOT[30,85]; the predictRaceTime(85,…)
   // compare keeps only the off-the-TOP side (faster than world-class), leaving legit slow goals. A
   // nulled goal falls to the currentT fitness anchor (VAR-05). Cite Research/01:138-145.
+  // GOAL-4 (2026-06-23): null out goals that map outside the VDOT[30,85] training table.
+  // OFF-THE-TOP: faster than world-class (VDOT >85) → null → fall to currentT anchor (VAR-05).
+  // OFF-THE-BOTTOM (GOAL-4-SLOW-1, 2026-06-23): slower than VDOT 30 for HM/M/ultra
+  //   → also null. Without this a 6-hour marathon goal threads ~13:26/mi "T-pace" into every
+  //   quality workout (slower than most runners' easy pace). Short distances (< 13.1mi) have a
+  //   900 s/mi cap already; for HM+ the two-sided vdotFromRace==null check covers both extremes.
+  // nulled goal falls to the currentT fitness anchor (VAR-05). Cite Research/01:138-145.
   if (goalSec != null && (
     (raceDistanceMi < 13.1 && goalSec / raceDistanceMi > 900) ||
-    (vdotFromRace(goalSec, raceDistanceMi) == null && goalSec < (predictRaceTime(85, raceDistanceMi) ?? 0))
+    (vdotFromRace(goalSec, raceDistanceMi) == null && (
+      goalSec < (predictRaceTime(85, raceDistanceMi) ?? 0) ||          // off-the-top (VDOT > 85)
+      goalSec > (predictRaceTime(30, raceDistanceMi) ?? Infinity)       // off-the-bottom (VDOT < 30)
+    ))
   )) goalSec = null;
   const goalPaceSec = goalSec ? Math.round(goalSec / raceDistanceMi) : null;
 
