@@ -218,3 +218,40 @@ two MISSES in round-1's own fixes. Deployed `32950306` (suite 903 green, sweep 9
 
 Round 3 (`w4lq3l3yc`) launched to verify the round-2 fixes + hunt again — loop continues per "do not stop
 until not a single issue is found."
+
+---
+
+## ROUND 3 (`w4lq3l3yc`, 20 agents) — 10 new confirmed, 7 fixed + inversion class GATED
+
+Deployed `58b7d13c` + guard `8381f8e9`. Suite 903 green, sweep 9294/0-firm.
+
+**FIXED (7):**
+- **VDEAD-A** (CRITICAL persist-abort) — scheduleQuality sliced qualityTypes to <n (base-building: 1 type
+  for 2 slots) → gaps[] misaligned → NaN slack → a quality day stranded adjacent to the long passed as
+  "legal" → §9 persist-abort. Types padded/cycled to qualityDows.length.
+- **VDEAD-B** (CRITICAL persist-abort) — a quality day colliding with rest/long day returned orig early then
+  got dropped onto it → §5 "no quality" persist-abort. Now forces the re-placement search.
+- **PACE-MFIN-T1 + PACE-LONGFIN-1** (major, PACE-M1 SELF-REGRESSION) — locking the M-finish to goal MP
+  without bounds caused T<M inversions (early-build ramp, weekT > goalMP) + easy-band inversions. M-finish
+  now takes goal MP ONLY when tPaceSec < goalMP < longLo; else the moderate in-zone default. **GATED** in
+  _audit_persist_realization (long-finish must sit between fastest quality and easy).
+- **TAPER-SHARP-1** (major) — marathon/ultra race-week sharpener ran at MP (PP-2's "@ race pace") vs §9.3
+  5K pace (36-50 s/mi too slow). Now "5×400m @ 5K pace" → I-pace; HM stays HMP. Re-baselined David's frozen
+  marathon fixture (tune-up vocab only; his real HM plan unchanged).
+- **RECWK1-1** (major) — recovery week 1 shipped 5 running days vs Research/00b:260 (days 0-3 rest + ~2
+  jogs). Null-freq recovery caps running days by wkPct (reverse taper wk1~2 → wk4~6).
+- **XTIER-1** (major) — 10K-advanced peak long capped at 13 (research's FLOOR); Research/22:144 is 13-15.
+  Band → [13,15].
+- **PERSIST-THRESH-UNDERFILL** (minor) — threshold WU/CD hardcoded a 1mi float reserve vs real ~0.44mi →
+  day realized ~0.6mi under budget. WU/CD now from the real float total.
+
+**FLAGGED minor (added):** PACE-LONGFIN-2 (HM-plan '@M' warm-in reads HMP), TAPER-MPLATE-1 (marathon wk-2
+taper long flat vs §9.2 "MP miles late" — engine has a separate MP-day substitute).
+
+**Lesson (gate the class, not the instance):** the inversion class regressed THREE times across rounds
+(BRK-1 → PINV-1 → PACE-MFIN-T1, the last from my own PACE-M1). The persist guard now checks the long's
+M/HM finish against the week's threshold + easy band, so a future M-finish change can't silently re-invert.
+
+**Convergence:** round 1 = 19, round 2 = 8, round 3 = 10 confirmed. The engine has a deep persist-path
+tail; severity is trending down (round 3 = 2 critical persist-aborts + niche majors, vs round 1's broad
+pace/structure breaks). Round 4 (`wjptz194w`) hunting — loop continues per the mandate.
