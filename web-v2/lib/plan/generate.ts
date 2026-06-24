@@ -2798,7 +2798,11 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     finalizeComposedPlan(composed, inputs.compose.raceDistanceMi);
     validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
       level: inputs.compose.level,
-      isSteppingStoneToMarathon: (inputs.compose.horizonRaces ?? []).some(r => r.distanceMi >= 20),
+      // CC2-4 (2026-06-23) · key this to the SAME boundary the builder's horizonRaise extends at — any
+      // horizon at marathon category or longer (distanceMi > 17, the hm→m cutoff). At >=20 a (17,20]
+      // horizon (e.g. 30K = 18.64mi) made the builder author a ~21mi long while this flag stayed false →
+      // HM cap 20 → persist-abort. David's CIM horizon (26.22) is true under both → no-op for him.
+      isSteppingStoneToMarathon: (inputs.compose.horizonRaces ?? []).some(r => r.distanceMi > 17),
       // Corruption check compares against the active prior plan. On a fresh
       // user-initiated target (set-goal / add-race) the prior plan is a
       // DIFFERENT goal about to be replaced, so a legitimately smaller long

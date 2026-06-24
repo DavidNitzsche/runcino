@@ -17,7 +17,9 @@ import { recentWeeklyMiFromBucket, recentLongMiFromBucket, SIM_DISTANCE_MI, type
 const DISTANCES: SimDistance[] = ['5k', '10k', 'half', 'marathon', '50k', '100k'];
 const EXPERIENCE = ['beginner', 'intermediate', 'advanced', 'advanced_plus'];
 const FREQ = [3, 4, 5, 6];
-const MILEAGE = [5, 15, 25, 35, 45];
+// CC2-2 (2026-06-23) · bucket 0 = true-zero base. The refuse-vs-plan boundary (where BRK-2/CC2-1 live)
+// was untested — lowest fed was recentWeeklyMiFromBucket(5)=10. Split-graded in grade().
+const MILEAGE = [0, 5, 15, 25, 35, 45];
 const LONGEST = ['0-3', '3-6', '6-10', '10+'];
 // representative goal times that, with the experience clamp, exercise tiers
 const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6300, marathon: 13500, '50k': 18000, '100k': 43200 };
@@ -75,7 +77,16 @@ function grade(a: Arc) {
     ...a, startDateISO: '2026-07-06', raceDateISO: a.raceDateISO ?? '', lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
     raceHistory: [], longRunDay: 'sun', availableDays: a.availableDays ?? [],
   } as any);
-  if (!built.ok) { firm(`GEN_FAIL: ${built.reason}`.slice(0, 60), a); return; }
+  if (!built.ok) {
+    // CC2-2 · a true-zero base (bucket 0) legitimately REFUSES an aggressive or long goal (couch→marathon
+    // in 18wk isn't safe) — a clean friendly refusal there is correct, not a failure. But a short BY-FEEL
+    // runner must still get a gentle plan (this is what BRK-2/CC2-1 guarantee), and any non-zero base must
+    // always plan.
+    const zeroBase = a.weeklyMileageBucket === 0;
+    const shortByFeel = (a.distance === '5k' || a.distance === '10k' || a.distance === 'half') && a.goalTimeSec == null;
+    if (zeroBase && !shortByFeel) return; // graceful refusal is the correct outcome
+    firm(`GEN_FAIL: ${built.reason}`.slice(0, 60), a); return;
+  }
 
   // Grade BOTH connection states a new runner can be in: a COLD-START signup (no Strava → prod sets
   // trailingAvgWeeklyMi null, the peak-vs-trailing ramp check is skipped) AND a STRAVA-CONNECTED
