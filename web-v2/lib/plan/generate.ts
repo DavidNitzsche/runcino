@@ -1948,8 +1948,12 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   // ≤110% of recent long (Research/00a:752) AND ≤30% of the week (Research/00a:184), with a
   // 4mi coherence floor (a 2mi "long" is incoherent · D2 default). The tier's longPctOfPeak
   // intent still shapes the week via targetWeekly.
+  // NS-2 (2026-06-23) · the 4mi coherence floor forced a ~2× jump on a true-beginner maintenance runner
+  // (recent long 2-3mi). Cap the floor at their recent long so a maintenance long never exceeds ~110% of
+  // what they've actually run; 4mi still applies once they're at/above 4 (or have no recent-long signal).
+  const longFloor = (input.recentLongMi > 0 && input.recentLongMi < 4) ? Math.max(2, Math.round(input.recentLongMi)) : 4;
   const targetLong = Math.max(
-    4,
+    longFloor,
     Math.min(Math.round(input.recentLongMi * 1.10), Math.round(targetWeekly * 0.30)),
   );
 
@@ -2187,7 +2191,13 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       const candidates = [input.longRunDow, 3, 4, 2, 5, 1, 6, 0];
       const mediumDow = candidates.find(isFree);
       if (mediumDow != null) {
-        slots[mediumDow] = { dow: mediumDow as DOW, type: 'easy', distanceMi: mediumMi, isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
+        // BRK-3 (2026-06-23) · reintroduce a LONG run on the FINAL recovery week so the runner carries one
+        // into maintenance/race-prep (RECOVERY-1's 4-week reverse taper otherwise ended long-less for
+        // marathon/ultra). Earlier weeks keep the day as a building-back medium.
+        const isFinalRecoveryWeek = (wi + recoveryOff) === recoveryWeeks - 1;
+        slots[mediumDow] = isFinalRecoveryWeek
+          ? { dow: mediumDow as DOW, type: 'long', distanceMi: mediumMi, isQuality: false, isLong: true, subLabel: 'LONG (EASY)', notes: 'Long run back · easy effort.' }
+          : { dow: mediumDow as DOW, type: 'easy', distanceMi: mediumMi, isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
       }
     }
     // Fill rest with easies.
