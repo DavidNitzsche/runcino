@@ -125,7 +125,13 @@ export function scheduleQuality(
   // days, so it re-routes to a free day. Byte-safe: David's Tue/Thu never collide (early return holds).
   if (score(orig).ok && orig.every((d) => d !== restDow && d !== longRunDow)) return { dows: orig as DOW[], types };
   const cand = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== longRunDow && d !== restDow && (!availableDows || availableDows.has(d)));
-  if (cand.length < n) return { dows: orig as DOW[], types };
+  // SCHED-VDEAD-B-1 (2026-06-23) · when cand has fewer slots than n quality sessions, returning orig
+  // unconditionally re-introduced the collision (orig may contain restDow or longRunDow). Strip the
+  // colliding DOWs before returning and align types to the surviving sessions.
+  if (cand.length < n) {
+    const safe = orig.filter((d) => d !== restDow && d !== longRunDow);
+    return { dows: safe as DOW[], types: types.slice(0, safe.length) };
+  }
   const combos: number[][] = [];
   const pick = (start: number, acc: number[]): void => {
     if (acc.length === n) { combos.push(acc.slice()); return; }
@@ -998,13 +1004,21 @@ function layoutWeek({
           // flat into the gun. This is also the WATCHING test point:
           // hold race pace at honest HR here and the race plan is
           // confirmed.
+          // RACEWK-SHARP-1 (2026-06-23) · marathon/ultra race-week sharpener must be 5K pace not race
+          // pace. Research/08 §9.3 "3 mi w/ 5×1min @ 5K pace, 4-5 days out" — MP is too slow to be a
+          // neuromuscular primer. TAPER-phase already used 5K pace (line 1269); race-week now matches.
+          const isMarathonPlus = raceDistanceMi >= 20;
           const isLongRace = raceDistanceMi >= 12;
           days.push({
             dow, type: 'race_week_tuneup',
             distanceMi: isLongRace ? 5 : 4,
             isQuality: true, isLong: false,
-            subLabel: isLongRace ? '4×1km @ race pace · 90s jog' : '2×0.5mi @ T · 60s jog',
-            notes: isLongRace
+            subLabel: isMarathonPlus ? '5×400m @ 5K pace · 2min jog'
+              : isLongRace ? '4×1km @ race pace · 90s jog'
+              : '2×0.5mi @ T · 60s jog',
+            notes: isMarathonPlus
+              ? 'Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.'
+              : isLongRace
               ? 'Race-pace primer, 5 days out. Hold goal pace, even reps, stop at 4. Confidence check, not a workout.'
               : 'Two sharp half-mile reps just above T-pace. Keep it brief. Legs stay fresh.',
           });
@@ -1408,7 +1422,41 @@ function layoutWeek({
   // at tiny longs. For established runners the long dwarfs easy so this never binds —
   // byte-unchanged for David.
   const easySep = longMi > 0 ? Math.max(1, Math.min(longMi - 1, Math.round(0.8 * longMi))) : perEasyRaw;
-  const perEasy = Math.min(Math.max(effectiveFloor, perEasyRaw), easySep);
+  // VDEAD-RAMP-1 (2026-06-23) · budget ceiling on the easy-day floor, but ONLY when the RP-5
+  // easySep wouldn't already provide it. Two distinct cases:
+  //
+  // Case A (easySep < effectiveFloor, small long run, e.g. long=2.5mi → easySep=1.5mi):
+  //   The final min(max(floor, raw), easySep) line caps perEasy at 1.5mi regardless. The floor
+  //   doesn't need a budget cap — easySep already enforces it. Reducing the floor further produces
+  //   lighter early weeks (7.5mi vs 10mi realized) and exposes a 73% WoW jump at BASE→QUALITY.
+  //
+  // Case B (easySep >= effectiveFloor, large long run, e.g. long=8mi → easySep=6mi):
+  //   easySep doesn't bound the 3mi floor. When long+quality exhaust the budget (remainingMi ≈ 0),
+  //   3mi × N easy = 12-15mi >> remaining → validated peak throws §3 ceiling → plan abort.
+  //   This is the original VDEAD-RAMP-1 bug. Apply the cap to prevent inflation.
+  const perEasyBudgetCap = easyCount > 0 ? Math.max(1, Math.floor(remainingMi / easyCount)) : 0;
+  // VDEAD-RAMP-1 (2026-06-23) · budget ceiling on the easy-day floor, but ONLY for
+  // non-deload non-base weeks. Two disjoint exemptions:
+  //
+  // Exemption A (easySep < effectiveFloor): small long run (e.g. 2.5mi → easySep=1.5) means
+  //   the final `min(max(floor, raw), easySep)` already caps perEasy at 1.5mi — far below the
+  //   3mi floor. Capping further reduces early BASE weeks unnecessarily, exposing a 73% WoW
+  //   jump at the BASE→QUALITY boundary.
+  //
+  // Exemption B (isDeloadOrBase): BASE and cutback weeks INTENTIONALLY keep the floor to
+  //   smooth WoW transitions. A 9mi-budget BASE cutback with long=6 + 3 easy × floor=3mi
+  //   realizes 15mi. The QUALITY phase starts at 14mi — a -7% drop, not a +56% spike. Without
+  //   this exemption, the cap makes BASE cutbacks realize 9mi, and the QUALITY-start 14mi
+  //   looks like a 56% jump the validator flags as unsafe (same structural cause, different
+  //   archetype than Exemption A).
+  //
+  // Both exemptions are safe: the floor-inflated realized volume stays within the WoW band
+  //   because the non-deload weeks (where ceiling violations can happen) ARE capped, limiting
+  //   the volume that the validator's §3 ramp ceiling tracks.
+  const flooredPerEasy = (easySep < effectiveFloor || isDeloadOrBase)
+    ? effectiveFloor                              // exempt: easySep or deload/base handles the bound
+    : Math.min(effectiveFloor, perEasyBudgetCap); // cap: prevent peak-week ceiling violation
+  const perEasy = Math.min(Math.max(flooredPerEasy, perEasyRaw), easySep);
   for (const { dow } of emptySlots) {
     slots[dow] = easyDowSet.has(dow)
       ? { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }
@@ -2016,7 +2064,10 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     if (qualityAllowed && input.qualityDows.length > 0) {
       const qDow = input.qualityDows[0]; // single quality, first picked day
       if (slots[qDow] == null) {
-        const qDist = Math.max(5, Math.round(wkWeekly * 0.16));
+        // MAINT-QLONG-1 (2026-06-23) · cap at wkLong to preserve long-primacy (§7).
+        // The prior 5mi floor exceeded the long for small-base runners (e.g. 15mpw → wkLong=4,
+        // quality=5 → validator §7 fired → plan abort). 3mi floor = minimum coherent WU/T/CD.
+        const qDist = Math.min(Math.max(3, Math.round(wkWeekly * 0.16)), wkLong);
         if (shape.qualityType === 'threshold') {
           slots[qDow] = {
             dow: qDow, type: 'threshold', distanceMi: qDist, isQuality: true, isLong: false,
@@ -2033,7 +2084,10 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       }
     }
     // Fill easies up to daysPerWeek
-    const easyFloor = Math.max(3, input.easyDayMedianMi || 5);
+    // MAINT-EASY-1 (2026-06-23) · the easyFloor=max(3, median||5) inflated easy days for cold-start
+    // runners (easyDayMedianMi=0 → floor=5) to well beyond the weekly budget, making a 15mpw
+    // maintenance plan realize 19mpw. Use a 2mi sanity floor only (no baseline inflation). VOL-1
+    // reconciles weeklyMi to the realized sum, so the UI would have shown the inflated number.
     const allocated = slots.filter(Boolean).reduce((s, d) => s + (d?.distanceMi ?? 0), 0);
     const easyMiBudget = Math.max(0, wkWeekly - allocated);
     const emptySlots = slots
@@ -2049,7 +2103,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       : emptySlots;
     const runningPlaced = slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length;
     const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - runningPlaced));
-    const perEasyRaw = targetEasyCount > 0 ? Math.max(easyFloor, Math.round(easyMiBudget / targetEasyCount)) : 0;
+    const perEasyRaw = targetEasyCount > 0 ? Math.max(2, Math.round(easyMiBudget / targetEasyCount)) : 0;
     // 2026-06-21 · N2 · easy never exceeds the long run. A sparse availableDows
     // (few easy slots) + a high peak can spike per-easy above the long (same
     // class as recovery N2); clamp to wkLong, mirroring layoutWeek's easyCeiling.
@@ -2201,7 +2255,10 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // The recovery week's longest run · the optional mid-week medium AND the
     // ceiling for every easy day below (easy never exceeds the longest run,
     // mirroring layoutWeek's easy≤long clamp). 2026-06-21 · N2.
-    const mediumMi = Math.max(6, Math.round(wkWeekly * 0.20));
+    // REC-MEDIUM-1 (2026-06-23) · the 6mi floor inflated the "medium" day to 6mi for very
+    // low-volume runners (5mpw base → wkWeekly=2mi → mediumMi was max(6,0)=6 = 3× the
+    // week budget). Use a 2mi sanity floor (matching RECOVERY_MIN_EASY) and cap at wkWeekly.
+    const mediumMi = Math.min(wkWeekly, Math.max(2, Math.round(wkWeekly * 0.20)));
     const isFinalRecoveryWeek = (wi + recoveryOff) === recoveryWeeks - 1;
     const isFree = (d: number) =>
       d !== input.restDow && d !== extraRestDow && slots[d] == null &&
@@ -2249,8 +2306,12 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // the lightest week still gets ~2 short jogs) so the reverse taper actually rebuilds frequency: wk1 ~2 →
     // wk4 ~6. Stated-frequency runners unchanged.
     const recoveryRunCap = Math.ceil(wkPct * 7);
+    // RECWK1-FREQ-1 (2026-06-23) · stated frequency is a CEILING for normal training, not a floor that
+    // overrides recovery's deliberate frequency rebuild. A stated-freq=5 runner was getting 5 running days
+    // in marathon-recovery week 1 (should be ~2). Apply recoveryRunCap to stated-freq runners too:
+    // min(trainingDaysPerWeek, recoveryRunCap) so the rebuild rebuilds: wk1 ~2 → wk4 ~6.
     const targetEasyCount = input.trainingDaysPerWeek != null
-      ? Math.max(0, Math.min(easySlots.length, input.trainingDaysPerWeek - runningPlaced))
+      ? Math.max(0, Math.min(easySlots.length, Math.min(input.trainingDaysPerWeek, recoveryRunCap) - runningPlaced))
       : Math.max(0, Math.min(easySlots.length, recoveryRunCap - runningPlaced));
     // 2026-06-21 · #8 · the per-slot easyFloor (>= ~4mi each) decoupled the day-
     // sum from wkWeekly: with N easy slots all pinned to the floor, the realized
@@ -2831,6 +2892,12 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     // generate→validate would be a runtime import cycle). Race-day rows
     // are not training longs and are skipped, matching the validator.
     finalizeComposedPlan(composed, inputs.compose.raceDistanceMi);
+    // MAINT-WEEKLYML-1 (2026-06-23) · re-snapshot vols from the VOL-1-reconciled weeklyMi values so
+    // non-race-prep modes (maintenance/recovery) carry realized volumes, not the pre-finalize budgets.
+    // composePlan derives vols from volumeCurve (the real source); maintenance/recovery authored weeklyMi
+    // from targetWeekly/wkWeekly scalars. VOL-1 in finalizeComposedPlan overwrites weeklyMi with the
+    // actual day-sum for ALL modes, so vols[] must track it to stay in sync.
+    composed.vols = composed.weeks.map((w) => w.weeklyMi);
     validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
       level: inputs.compose.level,
       // CC2-4 (2026-06-23) · key this to the SAME boundary the builder's horizonRaise extends at — any

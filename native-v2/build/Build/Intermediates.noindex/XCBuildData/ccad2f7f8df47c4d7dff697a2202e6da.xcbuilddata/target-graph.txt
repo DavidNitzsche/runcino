@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'Faff' in project 'Faff'
+➜ Explicit dependency on target 'FaffWatch Watch App' in project 'Faff'
+Target 'FaffWatch Watch App' in project 'Faff' (no dependencies)

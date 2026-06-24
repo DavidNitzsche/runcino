@@ -316,11 +316,18 @@ export function buildWorkoutSpec(
       // math when the prescription string is absent or unparseable.
       const parsedTempo = parseTempoShape(prescription);
       const budget = distance_mi ?? 8;
+      // TEMPO-WU-1 (2026-06-23) · reserve WU/CD floors BEFORE sizing the core, mirroring
+      // threshold (lines 367-368). Without this, a tiny 2mi budget produced wu=0/cd=0:
+      // tempoDist=max(2,budget-3)=2, wu=(2-2)/2=0. 174 small-base archetypes shipped a cold
+      // 2mi block at T-pace with no warmup or cooldown (contra Research/04 §5.2 "2-3mi E each
+      // side"). Established runners (budget>=8) unaffected — floors never bind.
+      const wuFloor = Math.max(0.5, Math.min(1.5, budget * 0.3));
+      const cdFloor = Math.max(0.5, Math.min(1.0, budget * 0.25));
       let tempoDist = parsedTempo?.tempoMi
-        ?? Math.max(2, Math.min(7, budget - 3));
+        ?? Math.min(Math.max(0.5, budget - wuFloor - cdFloor), Math.max(2, Math.min(7, budget - 3)));
       let wu = parsedTempo?.warmupMi
-        ?? (budget - tempoDist) / 2;
-      let cd = parsedTempo?.cooldownMi ?? wu;
+        ?? Math.max(wuFloor, (budget - tempoDist) / 2);
+      let cd = parsedTempo?.cooldownMi ?? Math.max(cdFloor, budget - tempoDist - wu);
       // 2026-06-21 · budget-scale to distance_mi (the week's clamped quality
       // allocation), mirroring threshold/intervals. The parsed library shape is
       // a FIXED 8mi (2·WU + 4·T + 2·CD); on a short-race plan whose long the
@@ -510,7 +517,9 @@ export function buildWorkoutSpec(
       const repPace = (wants5kPace && iPaceSec != null)
         ? iPaceSec
         : wantsRacePace
-        ? (goalPaceSPerMi != null && goalPaceSPerMi > easyLo ? tPaceSec : (goalPaceSPerMi ?? tPaceSec))
+        // PINV-1-BOUNDARY (2026-06-23) · >= not > so that goal pace exactly AT the easy floor
+        // (borderline soft-goal) routes to tPaceSec, not to the easy-pace goal.
+        ? (goalPaceSPerMi != null && goalPaceSPerMi >= easyLo ? tPaceSec : (goalPaceSPerMi ?? tPaceSec))
         : tPaceSec - 5;
       // 2026-06-21 · budget-scale WU/CD so the spec sums to distance_mi exactly.
       // Hardcoded 1.5/1.0 overshot when the day is short (e.g. 5mi tune-up with
@@ -630,9 +639,12 @@ export function capSpecToDistance(spec: WorkoutSpec, maxMi: number): WorkoutSpec
   const s: Record<string, unknown> = { ...(spec as Record<string, unknown>) };
   const kind = String(s.kind ?? '');
   if (kind === 'tempo') {
+    // TEMPO-WU-1 belt-and-suspenders: apply the same 0.5mi floor here in case a parsed
+    // prescription with large WU/CD gets proportionally scaled down to 0. Established runners
+    // (wu/cd already large) see no change — the floor never binds.
     const k = maxMi / realized;
-    const wu = Number((Number(s.warmup_mi ?? 0) * k).toFixed(1));
-    const cd = Number((Number(s.cooldown_mi ?? 0) * k).toFixed(1));
+    const wu = Math.max(0.5, Number((Number(s.warmup_mi ?? 0) * k).toFixed(1)));
+    const cd = Math.max(0.5, Number((Number(s.cooldown_mi ?? 0) * k).toFixed(1)));
     s.warmup_mi = wu;
     s.cooldown_mi = cd;
     s.tempo_distance_mi = Number(Math.max(0.5, maxMi - wu - cd).toFixed(1));

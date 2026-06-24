@@ -1,0 +1,30 @@
+{
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Components/TodayShoePicker.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoePicker.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoePicker.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoePicker.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoePicker.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoePicker.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/TreadmillHRStreamer.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TreadmillHRStreamer.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TreadmillHRStreamer.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TreadmillHRStreamer.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TreadmillHRStreamer.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TreadmillHRStreamer.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Views/TodayShoeOverrideSheet.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoeOverrideSheet.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoeOverrideSheet.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoeOverrideSheet.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoeOverrideSheet.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TodayShoeOverrideSheet.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Views/TrainView.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TrainView.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TrainView.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TrainView.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TrainView.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/TrainView.swiftdeps"
+  }
+}

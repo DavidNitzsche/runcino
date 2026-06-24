@@ -1,0 +1,30 @@
+{
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Components/WeekStrip.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekStrip.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekStrip.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekStrip.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekStrip.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekStrip.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Views/UsageSheet.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/UsageSheet.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/UsageSheet.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/UsageSheet.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/UsageSheet.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/UsageSheet.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Views/WeekAheadView.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekAheadView.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekAheadView.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekAheadView.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekAheadView.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WeekAheadView.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Views/WithinReachSheet.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WithinReachSheet.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WithinReachSheet.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WithinReachSheet.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WithinReachSheet.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/ddp/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/WithinReachSheet.swiftdeps"
+  }
+}

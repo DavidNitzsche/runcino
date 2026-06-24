@@ -1,0 +1,58 @@
+{
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Components/DragSheet.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/DragSheet.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/DragSheet.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/DragSheet.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/DragSheet.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/DragSheet.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Components/FaffMesh.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffMesh.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffMesh.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffMesh.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffMesh.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffMesh.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Components/Toolkit/D_Disclosure.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/D_Disclosure.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/D_Disclosure.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/D_Disclosure.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/D_Disclosure.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/D_Disclosure.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Components/Toolkit/E_Nudges.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/E_Nudges.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/E_Nudges.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/E_Nudges.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/E_Nudges.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/E_Nudges.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Components/Toolkit/F_Sheets.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/F_Sheets.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/F_Sheets.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/F_Sheets.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/F_Sheets.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/F_Sheets.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/FaffApp.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffApp.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffApp.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffApp.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffApp.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffApp.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Models/FaffPayloads.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffPayloads.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffPayloads.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffPayloads.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffPayloads.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/FaffPayloads.swiftdeps"
+  },
+  "/Volumes/WP/06 Claude Code/Runcino/native-v2/Faff/Faff/Views/EmailSignInSheet.swift" : {
+    "const-values" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/EmailSignInSheet.swiftconstvalues",
+    "dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/EmailSignInSheet.d",
+    "diagnostics" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/EmailSignInSheet.dia",
+    "object" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/EmailSignInSheet.o",
+    "swift-dependencies" : "/Volumes/WP/06 Claude Code/Runcino/native-v2/build/DerivedData/Build/Intermediates.noindex/Faff.build/Debug-iphonesimulator/Faff.build/Objects-normal/arm64/EmailSignInSheet.swiftdeps"
+  }
+}

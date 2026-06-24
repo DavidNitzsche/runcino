@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>12</integer>
+	<key>logs</key>
+	<dict>
+		<key>A580CF55-A006-4C45-8C67-7ACC037ADA83</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>A580CF55-A006-4C45-8C67-7ACC037ADA83.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>Faff project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>Faff</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Cleaning project Faff with scheme Faff and configuration Debug</string>
+			<key>timeStartedRecording</key>
+			<real>803252481.596825</real>
+			<key>timeStoppedRecording</key>
+			<real>803252482.10962796</real>
+			<key>title</key>
+			<string>Cleaning project Faff with scheme Faff and configuration Debug</string>
+			<key>uniqueIdentifier</key>
+			<string>A580CF55-A006-4C45-8C67-7ACC037ADA83</string>
+		</dict>
+	</dict>
+</dict>
+</plist>
