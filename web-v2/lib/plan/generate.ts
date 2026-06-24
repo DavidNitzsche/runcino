@@ -98,7 +98,12 @@ export function scheduleQuality(
 ): { dows: DOW[]; types: Array<DayPlan['type']> } {
   const n = qualityDows.length;
   const gapRank = (t: DayPlan['type']): number => (t === 'intervals' ? 2 : 1);
-  const types = qualityTypes.slice(0, n).sort((a, b) => gapRank(a) - gapRank(b)); // intervals last (stable)
+  // VDEAD-A (2026-06-23) · PAD types to qualityDows.length so gaps[] aligns 1:1 with dows. When qualityTypes
+  // is shorter than the dows (base-building emits 1 type for 2 quality slots), the old slice(0,n) left gaps
+  // short → score() read gaps[i]=undefined → NaN slack → a stranded quality day (adjacent to the long, 0 easy
+  // between) passed as "legal" → §9 stimulus-gap persist-abort. Cycle the types like the slot-assignment loop.
+  const typeBase: Array<DayPlan['type']> = qualityTypes.length > 0 ? qualityTypes : ['threshold'];
+  const types = Array.from({ length: n }, (_, i) => typeBase[i % typeBase.length]).sort((a, b) => gapRank(a) - gapRank(b));
   if (n === 0) return { dows: qualityDows.slice().sort((a, b) => a - b) as DOW[], types };
   const gaps = types.map(gapRank);
   const between = (a: number, b: number): number => ((b - a + 7) % 7) - 1; // circular easy days strictly between hard a and next hard b
@@ -114,7 +119,11 @@ export function scheduleQuality(
     return { ok, minSlack };
   };
   const orig = qualityDows.slice().sort((a, b) => a - b);
-  if (score(orig).ok) return { dows: orig as DOW[], types }; // already legal → days unchanged (David + most)
+  // VDEAD-B (2026-06-23) · also force the re-placement search when a quality day collides with the REST or
+  // LONG day — score() alone passed orig, then the slot assignment dropped the colliding quality onto the
+  // rest/long day → §5 "no quality sessions" persist-abort. The combo search below already excludes both
+  // days, so it re-routes to a free day. Byte-safe: David's Tue/Thu never collide (early return holds).
+  if (score(orig).ok && orig.every((d) => d !== restDow && d !== longRunDow)) return { dows: orig as DOW[], types };
   const cand = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== longRunDow && d !== restDow && (!availableDows || availableDows.has(d)));
   if (cand.length < n) return { dows: orig as DOW[], types };
   const combos: number[][] = [];
@@ -1257,7 +1266,7 @@ function layoutWeek({
                                       // tempo floor). Research/22 §Beginner ("2.5mi E w/ 4×1 min @ T").
                                       ? `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ 5×1 min surges @ T effort`
                                       : `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`)
-      : qt === 'race_week_tuneup' ? (raceDistanceMi >= 12 ? '4×1km @ race pace · 90s jog' : 'WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi') // PP-2 · hm/m use the doctrinal 4×1km (realizes to budget exactly; the 2×0.5mi WU/CD capped ~3.6)
+      : qt === 'race_week_tuneup' ? (raceDistanceMi >= 20 ? '5×400m @ 5K pace · 2min jog' : raceDistanceMi >= 12 ? '4×1km @ race pace · 90s jog' : 'WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi') // PP-2 · HM = 4×1km @ HMP (race pace). TAPER-SHARP-1 · marathon/ultra = 5K-pace reps (§9.3 sharpener, faster than MP). 5k/10k = T primer.
       :                              'QUALITY';
       // 2026-06-02 · the workout_library uses family='threshold' for
       // BOTH rep-based cruise intervals AND continuous tempos (both
@@ -2234,9 +2243,15 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // already placed = long/medium count toward the budget); the rest become
     // rest. NULL → fill every easy candidate (legacy 5-day recovery week).
     const runningPlaced = slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length;
+    // RECWK1-1 (2026-06-23) · early recovery (low wkPct) must be REST-dominated — Research/00b:260 (marathon
+    // week 1 ≈ days 0-3 rest, days 4-7 easy jogs every other day = ~2 short jogs). The null-freq branch filled
+    // EVERY empty slot (5 running days even the race-finish week). Cap TOTAL running days by wkPct (ceil so
+    // the lightest week still gets ~2 short jogs) so the reverse taper actually rebuilds frequency: wk1 ~2 →
+    // wk4 ~6. Stated-frequency runners unchanged.
+    const recoveryRunCap = Math.ceil(wkPct * 7);
     const targetEasyCount = input.trainingDaysPerWeek != null
       ? Math.max(0, Math.min(easySlots.length, input.trainingDaysPerWeek - runningPlaced))
-      : easySlots.length;
+      : Math.max(0, Math.min(easySlots.length, recoveryRunCap - runningPlaced));
     // 2026-06-21 · #8 · the per-slot easyFloor (>= ~4mi each) decoupled the day-
     // sum from wkWeekly: with N easy slots all pinned to the floor, the realized
     // week ran ~2× the intended recovery volume — the opposite of a cutback. A
@@ -2464,7 +2479,11 @@ async function persistPlan(client: PoolClient, args: {
         // R3 · per-week true I-pace for 5K/10K goals: invert the week's blended
         // T back to a VDOT, then take its 5K-race-pace I. Ramps with the block;
         // null (→ cruise default) for half/marathon and when weekT is unusable.
-        const iPaceSec = args.goalIPaceEligible
+        // TAPER-SHARP-1 (2026-06-23) · the marathon/ultra race-week sharpener is 5K-pace reps (Research/08
+        // §9.3 "5×1min @ 5K pace") — a NEUROMUSCULAR primer FASTER than race pace, not MP. Compute I-pace for
+        // the tune-up day even when the goal distance isn't I-eligible for long-run inserts (spec-builder
+        // uses it only when the prescription says "5K pace", so the HM tune-up still reads HMP).
+        const iPaceSec = (args.goalIPaceEligible || d.type === 'race_week_tuneup')
           ? iPaceFromVdot(vdotFromTpace(weekT))
           : null;
         const built = buildWorkoutSpec(

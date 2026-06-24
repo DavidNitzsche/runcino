@@ -187,7 +187,7 @@ export const TIER_TARGETS: Record<DistCategory, Record<GoalTier, TierTarget>> = 
   },
   '10k': {
     elite:        { peakWeeklyMileageBand: [65, 90], peakLongMiBand: [13, 17], qualityPerWeek: 3, longRunShare: 0.20, daysPerWeek: 6 },
-    advanced:     { peakWeeklyMileageBand: [40, 55], peakLongMiBand: [10, 13], qualityPerWeek: 2, longRunShare: 0.24, daysPerWeek: 5 },
+    advanced:     { peakWeeklyMileageBand: [40, 55], peakLongMiBand: [13, 15], qualityPerWeek: 2, longRunShare: 0.24, daysPerWeek: 5 }, // XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)
     intermediate: { peakWeeklyMileageBand: [30, 42], peakLongMiBand: [9, 12],  qualityPerWeek: 2, longRunShare: 0.28, daysPerWeek: 5 },
     developing:   { peakWeeklyMileageBand: [22, 30], peakLongMiBand: [6, 8],   qualityPerWeek: 1, longRunShare: 0.27, daysPerWeek: 4 },
   },
