@@ -420,14 +420,23 @@ export function validateComposedPlan(
   // ── 8. SP-7 · race-week chronology (race-prep) ────────────────────────────
   // No running prescription may fall AFTER race day (composePlan's SP-4 guard
   // already prevents it; this is the regression net).
+  // FIX (2026-06-24): compare chronological position relative to the week's
+  // start day, not raw DOW integers. When the week starts mid-week (e.g. a
+  // Wednesday start because today is Tuesday), Sunday (dow 0) wraps around to
+  // position 4 in the week, so days with dow 3/4/5/6 (Wed-Sat) come BEFORE it
+  // in calendar order — raw `d.dow > raceDay.dow` would flag them incorrectly.
   if (mode === 'race-prep') {
     for (const week of weeks) {
       if (!week.isRaceWeek) continue;
       const raceDay = week.days.find(d => d.type === 'race');
       if (!raceDay) continue;
+      // Determine the week-start DOW so we can compute chronological position.
+      const weekStartDow = new Date(week.startISO + 'T12:00:00Z').getUTCDay();
+      const pos = (dow: number) => (dow - weekStartDow + 7) % 7;
+      const racePosInWeek = pos(raceDay.dow);
       for (const d of week.days) {
         const isPrescription = d.type !== 'race' && d.type !== 'rest' && d.distanceMi > 0;
-        if (isPrescription && d.dow > raceDay.dow) {
+        if (isPrescription && pos(d.dow) > racePosInWeek) {
           violations.push(
             `Week ${week.startISO} (race week): ${d.type} on dow ${d.dow} is dated AFTER the race ` +
             `(dow ${raceDay.dow}) — no prescription may fall after race day`,
