@@ -238,7 +238,12 @@ export function validateComposedPlan(
   // deload/realized margin, 8× anomaly cap) — tracking the curve's own ≤10%/week ramp doctrine
   // (Pfitzinger); a flat 1.65× rejected any build >5 climb weeks. The per-week WoW check (§6) still
   // bounds each step. Race-prep only — maintenance/recovery hold near current volume (no ramp).
-  const rampBase = Math.max(ctx.recentWeeklyMi ?? 0, ctx.trailingAvgWeeklyMi ?? 0);
+  // BRK-2/CC2-1 (2026-06-23) · the volume curve floors its OWN start at max(6, base), so a base-3
+  // beginner's safe ramp legitimately clears 3 — checking against the raw 3 false-rejected 10K/HALF/
+  // marathon plans (saved-goal-no-plan dead-end). Match the curve's floor, CONDITIONALLY (base≥6 and
+  // absent-base stay byte-identical; an unconditional max(6,…) breaks 5 validate fixtures).
+  const rawRampBase = Math.max(ctx.recentWeeklyMi ?? 0, ctx.trailingAvgWeeklyMi ?? 0);
+  const rampBase = (rawRampBase > 0 && rawRampBase < 6) ? 6 : rawRampBase;
   if (mode === 'race-prep' && rampBase > 0) {
     const peakWeeklyMi = Math.max(0, ...weeks.map(w => w.weeklyMi ?? 0));
     const buildWeeks = weeks.filter(w => w.phase !== 'TAPER' && !w.isRaceWeek).length;
