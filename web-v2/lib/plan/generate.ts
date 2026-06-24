@@ -839,10 +839,11 @@ export interface ResolvedPrescriptions {
 export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
   return {
     intervals:
-        cat === '5k'  ? '5×800m @ I pace · 90s jog'
-      : cat === '10k' ? '4×1km @ I pace · 2:00 jog'
-      : cat === 'hm'  ? '6×800m @ I pace · 90s jog'
-      :                 '5×1mi @ I-T transition · 2:00 jog',
+        cat === '5k'    ? '5×800m @ I pace · 90s jog'
+      : cat === '10k'   ? '4×1km @ I pace · 2:00 jog'
+      : cat === 'hm'    ? '6×800m @ I pace · 90s jog'
+      : cat === 'ultra' ? '3×1mi @ I-T transition · 2:00 jog' // ULTRA-IREP-1 (2026-06-23): Research/00a §312 cap = 2-3×1600m "rarely" for 100K; 5× over-counts; 3× stays within doctrine max
+      :                   '5×1mi @ I-T transition · 2:00 jog',
     threshold:
         cat === '5k'  ? '3×1mi @ T pace · 60s jog'
       : cat === '10k' ? '4×1km @ T pace · 60s jog'
@@ -1007,22 +1008,27 @@ function layoutWeek({
           // RACEWK-SHARP-1 (2026-06-23) · marathon/ultra race-week sharpener must be 5K pace not race
           // pace. Research/08 §9.3 "3 mi w/ 5×1min @ 5K pace, 4-5 days out" — MP is too slow to be a
           // neuromuscular primer. TAPER-phase already used 5K pace (line 1269); race-week now matches.
-          const isMarathonPlus = raceDistanceMi >= 20;
+          const isUltra = raceDistanceMi >= 31;
+          const isMarathonPlus = raceDistanceMi >= 20; // marathon + ultra; isUltra checks first
           const isLongRace = raceDistanceMi >= 12;
           days.push({
             dow, type: 'race_week_tuneup',
             distanceMi: isLongRace ? 5 : 4,
             isQuality: true, isLong: false,
-            subLabel: isMarathonPlus ? '5×400m @ 5K pace · 2min jog'
+            // ULTRA-TUNE-1 (2026-06-23) · ultra race-week tune-up uses T-pace (threshold primer), NOT I-pace
+            // (5K pace). Ultra race pace is 10–14+ min/mi — running 5K-pace reps (30–40% faster than race
+            // pace) the week before a 100K is physiologically wrong. Research/00a §taper: "intensity preserved"
+            // at the runner's training intensity (threshold, not VO2max) for ultra. 5K-SHARP-1 · 5K/10K now
+            // uses 5K-pace reps (Research/00a §taper: "intensity preserved"). Shorter reps to match distance.
+            // raceDistanceMi < 7 separates 5K (3.1mi) from 10K (6.2mi).
+            subLabel: isUltra ? '5×400m @ T pace · 90s jog'
+              : isMarathonPlus ? '5×400m @ 5K pace · 2min jog'
               : isLongRace ? '4×1km @ race pace · 90s jog'
-              // 5K-SHARP-1 / 10K-SHARP-1 (2026-06-23) · 5K/10K race-week tune-up now uses 5K-pace reps
-              // (Research/00a §taper: "intensity preserved, volume drops sharply"). The old T-pace (T·60s jog)
-              // was a threshold primer — barely faster than race pace for a 5K runner, not a neuromuscular
-              // sharpener. Use the same pace zone (5K = I-pace) but shorter reps to match distance.
-              // raceDistanceMi < 7 separates 5K (3.1mi) from 10K (6.2mi) — isLongRace already covers HM+.
               : raceDistanceMi < 7 ? '5×200m @ 5K pace · 90s jog'
               : '4×400m @ 5K pace · 90s jog',  // 10K
-            notes: isMarathonPlus
+            notes: isUltra
+              ? 'Threshold strides, 5 days out. Hold T effort — just under comfortably hard. Brief neuromuscular prime.'
+              : isMarathonPlus
               ? 'Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.'
               : isLongRace
               ? 'Race-pace primer, 5 days out. Hold goal pace, even reps, stop at 4. Confidence check, not a workout.'
@@ -1268,7 +1274,14 @@ function layoutWeek({
           ? (cat === '5k'   ? (weekIdx % 2 === 0 ? ['intervals', 'intervals'] : ['intervals', 'threshold'])
            : cat === '10k'  ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
            : cat === 'hm'   ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
-           : /* m / ultra */  (weekIdx % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
+           : cat === 'ultra'
+               // ULTRA-QUAL-1 (2026-06-23): ultra training is threshold-dominant; I-pace intervals are
+               // "rarely" appropriate (Research/00a §311 "3×1600m at 10K pace (rarely)"). Alternating
+               // intervals every other week throughout the QUALITY block means 4-5 interval sessions per
+               // cycle — far above research doctrine. Remove intervals from the regular rotation; if a
+               // rare interval session is warranted, it's an exceptional week not the default.
+               ? ['threshold', 'tempo']
+           : /* marathon */  (weekIdx % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
       : [];
     // Prescription strings are resolved up-front from workout_library
     // (Research/04 + 22) via resolvePrescriptions() — falls back to the
@@ -1288,7 +1301,13 @@ function layoutWeek({
                                       // tempo floor). Research/22 §Beginner ("2.5mi E w/ 4×1 min @ T").
                                       ? `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ 5×1 min surges @ T effort`
                                       : `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`)
-      : qt === 'race_week_tuneup' ? (raceDistanceMi >= 20 ? '5×400m @ 5K pace · 2min jog' : raceDistanceMi >= 12 ? '4×1km @ race pace · 90s jog' : cat === '5k' ? '5×200m @ 5K pace · 90s jog' : '4×400m @ 5K pace · 90s jog') // PP-2 · HM = 4×1km @ HMP. TAPER-SHARP-1 · marathon/ultra = 5K-pace reps. 5K-SHARP-1 · 5K taper = 5×200m @ 5K pace (neuromuscular strides, Research/00a §taper "intensity preserved"). 10K-SHARP-1 · 10K taper = 4×400m @ 5K pace (same pace zone, longer reps for 10K sharpening). T-pace-only was not a neuromuscular primer.
+      : qt === 'race_week_tuneup' ? (
+          raceDistanceMi >= 31 ? '5×400m @ T pace · 90s jog'   // ULTRA-TUNE-1: threshold, not I-pace (see race-week note)
+        : raceDistanceMi >= 20 ? '5×400m @ 5K pace · 2min jog' // TAPER-SHARP-1 · marathon: 5K-pace prime
+        : raceDistanceMi >= 12 ? '4×1km @ race pace · 90s jog'  // PP-2 · HM: race-pace prime
+        : cat === '5k' ? '5×200m @ 5K pace · 90s jog'           // 5K-SHARP-1
+        : '4×400m @ 5K pace · 90s jog'                          // 10K-SHARP-1
+      )
       :                              'QUALITY';
       // 2026-06-02 · the workout_library uses family='threshold' for
       // BOTH rep-based cruise intervals AND continuous tempos (both
@@ -1427,9 +1446,18 @@ function layoutWeek({
   // so the long is visibly the week's longest run (David's "every run is the same
   // distance" complaint — a small-tier 5K long pinned easy == long == 8mi). Cap easy
   // at ~0.8×long (and ≥1 below it); separation overrides the floor when they conflict
-  // at tiny longs. For established runners the long dwarfs easy so this never binds —
-  // byte-unchanged for David.
-  const easySep = longMi > 0 ? Math.max(1, Math.min(longMi - 1, Math.round(0.8 * longMi))) : perEasyRaw;
+  // at large equal distances. For established runners the long dwarfs easy so this never binds.
+  //
+  // B5-EASY-SEP-1 (2026-06-23) · RP-5's 0.8×long-1 separation collapses beginner volume when
+  // the long run is tiny (≤ effectiveFloor=3mi). A 2mi long → easySep=1 → perEasy=1mi →
+  // 3-day beginner realizes 4mi of a 10mi target (60% shortfall). The validator's long-primacy
+  // rule allows easy ≤ long + 0.15mi, so allowing easy = long for SMALL longs is valid and
+  // avoids the collapse. David's complaint was about 8mi equal distances, not 3mi beginners.
+  const easySep = longMi > 0
+    ? (longMi <= effectiveFloor
+        ? longMi  // tiny long (beginner early weeks): easy may equal the long — within validator's 0.15mi tolerance
+        : Math.max(1, Math.min(longMi - 1, Math.round(0.8 * longMi))))
+    : perEasyRaw;
   // VDEAD-RAMP-1 (2026-06-23) · budget ceiling on the easy-day floor, but ONLY for
   // non-deload non-base weeks where floor inflation can hit the §3 validator ceiling.
   // Two disjoint exemptions:
