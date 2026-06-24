@@ -18,13 +18,13 @@ import { SIM_DISTANCE_MI, type SimDistance } from './sim-constants';
 const DISTANCES: SimDistance[] = ['5k', '10k', 'half', 'marathon', '50k', '100k'];
 const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6300, marathon: 13500, '50k': 18000, '100k': 43200 };
 
-// replicate persistPlan's per-day realization (generate.ts:2390-2412)
-function realize(dayType: string, distanceMi: number, weekT: number, subLabel: string, goalPaceSec: number | null, cat: string) {
-  const goalIPaceEligible = ['5k', '10k', 'hm'].includes(cat);
-  const iPaceSec = goalIPaceEligible ? iPaceFromVdot(vdotFromTpace(weekT)) : null;
-  const built = buildWorkoutSpec(dayType, distanceMi, weekT, null, subLabel, null, goalPaceSec, iPaceSec, null);
+// replicate persistPlan's per-day realization (generate.ts:2482-2491), FAITHFULLY — real easyAnchorT, and
+// I-pace for 5k/10k/hm long inserts AND any race_week_tuneup day (TAPER-SHARP-1). Returns the finish pace too.
+function realize(dayType: string, distanceMi: number, weekT: number, subLabel: string, goalPaceSec: number | null, cat: string, easyAnchorT: number) {
+  const iPaceSec = (['5k', '10k', 'hm'].includes(cat) || dayType === 'race_week_tuneup') ? iPaceFromVdot(vdotFromTpace(weekT)) : null;
+  const built = buildWorkoutSpec(dayType, distanceMi, weekT, null, subLabel, null, goalPaceSec, iPaceSec, easyAnchorT);
   const persisted = totalDistanceMiFromSpec(capSpecToDistance(built.spec, distanceMi), distanceMi);
-  return { paceTarget: built.paceTargetSPerMi, persisted };
+  return { paceTarget: built.paceTargetSPerMi, persisted, finishPace: (built.spec as any).finish_pace_s_per_mi ?? null as number | null };
 }
 
 describe('PERSIST realization · no inversion + persist≤long', () => {
@@ -53,13 +53,17 @@ describe('PERSIST realization · no inversion + persist≤long', () => {
         if (w.isRaceWeek) continue;
         const weekT = w.tPaceSec ?? r.derived.tPaceSec;
         if (weekT == null) continue;
+        const longDay = w.days.find((d: any) => d.isLong && d.type !== 'race');
         const longMi = Math.max(0, ...w.days.filter((d: any) => d.isLong && d.type !== 'race').map((d: any) => d.distanceMi));
-        const longPersisted = longMi > 0 ? realize('long', longMi, weekT, w.days.find((d: any) => d.isLong)?.subLabel ?? '', r.derived.goalPaceSec, cat).persisted : Infinity;
+        const longReal = longMi > 0 ? realize('long', longMi, weekT, longDay?.subLabel ?? '', r.derived.goalPaceSec, cat, easyAnchorT) : null;
+        const longPersisted = longReal ? longReal.persisted : Infinity;
+        const qualityPaces: number[] = [];
         for (const d of w.days) {
           // PINV-1 (2026-06-23) · race_week_tuneup IS checked now — a soft-goal '@ race pace' tune-up that
           // realized SLOWER than easy is exactly the inversion that slipped past this guard before.
           if (!d.isQuality || d.type === 'race' || d.type === 'shakeout') continue;
-          const { paceTarget, persisted } = realize(d.type, d.distanceMi, weekT, d.subLabel ?? '', r.derived.goalPaceSec, cat);
+          const { paceTarget, persisted } = realize(d.type, d.distanceMi, weekT, d.subLabel ?? '', r.derived.goalPaceSec, cat, easyAnchorT);
+          qualityPaces.push(paceTarget);
           checks++;
           // BRK-1/PINV-1 · quality work-pace strictly faster than the easy floor (ALL quality incl. tune-up)
           expect(paceTarget, `${c.tag}/${distance} ${d.type} pace ${paceTarget} not < easy ${easyFloor}`).toBeLessThan(easyFloor);
@@ -70,6 +74,15 @@ describe('PERSIST realization · no inversion + persist≤long', () => {
           if (d.type !== 'race_week_tuneup') {
             expect(Math.abs(persisted - d.distanceMi), `${c.tag}/${distance} ${d.type} persisted ${persisted} vs composed ${d.distanceMi}`).toBeLessThanOrEqual(0.55);
           }
+        }
+        // PACE-MFIN-T1/LONGFIN-1 (2026-06-23) · the long's M/HM finish must sit IN the marathon zone: SLOWER
+        // than the week's FASTEST quality rep (else T<M inverts — the regression PACE-M1 introduced) and
+        // FASTER than the easy band (else it's a soft-goal easy-band inversion). Gates the inversion class
+        // that regressed twice. Only when both a finish and a quality rep exist this week.
+        if (longReal?.finishPace != null && qualityPaces.length) {
+          const fastestQuality = Math.min(...qualityPaces);
+          expect(longReal.finishPace, `${c.tag}/${distance} long-finish ${longReal.finishPace} ≤ fastest quality ${fastestQuality} (T<M inversion)`).toBeGreaterThan(fastestQuality);
+          expect(longReal.finishPace, `${c.tag}/${distance} long-finish ${longReal.finishPace} ≥ easy ${easyFloor} (finish in easy band)`).toBeLessThan(easyFloor);
         }
       }
     }
