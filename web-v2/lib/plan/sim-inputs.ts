@@ -53,10 +53,14 @@ function addDaysISO(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Best VDOT across self-reported PRs · how the engine seeds current fitness. */
+/** Best VDOT across self-reported PRs · how the engine seeds current fitness.
+ *  LSP2-2 · only PRs from the last ~6mo ('<6mo' bucket) count as current fitness.
+ *  A sub-3 marathon from 18 months ago does not reflect today's shape.
+ *  Cite: Research/01 §"Fitness anchor recency"; Pfitzinger §"Using recent races". */
 function bestVdotFromHistory(rh: SimInputs['raceHistory']): number | undefined {
   let best: number | undefined;
   for (const e of rh) {
+    if (e.whenRaced !== '<6mo') continue; // LSP2-2: only very recent PRs
     const mi = SIM_DISTANCE_MI[e.distance];
     const v = vdotFromRace(e.timeSec, mi);
     if (v != null && (best === undefined || v > best)) best = v;

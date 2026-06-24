@@ -1060,10 +1060,14 @@ function layoutWeek({
               : 'Short race-pace strides, 5 days out. Quick turnover — finish feeling sharp, not tired.',
           });
         } else if (daysBeforeRace >= 3 && daysBeforeRace <= 4) {
-          // Easy 3-4mi w/ light strides midweek
-          days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Strides optional.' });
+          // TAPER-RW-1 · time-based easy prescription (not distance). 35-45 min at conversational
+          // pace; the distance is a planning guide only. Cite: Daniels §Race-week sharpening.
+          const minEasy = daysBeforeRace === 4 ? 40 : 35;
+          days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: `EASY · ${minEasy} MIN`, notes: `${minEasy} min easy. Conversational effort throughout. Strides optional at end.` });
         } else {
-          days.push({ dow, type: daysBeforeRace > 5 ? 'easy' : 'rest', distanceMi: daysBeforeRace > 5 ? 4 : 0, isQuality: false, isLong: false, subLabel: daysBeforeRace > 5 ? 'EASY' : 'REST', notes: '' });
+          // TAPER-RW-1 · early race-week easy days also time-based (35-45 min)
+          const earlyEasy = daysBeforeRace > 5;
+          days.push({ dow, type: earlyEasy ? 'easy' : 'rest', distanceMi: earlyEasy ? 4 : 0, isQuality: false, isLong: false, subLabel: earlyEasy ? 'EASY · 40 MIN' : 'REST', notes: earlyEasy ? '40 min easy. Keep it truly easy — save the legs.' : '' });
         }
       }
     }
@@ -3372,7 +3376,9 @@ async function loadGeneratorInputs(
     const rhRow = (await pool.query<{ race_history: any }>(
       `SELECT race_history FROM profile WHERE user_uuid = $1 LIMIT 1`, [userId],
     ).catch(() => ({ rows: [] }))).rows[0];
-    bestRecentVdot = bestVdotFromRaceHistory(Array.isArray(rhRow?.race_history) ? rhRow.race_history : [], 365);
+    // LSP2-2 · 180d window (~6mo = '<6mo' bucket midpoint 90d ≤ 180d · '6-12mo' midpoint 270d > 180d).
+    // A PR from 8+ months ago does not reflect current fitness; cap to recent races only.
+    bestRecentVdot = bestVdotFromRaceHistory(Array.isArray(rhRow?.race_history) ? rhRow.race_history : [], 180);
   }
   // maxHr for Rule 16 (easy/long HR cap). loadVdotInputs resolves it
   // internally for the run-candidate gate; hoist separately for composePlan.
