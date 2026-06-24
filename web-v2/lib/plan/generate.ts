@@ -97,7 +97,10 @@ export function scheduleQuality(
   availableDows: Set<number> | null,
 ): { dows: DOW[]; types: Array<DayPlan['type']> } {
   const n = qualityDows.length;
-  const gapRank = (t: DayPlan['type']): number => (t === 'intervals' ? 2 : 1);
+  // FARTLEK-GAP-SCHED-1 (2026-06-23): fartlek is type='easy' and reqGap=0 in the validator
+  // (easy needs no recovery day). gapRank must match so scheduleQuality doesn't displace
+  // fartlek from its requested slot just because it's adjacent to the long run.
+  const gapRank = (t: DayPlan['type']): number => (t === 'intervals' ? 2 : t === 'easy' ? 0 : 1);
   // VDEAD-A (2026-06-23) · PAD types to qualityDows.length so gaps[] aligns 1:1 with dows. When qualityTypes
   // is shorter than the dows (base-building emits 1 type for 2 quality slots), the old slice(0,n) left gaps
   // short → score() read gaps[i]=undefined → NaN slack → a stranded quality day (adjacent to the long, 0 easy
@@ -1136,8 +1139,14 @@ function layoutWeek({
   // non-taper weeks layoutWeek's absolute weekIdx equals volumeCurve's build-
   // week index (build phases precede TAPER), so the masks line up exactly.
   const isCutback = weekIdx > 0 && (weekIdx + 1) % cutbackEveryN === 0;
-  const longCap = tierTarget.peakLongMiBand[1];
   const longCat = distanceCategoryOf(raceDistanceMi);
+  // ULTRA-LONG-CAP-1 (2026-06-23): elite-tier ultra has peakLongMiBand[1]=32, which exceeds
+  // the 50K race distance (31.1mi). Cap at 95% of raceDistanceMi for ultra so training long
+  // never exceeds the race; for 100K (62.1mi) the tier cap of 32 already dominates so the
+  // min() is a no-op. All non-ultra distances (marathon peak 22-25mi < 26.2mi) are unaffected.
+  const longCap = (longCat === 'ultra')
+    ? Math.min(tierTarget.peakLongMiBand[1], Math.round(raceDistanceMi * 0.95))
+    : tierTarget.peakLongMiBand[1];
   // 2026-06-23 · DIST-1 · long-run SIZE, research-grounded:
   //   5k/10k/hm — share of the week (Research/00a:184, ≤25-30%); weeklyMi × longShare
   //     already lands inside the tier's peakLongMiBand, so keep it.
