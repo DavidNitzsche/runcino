@@ -511,11 +511,14 @@ export function buildWorkoutSpec(
       // current threshold (tPaceSec — a real sharpener) instead. Byte-safe: only soft goals trip the guard;
       // at-goal/hard/by-feel (goalPace <= easyLo, or null) are unchanged.
       // TAPER-SHARP-1 (2026-06-23) · "@ 5K pace" tune-ups (marathon/ultra sharpener, §9.3) run at I-pace —
-      // a neuromuscular primer faster than race pace. Threaded iPaceSec carries it; falls back to T-5 only
-      // if I-pace is unavailable. HM "@ race pace" still reads HMP via the goal-pace branch below.
+      // a neuromuscular primer faster than race pace. Threaded iPaceSec carries it; falls back to
+      // cruise-interval pace (T-18) when iPaceSec is unavailable — still a meaningful sharpener
+      // (Research/01:130-134: "race pace OR FASTER"), not the T-5 primer. HM "@ race pace" still
+      // reads HMP via the goal-pace branch below. In prod, iPaceSec is always threaded for
+      // race_week_tuneup (persistPlan computes it unconditionally), so the fallback is defensive.
       const wants5kPace = /5\s*k\s*pace|@\s*I\b/i.test(String(prescription ?? ''));
-      const repPace = (wants5kPace && iPaceSec != null)
-        ? iPaceSec
+      const repPace = wants5kPace
+        ? (iPaceSec ?? (tPaceSec - 18))
         : wantsRacePace
         // PINV-1-BOUNDARY (2026-06-23) · >= not > so that goal pace exactly AT the easy floor
         // (borderline soft-goal) routes to tPaceSec, not to the easy-pace goal.
