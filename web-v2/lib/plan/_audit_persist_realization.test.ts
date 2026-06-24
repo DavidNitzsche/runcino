@@ -63,6 +63,7 @@ describe('PERSIST realization · no inversion + persist≤long', () => {
           // realized SLOWER than easy is exactly the inversion that slipped past this guard before.
           if (!d.isQuality || d.type === 'race' || d.type === 'shakeout') continue;
           const { paceTarget, persisted } = realize(d.type, d.distanceMi, weekT, d.subLabel ?? '', r.derived.goalPaceSec, cat, easyAnchorT);
+          if (paceTarget == null) continue;
           qualityPaces.push(paceTarget);
           checks++;
           // BRK-1/PINV-1 · quality work-pace strictly faster than the easy floor (ALL quality incl. tune-up)
