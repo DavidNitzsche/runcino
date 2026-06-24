@@ -296,6 +296,19 @@ export function validateComposedPlan(
       // and `deepestDrop` always ≥45%, masking training taper weeks that barely reduce at all.
       // The race week is minimal pre-race activity, not a training taper stimulus — exclude it.
       const taperW = weeks.filter(w => w.phase === 'TAPER' && !w.isRaceWeek);
+      // SHORT-TAPER-1 (2026-06-23): for very short plans, sizeBlocks phases_total can exceed
+      // totalWeeks (phases overflow). The only TAPER-labeled week becomes the race week, so
+      // taperW=[] and all depth/monotone checks silently skip — a marathon/HM with zero pre-race
+      // taper passes undetected. 5K/10K legitimately have taperWeeks=1 which IS the race week
+      // (no non-race taper needed); only enforce for HM (≥13mi, needs 1) and marathon/ultra (≥20mi, needs 2).
+      const minNonRaceTaperWks = raceDistanceMi >= 20 ? 2 : raceDistanceMi >= 13 ? 1 : 0;
+      if (taperW.length < minNonRaceTaperWks) {
+        violations.push(
+          `Too few pre-race taper weeks: got ${taperW.length} non-race TAPER week(s), ` +
+          `need ≥${minNonRaceTaperWks} for ${raceDistanceMi >= 20 ? 'marathon/ultra' : 'half-marathon'} — ` +
+          `plan is too short or phase phasing overflowed (increase plan length)`,
+        );
+      }
       if (peakVol > 0 && taperW.length > 0) {
         // Research/08 §9.2 · the taper is PROGRESSIVE (80-90% → 60-70% → 40-50% of peak), NOT a flat
         // ≥30% on every week — the first taper week legitimately drops only ~10-20%. Require (a) the
