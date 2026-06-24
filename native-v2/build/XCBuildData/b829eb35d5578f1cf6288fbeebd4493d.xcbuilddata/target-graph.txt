@@ -1,2 +1,0 @@
-Target dependency graph (1 target)
-Target 'FaffWatch Watch App' in project 'Faff' (no dependencies)

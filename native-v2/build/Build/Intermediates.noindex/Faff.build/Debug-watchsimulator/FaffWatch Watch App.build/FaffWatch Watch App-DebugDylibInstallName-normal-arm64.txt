@@ -1,1 +1,0 @@
-@rpath/FaffWatch Watch App.debug.dylib
