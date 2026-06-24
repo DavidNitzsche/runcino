@@ -174,3 +174,47 @@ Deployed to main in 4 batches: `9f8d1744` (critical+major), `03f9dbf1` (gate gua
 **CC2-4 secondary (deferred, latent):** thread horizonRaces/priorPlanPeakLongMi/isSteppingStoneToMarathon
 into buildSimPlan + a 30K-horizon gate block, then the 30K `distanceMiOf` parity — ONLY after the >17
 alignment is live (the parity would otherwise activate the latent bug).
+
+---
+
+## ROUND 2 (verification re-audit `wqjhgruzs`, 16 agents, built the spec) — 8 new confirmed, 6 fixed
+
+The verification re-audit confirmed the 16 round-1 fixes hold AND found 8 NEW defects (1 rejected) — incl.
+two MISSES in round-1's own fixes. Deployed `32950306` (suite 903 green, sweep 9294/0-firm).
+
+**FIXED (6):**
+- **PINV-1** (major, soft-goal inversion that PP-2's `@ race pace` label exposed) — the race_week_tuneup rep
+  ran at the SLOW goal pace = slower than easy (no sharpening). When the goal pace would invert (> easyLo)
+  the rep now primes at current threshold (a real sharpener; byte-safe — at-goal/hard/by-feel unchanged).
+  The persist guard now CHECKS race_week_tuneup reps (it skipped them — why this slipped past).
+- **NS-2-CUTBACK** (major, miss in round-1 NS-2) — NS-2 capped the BASE maintenance long but left the
+  cutback floor `Math.max(4,…)`, so the LIGHTEST week shipped the plan's LONGEST run (recentLong 3 →
+  cutback 3.5 = 117% > 110% injury cap). Cutback now ≤ base long.
+- **MT-REC-1** (major, miss in round-1 BRK-3) — BRK-3's recovery long sat behind `wkPct ≥ 0.50`, which HM
+  ([.20,.40]) + 10K ([.30]) recovery never reach → long was 0mi the whole block. Final recovery week now
+  reintroduces a gentle long for HM/10K too.
+- **VCP-1** (major, validator false-reject) — §3 ramp ceiling rejected a 5K peak 15.0 vs 14.79 (rounding) →
+  saved-goal-no-plan. Added 0.5mi/3% absolute slack.
+- **VCP-2** (major, validator false-reject) — flat 8× anomaly cap collided with ultra (100K needs 50+ peak;
+  6×8=48). Ultra now lets the build-length curve govern (20× backstop).
+- **PACE-M1** (minor) — marathon long-finish ran ~4 s/mi FASTER than goal MP (Research/04:121 "MP exactly —
+  not faster"). Uses the threaded goal pace when present + not a soft-goal inversion. HM/David + soft goals
+  unchanged.
+
+**FLAGGED for David's sign-off (now 4 — each changes his live plan / performance-critical):**
+- **PP-3** — both non-race taper weeks carry 2 tune-ups; Research/08 ≈ 1 per taper week.
+- **RC2-4** — cutback deload ~14-16% < Research/08 §9.1 band (5K 25-35% … marathon 40-60%).
+- **TAPER-RW-1** — race-week easy days hardcoded 2-4mi; §9.3 templates are DURATION-based (35-50min ≈ 5-7mi
+  for a trained runner), so a 50mpw runner's race week under-volumes. Scaling raises David's race week
+  (~28→~40mi) — performance-critical, flag.
+- **LSP2-2** — sim PR-recency window (sim preview only; prod correct).
+
+**KNOWN-OPEN (layout rework / minor, tracked):**
+- **BANDS-ULTRA-Q1** — ultra ships 2 quality/wk vs Research/22 §Ultramarathon 1. The naive density clamp
+  re-introduced easy-slot inflation (117 > 110); correct fix routes the displaced slot to a MEDIUM-LONG
+  (back-to-back-long doctrine), a layout change. Reverted the naive clamp; flagged.
+- **TUNE-FOOTPRINT** — a tiny-budget tune-up's fixed ~1.1mi footprint overshoots a sub-footprint composed
+  allocation (0.5mi). Composer should floor tune-up allocations or demote sub-footprint tune-ups.
+
+Round 3 (`w4lq3l3yc`) launched to verify the round-2 fixes + hunt again — loop continues per "do not stop
+until not a single issue is found."
