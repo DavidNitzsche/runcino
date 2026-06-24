@@ -35,7 +35,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRac
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
-import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
+import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
 import { isBaseBuildingPlan } from './plan-templates';
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 import { validateComposedPlan } from './validate';
@@ -2055,9 +2055,20 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     Math.min(Math.round(input.recentLongMi * 1.10), Math.round(targetWeekly * 0.30)),
   );
 
-  // 4-week rolling template. Days = tier's daysPerWeek. Rest = 7 -
-  // daysPerWeek (so days held even though volume dropped).
-  const TOTAL_WEEKS = 4;
+  // MAINT-HORIZON (2026-06-23) · when a race is scheduled, maintenance runs exactly until the
+  // build-window opens, not a fixed 4 weeks. A 20-week-out 5K runner needs 10 weeks of
+  // maintenance before the 10-week race-prep window starts — not 4 weeks of maintenance that
+  // restarts three more times with no visible horizon. Rolling cutback fires every 4th week.
+  // When no race is scheduled (just-run mode), fall back to the 4-week rolling default.
+  let TOTAL_WEEKS = 4;
+  if (input.nextRace) {
+    const weeksToRace = daysBetween(input.startMondayISO, input.nextRace.date) / 7;
+    const buildCat = distanceCategoryOfTier(input.nextRace.distanceMi);
+    const buildWindow = BUILD_WINDOW_WEEKS[buildCat];
+    if (weeksToRace > buildWindow) {
+      TOTAL_WEEKS = Math.max(1, Math.round(weeksToRace - buildWindow));
+    }
+  }
   const weeks: ComposedWeek[] = [];
   const blocks: BlockPlan = {
     totalWeeks: TOTAL_WEEKS,
@@ -2069,10 +2080,9 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     }],
   };
 
-  // Layout one canonical week, then clone it for all 4. Cutback is just
-  // a recovery-week step-down at week 3 (final week of cycle).
+  // Layout one canonical week per slot. Rolling cutback fires every 4th week (weekIdx 3, 7, 11 …).
   function maintenanceWeek(weekIdx: number): DayPlan[] {
-    const isCutback = weekIdx === 3; // week 4 (zero-indexed) = recovery
+    const isCutback = (weekIdx + 1) % 4 === 0; // week 4, 8, 12 … = recovery step-down
     const wkWeekly = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
     // SP-6 · 4mi coherence floor, not 8. NS-2 (2026-06-23, ext) · the cutback floor must ALSO respect the
     // true-beginner cap (recentLong 3 → cutback Math.max(4,2)=4 → smoothed 3.5 = 117% = the plan's LONGEST
