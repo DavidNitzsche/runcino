@@ -667,7 +667,12 @@ export function capSpecToDistance(spec: WorkoutSpec, maxMi: number): WorkoutSpec
       s.rep_distance_mi = Number(repMi.toFixed(2));
       if (s.rep_distance_m != null) s.rep_distance_m = Math.round(repMi * 1609.34);
     }
-    const slack = Math.max(wuMin + cdMin, maxMi - reps * repMi - floatTotal);
+    // SPEC-CAP-1 (2026-06-23) · the prior max(wuMin+cdMin, ...) ensured floors in normal paths
+    // but became harmful after the repMi shrink above: when repMi hits the 0.1 floor and
+    // reps*repMi+float already consumes most of maxMi, the remaining slack may be < wuMin+cdMin,
+    // and the max() overallocates WU+CD (e.g. 0.5+0.1+0+0.5 = 1.1mi > 1.0mi budget). The wu/cd
+    // floors on lines 674-675 already enforce the minimum — the max() here is redundant and wrong.
+    const slack = maxMi - reps * repMi - floatTotal;
     s.rep_count = reps;
     // 2026-06-21 · round wu once, derive cd as the exact remainder so
     // wu + cd == slack exactly (no independent-rounding overshoot).

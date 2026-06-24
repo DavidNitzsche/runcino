@@ -1064,13 +1064,15 @@ function layoutWeek({
     }
     // 2026-06-10 · frequency cap also applies to race week. Without it a
     // 3-day runner saw 6 running days in their race week (race + shakeout
-    // + tune-up + 3 easies). 2026-06-21 · PLACE-B · trim in priority order
-    // (easy → tune-up → shakeout) so a 1-2 day runner can reach their stated
-    // frequency: freq 1 → race only, freq 2 → race + shakeout. The race day
-    // always stays. NULL frequency → untouched (legacy behavior).
+    // + tune-up + 3 easies). 2026-06-21 · PLACE-B · trim in priority order.
+    // RACEWEEK-TUNEUP-DROP-1 (2026-06-23) · previous order (easy → tune-up → shakeout)
+    // made a 2-day runner keep race + shakeout instead of race + tune-up. The tune-up
+    // is the week's key quality prime (§9.3); the shakeout is just a loosening jog.
+    // Correct order: easy → shakeout → tune-up. freq 1 → race only,
+    // freq 2 → race + tune-up. The race day always stays. NULL frequency → untouched.
     if (trainingDaysPerWeek != null) {
       let running = days.filter((d) => d.distanceMi > 0).length;
-      for (const role of ['easy', 'race_week_tuneup', 'shakeout'] as const) {
+      for (const role of ['easy', 'shakeout', 'race_week_tuneup'] as const) {
         if (running <= trainingDaysPerWeek) break;
         for (const d of days) {
           if (running <= trainingDaysPerWeek) break;
@@ -2046,7 +2048,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       // MAINT-QUAL-ADJACENT (2026-06-23) · route through scheduleQuality so the selected DOW is
       // guaranteed to be at least 1 day away from the long run (§5). The previous direct use of
       // qualityDows[0] had no gap check: sat-quality + sun-long = 0 recovery days between them.
-      const qType: DayPlan['type'] = shape.qualityType === 'threshold' ? 'threshold' : 'tempo';
+      const qType: DayPlan['type'] = shape.qualityType === 'threshold' ? 'threshold' : 'easy';
       const { dows: scheduledQ } = scheduleQuality(input.qualityDows, [qType], input.longRunDow, input.restDow, input.availableDows ?? null);
       const qDow = scheduledQ.length > 0 ? scheduledQ[0] : input.qualityDows[0];
       if (slots[qDow] == null) {
@@ -2061,8 +2063,12 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
             notes: 'WU 1.5mi · steady at threshold · CD 1mi. Aerobic engine maintenance.',
           };
         } else if (shape.qualityType === 'fartlek') {
+          // MAINT-FARTLEK-SPEC (2026-06-23) · fartlek is AEROBIC with surges, not sustained
+          // threshold. The prior type:'tempo' caused buildWorkoutSpec to prescribe tPaceSec
+          // and 92% LTHR — full threshold effort — while notes said "Easy with 1-minute pickups."
+          // Fix: type:'easy' so the spec targets the aerobic zone; surges communicated via subLabel.
           slots[qDow] = {
-            dow: qDow, type: 'tempo', distanceMi: qDist, isQuality: true, isLong: false,
+            dow: qDow, type: 'easy', distanceMi: qDist, isQuality: true, isLong: false,
             subLabel: `${qDist}mi w/ 6×1min surges`,
             notes: 'Easy with 1-minute pickups every 5 min. Leg turnover · not race-pace.',
           };
@@ -2088,13 +2094,14 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       ? emptySlots.filter((e) => input.availableDows!.has(e.dow))
       : emptySlots;
     const runningPlaced = slots.filter(Boolean).filter((d) => d?.distanceMi! > 0).length;
-    const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - runningPlaced));
-    // MAINT-EASY-1-REGRESS (2026-06-23) · the 2mi floor must not fire when easyMiBudget is
-    // exhausted (long already consumed all of targetWeekly). Without this guard, a 2mi-target
-    // week with 4 easy slots → 4×2mi=8mi on top of a 2mi long = 10mi realized vs 2mi target.
-    const perEasyRaw = targetEasyCount > 0
-      ? (easyMiBudget > 0 ? Math.max(2, Math.round(easyMiBudget / targetEasyCount)) : 0)
-      : 0;
+    // MAINT-EASY-2 (2026-06-23) · cap easy slots to what the budget can sustain at a minimum
+    // 2mi each. Without this, a 3mi easy budget spread over 4 slots floored each to 2mi and
+    // realized 8mi instead of 3mi. The fix: max floor(budget/2) easy days — the remainder stay
+    // rest. MAINT-EASY-1-REGRESS extended this to the zero-budget case (floor(0/2)=0 easy days).
+    const MAINT_MIN_EASY = 2;
+    const maxEasyByBudget = Math.floor(easyMiBudget / MAINT_MIN_EASY);
+    const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - runningPlaced), maxEasyByBudget);
+    const perEasyRaw = targetEasyCount > 0 ? Math.max(MAINT_MIN_EASY, Math.round(easyMiBudget / targetEasyCount)) : 0;
     // 2026-06-21 · N2 · easy never exceeds the long run. A sparse availableDows
     // (few easy slots) + a high peak can spike per-easy above the long (same
     // class as recovery N2); clamp to wkLong, mirroring layoutWeek's easyCeiling.

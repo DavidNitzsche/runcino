@@ -290,7 +290,12 @@ export function validateComposedPlan(
       const peakVol = nonTaperNonRace.length > 0
         ? Math.max(...nonTaperNonRace.map(w => w.weeklyMi))
         : 0;
-      const taperW = weeks.filter(w => w.phase === 'TAPER');
+      // TAPER-1 (2026-06-23) · exclude the race week from the deepest-taper computation.
+      // The race-week VOL-1 value (~14-18mi: shakeout + tune-up + 2-3 short easies) is always
+      // far below any taperDropMinPct threshold, so including it made `deepest` trivially small
+      // and `deepestDrop` always ≥45%, masking training taper weeks that barely reduce at all.
+      // The race week is minimal pre-race activity, not a training taper stimulus — exclude it.
+      const taperW = weeks.filter(w => w.phase === 'TAPER' && !w.isRaceWeek);
       if (peakVol > 0 && taperW.length > 0) {
         // Research/08 §9.2 · the taper is PROGRESSIVE (80-90% → 60-70% → 40-50% of peak), NOT a flat
         // ≥30% on every week — the first taper week legitimately drops only ~10-20%. Require (a) the
