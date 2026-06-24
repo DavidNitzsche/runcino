@@ -1015,12 +1015,18 @@ function layoutWeek({
             isQuality: true, isLong: false,
             subLabel: isMarathonPlus ? '5×400m @ 5K pace · 2min jog'
               : isLongRace ? '4×1km @ race pace · 90s jog'
-              : '2×0.5mi @ T · 60s jog',
+              // 5K-SHARP-1 / 10K-SHARP-1 (2026-06-23) · 5K/10K race-week tune-up now uses 5K-pace reps
+              // (Research/00a §taper: "intensity preserved, volume drops sharply"). The old T-pace (T·60s jog)
+              // was a threshold primer — barely faster than race pace for a 5K runner, not a neuromuscular
+              // sharpener. Use the same pace zone (5K = I-pace) but shorter reps to match distance.
+              // raceDistanceMi < 7 separates 5K (3.1mi) from 10K (6.2mi) — isLongRace already covers HM+.
+              : raceDistanceMi < 7 ? '5×200m @ 5K pace · 90s jog'
+              : '4×400m @ 5K pace · 90s jog',  // 10K
             notes: isMarathonPlus
               ? 'Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.'
               : isLongRace
               ? 'Race-pace primer, 5 days out. Hold goal pace, even reps, stop at 4. Confidence check, not a workout.'
-              : 'Two sharp half-mile reps just above T-pace. Keep it brief. Legs stay fresh.',
+              : 'Short race-pace strides, 5 days out. Quick turnover — finish feeling sharp, not tired.',
           });
         } else if (daysBeforeRace >= 3 && daysBeforeRace <= 4) {
           // Easy 3-4mi w/ light strides midweek
@@ -1255,7 +1261,7 @@ function layoutWeek({
         phase === 'TAPER'         ? ['race_week_tuneup']                               // tune-up · same for all distances
       : phase === 'RACE-SPECIFIC'
           ? (cat === '5k'   ? ['intervals', 'intervals']
-           : cat === '10k'  ? ['threshold', 'intervals']
+           : cat === '10k'  ? ['intervals', 'intervals']   // RACE-SPEC-10K-1 (2026-06-23): 10K race-specific dominates with I-pace reps (Research/00a §308 "3–4×2km at 10K pace"), mirrors 5K; threshold was demoted to QUALITY phase
            : cat === 'hm'   ? ['threshold', 'intervals']
            : /* m / ultra */  ['tempo', 'threshold'])
       : phase === 'QUALITY'
@@ -1282,7 +1288,7 @@ function layoutWeek({
                                       // tempo floor). Research/22 §Beginner ("2.5mi E w/ 4×1 min @ T").
                                       ? `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ 5×1 min surges @ T effort`
                                       : `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`)
-      : qt === 'race_week_tuneup' ? (raceDistanceMi >= 20 ? '5×400m @ 5K pace · 2min jog' : raceDistanceMi >= 12 ? '4×1km @ race pace · 90s jog' : 'WU 1.5mi · 2×0.5mi @ T-pace · CD 1mi') // PP-2 · HM = 4×1km @ HMP (race pace). TAPER-SHARP-1 · marathon/ultra = 5K-pace reps (§9.3 sharpener, faster than MP). 5k/10k = T primer.
+      : qt === 'race_week_tuneup' ? (raceDistanceMi >= 20 ? '5×400m @ 5K pace · 2min jog' : raceDistanceMi >= 12 ? '4×1km @ race pace · 90s jog' : cat === '5k' ? '5×200m @ 5K pace · 90s jog' : '4×400m @ 5K pace · 90s jog') // PP-2 · HM = 4×1km @ HMP. TAPER-SHARP-1 · marathon/ultra = 5K-pace reps. 5K-SHARP-1 · 5K taper = 5×200m @ 5K pace (neuromuscular strides, Research/00a §taper "intensity preserved"). 10K-SHARP-1 · 10K taper = 4×400m @ 5K pace (same pace zone, longer reps for 10K sharpening). T-pace-only was not a neuromuscular primer.
       :                              'QUALITY';
       // 2026-06-02 · the workout_library uses family='threshold' for
       // BOTH rep-based cruise intervals AND continuous tempos (both

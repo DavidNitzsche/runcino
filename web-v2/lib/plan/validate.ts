@@ -429,7 +429,12 @@ export function validateComposedPlan(
   // adjacent to the long. The over-constrained skip guard (requiredTotal > 7 - hard.length) still applies.
   // Recovery has no quality sessions and trivially passes. 'race-prep' keeps its existing check unchanged.
   if (mode === 'race-prep' || mode === 'maintenance') {
-    const reqGap = (t: string): number => (t === 'intervals' ? 2 : 1);
+    // FARTLEK-GAP-1 (2026-06-23) · after MAINT-FARTLEK-SPEC, fartlek sessions are type='easy' + isQuality=true.
+    // isQuality=true means they enter the hard[] array; the old reqGap returned 1 for any non-interval type,
+    // so Saturday-fartlek → Sunday-long (0 easy days between) tripped a false PlanValidationError. Research/00b:55-60
+    // gap doctrine applies to threshold and interval sessions — not to aerobic-zone fartlek (easy run with 1-minute
+    // pickups). A fartlek is compatible with adjacent long runs and needs no recovery gap. Return 0 for easy.
+    const reqGap = (t: string): number => (t === 'intervals' ? 2 : t === 'easy' ? 0 : 1);
     for (const week of weeks) {
       if (week.isRaceWeek) continue;
       if (addDays(week.startISO, 6) < ctx.todayISO) continue;
