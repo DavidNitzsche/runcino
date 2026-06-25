@@ -305,6 +305,9 @@ export default function PlanSimulatorPage() {
           <Field label="Long run day">
             <DayPicker value={sim.longRunDay} onChange={(d) => set('longRunDay', d)} />
           </Field>
+          <Field label="Available days" hint="leave blank for any · runs land only on selected days">
+            <DayMulti value={sim.availableDays ?? []} onChange={(days) => set('availableDays', days.length ? days : null)} />
+          </Field>
           <Field label="Race history" hint="self-reported PRs → seeds current fitness (VDOT)">
             <RaceHistoryEditor entries={sim.raceHistory} onChange={(e) => setSim((s) => ({ ...s, raceHistory: e, goalTimeSec: s.goalMode === 'goal' ? seedGoalSec(s.distance, s.planWeeks, e) : s.goalTimeSec }))} />
           </Field>
@@ -324,9 +327,6 @@ export default function PlanSimulatorPage() {
               <input className="sim-range" type="range" min={0} max={12} step={1} value={sim.easyDayMedianMi ?? 0} onChange={(e) => set('easyDayMedianMi', Number(e.target.value))} />
             </Field>
             <Field label="Rest day"><DayPicker value={sim.restDay ?? 'sat'} onChange={(d) => set('restDay', d)} /></Field>
-            <Field label="Available days" hint="≥2 selected → runs land only on these">
-              <DayMulti value={sim.availableDays ?? []} onChange={(days) => set('availableDays', days.length ? days : null)} />
-            </Field>
             <Field label="Mid-block runner"><Toggle on={!!sim.isMidBlock} onChange={(v) => set('isMidBlock', v)} /></Field>
             <div className="sim-twocol">
               <Field label="LTHR" value={sim.lthr ? `${sim.lthr}` : '—'}><input className="sim-text" type="number" min={120} max={200} placeholder="bpm" value={sim.lthr ?? ''} onChange={(e) => set('lthr', e.target.value ? Number(e.target.value) : null)} /></Field>

@@ -2135,7 +2135,16 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     // frequency / freq>=2 keep the tier's quality. Uses the already-overridden
     // shape.daysPerWeek so this reads the runner's stated number, not the tier.
     const qualityAllowed = shape.qualityPerWeek > 0 && shape.daysPerWeek >= 2;
-    if (qualityAllowed && input.qualityDows.length > 0) {
+    // MAINT-QUAL-COMPRESS (2026-06-24) · when the runner stated a frequency ≥3, reserve budget
+    // for at least (freq-2) easy days at 1mi each before placing quality. Without this, a low-base
+    // runner (e.g. 10mpw/3-day) gets long(4)+quality(3)=7mi=budget, leaving zero room for the
+    // easy fill → only 2 running days instead of the stated 3. Cap quality distance at whatever
+    // remains after reserving the easy room; if that cap < 2mi, skip quality for this week.
+    const qualFreqRoom = input.trainingDaysPerWeek != null && input.trainingDaysPerWeek > 2
+      ? (input.trainingDaysPerWeek - 2) * 1
+      : 0;
+    const qualBudgetCap = wkWeekly - wkLong - qualFreqRoom;
+    if (qualityAllowed && input.qualityDows.length > 0 && qualBudgetCap >= 2) {
       // MAINT-QUAL-ADJACENT (2026-06-23) · route through scheduleQuality so the selected DOW is
       // guaranteed to be at least 1 day away from the long run (§5). The previous direct use of
       // qualityDows[0] had no gap check: sat-quality + sun-long = 0 recovery days between them.
@@ -2144,9 +2153,8 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       const qDow = scheduledQ.length > 0 ? scheduledQ[0] : input.qualityDows[0];
       if (slots[qDow] == null) {
         // MAINT-QLONG-1 (2026-06-23) · cap at wkLong to preserve long-primacy (§7).
-        // The prior 5mi floor exceeded the long for small-base runners (e.g. 15mpw → wkLong=4,
-        // quality=5 → validator §7 fired → plan abort). 3mi floor = minimum coherent WU/T/CD.
-        const qDist = Math.min(Math.max(3, Math.round(wkWeekly * 0.16)), wkLong);
+        // qualBudgetCap further limits quality distance when freq headroom is tight.
+        const qDist = Math.min(Math.max(3, Math.round(wkWeekly * 0.16)), wkLong, qualBudgetCap);
         if (shape.qualityType === 'threshold') {
           slots[qDow] = {
             dow: qDow, type: 'threshold', distanceMi: qDist, isQuality: true, isLong: false,
@@ -2189,7 +2197,10 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     // 2mi each. Without this, a 3mi easy budget spread over 4 slots floored each to 2mi and
     // realized 8mi instead of 3mi. The fix: max floor(budget/2) easy days — the remainder stay
     // rest. MAINT-EASY-1-REGRESS extended this to the zero-budget case (floor(0/2)=0 easy days).
-    const MAINT_MIN_EASY = 2;
+    // MAINT-QUAL-COMPRESS follow-up: when the runner stated a freq and quality was compressed to
+    // leave room for easy days, the remaining budget may only be ~1mi per easy slot. Lower the
+    // per-run minimum to 1mi in that case so the easy days can actually land (honors freq intent).
+    const MAINT_MIN_EASY = input.trainingDaysPerWeek != null && easyMiBudget < 4 ? 1 : 2;
     const maxEasyByBudget = Math.floor(easyMiBudget / MAINT_MIN_EASY);
     const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - runningPlaced), maxEasyByBudget);
     const perEasyRaw = targetEasyCount > 0 ? Math.max(MAINT_MIN_EASY, Math.round(easyMiBudget / targetEasyCount)) : 0;
