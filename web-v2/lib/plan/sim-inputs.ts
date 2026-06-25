@@ -102,7 +102,7 @@ export type SimBuildResult = SimBuildOk | { ok: false; reason: string };
 
 /** Native onboarding answers → composed plan via the real engine. */
 export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedPrescriptions; rxRaceSpecific: ResolvedPrescriptions }): SimBuildResult {
-  const startMondayISO = sim.startDateISO;
+  let startMondayISO = sim.startDateISO;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startMondayISO)) return { ok: false, reason: 'invalid start date' };
 
   // ── shared runner-profile derivation (mirrors loadGeneratorInputs) ──
@@ -128,6 +128,18 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     restDow = (!aset.has(restDow) ? restDow : (unavail[0] ?? restDow)) as DOW;
     qualityDows = spacedQualityDowsFromAvailable(avail, longRunDow);
   }
+  // MAINT-ALIGN-1 (2026-06-24) · snap plan start BACK to the previous occurrence of
+  // longRunDow so plan weeks are longRunDow-aligned. Without this a Thu start date puts
+  // plan weeks Thu-Wed; the long (Sunday) then falls 3 days into the week, and the
+  // last maintenance week + first race-prep week both land in the same Sun-Sat calendar
+  // row ("W6 = 5 running days from two merged weeks"). Snapping backward never shortens
+  // the plan (adds days to the window) so maintenance-week floor() is unaffected.
+  {
+    const _d = new Date(startMondayISO + 'T12:00:00Z');
+    const _snapBack = (_d.getUTCDay() - longRunDow + 7) % 7;
+    if (_snapBack > 0) startMondayISO = addDaysISO(startMondayISO, -_snapBack);
+  }
+
   // stated frequency → trainingDaysPerWeek + quality-count slice
   const rawFreq = Number.isFinite(sim.weeklyFrequency) ? Number(sim.weeklyFrequency) : null;
   const trainingDaysPerWeek = rawFreq == null ? null

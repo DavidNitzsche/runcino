@@ -2144,7 +2144,11 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       ? (input.trainingDaysPerWeek - 2) * 1
       : 0;
     const qualBudgetCap = wkWeekly - wkLong - qualFreqRoom;
-    if (qualityAllowed && input.qualityDows.length > 0 && qualBudgetCap >= 2) {
+    // MAINT-QUAL-COMPRESS-THRESH (2026-06-24) · raised from 2 to 3. A 2mi fartlek cap leaves
+    // only 1mi for the easy fill — a sub-minimal run that just creates a third consecutive day
+    // (Sun long / Mon easy / Tue fartlek). At budget cap < 3, skip quality and give the runner
+    // two solid easy days instead (spread by MAINT-SPREAD-1 below).
+    if (qualityAllowed && input.qualityDows.length > 0 && qualBudgetCap >= 3) {
       // MAINT-QUAL-ADJACENT (2026-06-23) · route through scheduleQuality so the selected DOW is
       // guaranteed to be at least 1 day away from the long run (§5). The previous direct use of
       // qualityDows[0] had no gap check: sat-quality + sun-long = 0 recovery days between them.
@@ -2210,12 +2214,30 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     // The week runs lighter instead — the correct gentler outcome. null-avail /
     // ample-slot weeks sit well under the long, so this is a no-op for them.
     const perEasy = wkLong > 0 ? Math.min(perEasyRaw, wkLong) : perEasyRaw;
-    for (let i = 0; i < easySlots.length; i++) {
-      const { dow } = easySlots[i];
-      if (i < targetEasyCount) {
+    // MAINT-SPREAD-1 (2026-06-24) · spread easy fills across the week instead of always
+    // taking the first N slots in DOW order. The default order places easy on Monday when
+    // long=Sun and quality=Tue → Sun/Mon/Tue = 3 consecutive days every week. Fix: prefer
+    // slots NOT adjacent to any hard session (long or quality), then pick evenly spaced
+    // indices across the candidate list. Fall back to all slots when the filtered set is
+    // too small to satisfy targetEasyCount.
+    const hardDows = new Set<number>(
+      slots.map((s, i) => (s != null && (s as DayPlan).distanceMi > 0 ? i : -1)).filter((i) => i >= 0)
+    );
+    const adjToHard = new Set<number>();
+    for (const hd of hardDows) { adjToHard.add((hd + 1) % 7); adjToHard.add((hd + 6) % 7); }
+    const preferredEasySlots = easySlots.filter((e) => !adjToHard.has(e.dow));
+    const candidateSlots = preferredEasySlots.length >= targetEasyCount ? preferredEasySlots : easySlots;
+    const pickedDows = new Set<number>();
+    for (let i = 0; i < targetEasyCount; i++) {
+      const idx = targetEasyCount <= 1
+        ? Math.floor(candidateSlots.length / 2)
+        : Math.round(i * (candidateSlots.length - 1) / (targetEasyCount - 1));
+      if (idx < candidateSlots.length) pickedDows.add(candidateSlots[idx].dow);
+    }
+    for (const { dow } of easySlots) {
+      if (pickedDows.has(dow)) {
         slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational throughout.' };
       } else {
-        // Extra slot · rest day (we're holding daysPerWeek, not adding)
         slots[dow] = { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off.' };
       }
     }
