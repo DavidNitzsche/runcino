@@ -1219,7 +1219,9 @@ struct TodayView: View {
         )
         .padding(.horizontal, Theme.Space.pageH)
         .padding(.top, 10)
-        .padding(.bottom, 20)
+        // 2026-06-26 · clear the floating tab bar (~90pt) so the bottom stat
+        // chips never sit behind it. Was 20 · matched too-short to the bar.
+        .padding(.bottom, 120)
     }
 
     /// 2026-06-02 round 61 · extracted so the past-day flat layout (no

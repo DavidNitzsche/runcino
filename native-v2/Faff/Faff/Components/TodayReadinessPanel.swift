@@ -62,7 +62,9 @@ struct TodayReadinessPanel: View {
     private var bandTint: Color { ReadinessBand.tint(snapshot?.band) }
     private var arcTint: Color  { ReadinessBand.arc(snapshot?.band) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        // 2026-06-26 · tighter gap between the signal tiles and the stat
+        // chips (was 20 · David: "too big above TO RACE / NEXT HARD").
+        VStack(alignment: .leading, spacing: 10) {
             signalTileGrid
             statChips
         }
