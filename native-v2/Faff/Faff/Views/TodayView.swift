@@ -740,7 +740,16 @@ struct TodayView: View {
         // Custom bottom sheet instead of .confirmationDialog — the system
         // dialog anchored as a popover over the scrolled hero (David: "pops up
         // in a weird place"). A sheet always seats at the bottom.
-        .sheet(isPresented: $showSkipConfirm) { skipConfirmSheet }
+        .sheet(isPresented: $showSkipConfirm) {
+            DayActionSheet(
+                sourceLabel: rescheduleSourceLabel,
+                canSkip: selectedIsToday,
+                targets: rescheduleTargets,
+                onSkip: { showSkipConfirm = false; skipTodayAction() },
+                onMove: { toISO, replace in rescheduleAction(toISO: toISO, replace: replace) },
+                onCancel: { showSkipConfirm = false }
+            )
+        }
     }
 
     /// Minimal hero shown when today's run is skipped: acknowledgement + an
@@ -888,16 +897,17 @@ struct TodayView: View {
                 .padding(.top, 16)
             }
 
-            // "Not running today?" · the skip affordance, under the pills
-            // (David's pick 1b). The action already exists — skipTodayAction()
-            // → POST /api/today/skip. Hidden once skipped / on rest+done days.
-            if displayWorkout != nil && !skipped {
+            // Skip / Reschedule affordance under the pills (David's pick 1b,
+            // extended 2026-06-26). On today: "Not running today? Skip". On a
+            // future run day: "Need to move this run? Reschedule" — so a Sunday
+            // long can be pulled forward to Saturday. Opens DayActionSheet.
+            if let aff = rescheduleAffordance {
                 Button { showSkipConfirm = true } label: {
                     HStack(spacing: 6) {
-                        Text("Not running today?")
+                        Text(aff.prompt)
                             .font(.body(12.5))
                             .foregroundStyle(Theme.txt.opacity(0.5))
-                        Text("Skip \u{203A}")
+                        Text("\(aff.action) \u{203A}")
                             .font(.body(12.5, weight: .semibold))
                             .foregroundStyle(Theme.dist)
                     }
@@ -2040,51 +2050,127 @@ struct TodayView: View {
         }
     }
 
-    /// Skip-this-run action · POSTs to /api/today/skip via the existing
-    /// API helper. Pre-run only (hidden when isDone or rest).
-    private var skipConfirmSheet: some View {
-        ZStack {
-            Theme.bg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                Capsule().fill(Theme.txt.opacity(0.2))
-                    .frame(width: 40, height: 4).padding(.top, 12)
-                Text("Skip today's run?")
-                    .font(.display(22, weight: .bold))
-                    .foregroundStyle(Theme.txt)
-                    .padding(.top, 26)
-                Text("It'll show as skipped. Your plan keeps moving.")
-                    .font(.body(14))
-                    .foregroundStyle(Theme.txt.opacity(0.58))
-                    .multilineTextAlignment(.center)
-                    .padding(.top, 8).padding(.horizontal, 30)
-                Spacer(minLength: 0)
-                Button {
-                    showSkipConfirm = false
-                    skipTodayAction()
-                } label: {
-                    Text("Skip today's run")
-                        .font(.body(15, weight: .extraBold))
-                        .foregroundStyle(Theme.over)
-                        .frame(maxWidth: .infinity).padding(.vertical, 15)
-                        .background(Color(hex: 0xFC4D64).opacity(0.14),
-                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color(hex: 0xFC4D64).opacity(0.3), lineWidth: 1))
+    // MARK: - Skip / Reschedule affordance (2026-06-26)
+
+    private static let nonRunTypes: Set<String> = ["rest", "strength", "cross", "xt"]
+
+    /// The PlanDay the affordance acts on — today, or the day tapped in the
+    /// week strip. nil before any selection resolves.
+    private var actionableSourceDay: PlanDay? {
+        let iso = selectedDayID.isEmpty ? todayISO : selectedDayID
+        let allDays = (prevWeekPlan?.days ?? []) + (plan?.days ?? []) + futureWeekPlans.flatMap { $0.days }
+        return allDays.first { $0.date_iso == iso }
+    }
+
+    private func dayHasRun(_ d: PlanDay) -> Bool {
+        !Self.nonRunTypes.contains(d.type) && d.distance_mi > 0
+    }
+
+    /// (prompt, action-word) for the under-pills affordance, or nil to hide it.
+    /// Today → Skip; a future run day → Reschedule. Past / rest / skipped hide.
+    private var rescheduleAffordance: (prompt: String, action: String)? {
+        guard let day = actionableSourceDay, dayHasRun(day) else { return nil }
+        if selectedIsToday {
+            guard !skipped else { return nil }
+            return ("Not running today?", "Skip")
+        }
+        guard !day.is_past else { return nil }
+        return ("Need to move this run?", "Reschedule")
+    }
+
+    /// "today's long run" / "Sunday's tempo run" — the run being acted on.
+    private var rescheduleSourceLabel: String {
+        guard let day = actionableSourceDay else { return "this run" }
+        let noun = runNoun(day.type)
+        if selectedIsToday { return "today's \(noun)" }
+        let iso = selectedDayID.isEmpty ? todayISO : selectedDayID
+        return "\(weekdayName(iso))'s \(noun)"
+    }
+
+    /// Candidate target days: the same training week as the source, minus the
+    /// source day and any day already in the past.
+    private var rescheduleTargets: [DayActionSheet.TargetDay] {
+        let srcISO = selectedDayID.isEmpty ? todayISO : selectedDayID
+        let weeks: [PlanWeek] = [prevWeekPlan].compactMap { $0 } + [plan].compactMap { $0 } + futureWeekPlans
+        guard let week = weeks.first(where: { $0.days.contains { $0.date_iso == srcISO } }) else { return [] }
+        return week.days
+            .filter { $0.date_iso != srcISO && !$0.is_past }
+            .map { day in
+                let hasRun = dayHasRun(day)
+                return DayActionSheet.TargetDay(
+                    id: day.date_iso,
+                    weekday: weekdayName(day.date_iso),
+                    runLabel: hasRun ? runLabelShort(type: day.type, mi: day.distance_mi) : "Rest",
+                    hasRun: hasRun)
+            }
+    }
+
+    /// Move the source run to `toISO`. `replace` is true when the target day
+    /// already carries a run (the sheet asked the user first).
+    private func rescheduleAction(toISO: String, replace: Bool) {
+        let fromISO = selectedDayID.isEmpty ? todayISO : selectedDayID
+        showSkipConfirm = false
+        Task {
+            do {
+                let outcome = try await API.rescheduleRun(from: fromISO, to: toISO, replace: replace)
+                switch outcome {
+                case .moved:
+                    await loadAll()
+                case .conflict:
+                    // Stale week data: the client thought the target was free
+                    // but the server found a run. Don't silently overwrite —
+                    // reload so a retry shows the real occupancy.
+                    await loadAll()
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, Theme.Space.pageH)
-                Button { showSkipConfirm = false } label: {
-                    Text("Cancel")
-                        .font(.body(14, weight: .bold))
-                        .foregroundStyle(Theme.txt.opacity(0.6))
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                }
-                .buttonStyle(.plain)
-                .padding(.bottom, 10)
+            } catch {
+                print("[today v2] reschedule failed: \(error)")
             }
         }
-        .presentationDetents([.height(280)])
-        .presentationDragIndicator(.hidden)
+    }
+
+    /// Full weekday name from an ISO date · "Saturday".
+    private func weekdayName(_ iso: String) -> String {
+        let parts = iso.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let d = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        else { return iso }
+        let f = DateFormatter(); f.dateFormat = "EEEE"
+        return f.string(from: d)
+    }
+
+    /// Run type as a noun · "long run", "tempo run", "intervals session".
+    private func runNoun(_ type: String) -> String {
+        switch type {
+        case "long":       return "long run"
+        case "easy":       return "easy run"
+        case "recovery":   return "recovery run"
+        case "tempo":      return "tempo run"
+        case "threshold":  return "threshold run"
+        case "intervals", "repetition": return "intervals session"
+        case "fartlek":    return "fartlek"
+        case "progression": return "progression run"
+        case "race":       return "race"
+        default:            return "run"
+        }
+    }
+
+    /// Compact target-row label · "Long 13 mi", "Easy 5 mi".
+    private func runLabelShort(type: String, mi: Double) -> String {
+        let word: String = {
+            switch type {
+            case "long": return "Long"
+            case "easy": return "Easy"
+            case "recovery": return "Recovery"
+            case "tempo": return "Tempo"
+            case "threshold": return "Threshold"
+            case "intervals", "repetition": return "Intervals"
+            case "fartlek": return "Fartlek"
+            case "progression": return "Progression"
+            case "race": return "Race"
+            default: return type.prefix(1).uppercased() + type.dropFirst()
+            }
+        }()
+        return "\(word) \(formatMi(mi)) mi"
     }
 
     private func skipTodayAction() {

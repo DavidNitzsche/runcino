@@ -689,6 +689,8 @@ export function TodayView({
         <>
           <PlannedHeroV2
             d={d}
+            week={seed.week}
+            todayIso={seed.week[seed.todayIdx]?.iso ?? null}
             shoes={seed.shoes}
             seedShoe={(seed.todayShoeId != null
               ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
@@ -1610,9 +1612,11 @@ function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: strin
 }
 
 function PlannedHeroV2({
-  d, shoes, seedShoe, persistShoe, cadenceBaseline, skipped, onToggleSkip,
+  d, week, todayIso, shoes, seedShoe, persistShoe, cadenceBaseline, skipped, onToggleSkip,
 }: {
   d: FaffSeed['week'][number];
+  week: FaffSeed['week'];
+  todayIso: string | null;
   shoes: FaffSeed['shoes'];
   seedShoe: string | null;
   persistShoe: boolean;
@@ -1640,6 +1644,10 @@ function PlannedHeroV2({
   }, [skipped]);
 
   const [busy, setBusy] = useState(false);
+  // 2026-06-26 · Move-to-another-day · the web sibling of the iPhone
+  // skip/reschedule sheet. Opens a small day menu off the hero aside.
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveBusy, setMoveBusy] = useState(false);
   async function toggleSkip() {
     if (!d.iso || busy) return;
     const next = !skipped;
@@ -1750,6 +1758,47 @@ function PlannedHeroV2({
       void e;
     } finally {
       setRestoring(false);
+    }
+  }
+
+  // 2026-06-26 · Move this run to another day. Candidate days are this week's
+  // days from today forward, minus the current day. A day that already has a
+  // run prompts a replace confirm (mirrors the iPhone sheet).
+  const weekdayFromIso = (iso: string) => {
+    const [y, m, dd] = iso.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, dd, 12)).toLocaleDateString('en-US', { weekday: 'long' });
+  };
+  const moveTargets = week
+    .filter(w => w.iso && w.iso !== d.iso && (!todayIso || w.iso >= todayIso))
+    .map(w => {
+      const dist = parseFloat(w.dist || '0') || 0;
+      const hasRun = !['rest', 'strength', 'cross', 'xt'].includes(w.type) && dist > 0;
+      const word = w.type.charAt(0).toUpperCase() + w.type.slice(1);
+      return { iso: w.iso as string, weekday: weekdayFromIso(w.iso as string), run: hasRun ? `${word} ${dist} mi` : 'Rest', hasRun };
+    });
+
+  async function doMove(toIso: string, hasRun: boolean) {
+    if (moveBusy || !d.iso) return;
+    if (hasRun && !window.confirm('Replace the run already on that day?')) return;
+    setMoveBusy(true);
+    try {
+      const send = (replace: boolean) => fetch('/api/today/reschedule', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from_date: d.iso, to_date: toIso, replace }),
+      });
+      const r = await send(hasRun);
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && (j as { conflict?: boolean }).conflict && !hasRun) {
+        // Stale seed: the target actually has a run. Confirm, then replace.
+        if (!window.confirm('There is already a run on that day. Replace it?')) { setMoveBusy(false); return; }
+        await send(true);
+      }
+      setMoveOpen(false);
+      router.refresh();
+    } catch {
+      /* network · leave the menu open so the runner can retry */
+    } finally {
+      setMoveBusy(false);
     }
   }
 
@@ -1887,6 +1936,33 @@ function PlannedHeroV2({
             </>
           )}
         </button>
+        {/* 2026-06-26 · Move to another day · only when not skipped and there's
+            somewhere to move to. Opens a small day menu inline. */}
+        {!skipped && moveTargets.length > 0 && (
+          <div className="movewrap">
+            <button className="skipbtn" type="button" onClick={() => setMoveOpen(o => !o)} disabled={moveBusy}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+              <span>Move to another day</span>
+            </button>
+            {moveOpen && (
+              <div className="movemenu" role="menu">
+                {moveTargets.map(t => (
+                  <button
+                    key={t.iso}
+                    type="button"
+                    role="menuitem"
+                    className="moveitem"
+                    disabled={moveBusy}
+                    onClick={() => doMove(t.iso, t.hasRun)}
+                  >
+                    <span className="mi-day">{t.weekday}</span>
+                    <span className="mi-run">{t.run}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </aside>
     </div>
   );

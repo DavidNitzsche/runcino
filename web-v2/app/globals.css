@@ -661,6 +661,15 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .skipbtn:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.32);color:#fff;}
 .hero-v2 .skipbtn:disabled{opacity:.55;cursor:default;}
 .hero-v2 .skipbtn svg{width:15px;height:15px;flex:0 0 auto;}
+/* Move-to-another-day · sits just below Skip, with an inline day menu. */
+.hero-v2 .movewrap{margin-top:8px;display:flex;flex-direction:column;gap:8px;}
+.hero-v2 .movewrap .skipbtn{margin-top:0;width:100%;}
+.hero-v2 .movemenu{display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:6px;}
+.hero-v2 .moveitem{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);border-radius:9px;padding:11px 13px;cursor:pointer;transition:background .15s,border-color .15s;}
+.hero-v2 .moveitem:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.26);}
+.hero-v2 .moveitem:disabled{opacity:.55;cursor:default;}
+.hero-v2 .moveitem .mi-day{font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:#fff;}
+.hero-v2 .moveitem .mi-run{font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:rgba(255,255,255,.55);}
 
 /* SKIPPED state — applied at root .hero-v2.skipped: drains content
    opacity, leaves the wcard interactive for the RESTORE action. */

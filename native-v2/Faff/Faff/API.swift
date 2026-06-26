@@ -866,6 +866,48 @@ enum API {
         }
     }
 
+    // MARK: - Reschedule a run (2026-06-26)
+    //
+    // POST /api/today/reschedule · moves the primary running workout from one
+    // day to another in the active plan ("do Sunday's long run on Saturday this
+    // week"). Built into the skip sheet: Skip vs Move. When the target day
+    // already has a run the server returns conflict:true with the existing run
+    // so the sheet can ask "Replace the easy 5?"; re-send with replace:true.
+
+    /// Outcome of a reschedule attempt. `.conflict` carries the run currently
+    /// on the target day so the UI can prompt before replacing it.
+    enum RescheduleOutcome {
+        case moved
+        case conflict(type: String, distanceMi: Double, subLabel: String?)
+    }
+
+    private struct RescheduleResponse: Decodable {
+        let ok: Bool?
+        let conflict: Bool?
+        struct Existing: Decodable { let type: String; let distance_mi: Double; let sub_label: String? }
+        let existing: Existing?
+    }
+
+    /// Move the run on `from` to `to`. Pass `replace: true` to overwrite a run
+    /// already sitting on `to` (after the user confirms). Returns `.conflict`
+    /// when `to` is occupied and `replace` was false.
+    static func rescheduleRun(from: String, to: String, replace: Bool = false) async throws -> RescheduleOutcome {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/today/reschedule"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = ["from_date": from, "to_date": to, "replace": replace]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+        let decoded = try? JSONDecoder().decode(RescheduleResponse.self, from: data)
+        if decoded?.conflict == true, let e = decoded?.existing {
+            return .conflict(type: e.type, distanceMi: e.distance_mi, subLabel: e.sub_label)
+        }
+        return .moved
+    }
+
     /// Full /profile state — identity + physiology + connections — shaped
     /// identically to web's ProfileState. Replaces hardcoded values in
     /// ProfileView. See web-v2/app/api/profile/state/route.ts.

@@ -64,6 +64,7 @@
 		661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E27550579AE4BDFA95531DD /* Fonts.swift */; };
 		669B521E9E81BFA9EFFFBC60 /* MileBars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E832B4905DEB6F14ADB19D0 /* MileBars.swift */; };
 		6A351129DEF28BDCC340851C /* BebasNeue-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D731B92BA006865E34779D2A /* BebasNeue-Regular.ttf */; };
+		6B930F8989398BEEA3B40C40 /* DayActionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBCDD014F2781B0C1CAD4C04 /* DayActionSheet.swift */; };
 		6BE40F3E6AA911AD15D8C08E /* SignInFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15FB44D69A865618A457AB74 /* SignInFlowTests.swift */; };
 		6D9687543F5EBEA6E7422E8F /* HealthSegmentedControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F097DD1FEE235AC5D4AD178 /* HealthSegmentedControl.swift */; };
 		72295A32D77A1E55A73562A2 /* GapBeam.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A0089434ECA1192B331A77 /* GapBeam.swift */; };
@@ -315,6 +316,7 @@
 		C7DCC89200E2D445651FD810 /* RunRecapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunRecapView.swift; sourceTree = "<group>"; };
 		C8A9245F66AE1A50C76E2FF3 /* NudgeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NudgeSheet.swift; sourceTree = "<group>"; };
 		CAC9DAF37D0E9B3DAE9FFDF1 /* StravaOAuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaOAuthSession.swift; sourceTree = "<group>"; };
+		CBCDD014F2781B0C1CAD4C04 /* DayActionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayActionSheet.swift; sourceTree = "<group>"; };
 		CD71B88D7D0751ABFACD1479 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRStreamer.swift; sourceTree = "<group>"; };
 		CE323D928DA355934197F38B /* G_Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = G_Settings.swift; sourceTree = "<group>"; };
@@ -403,6 +405,7 @@
 				232F9F14460F13DDC369F512 /* Brandmark.swift */,
 				6556483A9E7743D2B8695A4E /* BriefingTopicCard.swift */,
 				730D6283403CA7FE36BA1199 /* CoachNote.swift */,
+				CBCDD014F2781B0C1CAD4C04 /* DayActionSheet.swift */,
 				84E231F45E68801F45CA43EB /* DragSheet.swift */,
 				0F562BA41AED08247EB40613 /* FaffLogoMark.swift */,
 				0C18DDEE14414B527EFBB143 /* FaffMesh.swift */,
@@ -784,6 +787,7 @@
 				8207DC567E0A8DE57DBFB58B /* CoachPayloads.swift in Sources */,
 				14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */,
 				DFF432A5660C9F03C222442B /* D_Disclosure.swift in Sources */,
+				6B930F8989398BEEA3B40C40 /* DayActionSheet.swift in Sources */,
 				A4BFA53D2EB8255A25E154AD /* DragSheet.swift in Sources */,
 				9AE98D4A316A6880817CB236 /* E_Nudges.swift in Sources */,
 				3DFD4C5161A0FAD5F32AB8CA /* EmailSignInSheet.swift in Sources */,
