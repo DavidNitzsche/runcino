@@ -149,8 +149,15 @@ export function computeReadiness(
     // phase all apply byte-identical luteal logic (can't drift apart).
     const lutealAdjusted = lutealAdjustedHrvBaseline(state.hrvBaseline, state.biologicalSex, state.cyclePhase);
     const pct = ((state.hrvCurrent - lutealAdjusted) / lutealAdjusted) * 100;
-    // ±1 per 2%, clamp ±18 (scaled from old ±15 for new 28% weight)
-    const w = Math.max(-18, Math.min(18, Math.round(pct / 2)));
+    // ±1 per 2%, clamp ±18 (scaled from old ±15 for new 28% weight).
+    // 2026-06-26 · deadband · within ±5% the HRV reads "at baseline · no
+    // recovery flag" (the meaning band below). Noise-level drift then neither
+    // drags nor lifts the score, and the metric stays out of the iPhone
+    // "X dragging" headline (which filters weight < 0). Only a deviation that
+    // actually means something gets weighted. Boundary matches the copy band.
+    const w = (pct >= -5 && pct < 5)
+      ? 0
+      : Math.max(-18, Math.min(18, Math.round(pct / 2)));
     score += w;
     const lutealNote = state.cyclePhase === 'luteal'
       ? ' Baseline adjusted for luteal phase.'
@@ -188,8 +195,14 @@ export function computeReadiness(
   // RHR (25%)
   if (state.rhrCurrent != null && state.rhrBaseline != null) {
     const delta = state.rhrCurrent - state.rhrBaseline;
-    // Clamp -12 / +6 (scaled from old -10/+5 for new 25% weight)
-    const w = Math.max(-12, Math.min(6, delta > 0 ? -delta * 2 : -delta));
+    // Clamp -12 / +6 (scaled from old -10/+5 for new 25% weight).
+    // 2026-06-26 · deadband · -2 < delta <= 1 bpm reads "right on baseline · no
+    // signal" (the meaning band below). A sub-1bpm rise is noise · don't dock
+    // readiness or surface it in the "X dragging" headline. Only a real
+    // rise/drop gets weighted. Boundary matches the copy band.
+    const w = (delta > -2 && delta <= 1)
+      ? 0
+      : Math.max(-12, Math.min(6, delta > 0 ? -delta * 2 : -delta));
     score += w;
     // 2026-06-26 · name the baseline bpm in the prose (observedSub isn't shown
     // on iPhone) so "at baseline" is verifiable at a glance.
