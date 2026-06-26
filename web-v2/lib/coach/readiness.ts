@@ -113,12 +113,14 @@ export function computeReadiness(
     const meaning = delta >= 0
       // 2026-06-16 · #16 · name the actual (possibly load-scaled) target,
       // not a hardcoded 7.5h, so the prose agrees with the scored delta.
-      ? `You're at or above the ${target.toFixed(1)}h target. Strong recovery foundation.`
+      ? `At or above your ${target.toFixed(1)}h target. Strong recovery base.`
       : debt >= 7
-        ? `Roughly ${debt.toFixed(0)}h of sleep debt across the week. Recovery cost compounds.`
+        // 2026-06-26 · surface the gap concretely (nightly shortfall + the
+        // actual target) and end on what to do, not "cost compounds".
+        ? `About ${(-delta).toFixed(1)}h under your ${target.toFixed(1)}h target each night · roughly ${debt.toFixed(0)}h of debt this week. A couple of 8h nights pulls it back.`
         : debt >= 3
-          ? `About ${debt.toFixed(0)}h short for the week. Watch for fatigue creep.`
-          : `Just under target. A few hours short, but nothing concerning.`;
+          ? `Around ${debt.toFixed(0)}h short of your ${target.toFixed(1)}h target this week. Watch for fatigue creep.`
+          : `A touch under your ${target.toFixed(1)}h target. Nothing concerning yet.`;
     inputs.push({
       key: 'sleep', label: 'SLEEP · 28%', weight: w,
       // Tag the value as the 7-night average so it doesn't read as "last night".
@@ -156,15 +158,18 @@ export function computeReadiness(
     // Frame every verdict on the 7-DAY window so it can't read as a
     // contradiction of the Health tab's single-day HRV reading (today can
     // bounce back to baseline while the week's trend still sits low).
+    // 2026-06-26 · name the baseline number in the prose (the tile's
+    // observedSub isn't shown on iPhone), and end on what it means for today.
+    const hrvBase = Math.round(state.hrvBaseline);
     const meaning = (pct >= 15
-      ? `7-day HRV well above baseline. Fully recovered, green light for hard work.`
+      ? `Well above your ${hrvBase}ms baseline. Fully recovered · green light for hard work.`
       : pct >= 5
-        ? `7-day HRV above baseline. Recovered, ready to go.`
+        ? `Above your ${hrvBase}ms baseline. Recovered and ready.`
         : pct >= -5
-          ? `7-day HRV at baseline. Neutral signal.`
+          ? `Right on your ${hrvBase}ms baseline. No recovery flag · train as planned.`
           : pct >= -15
-            ? `7-day HRV below baseline. Could be stress, sleep, or building load. Watch tomorrow.`
-            : `7-day HRV well below baseline. The week's been low. Ease off and check rest.`) + lutealNote;
+            ? `Below your ${hrvBase}ms baseline. Could be stress, sleep, or building load. Watch tomorrow.`
+            : `Well below your ${hrvBase}ms baseline. The week's been low. Ease off and check rest.`) + lutealNote;
     inputs.push({
       key: 'hrv', label: 'HRV · 28%', weight: w,
       // G3 (2026-06-09) · health-state now feeds the 7-day MEDIAN
@@ -186,13 +191,16 @@ export function computeReadiness(
     // Clamp -12 / +6 (scaled from old -10/+5 for new 25% weight)
     const w = Math.max(-12, Math.min(6, delta > 0 ? -delta * 2 : -delta));
     score += w;
+    // 2026-06-26 · name the baseline bpm in the prose (observedSub isn't shown
+    // on iPhone) so "at baseline" is verifiable at a glance.
+    const rhrBase = Math.round(state.rhrBaseline);
     const meaning = delta <= -2
-      ? `Below your baseline. Sign of strong fitness adaptation.`
+      ? `Below your ${rhrBase} bpm baseline. Sign of strong fitness adaptation.`
       : delta <= 1
-        ? `At baseline. Steady resting cardio.`
+        ? `Right on your ${rhrBase} bpm baseline. No fatigue or illness signal.`
         : delta <= 4
-          ? `A few beats above baseline. Could be sleep deficit, dehydration, or a volume bump. Single-day rise is fine; watch for a streak.`
-          : `Notably elevated. Sleep, illness brewing, dehydration, or overreach. If it stays up 3+ days, ease the load.`;
+          ? `A few beats above your ${rhrBase} bpm baseline. Could be sleep, dehydration, or a volume bump. One day is fine · watch for a streak.`
+          : `Notably above your ${rhrBase} bpm baseline. Sleep, illness, dehydration, or overreach. If it holds 3+ days, ease the load.`;
     inputs.push({
       key: 'rhr', label: 'RHR · 24%', weight: w,
       observedV: `${state.rhrCurrent} bpm · 3d avg`,
@@ -208,7 +216,7 @@ export function computeReadiness(
   //   chronic28 = avg daily mi over last 28 days
   //   ratio     = acute7 / chronic28
   //
-  //   <0.8  detrained — fitness drift, -3
+  //   <0.8  light/cutback — fresh legs, NEUTRAL (0) · not a readiness drag
   //   0.8-1.0 building — sustainable, +2
   //   1.0-1.3 sweet spot — gains, low injury risk, +5
   //   1.3-1.5 caution — elevated ramp, -3
@@ -221,24 +229,32 @@ export function computeReadiness(
     // about it. The coach decides prescription. Otherwise this card and
     // the coach voice openly contradict (David flagged it: "why is it
     // telling me to back off but the coach isn't?").
+    // 2026-06-26 · low load (ACWR < 0.8) no longer DRAGS readiness. A cutback
+    // or down week means fresh legs, not an unready runner · weight 0, framed
+    // as freshness. The detraining-over-time concern lives in the copy's
+    // "only a worry if it stays here for weeks" caveat (and any sustained
+    // low-load streak), not the today-readiness score. (David's call · low
+    // load was surfacing in "X dragging" when he was simply well-rested.)
+    const acuteWk = state.loadAcute7 * 7;   // mi/day → mi/week
+    const baseWk = state.loadChronic28 * 7;
     if (r < 0.8) {
-      w = -3;
-      meaning = `Below 0.8. Recent 7-day volume sits well under the 28-day base · the detraining band.`;
+      w = 0;
+      meaning = `${acuteWk.toFixed(0)}mi this week vs your ~${baseWk.toFixed(0)}mi base. Fresh legs, low fatigue · fine for a cutback. Only a worry if it stays here for weeks.`;
     } else if (r < 1.0) {
       w = 2;
-      meaning = `Below 1.0. Building gradually, sustainable-progression band.`;
+      meaning = `${acuteWk.toFixed(0)}mi this week, just under your ~${baseWk.toFixed(0)}mi base. Building gradually · sustainable.`;
     } else if (r <= 1.3) {
       w = 5;
-      meaning = `Sweet spot per Gabbett. Productive-training band with the lowest injury rate in his cohort.`;
+      meaning = `Sweet spot per Gabbett. Productive band with the lowest injury rate in his cohort.`;
     } else if (r <= 1.5) {
       w = -3;
-      meaning = `Elevated ramp. Recent 7-day volume runs above the 28-day base.`;
+      meaning = `${acuteWk.toFixed(0)}mi this week runs above your ~${baseWk.toFixed(0)}mi base. Elevated ramp · keep an eye on it.`;
     } else {
       w = -8;
-      meaning = `Above 1.5 · the elevated-injury-risk band per Gabbett. Coach factors this into today's prescription.`;
+      meaning = `Above 1.5 · Gabbett's elevated-injury-risk band. Coach factors this into today's prescription.`;
     }
     score += w;
-    const acwrWord = r < 0.8 ? 'Low' : r < 1.0 ? 'Building' : r <= 1.3 ? 'In range'
+    const acwrWord = r < 0.8 ? 'Fresh' : r < 1.0 ? 'Building' : r <= 1.3 ? 'In range'
       : r < 1.5 ? 'Elevated' : 'High';
     inputs.push({
       key: 'load', label: 'LOAD · 15%', weight: w,
