@@ -2066,15 +2066,16 @@ struct TodayView: View {
     }
 
     /// (prompt, action-word) for the under-pills affordance, or nil to hide it.
-    /// Today → Skip; a future run day → Reschedule. Past / rest / skipped hide.
+    /// Always surfaces "Skip or move" so Skip is visible on every run day (it
+    /// opens the sheet that offers both). Past / rest / skipped-today hide it.
     private var rescheduleAffordance: (prompt: String, action: String)? {
         guard let day = actionableSourceDay, dayHasRun(day) else { return nil }
         if selectedIsToday {
             guard !skipped else { return nil }
-            return ("Not running today?", "Skip")
+            return ("Not running today?", "Skip or move")
         }
         guard !day.is_past else { return nil }
-        return ("Need to move this run?", "Reschedule")
+        return ("Need to change this run?", "Skip or move")
     }
 
     /// "today's long run" / "Sunday's tempo run" — the run being acted on.
