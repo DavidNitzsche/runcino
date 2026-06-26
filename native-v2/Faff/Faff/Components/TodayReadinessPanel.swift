@@ -204,11 +204,13 @@ private struct TodaySignalTile: View {
     }
 
     private var tint: Color {
+        // 2026-06-26 · David: at-baseline/good reads GREEN, not grey. Only a
+        // real drag is warn-colored. No-data stays muted (nothing to score).
+        if isNoData { return Theme.mute }
         let w = input.weight
         if w <= -8 { return Theme.over }
         if w <  0  { return Theme.goal }
-        if w >  0  { return Theme.green }
-        return Theme.mute
+        return Theme.green   // weight 0 (at baseline) or positive → okay/good
     }
 
     private var isNoData: Bool {
@@ -271,12 +273,10 @@ private struct TodaySignalTile: View {
         }
         .padding(13)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // 2026-06-26 · David: no colored outline on the tiles. Just the fill ·
+        // the dot + label carry the status color now.
         .background(Color.white.opacity(0.05),
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(tint.opacity(isNoData ? 0.1 : 0.2), lineWidth: 1)
-        )
     }
 }
 

@@ -36,14 +36,6 @@ private enum BriefBand {
     }
 }
 
-private enum PillarBand {
-    /// Tint for the pillar dot + today's history bar.
-    static func tint(_ raw: String) -> Color {
-        Theme.ReadinessBand.fill(raw.replacingOccurrences(of: "_", with: "-"))
-    }
-}
-
-
 // MARK: - Sheet container
 
 struct ReadinessBriefSheet: View {
@@ -425,7 +417,15 @@ private struct SignalTile: View {
     let pillar: ReadinessPillar
     @State private var showHistory: Bool = false
 
-    private var tint: Color { PillarBand.tint(pillar.band) }
+    // 2026-06-26 · weight-based status color (matches the Today panel):
+    // at-baseline/good reads GREEN, warn only on a real drag. Was band-based.
+    private var tint: Color {
+        if isNoData { return Theme.mute }
+        let w = pillar.weightContribution
+        if w <= -8 { return Theme.over }
+        if w <  0  { return Theme.goal }
+        return Theme.green
+    }
     private var isNoData: Bool { pillar.band.lowercased().contains("no-data") || pillar.band.isEmpty }
 
     /// Leading chunk before " · " — the compact value shown big.
@@ -518,12 +518,9 @@ private struct SignalTile: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // 2026-06-26 · David: no colored outline on the tiles · fill only.
             .background(Color.white.opacity(showHistory ? 0.08 : 0.05),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(tint.opacity(isNoData ? 0.1 : 0.22), lineWidth: 1)
-            )
         }
         .buttonStyle(.plain)
     }
