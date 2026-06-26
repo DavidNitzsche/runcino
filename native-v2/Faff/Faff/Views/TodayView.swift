@@ -743,9 +743,8 @@ struct TodayView: View {
         .sheet(isPresented: $showSkipConfirm) {
             DayActionSheet(
                 sourceLabel: rescheduleSourceLabel,
-                canSkip: selectedIsToday,
                 targets: rescheduleTargets,
-                onSkip: { showSkipConfirm = false; skipTodayAction() },
+                onSkip: { skipSelectedDay() },
                 onMove: { toISO, replace in rescheduleAction(toISO: toISO, replace: replace) },
                 onCancel: { showSkipConfirm = false }
             )
@@ -2103,6 +2102,26 @@ struct TodayView: View {
                     runLabel: hasRun ? runLabelShort(type: day.type, mi: day.distance_mi) : "Rest",
                     hasRun: hasRun)
             }
+    }
+
+    /// Skip the run on the currently-selected day. Today uses the existing
+    /// path (flips the in-hero skipped state); a future day skips by date and
+    /// reloads so the strip + plan reflect it.
+    private func skipSelectedDay() {
+        let iso = selectedDayID.isEmpty ? todayISO : selectedDayID
+        showSkipConfirm = false
+        if iso == todayISO {
+            skipTodayAction()
+            return
+        }
+        Task {
+            do {
+                try await API.postSkip(date: iso)
+                await loadAll()
+            } catch {
+                print("[today v2] skip(day) failed: \(error)")
+            }
+        }
     }
 
     /// Move the source run to `toISO`. `replace` is true when the target day

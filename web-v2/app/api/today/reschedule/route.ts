@@ -29,6 +29,7 @@
  * row's week_id from plan_weeks, same as /api/plan/workout.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
@@ -120,25 +121,34 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Resolve the week_id that owns the target date.
-  const week = (await pool.query(
+  // Resolve the week_id that owns a date (the plan's weeks aren't the same
+  // boundary as the runner's long-run week — they're the authored plan_weeks).
+  const weekFor = async (dateIso: string): Promise<string | null> => (await pool.query(
     `SELECT id::text AS id FROM plan_weeks
       WHERE plan_id = $1
         AND week_start_iso <= $2::text
         AND to_char((week_start_iso::date + interval '7 days'), 'YYYY-MM-DD') > $2::text
       LIMIT 1`,
-    [plan.id, toDate],
-  )).rows[0];
-  if (!week) return NextResponse.json({ error: 'no_plan_week_covers_target' }, { status: 400 });
+    [plan.id, dateIso],
+  )).rows[0]?.id ?? null;
 
-  const dow = new Date(toDate + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
+  const toWeek = await weekFor(toDate);
+  if (!toWeek) return NextResponse.json({ error: 'no_plan_week_covers_target' }, { status: 400 });
+  const fromWeek = await weekFor(fromDate);
+  const dowOf = (iso: string) => new Date(iso + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
+    const rowsOn = async (dateIso: string): Promise<Array<{ id: string; type: string }>> =>
+      (await client.query(
+        `SELECT id::text AS id, type FROM plan_workouts WHERE plan_id = $1 AND date_iso = $2::text`,
+        [plan.id, dateIso],
+      )).rows;
+
     // Replace: remove the displaced run on the target day. Only the running
-    // row(s) — leave strength/cross on that day intact.
+    // row — strength/cross on that day stay put.
     let replaced: { type: string; distance_mi: number } | null = null;
     if (target && body?.replace) {
       await client.query(`DELETE FROM plan_workouts WHERE id = $1`, [target.id]);
@@ -155,8 +165,42 @@ export async function POST(req: NextRequest) {
               original_date_iso = COALESCE(original_date_iso, $5)
         WHERE id = $1
         RETURNING date_iso, type, distance_mi, sub_label`,
-      [source.id, toDate, week.id, dow, fromDate],
+      [source.id, toDate, toWeek, dowOf(toDate), fromDate],
     )).rows[0];
+
+    // Reconcile rest placeholders so the plan stays exactly one row per day:
+    //   - a run must not share its day with a leftover 'rest' row, and
+    //   - the day the run LEFT must not become a gap (it should read as rest).
+    // The clean move is a swap: relocate the target's rest row onto the
+    // vacated source day. Falls back to an insert only if the target had no
+    // rest to relocate and the source is now empty (rare — plans carry
+    // explicit rest rows, so the swap path normally fires).
+    const restOnTarget = (await rowsOn(toDate)).filter((r) => r.type === 'rest');
+    const sourceRows = await rowsOn(fromDate);
+
+    if (sourceRows.length === 0) {
+      if (restOnTarget.length > 0 && fromWeek) {
+        await client.query(
+          `UPDATE plan_workouts SET date_iso = $2, week_id = $3, dow = $4 WHERE id = $1`,
+          [restOnTarget[0].id, fromDate, fromWeek, dowOf(fromDate)],
+        );
+        for (const extra of restOnTarget.slice(1)) {
+          await client.query(`DELETE FROM plan_workouts WHERE id = $1`, [extra.id]);
+        }
+      } else if (fromWeek) {
+        await client.query(
+          `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi, notes, original_date_iso)
+           VALUES ($1, $2, $3, $4, $5, 'rest', 0, '', $4)`,
+          [`wko_${randomBytes(8).toString('hex')}`, plan.id, fromWeek, fromDate, dowOf(fromDate)],
+        );
+      }
+    } else {
+      // Source still has rows (e.g. a strength session) — just drop any rest
+      // dup on the target so the moved run owns the day cleanly.
+      for (const r of restOnTarget) {
+        await client.query(`DELETE FROM plan_workouts WHERE id = $1`, [r.id]);
+      }
+    }
 
     // Acknowledge once via the coach. Reuse 'workout_swapped' so the existing
     // cache-bust + briefing-voice handling picks it up with no new wiring.

@@ -17,8 +17,6 @@ struct DayActionSheet: View {
 
     /// e.g. "Sunday's long run" — the run being acted on.
     let sourceLabel: String
-    /// Skip is a today-only concept; for a future day the sheet is Move-only.
-    let canSkip: Bool
     /// Days the run can move to (this week, not the source day, not past).
     let targets: [TargetDay]
 
@@ -51,23 +49,22 @@ struct DayActionSheet: View {
 
     private var detentHeight: CGFloat {
         switch step {
-        case .choose:         return canSkip ? 320 : 250
+        case .choose:         return 330
         case .pickDay:        return min(520, 200 + CGFloat(targets.count) * 58)
         case .confirmReplace: return 300
         }
     }
 
-    // MARK: Step 1 — Skip vs Move
+    // MARK: Step 1 — Skip vs Move (both always offered)
 
     private var chooseStep: some View {
         VStack(spacing: 0) {
-            Text(canSkip ? "Today's run" : titleCase(sourceLabel))
+            Text(titleCase(sourceLabel))
                 .font(.display(22, weight: .bold))
                 .foregroundStyle(Theme.txt)
-                .padding(.top, 26)
-            Text(canSkip
-                 ? "Skip it, or move it to another day."
-                 : "Move it to another day this week.")
+                .multilineTextAlignment(.center)
+                .padding(.top, 26).padding(.horizontal, 24)
+            Text("Skip it, or move it to another day.")
                 .font(.body(14))
                 .foregroundStyle(Theme.txt.opacity(0.58))
                 .multilineTextAlignment(.center)
@@ -79,12 +76,10 @@ struct DayActionSheet: View {
                 primaryButton(title: "Move to another day", tint: Theme.dist) {
                     withAnimation(Theme.Motion.smooth) { step = .pickDay }
                 }
-                if canSkip {
-                    primaryButton(title: "Skip today's run", tint: Color(hex: 0xFC4D64)) {
-                        guard !acted else { return }
-                        acted = true
-                        onSkip()
-                    }
+                primaryButton(title: "Skip this run", tint: Color(hex: 0xFC4D64)) {
+                    guard !acted else { return }
+                    acted = true
+                    onSkip()
                 }
             }
             .padding(.horizontal, Theme.Space.pageH)
@@ -210,7 +205,10 @@ struct DayActionSheet: View {
         .padding(.bottom, 10)
     }
 
-    /// "Sunday's long run" → "Sunday's long run" (already cased); used where we
-    /// want the source label to read as a sentence start.
-    private func titleCase(_ s: String) -> String { s }
+    /// Capitalize the first letter so "today's long run" reads as a title
+    /// ("Today's long run"); future-day labels already start capitalized.
+    private func titleCase(_ s: String) -> String {
+        guard let first = s.first else { return s }
+        return first.uppercased() + s.dropFirst()
+    }
 }

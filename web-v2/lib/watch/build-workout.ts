@@ -311,10 +311,22 @@ export async function buildWatchToday(
   )).rows[0];
   if (!plan) return { message: "No active plan." };
 
+  // A calendar day can briefly carry more than one row (e.g. an authored rest
+  // placeholder plus a run moved in via /api/today/reschedule). Pick the
+  // primary RUNNING row over rest/strength so the hero never shows "Rest day"
+  // for a day that actually has a run. Mirrors the /api/plan/week priority.
   const wo = (await pool.query(
     `SELECT date_iso, dow, type, distance_mi, sub_label, workout_spec, pace_target_s_per_mi
        FROM plan_workouts
       WHERE plan_id = $1 AND date_iso = $2::text
+      ORDER BY CASE type
+                 WHEN 'race' THEN 6 WHEN 'long' THEN 5
+                 WHEN 'intervals' THEN 4 WHEN 'tempo' THEN 4 WHEN 'threshold' THEN 4
+                 WHEN 'race_week_tuneup' THEN 4 WHEN 'fartlek' THEN 4 WHEN 'progression' THEN 4
+                 WHEN 'easy' THEN 3 WHEN 'recovery' THEN 3 WHEN 'shakeout' THEN 3
+                 WHEN 'cross' THEN 2 WHEN 'strength' THEN 1 WHEN 'rest' THEN 0 ELSE 2
+               END DESC,
+               distance_mi DESC
       LIMIT 1`,
     [plan.id, today]
   )).rows[0];

@@ -854,6 +854,20 @@ enum API {
         }
     }
 
+    /// POST /api/today/skip with an explicit date → mark that day skipped.
+    /// Used when skipping a future day from the reschedule sheet (postSkipToday
+    /// defaults to today).
+    static func postSkip(date: String) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/today/skip"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["date": date])
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+    }
+
     /// DELETE /api/today/skip → undo today's skip.
     static func deleteSkipToday() async throws {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/today/skip"))
