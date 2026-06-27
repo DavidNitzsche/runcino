@@ -1218,11 +1218,29 @@ function layoutWeek({
     const linearTarget = seed + Math.max(0, longCap - seed) * Math.min(1, weekIdx / peakWeekIdx);
     return Math.max(longFloor, seed, Math.round(Math.min(stepCeil, linearTarget)));
   })();
-  const longMi = Math.min(
+  let longMi = Math.min(
     Math.max(longMiRaw, longFloor),
     longCap,
     rampCeiling,
   );
+  // RP-FREQ-FLOOR (2026-06-24) · race-prep analogue of MAINT-FREQ-FLOOR. A distance-driven long
+  // (marathon/ultra DIST-1 above) can over-consume a small week's budget, pinning the easy days at
+  // 1mi via perEasyBudgetCap below — the same junk-run class fixed in maintenance. Race-prep can't
+  // lift weeklyMi (it is the periodized volume curve), so instead CAP the long to leave ≥2mi for
+  // every other running day: longMi ≤ weeklyMi − quality − 2×easyDays. Only when the capped long
+  // still stays the longest run (> per-quality, ≥ a 3mi coherence floor, ≥ the recent-long floor);
+  // a genuinely volume-constrained week (can't fit a floor-respecting long AND 2mi easies — e.g.
+  // 10mpw/6-day) is left as-is. BASE/TAPER/cutback are excluded (deliberate deload shapes already
+  // floor or descend). Gated on stated frequency so David's null-frequency profiles stay byte-stable;
+  // a no-op for healthy-volume weeks where the long never approaches that ceiling.
+  if (trainingDaysPerWeek != null && phase !== 'BASE' && phase !== 'TAPER' && !isCutback) {
+    const qDays = qualityDows.length;
+    const easyDays = Math.max(0, trainingDaysPerWeek - 1 - qDays);
+    const perQEst = qDays > 0 ? Math.max(2, Math.round((weeklyMi * qualityShare) / qDays)) : 0;
+    const longRoom = weeklyMi - perQEst * qDays - 2 * easyDays;
+    const minLong = Math.max(perQEst + 1, 3, longFloor);
+    if (longRoom >= minLong && longRoom < longMi) longMi = longRoom;
+  }
   // 2026-06-03 · mid-block doctrine RULE 2 (quality distance floor).
   // Floor qualityMiEach at the runner's recent quality-day distance ·
   // 1mi (the −1mi tolerance lets rep-shape work fit). Cap at the
@@ -1243,7 +1261,13 @@ function layoutWeek({
   // Only binds in the degenerate case — normal plans keep qualityRaw (David's
   // long ≫ quality → min picks qualityRaw, byte-for-byte unchanged).
   const qualityCeiling = Math.max(1, Math.min(longMi || Infinity, Math.round(weeklyMi * 0.6)));
-  const qualityMiEach = Math.min(Math.max(qualityRaw, qualityFloor), qualityCeiling);
+  // RP-FREQ-FLOOR (quality half) · a placed quality session is a real workout, never a 1mi "intervals"
+  // (qualityRaw rounds to 1 at the 10mpw floor with two quality days). Floor it at 2mi for stated-
+  // frequency non-deload weeks — the RP-FREQ-FLOOR long cap above already reserved 2mi/quality, so the
+  // budget balances. Capped at qualityCeiling so it never exceeds the long. null-freq/BASE/TAPER/cutback
+  // and healthy weeks (qualityRaw ≥ 2) are byte-unchanged.
+  const qualityFloorFreq = (trainingDaysPerWeek != null && phase !== 'BASE' && phase !== 'TAPER' && !isCutback) ? 2 : 0;
+  const qualityMiEach = Math.min(Math.max(qualityRaw, qualityFloor, qualityFloorFreq), qualityCeiling);
 
   // Pre-allocate: rest = 0, long + quality slotted in
   const slots: (DayPlan | null)[] = new Array(7).fill(null);

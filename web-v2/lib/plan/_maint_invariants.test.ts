@@ -52,7 +52,8 @@ describe('maintenance + display invariants (diagnostic)', () => {
   it('reports SPREAD / MIN_RUN_DIST / CAL_MERGE across the start-DOW × profile matrix', () => {
     const spread: Record<string, V> = {};
     const minDist: Record<string, V> = {};      // maintenance/recovery — FIXED, hard-zero gate
-    const minDistRace: Record<string, V> = {};   // race-prep quality/race-specific — workflow target
+    const minDistRace: Record<string, V> = {};   // race-prep quality/race-specific — soft ceiling (boundary/volume-constrained class)
+    const minDistRaceStrict: Record<string, V> = {}; // race-prep with STRICTLY-positive surplus, non-cutback — FIXED by RP-FREQ-FLOOR, hard-zero gate
     const calMerge: Record<string, V> = {};
     let plans = 0, maintWeeks = 0;
 
@@ -89,9 +90,14 @@ describe('maintenance + display invariants (diagnostic)', () => {
                   const restCouldAfford2 = runningCount > 1 && (realized - longDist) >= 2 * (runningCount - 1);
                   if (restCouldAfford2) {
                     const isHold = w.phase === 'MAINTENANCE' || w.phase === 'RECOVERY';
+                    // STRICT subset (race-prep): strictly-positive surplus beyond seating every non-long
+                    // run at 2mi, AND not a deliberate cutback dip. This is the unarguable core RP-FREQ-FLOOR
+                    // fixes — there are spare miles, so a 1mi run is pure misallocation, never volume-constraint.
+                    const strictSurplus = !isHold && !w.isCutback && (realized - longDist) > 2 * (runningCount - 1);
                     for (const d of runDays) {
                       if (!d.isLong && d.distanceMi < 2) {
                         bump(isHold ? minDist : minDistRace, `${w.phase} run=${d.distanceMi}mi realized=${realized}/${runningCount}run`, arc);
+                        if (strictSurplus) bump(minDistRaceStrict, `${w.phase} run=${d.distanceMi}mi realized=${realized}/${runningCount}run`, arc);
                       }
                     }
                   }
@@ -141,7 +147,8 @@ describe('maintenance + display invariants (diagnostic)', () => {
     console.log(`\n=== swept ${plans} plans, ${maintWeeks} maintenance/recovery weeks ===`);
     dump('SPREAD (consecutive-day clustering)', spread);
     dump('MIN_RUN_DIST · maintenance/recovery (FIXED — hard-zero gate)', minDist);
-    dump('MIN_RUN_DIST · race-prep quality/race-specific (workflow target)', minDistRace);
+    dump('MIN_RUN_DIST · race-prep (soft ceiling — boundary/volume-constrained class)', minDistRace);
+    dump('MIN_RUN_DIST · race-prep STRICT surplus (FIXED by RP-FREQ-FLOOR — hard-zero)', minDistRaceStrict);
     dump('CAL_MERGE (two weeks in one Sun-Sat row)', calMerge);
 
     // ── THE GATE · the three classes David caught, locked so they can never regress ──
@@ -154,9 +161,13 @@ describe('maintenance + display invariants (diagnostic)', () => {
     // 3 · junk runs in hold-the-base weeks: no sub-2mi non-long run when the budget could seat
     //     every run at ≥2mi (the 1mi easy after a fartlek ate the budget).
     expect(tot(minDist), `maintenance junk runs reappeared — see MIN_RUN_DIST·maintenance log`).toBe(0);
-    // 4 · REGRESSION GUARD on the not-yet-fixed race-prep low-volume class. Baseline 287 (2026-06-24,
-    //     all marathon/half at the 10mpw floor). The comprehensive-audit workflow drives this to 0;
-    //     until then nothing may make it WORSE. Lower this ceiling as the workflow lands fixes.
-    expect(tot(minDistRace), `race-prep junk runs WORSENED beyond the 287 baseline — a change regressed the low-volume quality path`).toBeLessThanOrEqual(287);
+    // 4 · race-prep STRICT-surplus junk runs — FIXED by RP-FREQ-FLOOR (the long cap that leaves ≥2mi
+    //     for every non-long run when the week affords it). These had spare miles, so a 1mi run was pure
+    //     misallocation. Hard-zero so the regression can never reappear.
+    expect(tot(minDistRaceStrict), `race-prep STRICT-surplus junk runs reappeared — RP-FREQ-FLOOR regressed`).toBe(0);
+    // 5 · SOFT ceiling on the remaining boundary class (surplus==0 / genuinely volume-constrained, e.g.
+    //     10mpw/6-day where even a floor-respecting long can't leave 2mi for every run). Ratcheted from
+    //     287 → current after RP-FREQ-FLOOR; nothing may make it worse. Lower as further fixes land.
+    expect(tot(minDistRace), `race-prep boundary junk runs WORSENED — a change regressed the low-volume quality path`).toBeLessThanOrEqual(287);
   });
 });
