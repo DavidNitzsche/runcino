@@ -2111,13 +2111,27 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   // Layout one canonical week per slot. Rolling cutback fires every 4th week (weekIdx 3, 7, 11 …).
   function maintenanceWeek(weekIdx: number): DayPlan[] {
     const isCutback = (weekIdx + 1) % 4 === 0; // week 4, 8, 12 … = recovery step-down
-    const wkWeekly = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
+    const wkWeeklyBase = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
     // SP-6 · 4mi coherence floor, not 8. NS-2 (2026-06-23, ext) · the cutback floor must ALSO respect the
     // true-beginner cap (recentLong 3 → cutback Math.max(4,2)=4 → smoothed 3.5 = 117% = the plan's LONGEST
     // run, over the 110% injury cap). Cutback is never longer than the base long (targetLong, already ≤110%
     // recent); the 4mi coherence floor only engages once recentLong ≥ 4. Byte-safe for recentLong ≥ 4.
     const cutFloor = (input.recentLongMi > 0 && input.recentLongMi < 4) ? Math.max(2, Math.round(input.recentLongMi)) : 4;
-    const wkLong = isCutback ? Math.min(targetLong, Math.max(cutFloor, Math.round(targetLong * 0.80))) : targetLong;
+    let wkLong = isCutback ? Math.min(targetLong, Math.max(cutFloor, Math.round(targetLong * 0.80))) : targetLong;
+
+    // MAINT-FREQ-FLOOR (2026-06-24) · a stated-frequency runner must get `freq` REAL runs, not a
+    // long + (freq-1) sub-2mi junk easies. The 4mi coherence longFloor can eat ~67% of a tiny
+    // maintenance week (e.g. long=4 of a 6mi/3-day week → two 1mi junk easies — David's complaint).
+    // Lift the weekly budget so every running day seats at ≥2mi: wkWeekly ≥ wkLong + 2×(freq-1).
+    // CAP at the runner's real ceiling (peakAnchor) so a genuinely volume-constrained week
+    // (10mpw/6-day = 1.7mi/run) is accepted as-is, not inflated above what they actually run.
+    // Gated on stated frequency → null-freq profiles (David) are byte-stable. VOL-1 reconciles
+    // the displayed weeklyMi to the realized day-sum.
+    let wkWeekly = wkWeeklyBase;
+    if (input.trainingDaysPerWeek != null && input.trainingDaysPerWeek >= 2) {
+      const everyRunFloor = wkLong + 2 * (input.trainingDaysPerWeek - 1);
+      wkWeekly = Math.max(wkWeekly, Math.min(everyRunFloor, peakAnchor));
+    }
 
     const slots: (DayPlan | null)[] = new Array(7).fill(null);
     // Rest day
@@ -2140,8 +2154,10 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     // runner (e.g. 10mpw/3-day) gets long(4)+quality(3)=7mi=budget, leaving zero room for the
     // easy fill → only 2 running days instead of the stated 3. Cap quality distance at whatever
     // remains after reserving the easy room; if that cap < 2mi, skip quality for this week.
+    // Reserve 2mi (a REAL run), not 1mi (junk), per easy day so quality can't overspend into the
+    // easy budget and starve an easy to 1mi (long=4 + fartlek=3 + easy=1 — David's case again).
     const qualFreqRoom = input.trainingDaysPerWeek != null && input.trainingDaysPerWeek > 2
-      ? (input.trainingDaysPerWeek - 2) * 1
+      ? (input.trainingDaysPerWeek - 2) * 2
       : 0;
     const qualBudgetCap = wkWeekly - wkLong - qualFreqRoom;
     // MAINT-QUAL-COMPRESS-THRESH (2026-06-24) · raised from 2 to 3. A 2mi fartlek cap leaves
@@ -2201,10 +2217,14 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     // 2mi each. Without this, a 3mi easy budget spread over 4 slots floored each to 2mi and
     // realized 8mi instead of 3mi. The fix: max floor(budget/2) easy days — the remainder stay
     // rest. MAINT-EASY-1-REGRESS extended this to the zero-budget case (floor(0/2)=0 easy days).
-    // MAINT-QUAL-COMPRESS follow-up: when the runner stated a freq and quality was compressed to
-    // leave room for easy days, the remaining budget may only be ~1mi per easy slot. Lower the
-    // per-run minimum to 1mi in that case so the easy days can actually land (honors freq intent).
-    const MAINT_MIN_EASY = input.trainingDaysPerWeek != null && easyMiBudget < 4 ? 1 : 2;
+    // MAINT-MIN-EASY (2026-06-24) · when MAINT-FREQ-FLOOR could seat every running day at ≥2mi
+    // (budget ≥ wkLong + 2×(freq-1)), floor easies at 2mi — no 1mi junk. Only when the runner is
+    // genuinely volume-constrained (peakAnchor can't afford freq real runs alongside the coherence
+    // long, e.g. 10mpw/6-day) do we drop to a 1mi floor, honoring the stated frequency with short
+    // runs rather than dropping a day. null-freq (David) keeps the 2mi floor → byte-stable.
+    const budgetSeatsAll2 = input.trainingDaysPerWeek != null
+      && wkWeekly >= wkLong + 2 * (input.trainingDaysPerWeek - 1);
+    const MAINT_MIN_EASY = input.trainingDaysPerWeek == null ? 2 : (budgetSeatsAll2 ? 2 : 1);
     const maxEasyByBudget = Math.floor(easyMiBudget / MAINT_MIN_EASY);
     const targetEasyCount = Math.min(easySlots.length, Math.max(0, shape.daysPerWeek - runningPlaced), maxEasyByBudget);
     const perEasyRaw = targetEasyCount > 0 ? Math.max(MAINT_MIN_EASY, Math.round(easyMiBudget / targetEasyCount)) : 0;

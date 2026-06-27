@@ -29,11 +29,19 @@ describe('A1 · long-run ramp shape', () => {
     expect(longs[0]).toBeLessThanOrEqual(13);       // week-0 ≤110% of recent 12 (was 14 = 117%)
     expect(longs[2]).toBeLessThanOrEqual(17);        // not parked at 19 by week 2
     expect(Math.max(...longs)).toBeGreaterThanOrEqual(20); // still reaches the doctrine peak
-    // no upward step bigger than +3mi (≈10% at these magnitudes); cutback dips are negative, allowed
+    // no climb into NEW territory bigger than +3mi (≈10% at these magnitudes). A rebound after a
+    // cutback dip is allowed even when the raw step >3 — RC2-4 (returning from a planned cutback is
+    // an expected jump, not a ramp error). So compare each new high against the PRIOR PEAK, not the
+    // immediate prior week: a dip-then-recover (18→15→19) is a +1 climb over the established 18,
+    // expressed as a +4 step only because of the intervening cutback. A genuine early-saturation
+    // jump (the bug this guards) still trips it, and longs[0]/longs[2] above pin the early weeks.
     const build = longs.slice(0, 13);
+    let priorMax = build[0];
     for (let i = 1; i < build.length; i++) {
-      const step = build[i] - build[i - 1];
-      expect(step).toBeLessThanOrEqual(3);
+      if (build[i] > priorMax) {
+        expect(build[i] - priorMax).toBeLessThanOrEqual(3);
+        priorMax = build[i];
+      }
     }
   });
 

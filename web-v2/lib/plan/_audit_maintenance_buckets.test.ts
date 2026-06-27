@@ -25,7 +25,13 @@ describe('SP-6 + VAR-06pt2', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.mode).toBe('maintenance');
-    const longs = r.composed.weeks.flatMap((w: any) => w.days.filter((d: any) => d.isLong).map((d: any) => d.distanceMi));
+    // SP-6 binds the MAINTENANCE weeks only. The MAINT+RACE-PREP chain (2026-06-24) appends a real
+    // race-prep block whose longs legitimately build past 6 toward the marathon — those are not
+    // governed by the maintenance proportional rule and must be excluded from this guard.
+    const longs = r.composed.weeks
+      .filter((w: any) => w.phase === 'MAINTENANCE')
+      .flatMap((w: any) => w.days.filter((d: any) => d.isLong).map((d: any) => d.distanceMi));
+    expect(longs.length).toBeGreaterThan(0);
     // recent long 5 → must be ≤ ~110% of recent (≤6), never the old absolute 8, and ≥ the 4mi coherence floor.
     for (const l of longs) {
       expect(l).toBeLessThanOrEqual(6);
