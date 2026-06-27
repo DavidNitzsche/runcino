@@ -95,6 +95,7 @@ export function scheduleQuality(
   longRunDow: number,
   restDow: number,
   availableDows: Set<number> | null,
+  placementTypes?: Array<DayPlan['type']>,
 ): { dows: DOW[]; types: Array<DayPlan['type']> } {
   const n = qualityDows.length;
   // FARTLEK-GAP-SCHED-1 (2026-06-23): fartlek is type='easy' and reqGap=0 in the validator
@@ -108,7 +109,17 @@ export function scheduleQuality(
   const typeBase: Array<DayPlan['type']> = qualityTypes.length > 0 ? qualityTypes : ['threshold'];
   const types = Array.from({ length: n }, (_, i) => typeBase[i % typeBase.length]).sort((a, b) => gapRank(a) - gapRank(b));
   if (n === 0) return { dows: qualityDows.slice().sort((a, b) => a - b) as DOW[], types };
-  const gaps = types.map(gapRank);
+  // QUAL-PHASE-STABLE (2026-06-24) · the DOW placement is driven by the GAP requirements of the type
+  // mix. When the QUALITY phase toggles its mix every week (weekIdx%2: intervals-in vs intervals-out),
+  // a per-week placement moves the runner's hard-training WEEKDAYS every 7 days (Mon+Wed ↔ Tue+Thu).
+  // Fix: when the caller passes a weekIdx-INVARIANT `placementTypes` (the most gap-demanding profile the
+  // phase emits), decide the DOWs from THAT so they stay fixed across the phase; the returned `types`
+  // still reflect THIS week's actual workouts. The intervals-safe placement is gap-legal for the lighter
+  // (intervals-free) weeks too (Research/00b:55-58), so only the TYPE rotates, never the day. Both profiles
+  // sort intervals to the last index, so a week that DOES carry intervals still lands it on the gap-2 slot.
+  const gapBase: Array<DayPlan['type']> = (placementTypes && placementTypes.length > 0) ? placementTypes : typeBase;
+  const gapTypes = Array.from({ length: n }, (_, i) => gapBase[i % gapBase.length]).sort((a, b) => gapRank(a) - gapRank(b));
+  const gaps = gapTypes.map(gapRank);
   const between = (a: number, b: number): number => ((b - a + 7) % 7) - 1; // circular easy days strictly between hard a and next hard b
   const score = (dows: number[]): { ok: boolean; minSlack: number } => {
     const hard = dows.map((d, i) => ({ d, g: gaps[i] })).concat([{ d: longRunDow, g: 1 }]).sort((p, q) => p.d - q.d);
@@ -155,9 +166,14 @@ export function scheduleQuality(
   // latest intervals to threshold (gap 2→1, which a tight pair CAN satisfy) — a legal recoverable
   // substitute (Research/00b · threshold needs only 1 easy day), far better than a rejected plan. Recurse
   // until satisfiable or no intervals remain.
-  if (!bestS.ok && types.lastIndexOf('intervals') >= 0) {
-    const down = types.slice(); down[types.lastIndexOf('intervals')] = 'threshold';
-    return scheduleQuality(best, down, longRunDow, restDow, availableDows);
+  if (!bestS.ok && gapTypes.lastIndexOf('intervals') >= 0) {
+    // Downgrade against the PLACEMENT profile (gapTypes) — it governs satisfiability — and downgrade
+    // this week's matching intervals label too (if any), so the recursion converges on a legal placement
+    // while the returned types stay truthful. A week with no intervals label just keeps its types.
+    const downGap = gapTypes.slice(); downGap[gapTypes.lastIndexOf('intervals')] = 'threshold';
+    const downLabel = types.slice();
+    const li = types.lastIndexOf('intervals'); if (li >= 0) downLabel[li] = 'threshold';
+    return scheduleQuality(best, downLabel, longRunDow, restDow, availableDows, downGap);
   }
   return { dows: best as DOW[], types };
 }
@@ -1314,7 +1330,10 @@ function layoutWeek({
     // aerobic-dominant with threshold support (Research/22 §Ultramarathon), so
     // the marathon quality mix is the right default — but the long-run finish is
     // NOT tagged MP (racePaceTag is null for ultra above).
-    const qualityTypes: Array<DayPlan['type']> = baseBuilding
+    // Quality type mix as a FUNCTION of the week index (only QUALITY alternates by parity), so the
+    // QUAL-PHASE-STABLE placement below can inspect both parities and anchor the days to the more
+    // gap-demanding one — keeping the runner's training WEEKDAYS fixed while the workout TYPE rotates.
+    const qualityTypesFor = (wi: number): Array<DayPlan['type']> => baseBuilding
       // Base-building (beginner): a single LIGHT tempo/fartlek in the sharpen
       // phase only; BASE weeks are pure easy + strides + long. No structured
       // I/R reps — Research/22 §Beginner (Higdon Novice / Mayo). Sized small
@@ -1330,9 +1349,9 @@ function layoutWeek({
            : cat === 'hm'   ? ['threshold', 'intervals']
            : /* m / ultra */  ['tempo', 'threshold'])
       : phase === 'QUALITY'
-          ? (cat === '5k'   ? (weekIdx % 2 === 0 ? ['intervals', 'intervals'] : ['intervals', 'threshold'])
-           : cat === '10k'  ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
-           : cat === 'hm'   ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
+          ? (cat === '5k'   ? (wi % 2 === 0 ? ['intervals', 'intervals'] : ['intervals', 'threshold'])
+           : cat === '10k'  ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
+           : cat === 'hm'   ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
            : cat === 'ultra'
                // ULTRA-QUAL-1 (2026-06-23): ultra training is threshold-dominant; I-pace intervals are
                // "rarely" appropriate (Research/00a §311 "3×1600m at 10K pace (rarely)"). Alternating
@@ -1340,8 +1359,9 @@ function layoutWeek({
                // cycle — far above research doctrine. Remove intervals from the regular rotation; if a
                // rare interval session is warranted, it's an exceptional week not the default.
                ? ['threshold', 'tempo']
-           : /* marathon */  (weekIdx % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
+           : /* marathon */  (wi % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
       : [];
+    const qualityTypes = qualityTypesFor(weekIdx);
     // Prescription strings are resolved up-front from workout_library
     // (Research/04 + 22) via resolvePrescriptions() — falls back to the
     // historical inline catalog if the library has no matching row.
@@ -1351,7 +1371,15 @@ function layoutWeek({
     // Pfitzinger §taper: "reduce volume, preserve intensity, one quality session." Two tune-ups
     // in a non-race taper week accumulate fatigue and blunt the taper effect.
     const effectiveQDows = (phase === 'TAPER' && !isRaceWeek) ? qualityDows.slice(0, 1) : qualityDows;
-    const scheduledQ = scheduleQuality(effectiveQDows, qualityTypes, longRunDow, restDow, availableDows);
+    // QUAL-PHASE-STABLE (2026-06-24) · anchor the quality DOWs to a weekIdx-INVARIANT placement profile
+    // so they don't oscillate as the QUALITY mix toggles. The two parities differ only by whether
+    // intervals is present; the intervals-bearing parity is the most gap-demanding, so place against it.
+    // Non-QUALITY phases don't alternate → use this week's types directly (placement byte-unchanged).
+    const placementProfile: Array<DayPlan['type']> = phase === 'QUALITY'
+      ? (() => { const a = qualityTypesFor(0), b = qualityTypesFor(1);
+          return a.includes('intervals') ? a : b.includes('intervals') ? b : qualityTypes; })()
+      : qualityTypes;
+    const scheduledQ = scheduleQuality(effectiveQDows, qualityTypes, longRunDow, restDow, availableDows, placementProfile);
     scheduledQ.dows.forEach((dow, i) => {
       if (slots[dow] != null) return; // conflict · skip
       const qt = scheduledQ.types[i % scheduledQ.types.length];

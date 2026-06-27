@@ -30,6 +30,7 @@ const LONGEST = ['3-6', '6-10'];
 // seven consecutive start dates → every start DOW (2026-07-05 is a Sunday)
 const STARTS = ['2026-07-05', '2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11'];
 const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6300, marathon: 13500, '50k': 18000, '100k': 43200 };
+const WEEKS: Record<SimDistance, number> = { '5k': 10, '10k': 12, half: 14, marathon: 18, '50k': 22, '100k': 24 };
 
 const dowOf = (iso: string) => new Date(iso + 'T12:00:00Z').getUTCDay();
 const plusDays = (iso: string, n: number) => {
@@ -169,5 +170,46 @@ describe('maintenance + display invariants (diagnostic)', () => {
     //     10mpw/6-day where even a floor-respecting long can't leave 2mi for every run). Ratcheted from
     //     287 → current after RP-FREQ-FLOOR; nothing may make it worse. Lower as further fixes land.
     expect(tot(minDistRace), `race-prep boundary junk runs WORSENED — a change regressed the low-volume quality path`).toBeLessThanOrEqual(287);
+  });
+
+  // ── QUAL_PHASE_STABLE · the runner's hard-training WEEKDAYS must not oscillate week-to-week ──
+  // Audit defect #3 (QUAL-PHASE-STABLE): the QUALITY mix toggles by weekIdx%2 (intervals-in vs
+  // intervals-out); per-week placement moved the days Mon+Wed ↔ Tue+Thu every 7 days for near-side
+  // (sat/fri/thu) long-run users. The gate must sweep ALL long-run days — the prior CAL_MERGE gate
+  // hardcoded 'sun' (stable) and missed this. Within one contiguous QUALITY phase the SET of quality
+  // weekdays must be constant; only the workout TYPE on those fixed days may rotate.
+  it('QUALITY-phase quality weekdays are stable across the phase (every long-run day)', () => {
+    const LONGDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const shuffle: Record<string, V> = {};
+    let plans = 0;
+    for (const distance of DISTANCES)
+      for (const freq of [3, 4, 5, 6])
+        for (const mileage of [15, 25, 35])
+          for (const longestRunBucket of ['6-10', '10+'])
+            for (const longRunDay of LONGDAYS) {
+              const built = buildSimPlan({
+                goalMode: 'goal', distance, experienceLevel: 'intermediate', weeklyFrequency: freq,
+                weeklyMileageBucket: mileage, longestRunBucket, longRunDay, restDay: 'sat',
+                startDateISO: '2026-07-06', raceDateISO: '', goalTimeSec: GOAL_SEC[distance],
+                planWeeks: WEEKS[distance], lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
+                raceHistory: [], availableDays: [],
+              } as any);
+              if (!built.ok) continue;
+              plans++;
+              // collect the sorted quality-weekday SET for each QUALITY week, then count distinct sets
+              const sets = new Set<string>();
+              for (const w of built.composed.weeks) {
+                if (w.phase !== 'QUALITY' || w.isRaceWeek) continue;
+                const qd = w.days.filter((d: any) => d.isQuality && !d.isLong && d.type !== 'rest').map((d: any) => d.dow).sort((a: number, b: number) => a - b);
+                if (qd.length) sets.add(qd.join(','));
+              }
+              if (sets.size > 1) bump(shuffle, `${distance}/f${freq}/${longRunDay} ${sets.size} distinct sets`, `${distance}/f${freq}/m${mileage}/${longRunDay}`);
+            }
+    const total = Object.values(shuffle).reduce((s, v) => s + v.count, 0);
+    console.log(`\nQUAL_PHASE_STABLE: swept ${plans} race-prep plans · ${total} with oscillating quality weekdays across ${Object.keys(shuffle).length} types`);
+    for (const [k, v] of Object.entries(shuffle).sort((a, b) => b[1].count - a[1].count).slice(0, 15)) console.log(`  [${v.count}] ${k}  e.g. ${v.ex}`);
+    // The training-days promise: within a QUALITY phase the quality weekday SET is constant (only the
+    // workout TYPE rotates). Was 576 oscillating plans (audit) → hard 0 after QUAL-PHASE-STABLE.
+    expect(total, `quality weekdays oscillate within a QUALITY phase — QUAL-PHASE-STABLE regressed`).toBe(0);
   });
 });
