@@ -298,6 +298,12 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     }
   }
   finalizeComposedPlan(composed, raceDistanceMi);
+  // VOLS-SNAP (2026-06-24) · re-snapshot the volume-curve series from the VOL-1/COH-4-reconciled
+  // weeklyMi, exactly as the production generatePlan path does (generate.ts:3098). finalize mutates
+  // weeklyMi to the realized day-sum but never touches composed.vols, which composePlan returned
+  // straight from the un-reconciled curve budget — so without this the sim API ships two volume series
+  // that disagree by up to 33mi (and the maint+race-prep chain concatenated two pre-finalize budgets).
+  composed.vols = composed.weeks.map((w) => w.weeklyMi);
 
   return {
     ok: true,

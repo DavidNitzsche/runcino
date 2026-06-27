@@ -167,6 +167,24 @@ export function validateComposedPlan(
   const { weeks } = result;
   const violations: string[] = [];
 
+  // ── 0. vols / weeklyMi coherence (VOLS-SNAP) ─────────────────────────────
+  // composed.vols is the volume-curve series a consumer receives alongside each week's weeklyMi.
+  // finalize reconciles weeklyMi to the realized day-sum (VOL-1) but never touches vols; both the
+  // prod path (generate.ts:3098) and the sim (sim-inputs.ts) re-snapshot vols from weeklyMi right
+  // before validating, so the two series MUST agree. A raw composePlan has them equal (both the curve
+  // budget); they only diverge when finalize ran and the re-snapshot was skipped — a stale curve up to
+  // 33mi off that no other check catches (validate.ts otherwise never reads .vols).
+  if (Array.isArray(result.vols)) {
+    for (let i = 0; i < Math.min(result.vols.length, weeks.length); i++) {
+      if (Math.abs(result.vols[i] - weeks[i].weeklyMi) > 0.5) {
+        violations.push(
+          `Week ${weeks[i].startISO}: vols[${i}]=${result.vols[i]}mi disagrees with weeklyMi=${weeks[i].weeklyMi}mi ` +
+          `— volume-curve series not re-snapshotted after finalize`,
+        );
+      }
+    }
+  }
+
   // ── 1. Long run peak (doctrine cap) ──────────────────────────────────────
   // 2026-06-10 persona-suite fix: the RACE-DAY row is authored with
   // isLong:true at full race distance (layoutWeek race branch) — it is
