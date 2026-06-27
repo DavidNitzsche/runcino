@@ -121,6 +121,38 @@ final class WorkoutTracker: NSObject, ObservableObject {
         self.paceSPerMi = pace; self.heartRate = hr; self.cadence = cadence; self.distanceMi = distanceMi
     }
 
+    /// Configure CoreLocation for the route and bring updates online.
+    ///
+    /// The system location prompt must appear exactly ONCE, ever. We only
+    /// call `requestWhenInUseAuthorization()` when the status is still
+    /// `.notDetermined` (the very first run). On every later run the grant
+    /// already persists, so we skip the request entirely and go straight to
+    /// `startUpdatingLocation()` — that's what stops the "asks every launch"
+    /// re-prompt. The first-run grant lands asynchronously, after start()
+    /// has already returned; `locationManagerDidChangeAuthorization` then
+    /// starts the updates once the user has answered.
+    ///
+    /// NOTE: do NOT set `allowsBackgroundLocationUpdates = true` here. On
+    /// watchOS the active HKWorkoutSession (workout-processing) already keeps
+    /// the app running, so CoreLocation keeps delivering route fixes during
+    /// the run. Setting that flag requires the "location" background mode and
+    /// otherwise throws an *uncatchable* NSException at runtime — which
+    /// crashed the app on every Start. (It's an iOS-without-a-workout-session
+    /// pattern, not needed on watchOS.)
+    private func startLocationUpdates() {
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        locationManager.distanceFilter = 5
+        switch locationManager.authorizationStatus {
+        case .notDetermined:
+            locationManager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
+            locationManager.startUpdatingLocation()
+        default:
+            break   // denied / restricted — run continues, route stays empty
+        }
+    }
+
     func start() {
         // Fresh per run — never carry distance / HR / cadence across
         // sessions (otherwise a second run starts with stale totals, e.g.
@@ -148,19 +180,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
             gpsCoords = []   // reset accumulator for the new run
             elevGainM = 0; lastAltitudeM = nil   // reset elevation accumulator
 
-            // GPS route
-            locationManager.delegate = self
-            locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-            locationManager.distanceFilter = 5
-            // NOTE: do NOT set `allowsBackgroundLocationUpdates = true` here. On
-            // watchOS the active HKWorkoutSession (workout-processing) already
-            // keeps the app running, so CoreLocation keeps delivering route
-            // fixes during the run. Setting that flag requires the "location"
-            // background mode and otherwise throws an *uncatchable* NSException
-            // at runtime — which crashed the app on every Start. (It is an
-            // iOS-without-a-workout-session pattern, not needed on watchOS.)
-            locationManager.requestWhenInUseAuthorization()
-            locationManager.startUpdatingLocation()
+            // GPS route — requests auth only on the first ever run.
+            startLocationUpdates()
 
             // Live cadence (steps/min) straight from CoreMotion.
             if CMPedometer.isCadenceAvailable() {
@@ -224,10 +245,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
             gpsCoords = []
             elevGainM = 0; lastAltitudeM = nil
 
-            locationManager.delegate = self
-            locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-            locationManager.distanceFilter = 5
-            locationManager.startUpdatingLocation()
+            startLocationUpdates()
 
             if CMPedometer.isCadenceAvailable() {
                 pedometer.startUpdates(from: Date()) { [weak self] data, _ in
@@ -372,11 +390,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         b.beginCollection(withStart: Date()) { _, _ in }
 
         // GPS + cadence back online (same configuration as start()).
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        locationManager.distanceFilter = 5
-        locationManager.requestWhenInUseAuthorization()
-        locationManager.startUpdatingLocation()
+        startLocationUpdates()
         if CMPedometer.isCadenceAvailable() {
             pedometer.startUpdates(from: Date()) { [weak self] data, _ in
                 guard let self, let c = data?.currentCadence else { return }
@@ -589,6 +603,20 @@ extension WorkoutTracker: HKWorkoutSessionDelegate {
 // MARK: - CLLocationManagerDelegate
 
 extension WorkoutTracker: CLLocationManagerDelegate {
+    /// The first-run authorization grant arrives here asynchronously, after
+    /// `start()` has already returned. Once the user has authorized, bring
+    /// the route online — but only while a run is actually recording, so a
+    /// late answer that lands after the workout ended doesn't spin location
+    /// back up.
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        guard status == .authorizedWhenInUse || status == .authorizedAlways else { return }
+        Task { @MainActor in
+            guard self.isRecording else { return }
+            manager.startUpdatingLocation()
+        }
+    }
+
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         // Drop low-accuracy fixes before they enter the route.
         let good = locations.filter { $0.horizontalAccuracy >= 0 && $0.horizontalAccuracy <= 50 }
