@@ -35,6 +35,7 @@ import {
   composeMaintenancePlan,
   composeRecoveryPlan,
   finalizeComposedPlan,
+  weekStartBoundaryOf,
 } from './generate';
 import { lookupTierTarget, pickPlanMode, type PlanMode } from './goal-tiers';
 import { tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
@@ -102,7 +103,7 @@ export type SimBuildResult = SimBuildOk | { ok: false; reason: string };
 
 /** Native onboarding answers → composed plan via the real engine. */
 export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedPrescriptions; rxRaceSpecific: ResolvedPrescriptions }): SimBuildResult {
-  let startMondayISO = sim.startDateISO;
+  const startMondayISO = sim.startDateISO;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startMondayISO)) return { ok: false, reason: 'invalid start date' };
 
   // ── shared runner-profile derivation (mirrors loadGeneratorInputs) ──
@@ -128,17 +129,14 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     restDow = (!aset.has(restDow) ? restDow : (unavail[0] ?? restDow)) as DOW;
     qualityDows = spacedQualityDowsFromAvailable(avail, longRunDow);
   }
-  // MAINT-ALIGN-1 (2026-06-24) · snap plan start BACK to the previous occurrence of
-  // longRunDow so plan weeks are longRunDow-aligned. Without this a Thu start date puts
-  // plan weeks Thu-Wed; the long (Sunday) then falls 3 days into the week, and the
-  // last maintenance week + first race-prep week both land in the same Sun-Sat calendar
-  // row ("W6 = 5 running days from two merged weeks"). Snapping backward never shortens
-  // the plan (adds days to the window) so maintenance-week floor() is unaffected.
-  {
-    const _d = new Date(startMondayISO + 'T12:00:00Z');
-    const _snapBack = (_d.getUTCDay() - longRunDow + 7) % 7;
-    if (_snapBack > 0) startMondayISO = addDaysISO(startMondayISO, -_snapBack);
-  }
+  // SIM-FIDELITY (2026-06-24) · the sim uses the LITERAL chosen start date, exactly as production
+  // onboarding does (generate.ts loadGeneratorInputs / seed-from-onboarding), so the previewed week-0
+  // matches what production builds — including frontLoadFirstRun ("run on day one" on the chosen start).
+  // The earlier MAINT-ALIGN-1 snap-to-longRunDow was reverted: it mutated the week-0 day shape away
+  // from production AND only aligned sun-long weeks anyway. Calendar-row alignment is now handled purely
+  // at render time (app/sim/plan/page.tsx groups days into rows by PLAN-WEEK membership, so no Sun-Sat
+  // row ever merges two training weeks — for ANY long-run day), which is the correct layer for a display
+  // concern. Keeping startMondayISO un-snapped is what makes the sim a faithful preview.
 
   // stated frequency → trainingDaysPerWeek + quality-count slice
   const rawFreq = Number.isFinite(sim.weeklyFrequency) ? Number(sim.weeklyFrequency) : null;
@@ -182,13 +180,14 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   } else if (sim.goalMode === 'goal') {
     raceDistanceMi = SIM_DISTANCE_MI[sim.distance];
     const weeks = Math.max(4, Math.min(52, Math.round(sim.planWeeks || 0)));
-    // Deadline = start + weeks·7, snapped FORWARD to Saturday — the LAST day of the Sun-Sat
-    // calendar week — so the goal "race" is the rightmost cell of its row, sitting at the
-    // end of the final taper week (a real weekend race day) instead of a mid-week date that
-    // strands post-race rest days, or a Sunday that starts a sparse trailing race row.
+    // SIM-FIDELITY · snap the goal deadline to the runner's LONG-RUN day, exactly as production does
+    // (generate.ts:3385 · raceDateISO = weekStartBoundaryOf(raw, (longRunDow+1)%7) + 6, which lands on
+    // longRunDow). The earlier unconditional Saturday-snap diverged from production for 6 of 7 long-run
+    // days — the sim previewed a Saturday race the runner would never get — and, with weeks now
+    // grouped by plan-week at render time, a non-Saturday long would leave trailing post-race rest days.
+    // Placing the race on longRunDow keeps it the natural end of its (now plan-week-grouped) final week.
     const rawDeadline = addDaysISO(startMondayISO, weeks * 7);
-    const toSat = (6 - new Date(rawDeadline + 'T12:00:00Z').getUTCDay() + 7) % 7;
-    raceDateISO = addDaysISO(rawDeadline, toSat);
+    raceDateISO = addDaysISO(weekStartBoundaryOf(rawDeadline, ((longRunDow + 1) % 7)), 6);
     goalSec = sim.goalTimeSec ?? null;
     mode = 'race-prep'; // goal-anchored is always a build
   } else {

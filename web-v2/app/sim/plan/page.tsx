@@ -130,48 +130,34 @@ export default function PlanSimulatorPage() {
   const plan = result?.plan;
   const derived = result?.derived;
   const validation = result?.validation;
-  // Re-bucket the plan into fixed Sun→Sat calendar weeks (David: "the week should go
-  // sun-sat"). Each plan day is placed on its real date; rows are calendar weeks so
-  // dates read left-to-right. Per-row mileage = the SCHEDULED day-sum (FID-3), never
-  // the phantom weeklyMi budget.
+  // Render ONE row per training week, each day placed in its Sun→Sat column (David: "the week should
+  // go sun-sat"). Grouping by PLAN-WEEK membership — not by raw Sun-Sat date windows — means a row never
+  // merges two training weeks, for ANY long-run-day / start-date (the prior date-bucket put a Mon-Sun
+  // week's Sunday long into the next row, piling it onto the following week → a row showing >frequency
+  // runs). Per-row mileage = the SCHEDULED day-sum (FID-3), never the phantom weeklyMi budget.
   const calendar = useMemo(() => {
     type CalRow = { weekNum: number; phase: string; isRaceWeek: boolean; mileage: number; cells: Array<{ date: string; day: SimDay | null }> };
     if (!plan) return [] as CalRow[];
-    const byDate = new Map<string, { day: SimDay; phase: string; isRaceWeek: boolean }>();
-    let minDate = '', maxDate = '';
+    const rows: CalRow[] = [];
+    let wk = 1;
     for (const w of plan.weeks) {
       const wStartDow = dowOf(w.startISO);
-      for (const d of w.days) {
-        const date = plusDays(w.startISO, (d.dow - wStartDow + 7) % 7);
-        byDate.set(date, { day: d, phase: w.phase, isRaceWeek: w.isRaceWeek });
-        if (!minDate || date < minDate) minDate = date;
-        if (!maxDate || date > maxDate) maxDate = date;
-      }
-    }
-    if (!minDate) return [] as CalRow[];
-    const rows: CalRow[] = [];
-    let cur = plusDays(minDate, -dowOf(minDate)); // Sunday on/before the first plan day
-    let wk = 1;
-    while (cur <= maxDate) {
+      const byDow = new Map<number, SimDay>();
+      for (const d of w.days) byDow.set(d.dow, d);
       const cells: Array<{ date: string; day: SimDay | null }> = [];
-      let mileage = 0, isRaceWeek = false, longPhase = '';
-      const phaseCount: Record<string, number> = {};
-      for (let k = 0; k < 7; k++) {
-        const date = plusDays(cur, k);
-        const entry = byDate.get(date);
-        cells.push({ date, day: entry?.day ?? null });
-        if (entry) {
-          mileage += entry.day.type === 'race' ? 0 : entry.day.distanceMi;
-          phaseCount[entry.phase] = (phaseCount[entry.phase] ?? 0) + 1;
-          if (entry.isRaceWeek) isRaceWeek = true;
-          if (entry.day.isLong) longPhase = entry.phase;
+      let mileage = 0, longPhase = '';
+      for (let dow = 0; dow < 7; dow++) {
+        const day = byDow.get(dow) ?? null;
+        const date = plusDays(w.startISO, (dow - wStartDow + 7) % 7);
+        cells.push({ date, day });
+        if (day) {
+          mileage += day.type === 'race' ? 0 : day.distanceMi;
+          if (day.isLong) longPhase = w.phase;
         }
       }
       if (cells.some((c) => c.day && c.day.type !== 'rest')) {
-        const phase = longPhase || (Object.entries(phaseCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '');
-        rows.push({ weekNum: wk++, phase, isRaceWeek, mileage: Math.round(mileage * 10) / 10, cells });
+        rows.push({ weekNum: wk++, phase: longPhase || w.phase, isRaceWeek: w.isRaceWeek, mileage: Math.round(mileage * 10) / 10, cells });
       }
-      cur = plusDays(cur, 7);
     }
     return rows;
   }, [plan]);

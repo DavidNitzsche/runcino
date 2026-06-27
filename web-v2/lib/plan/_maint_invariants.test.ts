@@ -112,31 +112,15 @@ describe('maintenance + display invariants (diagnostic)', () => {
                   }
                 }
 
-                // ── 3 · CAL_MERGE · replicate page.tsx Sun-Sat re-bucket, count runs per row ──
-                // tag each day with its plan-week index, place on real date, group Sun-Sat
-                const cells: Record<string, { run: boolean; wi: number }> = {};
-                built.composed.weeks.forEach((w: any, wi: number) => {
-                  const wsd = dowOf(w.startISO);
-                  for (const d of w.days) {
-                    const date = plusDays(w.startISO, (d.dow - wsd + 7) % 7);
-                    cells[date] = { run: d.type !== 'rest' && d.distanceMi > 0, wi };
-                  }
+                // ── 3 · CAL_MERGE · replicate the page.tsx render (group by PLAN-WEEK, one row per
+                // training week). The merge symptom (a rendered row showing more running days than the
+                // stated frequency because two training weeks share a Sun-Sat date window) cannot occur
+                // when rows are grouped by plan-week — each row is exactly one week, so runs ≤ freq.
+                built.composed.weeks.forEach((w: any) => {
+                  if (w.isRaceWeek) return;
+                  const runs = w.days.filter((d: any) => d.type !== 'rest' && d.distanceMi > 0).length;
+                  if (runs > freq) bump(calMerge, `${w.phase} row runs=${runs}>f${freq}`, arc);
                 });
-                const dates = Object.keys(cells).sort();
-                if (dates.length) {
-                  let cur = plusDays(dates[0], -dowOf(dates[0])); // Sunday on/before first day
-                  const last = dates[dates.length - 1];
-                  while (cur <= last) {
-                    let runs = 0; const wis = new Set<number>();
-                    for (let i = 0; i < 7; i++) {
-                      const c = cells[plusDays(cur, i)];
-                      if (c) { if (c.run) runs++; wis.add(c.wi); }
-                    }
-                    // a Sun-Sat row carrying days from ≥2 plan weeks = a merge; >freq runs = the visible symptom
-                    if (wis.size >= 2 && runs > freq) bump(calMerge, `row mergesWeeks=${wis.size} runs=${runs}>f${freq}`, arc);
-                    cur = plusDays(cur, 7);
-                  }
-                }
               }
 
     const tot = (m: Record<string, V>) => Object.values(m).reduce((s, v) => s + v.count, 0);
@@ -211,5 +195,51 @@ describe('maintenance + display invariants (diagnostic)', () => {
     // The training-days promise: within a QUALITY phase the quality weekday SET is constant (only the
     // workout TYPE rotates). Was 576 oscillating plans (audit) → hard 0 after QUAL-PHASE-STABLE.
     expect(total, `quality weekdays oscillate within a QUALITY phase — QUAL-PHASE-STABLE regressed`).toBe(0);
+  });
+
+  // ── SIM_FIDELITY · the sim cluster (#5/#6/#8), swept over EVERY long-run day ──
+  // The prior CAL_MERGE gate hardcoded long=sun and missed three classes the render-layer fix closes:
+  //   #6 CAL_MERGE — under plan-week grouping no rendered row may exceed the stated frequency, for ANY long day.
+  //   #5 RACE_WEEKDAY — the goal race cell must land on longRunDow (production parity), not a forced Saturday.
+  //   #8 WEEK0_START — the sim must compose from the LITERAL chosen start (no snap-to-longRunDow), so week-0
+  //      matches production (frontLoadFirstRun "run on day one"); weeks[0].startISO must equal the chosen start.
+  it('sim is faithful across every long-run day (#5 race weekday · #6 no merge · #8 literal start)', () => {
+    const LONGDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const dowOfDay = (d: string) => LONGDAYS.indexOf(d);
+    const GOAL_STARTS = ['2026-07-05', '2026-07-06', '2026-07-08']; // Sun, Mon, Wed
+    let merge = 0, raceOff = 0, week0Off = 0, plans = 0;
+    const ex: Record<string, string> = {};
+    for (const distance of DISTANCES)
+      for (const freq of [3, 4, 5, 6])
+        for (const mileage of [15, 35])
+          for (const longRunDay of LONGDAYS)
+            for (const startDateISO of GOAL_STARTS) {
+              const built = buildSimPlan({
+                goalMode: 'goal', distance, experienceLevel: 'intermediate', weeklyFrequency: freq,
+                weeklyMileageBucket: mileage, longestRunBucket: '6-10', longRunDay, restDay: 'sat',
+                startDateISO, raceDateISO: '', goalTimeSec: GOAL_SEC[distance], planWeeks: WEEKS[distance],
+                lastRaceFinishedDaysAgo: 0, lastRaceDistance: null, raceHistory: [], availableDays: [],
+              } as any);
+              if (!built.ok) continue;
+              plans++;
+              // #8 · week-0 composed from the literal chosen start (no snap-back)
+              if (built.composed.weeks[0]?.startISO !== startDateISO) { week0Off++; ex.week0 ??= `${distance}/${longRunDay}/start${startDateISO} → wk0 ${built.composed.weeks[0]?.startISO}`; }
+              // #6 · plan-week grouping → no row exceeds freq
+              for (const w of built.composed.weeks) {
+                if (w.isRaceWeek) continue;
+                const runs = w.days.filter((d: any) => d.type !== 'rest' && d.distanceMi > 0).length;
+                if (runs > freq) { merge++; ex.merge ??= `${distance}/f${freq}/${longRunDay} ${w.phase} runs=${runs}`; break; }
+              }
+              // #5 · race cell lands on longRunDow
+              const raceDay = built.composed.weeks.flatMap((w: any) => w.days).find((d: any) => d.type === 'race');
+              if (raceDay && raceDay.dow !== dowOfDay(longRunDay)) { raceOff++; ex.race ??= `${distance}/${longRunDay} race on dow${raceDay.dow}`; }
+            }
+    console.log(`\nSIM_FIDELITY: swept ${plans} goal plans · merge=${merge} raceOff=${raceOff} week0Off=${week0Off}`);
+    if (ex.merge) console.log(`  merge e.g. ${ex.merge}`);
+    if (ex.race) console.log(`  raceOff e.g. ${ex.race}`);
+    if (ex.week0) console.log(`  week0Off e.g. ${ex.week0}`);
+    expect(merge, `a rendered row exceeds the stated frequency — CAL_MERGE regressed (#6)`).toBe(0);
+    expect(raceOff, `goal race cell is not on the long-run day — sim/prod race-weekday parity broke (#5)`).toBe(0);
+    expect(week0Off, `week-0 startISO != chosen start — a start-snap was re-introduced (#8)`).toBe(0);
   });
 });
