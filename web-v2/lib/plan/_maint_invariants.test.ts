@@ -242,4 +242,35 @@ describe('maintenance + display invariants (diagnostic)', () => {
     expect(raceOff, `goal race cell is not on the long-run day — sim/prod race-weekday parity broke (#5)`).toBe(0);
     expect(week0Off, `week-0 startISO != chosen start — a start-snap was re-introduced (#8)`).toBe(0);
   });
+
+  // ── RECOVERY_CHAIN · a post-race runner with a far next race must see the forward build (#2) ──
+  // The HOLD+RACE-PREP chain was gated `mode==='maintenance'` and excluded recovery, so a post-race
+  // runner planning a next race saw only 1-4 recovery weeks and the plan stopped — the entire build was
+  // invisible (asymmetric with maintenance under identical geometry). Both hold modes must chain forward.
+  it('recovery-mode preview appends the forward build when a next race is far out (#2)', () => {
+    const PHASES_BUILD = new Set(['BASE', 'QUALITY', 'RACE-SPECIFIC', 'TAPER']);
+    let recoveryPlans = 0, noForward = 0;
+    const ex: string[] = [];
+    for (const lastDistance of ['half', 'marathon', '50k'] as const)
+      for (const distance of DISTANCES)
+        for (const freq of [4, 5])
+          for (const mileage of [25, 35]) {
+            const built = buildSimPlan({
+              goalMode: 'race', distance, experienceLevel: 'intermediate', weeklyFrequency: freq,
+              weeklyMileageBucket: mileage, longestRunBucket: '6-10', longRunDay: 'sun', restDay: 'sat',
+              startDateISO: '2026-07-06', raceDateISO: '2027-03-01', goalTimeSec: GOAL_SEC[distance],
+              planWeeks: 0, lastRaceFinishedDaysAgo: 7, lastRaceDistance: lastDistance, raceHistory: [], availableDays: [],
+            } as any);
+            if (!built.ok || built.mode !== 'recovery') continue;
+            recoveryPlans++;
+            const hasBuild = built.composed.weeks.some((w: any) => PHASES_BUILD.has(w.phase));
+            const endsOnRaceWeek = built.composed.weeks[built.composed.weeks.length - 1]?.isRaceWeek === true;
+            if (!hasBuild || !endsOnRaceWeek) { noForward++; if (ex.length < 5) ex.push(`last=${lastDistance}/next=${distance}/f${freq}/m${mileage} weeks=${built.composed.weeks.length} build=${hasBuild} endRace=${endsOnRaceWeek}`); }
+          }
+    console.log(`\nRECOVERY_CHAIN: ${recoveryPlans} recovery-mode plans · ${noForward} missing the forward build`);
+    for (const e of ex) console.log(`  ${e}`);
+    expect(recoveryPlans, 'no recovery-mode plans were exercised — the test matrix stopped triggering recovery').toBeGreaterThan(0);
+    // Was 6300/6300 missing the build (audit) → 0 after RECOVERY-CHAIN.
+    expect(noForward, `recovery preview is missing the forward race-prep build — RECOVERY-CHAIN regressed (#2)`).toBe(0);
+  });
 });

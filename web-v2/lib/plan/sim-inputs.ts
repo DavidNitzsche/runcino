@@ -258,26 +258,29 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     };
     composed = mode === 'recovery' ? composeRecoveryPlan(nonRace) : composeMaintenancePlan(nonRace);
 
-    // MAINT+RACE-PREP CHAIN (2026-06-24) · when a race is scheduled outside the build
-    // window, show maintenance weeks THEN the full race-prep plan in a single calendar.
-    // The user sees the complete picture: "maintenance until the build window opens, then
-    // your race plan." Without this, the sim only shows the maintenance block and the
-    // race-prep plan is invisible.
-    if (mode === 'maintenance' && sim.goalMode === 'race') {
-      const maintWeeksArr = composed.weeks;
-      const racePrepStartISO = addDaysISO(startMondayISO, maintWeeksArr.length * 7);
+    // HOLD+RACE-PREP CHAIN (2026-06-24) · when a race is scheduled outside the build window, show the
+    // hold block (maintenance OR recovery) THEN the full race-prep plan in a single calendar, so the
+    // runner sees the complete picture instead of a 1-4 week stub that just stops.
+    // RECOVERY-CHAIN (2026-06-24) · the guard previously read `mode === 'maintenance'`, so a post-race
+    // runner planning a next race resolved to mode='recovery' and saw ONLY the 1-4 recovery weeks — the
+    // entire periodized build was invisible (asymmetric with maintenance under identical geometry). Both
+    // hold modes now chain forward; composePlan from the post-recovery start seeds off the hold block's
+    // peak and ramps gradually from that deloaded base.
+    if ((mode === 'maintenance' || mode === 'recovery') && sim.goalMode === 'race') {
+      const holdWeeksArr = composed.weeks;
+      const racePrepStartISO = addDaysISO(startMondayISO, holdWeeksArr.length * 7);
       const daysTillRace = daysBetween(racePrepStartISO, raceDateISO);
       if (daysTillRace >= 14 && daysTillRace <= 365) {
-        const maintPeakWeekly = maintWeeksArr.reduce((mx, w) => Math.max(mx, w.weeklyMi), recentWeeklyMi);
-        const maintPeakLong = maintWeeksArr.reduce(
+        const holdPeakWeekly = holdWeeksArr.reduce((mx, w) => Math.max(mx, w.weeklyMi), recentWeeklyMi);
+        const holdPeakLong = holdWeeksArr.reduce(
           (mx, w) => Math.max(mx, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi), 0),
           recentLongMi,
         );
         const racePrepInput: ComposePlanInput = {
           raceDistanceMi, goalSec, goalPaceSec, raceDateISO,
           startMondayISO: racePrepStartISO, level,
-          recentWeeklyMi: maintPeakWeekly, easyDayMedianMi,
-          recentLongMi: Math.max(maintPeakLong, 1),
+          recentWeeklyMi: holdPeakWeekly, easyDayMedianMi,
+          recentLongMi: Math.max(holdPeakLong, 1),
           recentQualityDistanceMi: undefined, recentQualityPerWeek: undefined,
           bestRecentVdot, tsbAtStart: undefined, horizonRaces: undefined, isMidBlock: false,
           longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
@@ -288,11 +291,11 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
           finalizeComposedPlan(racePrepPlan, raceDistanceMi);
           composed = {
             ...racePrepPlan,
-            weeks: [...maintWeeksArr, ...racePrepPlan.weeks],
-            totalWeeks: maintWeeksArr.length + racePrepPlan.weeks.length,
+            weeks: [...holdWeeksArr, ...racePrepPlan.weeks],
+            totalWeeks: holdWeeksArr.length + racePrepPlan.weeks.length,
             vols: [...composed.vols, ...racePrepPlan.vols],
           };
-        } catch { /* compose failed · show maintenance block only */ }
+        } catch { /* compose failed · show the hold block only */ }
       }
     }
   }
