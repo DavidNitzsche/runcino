@@ -273,4 +273,37 @@ describe('maintenance + display invariants (diagnostic)', () => {
     // Was 6300/6300 missing the build (audit) → 0 after RECOVERY-CHAIN.
     expect(noForward, `recovery preview is missing the forward race-prep build — RECOVERY-CHAIN regressed (#2)`).toBe(0);
   });
+
+  // ── RACE_ON_AVAIL · the goal race cell must land on a declared-available day (#7) ──
+  // The old Saturday-snap ignored availableDays, stranding a 26.2mi RACE on a day the runner said they
+  // can't run. The SIM-FIDELITY race-snap (#5) now puts the race on longRunDow, which is itself forced
+  // to an available day (sim-inputs.ts longRunDow fallback) whenever availableDays is set — so #7 is
+  // closed by #5. This gate locks it: in any goalMode:'goal' plan with availableDays, the race cell's
+  // dow is in availableDays.
+  it('goal race cell lands on a declared-available day (#7)', () => {
+    const AVAIL_SETS = [['tue', 'thu', 'sun'], ['mon', 'wed', 'fri'], ['sun', 'wed', 'fri'], ['mon', 'tue', 'thu', 'sat'], ['tue', 'fri', 'sun']];
+    const dayDow: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+    let plans = 0, off = 0;
+    const ex: string[] = [];
+    for (const distance of DISTANCES)
+      for (const availableDays of AVAIL_SETS)
+        for (const longRunDay of ['sun', 'sat', 'wed']) {
+          const built = buildSimPlan({
+            goalMode: 'goal', distance, experienceLevel: 'intermediate', weeklyFrequency: 4,
+            weeklyMileageBucket: 25, longestRunBucket: '6-10', longRunDay, restDay: 'sat',
+            startDateISO: '2026-07-06', raceDateISO: '', goalTimeSec: GOAL_SEC[distance],
+            planWeeks: WEEKS[distance], lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
+            raceHistory: [], availableDays,
+          } as any);
+          if (!built.ok) continue;
+          plans++;
+          const avail = new Set(availableDays.map((d) => dayDow[d]));
+          const raceDay = built.composed.weeks.flatMap((w: any) => w.days).find((d: any) => d.type === 'race');
+          if (raceDay && !avail.has(raceDay.dow)) { off++; if (ex.length < 5) ex.push(`${distance}/long=${longRunDay}/avail=${availableDays.join('+')} race on dow${raceDay.dow}`); }
+        }
+    console.log(`\nRACE_ON_AVAIL: ${plans} goal plans with availableDays · ${off} with race on an unavailable day`);
+    for (const e of ex) console.log(`  ${e}`);
+    expect(plans, 'no constrained goal plans exercised').toBeGreaterThan(0);
+    expect(off, `goal race cell landed on a declared-unavailable day (#7)`).toBe(0);
+  });
 });
