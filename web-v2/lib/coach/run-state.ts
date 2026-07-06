@@ -8,7 +8,8 @@
  */
 import { pool } from '@/lib/db/pool';
 import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
-import { computeZones } from '@/lib/training/zones';
+import { computeZones, judgeEasyRunHr, type EasyHrVerdict } from '@/lib/training/zones';
+import { resolveThresholdHr, type ThresholdHrMethod } from '@/lib/training/lthr';
 import { baselineTempF } from '@/lib/weather/lookup';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
 import { enrichOneActivity, WEATHER_VERSION_CURRENT } from '@/lib/weather/openmeteo';
@@ -212,7 +213,34 @@ export interface RunDetail {
   route_polyline: string | null;  // Strava-encoded polyline if available
   splits: RunSplit[];
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
-  hr_zones_from_lthr: { lthr: number | null; ranges: { label: string; lower: number; upper: number }[] } | null;
+  /** LTHR-anchored zone ranges. 2026-07-06 · P1-43 · `lthr` now resolves via
+   *  resolveThresholdHr (stored profile.lthr → effective-maxHr crosswalk) so
+   *  maxHr-only runners get personalized zones instead of nothing. `method`
+   *  is additive — 'maxhr-crosswalk' means ESTIMATED · surfaces must label
+   *  it, never present it as a tested threshold. */
+  hr_zones_from_lthr: {
+    lthr: number | null;
+    method?: ThresholdHrMethod;
+    ranges: { label: string; lower: number; upper: number }[];
+  } | null;
+  /** 2026-07-06 · P1-43 fix · server-computed easy-run HR read. The phone's
+   *  AEROBIC STAMP panel was judging every runner's easy-run avg HR against
+   *  a hardcoded LTHR of 162; this field carries the judgment against the
+   *  runner's OWN threshold so every surface renders the same number.
+   *  Non-null ONLY when (a) the run is an easy/recovery day, (b) avg HR
+   *  exists, and (c) a real threshold resolved — when it's null the HR
+   *  judgment is SKIPPED entirely (bare avg HR, no delta, no verdict).
+   *  Never fabricated. Bands: judgeEasyRunHr (Friel · Research/03 §6),
+   *  heat-shifted per Research/06 §1. */
+  easy_hr_read: {
+    avg_hr: number;
+    threshold_bpm: number;
+    threshold_method: ThresholdHrMethod;
+    delta_bpm: number;          // avg_hr − threshold_bpm · negative = under
+    easy_ceiling_bpm: number;   // Friel Z2 upper (0.89 × LTHR) + heat bump
+    heat_bump_bpm: number;
+    verdict: EasyHrVerdict;
+  } | null;
   form: RunForm;                  // Apple Watch form metrics for that day
   /** Migration 120 · structured spec for the plan_workouts row matching
    *  this run's date (if any). Drives the WorkoutBreakdown component on
@@ -481,14 +509,16 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
 
   // Bring the user's LTHR-anchored zone ranges so the modal can render
   // an actionable "where your HR landed" panel.
-  const lthrRow = await pool.query(
-    `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
-    [userId]
-  ).catch(() => ({ rows: [] }));
-  const lthr = lthrRow.rows[0]?.lthr ?? null;
-  const zoneTable = lthr ? computeZones({ lthr }) : null;
-  const hr_zones_from_lthr = zoneTable ? {
-    lthr,
+  // 2026-07-06 · P1-43 fix · resolve via resolveThresholdHr (stored
+  // profile.lthr → effective-maxHr §11 crosswalk) instead of reading only
+  // profile.lthr. maxHr-only runners now get personalized zones; the
+  // `method` field lets surfaces label crosswalk-derived numbers as
+  // estimated. Still null at true cold start — never fabricated.
+  const thresholdHr = await resolveThresholdHr(userId).catch(() => null);
+  const zoneTable = thresholdHr ? computeZones({ lthr: thresholdHr.bpm }) : null;
+  const hr_zones_from_lthr = (zoneTable && thresholdHr) ? {
+    lthr: thresholdHr.bpm,
+    method: thresholdHr.method,
     ranges: zoneTable.zones.map((z) => ({ label: z.shortLabel, lower: z.lower, upper: z.upper })),
   } : null;
 
@@ -557,21 +587,23 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // widening the slow side for pace. Null unless hot + a known bump · the
   // panel falls back to the raw share.
   let easyShareHeatAdj: number | null = null;
-  if (heatSlowdownPct >= 6) {
-    // Heat HR-elevation to shift the easy zones up by. Prefer the baseline-
-    // relative bump (weatherCtx) when present, else derive from absolute temp
-    // vs a ~60°F thermoneutral reference — the cited Maughan rule (~1 bpm/°F
-    // above 60°F, capped 10 · Research/06-weather-adjustments.md §1). Watch
-    // rows are polyline-only (no flat startLat/startLng), so weatherCtx is
-    // usually null and the absolute-temp path is what actually carries this.
-    const heatBumpBpm = (weatherCtx && weatherCtx.hr_bump_bpm > 0)
-      ? weatherCtx.hr_bump_bpm
-      : (actualTempF != null ? Math.max(0, Math.min(10, Math.round(actualTempF - 60))) : 0);
-    if (heatBumpBpm > 0) {
-      const adj = await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, heatBumpBpm);
-      easyShareHeatAdj = Math.round((adj.z1 ?? 0) + (adj.z2 ?? 0));
-    }
+  // Heat HR-elevation to shift the easy zones up by. Prefer the baseline-
+  // relative bump (weatherCtx) when present, else derive from absolute temp
+  // vs a ~60°F thermoneutral reference — the cited Maughan rule (~1 bpm/°F
+  // above 60°F, capped 10 · Research/06-weather-adjustments.md §1). Watch
+  // rows are polyline-only (no flat startLat/startLng), so weatherCtx is
+  // usually null and the absolute-temp path is what actually carries this.
+  // 2026-07-06 · hoisted out of the >= 6 gate so easy_hr_read below shares
+  // the same number; the gate itself (HOT runs only) is applied where used.
+  const heatBumpRawBpm = (weatherCtx && weatherCtx.hr_bump_bpm > 0)
+    ? weatherCtx.hr_bump_bpm
+    : (actualTempF != null ? Math.max(0, Math.min(10, Math.round(actualTempF - 60))) : 0);
+  const heatBumpBpm = heatSlowdownPct >= 6 ? heatBumpRawBpm : 0;
+  if (heatBumpBpm > 0) {
+    const adj = await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, heatBumpBpm);
+    easyShareHeatAdj = Math.round((adj.z1 ?? 0) + (adj.z2 ?? 0));
   }
+
   const phaseBreakdown = await loadPhaseBreakdown(userId, day, heatSlowdownPct);
 
   // Per-split phase tagging · walks the phaseBreakdown's cumulative
@@ -597,7 +629,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // back to the placeholder card.
   const plannedRow = day
     ? (await pool.query(
-        `SELECT pw.workout_spec, pw.sub_label, pw.distance_mi
+        `SELECT pw.workout_spec, pw.sub_label, pw.distance_mi, pw.type
            FROM plan_workouts pw
            JOIN training_plans tp ON tp.id = pw.plan_id
           WHERE tp.user_uuid = $1
@@ -612,6 +644,52 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const planned_distance_mi = plannedRow?.distance_mi != null
     ? Number(plannedRow.distance_mi)
     : null;
+
+  // 2026-07-06 · P1-43 fix · server-side easy-run HR read against the
+  // runner's OWN threshold (resolveThresholdHr above · stored LTHR or
+  // effective-maxHr crosswalk). Replaces the phone panel's hardcoded
+  // LTHR 162. Day gate: the run's own type when it carries a coach type;
+  // most Strava-source rows carry type 'Run' (verified live 2026-07-06),
+  // so those fall back to the PLANNED day's type — a 'Run' on a planned
+  // easy day is an easy run. Unplanned generic rows stay null (unknown
+  // intent · don't judge a fartlek as a failed easy run). Per-finding
+  // context filter: the heat bump resolves on THIS observation (same
+  // HOT-run gate as easy_share_heat_adj). Null → the judgment is skipped
+  // entirely — no verdict beats a wrong constant.
+  const easy_hr_read = (() => {
+    const runType = String(r.type ?? '').toLowerCase();
+    const QUALITY_TYPES = new Set([
+      'tempo', 'threshold', 'interval', 'intervals', 'race', 'long',
+      'fartlek', 'progression', 'race_week_tuneup', 'workout', 'mp',
+    ]);
+    let isEasyDay: boolean;
+    if (runType === 'easy' || runType === 'recovery') {
+      isEasyDay = true;
+    } else if (QUALITY_TYPES.has(runType)) {
+      isEasyDay = false;
+    } else {
+      const plannedType = String(plannedRow?.type ?? '').toLowerCase();
+      isEasyDay = plannedType === 'easy' || plannedType === 'recovery';
+    }
+    if (!isEasyDay) return null;
+    const avgHr = Number(r.avgHr) || null;
+    if (avgHr == null || thresholdHr == null) return null;
+    const judged = judgeEasyRunHr({
+      avgHrBpm: avgHr,
+      thresholdBpm: thresholdHr.bpm,
+      heatBumpBpm,
+    });
+    if (!judged) return null;
+    return {
+      avg_hr: Math.round(avgHr),
+      threshold_bpm: thresholdHr.bpm,
+      threshold_method: thresholdHr.method,
+      delta_bpm: judged.deltaBpm,
+      easy_ceiling_bpm: judged.easyCeilingBpm,
+      heat_bump_bpm: heatBumpBpm,
+      verdict: judged.verdict,
+    };
+  })();
 
   // Inline shoe inventory — same shape as GET /api/shoe but bundled here
   // so the modal opens with no second round-trip. Mileage is computed
@@ -753,6 +831,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     hrZonePcts,
     easy_share_heat_adj: easyShareHeatAdj,
     hr_zones_from_lthr,
+    easy_hr_read,
     form,
     phase_breakdown: phaseBreakdown,
     planned_spec,
