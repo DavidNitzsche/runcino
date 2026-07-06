@@ -251,9 +251,9 @@ export async function PATCH(req: NextRequest) {
     // 6 · profile edits change zones + paces; bust the in-process memos.
     await bustBriefingCacheForEvent(userId, 'profile_edit');
 
-    // 7 · plan-shaping change → rebuild the active race-prep plan inline,
-    //     same generatePlan path as the race hooks. Failure is isolated so
-    //     the settings save still succeeds.
+    // 7 · plan-shaping change → rebuild the active race-prep OR goal-mode
+    //     plan inline (2026-07-06 · P1-16), same generatePlan path as the
+    //     race hooks. Failure is isolated so the settings save still succeeds.
     let replanned = false;
     if (changedPlanShaping.length > 0) {
       const r = await rebuildActivePlanForPrefs(userId, changedPlanShaping).catch(() => ({ ok: false }));

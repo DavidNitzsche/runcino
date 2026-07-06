@@ -168,8 +168,20 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
  * hooks use, so the edit takes effect immediately instead of waiting for
  * the next organic rebuild.
  *
+ * 2026-07-06 · P1-16 · goal-mode plans (no-race fitness goal · race_id NULL,
+ * authored_state.goal_mode) rebuild through the SAME path. They used to bail
+ * at the race_id gate BEFORE the plan_proposals audit insert — the setting
+ * saved, /api/plan/week re-bucketed the week by the new long_run_day, but
+ * every prescribed workout stayed on the old days with no error and no
+ * pending row to retry. Regenerated via the canonical goalTarget entry
+ * (generate.ts GOAL-MODE) off the goal the plan itself recorded
+ * (authored_state.goal_distance_mi/goal_sec + goal_iso deadline), so the
+ * deadline holds and only the shaping changes. NOT freshTarget — this is a
+ * same-goal regen, the prior-plan corruption check must still run.
+ *
  * No-op (returns ok:false, no throw) when the runner has no active
- * race-prep plan · the new prefs simply apply at the next build.
+ * race-prep or goal-mode plan (maintenance/recovery plans reshape at their
+ * next organic build) · the new prefs simply apply at the next build.
  *
  * De-duped within 30s on (user, 'settings_prefs') so a burst of single-
  * field PATCHes from the Settings UI rebuilds once, not N times.
@@ -178,13 +190,28 @@ export async function rebuildActivePlanForPrefs(
   userUuid: string,
   changedFields: string[],
 ): Promise<AutoRebuildResult> {
-  const plan = (await pool.query<{ id: string; race_id: string | null }>(
-    `SELECT id, race_id FROM training_plans
+  type ActivePlanRow = {
+    id: string; race_id: string | null; goal_iso: string | null;
+    goal_mode: string | null; goal_distance_mi: string | null; goal_sec: string | null;
+  };
+  const plan = (await pool.query<ActivePlanRow>(
+    `SELECT id, race_id, goal_iso,
+            authored_state->>'goal_mode'        AS goal_mode,
+            authored_state->>'goal_distance_mi' AS goal_distance_mi,
+            authored_state->>'goal_sec'         AS goal_sec
+       FROM training_plans
       WHERE user_uuid = $1::uuid AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,
     [userUuid],
-  ).catch(() => ({ rows: [] as Array<{ id: string; race_id: string | null }> }))).rows[0];
-  if (!plan?.race_id) return { ok: false, reason: 'no_active_race_plan' };
+  ).catch(() => ({ rows: [] as ActivePlanRow[] }))).rows[0];
+  if (!plan) return { ok: false, reason: 'no_active_race_plan' };
+  // Goal-mode gate · race_id NULL alone is NOT enough (maintenance/recovery
+  // plans also carry NULL) — require the goal_mode stamp + a usable goal.
+  const goalModeDistanceMi = plan.goal_distance_mi != null ? Number(plan.goal_distance_mi) : null;
+  const isGoalMode = plan.goal_mode === 'true'
+    && goalModeDistanceMi != null && Number.isFinite(goalModeDistanceMi) && goalModeDistanceMi > 0
+    && !!plan.goal_iso;
+  if (!plan.race_id && !isGoalMode) return { ok: false, reason: 'no_active_race_plan' };
 
   // De-dupe rapid single-field PATCHes from the Settings UI.
   const recent = (await pool.query<{ id: number; new_plan_id: string | null }>(
@@ -208,7 +235,21 @@ export async function rebuildActivePlanForPrefs(
   let rebuildOk = false;
   let rebuildReason: string | undefined;
   try {
-    const result = await generatePlan({ userId: userUuid, raceSlug: String(plan.race_id) });
+    // Race-prep plans regen off their race; goal-mode plans (P1-16) regen off
+    // the goal the plan recorded — same distance, same target, same deadline
+    // (goal_iso) — through the canonical goalTarget entry. Only the shaping
+    // prefs (which generatePlan re-reads itself) change.
+    const result = plan.race_id
+      ? await generatePlan({ userId: userUuid, raceSlug: String(plan.race_id) })
+      : await generatePlan({
+          userId: userUuid,
+          goalTarget: {
+            distanceMi: goalModeDistanceMi as number,
+            goalSec: plan.goal_sec != null && Number.isFinite(Number(plan.goal_sec))
+              ? Number(plan.goal_sec) : null,
+            raceDateISO: String(plan.goal_iso).slice(0, 10),
+          },
+        });
     if (result.ok) { rebuildOk = true; newPlanId = result.plan_id; }
     else rebuildReason = result.reason;
   } catch (e: unknown) {

@@ -1268,6 +1268,25 @@ export function computeConfidenceLabel(args: {
   };
 }
 
+/**
+ * 2026-07-06 · P1-14 reconciliation · a LOW goal-attainment confidence and an
+ * ON PACE hero cannot coexist on one payload. The runway cap in
+ * fitness-trajectory closes the main path (an unclosable gap no longer
+ * projects reachable), but one edge survives it: runway < 2 weeks with a tiny
+ * positive gap (≤ 0.2 VDOT, inside the trajectory's noise grace) grades LOW
+ * ("no time left to close it") while the trajectory still reads reachable.
+ * Whatever surface derives a status from the trajectory runs it through this
+ * gate so the two signals agree: LOW demotes on_track → watch; every other
+ * combination passes through untouched.
+ */
+export type TargetsStatus = 'on_track' | 'watch' | 'off' | 'race_week' | 'cold';
+export function reconcileStatusWithConfidence(
+  status: TargetsStatus,
+  confidenceTier: ConfidenceLabel['tier'] | null | undefined,
+): TargetsStatus {
+  return status === 'on_track' && confidenceTier === 'low' ? 'watch' : status;
+}
+
 /** Format helper · seconds → "1:30:00" or "30:00". */
 export function formatGoalTime(sec: number | null): string {
   if (sec == null) return '·';
