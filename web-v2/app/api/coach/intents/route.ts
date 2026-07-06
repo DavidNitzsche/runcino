@@ -175,6 +175,14 @@ function summarize(reason: string, field: string | null, value: unknown): string
       return `Sleep was short · the coach softened tomorrow's load.`;
     case 'plan_adapt_missed_key_workout':
       return `A key workout was missed · the coach reshaped the week.`;
+    case 'plan_adapt_drop_missed':
+      return `A missed session passed its window · dropped, not rescheduled.`;
+    case 'plan_adapt_missed_noted':
+      return `A missed long run was recorded · long runs are never crammed back in.`;
+    case 'plan_adapt_gap':
+      return `Training gap detected · comeback protocol applied.`;
+    case 'plan_adapt_gap_rebuild':
+      return `Long layoff · plan rebuild recommended before resuming.`;
     case 'plan_adapt_niggle_reported':
       return `Niggle logged · plan now favors lower impact.`;
     case 'plan_adapt_pr_bank':

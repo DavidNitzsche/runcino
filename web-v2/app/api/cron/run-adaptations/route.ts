@@ -1,9 +1,10 @@
 /**
  * POST /api/cron/run-adaptations  (P38)
  *
- * Daily adaptation pass — detects triggers (missed key workout, RHR
- * spike, sleep crater, volume overshoot) and applies actions to
- * plan_workouts. Idempotent.
+ * Daily adaptation pass — detects triggers (training gap, missed key
+ * workout, readiness pullback, volume overshoot, niggle/sick/injury,
+ * PR bank, goal change) and applies actions to plan_workouts.
+ * Idempotent.
  *
  * Auth: CRON_SECRET. Schedule: 07:15 UTC = 00:15 PT (between briefing
  * cron at 07:05 and weather cron at 07:30). Adaptation must happen
@@ -14,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { detectAdaptations, applyAdaptations } from '@/lib/plan/adapt';
+import { detectAdaptations, applyAdaptations, partitionActionsForCron } from '@/lib/plan/adapt';
 import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
@@ -77,25 +78,23 @@ export async function POST(req: NextRequest) {
         // Mixed or non-pullback triggers · apply immediately. (If
         // readiness_pullback is mixed in with something else, e.g.
         // niggle + pullback, we apply the niggle response now and
-        // skip the pullback portion · the next evening cron picks
-        // up the pullback as its own proposal.)
-        const nonPullbackActions = actions.filter((_, i) => {
-          // The actions array correlates 1:1 with triggers (per
-          // detectAdaptations + actionsForTrigger contract). We
-          // strip actions whose source trigger is readiness_pullback.
-          // If indices don't align cleanly, default to apply (safer
-          // than dropping a real signal).
-          const trig = triggers[i];
-          return trig?.kind !== 'readiness_pullback';
-        });
-        applied = await applyAdaptations(uid, nonPullbackActions);
+        // propose the pullback portion separately.)
+        //
+        // 2026-07-06 · P1-37 · actions do NOT correlate 1:1 with
+        // triggers (missed_key_workout emits up to 2+N actions, sick/
+        // injury emit 0, pullback emits 0-1) — the old triggers[i]
+        // index walk misrouted anti-stacking downgrades into
+        // mislabeled readiness proposals that expired unseen (live
+        // twice: Jul 1 + Jul 6 on David's plan). Partition on each
+        // action's OWN sourceTrigger tag instead.
+        const { applyNow, proposeFirst } = partitionActionsForCron(actions);
+        applied = await applyAdaptations(uid, applyNow);
 
         // The pullback portion (if any) still gets proposed.
-        const pullbackActions = actions.filter((_, i) => triggers[i]?.kind === 'readiness_pullback');
-        if (pullbackActions.length > 0) {
+        if (proposeFirst.length > 0) {
           const pullbackTriggers = triggers.filter((t) => t.kind === 'readiness_pullback');
           const { writeWorkoutProposals } = await import('@/lib/plan/workout-proposals');
-          proposed = await writeWorkoutProposals(uid, pullbackActions, pullbackTriggers);
+          proposed = await writeWorkoutProposals(uid, proposeFirst, pullbackTriggers);
         }
       }
 

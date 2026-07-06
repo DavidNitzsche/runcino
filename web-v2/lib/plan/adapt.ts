@@ -7,10 +7,30 @@
  *
  * Detection triggers (all cite Research):
  *
- *   1. MISSED_KEY_WORKOUT — planned threshold/intervals not completed
- *      within ±1d. → Reschedule that workout 2-3d forward; downgrade
- *      next quality day to recovery (avoid stacking).
+ *   0. TRAINING_GAP (2026-07-06 · phone+watch audit P1-36) — unplanned
+ *      layoff detected from days since the last canonical run. Owns the
+ *      comeback response and SUPPRESSES missed-workout rescheduling
+ *      while active (doctrine: resume the schedule, never cram).
+ *      · 4-7 days off  → substitute first upcoming quality with easy
+ *      · 8-14 days off → re-entry week at 70% volume, week 2 at 85%,
+ *        intensity dropped for the first week
+ *      · >14 days off  → propose-only: plan rebuild + VDOT haircut
+ *      Cite: Research/22-plan-templates.md §14 Comeback Plans (628-651)
+ *      Cite: Research/01-pace-zones-vdot.md:319-320 (layoff VDOT drop)
+ *
+ *   1. MISSED_KEY_WORKOUT — planned quality (threshold/tempo/intervals/
+ *      vo2max) not completed within ±1d, completion measured against
+ *      the PRESCRIBED distance (≥60%), not a flat 4mi. Reschedule only
+ *      into a verified-clear day within today+1..today+4 (no collision,
+ *      no rest day, no long-run day, respects weekly_frequency, never
+ *      race week / within 3d of a race); missed work older than 3 days
+ *      or with no clear slot is DROPPED with a coach_intents record —
+ *      it becomes data, not debt. Missed LONG runs are recorded as data
+ *      only, never rescheduled.
  *      Cite: Research/00a-distance-running-training.md §missed-workout-policy  // TODO: no matching heading — content exists but heading not anchored
+ *      Cite: Research/22-plan-templates.md §14 (resume schedule; a 70%
+ *      volume week still banks the stimulus → ≥60% of a prescription
+ *      counts as done, not missed)
  *
  *   2. RHR_SPIKE — 3-day avg RHR > 7 bpm above 14-day baseline.
  *      → Convert next quality day to easy; flag readiness.
@@ -20,22 +40,30 @@
  *      → Convert next quality day to easy.
  *      Cite: Research/00b-recovery-protocols.md §Sleep  // was §sleep-as-recovery · heading: ### Sleep — The Highest-ROI Recovery Tool
  *
- *   4. VOLUME_OVERSHOOT — last 7d running volume > 25% above current
- *      experience-level cap (P33).
- *      → Shave next 7d by 15-20% (proportional).
+ *   4. VOLUME_OVERSHOOT — last 7d completed volume > 25% above what the
+ *      ACTIVE PLAN scheduled for the same trailing window (2026-07-06 ·
+ *      P1-55: the old static experience cap contradicted the generator's
+ *      own tier bands and shaved compliant runners daily; the plan's own
+ *      prescription is the baseline now, the experience cap is only the
+ *      no-schedule fallback). One shave per rolling 7 days (cooldown).
+ *      → Shave next 7d by 17% (proportional).
  *      Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  *
  *   5. PR_BANK — recent race finish that implies VDOT jump > 1.5 pts.
  *      → Recompute paces; mark plan_workouts as needing prescription refresh.
  *      Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces  // was §VDOT-recalibrate · heading: ## How to recalibrate paces
  *
- * Output: array of `AdaptationAction`s. The caller applies them in
- * a single DB transaction, then bumps the plan's `last_adapted_at` so
- * the coach can see when the plan changed.
+ * Output: array of `AdaptationAction`s, each tagged with its source
+ * trigger kind (2026-07-06 · P1-37: the cron used to pair actions[i]
+ * with triggers[i], but triggers emit 0..2 actions each, so the index
+ * walk misrouted anti-stacking downgrades into mislabeled readiness
+ * proposals). The caller applies them in a single DB transaction, then
+ * bumps the plan's `last_adapted_at` so the coach can see when the
+ * plan changed.
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
+import { getCanonicalRunIds, isoDaysBefore, mileageByDay } from '@/lib/runs/volume';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
 
@@ -92,7 +120,8 @@ export type AdaptationTriggerKind =
   | 'niggle_reported'     // Q-04 · active niggle severity threshold
   | 'sick_episode_active' // Q-03 · active illness · propose, never auto
   | 'injury_active'       // Q-08 · active runner_injuries row · propose
-  | 'goal_changed';       // runner edited goal time → mark paces stale
+  | 'goal_changed'        // runner edited goal time → mark paces stale
+  | 'training_gap';       // 2026-07-06 · unplanned layoff · Research/22 §14
 
 export interface AdaptationTrigger {
   kind: AdaptationTriggerKind;
@@ -102,7 +131,7 @@ export interface AdaptationTrigger {
 }
 
 export interface AdaptationAction {
-  kind: 'reschedule' | 'downgrade' | 'shave' | 'recompute_paces' | 'mark_dirty' | 'mark_upgrade';
+  kind: 'reschedule' | 'downgrade' | 'shave' | 'recompute_paces' | 'mark_dirty' | 'mark_upgrade' | 'note';
   workoutIds?: string[];      // plan_workouts.id targeted
   newType?: string;
   newDate?: string;
@@ -112,6 +141,27 @@ export interface AdaptationAction {
    *  with a SQL guard ensuring distance never decreases (only bumps
    *  UP). Long bump capped at +1mi · weekly total capped at +5mi. */
   bumps?: Array<{ workoutId: string; newDistanceMi: number }>;
+  /** 2026-07-06 · P1-37 · provenance tag. Every action carries the
+   *  trigger kind that produced it so the cron can split apply-now vs
+   *  propose-first per ACTION, never by array-index alignment against
+   *  the triggers list (triggers emit 0..2 actions each — index walks
+   *  misroute). Optional for wire back-compat (proposal accept route
+   *  reconstructs actions without it → treated as apply-now, same
+   *  default-to-apply posture as before). */
+  sourceTrigger?: AdaptationTriggerKind;
+  /** 2026-07-06 · 'note' actions · record-only. Writes a coach_intents
+   *  row (reason = noteReason, field = workoutIds[0] ?? noteField) and
+   *  mutates NOTHING in plan_workouts. Used for: dropped missed work
+   *  (data, not debt), missed-long records, gap-handled markers, and
+   *  the >14d rebuild recommendation. */
+  noteReason?: string;
+  noteField?: string | null;
+  noteValue?: Record<string, unknown>;
+  /** 2026-07-06 · anti-stacking coupling guard. A downgrade emitted to
+   *  offset a reschedule is skipped when that reschedule did not land
+   *  (e.g. seal-filtered) — otherwise the offset destroys a quality
+   *  day without the added load it was offsetting. */
+  onlyIfRescheduledId?: string;
   why: string;                // for the coach to repeat
 }
 
@@ -122,23 +172,395 @@ export interface AdaptationResult {
 }
 
 /**
- * Experience-level volume caps (P33). Multiplied by current peak
- * mileage in the plan to determine "overshoot" threshold.
+ * Experience-level volume caps (P33) — FALLBACK ONLY as of 2026-07-06
+ * (P1-55). detectVolumeOvershoot now baselines against the ACTIVE
+ * PLAN's scheduled volume for the same trailing window; this table is
+ * consulted only when the plan has nothing scheduled in the window.
+ *
+ * Values re-derived from the generator's own tier bands (goal-tiers.ts
+ * TIER_TARGETS) so the fallback can never contradict a plan the
+ * generator itself prescribed. Mapping (same as adapter-bench.test.ts):
+ * beginner→developing, intermediate→intermediate, advanced→advanced,
+ * advanced_plus→elite; cap = the level's max peakWeeklyMileageBand top
+ * across distances, rounded so cap × 1.25 clears the band:
+ *   developing max 55 (ultra)   → 45   (45 × 1.25 = 56.25 ≥ 55)
+ *   intermediate max 75 (ultra) → 60   (60 × 1.25 = 75    ≥ 75)
+ *   advanced max 100 (ultra)    → 80   (80 × 1.25 = 100   ≥ 100)
+ *   elite max 120 (ultra)       → 110  (110 × 1.25 = 137.5 ≥ 120)
+ * The old {25, 45, 75, 110} table fired on doctrine-compliant plans:
+ * a beginner clamps only DOWN to 'intermediate' tier (goal-tiers.ts
+ * classifyGoalTier), whose marathon band is 40-55mi — over the old
+ * beginner threshold of 31.25mi for most of a build.
  */
 export const EXPERIENCE_CAPS_MI: Record<ExperienceLevel, number> = {
-  beginner:      25,
-  intermediate:  45,
-  advanced:      75,
+  beginner:      45,
+  intermediate:  60,
+  advanced:      80,
   advanced_plus: 110,
 };
+
+// ── Pure decision core (2026-07-06 · phone+watch audit adapter fixes) ──
+// Exported so lib/plan/_adapt_invariants.test.ts can lock the math the
+// SQL shell feeds — same test posture as adapter-bench.test.ts.
+
+/** Quality types the missed detector + anti-stacking guard operate on. */
+export const QUALITY_TYPES = ['threshold', 'tempo', 'intervals', 'vo2max'] as const;
+
+/** Rows the adapter must never shave or downgrade — race execution is
+ *  owned by the race-week machinery, not the volume adapter. Per-finding
+ *  context filter (CLAUDE.md locked 2026-05-19 round 4): each adapter
+ *  action re-asks the race-calendar question itself. */
+export const RACE_PROTECTED_TYPES = ['race', 'race_week_tuneup', 'shakeout'] as const;
+
+/** Signed whole days from `a` to `b` (positive when b is after a).
+ *  Noon-anchored → DST-safe, same idiom as isoDaysBefore. */
+export function daysBetweenISO(a: string, b: string): number {
+  return Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86400000);
+}
+
+/** ISO date `days` after `isoDate` (noon-anchored → DST-safe). */
+export function plusDaysISO(isoDate: string, days: number): string {
+  return new Date(Date.parse(isoDate + 'T12:00:00Z') + days * 86400000)
+    .toISOString().slice(0, 10);
+}
+
+/** 0=Sun..6=Sat — same convention as plan_workouts.dow and
+ *  app/api/today/reschedule. */
+export function dowOfISO(isoDate: string): number {
+  return new Date(isoDate + 'T12:00:00Z').getUTCDay();
+}
+
+const DOW_OF_SHORTCODE: Record<string, number> = {
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+};
+
+/**
+ * Workout-relative completion threshold (2026-07-06 · P1-40/P1-54).
+ * A run covering ≥60% of the prescribed distance within ±1d counts as
+ * done. The old flat ≥4mi gate declared every completed sub-4mi quality
+ * session missed (5K-plan intervals are routinely ~3mi — the same
+ * population the 2026-06-15 vdotRunFloorMi fix served) and let any 4mi
+ * easy jog satisfy an unrelated 8mi tempo.
+ * Cite: Research/22-plan-templates.md §14 — a 70%-volume comeback week
+ * still banks the stimulus; ≥60% of a prescription is a completed-enough
+ * session, not a missed one.
+ * No prescribed distance → legacy 4mi fallback.
+ */
+export function completionThresholdMi(prescribedMi: number | null): number {
+  if (prescribedMi == null || !Number.isFinite(prescribedMi) || prescribedMi <= 0) return 4;
+  return Math.min(prescribedMi, Math.max(1, prescribedMi * 0.6));
+}
+
+/**
+ * Staleness expiry (2026-07-06 · P1-38). A workout whose ORIGINAL date
+ * is more than 3 days past is never rescheduled — the stimulus window
+ * is gone; it becomes data (drop note), not debt. Uses the original
+ * date so a row a runner moved forward can't ride indefinitely.
+ */
+export function isStaleMissed(originalDateISO: string, todayISO: string): boolean {
+  return daysBetweenISO(originalDateISO, todayISO) > 3;
+}
+
+/** True when `dateISO` is inside a race week ([race-6d, race]) or within
+ *  3 days either side of any known race. Task rule: never reschedule
+ *  into race week or within 3 days of a race (races via
+ *  training_plans.race_id / goal_iso / races table). */
+export function dateNearRace(dateISO: string, raceDates: string[]): boolean {
+  for (const r of raceDates) {
+    if (!r) continue;
+    const delta = daysBetweenISO(dateISO, r); // >0 → race is ahead of dateISO
+    if (delta >= 0 && delta <= 6) return true; // race week · the 7 days ending at the race
+    if (Math.abs(delta) <= 3) return true;     // ±3d buffer (covers post-race recovery too)
+  }
+  return false;
+}
+
+/** Per-candidate-day context for chooseRescheduleDate. Built from
+ *  plan_workouts rows by the DB shell in actionsForTrigger. */
+export interface RescheduleDayContext {
+  /** running rows already on the date (type not in rest/strength) */
+  runCount: number;
+  /** any quality or long row on the date — adjacency probes read this */
+  qualityOrLong: boolean;
+  /** a rest row on the date = deliberately placed rest day */
+  hasRestRow: boolean;
+  /** running rows already in this date's plan week, EXCLUDING the
+   *  workout being moved (so a same-week move doesn't double-count).
+   *  null → unknown → frequency check skipped. */
+  weekRunCount: number | null;
+}
+
+/**
+ * Reschedule target search (2026-07-06 · P1-35/P1-46/P2-67). Walks
+ * today+1..today+4 and returns the first day that passes EVERY guard:
+ *   · no existing running workout (collision — the double-booked-day bug)
+ *   · not a rest day (plan rest row, or the runner's rest_day dow)
+ *   · not the long-run day (settings dow, or plan-inferred)
+ *   · no quality/long on the adjacent days (hard/easy spacing —
+ *     Research/00a hard-easy principle; the 3-consecutive-tempos bug)
+ *   · respects weekly_frequency (moving in must not exceed the week's
+ *     run-day budget)
+ *   · never race week / within 3 days of a race (dateNearRace)
+ * Returns null when no day qualifies → caller DROPS the workout with a
+ * coach_intents record (data, not debt).
+ */
+export function chooseRescheduleDate(opts: {
+  todayISO: string;
+  /** context for [today .. today+5] (candidates ±1 for adjacency) */
+  byDate: Record<string, RescheduleDayContext>;
+  longRunDow: number | null;
+  restDow: number | null;
+  weeklyFrequency: number | null;
+  raceDates: string[];
+}): string | null {
+  const { todayISO, byDate, longRunDow, restDow, weeklyFrequency, raceDates } = opts;
+  for (let i = 1; i <= 4; i++) {
+    const d = plusDaysISO(todayISO, i);
+    const ctx = byDate[d] ?? { runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null };
+    if (ctx.runCount > 0) continue;
+    if (ctx.hasRestRow) continue;
+    const dow = dowOfISO(d);
+    if (longRunDow != null && dow === longRunDow) continue;
+    if (restDow != null && dow === restDow) continue;
+    const prev = byDate[plusDaysISO(todayISO, i - 1)];
+    const next = byDate[plusDaysISO(todayISO, i + 1)];
+    if (prev?.qualityOrLong || next?.qualityOrLong) continue;
+    if (weeklyFrequency != null && ctx.weekRunCount != null && ctx.weekRunCount + 1 > weeklyFrequency) continue;
+    if (dateNearRace(d, raceDates)) continue;
+    return d;
+  }
+  return null;
+}
+
+/** Comeback bands per Research/22-plan-templates.md §14 (628-651).
+ *  daysOff = consecutive no-run days since the last canonical run
+ *  (yesterday inclusive, today exclusive). The doctrine table's
+ *  "1-7 days" row is applied from 4 days off up: plans legitimately
+ *  schedule up to ~3 consecutive non-running days (rest + spacing), so
+ *  gaps of 1-3 days are normal weekly structure, not a layoff — the
+ *  missed-workout trigger covers individual skipped sessions there. */
+export type GapBand = 'none' | 'easy_swap' | 'shave_70_85' | 'rebuild_propose';
+export function classifyGapBand(daysOff: number): GapBand {
+  if (!Number.isFinite(daysOff)) return 'none';
+  if (daysOff >= 15) return 'rebuild_propose'; // >14d · >2 weeks → rebuild (Research/01:319)
+  if (daysOff >= 8) return 'shave_70_85';      // 8-14d · 70%/85% re-entry (Research/22:635)
+  if (daysOff >= 4) return 'easy_swap';        // "1-7 days" row, actionable sub-range (Research/22:634)
+  return 'none';
+}
+
+/** Re-entry shave fractions for the 8-14d band: week 1 → 70% of plan
+ *  (shave 0.30), week 2 → 85% (shave 0.15). Research/22:635. */
+export const GAP_SHAVE_FRACTIONS: readonly [number, number] = [0.30, 0.15];
+
+const GAP_BAND_RANK: Record<Exclude<GapBand, 'none'>, number> = {
+  easy_swap: 1, shave_70_85: 2, rebuild_propose: 3,
+};
+
+/**
+ * Idempotency across daily crons (task #8): a gap is identified by its
+ * lastRunISO. Fire at most once per (gap, band) — a re-run on the same
+ * gap and band is a no-op; band ESCALATION (gap kept growing past the
+ * next threshold) is allowed to fire once more.
+ */
+export function gapAlreadyHandled(
+  handled: Array<{ lastRunISO?: unknown; band?: unknown }>,
+  lastRunISO: string,
+  band: Exclude<GapBand, 'none'>,
+): boolean {
+  for (const h of handled) {
+    if (h?.lastRunISO !== lastRunISO) continue;
+    const hb = typeof h?.band === 'string' ? (h.band as string) : '';
+    const rank = GAP_BAND_RANK[hb as Exclude<GapBand, 'none'>];
+    if (rank != null && rank >= GAP_BAND_RANK[band]) return true;
+  }
+  return false;
+}
+
+/** Plan row shape buildGapActions consumes (DB shell maps SQL → this). */
+export interface GapPlanRow {
+  id: string;
+  dateISO: string;
+  type: string;
+  distanceMi: number | null;
+  /** row's plan week is a race week (plan_weeks.is_race_week) */
+  inRaceWeek: boolean;
+}
+
+/**
+ * Comeback actions for a detected training gap. Pure — the DB shell
+ * loads the next 14 days of plan rows + race dates and applies output
+ * through the standard applyAdaptations machinery (0.5mi shave
+ * snapping included).
+ *
+ *   easy_swap       → downgrade the FIRST upcoming quality to easy,
+ *                     nothing else (Research/22:634 "one easy day
+ *                     instead of first quality").
+ *   shave_70_85     → shave [today, today+6] by 0.30 and
+ *                     [today+7, today+13] by 0.15; drop intensity for
+ *                     the first week back (Research/22:630-635 "Resume
+ *                     at previous schedule, drop intensity for first
+ *                     week" + 70%/85% volume rows). ZERO reschedules.
+ *   rebuild_propose → notes only, NO plan mutation: recommend rebuild
+ *                     with a VDOT haircut (Research/01:319-320 · ≥2wk
+ *                     drop 3-5, ≥6wk drop 5-8).
+ *
+ * Every band emits a 'plan_adapt_gap' marker note keyed on lastRunISO —
+ * the idempotency record detectTrainingGap checks on later crons.
+ * Race-protected rows (RACE_PROTECTED_TYPES, race-week rows, within 3d
+ * of a race) are excluded per the per-finding context-filter rule.
+ */
+export function buildGapActions(opts: {
+  todayISO: string;
+  daysOff: number;
+  lastRunISO: string;
+  upcoming: GapPlanRow[];   // [today, today+13]
+  raceDates: string[];
+}): AdaptationAction[] {
+  const { todayISO, daysOff, lastRunISO, upcoming, raceDates } = opts;
+  const band = classifyGapBand(daysOff);
+  if (band === 'none') return [];
+
+  const protectedRow = (r: GapPlanRow): boolean =>
+    (RACE_PROTECTED_TYPES as readonly string[]).includes(r.type)
+    || r.inRaceWeek
+    || dateNearRace(r.dateISO, raceDates);
+
+  const actions: AdaptationAction[] = [{
+    kind: 'note',
+    noteReason: 'plan_adapt_gap',
+    noteField: lastRunISO,
+    noteValue: { lastRunISO, daysOff, band },
+    why: `${daysOff} days without running. Comeback protocol per Research/22 §14.`,
+  }];
+
+  if (band === 'easy_swap') {
+    const firstQuality = [...upcoming]
+      .filter((r) => (QUALITY_TYPES as readonly string[]).includes(r.type) && !protectedRow(r))
+      .sort((a, b) => a.dateISO.localeCompare(b.dateISO))[0];
+    if (firstQuality) {
+      actions.push({
+        kind: 'downgrade',
+        workoutIds: [firstQuality.id],
+        newType: 'easy',
+        why: `${daysOff} days off. First run back is easy, not quality. Research/22 §14: 1-7 days, resume plan, one easy day instead of first quality.`,
+      });
+    }
+    return actions;
+  }
+
+  if (band === 'shave_70_85') {
+    const week1End = plusDaysISO(todayISO, 6);
+    const week1 = upcoming.filter((r) => r.dateISO >= todayISO && r.dateISO <= week1End && !protectedRow(r));
+    const week2 = upcoming.filter((r) => r.dateISO > week1End && r.dateISO <= plusDaysISO(todayISO, 13) && !protectedRow(r));
+    const shavable = (rows: GapPlanRow[]) => rows
+      .filter((r) => r.type !== 'rest' && r.type !== 'strength' && (r.distanceMi ?? 0) >= 1)
+      .map((r) => r.id);
+    const week1Quality = week1
+      .filter((r) => (QUALITY_TYPES as readonly string[]).includes(r.type))
+      .map((r) => r.id);
+    if (week1Quality.length > 0) {
+      actions.push({
+        kind: 'downgrade',
+        workoutIds: week1Quality,
+        newType: 'easy',
+        why: 'Drop intensity for the first week back. Research/22 §14.',
+      });
+    }
+    const w1Ids = shavable(week1);
+    if (w1Ids.length > 0) {
+      actions.push({
+        kind: 'shave',
+        workoutIds: w1Ids,
+        shaveFraction: GAP_SHAVE_FRACTIONS[0],
+        why: `Re-entry week at 70% volume after ${daysOff} days off. Research/22 §14.`,
+      });
+    }
+    const w2Ids = shavable(week2);
+    if (w2Ids.length > 0) {
+      actions.push({
+        kind: 'shave',
+        workoutIds: w2Ids,
+        shaveFraction: GAP_SHAVE_FRACTIONS[1],
+        why: 'Week 2 back at 85% volume. Research/22 §14.',
+      });
+    }
+    return actions;
+  }
+
+  // rebuild_propose · >14 days off · do NOT auto-modify.
+  actions.push({
+    kind: 'note',
+    noteReason: 'plan_adapt_gap_rebuild',
+    noteField: lastRunISO,
+    noteValue: {
+      lastRunISO,
+      daysOff,
+      recommendation: 'rebuild',
+      vdotHaircut: daysOff >= 42 ? '5-8' : '3-5',
+    },
+    why: `${daysOff} days off. Plan rebuild recommended with a ${daysOff >= 42 ? '5-8' : '3-5'} point VDOT haircut before resuming. Research/01 recalibration table (layoff ≥2 weeks).`,
+  });
+  return actions;
+}
+
+/**
+ * Volume-overshoot firing predicate (2026-07-06 · P1-55). Baseline is
+ * what the ACTIVE PLAN scheduled for the trailing window when that is
+ * meaningful (≥5mi — race-week/taper trailing windows schedule less
+ * and are filtered upstream anyway); the experience cap is only the
+ * no-schedule fallback. Fires when completed exceeds baseline by >25%.
+ */
+export function overshootFires(
+  completedMi: number,
+  scheduledMi: number | null,
+  capMi: number,
+): boolean {
+  const baseline = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : capMi;
+  return completedMi > baseline * 1.25;
+}
+
+/**
+ * Cron split (2026-07-06 · P1-37). Partition on each action's OWN
+ * sourceTrigger tag — never on index alignment with the triggers
+ * array. Untagged actions default to apply-now (same safer-than-
+ * dropping posture the old comment claimed but the index walk broke).
+ */
+export function partitionActionsForCron(actions: AdaptationAction[]): {
+  applyNow: AdaptationAction[];
+  proposeFirst: AdaptationAction[];
+} {
+  const applyNow: AdaptationAction[] = [];
+  const proposeFirst: AdaptationAction[] = [];
+  for (const a of actions) {
+    (a.sourceTrigger === 'readiness_pullback' ? proposeFirst : applyNow).push(a);
+  }
+  return { applyNow, proposeFirst };
+}
 
 /** Run all detectors against today's state, return triggers + actions. */
 export async function detectAdaptations(userId: string): Promise<AdaptationResult> {
   const triggers: AdaptationTrigger[] = [];
 
+  // 0. Training gap (2026-07-06 · P1-36). Runs FIRST: when an unplanned
+  //    layoff is active the comeback protocol owns the response and
+  //    missed-workout rescheduling is suppressed — Research/22 §14 says
+  //    resume the schedule (graded), never cram the missed work back in.
+  const gap = await detectTrainingGap(userId);
+  if (gap) triggers.push(gap);
+
+  // Suppress missed-workout handling while a gap is active OR was
+  // handled within the last 7 days (the re-entry window): sessions
+  // missed during/around the gap are covered by the comeback response,
+  // and re-detecting them would reschedule quality into a week the gap
+  // handler just shaved. After the window, anything left is >3 days
+  // stale and drops as data.
+  const inGapReentry = gap != null || await hasRecentGapIntent(userId, 7);
+
   // 1. Missed key workout
-  const missed = await detectMissedKeyWorkout(userId);
-  if (missed) triggers.push(missed);
+  if (!inGapReentry) {
+    const missed = await detectMissedKeyWorkout(userId);
+    if (missed) triggers.push(missed);
+  }
 
   // 2. Readiness pullback · multi-signal composite (Research/15 + /00b).
   //    Replaces the single-signal RHR + sleep detectors below as of
@@ -182,10 +604,29 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
 
   const actions: AdaptationAction[] = [];
   for (const t of triggers) {
-    actions.push(...await actionsForTrigger(userId, t));
+    // 2026-07-06 · P1-37 · tag every action with its source trigger so
+    // downstream consumers (cron apply/propose split, proposals writer)
+    // never have to reconstruct provenance by array index.
+    for (const a of await actionsForTrigger(userId, t)) {
+      actions.push({ ...a, sourceTrigger: t.kind });
+    }
   }
 
   return { triggers, actions, applied: false };
+}
+
+/** True when a plan_adapt_gap marker was written within the last
+ *  `days` days — the comeback re-entry window is still active. */
+async function hasRecentGapIntent(userId: string, days: number): Promise<boolean> {
+  const r = await pool.query(
+    `SELECT 1 FROM coach_intents
+      WHERE COALESCE(user_uuid, user_id) = $1::uuid
+        AND reason = 'plan_adapt_gap'
+        AND ts >= NOW() - make_interval(days => $2::int)
+      LIMIT 1`,
+    [userId, days],
+  ).catch(() => ({ rows: [] as unknown[] }));
+  return r.rows.length > 0;
 }
 
 /** Apply the actions to plan_workouts in a single transaction.
@@ -199,6 +640,11 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
 export async function applyAdaptations(userId: string, actions: AdaptationAction[]): Promise<number> {
   if (actions.length === 0) return 0;
   let touched = 0;
+  // 2026-07-06 · reschedules that actually landed in THIS call — the
+  // anti-stacking downgrade (onlyIfRescheduledId) is skipped when its
+  // paired reschedule was seal-filtered, so an offset can't destroy a
+  // quality day without the added load it was offsetting.
+  const landedReschedules = new Set<string>();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -212,7 +658,24 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         : a.kind === 'shave'     ? 'plan_adapt_shave'
         : a.kind === 'mark_dirty' ? 'plan_adapt_mark_dirty'
         : a.kind === 'mark_upgrade' ? 'plan_adapt_upgrade'
+        : a.kind === 'note'      ? (a.noteReason ?? 'plan_adapt_note')
         : 'plan_adapt_other';
+
+      // 2026-07-06 · 'note' actions are record-only: write the intent,
+      // mutate nothing, bump nothing. Not seal-filtered — recording that
+      // a workout was missed/dropped is history, not a prescription
+      // change for a completed day. Handled before the seal filter.
+      if (a.kind === 'note') {
+        const targets = a.workoutIds && a.workoutIds.length > 0
+          ? a.workoutIds
+          : [a.noteField ?? ''];
+        for (const f of targets) {
+          await writeIntent(client, userId, reason, f, {
+            ...(a.noteValue ?? {}), why: a.why,
+          });
+        }
+        continue;
+      }
 
       // 2026-06-03 · Rule 15 · filter sealed (completed-day) workouts
       // out of every action before iterating · the adapter cannot
@@ -225,16 +688,39 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
       if (a.kind === 'reschedule' && a.newDate && a.workoutIds) {
         for (const wid of a.workoutIds) {
           if (!unsealedSet.has(wid)) continue;
+          // 2026-07-06 · P1-35/P2-64 · a reschedule is a full move, not
+          // a bare date_iso poke: re-resolve week_id from the plan_weeks
+          // row covering the new date (same lookup app/api/today/
+          // reschedule uses), recompute dow, and stamp original_date_iso
+          // on first move so the row's provenance — and the staleness
+          // clock — anchor to the authored date.
           await client.query(
-            `UPDATE plan_workouts SET date_iso = $1 WHERE id = $2`,
-            [a.newDate, wid]
+            `UPDATE plan_workouts pw
+                SET date_iso = $1,
+                    dow = $3,
+                    week_id = COALESCE(
+                      (SELECT w.id FROM plan_weeks w
+                        WHERE w.plan_id = pw.plan_id
+                          AND w.week_start_iso <= $1
+                          AND to_char((w.week_start_iso::date + interval '7 days'), 'YYYY-MM-DD') > $1
+                        LIMIT 1),
+                      pw.week_id),
+                    original_date_iso = COALESCE(pw.original_date_iso, pw.date_iso)
+              WHERE pw.id = $2`,
+            [a.newDate, wid, dowOfISO(a.newDate)]
           );
+          landedReschedules.add(wid);
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, newDate: a.newDate, why: a.why,
           });
           touched++;
         }
       } else if (a.kind === 'downgrade' && a.newType && a.workoutIds) {
+        // 2026-07-06 · anti-stacking coupling guard (see field doc).
+        if (a.onlyIfRescheduledId && !landedReschedules.has(a.onlyIfRescheduledId)) {
+          console.log(`[applyAdaptations] skip downgrade — paired reschedule ${a.onlyIfRescheduledId} did not land`);
+          continue;
+        }
         for (const wid of a.workoutIds) {
           if (!unsealedSet.has(wid)) continue;
           // 2026-06-01 · type is source of truth (web agent brief
@@ -555,47 +1041,196 @@ async function deriveTPaceSecForRebuild(
 
 // ── Detectors ──────────────────────────────────────────────────────────
 
+/** Per-candidate record the missed detector hands to the action builder. */
+interface MissedCandidate {
+  workout_id: string;
+  planned_date: string;
+  type: string;
+  distance_mi: number | null;
+}
+
 async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger | null> {
   // 2026-06-03 · runner TZ.
   const today = await runnerToday(userId);
-  // Was the last scheduled threshold/intervals NOT completed within ±1d
-  // of its plan date?
-  const r = (await pool.query(
-    `SELECT pw.id, pw.date_iso::date::text AS date, pw.type
+  // 2026-07-06 rewrite (P1-38/P1-39/P1-40) · walk EVERY quality + long
+  // row in the lookback, not LIMIT 1, and classify each:
+  //   · fresh quality (original date ≤3d past)  → rescheduable (one per pass)
+  //   · stale quality (original date >3d past)  → drop as data
+  //   · long (any age)                          → data only, never rescheduled
+  // Rows the adapter already handled — rescheduled (chain-drag guard,
+  // P1-5/P1-38), dropped, or noted — are excluded via their
+  // coach_intents record, so a pass can never re-detect its own output.
+  const candidates = (await pool.query<{
+    id: string; date: string; type: string;
+    distance_mi: string | null; original_date_iso: string | null;
+  }>(
+    `SELECT pw.id, pw.date_iso::date::text AS date, pw.type,
+            pw.distance_mi::text AS distance_mi,
+            pw.original_date_iso
        FROM plan_workouts pw
        JOIN training_plans tp ON tp.id = pw.plan_id
       WHERE tp.user_uuid = $1
         AND tp.archived_iso IS NULL
-        AND pw.type IN ('threshold','tempo','intervals','vo2max')
+        AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
         AND pw.date_iso::date BETWEEN $2::date - 7 AND $2::date - 1
-      ORDER BY pw.date_iso::date DESC LIMIT 1`,
+        AND NOT EXISTS (
+              SELECT 1 FROM coach_intents ci
+               WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
+                 AND ci.field = pw.id
+                 AND ci.reason IN ('plan_adapt_reschedule',
+                                   'plan_adapt_drop_missed',
+                                   'plan_adapt_missed_noted')
+            )
+      ORDER BY pw.date_iso::date DESC`,
     [userId, today]
-  )).rows[0];
-  if (!r) return null;
+  )).rows;
+  if (candidates.length === 0) return null;
 
-  // Was there a run of distance >= 4mi within the ±1d window with a
-  // matching workout type heuristic?
-  // Phase B · one canonical dedup. A dupe in the ±1d window would inflate this
-  // COUNT and wrongly mark a completed key workout as missed.
-  const canonicalIds = await getCanonicalRunIds(userId, isoDaysBefore(r.date, 1), isoDaysBefore(r.date, -1));
-  const completed = (await pool.query(
-    `SELECT COUNT(*) AS n FROM runs
-      WHERE user_uuid = $1
-        AND id = ANY($3::bigint[])
-        AND (data->>'date')::date BETWEEN $2::date - 1 AND $2::date + 1
-        AND (data->>'distanceMi')::numeric >= 4`,
-    [userId, r.date, canonicalIds]
-  )).rows[0];
-
-  if (Number(completed.n) === 0) {
-    return {
-      kind: 'missed_key_workout',
-      severity: 'warn',
-      reason: `${r.type} on ${r.date} appears uncompleted.`,
-      evidence: { workout_id: r.id, planned_date: r.date, type: r.type },
-    };
+  // Completion gate (2026-07-06 · P1-40/P1-54) · workout-relative, not a
+  // flat 4mi: a single canonical run ≥ completionThresholdMi(prescribed)
+  // within ±1d counts as done. Per-RUN max, not day-sum — two 3mi jogs
+  // don't add up to an 8mi tempo.
+  // Phase B · one canonical dedup. A dupe in the window would otherwise
+  // wrongly mark a completed key workout as done twice / missed never.
+  const canonicalIds = await getCanonicalRunIds(userId, isoDaysBefore(today, 8), today);
+  const maxRunByDay = new Map<string, number>();
+  if (canonicalIds.length > 0) {
+    const runRows = (await pool.query<{ d: string; mi: string }>(
+      `SELECT (data->>'date') AS d, (data->>'distanceMi') AS mi
+         FROM runs
+        WHERE user_uuid = $1 AND id = ANY($2::bigint[])`,
+      [userId, canonicalIds]
+    )).rows;
+    for (const r of runRows) {
+      if (!r.d) continue;
+      const mi = Number(r.mi) || 0;
+      if (mi > (maxRunByDay.get(r.d) ?? 0)) maxRunByDay.set(r.d, mi);
+    }
   }
-  return null;
+  const completedNear = (dateISO: string, thresholdMi: number): boolean => {
+    for (const off of [-1, 0, 1]) {
+      if ((maxRunByDay.get(plusDaysISO(dateISO, off)) ?? 0) >= thresholdMi) return true;
+    }
+    return false;
+  };
+
+  const longMisses: MissedCandidate[] = [];
+  const drops: MissedCandidate[] = [];
+  const rescheduable: MissedCandidate[] = [];
+  for (const c of candidates) {
+    const distanceMi = c.distance_mi != null ? Number(c.distance_mi) : null;
+    if (completedNear(c.date, completionThresholdMi(distanceMi))) continue;
+    const rec: MissedCandidate = {
+      workout_id: c.id, planned_date: c.date, type: c.type, distance_mi: distanceMi,
+    };
+    if (c.type === 'long') {
+      // P1-39 · missed long runs are DATA, never rescheduled — the long
+      // is not crammable; it feeds the layoff/volume picture instead.
+      longMisses.push(rec);
+    } else if (isStaleMissed(c.original_date_iso ?? c.date, today)) {
+      // P1-38 · staleness expiry · >3 days past its ORIGINAL date.
+      drops.push(rec);
+    } else {
+      rescheduable.push(rec);
+    }
+  }
+  if (longMisses.length === 0 && drops.length === 0 && rescheduable.length === 0) return null;
+
+  // One reschedule per pass, the most recent miss. Older fresh misses
+  // drop as data — reinserting two quality sessions into one week is
+  // exactly the stacking the doctrine forbids.
+  const primary = rescheduable[0] ?? null;
+  for (const extra of rescheduable.slice(1)) drops.push(extra);
+
+  const reason = primary
+    ? `${primary.type} on ${primary.planned_date} appears uncompleted.`
+    : `${drops.length + longMisses.length} planned session${drops.length + longMisses.length === 1 ? '' : 's'} passed uncompleted. Recorded, not rescheduled.`;
+  return {
+    kind: 'missed_key_workout',
+    severity: 'warn',
+    reason,
+    evidence: {
+      // primary rescheduable (legacy field names preserved for consumers)
+      workout_id: primary?.workout_id ?? null,
+      planned_date: primary?.planned_date ?? null,
+      type: primary?.type ?? null,
+      distance_mi: primary?.distance_mi ?? null,
+      drops,
+      long_misses: longMisses,
+    },
+  };
+}
+
+/**
+ * TRAINING_GAP (2026-07-06 · P1-36) · layoff/comeback detector.
+ *
+ * Gap = consecutive no-run days since the last canonical run
+ * (getCanonicalRunIds dedup via mileageByDay — an unflagged dupe can't
+ * fake a run, a merged row can't hide one). daysOff counts yesterday
+ * back to the day after the last run; today is excluded because the
+ * cron fires at 00:15 PT, before anyone has run.
+ *
+ * Bands (classifyGapBand · Research/22-plan-templates.md §14 lines
+ * 628-651 + Research/01-pace-zones-vdot.md:319-320):
+ *   4-7 daysOff   → easy_swap        (resume plan, first quality → easy)
+ *   8-14 daysOff  → shave_70_85      (70% week 1, 85% week 2, no intensity wk 1)
+ *   >14 daysOff   → rebuild_propose  (propose-only · rebuild + VDOT haircut)
+ *
+ * Idempotent across daily crons: fires at most once per (gap, band) —
+ * the applied actions write a 'plan_adapt_gap' marker keyed on
+ * lastRunISO, and this detector skips when a marker for the same gap
+ * at the same-or-higher band exists (gapAlreadyHandled). Band
+ * escalation (the gap keeps growing) fires once more.
+ *
+ * Cold start: zero canonical runs in the 60d lookback → return null.
+ * A brand-new runner who hasn't started isn't "returning from layoff";
+ * that's calibration territory (generate.ts), not the adapter's.
+ */
+async function detectTrainingGap(userId: string): Promise<AdaptationTrigger | null> {
+  const today = await runnerToday(userId);
+  const byDay = await mileageByDay(userId, isoDaysBefore(today, 60), today)
+    .catch(() => new Map<string, { mi: number; canonicalIds: string[] }>());
+  let lastRunISO: string | null = null;
+  for (const [day, v] of byDay) {
+    if (v.mi > 0 && (lastRunISO === null || day > lastRunISO)) lastRunISO = day;
+  }
+  if (!lastRunISO) return null;
+
+  const daysOff = daysBetweenISO(lastRunISO, today) - 1;
+  const band = classifyGapBand(daysOff);
+  if (band === 'none') return null;
+
+  // Idempotency · read prior gap markers (60d window covers any gap the
+  // 60d run-lookback can produce) and skip if this (gap, band) — or a
+  // higher band on the same gap — was already handled.
+  const priorRows = (await pool.query<{ value: string | null }>(
+    `SELECT value FROM coach_intents
+      WHERE COALESCE(user_uuid, user_id) = $1::uuid
+        AND reason = 'plan_adapt_gap'
+        AND ts >= NOW() - INTERVAL '60 days'`,
+    [userId],
+  ).catch(() => ({ rows: [] as Array<{ value: string | null }> }))).rows;
+  const handled: Array<{ lastRunISO?: unknown; band?: unknown }> = [];
+  for (const row of priorRows) {
+    try {
+      const v = row.value ? JSON.parse(row.value) : null;
+      if (v && typeof v === 'object') handled.push(v);
+    } catch { /* malformed marker → ignore */ }
+  }
+  if (gapAlreadyHandled(handled, lastRunISO, band)) return null;
+
+  const reason =
+    band === 'rebuild_propose'
+      ? `No running for ${daysOff} days. Plan rebuild recommended before resuming.`
+      : band === 'shave_70_85'
+        ? `No running for ${daysOff} days. Re-entry weeks reduced to 70% then 85%.`
+        : `No running for ${daysOff} days. First quality back becomes easy.`;
+  return {
+    kind: 'training_gap',
+    severity: band === 'rebuild_propose' ? 'override' : 'warn',
+    reason,
+    evidence: { last_run_iso: lastRunISO, days_off: daysOff, band },
+  };
 }
 
 /**
@@ -1021,7 +1656,41 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
 }
 
 async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger | null> {
-  // Last 7d running volume vs experience cap.
+  const today = await runnerToday(userId);
+
+  // 2026-07-06 · P1-55 · shave cooldown. The trigger reads COMPLETED
+  // trailing volume, which stays elevated for days after a big week, so
+  // without a cooldown each daily cron re-shaved the same overshoot
+  // (worst live plans: 45-88 downgraded/shaved rows). One shave per
+  // rolling 7 days, whatever its source (a gap re-entry shave counts —
+  // the week is already reduced; don't cut it twice).
+  const cooled = await pool.query(
+    `SELECT 1 FROM coach_intents
+      WHERE COALESCE(user_uuid, user_id) = $1::uuid
+        AND reason = 'plan_adapt_shave'
+        AND ts >= NOW() - INTERVAL '7 days'
+      LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as unknown[] }));
+  if (cooled.rows.length > 0) return null;
+
+  // Per-finding context filter (CLAUDE.md locked 2026-05-19 round 4):
+  // a race inside the trailing window legitimately spikes completed
+  // volume (race + WU/CD on top of the week) — that's not an overshoot
+  // to punish the recovery week for.
+  const raced = await pool.query(
+    `SELECT 1 FROM races
+      WHERE user_uuid = $1::uuid
+        AND (meta->>'date')::date BETWEEN $2::date - 7 AND $2::date
+      LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] as unknown[] }));
+  if (raced.rows.length > 0) return null;
+
+  // Last 7d completed volume vs what the ACTIVE PLAN scheduled for the
+  // same trailing window (2026-07-06 · P1-55 · the plan's own
+  // prescription is the baseline; the static experience cap contradicted
+  // the generator's tier bands and fired on compliant runners).
   // 2026-06-02 · smart-dedup at 0.1 mi (was MAX-per-day · undercounted
   // legit same-day doubles). See lib/runs/volume.ts for the rule.
   const r = (await pool.query(
@@ -1036,23 +1705,35 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
         GROUP BY 1, 2
      ), vol AS (
        SELECT COALESCE(SUM(mi), 0) AS mi FROM dedup
+     ), sched AS (
+       SELECT COALESCE(SUM(pw.distance_mi), 0) AS mi
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+          AND pw.date_iso::date BETWEEN $2::date - 7 AND $2::date - 1
+          AND pw.type NOT IN ('rest', 'strength')
      ), p AS (
        SELECT experience_level FROM profile WHERE user_uuid = $1
      )
-     SELECT vol.mi, p.experience_level FROM vol, p`,
-    [userId, await runnerToday(userId)]
+     SELECT vol.mi, sched.mi AS scheduled_mi, p.experience_level FROM vol, sched, p`,
+    [userId, today]
   )).rows[0];
   if (!r) return null;
   const lvl = (r.experience_level ?? 'intermediate') as ExperienceLevel;
   const cap = EXPERIENCE_CAPS_MI[lvl];
   if (!cap) return null;
   const mi = Number(r.mi);
-  if (mi > cap * 1.25) {
+  const scheduledMi = r.scheduled_mi != null ? Number(r.scheduled_mi) : null;
+  if (overshootFires(mi, scheduledMi, cap)) {
+    const baseline = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : cap;
+    const baselineLabel = scheduledMi != null && scheduledMi >= 5
+      ? `${Math.round(baseline)}mi scheduled`
+      : `${lvl} cap ${cap}mi`;
     return {
       kind: 'volume_overshoot',
       severity: 'warn',
-      reason: `Last 7d ${Math.round(mi)}mi exceeds ${lvl} cap ${cap}mi by >25%.`,
-      evidence: { last7d_mi: mi, cap, level: lvl },
+      reason: `Last 7d ${Math.round(mi)}mi exceeds ${baselineLabel} by >25%.`,
+      evidence: { last7d_mi: mi, scheduled_7d_mi: scheduledMi, baseline_mi: baseline, cap, level: lvl },
     };
   }
   return null;
@@ -1065,34 +1746,240 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
   const today = await runnerToday(userId);
   switch (t.kind) {
     case 'missed_key_workout': {
+      // 2026-07-06 rewrite (P1-35/P1-38/P1-39/P1-46/P2-64/P2-67).
+      const out: AdaptationAction[] = [];
+      const ev = t.evidence as {
+        workout_id: string | null; planned_date: string | null;
+        type: string | null; distance_mi: number | null;
+        drops?: MissedCandidate[]; long_misses?: MissedCandidate[];
+      };
+
+      // Data-only records first · stale/dropped quality and missed longs
+      // become coach_intents rows (data, not debt). The intent record is
+      // also what stops the detector re-emitting them tomorrow.
+      for (const d of ev.drops ?? []) {
+        out.push({
+          kind: 'note',
+          noteReason: 'plan_adapt_drop_missed',
+          workoutIds: [d.workout_id],
+          noteValue: { planned_date: d.planned_date, type: d.type, distance_mi: d.distance_mi },
+          why: `${d.type} on ${d.planned_date} was missed and is past its window. Dropped, not rescheduled.`,
+        });
+      }
+      for (const l of ev.long_misses ?? []) {
+        out.push({
+          kind: 'note',
+          noteReason: 'plan_adapt_missed_noted',
+          workoutIds: [l.workout_id],
+          noteValue: { planned_date: l.planned_date, type: l.type, distance_mi: l.distance_mi },
+          why: `Long run on ${l.planned_date} was missed. Recorded for the volume picture; long runs are never crammed back in.`,
+        });
+      }
+
+      if (!ev.workout_id) return out;
+
+      // ── Reschedule target search (chooseRescheduleDate guards) ──
+      // Load the surrounding plan geometry once: rows [today-6, today+11]
+      // cover per-day collision/adjacency context for candidates
+      // today+1..today+4 AND full plan-week run counts for the frequency
+      // check (a candidate's week can start up to 6 days earlier).
+      const geo = (await pool.query<{
+        id: string; date: string; type: string; dow: number | null;
+        is_quality: boolean | null; is_long: boolean | null; plan_id: string;
+      }>(
+        `SELECT pw.id, pw.date_iso::date::text AS date, pw.type, pw.dow,
+                pw.is_quality, pw.is_long, pw.plan_id
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+          WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+            AND pw.date_iso::date BETWEEN $2::date - 6 AND $2::date + 11`,
+        [userId, today]
+      )).rows;
+      const planId = geo[0]?.plan_id ?? null;
+
+      // Plan weeks covering the window → week window per candidate date.
+      const weeks = planId ? (await pool.query<{ id: string; week_start_iso: string }>(
+        `SELECT id, week_start_iso FROM plan_weeks
+          WHERE plan_id = $1
+            AND week_start_iso::date BETWEEN $2::date - 12 AND $2::date + 11`,
+        [planId, today]
+      )).rows : [];
+      const weekStartFor = (dateISO: string): string | null => {
+        for (const w of weeks) {
+          if (w.week_start_iso <= dateISO && plusDaysISO(w.week_start_iso, 7) > dateISO) return w.week_start_iso;
+        }
+        return null;
+      };
+
+      const isRunRow = (ty: string) => ty !== 'rest' && ty !== 'strength';
+      const byDate: Record<string, RescheduleDayContext> = {};
+      for (let i = 0; i <= 5; i++) {
+        const d = plusDaysISO(today, i);
+        const rows = geo.filter((g) => g.date === d);
+        const ws = weekStartFor(d);
+        const weekRunCount = ws == null ? null : geo.filter((g) =>
+          g.id !== ev.workout_id
+          && isRunRow(g.type)
+          && g.date >= ws && g.date < plusDaysISO(ws, 7)
+        ).length;
+        byDate[d] = {
+          runCount: rows.filter((g) => isRunRow(g.type)).length,
+          qualityOrLong: rows.some((g) =>
+            g.is_quality === true || g.is_long === true || g.type === 'long'
+            || (QUALITY_TYPES as readonly string[]).includes(g.type)),
+          hasRestRow: rows.some((g) => g.type === 'rest'),
+          weekRunCount,
+        };
+      }
+
+      // Race dates · training_plans.race_id → races.meta.date, goal_iso
+      // (goal-mode time trial), any other upcoming race row, plus race
+      // rows materialized inside the plan itself (belt and braces).
+      const raceRows = (await pool.query<{ date: string | null }>(
+        `SELECT meta->>'date' AS date FROM races
+          WHERE user_uuid = $1::uuid
+            AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 60`,
+        [userId, today]
+      ).catch(() => ({ rows: [] as Array<{ date: string | null }> }))).rows;
+      const goalIso = (await pool.query<{ goal_iso: string | null }>(
+        `SELECT goal_iso FROM training_plans
+          WHERE user_uuid = $1 AND archived_iso IS NULL LIMIT 1`,
+        [userId]
+      ).catch(() => ({ rows: [] as Array<{ goal_iso: string | null }> }))).rows[0]?.goal_iso ?? null;
+      const raceDates = [
+        ...raceRows.map((r) => r.date).filter((d): d is string => !!d),
+        ...(goalIso ? [goalIso.slice(0, 10)] : []),
+        ...geo.filter((g) => (RACE_PROTECTED_TYPES as readonly string[]).includes(g.type)).map((g) => g.date),
+      ];
+
+      // Long-run day · plan rows are truer than the settings default
+      // (David's settings are unset → default 'sun'; a runner whose plan
+      // longs sit on Saturday would get the wrong block otherwise).
+      const longDowCounts = new Map<number, number>();
+      for (const g of geo) {
+        if (g.type === 'long' || g.is_long === true) {
+          const dw = g.dow ?? dowOfISO(g.date);
+          longDowCounts.set(dw, (longDowCounts.get(dw) ?? 0) + 1);
+        }
+      }
+      let longRunDow: number | null = null;
+      for (const [dw, n] of longDowCounts) {
+        if (longRunDow === null || n > (longDowCounts.get(longRunDow) ?? 0)) longRunDow = dw;
+      }
+      let restDow: number | null = null;
+      let weeklyFrequency: number | null = null;
+      try {
+        const { loadSettings } = await import('@/lib/coach/settings');
+        const settings = await loadSettings(userId);
+        if (longRunDow === null) longRunDow = DOW_OF_SHORTCODE[settings.long_run_day] ?? null;
+        restDow = DOW_OF_SHORTCODE[settings.rest_day] ?? null;
+      } catch { /* settings unavailable → dow prefs skipped; plan rows still guard */ }
+      try {
+        const freqRow = (await pool.query<{ weekly_frequency: number | null }>(
+          `SELECT weekly_frequency FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,
+          [userId]
+        )).rows[0];
+        weeklyFrequency = freqRow?.weekly_frequency ?? null;
+      } catch { /* frequency unknown → check skipped */ }
+
+      const target = chooseRescheduleDate({
+        todayISO: today, byDate, longRunDow, restDow, weeklyFrequency, raceDates,
+      });
+
+      if (!target) {
+        // No clear day in today+1..today+4 → the workout becomes data,
+        // not debt (P1-35 fix note: never stack it somewhere it doesn't fit).
+        out.push({
+          kind: 'note',
+          noteReason: 'plan_adapt_drop_missed',
+          workoutIds: [ev.workout_id],
+          noteValue: {
+            planned_date: ev.planned_date, type: ev.type,
+            distance_mi: ev.distance_mi, no_slot: true,
+          },
+          why: `${ev.type} on ${ev.planned_date} was missed and no clear day exists this week. Dropped, not rescheduled.`,
+        });
+        return out;
+      }
+
+      out.push({
+        kind: 'reschedule',
+        workoutIds: [ev.workout_id],
+        newDate: target,
+        why: `Reschedule missed quality day to ${target} (first clear day).`,
+      });
+
+      // Anti-stacking · the reschedule ADDS a quality day to the week, so
+      // the next authored key steps down to easy. 2026-07-06 (P1-38) ·
+      // never target the moved row itself, and never a row the adapter
+      // previously rescheduled (self-cannibalization guard): destroying a
+      // rescued session while keeping its volume was strictly worse than
+      // doing nothing.
       const nextKey = (await pool.query(
         `SELECT pw.id FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
              AND pw.type IN ('threshold','tempo','intervals','vo2max')
              AND pw.date_iso::date BETWEEN $2::date AND $2::date + 7
+             AND pw.id <> $3
+             AND NOT EXISTS (
+                   SELECT 1 FROM coach_intents ci
+                    WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
+                      AND ci.field = pw.id
+                      AND ci.reason = 'plan_adapt_reschedule'
+                 )
            ORDER BY pw.date_iso::date ASC LIMIT 1`,
-        [userId, today]
+        [userId, today, ev.workout_id]
       )).rows[0];
-      // Reschedule date · runner-TZ today + 2 days · matches the BETWEEN
-      // window above so the rescheduled key lands inside the search window.
-      const rescheduledDate = new Date(Date.parse(today + 'T12:00:00Z') + 2 * 86400000)
-        .toISOString().slice(0, 10);
-      const out: AdaptationAction[] = [{
-        kind: 'reschedule',
-        workoutIds: [t.evidence.workout_id],
-        newDate: rescheduledDate,
-        why: 'Reschedule missed quality day 2 days forward.',
-      }];
       if (nextKey) {
         out.push({
           kind: 'downgrade',
           workoutIds: [nextKey.id],
           newType: 'easy',
+          onlyIfRescheduledId: ev.workout_id,
           why: 'Avoid stacking two quality days; downgrade upcoming key to easy.',
         });
       }
       return out;
+    }
+    case 'training_gap': {
+      // 2026-07-06 · P1-36 · comeback protocol. Load the next 14 days of
+      // plan rows (with race-week flags) + race dates, hand to the pure
+      // builder. Cite: Research/22-plan-templates.md §14 (628-651),
+      // Research/01-pace-zones-vdot.md:319-320.
+      const rows = (await pool.query<{
+        id: string; date: string; type: string;
+        distance_mi: string | null; in_race_week: boolean;
+      }>(
+        `SELECT pw.id, pw.date_iso::date::text AS date, pw.type,
+                pw.distance_mi::text AS distance_mi,
+                COALESCE(wk.is_race_week, false) AS in_race_week
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+           LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
+          WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+            AND pw.date_iso::date BETWEEN $2::date AND $2::date + 13`,
+        [userId, today]
+      )).rows;
+      const raceRows = (await pool.query<{ date: string | null }>(
+        `SELECT meta->>'date' AS date FROM races
+          WHERE user_uuid = $1::uuid
+            AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 30`,
+        [userId, today]
+      ).catch(() => ({ rows: [] as Array<{ date: string | null }> }))).rows;
+      return buildGapActions({
+        todayISO: today,
+        daysOff: Number(t.evidence.days_off ?? 0),
+        lastRunISO: String(t.evidence.last_run_iso ?? ''),
+        upcoming: rows.map((r) => ({
+          id: r.id,
+          dateISO: r.date,
+          type: r.type,
+          distanceMi: r.distance_mi != null ? Number(r.distance_mi) : null,
+          inRaceWeek: r.in_race_week === true,
+        })),
+        raceDates: raceRows.map((r) => r.date).filter((d): d is string => !!d),
+      });
     }
     case 'readiness_pullback': {
       // 2026-06-01 · just-in-time window. Only act on TODAY's workout.
@@ -1147,18 +2034,28 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       }];
     }
     case 'volume_overshoot': {
+      // 2026-07-06 · race-protected rows excluded (per-finding context
+      // filter): race execution, tune-ups, shakeouts, and race-week rows
+      // belong to the race machinery, never to a volume shave.
       const next7 = (await pool.query(
         `SELECT pw.id FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
+            LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
-             AND pw.date_iso::date BETWEEN $2::date AND $2::date + 7`,
+             AND pw.date_iso::date BETWEEN $2::date AND $2::date + 7
+             AND pw.type NOT IN ('rest', 'strength', 'race', 'race_week_tuneup', 'shakeout')
+             AND COALESCE(wk.is_race_week, false) = false`,
         [userId, today]
       )).rows;
+      if (next7.length === 0) return [];
+      const baselineWhy = t.evidence.scheduled_7d_mi != null && Number(t.evidence.scheduled_7d_mi) >= 5
+        ? `${Math.round(Number(t.evidence.scheduled_7d_mi))}mi scheduled`
+        : `${t.evidence.level} cap`;
       return [{
         kind: 'shave',
         workoutIds: next7.map((r: any) => r.id),
         shaveFraction: 0.17,
-        why: `Volume ${Math.round(t.evidence.last7d_mi)}mi exceeded ${t.evidence.level} cap. Shave next 7 days 17%.`,
+        why: `Volume ${Math.round(t.evidence.last7d_mi)}mi exceeded ${baselineWhy}. Shave next 7 days 17%.`,
       }];
     }
     case 'pr_bank':
