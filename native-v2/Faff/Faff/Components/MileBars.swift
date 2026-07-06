@@ -26,15 +26,20 @@ struct MileBars: View {
     @Binding var readout: String?
 
     var body: some View {
-        let lo = domain?.lowerBound ?? (bars.map(\.value).min() ?? 0)
-        let hi = domain?.upperBound ?? (bars.map(\.value).max() ?? 1)
+        // Derived domain includes the target so the dashed reference line
+        // always lands inside the chart (a work-pace target faster than
+        // every split used to render off-chart). An explicit domain wins;
+        // a target outside it simply isn't drawn.
+        let values = bars.map(\.value) + (target.map { [$0] } ?? [])
+        let lo = domain?.lowerBound ?? (values.min() ?? 0)
+        let hi = domain?.upperBound ?? (values.max() ?? 1)
         let span = max(0.0001, hi - lo)
 
         GeometryReader { geo in
             let h = geo.size.height
             let barW = (geo.size.width - CGFloat(bars.count - 1) * 4) / CGFloat(bars.count)
             ZStack(alignment: .bottom) {
-                if let t = target {
+                if let t = target, t >= lo, t <= hi {
                     let ty = CGFloat((hi - t) / span) * (h - 18) + 9
                     Path { p in
                         p.move(to: CGPoint(x: 0, y: ty))
