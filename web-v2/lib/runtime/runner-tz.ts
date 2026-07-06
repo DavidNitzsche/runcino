@@ -41,25 +41,55 @@ import { pool } from '@/lib/db/pool';
  * Per-process cache. Next.js serverless re-instantiates per cold start,
  * which is fine · same runner within a request hits the cache for free,
  * and TZ changes (vacation, manual override) take effect on next process.
+ * Stores the RAW profile.timezone value (null when unset) so the two
+ * fallback policies below (UTC for "today", Pacific for legacy-data
+ * interpretation) can share one DB read.
  */
-const tzCache = new Map<string, string>();
+const tzCache = new Map<string, string | null>();
 
-/**
- * Resolve the runner's IANA timezone identifier. Reads `profile.timezone`
- * once per process per user, falls back to "UTC" when null.
- */
-export async function runnerTimezone(userUuid: string): Promise<string> {
-  const cached = tzCache.get(userUuid);
-  if (cached !== undefined) return cached;
+/** Raw profile.timezone · null when the runner never set/synced one. */
+async function storedRunnerTimezone(userUuid: string): Promise<string | null> {
+  if (tzCache.has(userUuid)) return tzCache.get(userUuid) ?? null;
 
   const row = (await pool.query<{ timezone: string | null }>(
     `SELECT timezone FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,
     [userUuid],
   ).catch(() => ({ rows: [] as Array<{ timezone: string | null }> }))).rows[0];
 
-  const tz = row?.timezone || 'UTC';
+  const tz = row?.timezone || null;
   tzCache.set(userUuid, tz);
   return tz;
+}
+
+/**
+ * Resolve the runner's IANA timezone identifier. Reads `profile.timezone`
+ * once per process per user, falls back to "UTC" when null.
+ */
+export async function runnerTimezone(userUuid: string): Promise<string> {
+  return (await storedRunnerTimezone(userUuid)) || 'UTC';
+}
+
+/**
+ * 2026-07-06 · phone+watch audit P1-11/P1-33/P1-51/P1-52 · the runner's
+ * timezone for interpreting DEVICE-STAMPED wall-clock data (run dedup
+ * startLocal reconstruction, coach_intents watch-completion day bucketing,
+ * HK ingest weather windows).
+ *
+ * Fallback is America/Los_Angeles — NOT UTC — deliberately: every row
+ * written before multi-user signup was stamped in Pacific wall time by
+ * the single-user-era clients (HealthKitImporter pinned PT; the LA
+ * hardcodes this helper replaces assumed the same). A null profile
+ * timezone therefore means "legacy Pacific data", and falling back to LA
+ * preserves byte-identical interpretation for those rows. Verified live
+ * 2026-07-06 (RO probe): every profile with runs stores
+ * 'America/Los_Angeles'; the single null-tz profile has zero runs.
+ *
+ * Use runnerTimezone() for "what day is it for this runner" (UTC
+ * fallback); use THIS for "what zone was this stored wall time written
+ * in" (Pacific fallback).
+ */
+export async function runnerTimezoneOrPacific(userUuid: string): Promise<string> {
+  return (await storedRunnerTimezone(userUuid)) || 'America/Los_Angeles';
 }
 
 /**

@@ -36,10 +36,12 @@
  *       reconstruct UTC by applying `tz`)
  *   · unknown / null → UTC (defensive; matches the majority shape)
  *
- * `tz` defaults to `America/Los_Angeles` because that's where David is.
- * Better: have the caller pass the runner's stored tz preference. The
- * canonical model TODO is to stamp `data.tz` on every new write so this
- * helper becomes source-independent.
+ * `tz` defaults to `America/Los_Angeles` — the zone every pre-multiuser
+ * row was stamped in. 2026-07-06 (audit P1-33/P1-51): every runner-data
+ * caller now passes the runner's zone explicitly — the row's own
+ * `data.timezone` when present, else `runnerTimezoneOrPacific(userUuid)`
+ * (lib/runtime/runner-tz.ts · stored profile tz, LA only when unset).
+ * The default remains for admin diagnostics and as the legacy-safe floor.
  */
 
 export const DEFAULT_TZ = 'America/Los_Angeles';

@@ -19,6 +19,7 @@
  * worth.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { isSameRun, type RunRow } from '@/lib/runs/identity';
 
 export interface FlagCensus {
@@ -58,13 +59,18 @@ export async function computeFlagCensus(userUuid: string): Promise<FlagCensus> {
   ).catch(() => ({ rows: [] as RunRow[] }))).rows as RunRow[];
   const byId = new Map(canonicalRows.map((r) => [String(r.id), r]));
 
+  // 2026-07-06 · audit P1-51 · same runner-tz threading as merge.ts /
+  // volume.ts, so the tripwire values a flag exactly the way the merge
+  // and the volume reader would re-derive it.
+  const runnerTz = await runnerTimezoneOrPacific(userUuid);
+
   const loadBearingIds: string[] = [];
   let loadBearingMi = 0;
   for (const f of flagged) {
     const canonical = byId.get(String(f.data?.mergedIntoId ?? ''));
     // Canonical row missing entirely → the flag is all that hides this
     // row · count it load-bearing.
-    if (!canonical || !isSameRun(f, canonical)) {
+    if (!canonical || !isSameRun(f, canonical, runnerTz)) {
       loadBearingIds.push(String(f.id));
       loadBearingMi += Number(f.data?.distanceMi ?? 0);
     }

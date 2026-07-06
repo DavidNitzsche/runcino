@@ -24,6 +24,7 @@ import {
   parseRaceTime, zoneFromType, vdotRunFloorMi, goalDistanceMiFromCode,
 } from '@/lib/training/vdot';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
+import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 
 // ── Input shapes — match exactly what bestRecentVdot() accepts ──────────────
 
@@ -183,6 +184,13 @@ export async function loadVdotInputs(
   const runCutoff = new Date(Date.parse(today + 'T12:00:00Z') - 60 * 86400000)
     .toISOString().slice(0, 10);
 
+  // 2026-07-06 · audit P1-52 · bucket ci.ts (UTC sync instant) into the
+  // RUNNER'S calendar day before joining to the run's local date. Was
+  // hardcoded 'America/Los_Angeles' — wrong-day joins dropped the
+  // work-phase effort (the honest "virtual race") for any non-Pacific
+  // runner. LA fallback for null-tz profiles keeps pre-fix behavior.
+  const ciTz = await runnerTimezoneOrPacific(userId);
+
   const runRows = await pool.query<{
     id: string;
     date: string;
@@ -222,11 +230,11 @@ export async function loadVdotInputs(
                         ELSE '[]'::jsonb END) AS phase
               WHERE COALESCE(ci.user_uuid, ci.user_id) = sa.user_uuid
                 AND ci.reason = 'watch_completion'
-                AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
+                AND (ci.ts AT TIME ZONE $4::text)::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
                 AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                               WHERE COALESCE(ci2.user_uuid, ci2.user_id) = sa.user_uuid
                                 AND ci2.reason = 'watch_completion'
-                                AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = (ci.ts AT TIME ZONE 'America/Los_Angeles')::date)
+                                AND (ci2.ts AT TIME ZONE $4::text)::date = (ci.ts AT TIME ZONE $4::text)::date)
                 AND phase->>'type' = 'work'
                 AND (phase->>'actualPaceSPerMi')::numeric > 0
                 AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi') IS NOT NULL
@@ -240,11 +248,11 @@ export async function loadVdotInputs(
                         ELSE '[]'::jsonb END) AS phase
               WHERE COALESCE(ci.user_uuid, ci.user_id) = sa.user_uuid
                 AND ci.reason = 'watch_completion'
-                AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
+                AND (ci.ts AT TIME ZONE $4::text)::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
                 AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                               WHERE COALESCE(ci2.user_uuid, ci2.user_id) = sa.user_uuid
                                 AND ci2.reason = 'watch_completion'
-                                AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = (ci.ts AT TIME ZONE 'America/Los_Angeles')::date)
+                                AND (ci2.ts AT TIME ZONE $4::text)::date = (ci.ts AT TIME ZONE $4::text)::date)
                 AND phase->>'type' = 'work'
                 AND (phase->>'actualPaceSPerMi')::numeric > 0
                 AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi') IS NOT NULL
@@ -297,7 +305,7 @@ export async function loadVdotInputs(
                - COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
              ) <= 1
         )`,
-    [userId, runCutoff, today],
+    [userId, runCutoff, today, ciTz],
   ).then(r => r.rows);
   // No .catch() — throws on error.
 

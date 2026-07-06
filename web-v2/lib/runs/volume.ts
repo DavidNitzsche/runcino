@@ -16,7 +16,7 @@
  * doubles. Identity clustering handles both (see identity.ts).
  */
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { clusterRuns, pickCanonical, type RunRow } from '@/lib/runs/identity';
 
 /**
@@ -64,6 +64,12 @@ export async function mileageByDay(
     [userUuid, fromISO, toISO],
   )).rows as RunRow[];
 
+  // 2026-07-06 · audit P1-51 · same runner-tz threading as the write-time
+  // merge (merge.ts) — read- and write-time identity MUST use the same
+  // default zone or they can disagree on what clusters. LA fallback keeps
+  // null-tz profiles byte-identical to the old hardcode.
+  const runnerTz = await runnerTimezoneOrPacific(userUuid);
+
   const byDay = new Map<string, RunRow[]>();
   for (const r of rows) {
     const day = dayOf(r);
@@ -77,7 +83,7 @@ export async function mileageByDay(
   for (const [day, dayRows] of byDay) {
     let total = 0;
     const ids: string[] = [];
-    for (const cluster of clusterRuns(dayRows)) {
+    for (const cluster of clusterRuns(dayRows, runnerTz)) {
       const { canonical } = pickCanonical(cluster);
       total += distMi(canonical);
       ids.push(canonical.id);

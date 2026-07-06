@@ -9,6 +9,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { toUtcIso } from '@/lib/runs/normalize-time';
+import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 
 export interface RunWeather {
   /**
@@ -635,7 +636,7 @@ export async function upsertWeatherCache(
  */
 export async function enrichOneActivity(activityId: string | number): Promise<RunWeather | null> {
   const row = (await pool.query(
-    `SELECT id, data FROM runs WHERE id = $1::BIGINT LIMIT 1`,
+    `SELECT id, user_uuid::text AS user_uuid, data FROM runs WHERE id = $1::BIGINT LIMIT 1`,
     [String(activityId)],
   )).rows[0];
   if (!row) return null;
@@ -677,7 +678,15 @@ export async function enrichOneActivity(activityId: string | number): Promise<Ru
   // runs on Railway (UTC) and so a local-PDT row would shift the
   // weather window by ~7 hours. toUtcIso reads `source` to pick the
   // right interpretation. See lib/runs/normalize-time.ts.
-  const utcStartISO = toUtcIso(startISO, row.data?.source as string | undefined) ?? startISO;
+  //
+  // 2026-07-06 · audit P1-33 · local-stamped sources are interpreted in
+  // the ROW's own zone (data.timezone, stamped by updated ingest clients)
+  // · else the runner's stored profile zone · LA fallback preserves the
+  // old module default for legacy single-user rows.
+  const rowTz = typeof row.data?.timezone === 'string' && row.data.timezone
+    ? (row.data.timezone as string)
+    : await runnerTimezoneOrPacific(String(row.user_uuid));
+  const utcStartISO = toUtcIso(startISO, row.data?.source as string | undefined, rowTz) ?? startISO;
 
   // Prefer the span fetch when we know how long the run was · captures
   // the thermal arc instead of just the start-line temperature.

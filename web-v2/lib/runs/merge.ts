@@ -14,7 +14,7 @@
  * never disagree. Idempotent.
  */
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { enhanceCanonicalFromAbsorbed } from '@/lib/runs/canonical';
 import { planMergeOps, type RunRow } from '@/lib/runs/identity';
 import { mileageByDay } from '@/lib/runs/volume';
@@ -48,7 +48,12 @@ export async function autoMergeForDate(
 
   if (rows.length === 0) return { changed: 0, clusters: 0 };
 
-  const { clears, sets, absorptions, clusters } = planMergeOps(rows);
+  // 2026-07-06 · audit P1-51 · bare wall-clock startLocal values are
+  // interpreted in the RUNNER'S timezone (LA fallback preserves the
+  // pre-multiuser behavior for null-tz profiles). Rows with an explicit
+  // data.timezone are unaffected — identity.ts prefers the row's own tz.
+  const runnerTz = await runnerTimezoneOrPacific(userId);
+  const { clears, sets, absorptions, clusters } = planMergeOps(rows, runnerTz);
   let changed = 0;
 
   // ORDER MATTERS · clear canonical/orphan flags FIRST, then point the losers.
