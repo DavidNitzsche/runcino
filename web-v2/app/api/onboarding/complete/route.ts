@@ -92,6 +92,7 @@ import {
 import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboarding';
 import { generatePlan } from '@/lib/plan/generate';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-06 · P1-17 · shared label→mi parser
 
 const VALID_DISTANCES = new Set(['5k', '10k', 'half', 'marathon', 'none', 'coached']);
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
@@ -532,6 +533,11 @@ export async function POST(req: NextRequest) {
         name: raceName,
         date,                                   // YYYY-MM-DD (required on race path)
         distanceLabel,                          // "5K" | "10K" | "Half Marathon" | "Marathon"
+        // 2026-07-06 · P1-17 · distanceMi was never written on the onboarding
+        // path (mirrors the POST /api/race fix) — without it execution-plan,
+        // pacing, and fueling all 404/skip for every onboarded race. Null is
+        // stripped by jsonb_strip_nulls below (Rule 6: no clobber).
+        distanceMi: distanceMiFromLabel(distanceLabel),
         priority: 'A',                          // onboarding goal race is THE A-race
         goalDisplay: normalizeGoalDisplay(time, distance), // canonical H:MM:SS (or null)
         location: null,

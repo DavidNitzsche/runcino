@@ -14,6 +14,7 @@ import { normalizeGoalDisplay } from '@/lib/plan/goal-display'; // CAP-3 · dist
 import { generatePlan } from '@/lib/plan/generate';
 import { requireUserId } from '@/lib/auth/session';
 import { patchSettings } from '@/lib/coach/settings';
+import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-06 · P1-17 · shared label→mi parser
 
 function toFriendlyPlanError(raw: string | null): string | null {
   if (!raw) return null;
@@ -58,6 +59,12 @@ export async function POST(req: NextRequest) {
     name: body.name,
     date: body.date,
     distanceLabel: body.distance_label ?? null,
+    // 2026-07-06 · P1-17 · distanceMi was NEVER written by any app path, so
+    // execution-plan/pacing/fueling (which gate on Number(meta.distanceMi))
+    // were dead for every app-created race. Derive it at write time; null
+    // stays null and jsonb_strip_nulls drops it (Rule 6: never clobber a
+    // value some other writer may have set).
+    distanceMi: distanceMiFromLabel(body.distance_label),
     priority: body.priority ?? 'A',
     goalDisplay: normalizeGoalDisplay(body.goal, body.distance_label), // CAP-3 · was raw → "7:45" 5K read as 7h45m
     location: body.location ?? null,
@@ -133,26 +140,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Map common race-distance labels to miles. Used for VDOT + LTHR calibrate. */
-function distanceMiFromLabel(label: string | undefined): number | null {
-  if (!label) return null;
-  const s = String(label).toLowerCase().trim();
-  if (s === 'marathon'      || s === '26.2') return 26.2;
-  if (s === 'half marathon' || s === 'half' || s === '13.1') return 13.1094;
-  if (s === '10k')   return 6.21371;
-  if (s === '5k')    return 3.10686;
-  if (s === '15k')   return 9.32057;
-  if (s === '10mi'   || s === '10 mile') return 10.0;
-  if (s === '20mi'   || s === '20 mile') return 20.0;
-  // Fallback: try parse number suffixed with 'mi' / 'km'
-  const m = s.match(/^(\d+(?:\.\d+)?)\s*(mi|km|k)?$/);
-  if (m) {
-    const n = parseFloat(m[1]);
-    if (!m[2] || m[2] === 'mi') return n;
-    if (m[2] === 'km' || m[2] === 'k') return n / 1.609344;
-  }
-  return null;
-}
+// (Local distanceMiFromLabel fork removed 2026-07-06 · P1-17 — superseded by
+// the shared lib/race/distance.ts parser imported above. Same label coverage;
+// values normalized to the codebase-canonical 26.2/13.1/6.2/3.1 convention.)
 
 export async function PATCH(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -181,7 +171,19 @@ export async function PATCH(req: NextRequest) {
         // CAP-3 · normalize a typed goal (distance_label is processed earlier in this loop, so
         // meta.distanceLabel is already current). PATCH auto-rebuilds on goal change → must be canonical.
         meta[metaKey] = (k === 'goal' || k === 'goal_safe') ? normalizeGoalDisplay(body[k], meta.distanceLabel) : body[k];
+        // 2026-07-06 · P1-17 · keep distanceMi in lockstep with the label —
+        // an edited label with a stale distanceMi would silently mis-pace
+        // every downstream composer. Unparseable label → null (composers
+        // fall back to their own label ladder rather than a wrong number).
+        if (k === 'distance_label') meta.distanceMi = distanceMiFromLabel(body[k]);
       }
+    }
+    // 2026-07-06 · P1-17 · opportunistic backfill: rows created before
+    // distanceMi landed get it stamped on their next edit (any PATCH), so
+    // the read-time label fallback is a bridge, not a permanent crutch.
+    if (meta.distanceMi == null && meta.distanceLabel) {
+      const derived = distanceMiFromLabel(meta.distanceLabel);
+      if (derived != null) meta.distanceMi = derived;
     }
     // Retrospective fields — passed through as-is on the meta blob
     for (const k of ['finishTime', 'pb', 'retroFelt', 'retroExecution', 'retroNotes', 'avgHrBpm']) {
@@ -261,9 +263,14 @@ export async function PATCH(req: NextRequest) {
     // can render a StateChangeToast (closes coverage line 1228 · race
     // retro auto-recalc surfacing).
     let recalc: { vdotBefore?: number | null; vdotAfter?: number | null; lthrBefore?: number | null; lthrAfter?: number | null; lthrMethod?: string } | null = null;
-    if (meta.finishTime && meta.avgHrBpm && distanceMiFromLabel(meta.distanceLabel) != null) {
+    // 2026-07-06 · P1-17 · prefer the numeric meta.distanceMi (now written on
+    // every create/edit) over re-parsing the label; label parse stays as the
+    // fallback for rows saved before distanceMi existed.
+    const calDistanceMi = (Number(meta.distanceMi) > 0 ? Number(meta.distanceMi) : null)
+      ?? distanceMiFromLabel(meta.distanceLabel);
+    if (meta.finishTime && meta.avgHrBpm && calDistanceMi != null) {
       try {
-        const distanceMi = distanceMiFromLabel(meta.distanceLabel)!;
+        const distanceMi = calDistanceMi;
         const { parseRaceTime, vdotFromRace } = await import('@/lib/training/vdot');
         const { calibrateLthr } = await import('@/lib/training/lthr');
         const secs = parseRaceTime(String(meta.finishTime));

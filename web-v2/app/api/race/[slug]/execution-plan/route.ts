@@ -23,6 +23,7 @@ import { requireUserId } from '@/lib/auth/session';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { composeRaceExecutionPlan } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
     const goalSec = parseRaceTime(meta.goalDisplay as string)
       ?? parseRaceTime(meta.goalTime as string);
-    const distanceMi = Number(meta.distanceMi) || null;
+    // 2026-07-06 · P1-17 · label fallback: races created before the create/
+    // edit paths wrote meta.distanceMi carry distanceLabel only, and this
+    // gate 404'd the whole race-morning brief (warm-up timeline, B-goal
+    // trigger) even with a goal set. Read-time derivation — no DB write —
+    // lights up every existing race immediately.
+    const distanceMi = Number(meta.distanceMi)
+      || distanceMiFromLabel(meta.distanceLabel as string | null)
+      || null;
     if (!goalSec || !distanceMi) {
       return NextResponse.json(
         { error: 'no goal time set · execution plan needs a goal' },
