@@ -50,9 +50,19 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
 import { projectFitnessTrajectory, type FitnessTrajectory } from './fitness-trajectory';
 import { loadPlannedTargetVdot } from './plan-target';
+import { expandSpecToPhases, type ExpandedPhase } from './expand-spec';
+import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
 export type GoalStatus = 'on-track' | 'watching' | 'off-track';
 export type DriftWeight = 'strong' | 'medium' | 'weak';
+
+/** 2026-07-06 · P1-10 fix · what a recent-test-point verdict compared.
+ *  See GoalProjection.recentTestPoints[].verdictBasis. */
+export type TestPointVerdictBasis =
+  | 'work-phase-watch'
+  | 'work-phase-splits'
+  | 'blended-overall'
+  | 'overall';
 
 export interface DriftSignal {
   kind: 'recent_race' | 'vdot_trend' | 'aerobic_decoupling'
@@ -136,6 +146,18 @@ export interface GoalProjection {
      *  Maughan band, 'fast' when overcooked vs plan, 'slow' when real
      *  miss even with heat allowance. Null when target pace unknown. */
     verdict: 'on' | 'fast' | 'slow' | null;
+    /** 2026-07-06 · P1-10 fix · WHAT the verdict compared. Additive —
+     *  existing fields keep their meanings.
+     *    'work-phase-watch'  · watch_completion work-phase pace vs work target
+     *    'work-phase-splits' · work-window pace derived from mile splits +
+     *                          workout_spec phase distances vs work target
+     *    'blended-overall'   · whole-run pace vs a distance-weighted blend
+     *                          (WU/CD at easy pace + work at target)
+     *    'overall'           · whole-run pace vs a whole-run target
+     *                          (long/race · target IS the whole-run pace)
+     *  Null when the verdict abstained (no honest basis · never judge a
+     *  warmup-included quality run against the bare work target). */
+    verdictBasis: TestPointVerdictBasis | null;
   }>;
   /** 2026-06-04 · forecast copy · "what would flip the status." Pair of
    *  human-readable conditions derived from the current signals · tells
@@ -234,7 +256,7 @@ export async function computeGoalProjection(args: {
   const summary = composeSummary(status, driftSignals, goalSec, vdotProjectionSec);
   const [nextTestPoints, recentTestPoints] = await Promise.all([
     loadNextTestPoints(userUuid, vdot).catch(() => []),
-    loadRecentTestPoints(userUuid).catch(() => []),
+    loadRecentTestPoints(userUuid, vdot).catch(() => []),
   ]);
   const transitions = composeTransitions(status, driftSignals);
 
@@ -525,6 +547,314 @@ async function loadNextTestPoints(
   });
 }
 
+// ── 2026-07-06 · P1-10 fix · honest execution basis for quality runs ──────
+//
+// The bug: for runs with no watch_completion payload (Strava-only / HK-only /
+// manual — most of the universal population) the verdict fell back to WHOLE-RUN
+// pace judged against the WORK-PHASE target. A tempo session is WU + work + CD,
+// so overall pace reads ~30-50 s/mi slower than the work target (this file's
+// own drift-detector comment quantifies it) — every correctly-executed tempo
+// graded 'slow', executionQuality collapsed to ~0.45, and the Targets hero
+// flipped BEHIND. detectTempoPaceDrift was fixed to abstain without watch data;
+// this is the same honest-absence doctrine applied to the verdict path, plus
+// two recoveries that keep a verdict alive when the data supports one:
+//
+//   1. work-phase-splits · mile splits + workout_spec phase distances locate
+//      the work window inside the run; pace over that window vs the work
+//      target. Only for a CONTIGUOUS work block (tempo) — mile splits can't
+//      resolve sub-mile reps interleaved with jog recoveries.
+//   2. blended-overall · whole-run pace vs a distance-weighted expectation
+//      (WU/CD at easy pace + work at target + timed recoveries), built from
+//      the same expandSpecToPhases every other consumer uses.
+//
+// When neither basis exists (no spec, no splits, no watch) the verdict is
+// null — executionQualityFromTestPoints already filters null verdicts and
+// falls back to its no-signal default (0.7), so absence reads as "roughly
+// following the plan", never as a fabricated miss.
+// Cite: Research/01-pace-zones-vdot.md (E/T bands · easy = T+80..T+120 per
+// spec-builder/derivePaces); Research/06-weather-adjustments.md §1 (heat band).
+
+/** Per-mile split reduced to the two numbers the window math needs. */
+interface PaceSplit { distMi: number; timeS: number }
+
+/** "8:44" / "8:44/mi" → 524 s/mi. Watch + HK ingest rows carry the per-mile
+ *  pace ONLY as this display string (verified against live rows 2026-07-06 ·
+ *  keys: hr, mile, pace, cadence, elev_ft, distanceMi) — without parsing it
+ *  the splits basis would never fire for the watch/HK population. */
+function paceStrToSec(v: unknown): number | null {
+  if (typeof v !== 'string') return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(v.trim());
+  if (!m) return null;
+  const s = Number(m[1]) * 60 + Number(m[2]);
+  return s > 0 ? s : null;
+}
+
+/** Normalize runs.data.splits across source shapes · mirrors the resolution
+ *  order in lib/coach/run-state.ts (paceSPerMi legacy · paceSecPerMi watch/HK
+ *  numeric · pace_s_per_mi snake · "m:ss" pace string (watch/HK ingest) ·
+ *  average_speed Strava m/s · elapsed_time+distance Strava fallback).
+ *  Returns [] when any split lacks a resolvable pace — a hole breaks the
+ *  cumulative-distance window math, so all-or-nothing. Single-split stubs on
+ *  multi-mile runs are legacy phase summaries, not per-mile splits
+ *  (run-state.ts 2026-06-05 rule) → []. */
+export function normalizePaceSplits(raw: unknown): PaceSplit[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const out: PaceSplit[] = [];
+  for (const s of raw as Array<Record<string, unknown>>) {
+    if (!s || typeof s !== 'object') return [];
+    const distM = Number(s.distance) || null;
+    const distMi = Number(s.distanceMi ?? s.distance_mi)
+      || (distM && distM > 0 ? distM / 1609.34 : 1.0);
+    const avgSpeedMps = Number(s.average_speed) || null;
+    const elapsedS = Number(s.elapsed_time ?? s.moving_time) || null;
+    const sPerMi = Number(s.paceSPerMi)
+      || Number(s.paceSecPerMi)
+      || Number(s.pace_s_per_mi)
+      || paceStrToSec(s.pace ?? s.pace_min_per_mi)
+      || (avgSpeedMps && avgSpeedMps > 0 ? 1609.34 / avgSpeedMps : 0)
+      || (elapsedS && elapsedS > 0 && distM && distM > 0 ? (elapsedS * 1609.34) / distM : 0);
+    if (!sPerMi || sPerMi <= 0 || !isFinite(sPerMi) || distMi <= 0) return [];
+    out.push({ distMi, timeS: sPerMi * distMi });
+  }
+  const totalMi = out.reduce((a, s) => a + s.distMi, 0);
+  if (out.length === 1 && totalMi > 1.5) return [];
+  return out;
+}
+
+/** Locate the single contiguous work window (miles from run start) in an
+ *  expanded phase list. Returns null when work is split across disjoint
+ *  blocks (threshold/intervals reps · mile splits can't resolve those) or
+ *  the window is under half a mile. Time-only phases (jog recoveries)
+ *  contribute their pace-implied distance to the cumulative axis. */
+export function contiguousWorkWindowMi(
+  phases: ExpandedPhase[],
+): { startMi: number; endMi: number } | null {
+  let cum = 0;
+  let start: number | null = null;
+  let end: number | null = null;
+  let workClosed = false;
+  for (const p of phases) {
+    const d = p.distanceMi
+      ?? (p.durationSec != null && p.targetPaceSPerMi
+            ? p.durationSec / p.targetPaceSPerMi : 0);
+    if (p.type === 'work') {
+      if (workClosed) return null; // second disjoint work block
+      if (start == null) start = cum;
+      end = cum + d;
+    } else if (start != null) {
+      workClosed = true;
+    }
+    cum += d;
+  }
+  if (start == null || end == null || end - start < 0.5) return null;
+  return { startMi: start, endMi: end };
+}
+
+/** Average pace (s/mi) over a distance window, using only splits that sit
+ *  FULLY inside the window (±0.05mi slack). Straddling splits are excluded —
+ *  a mile that is half warmup, half tempo averages the two paces, and the
+ *  uniform-pace-within-a-split assumption is systematically wrong exactly at
+ *  phase transitions (it read a perfectly-executed tempo ~10-15 s/mi hot at
+ *  the edges). Requires the inside splits to cover ≥ half the window and
+ *  ≥ 1 mile — under that there's no honest read → null. */
+export function paceOverWindow(
+  splits: PaceSplit[],
+  startMi: number,
+  endMi: number,
+): number | null {
+  const EPS = 0.05;
+  let cum = 0, t = 0, d = 0;
+  for (const s of splits) {
+    const sStart = cum;
+    const sEnd = cum + s.distMi;
+    if (sStart >= startMi - EPS && sEnd <= endMi + EPS && s.distMi > 0) {
+      t += s.timeS;
+      d += s.distMi;
+    }
+    cum = sEnd;
+  }
+  if (d < Math.max(1.0, (endMi - startMi) * 0.5)) return null;
+  return t / d;
+}
+
+/** Total expected time + distance from an expanded phase list:
+ *  WU/CD at easy pace + work at target + timed recoveries at recovery pace.
+ *  Null when any phase can't resolve both axes. */
+export function blendedExpectation(
+  phases: ExpandedPhase[],
+): { timeS: number; distMi: number } | null {
+  let t = 0, d = 0;
+  for (const p of phases) {
+    const pace = p.targetPaceSPerMi ?? null;
+    const dist = p.distanceMi
+      ?? (p.durationSec != null && pace ? p.durationSec / pace : null);
+    const dur = p.durationSec
+      ?? (dist != null && pace != null ? dist * pace : null);
+    if (dist == null || dur == null || dist < 0 || dur < 0) return null;
+    t += dur;
+    d += dist;
+  }
+  return d > 0 ? { timeS: t, distMi: d } : null;
+}
+
+/** Distance-weighted whole-run pace expectation · Σtime / Σdistance. */
+export function blendedOverallTargetSPerMi(phases: ExpandedPhase[]): number | null {
+  const e = blendedExpectation(phases);
+  return e ? e.timeS / e.distMi : null;
+}
+
+/** Easy pace for WU/CD in the blend. Canonical: T-pace from VDOT + 100
+ *  (midpoint of the spec-builder/derivePaces easy band T+80..T+120 ·
+ *  Research/01-pace-zones-vdot.md). No-VDOT fallback anchors on the work
+ *  target itself: tempo/threshold/tuneup targets ≈ T (PACE-T-1); intervals
+ *  target = I = T−18 (derivePaces intervalSec). WU/CD carry ~30% of a
+ *  quality day's distance, so a ±20 s/mi easy-pace error moves the blend
+ *  ≤ ~6 s/mi — inside the band. Null only when both anchors are missing. */
+export function easyPaceForBlend(
+  vdot: number | null,
+  type: string,
+  targetS: number | null,
+): number | null {
+  const t = tPaceFromVdot(vdot);
+  if (t != null) return t + 100;
+  if (targetS == null || targetS <= 0) return null;
+  return type === 'intervals' ? targetS + 118 : targetS + 100;
+}
+
+/** Work-target quality types · pace_target_s_per_mi is the WORK-phase pace,
+ *  never a fair whole-run comparison (spec-builder tempo/threshold/intervals/
+ *  race_week_tuneup branches all return paceTargetSPerMi = work pace). */
+const WORK_TARGET_TYPES = new Set(['tempo', 'threshold', 'intervals', 'race_week_tuneup']);
+
+/**
+ * 2026-07-06 · P1-10 fix · pure verdict resolution for one recent test point.
+ * Exported for tests. Basis ladder (first honest read wins):
+ *   1. work-phase-watch  · watch_completion work pace vs work target (±10)
+ *   2. work-phase-splits · splits-derived work-window pace vs work target (±10)
+ *   3. blended-overall   · overall pace vs WU/CD/work blend (±15 · the WU/CD
+ *                          legs carry a ±30 s/mi band of their own in
+ *                          expandSpecToPhases; half their typical ~30%
+ *                          distance share widens the run-level band by ~5)
+ *   4. abstain           · verdict null (honest absence · matches
+ *                          detectTempoPaceDrift's no-watch-data doctrine)
+ * Non-work-target types (long/race) keep the whole-run comparison — there the
+ * target IS the whole-run pace (long guide band mid / race pace).
+ */
+export function judgeTestPointExecution(input: {
+  type: string;
+  targetS: number | null;
+  watchWorkS: number | null;
+  overallS: number | null;
+  rawSplits: unknown;
+  splitsUnreliable: boolean;
+  spec: WorkoutSpec;
+  plannedDistanceMi: number | null;
+  actualDistanceMi: number | null;
+  vdot: number | null;
+  heatSlowdownPct: number;
+}): {
+  actualS: number | null;
+  verdict: 'on' | 'fast' | 'slow' | null;
+  basis: TestPointVerdictBasis | null;
+} {
+  const { type, targetS, watchWorkS, overallS, heatSlowdownPct } = input;
+  // Easy/long band stays generous (David 2026-06-11) · quality stays tight.
+  const tolerance = type === 'long' ? 40 : 10;
+  const hasTarget = targetS != null && targetS > 0;
+
+  // 1 · watch work-phase pace · the existing honest path, unchanged.
+  if (watchWorkS != null && watchWorkS > 0) {
+    const actualS = Math.round(watchWorkS);
+    return {
+      actualS,
+      verdict: hasTarget ? heatAdjustedStatus(targetS!, actualS, heatSlowdownPct, tolerance) : null,
+      basis: 'work-phase-watch',
+    };
+  }
+
+  // Long/race · pace_target_s_per_mi is a whole-run pace → overall pace is
+  // a fair comparison. Preserves pre-fix behavior for these types.
+  if (!WORK_TARGET_TYPES.has(type)) {
+    if (overallS == null || overallS <= 0) return { actualS: null, verdict: null, basis: null };
+    return {
+      actualS: overallS,
+      verdict: hasTarget ? heatAdjustedStatus(targetS!, overallS, heatSlowdownPct, tolerance) : null,
+      basis: 'overall',
+    };
+  }
+
+  // Quality day without watch data. Never judge overall pace against the
+  // bare work target — that's the P1-10 bug.
+  if (!hasTarget || overallS == null || overallS <= 0) {
+    return { actualS: overallS ?? null, verdict: null, basis: null };
+  }
+
+  const easyPaceSec = easyPaceForBlend(input.vdot, type, targetS);
+  const phases = (input.spec && easyPaceSec != null)
+    ? expandSpecToPhases({
+        spec: input.spec,
+        totalMi: input.plannedDistanceMi ?? input.actualDistanceMi ?? 8,
+        easyPaceSec,
+        recoveryPaceSec: 540,
+      })
+    : null;
+  if (!phases || phases.length === 0) {
+    // No spec (pre-migration rows) → abstain. Pre-fix these fabricated
+    // 'slow'; honest absence beats a wrong number.
+    return { actualS: overallS, verdict: null, basis: null };
+  }
+
+  // 2 · splits-derived work-window pace. Requires reliable per-mile splits,
+  // a contiguous work block, and an actual distance near plan (a rerouted
+  // 6mi run can't be windowed by an 8mi plan's mile axis).
+  if (!input.splitsUnreliable) {
+    const splits = normalizePaceSplits(input.rawSplits);
+    const distOk = input.actualDistanceMi != null && input.plannedDistanceMi != null
+      && Math.abs(input.actualDistanceMi - input.plannedDistanceMi)
+           <= Math.max(1.0, input.plannedDistanceMi * 0.15);
+    if (splits.length >= 2 && distOk) {
+      const window = contiguousWorkWindowMi(phases);
+      const workPace = window ? paceOverWindow(splits, window.startMi, window.endMi) : null;
+      if (workPace != null && workPace > 0) {
+        const actualS = Math.round(workPace);
+        return {
+          actualS,
+          verdict: heatAdjustedStatus(targetS!, actualS, heatSlowdownPct, tolerance),
+          basis: 'work-phase-splits',
+        };
+      }
+    }
+  }
+
+  // 3 · blended whole-run expectation, reconciled with the ACTUAL distance
+  //     (live rows show runners tack extra miles onto the planned shape ·
+  //     e.g. a 3mi tempo spec inside a 5.8mi run):
+  //   · ran LONGER  · pad the expectation with the extra miles at easy pace —
+  //                   nobody runs bonus tempo; extra distance is easy volume.
+  //   · ran well SHORT of the spec (> 1mi / 15%) · abstain — we can't know
+  //     whether the work block or the WU/CD got cut, so no honest blend.
+  const exp = blendedExpectation(phases);
+  if (exp != null && exp.timeS > 0 && exp.distMi > 0) {
+    let { timeS, distMi } = exp;
+    const actual = input.actualDistanceMi;
+    if (actual != null && actual > distMi + 0.1) {
+      timeS += (actual - distMi) * easyPaceSec!; // easyPaceSec non-null when phases exist
+      distMi = actual;
+    } else if (actual != null && actual < distMi - Math.max(1.0, distMi * 0.15)) {
+      return { actualS: overallS, verdict: null, basis: null };
+    }
+    const blend = timeS / distMi;
+    return {
+      actualS: overallS,
+      verdict: heatAdjustedStatus(Math.round(blend), overallS, heatSlowdownPct, 15),
+      basis: 'blended-overall',
+    };
+  }
+
+  // 4 · abstain.
+  return { actualS: overallS, verdict: null, basis: null };
+}
+
 /**
  * 2026-06-04 · the past 3 quality workouts that landed a real run.
  * Mirrors loadNextTestPoints in shape but joins to canonical runs to
@@ -538,9 +868,15 @@ async function loadNextTestPoints(
  *   · 'on'   · actual ∈ [target − 10s, effectiveTarget + 10s]
  *   · 'fast' · actual < target − 10s (overcooked vs plan)
  *   · 'slow' · actual > effectiveTarget + 10s (real miss with heat allowance)
+ *
+ * 2026-07-06 · P1-10 fix · WHAT gets compared is now resolved per-point by
+ * judgeTestPointExecution (work-phase pace when watch or splits carry it,
+ * blended whole-run expectation otherwise, abstention when nothing honest
+ * exists). vdot threads through for the easy-pace leg of the blend.
  */
 async function loadRecentTestPoints(
   userUuid: string,
+  vdot: number | null,
 ): Promise<GoalProjection['recentTestPoints']> {
   const today = await runnerToday(userUuid);
   // 2026-06-04 · pull the work-phase pace from coach_intents
@@ -558,12 +894,20 @@ async function loadRecentTestPoints(
     duration_s: string | null;
     weather: unknown;
     work_pace_s: number | string | null;
+    workout_spec: WorkoutSpec;
+    splits: unknown;
+    splits_unreliable: boolean | null;
   }>(
     `SELECT pw.date_iso, pw.type, pw.sub_label,
             pw.distance_mi, pw.pace_target_s_per_mi AS pace_target_s,
+            pw.workout_spec,
             r.data->>'distanceMi' AS distance_actual,
             r.data->>'durationSec' AS duration_s,
             r.data->'weather' AS weather,
+            -- P1-10 fix · per-mile splits + reliability flag so non-watch
+            -- runs can still get a work-phase read (see judgeTestPointExecution).
+            r.data->'splits' AS splits,
+            (r.data->>'splits_unreliable')::boolean AS splits_unreliable,
             -- Work-phase actual pace from the watch_completion blob.
             -- jsonb_path_query_first returns the first matching value ·
             -- we then cast to numeric. NULL when no watch payload exists
@@ -611,9 +955,27 @@ async function loadRecentTestPoints(
       ? `${distLabel} ${r.type}${r.sub_label !== r.type.toUpperCase() ? ' · ' + r.sub_label : ''}`.trim()
       : `${distLabel} ${r.type}`.trim();
 
-    // Prefer work-phase pace (watch_completion · honest comparison
-    // to the tempo target) · fall back to overall pace (distance /
-    // duration · works for Strava-only / HK-only / manual runs).
+    // Heat context resolved per test point (per-finding context filters ·
+    // CLAUDE.md 2026-05-19 round 4) before any comparison happens.
+    const w = (r.weather && typeof r.weather === 'object') ? r.weather as Record<string, unknown> : null;
+    let heatSlowdownPct = 0;
+    if (w) {
+      try {
+        const j = judgeWeather({
+          tempF: typeof w.temp_f === 'number' ? w.temp_f : null,
+          tempF_start: typeof w.temp_f_start === 'number' ? w.temp_f_start : null,
+          tempF_end: typeof w.temp_f_end === 'number' ? w.temp_f_end : null,
+          tempF_peak: typeof w.temp_f_peak === 'number' ? w.temp_f_peak : null,
+          humidityPct: typeof w.humidity_pct === 'number' ? w.humidity_pct : null,
+          windMph: typeof w.wind_mph === 'number' ? w.wind_mph : null,
+          conditions: typeof w.conditions === 'string' ? w.conditions : null,
+          cloudCoverPct: typeof w.cloud_cover_pct === 'number' ? w.cloud_cover_pct : null,
+          durationS: r.duration_s != null ? Number(r.duration_s) : null,
+        });
+        heatSlowdownPct = j.slowdownPct ?? 0;
+      } catch { /* leave 0 · band collapses to symmetric */ }
+    }
+
     const workS = r.work_pace_s != null ? Number(r.work_pace_s) : null;
     const overallS = (() => {
       const distAct = r.distance_actual != null ? Number(r.distance_actual) : 0;
@@ -621,43 +983,30 @@ async function loadRecentTestPoints(
       if (distAct > 0 && durS > 0) return Math.round(durS / distAct);
       return null;
     })();
-    const actualS = workS && workS > 0 ? Math.round(workS) : overallS;
     const targetS = r.pace_target_s != null ? Number(r.pace_target_s) : null;
+
+    // P1-10 fix · basis ladder replaces the old "overall pace vs work
+    // target" fallback that flipped every warmup-included quality run to
+    // 'slow'. Easy/long band note (David 2026-06-11) lives inside the
+    // judge: long keeps the generous ±40, quality keeps the tight ±10
+    // on work-phase bases and ±15 on the blended whole-run basis.
+    const judged = judgeTestPointExecution({
+      type: r.type,
+      targetS,
+      watchWorkS: workS,
+      overallS,
+      rawSplits: r.splits,
+      splitsUnreliable: r.splits_unreliable === true,
+      spec: r.workout_spec ?? null,
+      plannedDistanceMi: dist,
+      actualDistanceMi: r.distance_actual != null ? Number(r.distance_actual) || null : null,
+      vdot,
+      heatSlowdownPct,
+    });
+    const actualS = judged.actualS;
     const actualPace = actualS && actualS > 0
       ? `${Math.floor(actualS / 60)}:${String(actualS % 60).padStart(2, '0')}`
       : null;
-
-    // Heat-adjusted verdict · shared band (heatAdjustedStatus).
-    let verdict: 'on' | 'fast' | 'slow' | null = null;
-    if (targetS && targetS > 0 && actualS && actualS > 0) {
-      const w = (r.weather && typeof r.weather === 'object') ? r.weather as Record<string, unknown> : null;
-      let heatSlowdownPct = 0;
-      if (w) {
-        try {
-          const j = judgeWeather({
-            tempF: typeof w.temp_f === 'number' ? w.temp_f : null,
-            tempF_start: typeof w.temp_f_start === 'number' ? w.temp_f_start : null,
-            tempF_end: typeof w.temp_f_end === 'number' ? w.temp_f_end : null,
-            tempF_peak: typeof w.temp_f_peak === 'number' ? w.temp_f_peak : null,
-            humidityPct: typeof w.humidity_pct === 'number' ? w.humidity_pct : null,
-            windMph: typeof w.wind_mph === 'number' ? w.wind_mph : null,
-            conditions: typeof w.conditions === 'string' ? w.conditions : null,
-            cloudCoverPct: typeof w.cloud_cover_pct === 'number' ? w.cloud_cover_pct : null,
-            durationS: r.duration_s != null ? Number(r.duration_s) : null,
-          });
-          heatSlowdownPct = j.slowdownPct ?? 0;
-        } catch { /* leave 0 · band collapses to symmetric */ }
-      }
-      // Easy/long runs get a generous band (David 2026-06-11). Running an
-      // easy run slower than its guide pace is correct by design — not a
-      // miss — so only an egregious gap (>40 s/mi over, fatigue / under-
-      // fuelling territory) reads 'slow'. A flat 8:00/mi long target judged
-      // with the tempo-grade ±10s band was flagging a textbook 8:21 easy
-      // 12-miler as "Slow". Quality days (tempo/threshold/intervals/race)
-      // keep the tight ±10s — there the target IS the prescription.
-      const tolerance = r.type === 'long' ? 40 : 10;
-      verdict = heatAdjustedStatus(targetS, actualS, heatSlowdownPct, tolerance);
-    }
 
     return {
       dateISO: r.date_iso,
@@ -665,7 +1014,8 @@ async function loadRecentTestPoints(
       label,
       distanceMi: dist,
       actualPace,
-      verdict,
+      verdict: judged.verdict,
+      verdictBasis: judged.basis,
     };
   });
 }

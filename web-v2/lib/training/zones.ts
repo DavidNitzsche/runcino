@@ -170,3 +170,50 @@ export function estimateLTHR(args: {
 export function estimateMaxHRFromLTHR(lthr: number): number {
   return Math.round(lthr + 22);
 }
+
+// ── Easy-run HR judgment ─────────────────────────────────────────────────
+
+export type EasyHrVerdict = 'aerobic' | 'gray-zone' | 'above-threshold';
+
+/**
+ * 2026-07-06 · P1-43 fix · judge an easy/recovery run's average HR against
+ * the runner's OWN threshold (never a hardcoded constant). Pure · exported
+ * for tests · run-state.ts computes this server-side so every surface
+ * renders the same personalized read.
+ *
+ * Bands (Friel LTHR zones above · Research/03-heart-rate-zones.md §6):
+ *   · aerobic         · avgHr ≤ Z2 upper (0.89 × LTHR) · where easy days belong
+ *   · gray-zone       · Z2 upper < avgHr < LTHR · Z3/Z4 — too hard for an
+ *                       easy day, but not at threshold
+ *   · above-threshold · avgHr ≥ LTHR · a quality effort wearing an easy label
+ *
+ * heatBumpBpm shifts both boundaries up — the HR analog of heat-band.ts
+ * widening the slow side for pace (Research/06-weather-adjustments.md §1).
+ * Per-finding context filter (CLAUDE.md 2026-05-19 round 4): heat resolves
+ * HERE, on this observation, not on some parent surface.
+ *
+ * Returns null on implausible inputs — skip the judgment, never fabricate.
+ */
+export function judgeEasyRunHr(args: {
+  avgHrBpm: number;
+  thresholdBpm: number;
+  heatBumpBpm?: number;
+}): { verdict: EasyHrVerdict; deltaBpm: number; easyCeilingBpm: number } | null {
+  const { avgHrBpm, thresholdBpm } = args;
+  const heat = Math.max(0, Math.round(args.heatBumpBpm ?? 0));
+  if (!isFinite(avgHrBpm) || avgHrBpm < 60 || avgHrBpm > 230) return null;
+  if (!isFinite(thresholdBpm) || thresholdBpm <= 100 || thresholdBpm >= 210) return null;
+  const easyCeilingBpm = Math.round(thresholdBpm * 0.89) + heat;  // Friel Z2 upper
+  const effectiveThreshold = thresholdBpm + heat;
+  const verdict: EasyHrVerdict =
+    avgHrBpm <= easyCeilingBpm ? 'aerobic'
+    : avgHrBpm < effectiveThreshold ? 'gray-zone'
+    : 'above-threshold';
+  return {
+    verdict,
+    // Delta vs the (un-bumped) threshold · the display number ("−12 vs
+    // threshold"). Heat moves the verdict bands, not the raw distance.
+    deltaBpm: Math.round(avgHrBpm - thresholdBpm),
+    easyCeilingBpm,
+  };
+}

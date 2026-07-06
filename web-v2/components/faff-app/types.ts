@@ -352,6 +352,11 @@ export type GoalRace = {
     distanceMi: number | null;
     actualPace: string | null;
     verdict: 'on' | 'fast' | 'slow' | null;
+    /** 2026-07-06 · P1-10 · what the verdict compared (work-phase pace
+     *  from watch/splits, blended whole-run expectation, or whole-run
+     *  target). Null when the verdict abstained. Optional/additive so
+     *  cached seeds still parse. */
+    verdictBasis?: 'work-phase-watch' | 'work-phase-splits' | 'blended-overall' | 'overall' | null;
   }>;
   /** 2026-06-04 · "what changes the status" copy · pair of conditions
    *  derived from current signals. Tells the runner what would move
