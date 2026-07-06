@@ -38,6 +38,13 @@ import { clusterRuns, pickCanonical, type RunRow } from '@/lib/runs/identity';
  * losers always carry mergedIntoId.)
  *
  * Uses bare `data` (no table alias) — both call sites query `runs` unaliased.
+ *
+ * 2026-07-06 · P1-26 · distance-quarantined rows (data.qualityFlag =
+ * 'distance_review', stamped at ingest for 50–250 mi runs · see
+ * lib/runs/distance-guard.ts) are INTENTIONALLY included here. Real ultra
+ * miles count toward volume even while the run awaits review; only fitness
+ * anchors (VDOT candidates · lib/training/vdot-inputs.ts) exclude the flag.
+ * Do not add the exclusion to this predicate.
  */
 export const CANONICAL_ROW_SQL = `NOT (data ? 'mergedIntoId')`;
 

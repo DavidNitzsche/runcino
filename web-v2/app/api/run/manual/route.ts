@@ -12,6 +12,7 @@ import { autoMergeForDate } from '@/lib/runs/merge';
 import { randomBytes, createHash } from 'crypto';
 import { requireUserId } from '@/lib/auth/session';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
+import { classifyRunDistance, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -45,8 +46,19 @@ export async function POST(req: NextRequest) {
   }
 
   // F20: physiological bounds guard for manual entries.
-  if (Number(body.distance_mi) > 50) {
-    return NextResponse.json({ error: 'distance_mi exceeds 50 mi ceiling' }, { status: 400 });
+  // 2026-07-06 · audit P1-26 / P2-62 fix · the flat 50 mi ceiling rejected
+  // legitimate ultra entries (the plan engine supports 50k/100k goals).
+  // Manual entry is interactive — no durable queue dead-letters here — so
+  // >250 mi keeps a 400 the runner sees and can correct; 50–250 mi is
+  // accepted + quarantined (data.qualityFlag='distance_review' · counts
+  // toward volume, excluded from VDOT anchors). Rule rationale + Research
+  // citations: lib/runs/distance-guard.ts.
+  const distGuard = classifyRunDistance(Number(body.distance_mi));
+  if (distGuard.verdict === 'reject') {
+    return NextResponse.json({ error: `distance_mi exceeds ${HARD_DISTANCE_CEILING_MI} mi sanity ceiling` }, { status: 400 });
+  }
+  if (distGuard.verdict === 'review') {
+    console.warn(`[run/manual] distance ${distGuard.distanceMi}mi exceeds ${SOFT_DISTANCE_CEILING_MI}mi soft bound · storing with qualityFlag='${distGuard.qualityFlag}'`);
   }
   if (body.avg_hr_bpm != null && (body.avg_hr_bpm < 30 || body.avg_hr_bpm > 230)) {
     body.avg_hr_bpm = null;
@@ -75,6 +87,9 @@ export async function POST(req: NextRequest) {
     hrZonePcts: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 },
     routePolyline: null,
     notes: body.notes ?? null,
+    // 2026-07-06 · P1-26 · distance quarantine. Key ABSENT (not null) on
+    // clean runs · see lib/runs/distance-guard.ts.
+    ...(distGuard.qualityFlag ? { qualityFlag: distGuard.qualityFlag } : {}),
     ingestedAt: new Date().toISOString(),
   };
 

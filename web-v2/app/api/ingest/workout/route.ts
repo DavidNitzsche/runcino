@@ -43,6 +43,7 @@ import { toUtcIso } from '@/lib/runs/normalize-time';
 import { requireUserId } from '@/lib/auth/session';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
+import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
 import { bucketHrSamplesByZone, hasHrSamples } from '@/lib/coach/hr-zone-bucket';
 import { computeZones } from '@/lib/training/zones';
 
@@ -87,8 +88,27 @@ export async function POST(req: NextRequest) {
     console.warn(`[ingest/workout] clamped out-of-bounds max_hr_bpm=${body.max_hr_bpm}`);
     body.max_hr_bpm = null;
   }
-  if (Number(body.distance_mi) > 50) {
-    return NextResponse.json({ error: 'distance_mi exceeds 50 mi ceiling' }, { status: 400 });
+  // 2026-07-06 · audit P1-26 / P2-62 fix · the old flat `> 50 → 400` here
+  // permanently destroyed real ultra runs — the iPhone relay dead-letters
+  // 4xx (WatchSync "dead-letter by returning true so the caller drops it").
+  //   50–250 mi  → accept + quarantine (data.qualityFlag='distance_review'
+  //                · counts toward volume, excluded from VDOT anchors),
+  //   > 250 mi   → sensor garbage · answer the sub-threshold-style
+  //                200 + { dropped } shape so the queue drops the payload
+  //                INTENTIONALLY instead of silently dead-lettering a 400.
+  // Rule rationale + Research citations: lib/runs/distance-guard.ts.
+  const distGuard = classifyRunDistance(Number(body.distance_mi));
+  if (distGuard.verdict === 'reject') {
+    console.warn(`[ingest/workout] dropped over-ceiling workout ${body.client_workout_id} · ${distGuard.distanceMi}mi (hard ceiling ${HARD_DISTANCE_CEILING_MI}mi)`);
+    return NextResponse.json({
+      ok: true,
+      id: `wko_${body.client_workout_id}`,
+      dropped: 'distance_ceiling',
+      distanceMi: distGuard.distanceMi,
+    });
+  }
+  if (distGuard.verdict === 'review') {
+    console.warn(`[ingest/workout] distance ${distGuard.distanceMi}mi exceeds ${SOFT_DISTANCE_CEILING_MI}mi soft bound · storing with qualityFlag='${distGuard.qualityFlag}'`);
   }
 
   const slug = `wko_${body.client_workout_id}`;
@@ -275,6 +295,10 @@ export async function POST(req: NextRequest) {
     // pre-fix behavior.
     workoutType: plannedWorkoutType,
     ...(plannedWorkoutType ? { workoutTypeSource: 'plan' } : {}),
+    // 2026-07-06 · P1-26 · distance quarantine. Key is ABSENT (not null)
+    // on clean runs so the merge upsert below can never clobber a flag
+    // set by a prior over-soft-bound write. See lib/runs/distance-guard.ts.
+    ...(distGuard.qualityFlag ? { qualityFlag: distGuard.qualityFlag } : {}),
     ingestedAt: new Date().toISOString(),
   };
 
@@ -376,6 +400,20 @@ export async function POST(req: NextRequest) {
     );
     if (up.rowCount === 0) {
       throw new Error(`cross-user collision on synthetic id ${stableId} · refusing to write`);
+    }
+
+    // 2026-07-06 · P1-26 · explicit flag clear on corrected re-import. The
+    // merge upsert PRESERVES an absent key (Rule 6: default preserves,
+    // explicit destruction only), so a re-import of the same
+    // client_workout_id with a corrected in-bounds distance must clear a
+    // stale quarantine flag field-level — never by replacing data wholesale.
+    if (distGuard.verdict === 'ok') {
+      await pool.query(
+        `UPDATE runs SET data = data - 'qualityFlag'
+          WHERE id = $1::bigint AND user_uuid = $2
+            AND data->>'qualityFlag' = '${DISTANCE_REVIEW_FLAG}'`,
+        [stableId, userId],
+      );
     }
 
     // 2026-06-03 · post-write hook · calibration auto-complete on
