@@ -29,22 +29,29 @@
  *     executionBufferSec, executionSource, executionCV, executionN,
  *     levers: Lever[],
  *     heldDays, lastMove,
+ *     goalSource, goalLabel, goalDateISO, summaryLine,   // 2026-07-06 · P1-12
  *   }
  *
- * Cold path: no VDOT / no goal race → ok=true with nulls. The iPhone
- * panel renders TargetsProjectionColdState.
+ * Goal-mode (no race row): when no races row resolves, the goal falls back
+ * to profile tt_goal_* (distance + target time) and the active goal-mode
+ * plan's goal_iso deadline — the SAME anchor generate.ts GOAL-MODE built the
+ * plan from. 2026-07-06 · P1-12 / P1-53.
+ *
+ * Cold path: no VDOT / no goal race / no fitness goal → ok=true with nulls.
+ * The iPhone panel renders TargetsProjectionColdState.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
-import { predictRaceTime, parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
+import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode } from '@/lib/training/vdot';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { computePacingDiscipline } from '@/lib/coach/pacing-discipline';
 import { computeProjectionLevers } from '@/lib/coach/projection-levers';
-import { computeConfidenceInterval, computeConfidenceLabel, computeGoalProjection } from '@/lib/training/goal-projection';
+import { computeConfidenceInterval, computeConfidenceLabel, computeGoalProjection, reconcileStatusWithConfidence } from '@/lib/training/goal-projection';
+import { composeTargetsSummaryLine } from '@/lib/training/targets-summary';
 
 export const dynamic = 'force-dynamic';
 
@@ -153,13 +160,55 @@ export async function GET(req: NextRequest) {
         );
     const race = raceQ.rows[0] ?? null;
 
-    // Use the race row's distance_mi when present; fall back to the
-    // query-param distance (iPhone might ask before a race is set).
-    const distanceMi = race?.distance_mi ?? distanceQ;
-    const goalSec = race?.goal ? parseRaceTime(race.goal) : null;
+    // ─── 1b. No-race fitness-goal fallback (2026-07-06 · P1-12 / P1-53) ───
+    // Goal-mode runners (tt_goal_* set via /api/profile/goal · plan generated
+    // by generate.ts GOAL-MODE with race_id = NULL) never resolve a races row,
+    // so this route anchored their projection to the 13.1 query default with
+    // goalSec null — a half-marathon trajectory next to a "5K · TARGET 25:00"
+    // tile, status 'cold', and "On track for —." copy. Resolve the SAME goal
+    // the plan was built for: profile tt_goal_* for distance + target time,
+    // the active goal-mode plan's goal_iso for the deadline (persistPlan
+    // writes the synthetic target date there · generate.ts persistPlan INSERT).
+    let goalSource: 'race' | 'fitness_goal' | null = race ? 'race' : null;
+    let goalLabel: string | null = null;
+    let goalModeDistanceMi: number | null = null;
+    let goalModeSec: number | null = null;
+    let goalDateISO: string | null = race?.date ?? null;
+    if (!race) {
+      const prof = (await pool.query<{ d: string | null; t: string | null; s: number | string | null }>(
+        `SELECT tt_goal_distance AS d, tt_goal_time AS t, tt_goal_time_seconds AS s
+           FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,
+        [userId],
+      ).catch(() => ({ rows: [] }))).rows[0];
+      const dMi = goalDistanceMiFromCode(prof?.d);
+      if (prof?.d && dMi != null) {
+        goalSource = 'fitness_goal';
+        goalLabel = prof.d;
+        goalModeDistanceMi = dMi;
+        // tt_goal_time_seconds is authoritative (written by /api/profile/goal);
+        // legacy onboarding rows carry only a display string (or a range like
+        // "22-25", which parseRaceTime rejects → trend copy, never a dash).
+        goalModeSec = prof.s != null ? Number(prof.s) : parseRaceTime(prof.t);
+        if (goalModeSec != null && goalModeSec <= 0) goalModeSec = null;
+        // Deadline = the active goal-mode plan's goal_iso (text column).
+        goalDateISO = (await pool.query<{ goal_iso: string | null }>(
+          `SELECT goal_iso FROM training_plans
+            WHERE user_uuid = $1::uuid AND archived_iso IS NULL AND race_id IS NULL
+              AND authored_state->>'goal_mode' = 'true'
+            ORDER BY authored_iso DESC LIMIT 1`,
+          [userId],
+        ).catch(() => ({ rows: [] }))).rows[0]?.goal_iso ?? null;
+      }
+    }
+
+    // Use the race row's distance_mi when present; then the fitness goal's
+    // distance; fall back to the query-param distance (iPhone might ask
+    // before a race or goal is set).
+    const distanceMi = race?.distance_mi ?? goalModeDistanceMi ?? distanceQ;
+    const goalSec = race ? (race.goal ? parseRaceTime(race.goal) : null) : goalModeSec;
     const goalSafeSec = race?.goal_safe ? parseRaceTime(race.goal_safe) : null;
-    const daysAway = race?.date
-      ? Math.round((new Date(race.date + 'T12:00:00Z').getTime() - Date.now()) / 86400000)
+    const daysAway = goalDateISO
+      ? Math.round((new Date(goalDateISO.slice(0, 10) + 'T12:00:00Z').getTime() - Date.now()) / 86400000)
       : null;
 
     // ─── 2. VDOT + projection · series first, profile fallback ───
@@ -358,11 +407,26 @@ export async function GET(req: NextRequest) {
     }
 
     // Status from the trajectory — the SAME logic web's TargetsView uses — so
-    // native and web agree. Race-week stays a time-based override; statusFor is
-    // the cold fallback only when there's no trajectory (no vdot/goal/date).
-    const status = (daysAway != null && daysAway <= 7 && daysAway >= 0) ? 'race_week'
+    // native and web agree. Race-week stays a time-based override (real races
+    // only — a goal-mode deadline week is not a race week; 2026-07-06);
+    // statusFor is the cold fallback only when there's no trajectory (no
+    // vdot/goal/date).
+    const rawStatus = (race != null && daysAway != null && daysAway <= 7 && daysAway >= 0) ? 'race_week'
       : traj ? (traj.reachable ? 'on_track' : traj.gapVdot <= 1.5 ? 'watch' : 'off')
-      : statusFor(projectionSec, goalSec, daysAway);
+      : statusFor(projectionSec, goalSec, race != null ? daysAway : null);
+    const confidenceLabel = (vdot != null && goalSec != null)
+      ? computeConfidenceLabel({
+          goalSec,
+          raceDistanceMi: distanceMi,
+          vdot,
+          daysToRace: daysAway,
+          status: toGoalStatus(rawStatus),
+        })
+      : null;
+    // 2026-07-06 · P1-14 · LOW confidence and ON PACE cannot coexist on one
+    // payload. The runway cap in fitness-trajectory closes the main path; this
+    // gate closes the short-runway edge (see reconcileStatusWithConfidence).
+    const status = reconcileStatusWithConfidence(rawStatus, confidenceLabel?.tier);
     const goalStatus = toGoalStatus(status);
     // 2026-06-16 · band re-anchored to the race-day projection (the
     // goal-seeking trajectory) so it reads "where you'll likely finish" with
@@ -376,17 +440,26 @@ export async function GET(req: NextRequest) {
       // passes this; without it the iPhone band stayed falsely narrow.
       vdotAnchorDateISO, vdotAnchorDistanceMi,
     });
-    const confidenceLabel = (vdot != null && goalSec != null)
-      ? computeConfidenceLabel({
-          goalSec,
-          raceDistanceMi: distanceMi,
-          vdot,
-          daysToRace: daysAway,
-          status: goalStatus,
-        })
-      : null;
     const lastMove = lastMoveFromSeries(series);
     const held = heldDays(series, vdot);
+
+    // 2026-07-06 · P1-12 / P2-28 · server-composed summary sentence. Never
+    // "On track for —.": with a target time it speaks in real formatted
+    // times; without one it emits trend copy (current fitness direction from
+    // the same series signals above) or a set-a-goal nudge. Additive — the
+    // iPhone panel adopts it in the native wave; until then it composes its
+    // own line client-side.
+    const summaryLine = composeTargetsSummaryLine({
+      status,
+      goalSec,
+      projectedSec: traj?.projectedSec ?? projectionSec,
+      goalSource,
+      raceName: race?.name ?? null,
+      daysAway,
+      vdot,
+      lastMove,
+      heldDays: held,
+    });
 
     // All four standard Daniels distances via the canonical predictRaceTime
     // (binary-search on rawVdot). iPhone renders these directly — no local
@@ -414,8 +487,18 @@ export async function GET(req: NextRequest) {
       raceName: race?.name ?? null,
       raceDate: race?.date ?? null,
       daysAway,
-      distanceMi: race?.distance_mi ?? null,
+      // Goal-mode runners get their goal's distance here (was null → the
+      // iPhone fell back to its own 13.1 default). Race rows unchanged.
+      distanceMi: race?.distance_mi ?? goalModeDistanceMi ?? null,
       location: race?.location ?? null,
+      // 2026-07-06 · P1-12 · goal provenance for goal-mode parity. Additive.
+      //   goalSource  · 'race' | 'fitness_goal' | null
+      //   goalLabel   · the tt_goal distance label ('5K', 'Half Marathon', …)
+      //   goalDateISO · race date, or the goal plan's deadline (goal_iso)
+      goalSource,
+      goalLabel,
+      goalDateISO,
+      summaryLine,
       totalGapSec,
       fitnessSec,
       courseImpactSec,

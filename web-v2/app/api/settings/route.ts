@@ -53,8 +53,9 @@ export async function PATCH(req: NextRequest) {
   try {
     await patchSettings(userId, patch);
     // A long-run / rest / quality day change reshapes the plan layout →
-    // rebuild the active race-prep plan inline (isolated; the save still
-    // succeeds if no plan exists or the rebuild fails).
+    // rebuild the active race-prep OR goal-mode plan inline (2026-07-06 ·
+    // P1-16; isolated — the save still succeeds if no plan exists or the
+    // rebuild fails).
     const changedShaping = Object.keys(patch).filter((k) => PLAN_SHAPING.has(k));
     let replanned = false;
     if (changedShaping.length > 0) {

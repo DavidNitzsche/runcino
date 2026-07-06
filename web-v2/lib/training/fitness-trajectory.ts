@@ -18,9 +18,10 @@
  *
  *   projectedRaceDayVdot
  *     = currentVdot + projectedGain
- *   projectedGain
- *     = clamp( buildWeeks × BASE_BUILD_RATE × executionQuality,
- *              0, MAX_BLOCK_GAIN )
+ *   projectedGain                            // 2026-06-16 "plan trusts itself" +
+ *     = clamp( (goalVdot − currentVdot) × executionQuality,   // 2026-07-06 runway cap
+ *              0, min(MAX_BLOCK_GAIN, planCeiling, buildWeeks × BASE_BUILD_RATE) )
+ *       + overPerformanceBonus               // demonstrated · rides under block/plan ceiling
  *   buildWeeks
  *     = max(0, weeksToRace − TAPER_WEEKS)     // taper expresses fitness, doesn't build it
  *
@@ -180,7 +181,22 @@ export function projectFitnessTrajectory(args: {
     ? Math.max(0, plannedTargetVdot - currentVdot)
     : Infinity;
   const gainCap = Math.min(MAX_BLOCK_GAIN, planCeilingGain);
-  const plannedGainVdot = clamp((goalVdot - currentVdot) * executionQuality, 0, gainCap);
+  // 2026-07-06 · P1-14 · runway cap on the PLANNED (future-build) gain.
+  // "The plan trusts itself" credits the full goal gap when execution is
+  // clean — but one block cannot physically deliver more than the research
+  // build rate over the weeks that REMAIN (~0.25–0.4 VDOT/wk over 12–16
+  // weeks · Research/00a periodization; BASE_BUILD_RATE is the same 0.35
+  // midpoint computeConfidenceLabel grades the runway against). Without this
+  // term a VDOT-40 runner setting a goal needing 44.5 with 3 weeks left
+  // projected the full 4.5 gain → hero read ON PACE while confidenceLabel on
+  // the SAME payload read LOW ("behind on this runway"). A gap the runway
+  // cannot close IS David's "very clear I cannot" case — the projection must
+  // say so. The cap applies to modeled FUTURE gain only; the over-performance
+  // bonus is DEMONSTRATED current fitness (HR-controlled sessions already
+  // run) and keeps riding on top under the original block/plan ceiling, so a
+  // tapering over-performer still reads ahead.
+  const runwayCapGain = buildWeeks * BASE_BUILD_RATE;
+  const plannedGainVdot = clamp((goalVdot - currentVdot) * executionQuality, 0, Math.min(gainCap, runwayCapGain));
   const projectedGainVdot = clamp(plannedGainVdot + overPerfBonus, 0, gainCap);
   const projectedVdot = Math.round((currentVdot + projectedGainVdot) * 10) / 10;
 
