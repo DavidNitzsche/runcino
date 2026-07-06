@@ -4,6 +4,11 @@
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { distanceMiFromLabel } from '@/lib/race/distance';
+
+/** The one provisional-finish label every surface renders verbatim.
+ *  Wording is the CLAUDE.md race-data Rule 3 canonical example. */
+export const PROVISIONAL_FINISH_LABEL = 'Training effort · race to lock in';
 
 export interface RaceRow {
   slug: string;
@@ -25,6 +30,17 @@ export interface RaceRow {
   // GPS over/under-measured activity), consumers must NOT render a
   // provisional finish as an authoritative PR / personal record.
   finishProvisional: boolean;
+  // 2026-07-06 · P1-19 · where finishTime came from, so surfaces can label
+  // provenance without re-deriving it:
+  //   'actual_result' — races.actual_result.finishS (canonical chip time)
+  //   'meta'          — races.meta.finishTime (curated retro entry)
+  //   'run_match'     — auto-filled from a date+distance-matched training
+  //                     run (ALWAYS provisional · Rule 3)
+  finishSource: 'actual_result' | 'meta' | 'run_match' | null;
+  // Non-null exactly when finishProvisional — the render-ready caption
+  // ('Training effort · race to lock in'). Surfaces show it verbatim next
+  // to the time instead of inventing their own wording.
+  finishProvisionalLabel: string | null;
   pb: boolean | null;
   // Race-morning logistics — read from races.meta (camelCase writer) with
   // snake_case fallbacks for older rows written before the naming settled.
@@ -99,8 +115,15 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
     // meta.finishTime is the older convention. Prefer actual_result · it's
     // the explicit "I ran this in X" log, vs meta.finishTime which can
     // be stale. Falls back to the Strava-match path below when both null.
-    let finishTime: string | null = m.finishTime ?? null;
-    if (!finishTime && ar?.finishS && Number(ar.finishS) > 0) {
+    //
+    // 2026-07-06 · P1-19 fix · the code had the ladder INVERTED vs its own
+    // comment: meta.finishTime was read first, so a stale meta entry beat
+    // the canonical chip time. actual_result.finishS now wins, per the
+    // CLAUDE.md race-data lock ("curated chip times beat raw" — and beat
+    // stale meta too). finishSource records which rung supplied the value.
+    let finishTime: string | null = null;
+    let finishSource: RaceRow['finishSource'] = null;
+    if (ar?.finishS && Number(ar.finishS) > 0) {
       const secs = Math.round(Number(ar.finishS));
       const h = Math.floor(secs / 3600);
       const mm = Math.floor((secs % 3600) / 60);
@@ -108,6 +131,10 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       finishTime = h > 0
         ? `${h}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
         : `${mm}:${String(ss).padStart(2,'0')}`;
+      finishSource = 'actual_result';
+    } else if (m.finishTime) {
+      finishTime = m.finishTime;
+      finishSource = 'meta';
     }
     return {
       slug: r.slug,
@@ -116,7 +143,11 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       priority: m.priority ?? null,
       goal: m.goalDisplay ?? null,
       distance_label: m.distanceLabel ?? null,
-      distance_mi: m.distanceMi ? Number(m.distanceMi) : null,
+      // 2026-07-06 · P1-17 · read-time backfill: rows created by POST
+      // /api/race + onboarding before this date carry distanceLabel only.
+      // Deriving here (no DB write) lights up pacing/fueling/execution-plan
+      // for every existing race immediately. New writes set meta.distanceMi.
+      distance_mi: m.distanceMi ? Number(m.distanceMi) : distanceMiFromLabel(m.distanceLabel ?? null),
       location: m.location ?? null,
       is_past,
       days,
@@ -124,6 +155,8 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       // #29 · finishTime here is curated (actual_result.finishS or
       // meta.finishTime). The Strava-match path below flips this to true.
       finishProvisional: false,
+      finishSource,
+      finishProvisionalLabel: null,
       pb: m.pb ?? null,
       gun_time: m.startTime ?? m.gun_time ?? m.start_time ?? null,
       wave: m.wave ?? null,
@@ -148,7 +181,8 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
   const past     = all.filter((r) => r.is_past).sort((a, b) => b.date.localeCompare(a.date));
 
   // Enrich past races by matching each to a real run from the log.
-  // Match rule: same date OR within 1 day AND distance within 1 mile.
+  // Match rule: within ±1 day AND distance within 10% of the race distance
+  // (floor 0.31 mi, cap 2.0 mi — see the P1-19 note in the loop).
   // Then pull finish time + pace + avg HR off that run.
   if (past.length > 0) {
     const earliestPast = past[past.length - 1].date;
@@ -165,7 +199,16 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
 
     for (const race of past) {
       if (!race.date) continue;
-      const targetMi = race.distance_mi ?? distanceMiFromLabel(race.distance_label);
+      const targetMi = race.distance_mi; // label fallback already applied at row build
+      // 2026-07-06 · P1-19 · distance tolerance is PROPORTIONAL to the race
+      // distance, not a flat 2.0 mi. The flat window let a 4-mi easy jog
+      // (miDelta 0.9) or a 2.6-mi shakeout (0.5) match a 5K and headline as
+      // its finish time. 10% of race distance (floor 0.31 mi ≈ GPS wobble on
+      // a 5K, cap 2.0 mi so the marathon window never WIDENS vs the old rule)
+      // keeps real matches — a 26.5-mi marathon file, a 13.3-mi half — while
+      // rejecting adjacent training runs. dayDelta ±1 stays: race files can
+      // land on the neighbor calendar day via the known startLocal→UTC drift.
+      const miTolerance = targetMi != null ? Math.min(2.0, Math.max(0.31, targetMi * 0.10)) : null;
       let best: any = null;
       let bestScore = Infinity;
       for (const c of candidates) {
@@ -178,7 +221,7 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
         if (dayDelta > 1) continue;
         const mi = Number(d.distanceMi);
         const miDelta = targetMi != null ? Math.abs(mi - targetMi) : 0;
-        if (targetMi != null && miDelta > 2.0) continue;
+        if (miTolerance != null && miDelta > miTolerance) continue;
         // Lower score = better match. Same day + close distance wins.
         const score = dayDelta * 10 + miDelta;
         if (score < bestScore) { best = d; bestScore = score; }
@@ -192,11 +235,19 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
         const movingSec = Number(best.movingTimeS) || Number(best.movingSec) || Number(best.elapsedTimeS) || null;
         // #29 · only mark provisional when we actually fall back to the matched
         // run's raw time (race.finishTime was null). A curated finish already
-        // present stays authoritative.
+        // present — actual_result ALWAYS wins, then meta — stays authoritative.
+        // 2026-07-06 · P1-19 · provisional fills now carry the render-ready
+        // label + source so every surface (iPhone RaceDayView hero included)
+        // can show 'Training effort · race to lock in' instead of presenting
+        // a matched training run as the authoritative result (Rule 3).
         const wasCurated = race.finishTime != null;
         const finish = race.finishTime ?? fmtDuration(movingSec);
         race.finishTime = finish;
-        if (!wasCurated && finish != null) race.finishProvisional = true;
+        if (!wasCurated && finish != null) {
+          race.finishProvisional = true;
+          race.finishSource = 'run_match';
+          race.finishProvisionalLabel = PROVISIONAL_FINISH_LABEL;
+        }
         race.matchedRun = {
           activity_id: best.id ?? best.activityId ?? `${best.date}-${Number(best.distanceMi).toFixed(2)}`,
           pace: best.avgPaceMinPerMi ?? fmtPace(Number(best.paceSPerMi) || null),
@@ -208,15 +259,9 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
     }
   }
 
-  function distanceMiFromLabel(label: string | null): number | null {
-    if (!label) return null;
-    const l = label.toLowerCase();
-    if (l.includes('marathon') && !l.includes('half')) return 26.2;
-    if (l.includes('half') || l.includes('21k')) return 13.1;
-    if (l.includes('10k')) return 6.2;
-    if (l.includes('5k')) return 3.1;
-    return null;
-  }
+  // (local distanceMiFromLabel fork removed 2026-07-06 · P1-17 — the shared
+  // lib/race/distance.ts parser is applied at row build, so distance_mi is
+  // already label-backfilled by the time the match loop reads it.)
   function fmtPace(s: number | null): string | null {
     if (!s || s <= 0) return null;
     const m = Math.floor(s / 60);
