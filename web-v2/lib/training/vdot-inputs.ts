@@ -25,6 +25,7 @@ import {
 } from '@/lib/training/vdot';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { excludeDistanceReviewSql } from '@/lib/runs/distance-guard';
 
 // ── Input shapes — match exactly what bestRecentVdot() accepts ──────────────
 
@@ -281,6 +282,13 @@ export async function loadVdotInputs(
         -- in vdotFromRun/bestRecentVdot — this WHERE is just the cheap row
         -- prefilter, set to the lowest floor any goal can ask for (5K = 3.0).
         AND (sa.data->>'distanceMi')::numeric >= 3
+        -- 2026-07-06 · P1-26 · skip distance-quarantined rows. Runs over the
+        -- 50 mi soft bound now ingest with data.qualityFlag='distance_review'
+        -- instead of being 400'd + dead-lettered; they count toward volume
+        -- (real ultra miles) but must NOT anchor fitness until reviewed — a
+        -- forgot-to-End treadmill phantom here would fabricate a VDOT.
+        -- See lib/runs/distance-guard.ts.
+        AND ${excludeDistanceReviewSql('sa')}
         -- 2026-06-09 state-audit fix: was movingTimeS-only, a Strava field
         -- watch rows don't carry (they carry durationSec; their timeMoving
         -- is a display string, never castable) — which structurally

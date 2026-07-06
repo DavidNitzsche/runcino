@@ -26,6 +26,7 @@ import { autoMergeForDate } from '@/lib/runs/merge';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { requireUserId } from '@/lib/auth/session';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
+import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
 import { runnerTimezone, runnerToday } from '@/lib/runtime/runner-tz';
 import { toUtcIso, toLocalWallIso } from '@/lib/runs/normalize-time';
 
@@ -145,8 +146,7 @@ export async function POST(req: NextRequest) {
 
   // ── 0b. Physiological bounds guard (F20) ──────────────────────────────────
   // Clamp impossible HR values to null rather than storing garbage that
-  // would poison readiness pillars. Distance ceiling guards against the
-  // dedup absorber treating a 100-mile phantom as a valid run.
+  // would poison readiness pillars.
   if (body.maxHr != null && (body.maxHr < 30 || body.maxHr > 230)) {
     console.warn(`[watch/complete] out-of-bounds maxHr=${body.maxHr} clamped to null`);
     body.maxHr = null;
@@ -155,8 +155,31 @@ export async function POST(req: NextRequest) {
     console.warn(`[watch/complete] out-of-bounds avgHr=${body.avgHr} clamped to null`);
     body.avgHr = null;
   }
-  if (body.totalDistanceMi != null && body.totalDistanceMi > 50) {
-    return NextResponse.json({ error: 'distance exceeds 50 mi ceiling' }, { status: 400 });
+  // 2026-07-06 · audit P1-26 / P2-62 fix · the old flat `> 50 → 400` here
+  // permanently destroyed real ultra runs: both durable retry lanes (watch
+  // PhoneSync direct-POST queue, iPhone WatchSync relay) dead-letter 4xx,
+  // so a 50-miler vanished with the watch stuck on "Uploading…". Now:
+  //   50–250 mi  → accept + quarantine (data.qualityFlag='distance_review'
+  //                · counts toward volume, excluded from VDOT anchors),
+  //   > 250 mi   → sensor garbage · answer the sub-threshold-style
+  //                200 + { dropped } shape so the queue drops the payload
+  //                INTENTIONALLY instead of silently dead-lettering a 400.
+  // Rule rationale + Research citations: lib/runs/distance-guard.ts.
+  const distGuard = classifyRunDistance(body.totalDistanceMi);
+  if (distGuard.verdict === 'reject') {
+    console.warn(`[watch/complete] dropped over-ceiling workout ${body.workoutId} · ${distGuard.distanceMi}mi (hard ceiling ${HARD_DISTANCE_CEILING_MI}mi)`);
+    return NextResponse.json({
+      ok: true,
+      workoutId: body.workoutId,
+      dropped: 'distance_ceiling',
+      distanceMi: distGuard.distanceMi,
+      // No row written to coach_intents or runs · client treats
+      // { ok, dropped } as "accepted quietly, don't retry."
+      api_version: 'watch-complete/p21-guard',
+    });
+  }
+  if (distGuard.verdict === 'review') {
+    console.warn(`[watch/complete] distance ${distGuard.distanceMi}mi exceeds ${SOFT_DISTANCE_CEILING_MI}mi soft bound · storing with qualityFlag='${distGuard.qualityFlag}'`);
   }
 
   // ── 1. strava_activities-shaped row so non-coach consumers see the run ──
@@ -362,6 +385,10 @@ export async function POST(req: NextRequest) {
     // coach and VDOT engines can query per-phase actuals without a
     // JOIN to coach_intents. Empty array when old clients omit phases.
     ...(body.phases?.length ? { phases: body.phases } : {}),
+    // 2026-07-06 · P1-26 · distance quarantine. Key is ABSENT (not null)
+    // on clean runs so the merge upsert below can never clobber a flag
+    // set by a prior over-soft-bound write. See lib/runs/distance-guard.ts.
+    ...(distGuard.qualityFlag ? { qualityFlag: distGuard.qualityFlag } : {}),
     ingestedAt: new Date().toISOString(),
     // 2026-06-03 · per-run TZ capture · stored on the run row so the
     // recovery anchor + activity feed read the TZ that was in effect
@@ -497,6 +524,19 @@ export async function POST(req: NextRequest) {
     if (up.rowCount === 0) {
       runsWritePermanent = true;
       throw new Error(`cross-user collision on synthetic id ${stableId}`);
+    }
+    // 2026-07-06 · P1-26 · explicit flag clear on corrected re-POST. The
+    // merge upsert PRESERVES an absent key (Rule 6: default preserves,
+    // explicit destruction only), so a re-POST of the same workoutId with
+    // a corrected in-bounds distance must clear a stale quarantine flag
+    // field-level — never by replacing data wholesale.
+    if (distGuard.verdict === 'ok') {
+      await pool.query(
+        `UPDATE runs SET data = data - 'qualityFlag'
+          WHERE id = $1 AND user_uuid = $2
+            AND data->>'qualityFlag' = '${DISTANCE_REVIEW_FLAG}'`,
+        [stableId, userId],
+      );
     }
     // 2026-06-03 · post-write hook · calibration auto-complete for
     // cold-start runners on first qualifying easy run. Best-effort.
