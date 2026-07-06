@@ -30,6 +30,9 @@ vi.mock('@/lib/runtime/runner-tz', () => ({
   // health-state imports nothing else from runner-tz, but keep the module
   // shape permissive in case of indirect imports.
   runnerTimezone: vi.fn().mockResolvedValue('America/Los_Angeles'),
+  // 2026-07-06 · volume.ts (reached via health-state's ACWR fold) resolves
+  // the runner tz for identity clustering.
+  runnerTimezoneOrPacific: vi.fn().mockResolvedValue('America/Los_Angeles'),
 }));
 
 import { pool } from '@/lib/db/pool';

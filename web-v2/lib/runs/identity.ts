@@ -56,11 +56,20 @@ const distMi = (r: RunRow): number => Number(r.data?.distanceMi ?? 0);
 
 // ── startLocal → true UTC instant (DST-aware) ─────────────────────────────
 // `Z`/offset → absolute. A bare wall-clock is interpreted in the row's tz
-// (explicit `timezone`, else PT — the HK importer forces PT and strava_webhook
-// is bare-local), so two trustworthy timestamps from different sources
-// (apple_watch bare-PT vs strava `Z`-UTC) compare in the SAME frame. One-shot
-// offset lookup is exact except inside the 1h DST-transition window (a 2 a.m.
-// run start — vanishingly rare).
+// (explicit `timezone`, else the caller's `defaultTz` — the HK importer
+// forces PT and strava_webhook is bare-local), so two trustworthy timestamps
+// from different sources (apple_watch bare-PT vs strava `Z`-UTC) compare in
+// the SAME frame. One-shot offset lookup is exact except inside the 1h
+// DST-transition window (a 2 a.m. run start — vanishingly rare).
+//
+// 2026-07-06 · phone+watch audit P1-51 · `defaultTz` threads the RUNNER'S
+// stored timezone (lib/runtime/runner-tz.ts runnerTimezoneOrPacific) through
+// every identity computation, so a non-Pacific runner's bare Strava wall
+// times reconstruct to the right UTC instant. DEFAULT_TZ stays
+// America/Los_Angeles as the no-caller-tz fallback: every profile with runs
+// stored 'America/Los_Angeles' at rollout (RO probe 2026-07-06), so the
+// threading is byte-identical for all existing rows. Rows carrying an
+// explicit `data.timezone` are unaffected — the row's own tz always wins.
 const DEFAULT_TZ = 'America/Los_Angeles';
 function tzOffsetMs(utcMs: number, tz: string): number {
   const dtf = new Intl.DateTimeFormat('en-US', {
@@ -73,7 +82,7 @@ function tzOffsetMs(utcMs: number, tz: string): number {
   const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
   return asUtc - utcMs;
 }
-function startUtcMs(r: RunRow): number {
+function startUtcMs(r: RunRow, defaultTz: string = DEFAULT_TZ): number {
   let s = String(r.data?.startLocal ?? '');
   if (!s) return NaN;
   // Strava's start_date_local carries a spurious Z: it's the athlete's local
@@ -83,13 +92,15 @@ function startUtcMs(r: RunRow): number {
   if (hasOffset(s)) return Date.parse(s);
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
   if (!m) return Date.parse(s);
-  const tz = isIana(r.data?.timezone) ? (r.data!.timezone as string) : DEFAULT_TZ;
+  const tz = isIana(r.data?.timezone) ? (r.data!.timezone as string) : defaultTz;
   const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0));
   return guess - tzOffsetMs(guess, tz);
 }
-const endUtcMs = (r: RunRow): number => startUtcMs(r) + durSec(r) * 1000;
-function spansOverlap(a: RunRow, b: RunRow): boolean {
-  const sa = startUtcMs(a), sb = startUtcMs(b), ea = endUtcMs(a), eb = endUtcMs(b);
+const endUtcMs = (r: RunRow, defaultTz: string = DEFAULT_TZ): number =>
+  startUtcMs(r, defaultTz) + durSec(r) * 1000;
+function spansOverlap(a: RunRow, b: RunRow, defaultTz: string = DEFAULT_TZ): boolean {
+  const sa = startUtcMs(a, defaultTz), sb = startUtcMs(b, defaultTz);
+  const ea = endUtcMs(a, defaultTz), eb = endUtcMs(b, defaultTz);
   if (![sa, sb, ea, eb].every(Number.isFinite)) return false;
   return Math.max(sa, sb) < Math.min(ea, eb);
 }
@@ -102,20 +113,20 @@ function spansOverlap(a: RunRow, b: RunRow): boolean {
 // wall-clock, possibly UTC-mislabeled) → start unusable → fall back to the
 // shared-HKWorkout fingerprint: tight duration + distance (start ignored →
 // TZ-robust, still merges the 05-29 / 05-31 pairs).
-export function isSameRun(a: RunRow, b: RunRow): boolean {
+export function isSameRun(a: RunRow, b: RunRow, defaultTz: string = DEFAULT_TZ): boolean {
   if (String(a.user_uuid) !== String(b.user_uuid)) return false;
   if (localDay(a) !== localDay(b)) return false;
-  if (isTrustworthy(a) && isTrustworthy(b)) return spansOverlap(a, b);
+  if (isTrustworthy(a) && isTrustworthy(b)) return spansOverlap(a, b, defaultTz);
   return Math.abs(durSec(a) - durSec(b)) <= 120 && Math.abs(distMi(a) - distMi(b)) <= 0.05;
 }
 
 // ── cluster same-day rows into one group per physical run ─────────────────
-export function clusterRuns(rows: RunRow[]): RunRow[][] {
+export function clusterRuns(rows: RunRow[], defaultTz: string = DEFAULT_TZ): RunRow[][] {
   const clusters: RunRow[][] = [];
   for (const row of rows) {
     let placed = false;
     for (const cluster of clusters) {
-      if (cluster.some((member) => isSameRun(member, row))) { cluster.push(row); placed = true; break; }
+      if (cluster.some((member) => isSameRun(member, row, defaultTz))) { cluster.push(row); placed = true; break; }
     }
     if (!placed) clusters.push([row]);
   }
@@ -206,11 +217,11 @@ export type MergeOps = {
   clusters: number;
 };
 
-export function planMergeOps(rows: RunRow[]): MergeOps {
+export function planMergeOps(rows: RunRow[], defaultTz: string = DEFAULT_TZ): MergeOps {
   const clears: string[] = [];
   const sets: Array<{ id: string; canonicalId: string }> = [];
   const absorptions: Array<{ canonicalId: string; loserId: string }> = [];
-  const clustered = clusterRuns(rows);
+  const clustered = clusterRuns(rows, defaultTz);
   for (const cluster of clustered) {
     const { canonical, losers } = pickCanonical(cluster);
     const canonicalId = canonical.id;

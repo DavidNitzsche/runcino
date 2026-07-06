@@ -46,7 +46,7 @@ import { pool } from '@/lib/db/pool';
 import { isoDaysBefore } from '@/lib/runs/volume';
 import { predictRaceTime, vdotFromRace, tPaceFromVdot, vdotFromTpace, parseRaceTime } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
 import { projectFitnessTrajectory, type FitnessTrajectory } from './fitness-trajectory';
 import { loadPlannedTargetVdot } from './plan-target';
@@ -366,6 +366,11 @@ async function computeOverPerformanceBonus(
   const MIN_SESSIONS = 2;  // ≥2 controlled-fast sessions before the projection moves
   const today = await runnerToday(userUuid);
   const since = isoDaysBefore(today, 28);
+  // 2026-07-06 · audit P1-11/P1-52 · bucket ci.ts (UTC sync instant) into
+  // the RUNNER'S calendar day before joining to pw.date_iso (runner-local).
+  // Was hardcoded 'America/Los_Angeles'; LA fallback for null-tz profiles
+  // keeps the pre-fix behavior byte-identical.
+  const ciTz = await runnerTimezoneOrPacific(userUuid);
 
   const lthr = (await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1::uuid LIMIT 1`, [userUuid],
@@ -384,11 +389,11 @@ async function computeOverPerformanceBonus(
                     THEN ci.value::jsonb->'phases' ELSE '[]'::jsonb END) AS phase
                WHERE COALESCE(ci.user_uuid, ci.user_id::uuid) = $1::uuid
                  AND ci.reason = 'watch_completion'
-                 AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date
+                 AND (ci.ts AT TIME ZONE $4::text)::date = pw.date_iso::date
                  AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                                WHERE COALESCE(ci2.user_uuid, ci2.user_id::uuid) = $1::uuid
                                  AND ci2.reason = 'watch_completion'
-                                 AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date)
+                                 AND (ci2.ts AT TIME ZONE $4::text)::date = pw.date_iso::date)
                  AND phase->>'type' = 'work' AND (phase->>'actualPaceSPerMi')::numeric > 0
             ) AS work_pace_s,
             -- AUDIT #35 · read the WORK-PHASE avg HR, not the whole-run avg HR.
@@ -405,18 +410,18 @@ async function computeOverPerformanceBonus(
                     THEN ci.value::jsonb->'phases' ELSE '[]'::jsonb END) AS phase
                WHERE COALESCE(ci.user_uuid, ci.user_id::uuid) = $1::uuid
                  AND ci.reason = 'watch_completion'
-                 AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date
+                 AND (ci.ts AT TIME ZONE $4::text)::date = pw.date_iso::date
                  AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                                WHERE COALESCE(ci2.user_uuid, ci2.user_id::uuid) = $1::uuid
                                  AND ci2.reason = 'watch_completion'
-                                 AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date)
+                                 AND (ci2.ts AT TIME ZONE $4::text)::date = pw.date_iso::date)
                  AND phase->>'type' = 'work' AND (phase->>'avgHr')::numeric > 0
             ) AS avg_hr
        FROM plan_workouts pw JOIN training_plans tp ON tp.id = pw.plan_id
       WHERE tp.user_uuid = $1::uuid AND tp.archived_iso IS NULL
         AND pw.type IN ('tempo','threshold','race_week_tuneup')
         AND pw.date_iso >= $2 AND pw.date_iso <= $3`,
-    [userUuid, since, today],
+    [userUuid, since, today, ciTz],
   ).catch(() => ({ rows: [] }))).rows;
 
   const bonuses: number[] = [];
@@ -543,6 +548,9 @@ async function loadRecentTestPoints(
   userUuid: string,
 ): Promise<GoalProjection['recentTestPoints']> {
   const today = await runnerToday(userUuid);
+  // 2026-07-06 · audit P1-11 · runner-local day bucketing for ci.ts
+  // (see computeOverPerformanceBonus).
+  const ciTz = await runnerTimezoneOrPacific(userUuid);
   // 2026-06-04 · pull the work-phase pace from coach_intents
   // (watch_completion) when available · otherwise fall back to
   // overall pace. Overall pace on tempo/intervals/threshold is
@@ -579,7 +587,7 @@ async function loadRecentTestPoints(
                      ) AS phase
                WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
                  AND ci.reason = 'watch_completion'
-                 AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date
+                 AND (ci.ts AT TIME ZONE $3::text)::date = pw.date_iso::date
                  AND phase->>'type' = 'work'
                  AND (phase->>'actualPaceSPerMi')::numeric > 0
             ) AS work_pace_s
@@ -597,7 +605,7 @@ async function loadRecentTestPoints(
         AND pw.date_iso <= $2
       ORDER BY pw.date_iso DESC
       LIMIT 3`,
-    [userUuid, today],
+    [userUuid, today, ciTz],
   ).catch(() => ({ rows: [] }))).rows;
 
   if (rows.length === 0) return [];
@@ -955,6 +963,9 @@ async function detectTempoPaceDrift(
   const tPacePerMi = hmSec / 13.1 - 5;
 
   const projToday = await runnerToday(userUuid);
+  // 2026-07-06 · audit P1-11 · runner-local day bucketing for ci.ts
+  // (see computeOverPerformanceBonus).
+  const ciTz = await runnerTimezoneOrPacific(userUuid);
   const r = (await pool.query<{
     avg_pace_s: number | string | null;
     count: number | string;
@@ -973,7 +984,7 @@ async function detectTempoPaceDrift(
                          ) AS phase
                    WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
                      AND ci.reason = 'watch_completion'
-                     AND (ci.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date
+                     AND (ci.ts AT TIME ZONE $4::text)::date = pw.date_iso::date
                      -- 2026-06-11 · latest completion only. A day can carry
                      -- more than one watch_completion (a stale 1-phase push +
                      -- the real 3-phase run); averaging across both pulled a
@@ -982,7 +993,7 @@ async function detectTempoPaceDrift(
                      AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                                    WHERE COALESCE(ci2.user_uuid, ci2.user_id) = $1::uuid
                                      AND ci2.reason = 'watch_completion'
-                                     AND (ci2.ts AT TIME ZONE 'America/Los_Angeles')::date = pw.date_iso::date)
+                                     AND (ci2.ts AT TIME ZONE $4::text)::date = pw.date_iso::date)
                      AND phase->>'type' = 'work'
                      AND (phase->>'actualPaceSPerMi')::numeric > 0
                 ) AS work_pace
@@ -995,7 +1006,7 @@ async function detectTempoPaceDrift(
             AND pw.date_iso <= $2
        ) t
       WHERE t.work_pace IS NOT NULL`,
-    [userUuid, projToday, isoDaysBefore(projToday, 21)],
+    [userUuid, projToday, isoDaysBefore(projToday, 21), ciTz],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!r || !r.avg_pace_s || Number(r.count) < 3) return null;
   const observedPaceSec = Number(r.avg_pace_s);

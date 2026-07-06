@@ -82,6 +82,53 @@ describe('isSameRun', () => {
   });
 });
 
+// ── runner-timezone threading (2026-07-06 · audit P1-51) ────────────────────
+// The DANGER-ZONE contract: passing the runner's stored tz must be
+// BYTE-IDENTICAL to the old hardcoded default for a Pacific runner (every
+// profile with runs stored 'America/Los_Angeles' at rollout), while a
+// non-Pacific tz must fix the bare-Strava-wall-time reconstruction that
+// duplicated runs for everyone else.
+describe('isSameRun · defaultTz threading', () => {
+  // Strava start_date_local carries a spurious Z (athlete-LOCAL wall time,
+  // Z stripped inside startUtcMs) · apple_health carries a REAL-UTC Z.
+  // 07:00 athlete-local vs 06:10:00Z: for a London athlete these overlap
+  // (07:00 BST = 06:00Z, span 06:00–07:00Z vs 06:10–07:10Z) · read as
+  // Pacific they sit 8 h apart.
+  const strava = row('S', 'strava', { start: '2026-06-02T07:00:00Z' });
+  const hk = row('H', 'apple_health', { start: '2026-06-02T06:10:00Z' });
+
+  it('is byte-identical for a Pacific runner: explicit LA == old hardcoded default', () => {
+    for (const [a, b] of [[strava, hk],
+      [row('W', 'watch'), row('AW', 'apple_watch', { start: '2026-06-02T07:00:05', dist: 7.52, dur: 3605 })],
+      [row('AM', 'apple_watch', { dist: 5, dur: 2400 }), row('PM', 'apple_watch', { start: '2026-06-02T18:00:00', dist: 3, dur: 1500 })],
+    ] as const) {
+      expect(isSameRun(a, b, 'America/Los_Angeles')).toBe(isSameRun(a, b));
+    }
+  });
+
+  it('merges a London runner\'s Strava + HK pair that the Pacific default splits', () => {
+    expect(isSameRun(strava, hk)).toBe(false);                   // old behavior · dupe survives
+    expect(isSameRun(strava, hk, 'Europe/London')).toBe(true);   // runner-tz threading · merged
+  });
+
+  it('a row\'s own data.timezone beats the caller defaultTz', () => {
+    const pinned = { ...strava, data: { ...strava.data, timezone: 'Europe/London' } };
+    // Even with the Pacific default, the London-pinned row reconstructs right.
+    expect(isSameRun(pinned, hk)).toBe(true);
+  });
+});
+
+describe('planMergeOps · defaultTz threading', () => {
+  it('produces identical ops for a Pacific runner with and without the explicit tz', () => {
+    const rows = [
+      row('A', 'apple_watch', { mergedIntoId: 'B' }),
+      row('B', 'watch', { mergedIntoId: 'A' }),
+      row('S', 'strava', { start: '2026-06-02T07:00:00Z' }),
+    ];
+    expect(planMergeOps(rows, 'America/Los_Angeles')).toEqual(planMergeOps(rows));
+  });
+});
+
 // ── pickCanonical · lock the trust-flip behavior (refactor regression guard) ──
 describe('pickCanonical', () => {
   it('trust-flips apple_watch over the untrustworthy watch when equivalent and splits not demoted', () => {

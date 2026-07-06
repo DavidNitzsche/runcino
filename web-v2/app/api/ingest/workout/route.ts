@@ -39,7 +39,8 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { fetchRunWeather, WEATHER_VERSION_CURRENT } from '@/lib/weather/openmeteo';
-import { toUtcIso } from '@/lib/runs/normalize-time';
+import { toUtcIso, toLocalWallIso } from '@/lib/runs/normalize-time';
+import { runnerTimezoneOrPacific, captureTimezoneFromDevice } from '@/lib/runtime/runner-tz';
 import { requireUserId } from '@/lib/auth/session';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
@@ -90,6 +91,41 @@ export async function POST(req: NextRequest) {
   if (Number(body.distance_mi) > 50) {
     return NextResponse.json({ error: 'distance_mi exceeds 50 mi ceiling' }, { status: 400 });
   }
+
+  // 2026-07-06 · audit P1-33/P1-50 · runner-timezone threading. The
+  // single-user-era HealthKitImporter pinned date/start_local to
+  // America/Los_Angeles and shipped NO timezone field; updated clients
+  // ship `timezone` (device IANA zone, same as the health-samples path).
+  // When present:
+  //   · auto-populate profile.timezone (travel-aware, TZ-08 parity with
+  //     /api/ingest/health),
+  //   · stamp data.timezone so run-identity dedup (lib/runs/identity.ts:86
+  //     honors it) interprets this row's bare wall time in the RIGHT zone,
+  //   · re-derive `date` from start_local + payload tz instead of trusting
+  //     the client-computed date. For bare wall-time start_local this is a
+  //     byte-identical no-op (the wall date IS the local date); it only
+  //     corrects offset-carrying timestamps a PT-pinned date was computed
+  //     against.
+  // Absent (all current builds): behavior unchanged — runner's stored tz
+  // (LA fallback, lib/runtime/runner-tz.ts) covers the weather window below.
+  const payloadTz: string | null = (() => {
+    if (typeof body.timezone !== 'string' || !body.timezone) return null;
+    try { new Intl.DateTimeFormat('en-CA', { timeZone: body.timezone }); return body.timezone; }
+    catch { return null; }
+  })();
+  if (payloadTz) {
+    await captureTimezoneFromDevice(userId, payloadTz).catch(() => { /* best-effort */ });
+    if (typeof body.start_local === 'string' && body.start_local) {
+      const utc = toUtcIso(body.start_local, body.source ?? 'apple_watch', payloadTz);
+      const derived = (toLocalWallIso(utc, payloadTz) ?? '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(derived) && derived !== body.date) {
+        console.log(`[ingest/workout] date re-derived from start_local+tz · client=${body.date} → ${derived} (${payloadTz})`);
+        body.date = derived;
+      }
+    }
+  }
+  // Zone for interpreting this row's bare wall-clock start (weather window).
+  const wallTz = payloadTz ?? await runnerTimezoneOrPacific(userId);
 
   const slug = `wko_${body.client_workout_id}`;
 
@@ -183,6 +219,12 @@ export async function POST(req: NextRequest) {
     name: body.name ?? 'Run',
     date: body.date,
     startLocal: body.start_local ?? `${body.date}T08:00:00`,
+    // 2026-07-06 · audit P1-33 · device zone (when the client ships one) ·
+    // identity.ts:86 prefers a row's own timezone over the per-user default
+    // when reconstructing UTC from a bare wall clock. Absent on legacy
+    // payloads (key omitted, not null — jsonb_strip_nulls would drop it
+    // anyway on the upsert merge).
+    ...(payloadTz ? { timezone: payloadTz } : {}),
     distanceMi: Number(body.distance_mi),
     durationSec: Number(body.duration_sec ?? 0),
     timeMoving: body.moving_sec
@@ -482,7 +524,10 @@ export async function POST(req: NextRequest) {
       try {
         const firstPair = decodePolylineFirst(body.route_polyline);
         if (firstPair) {
-          const utcStartISO = toUtcIso(data.startLocal, data.source) ?? data.startLocal;
+          // 2026-07-06 · audit P1-33 · interpret the wall time in the
+          // runner's zone (payload tz when shipped, stored profile tz with
+          // LA fallback otherwise) — was the module-level LA default.
+          const utcStartISO = toUtcIso(data.startLocal, data.source, wallTz) ?? data.startLocal;
           const w = await fetchRunWeather(firstPair[0], firstPair[1], utcStartISO);
           if (w) {
             (data as any).weather = w;

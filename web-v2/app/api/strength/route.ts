@@ -10,6 +10,9 @@
  *          date, session_type?, duration_min?, notes?,
  *          source?,           // 'manual' (default) | 'apple_health' | 'watch' | 'strava'
  *          hk_uuid?,          // HKWorkout.uuid · required when source='apple_health'
+ *          start_at?,         // ISO-8601 instant (offset/Z) · HKWorkout.startDate
+ *          timezone?,         // IANA device zone · with start_at, the server
+ *                             //   derives the session's local date itself
  *        }
  * DELETE /api/strength?hk_uuid=<uuid>   → remove an HK-imported row by stable uuid
  *
@@ -23,7 +26,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, captureTimezoneFromDevice } from '@/lib/runtime/runner-tz';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
@@ -52,9 +55,42 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); }
   catch { return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 }); }
 
-  const date = typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
-    ? body.date
-    : await runnerToday(userId);
+  // 2026-07-06 · audit P1-22 · the legacy HealthKitImporter formats the
+  // session date in a hardcoded America/Los_Angeles frame ("yyyy-MM-dd
+  // (PT)") — wrong calendar day for any non-Pacific runner, and every
+  // downstream reader (strength-recommender loadLoggedStrengthDates,
+  // roll-forward, habit detection, strength-status) keys on this being
+  // the runner-local day. Updated clients ship the raw HKWorkout start
+  // instant (`start_at`, offset-carrying ISO) plus the device `timezone`;
+  // the SERVER derives the local date from those and ignores the
+  // client-computed one. Legacy payloads (no start_at/timezone) keep the
+  // exact old ladder: body.date, else runnerToday. Cite:
+  // Research/07-strength-programming.md §frequency-recommendations —
+  // weekly counts only work when sessions land on the right local day.
+  const deviceTz: string | null = (() => {
+    if (typeof body.timezone !== 'string' || !body.timezone) return null;
+    try { new Intl.DateTimeFormat('en-CA', { timeZone: body.timezone }); return body.timezone; }
+    catch { return null; }
+  })();
+  if (deviceTz) await captureTimezoneFromDevice(userId, deviceTz).catch(() => { /* best-effort */ });
+  const derivedDate: string | null = (() => {
+    if (!deviceTz || typeof body.start_at !== 'string') return null;
+    // Offset/Z REQUIRED · a bare wall time would be parsed in the SERVER'S
+    // zone (UTC on Railway) and could bucket a day off — the exact bug
+    // class this derivation replaces. Bare start_at → fall back to the
+    // legacy body.date ladder below.
+    if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(body.start_at)) return null;
+    const t = Date.parse(body.start_at);
+    if (!Number.isFinite(t)) return null;
+    // en-CA formats as YYYY-MM-DD · same idiom as runnerToday().
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: deviceTz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date(t));
+  })();
+  const date = derivedDate
+    ?? (typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+      ? body.date
+      : await runnerToday(userId));
   const sessionType = typeof body.session_type === 'string' ? body.session_type : null;
   const durationMin = Number.isFinite(Number(body.duration_min)) ? Number(body.duration_min) : null;
   const notes = typeof body.notes === 'string' ? body.notes : null;

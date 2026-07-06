@@ -17,6 +17,7 @@ import { pool } from '@/lib/db/pool';
 import { getStravaToken } from './auth';
 import { buildTcx } from './build-tcx';
 import { toUtcIso as resolveStartUtc } from '@/lib/runs/normalize-time';
+import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { enqueueNotification } from '@/lib/notifications/enqueue';
 import { renderStravaReconnect } from '@/lib/notifications/templates';
 
@@ -131,8 +132,13 @@ export async function pushRunToStrava(
     // tz-correct UTC via the canonical normalize-time helper (watch rows
     // store startLocal as local wall time without an offset). build-tcx's
     // own toUtcIso then round-trips this Z-marked string unchanged.
-    startLocalIso: resolveStartUtc(run.startLocal, run.source, run.timezone)
-      ?? run.startLocal ?? `${run.date}T08:00:00`,
+    // 2026-07-06 · audit P1-33 · rows without their own data.timezone fall
+    // back to the RUNNER's stored zone (LA when unset — the old module
+    // default), not a global Pacific constant.
+    startLocalIso: resolveStartUtc(
+      run.startLocal, run.source,
+      run.timezone ?? await runnerTimezoneOrPacific(userId),
+    ) ?? run.startLocal ?? `${run.date}T08:00:00`,
     durationSec: Number(run.durationSec ?? run.movingSec ?? 0),
     distanceMi: Number(run.distanceMi ?? 0),
     avgHr: run.avgHr ?? null,
