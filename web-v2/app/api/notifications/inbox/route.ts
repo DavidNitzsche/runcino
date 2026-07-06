@@ -27,10 +27,30 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(100, Math.max(1, Number(req.nextUrl.searchParams.get('limit') ?? '50')));
 
   try {
+    // 2026-07-06 · audit P1-23 · the ONLY writer of notifications_log is
+    // dispatch.ts, which stores a FLAT stripped-SendPushArgs payload
+    // (top-level title/body) — never an aps wrapper. The old SQL read
+    // payload->'aps'->'alert' and returned NULL for every row, so the
+    // bell sheet rendered contentless rows. COALESCE order:
+    //   1. payload->>'title'            — flat SendPushArgs (real sends)
+    //   2. payload->'tpl'->>'title'     — apns-unconfigured stub rows
+    //      ({skipped, tpl}); excluded by the delivered filter today but
+    //      read correctly if that filter ever loosens
+    //   3. payload->'aps'->'alert'->>…  — defensive: any hypothetical
+    //      historical row shaped like a raw APNs body (prod probe
+    //      2026-07-06 found zero, but the fallback costs nothing)
     const rows = (await pool.query(
       `SELECT id, category,
-              payload->'aps'->'alert'->>'title' AS title,
-              payload->'aps'->'alert'->>'body'  AS body,
+              COALESCE(
+                payload->>'title',
+                payload->'tpl'->>'title',
+                payload->'aps'->'alert'->>'title'
+              ) AS title,
+              COALESCE(
+                payload->>'body',
+                payload->'tpl'->>'body',
+                payload->'aps'->'alert'->>'body'
+              ) AS body,
               fired_at::text AS fired_at,
               delivered,
               ack_action,

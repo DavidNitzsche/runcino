@@ -250,6 +250,24 @@ export interface SendPushArgs {
   /** Rich-action buttons (deck §4). When present, ALSO sets `aps.category`
    *  so iOS picks the registered UNNotificationCategory at render. */
   action_buttons?: ApnsActionButton[];
+  /** 2026-07-06 · audit P1-25 · explicit UNNotificationCategory id override.
+   *  When set, wins over apnsCategoryId(category). Lets a template that
+   *  shares a prefs bucket emit its OWN iOS category — renderSickCheck
+   *  ('niggle_sick' bucket) emits FAFF_SICK so the RECOVERED action can
+   *  be registered separately from FAFF_NIGGLE's GONE. */
+  apns_category_id?: string;
+  /** 2026-07-06 · audit P1-25 · the template's dedup_key, echoed into the
+   *  faff dict. NotificationsAppDelegate.swift reads faff.dedup_key and
+   *  /api/notifications/ack routes sick vs niggle on its prefix
+   *  ('sick-check:' vs 'niggle-check:') + stamps ack_action on the log
+   *  row by it. Was never sent → every sick tap misrouted to the niggle
+   *  path and ack auditing was dead. */
+  dedup_key?: string;
+  /** 2026-07-06 · audit P1-25 · notifications_log row id for this send,
+   *  echoed into the faff dict so the ack POST can stamp ack_action/ack_at
+   *  by primary key instead of the newest-row-for-dedup_key heuristic.
+   *  The dispatcher sets it after the pre-log insert. */
+  notification_id?: number;
   /** Deck §A. When true the sender does not enforce quiet hours; the
    *  scheduler is the only one allowed to set this. */
   bypass_quiet_hours?: boolean;
@@ -275,15 +293,15 @@ export type SendPushResult =
  * is to deliver to APNs reliably + return a structured result for the
  * caller to record on notifications_log.
  */
-export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
-  const host = apnsHost();
-  const token = signJwt();
-  if (!token) {
-    return { ok: false, reason: 'apns_not_configured', host };
-  }
-  const bundleId = process.env.APNS_BUNDLE_ID ?? 'run.faff.app';
-
-  // Build the payload per docs/2026-05-28-notifications.html §3.
+/**
+ * Build the APNs JSON body per the 2026-05-28 notifications deck §3.
+ * (The deck is a session artifact, never committed to the repo — the
+ * in-repo wire contract is this function + notifications-wire.test.ts.)
+ * Exported (pure, no I/O) so tests can assert the wire shape without a
+ * network — 2026-07-06 audit P1-25 landed dedup_key/notification_id in
+ * the faff dict and this is where they materialize.
+ */
+export function buildApnsBody(args: SendPushArgs): { aps: Record<string, unknown>; faff: Record<string, unknown> } {
   const aps: Record<string, unknown> = {
     alert: { title: args.title, body: args.body },
     sound: args.sound === undefined ? 'default' : (args.sound ?? undefined),
@@ -292,16 +310,31 @@ export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
     'mutable-content': 1,
   };
   // Rich actions → set aps.category so iOS resolves the registered category.
+  // apns_category_id override first (P1-25 · FAFF_SICK split), else the
+  // canonical per-bucket mapping.
   if (args.action_buttons && args.action_buttons.length > 0) {
-    aps.category = apnsCategoryId(args.category);
+    aps.category = args.apns_category_id ?? apnsCategoryId(args.category);
   }
-  const body = JSON.stringify({
-    aps,
-    faff: {
-      kind: args.category,
-      ...(args.data ?? {}),
-    },
-  });
+  const faff: Record<string, unknown> = {
+    kind: args.category,
+    ...(args.data ?? {}),
+  };
+  // P1-25 · routing + ack keys. Set AFTER the data spread so a template's
+  // free-form data can never shadow them with a stale value.
+  if (args.dedup_key) faff.dedup_key = args.dedup_key;
+  if (args.notification_id != null) faff.notification_id = args.notification_id;
+  return { aps, faff };
+}
+
+export async function sendPush(args: SendPushArgs): Promise<SendPushResult> {
+  const host = apnsHost();
+  const token = signJwt();
+  if (!token) {
+    return { ok: false, reason: 'apns_not_configured', host };
+  }
+  const bundleId = process.env.APNS_BUNDLE_ID ?? 'run.faff.app';
+
+  const body = JSON.stringify(buildApnsBody(args));
 
   let client: http2.ClientHttp2Session;
   try {

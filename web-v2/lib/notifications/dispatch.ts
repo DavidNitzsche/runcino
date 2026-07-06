@@ -140,7 +140,14 @@ export async function dispatchNotification(
       interruption_level: tpl.interruption_level,
       thread_id: tpl.thread_id,
       action_buttons: tpl.action_buttons,
+      // 2026-07-06 · audit P1-25 · sick check emits FAFF_SICK instead of
+      // the bucket's FAFF_NIGGLE so RECOVERED can register on iOS.
+      apns_category_id: tpl.apns_category_id,
       data: tpl.data,
+      // 2026-07-06 · audit P1-25 · dedup_key rides in the faff dict.
+      // NotificationsAppDelegate reads faff.dedup_key; the ack endpoint
+      // routes sick-vs-niggle on its prefix and stamps ack_action by it.
+      dedup_key: tpl.dedup_key,
       bypass_quiet_hours: tpl.bypass_quiet_hours,
     };
 
@@ -157,6 +164,12 @@ export async function dispatchNotification(
     } catch (err) {
       console.error('[dispatch] pre-log insert failed:', (err as Error).message);
     }
+
+    // P1-25 · echo the log row id into faff.notification_id so the ack
+    // POST can stamp ack_action/ack_at by primary key. Set after the
+    // pre-log insert (the id doesn't exist earlier); the persisted
+    // payload row therefore doesn't carry it — by design, it IS the row.
+    if (logId != null) args.notification_id = logId;
 
     const result = await sendPush(args);
     if (result.ok) {
