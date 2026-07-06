@@ -47,11 +47,18 @@ export interface ExpandSpecInput {
   /** Total distance the runner will cover · used to size easy/long/recovery
    *  bars + to validate total = WU + core + CD where applicable. */
   totalMi: number;
-  /** Easy-pace fallback when the spec doesn't include pace targets
-   *  (WU/CD always use easy pace). seconds/mi. */
-  easyPaceSec: number;
-  /** Recovery jog pace · seconds/mi. ~9:00/mi default. */
-  recoveryPaceSec?: number;
+  /** Easy-pace anchor when the spec doesn't include pace targets
+   *  (WU/CD always use easy pace). seconds/mi.
+   *  P1-47 fix 2026-07-06 · null means "no fitness signal" — WU/CD/recovery
+   *  phases then go out BY FEEL (targetPaceSPerMi: null) instead of a
+   *  fabricated number. Callers derive this from the runner's OWN easy pace
+   *  (plan-authored easy band · Research/01-pace-zones-vdot.md §E-pace),
+   *  never from goal race pace or a fixed constant. */
+  easyPaceSec: number | null;
+  /** Recovery jog pace · seconds/mi. Jog recoveries are easy jogging
+   *  (Research/04-workout-vocabulary.md §1 recovery runs) — callers pass
+   *  the same easy anchor. null → by-feel recovery (no pace target). */
+  recoveryPaceSec?: number | null;
   /** Default tolerance per phase type · in seconds/mi. */
   toleranceSec?: number;
   /** Optional phase-label override for types that need a name other than
@@ -85,7 +92,10 @@ export function expandSpecToPhases(input: ExpandSpecInput): ExpandedPhase[] | nu
 
   const s = spec as Record<string, unknown>;
   const kind = String(s.kind ?? '');
-  const recoveryPace = input.recoveryPaceSec ?? 540;  // 9:00/mi default
+  // P1-47 fix 2026-07-06 · no 9:00/mi default. When the caller has no real
+  // easy-pace anchor, recovery phases carry no pace target (by feel) — a
+  // 12:00/mi runner was being handed a 9:00/mi jog-recovery target.
+  const recoveryPace = input.recoveryPaceSec ?? input.easyPaceSec ?? null;
   const defaultTolerance = input.toleranceSec ?? 12;
 
   switch (kind) {
@@ -108,47 +118,56 @@ export function expandSpecToPhases(input: ExpandSpecInput): ExpandedPhase[] | nu
 
 // ── per-kind expanders ─────────────────────────────────────────────────
 
+/** Internal duration ESTIMATE (s/mi) used ONLY to size durationSec when no
+ *  pace anchor exists — the wire contract requires durationSec even for
+ *  by-feel phases. Never emitted as a pace target (P1-47 · 2026-07-06). */
+const DURATION_EST_S_PER_MI = 540;
+
 function expandTempo(
   s: Record<string, unknown>,
-  easyPaceSec: number,
+  easyPaceSec: number | null,
   tolerance: number,
 ): ExpandedPhase[] {
   const wu = Number(s.warmup_mi ?? 1.5) || 1.5;
   const tempoMi = Number(s.tempo_distance_mi ?? 4) || 4;
   const cd = Number(s.cooldown_mi ?? 1.0) || 1.0;
-  const tempoPace = Number(s.tempo_pace_s_per_mi) || (easyPaceSec - 80);
+  // Legacy fallback (spec without tempo pace): T ≈ E − 80 inverts the
+  // spec-builder easy offset (easy lo = T + 80 · Research/01 §T-pace).
+  // Null easy anchor → by-feel tempo, never a fabricated number.
+  const tempoPace = Number(s.tempo_pace_s_per_mi) || (easyPaceSec != null ? easyPaceSec - 80 : null);
+  const easyEst = easyPaceSec ?? DURATION_EST_S_PER_MI;
   return [
     {
       type: 'warmup',
       label: 'Warm-up',
       distanceMi: Number(wu.toFixed(1)),
-      durationSec: Math.round(wu * easyPaceSec),
+      durationSec: Math.round(wu * easyEst),
       targetPaceSPerMi: easyPaceSec,
-      tolerancePaceSPerMi: 30,
+      tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
     },
     {
       type: 'work',
       label: `${tempoMi.toFixed(1)} mi tempo`,
       distanceMi: Number(tempoMi.toFixed(1)),
-      durationSec: Math.round(tempoMi * tempoPace),
+      durationSec: Math.round(tempoMi * (tempoPace ?? DURATION_EST_S_PER_MI)),
       targetPaceSPerMi: tempoPace,
-      tolerancePaceSPerMi: tolerance,
+      tolerancePaceSPerMi: tempoPace != null ? tolerance : null,
     },
     {
       type: 'cooldown',
       label: 'Cool-down',
       distanceMi: Number(cd.toFixed(1)),
-      durationSec: Math.round(cd * easyPaceSec),
+      durationSec: Math.round(cd * easyEst),
       targetPaceSPerMi: easyPaceSec,
-      tolerancePaceSPerMi: 30,
+      tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
     },
   ];
 }
 
 function expandReps(
   s: Record<string, unknown>,
-  easyPaceSec: number,
-  recoveryPace: number,
+  easyPaceSec: number | null,
+  recoveryPace: number | null,
   tolerance: number,
 ): ExpandedPhase[] {
   const wu = Number(s.warmup_mi ?? 1.5) || 1.5;
@@ -158,17 +177,20 @@ function expandReps(
   const repMi = Number(s.rep_distance_mi ?? 0) || 0;
   const repM = Number(s.rep_distance_m ?? 0) || 0;
   const effRepMi = repMi > 0 ? repMi : (repM / 1609.34);
-  const repPace = Number(s.rep_pace_s_per_mi) || easyPaceSec - 80;
+  // Null easy anchor → by-feel rep target (legacy specs without a rep pace
+  // AND no fitness signal) — never a fabricated number (P1-47).
+  const repPace = Number(s.rep_pace_s_per_mi) || (easyPaceSec != null ? easyPaceSec - 80 : null);
   const restS = Number(s.rep_rest_s ?? 60) || 60;
+  const easyEst = easyPaceSec ?? DURATION_EST_S_PER_MI;
   const phases: ExpandedPhase[] = [];
 
   phases.push({
     type: 'warmup',
     label: 'Warm-up',
     distanceMi: Number(wu.toFixed(1)),
-    durationSec: Math.round(wu * easyPaceSec),
+    durationSec: Math.round(wu * easyEst),
     targetPaceSPerMi: easyPaceSec,
-    tolerancePaceSPerMi: 30,
+    tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
   });
 
   for (let i = 0; i < reps; i++) {
@@ -176,9 +198,9 @@ function expandReps(
       type: 'work',
       label: `Interval · ${formatRepLabel(effRepMi)}`,
       distanceMi: Number(effRepMi.toFixed(2)),
-      durationSec: Math.round(effRepMi * repPace),
+      durationSec: Math.round(effRepMi * (repPace ?? DURATION_EST_S_PER_MI)),
       targetPaceSPerMi: repPace,
-      tolerancePaceSPerMi: tolerance,
+      tolerancePaceSPerMi: repPace != null ? tolerance : null,
     });
     // Recovery between reps (not after last)
     if (i < reps - 1) {
@@ -188,7 +210,7 @@ function expandReps(
         distanceMi: null,
         durationSec: restS,
         targetPaceSPerMi: recoveryPace,
-        tolerancePaceSPerMi: 60,
+        tolerancePaceSPerMi: recoveryPace != null ? 60 : null,
       });
     }
   }
@@ -197,9 +219,9 @@ function expandReps(
     type: 'cooldown',
     label: 'Cool-down',
     distanceMi: Number(cd.toFixed(1)),
-    durationSec: Math.round(cd * easyPaceSec),
+    durationSec: Math.round(cd * easyEst),
     targetPaceSPerMi: easyPaceSec,
-    tolerancePaceSPerMi: 30,
+    tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
   });
   return phases;
 }
@@ -207,14 +229,20 @@ function expandReps(
 function expandLong(
   s: Record<string, unknown>,
   totalMi: number,
-  easyPaceSec: number,
+  easyPaceSec: number | null,
   tolerance: number,
   workPhaseLabel?: string,
 ): ExpandedPhase[] {
-  const lo = Number(s.pace_target_s_per_mi_lo ?? easyPaceSec - 30) || (easyPaceSec - 30);
-  const hi = Number(s.pace_target_s_per_mi_hi ?? easyPaceSec + 30) || (easyPaceSec + 30);
-  const mid = Math.round((lo + hi) / 2);
-  const easyTol = Math.max(tolerance, Math.round((hi - lo) / 2));
+  // Spec band first (authored truth) · else the easy anchor · else by feel
+  // (null target — P1-47, no fabricated pace).
+  const specLo = Number(s.pace_target_s_per_mi_lo) || null;
+  const specHi = Number(s.pace_target_s_per_mi_hi) || null;
+  const lo = specLo ?? (easyPaceSec != null ? easyPaceSec - 30 : null);
+  const hi = specHi ?? (easyPaceSec != null ? easyPaceSec + 30 : null);
+  const mid = lo != null && hi != null ? Math.round((lo + hi) / 2) : null;
+  const easyTol = lo != null && hi != null
+    ? Math.max(tolerance, Math.round((hi - lo) / 2))
+    : null;
 
   // 2026-06-07 · Audit D / D1 · race-specific + LT-phase long runs carry a
   // faster finish (last N mi @ HM/M pace). Split into easy-build + finish
@@ -235,7 +263,7 @@ function expandLong(
         type: 'work',
         label: `${easyMi.toFixed(1)} mi easy`,
         distanceMi: easyMi,
-        durationSec: Math.round(easyMi * mid),
+        durationSec: Math.round(easyMi * (mid ?? DURATION_EST_S_PER_MI)),
         targetPaceSPerMi: mid,
         tolerancePaceSPerMi: easyTol,
       },
@@ -247,7 +275,7 @@ function expandLong(
         targetPaceSPerMi: finishPace,
         // Finish is race-pace quality work · tighter band than the easy
         // build (never looser than 12 s/mi, the tempo tolerance).
-        tolerancePaceSPerMi: Math.min(easyTol, 12),
+        tolerancePaceSPerMi: easyTol != null ? Math.min(easyTol, 12) : 12,
         isFinishSegment: true,
       },
     ];
@@ -257,7 +285,7 @@ function expandLong(
     type: 'work',
     label: workPhaseLabel ?? `${totalMi.toFixed(1)} mi long run`,
     distanceMi: Number(totalMi.toFixed(1)),
-    durationSec: Math.round(totalMi * mid),
+    durationSec: Math.round(totalMi * (mid ?? DURATION_EST_S_PER_MI)),
     targetPaceSPerMi: mid,
     tolerancePaceSPerMi: easyTol,
   }];
@@ -266,39 +294,49 @@ function expandLong(
 function expandEasy(
   s: Record<string, unknown>,
   totalMi: number,
-  easyPaceSec: number,
+  easyPaceSec: number | null,
   tolerance: number,
   workPhaseLabel?: string,
 ): ExpandedPhase[] {
-  const lo = Number(s.pace_target_s_per_mi_lo ?? easyPaceSec - 30) || (easyPaceSec - 30);
-  const hi = Number(s.pace_target_s_per_mi_hi ?? easyPaceSec + 60) || (easyPaceSec + 60);
-  const mid = Math.round((lo + hi) / 2);
+  // Spec band first · else the easy anchor · else by feel (P1-47).
+  const specLo = Number(s.pace_target_s_per_mi_lo) || null;
+  const specHi = Number(s.pace_target_s_per_mi_hi) || null;
+  const lo = specLo ?? (easyPaceSec != null ? easyPaceSec - 30 : null);
+  const hi = specHi ?? (easyPaceSec != null ? easyPaceSec + 60 : null);
+  const mid = lo != null && hi != null ? Math.round((lo + hi) / 2) : null;
   return [{
     type: 'work',
     label: workPhaseLabel ?? `${totalMi.toFixed(1)} mi easy`,
     distanceMi: Number(totalMi.toFixed(1)),
-    durationSec: Math.round(totalMi * mid),
+    durationSec: Math.round(totalMi * (mid ?? DURATION_EST_S_PER_MI)),
     targetPaceSPerMi: mid,
-    tolerancePaceSPerMi: Math.max(tolerance, Math.round((hi - lo) / 2)),
+    tolerancePaceSPerMi: lo != null && hi != null
+      ? Math.max(tolerance, Math.round((hi - lo) / 2))
+      : null,
   }];
 }
 
 function expandRecovery(
   s: Record<string, unknown>,
   totalMi: number,
-  recoveryPace: number,
+  recoveryPace: number | null,
   tolerance: number,
 ): ExpandedPhase[] {
-  const lo = Number(s.pace_target_s_per_mi_lo ?? recoveryPace) || recoveryPace;
-  const hi = Number(s.pace_target_s_per_mi_hi ?? recoveryPace + 60) || (recoveryPace + 60);
-  const mid = Math.round((lo + hi) / 2);
+  // Spec band first · else the recovery anchor · else by feel (P1-47).
+  const specLo = Number(s.pace_target_s_per_mi_lo) || null;
+  const specHi = Number(s.pace_target_s_per_mi_hi) || null;
+  const lo = specLo ?? recoveryPace;
+  const hi = specHi ?? (recoveryPace != null ? recoveryPace + 60 : null);
+  const mid = lo != null && hi != null ? Math.round((lo + hi) / 2) : null;
   return [{
     type: 'work',
     label: `${totalMi.toFixed(1)} mi recovery jog`,
     distanceMi: Number(totalMi.toFixed(1)),
-    durationSec: Math.round(totalMi * mid),
+    durationSec: Math.round(totalMi * (mid ?? DURATION_EST_S_PER_MI)),
     targetPaceSPerMi: mid,
-    tolerancePaceSPerMi: Math.max(tolerance, Math.round((hi - lo) / 2)),
+    tolerancePaceSPerMi: lo != null && hi != null
+      ? Math.max(tolerance, Math.round((hi - lo) / 2))
+      : null,
   }];
 }
 

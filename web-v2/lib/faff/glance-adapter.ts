@@ -415,6 +415,16 @@ function buildWorkoutBreakdown(
   const tempoBand = dp.tempoSecLo != null && dp.tempoSecHi != null
     ? `${fmtPace(dp.tempoSecLo)}–${fmtPace(dp.tempoSecHi)}/mi` : null;
   const aerobicCap = dp.aerobicCapBpm != null ? `${dp.aerobicCapBpm} bpm` : null;
+  // P1-47 fix 2026-07-06 · WU/CD "~N min" estimates ride the runner's own
+  // easy pace — the week's authored easy/long spec band first (generator
+  // derives it from current fitness · Research/01 §E-pace), then the
+  // goal-derived easy band. Never the old 8:30/mi (510 s) constant. No
+  // anchor anywhere → 'by feel', not a fabricated duration.
+  const easyAnchorSec = weekEasyPaceSec(glance)
+    ?? (dp.easySecLo != null && dp.easySecHi != null
+      ? Math.round((dp.easySecLo + dp.easySecHi) / 2) : null);
+  const estMinTail = (mi: number): string =>
+    easyAnchorSec != null ? `~${Math.round((mi * easyAnchorSec) / 60)} min` : 'by feel';
 
   switch (state) {
     case 'easy': {
@@ -434,8 +444,14 @@ function buildWorkoutBreakdown(
           },
           {
             label: 'HR CAP',
+            // P1-49 fix 2026-07-06 · was a hardcoded '148 bpm' when the spec
+            // carried no cap. spec.hr_cap_bpm is null exactly when the runner
+            // has neither LTHR nor HRmax (spec-builder hrCapEasy) — a
+            // population bpm shown as theirs is a fabrication. Fall back to
+            // the live-profile-derived cap, then the effort cue. Never a
+            // number we can't source. Doctrine: Research/03 §6 Z2 ceiling.
             body: 'Stay aerobic',
-            tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm` : '148 bpm',
+            tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm` : (aerobicCap ?? 'Aerobic · Z2'),
           },
           {
             label: 'DURATION',
@@ -484,10 +500,14 @@ function buildWorkoutBreakdown(
           ];
         }
         // Standard long run — single aerobic block.
-        const fuelTail = spec.fuel_mi.length > 0
-          ? `mi ${spec.fuel_mi.join(' · ')}`
-          : 'mi 4 · 8 · 11';
-        return [
+        // P1-49 fix 2026-07-06 · fuel row only when the spec carries real
+        // checkpoints. spec.fuel_mi is [] exactly when the run is under 8 mi
+        // (spec-builder fuelMi · Research/18 §1 — runs that short need no
+        // in-run carbs), so the old 'mi 4 · 8 · 11' fallback told a 6-mile
+        // long runner to fuel at miles 8 and 11. Omit the row instead.
+        // Same rule for HR CAP · no LTHR/HRmax anywhere → effort cue, never
+        // a population bpm ('145 bpm') dressed as the runner's.
+        const rows: PosterBreakdownRow[] = [
           {
             label: 'PACE',
             body: 'Aerobic band',
@@ -496,10 +516,13 @@ function buildWorkoutBreakdown(
           {
             label: 'HR CAP',
             body: 'Long-day ceiling',
-            tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm` : '145 bpm',
+            tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm` : (aerobicCap ?? 'Aerobic ceiling'),
           },
-          { label: 'FUEL', body: 'Gel · water · gel', tail: fuelTail },
         ];
+        if (spec.fuel_mi.length > 0) {
+          rows.push({ label: 'FUEL', body: 'Gel · water · gel', tail: `mi ${spec.fuel_mi.join(' · ')}` });
+        }
+        return rows;
       }
       // Progression-flavored long runs (HM Finish / Progression sub_labels)
       // arrive here too — spec.kind is 'progression' in that case.
@@ -516,11 +539,19 @@ function buildWorkoutBreakdown(
       }
       // No spec — derive real pace/HR from the runner's goal + LTHR
       // (Phase 47). Effort cues only when the runner has neither.
-      return [
+      // P1-49 fix 2026-07-06 · fuel checkpoints come from the run's REAL
+      // distance (same first-gel-mi-5-then-every-4 ladder as spec-builder
+      // fuelMi · Research/18 §1/§11), never the hardcoded 'mi 4 · 8 · 11'.
+      // Under 8 mi there is no fuel row at all.
+      const fuel = fuelCheckpointsMi(today.plannedMi);
+      const noSpecRows: PosterBreakdownRow[] = [
         { label: 'PACE', body: 'Aerobic band', tail: longBand ?? 'Steady · by feel' },
         { label: 'HR CAP', body: 'Long-day ceiling', tail: aerobicCap ?? 'Aerobic ceiling' },
-        { label: 'FUEL', body: 'Gel · water · gel', tail: 'mi 4 · 8 · 11' },
       ];
+      if (fuel.length > 0) {
+        noSpecRows.push({ label: 'FUEL', body: 'Gel · water · gel', tail: `mi ${fuel.join(' · ')}` });
+      }
+      return noSpecRows;
     }
     case 'quality': {
       // Pick the WORK row label + body off the runner's plannedType +
@@ -535,7 +566,7 @@ function buildWorkoutBreakdown(
           {
             label: 'WARMUP',
             body: `${fmtMi(spec.warmup_mi)} mi easy`,
-            tail: `~${Math.round((spec.warmup_mi * 510) / 60)} min`,
+            tail: estMinTail(spec.warmup_mi),
           },
           {
             label: 'TEMPO',
@@ -545,7 +576,7 @@ function buildWorkoutBreakdown(
           {
             label: 'COOLDOWN',
             body: `${fmtMi(spec.cooldown_mi)} mi easy`,
-            tail: `~${Math.round((spec.cooldown_mi * 510) / 60)} min`,
+            tail: estMinTail(spec.cooldown_mi),
           },
         ];
       }
@@ -557,7 +588,7 @@ function buildWorkoutBreakdown(
             body: 'Build easy → tempo',
             tail: `${fmtPace(spec.prog_start_s_per_mi)} → ${fmtPace(spec.prog_end_s_per_mi)}`,
           },
-          { label: 'COOLDOWN', body: `${fmtMi(spec.cooldown_mi)} mi easy`, tail: '~9 min' },
+          { label: 'COOLDOWN', body: `${fmtMi(spec.cooldown_mi)} mi easy`, tail: estMinTail(spec.cooldown_mi) },
         ];
       }
       if (spec && (spec.kind === 'threshold' || spec.kind === 'intervals')) {
@@ -571,7 +602,7 @@ function buildWorkoutBreakdown(
           {
             label: 'WARMUP',
             body: `${fmtMi(spec.warmup_mi)} mi easy build`,
-            tail: `~${Math.round((spec.warmup_mi * 510) / 60)} min`,
+            tail: estMinTail(spec.warmup_mi),
           },
           {
             label: 'WORK',
@@ -581,7 +612,7 @@ function buildWorkoutBreakdown(
           {
             label: 'COOLDOWN',
             body: `${fmtMi(spec.cooldown_mi)} mi easy`,
-            tail: `~${Math.round((spec.cooldown_mi * 510) / 60)} min`,
+            tail: estMinTail(spec.cooldown_mi),
           },
         ];
       }
@@ -594,26 +625,26 @@ function buildWorkoutBreakdown(
       // cooldown structure stays a sensible default (unknown without a spec).
       if (subtype === 'tempo') {
         return [
-          { label: 'WARMUP', body: '1.5 mi easy', tail: '~13 min' },
+          { label: 'WARMUP', body: '1.5 mi easy', tail: estMinTail(1.5) },
           { label: 'TEMPO', body: workBody, tail: tempoBand ?? 'Comfortably hard' },
-          { label: 'COOLDOWN', body: '1 mi easy', tail: '~8 min' },
+          { label: 'COOLDOWN', body: '1 mi easy', tail: estMinTail(1) },
         ];
       }
       if (subtype === 'progression') {
         const progTail = easyBand && dp.thresholdSec != null
           ? `${fmtPace(dp.easySecHi as number)} → ${fmtPace(dp.thresholdSec)}` : 'Easy → tempo';
         return [
-          { label: 'WARMUP', body: '1 mi easy', tail: '~9 min' },
+          { label: 'WARMUP', body: '1 mi easy', tail: estMinTail(1) },
           { label: 'PROGRESSION', body: 'Build from easy to tempo', tail: progTail },
-          { label: 'COOLDOWN', body: '1 mi easy', tail: '~9 min' },
+          { label: 'COOLDOWN', body: '1 mi easy', tail: estMinTail(1) },
         ];
       }
       // threshold / intervals / fartlek default
       const workTail = dp.intervalSec != null ? `${fmtPace(dp.intervalSec)}/mi` : '5K–10K effort';
       return [
-        { label: 'WARMUP', body: '1.5 mi easy build', tail: '~12 min' },
+        { label: 'WARMUP', body: '1.5 mi easy build', tail: estMinTail(1.5) },
         { label: 'WORK', body: workBody, tail: workTail },
-        { label: 'COOLDOWN', body: '1.5 mi easy', tail: '~13 min' },
+        { label: 'COOLDOWN', body: '1.5 mi easy', tail: estMinTail(1.5) },
       ];
     }
     // race-day (T-0) day-state isn't surfaced in the v1 DayState union
@@ -648,6 +679,44 @@ function fmtPace(secondsPerMi: number): string {
   const m = Math.floor(secondsPerMi / 60);
   const s = Math.round(secondsPerMi % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Week easy-pace anchor · midpoint of the nearest authored easy spec band
+ * in glance.weekDays, falling back to a long band (long IS easy effort ·
+ * spec-builder Rule 16). This is the runner's OWN E-pace — the generator
+ * derives the band from current fitness (Research/01-pace-zones-vdot.md
+ * §E-pace). Returns null when no easy/long spec in the week carries a band
+ * (cold start · no plan specs) — callers then say 'by feel', never a
+ * fabricated pace or duration (P1-47 fix 2026-07-06).
+ */
+function weekEasyPaceSec(glance: GlanceState): number | null {
+  let longMid: number | null = null;
+  for (const d of glance.weekDays) {
+    const s = d.plannedSpec;
+    if (!s || (s.kind !== 'easy' && s.kind !== 'long')) continue;
+    const lo = Number(s.pace_target_s_per_mi_lo);
+    const hi = Number(s.pace_target_s_per_mi_hi);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo <= 0 || hi <= 0) continue;
+    const mid = Math.round((lo + hi) / 2);
+    if (s.kind === 'easy') return mid;
+    if (longMid == null) longMid = mid;
+  }
+  return longMid;
+}
+
+/**
+ * Fuel checkpoints from the run's real distance. Mirrors spec-builder's
+ * fuelMi exactly (first gel at mi 5, then every 4 mi; none under 8 mi —
+ * runs that short need no in-run carbs per Research/18-fueling-products.md
+ * §1/§11). P1-49 fix 2026-07-06 · replaces the fabricated 'mi 4 · 8 · 11'
+ * fallback that put checkpoints past the end of a 6-mile long run.
+ */
+function fuelCheckpointsMi(distMi: number): number[] {
+  if (!distMi || distMi < 8) return [];
+  const out: number[] = [];
+  for (let m = 5; m < distMi; m += 4) out.push(m);
+  return out;
 }
 
 /** Format a mile count: integer when whole, 1 decimal otherwise. */

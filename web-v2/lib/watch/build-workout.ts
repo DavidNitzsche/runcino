@@ -404,17 +404,41 @@ export async function buildWatchToday(
   //    without quality structure), fall back to the prescription
   //    template so older plans + simple types still render.
   const phases: WatchPhase[] = [];
-  // Easy-pace fallback · derive from goal pace if available (goal +
-  // 60-90 s/mi is standard easy pace) · default to 9:00/mi.
-  const easyPaceFallback = goal_seconds && goal_distance_mi
-    ? Math.round(goal_seconds / goal_distance_mi) + 90
-    : 540;
+  // Easy-pace anchor · P1-47 fix 2026-07-06. WU/CD/recovery targets must be
+  // the runner's OWN easy pace, not goal race pace + 90 or a 9:00/mi
+  // constant (a no-goal 12:00/mi runner was handed a 9:00/mi warmup target;
+  // an ambitious slow runner was pushed even harder). The plan's authored
+  // easy/long spec bands ARE the runner's E-pace — the generator derives
+  // them from current fitness (bestRecentVdot → T-pace + 80..120 · PACE-E-1
+  // · Research/01-pace-zones-vdot.md §E-pace). Prefer the nearest easy spec
+  // in THIS plan, then the nearest long spec (long IS easy effort · Rule 16
+  // in spec-builder). No band anywhere → null → expandSpecToPhases emits
+  // by-feel phases (no pace target) instead of a fabricated number.
+  const easyBandRow = (await pool.query<{ lo: number | null; hi: number | null }>(
+    `SELECT (workout_spec->>'pace_target_s_per_mi_lo')::float AS lo,
+            (workout_spec->>'pace_target_s_per_mi_hi')::float AS hi
+       FROM plan_workouts
+      WHERE plan_id = $1
+        AND workout_spec->>'kind' IN ('easy', 'long')
+        AND workout_spec->>'pace_target_s_per_mi_lo' IS NOT NULL
+        AND workout_spec->>'pace_target_s_per_mi_hi' IS NOT NULL
+      ORDER BY (workout_spec->>'kind' = 'easy') DESC,
+               ABS(date_iso::date - $2::date) ASC
+      LIMIT 1`,
+    [plan.id, today]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const easyPaceAnchor = easyBandRow && easyBandRow.lo != null && easyBandRow.hi != null
+    ? Math.round((Number(easyBandRow.lo) + Number(easyBandRow.hi)) / 2)
+    : null;
   const expanded = wo.workout_spec
     ? expandSpecToPhases({
         spec: wo.workout_spec,
         totalMi: distanceMi,
-        easyPaceSec: easyPaceFallback,
-        recoveryPaceSec: 540,
+        easyPaceSec: easyPaceAnchor,
+        // Jog recoveries are easy jogging (Research/04-workout-vocabulary.md
+        // §1 recovery runs) — same anchor, by feel when absent. Replaces
+        // the hardcoded 9:00/mi recovery target.
+        recoveryPaceSec: easyPaceAnchor,
         toleranceSec: defaultTolerance,
         workPhaseLabel: wo.type === 'race'     ? 'Race effort'
                       : wo.type === 'shakeout' ? 'Shakeout'
