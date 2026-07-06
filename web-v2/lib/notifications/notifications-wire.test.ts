@@ -14,8 +14,12 @@
  *      not ISO Monday.
  *   4. Prefs wire tolerance (prefs.ts) — the iPhone's 7-key dialect
  *      translates to canonical keys and round-trips through the alias
- *      view. Canonical is the server shape; the alias layer dies when
- *      Wave 2 native adopts it.
+ *      view; dualShapePrefsBody carries every phone struct key so the
+ *      routes' TOP-LEVEL spread satisfies the phone's whole-body
+ *      tolerant decode (adversarial review 2026-07-06 issue 1) and a
+ *      full-struct phone PATCH can't clobber web-side disables.
+ *      Canonical is the server shape; the alias layer dies when Wave 2
+ *      native adopts it.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -37,7 +41,9 @@ import {
   DEFAULT_PREFS,
   translatePhonePrefKeys,
   phoneAliasView,
+  dualShapePrefsBody,
   PHONE_PREF_ALIASES,
+  PHONE_PASSTHROUGH_KEYS,
   type NotificationPrefs,
 } from './prefs';
 
@@ -253,5 +259,69 @@ describe('prefs wire tolerance', () => {
       if (k === 'streak_enabled') { expect(prefs.streak_enabled).toBe(v); continue; }
       expect(view[k], k).toBe(v);
     }
+  });
+
+  // ── dualShapePrefsBody · adversarial review 2026-07-06 issue 1 ──
+  // The phone decodes the WHOLE GET/PATCH response body with a per-key
+  // tolerant init (missing key → true), so the alias keys must exist at
+  // the TOP LEVEL of the response, not only nested under `prefs`. The
+  // routes emit { ...dualShapePrefsBody(...), prefs: dualShapePrefsBody(...) };
+  // these tests pin the contract that makes the top-level spread correct.
+
+  it('dualShapePrefsBody carries EVERY phone key the tolerant Swift init decodes', () => {
+    const prefs: NotificationPrefs = {
+      ...DEFAULT_PREFS,
+      niggle_sick_enabled: false,
+      weekly_checkin_enabled: false,
+    };
+    const dual = dualShapePrefsBody(prefs, { adaptation_enabled: false });
+    // All 7 iPhone struct keys present — a missing key decodes as TRUE on
+    // the phone (G_Settings.swift init(from:)) and then a full-struct
+    // PATCH writes that stale true back, clobbering web-side disables.
+    const phoneStructKeys = [
+      ...Object.keys(PHONE_PREF_ALIASES),
+      ...PHONE_PASSTHROUGH_KEYS,
+      'streak_enabled',
+    ];
+    for (const k of phoneStructKeys) {
+      expect(k in dual, k).toBe(true);
+      expect(typeof dual[k], k).toBe('boolean');
+    }
+    // and the disabled categories read false through their aliases
+    expect(dual.readiness_enabled).toBe(false); // niggle_sick
+    expect(dual.recap_enabled).toBe(false);     // weekly_checkin
+    expect(dual.adaptation_enabled).toBe(false);
+    // canonical keys ride along untouched for web/Wave-2 native
+    expect(dual.niggle_sick_enabled).toBe(false);
+    expect(dual.master_enabled).toBe(true);
+    expect(dual.quiet_hours_start).toBe(DEFAULT_PREFS.quiet_hours_start);
+  });
+
+  it('web-disabled → GET dual body → full-struct phone PATCH does NOT re-enable (clobber path closed)', () => {
+    // 1. David disables the weekly check-in on web (canonical write).
+    const stored: NotificationPrefs = { ...DEFAULT_PREFS, weekly_checkin_enabled: false };
+    // 2. Phone GETs; its tolerant decode reads the TOP-LEVEL keys of the
+    //    dual body — simulate by picking exactly the 7 struct keys with
+    //    the phone's missing-key→true default.
+    const dual = dualShapePrefsBody(stored, stored as unknown as Record<string, unknown>);
+    const phoneStruct: Record<string, boolean> = {};
+    for (const k of [...Object.keys(PHONE_PREF_ALIASES), ...PHONE_PASSTHROUGH_KEYS, 'streak_enabled']) {
+      phoneStruct[k] = typeof dual[k] === 'boolean' ? (dual[k] as boolean) : true;
+    }
+    expect(phoneStruct.recap_enabled).toBe(false); // the phone SEES the disable
+    // 3. Phone toggles readiness off and PATCHes the FULL struct back.
+    phoneStruct.readiness_enabled = false;
+    const t = translatePhonePrefKeys(phoneStruct);
+    const after = { ...stored, ...t } as NotificationPrefs;
+    // weekly check-in stays OFF — pre-fix the phone displayed all-true
+    // and this PATCH silently flipped it back on.
+    expect(after.weekly_checkin_enabled).toBe(false);
+    expect(after.niggle_sick_enabled).toBe(false);
+  });
+
+  it('dual body has no `prefs`/`ok` key of its own, so response envelope keys cannot be shadowed', () => {
+    const dual = dualShapePrefsBody(DEFAULT_PREFS, {});
+    expect('prefs' in dual).toBe(false);
+    expect('ok' in dual).toBe(false);
   });
 });

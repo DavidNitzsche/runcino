@@ -1,13 +1,16 @@
 /**
- * week-window.ts — training-week boundary for notification summaries.
+ * week-window.ts — THE training-week boundary. One source of truth.
  *
  * The training week ENDS on the runner's long_run_day and starts the day
- * after — ONE source of truth with /api/plan/week (locked 2026-06-16,
- * "Week boundary = long-run day"). The weekly check-in previously anchored
- * to ISO Monday, which split a Saturday-long runner's training week in two
- * and made the notification's actual/planned totals disagree with
- * TRAIN/Today (2026-07-06 audit · treadmill-strength-notif week-boundary
- * finding, P2).
+ * after (locked 2026-06-16, "Week boundary = long-run day"). Consumed by
+ * BOTH /api/plan/week (iPhone WeekStrip + training calendar) and the
+ * weekly check-in cron (app/api/cron/notifications) — the plan route used
+ * to reimplement this arithmetic inline; adversarial review 2026-07-06
+ * issue 4 folded it onto this function so the two can't drift. The weekly
+ * check-in previously anchored to ISO Monday, which split a Saturday-long
+ * runner's training week in two and made the notification's
+ * actual/planned totals disagree with TRAIN/Today (2026-07-06 audit ·
+ * treadmill-strength-notif week-boundary finding, P2).
  *
  * Pure date arithmetic — noon-UTC anchored so DST transitions can't shift
  * the YYYY-MM-DD slice (same trick as lib/runs/volume.ts:isoDaysBefore).

@@ -33,6 +33,7 @@ import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
+import { trainingWeekWindow } from '@/lib/notifications/week-window';
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -47,12 +48,16 @@ export async function GET(req: NextRequest) {
   // week ENDS on it (their last training day of the cycle). David runs long on
   // Sunday → Mon–Sun; a Saturday-long runner → Sun–Sat. Was hardcoded Sat–Fri,
   // which mislabeled the calendar for anyone whose long run isn't Saturday.
+  // 2026-07-06 · adversarial review issue 4: the boundary arithmetic now
+  // lives ONCE in lib/notifications/week-window.ts:trainingWeekWindow —
+  // shared with the weekly check-in cron — instead of being reimplemented
+  // here (duplicated math can drift; shared code can't).
   const DOW_OF: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
   const settings = await loadSettings(userId);
   const longRunDow = DOW_OF[settings.long_run_day] ?? 0;       // default Sunday
-  const weekStartDow = (longRunDow + 1) % 7;                   // day after the long run
   const dow = new Date(dateParam + 'T12:00:00Z').getUTCDay();  // 0=Sun..6=Sat
-  const daysSinceWeekStart = (dow - weekStartDow + 7) % 7;
+  const { week_start_iso: weekStart, week_end_iso: weekEnd } =
+    trainingWeekWindow(dateParam, dow, longRunDow);
 
   // Active plan
   const plan = (await pool.query(
@@ -77,19 +82,10 @@ export async function GET(req: NextRequest) {
     `SELECT date_iso, dow, type, distance_mi, sub_label
        FROM plan_workouts
       WHERE plan_id = $1
-        AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 6)
+        AND date_iso::date BETWEEN $2::date AND $3::date
       ORDER BY date_iso ASC`,
-    [plan.id, dateParam, daysSinceWeekStart]
+    [plan.id, weekStart, weekEnd]
   )).rows;
-
-  const weekStart = (await pool.query(
-    `SELECT ($1::date - $2::int)::text AS d`,
-    [dateParam, daysSinceWeekStart]
-  )).rows[0].d;
-  const weekEnd = (await pool.query(
-    `SELECT ($1::date - $2::int + 6)::text AS d`,
-    [dateParam, daysSinceWeekStart]
-  )).rows[0].d;
 
   // 2026-05-28 Phase 17 — Resolve completed strava activity per day so the
   // iPhone WeekStrip can show real DONE checkmarks instead of the

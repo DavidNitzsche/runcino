@@ -16,8 +16,15 @@
  *   - PATCH/PUT accept BOTH shapes — phone alias keys are translated
  *     to canonical via translatePhonePrefKeys (prefs.ts documents the
  *     mapping); adaptation_enabled is stored as a passthrough.
- *   - GET emits the canonical keys PLUS the derived phone alias keys
- *     in the same prefs object, so both clients decode it.
+ *   - GET/PATCH emit the canonical keys PLUS the derived phone alias
+ *     keys BOTH at the TOP LEVEL of the response body AND under
+ *     `prefs`. The top-level spread is load-bearing: the phone's
+ *     fetchNotificationPrefs decodes the WHOLE body first with a
+ *     per-key tolerant init (missing key → true), so a nested-only
+ *     emit decodes as all-true, displays every toggle ON, and the
+ *     phone's full-struct PATCH then re-enables categories disabled
+ *     on web (adversarial review 2026-07-06, issue 1). Web
+ *     Settings.tsx keeps reading j.prefs — additive, nothing breaks.
  * THE CANONICAL SHAPE IS THE SERVER'S NotificationPrefs — Wave 2
  * native migrates the phone to it, then the alias layer dies.
  *
@@ -28,7 +35,10 @@
  * column. (The phone's race_countdown_enabled maps to race_eve_enabled
  * only — a phone toggle can never kill the race-day wake.)
  *
- * Source spec: docs/2026-05-28-notifications.html §SETTINGS SURFACE.
+ * Source spec: the 2026-05-28 notifications deck, §SETTINGS SURFACE.
+ * (The deck is a session artifact and was never committed to the repo —
+ * docs/2026-05-28-notifications.html does not exist. The in-repo
+ * contract is prefs.ts + lib/notifications/notifications-wire.test.ts.)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
@@ -37,7 +47,7 @@ import {
   bustPrefsCache,
   loadNotificationPrefs,
   translatePhonePrefKeys,
-  phoneAliasView,
+  dualShapePrefsBody,
   PHONE_PASSTHROUGH_KEYS,
 } from '@/lib/notifications/prefs';
 import { requireUserId } from '@/lib/auth/session';
@@ -66,13 +76,14 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const prefs = await loadNotificationPrefs(userId);
-  // P1-15 · emit BOTH shapes in one object: canonical keys + the derived
-  // phone alias keys. loadNotificationPrefs merges the raw jsonb over
-  // DEFAULT_PREFS, so passthrough keys (adaptation_enabled) ride along
-  // in `prefs` at runtime — pass it as raw for the alias derivation.
-  return NextResponse.json({
-    prefs: { ...prefs, ...phoneAliasView(prefs, prefs as unknown as Record<string, unknown>) },
-  });
+  // P1-15 · emit BOTH shapes: canonical keys + the derived phone alias
+  // keys, at the TOP LEVEL (the phone decodes the whole body — see the
+  // header + dualShapePrefsBody in prefs.ts) and under `prefs` (web).
+  // loadNotificationPrefs merges the raw jsonb over DEFAULT_PREFS, so
+  // passthrough keys (adaptation_enabled) ride along in `prefs` at
+  // runtime — pass it as raw for the alias derivation.
+  const dual = dualShapePrefsBody(prefs, prefs as unknown as Record<string, unknown>);
+  return NextResponse.json({ ...dual, prefs: dual });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -129,11 +140,11 @@ export async function PATCH(req: NextRequest) {
     }
     bustPrefsCache(userId);
     const updated = await loadNotificationPrefs(userId);
-    // P1-15 · same dual-shape emit as GET.
-    return NextResponse.json({
-      ok: true,
-      prefs: { ...updated, ...phoneAliasView(updated, updated as unknown as Record<string, unknown>) },
-    });
+    // P1-15 · same dual-shape emit as GET: top level for the phone's
+    // whole-body decode, `prefs` for web. `ok` spread LAST so no pref
+    // key can shadow it.
+    const dual = dualShapePrefsBody(updated, updated as unknown as Record<string, unknown>);
+    return NextResponse.json({ ...dual, prefs: dual, ok: true });
   } catch (err: any) {
     return NextResponse.json({
       error: 'prefs update failed',

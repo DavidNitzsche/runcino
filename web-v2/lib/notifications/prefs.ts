@@ -151,6 +151,30 @@ export function phoneAliasView(
   return view;
 }
 
+/**
+ * Canonical prefs + derived phone alias keys flattened into ONE object,
+ * for GET/PATCH response bodies.
+ *
+ * 2026-07-06 · adversarial review of P1-15. The iPhone's
+ * fetchNotificationPrefs (API+Toolkit.swift) FIRST tries
+ * JSONDecoder().decode(NotificationPrefs.self, from: <whole body>) and
+ * its init(from:) is per-key tolerant — every missing key defaults to
+ * true. Decoding {"prefs":{...}} therefore SUCCEEDS with all-true and
+ * the {prefs:} Wrap fallback is never reached, so alias keys nested
+ * inside `prefs` were invisible to the phone. Worse: the phone's
+ * onPrefChange PATCHes the full 7-key struct from that all-true display,
+ * silently re-enabling categories disabled on web. The routes therefore
+ * spread this object at the TOP LEVEL of the response (phone's direct
+ * decode) AND under `prefs` (web Settings.tsx reads j.prefs). Dies with
+ * the alias layer when Wave 2 native adopts the canonical shape.
+ */
+export function dualShapePrefsBody(
+  prefs: NotificationPrefs,
+  raw?: Record<string, unknown>,
+): Record<string, unknown> {
+  return { ...prefs, ...phoneAliasView(prefs, raw) };
+}
+
 /** Map a category to the prefs flag that gates it. */
 export function categoryEnabled(prefs: NotificationPrefs, c: NotificationCategory): boolean {
   if (!prefs.master_enabled) return false;

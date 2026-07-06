@@ -294,7 +294,9 @@ export type SendPushResult =
  * caller to record on notifications_log.
  */
 /**
- * Build the APNs JSON body per docs/2026-05-28-notifications.html §3.
+ * Build the APNs JSON body per the 2026-05-28 notifications deck §3.
+ * (The deck is a session artifact, never committed to the repo — the
+ * in-repo wire contract is this function + notifications-wire.test.ts.)
  * Exported (pure, no I/O) so tests can assert the wire shape without a
  * network — 2026-07-06 audit P1-25 landed dedup_key/notification_id in
  * the faff dict and this is where they materialize.
