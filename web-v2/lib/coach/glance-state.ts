@@ -69,7 +69,10 @@ export interface GlanceWeekDay {
 
 export interface GlanceState {
   today: string;
-  greetingName: string;
+  /** First name for the greeting · null when profile.full_name is unset.
+   *  P2-75 fix 2026-07-06 · consumers render a generic greeting on null
+   *  (seed.ts falls back to 'You'); never a literal placeholder name. */
+  greetingName: string | null;
   weekDone: number;
   weekPlanned: number | null;
   weekDays: GlanceWeekDay[];   // 7 entries, week-start → long-run day (long_run_day window)
@@ -776,7 +779,10 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
 
   return {
     today,
-    greetingName: prof?.full_name?.split(/\s+/)[0] ?? 'David',
+    // P2-75 fix 2026-07-06 · null full_name → null, NOT the literal 'David'.
+    // Every no-name signup was greeted as David. Consumers fall back to a
+    // generic greeting (seed.ts → 'You').
+    greetingName: prof?.full_name?.split(/\s+/)[0] ?? null,
     weekDone, weekPlanned, weekDays, phaseLabel,
     sleep7Avg, sleep7Deficit,
     rhrCurrent, rhrBaseline,
