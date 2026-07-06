@@ -78,6 +78,15 @@ export async function POST(req: NextRequest) {
   // UPSERT on hk_uuid when provided · INSERT when null.
   // The unique partial index strength_sessions_hk_uuid_uniq makes the
   // ON CONFLICT clause safe to use even though hk_uuid is nullable.
+  //
+  // 2026-07-06 · audit P2-51 · owner guard on the DO UPDATE. The partial
+  // unique index on hk_uuid is GLOBAL — without the guard, an
+  // authenticated user POSTing another user's hk_uuid mutated THAT
+  // user's row (date/type/duration overwritten; user_uuid untouched, so
+  // it stayed in the victim's history with the attacker's data). Same
+  // shape as the DELETE handler's owner scoping below. With the guard,
+  // a cross-owner conflict updates nothing and RETURNING is empty →
+  // 409, never a silent cross-tenant write.
   const r = hkUuid
     ? await pool.query(
         `INSERT INTO strength_sessions
@@ -90,6 +99,7 @@ export async function POST(req: NextRequest) {
            duration_min = EXCLUDED.duration_min,
            notes = COALESCE(EXCLUDED.notes, strength_sessions.notes),
            source = EXCLUDED.source
+         WHERE strength_sessions.user_uuid = EXCLUDED.user_uuid
          RETURNING id, date::text AS date, session_type, duration_min, notes,
                    source, hk_uuid, created_at::text AS created_at`,
         [userId, date, sessionType, durationMin, notes, source, hkUuid],
@@ -101,6 +111,15 @@ export async function POST(req: NextRequest) {
                    source, hk_uuid, created_at::text AS created_at`,
         [userId, date, sessionType, durationMin, notes, source],
       );
+  // P2-51 · empty RETURNING on the hk_uuid path means the ON CONFLICT
+  // guard blocked a cross-owner update — the hk_uuid already belongs to
+  // a different user_uuid. 409, no cache bust (nothing changed).
+  if (hkUuid && r.rows.length === 0) {
+    return NextResponse.json(
+      { ok: false, error: 'hk_uuid already registered to another user' },
+      { status: 409 },
+    );
+  }
   await bustBriefingCacheForEvent(userId, 'run_ingest').catch(() => {});
   return NextResponse.json({ ok: true, session: r.rows[0] });
 }

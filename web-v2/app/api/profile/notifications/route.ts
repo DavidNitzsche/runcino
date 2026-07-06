@@ -1,22 +1,45 @@
 /**
- * GET   /api/profile/notifications  → { prefs: NotificationPrefs }
- * PATCH /api/profile/notifications  body { partial NotificationPrefs }
+ * GET   /api/profile/notifications  → { prefs: NotificationPrefs + phone aliases }
+ * PATCH /api/profile/notifications  body { partial NotificationPrefs | phone shape }
+ * PUT   /api/profile/notifications  — alias for PATCH (merge semantics)
  *
  * Reads / updates profile.notification_prefs (jsonb). The /profile
  * settings panel calls these to wire the master toggle + per-category
  * + race-day wake / weekly check-in / quiet hours surfaces.
  *
+ * 2026-07-06 · audit P1-15 · WIRE TOLERANCE. The iPhone's
+ * NotificationPrefs (G_Settings.swift) speaks a 7-key dialect
+ * (readiness/workout_reminder/recap/race_countdown/adaptation/
+ * reconnect/streak). The old handler 400'd the whole PATCH on the
+ * first unknown key, so every phone toggle silently never saved, and
+ * GET emitted only the canonical shape. Now:
+ *   - PATCH/PUT accept BOTH shapes — phone alias keys are translated
+ *     to canonical via translatePhonePrefKeys (prefs.ts documents the
+ *     mapping); adaptation_enabled is stored as a passthrough.
+ *   - GET emits the canonical keys PLUS the derived phone alias keys
+ *     in the same prefs object, so both clients decode it.
+ * THE CANONICAL SHAPE IS THE SERVER'S NotificationPrefs — Wave 2
+ * native migrates the phone to it, then the alias layer dies.
+ *
  * The race_day_enabled flag is intentionally NOT enforced disabled
  * here — the UI renders it disabled (deck §SETTINGS · RACE-DAY LOCK)
  * but the column is honest. If a future hardware key flips it to
  * false, the sender respects it. The deck is the contract, not the
- * column.
+ * column. (The phone's race_countdown_enabled maps to race_eve_enabled
+ * only — a phone toggle can never kill the race-day wake.)
  *
  * Source spec: docs/2026-05-28-notifications.html §SETTINGS SURFACE.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { DEFAULT_PREFS, bustPrefsCache, loadNotificationPrefs } from '@/lib/notifications/prefs';
+import {
+  DEFAULT_PREFS,
+  bustPrefsCache,
+  loadNotificationPrefs,
+  translatePhonePrefKeys,
+  phoneAliasView,
+  PHONE_PASSTHROUGH_KEYS,
+} from '@/lib/notifications/prefs';
 import { requireUserId } from '@/lib/auth/session';
 
 const ALLOWED_KEYS = new Set<keyof typeof DEFAULT_PREFS>([
@@ -43,7 +66,13 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const prefs = await loadNotificationPrefs(userId);
-  return NextResponse.json({ prefs });
+  // P1-15 · emit BOTH shapes in one object: canonical keys + the derived
+  // phone alias keys. loadNotificationPrefs merges the raw jsonb over
+  // DEFAULT_PREFS, so passthrough keys (adaptation_enabled) ride along
+  // in `prefs` at runtime — pass it as raw for the alias derivation.
+  return NextResponse.json({
+    prefs: { ...prefs, ...phoneAliasView(prefs, prefs as unknown as Record<string, unknown>) },
+  });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -54,11 +83,15 @@ export async function PATCH(req: NextRequest) {
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
+  // P1-15 · translate iPhone alias keys to canonical BEFORE validation
+  // so a phone-shaped body no longer 400s on its first key.
+  body = translatePhonePrefKeys(body);
+
   // Validate the patch shape
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(body)) {
     if (k === 'user_id') continue;
-    if (!ALLOWED_KEYS.has(k as any)) {
+    if (!ALLOWED_KEYS.has(k as any) && !PHONE_PASSTHROUGH_KEYS.has(k)) {
       return NextResponse.json({ error: `Field not allowed: ${k}` }, { status: 400 });
     }
     if (k.endsWith('_enabled')) {
@@ -96,7 +129,11 @@ export async function PATCH(req: NextRequest) {
     }
     bustPrefsCache(userId);
     const updated = await loadNotificationPrefs(userId);
-    return NextResponse.json({ ok: true, prefs: updated });
+    // P1-15 · same dual-shape emit as GET.
+    return NextResponse.json({
+      ok: true,
+      prefs: { ...updated, ...phoneAliasView(updated, updated as unknown as Record<string, unknown>) },
+    });
   } catch (err: any) {
     return NextResponse.json({
       error: 'prefs update failed',
@@ -104,6 +141,13 @@ export async function PATCH(req: NextRequest) {
       hint: 'Did you apply web-v2/db/migrations/121_notifications.sql?',
     }, { status: 500 });
   }
+}
+
+/** P1-15 · PUT tolerated as an alias for PATCH. The stored column is a
+ *  jsonb merged over defaults, so merge semantics are safe for full-body
+ *  PUTs too (a full body simply merges every key). */
+export async function PUT(req: NextRequest) {
+  return PATCH(req);
 }
 
 export const dynamic = 'force-dynamic';

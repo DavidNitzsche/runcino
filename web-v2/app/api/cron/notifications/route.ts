@@ -54,6 +54,9 @@ import {
   type RenderedTemplate,
 } from '@/lib/notifications/templates';
 import { loadNotificationPrefs, categoryEnabled } from '@/lib/notifications/prefs';
+import { loadSettings } from '@/lib/coach/settings';
+import { mileageByDay } from '@/lib/runs/volume';
+import { trainingWeekWindow } from '@/lib/notifications/week-window';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -527,14 +530,27 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     }
 
     // ──────────────────────────────────────────────────────────
-    // CATEGORY D — weekly check-in Sunday at prefs.weekly_checkin_time
+    // CATEGORY D — weekly check-in on the runner's LAST training day
+    //   (long_run_day) at prefs.weekly_checkin_time.
+    //
+    //   2026-07-06 · audit P1-24 + week-boundary P2 · was hardcoded
+    //   Sunday (dow === 0) with an ISO-Monday summary window. The
+    //   training week ENDS on user_settings.long_run_day (one SoT with
+    //   /api/plan/week, locked 2026-06-16) — a Saturday-long runner's
+    //   Sunday check-in totalled a window that split their week in two.
+    //   Now: fire on long_run_day evening, sum the week that ends that
+    //   day. David (long_run_day=sun) is byte-identical: still Sunday.
     // ──────────────────────────────────────────────────────────
     if (
       prefs.weekly_checkin_enabled &&
-      dow === 0 && // Sunday
       isAtLocalTime(clk.hour, clk.minute, prefs.weekly_checkin_time)
     ) {
-      const summary = await weekSummary(u.user_id, u.tz);
+      const settings = await loadSettings(u.user_id);
+      const DOW_OF: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+      const longRunDow = DOW_OF[settings.long_run_day] ?? 0;
+      const summary = dow === longRunDow
+        ? await weekSummary(u.user_id, clk.dateISO, dow, longRunDow)
+        : null;
       if (summary && summary.days_run > 0) {
         const tpl = renderWeeklyCheckin({
           user_id: u.user_id,
@@ -683,13 +699,17 @@ async function nextARace(
 }
 
 async function shakeoutDoneToday(userId: string): Promise<boolean> {
+  // 2026-07-06 · audit P1-24 · was `SELECT 1 FROM runs WHERE
+  // start_time::date = …` — runs has NO start_time column (jsonb-body
+  // table, migration 129); the query threw, the catch returned false,
+  // and race-eve always said "Shake-out skipped — that's fine." even
+  // when the runner ran. Now reads through the canonical volume reader
+  // (data->>'date' semantics + identity dedup, same as every other
+  // runs consumer — lib/runs/volume.ts).
   try {
     const today = await runnerToday(userId);
-    const r = await pool.query(
-      `SELECT 1 FROM runs WHERE user_uuid = $1 AND start_time::date = $2::date LIMIT 1`,
-      [userId, today],
-    );
-    return r.rows.length > 0;
+    const byDay = await mileageByDay(userId, today, today);
+    return (byDay.get(today)?.mi ?? 0) > 0;
   } catch {
     return false;
   }
@@ -697,45 +717,50 @@ async function shakeoutDoneToday(userId: string): Promise<boolean> {
 
 async function weekSummary(
   userId: string,
-  userTz: string,
+  todayISO: string,
+  dow: number,
+  longRunDow: number,
 ): Promise<{ week_start_iso: string; actual_mi: number; planned_mi: number; days_run: number } | null> {
+  // 2026-07-06 · audit P1-24 · two fixes in one:
+  //   1. was `SUM(distance_mi) … COUNT(DISTINCT start_time::date)` on
+  //      runs — neither column exists (jsonb-body table) · the query
+  //      threw, the catch returned null, category D never enqueued for
+  //      ANY user. Actual miles now come from the canonical volume
+  //      reader (lib/runs/volume.ts:mileageByDay · data->>'distanceMi',
+  //      identity-deduped so a HK+Strava double-ingest can't inflate
+  //      the week).
+  //   2. was ISO-Monday anchored · now the training-week window that
+  //      ENDS on long_run_day (trainingWeekWindow · one SoT with
+  //      /api/plan/week). Caller only invokes this ON long_run_day, so
+  //      the window is [today-6, today].
   try {
-    // 2026-06-05 · backend audit P0-10 fix · compute ISO Monday in
-    // the RUNNER'S TZ, not server UTC. At Pacific Sunday 21:00 (the
-    // weekly check-in fire time) server UTC is already Monday 05:00 ·
-    // the old getUTCDay()-based Monday computation rolled forward by
-    // a week and the summary covered the WRONG seven days.
-    const clk = userLocalClock(userTz);
-    const [y, m, d] = clk.dateISO.split('-').map(Number);
-    // Anchor the runner's "today" at noon UTC of their local date · then
-    // walk back (dow - 1) days for ISO Monday. The noon anchor is purely
-    // arithmetic · we only consume the YYYY-MM-DD slice.
-    const todayUtcAnchor = new Date(Date.UTC(y, m - 1, d, 12));
-    const dow = clk.dow === 0 ? 7 : clk.dow; // map Sun=0 → 7 for ISO week
-    const monday = new Date(todayUtcAnchor);
-    monday.setUTCDate(monday.getUTCDate() - (dow - 1));
-    const weekStart = monday.toISOString().slice(0, 10);
+    const { week_start_iso, week_end_iso } = trainingWeekWindow(todayISO, dow, longRunDow);
 
-    const r = await pool.query(
-      `SELECT
-         COALESCE(SUM(distance_mi), 0)::float AS actual_mi,
-         COUNT(DISTINCT start_time::date)::int AS days_run
-       FROM runs
-      WHERE user_uuid = $1 AND start_time::date >= $2::date AND start_time::date < $2::date + interval '7 days'`,
-      [userId, weekStart],
-    );
+    const byDay = await mileageByDay(userId, week_start_iso, week_end_iso);
+    let actualMi = 0;
+    let daysRun = 0;
+    for (const { mi } of byDay.values()) {
+      if (mi <= 0) continue;
+      actualMi += mi;
+      daysRun++;
+    }
+
+    // Planned side unchanged in substance — plan_workouts genuinely has
+    // date_iso (text) + distance_mi (numeric) + user_uuid (verified
+    // against prod schema 2026-07-06). Bounds now use the same inclusive
+    // window as the actuals.
     const planned = await pool.query(
       `SELECT COALESCE(SUM(distance_mi), 0)::float AS planned_mi
          FROM plan_workouts
-        WHERE user_uuid = $1 AND date_iso >= $2 AND date_iso < ($2::date + interval '7 days')::text`,
-      [userId, weekStart],
+        WHERE user_uuid = $1 AND date_iso >= $2 AND date_iso <= $3`,
+      [userId, week_start_iso, week_end_iso],
     ).catch(() => ({ rows: [{ planned_mi: 0 }] }));
 
     return {
-      week_start_iso: weekStart,
-      actual_mi: r.rows[0]?.actual_mi ?? 0,
+      week_start_iso,
+      actual_mi: Math.round(actualMi * 10) / 10,
       planned_mi: planned.rows[0]?.planned_mi ?? 0,
-      days_run: r.rows[0]?.days_run ?? 0,
+      days_run: daysRun,
     };
   } catch {
     return null;

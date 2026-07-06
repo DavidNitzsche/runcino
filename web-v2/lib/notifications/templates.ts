@@ -28,6 +28,12 @@ export interface RenderedTemplate {
   interruption_level: 'passive' | 'active' | 'time-sensitive';
   /** Rich actions per category (deck §4 RICH NOTIFICATION CATEGORIES). */
   action_buttons?: ApnsActionButton[];
+  /** 2026-07-06 · audit P1-25 · optional UNNotificationCategory override.
+   *  Most templates omit this and the sender maps their prefs bucket via
+   *  apnsCategoryId. A template whose actions differ from its bucket-mates
+   *  (sick check's RECOVERED vs niggle check's GONE) sets its own id so
+   *  iOS can register a distinct action set. */
+  apns_category_id?: string;
   /** Stable dedup key (deck §5 DEDUP + QUIET HOURS). */
   dedup_key: string;
   /** Free-form metadata under `faff`. iOS uses faff.deeplink to route. */
@@ -177,7 +183,11 @@ export function renderSkipRecovery(s: SkipRecoverySlots): RenderedTemplate {
 
 export interface WeeklyCheckinSlots {
   user_id: string;
-  week_start_iso: string; // YYYY-MM-DD of Monday for this week
+  /** YYYY-MM-DD of the first day of the runner's TRAINING week — the day
+   *  after their long_run_day, same boundary /api/plan/week uses. Was
+   *  documented as ISO Monday; that split a Saturday-long runner's week
+   *  in two (2026-07-06 audit P2 · week-boundary finding). */
+  week_start_iso: string;
   actual_mi: number;
   planned_mi: number;
   days_run: number;
@@ -252,6 +262,16 @@ export function renderSickCheck(s: SickCheckSlots): RenderedTemplate {
     title: `SICK · ${dayUnit === 'DAY' ? '' : ''}${s.days_active} ${dayUnit}`.trim(),
     body: 'How is it this morning? scale of better, same, worse, recovered.',
     interruption_level: 'active',
+    // 2026-07-06 · audit P1-25 · sick check emits its OWN iOS category.
+    // It shares the niggle_sick prefs bucket, but FAFF_NIGGLE's registered
+    // actions are BETTER/SAME/WORSE/GONE — RECOVERED never rendered, and
+    // GONE (the only "I'm well" option shown) misrouted to the niggle
+    // path. Wave 2 native registers FAFF_SICK with BETTER/SAME/WORSE/
+    // RECOVERED in NotificationCategories.swift. On builds that haven't
+    // registered FAFF_SICK yet, iOS shows the alert without action
+    // buttons (safe degradation — tap opens the app) instead of showing
+    // the wrong niggle actions.
+    apns_category_id: 'FAFF_SICK',
     dedup_key: `sick-check:${s.episode_id}:${s.date_iso}`,
     action_buttons: [
       { identifier: 'BETTER',    title: 'BETTER' },
