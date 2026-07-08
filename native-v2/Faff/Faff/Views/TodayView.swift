@@ -2680,6 +2680,9 @@ struct TodayView: View {
     /// opens the sheet that offers both). Past / rest / skipped-today hide it.
     private var rescheduleAffordance: (prompt: String, action: String)? {
         guard let day = actionableSourceDay, dayHasRun(day) else { return nil }
+        // Race day is the plan's anchor row — never offer to skip or move it
+        // (P2-17, audit 2026-07-06). It has its own race-day mode UI.
+        guard day.type != "race" else { return nil }
         if selectedIsToday {
             guard !skipped else { return nil }
             return ("Not running today?", "Skip or move")
@@ -2704,7 +2707,9 @@ struct TodayView: View {
         let weeks: [PlanWeek] = [prevWeekPlan].compactMap { $0 } + [plan].compactMap { $0 } + futureWeekPlans
         guard let week = weeks.first(where: { $0.days.contains { $0.date_iso == srcISO } }) else { return [] }
         return week.days
-            .filter { $0.date_iso != srcISO && !$0.is_past }
+            // Race day never appears as a move target — it can't be replaced
+            // (P2-17, audit 2026-07-06). Server enforces the same rule.
+            .filter { $0.date_iso != srcISO && !$0.is_past && $0.type != "race" }
             .map { day in
                 let hasRun = dayHasRun(day)
                 return DayActionSheet.TargetDay(

@@ -33,6 +33,8 @@ private func trainMi(_ m: Double) -> String {
 
 struct TrainView: View {
     let onProfile: () -> Void
+    /// Root tab binding · the plan-ended / no-plan CTA jumps to Goal.
+    @Binding var selectedTab: FaffTab
 
     @State private var state: TrainingState? =
         AppCache.read(.trainingState, as: TrainingState.self)
@@ -67,21 +69,38 @@ struct TrainView: View {
                     // pill), matching the Today week strip. The BUILD hero
                     // scrolls and dissolves behind the pill like TEMPO does.
                     Color.clear.frame(height: 132)
-                    header
-                        .padding(.horizontal, Theme.Space.pageH)
-                        .padding(.top, 6)
-                    thisWeekCard
-                        .padding(.horizontal, Theme.Space.pageH)
-                        .padding(.top, Theme.Space.section)
-                    execStripCard
-                        .padding(.horizontal, Theme.Space.pageH)
-                        .padding(.top, Theme.Space.section)
-                    adjustmentsBlock
-                        .padding(.horizontal, Theme.Space.pageH)
-                        .padding(.top, Theme.Space.section)
-                    fullPlanCard
-                        .padding(.horizontal, Theme.Space.pageH)
-                        .padding(.top, Theme.Space.section)
+                    if noPlan {
+                        // No active plan at all · honest empty state, not a
+                        // fabricated BASE page (P2-18, audit 2026-07-06).
+                        planEndState(noPlanMode: true)
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, 6)
+                    } else if planEnded {
+                        // Every plan week is behind us · wrap-up + CTA. The
+                        // full-plan card stays below as the block's record.
+                        planEndState(noPlanMode: false)
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, 6)
+                        fullPlanCard
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, Theme.Space.section)
+                    } else {
+                        header
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, 6)
+                        thisWeekCard
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, Theme.Space.section)
+                        execStripCard
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, Theme.Space.section)
+                        adjustmentsBlock
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, Theme.Space.section)
+                        fullPlanCard
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, Theme.Space.section)
+                    }
                     Spacer(minLength: 110) // tab bar clearance
                 }
             }
@@ -103,6 +122,43 @@ struct TrainView: View {
     /// sized to match the Today week strip so every tab carries one header.
     @ViewBuilder
     private var phasePill: some View {
+        if noPlan || planEnded {
+            planEndPill
+        } else {
+            activePhasePill
+        }
+    }
+
+    /// Honest pill for the no-plan / plan-ended states · no phase claim.
+    @ViewBuilder
+    private var planEndPill: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Capsule()
+                .fill(Theme.txt.opacity(0.55))
+                .frame(width: 4)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(noPlan ? "NO ACTIVE PLAN" : "PLAN COMPLETE")
+                    .font(.body(10.5, weight: .extraBold))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.txt.opacity(0.75))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Text(noPlan
+                     ? "Set a goal on the Goal tab and a plan gets built around it."
+                     : "Every week is done. Set the next goal when you're ready.")
+                    .font(.body(12.5, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.82))
+                    .lineSpacing(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 13)
+    }
+
+    @ViewBuilder
+    private var activePhasePill: some View {
         let phaseKey = (state?.currentPhase ?? "base").lowercased()
         let phase = TrainPhase(phaseKey: phaseKey)
         let totalWks = state?.weeks.count ?? 13
@@ -202,6 +258,89 @@ struct TrainView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: Plan-end / no-plan state (P2-18, audit 2026-07-06)
+
+    /// True once the training state has loaded and carries no plan weeks.
+    /// While state is still nil (cold launch, cache miss) we keep the normal
+    /// layout so the page doesn't flash "NO PLAN" during load.
+    private var noPlan: Bool {
+        guard let st = state else { return false }
+        return st.weeks.isEmpty
+    }
+
+    /// Last calendar day the plan covers · last week's start + 6, or race
+    /// day when it lands later.
+    private var planEndISO: String? {
+        guard let lastStart = state?.weeks.last?.startDate,
+              let d = Self.isoDate(lastStart) else { return nil }
+        let end = Calendar.current.date(byAdding: .day, value: 6, to: d) ?? d
+        var iso = Self.isoString(end)
+        if let raceDate = state?.race?.date, !raceDate.isEmpty, raceDate > iso {
+            iso = raceDate
+        }
+        return iso
+    }
+
+    /// True when every plan week (and race day) is behind today.
+    private var planEnded: Bool {
+        guard let st = state, !st.weeks.isEmpty, let end = planEndISO else { return false }
+        return st.today > end
+    }
+
+    /// True when the current week is the plan's last · drives the wrap-up
+    /// line in the this-week card.
+    private var isFinalWeek: Bool {
+        guard let st = state, !st.weeks.isEmpty,
+              let cur = st.currentWeekIdx else { return false }
+        return cur == st.weeks.count - 1
+    }
+
+    /// Coach-voice wrap-up for the final plan week.
+    private var finalWeekLine: String {
+        state?.race != nil
+            ? "Last week of the plan. Get to the line fresh."
+            : "Last week of the plan. Set the next goal when you're ready."
+    }
+
+    /// Hero empty state for no-plan / plan-ended · honest copy + a Goal-tab
+    /// CTA instead of a fabricated BASE page.
+    @ViewBuilder
+    private func planEndState(noPlanMode: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(noPlanMode ? "NO PLAN" : "PLAN COMPLETE")
+                .font(.heroDisplay(88))
+                .tracking(-2)
+                .foregroundStyle(Theme.txt)
+                .minimumScaleFactor(0.55)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(noPlanMode
+                 ? "No active plan. Set a goal and one gets built around it."
+                 : "That block is done. The work is banked. Set the next goal when you're ready.")
+                .font(.body(14))
+                .foregroundStyle(Theme.txt.opacity(0.66))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+
+            Button { selectedTab = .targets } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "flag.fill")
+                        .font(.system(size: 14, weight: .bold))
+                    Text(noPlanMode ? "Set a goal" : "Set the next goal")
+                        .font(.body(15, weight: .extraBold))
+                }
+                .foregroundStyle(Theme.bg)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(Theme.txt, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 20)
+        }
+    }
+
     // MARK: This week
 
     @ViewBuilder
@@ -257,6 +396,16 @@ struct TrainView: View {
                             .buttonStyle(.plain)
                         }
                     }
+                }
+                // Final-week wrap-up · one coach line so the plan doesn't
+                // just fall off a cliff after the last row (P2-18).
+                if isFinalWeek {
+                    Text(finalWeekLine)
+                        .font(.body(12.5, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.66))
+                        .lineSpacing(1)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
                 }
             }
             .padding(15)
@@ -407,7 +556,11 @@ struct TrainView: View {
     private var fullPlanCard: some View {
         VStack(spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                Text("FULL PLAN · \(state?.weeks.count ?? 13) WEEKS TO RACE")
+                // "TO RACE" only when a race is actually booked — a
+                // maintenance / goal-mode plan has no race to count down to.
+                Text(state?.race != nil
+                     ? "FULL PLAN · \(state?.weeks.count ?? 13) WEEKS TO RACE"
+                     : "FULL PLAN · \(state?.weeks.count ?? 13) WEEKS")
                     .font(.body(10.5, weight: .extraBold))
                     .tracking(1.4)
                     .foregroundStyle(Theme.txt.opacity(0.66))
@@ -893,11 +1046,13 @@ struct TrainView: View {
 
     private func phaseSubtitle(for phase: TrainPhase, totalWeeks: Int) -> String {
         switch phase {
-        case .base:  return "Building your aerobic engine."
-        case .build: return "Building race-specific fitness."
-        case .peak:  return "Sharpening for race day."
-        case .taper: return "Banking the fitness."
-        case .race:  return "Trust the work."
+        case .base:        return "Building your aerobic engine."
+        case .build:       return "Building race-specific fitness."
+        case .peak:        return "Sharpening for race day."
+        case .taper:       return "Banking the fitness."
+        case .race:        return "Trust the work."
+        case .maintenance: return "Holding the base."
+        case .recovery:    return "Absorbing the work."
         }
     }
 
@@ -915,6 +1070,10 @@ struct TrainView: View {
             return "Volume drops, intensity holds. Sharp by race morning."
         case .race:
             return "Light activation keeps the legs fresh for race day."
+        case .maintenance:
+            return "Easy miles hold the base. One quality session keeps the edge."
+        case .recovery:
+            return "Easy running only. Low volume while the body absorbs the race."
         }
     }
 
@@ -926,11 +1085,14 @@ struct TrainView: View {
     /// the amberBright accent (no race hue in the categorical phase scale).
     static func phaseAccent(_ phase: TrainPhase) -> Color {
         switch phase {
-        case .base:  return Theme.Phase.base
-        case .build: return Theme.Phase.build
-        case .peak:  return Theme.Phase.peak
-        case .taper: return Theme.Phase.taper
-        case .race:  return Theme.Accent.amberBright
+        // Maintenance holds aerobic base → base hue; recovery is an
+        // absorb/adapt block → taper hue. Both stay inside the CI-locked
+        // categorical scale (no new colors).
+        case .base, .maintenance: return Theme.Phase.base
+        case .build:              return Theme.Phase.build
+        case .peak:               return Theme.Phase.peak
+        case .taper, .recovery:   return Theme.Phase.taper
+        case .race:               return Theme.Accent.amberBright
         }
     }
 
