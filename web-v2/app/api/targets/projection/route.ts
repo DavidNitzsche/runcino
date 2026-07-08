@@ -207,7 +207,7 @@ export async function GET(req: NextRequest) {
     const distanceMi = race?.distance_mi ?? goalModeDistanceMi ?? distanceQ;
     // 2026-07-07 · ultra-honesty audit P2-70 · the Daniels equivalence this
     // whole route runs on (predictRaceTime/vdotFromRace) stops being valid
-    // past the marathon (Research/02 §50/§446); DANIELS_MAX_VALID_DISTANCE_MI
+    // past the marathon (Research/02 §6.2/§14 rule 6); DANIELS_MAX_VALID_DISTANCE_MI
     // now nulls those functions out beyond it, so `projectionSec` and every
     // downstream gap/lever chunk below already degrade to honest zeros/nulls
     // for a 50K/50M/100K/100M target — no per-branch change needed there.
