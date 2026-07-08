@@ -916,11 +916,37 @@ struct HealthWeekBars: View {
 
 // MARK: - HealthLogSheet
 
-/// Bottom sheet for manual measurement logging · v1 surface, fields
-/// display-only. v2 wires WEIGHT / RHR / SLEEP / MOOD / SORENESS to
-/// /api/log/* endpoints.
+/// Bottom sheet for manual measurement logging.
+///
+/// P2-39 (2026-07-06): was fully decorative — fields weren't editable and
+/// Save silently no-op'd, worst for exactly the no-watch/no-HK personas
+/// who most need manual entry. Now WEIGHT / RESTING HR / SLEEP are real
+/// editable fields that POST to /api/ingest/health via
+/// HealthKitImporter.postManualSample (same wire shape + auth path the HK
+/// importer uses, so these rows feed the same readiness pipeline).
+///
+/// MOOD / SORENESS were dropped rather than faked: there's no backend
+/// sample type for a 1-5 mood/soreness scale (the nearest match,
+/// /api/checkin, uses a different shape — categorical mood + body-part
+/// soreness tags tied to a workout, not a standalone daily 1-5 reading).
+/// Shipping a UI that "saves" into nothing was the exact bug; better to
+/// ship fewer fields that are honest than five that look identical and
+/// three of which still do nothing.
 struct HealthLogSheet: View {
     let onDismiss: () -> Void
+
+    @State private var weightLb: String = ""
+    @State private var restingHr: String = ""
+    @State private var sleepHours: String = ""
+    @State private var saving = false
+    @State private var errorMsg: String? = nil
+
+    /// At least one field must carry a value to save something.
+    private var hasAnyValue: Bool {
+        !weightLb.trimmingCharacters(in: .whitespaces).isEmpty ||
+        !restingHr.trimmingCharacters(in: .whitespaces).isEmpty ||
+        !sleepHours.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -938,25 +964,29 @@ struct HealthLogSheet: View {
                     .foregroundStyle(Color.white.opacity(0.66))
             }
             VStack(spacing: 0) {
-                logRow("WEIGHT", value: "—", unit: "lb")
-                logRow("RESTING HR", value: "—", unit: "bpm")
-                logRow("SLEEP", value: "—", unit: "h")
-                logRow("MOOD", value: "—", unit: "1–5")
-                logRow("SORENESS", value: "—", unit: "1–5")
+                logField("WEIGHT", unit: "lb", text: $weightLb)
+                logField("RESTING HR", unit: "bpm", text: $restingHr)
+                logField("SLEEP", unit: "h", text: $sleepHours)
             }
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.white.opacity(0.05))
             )
-            Button { onDismiss() } label: {
-                Text("Save")
+            if let errorMsg {
+                Text(errorMsg)
+                    .font(.body(12, weight: .semibold))
+                    .foregroundStyle(Theme.over)
+            }
+            Button { Task { await save() } } label: {
+                Text(saving ? "SAVING…" : "Save")
                     .font(.body(15, weight: .extraBold)).tracking(0.4)
                     .foregroundStyle(Color(hex: 0x06302E))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.white, in: Capsule())
+                    .background((saving || !hasAnyValue) ? Color.white.opacity(0.4) : Color.white, in: Capsule())
             }
             .buttonStyle(.plain)
+            .disabled(saving || !hasAnyValue)
         }
         .padding(.horizontal, Theme.Space.pageH)
         .padding(.bottom, 32)
@@ -966,15 +996,18 @@ struct HealthLogSheet: View {
         .presentationBackground(Color(hex: 0x06302E))
     }
 
-    private func logRow(_ label: String, value: String, unit: String) -> some View {
+    private func logField(_ label: String, unit: String, text: Binding<String>) -> some View {
         HStack {
             Text(label)
                 .font(.body(11, weight: .extraBold)).tracking(1.0)
                 .foregroundStyle(Color.white.opacity(0.62))
             Spacer()
-            Text(value)
+            TextField("—", text: text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
                 .font(.display(18, weight: .semibold))
                 .foregroundStyle(.white)
+                .frame(width: 70)
             Text(unit)
                 .font(.body(11, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.50))
@@ -983,6 +1016,31 @@ struct HealthLogSheet: View {
         .padding(.vertical, 12)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
+        }
+    }
+
+    private func save() async {
+        saving = true
+        errorMsg = nil
+        do {
+            // WEIGHT is stored in lb on this row (per the original mock);
+            // backend body_mass is kg, so convert. Was hardcoded 'lb' with
+            // no way to enter a value at all — audit called this out
+            // separately (P2-39), fixed by making the field editable.
+            if let lb = Double(weightLb), lb > 0 {
+                try await HealthKitImporter.shared.postManualSample(type: "body_mass", value: lb / 2.2046226218)
+            }
+            if let hr = Double(restingHr), hr > 0 {
+                try await HealthKitImporter.shared.postManualSample(type: "resting_hr", value: hr)
+            }
+            if let sleep = Double(sleepHours), sleep > 0 {
+                try await HealthKitImporter.shared.postManualSample(type: "sleep_hours", value: sleep)
+            }
+            saving = false
+            onDismiss()
+        } catch {
+            saving = false
+            errorMsg = "Couldn't save — check your connection and try again."
         }
     }
 }

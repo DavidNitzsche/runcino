@@ -291,19 +291,26 @@ extension API {
         req.httpMethod = "GET"
         let (data, http) = try await API.authedSend(req)
         guard (200..<300).contains(http.statusCode) else { return nil }
-        // Server may return {prefs: {...}} or the prefs blob directly · try both.
+        // The route emits the canonical keys at the TOP LEVEL of the body
+        // (plus a nested `prefs` copy for web). Decode direct first; the
+        // Wrap fallback keeps us tolerant of a nested-only emit.
         if let direct = try? JSONDecoder().decode(NotificationPrefs.self, from: data) { return direct }
         struct Wrap: Decodable { let prefs: NotificationPrefs? }
         return (try? JSONDecoder().decode(Wrap.self, from: data))?.prefs
     }
 
+    /// PATCH exactly one changed pref key (audit P1-15 · the old
+    /// full-struct PATCH 400'd whole-body on any unknown key, so no
+    /// toggle ever saved). Returns false on any non-2xx so the caller
+    /// can surface the failure instead of try?-ignoring it.
     @discardableResult
-    static func patchNotificationPrefs(_ prefs: NotificationPrefs) async throws -> Bool {
+    static func patchNotificationPref(key: String, value: Bool) async -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/profile/notifications"))
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONEncoder().encode(prefs)
-        let (_, http) = try await API.authedSend(req)
+        guard let body = try? JSONSerialization.data(withJSONObject: [key: value]) else { return false }
+        req.httpBody = body
+        guard let (_, http) = try? await API.authedSend(req) else { return false }
         return (200..<300).contains(http.statusCode)
     }
 

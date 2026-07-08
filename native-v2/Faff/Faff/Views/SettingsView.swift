@@ -83,14 +83,24 @@ struct SettingsView: View {
 
                     section("CONNECTIONS") {
                         VStack(spacing: 0) {
-                            // Was hardcoded "Synced / Synced / Connect" for every
-                            // user. Reads real connection state from
-                            // /api/profile/state.connections now.
-                            navRow(
-                                title: "Apple Health",
-                                value: profile?.connections.appleHealth.connected == true ? "Synced" : "Connect",
-                                good: profile?.connections.appleHealth.connected == true
-                            )
+                            // P2-33 (2026-07-06): was a dead label — tapping
+                            // did nothing when never-connected. Now a real
+                            // Button that fires the HK auth+import flow when
+                            // not connected; three honest states instead of
+                            // the old binary Synced/Connect (which lied for
+                            // both "never asked" and "runner said no").
+                            Button {
+                                if !hkImporter.hasConnected { Task { await hkImporter.requestAuthAndImport(daysBack: 14) } }
+                            } label: {
+                                navRow(
+                                    title: "Apple Health",
+                                    subtitle: appleHealthStatusLine,
+                                    value: appleHealthValueLabel,
+                                    good: hkImporter.hasConnected
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(hkImporter.hasConnected || hkImporter.status == .requesting)
                             // 2026-06-01 · explicit manual re-sync trigger.
                             // The .onChange foreground refresh runs once per
                             // 30s but a runner who just installed a new
@@ -100,6 +110,13 @@ struct SettingsView: View {
                             // serendipity. Tapping pulls the last 14 days
                             // and surfaces the row count toast so we can
                             // diagnose silently-dropped types from the field.
+                            //
+                            // P2-33: when never connected, this used to call
+                            // importIfConnected — a silent no-op guarded on
+                            // hasConnected — then report the stale/nil
+                            // lastMessage as "Sync complete." Now routes
+                            // through the real auth+import flow so the
+                            // result (or the auth denial) is honest.
                             Button(action: forceHealthResync) {
                                 navRow(
                                     title: "Re-sync Health (14d)",
@@ -126,8 +143,12 @@ struct SettingsView: View {
                             } label: {
                                 navRow(
                                     title: "Strava",
+                                    // P2-3 · needsReauth (dead/401'd token) reads
+                                    // "Reconnect" instead of "Connect" — the runner
+                                    // DID link Strava once, this isn't a first-time ask.
                                     value: stravaReconnecting ? "Opening…"
-                                        : (profile?.connections.strava.connected == true ? "Synced" : "Connect"),
+                                        : (profile?.connections.strava.connected == true ? "Synced"
+                                           : (profile?.connections.strava.needsReauth == true ? "Reconnect" : "Connect")),
                                     good: profile?.connections.strava.connected == true
                                 )
                             }
@@ -189,7 +210,7 @@ struct SettingsView: View {
         }
         .animation(Theme.Motion.smooth, value: toast)
         .sheet(item: $editingField) { f in
-            FieldEditorSheet(field: f, value: vals[f.key], autoMode: !tzModeIsManual) { json in
+            FieldEditorSheet(field: f, value: vals[f.key], autoMode: !tzModeIsManual, availableDays: availableDaysSet) { json in
                 save(f, json)
             }
         }
@@ -320,11 +341,25 @@ struct SettingsView: View {
         healthResyncing = true
         healthResyncToast = nil
         Task {
-            await HealthKitImporter.shared.importIfConnected(daysBack: 14)
+            // P2-33: importIfConnected silently no-ops when the runner
+            // never granted Health access — the old code then reported
+            // the stale/nil lastMessage as "Sync complete." for a sync
+            // that never ran. Route through the real auth+import flow
+            // when not yet connected so a never-connected runner either
+            // gets the auth prompt (and an honest result) or an honest
+            // denial, never a fake success.
+            if hkImporter.hasConnected {
+                await hkImporter.importIfConnected(daysBack: 14)
+            } else {
+                await hkImporter.requestAuthAndImport(daysBack: 14)
+            }
             await MainActor.run {
                 healthResyncing = false
-                // Surface the importer's own summary ("N runs · M vitals").
-                healthResyncToast = HealthKitImporter.shared.lastMessage ?? "Sync complete."
+                // Surface the importer's own summary ("N runs · M vitals"),
+                // or the auth-failure message set by requestAuthAndImport.
+                // Never fabricate "Sync complete." when neither is set.
+                healthResyncToast = hkImporter.lastMessage
+                    ?? (hkImporter.hasConnected ? "Sync complete." : "Health access wasn't granted — nothing synced.")
             }
             // Clear the toast after 8s so it doesn't linger forever.
             try? await Task.sleep(nanoseconds: 8_000_000_000)
@@ -335,6 +370,10 @@ struct SettingsView: View {
     /// Subtitle line under the re-sync row · shows the last successful
     /// sync time so the runner knows whether the data is fresh.
     private var healthSyncStatusLine: String? {
+        // P2-33: an honest "Never connected" beats "Never synced" for a
+        // runner who has never granted access — "synced" implies a sync
+        // was attempted.
+        guard hkImporter.hasConnected else { return "Not connected — tap Apple Health above" }
         guard let when = hkImporter.lastImportedAt else { return "Never synced" }
         let mins = Int(Date().timeIntervalSince(when) / 60)
         if mins < 1 { return "Just synced" }
@@ -343,6 +382,23 @@ struct SettingsView: View {
         if hrs < 24 { return "Synced \(hrs)h ago" }
         let days = hrs / 24
         return "Synced \(days)d ago"
+    }
+
+    /// P2-33 · three honest states for the Apple Health row:
+    ///   never-connected → "Connect" (tappable, fires auth)
+    ///   connected       → "Synced"
+    ///   auth denied/failed (attempted, hasConnected still false) → "Denied"
+    private var appleHealthValueLabel: String {
+        if hkImporter.hasConnected { return "Synced" }
+        if hkImporter.status == .requesting { return "Requesting…" }
+        if hkImporter.status == .error { return "Denied" }
+        return "Connect"
+    }
+
+    private var appleHealthStatusLine: String? {
+        if hkImporter.hasConnected { return nil }
+        if hkImporter.status == .error { return hkImporter.lastMessage ?? "Access denied — enable in iOS Settings > Privacy > Health" }
+        return nil
     }
 
     /// Handle a cycle-ingest toggle change · gates HK auth and writes
@@ -440,25 +496,11 @@ struct SettingsView: View {
     }
 
     private func performSignOut() async {
-        // Clear local session + the gate's "onboarded" flag so the next
-        // launch lands on SignIn. AppCache stays cleared so the gate's
-        // returning-user heuristic doesn't auto-bypass.
-        await MainActor.run {
-            TokenStore.shared.clear()
-            let d = UserDefaults.standard
-            d.removeObject(forKey: "faff.onboarded")
-            d.removeObject(forKey: "faff.health.connected.v2")
-            StravaConnection.clear()
-            // User-tied metric stash · without this the NEXT account to
-            // sign in on this device briefly renders the previous
-            // runner's last-night sleep (multi-user hygiene, 2026-06-10).
-            d.removeObject(forKey: "faff.health.lastNightHours.v1")
-            AppCache.clearAll()
-            // Re-exit the app · the cleanest way to bounce back through
-            // RootContainer's gate decision is a fresh launch. Until then,
-            // post a notification the gate can listen for.
-            NotificationCenter.default.post(name: .faffGateReset, object: nil)
-        }
+        // P2-38 · was a hand-rolled cleanup that had drifted from
+        // ProfileView's (missed the cycle-ingest flag + never revoked the
+        // server session). One shared helper now, used by both sign-out
+        // surfaces — see SessionHygiene.swift.
+        await SessionHygiene.signOut()
     }
 
     private var footer: some View {
@@ -528,8 +570,19 @@ struct SettingsView: View {
         putStr("long_run_day", s?.long_run_day)
         putStr("rest_day", s?.rest_day)
         if let q = s?.quality_days { v["quality_days"] = .list(q) }
+        // P2-35 · always seed available_days (even []) so the row and the
+        // conflict-copy check both read real server state, not "unset".
+        v["available_days"] = .list(s?.available_days ?? [])
         putStr("briefing_time", s?.briefing_time)
         vals = v
+    }
+
+    /// P2-35 · the goal/race-setup availability constraint, when >=2 days
+    /// are set. Read by the day/multiday editors to warn before a runner's
+    /// long-run/rest/quality edit gets silently overridden by placement.
+    private var availableDaysSet: Set<String> {
+        if case .list(let a)? = vals["available_days"], a.count >= 2 { return Set(a) }
+        return []
     }
 
     /// Optimistic local update + PATCH to the right endpoint. Surfaces the
@@ -588,10 +641,21 @@ struct SettingsView: View {
         switch f.kind {
         case .select:
             if case .str(let s) = val { return f.options.first { $0.value == s }?.label ?? s }
+        case .timezoneSearch:
+            // Full IANA id ("America/Los_Angeles") is more useful here
+            // than a bare city label — it's the exact value that will be
+            // sent, and disambiguates zones that share a UTC offset.
+            if case .str(let s) = val, !s.isEmpty { return s }
         case .day:
             if case .str(let s) = val { return s.capitalized }
         case .multiday:
             if case .list(let a) = val, !a.isEmpty { return a.map { $0.capitalized }.joined(separator: " · ") }
+            // Empty is a meaningful, distinct state per field — not "Not
+            // set" (which implies the row was never touched):
+            //   quality_days: []   → coach picks (P2-36)
+            //   available_days: [] → no constraint, pickers below control it (P2-35)
+            if f.key == "quality_days" { return "Auto · coach picks" }
+            if f.key == "available_days" { return "Not set — Long run / Rest day / Quality days control it" }
         case .multi:
             if case .list(let a) = val, !a.isEmpty {
                 return a.map { c in f.options.first { $0.value == c }?.label ?? c.capitalized }.joined(separator: " · ")
@@ -638,7 +702,10 @@ enum SettingVal { case str(String); case num(Double); case list([String]) }
 
 enum SettingEndpoint { case profile, settings }
 
-enum SettingKind { case text, number, select, day, multiday, multi, date, height, weight, tzmode }
+// P2-40 · `timezoneSearch` is distinct from `select` — the chip grid that
+// backs `.select` is unusable at ~400 IANA identifiers. A searchable list
+// picker (FieldEditorSheet's `.timezoneSearch` case) replaces it.
+enum SettingKind { case text, number, select, day, multiday, multi, date, height, weight, tzmode, timezoneSearch }
 
 struct SettingOpt: Identifiable, Hashable { let value: String; let label: String; var id: String { value } }
 
@@ -683,15 +750,9 @@ private let SETTINGS_CROSS: [SettingOpt] = [
     .init(value: "strength", label: "Strength"), .init(value: "elliptical", label: "Elliptical"),
     .init(value: "rowing", label: "Rowing"), .init(value: "yoga", label: "Yoga"),
 ]
-private let SETTINGS_ZONES: [String] = [
-    "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York",
-    "America/Phoenix", "America/Anchorage", "Pacific/Honolulu",
-    "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Madrid",
-    "Australia/Sydney", "Asia/Tokyo", "Asia/Singapore", "UTC",
-]
-private func zoneOpt(_ z: String) -> SettingOpt {
-    SettingOpt(value: z, label: z.split(separator: "/").last.map { $0.replacingOccurrences(of: "_", with: " ") } ?? z)
-}
+// P2-40 · the old 15-zone SETTINGS_ZONES/zoneOpt chip-grid source was
+// replaced by TimezoneSearchPicker, which reads TimeZone.
+// knownTimeZoneIdentifiers directly (~400 IANA names vs. 15).
 
 let SETTINGS_GROUPS: [SettingGroup] = [
     SettingGroup(title: "YOU", fields: [
@@ -706,9 +767,17 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         SettingField(key: "weekly_frequency", label: "Days per week", endpoint: .profile, kind: .number, hint: "3 to 7.", planShaping: true),
         SettingField(key: "long_run_day", label: "Long run", endpoint: .settings, kind: .day, planShaping: true),
         SettingField(key: "rest_day", label: "Rest day", endpoint: .settings, kind: .day, planShaping: true),
-        SettingField(key: "quality_days", label: "Quality days", endpoint: .settings, kind: .multiday, planShaping: true),
+        SettingField(key: "quality_days", label: "Quality days", endpoint: .settings, kind: .multiday, planShaping: true, hint: "Leave all off to let the coach pick."),
         SettingField(key: "weekly_mileage_target", label: "Weekly target", endpoint: .profile, kind: .number, unit: "mi", planShaping: true),
         SettingField(key: "cross_training_modes", label: "Cross-training", endpoint: .profile, kind: .multi, options: SETTINGS_CROSS),
+        // P2-35 · goal/race setup's availability constraint. When >=2 days
+        // are set here, the plan engine places long/quality/easy ONLY on
+        // these days and overrides the pickers above — previously this was
+        // invisible and un-clearable from Settings, so a runner's long-run
+        // day edit appeared to silently fail. Exposing it as a real,
+        // clearable field closes that gap.
+        SettingField(key: "available_days", label: "Days you can run", endpoint: .settings, kind: .multiday, planShaping: true,
+                     hint: "From goal setup. When set, this overrides Long run / Rest day / Quality days above — clear it to let those pickers control placement."),
     ]),
     SettingGroup(title: "PHYSIOLOGY", fields: [
         SettingField(key: "lthr", label: "LTHR", endpoint: .profile, kind: .number, unit: "bpm", hint: "Sets your training zones.", autoSource: "From Apple Health"),
@@ -716,7 +785,12 @@ let SETTINGS_GROUPS: [SettingGroup] = [
     ]),
     SettingGroup(title: "TIMEZONE", fields: [
         SettingField(key: "tz_mode", label: "Auto-update on travel", endpoint: .profile, kind: .tzmode),
-        SettingField(key: "timezone", label: "Time zone", endpoint: .profile, kind: .select, options: SETTINGS_ZONES.map(zoneOpt)),
+        // P2-40 · was a 15-zone chip grid (US + a handful of world
+        // cities) — most of the world (Brazil/India/South Africa/NZ/etc.)
+        // couldn't pin their real zone. Now searches the full
+        // TimeZone.knownTimeZoneIdentifiers list; the server already
+        // validates any IANA name, this was purely a client list gap.
+        SettingField(key: "timezone", label: "Time zone", endpoint: .profile, kind: .timezoneSearch),
     ]),
     // Gel brand + carbs/gel are facts about the runner's product (legit
     // settings). Target intake RATE (g/hr) is a coaching prescription —
@@ -734,6 +808,10 @@ struct FieldEditorSheet: View {
     let field: SettingField
     let value: SettingVal?
     let autoMode: Bool
+    /// P2-35 · the runner's goal-setup availability constraint (>=2 days,
+    /// else empty). Used to show conflict copy on long_run_day / rest_day /
+    /// quality_days when the picked day(s) fall outside it.
+    var availableDays: Set<String> = []
     let onSave: (Any?) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -746,8 +824,9 @@ struct FieldEditorSheet: View {
     @State private var autoOn: Bool
     @State private var date: Date
 
-    init(field: SettingField, value: SettingVal?, autoMode: Bool, onSave: @escaping (Any?) -> Void) {
-        self.field = field; self.value = value; self.autoMode = autoMode; self.onSave = onSave
+    init(field: SettingField, value: SettingVal?, autoMode: Bool, availableDays: Set<String> = [], onSave: @escaping (Any?) -> Void) {
+        self.field = field; self.value = value; self.autoMode = autoMode
+        self.availableDays = availableDays; self.onSave = onSave
         // Seed local editor state from the current value, per kind.
         var t = ""; var d = ""; var m: [String] = []
         var f = 5; var i = 9; var p = 150; var dt = Date()
@@ -800,6 +879,14 @@ struct FieldEditorSheet: View {
                         .font(.body(13, weight: .medium))
                         .foregroundStyle(Theme.txt.opacity(0.5))
                 }
+                if let warn = conflictWarning {
+                    Text(warn)
+                        .font(.body(12.5, weight: .semibold))
+                        .foregroundStyle(Theme.warnText)
+                        .padding(.horizontal, 12).padding(.vertical, 9)
+                        .background(Theme.goal.opacity(0.12),
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
                 ScrollView(showsIndicators: false) {
                     editor.frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -818,6 +905,31 @@ struct FieldEditorSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    /// P2-35 · live conflict copy shown while editing long_run_day /
+    /// rest_day / quality_days when the goal-setup availability constraint
+    /// (>=2 available_days) would silently override the picked day(s).
+    /// Reads the in-flight @State (day/multi), not the seeded value, so it
+    /// updates as the runner taps chips — before they hit Save and get
+    /// surprised by a placement that doesn't match what they just picked.
+    private var conflictWarning: String? {
+        guard !availableDays.isEmpty else { return nil }
+        switch field.key {
+        case "long_run_day", "rest_day":
+            guard !day.isEmpty, !availableDays.contains(day) else { return nil }
+            return "\(day.capitalized) isn't in your available days (\(availableDaysLabel)) — the plan will place this elsewhere unless you clear \"Days you can run\" below."
+        case "quality_days":
+            let outside = multi.filter { !availableDays.contains($0) }
+            guard !outside.isEmpty else { return nil }
+            return "\(outside.map { $0.capitalized }.joined(separator: ", ")) isn't in your available days (\(availableDaysLabel)) — those days will be skipped unless you clear \"Days you can run\" below."
+        default:
+            return nil
+        }
+    }
+
+    private var availableDaysLabel: String {
+        SETTINGS_DAYS.filter { availableDays.contains($0.value) }.map(\.label).joined(separator: " · ")
     }
 
     @ViewBuilder private var editor: some View {
@@ -840,10 +952,22 @@ struct FieldEditorSheet: View {
                 .frame(maxWidth: .infinity)
         case .select:
             chips(field.options, selected: [text]) { v in text = v }
+        case .timezoneSearch:
+            TimezoneSearchPicker(selected: text) { v in text = v }
         case .day:
             chips(SETTINGS_DAYS, selected: [day]) { v in day = v }
         case .multiday:
-            chips(SETTINGS_DAYS, selected: multi) { v in toggle(v) }
+            VStack(alignment: .leading, spacing: 10) {
+                chips(SETTINGS_DAYS, selected: multi) { v in toggle(v) }
+                // P2-36 · zero selection is a real, intentional state
+                // ("let the coach pick") — say so instead of letting it
+                // read as an unset row that silently strips quality work.
+                if field.key == "quality_days" && multi.isEmpty {
+                    Text("No days selected — the coach will pick quality days automatically.")
+                        .font(.body(12, weight: .medium))
+                        .foregroundStyle(Theme.txt.opacity(0.55))
+                }
+            }
         case .multi:
             chips(field.options, selected: multi) { v in toggle(v) }
         case .height:
@@ -915,12 +1039,120 @@ struct FieldEditorSheet: View {
         case .date:
             let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; df.locale = Locale(identifier: "en_US_POSIX")
             onSave(df.string(from: date))
-        case .select:
+        case .select, .timezoneSearch:
             onSave(text.isEmpty ? nil : text)
         case .text:
             let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
             onSave(t.isEmpty ? nil : t)
         }
         dismiss()
+    }
+}
+
+// MARK: - Timezone search picker (P2-40)
+//
+// Replaces the 15-zone chip grid with a searchable list over the full
+// TimeZone.knownTimeZoneIdentifiers set (~400 IANA names), grouped by
+// region (the part before the first "/"). The server already validates
+// any IANA name (setRunnerTimezone) — this was purely a client list gap.
+
+private struct TimezoneSearchPicker: View {
+    let selected: String
+    let onPick: (String) -> Void
+
+    @State private var query: String = ""
+
+    /// All identifiers, grouped by region, computed once per view
+    /// instance (cheap — a few hundred strings, sorted lazily by SwiftUI's
+    /// List rendering, not resorted per keystroke beyond the filter pass).
+    private static let allZones: [String] = TimeZone.knownTimeZoneIdentifiers.sorted()
+
+    private var filtered: [String] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return Self.allZones }
+        return Self.allZones.filter { $0.lowercased().contains(q) }
+    }
+
+    /// Region = the segment before the first "/" ("America", "Europe",
+    /// "Asia", ...). Bare identifiers with no "/" (e.g. "UTC") group
+    /// under "Other".
+    private var grouped: [(region: String, zones: [String])] {
+        var buckets: [String: [String]] = [:]
+        var order: [String] = []
+        for z in filtered {
+            let region = z.contains("/") ? String(z.prefix(upTo: z.firstIndex(of: "/")!)) : "Other"
+            if buckets[region] == nil { order.append(region) }
+            buckets[region, default: []].append(z)
+        }
+        return order.sorted().map { ($0, buckets[$0] ?? []) }
+    }
+
+    private func displayLabel(_ z: String) -> String {
+        let last = z.split(separator: "/").last.map { $0.replacingOccurrences(of: "_", with: " ") } ?? z
+        return String(last)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.4))
+                TextField("Search city or region", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.body(14, weight: .medium))
+                    .foregroundStyle(Theme.txt)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            }
+            .padding(.horizontal, 13).padding(.vertical, 11)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // Fixed-height scroll list — the sheet already scrolls its
+            // parent, so this list gets a bounded frame instead of
+            // fighting for intrinsic height against ~400 rows.
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    ForEach(grouped, id: \.region) { group in
+                        VStack(alignment: .leading, spacing: 4) {
+                            SpecLabel(text: group.region.replacingOccurrences(of: "_", with: " "),
+                                      size: 9, tracking: 1.2, color: Theme.txt.opacity(0.45))
+                                .padding(.horizontal, 4)
+                            ForEach(group.zones, id: \.self) { z in
+                                Button { onPick(z) } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(displayLabel(z))
+                                                .font(.body(14, weight: .semibold))
+                                                .foregroundStyle(Theme.txt)
+                                            Text(z)
+                                                .font(.body(10, weight: .medium))
+                                                .foregroundStyle(Theme.txt.opacity(0.45))
+                                        }
+                                        Spacer()
+                                        if z == selected {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundStyle(Theme.green)
+                                        }
+                                    }
+                                    .padding(.horizontal, 12).padding(.vertical, 9)
+                                    .background(z == selected ? Theme.green.opacity(0.12) : Color.white.opacity(0.04),
+                                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    if grouped.isEmpty {
+                        Text("No time zones match \"\(query)\"")
+                            .font(.body(13, weight: .medium))
+                            .foregroundStyle(Theme.txt.opacity(0.5))
+                            .padding(.top, 20)
+                    }
+                }
+            }
+            .frame(maxHeight: 360)
+        }
     }
 }

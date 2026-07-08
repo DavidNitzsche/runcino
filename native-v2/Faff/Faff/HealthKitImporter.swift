@@ -80,7 +80,13 @@ final class HealthKitImporter: ObservableObject {
     enum Status: Equatable { case idle, requesting, importing, done, error }
 
     private let connectedKey = "faff.health.connected.v2"
-    private var hasConnected: Bool {
+    /// P2-33 · was `private` — SettingsView's "Apple Health" row and
+    /// "Re-sync Health" action need the REAL connection state to render
+    /// honest copy and route Re-sync to the auth flow instead of
+    /// no-op'ing and then claiming "Sync complete." Not @Published:
+    /// callers that need live UI updates should observe `status` /
+    /// `lastImportedAt` instead, this is a point-in-time check.
+    var hasConnected: Bool {
         get { UserDefaults.standard.bool(forKey: connectedKey) }
         set { UserDefaults.standard.set(newValue, forKey: connectedKey) }
     }
@@ -1492,6 +1498,19 @@ final class HealthKitImporter: ObservableObject {
             try await postHealthSampleChunk(Array(samples[index..<upper]))
             index = upper
         }
+    }
+
+    /// P2-39 · manual single-value log from HealthLogSheet's "+ log" sheet.
+    /// Reuses the exact /api/ingest/health wire shape + auth path the HK
+    /// importer uses, so a runner without a watch/HK source can still get
+    /// weight / resting HR / sleep hours into the same pipeline the
+    /// readiness score reads. `sampleType` must be on the backend's
+    /// ALLOWED_TYPES whitelist (web-v2/app/api/ingest/health/route.ts) —
+    /// only weight/resting_hr/sleep_hours are wired from the sheet today.
+    func postManualSample(type sampleType: String, value: Double, on date: Date = Date()) async throws {
+        let sample = VitalSample(sample_type: sampleType, value: value,
+                                  sample_date: isoDay(date), recorded_at: isoUTC(date))
+        try await postHealthSampleChunk([sample])
     }
 
     private func postHealthSampleChunk(_ samples: [VitalSample]) async throws {
