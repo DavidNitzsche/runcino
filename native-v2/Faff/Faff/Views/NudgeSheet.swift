@@ -1,6 +1,11 @@
 //
 //  NudgeSheet.swift
-//  Coach nudge · readiness dropped overnight, swap hard for easy.
+//  Coach proposal surface (2026-07-06 · repurposed per David's pick).
+//  When `proposal` is set, the sheet presents one pending adapter
+//  proposal (plan_workout_proposals): THE CHANGE + the one-line why +
+//  LET IT HAPPEN / KEEP ORIGINAL, wired by TodayView to the accept /
+//  dismiss endpoints. Without a proposal it stays the readiness
+//  morning check with a single Got it dismiss.
 //
 
 import SwiftUI
@@ -10,6 +15,9 @@ struct NudgeSheet: View {
     let onKeep: () -> Void
     var readiness: ReadinessSnapshot? = nil
     var healthFacts: CoachFactsBlock? = nil
+    /// Pending adapter proposal · flips the sheet from morning check to
+    /// proposal review (THE CHANGE section + accept/keep actions).
+    var proposal: WorkoutProposal? = nil
 
     private let mesh = FaffMesh(
         c1: 0x3FB6B0, c2: 0xF3AD38, c3: 0x0E4F4C,
@@ -33,6 +41,18 @@ struct NudgeSheet: View {
                         .padding(.top, 22)
                         .padding(.horizontal, 24)
 
+                    // THE CHANGE · renders only with a real pending
+                    // plan_workout_proposals row (never a fabricated
+                    // "planned → proposed" swap).
+                    if let p = proposal {
+                        sectionLabel("THE CHANGE")
+                            .padding(.top, 26)
+                            .padding(.horizontal, 24)
+                        changeCard(p)
+                            .padding(.top, 14)
+                            .padding(.horizontal, 24)
+                    }
+
                     sectionLabel("WHY")
                         .padding(.top, 26)
                         .padding(.horizontal, 24)
@@ -46,13 +66,6 @@ struct NudgeSheet: View {
                     coachCard
                         .padding(.top, 14)
                         .padding(.horizontal, 24)
-
-                    // THE CHANGE section is hidden until we have a real
-                    // coach proposal to surface. The proposals-state.ts
-                    // backend writes coach_proposals rows on real triggers
-                    // (illness / injury) · until the iPhone fetches them
-                    // we render the readiness verdict + a single Got it CTA
-                    // instead of a fake "planned → proposed" swap.
 
                     actions
                         .padding(.top, 26)
@@ -80,7 +93,55 @@ struct NudgeSheet: View {
 
     private var headerLabel: String {
         let f = DateFormatter(); f.dateFormat = "EEE"
-        return "MORNING CHECK · \(f.string(from: Date()).uppercased())"
+        let dow = f.string(from: Date()).uppercased()
+        return proposal != nil ? "COACH PROPOSAL · \(dow)" : "MORNING CHECK · \(dow)"
+    }
+
+    // MARK: - The change (adapter proposal)
+
+    /// Concrete swap the adapter proposes · workout day + one-line action.
+    private func changeCard(_ p: WorkoutProposal) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(changeDayLabel(p.workoutDateISO).uppercased())
+                .font(.label(11)).tracking(2)
+                .foregroundStyle(Theme.txt.opacity(0.66))
+            Text(changeHeadline(p))
+                .font(.display(20, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Theme.txt)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    private func changeHeadline(_ p: WorkoutProposal) -> String {
+        switch p.actionKind {
+        case "downgrade":
+            return "Run \(p.newType ?? "easy") instead."
+        case "reschedule":
+            if let nd = p.newDate, !nd.isEmpty {
+                return "Move to \(changeDayLabel(nd))."
+            }
+            return "Move the session."
+        case "shave":
+            if let f = p.shaveFraction, f > 0 {
+                return "Trim \(Int((f * 100).rounded()))% off the distance."
+            }
+            return "Trim the distance."
+        default:
+            return "Adjust the session."
+        }
+    }
+
+    private func changeDayLabel(_ iso: String) -> String {
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        guard let d = df.date(from: iso) else { return iso }
+        let out = DateFormatter(); out.dateFormat = "EEEE MMM d"
+        return out.string(from: d)
     }
 
     private var hero: some View {
@@ -225,6 +286,12 @@ struct NudgeSheet: View {
     /// the score band when we don't have inputs yet. Always honest · no
     /// fabricated "intervals" copy when the runner isn't doing intervals.
     private var coachMessage: String {
+        // Proposal review · the adapter's one-line why IS the coach line.
+        // Falls back to the trigger reason when the payload carried none.
+        if let p = proposal {
+            if let why = p.why, !why.isEmpty { return why }
+            if !p.reason.isEmpty { return p.reason }
+        }
         if let worst = (readiness?.inputs ?? []).min(by: { $0.weight < $1.weight }),
            worst.weight < 0 {
             return worst.meaning
@@ -238,22 +305,51 @@ struct NudgeSheet: View {
         }
     }
 
+    @ViewBuilder
     private var actions: some View {
-        // Single-action sheet for the Morning Check today. The accept /
-        // decline pair only makes sense when there's a real coach_proposal
-        // to choose between · for v1 we show a Got it dismiss. The proposal
-        // surface comes back when the iPhone gains the list endpoint
-        // (tracked in BACKEND_FRONTEND_COVERAGE.html under Coach Moments).
-        Button(action: onKeep) {
-            Text("Got it")
-                .font(.body(16, weight: .extraBold))
-                .foregroundStyle(Color(hex: 0x06302A))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 17)
-                .background(Theme.green,
-                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: Theme.green.opacity(0.5), radius: 30, y: 12)
+        if proposal != nil {
+            // Proposal review · the runner gates the plan change.
+            // Accept applies via /api/plan/workout-proposals/:id/accept;
+            // keep dismisses via /:id/dismiss. Wiring lives in TodayView.
+            VStack(spacing: 12) {
+                Button(action: onAccept) {
+                    Text("LET IT HAPPEN")
+                        .font(.body(15, weight: .extraBold)).tracking(1)
+                        .foregroundStyle(Color(hex: 0x06302A))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(Theme.green,
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: Theme.green.opacity(0.5), radius: 30, y: 12)
+                }
+                .buttonStyle(.plain)
+                Button(action: onKeep) {
+                    Text("KEEP ORIGINAL")
+                        .font(.body(15, weight: .extraBold)).tracking(1)
+                        .foregroundStyle(Theme.txt)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(Theme.Glass.fill,
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Theme.Glass.line, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        } else {
+            // Morning check · single Got it dismiss. The accept / decline
+            // pair only makes sense with a real proposal to choose between.
+            Button(action: onKeep) {
+                Text("Got it")
+                    .font(.body(16, weight: .extraBold))
+                    .foregroundStyle(Color(hex: 0x06302A))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 17)
+                    .background(Theme.green,
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: Theme.green.opacity(0.5), radius: 30, y: 12)
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 }

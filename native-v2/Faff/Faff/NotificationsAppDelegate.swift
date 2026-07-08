@@ -96,6 +96,18 @@ final class NotificationsAppDelegate: NSObject, UIApplicationDelegate, UNUserNot
     /// The runner tapped a rich-action button (or the body of the
     /// notification). Route to /api/notifications/ack for the wire-level
     /// side-effect, then handle any deep-link the payload carries.
+    ///
+    /// 2026-07-06 audit P2-47 · this used to fire a DETACHED Task for the
+    /// ack POST and call completionHandler() immediately, before the
+    /// network call had a chance to start. iOS is free to suspend the
+    /// process the instant completionHandler returns — a lock-screen tap
+    /// on SOLID / READY / BETTER could suspend mid-request and the ack
+    /// would silently never land, with no retry. Now: request a
+    /// background-task assertion so iOS grants the process a real
+    /// execution window, await the ack POST inside it, and only THEN call
+    /// completionHandler. The assertion's own expiration handler is a
+    /// backstop — if the OS is about to reclaim the window regardless, we
+    /// still complete cleanly instead of getting killed mid-POST.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
@@ -112,41 +124,93 @@ final class NotificationsAppDelegate: NSObject, UIApplicationDelegate, UNUserNot
         let faff = userInfo["faff"] as? [String: Any]
         let dedupKey = faff?["dedup_key"] as? String
         let deepLink = faff?["deeplink"] as? String
+        // dispatch.ts echoes the notifications_log row id into
+        // faff.notification_id (P1-25) — pass it through so the ack lands
+        // on THAT exact row instead of the dedup-key-latest heuristic,
+        // same precision the in-app inbox tap already gets.
+        let notificationId = (faff?["notification_id"] as? NSNumber)?.intValue
 
         // Action-id 'default' means "tapped body, not an action button" —
         // we just open the deep-link, no ack POST (there's no rating to
         // record). 'dismiss' means swiped away — record silently.
         let shouldPost = actionId != UNNotificationDefaultActionIdentifier
                       && actionId != UNNotificationDismissActionIdentifier
-        if shouldPost {
-            let wireCategory = NotificationCategories.wireCategory(forCategoryId: categoryId)
-            let wireAction = NotificationCategories.wireAction(forActionId: actionId)
-            Task {
-                await API.ackNotification(
-                    category: wireCategory,
-                    action: wireAction,
-                    dedupKey: dedupKey
-                )
-            }
+
+        func openDeepLinkIfNeeded() {
+            guard let link = deepLink, let url = URL(string: link) else { return }
+            // If the action carries .foreground (open, reconnect, etc.),
+            // iOS is already foregrounding the app — we just need to route
+            // to the deep-link target. For non-foreground actions (READY,
+            // SOLID, BETTER …) we stay backgrounded so the runner doesn't
+            // get yanked into the app.
+            guard UIApplication.shared.applicationState == .active
+                    || actionId == UNNotificationDefaultActionIdentifier else { return }
+            // Use the universal-link opener — the rest of the app
+            // (TodayView, RaceDetailSheet) already listens for these URLs
+            // via SceneDelegate-less SwiftUI .onOpenURL.
+            UIApplication.shared.open(url)
         }
 
-        // If the action carries .foreground (open, reconnect, etc.), iOS
-        // is already foregrounding the app — we just need to route to
-        // the deep-link target. For non-foreground actions (READY,
-        // SOLID, BETTER …) we stay backgrounded so the runner doesn't
-        // get yanked into the app.
-        if let link = deepLink, let url = URL(string: link) {
-            Task { @MainActor in
-                if UIApplication.shared.applicationState == .active
-                   || actionId == UNNotificationDefaultActionIdentifier {
-                    // Use the universal-link opener — the rest of the app
-                    // (TodayView, RaceDetailSheet) already listens for
-                    // these URLs via SceneDelegate-less SwiftUI .onOpenURL.
-                    UIApplication.shared.open(url)
-                }
-            }
+        guard shouldPost else {
+            openDeepLinkIfNeeded()
+            completionHandler()
+            return
         }
 
+        let wireCategory = NotificationCategories.wireCategory(forCategoryId: categoryId)
+        let wireAction = NotificationCategories.wireAction(forActionId: actionId)
+
+        // Both the expiration handler and the ack Task can race to finish
+        // first — route both through one @MainActor guard so the
+        // completionHandler / endBackgroundTask pair fires exactly once
+        // regardless of which side wins.
+        let ackGuard = BackgroundAckGuard(completionHandler: completionHandler)
+        let bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "faff.notif.ack") {
+            // Expiration handler · the OS is about to reclaim the window.
+            // Complete now so we don't get killed mid-POST with the
+            // completion handler never called (that itself is a policy
+            // violation iOS penalizes on future background launches).
+            Task { @MainActor in ackGuard.complete() }
+        }
+        ackGuard.bgTaskId = bgTaskId
+
+        Task { @MainActor in
+            await API.ackNotification(
+                category: wireCategory,
+                action: wireAction,
+                dedupKey: dedupKey,
+                notificationId: notificationId
+            )
+            openDeepLinkIfNeeded()
+            ackGuard.complete()
+        }
+    }
+}
+
+/// One-shot completion guard for the background-task-assertion window
+/// around a notification ack POST. `complete()` is idempotent — whichever
+/// of (ack finished) / (assertion about to expire) fires first wins, and
+/// the other becomes a no-op. @MainActor because UIApplication's
+/// begin/endBackgroundTask and the completionHandler are all expected on
+/// the main thread, and this collapses every call site onto one queue so
+/// there's no separate lock to reason about.
+@MainActor
+private final class BackgroundAckGuard {
+    private let completionHandler: () -> Void
+    private var didComplete = false
+    var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+
+    init(completionHandler: @escaping () -> Void) {
+        self.completionHandler = completionHandler
+    }
+
+    func complete() {
+        guard !didComplete else { return }
+        didComplete = true
+        if bgTaskId != .invalid {
+            UIApplication.shared.endBackgroundTask(bgTaskId)
+            bgTaskId = .invalid
+        }
         completionHandler()
     }
 }

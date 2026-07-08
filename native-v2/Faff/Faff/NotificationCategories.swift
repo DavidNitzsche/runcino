@@ -24,6 +24,14 @@ enum NotificationCategoryId {
     static let skipRecov      = "FAFF_SKIP_RECOV"
     static let weekly         = "FAFF_WEEKLY"
     static let niggle         = "FAFF_NIGGLE"
+    /// 2026-07-06 audit P1-25 · split out of FAFF_NIGGLE. Sick check-ins
+    /// (renderSickCheck, web-v2/lib/notifications/templates.ts) set
+    /// `apns_category_id: 'FAFF_SICK'` explicitly so APNs delivers THIS
+    /// category's actions (BETTER/SAME/WORSE/RECOVERED) instead of
+    /// niggle's (BETTER/SAME/WORSE/GONE). Both still route through the
+    /// same `niggle_sick` wire category — the ack endpoint disambiguates
+    /// by dedup_key prefix ('sick-check:' vs 'niggle-check:').
+    static let sick           = "FAFF_SICK"
     static let milestone      = "FAFF_MILESTONE"
     static let stravaReconnect = "FAFF_STRAVA_RECON"
 }
@@ -135,9 +143,15 @@ enum NotificationCategories {
             options: []
         )
 
-        // E · NIGGLE / SICK — BETTER / SAME / WORSE / GONE / RECOVERED.
-        // We register BOTH 'gone' (niggle) and 'recovered' (sick) on the
-        // same category — the server routes per-category in the ack.
+        // E · NIGGLE — BETTER / SAME / WORSE / GONE.
+        // 2026-07-06 audit P1-25 · this category previously claimed to
+        // register both 'gone' (niggle) and 'recovered' (sick) but the
+        // actions array never actually included RECOVERED — sick
+        // check-ins fell back to whatever GONE did (misrouting to the
+        // niggle-clear path) or rendered no action at all. Sick now gets
+        // its own category (FAFF_SICK, below) with its own RECOVERED
+        // action, matching apns_category_id: 'FAFF_SICK' set by
+        // renderSickCheck.
         let niggle = UNNotificationCategory(
             identifier: NotificationCategoryId.niggle,
             actions: [
@@ -159,6 +173,39 @@ enum NotificationCategories {
                 UNNotificationAction(
                     identifier: NotificationActionId.gone,
                     title: "GONE",
+                    options: []
+                )
+            ],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        // E2 · SICK — BETTER / SAME / WORSE / RECOVERED. Shares the
+        // niggle_sick wire bucket + prefs toggle; APNs resolves THIS
+        // category because renderSickCheck sets apns_category_id
+        // explicitly (web-v2/lib/notifications/apns.ts:316 apns_category_id
+        // ?? apnsCategoryId(category) — the override wins).
+        let sick = UNNotificationCategory(
+            identifier: NotificationCategoryId.sick,
+            actions: [
+                UNNotificationAction(
+                    identifier: NotificationActionId.better,
+                    title: "BETTER",
+                    options: []
+                ),
+                UNNotificationAction(
+                    identifier: NotificationActionId.same,
+                    title: "SAME",
+                    options: []
+                ),
+                UNNotificationAction(
+                    identifier: NotificationActionId.worse,
+                    title: "WORSE",
+                    options: [.destructive]
+                ),
+                UNNotificationAction(
+                    identifier: NotificationActionId.recovered,
+                    title: "RECOVERED",
                     options: []
                 )
             ],
@@ -188,12 +235,15 @@ enum NotificationCategories {
             options: []
         )
 
-        return [raceDay, raceEve, skipRecov, weekly, niggle, milestone, stravaReconnect]
+        return [raceDay, raceEve, skipRecov, weekly, niggle, sick, milestone, stravaReconnect]
     }
 
     /// Map a UNNotificationCategory identifier to the wire-level kind the
     /// server expects in /api/notifications/ack. Mirrors apnsCategoryId
-    /// (web-v2/lib/notifications/apns.ts) in reverse.
+    /// (web-v2/lib/notifications/apns.ts) in reverse. FAFF_SICK maps to
+    /// the same 'niggle_sick' wire category as FAFF_NIGGLE — the ack
+    /// route's ackNiggleSick disambiguates by dedup_key prefix, not by
+    /// category id, since both share one prefs toggle.
     static func wireCategory(forCategoryId id: String) -> String {
         switch id {
         case NotificationCategoryId.raceDay:         return "race_day"
@@ -201,6 +251,7 @@ enum NotificationCategories {
         case NotificationCategoryId.skipRecov:       return "skip_recovery"
         case NotificationCategoryId.weekly:          return "weekly_checkin"
         case NotificationCategoryId.niggle:          return "niggle_sick"
+        case NotificationCategoryId.sick:            return "niggle_sick"
         case NotificationCategoryId.milestone:       return "streak"
         case NotificationCategoryId.stravaReconnect: return "strava_reconnect"
         default:                                     return "unknown"
