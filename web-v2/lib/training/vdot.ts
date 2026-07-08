@@ -216,7 +216,15 @@ export function tPaceFromAnchorPace(anchor: AnchorPace | null | undefined): numb
  * offsets.
  */
 export function easyPaceBandFromAnchorPace(anchor: AnchorPace | null | undefined): { lo: number; hi: number } | null {
-  const t = tPaceFromAnchorPace(anchor);
+  const tRaw = tPaceFromAnchorPace(anchor);
+  if (tRaw == null) return null;
+  // Same falsifiable-requirement-#3 backstop as resolveCurrentTPace's tier-2
+  // branch: the marathon/half-tier offsets can land tRaw faster than the
+  // anchor itself (see resolveCurrentTPace's doc comment). This export isn't
+  // currently wired into any call site, but it's public API — clamp here too
+  // so a future caller can't reintroduce the bug by using this function
+  // instead of resolveCurrentTPace.
+  const t = clampToSanePace(tRaw, anchor?.paceSPerMi);
   if (t == null) return null;
   return { lo: t + 80, hi: t + 120 }; // matches spec-builder PACE-E-1 (Research/01 §VDOT-50 table: E = T+104..T+156, T+80 floor).
 }
@@ -888,7 +896,17 @@ export function resolveCurrentTPace(
   if (belowTableAnchor != null) {
     const t = tPaceFromAnchorPace(belowTableAnchor.anchor);
     if (t != null) {
-      return { tPaceSec: t, tier: 'below_table_anchor', anchorPaceSPerMi: belowTableAnchor.anchor.paceSPerMi };
+      // Falsifiable requirement #3 backstop, WIRED (not just unit-tested in
+      // isolation). tPaceFromAnchorPace reuses spec-builder's GOAL-anchored
+      // offset table (-18 marathon-tier / -5 half-tier) applied to a MEASURED
+      // anchor pace instead of a goal pace — for those two tiers the offset
+      // can land T-pace faster than the runner's own demonstrated race pace
+      // (e.g. a 900s/mi marathon anchor -> 882s/mi T, 18s/mi faster than the
+      // anchor). clampToSanePace enforces the non-negotiable invariant that no
+      // prescribed pace may be faster than the anchor it was derived from,
+      // regardless of which distance tier or offset produced it.
+      const clamped = clampToSanePace(t, belowTableAnchor.anchor.paceSPerMi);
+      return { tPaceSec: clamped, tier: 'below_table_anchor', anchorPaceSPerMi: belowTableAnchor.anchor.paceSPerMi };
     }
     // tPaceFromAnchorPace returns null only for an ultra-distance anchor
     // (>=31mi — T-pace isn't ultra-adjacent per PACE-5 doctrine); fall through

@@ -41,7 +41,7 @@ import {
 import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
 import {
   anchorPaceFrom, bestRecentVdot, resolveCurrentTPace, tPaceFromVdot, iPaceFromAnchorPace,
-  vdotFromTpace, iPaceFromVdot,
+  vdotFromTpace, iPaceFromVdot, tPaceFromAnchorPace,
   type BelowTableAnchor,
 } from '@/lib/training/vdot';
 
@@ -333,6 +333,95 @@ describe('P1-56 falsifiable requirement #3 · no prescribed pace is faster than 
     const pacesNoAnchor = allPrescribedPaces(resNoAnchor, mileageFloorT, mileageFloorT);
     const anyFasterThanRacePace = pacesNoAnchor.some((p) => p < SLOW_PACE_S_PER_MI);
     expect(anyFasterThanRacePace).toBe(true); // the exact bug P1-56 flagged
+  });
+});
+
+describe('CODE-REVIEW FINDING (CRITICAL, fixed) · below-table HM/marathon personas through the REAL composePlan pipeline', () => {
+  // The review's exact failure scenario: a 6:30 marathon (900 s/mi, below-table)
+  // and a 3:00 half (also below-table) each hit the -18 / -5 GOAL-anchored
+  // offset when raw, landing FASTER than the runner's own demonstrated race
+  // pace. This exercises the REAL production path end-to-end (composePlan +
+  // buildWorkoutSpec, mirroring persistPlan exactly, same as the 5K persona
+  // above) for BOTH tiers the unit tests found unsafe, closing the gap the
+  // review flagged: only the 5K persona (safe +15 tier) was exercised
+  // end-to-end before this fix.
+
+  it('MARATHON persona: every training-day prescribed pace is never faster than the 6:30 marathon anchor (900 s/mi)', () => {
+    const MARATHON_MI = 26.2188;
+    const M_FINISH_S = 6 * 3600 + 30 * 60; // 6:30 marathon => ~900 s/mi
+    const belowTableAnchor: BelowTableAnchor = {
+      source: 'race', refId: 'slow-marathon', name: 'Slow Marathon', date: '2025-12-01',
+      distance_mi: MARATHON_MI, finish_seconds: M_FINISH_S, age_days: 31,
+      anchor: anchorPaceFrom(M_FINISH_S, MARATHON_MI)!,
+    };
+    const anchorPaceSPerMi = belowTableAnchor.anchor.paceSPerMi;
+    // Sanity: confirm this persona IS in the unsafe (marathon, -18) tier and
+    // the raw offset really would be faster than the anchor pre-fix.
+    const weeklyMi = 20;
+    const resolved = resolveCurrentTPace(null, belowTableAnchor, weeklyMi, conservativeVdotFromMileage);
+    expect(resolved.tier).toBe('below_table_anchor');
+    expect(resolved.tPaceSec).not.toBeNull();
+    // THE FIX, in the real cascade: clamped, never faster than the anchor.
+    expect(resolved.tPaceSec!).toBeGreaterThanOrEqual(anchorPaceSPerMi);
+
+    const input = buildInput({
+      level: 'beginner', weeklyMi, freq: 4, raceMi: MARATHON_MI,
+      belowTableAnchor, weeks: 16,
+    });
+    const res = composePlan(input);
+    expect(res.weeks.length).toBeGreaterThan(0);
+    const paces = allPrescribedPaces(
+      res, resolved.tPaceSec, resolved.tPaceSec,
+      Math.round(anchorPaceSPerMi), belowTableAnchor,
+      false, // marathon is not in goalIPaceEligible ('5k'|'10k'|'hm' only)
+    );
+    expect(paces.length).toBeGreaterThan(0);
+    for (const p of paces) {
+      expect(p).toBeGreaterThanOrEqual(anchorPaceSPerMi);
+    }
+  });
+
+  it('HALF-MARATHON persona: every training-day prescribed pace is never faster than the 3:00 half anchor (~915 s/mi)', () => {
+    const HALF_MI = 13.1094;
+    const H_FINISH_S = 3 * 3600; // 3:00 half
+    const belowTableAnchor: BelowTableAnchor = {
+      source: 'race', refId: 'slow-half', name: 'Slow Half', date: '2025-12-01',
+      distance_mi: HALF_MI, finish_seconds: H_FINISH_S, age_days: 31,
+      anchor: anchorPaceFrom(H_FINISH_S, HALF_MI)!,
+    };
+    const anchorPaceSPerMi = belowTableAnchor.anchor.paceSPerMi;
+    const weeklyMi = 15;
+    const resolved = resolveCurrentTPace(null, belowTableAnchor, weeklyMi, conservativeVdotFromMileage);
+    expect(resolved.tier).toBe('below_table_anchor');
+    expect(resolved.tPaceSec).not.toBeNull();
+    expect(resolved.tPaceSec!).toBeGreaterThanOrEqual(anchorPaceSPerMi);
+
+    const input = buildInput({
+      level: 'beginner', weeklyMi, freq: 3, raceMi: HALF_MI,
+      belowTableAnchor, weeks: 12,
+    });
+    const res = composePlan(input);
+    expect(res.weeks.length).toBeGreaterThan(0);
+    const paces = allPrescribedPaces(
+      res, resolved.tPaceSec, resolved.tPaceSec,
+      Math.round(anchorPaceSPerMi), belowTableAnchor,
+      true, // HM IS in goalIPaceEligible
+    );
+    expect(paces.length).toBeGreaterThan(0);
+    for (const p of paces) {
+      expect(p).toBeGreaterThanOrEqual(anchorPaceSPerMi);
+    }
+  });
+
+  it('REGRESSION: without the clamp, the marathon persona WOULD have produced a too-fast pace (proves the test is a real falsifier)', () => {
+    // Directly exercises the pre-fix code shape (tPaceFromAnchorPace called
+    // unguarded, no clampToSanePace) to prove this test suite actually
+    // catches the reviewed bug rather than passing vacuously.
+    const MARATHON_MI = 26.2188;
+    const M_FINISH_S = 6 * 3600 + 30 * 60;
+    const anchor = anchorPaceFrom(M_FINISH_S, MARATHON_MI)!;
+    const unguardedT = tPaceFromAnchorPace(anchor)!;
+    expect(unguardedT).toBeLessThan(anchor.paceSPerMi); // the bug, reproduced directly
   });
 });
 

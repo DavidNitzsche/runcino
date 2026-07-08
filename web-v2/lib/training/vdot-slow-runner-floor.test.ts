@@ -87,6 +87,22 @@ describe('P1-56 · tPaceFromAnchorPace — training paces derived from the ancho
     expect(tPaceFromAnchorPace(tenKAnchor)).toBe(Math.round(tenKAnchor.paceSPerMi + 8));
   });
 
+  it('CODE-REVIEW FINDING (fixed) · the marathon/half GOAL-anchored offsets, applied RAW to a below-table' +
+     ' MEASURED anchor, land FASTER than the anchor itself — this is exactly why resolveCurrentTPace must' +
+     ' clamp tPaceFromAnchorPace, not call it unguarded. Documents the raw function\'s behavior honestly:' +
+     ' tPaceFromAnchorPace alone is UNSAFE for these two tiers; safety is restored one level up.', () => {
+    // 6:30 marathon (900 s/mi) below-table anchor: raw offset (-18) is FASTER than the anchor.
+    const mAnchor = anchorPaceFrom(6 * 3600 + 30 * 60, 26.2188)!; // 900 s/mi
+    const mRaw = tPaceFromAnchorPace(mAnchor)!;
+    expect(mRaw).toBeLessThan(mAnchor.paceSPerMi); // 882 < 900 — the bug, unclamped
+    // 3:00 half (900 s/mi) below-table anchor: raw offset (-5) is also faster.
+    const hAnchor = anchorPaceFrom(3 * 3600, 13.1094)!; // ~915 s/mi
+    const hRaw = tPaceFromAnchorPace(hAnchor)!;
+    expect(hRaw).toBeLessThan(hAnchor.paceSPerMi); // the bug, unclamped
+    // The wired production path (resolveCurrentTPace) must NOT expose either
+    // raw value — see the tier-2 HM/marathon tests below for the guarded read.
+  });
+
   it('ultra-distance anchor (>=31mi) returns null — T-pace is not ultra-adjacent (PACE-5 doctrine)', () => {
     const ultraAnchor = anchorPaceFrom(8 * 3600, 31.0686)!; // 8:00 50K
     expect(tPaceFromAnchorPace(ultraAnchor)).toBeNull();
@@ -107,6 +123,14 @@ describe('P1-56 · easyPaceBandFromAnchorPace — matches spec-builder PACE-E-1 
     expect(band.hi).toBe(t + 120);
     expect(band.lo).toBeLessThan(band.hi);
     expect(band.lo).toBeGreaterThan(anchor.paceSPerMi); // easy slower than race pace
+  });
+
+  it('CODE-REVIEW defense-in-depth: marathon-tier anchor band is clamped too (not just resolveCurrentTPace)', () => {
+    const mAnchor = anchorPaceFrom(6 * 3600 + 30 * 60, 26.2188)!; // 6:30 marathon, 900 s/mi
+    const band = easyPaceBandFromAnchorPace(mAnchor)!;
+    expect(band).not.toBeNull();
+    expect(band.lo).toBeGreaterThan(mAnchor.paceSPerMi); // easy must stay slower than the anchor
+    expect(band.lo).toBeLessThan(band.hi);
   });
 });
 
@@ -247,6 +271,58 @@ describe('P1-56 · resolveCurrentTPace — the 3-tier cascade, tier 2 is the fix
     };
     const r = resolveCurrentTPace(null, ultraAnchor, 25, conservativeVdotFromMileage);
     expect(r.tier).toBe('mileage_estimate');
+  });
+
+  // ─── CODE-REVIEW FINDING (CRITICAL, fixed) ────────────────────────────────
+  // The marathon-tier (-18) and half-tier (-5) offsets, applied to a
+  // below-table MEASURED anchor instead of a GOAL, land faster than the
+  // anchor itself when applied raw (see the vdot-slow-runner-floor test
+  // above). These tests exercise the REAL production entry point
+  // (resolveCurrentTPace, the only caller of tPaceFromAnchorPace in
+  // generate.ts) with HM and marathon below-table personas and assert the
+  // clamp actually engages there — not just in clampToSanePace's own
+  // isolated unit tests.
+  it('CRITICAL FIX · HM below-table anchor (3:00 half, ~915s/mi) never returns a T-pace faster than the anchor', () => {
+    const hmAnchorPace = anchorPaceFrom(3 * 3600, 13.1094)!; // 3:00 half, ~915 s/mi
+    const hmBelowTable: BelowTableAnchor = {
+      source: 'race', refId: 'slow-half', name: 'Slow Half', date: '2026-06-01',
+      distance_mi: 13.1094, finish_seconds: 3 * 3600, age_days: 30,
+      anchor: hmAnchorPace,
+    };
+    const raw = tPaceFromAnchorPace(hmAnchorPace)!;
+    expect(raw).toBeLessThan(hmAnchorPace.paceSPerMi); // confirm the raw offset IS unsafe here
+    const r = resolveCurrentTPace(null, hmBelowTable, 25, conservativeVdotFromMileage);
+    expect(r.tier).toBe('below_table_anchor');
+    expect(r.tPaceSec).not.toBeNull();
+    // THE FIX: resolveCurrentTPace's output must be clamped to the anchor,
+    // NOT the raw (too-fast) tPaceFromAnchorPace value.
+    expect(r.tPaceSec!).toBeGreaterThanOrEqual(hmAnchorPace.paceSPerMi);
+    expect(r.tPaceSec!).toBe(hmAnchorPace.paceSPerMi); // clamp pins it to exactly the anchor pace
+  });
+
+  it('CRITICAL FIX · marathon below-table anchor (6:30 marathon, 900s/mi) never returns a T-pace faster than the anchor', () => {
+    const mAnchorPace = anchorPaceFrom(6 * 3600 + 30 * 60, 26.2188)!; // 900 s/mi
+    const mBelowTable: BelowTableAnchor = {
+      source: 'race', refId: 'slow-marathon', name: 'Slow Marathon', date: '2026-06-01',
+      distance_mi: 26.2188, finish_seconds: 6 * 3600 + 30 * 60, age_days: 30,
+      anchor: mAnchorPace,
+    };
+    const raw = tPaceFromAnchorPace(mAnchorPace)!;
+    expect(raw).toBeLessThan(mAnchorPace.paceSPerMi); // confirm the raw offset IS unsafe here
+    const r = resolveCurrentTPace(null, mBelowTable, 25, conservativeVdotFromMileage);
+    expect(r.tier).toBe('below_table_anchor');
+    expect(r.tPaceSec).not.toBeNull();
+    expect(r.tPaceSec!).toBeGreaterThanOrEqual(mAnchorPace.paceSPerMi);
+    expect(r.tPaceSec!).toBe(mAnchorPace.paceSPerMi); // clamp pins it to exactly the anchor pace
+  });
+
+  it('the 5K-tier (safe, +15 offset) persona is unaffected by the clamp — output unchanged from pre-fix', () => {
+    // Sanity: the clamp is a no-op for tiers whose offset was already honest
+    // (5K/10K), so this persona's tier-2 tPaceSec is unchanged.
+    const r = resolveCurrentTPace(null, belowTable, 25, conservativeVdotFromMileage);
+    const rawT = tPaceFromAnchorPace(belowTable.anchor)!;
+    expect(rawT).toBeGreaterThan(belowTable.anchor.paceSPerMi); // already honest pre-clamp
+    expect(r.tPaceSec).toBe(rawT); // clamp is a pass-through here
   });
 });
 
