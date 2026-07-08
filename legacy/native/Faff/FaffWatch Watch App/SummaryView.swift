@@ -78,28 +78,96 @@ struct SummaryView: View {
     /// Brief v2 §9 verdict row · state (on-pace / under / over) + one-word
     /// verdict, role-colored (on-pace green · under amber · over red).
     ///
-    /// Derivation (all on-device, from the plan the watch already carries):
-    ///   state   = avg pace vs the first work phase's target ± tolerance
-    ///             (phase tolerance when shipped, else 15 s/mi)
+    /// Derivation (all on-device, from the completion the engine already
+    /// recorded per-phase):
+    ///   state   = WORK-PHASE pace vs WORK-PHASE target ± tolerance —
+    ///             distance-weighted across every `.work` phase with a
+    ///             target, so warmup/cooldown/recovery framing never
+    ///             dilutes the read (phase tolerance when shipped, else
+    ///             15 s/mi, also distance-weighted)
     ///   word    = GOOD (on-pace) · SHARP (under = faster than target) ·
-    ///             LOADED (over + avg HR above the phase HR target) ·
-    ///             STEADY (over, HR fine or unknown)
-    /// Nil (row hidden) when there's no target to judge against — free
-    /// runs and unstructured sessions stay a plain receipt.
+    ///             LOADED (over + work-phase avg HR above the work HR
+    ///             target) · STEADY (over, HR fine or unknown)
+    /// Nil (row hidden) when there's no work-phase target to judge against
+    /// — free runs and unstructured sessions stay a plain receipt.
+    ///
+    /// P1-29 / P1-31 fix (2026-07-07) · the prior computation graded WHOLE-
+    /// RUN avg pace (c.totalDurationSec / c.totalDistanceMi — warmup +
+    /// recoveries + cooldown all folded in) against the FIRST work phase's
+    /// target, so every structured session with a warmup graded 'OVER' even
+    /// when every rep was nailed (confirmed independently by four audit
+    /// finders). This mirrors the Wave-1 backend fix in
+    /// goal-projection.ts:judgeTestPointExecution — basis 1 there is
+    /// "watch work-phase pace vs work target," never whole-run vs a work
+    /// target. The watch already HAS true per-phase actuals (no need for
+    /// the backend's splits/blend fallback ladder — this data is live), so
+    /// it always grades work phases directly rather than falling back to a
+    /// whole-run number the moment >1 work phase exists.
     private var verdictInfo: (text: String, role: Role)? {
-        guard let c = completion,
-              let mi = c.totalDistanceMi, mi > 0.05,
-              let work = workout.phases.first(where: { $0.type == .work }),
-              let target = work.targetPaceSPerMi, target > 0 else { return nil }
-        let avg = Int(Double(c.totalDurationSec) / mi)
-        let tol = work.tolerancePaceSPerMi ?? 15
+        guard let c = completion else { return nil }
+        let workPhases = c.phases.filter { $0.type == "work" && ($0.targetPaceSPerMi ?? 0) > 0 }
+        guard !workPhases.isEmpty else { return nil }
+
+        // Distance-weighted actual pace across qualifying work phases —
+        // falls back to duration-weighting for any phase whose GPS distance
+        // never landed (mirrors the engine's own avgPace derivation, which
+        // needs >0.02 mi to trust a distance-based pace).
+        func weightedAvg(_ pick: (WatchCompletionPhase) -> Int?) -> Int? {
+            var num = 0.0, den = 0.0
+            for p in workPhases {
+                guard let v = pick(p) else { continue }
+                let w = (p.actualDistanceMi ?? 0) > 0.02
+                    ? p.actualDistanceMi!
+                    : Double(max(p.actualDurationSec, 0)) / 3600.0
+                guard w > 0 else { continue }
+                num += Double(v) * w
+                den += w
+            }
+            return den > 0 ? Int((num / den).rounded()) : nil
+        }
+
+        guard let avg = weightedAvg({ $0.actualPaceSPerMi }),
+              let target = weightedAvg({ $0.targetPaceSPerMi }) else { return nil }
+        // WatchCompletionPhase carries no tolerance field on the wire
+        // (tolerance is a PLAN property, not a completion property) — pull
+        // it from workout.phases, matched by index. See
+        // weightedAvgTolerance doc below.
+        let tol = weightedAvgTolerance(workPhases) ?? 15
         let d = avg - target
         if abs(d) <= tol { return ("GOOD · ON-PACE", .live) }
         if d < 0 { return ("SHARP · UNDER", .goal) }
-        if let hrTarget = work.hrTargetBpm, let hr = c.avgHr, hr > hrTarget {
+        // LOADED vs STEADY — over target AND running hot vs the work HR
+        // target. Roll up work-phase avgHr the same distance-weighted way
+        // (never the whole-run c.avgHr, which pools recovery/warmup HR too)
+        // and compare it to the plan's work-phase HR target.
+        let workHrTarget = workout.phases.first(where: { $0.type == .work })?.hrTargetBpm
+        let workAvgHr = weightedAvg({ $0.avgHr })
+        if let hrTarget = workHrTarget, let hr = workAvgHr, hr > hrTarget {
             return ("LOADED · OVER", .over)
         }
         return ("STEADY · OVER", .over)
+    }
+
+    /// tolerancePaceSPerMi isn't itself part of the `pick`-closure surface
+    /// above (WatchCompletionPhase carries no tolerance field on the wire —
+    /// tolerance is a PLAN property, not a completion property), so the
+    /// weighted average is derived from `workout.phases` (the plan) keyed
+    /// by phase index, matched against the completion's qualifying work
+    /// phases. Falls back to nil (→ 15 s/mi default) when indices can't be
+    /// matched (older payload shape).
+    private func weightedAvgTolerance(_ workPhases: [WatchCompletionPhase]) -> Int? {
+        var num = 0.0, den = 0.0
+        for cp in workPhases {
+            guard let plan = workout.phases.first(where: { $0.index == cp.index }),
+                  let tol = plan.tolerancePaceSPerMi else { continue }
+            let w = (cp.actualDistanceMi ?? 0) > 0.02
+                ? cp.actualDistanceMi!
+                : Double(max(cp.actualDurationSec, 0)) / 3600.0
+            guard w > 0 else { continue }
+            num += Double(tol) * w
+            den += w
+        }
+        return den > 0 ? Int((num / den).rounded()) : nil
     }
 
     private var labelText: String {

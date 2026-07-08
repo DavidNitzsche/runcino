@@ -52,6 +52,21 @@ final class WorkoutTracker: NSObject, ObservableObject {
     @Published private(set) var cadence: Int = 0         // spm (live; Phase-2 on device)
     @Published private(set) var activeEnergyKcal: Int = 0
     @Published private(set) var isRecording = false
+    /// P2-56 · true once a distance-based phase has gone the whole run with
+    /// essentially no distance banked (HealthKit denied / session failed to
+    /// start / no GPS+no HK). Set by WorkoutEngine.tick()'s noDistanceSource
+    /// fallback the first time it fires — an observable hook for any current
+    /// or future face to show "no distance source" instead of a silently
+    /// time-guided run. Never cleared mid-run (once true, the run stays
+    /// degraded — flipping it back on a transient reconnect would be a lie).
+    @Published private(set) var distanceSourceUnavailable = false
+
+    /// Called by the engine the first time a distance phase falls back to
+    /// its time estimate for lack of any real distance signal.
+    func markDistanceSourceUnavailable() {
+        guard !distanceSourceUnavailable else { return }
+        distanceSourceUnavailable = true
+    }
 
     private var mockTask: Task<Void, Never>?
     private var mockPaused = false
@@ -72,6 +87,40 @@ final class WorkoutTracker: NSObject, ObservableObject {
     /// EWMA-smoothed pace (s/mi) so the displayed number settles instead of
     /// bouncing frame-to-frame off raw speed samples.
     private var smoothedPaceSec: Double = 0
+
+    // ── HR staleness watchdog (P2-53 · 2026-07-07) ─────────────────
+    //
+    // HealthKit is event-driven: apply(hr:) only runs when a NEW sample
+    // lands. A loose/sweaty band that stops reading at minute 10 of a
+    // 60-minute run used to leave `heartRate` frozen at its last live value
+    // forever — every downstream consumer (the HR-ceiling alert in
+    // WorkoutEngine.tick(), the per-tick phaseHrSum/phaseHrCount
+    // accumulation that becomes completion.phases[].avgHr, every face's
+    // "♥nnn" row) kept treating a 10-minute-stale reading as live. The
+    // watchdog below is polled once a second from WorkoutEngine.tick()
+    // (the engine already owns the only 1 Hz clock); it doesn't run its
+    // own timer so it can never drift from the phase clock it's gating.
+    /// Wall-clock time of the last sample with a real (>0) bpm value.
+    /// nil before the first sample of the run ever lands.
+    private var lastHrSampleAt: Date?
+    /// A dropped-then-recovered band must not keep contributing a stale
+    /// reading into hrSum/hrCount — see checkHrStaleness().
+    private static let hrStaleAfterSec: TimeInterval = 20
+
+    /// Poll for HR staleness — call once per second from the engine's tick.
+    /// When no real sample has landed for `hrStaleAfterSec`, zero the
+    /// PUBLISHED heartRate (every face already renders "♥—" / "—" at
+    /// heartRate <= 0 — see ActiveWorkoutView's hrText helpers — so this is
+    /// the ONE place that needs to change; no face edits required). The
+    /// aggregate hrSum/hrCount are untouched here — they already stopped
+    /// accumulating the moment apply(hr:) stopped being called with a real
+    /// value, so avgHr is already honest; this only fixes the LIVE read.
+    func checkHrStaleness() {
+        guard heartRate > 0, let last = lastHrSampleAt else { return }
+        if Date.now.timeIntervalSince(last) >= Self.hrStaleAfterSec {
+            heartRate = 0
+        }
+    }
 
     var available: Bool { HKHealthStore.isHealthDataAvailable() }
 
@@ -160,6 +209,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
         distanceMi = 0; paceSPerMi = 0; heartRate = 0; cadence = 0; activeEnergyKcal = 0
         maxHr = 0; hrSum = 0; hrCount = 0; cadSum = 0; cadCount = 0
         smoothedPaceSec = 0
+        lastHrSampleAt = nil   // P2-53 · fresh watchdog per run
+        distanceSourceUnavailable = false   // P2-56 · fresh per run
         mockPaused = false
         #if targetEnvironment(simulator)
         startSimulatorMock(); return
@@ -203,12 +254,30 @@ final class WorkoutTracker: NSObject, ObservableObject {
             // startActivity(), is the supported pattern: HK respects the
             // already-active session and coexists with it. No-op if audio
             // hardware refuses; chime() then degrades to haptic-only.
-            // Gated on audibleAlerts (W-6): activating when the runner
-            // has sounds OFF still calls AVAudioSession.setActive which
-            // can produce a brief audio blip on watchOS 10.
-            if UserDefaults.standard.bool(forKey: "audibleAlerts") {
-                ChimePlayer.shared.activate()
-            }
+            //
+            // P2-58 fix (2026-07-07) · UNCONDITIONAL, not gated on
+            // audibleAlerts. The W-6 gate (activate only when Sound is
+            // already ON at start) traded one bug for another: a runner who
+            // starts muted and flips Sound ON mid-run at, say, mile 2 to
+            // hear interval countdown beeps got the button UI change but
+            // never heard a chime for the rest of the run — the audio
+            // session was never brought up, and by that point an
+            // HKWorkoutSession is already active, so calling activate()
+            // from the Controls toggle handler would re-enter the exact
+            // uncatchable-NSException crash this comment describes (that
+            // crash fires on ANY activation attempt while HK is already
+            // running, not specifically during startActivity — see
+            // ChimePlayer.swift's own doc). The only safe place left to
+            // activate is HERE, before HK takes over — every run gets audio
+            // warmed up whether or not the runner starts muted. Muted
+            // start already means no sound: activate() alone is SILENT
+            // (only player.play() makes noise — see ChimePlayer's hot-path
+            // doc), so this reintroduces no audible blip; it just means
+            // Sound ON mid-run now actually works. W-6's original "battery
+            // cost of a silent-running AVAudioEngine for the whole workout"
+            // concern is the accepted trade for "the toggle isn't a dead
+            // button" — re-verified per this fix's own instruction.
+            ChimePlayer.shared.activate()
 
             let start = Date()
             s.startActivity(with: start)
@@ -219,55 +288,6 @@ final class WorkoutTracker: NSObject, ObservableObject {
             session = nil
             builder = nil
         }
-    }
-
-    /// Re-attach to an HKWorkoutSession that survived a watch crash or reboot
-    /// (audit RK-3, 2026-06-09). Returns true when a live session was found and
-    /// reconnected. The caller should then call WorkoutEngine.restore(from:tracker:)
-    /// to rebuild engine state. Returns false on a normal first launch.
-    ///
-    /// GPS coordinates and elevation don't survive the crash — accumulator
-    /// restarts empty. The completion polyline will be truncated but the run
-    /// is saved and the HK workout is intact.
-    func recover() async -> Bool {
-        #if targetEnvironment(simulator)
-        return false
-        #else
-        guard available else { return false }
-        do {
-            guard let s = try await healthStore.recoverActiveWorkoutSession() else { return false }
-            let b = s.associatedWorkoutBuilder()
-            s.delegate = self
-            b.delegate = self
-            session = s
-            builder = b
-            routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
-            gpsCoords = []
-            elevGainM = 0; lastAltitudeM = nil
-
-            startLocationUpdates()
-
-            if CMPedometer.isCadenceAvailable() {
-                pedometer.startUpdates(from: Date()) { [weak self] data, _ in
-                    guard let self, let c = data?.currentCadence else { return }
-                    let spm = Int((c.doubleValue * 60).rounded())
-                    guard spm > 0, spm < 320 else { return }
-                    Task { @MainActor in
-                        self.cadence = spm; self.cadSum += spm; self.cadCount += 1
-                    }
-                }
-            }
-
-            if UserDefaults.standard.bool(forKey: "audibleAlerts") {
-                ChimePlayer.shared.activate()
-            }
-
-            isRecording = true
-            return true
-        } catch {
-            return false
-        }
-        #endif
     }
 
     /// Pause the tracked session (stoplight / water stop). Live sampling
@@ -420,7 +440,16 @@ final class WorkoutTracker: NSObject, ObservableObject {
         let bpm = HKUnit.count().unitDivided(by: .minute())
         if let q = builder.statistics(for: HKQuantityType(.heartRate))?.mostRecentQuantity() {
             let hr = Int(q.doubleValue(for: bpm).rounded())
-            if hr > 0 { heartRate = hr }
+            if hr > 0 {
+                heartRate = hr
+                // P2-53 · start the staleness clock from the recovery moment,
+                // not from whenever this historical sample was actually
+                // recorded (pre-crash) — the seeded reading isn't provably
+                // live, so treat "now" as its freshness baseline. If HK
+                // doesn't resume delivering within hrStaleAfterSec, the
+                // watchdog correctly zeroes it back out.
+                lastHrSampleAt = .now
+            }
         }
         if let q = builder.statistics(for: HKQuantityType(.heartRate))?.maximumQuantity() {
             maxHr = max(maxHr, Int(q.doubleValue(for: bpm).rounded()))
@@ -479,6 +508,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
     fileprivate func apply(hr: Int?, dist: Double?, energy: Int?, speedMps: Double? = nil) {
         if let hr, hr > 0 {
             heartRate = hr
+            lastHrSampleAt = .now       // P2-53 · marks this reading live
             hrSum += hr
             hrCount += 1
             maxHr = max(maxHr, hr)

@@ -233,7 +233,21 @@ export async function POST(req: NextRequest) {
   // Re-POSTs of the same completion still dedup (same startedAt → same
   // date → same suffix). Ids without a date suffix (treadmill trd_*) have
   // no cross-day concept and pass through unchanged.
-  const plannedDate = body.workoutId.match(/(\d{4}-\d{2}-\d{2})$/)?.[1] ?? null;
+  //
+  // 2026-07-07 · P1-34 fix · watch now appends a per-start `#HHmm` session
+  // suffix to every completion's workoutId (WorkoutEngine.buildCompletion /
+  // completionFromRecovery — see WatchWorkoutModels.swift wire-contract
+  // doc). Without this, a restart/double-run on the SAME day collided on
+  // the identical per-day id and the second completion's upsert silently
+  // overwrote the first run's distance + phase data (route.ts:517-527
+  // below). The date-extraction regex tolerates the optional `#HHmm` tail
+  // so the existing cross-day fork keeps matching `plannedDate` exactly as
+  // before — it doesn't need `$`-anchoring at the true end of string
+  // anymore, just "date immediately before an optional session suffix".
+  // A re-POST of the SAME session still dedups (same startedAt-derived
+  // suffix baked into the wire payload once, at build time) — only a
+  // genuinely NEW run start mints a new suffix.
+  const plannedDate = body.workoutId.match(/(\d{4}-\d{2}-\d{2})(?:#\d{4})?$/)?.[1] ?? null;
   const crossDay = plannedDate != null && plannedDate !== date;
   const effectiveWorkoutId = crossDay ? `${body.workoutId}@${date}` : body.workoutId;
   if (crossDay) {
