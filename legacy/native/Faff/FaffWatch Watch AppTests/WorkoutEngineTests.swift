@@ -130,7 +130,14 @@ struct WorkoutEngineTests {
         engine.abandon()
         #expect(engine.state == .finished)
         let completion = try #require(engine.completion)
-        #expect(completion.workoutId == "test-3phase")
+        // P1-34 · completion.workoutId carries a `#HHmm` per-start session
+        // suffix appended to the plan-linkage id (see
+        // WorkoutEngine.sessionSuffix(for:)) so a same-day restart never
+        // collides with an earlier completion's row. The base id is a
+        // prefix, not an exact match, and the suffix is always exactly
+        // `#` + 4 digits.
+        #expect(completion.workoutId.hasPrefix("test-3phase#"))
+        #expect(completion.workoutId.count == "test-3phase#".count + 4)
         #expect(completion.status == "completed")
         #expect(completion.phases.count == workout.phases.count)
         // Phases were manually skipped (endCurrentPhase), not time-completed.

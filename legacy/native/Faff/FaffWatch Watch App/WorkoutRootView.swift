@@ -171,12 +171,34 @@ final class WatchRootModel: ObservableObject {
         Task {
             let snap = WorkoutEngine.loadSnapshot()
             guard let session = await tracker.recoverActiveSession() else {
-                // Nothing recoverable. A leftover snapshot means the run
-                // died in a way HealthKit couldn't bridge (e.g. battery
-                // death where the session lapsed) — no builder exists to
-                // save from, so clear it; a lingering snapshot would
-                // mislabel a future recovery.
-                if snap != nil { WorkoutEngine.clearSnapshot() }
+                // P2-54 fix (2026-07-07) · nothing recoverable via HealthKit
+                // (e.g. battery death — the HKWorkoutSession itself lapsed
+                // with the hardware, so recoverActiveWorkoutSession has no
+                // builder to hand back). A leftover snapshot's banked phase
+                // results are the ONLY surviving record of the run — the
+                // prior behaviour silently deleted them here, so a runner
+                // whose watch died at mile 16 of an 18-mile long run found
+                // NOTHING when they recharged and reopened the app: no run
+                // row, no partial credit. Build a completion from the
+                // snapshot alone (zero-stats RecoveredStats — there's no
+                // builder to read from) and send it — status 'partial',
+                // exactly like a live END & SAVE — BEFORE clearing the
+                // snapshot, so a send failure can't lose the data twice.
+                if let snap {
+                    let zeroStats = WorkoutTracker.RecoveredStats(
+                        distanceMi: nil, avgHr: nil, maxHr: nil,
+                        kcal: nil, elapsedSec: 0, startDate: nil)
+                    let completion = WorkoutEngine.completionFromRecovery(snapshot: snap, stats: zeroStats)
+                    PhoneSync.shared.sendCompletion(completion)
+                    WorkoutEngine.clearSnapshot()
+                    // Same post-recovery receipt as a live END & SAVE — the
+                    // runner should see their salvaged mileage, not silently
+                    // land back on the idle home screen after losing the
+                    // battery mid-run.
+                    let summaryWorkout = snap.decodedWorkout()
+                        ?? Self.recoveredStubWorkout(completion: completion)
+                    recoverySummary = RecoverySummary(workout: summaryWorkout, completion: completion)
+                }
                 return
             }
             // TreadmillHRSession runs are indoor and their HKWorkout is

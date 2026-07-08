@@ -243,6 +243,23 @@ final class WorkoutEngine: ObservableObject {
         return workout.phases[n]
     }
 
+    /// True when the workout has exactly one `.work` phase — no OTHER rep to
+    /// blend against or compete for attention with. Covers easy / long /
+    /// recovery / "just run" sessions AND a single-rep tempo/threshold (both
+    /// shapes expand to exactly one `.work` phase — expand-spec.ts). Mirrors
+    /// ActiveWorkoutView's private `isSingleWorkSession(_:)` free function
+    /// (face-routing decision) — kept as a SEPARATE computed property here
+    /// rather than shared, because the engine needs it before any view
+    /// exists: tick()'s mile-split gate uses it as ONE input (further
+    /// narrowed by a tolerance check — see isEasyBandSingleWork in tick() —
+    /// since "single work phase" alone doesn't distinguish an easy run from
+    /// a one-rep tempo). The two isSingleWorkSession definitions (this one
+    /// and ActiveWorkoutView's) must never drift: same predicate, same
+    /// field.
+    var isSingleWorkSession: Bool {
+        workout.phases.filter { $0.type == .work }.count == 1
+    }
+
     /// Distance (mi) covered within the current phase — for distance reps.
     var phaseCoveredMi: Double { max(0, coveredMi - phaseStartMi) }
 
@@ -607,6 +624,16 @@ final class WorkoutEngine: ObservableObject {
     func tick() {
         guard state == .running, !isPaused else { return }
 
+        // P2-53 · HR staleness watchdog — polled every tick (1 Hz) so it
+        // can never drift from the phase clock it's gating. Runs BEFORE any
+        // phase-aggregate read below, so a stale tick's zeroed heartRate is
+        // what phaseHrSum/phaseHrCount/hrOverCeiling/the Tier-1 HR sample
+        // all see — a dropped-then-recovered band can never contribute a
+        // frozen reading into an average or a ceiling alert. Also runs
+        // during overtime (below), where HR staying honest matters just as
+        // much even though there's no phase to record it into.
+        tracker?.checkHrStaleness()
+
         // Overtime: plan is done, but keep the clock + live metrics running.
         // No phase logic — the user runs free until they End.
         if planComplete {
@@ -781,16 +808,54 @@ final class WorkoutEngine: ObservableObject {
         // Paused minutes naturally don't count because totalElapsedSec is
         // paused-corrected.
         //
-        // GATED to non-work phases. During a structured work rep the runner
-        // is focused on hitting THIS rep's target pace; the global "MILE 2 ·
+        // GATED to "not a structured work rep" — during ONE rep of a
+        // multi-rep session (intervals/threshold/tempo blocks) the runner is
+        // focused on hitting THIS rep's target pace; the global "MILE 2 ·
         // 6:47" takeover is noise (and a 6s view-blocker — they'd lose pace
         // feedback mid-rep). The rep's own pace + distance-remaining are
         // already on the WorkIntervalFace. David flagged this in tomorrow's
-        // preflight (2026-06-02). Bug-fix: warmup / cooldown / recovery /
-        // just-run still get splits — those are where mile pace is the
-        // highest-value read.
+        // preflight (2026-06-02).
+        //
+        // P1-28 fix (2026-07-07) · the ORIGINAL gate (`phase.type != .work`)
+        // meant to keep warmup/cooldown/recovery/just-run getting splits —
+        // those are where mile pace is the highest-value read — but the
+        // backend expands EVERY easy/long/recovery/just-run session as a
+        // single `type:'work'` phase for its entire duration (expand-spec.ts
+        // expandEasy/expandRecovery/plain-long, WatchWorkoutModels.makeJustRun),
+        // so the old gate suppressed the takeover for exactly those runs,
+        // start to finish.
+        //
+        // Correct gate needs to distinguish "single-work-phase EASY-BAND
+        // session" (easy/long/recovery/just-run — audit's named list) from
+        // "single-work-phase QUALITY rep" (a one-rep tempo/threshold — also
+        // isSingleWorkSession==true, since it too has exactly one `.work`
+        // phase, but it's still the SAME kind of focused rep the original
+        // gate was protecting; the audit's P1-28 finding does not name
+        // tempo). isSingleWorkSession alone can't tell these apart — both
+        // shapes have phases.filter{.work}.count == 1. The distinguishing
+        // signal available on-watch: tolerance band width. build-workout.ts
+        // ships 8 s/mi for threshold/intervals, 12 for tempo/race, 20 for
+        // everything else (easy/long/recovery default) — a tight tolerance
+        // (<=15, comfortably between the 12 quality ceiling and the 20 easy
+        // floor) means "this is a quality rep even though it's the only
+        // work phase," so splits stay suppressed there exactly like a REP
+        // in a multi-rep set. A nil target (just-run) or wide/nil tolerance
+        // (easy/long/recovery) allows the takeover.
+        let isEasyBandSingleWork: Bool = {
+            guard isSingleWorkSession, let work = workout.phases.first(where: { $0.type == .work }) else { return false }
+            guard let target = work.targetPaceSPerMi, target > 0 else { return true }   // just-run: no target at all
+            let tol = work.tolerancePaceSPerMi ?? 20
+            return tol > 15
+        }()
+        // Long-with-finish easy build (two `.work` phases, but the build
+        // "runs by feel" exactly like a plain long run — see isLongWithFinish
+        // face routing in ActiveWorkoutView — while the finish segment
+        // itself keeps the focused pace-read behaviour).
+        let isLongBuildPhase = currentPhase?.type == .work
+            && currentPhase?.isFinishSegment == false
+            && workout.phases.contains { $0.isFinishSegment }
         let mileIndex = Int(coveredMi)
-        let allowSplitFlash = currentPhase?.type != .work
+        let allowSplitFlash = currentPhase?.type != .work || isEasyBandSingleWork || isLongBuildPhase
         if allowSplitFlash, mileIndex > lastMileIndex {
             // If GPS jumps multiple integers in one tick (rare, e.g. a sim
             // teleport), we only flash the most-recent mile rather than
@@ -831,11 +896,31 @@ final class WorkoutEngine: ObservableObject {
         // still correct. User reported: plan 5.8 mi, watch flipped to
         // overtime at 6.0 mi — that was the time-based fallback firing
         // late because the runner was faster than the projected pace.
+        //
+        // P2-56 fix (2026-07-07) · a runner who denied HealthKit access
+        // (or whose session failed to start — start()'s catch block leaves
+        // `session`/`builder` nil, so tracker.distanceMi never moves off 0)
+        // used to be stuck forever on a distance phase: coveredMi/
+        // phaseCoveredMi both read 0 permanently, so neither distance
+        // branch below EVER completes, and — unlike a time-based rep —
+        // there was no `else` fallback for a distance-typed phase to fall
+        // through to. `noDistanceSource` distinguishes "distance genuinely
+        // has no source" from "distance is progressing normally but hasn't
+        // reached the target yet": the phase's own durationSec is already
+        // carried as a TIME ESTIMATE for every distance rep (see WatchPhase
+        // doc), so at 1.5× that estimate with essentially zero distance
+        // banked, GPS/HK has had every reasonable chance to report SOME
+        // movement — fall back to time so the run advances instead of
+        // hanging. 0.05 mi is the same "meaningful distance" floor
+        // recordCurrentPhase() already uses elsewhere in this file.
+        let noDistanceSource = phaseCoveredMi < 0.05
+            && phaseElapsedSec >= Int(Double(max(phase.durationSec, 60)) * 1.5)
+        if noDistanceSource { tracker?.markDistanceSourceUnavailable() }
         let finished: Bool
         if isSinglePhaseDistanceRun, let total = workout.distanceMi {
-            finished = coveredMi >= total
+            finished = coveredMi >= total || noDistanceSource
         } else if phase.repUnit == .distance, let d = phase.distanceMi {
-            finished = phaseCoveredMi >= d
+            finished = phaseCoveredMi >= d || noDistanceSource
         } else {
             finished = phaseElapsedSec >= phase.durationSec
         }
@@ -1260,19 +1345,56 @@ final class WorkoutEngine: ObservableObject {
             )]
         }
 
-        let workoutId = snapshot?.workoutId
+        // P1-34 · same per-start suffix as the live-finish path, keyed off
+        // the same startDate this completion already reports — a recovery
+        // completion must not collide with a normal finish (or another
+        // recovery) for the same calendar day's workoutId.
+        let baseWorkoutId = snapshot?.workoutId
             ?? workout?.workoutId
             ?? "recovered-\(Int(startDate.timeIntervalSince1970))"
-        let dist = stats.distanceMi.flatMap { $0 > 0.01 ? ($0 * 100).rounded() / 100 : nil }
+        let workoutId = baseWorkoutId + WorkoutEngine.sessionSuffix(for: startDate)
+
+        // P2-54 fix (2026-07-07) · when there's no live HKWorkoutSession to
+        // read stats from (battery death — recoverActiveWorkoutSession
+        // returns nil, so `stats` is the caller's zero/empty struct), the
+        // snapshot's BANKED phase results are the only surviving record of
+        // the run. Sum them as a fallback for every top-level total so a
+        // 16-mile long run doesn't reach the server reporting 0 mi / 0 s
+        // just because the builder that would have reported it died with
+        // the battery. Prefers the live builder's totals (stats.*) when
+        // present — they're ground truth and span pre-crash time the
+        // snapshot's phases can't always fully cover — falls back to the
+        // phase sum only when a field is genuinely absent.
+        let phaseDistSum = phases.compactMap { $0.actualDistanceMi }.reduce(0, +)
+        let phaseDurSum = phases.reduce(0) { $0 + $1.actualDurationSec }
+        let phaseHrWeighted: Int? = {
+            var num = 0.0, den = 0.0
+            for p in phases {
+                guard let hr = p.avgHr, p.actualDurationSec > 0 else { continue }
+                num += Double(hr) * Double(p.actualDurationSec)
+                den += Double(p.actualDurationSec)
+            }
+            return den > 0 ? Int((num / den).rounded()) : nil
+        }()
+        let phaseMaxHr = phases.compactMap { $0.maxHr }.max()
+
+        let totalDist: Double? = {
+            if let d = stats.distanceMi, d > 0.01 { return (d * 100).rounded() / 100 }
+            return phaseDistSum > 0.01 ? (phaseDistSum * 100).rounded() / 100 : nil
+        }()
+        let totalDur = stats.elapsedSec > 0 ? stats.elapsedSec : phaseDurSum
+        let totalAvgHr = stats.avgHr ?? phaseHrWeighted
+        let totalMaxHr = stats.maxHr ?? phaseMaxHr
+
         return WatchCompletion(
             workoutId: workoutId,
             startedAt: iso.string(from: startDate),
             completedAt: iso.string(from: .now),
             status: snapshot?.planComplete == true ? "completed" : "partial",
-            totalDistanceMi: dist,
-            totalDurationSec: stats.elapsedSec,
-            avgHr: stats.avgHr,
-            maxHr: stats.maxHr,
+            totalDistanceMi: totalDist,
+            totalDurationSec: totalDur,
+            avgHr: totalAvgHr,
+            maxHr: totalMaxHr,
             avgCadence: nil,
             kcal: stats.kcal,
             phases: phases,
@@ -1318,6 +1440,31 @@ final class WorkoutEngine: ObservableObject {
         if let tracker {
             Task { await tracker.end() }
         }
+    }
+
+    // MARK: - Per-start identity (P1-34 · 2026-07-07)
+    //
+    // The server issues workoutId as `${userId}-${YYYY-MM-DD}` — one id per
+    // calendar day (build-workout.ts). Two completions on the SAME day used
+    // to collide on that id: a restart after a crash/accidental-end, or a
+    // genuine double (running today's tile twice), and the second upsert
+    // silently overwrote the first run's distance + per-phase blob (audit
+    // finding P1-34). workoutId itself stays the plan-linkage key the
+    // backend matches to a plan day / prescription — this suffix rides on
+    // TOP of it so the two concerns (which plan day, which physical run)
+    // are both carried on the wire without a new field. Server-side:
+    // route.ts's date-extraction regex tolerates the optional `#HHmm` tail,
+    // so cross-day forking is unaffected.
+    //
+    // Baked in ONCE per completion (here, at build time) — not minted fresh
+    // on every retry — so PhoneSync's durable retry queue re-POSTs the
+    // IDENTICAL workoutId on every attempt (retry-safe idempotency).
+    /// `#HHmm` from the run's actual start — 4 digits, always present.
+    static func sessionSuffix(for startDate: Date) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = .current
+        let c = cal.dateComponents([.hour, .minute], from: startDate)
+        return String(format: "#%02d%02d", c.hour ?? 0, c.minute ?? 0)
     }
 
     // MARK: Completion payload (ready for phase-6 writeback)
@@ -1412,7 +1559,10 @@ final class WorkoutEngine: ObservableObject {
         }()
 
         return WatchCompletion(
-            workoutId: workout.workoutId,
+            // P1-34 · per-start session suffix so a same-day restart/double
+            // never collides with an earlier completion's row. See
+            // sessionSuffix(for:) doc above.
+            workoutId: workout.workoutId + Self.sessionSuffix(for: workoutStart),
             startedAt: iso.string(from: workoutStart),
             completedAt: iso.string(from: .now),
             status: status,
