@@ -116,11 +116,14 @@ struct ShoeDetail: View {
                 }
                 .frame(height: 7)
                 HStack {
-                    Text("\(Int(shoe.lifePct * 100))% of \(Int(shoe.lifeMi)) mi life")
+                    // 2026-07-07 · units audit follow-up — display only;
+                    // lifePct/warn upstream still use raw shoe.miles /
+                    // shoe.lifeMi, only the rendered strings convert.
+                    Text("\(Int(shoe.lifePct * 100))% of \(Int(Units.convertDistance(miles: shoe.lifeMi, to: Units.preference.distance))) \(Units.distanceLabel()) life")
                         .font(.body(9.5, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
                     Spacer()
-                    Text("\(Int(shoe.lifeMi - shoe.miles)) mi left")
+                    Text("\(Int(Units.convertDistance(miles: shoe.lifeMi - shoe.miles, to: Units.preference.distance))) \(Units.distanceLabel()) left")
                         .font(.body(9.5, weight: .semibold))
                         .foregroundStyle(shoe.warn ? Theme.warnText : Theme.txt.opacity(0.6))
                 }

@@ -128,7 +128,13 @@ enum HealthSeed {
                 history: Array(s.suffix(14)), chart28: realChart(s),
                 target: nil,
                 status: abs(delta ?? 0) >= 0.4 ? .warn : .good,
-                direction: trendDir(cur: curF, base: baseF),
+                // 2026-07-07 · consistency follow-up — trendDir only compares
+                // sign (cur vs base), which a linear F->C transform always
+                // preserves, so this was never a behavior bug. Switched to
+                // curDisp/baseDisp anyway to match the "convert only at the
+                // final display step" pattern used everywhere else in this
+                // block, so a future edit can't assume trendDir takes raw °F.
+                direction: trendDir(cur: curDisp, base: baseDisp),
                 caption: baseDisp.map { "baseline \(String(format: "%.1f", $0))" } ?? "30-day",
                 coach: coachForDelta(noun: "Skin temp", cur: curDisp, base: baseDisp,
                                      unit: "°\(unitSuffix)", higherIsBetter: false, decimals: 1)))

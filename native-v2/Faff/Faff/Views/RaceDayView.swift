@@ -780,14 +780,6 @@ struct RaceDayView: View {
         detail?.pacing?.phases
     }
 
-    /// Format a server pace-string. The composer already emits "6:58/mi" in
-    /// `display`; strip a trailing "/mi" so the card owns the unit and the
-    /// number sits clean next to it.
-    private func paceNumber(from display: String) -> String {
-        display.replacingOccurrences(of: "/mi", with: "")
-            .trimmingCharacters(in: .whitespaces)
-    }
-
     /// THE PLAN, merged · terrain pace + the negative-split race arc, one
     /// table (David 2026-06-17 · the page used to show two competing pace
     /// tables). One row per named course segment: the course name + its mile

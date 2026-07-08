@@ -328,8 +328,18 @@ struct AddShoeSheet: View {
         _model = State(initialValue: editing?.model ?? "")
         let seededRoles = Set((editing?.run_types ?? ["easy"]).map { $0.uppercased() })
         _selectedRoles = State(initialValue: seededRoles.isEmpty ? ["EASY"] : seededRoles)
-        _mileageCap = State(initialValue: editing.flatMap { $0.mileage_cap.map { String(Int($0)) } } ?? "400")
-        _baselineMi = State(initialValue: editing.flatMap { $0.baseline_mi.map { String(Int($0)) } } ?? "0")
+        // 2026-07-07 · units audit follow-up — mileage_cap/baseline_mi are
+        // stored raw miles server-side (consumed by shoe-retirement/auto-
+        // assign math in mileage terms), but unlike weekly_mileage_target
+        // this is a simple data-entry number with no plan-generation
+        // dependency on the CLIENT-side value, so a full bidirectional
+        // round-trip is safe: seed the field in the runner's display unit,
+        // convert back to raw miles on save. The stored column never
+        // changes shape.
+        let capMi = editing.flatMap { $0.mileage_cap } ?? 400
+        let baselineMiRaw = editing.flatMap { $0.baseline_mi } ?? 0
+        _mileageCap = State(initialValue: String(Int(Units.convertDistance(miles: capMi, to: Units.preference.distance).rounded())))
+        _baselineMi = State(initialValue: String(Int(Units.convertDistance(miles: baselineMiRaw, to: Units.preference.distance).rounded())))
     }
 
     /// P3-14 · UI implies model is optional but POST /api/shoe 400s
@@ -379,14 +389,16 @@ struct AddShoeSheet: View {
                         }
                     }
 
-                    // Mileage cap
-                    fieldGroup(label: "SHOE LIFE (MI)") {
+                    // Mileage cap · 2026-07-07 units audit follow-up —
+                    // label + value both track the runner's display unit;
+                    // see the bidirectional conversion note in init above.
+                    fieldGroup(label: "SHOE LIFE (\(Units.distanceLabel().uppercased()))") {
                         styledTextField("400", text: $mileageCap)
                             .keyboardType(.decimalPad)
                     }
 
-                    // Baseline miles
-                    fieldGroup(label: "MILES BEFORE APP") {
+                    // Baseline distance before app
+                    fieldGroup(label: "\(Units.distanceLabel().uppercased()) BEFORE APP") {
                         styledTextField("0", text: $baselineMi)
                             .keyboardType(.decimalPad)
                     }
@@ -483,8 +495,18 @@ struct AddShoeSheet: View {
         saving = true
         errorMsg = nil
         let runTypes = allRoles.filter { selectedRoles.contains($0) }.map { $0.lowercased() }
-        let cap = Double(mileageCap) ?? 400
-        let baseline = Double(baselineMi) ?? 0
+        // 2026-07-07 · units audit follow-up — fields hold the runner's
+        // display unit (see init); convert back to raw miles before
+        // sending, since mileage_cap/baseline_mi are stored as miles
+        // server-side. No-ops when the preference is mi.
+        let capDisplay = Double(mileageCap) ?? Units.convertDistance(miles: 400, to: Units.preference.distance)
+        let baselineDisplay = Double(baselineMi) ?? 0
+        // km → mi is *milesPerKm (0.621371), the inverse of convertDistance's
+        // mi → km (*kmPerMile). Confirmed against Units.convertDistance:
+        // convertDistance(miles: m, to: .km) == m * kmPerMile, so the
+        // inverse is km * milesPerKm == m.
+        let cap = Units.preference.distance == .km ? capDisplay * Units.milesPerKm : capDisplay
+        let baseline = Units.preference.distance == .km ? baselineDisplay * Units.milesPerKm : baselineDisplay
         do {
             if let editing {
                 // P2-37 · edit path — PATCH the changed fields onto the
