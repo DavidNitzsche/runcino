@@ -36,7 +36,7 @@
  * insufficient-data (cold start). The UI copy renders each honestly.
  */
 import { pool } from '@/lib/db/pool';
-import { vdotFromRace, formatRaceTime } from './vdot';
+import { vdotFromRace, formatRaceTime, predictRaceTime } from './vdot';
 
 export type TTGoalDistance =
   // Legacy onboarding codes (bucketed time).
@@ -85,7 +85,12 @@ export interface GoalReadyProjection {
   /** "5K · UNDER 20:00" style display label. */
   goalLabel: string;
   goalTimeSec: number;
-  requiredVdot: number;
+  /** Null when the goal maps below the Daniels table floor of 30 (AUDIT
+   *  P1-56, 2026-07-07) — an honest slow/easy goal, not a data gap. state is
+   *  always 'in-range' in that case (any measured currentVdot already clears
+   *  a below-table goal), so display copy should read off state, not this
+   *  field, when it's null. */
+  requiredVdot: number | null;
   currentVdot: number | null;
   state: 'in-range' | 'projectable' | 'trend-flat' | 'beyond-horizon' | 'insufficient-data';
   /** Present when projectable. */
@@ -113,8 +118,35 @@ export function computeGoalReady(
     ? exactGoalTimeSec
     : BUCKET_SECONDS[ttDistance]?.[ttTimeBucket];
   if (goalTimeSec == null) return null;
-  const requiredVdot = vdotFromRace(goalTimeSec, DIST_MI[ttDistance]);
-  if (requiredVdot == null) return null;
+  const requiredVdotRaw = vdotFromRace(goalTimeSec, DIST_MI[ttDistance]);
+  const currentVdot = points.length ? points[points.length - 1].vdot : null;
+  // 2026-07-07 · AUDIT P1-56 · requiredVdotRaw is null off either end of the
+  // [30,85] table (vdot.ts). Below-30 (goal SLOWER than predictRaceTime(30,…))
+  // is an honest slow/easy goal — table floor, not a data gap. Above-85 is a
+  // (rare, likely data-entry) off-the-top goal and must NOT be treated as
+  // in-range just because currentVdot exists. Distinguish the two directions
+  // before special-casing: only the genuinely below-table direction gets the
+  // "any measured fitness already clears this" honest short-circuit.
+  const belowTableGoalTime = predictRaceTime(30, DIST_MI[ttDistance]);
+  const goalIsBelowTable = requiredVdotRaw == null
+    && belowTableGoalTime != null && goalTimeSec >= belowTableGoalTime;
+  // Do not fabricate requiredVdot as a number — state the honest reason
+  // instead (this replaces the old "requiredVdotRaw==null -> whole module
+  // returns null" behavior, which silently erased the goal for exactly this
+  // common below-table case).
+  if (goalIsBelowTable && currentVdot != null) {
+    const goalDisplay = (exactGoalTimeSec != null && exactGoalTimeSec > 0)
+      ? (formatRaceTime(exactGoalTimeSec) ?? ttTimeBucket.toUpperCase())
+      : ttTimeBucket.toUpperCase();
+    const goalLabel = `${ttDistance === '1mi' ? '1 MI' : ttDistance.toUpperCase()} · ${goalDisplay}`;
+    return {
+      ttDistance, goalLabel, goalTimeSec,
+      requiredVdot: null, // honest — no fabricated below-table number
+      currentVdot, state: 'in-range',
+    };
+  }
+  if (requiredVdotRaw == null) return null; // off-table goal AND no measured fitness yet — genuinely insufficient data
+  const requiredVdot = requiredVdotRaw;
 
   const goalDisplay = (exactGoalTimeSec != null && exactGoalTimeSec > 0)
     ? (formatRaceTime(exactGoalTimeSec) ?? ttTimeBucket.toUpperCase())
@@ -122,7 +154,7 @@ export function computeGoalReady(
   const goalLabel = `${ttDistance === '1mi' ? '1 MI' : ttDistance.toUpperCase()} · ${goalDisplay}`;
   const base: Omit<GoalReadyProjection, 'state'> = {
     ttDistance, goalLabel, goalTimeSec, requiredVdot,
-    currentVdot: points.length ? points[points.length - 1].vdot : null,
+    currentVdot,
   };
 
   if (base.currentVdot != null && base.currentVdot >= requiredVdot) {

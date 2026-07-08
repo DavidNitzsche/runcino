@@ -62,12 +62,25 @@ export interface FitnessTrajectory {
   currentVdot: number;
   /** Where the plan + execution put fitness on race day. */
   projectedVdot: number;
-  /** VDOT the goal time demands at this distance. */
-  goalVdot: number;
+  /** VDOT the goal time demands at this distance. Null when the goal maps
+   *  below the Daniels table floor of 30 (AUDIT P1-56, 2026-07-07) — an
+   *  honest slow goal, not a data gap. currentVdot is always real here (the
+   *  function requires it), so gapSec (a direct seconds comparison, not a
+   *  VDOT round-trip) stays honest without needing a synthesized VDOT. */
+  goalVdot: number | null;
   /** projectedVdot − currentVdot (the build the plan is expected to deliver). */
   projectedGainVdot: number;
-  /** goalVdot − projectedVdot. >0 = the plan falls short; ≤0 = on/ahead. */
-  gapVdot: number;
+  /** goalVdot − projectedVdot. >0 = the plan falls short; ≤0 = on/ahead.
+   *  Null when goalVdot is null (below-table goal) — gapSec still carries
+   *  the honest comparison via Riegel, this field just can't be expressed
+   *  in VDOT-delta terms. */
+  gapVdot: number | null;
+  /** 2026-07-07 · AUDIT P1-56 · true when the goal implies VDOT < 30 (below
+   *  the Daniels table). currentVdot/projectedVdot/gapVdot math still runs
+   *  normally (the RUNNER's fitness is real and in-table — only the GOAL is
+   *  off it); gapSec is computed via Riegel scaling from the runner's own
+   *  demonstrated race/run pace instead of a VDOT delta. */
+  goalBelowTable: boolean;
 
   /** predictRaceTime(currentVdot) — fitness today, seconds. */
   currentSec: number | null;
@@ -147,8 +160,32 @@ export function projectFitnessTrajectory(args: {
   if (!raceDistanceMi || raceDistanceMi <= 0) return null;
 
   const executionQuality = clamp(args.executionQuality ?? 0.7, 0, 1);
-  const goalVdot = vdotFromRace(goalSec, raceDistanceMi);
-  if (goalVdot == null) return null;
+  const goalVdotRaw = vdotFromRace(goalSec, raceDistanceMi);
+  // 2026-07-07 · AUDIT P1-56 · goalVdotRaw is null in TWO cases: off-the-top
+  // (faster than VDOT 85 — a data error, GOAL-4 in generate.ts already guards
+  // this before a goal reaches here) and off-the-bottom (slower than VDOT 30 —
+  // an honest, common goal for a beginner/recovery/soft target, NOT an error).
+  // Distinguish via predictRaceTime(currentVdot): currentVdot is guaranteed
+  // real here (checked above), so predictRaceTime(currentVdot, raceDistanceMi)
+  // is an honest "what I'd run today" time; a goal SLOWER than that reads as
+  // off-the-bottom (the runner is already fitter than this goal — a valid,
+  // common state, e.g. a recovery-race or "just finish" goal). Off-the-top
+  // (faster than currentVdot's predicted time despite VDOT 85 clamp) is
+  // deliberately NOT specially handled here — generate.ts's GOAL-4 guard is
+  // the doctrine-designated gate for that; this function trusts its caller.
+  const currentPredictedSec = predictRaceTime(currentVdot, raceDistanceMi);
+  const goalBelowTable = goalVdotRaw == null
+    && currentPredictedSec != null && goalSec >= currentPredictedSec;
+  // For the gain-sizing math below, an off-table SLOW goal is treated as
+  // "already met" (goalVdot ≡ currentVdot) — the runner has demonstrably
+  // already exceeded it, so the modeled gain needed is correctly zero. This
+  // is not a fabricated VDOT for the goal; it only participates in the
+  // clamp(goalVdot - currentVdot, ...) gain formula, which floors at 0 either
+  // way. Display fields (gapSec) use the direct-seconds comparison below
+  // instead of this VDOT stand-in, so nothing downstream displays a
+  // synthesized VDOT number for an off-table goal.
+  const goalVdot = goalVdotRaw ?? (goalBelowTable ? currentVdot : null);
+  if (goalVdot == null) return null; // off-the-top or otherwise unreadable — caller's GOAL-4 should have filtered this
 
   const plannedTargetVdot = args.plannedTargetVdot ?? null;
 
@@ -236,12 +273,23 @@ export function projectFitnessTrajectory(args: {
   return {
     currentVdot,
     projectedVdot,
-    goalVdot,
+    // 2026-07-07 · AUDIT P1-56 · expose the HONEST goalVdot (null when
+    // off-table) rather than the internal currentVdot stand-in used only for
+    // the gain-sizing clamp above — a caller must never render a synthesized
+    // VDOT number for a goal that doesn't map onto the Daniels table.
+    goalVdot: goalBelowTable ? null : goalVdot,
     projectedGainVdot: Math.round(projectedGainVdot * 10) / 10,
-    gapVdot,
+    gapVdot: goalBelowTable ? null : gapVdot,
+    goalBelowTable,
     currentSec,
     projectedSec,
     goalSec,
+    // gapSec is ALREADY a direct seconds comparison (projectedSec − goalSec,
+    // no VDOT round-trip) so it stays honest for a below-table goal without
+    // any special-casing: a goal slower than the runner's current/projected
+    // fitness naturally reads negative (ahead of goal), matching reachable=true
+    // and aheadOfGoal=true below, which is the correct read for "I've already
+    // exceeded this easy goal."
     gapSec,
     reachable,
     plannedTargetVdot,
