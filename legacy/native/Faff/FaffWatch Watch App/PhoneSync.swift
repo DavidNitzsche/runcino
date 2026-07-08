@@ -337,6 +337,37 @@ extension PhoneSync: WCSessionDelegate {
             replyHandler(["status": "unknown"])
         }
     }
+
+    /// No-reply messages from the iPhone. `pingTreadmillHR` is the treadmill
+    /// keepalive (audit P2-49): the phone pings every ~2 min while its console
+    /// is live; TreadmillHRSession's dead-man timer auto-ends the HR session
+    /// when pings stop arriving (phone died, app killed, out of range).
+    nonisolated func session(_ session: WCSession,
+                             didReceiveMessage message: [String: Any]) {
+        guard (message["request"] as? String) == "pingTreadmillHR" else { return }
+        let sessionId = (message["sessionId"] as? String) ?? ""
+        Task { @MainActor in
+            TreadmillHRSession.shared.ping(sessionId: sessionId)
+        }
+    }
+
+    /// Durable stop for the treadmill HR bridge (audit P2-49). When the watch
+    /// is unreachable at End, the iPhone queues `treadmillStop` via
+    /// transferUserInfo — delivered here on the next connection so the HR
+    /// session ends as soon as the pipe is back instead of waiting out the
+    /// dead-man timer.
+    nonisolated func session(_ session: WCSession,
+                             didReceiveUserInfo userInfo: [String: Any]) {
+        guard let stopId = userInfo["treadmillStop"] as? String else { return }
+        Task { @MainActor in
+            // Only end the session the phone asked about · a stale stop from
+            // a previous workout must not kill a newer session.
+            if TreadmillHRSession.shared.isActive,
+               TreadmillHRSession.shared.sessionId == stopId {
+                await TreadmillHRSession.shared.end()
+            }
+        }
+    }
 }
 
 // MARK: - Background upload delegate (out-of-process completion POSTs)

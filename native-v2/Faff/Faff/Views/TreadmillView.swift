@@ -37,6 +37,7 @@
 
 import SwiftUI
 import HealthKit
+import UIKit
 
 struct TreadmillView: View {
     @Environment(\.dismiss) private var dismiss
@@ -92,6 +93,17 @@ struct TreadmillView: View {
     /// Status indicator for the POST request.
     @State private var posting: Bool = false
     @State private var postError: String?
+    /// P1-21 (2026-07-06) · the payload is persisted to the durable
+    /// completion queue BEFORE the first POST. When the immediate POST
+    /// fails (gym basement, airplane mode) this flips true: the run is
+    /// safe on disk and WatchSync retries on launch/foreground until the
+    /// server accepts. The old UI offered "Discard and exit" as the only
+    /// escape — permanent data loss for a 60-minute session.
+    @State private var savedSyncing: Bool = false
+    /// Wall-clock of the last watch keepalive ping (P2-49) · the watch's
+    /// dead-man timer resets on each ping and auto-ends its HR session
+    /// when pings stop (phone died / app killed / runner walked off).
+    @State private var lastPingAt: Date = .distantPast
 
     private struct PhaseActual {
         var avgSpeedMph: Double
@@ -203,7 +215,16 @@ struct TreadmillView: View {
         .task {
             await loadPlan()
         }
+        // P2-45 · keep the screen awake while the session is running. iOS
+        // auto-lock (30s default) suspended the app mid-run: guided segments
+        // mangled and distance kept crediting at a stale speed. Scoped to
+        // `playing` only — pausing re-enables auto-lock, and both the end
+        // path and onDisappear reset it so the flag never leaks app-wide.
+        .onChange(of: playing) { _, isPlaying in
+            UIApplication.shared.isIdleTimerDisabled = isPlaying
+        }
         .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
             if let id = workoutId {
                 WatchSync.shared.stopTreadmillHRSession(sessionId: id)
             }
@@ -268,6 +289,15 @@ struct TreadmillView: View {
             let nseg = segments[next]
             speedMph = nseg.mph
             inclinePct = nseg.inc
+        }
+        // P2-49 · watch keepalive. Every ~2 min while playing, ping the
+        // watch's HR session so its dead-man timer knows the phone is
+        // still driving. Only when the bridge came up · no bridge, no
+        // session to keep alive.
+        if watchHRBridgeUp, let id = workoutId,
+           now.timeIntervalSince(lastPingAt) >= 120 {
+            lastPingAt = now
+            WatchSync.shared.pingTreadmillHRSession(sessionId: id)
         }
     }
 
@@ -463,21 +493,27 @@ struct TreadmillView: View {
             nextUpCard
             overallTicks
             controlRow
-            if let err = postError {
+            // P1-21 · the run is persisted locally and will sync on its own.
+            // Replaces the old failure path whose only escape was "Discard
+            // and exit" — a 60-minute session gone because the gym had no
+            // signal. The console hides the tab bar, so Done is the exit.
+            if savedSyncing {
+                Text("Run saved on this phone · syncs when you're back online.")
+                    .font(.body(11, weight: .medium))
+                    .foregroundStyle(Theme.txt.opacity(0.75))
+                    .multilineTextAlignment(.center)
+                Button { dismiss() } label: {
+                    Text("Done")
+                        .font(.body(13, weight: .extraBold))
+                        .foregroundStyle(Theme.txt)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+            } else if let err = postError {
                 Text(err)
                     .font(.body(11, weight: .medium))
                     .foregroundStyle(Theme.over)
                     .multilineTextAlignment(.center)
-                // Escape hatch · the console hides the tab bar, so a failed
-                // save would otherwise trap the runner here. Let them leave
-                // without saving rather than be stuck retrying.
-                Button { dismiss() } label: {
-                    Text("Discard and exit")
-                        .font(.body(13, weight: .extraBold))
-                        .foregroundStyle(Theme.txt.opacity(0.7))
-                        .underline()
-                }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -554,11 +590,14 @@ struct TreadmillView: View {
                 playing.toggle()
             }
             controlBtn(icon: "forward.fill", label: "Skip", style: .secondary) { advance() }
-            controlBtn(icon: "stop.fill", label: posting ? "Saving" : "End", style: .primary) {
+            controlBtn(icon: "stop.fill", label: posting ? "Saving" : (savedSyncing ? "Saved" : "End"), style: .primary) {
                 playing = false
                 showEndConfirm = true
             }
-            .disabled(posting)
+            // savedSyncing also blocks a second End · re-running endAndPost
+            // after the buffers flushed would overwrite the final phase's HR
+            // with nil (the closePhase buffer is empty on a retry).
+            .disabled(posting || savedSyncing)
         }
     }
 
@@ -658,14 +697,34 @@ struct TreadmillView: View {
         posting = true
         postError = nil
         let payload = buildPayload(status: status)
+        // P1-21 · durable-first save. Serialize once, persist to the same
+        // UserDefaults-backed queue the watch relay uses (same wire shape,
+        // same endpoint, same idempotent workoutId), THEN attempt the POST.
+        // A failed POST is no longer data loss — the run stays queued and
+        // WatchSync drains it on next launch/foreground/reachability.
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
+            // Can't happen · payload is built from JSON-safe types. Fall back
+            // to the direct single-shot POST rather than dropping the run.
+            Task {
+                let ok = await postTreadmillCompletion(payload: payload)
+                await MainActor.run {
+                    posting = false
+                    if ok { dismiss() }
+                    else { postError = "Couldn't save · check connection and try End again." }
+                }
+            }
+            return
+        }
         Task {
-            let ok = await postTreadmillCompletion(payload: payload)
+            let synced = await WatchSync.shared.saveCompletionDurably(data)
             await MainActor.run {
                 posting = false
-                if ok {
+                if synced {
                     dismiss()
                 } else {
-                    postError = "Couldn't save · check connection and try End again."
+                    // Saved on disk, not yet on the server. Tell the runner
+                    // the run is safe and let them leave · syncs itself.
+                    savedSyncing = true
                 }
             }
         }

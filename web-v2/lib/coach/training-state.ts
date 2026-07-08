@@ -14,6 +14,7 @@ import { getCanonicalRunIds, mileageByDay } from '@/lib/runs/volume';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
+import type { StrengthPick } from './strength-recommender';
 
 export interface PlanWeek {
   idx: number;
@@ -67,6 +68,12 @@ export interface PlanWeek {
    *  uses today's readiness gate; next week+ skip it (plan-phase target only)
    *  and re-rate live when the runner reaches each week. */
   recommendedStrengthDays: string[];
+  /** 2026-07-06 · audit P2-50 · the full recommender picks (intensity +
+   *  timing + the 20-minute session content) for this week's
+   *  recommendedStrengthDays. The chip used to say "recommended" with no
+   *  what; native renders these in a tappable session sheet. Same weeks
+   *  annotated as recommendedStrengthDays; entries align by `date`. */
+  strengthPicks?: StrengthPick[];
   /** True when this week's strength was suppressed by the readiness gate
    *  (pull-back band) · current week only. Lets the strip/Today explain the
    *  absence ("Strength paused · readiness low") instead of showing nothing. */
@@ -285,6 +292,10 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       const skipReadinessGate = w.startDate > curWeekStart;
       const rec = await recommendStrengthDays(userId, w.startDate, { skipReadinessGate });
       w.recommendedStrengthDays = rec.recommendedDays;
+      // P2-50 · carry the full picks (intensity + timing + session content)
+      // so native can open the session sheet from the chip instead of
+      // leaving "recommended" as advisory wallpaper.
+      w.strengthPicks = rec.picks;
       // Current week only: remember when the readiness gate fully suppressed
       // strength, so Today can say why instead of just showing nothing. When
       // suppressed, also surface the days it WOULD have been on (re-run with

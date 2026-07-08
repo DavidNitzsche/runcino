@@ -50,7 +50,54 @@ final class TreadmillHRSession: NSObject, ObservableObject {
     /// stop responses to the start it asked for.
     @Published private(set) var sessionId: String?
 
+    // ── Runaway-session guards (audit P2-49 · 2026-07-06) ─────────────
+    //
+    // The stop message only arrives while the phone is reachable. Phone
+    // dies / leaves range / app killed → this session used to run FOREVER
+    // (continuous HR sampling, major battery drain, nothing on the watch
+    // face explaining why). Two layers now bound it:
+    //   · dead-man timer  · the iPhone pings every ~2 min while the
+    //     treadmill console is live; no ping for DEAD_MAN_SEC → auto-end.
+    //   · absolute cap    · no treadmill HR bridge session outlives
+    //     ABSOLUTE_MAX_SEC regardless of pings.
+
+    /// Auto-end when no phone ping for this long. Generous vs the phone's
+    /// ~120s ping cadence so a few dropped pings don't kill a live session.
+    private static let DEAD_MAN_SEC: TimeInterval = 15 * 60
+    /// Hard ceiling on any treadmill HR bridge session.
+    private static let ABSOLUTE_MAX_SEC: TimeInterval = 4 * 3600
+    /// Last keepalive from the iPhone · seeded at start so pre-ping builds
+    /// (or a phone that never pings) still get the full dead-man window.
+    private var lastPhonePingAt: Date = .distantPast
+    /// 60s watchdog · checks both guards while the session is active.
+    private var watchdog: Timer?
+
     private override init() { super.init() }
+
+    /// Keepalive from the iPhone (WatchSync.pingTreadmillHRSession).
+    /// Resets the dead-man window. Ignores pings for a different session.
+    func ping(sessionId: String) {
+        guard isActive, self.sessionId == sessionId else { return }
+        lastPhonePingAt = Date()
+    }
+
+    private func startWatchdog() {
+        watchdog?.invalidate()
+        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.watchdogFire() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        watchdog = t
+    }
+
+    private func watchdogFire() {
+        guard isActive, let startedAt else { return }
+        let now = Date()
+        if now.timeIntervalSince(startedAt) >= Self.ABSOLUTE_MAX_SEC
+            || now.timeIntervalSince(lastPhonePingAt) >= Self.DEAD_MAN_SEC {
+            Task { await end() }
+        }
+    }
 
     /// Idempotent. If a session is already active for the same sessionId,
     /// no-op. If a session exists for a DIFFERENT sessionId, the old one
@@ -78,6 +125,9 @@ final class TreadmillHRSession: NSObject, ObservableObject {
             self.sessionId = sessionId
             self.startedAt = start
             self.isActive = true
+            // P2-49 · seed the dead-man window and arm the watchdog.
+            self.lastPhonePingAt = start
+            self.startWatchdog()
         } catch {
             // Session-start failures are rare (auth missing, conflicting
             // session). Leave isActive=false; the iPhone gracefully
@@ -91,6 +141,8 @@ final class TreadmillHRSession: NSObject, ObservableObject {
     /// "Indoor Run" in Apple Health · the iPhone treadmill POST is the
     /// canonical source). Idempotent.
     func end() async {
+        watchdog?.invalidate()
+        watchdog = nil
         guard let session, let builder else {
             isActive = false; currentBpm = 0; startedAt = nil; sessionId = nil
             return

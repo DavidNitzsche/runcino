@@ -146,6 +146,23 @@ final class WatchSync: NSObject, ObservableObject {
         pendingCompletions = q
     }
 
+    /// Durable save for iPhone-authored completions (treadmill console ·
+    /// audit P1-21). The payload is the same WatchCompletion wire shape the
+    /// watch relay uses, POSTed to the same endpoint, so it rides the SAME
+    /// UserDefaults-backed queue: persisted BEFORE the first POST attempt,
+    /// retried on launch (activationDidComplete), foreground (refresh()) and
+    /// watch-reachability until the server 2xx/409s. Gyms are the canonical
+    /// dead-signal environment — a failed POST must never mean data loss.
+    ///
+    /// Returns `true` when the payload synced during this call, `false` when
+    /// it stayed queued (offline · 5xx · 401). Either way the run is safe on
+    /// disk; the caller can dismiss.
+    func saveCompletionDurably(_ data: Data) async -> Bool {
+        enqueue(data)
+        await flushPendingCompletions()
+        return !pendingCompletions.contains(data)
+    }
+
     // MARK: - Treadmill HR bridge (2026-06-01 · build 137)
     //
     // The iPhone TreadmillView wants HK to sample HR every 5-15s, not
@@ -189,16 +206,44 @@ final class WatchSync: NSObject, ObservableObject {
 
     /// Ask the watch to end the indoor-running HR session. Idempotent ·
     /// safe to call even if the watch never received the start.
+    ///
+    /// P2-49 (2026-07-06): the stop used to be sent ONLY when the watch was
+    /// reachable at that instant — a watch briefly out of range at End kept
+    /// its indoor workout session running for hours. Now the unreachable /
+    /// failed path falls back to transferUserInfo, which watchOS delivers on
+    /// the next connection; the watch's own dead-man timer (no phone ping)
+    /// is the second layer.
     func stopTreadmillHRSession(sessionId: String) {
         guard WCSession.isSupported() else { return }
         let s = WCSession.default
-        guard s.activationState == .activated, s.isReachable else { return }
+        guard s.activationState == .activated else { return }
+        guard s.isReachable else {
+            s.transferUserInfo(["treadmillStop": sessionId])
+            return
+        }
         s.sendMessage(
             ["request": "stopTreadmillHR", "sessionId": sessionId],
             replyHandler: { _ in },
             errorHandler: { err in
                 print("[WatchSync] stopTreadmillHR failed: \(err.localizedDescription)")
+                // Queue the durable fallback · delivered on next connection.
+                WCSession.default.transferUserInfo(["treadmillStop": sessionId])
             }
+        )
+    }
+
+    /// Keepalive while the treadmill console is live (P2-49). The watch
+    /// resets its dead-man timer on every ping; when pings stop arriving
+    /// (phone died, app killed, runner walked off) the watch auto-ends the
+    /// HR session instead of sampling for hours. Best-effort · no reply.
+    func pingTreadmillHRSession(sessionId: String) {
+        guard WCSession.isSupported() else { return }
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isReachable else { return }
+        s.sendMessage(
+            ["request": "pingTreadmillHR", "sessionId": sessionId],
+            replyHandler: nil,
+            errorHandler: { _ in /* best-effort · dead-man covers the gap */ }
         )
     }
 
