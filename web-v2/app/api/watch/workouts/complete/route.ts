@@ -5,6 +5,15 @@
  * the phone POSTs here. Idempotent on (workoutId) — re-POSTing the same
  * workoutId overwrites, so the watch's durable retry queue is safe.
  *
+ * Three callers share this one endpoint + wire shape (see `source` below):
+ *   · watch      — Apple Watch app, via the iPhone relay above
+ *   · treadmill  — TreadmillView.swift, iPhone POSTs directly (2026-06-01)
+ *   · phone      — PhoneRunTracker.swift, iPhone POSTs directly, for
+ *                  runners with no paired/reachable Apple Watch
+ *                  (wave3b/phone-gps-recording, 2026-07-07)
+ * All three route through WatchSync.saveCompletionDurably's durable queue
+ * on the iPhone side, so a failed POST here is "retries later," not "lost."
+ *
  * Persists into two tables (P21):
  *   1. coach_intents (reason='watch_completion', value=raw payload) —
  *      preserves the full per-phase breakdown for the coach's
@@ -74,7 +83,7 @@ interface WatchCompletionBody {
   maxHr?: number | null;
   avgCadence?: number | null;
   kcal?: number | null;
-  source?: string;            // 'watch' | 'treadmill' — backend whitelists
+  source?: string;            // 'watch' | 'treadmill' | 'phone' — backend whitelists
   indoor?: boolean;           // spliced in by treadmill path
   timezone?: string;          // spliced in by iPhone relay (WatchSync)
   phases?: WatchCompletionPhaseBody[];
@@ -187,11 +196,19 @@ export async function POST(req: NextRequest) {
   // shape across watch, Strava, HealthKit, and manual entry sources.
 
   // 2026-06-01 · treadmill ingest (iPhone build 136).
-  // Respect body.source · whitelist 'watch' | 'treadmill'. Anything
+  // 2026-07-07 · phone-GPS ingest (wave3b/phone-gps-recording · audit P1
+  // "no-watch users have no way to record an outdoor run"). PhoneRunTracker
+  // POSTs here the exact same way TreadmillView does — this is additive to
+  // the whitelist, not a behavior change for 'watch'/'treadmill' callers.
+  // Respect body.source · whitelist 'watch' | 'treadmill' | 'phone'. Anything
   // else falls back to 'watch' so a future iPhone bug shows up in the
   // server logs instead of silently mis-sourcing. Resolved BEFORE the
-  // date below · toUtcIso reads `source` to interpret no-marker times.
-  const ALLOWED_SOURCES = new Set(['watch', 'treadmill']);
+  // date below · toUtcIso reads `source` to interpret no-marker times —
+  // 'phone' isn't in that function's local-time whitelist because
+  // PhoneRunTracker always sends a Z-suffixed UTC startedAt/completedAt
+  // (ISO8601DateFormatter's default), so toUtcIso's hasTzMarker branch
+  // trusts it directly without ever consulting `source`.
+  const ALLOWED_SOURCES = new Set(['watch', 'treadmill', 'phone']);
   const requestedSource = typeof body.source === 'string' ? body.source : 'watch';
   const source = ALLOWED_SOURCES.has(requestedSource) ? requestedSource : 'watch';
   if (requestedSource !== source) {

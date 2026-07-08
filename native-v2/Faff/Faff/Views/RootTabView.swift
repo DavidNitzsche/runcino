@@ -51,6 +51,12 @@ enum FaffRoute: Hashable {
     case runDetail(id: String)
     case planned(date: String?)
     case watchMirror
+    /// Phone-only GPS run recorder (wave3b/phone-gps-recording). Outdoor
+    /// routes here instead of .watchMirror when WatchSync reports no
+    /// paired/installed Apple Watch — WatchMirrorView is read-only (the
+    /// watch owns the timer), so a runner with no watch had no live
+    /// in-run screen at all. See RootTabView.outdoorRoute.
+    case phoneRun
     case treadmill
     case raceDay(slug: String)
     case settings
@@ -155,7 +161,7 @@ struct RootTabView: View {
                 // AFC fix 2 · was a hardcoded one-off orange (#EE6038) ·
                 // the run accent is the race/tempo slot of the locked palette.
                 accent: Theme.race,
-                onOutdoor: { tabPaths[selected, default: []].append(.watchMirror) },
+                onOutdoor: { tabPaths[selected, default: []].append(outdoorRoute) },
                 onTreadmill: { tabPaths[selected, default: []].append(.treadmill) },
                 onNiggle: { showSymptomSheet = true },
                 onNonRun: { showLogNonRunSheet = true },
@@ -376,6 +382,7 @@ struct RootTabView: View {
         case .runDetail(let id):   RunRecapView(runId: id).navigationBarHidden(true)
         case .planned(let d):      PlannedView(date: d).navigationBarHidden(true)
         case .watchMirror:         WatchMirrorView().navigationBarHidden(true)
+        case .phoneRun:            PhoneRunView().navigationBarHidden(true)
         case .treadmill:           TreadmillView().navigationBarHidden(true)
         case .raceDay(let slug):   RaceDayView(raceSlug: slug).navigationBarHidden(true)
         case .settings:            SettingsView().navigationBarHidden(true)
@@ -385,6 +392,26 @@ struct RootTabView: View {
         case .activity:            ActivityView(onProfile: { pushProfile = true }).navigationBarHidden(true)
         case .learn(let slug):     LearnArticleSheet(slug: slug).navigationBarHidden(true)
         }
+    }
+
+    /// Outdoor CTA destination (P1 audit fix, wave3b/phone-gps-recording).
+    /// WatchMirrorView is READ-ONLY — the watch owns the timer, the phone
+    /// only mirrors it. A runner with no Faff watch app installed on a
+    /// paired watch could never start anything there: "Outdoor" dead-ended
+    /// into a permanent "Standing by · start on your Apple Watch" empty
+    /// state with no watch that could ever answer. `isPaired` alone isn't
+    /// enough (a paired-but-Faff-not-installed watch is exactly the same
+    /// dead end), so this gates on BOTH — mirrors the same signal
+    /// TreadmillView's watch-HR bridge already treats as "is there a watch
+    /// I can talk to" (WatchSync.isWatchAppInstalled / isPaired, refreshed
+    /// on every WCSession activation, so this is fresh by the time the
+    /// runner reaches the run menu — see WatchSync.start()).
+    /// A watch that IS present still gets the existing .watchMirror path
+    /// unchanged — this only fills the gap for no-watch runners, it
+    /// doesn't remove or alter the watch flow.
+    private var outdoorRoute: FaffRoute {
+        let ws = WatchSync.shared
+        return (ws.isPaired && ws.isWatchAppInstalled) ? .watchMirror : .phoneRun
     }
 
     /// Resolve "just run" mode · no race and no goal means there's no plan,

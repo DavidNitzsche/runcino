@@ -63,6 +63,14 @@ targets:
         # Restoring with an honest "watch-only" framing.
         NSHealthShareUsageDescription: "Faff reads HR, HRV, sleep, VO2max, and workouts from Apple Health to compute training zones and adapt your plan."
         NSHealthUpdateUsageDescription: "Faff Watch writes completed workouts to Apple Health so your training history stays in one place."
+        # Phone-only GPS run recorder (wave3b/phone-gps-recording ·
+        # PhoneRunTracker.swift). Foreground-only — no "Always" string, no
+        # UIBackgroundModes location entry, allowsBackgroundLocationUpdates
+        # stays false. Wording matches the watch target's existing
+        # NSLocationWhenInUseUsageDescription (see the FaffWatch Watch App
+        # target further down this file) — same feature, same purpose,
+        # different device — for a consistent App Review story.
+        NSLocationWhenInUseUsageDescription: "Faff records your route during outdoor runs so you can see where you ran."
         # v3 fonts registration · TTFs live in Faff/Faff/Resources/Fonts.
         # Must match the actual filenames in Copy Bundle Resources or
         # iOS skips them at registration time.
