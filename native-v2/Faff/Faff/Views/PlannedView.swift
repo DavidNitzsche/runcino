@@ -95,8 +95,7 @@ struct PlannedView: View {
             // behind the floating tab bar anyway. Doubly broken.
             //
             // The page is now preview-only · reached from TrainView
-            // (tap a day in the plan) and WeekAheadView (tap a future
-            // day in AT A GLANCE). Today no longer routes here ·
+            // (tap a day in the plan). Today no longer routes here ·
             // David's feedback: the pre-run sheet already shows
             // identical content, so a separate page was redundant.
             // Live runs launch from Today's sheet directly into

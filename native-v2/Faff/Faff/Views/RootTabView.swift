@@ -53,7 +53,6 @@ enum FaffRoute: Hashable {
     case watchMirror
     case treadmill
     case raceDay(slug: String)
-    case weekAhead
     case settings
     case shoes
     case pro
@@ -343,7 +342,7 @@ struct RootTabView: View {
                 tabStack(.today) { TodayView(onProfile: { pushProfile = true }, selectedTab: $selected) }
             }
             if visitedTabs.contains(.train) {
-                tabStack(.train) { TrainView(onProfile: { pushProfile = true }) }
+                tabStack(.train) { TrainView(onProfile: { pushProfile = true }, selectedTab: $selected) }
             }
             if visitedTabs.contains(.health) {
                 tabStack(.health) { HealthView(onProfile: { pushProfile = true }) }
@@ -379,7 +378,6 @@ struct RootTabView: View {
         case .watchMirror:         WatchMirrorView().navigationBarHidden(true)
         case .treadmill:           TreadmillView().navigationBarHidden(true)
         case .raceDay(let slug):   RaceDayView(raceSlug: slug).navigationBarHidden(true)
-        case .weekAhead:           WeekAheadView().navigationBarHidden(true)
         case .settings:            SettingsView().navigationBarHidden(true)
         case .shoes:               ShoesView().navigationBarHidden(true)
         case .pro:                 ProView().navigationBarHidden(true)

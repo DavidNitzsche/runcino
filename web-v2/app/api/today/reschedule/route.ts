@@ -108,8 +108,19 @@ export async function POST(req: NextRequest) {
   const source = await primaryRun(plan.id, fromDate);
   if (!source) return NextResponse.json({ error: 'no_run_on_source' }, { status: 404 });
 
+  // Race day is the plan's anchor row — it must never move and must never
+  // be displaced by a reschedule (P2-17, audit 2026-07-06). Losing this row
+  // drops race-day mode, the race-day watch payload, and the plan's race
+  // anchor two days before the goal race.
+  if (source.type === 'race') {
+    return NextResponse.json({ error: 'race_day_immovable' }, { status: 400 });
+  }
+
   // Target conflict check.
   const target = await primaryRun(plan.id, toDate);
+  if (target && target.type === 'race') {
+    return NextResponse.json({ error: 'race_day_protected' }, { status: 400 });
+  }
   if (target && !body?.replace) {
     return NextResponse.json({
       conflict: true,

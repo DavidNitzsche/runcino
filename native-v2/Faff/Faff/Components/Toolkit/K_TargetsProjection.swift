@@ -89,6 +89,7 @@ private struct SpinePhase {
 /// These are render weights, NOT real week counts.
 private let kPhaseDisplayWeight: [TrainPhase: Double] = [
     .base: 3.0, .build: 2.5, .peak: 1.7, .taper: 1.5, .race: 1.7,
+    .maintenance: 2.5, .recovery: 1.5,
 ]
 
 // MARK: - Status icon (check / alert in a circle)
@@ -504,6 +505,10 @@ struct TargetsProjectionPanel: View {
             return "Volume drops, intensity holds. Banking the fitness so you're sharp by race morning."
         case .race:
             return "Light activation keeps the legs fresh. The work is done."
+        case .maintenance:
+            return "Easy miles hold the aerobic base. One quality session a week keeps the edge."
+        case .recovery:
+            return "Easy running only while the body absorbs the race. Volume comes back gradually."
         }
     }
 

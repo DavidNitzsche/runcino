@@ -501,10 +501,14 @@ struct FaffMesh: Equatable {
     /// meshes as the user scrubs.
     static func forPhase(_ p: TrainPhase) -> FaffMesh {
         switch p {
-        case .base:  return forView(.health)
+        // Maintenance is an aerobic hold — same cool mesh as base.
+        case .base, .maintenance:
+            return forView(.health)
         case .build: return forView(.train)
         case .peak:  return FaffMesh(c1: 0xFFA566, c2: 0xFC4D64, c3: 0xEC2F54, c4: 0xC01D48, c5: 0xA8163F, base: 0x4E0A22)
-        case .taper: return FaffMesh(c1: 0x8EF0B0, c2: 0x34C194, c3: 0x1F8A68, c4: 0x128A64, c5: 0x137259, base: 0x06382E)
+        // Recovery shares the taper green — both are absorb/adapt blocks.
+        case .taper, .recovery:
+            return FaffMesh(c1: 0x8EF0B0, c2: 0x34C194, c3: 0x1F8A68, c4: 0x128A64, c5: 0x137259, base: 0x06382E)
         case .race:  return forView(.race)
         }
     }
@@ -572,25 +576,37 @@ enum TimeOfDay: String, CaseIterable, Hashable {
 }
 
 enum TrainPhase: String, CaseIterable, Hashable {
-    case base, build, peak, taper, race
+    case base, build, peak, taper, race, maintenance, recovery
 
     var label: String {
         switch self {
-        case .base:  return "BASE"
-        case .build: return "BUILD"
-        case .peak:  return "PEAK"
-        case .taper: return "TAPER"
-        case .race:  return "RACE"
+        case .base:        return "BASE"
+        case .build:       return "BUILD"
+        case .peak:        return "PEAK"
+        case .taper:       return "TAPER"
+        case .race:        return "RACE"
+        case .maintenance: return "MAINTENANCE"
+        case .recovery:    return "RECOVERY"
         }
     }
 
-    // "quality" and "race-specific" are server-side aliases.
+    // "quality" and "race-specific" are server-side aliases. MAINTENANCE
+    // (no-goal hold) and RECOVERY (post-race) are real plan modes the
+    // generator writes — mapping them to .base lied to the runner
+    // (P2-16, audit 2026-07-06). Goal-mode plans label their single
+    // phase "<distance> BUILD" ("5K BUILD", "1 MILE BUILD"), so any key
+    // containing "build" resolves to .build. "injury-return"
+    // (injury-builder.ts) reads as recovery.
     init(phaseKey key: String) {
         let k = key.lowercased()
         switch k {
         case "quality":                        self = .build
         case "race-specific", "race_specific": self = .peak
-        default:                               self = TrainPhase(rawValue: k) ?? .base
+        case "maintenance":                    self = .maintenance
+        case "recovery", "injury-return":      self = .recovery
+        default:
+            if k.contains("build") { self = .build }
+            else { self = TrainPhase(rawValue: k) ?? .base }
         }
     }
 }
