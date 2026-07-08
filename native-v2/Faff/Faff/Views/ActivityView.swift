@@ -193,7 +193,7 @@ struct ActivityView: View {
             .padding(.top, 18)
 
             StatRow(stats: [
-                Stat(value: "\(log?.totalRuns ?? 0)", key: "RUNS"),
+                Stat(value: "\(rangeRuns.count)", key: "RUNS"),
                 Stat(value: totalTimeLabel,           key: "TIME"),
                 Stat(value: totalElevLabel,           key: "ELEV GAIN")
             ], valueFont: 20, keyColor: Theme.txt.opacity(0.55))
@@ -212,9 +212,15 @@ struct ActivityView: View {
             SectionLabel(title: "Consistency")
                 .padding(.horizontal, 22).padding(.top, 26)
             HStack {
-                Text("21-DAY RUN STREAK")
-                    .font(.body(12, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0xF3AD38))
+                // Real streak from /api/streak (the same payload the FEED
+                // tab's StreakPill reads) · was a hardcoded "21-DAY RUN
+                // STREAK" string shown to every runner. Hidden at 0 — no
+                // streak, no claim.
+                if let s = streak, s.current > 0 {
+                    Text("\(s.current)-DAY RUN STREAK")
+                        .font(.body(12, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0xF3AD38))
+                }
                 Spacer()
                 Text("LAST 18 WEEKS")
                     .font(.body(10, weight: .semibold))
@@ -227,7 +233,10 @@ struct ActivityView: View {
                 .padding(.horizontal, 22).padding(.top, 14)
 
             HStack {
-                ForEach(["JAN","FEB","MAR","APR","MAY"], id: \.self) { m in
+                // Month axis derived from the heatmap's real 18-week window
+                // · was hardcoded JAN–MAY, misdating every cell for most of
+                // the year. Consecutive duplicate months render blank.
+                ForEach(Array(heatmapMonthLabels.enumerated()), id: \.offset) { _, m in
                     Text(m)
                         .font(.body(9, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.4))
@@ -243,12 +252,58 @@ struct ActivityView: View {
                     .padding(.top, 8)
             }
         }
+        .onAppear { ensureFullHistoryForStats() }
+    }
+
+    /// True when the fetched log likely hit the fetch limit — the server
+    /// returned exactly as many runs as asked for, so earlier history
+    /// probably exists beyond the window. Drives the honest ALL TIME
+    /// label and the stats-tab history top-up.
+    private var logTruncated: Bool {
+        (log?.weeks ?? []).flatMap { $0.runs }.count >= fetchLimit
+    }
+
+    /// STATS totals were silently computed over the 200 most recent runs
+    /// while labeled ALL TIME. On first stats render with a truncated log,
+    /// raise the fetch window to the same 1000-run ceiling the feed's
+    /// load-more uses. Beyond that, rangeLabel degrades honestly to
+    /// "LAST N RUNS" instead of claiming ALL TIME.
+    private func ensureFullHistoryForStats() {
+        guard logTruncated, fetchLimit < 1000 else { return }
+        fetchLimit = 1000
+        Task { await reload() }
+    }
+
+    /// Month labels under the heatmap · 5 equal-width slots sampled across
+    /// the same 18-week window derivedHeatmap draws. A month spanning two
+    /// adjacent slots labels only the first (blank repeat).
+    private var heatmapMonthLabels: [String] {
+        let cal = Calendar.current
+        let today = Date()
+        guard let start = cal.date(byAdding: .day, value: -(18 * 7 - 1), to: today) else { return [] }
+        let span = today.timeIntervalSince(start)
+        let f = DateFormatter(); f.dateFormat = "MMM"
+        var labels: [String] = []
+        var lastMonth = ""
+        for i in 0..<5 {
+            let frac = (Double(i) + 0.5) / 5.0
+            let m = f.string(from: start.addingTimeInterval(span * frac)).uppercased()
+            labels.append(m == lastMonth ? "" : m)
+            lastMonth = m
+        }
+        return labels
     }
 
     private var rangePicker: some View {
         HStack(spacing: 7) {
             ForEach(Range.allCases, id: \.self) { r in
-                Button { withAnimation(Theme.Motion.smooth) { range = r } } label: {
+                Button {
+                    withAnimation(Theme.Motion.smooth) { range = r }
+                    // Late-arriving log (slow first fetch) can leave the
+                    // onAppear top-up a no-op · re-check when the runner
+                    // reaches for the widest window.
+                    if r == .all { ensureFullHistoryForStats() }
+                } label: {
                     Text(r.label)
                         .font(.body(11, weight: .extraBold))
                         .tracking(1)
@@ -271,10 +326,15 @@ struct ActivityView: View {
     }
 
     private var rangeLabel: String {
+        // Rolling windows named honestly · rangeCutoff is a -30/-365 day
+        // cutoff, not a calendar month/year, so "THIS MONTH" mislabeled
+        // early-month numbers inflated by the prior month's tail. ALL TIME
+        // degrades to "LAST N RUNS" when the log is still truncated at the
+        // fetch ceiling (runners with >1000 runs).
         switch range {
-        case .month: return "THIS MONTH"
-        case .year:  return "THIS YEAR"
-        case .all:   return "ALL TIME"
+        case .month: return "LAST 30 DAYS"
+        case .year:  return "LAST 12 MONTHS"
+        case .all:   return logTruncated ? "LAST \(rangeRuns.count) RUNS" : "ALL TIME"
         }
     }
 

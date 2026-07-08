@@ -26,12 +26,19 @@ struct RunDetailView: View {
     /// HR zone method · %MHR (default) or LTHR (Friel-anchored). Local
     /// toggle; the ZoneBar palette stays the same. Toolkit · Family I.
     @State private var zoneMethod: ZoneMethod = .pctMhr
+    /// Shoe picker · mirrors TodayPostRunBody's assign flow. localShoeId
+    /// overlays the fetched shoe_id after a pick so the row updates
+    /// without a refetch.
+    @State private var shoeSheetOpen = false
+    @State private var localShoeId: Int? = nil
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        let eff = effort
-        let mesh = eff.mesh
+        // Neutral mesh until the run loads · the old `run?.type ?? "tempo"`
+        // fallback painted every loading screen (and every untyped run)
+        // hot tempo-red.
+        let mesh = run == nil ? FaffMesh.neutral : effort.mesh
         ZStack {
             FaffMeshView(mesh: mesh)
                 .animation(Theme.Motion.mesh, value: mesh)
@@ -114,8 +121,13 @@ struct RunDetailView: View {
                     if !splitBars.isEmpty {
                         section(title: "MILE SPLITS", right: splitsRightLabel) {
                             VStack(alignment: .leading, spacing: 8) {
+                                // Pace-mode bars plot inverted (800 − secs)
+                                // so faster = taller · the target must live
+                                // on the SAME inverted axis. Raw seconds put
+                                // the dashed line off-chart (or floating over
+                                // the section above) on every run.
                                 MileBars(bars: splitBars,
-                                         target: hrSplitMode ? run?.hr_avg.map(Double.init) : Double(splitTargetSecs),
+                                         target: hrSplitMode ? run?.hr_avg.map(Double.init) : Double(800 - splitTargetSecs),
                                          readout: $splitReadout)
                                     .frame(height: 150)
                                 Text(splitReadout ?? (hrSplitMode
@@ -186,11 +198,12 @@ struct RunDetailView: View {
                         section(title: "TIME IN ZONE", right: timeInZoneLabel) {
                             VStack(alignment: .leading, spacing: 12) {
                                 // ZoneMethodToggle · %MHR / LTHR switch.
-                                // When the backend ships hr_zones_from_lthr,
-                                // the toggle is meaningful (the two methods
-                                // can differ 5-10 bpm). Otherwise it stays
-                                // visible but locked to %MHR. Toolkit · Family I.
-                                if run?.hr_zones_from_lthr != nil {
+                                // Only rendered when the LTHR recompute has
+                                // enough data to actually differ (per-split
+                                // HR + LTHR bands) · a toggle that switches
+                                // the label but not the chart is worse than
+                                // no toggle. Toolkit · Family I.
+                                if lthrZonePcts != nil {
                                     HStack {
                                         Spacer()
                                         ZoneMethodToggle(method: $zoneMethod)
@@ -277,6 +290,18 @@ struct RunDetailView: View {
             .refreshable { await load() }
         }
         .task { await load() }
+        .sheet(isPresented: $shoeSheetOpen) {
+            RunShoePickerSheet(
+                shoes: run?.shoes?.filter { $0.retired != true } ?? [],
+                currentShoeId: effectiveShoeId,
+                accent: effort.dot
+            ) { picked in
+                localShoeId = picked.id
+                Task { try? await API.assignShoeToRun(runId: runId, shoeId: picked.id) }
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     @State private var stravaPushState: StravaPushState = .idle
@@ -549,7 +574,13 @@ struct RunDetailView: View {
         // known. shoeShort and weatherTemp degrade gracefully to "—".
         GlassTile(padding: 6) {
             VStack(spacing: 0) {
-                detailRow("Shoes", shoeShort, chev: true)
+                // Chevron was dead · tapping now opens the shoe picker
+                // (same RunShoePickerSheet + PATCH flow TodayPostRunBody
+                // uses) so a wrong or missing assignment is fixable here.
+                Button { shoeSheetOpen = true } label: {
+                    detailRow("Shoes", shoeShort, chev: true)
+                }
+                .buttonStyle(.plain)
                 detailRow("Avg / Max HR", "\(hrAvg) / \(hrMax) bpm", chev: false)
                 detailRow("Avg cadence", "\(cadAvg) spm", chev: false)
                 detailRow("Weather", weatherTemp != "—" ? "\(weatherTemp)°F" : "—", chev: false, good: weatherTemp != "—")
@@ -592,7 +623,12 @@ struct RunDetailView: View {
 
     // MARK: - Data
 
-    private var effort: FaffEffort { FaffEffort.fromType(run?.type ?? "tempo") }
+    /// Planned-kind-first (matching hiwEffort) · untyped runs fall to the
+    /// neutral .easy default instead of the old hardcoded "tempo" fallback
+    /// that gave every manual / HK jog a hot red page with pace-led splits.
+    private var effort: FaffEffort {
+        FaffEffort.fromType(run?.planned_spec?.kind ?? run?.type)
+    }
 
     /// Effort for the per-type HOW IT WENT panel + the hero work-pace
     /// swap. Planned-kind-first · a watch run typed "Run" resolves to
@@ -695,11 +731,18 @@ struct RunDetailView: View {
     private var hrMax: String { run?.hr_max.map(String.init) ?? "—" }
     private var cadAvg: String { run?.cadence_avg.map(String.init) ?? "—" }
     private var weatherTemp: String { run?.temp_f.map { String(Int($0)) } ?? "—" }
+    /// The shoe ASSIGNED to this run (run.shoe_id), overridden locally after
+    /// a picker choice. The old read was `shoes.first` — but `shoes` is the
+    /// full non-retired inventory sorted preferred-first, so every run
+    /// showed the preferred shoe, and runs with no assignment fabricated one.
+    private var effectiveShoeId: Int? { localShoeId ?? run?.shoe_id }
+    private var assignedShoe: RunDetailShoe? {
+        guard let id = effectiveShoeId else { return nil }
+        return run?.shoes?.first { $0.id == id }
+    }
     private var shoeShort: String {
-        if let n = run?.shoes?.first?.displayName {
-            return n.replacingOccurrences(of: "ASICS ", with: "").replacingOccurrences(of: "Nike ", with: "")
-        }
-        return "—"
+        guard let n = assignedShoe?.displayName, !n.isEmpty else { return "—" }
+        return n.replacingOccurrences(of: "ASICS ", with: "").replacingOccurrences(of: "Nike ", with: "")
     }
 
     /// Real mile splits from the run · empty when none. Was falling back
@@ -740,9 +783,20 @@ struct RunDetailView: View {
                 )
             }
         }
+        // PACE-PRIMARY · color each bar relative to THIS run's own pace
+        // distribution (10th–90th percentile ramp, same scale the route
+        // map's pace gradient uses). The old fixed ~6:35/mi thresholds
+        // rendered a uniform wall for anyone not running ~6:30-7:00 and
+        // screamed max-red for anyone faster. Highlight = the run's
+        // fastest split (matches the FASTEST header label).
+        let timedSecs = splits.compactMap { paceToSeconds($0.pace) }.sorted()
+        let rampLo = timedSecs.isEmpty ? 0.0 : Double(timedSecs[Int(Double(timedSecs.count - 1) * 0.1)])
+        let rampHi = timedSecs.isEmpty ? 1.0 : Double(timedSecs[Int(Double(timedSecs.count - 1) * 0.9)])
+        let rampSpan = max(1.0, rampHi - rampLo)
+        let fastestSecs = timedSecs.first
         return splits.map { s in
             let secs = paceToSeconds(s.pace) ?? 400
-            let color = colorForSplit(secs: secs)
+            let color = Color(uiColor: RouteMapView.rampColor((Double(secs) - rampLo) / rampSpan))
             // Sub-label · HR plus optional elev delta. The +N ft / -N ft
             // tick explains why a slow split was slow without needing the
             // full elevation profile. Decoded already on every RunSplit ·
@@ -757,7 +811,7 @@ struct RunDetailView: View {
                 label: s.pace ?? "-",
                 subLabel: parts.isEmpty ? nil : parts.joined(separator: " · "),
                 color: color,
-                isHighlight: secs < 410
+                isHighlight: paceToSeconds(s.pace) != nil && paceToSeconds(s.pace) == fastestSecs
             )
         }
     }
@@ -825,15 +879,6 @@ struct RunDetailView: View {
     // rendered whenever the actual run had no splits. Now the splits
     // section hides entirely when `splitBars.isEmpty`.
 
-    private func colorForSplit(secs: Int) -> Color {
-        switch secs {
-        case ..<395: return Color(hex: 0xD62D1C)
-        case 395..<410: return Color(hex: 0xDB3620)
-        case 410..<420: return Color(hex: 0xF97B3F)
-        default: return Color(hex: 0xFFB45A)
-        }
-    }
-
     private func paceToSeconds(_ s: String?) -> Int? {
         guard let s else { return nil }
         let parts = s.split(separator: ":")
@@ -841,10 +886,44 @@ struct RunDetailView: View {
         return m * 60 + sec
     }
 
+    /// Zone distribution honoring the method toggle · %MHR shows the
+    /// server-computed hrZonePcts; LTHR recomputes from per-split HR
+    /// against the runner's LTHR bands (Wave 1 lib/training/zones.ts via
+    /// hr_zones_from_lthr). The toggle only renders when lthrZonePcts is
+    /// non-nil, so the LTHR branch never silently falls back.
+    private var zonePcts: [ZonePct]? {
+        zoneMethod == .lthr ? (lthrZonePcts ?? mhrZonePcts) : mhrZonePcts
+    }
+
+    /// Time-in-zone recomputed on the LTHR axis · each split's avg HR is
+    /// bucketed via the run's LTHR bands and weighted by that split's
+    /// duration (its pace seconds ≈ seconds for the mile). Nil when the
+    /// run has no per-split HR or no LTHR bands — honest absence, the
+    /// toggle hides.
+    private var lthrZonePcts: [ZonePct]? {
+        guard (run?.hr_zones_from_lthr?.ranges?.count ?? 0) >= 2,
+              let splits = run?.splits,
+              splits.contains(where: { ($0.hr ?? 0) > 0 })
+        else { return nil }
+        var zoneSecs = [Double](repeating: 0, count: 5)
+        for s in splits {
+            guard let hr = s.hr, hr > 0 else { continue }
+            let w = Double(paceToSeconds(s.pace) ?? 0)
+            zoneSecs[min(4, max(0, hrZoneIndex(hr)))] += w > 0 ? w : 1
+        }
+        let total = zoneSecs.reduce(0, +)
+        guard total > 0 else { return nil }
+        let mins = max(1, (paceTimeSeconds(run?.time_moving) ?? Int(total)) / 60)
+        return (1...5).map { z in
+            let pct = zoneSecs[z - 1] / total
+            return ZonePct(zone: z, pct: pct, timeLabel: "\(Int(round(pct * Double(mins))))m")
+        }
+    }
+
     /// Real zone distribution from the run, or nil if HR-zone data wasn't
     /// computed for this source (e.g. raw Apple Watch HR without LTHR ranges).
     /// Don't fall back to demo data · "pull in what you can" means honest gaps.
-    private var zonePcts: [ZonePct]? {
+    private var mhrZonePcts: [ZonePct]? {
         guard let z = run?.hrZonePcts else { return nil }
         let t = z.z1 + z.z2 + z.z3 + z.z4 + z.z5
         guard t > 0 else { return nil }
