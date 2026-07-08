@@ -148,9 +148,15 @@ export async function GET(req: NextRequest) {
   // the primary RUNNING workout per day (strength/cross fold out), then emit
   // EXACTLY 7 contiguous days from weekStart so the strip is always 7 pills,
   // in order, no dupes, no gaps.
+  // 2026-07-07 · today-composition · P1-4 · race_week_tuneup (the taper-week
+  // quality day — see generate.ts) had no entry here, so `prioOf` fell to
+  // the default of 2 (below easy's 3) — on a double-booked day the strip
+  // silently showed the easy pill and hid the tune-up. It's a genuine
+  // quality/sharpening session; priority matches tempo/threshold.
   const TYPE_PRIORITY: Record<string, number> = {
     race: 6, long: 5,
     intervals: 4, tempo: 4, threshold: 4, quality: 4, repetition: 4, fartlek: 4,
+    race_week_tuneup: 4,
     easy: 3, recovery: 3,
     cross: 2, xt: 2,
     strength: 1,
@@ -159,6 +165,14 @@ export async function GET(req: NextRequest) {
   const prioOf = (t: string) => TYPE_PRIORITY[t] ?? 2;
   const bestByDate = new Map<string, any>();
   let anyStrengthByDate = new Map<string, boolean>();
+  // 2026-07-07 · today-composition · P2-11 · collect EVERY running-type row
+  // per date (strength/cross fold out — those already have their own
+  // hasStrength signal and aren't a "double-booked run day" the way two
+  // easy/tempo/long rows sharing a date are). The collapse below picks one
+  // row to show as the pill; runningRowsByDate lets the response say
+  // "there's a second one you're not seeing" without silently hiding it.
+  const NON_RUN_TYPES = new Set(['strength', 'cross', 'xt', 'rest']);
+  const runningRowsByDate = new Map<string, typeof rows>();
   for (const r of rows) {
     if (r.type === 'strength') anyStrengthByDate.set(r.date_iso, true);
     const prev = bestByDate.get(r.date_iso);
@@ -166,6 +180,11 @@ export async function GET(req: NextRequest) {
         || prioOf(r.type) > prioOf(prev.type)
         || (prioOf(r.type) === prioOf(prev.type) && Number(r.distance_mi) > Number(prev.distance_mi))) {
       bestByDate.set(r.date_iso, r);
+    }
+    if (!NON_RUN_TYPES.has(r.type)) {
+      const arr = runningRowsByDate.get(r.date_iso) ?? [];
+      arr.push(r);
+      runningRowsByDate.set(r.date_iso, arr);
     }
   }
 
@@ -180,6 +199,16 @@ export async function GET(req: NextRequest) {
     const r = bestByDate.get(dISO);
     const actual = actualByDate.get(dISO);
     const dow = new Date(dISO + 'T12:00:00Z').getUTCDay();
+    // 2026-07-07 · P2-11 · the collapse above picks ONE running row to show
+    // as the pill (bestByDate); when a date carries 2+, the rest are
+    // otherwise invisible on every client surface even though they still
+    // count toward weekly totals (build-workout.ts sums all rows). Surface
+    // the runner-up so clients can at least badge the day instead of
+    // silently dropping it.
+    const runningRows = runningRowsByDate.get(dISO) ?? [];
+    const secondary = runningRows.length > 1
+      ? runningRows.find((row) => row !== r) ?? null
+      : null;
     return {
       date_iso: dISO,
       dow,
@@ -198,6 +227,13 @@ export async function GET(req: NextRequest) {
       // 2026-06-20 · a run day that also carries a strength session, so the
       // strip can mark it without a second pill.
       hasStrength: anyStrengthByDate.get(dISO) === true && (r?.type !== 'strength'),
+      // 2026-07-07 · P2-11 · the SECOND running-type row on a double-booked
+      // date (e.g. an adapter-collided easy + long), or null when the date
+      // carries at most one. Minimal shape — just enough for a client to
+      // badge the day and show what the collapse is hiding.
+      secondaryRun: secondary
+        ? { type: secondary.type, sub_label: secondary.sub_label ?? null, distance_mi: Number(secondary.distance_mi) || 0 }
+        : null,
     };
   });
 

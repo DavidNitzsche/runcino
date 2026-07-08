@@ -385,12 +385,22 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
 
     /// Map a backend workout `type` string to an effort. Mirrors the web
     /// classification.
+    ///
+    /// 2026-07-07 · today-composition · audit P1-4: `race_week_tuneup` (the
+    /// generator's taper-week quality day — race-pace reps, sharpening
+    /// stimulus, see web-v2/lib/plan/generate.ts) had no case here and fell
+    /// through to `.easy`, so the 88pt hero, the week-strip dot, and
+    /// nextHardLabel's hard-day switch all rendered/skipped it as a green
+    /// easy run while the step list underneath showed race-pace reps.
+    /// Maps to `.tempo` — same quality-day family (threshold/race-pace
+    /// intensity) as `tempo`/`threshold`, distinct from `.easy`.
     static func fromType(_ raw: String?) -> FaffEffort {
         switch (raw ?? "").lowercased() {
         case "easy", "shakeout":                   return .easy
         case "recovery":                           return .recovery
         case "long":                               return .long
-        case "tempo", "threshold", "progression":  return .tempo
+        case "tempo", "threshold", "progression",
+             "race_week_tuneup":                   return .tempo
         case "intervals", "vo2", "vo2max",
              "fartlek", "track", "quality":        return .intervals
         case "race", "race_a", "race_b", "race_c": return .race

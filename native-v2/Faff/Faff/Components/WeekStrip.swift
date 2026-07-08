@@ -27,6 +27,12 @@ struct WeekStripDay: Identifiable, Hashable {
     /// this week · the underline shows yellow ("paused") so the week isn't
     /// blank when recovery is low.
     var strengthPaused: Bool = false
+    /// 2026-07-07 · today-composition · P2-11 · true when PlanDay carries a
+    /// secondaryRun — the date is double-booked (e.g. an adapter-collision
+    /// easy + long on the same day) and this pill is hiding a second run.
+    /// Renders a small second dot beside the primary effort dot so the day
+    /// isn't silently showing one workout when two exist.
+    var hasSecondaryRun: Bool = false
 }
 
 struct WeekStrip: View {
@@ -99,33 +105,44 @@ struct WeekStrip: View {
                             .offset(y: 2)
                     }
                 }
-            if d.effort == .rest {
-                Capsule()
-                    .fill(Color.white.opacity(0.5))
-                    .frame(width: 9, height: 2)
-            } else if d.isSkipped {
-                // Skipped · a muted grey dot in place of the live effort color
-                // (David's pick — de-emphasize, don't flag with a slash). Same
-                // 6pt dot as a normal day so only the colour reads as "off".
-                Circle()
-                    .fill(Color.white.opacity(0.38))
-                    .frame(width: 6, height: 6)
-            } else if d.isDone {
-                ZStack {
+            // 2026-07-07 · P2-11 · double-booked days get a small second dot
+            // beside the primary one — honest signal that this pill is
+            // hiding a second run, without restructuring any of the
+            // existing effort/skip/done branches below.
+            HStack(spacing: 3) {
+                if d.effort == .rest {
+                    Capsule()
+                        .fill(Color.white.opacity(0.5))
+                        .frame(width: 9, height: 2)
+                } else if d.isSkipped {
+                    // Skipped · a muted grey dot in place of the live effort color
+                    // (David's pick — de-emphasize, don't flag with a slash). Same
+                    // 6pt dot as a normal day so only the colour reads as "off".
                     Circle()
-                        .fill(Theme.green.opacity(0.18))
-                        .frame(width: 14, height: 14)
+                        .fill(Color.white.opacity(0.38))
+                        .frame(width: 6, height: 6)
+                } else if d.isDone {
+                    ZStack {
+                        Circle()
+                            .fill(Theme.green.opacity(0.18))
+                            .frame(width: 14, height: 14)
+                        Circle()
+                            .stroke(Theme.Accent.mintGlow.opacity(0.6), lineWidth: 1)
+                            .frame(width: 14, height: 14)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 7, weight: .black))
+                            .foregroundStyle(Theme.Accent.mintReady)
+                    }
+                } else {
                     Circle()
-                        .stroke(Theme.Accent.mintGlow.opacity(0.6), lineWidth: 1)
-                        .frame(width: 14, height: 14)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 7, weight: .black))
-                        .foregroundStyle(Theme.Accent.mintReady)
+                        .fill(d.effort.dot)
+                        .frame(width: 6, height: 6)
                 }
-            } else {
-                Circle()
-                    .fill(d.effort.dot)
-                    .frame(width: 6, height: 6)
+                if d.hasSecondaryRun {
+                    Circle()
+                        .fill(Color.white.opacity(0.55))
+                        .frame(width: 4, height: 4)
+                }
             }
         }
         .frame(width: cellWidth)

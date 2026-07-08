@@ -1,9 +1,8 @@
 //
 //  TodayPreRunBodyV3.swift   (2026-06-01 round 7 · design package #3)
 //
-//  Pre-run sheet body for the redesigned Today screen. Replaces the
-//  generic prescription/conditions stack that shipped in v2. Mirrors
-//  the design handoff exactly:
+//  Pre-run DETAIL sheet · shoe picker, fueling, conditions grid, and
+//  session breakdown. Mirrors the design handoff exactly:
 //
 //    1. Header eyebrow (MON · HARD · TODAY) + Oswald title
 //    2. Stats trio · Distance / Target pace / Est time
@@ -16,6 +15,21 @@
 //
 //  Reference: /Users/david/Downloads/design_handoff_today_redesign 3/
 //             screenshots/02-today-prerun-detail.png
+//
+//  2026-07-07 · today-composition · P2-10 · this view had been fully
+//  built but never mounted anywhere (preRunSheetContent, the wrapper
+//  that assembles it, had zero callers) — the shoe picker, fueling
+//  tile, and full conditions grid it renders were dead code with real
+//  backend support behind them. Now presented as a `.sheet(isPresented:
+//  $showPreRunDetail)` from the "Full plan · shoe · fuel" tap
+//  affordance in TodayView.runHeroDetail — this is a DETAIL surface,
+//  not the primary Today canvas, so it keeps its own self-contained
+//  light sheet chrome rather than the dark mesh. Retinted its
+//  `.background` fills from raw `Color.white` to the app's established
+//  cream sheet token (0xFAF7F1 · DragSheet's own default bodyBackground,
+//  also used by TodayShoePicker) so a light DETAIL sheet over the dark
+//  canvas reads consistent with the rest of the app's sheet vocabulary
+//  instead of introducing a second, slightly different "white" surface.
 //
 
 import SwiftUI
@@ -92,7 +106,7 @@ struct TodayPreRunBodyV3: View {
         }
         .padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(Color(hex: 0xFAF7F1))
         .overlay(separator, alignment: .bottom)
     }
 
@@ -182,7 +196,7 @@ struct TodayPreRunBodyV3: View {
             statColumn(key: "EST TIME", value: estTimeText, unit: "min")
         }
         .padding(.vertical, 18)
-        .background(Color.white)
+        .background(Color(hex: 0xFAF7F1))
         .overlay(separator, alignment: .bottom)
     }
 
@@ -290,7 +304,7 @@ struct TodayPreRunBodyV3: View {
             .padding(.top, 4)
         }
         .padding(.horizontal, 24).padding(.vertical, 20)
-        .background(Color.white)
+        .background(Color(hex: 0xFAF7F1))
         .overlay(separator, alignment: .bottom)
     }
 
@@ -338,7 +352,7 @@ struct TodayPreRunBodyV3: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .padding(.horizontal, 24).padding(.vertical, 20)
-        .background(Color.white)
+        .background(Color(hex: 0xFAF7F1))
         .overlay(separator, alignment: .bottom)
     }
 
@@ -362,7 +376,7 @@ struct TodayPreRunBodyV3: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(Color(hex: 0xFAF7F1))
         if isPicker, let onTap {
             Button(action: onTap) { inner }.buttonStyle(.plain)
         } else {
@@ -448,7 +462,7 @@ struct TodayPreRunBodyV3: View {
                 }
             }
             .padding(.horizontal, 24).padding(.vertical, 20)
-            .background(Color.white)
+            .background(Color(hex: 0xFAF7F1))
             .overlay(separator, alignment: .bottom)
         }
     }
@@ -506,7 +520,7 @@ struct TodayPreRunBodyV3: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
-            .background(Color.white)
+            .background(Color(hex: 0xFAF7F1))
             .overlay(separator, alignment: .bottom)
         }
     }
@@ -580,7 +594,7 @@ struct TodayPreRunBodyV3: View {
             .padding(.top, 6)
         }
         .padding(.horizontal, 24).padding(.vertical, 20)
-        .background(Color.white)
+        .background(Color(hex: 0xFAF7F1))
         .overlay(separator, alignment: .bottom)
     }
 
@@ -695,7 +709,7 @@ struct TodayPreRunBodyV3: View {
             .padding(.vertical, 18)
         }
         .buttonStyle(.plain)
-        .background(Color.white)
+        .background(Color(hex: 0xFAF7F1))
     }
 
     // MARK: Helpers
