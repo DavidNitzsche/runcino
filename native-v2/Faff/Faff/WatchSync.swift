@@ -26,6 +26,64 @@ final class WatchSync: NSObject, ObservableObject {
 
     private var pendingContext: [String: Any]?
 
+    // MARK: Readiness → watch glance (P1-30 · 2026-07-06)
+    //
+    // The watch home TabView carries a readiness glance (ReadinessGlanceView,
+    // fed by PhoneSync.apply(payload["readiness"])) — but nothing on the
+    // iPhone ever sent that key, so the glance was permanently empty on every
+    // real device. The iPhone shapes /api/readiness into the WatchReadiness
+    // JSON the watch decodes and rides it on every context push and
+    // sendMessage reply.
+
+    /// Last encoded readiness payload — reused when /api/readiness is
+    /// transiently down and spliced into sendMessage replies.
+    private var lastReadinessPayload: Data?
+    /// Last full applicationContext sent — pushReadiness merges into it so a
+    /// readiness-only update can't clobber the workout the watch would
+    /// otherwise read from receivedApplicationContext on its next launch.
+    private var lastContext: [String: Any]?
+
+    /// Shape a ReadinessSnapshot (/api/readiness) into the JSON the watch's
+    /// WatchReadiness decoder expects. `state` / `label` / `recommendation`
+    /// are non-optional on the watch decoder, so they are always present.
+    static func readinessPayload(from snap: ReadinessSnapshot) -> Data? {
+        // /api/readiness bands: sharp | ready | moderate | pull-back | unknown.
+        // Glance grammar: green (good) / yellow (hold) / red (back off).
+        let state: String
+        switch snap.band {
+        case "sharp", "ready": state = "green"
+        case "moderate":       state = "yellow"
+        case "pull-back":      state = "red"
+        default:               state = "yellow" // unknown → score nil → empty state
+        }
+        var dict: [String: Any] = [
+            "state": state,
+            "label": snap.label ?? snap.band?.uppercased() ?? "",
+            "recommendation": snap.formLine ?? "",
+        ]
+        if let s = snap.score { dict["score"] = s }
+        else { dict["suppressReason"] = "no-data" }
+        if let hrv = snap.hrvCurrent { dict["hrvMs"] = hrv }
+        if let rhr = snap.rhrCurrent { dict["rhrBpm"] = rhr }
+        return try? JSONSerialization.data(withJSONObject: dict)
+    }
+
+    /// Immediate re-push when the iPhone refreshes its own readiness read
+    /// (TodayView.loadAll) — the wrist glance updates without waiting for the
+    /// next 60s-throttled /api/watch/today cycle.
+    func pushReadiness(_ snapshot: ReadinessSnapshot) {
+        guard let payload = Self.readinessPayload(from: snapshot) else { return }
+        // Skip when nothing changed — updateApplicationContext deliveries are
+        // system-throttled; don't spend one on a no-op.
+        if payload == lastReadinessPayload { return }
+        lastReadinessPayload = payload
+        var ctx = lastContext ?? [:]
+        if let t = TokenStore.shared.token { ctx["authToken"] = t }
+        ctx["readiness"] = payload
+        ctx["syncedAt"] = Date().timeIntervalSinceReferenceDate
+        sendContext(ctx)
+    }
+
     // Durable completion queue. The watch sends WatchCompletion via
     // transferUserInfo; POSTing can fail (no network, token refresh,
     // 5xx). We persist + retry until the server accepts.
@@ -89,6 +147,9 @@ final class WatchSync: NSObject, ObservableObject {
     // MARK: Push today's workout to the watch
 
     func pushTodayToWatch() async {
+        // Readiness fetch runs concurrently with the workout fetch — the
+        // glance payload rides the same context push (P1-30).
+        async let readinessSnap = (try? await API.fetchReadiness())
         do {
             let raw = try await API.fetchWatchTodayRaw()
             // Build applicationContext per WATCH_CONTRACT.md
@@ -114,7 +175,14 @@ final class WatchSync: NSObject, ObservableObject {
             } else if let msg = obj["message"] as? String {
                 ctx["noWorkout"] = msg
             }
-            // Readiness wires when §8.3 endpoint ships in P3.
+            // Readiness for the watch glance (P1-30). Fall back to the last
+            // good payload so a transient /api/readiness failure doesn't
+            // blank an already-lit glance.
+            if let snap = await readinessSnap,
+               let r = Self.readinessPayload(from: snap) {
+                lastReadinessPayload = r
+            }
+            if let r = lastReadinessPayload { ctx["readiness"] = r }
             sendContext(ctx)
         } catch {
             lastSyncStatus = "Watch fetch error: \(error.localizedDescription)"
@@ -122,6 +190,7 @@ final class WatchSync: NSObject, ObservableObject {
     }
 
     private func sendContext(_ context: [String: Any]) {
+        lastContext = context
         let session = WCSession.default
         guard WCSession.isSupported() else { return }
         guard session.activationState == .activated else {
@@ -359,6 +428,13 @@ extension WatchSync: WCSessionDelegate {
                     } else if let msg = obj["message"] as? String {
                         reply["noWorkout"] = msg
                     }
+                    // Readiness for the glance (P1-30). Cached payload keeps
+                    // the reply fast; a cold start (no cache yet) fetches once.
+                    if self.lastReadinessPayload == nil,
+                       let snap = try? await API.fetchReadiness() {
+                        self.lastReadinessPayload = Self.readinessPayload(from: snap)
+                    }
+                    if let r = self.lastReadinessPayload { reply["readiness"] = r }
                     replyHandler(reply)
                 } else {
                     replyHandler(["noWorkout": "No workout."])

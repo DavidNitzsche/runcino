@@ -30,13 +30,20 @@ import Combine
 
 // MARK: - Gradient helpers
 
-private func wash(_ hex: UInt32) -> AnyView {
-    AnyView(LinearGradient(colors: [Color(hex: hex), .black],
-                           startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+// Washes take a Faff.*Wash token (an alpha step of a locked hue) and fade it
+// over the true-black ground — no raw hexes (P2-61, brief v2 §1).
+private func wash(_ tint: Color) -> AnyView {
+    AnyView(ZStack {
+        Color.black
+        LinearGradient(colors: [tint, .clear], startPoint: .top, endPoint: .bottom)
+    }.ignoresSafeArea())
 }
-private func radial(_ hex: UInt32) -> AnyView {
-    AnyView(RadialGradient(colors: [Color(hex: hex), .black],
-                           center: .topLeading, startRadius: 0, endRadius: 230).ignoresSafeArea())
+private func radial(_ tint: Color) -> AnyView {
+    AnyView(ZStack {
+        Color.black
+        RadialGradient(colors: [tint, .clear],
+                       center: .topLeading, startRadius: 0, endRadius: 230)
+    }.ignoresSafeArea())
 }
 
 // =====================================================================
@@ -425,7 +432,7 @@ struct LivePauseFace: View {
     let elapsed: String         // "38:20"
     var onResume: () -> Void = {}
     var body: some View {
-        Screen(background: AnyView(Color(hex: 0x0A0D12).ignoresSafeArea())) {
+        Screen(background: AnyView(Color.black.overlay(Faff.pauseWash).ignoresSafeArea())) {
             GeometryReader { geo in
                 let h = geo.size.height
                 VStack(alignment: .leading, spacing: 0) {
@@ -442,7 +449,7 @@ struct LivePauseFace: View {
                     Button(action: onResume) {
                         Text("Resume")
                             .font(.custom("HelveticaNeue-Bold", size: h * 0.12))
-                            .foregroundStyle(Color(hex: 0x06210C))
+                            .foregroundStyle(Faff.onLive)
                             .frame(maxWidth: .infinity).padding(.vertical, h * 0.022)
                             .background(Capsule().fill(Faff.live))
                     }
@@ -482,7 +489,7 @@ private struct Takeover<Glyph: View>: View {
                 Text(big).foregroundStyle(bigColor).tightNumber(h * bigSize)
                     .frame(maxHeight: .infinity, alignment: .center)
                 Text(sub).font(.custom("HelveticaNeue-Bold", size: h * 0.10))
-                    .foregroundStyle(Color(hex: 0xCFD2D8))
+                    .foregroundStyle(Faff.inkDim)
                     .lineLimit(1).minimumScaleFactor(0.5)
                     .frame(maxHeight: .infinity, alignment: .bottom)
             }
@@ -513,7 +520,7 @@ struct GoFace: View {
             rows: [NumRow(target, .live)],
             topLabel: rep,
             topLabelColor: Faff.live,
-            faceBackground: Color(hex: 0x0C2A14)
+            faceBackground: Faff.liveWash
         )
     }
 }
@@ -534,7 +541,7 @@ struct GoFace: View {
 struct HeadsUpFace: View {
     let value: String   // "0.25" / "10s" / "0.03"
     var body: some View {
-        Screen(background: wash(0x3A2B08)) {
+        Screen(background: wash(Faff.goalWash)) {
             GeometryReader { geo in
                 let h = geo.size.height
                 // tightNumber auto-scales (minimumScaleFactor 0.25 + lineLimit 1)
@@ -568,7 +575,7 @@ struct PhaseChangeFace: View {
     let title: String   // "HURRICANE CLIMB"
     let sub: String     // "10:38/MI · HOLD EFFORT"
     var body: some View {
-        Screen(background: wash(0x3A2B08)) {
+        Screen(background: wash(Faff.goalWash)) {
             GeometryReader { geo in
                 let h = geo.size.height
                 Takeover(glyph: Image(systemName: "mountain.2.fill")
@@ -602,11 +609,11 @@ struct FuelFace: View {
                     rows: [NumRow("\(index) OF \(total)", .goal)],
                     topLabel: "FUEL",
                     topLabelColor: Faff.goal,
-                    faceBackground: Color(hex: 0x3A2B08)
+                    faceBackground: Faff.goalWash
                 )
                 Image(systemName: "chevron.compact.down")
                     .font(.system(size: h * 0.085, weight: .bold))
-                    .foregroundStyle(Color(hex: 0xCFD2D8).opacity(0.55))
+                    .foregroundStyle(Faff.inkDim.opacity(0.55))
                     .padding(.bottom, h * 0.035)
                     .allowsHitTesting(false)
             }
@@ -619,7 +626,7 @@ struct LandmarkFace: View {
     let big: String     // "BIXBY"
     let sub: String     // "0.3 mi ahead"
     var body: some View {
-        Screen(background: wash(0x06243F)) {
+        Screen(background: wash(Faff.distWash)) {
             GeometryReader { geo in
                 let h = geo.size.height
                 Takeover(glyph: Image(systemName: "diamond.fill")
@@ -637,11 +644,11 @@ struct MileSplitFace: View {
     let mile: String    // "MILE 7"
     let pace: String    // "8:42"
     var body: some View {
-        Screen(background: wash(0x11151C)) {
+        Screen(background: wash(Faff.grayWash)) {
             GeometryReader { geo in
                 let h = geo.size.height
                 VStack(spacing: h * 0.02) {
-                    Text(mile).foregroundStyle(Color(hex: 0xAAB0BF)).tightNumber(h * 0.26)
+                    Text(mile).foregroundStyle(Color.white.opacity(0.70)).tightNumber(h * 0.26)
                     Text(pace).foregroundStyle(Faff.live).tightNumber(h * 0.46)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -684,7 +691,7 @@ struct JustRunFace: View {
                                 .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
                                 .tracking(2)
                         }
-                        .foregroundStyle(Color(hex: 0x06210C))
+                        .foregroundStyle(Faff.onLive)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, h * 0.030)
                         .background(Capsule().fill(Faff.live))
@@ -759,7 +766,7 @@ struct LobbyFace: View {
                             .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
                             .tracking(2)
                     }
-                    .foregroundStyle(Color(hex: 0x06210C))
+                    .foregroundStyle(Faff.onLive)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, h * 0.022)
                     .background(Capsule().fill(Faff.live))
@@ -821,7 +828,7 @@ struct CompleteFace: View {
                 bottomLabel: verdict,
                 bottomLabelColor: verdictRole.color,
                 bottomReservation: 0.20,   // Done button area
-                faceBackground: Color(hex: 0x0C2A14)
+                faceBackground: Faff.liveWash
             )
             GeometryReader { geo in
                 let h = geo.size.height
@@ -834,7 +841,7 @@ struct CompleteFace: View {
                     Button(action: onDone) {
                         Text("Done")
                             .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
-                            .foregroundStyle(Color(hex: 0x06210C))
+                            .foregroundStyle(Faff.onLive)
                             .frame(maxWidth: .infinity).padding(.vertical, h * 0.016)
                             .background(Capsule().fill(Faff.live))
                     }

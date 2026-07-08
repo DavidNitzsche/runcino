@@ -3118,7 +3118,12 @@ struct TodayView: View {
                 self.loadState = .failed("Couldn't read today's plan.")
             }
             if let watch { self.workout = watch }
-            if let ready { self.readiness = ready }
+            if let ready {
+                self.readiness = ready
+                // P1-30 · mirror the fresh read to the watch glance so it
+                // updates without waiting for the next context-push cycle.
+                WatchSync.shared.pushReadiness(ready)
+            }
             if let brief { self.briefing = brief }
             if let prof { self.profile = prof; StravaConnection.set(prof.connections.strava.connected) }
             if let wx { self.weather = wx }

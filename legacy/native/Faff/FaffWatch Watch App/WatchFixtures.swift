@@ -403,7 +403,7 @@ private struct CruiseDecodeTestView: View {
                     Text("last     \(Self.result.lastPhaseType)")
                 }
                 .font(.custom("HelveticaNeue-Bold", size: h * 0.055))
-                .foregroundStyle(Color(hex: 0xCFD2D8))
+                .foregroundStyle(Faff.inkDim)
                 if let err = Self.result.error {
                     Text(err)
                         .font(.custom("HelveticaNeue", size: h * 0.045))
@@ -490,7 +490,7 @@ private struct LongFinishDecodeTestView: View {
                     Text("hint     \(Self.result.hint)")
                 }
                 .font(.custom("HelveticaNeue-Bold", size: h * 0.055))
-                .foregroundStyle(Color(hex: 0xCFD2D8))
+                .foregroundStyle(Faff.inkDim)
                 if let err = Self.result.error {
                     Text(err)
                         .font(.custom("HelveticaNeue", size: h * 0.045))

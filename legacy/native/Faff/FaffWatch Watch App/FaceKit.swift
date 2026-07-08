@@ -51,6 +51,21 @@ enum Faff {
     static let t2     = Color.white.opacity(0.62) // secondary labels
     static let t3     = Color.white.opacity(0.40) // dim / eyebrow labels
     static let track  = Color.white.opacity(0.14) // progress ring track
+
+    // Depth washes + on-color inks · alpha steps of the locked hues over the
+    // true-black ground (brief v2 §1: depth comes from alpha steps of the ten
+    // hues, not new hexes). These replaced the off-palette literals
+    // 0x0C2A14 / 0x3A2B08 / 0x06243F / 0x0A0D12 / 0x11151C / 0xCFD2D8 /
+    // 0x06210C / 0xAAB0BF (P2-61, 2026-07-06). ResponsiveFace backs every
+    // face with Color.black, so the alpha steps always composite over the
+    // same ground.
+    static let liveWash  = live.opacity(0.22)         // green takeover / summary ground
+    static let goalWash  = goal.opacity(0.24)         // amber takeover ground
+    static let distWash  = dist.opacity(0.25)         // landmark blue ground
+    static let grayWash  = Color.white.opacity(0.07)  // neutral takeover ground
+    static let pauseWash = Color.white.opacity(0.045) // pause-face ground
+    static let inkDim    = ink.opacity(0.84)          // secondary readout on washes
+    static let onLive    = Color.black.opacity(0.85)  // ink on live-green buttons
 }
 
 // MARK: - A number's role decides its colour
@@ -454,11 +469,21 @@ struct NumberFace: View {
                         .offset(x: alignmentX, y: H * topLabelTop - labelCorrection)
                 } else if let topLabel {
                     let lsb = NumberFace.firstCharLSB(topLabel.uppercased(), fontSize: labelSize)
+                    // P2-59 · clock-clear width cap. Long race names and
+                    // "REP n/m · ♥nnn" labels used to run under the OS clock
+                    // and off-screen — the label now scales down (to 0.6×),
+                    // then tail-truncates, inside the same clockClearF
+                    // boundary the centered big rows respect.
+                    let labelMaxW = clockClearF * W - alignmentX
                     Text(topLabel.uppercased())
                         .font(.custom("HelveticaNeue-Bold", size: labelSize))
                         .foregroundStyle(topLabelColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .truncationMode(.tail)
                         .padding(.vertical, -labelSize * cropK)
-                        .fixedSize()
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: labelMaxW, alignment: .leading)
                         .offset(x: alignmentX - lsb, y: H * topLabelTop - labelCorrection)
                 }
                 ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
@@ -519,7 +544,7 @@ struct Strip: View {
         HStack(spacing: 4) {
             ForEach(Array(states.enumerated()), id: \.offset) { _, s in
                 Capsule()
-                    .fill(s == 1 ? doneColor : s == 2 ? nowColor : Color(hex: 0x2C2F35))
+                    .fill(s == 1 ? doneColor : s == 2 ? nowColor : Faff.track)
                     .frame(maxWidth: .infinity)
             }
         }
