@@ -465,6 +465,11 @@ struct TodayView: View {
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .ignoresSafeArea(edges: .bottom)
                             .scrollClipDisabled(true)
+                            // 2026-07-08 · restores the horizontal containment
+                            // the (b) comment above says was once a double
+                            // `.clipped()` but is gone — horizontal-only so the
+                            // hero still rides up. See Theme.containHorizontally.
+                            .containHorizontally()
                         }
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .ignoresSafeArea(edges: .bottom)
@@ -485,6 +490,7 @@ struct TodayView: View {
                     .ignoresSafeArea(edges: .bottom)
                     .padding(.top, 6)
                     .scrollClipDisabled(true)
+                    .containHorizontally()
                 } else if isPostRaceWindow {
                     // 2026-07-07 · P2-9 · the days AFTER the goal race, no
                     // run logged today, no next-cycle plan yet. Same flat
@@ -502,6 +508,7 @@ struct TodayView: View {
                     .ignoresSafeArea(edges: .bottom)
                     .padding(.top, 6)
                     .scrollClipDisabled(true)
+                    .containHorizontally()
                 } else if isNoGoalState {
                     // No race and no goal — hero empty state for new users
                     // who completed onboarding without setting a target.
@@ -540,6 +547,7 @@ struct TodayView: View {
                         }
                     }
                     .scrollClipDisabled(true)
+                    .containHorizontally()
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
                 }

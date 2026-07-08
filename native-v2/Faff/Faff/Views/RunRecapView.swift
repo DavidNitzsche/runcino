@@ -66,6 +66,7 @@ struct RunRecapView: View {
                 }
             }
             .scrollClipDisabled(true)
+            .containHorizontally()
         }
         .faffHeaderPill {
             // Standard nav layout · back chevron pinned left, the run's

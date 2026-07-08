@@ -794,3 +794,38 @@ extension View {
         modifier(FaffEntrance(index: index, yOffset: yOffset, trigger: trigger))
     }
 }
+
+// MARK: - Horizontal containment guard
+
+/// A clip shape that constrains a view to its own WIDTH while leaving
+/// vertical overflow completely untouched. The path spans the exact view
+/// width but extends ~10k points above and below the bounds, so the mask
+/// clips left/right and lets top/bottom overflow pass through.
+///
+/// Why this exists: several scroll views intentionally use
+/// `.scrollClipDisabled(true)` so a hero headline (e.g. the 88pt TEMPO on
+/// Today) can ride UP over the top scrim. But `.scrollClipDisabled` is
+/// all-or-nothing — it removes clipping on BOTH axes, so any child that
+/// sizes itself wider than the screen bleeds off both edges and the scroll
+/// can pan horizontally ("content slides off left and right"). This was a
+/// recurring bug (TodayView horizontal-pan, rounds 62–67+) that kept
+/// coming back on-device with real data because a plain `.clipped()`
+/// (both-axis) clip would have chopped the intentional vertical hero
+/// overflow. Horizontal-only clipping is the correct synthesis: contain
+/// left/right absolutely, permit up/down.
+private struct HorizontalContainmentClip: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(x: 0, y: -10_000, width: rect.width, height: rect.height + 20_000))
+    }
+}
+
+extension View {
+    /// Structural guarantee that this view can NEVER expose horizontal
+    /// overflow or pan, while still permitting intentional vertical
+    /// overflow (a hero riding up over a scrim). Apply to any scroll view
+    /// that uses `.scrollClipDisabled(true)`, AFTER that modifier.
+    /// See `HorizontalContainmentClip`.
+    func containHorizontally() -> some View {
+        clipShape(HorizontalContainmentClip())
+    }
+}
