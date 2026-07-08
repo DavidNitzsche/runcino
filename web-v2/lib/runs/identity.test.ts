@@ -141,6 +141,30 @@ describe('pickCanonical', () => {
     const aw = row('AW', 'apple_watch', { splits: realSplit });            // 1 real split
     expect(pickCanonical([w, aw]).canonical.id).toBe('W');
   });
+
+  // 2026-07-07 · wave3b/phone-gps-recording review fix. Before this, 'phone'
+  // had no SOURCE_TIER entry and fell through to tier 0 — the SAME tier as
+  // null/garbage sources — so a phone-recorded run always LOST canonical
+  // selection to any same-day Strava/HK dupe of the identical physical run
+  // (e.g. auto-push-to-Strava re-ingest, or the runner also running Strava's
+  // own app). That inverted the locked doctrine "Faff app first, then
+  // HealthKit, then Strava." phone must tie watch at tier 5: both are Faff's
+  // own direct-record path, no third-party ingest in between.
+  it('a phone-recorded run beats a same-day Strava dupe on tier alone, despite zero richness', () => {
+    const phone = row('P', 'phone', { start: '2026-06-02T07:00:00Z' }); // no HR/cadence/splits — no sensor
+    const strava = row('S', 'strava', { start: '2026-06-02T07:00:05Z', dist: 7.52, dur: 3605 });
+    expect(pickCanonical([phone, strava]).canonical.id).toBe('P');
+  });
+  it('a phone-recorded run beats a same-day apple_watch HK dupe on tier alone', () => {
+    const phone = row('P', 'phone', { start: '2026-06-02T07:00:00Z' });
+    const aw = row('AW', 'apple_watch', { start: '2026-06-02T07:00:05', splits: realSplit, dist: 7.52, dur: 3605 });
+    expect(pickCanonical([phone, aw]).canonical.id).toBe('P');
+  });
+  it('phone and watch tie at tier 5 — richness breaks the tie, not an implicit ordering', () => {
+    const phone = row('P', 'phone', { splits: [...realSplit, ...realSplit] }); // 2 real splits
+    const watch = row('W', 'watch');                                          // 0 splits
+    expect(pickCanonical([phone, watch]).canonical.id).toBe('P');
+  });
 });
 
 // ── planMergeOps · the cycle-free invariant ──────────────────────────────────
