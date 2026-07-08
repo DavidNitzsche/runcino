@@ -68,6 +68,16 @@ struct TodayView: View {
               let cur = ts.weeks.first(where: { $0.isCurrent }) else { return [] }
         return Set(cur.pausedStrengthDays ?? [])
     }()
+    /// Full recommender picks keyed by ISO date (P2-50) · the "Strength
+    /// recommended" chip opens the session sheet from these. Seeded from the
+    /// cached training-state, refreshed in loadAll.
+    @State private var strengthPicksByDate: [String: StrengthPick] = {
+        guard let ts = AppCache.read(.trainingState, as: TrainingState.self) else { return [:] }
+        let picks = ts.weeks.flatMap { $0.strengthPicks ?? [] }
+        return Dictionary(picks.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+    }()
+    /// Pick currently shown in the strength session sheet · nil = closed.
+    @State private var strengthSheetPick: StrengthPick? = nil
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
@@ -754,6 +764,17 @@ struct TodayView: View {
             LogNonRunSheet(onSubmitted: { Task { await loadAll() } })
                 .presentationDetents([.medium])
         }
+        .sheet(item: $strengthSheetPick) { pick in
+            // P2-50 · the strength chip opens the actual prescription. Log
+            // from the sheet only when the pick is for today · logging a
+            // future day would poison the weekly count.
+            StrengthSessionSheet(
+                pick: pick,
+                isToday: pick.date == todayISO,
+                onLogged: { Task { await loadAll() } }
+            )
+            .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showShoePicker) {
             // 2026-06-01 round 8 · new TodayShoePicker (cream bottom sheet
             // per design package #3). Maps ProfileShoe → Shoe for the
@@ -1168,18 +1189,41 @@ struct TodayView: View {
                 }
                 .padding(.top, 16)
             } else if strengthDays.contains(selectedDayID) {
-                HStack(spacing: 8) {
-                    Image(systemName: "dumbbell.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x27B4E0))
-                    Text("Strength")
-                        .font(.body(13, weight: .bold))
-                        .foregroundStyle(Theme.txt)
-                    Text("recommended")
-                        .font(.body(12, weight: .medium))
-                        .foregroundStyle(Theme.txt.opacity(0.55))
+                // P2-50 · when the training-state carried the full pick
+                // (session content), the chip opens the session sheet. The
+                // plain row stays for stale caches that predate strengthPicks.
+                if let pick = strengthPicksByDate[selectedDayID] {
+                    Button { strengthSheetPick = pick } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "dumbbell.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.dist)
+                            Text("Strength")
+                                .font(.body(13, weight: .bold))
+                                .foregroundStyle(Theme.txt)
+                            Text(pick.session?.title.isEmpty == false
+                                 ? "\(pick.session?.durationMin ?? 20) min \u{203A}"
+                                 : "recommended \u{203A}")
+                                .font(.body(12, weight: .semibold))
+                                .foregroundStyle(Theme.dist)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 16)
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "dumbbell.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.dist)
+                        Text("Strength")
+                            .font(.body(13, weight: .bold))
+                            .foregroundStyle(Theme.txt)
+                        Text("recommended")
+                            .font(.body(12, weight: .medium))
+                            .foregroundStyle(Theme.txt.opacity(0.55))
+                    }
+                    .padding(.top, 16)
                 }
-                .padding(.top, 16)
             } else if strengthPausedDays.contains(selectedDayID) {
                 // This was a strength day, paused by the readiness gate · same
                 // nudge as "recommended" but yellow + "paused · readiness low"
@@ -3101,6 +3145,9 @@ struct TodayView: View {
             self.futureWeekPlans = futureW
             if let ts = trainingS {
                 self.strengthDays = Set(ts.weeks.flatMap { $0.recommendedStrengthDays ?? [] })
+                // P2-50 · full picks (session content) for the tappable chip.
+                let picks = ts.weeks.flatMap { $0.strengthPicks ?? [] }
+                self.strengthPicksByDate = Dictionary(picks.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
                 if let cur = ts.weeks.first(where: { $0.isCurrent }) {
                     self.strengthDoneDays = Set(cur.completedStrengthDays ?? [])
                     self.strengthSuppressed = cur.strengthSuppressed ?? false
