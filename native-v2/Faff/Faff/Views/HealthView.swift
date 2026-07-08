@@ -1040,7 +1040,7 @@ struct HealthLogSheet: View {
             onDismiss()
         } catch {
             saving = false
-            errorMsg = "Couldn't save — check your connection and try again."
+            errorMsg = "Couldn't save. Check your connection and try again."
         }
     }
 }

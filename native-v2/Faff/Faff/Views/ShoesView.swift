@@ -115,7 +115,7 @@ struct ShoesView: View {
                 try await API.patchShoe(id: shoe.id, fields: ["retired": newVal])
             } catch {
                 setLocalRetired(id: shoe.id, retired: !newVal)
-                await MainActor.run { actionError = "Couldn't update that shoe — check your connection." }
+                await MainActor.run { actionError = "Couldn't update that shoe. Check your connection." }
             }
         }
     }
@@ -141,7 +141,7 @@ struct ShoesView: View {
                 try await API.patchShoe(id: shoe.id, fields: ["preferred": true])
                 await reloadShoes()
             } catch {
-                await MainActor.run { actionError = "Couldn't set the race shoe — check your connection." }
+                await MainActor.run { actionError = "Couldn't set the race shoe. Check your connection." }
             }
         }
     }
@@ -152,7 +152,7 @@ struct ShoesView: View {
             try await API.deleteShoe(id: shoe.id)
             await MainActor.run { shoes.removeAll { $0.id == shoe.id } }
         } catch {
-            await MainActor.run { actionError = "Couldn't delete that shoe — check your connection." }
+            await MainActor.run { actionError = "Couldn't delete that shoe. Check your connection." }
         }
     }
 

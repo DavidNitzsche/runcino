@@ -359,7 +359,7 @@ struct SettingsView: View {
                 // or the auth-failure message set by requestAuthAndImport.
                 // Never fabricate "Sync complete." when neither is set.
                 healthResyncToast = hkImporter.lastMessage
-                    ?? (hkImporter.hasConnected ? "Sync complete." : "Health access wasn't granted — nothing synced.")
+                    ?? (hkImporter.hasConnected ? "Sync complete." : "Health access wasn't granted. Nothing synced.")
             }
             // Clear the toast after 8s so it doesn't linger forever.
             try? await Task.sleep(nanoseconds: 8_000_000_000)
@@ -373,7 +373,7 @@ struct SettingsView: View {
         // P2-33: an honest "Never connected" beats "Never synced" for a
         // runner who has never granted access — "synced" implies a sync
         // was attempted.
-        guard hkImporter.hasConnected else { return "Not connected — tap Apple Health above" }
+        guard hkImporter.hasConnected else { return "Not connected. Tap Apple Health above" }
         guard let when = hkImporter.lastImportedAt else { return "Never synced" }
         let mins = Int(Date().timeIntervalSince(when) / 60)
         if mins < 1 { return "Just synced" }
@@ -397,7 +397,7 @@ struct SettingsView: View {
 
     private var appleHealthStatusLine: String? {
         if hkImporter.hasConnected { return nil }
-        if hkImporter.status == .error { return hkImporter.lastMessage ?? "Access denied — enable in iOS Settings > Privacy > Health" }
+        if hkImporter.status == .error { return hkImporter.lastMessage ?? "Access denied. Enable in iOS Settings > Privacy > Health" }
         return nil
     }
 
@@ -609,7 +609,7 @@ struct SettingsView: View {
                 // Don't pretend it saved. A swallowed error (e.g. an expired
                 // session → 401) silently dropped the write and the optimistic
                 // row lied that it stuck. Surface it + restore server truth.
-                await MainActor.run { showToast("Couldn't save — check your connection or sign in again") }
+                await MainActor.run { showToast("Couldn't save. Check your connection or sign in again") }
                 async let fp = (try? await API.fetchProfile())
                 async let fs = (try? await API.fetchSettings())
                 let (p, s) = await (fp, fs)
@@ -655,7 +655,7 @@ struct SettingsView: View {
             //   quality_days: []   → coach picks (P2-36)
             //   available_days: [] → no constraint, pickers below control it (P2-35)
             if f.key == "quality_days" { return "Auto · coach picks" }
-            if f.key == "available_days" { return "Not set — Long run / Rest day / Quality days control it" }
+            if f.key == "available_days" { return "Not set. Long run / Rest day / Quality days control it" }
         case .multi:
             if case .list(let a) = val, !a.isEmpty {
                 return a.map { c in f.options.first { $0.value == c }?.label ?? c.capitalized }.joined(separator: " · ")
@@ -777,7 +777,7 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         // day edit appeared to silently fail. Exposing it as a real,
         // clearable field closes that gap.
         SettingField(key: "available_days", label: "Days you can run", endpoint: .settings, kind: .multiday, planShaping: true,
-                     hint: "From goal setup. When set, this overrides Long run / Rest day / Quality days above — clear it to let those pickers control placement."),
+                     hint: "From goal setup. When set, this overrides Long run / Rest day / Quality days above. Clear it to let those pickers control placement."),
     ]),
     SettingGroup(title: "PHYSIOLOGY", fields: [
         SettingField(key: "lthr", label: "LTHR", endpoint: .profile, kind: .number, unit: "bpm", hint: "Sets your training zones.", autoSource: "From Apple Health"),
@@ -918,11 +918,11 @@ struct FieldEditorSheet: View {
         switch field.key {
         case "long_run_day", "rest_day":
             guard !day.isEmpty, !availableDays.contains(day) else { return nil }
-            return "\(day.capitalized) isn't in your available days (\(availableDaysLabel)) — the plan will place this elsewhere unless you clear \"Days you can run\" below."
+            return "\(day.capitalized) isn't in your available days (\(availableDaysLabel)). The plan will place this elsewhere unless you clear \"Days you can run\" below."
         case "quality_days":
             let outside = multi.filter { !availableDays.contains($0) }
             guard !outside.isEmpty else { return nil }
-            return "\(outside.map { $0.capitalized }.joined(separator: ", ")) isn't in your available days (\(availableDaysLabel)) — those days will be skipped unless you clear \"Days you can run\" below."
+            return "\(outside.map { $0.capitalized }.joined(separator: ", ")) isn't in your available days (\(availableDaysLabel)). Those days will be skipped unless you clear \"Days you can run\" below."
         default:
             return nil
         }
@@ -963,7 +963,7 @@ struct FieldEditorSheet: View {
                 // ("let the coach pick") — say so instead of letting it
                 // read as an unset row that silently strips quality work.
                 if field.key == "quality_days" && multi.isEmpty {
-                    Text("No days selected — the coach will pick quality days automatically.")
+                    Text("No days selected. The coach will pick quality days automatically.")
                         .font(.body(12, weight: .medium))
                         .foregroundStyle(Theme.txt.opacity(0.55))
                 }
@@ -979,7 +979,7 @@ struct FieldEditorSheet: View {
             wheel(label: "POUNDS", value: $lb, range: 60...400)
         case .tzmode:
             Toggle(isOn: $autoOn) {
-                Text(autoOn ? "Following your device on travel" : "Pinned — pick the zone next")
+                Text(autoOn ? "Following your device on travel" : "Pinned. Pick the zone next")
                     .font(.body(14, weight: .medium)).foregroundStyle(Theme.txt.opacity(0.8))
             }
             .tint(Theme.green)
