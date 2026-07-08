@@ -23,6 +23,7 @@
  *
  * Source tier ladder (highest wins on ties):
  *   1. Faff watch app           (source = 'watch')        · TIER 5
+ *   1. Faff phone GPS recording (source = 'phone')        · TIER 5
  *   2. Faff manual entry        (source = 'manual')       · TIER 4
  *   3. Apple Watch via HK       (source = 'apple_watch')  · TIER 3
  *   4. Apple Health raw         (source = 'apple_health') · TIER 2
@@ -32,6 +33,12 @@
  * Higher tier = wins on overlap. If two providers both have RPE, the
  * highest-tier wins. If only Strava has RPE and canonical doesn't,
  * Strava's value lands.
+ *
+ * `phone` sits at the same tier as `watch`: both are the Faff app's own
+ * direct-record path (no third-party ingest between the recording and the
+ * canonical row). A phone-recorded run must never lose canonical selection
+ * to a lower-fidelity Strava/HK duplicate of the same physical run just
+ * because it was recorded without a paired watch.
  *
  * Special-case fields that don't just sit on `data`:
  *   - Strava `gear` / `gear_id` → match to shoes table → set
@@ -46,6 +53,7 @@ import { pool } from '@/lib/db/pool';
 
 export const SOURCE_TIER: Record<string, number> = {
   watch:          5,  // Faff watch app
+  phone:          5,  // Faff phone-only GPS recording (no paired watch) · same tier as watch, both are Faff's own direct-record path
   manual:         4,  // Faff manual entry on iPhone
   apple_watch:    3,  // Apple Watch via HK ingest
   apple_health:   2,  // raw HK sample

@@ -29,7 +29,9 @@ struct RunActionMenu: View {
     /// and the dock fill in the parent. Defaults to the design's orange.
     var accent: Color = Theme.race
     /// Tap handlers for the four action rows. Parent wires these to
-    /// route pushes (Outdoor → WatchMirror, Treadmill → TreadmillView)
+    /// route pushes (Outdoor → WatchMirror if a Faff watch app is
+    /// installed on a paired watch, else PhoneRunView — see
+    /// RootTabView.outdoorRoute · Treadmill → TreadmillView)
     /// or sheet presentations (niggle → SymptomSheet, non-run → LogNonRunSheet).
     let onOutdoor: () -> Void
     let onTreadmill: () -> Void
