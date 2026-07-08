@@ -290,7 +290,36 @@ export function predictRaceTimeFromAnchor(
 export function iPaceFromAnchorPace(anchor: AnchorPace | null | undefined): number | null {
   const fiveKSec = predictRaceTimeFromAnchor(anchor, 3.10686);
   if (fiveKSec == null) return null;
-  return Math.round(fiveKSec / 3.10686);
+  const raw = Math.round(fiveKSec / 3.10686);
+  // 2026-07-07 · CODE-REVIEW FINDING (below-table HM/marathon personas) · Riegel
+  // projects a FASTER per-mile pace at 5K than at the anchor's own (longer)
+  // distance — correct, expected behavior for a trained runner (Research/01:145
+  // "I ≈ 3K to 5K race pace" is genuinely quicker than M/HM pace). But for a
+  // below-table anchor, the anchor pace itself IS the only demonstrated data
+  // point; Riegel's power-law extrapolation down to 5K from a single slow
+  // marathon/HM effort is unvalidated at that fitness level and can land faster
+  // than the runner has ever actually run (e.g. a 6:30/900s-mi marathon anchor
+  // Riegel-projects a 785s/mi 5K-equivalent pace — 115s/mi faster than anything
+  // the runner has demonstrated). This is the exact falsifiable-requirement-#3
+  // shape clampToSanePace exists for ("no prescribed pace may be faster than
+  // the runner's own demonstrated race/run pace... regardless of which tier
+  // produced it") — apply the same backstop here so I-pace can never leak
+  // faster than the anchor it was derived from, same as tPaceFromAnchorPace's
+  // callers (resolveCurrentTPace, easyPaceBandFromAnchorPace) already do.
+  //
+  // Epsilon guard: `raw` is always a Math.round()'d whole-second integer, but
+  // anchor.paceSPerMi is the unrounded finishSeconds/distanceMi division and
+  // can carry sub-second float noise (e.g. a 2517s/3.10686mi 5K anchor's true
+  // division is 810.1427...s/mi, not the whole-second 810 every other reader
+  // of this anchor treats as "the" pace). When the anchor's own distance IS
+  // (within rounding) the 5K target, raw and the anchor pace describe the
+  // SAME demonstrated effort — clamping raw up to the unrounded float would
+  // report a phantom <1s/mi "violation" that isn't a real below-anchor
+  // prescription. Only clamp when raw is genuinely, more-than-rounding-noise
+  // faster than the anchor (Research/01 "I ≈ 5K race pace" — a 5K effort's
+  // own I-pace IS that effort's pace, exactly, when the anchor already is a 5K).
+  if (Math.abs(raw - anchor!.paceSPerMi) < 0.5) return raw;
+  return clampToSanePace(raw, anchor?.paceSPerMi);
 }
 
 /**
@@ -799,7 +828,29 @@ export function bestRecentVdot(
         zone: r.zone ?? null,
         minDistanceMi: minRunDistanceMi,
       });
-      if (v == null) {
+      // 2026-07-07 · CODE-REVIEW FINDING (P1-56 second regression) · v == null
+      // is NOT the only below-table signal. vdotFromRun's zone-aware paths
+      // (vdotFromTpace/vdotFromMpace, used for threshold/tempo/marathon-pace
+      // workout types) binary-search a [30,85]-bounded VDOT and silently
+      // CONVERGE TO THE 30 FLOOR instead of failing when the true implied
+      // VDOT is below it — unlike vdotFromRace, which explicitly returns null
+      // outside [30,85]. So a below-table hard effort read via the zone path
+      // comes back as a false "VDOT 30", not null, and the `v == null` branch
+      // below never saw it. Detect the clamp directly: re-derive the pace the
+      // zone read is BASED ON and compare it to what VDOT 30 predicts for that
+      // same zone — if the runner's actual pace is honestly slower than the
+      // VDOT-30 floor's pace, the read was clamped, not a genuine VDOT-30
+      // effort, regardless of whether vdotFromRun returned 30 or null.
+      const isClampedToFloor = v != null && (() => {
+        const wType = String(r.workout_type ?? '').toLowerCase();
+        const zone = r.zone ?? zoneFromType(wType);
+        if (zone !== 'threshold' && zone !== 'marathon') return false;
+        if (v > 30) return false; // a real (non-boundary) VDOT read — trust it
+        const pace = r.finish_seconds / r.distance_mi;
+        const floorPace = zone === 'threshold' ? tPaceFromVdot(30) : predictRaceTime(30, 26.2188)! / 26.2188;
+        return floorPace != null && pace > floorPace + 2; // honestly slower than VDOT 30's own pace
+      })();
+      if (v == null || isClampedToFloor) {
         // P1-56 · same honesty gate vdotFromRun applies (passesRunHonestyGate),
         // checked separately here so a below-30 read from a GATED effort still
         // becomes a belowTableAnchor candidate, while a gate failure (easy run,
