@@ -1576,7 +1576,19 @@ export function computeConfidenceLabel(args: {
 }): ConfidenceLabel | null {
   const { goalSec, raceDistanceMi, vdot, daysToRace, status } = args;
   if (vdot == null) return null; // cold-start · no honest read
-  const goalVdot = vdotFromRace(goalSec, raceDistanceMi);
+  const goalVdotRaw = vdotFromRace(goalSec, raceDistanceMi);
+  // 2026-07-07 · AUDIT P1-56 · same off-table-goal honesty fix as
+  // fitness-trajectory.ts's projectFitnessTrajectory (see its comment for the
+  // full rationale). goalVdotRaw null below VDOT 30 is an honest slow goal —
+  // when it's slower than the runner's OWN current-fitness predicted time,
+  // treat it as "already met" for the gap math (gapVdot floors at 0 either
+  // way) instead of discarding the whole confidence label. Off-the-top
+  // (>VDOT 85) stays null → null return, unchanged (generate.ts's GOAL-4
+  // guards that case before a goal reaches here).
+  const currentPredictedForGoal = predictRaceTime(vdot, raceDistanceMi);
+  const goalBelowTable = goalVdotRaw == null
+    && currentPredictedForGoal != null && goalSec >= currentPredictedForGoal;
+  const goalVdot = goalVdotRaw ?? (goalBelowTable ? vdot : null);
   if (goalVdot == null) return null;
 
   const gapVdot = goalVdot - vdot; // +ve = behind the goal
@@ -1622,7 +1634,11 @@ export function computeConfidenceLabel(args: {
       gapVdot: Number(gapVdot.toFixed(1)),
       gapSec: Math.round(gapSec),
       currentVdot: vdot,
-      goalVdot: Number(goalVdot.toFixed(1)),
+      // 2026-07-07 · AUDIT P1-56 · goalVdot is the stand-in (= vdot) internally
+      // for a below-table goal so the gap math floors correctly; the evidence
+      // block must not present that stand-in as a real goal VDOT. Same
+      // 'unknown'-style honest string marker runwayWeeks already uses below.
+      goalVdot: goalBelowTable ? 'below_table' : Number(goalVdot.toFixed(1)),
       runwayWeeks: runwayWeeks != null ? Number(runwayWeeks.toFixed(1)) : 'unknown',
       status,
     },

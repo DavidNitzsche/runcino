@@ -28,7 +28,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
+import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, type BelowTableAnchor, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -1662,6 +1662,14 @@ export interface ComposePlanInput {
    *  anchor blend source (Rule 3). When < tier-implied VDOT, early
    *  weeks anchor to this and ramp toward the goal tier. */
   bestRecentVdot?: number;
+  /** 2026-07-07 · AUDIT P1-56 · set ONLY when bestRecentVdot is undefined AND
+   *  the runner's best race/run implied a VDOT below the Daniels table floor
+   *  of 30 (not "no data" — a demonstrated pace that doesn't map onto the
+   *  VDOT scale). resolveCurrentTPace (vdot.ts) reads this as tier 2, deriving
+   *  T-pace directly from the anchor's OWN pace instead of falling straight to
+   *  conservativeVdotFromMileage, which floors at VDOT 30 and can prescribe
+   *  faster than the runner's own demonstrated race pace. */
+  belowTableAnchor?: BelowTableAnchor | null;
   /** Banister TSB at generate-time · shifts cutback frequency to every
    *  3rd week when TSB < -10 (Rule 8). Optional · falls back to mod-4. */
   tsbAtStart?: number;
@@ -1847,7 +1855,20 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // Cite: Daniels Running Formula §"VDOT and Training" — mileage-band heuristic.
   const estimatedCurrentVdot = input.bestRecentVdot
     ?? conservativeVdotFromMileage(input.recentWeeklyMi);
-  const currentT = tPaceFromVdot(estimatedCurrentVdot);
+  // 2026-07-07 · AUDIT P1-56 · currentT is the pace every easy/long/recovery/
+  // quality band anchors to (below); resolveCurrentTPace's tier-2 fallback
+  // (belowTableAnchor → tPaceFromAnchorPace) replaces conservativeVdotFromMileage
+  // ONLY for the prescribed-PACE math when the runner's own best race/run implied
+  // a sub-30 VDOT — conservativeVdotFromMileage floors at VDOT 30 (T ~10:41/mi),
+  // which can be FASTER than a slow runner's actual demonstrated race pace.
+  // estimatedCurrentVdot (a VDOT number) is left untouched for the seasonal-gain
+  // / goal-realism math a few lines below, which reasons in VDOT deltas, not
+  // paces — those stay on the existing (unaffected, already-doctrine-vetted) path.
+  const currentTResolved = resolveCurrentTPace(
+    input.bestRecentVdot ?? null, input.belowTableAnchor ?? null,
+    input.recentWeeklyMi, conservativeVdotFromMileage,
+  );
+  const currentT = currentTResolved.tPaceSec ?? tPaceFromVdot(estimatedCurrentVdot);
 
   // 2026-06-03 · mid-block doctrine RULE 3 (pace anchor blend) · when bestRecentVdot
   // implies a T-pace slower than goal-T, anchor early-week paces to currentT and blend
@@ -2633,6 +2654,16 @@ async function persistPlan(client: PoolClient, args: {
    *  2026-06-09 · M-19 · passed as a parameter (was module-scoped
    *  state shared between generatePlan and persistPlan). */
   sealedSnapshot: Map<string, SealedPrescription>;
+  /** 2026-07-07 · AUDIT P1-56 · when bestRecentVdot is null and the runner's
+   *  best race/run implied a below-table VDOT, this carries the honest
+   *  anchor so race_week_tuneup/goal-I-eligible quality days can derive
+   *  I-pace via iPaceFromAnchorPace (Riegel) instead of
+   *  iPaceFromVdot(vdotFromTpace(weekT)) — vdotFromTpace's own binary search
+   *  is bounded [30,85], so a below-table weekT silently clamps UP to
+   *  VDOT-30 I-pace otherwise, re-introducing the "faster than demonstrated
+   *  pace" bug one level down from the T-pace fix. Null for every runner
+   *  with a measured VDOT (the vast majority) — byte-identical then. */
+  belowTableAnchor?: BelowTableAnchor | null;
 }): Promise<string> {
   const planId = id('pln');
   await client.query(
@@ -2748,8 +2779,16 @@ async function persistPlan(client: PoolClient, args: {
         // §9.3 "5×1min @ 5K pace") — a NEUROMUSCULAR primer FASTER than race pace, not MP. Compute I-pace for
         // the tune-up day even when the goal distance isn't I-eligible for long-run inserts (spec-builder
         // uses it only when the prescription says "5K pace", so the HM tune-up still reads HMP).
+        // 2026-07-07 · AUDIT P1-56 · vdotFromTpace's binary search is bounded [30,85] — inverting a
+        // below-table weekT through it silently clamps UP to VDOT-30 I-pace, re-introducing the
+        // too-fast-prescription bug one level down from the T-pace fix. When the plan-wide fitness read
+        // came from a below-table anchor (no measured VDOT), derive I-pace directly off the anchor via
+        // Riegel (iPaceFromAnchorPace) instead — never re-enters VDOT space. Byte-identical whenever
+        // args.belowTableAnchor is null (every runner with a measured VDOT).
         const iPaceSec = (args.goalIPaceEligible || d.type === 'race_week_tuneup')
-          ? iPaceFromVdot(vdotFromTpace(weekT))
+          ? (args.belowTableAnchor
+              ? iPaceFromAnchorPace(args.belowTableAnchor.anchor)
+              : iPaceFromVdot(vdotFromTpace(weekT)))
           : null;
         const built = buildWorkoutSpec(
           d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null,
@@ -3160,7 +3199,13 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       })),
       tPaceSec: inputs.compose.tPaceSec,
       // PACE-E-1 · current-fitness anchor for easy/long/recovery (vs the goal-blended weekT).
-      easyAnchorTSec: tPaceFromVdot(inputs.compose.bestRecentVdot ?? conservativeVdotFromMileage(inputs.compose.recentWeeklyMi)),
+      // 2026-07-07 · AUDIT P1-56 · same resolveCurrentTPace cascade as composePlan's
+      // internal currentT (above) — must match, or the persisted anchor and the
+      // in-memory composition anchor diverge for a below-table runner.
+      easyAnchorTSec: resolveCurrentTPace(
+        inputs.compose.bestRecentVdot ?? null, inputs.compose.belowTableAnchor ?? null,
+        inputs.compose.recentWeeklyMi, conservativeVdotFromMileage,
+      ).tPaceSec,
       lthr: inputs.compose.lthr,
       // 2026-06-03 · Rule 16 · plumb maxHr through to spec-builder so
       // easy/long HR caps land at max(89% LTHR, 78% maxHR) instead of
@@ -3168,7 +3213,24 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       // via the planInputs reader.
       maxHr: inputs.compose.maxHr,
       // 2026-06-09 state-audit fix · goal pace for the race-day target.
-      goalPaceSec: inputs.compose.goalPaceSec,
+      // 2026-07-07 · AUDIT P1-56 · when there is NO explicit goal (by-feel
+      // plan, goalPaceSec null) and the runner's fitness is below-table,
+      // thread the anchor's own demonstrated pace as the effective by-feel
+      // race-day target rather than letting spec-builder fall back to
+      // `tPaceSec + inverseOffset` (a re-derived number, one hop further from
+      // the runner's actual demonstrated fitness than the anchor itself).
+      // No-op (byte-identical) whenever an explicit goal exists or no
+      // below-table anchor exists. NOTE: the race branch's own ±5 s/mi
+      // "controlled push / negative-split" band (spec-builder.ts race case)
+      // can still land ~5 s/mi faster than whatever racePace resolves to —
+      // that band is a deliberate, long-standing pacing-STRATEGY allowance
+      // for EVERY runner's race day (not specific to below-table runners,
+      // not part of this fix's scope) and is intentionally excluded from the
+      // falsifiable requirement #3 test (see _audit_slow_runner.test.ts).
+      goalPaceSec: inputs.compose.goalPaceSec
+        ?? (inputs.compose.belowTableAnchor
+          ? Math.round(inputs.compose.belowTableAnchor.anchor.paceSPerMi)
+          : null),
       // R3 + PACE-I-1 (2026-06-23) · 5K/10K/HM race goals get true VO2max I-pace intervals. HM was
       // excluded, but its quality day is explicitly labeled "6×800m @ I pace" (inlinePrescriptions) —
       // with iPace null it shipped the cruise T−18 default: a +6..+28 s/mi too-slow "VO2max" rep that
@@ -3176,6 +3238,11 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       // Marathon/ultra keep the cruise default (their label is "I-T transition", not "@ I pace").
       goalIPaceEligible: ['5k', '10k', 'hm'].includes(distanceCategoryOf(inputs.compose.raceDistanceMi)),
       sealedSnapshot,
+      // 2026-07-07 · AUDIT P1-56 · threaded so persistPlan's I-pace derivation
+      // for race_week_tuneup/goal-I-eligible days uses iPaceFromAnchorPace
+      // (Riegel) instead of the VDOT-bounded iPaceFromVdot(vdotFromTpace(weekT))
+      // when the runner's fitness came from a below-table anchor.
+      belowTableAnchor: inputs.compose.belowTableAnchor ?? null,
       authoredState: {
         ...composed.authoredState,
         mode,
@@ -3353,26 +3420,34 @@ async function loadGeneratorInputs(
   // PACE-3 · sanity-guard the implied pace. A wheel/entry error (e.g. an HM time pasted
   // onto a 5K goal) can imply a >15:00/mi "race pace" that threads an absurd 30-min/mi
   // threshold into every workout. Treat an implausibly slow sub-HM goal as absent → it
-  // falls to the currentT fitness anchor (VAR-05) instead of the bogus pace.
+  // falls to the currentT fitness anchor (VAR-05) instead of the bogus pace. Scoped to
+  // sub-HM ONLY (< 13.1mi) — a >15:00/mi 5K/10K is essentially always a data-entry error
+  // (walk pace sustained for 3-6mi is not a realistic "race goal" at that distance), but
+  // the SAME absolute pace is an ordinary, common, celebrated HM/marathon finish (a 3:16
+  // half or 6:33 marathon at 900 s/mi is a normal run-walk finish, many marathons have
+  // 7-8hr cutoffs) — applying the short-distance cap there would erase legitimate slow
+  // goals, not catch errors. Cite Research/01:138-145.
   // GOAL-4 (2026-06-23) · null a physiologically OFF-TABLE goal so it can't thread impossible paces
-  // into the plan — either implausibly SLOW on a sub-HM (a wheel hours-truncation → ~30 min/mi) OR
-  // OFF-THE-TOP (a fast wheel truncation: 45:00 entered for a 1:45 HM → 3:21/mi, or a sub-2:00
-  // marathon → 4:17/mi). vdotFromRace returns null outside VDOT[30,85]; the predictRaceTime(85,…)
-  // compare keeps only the off-the-TOP side (faster than world-class), leaving legit slow goals. A
-  // nulled goal falls to the currentT fitness anchor (VAR-05). Cite Research/01:138-145.
-  // GOAL-4 (2026-06-23): null out goals that map outside the VDOT[30,85] training table.
-  // OFF-THE-TOP: faster than world-class (VDOT >85) → null → fall to currentT anchor (VAR-05).
-  // OFF-THE-BOTTOM (GOAL-4-SLOW-1, 2026-06-23): slower than VDOT 30 for HM/M/ultra
-  //   → also null. Without this a 6-hour marathon goal threads ~13:26/mi "T-pace" into every
-  //   quality workout (slower than most runners' easy pace). Short distances (< 13.1mi) have a
-  //   900 s/mi cap already; for HM+ the two-sided vdotFromRace==null check covers both extremes.
-  // nulled goal falls to the currentT fitness anchor (VAR-05). Cite Research/01:138-145.
+  // into the plan — OFF-THE-TOP (a fast wheel truncation: 45:00 entered for a 1:45 HM → 3:21/mi, or
+  // a sub-2:00 marathon → 4:17/mi). vdotFromRace returns null outside VDOT[30,85]; the
+  // predictRaceTime(85,…) compare catches the off-the-TOP side (faster than world-class). A nulled
+  // goal falls to the currentT fitness anchor (VAR-05). Cite Research/01:138-145.
+  // GOAL-4-SLOW-1 (2026-06-23) originally also nulled any HM+/ultra goal implying VDOT < 30 — REMOVED
+  // 2026-07-07 (AUDIT P1-56): that tied a wheel-error sanity check to Daniels' VDOT table's citation
+  // scope (Research/01:7 "Range: ~30 to 85+"), which conflates "off the VDOT table" with "implausible."
+  // A 6:30 marathon goal is a common, entirely legitimate goal for a true-beginner/run-walk runner and
+  // was being silently discarded — the exact P1-56 failure mode (a slow runner's data gets erased)
+  // applied to GOAL-setting instead of fitness-reading. There is no HM+ equivalent of the sub-HM
+  // 900 s/mi cap that doesn't ALSO reject ordinary slow finishers (see the marathon math above), so
+  // the guard is removed for HM+ rather than widened. What still protects quality-pace sanity for a
+  // too-slow HM+ goal: BRK-1 below (currentT <= goalT → quality trains at currentT, never the slower
+  // goalT) — the only realistic way goalT drives quality is when it's FASTER than currentT (the
+  // normal "training toward a goal" case), not slower, so a slow-but-honest goal can never thread an
+  // absurdly-slow T-pace into quality work; it just becomes the (correctly slow) race-day target.
   if (goalSec != null && (
-    (raceDistanceMi < 13.1 && goalSec / raceDistanceMi > 900) ||
-    (vdotFromRace(goalSec, raceDistanceMi) == null && (
-      goalSec < (predictRaceTime(85, raceDistanceMi) ?? 0) ||          // off-the-top (VDOT > 85)
-      goalSec > (predictRaceTime(30, raceDistanceMi) ?? Infinity)       // off-the-bottom (VDOT < 30)
-    ))
+    (raceDistanceMi < 13.1 && goalSec / raceDistanceMi > 900) ||          // implausibly slow (wheel/entry error, sub-HM only)
+    (vdotFromRace(goalSec, raceDistanceMi) == null &&
+      goalSec < (predictRaceTime(85, raceDistanceMi) ?? 0))               // off-the-top (VDOT > 85, any distance)
   )) goalSec = null;
   const goalPaceSec = goalSec ? Math.round(goalSec / raceDistanceMi) : null;
 
@@ -3524,7 +3599,7 @@ async function loadGeneratorInputs(
   // producing a goal-pace plan from undefined VDOT — the C1 bug class).
   const runFloorMi = await goalRunFloorMiForUser(userId);
   const { raceCandidates, runCandidates } = await loadVdotInputs(userId, todayISO);
-  const { best: bestVdotPick } = computeBestRecentVdot(raceCandidates, todayISO, 180, runCandidates, runFloorMi);
+  const { best: bestVdotPick, belowTableAnchor } = computeBestRecentVdot(raceCandidates, todayISO, 180, runCandidates, runFloorMi);
   // PARITY-1 (2026-06-23) · when there is NO measured signal (empty races+runs → bestVdotPick
   // undefined, the no-Strava cold-start case), seed bestRecentVdot from self-reported onboarding PRs
   // (profile.race_history) — the canonical pace anchor (Research/01:3,115). Prod previously read ONLY
@@ -3540,6 +3615,13 @@ async function loadGeneratorInputs(
     // A PR from 8+ months ago does not reflect current fitness; cap to recent races only.
     bestRecentVdot = bestVdotFromRaceHistory(Array.isArray(rhRow?.race_history) ? rhRow.race_history : [], 180);
   }
+  // 2026-07-07 · AUDIT P1-56 · belowTableAnchor (from computeBestRecentVdot) is
+  // the runner's best race/run when NO candidate produced an in-table VDOT —
+  // i.e. bestRecentVdot is still undefined here (race-history seeding above
+  // only seeds from self-reported PRs, which is a SEPARATE data source; it
+  // does not clear this measured-signal gap). Only meaningful when
+  // bestRecentVdot stayed undefined; carried through to composePlan either way
+  // (resolveCurrentTPace ignores it once bestRecentVdot is set).
   // maxHr for Rule 16 (easy/long HR cap). loadVdotInputs resolves it
   // internally for the run-candidate gate; hoist separately for composePlan.
   const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
@@ -3629,7 +3711,14 @@ async function loadGeneratorInputs(
   // never the flat 480s/mi (8:00/mi) literal — this value feeds authoredState.t_pace_s_per_mi
   // + the per-week blend fallback. conservativeVdotFromMileage is always ≥30 so 480 is now a
   // dead last-ditch. Cite: Research/01 §Daniels-T (T is a function of VDOT, never a constant).
-  const currentTLoader = tPaceFromVdot(bestRecentVdot ?? conservativeVdotFromMileage(recentMi));
+  // 2026-07-07 · AUDIT P1-56 · resolveCurrentTPace tier-2 (belowTableAnchor) replaces
+  // conservativeVdotFromMileage when the runner's best race/run implied sub-30 VDOT —
+  // see the composePlan-internal currentT fix above for the full rationale. Byte-safe
+  // when belowTableAnchor is null (the vast majority of runners): falls straight to
+  // the same tPaceFromVdot(bestRecentVdot ?? conservativeVdotFromMileage(recentMi)).
+  const currentTLoader = resolveCurrentTPace(
+    bestRecentVdot ?? null, belowTableAnchor, recentMi, conservativeVdotFromMileage,
+  ).tPaceSec;
   // NEW-A (2026-06-23) · floor the plan-wide tPaceSec at currentT so the MAINTENANCE/RECOVERY composers
   // (which read input.tPaceSec, not tPaceForWeek) can't inherit a SLOW soft-goal pace → threshold quality
   // ~70s/mi slower than easy. Race-prep is unaffected (its goalT derives from input.goalSec, not tPaceSec).
@@ -3657,6 +3746,10 @@ async function loadGeneratorInputs(
       recentQualityDistanceMi: recentQualityDist > 0 ? recentQualityDist : undefined,
       recentQualityPerWeek: recentQualityPW > 0 ? recentQualityPW : undefined,
       bestRecentVdot,
+      // 2026-07-07 · AUDIT P1-56 · threaded to composePlan's currentT/easyAnchorTSec
+      // resolveCurrentTPace calls; null when bestRecentVdot is already set (a
+      // measured VDOT always wins, this is a fallback signal only).
+      belowTableAnchor: bestRecentVdot == null ? belowTableAnchor : null,
       tsbAtStart,
       horizonRaces: horizonRaces.length > 0 ? horizonRaces : undefined,
       isMidBlock,

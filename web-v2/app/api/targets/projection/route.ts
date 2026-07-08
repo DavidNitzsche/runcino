@@ -39,12 +39,24 @@
  *
  * Cold path: no VDOT / no goal race / no fitness goal → ok=true with nulls.
  * The iPhone panel renders TargetsProjectionColdState.
+ *
+ * 2026-07-07 · AUDIT P1-13/P1-56 · below-table honest state. A runner whose
+ * best race/run implies VDOT < 30 (the Daniels table floor — see
+ * lib/training/vdot.ts's doctrine comment) is NOT the same as a dataless
+ * runner: vdot correctly stays null (extending the table would extrapolate
+ * beyond research), but projectionSec/raceProjections are derived via
+ * Riegel's power law (Research/02 §2, no VDOT floor) off the runner's own
+ * demonstrated pace when the primary VDOT chain resolves nothing. Watch for
+ * `projectionIsBelowTable: true` in the payload — that's the honest
+ * "building baseline off a real below-table effort" state, distinct from
+ * genuine cold-start (no data at all, projectionSec also null).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
-import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
+import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode, DANIELS_MAX_VALID_DISTANCE_MI, predictRaceTimeFromAnchor, bestRecentVdot } from '@/lib/training/vdot';
+import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
@@ -264,6 +276,48 @@ export async function GET(req: NextRequest) {
       projectionSec = predictRaceTime(vdot, distanceMi) ?? null;
     }
 
+    // 2026-07-07 · AUDIT P1-13 · below-table honest projection. When NOTHING
+    // above resolved a VDOT, the runner is not necessarily dataless — their
+    // best race/run may imply a demonstrated fitness below the Daniels table
+    // floor of 30 (Research/01: "Range ~30 to 85+"). vdot correctly stays
+    // null (extending the VDOT table below 30 would be extrapolating past
+    // its cited range — CLAUDE.md "Engine must match research"), but
+    // projectionSec does NOT have to stay null: predictRaceTimeFromAnchor
+    // uses Riegel's power law (Research/02 §2, cited independently of
+    // Daniels — no VDOT floor at all) to give an honest same-or-cross-
+    // distance projection off the runner's own demonstrated pace. This
+    // replaces "cold state, race a 5K you already raced" (P1-13) with a real
+    // number for anyone whose best effort is gated-honest (passesRunHonestyGate
+    // / a real race), even when it can't be expressed as a VDOT.
+    let belowTableAnchorPace: number | null = null;
+    let belowTableAnchorRef: { finish_seconds: number; distance_mi: number; paceSPerMi: number } | null = null;
+    let projectionIsBelowTable = false;
+    if (vdot == null && projectionSec == null) {
+      try {
+        const { runnerToday } = await import('@/lib/runtime/runner-tz');
+        const today = await runnerToday(userId);
+        const runFloorMi = await goalRunFloorMiForUser(userId);
+        const { raceCandidates, runCandidates } = await loadVdotInputs(userId, today);
+        const { belowTableAnchor } = bestRecentVdot(raceCandidates, today, 180, runCandidates, runFloorMi);
+        if (belowTableAnchor) {
+          const riegel = predictRaceTimeFromAnchor(belowTableAnchor.anchor, distanceMi);
+          if (riegel != null) {
+            projectionSec = riegel;
+            belowTableAnchorPace = belowTableAnchor.anchor.paceSPerMi;
+            belowTableAnchorRef = {
+              finish_seconds: belowTableAnchor.finish_seconds,
+              distance_mi: belowTableAnchor.distance_mi,
+              paceSPerMi: belowTableAnchor.anchor.paceSPerMi,
+            };
+            projectionIsBelowTable = true;
+          }
+        }
+      } catch {
+        // Best-effort — a failure here must not break the whole route; the
+        // response simply stays cold, same as before this fix existed.
+      }
+    }
+
     // 2026-06-12 · the goal-seeking trajectory · the ONE engine both surfaces
     // read (same computeGoalProjection the web seed uses). Carries the upgrade
     // gear (aheadOfGoal / planUnderBuilt / overPerformanceBonusVdot) + the
@@ -424,7 +478,11 @@ export async function GET(req: NextRequest) {
     // statusFor is the cold fallback only when there's no trajectory (no
     // vdot/goal/date).
     const rawStatus = (race != null && daysAway != null && daysAway <= 7 && daysAway >= 0) ? 'race_week'
-      : traj ? (traj.reachable ? 'on_track' : traj.gapVdot <= 1.5 ? 'watch' : 'off')
+      // 2026-07-07 · gapVdot is null for a below-table GOAL (no fabricated
+      // VDOT gap number) — reachable is still a real boolean in that case,
+      // so 'watch' (not 'off') is the honest fallback when we can't grade
+      // the miss by magnitude.
+      : traj ? (traj.reachable ? 'on_track' : (traj.gapVdot == null || traj.gapVdot <= 1.5) ? 'watch' : 'off')
       : statusFor(projectionSec, goalSec, race != null ? daysAway : null);
     const confidenceLabel = (vdot != null && goalSec != null)
       ? computeConfidenceLabel({
@@ -472,6 +530,8 @@ export async function GET(req: NextRequest) {
       lastMove,
       heldDays: held,
       unsupportedDistance,
+      // 2026-07-07 · AUDIT P1-13 · below-table honest baseline copy.
+      belowTableAnchorPaceSPerMi: belowTableAnchorPace,
     });
 
     // All four standard Daniels distances via the canonical predictRaceTime
@@ -483,17 +543,42 @@ export async function GET(req: NextRequest) {
       { distance: 'Half', mi: 13.1094 },
       { distance: 'Marathon', mi: 26.2188 },
     ];
+    // 2026-07-07 · AUDIT P1-13 · "other-distance equivalents never come
+    // online" was named explicitly in the finding. When vdot is null but a
+    // below-table anchor resolved above, use the SAME Riegel fallback so this
+    // surface comes online too, instead of staying null alongside vdot.
+    const fixedBelowTableAnchor = belowTableAnchorRef; // stable const for the closures below
     const raceProjections = vdot != null
       ? STANDARD_RACES
           .map(r => ({ distance: r.distance, time: formatRaceTime(predictRaceTime(vdot, r.mi)) }))
           .filter((r): r is { distance: string; time: string } => r.time != null)
-      : null;
+      : fixedBelowTableAnchor != null
+        ? STANDARD_RACES
+            .map(r => ({
+              distance: r.distance,
+              time: formatRaceTime(predictRaceTimeFromAnchor(
+                { finishSeconds: fixedBelowTableAnchor.finish_seconds, distanceMi: fixedBelowTableAnchor.distance_mi, paceSPerMi: fixedBelowTableAnchor.paceSPerMi },
+                r.mi,
+              )),
+            }))
+            .filter((r): r is { distance: string; time: string } => r.time != null)
+        : null;
 
     return NextResponse.json({
       ok: true,
       status,
       vdot,
       projectionSec,
+      // 2026-07-07 · AUDIT P1-13 · honest below-table state. When vdot is
+      // null but projectionSec is NOT (the Riegel fallback above fired),
+      // projectionIsBelowTable is true — the client should render a "building
+      // baseline" / honest-fitness state (real projection, no VDOT number to
+      // show) rather than either the old cold state OR pretending a VDOT
+      // exists. belowTableAnchorPaceSPerMi is the runner's own demonstrated
+      // pace (s/mi) driving that projection, for display ("based on your
+      // 13:30/mi 5K") instead of a synthesized VDOT.
+      projectionIsBelowTable,
+      belowTableAnchorPaceSPerMi: belowTableAnchorPace,
       goalSec,
       goalSafeSec: goalSafeSec ?? null,
       raceSlug: race?.slug ?? null,

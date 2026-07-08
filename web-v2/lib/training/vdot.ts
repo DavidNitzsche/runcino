@@ -167,6 +167,190 @@ export function vdotFromRace(finishSeconds: number, distanceMi: number): number 
 }
 
 /**
+ * 2026-07-07 · AUDIT P1-56 · ANCHOR-PACE fallback for runners whose demonstrated
+ * fitness maps below Daniels' published VDOT floor of 30 (Research/01:7 "Range:
+ * ~30 (beginner) to 85+"; :634 "Novice 30–40, ~30:00+ 5K"). The Daniels %VO2max
+ * curve is only cited/validated across [30,85] — extrapolating the raw equation
+ * below 30 would be exactly the "extrapolate beyond research" violation the
+ * engine must not commit (CLAUDE.md "Engine must match research": every rule
+ * needs a citation). So VDOT itself STAYS null below 30; that is doctrine-correct,
+ * not a bug.
+ *
+ * The actual bug (P1-56): a null VDOT got treated as "no fitness data exists,"
+ * when the runner plainly HAS a demonstrated pace — it just doesn't map onto the
+ * VDOT scale. This module represents that pace honestly instead of discarding it:
+ * an AnchorPace carries the runner's own (finish_seconds, distance_mi) and derives
+ * training paces as DOCUMENTED OFFSETS FROM THAT PACE — the same relationship
+ * Research/01's "Pace conversion from a race time" table already states in
+ * pace-relative-to-race-pace terms (not VDOT-relative terms), so it is valid at
+ * any pace, not just inside the VDOT-tabulated range:
+ *
+ *   Research/01:142 "T ≈ half-marathon pace to 15K pace (faster runners use HM,
+ *                     slower runners use 15K)"
+ *   Research/01:144 "E ≈ MP + 60–90 sec/mi (or 5K pace + 90–150 sec/mi)"
+ *
+ * tPaceFromAnchorPace below reuses the EXACT distance-tier offset table already
+ * shipped in tPaceFromGoal (spec-builder.ts) — that table is the same doctrine,
+ * already applied to a GOAL pace; here it is applied to a DEMONSTRATED pace. One
+ * offset table, two anchors (goal vs. measured), matching the existing pattern
+ * instead of inventing new numbers.
+ */
+export interface AnchorPace {
+  /** Race/run finish time, seconds. */
+  finishSeconds: number;
+  /** Distance of that effort, miles. */
+  distanceMi: number;
+  /** finishSeconds / distanceMi — the runner's own demonstrated race pace. */
+  paceSPerMi: number;
+}
+
+/** Build an AnchorPace from a finish time + distance, or null on bad input. */
+export function anchorPaceFrom(finishSeconds: number | null | undefined, distanceMi: number | null | undefined): AnchorPace | null {
+  if (!finishSeconds || finishSeconds < 60 || !distanceMi || distanceMi <= 0) return null;
+  return { finishSeconds, distanceMi, paceSPerMi: finishSeconds / distanceMi };
+}
+
+/**
+ * T-pace (s/mi) from a runner's OWN demonstrated race pace, using the identical
+ * distance-tier offsets Daniels' pace-conversion table gives for a GOAL pace
+ * (spec-builder.ts tPaceFromGoal — same numbers, same citation, applied to a
+ * measured anchor instead of a target). Distance-agnostic beyond 30 — no VDOT
+ * table lookup involved, so it is defined for any honest pace, including sub-
+ * VDOT-30 fitness.
+ *
+ * Cite: Research/01-pace-zones-vdot.md §"Pace conversion from a race time".
+ */
+export function tPaceFromAnchorPace(anchor: AnchorPace | null | undefined): number | null {
+  if (!anchor || anchor.paceSPerMi <= 0) return null;
+  const { paceSPerMi, distanceMi } = anchor;
+  // Same distance tiers + offsets as spec-builder.tPaceFromGoal, applied to the
+  // anchor's OWN pace instead of a goal pace (mirrors "faster runners use HM,
+  // slower runners use 15K" — a longer anchor race sits closer to T already).
+  if (distanceMi >= 31) return null; // ultra pace is not T-adjacent; anchor T off marathon/HM/10K/5K only
+  if (distanceMi >= 25) return Math.round(paceSPerMi - 18); // marathon-effort anchor
+  if (distanceMi >= 12) return Math.round(paceSPerMi - 5);  // half-effort anchor
+  if (distanceMi >= 5)  return Math.round(paceSPerMi + 8);  // 10K-effort anchor
+  return Math.round(paceSPerMi + 15);                        // 5K-or-shorter-effort anchor
+}
+
+/**
+ * Easy pace band (s/mi) directly from the anchor pace, for the case where even
+ * T-pace-relative math is not wanted (e.g. a raw honest-easy display). Mirrors
+ * Research/01:142 "E ≈ 5K pace + 90–150 sec/mi" applied distance-agnostically —
+ * same shape as the T-pace offset above. Most callers should prefer deriving E
+ * from tPaceFromAnchorPace (+80/+120, spec-builder's PACE-E-1 constants) so a
+ * single anchor T-pace stays the one number every zone offsets from; this export
+ * exists for callers that want the band without reproducing spec-builder's
+ * offsets.
+ */
+export function easyPaceBandFromAnchorPace(anchor: AnchorPace | null | undefined): { lo: number; hi: number } | null {
+  const tRaw = tPaceFromAnchorPace(anchor);
+  if (tRaw == null) return null;
+  // Same falsifiable-requirement-#3 backstop as resolveCurrentTPace's tier-2
+  // branch: the marathon/half-tier offsets can land tRaw faster than the
+  // anchor itself (see resolveCurrentTPace's doc comment). This export isn't
+  // currently wired into any call site, but it's public API — clamp here too
+  // so a future caller can't reintroduce the bug by using this function
+  // instead of resolveCurrentTPace.
+  const t = clampToSanePace(tRaw, anchor?.paceSPerMi);
+  if (t == null) return null;
+  return { lo: t + 80, hi: t + 120 }; // matches spec-builder PACE-E-1 (Research/01 §VDOT-50 table: E = T+104..T+156, T+80 floor).
+}
+
+/**
+ * 2026-07-07 · AUDIT P1-56 · Riegel cross-distance prediction — the doctrine-cited
+ * fallback for "what would this pace-anchored runner run at a DIFFERENT distance"
+ * when VDOT itself is off-table (< 30) and predictRaceTime (Daniels table
+ * inversion) therefore cannot answer. Riegel's power law is NOT Daniels' VDOT
+ * model — it has no VDOT floor at all, so it is doctrine-valid here without any
+ * extrapolation-beyond-research concern.
+ *
+ * Cite: Research/02-race-time-prediction.md §2 "T2 = T1 × (D2/D1)^1.06" (Riegel,
+ * 1981, "Athletic records and human endurance," American Scientist 69:285-290);
+ * §2.4 "Designed for events 3.5-230 minutes (≈1500m to marathon)."
+ *
+ * Deliberately narrower than predictRaceTime: returns null when either distance
+ * falls outside Riegel's own cited validity window (§2.4) rather than silently
+ * extrapolating past it — same "don't extrapolate beyond research" discipline
+ * applied to THIS formula's cited bounds, not just Daniels'. A caller with an
+ * anchor/target pair outside the window has no doctrine-supported cross-distance
+ * answer and should fall back to a same-distance-only honest read.
+ */
+const RIEGEL_EXPONENT = 1.06;
+/** Riegel's own cited validity window (Research/02 §2.4): "1500m to marathon."
+ *  1500m ≈ 0.932mi; full marathon = 26.2188mi. Slightly inclusive of the
+ *  standard mile (1.0mi) since that sits just above 1500m and well inside the
+ *  cited event-duration range (3.5-230 min) for any pace this module reaches. */
+const RIEGEL_MIN_DISTANCE_MI = 0.93;
+const RIEGEL_MAX_DISTANCE_MI = 26.22;
+
+export function predictRaceTimeFromAnchor(
+  anchor: AnchorPace | null | undefined,
+  targetDistanceMi: number,
+): number | null {
+  if (!anchor || !targetDistanceMi || targetDistanceMi <= 0) return null;
+  const { finishSeconds, distanceMi } = anchor;
+  if (distanceMi < RIEGEL_MIN_DISTANCE_MI || distanceMi > RIEGEL_MAX_DISTANCE_MI) return null;
+  if (targetDistanceMi < RIEGEL_MIN_DISTANCE_MI || targetDistanceMi > RIEGEL_MAX_DISTANCE_MI) return null;
+  const t2 = finishSeconds * Math.pow(targetDistanceMi / distanceMi, RIEGEL_EXPONENT);
+  return Math.round(t2);
+}
+
+/**
+ * 2026-07-07 · AUDIT P1-56 · I-pace (s/mi) from an anchor pace, mirroring
+ * iPaceFromVdot's own shape (predictRaceTime(vdot, 5K)) but via Riegel
+ * cross-distance prediction instead of a VDOT round-trip.
+ *
+ * This closes a SECOND below-table leak found while testing the T-pace fix:
+ * generate.ts's persistPlan computed `iPaceFromVdot(vdotFromTpace(weekT))`
+ * for race_week_tuneup/goal-I-eligible quality days — vdotFromTpace's own
+ * binary search is bounded [30,85], so ANY weekT slower than what VDOT 30
+ * implies gets silently clamped UP to VDOT-30 territory, re-introducing the
+ * exact "prescribed faster than demonstrated pace" bug one level down, even
+ * after the T-pace itself was fixed to honor the anchor. Riegel has no VDOT
+ * floor, so scaling the anchor directly to a 5K-equivalent time and reading
+ * pace off THAT never re-enters VDOT space at all.
+ *
+ * Cite: Research/01-pace-zones-vdot.md §Daniels-I ("I ≈ 3K to 5K race pace")
+ * + Research/02-race-time-prediction.md §2 (Riegel, same citation as
+ * predictRaceTimeFromAnchor above).
+ */
+export function iPaceFromAnchorPace(anchor: AnchorPace | null | undefined): number | null {
+  const fiveKSec = predictRaceTimeFromAnchor(anchor, 3.10686);
+  if (fiveKSec == null) return null;
+  const raw = Math.round(fiveKSec / 3.10686);
+  // 2026-07-07 · CODE-REVIEW FINDING (below-table HM/marathon personas) · Riegel
+  // projects a FASTER per-mile pace at 5K than at the anchor's own (longer)
+  // distance — correct, expected behavior for a trained runner (Research/01:145
+  // "I ≈ 3K to 5K race pace" is genuinely quicker than M/HM pace). But for a
+  // below-table anchor, the anchor pace itself IS the only demonstrated data
+  // point; Riegel's power-law extrapolation down to 5K from a single slow
+  // marathon/HM effort is unvalidated at that fitness level and can land faster
+  // than the runner has ever actually run (e.g. a 6:30/900s-mi marathon anchor
+  // Riegel-projects a 785s/mi 5K-equivalent pace — 115s/mi faster than anything
+  // the runner has demonstrated). This is the exact falsifiable-requirement-#3
+  // shape clampToSanePace exists for ("no prescribed pace may be faster than
+  // the runner's own demonstrated race/run pace... regardless of which tier
+  // produced it") — apply the same backstop here so I-pace can never leak
+  // faster than the anchor it was derived from, same as tPaceFromAnchorPace's
+  // callers (resolveCurrentTPace, easyPaceBandFromAnchorPace) already do.
+  //
+  // Epsilon guard: `raw` is always a Math.round()'d whole-second integer, but
+  // anchor.paceSPerMi is the unrounded finishSeconds/distanceMi division and
+  // can carry sub-second float noise (e.g. a 2517s/3.10686mi 5K anchor's true
+  // division is 810.1427...s/mi, not the whole-second 810 every other reader
+  // of this anchor treats as "the" pace). When the anchor's own distance IS
+  // (within rounding) the 5K target, raw and the anchor pace describe the
+  // SAME demonstrated effort — clamping raw up to the unrounded float would
+  // report a phantom <1s/mi "violation" that isn't a real below-anchor
+  // prescription. Only clamp when raw is genuinely, more-than-rounding-noise
+  // faster than the anchor (Research/01 "I ≈ 5K race pace" — a 5K effort's
+  // own I-pace IS that effort's pace, exactly, when the anchor already is a 5K).
+  if (Math.abs(raw - anchor!.paceSPerMi) < 0.5) return raw;
+  return clampToSanePace(raw, anchor?.paceSPerMi);
+}
+
+/**
  * Invert the Daniels race-time table: given a VDOT and a distance, predict
  * the finish time (seconds). This is the projection direction — "at your
  * current fitness, racing distance D today would take ~T."
@@ -431,12 +615,39 @@ export function iPaceFromVdot(vdot: number | null | undefined): number | null {
 }
 
 /**
+ * 2026-07-07 · AUDIT P1-56 · factored out of vdotFromRun (see its doc comment
+ * below for the full gate rationale) so the below-table anchor fallback
+ * (bestRecentVdot's belowTableAnchor) can apply the IDENTICAL honesty gate
+ * (distance floor + quality-type-or-hard-HR) without duplicating it — an easy
+ * conversational run must not become a fitness anchor just because its
+ * implied VDOT happens to land below 30. Pure refactor: behavior unchanged,
+ * same two conditions vdotFromRun checked inline before this split.
+ */
+export function passesRunHonestyGate(input: {
+  finishSeconds: number;
+  distanceMi: number;
+  workoutType?: string | null;
+  avgHr?: number | null;
+  maxHr?: number | null;
+  minDistanceMi?: number;
+}): boolean {
+  if (!input.finishSeconds || input.finishSeconds < 60) return false;
+  const floorMi = input.minDistanceMi ?? 4;
+  if (!input.distanceMi || input.distanceMi < floorMi) return false;
+  const wType = String(input.workoutType ?? '').toLowerCase();
+  const isQuality = QUALITY_RUN_TYPES.has(wType);
+  const hrFloor = input.maxHr ? input.maxHr * 0.80 : null;
+  const isHardEffort = input.avgHr != null && hrFloor != null && input.avgHr >= hrFloor;
+  return isQuality || isHardEffort;
+}
+
+/**
  * Derive VDOT from a single sustained training run.
  *
  * Treats the run as a "virtual race" at its actual pace + distance and
  * inverts Daniels' formula (same as vdotFromRace). The catch: a run is only
  * VDOT-readable if effort was honest, otherwise pace doesn't reflect fitness.
- * Gates:
+ * Gates (factored into passesRunHonestyGate above):
  *   - Workout type is in QUALITY_RUN_TYPES (the plan called for hard work), OR
  *   - avg HR ≥ 80% of max HR (independent evidence of threshold-or-harder effort)
  * AND distance ≥ 4 miles (shorter runs are too noisy to lock VDOT off of).
@@ -463,17 +674,7 @@ export function vdotFromRun(input: {
    *  rejected. The HR gate below still guards effort honesty. */
   minDistanceMi?: number;
 }): number | null {
-  if (!input.finishSeconds || input.finishSeconds < 60) return null;
-  const floorMi = input.minDistanceMi ?? 4;
-  if (!input.distanceMi || input.distanceMi < floorMi) return null;
-
-  const wType = String(input.workoutType ?? '').toLowerCase();
-  const isQuality = QUALITY_RUN_TYPES.has(wType);
-  const hrFloor = input.maxHr ? input.maxHr * 0.80 : null;
-  const isHardEffort =
-    input.avgHr != null && hrFloor != null && input.avgHr >= hrFloor;
-
-  if (!isQuality && !isHardEffort) return null;
+  if (!passesRunHonestyGate(input)) return null;
 
   // 2026-06-11 · zone-aware read. A sustained sub-maximal effort (threshold,
   // marathon pace) is NOT an all-out race — reading it via vdotFromRace
@@ -483,6 +684,7 @@ export function vdotFromRun(input: {
   // races read correctly as a race, so they keep vdotFromRace. bestRecentVdot
   // takes the MAX, so this can only RAISE current fitness from honest training,
   // never lower it.
+  const wType = String(input.workoutType ?? '').toLowerCase();
   const zone = input.zone ?? zoneFromType(wType);
   const pace = input.finishSeconds / input.distanceMi;
   if (zone === 'threshold') return vdotFromTpace(pace);
@@ -549,6 +751,28 @@ const FADE_TAIL_DAYS = 120;
  */
 const TRAINING_ESTIMATE_SOFT_CAP_VDOT = 1.0;
 
+/**
+ * 2026-07-07 · AUDIT P1-56 · the honest sub-table read. When NOTHING in scope
+ * produces a valid VDOT candidate (every race/run implies < 30), the runner is
+ * NOT dataless — they have a demonstrated pace, just one below the cited
+ * Daniels table. Instead of the whole read silently collapsing to null, carry
+ * the best-effort AnchorPace forward (see tPaceFromAnchorPace above) so callers
+ * can derive honest training paces off it. Mirrors VdotCandidate's shape
+ * (source/date/name/priority/distance/finish) minus the vdot fields, since none
+ * exist for a below-table effort.
+ */
+export interface BelowTableAnchor {
+  source: 'race' | 'run';
+  /** Race slug or run id, whichever produced this candidate. */
+  refId: string;
+  name: string | null;
+  date: string;
+  distance_mi: number;
+  finish_seconds: number;
+  age_days: number;
+  anchor: AnchorPace;
+}
+
 export function bestRecentVdot(
   races: Array<{ slug: string; name: string; date: string; priority: 'A'|'B'|'C'|null; distance_mi: number | null; finish_seconds: number | null }>,
   todayISO: string,
@@ -568,7 +792,7 @@ export function bestRecentVdot(
    *  legacy behavior for every caller that doesn't pass it; a 5K-goal caller
    *  passes 3.0 so the runner's ~3.1mi efforts count as fitness candidates. */
   minRunDistanceMi: number = 4,
-): { best: VdotCandidate | null; considered: VdotCandidate[] } {
+): { best: VdotCandidate | null; considered: VdotCandidate[]; belowTableAnchor: BelowTableAnchor | null } {
   const todayMs = Date.parse(todayISO + 'T12:00:00Z');
   // Hard cutoff now includes the fade tail; the fade handles 180→300.
   const cutoff = new Date(todayMs - (lookbackDays + FADE_TAIL_DAYS) * 86400000).toISOString().slice(0, 10);
@@ -581,13 +805,36 @@ export function bestRecentVdot(
     return Math.round(faded * 10) / 10;
   };
 
+  // P1-56 · best (fastest pace) below-table race candidate seen, tracked
+  // alongside the normal race loop so eligibility (date window, C-race
+  // exclusion) matches exactly. Race wins over run for this fallback too,
+  // same doctrine as the main sortKey (race ties beat training estimates) —
+  // simplified here to "any race beats any run" since these are honest-effort
+  // anchors either way once we're off the VDOT table (no soft-cap to apply).
+  let belowTableRace: BelowTableAnchor | null = null;
+  let belowTableRun: BelowTableAnchor | null = null;
+
   const raceCandidates: RaceVdotCandidate[] = [];
   for (const r of races) {
     if (!r.date || !r.distance_mi || !r.finish_seconds) continue;
     if (r.date < cutoff) continue;
     if (r.priority === 'C') continue;
     const v = vdotFromRace(r.finish_seconds, r.distance_mi);
-    if (v == null) continue;
+    if (v == null) {
+      // Below (or above) the [30,85] table — not silently dropped. Below-30
+      // is by far the common real case (above-85 is a data error, not a
+      // runner); anchorPaceFrom is agnostic and a >85 anchor would just never
+      // win a comparison against real candidates, so no extra guard needed.
+      const anchor = anchorPaceFrom(r.finish_seconds, r.distance_mi);
+      if (anchor && (belowTableRace == null || anchor.paceSPerMi < belowTableRace.anchor.paceSPerMi)) {
+        belowTableRace = {
+          source: 'race', refId: r.slug, name: r.name, date: r.date,
+          distance_mi: r.distance_mi, finish_seconds: r.finish_seconds,
+          age_days: ageDays(r.date), anchor,
+        };
+      }
+      continue;
+    }
     const age = ageDays(r.date);
     raceCandidates.push({
       source: 'race',
@@ -620,7 +867,50 @@ export function bestRecentVdot(
         zone: r.zone ?? null,
         minDistanceMi: minRunDistanceMi,
       });
-      if (v == null) continue;
+      // 2026-07-07 · CODE-REVIEW FINDING (P1-56 second regression) · v == null
+      // is NOT the only below-table signal. vdotFromRun's zone-aware paths
+      // (vdotFromTpace/vdotFromMpace, used for threshold/tempo/marathon-pace
+      // workout types) binary-search a [30,85]-bounded VDOT and silently
+      // CONVERGE TO THE 30 FLOOR instead of failing when the true implied
+      // VDOT is below it — unlike vdotFromRace, which explicitly returns null
+      // outside [30,85]. So a below-table hard effort read via the zone path
+      // comes back as a false "VDOT 30", not null, and the `v == null` branch
+      // below never saw it. Detect the clamp directly: re-derive the pace the
+      // zone read is BASED ON and compare it to what VDOT 30 predicts for that
+      // same zone — if the runner's actual pace is honestly slower than the
+      // VDOT-30 floor's pace, the read was clamped, not a genuine VDOT-30
+      // effort, regardless of whether vdotFromRun returned 30 or null.
+      const isClampedToFloor = v != null && (() => {
+        const wType = String(r.workout_type ?? '').toLowerCase();
+        const zone = r.zone ?? zoneFromType(wType);
+        if (zone !== 'threshold' && zone !== 'marathon') return false;
+        if (v > 30) return false; // a real (non-boundary) VDOT read — trust it
+        const pace = r.finish_seconds / r.distance_mi;
+        const floorPace = zone === 'threshold' ? tPaceFromVdot(30) : predictRaceTime(30, 26.2188)! / 26.2188;
+        return floorPace != null && pace > floorPace + 2; // honestly slower than VDOT 30's own pace
+      })();
+      if (v == null || isClampedToFloor) {
+        // P1-56 · same honesty gate vdotFromRun applies (passesRunHonestyGate),
+        // checked separately here so a below-30 read from a GATED effort still
+        // becomes a belowTableAnchor candidate, while a gate failure (easy run,
+        // too short) does not. vdotFromRun's null is ambiguous between the two;
+        // re-checking the gate resolves it without duplicating the zone math.
+        if (passesRunHonestyGate({
+          finishSeconds: r.finish_seconds, distanceMi: r.distance_mi,
+          workoutType: r.workout_type, avgHr: r.avg_hr ?? null, maxHr: r.max_hr ?? null,
+          minDistanceMi: minRunDistanceMi,
+        })) {
+          const anchor = anchorPaceFrom(r.finish_seconds, r.distance_mi);
+          if (anchor && (belowTableRun == null || anchor.paceSPerMi < belowTableRun.anchor.paceSPerMi)) {
+            belowTableRun = {
+              source: 'run', refId: r.id, name: r.workout_type, date: r.date,
+              distance_mi: r.distance_mi, finish_seconds: r.finish_seconds,
+              age_days: ageDays(r.date), anchor,
+            };
+          }
+        }
+        continue;
+      }
       const age = ageDays(r.date);
       // AUDIT #8 · cap the training read at race-anchor + the soft-estimate
       // quantum before the stale fade. Math.round keeps the 1-decimal contract.
@@ -642,5 +932,105 @@ export function bestRecentVdot(
   const sortKey = (c: VdotCandidate) => (c.source === 'race' ? c.vdot : c.vdot - 1);
   const considered = [...raceCandidates, ...runCandidates]
     .sort((a, b) => sortKey(b) - sortKey(a));
-  return { best: considered[0] ?? null, considered };
+
+  // P1-56 · belowTableAnchor is populated ONLY when there is no real (in-table)
+  // candidate at all — a runner with a valid race VDOT never falls back to a
+  // sub-30 anchor even if one exists (e.g. an old slow 5K before they got
+  // faster). Race beats run when both exist, matching the main sortKey's
+  // "race wins ties" doctrine (no soft-cap applies here — both are honest
+  // demonstrated efforts, no VDOT to bound).
+  const belowTableAnchor: BelowTableAnchor | null =
+    considered.length > 0 ? null : (belowTableRace ?? belowTableRun);
+
+  return { best: considered[0] ?? null, considered, belowTableAnchor };
+}
+
+/**
+ * 2026-07-07 · AUDIT P1-56 · THE resolution cascade for "what T-pace should
+ * quality/easy/long work anchor to right now," replacing the
+ * `tPaceFromVdot(bestRecentVdot ?? conservativeVdotFromMileage(mi))` pattern
+ * that appeared at every call site (generate.ts:1844/3575, reanchor-
+ * maintenance.ts:61,126). That pattern had exactly one fallback tier — mileage
+ * — which floors at VDOT 30 (T-pace ~10:41/mi) regardless of how slow the
+ * runner's OWN races actually are, so a 25mi/wk runner racing 12+ min/mi got
+ * quality prescribed faster than their demonstrated race pace (P1-56's exact
+ * failure mode).
+ *
+ * Three tiers, each strictly more conservative than the last, all honest:
+ *   1. measuredVdot != null       → tPaceFromVdot(measuredVdot)        (real fitness read)
+ *   2. belowTableAnchor present   → tPaceFromAnchorPace(anchor)        (real pace, off-table VDOT)
+ *   3. neither                    → tPaceFromVdot(conservativeVdotFromMileage(mi)) (volume-only estimate — the
+ *                                    ORIGINAL fallback, unchanged; genuinely no
+ *                                    demonstrated-pace evidence exists yet)
+ *
+ * Tier 2 is what's new: an honest race/run anchor beats a volume-only guess
+ * every time it exists, because it is measured pace, not inferred pace. This
+ * mirrors bestRecentVdot's own precedence (a measured VDOT always beats
+ * conservativeVdotFromMileage) one level down, for the runners the VDOT scale
+ * itself can't represent.
+ *
+ * Returns `{ tPaceSec, tier, anchor }` — tier is threaded through so callers
+ * (and tests) can assert which rung fired instead of only checking the number.
+ */
+export type TPaceResolutionTier = 'measured_vdot' | 'below_table_anchor' | 'mileage_estimate';
+
+export function resolveCurrentTPace(
+  measuredVdot: number | null | undefined,
+  belowTableAnchor: BelowTableAnchor | null | undefined,
+  weeklyMi: number,
+  conservativeVdotFromMileageFn: (weeklyMi: number) => number,
+): { tPaceSec: number | null; tier: TPaceResolutionTier; anchorPaceSPerMi: number | null } {
+  if (measuredVdot != null) {
+    return { tPaceSec: tPaceFromVdot(measuredVdot), tier: 'measured_vdot', anchorPaceSPerMi: null };
+  }
+  if (belowTableAnchor != null) {
+    const t = tPaceFromAnchorPace(belowTableAnchor.anchor);
+    if (t != null) {
+      // Falsifiable requirement #3 backstop, WIRED (not just unit-tested in
+      // isolation). tPaceFromAnchorPace reuses spec-builder's GOAL-anchored
+      // offset table (-18 marathon-tier / -5 half-tier) applied to a MEASURED
+      // anchor pace instead of a goal pace — for those two tiers the offset
+      // can land T-pace faster than the runner's own demonstrated race pace
+      // (e.g. a 900s/mi marathon anchor -> 882s/mi T, 18s/mi faster than the
+      // anchor). clampToSanePace enforces the non-negotiable invariant that no
+      // prescribed pace may be faster than the anchor it was derived from,
+      // regardless of which distance tier or offset produced it.
+      const clamped = clampToSanePace(t, belowTableAnchor.anchor.paceSPerMi);
+      return { tPaceSec: clamped, tier: 'below_table_anchor', anchorPaceSPerMi: belowTableAnchor.anchor.paceSPerMi };
+    }
+    // tPaceFromAnchorPace returns null only for an ultra-distance anchor
+    // (>=31mi — T-pace isn't ultra-adjacent per PACE-5 doctrine); fall through
+    // to the mileage estimate rather than leaving T-pace null.
+  }
+  return {
+    tPaceSec: tPaceFromVdot(conservativeVdotFromMileageFn(weeklyMi)),
+    tier: 'mileage_estimate',
+    anchorPaceSPerMi: null,
+  };
+}
+
+/**
+ * 2026-07-07 · AUDIT P1-56 falsifiable requirement #3 · SANITY CLAMP. No
+ * prescribed pace (seconds/mile) may be faster than the runner's own
+ * demonstrated race/run pace for a distance <= the workout's own distance —
+ * regardless of which tier above produced it, and regardless of any future
+ * bug in the VDOT/offset math. This is the final backstop, not the primary
+ * mechanism (tiers 1–3 above should already produce sane numbers); it exists
+ * so a bad anchor, a stale VDOT, or an unanticipated interaction cannot
+ * output a pace that contradicts data the app has already observed.
+ *
+ * `fastestPaceSPerMi` should be the runner's single fastest CREDIBLE
+ * demonstrated pace at >= the target distance (callers typically pass the
+ * anchor's own pace, or the fastest of {race anchor, below-table anchor}).
+ * Returns the input unchanged when no anchor is known (nothing to clamp
+ * against) or when the prescribed pace is already honest (slower-or-equal,
+ * i.e. numerically >= the anchor in s/mi).
+ */
+export function clampToSanePace(
+  prescribedSPerMi: number | null,
+  fastestPaceSPerMi: number | null | undefined,
+): number | null {
+  if (prescribedSPerMi == null) return prescribedSPerMi;
+  if (fastestPaceSPerMi == null || fastestPaceSPerMi <= 0) return prescribedSPerMi;
+  return Math.max(prescribedSPerMi, fastestPaceSPerMi);
 }

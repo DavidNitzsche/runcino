@@ -52,13 +52,21 @@ export interface TargetsSummaryArgs {
    *  this reason, not because no goal was set — the summary must say so
    *  instead of nudging the runner to "set a goal" they already set. */
   unsupportedDistance?: boolean;
+  /** 2026-07-07 · AUDIT P1-13 · the runner's own demonstrated pace (s/mi)
+   *  when it maps below the Daniels VDOT table floor of 30 — see
+   *  vdot.ts's BelowTableAnchor / the projection route's below-table
+   *  fallback. Null for every runner with an in-table VDOT (the vast
+   *  majority) or genuinely no data. Lets the "no baseline yet" copy speak
+   *  to the real effort on record instead of asking the runner to
+   *  re-produce a baseline they already have. */
+  belowTableAnchorPaceSPerMi?: number | null;
 }
 
 const fmt = (sec: number): string => formatRaceTime(sec) ?? `${Math.round(sec)}s`;
 
 export function composeTargetsSummaryLine(args: TargetsSummaryArgs): string {
   const { status, goalSec, projectedSec, goalSource, raceName, daysAway,
-          vdot, lastMove, heldDays, unsupportedDistance } = args;
+          vdot, lastMove, heldDays, unsupportedDistance, belowTableAnchorPaceSPerMi } = args;
 
   // ── Target time exists · speak in real times, keyed by status ─────────
   if (goalSec != null && goalSec > 0 && projectedSec != null && projectedSec > 0) {
@@ -112,6 +120,16 @@ export function composeTargetsSummaryLine(args: TargetsSummaryArgs): string {
   if (vdot != null) {
     const held = heldDays > 1 ? ` for ${heldDays} days` : '';
     return `Fitness holding at VDOT ${vdot.toFixed(1)}${held}. ${nudge}`;
+  }
+  // 2026-07-07 · AUDIT P1-13 · below-table honest baseline. Before this, a
+  // runner whose best race/run implied VDOT < 30 fell all the way to "No
+  // baseline yet" — the exact "cold state tells them to race a 5K they
+  // already raced" failure the audit named, since their baseline DOES
+  // exist, it just doesn't map onto the VDOT number this copy otherwise
+  // reports. Speak to the pace itself instead of a VDOT number.
+  if (belowTableAnchorPaceSPerMi != null && belowTableAnchorPaceSPerMi > 0) {
+    const pace = fmt(Math.round(belowTableAnchorPaceSPerMi));
+    return `Building your baseline off a ${pace}/mi effort. ${nudge}`;
   }
   return 'No baseline yet. A steady quality run gives the projection something to read.';
 }
