@@ -62,6 +62,46 @@ export interface DeletionPlan {
   externalChildEdges: FkEdge[];
 }
 
+/**
+ * Sanity floor on the runtime table enumeration, checked by the route
+ * BEFORE buildDeletionPlan is even called.
+ *
+ * Why this exists: buildDeletionPlan([], []) is not a bug in the planner
+ * — it is *correctly* a valid, acyclic, single-step plan containing only
+ * `users` (see the "appends users even when not in the input set" test
+ * below). That is the right behavior for a planner given an empty input.
+ * The bug lives one level up: if `enumerateUserTables()` ever returns an
+ * empty or near-empty array — a transient pg_catalog hiccup, a wrong
+ * search_path, privilege drift, anything short of a thrown error — the
+ * route's only other integrity check (`counts['users'] === 1`) is
+ * satisfied by that degenerate plan, so it commits happily, deleting the
+ * users row while every other user-keyed table is silently orphaned.
+ * That is the exact "stale hardcoded list leaves orphaned PII behind"
+ * failure this module's runtime-enumeration approach was built to avoid
+ * — reached through the enumeration itself going empty instead of a list
+ * going stale.
+ *
+ * Prod carries 49 user-keyed tables (2026-07-06 probe); the floor is set
+ * comfortably below that so ordinary schema growth/shrinkage never
+ * false-positives, while zero/near-zero always does.
+ */
+export const MIN_USER_KEYED_TABLES = 40;
+
+/**
+ * Throws if `tableCount` is below the sanity floor. Call this on the
+ * route's enumerateUserTables() result BEFORE building or executing a
+ * deletion plan — never after, and never rely on `counts['users'] === 1`
+ * alone to catch this class of failure.
+ */
+export function assertSufficientTableCount(tableCount: number): void {
+  if (tableCount < MIN_USER_KEYED_TABLES) {
+    throw new Error(
+      `enumerateUserTables() returned ${tableCount} tables, expected at ` +
+      `least ${MIN_USER_KEYED_TABLES} — refusing to delete anything`,
+    );
+  }
+}
+
 /** Strict identifier gate. Table names come from pg_catalog, but never
  *  interpolate anything that doesn't look like a plain lowercase
  *  Postgres identifier. */

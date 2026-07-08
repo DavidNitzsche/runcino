@@ -14,6 +14,8 @@ import {
   buildDeletionPlan,
   buildWhereSql,
   assertSafeIdent,
+  assertSufficientTableCount,
+  MIN_USER_KEYED_TABLES,
   type UserKeyedTable,
   type FkEdge,
 } from './deletion-plan';
@@ -54,6 +56,51 @@ describe('assertSafeIdent', () => {
       expect(() => assertSafeIdent(bad as string)).toThrow(/unsafe table identifier/);
     },
   );
+});
+
+describe('assertSufficientTableCount', () => {
+  // Regression coverage for the review finding on this branch: an empty
+  // or transient-truncated pg_catalog enumeration doesn't throw on its
+  // own — it just produces a small `tables` array — and
+  // buildDeletionPlan([], []) happily returns a VALID, ACYCLIC one-step
+  // plan containing only `users`. The route's OTHER integrity check
+  // (`counts['users'] === 1`) is satisfied by that degenerate plan, so
+  // without this floor the transaction would commit having deleted only
+  // the users row while every other user-keyed table is silently
+  // orphaned. This assertion is the route's only defense against that
+  // failure mode and MUST run before buildDeletionPlan is called.
+
+  it('throws on a zero-table enumeration (the degenerate-plan failure mode)', () => {
+    expect(() => assertSufficientTableCount(0)).toThrow(/expected at least/);
+  });
+
+  it('throws on a small-but-nonzero enumeration (partial pg_catalog result)', () => {
+    expect(() => assertSufficientTableCount(3)).toThrow(/expected at least/);
+  });
+
+  it('throws exactly at one below the floor', () => {
+    expect(() => assertSufficientTableCount(MIN_USER_KEYED_TABLES - 1)).toThrow();
+  });
+
+  it('passes at exactly the floor', () => {
+    expect(() => assertSufficientTableCount(MIN_USER_KEYED_TABLES)).not.toThrow();
+  });
+
+  it('passes at the real prod count (49, verified 2026-07-06)', () => {
+    expect(() => assertSufficientTableCount(49)).not.toThrow();
+  });
+
+  it('confirms buildDeletionPlan([], []) is itself silently "valid" — the exact shape assertSufficientTableCount exists to intercept', () => {
+    // This is not a bug in buildDeletionPlan: given no tables, a
+    // single-step "users" plan IS the correct pure-function output.
+    // The bug only exists if the route trusts this plan without first
+    // checking where the empty input came from — which is precisely
+    // what assertSufficientTableCount(tables.length) does, called
+    // before buildDeletionPlan in the route.
+    const plan = buildDeletionPlan([], []);
+    expect(plan.cyclic).toBe(false);
+    expect(plan.steps).toEqual([{ table: 'users', whereSql: 'id = $1::uuid' }]);
+  });
 });
 
 describe('buildDeletionPlan · ordering', () => {

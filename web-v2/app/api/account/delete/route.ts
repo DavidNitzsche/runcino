@@ -27,6 +27,12 @@
  *     (pg_catalog, not information_schema: information_schema is
  *     privilege-filtered and showed 0 of the 56 real FKs under the RO
  *     role during the 2026-07-06 probe.)
+ *   - Runtime enumeration is itself sanity-floored
+ *     (assertSufficientTableCount / MIN_USER_KEYED_TABLES in
+ *     lib/account/deletion-plan.ts, currently 40 vs. prod's real 49)
+ *     before anything is deleted — a near-empty or empty enumeration
+ *     result refuses with a 500 instead of silently deleting only
+ *     `users` and orphaning everything else.
  *   - FK edges are enumerated the same way and the pure planner
  *     (lib/account/deletion-plan.ts) orders children before parents —
  *     required because runs.shoe_id -> shoes.id is NO ACTION.
@@ -35,9 +41,11 @@
  *   - Child tables without a user column (niggle_recovery, sick_recovery)
  *     are cleared by their parents' ON DELETE CASCADE.
  *   - Strava: if a token is on file, best-effort POST
- *     https://www.strava.com/oauth/deauthorize first (same as the
- *     disconnect path in /api/auth/strava) — failure never blocks
- *     deletion.
+ *     https://www.strava.com/oauth/deauthorize first. The token lookup
+ *     mirrors getStravaToken()/hasStravaConnection() in lib/strava/auth.ts
+ *     (connector_tokens first, profile.strava_access_token fallback) —
+ *     a superset of what /api/auth/strava's disconnect() checks
+ *     (profile-only) — failure never blocks deletion.
  *   - Tombstone: one row in the EXISTING ops_alerts table (append-only
  *     ops log) recording user_uuid + row counts. No email, no new tables.
  *   - No special-casing by account: admins and the App Review demo
@@ -52,6 +60,7 @@ import { raiseAlert } from '@/lib/ops/alerts';
 import {
   buildDeletionPlan,
   assertSafeIdent,
+  assertSufficientTableCount,
   type UserKeyedTable,
   type FkEdge,
 } from '@/lib/account/deletion-plan';
@@ -125,6 +134,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody |
   let plan;
   try {
     const [tables, edges] = await Promise.all([enumerateUserTables(), enumerateFkEdges()]);
+    // Sanity floor on the runtime enumeration itself — see
+    // assertSufficientTableCount's doc comment for the exact failure
+    // mode this closes (empty/near-empty enumeration -> degenerate but
+    // VALID single-step plan -> silent orphaning of every other table).
+    // Must run BEFORE buildDeletionPlan; throws into the catch below.
+    assertSufficientTableCount(tables.length);
     plan = buildDeletionPlan(tables, edges);
   } catch (e: any) {
     console.error('[account/delete] plan build failed:', e?.message);
@@ -245,10 +260,11 @@ async function enumerateFkEdges(): Promise<FkEdge[]> {
 }
 
 /**
- * Best-effort Strava OAuth revoke, mirroring the disconnect path in
- * /api/auth/strava: read the freshest active token (connector_tokens
- * first, legacy profile columns second) and POST oauth/deauthorize.
- * Never throws, never blocks deletion.
+ * Best-effort Strava OAuth revoke. Token lookup mirrors the read order in
+ * getStravaToken()/hasStravaConnection() (lib/strava/auth.ts):
+ * connector_tokens first, legacy profile columns second — a superset of
+ * what /api/auth/strava's disconnect() checks (profile-only). Then POST
+ * oauth/deauthorize. Never throws, never blocks deletion.
  */
 async function revokeStravaBestEffort(userId: string): Promise<void> {
   try {
