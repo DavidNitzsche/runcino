@@ -350,6 +350,33 @@ extension API {
         return env?.proposals ?? []
     }
 
+    // MARK: - Per-workout adapter proposals (propose-first flow)
+
+    /// GET /api/plan/workout-proposals · pending plan_workout_proposals
+    /// rows. Drives the Today banner + the repurposed NudgeSheet
+    /// (LET IT HAPPEN / KEEP ORIGINAL).
+    static func fetchWorkoutProposals() async throws -> [WorkoutProposal] {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/plan/workout-proposals"))
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return [] }
+        let env = try? JSONDecoder().decode(WorkoutProposalsResponse.self, from: data)
+        return env?.proposals ?? []
+    }
+
+    /// accept=true → POST /api/plan/workout-proposals/:id/accept (server
+    /// re-applies the stored action via applyAdaptations · provenance chip
+    /// + coach_intents audit included). accept=false → POST /:id/dismiss
+    /// (plan unchanged, banner clears on next load).
+    @discardableResult
+    static func respondWorkoutProposal(id: Int, accept: Bool) async throws -> Bool {
+        let path = "api/plan/workout-proposals/\(id)/\(accept ? "accept" : "dismiss")"
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        let (_, http) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
     // MARK: - Notification inbox
 
     static func fetchNotificationInbox(days: Int = 14, limit: Int = 50) async throws -> [NotifInboxItem] {

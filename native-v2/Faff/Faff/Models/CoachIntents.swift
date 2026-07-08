@@ -54,6 +54,20 @@ struct CoachIntent: Decodable, Identifiable {
         return nil
     }
 
+    /// One-line adapter rationale · applyAdaptations writes `{why: "..."}`
+    /// into the value blob for every plan_adapt_* intent (web-v2/lib/plan/
+    /// adapt.ts writeIntent callers). Drives the applied-adapter coach
+    /// line on Today. Same lazy extraction pattern as `detail`.
+    var why: String? {
+        guard let v = value, !v.isEmpty else { return nil }
+        if let data = v.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let w = obj["why"] as? String, !w.isEmpty {
+            return w
+        }
+        return nil
+    }
+
     enum CodingKeys: String, CodingKey {
         case ts, reason, severity, summary, field, value
         // Legacy keys · accept if a deploy window still emits them.

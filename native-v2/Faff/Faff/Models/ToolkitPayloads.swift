@@ -171,6 +171,66 @@ struct ProposalsResponse: Decodable {
     }
 }
 
+// MARK: - Per-workout adapter proposals (propose-first flow)
+
+/// One pending plan_workout_proposals row from GET /api/plan/workout-proposals.
+/// Wire is camelCase (lib/plan/workout-proposals.ts PendingProposal); the
+/// nested actionPayload is flattened into newType / newDate / shaveFraction /
+/// why for ergonomic rendering. Lenient decode per doctrine 2026-05-31.
+struct WorkoutProposal: Decodable, Identifiable {
+    let id: Int
+    let planWorkoutId: String
+    let workoutDateISO: String
+    let actionKind: String            // "downgrade" | "shave" | "reschedule"
+    let newType: String?              // downgrade target ("easy", ...)
+    let newDate: String?              // reschedule target (yyyy-MM-dd)
+    let shaveFraction: Double?        // 0.15 = 15% off the volume
+    let why: String?                  // one-line adapter rationale
+    let reason: String                // trigger reason (banner subtitle fallback)
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, planWorkoutId, workoutDateISO, actionKind, actionPayload, reason, createdAt
+    }
+    enum PayloadKeys: String, CodingKey { case newType, newDate, shaveFraction, why }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = c.decodeFlexInt(forKey: .id) ?? 0
+        self.planWorkoutId = try c.decodeIfPresent(String.self, forKey: .planWorkoutId) ?? ""
+        self.workoutDateISO = try c.decodeIfPresent(String.self, forKey: .workoutDateISO) ?? ""
+        self.actionKind = try c.decodeIfPresent(String.self, forKey: .actionKind) ?? ""
+        self.reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        self.createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
+        // actionPayload fields are written with explicit JSON nulls
+        // (writeWorkoutProposals stringifies `?? null`) · try? decode
+        // maps null / missing / type-drift to nil uniformly.
+        if let pc = try? c.nestedContainer(keyedBy: PayloadKeys.self, forKey: .actionPayload) {
+            self.newType = try? pc.decode(String.self, forKey: .newType)
+            self.newDate = try? pc.decode(String.self, forKey: .newDate)
+            self.shaveFraction = try? pc.decode(Double.self, forKey: .shaveFraction)
+            self.why = try? pc.decode(String.self, forKey: .why)
+        } else {
+            self.newType = nil
+            self.newDate = nil
+            self.shaveFraction = nil
+            self.why = nil
+        }
+    }
+}
+
+struct WorkoutProposalsResponse: Decodable {
+    let ok: Bool
+    let proposals: [WorkoutProposal]
+
+    enum CodingKeys: String, CodingKey { case ok, proposals }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.ok = try c.decodeIfPresent(Bool.self, forKey: .ok) ?? false
+        self.proposals = (try? c.decode([WorkoutProposal].self, forKey: .proposals)) ?? []
+    }
+}
+
 // MARK: - Notification inbox
 
 struct NotifInboxItem: Decodable, Identifiable {

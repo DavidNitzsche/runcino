@@ -1215,7 +1215,8 @@ enum API {
     static func ackNotification(
         category: String,
         action: String,
-        dedupKey: String?
+        dedupKey: String?,
+        notificationId: Int? = nil
     ) async {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/notifications/ack"))
         req.httpMethod = "POST"
@@ -1225,6 +1226,10 @@ enum API {
             "action": action,
         ]
         if let d = dedupKey { body["dedup_key"] = d }
+        // Inbox rows carry the exact notifications_log id · pass it so the
+        // ack stamps THAT row instead of dedup-key-latest (the lock-screen
+        // path has no id and keeps using dedup_key).
+        if let n = notificationId { body["notification_id"] = n }
         do {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
             _ = try? await API.authedSend(req)

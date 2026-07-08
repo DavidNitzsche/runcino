@@ -126,6 +126,22 @@ struct TodayView: View {
     /// Pending coach proposals stack · drives the COACH PROPOSALS strip
     /// above the hero. Each card opens NudgeSheet for accept/decline.
     @State private var pendingProposals: [PendingProposal] = []
+    /// Pending per-workout adapter proposals (plan_workout_proposals,
+    /// propose-first flow) · GET /api/plan/workout-proposals. Tapping the
+    /// banner opens the repurposed NudgeSheet for LET IT HAPPEN / KEEP
+    /// ORIGINAL. Distinct table from `pendingProposals` (coach_proposals,
+    /// injury/illness/swap) — both surface on Today, different triggers.
+    @State private var workoutProposals: [WorkoutProposal] = []
+    /// The workout proposal currently open in NudgeSheet. Set on banner
+    /// tap; nil dismisses the sheet back to closed.
+    @State private var openProposal: WorkoutProposal?
+    /// Local dismiss for the "recently applied" adapter coach line ·
+    /// keyed by CoachIntent.id (ts|reason), persisted so a dismissed
+    /// line doesn't reappear on the next loadAll within the same 24h
+    /// window. Cheap UserDefaults flag — this is a display convenience,
+    /// not an ack; the coach_intents audit trail is untouched.
+    @State private var dismissedAdaptationId: String? =
+        UserDefaults.standard.string(forKey: "v1.today.dismissedAdaptationId")
     /// Per-day shoe picker · POSTs the override to /api/today/shoe.
     @State private var showShoePicker: Bool = false
     /// 2026-07-07 · today-composition · P2-10 · presents preRunSheetContent
@@ -299,9 +315,37 @@ struct TodayView: View {
                 // copy was vague and not actionable · runner couldn't
                 // tell what changed, from what to what, or why. The
                 // adaptationIntent state still fetches and is passed
-                // down to the pre-run sheet body for context. Re-enable
-                // here once backend ships the structured from/to copy
-                // (designs/briefs/adaptation-intent-structured-from-to.md).
+                // down to the pre-run sheet body for context. Superseded
+                // 2026-07-07 by the RECENTLY APPLIED line below, which
+                // renders the adapter's own `why` string instead of a
+                // fabricated summary — see proposals-inbox merge note.
+
+                // WORKOUT PROPOSAL banner · stack of pending per-workout
+                // adapter proposals (plan_workout_proposals, propose-first
+                // flow — David 2026-06-04 "I dont want to wake up to
+                // change runs"). Tap opens the repurposed NudgeSheet for
+                // the one-line why + LET IT HAPPEN / KEEP ORIGINAL.
+                ForEach(workoutProposals) { p in
+                    workoutProposalBanner(p)
+                        .padding(.horizontal, Theme.Space.pageH)
+                        .padding(.top, 10)
+                }
+
+                // RECENTLY APPLIED · the most recent plan_adapt_* intent
+                // that already landed (auto-applied triggers, or an
+                // accepted workout proposal), shown as a dismissible
+                // coach line with its one-line why. Replaces the old
+                // hidden AdaptationCard (2026-06-02 round 38) — this is
+                // a passive audit line, not an actionable card, so vague
+                // copy risk is gone: it always renders the adapter's
+                // own `why` string, never a fabricated summary.
+                if let a = adaptationIntent,
+                   isWithinLast24h(a.when_iso),
+                   a.id != dismissedAdaptationId {
+                    recentlyAppliedLine(a)
+                        .padding(.horizontal, Theme.Space.pageH)
+                        .padding(.top, 10)
+                }
 
                 // COACH PROPOSALS strip · stack of pending swap/injury/
                 // illness proposals from /api/coach/proposals. Tap accept
@@ -691,6 +735,17 @@ struct TodayView: View {
                 readiness: readiness
             )
         }
+        // Workout-proposal review · driven by openProposal (nil = closed).
+        // NudgeSheet renders THE CHANGE + the one-line why when `proposal`
+        // is set; LET IT HAPPEN posts accept, KEEP ORIGINAL posts dismiss.
+        .sheet(item: $openProposal) { p in
+            NudgeSheet(
+                onAccept: { acceptWorkoutProposal(p) },
+                onKeep: { dismissWorkoutProposal(p) },
+                readiness: readiness,
+                proposal: p
+            )
+        }
         .sheet(isPresented: $showSymptomSheet) {
             SymptomReportSheet(onSubmitted: { Task { await loadAll() } })
                 .presentationDetents([.medium, .large])
@@ -821,10 +876,111 @@ struct TodayView: View {
         }
     }
 
-    /// Pip on the bell when readiness drops materially below baseline.
-    /// Threshold: score < 65 (the band where coach intervenes per design).
-    private var hasNudge: Bool {
-        (readiness?.score ?? 100) < 65
+    // MARK: - Workout proposal banner (propose-first adapter flow)
+
+    /// Compact banner for one pending plan_workout_proposals row · tap
+    /// opens NudgeSheet for the full one-line why + LET IT HAPPEN /
+    /// KEEP ORIGINAL. Distinct visual language from proposalCard (amber
+    /// "PROPOSAL" tag) so the two proposal families read as related but
+    /// not identical — this one always routes through the sheet rather
+    /// than deciding inline, matching "one-line rationale + easy
+    /// override" from the benchmark gap.
+    private func workoutProposalBanner(_ p: WorkoutProposal) -> some View {
+        Button(action: { openProposal = p }) {
+            HStack(alignment: .top, spacing: 12) {
+                Text("ADJUST")
+                    .font(.body(9, weight: .extraBold))
+                    .tracking(1.5)
+                    .foregroundStyle(Theme.bg)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Theme.Accent.amberBright, in: Capsule())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(workoutProposalHeadline(p))
+                        .font(.body(13.5, weight: .extraBold))
+                        .foregroundStyle(Theme.txt)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let why = p.why ?? (p.reason.isEmpty ? nil : p.reason) {
+                        Text(why)
+                            .font(.body(11.5, weight: .medium))
+                            .foregroundStyle(Theme.txt.opacity(0.82))
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.4))
+                    .padding(.top, 2)
+            }
+            .padding(14)
+            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous).stroke(Theme.Accent.amberBright.opacity(0.35), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func workoutProposalHeadline(_ p: WorkoutProposal) -> String {
+        switch p.actionKind {
+        case "downgrade":  return "Coach proposes running \(p.newType ?? "easy") instead."
+        case "reschedule": return "Coach proposes moving this session."
+        case "shave":      return "Coach proposes trimming today's distance."
+        default:           return "Coach has a proposal for today."
+        }
+    }
+
+    /// Runner picked LET IT HAPPEN in NudgeSheet · accept the proposal,
+    /// then reload so the plan + banner reflect the applied change.
+    private func acceptWorkoutProposal(_ p: WorkoutProposal) {
+        Task {
+            _ = try? await API.respondWorkoutProposal(id: p.id, accept: true)
+            await MainActor.run { openProposal = nil }
+            await loadAll()
+        }
+    }
+
+    /// Runner picked KEEP ORIGINAL · dismiss the proposal, plan stays put.
+    private func dismissWorkoutProposal(_ p: WorkoutProposal) {
+        Task {
+            _ = try? await API.respondWorkoutProposal(id: p.id, accept: false)
+            await MainActor.run { openProposal = nil }
+            await loadAll()
+        }
+    }
+
+    // MARK: - Recently applied (adapter audit line)
+
+    /// One-line, dismissible record of the most recent auto-applied
+    /// plan_adapt_* intent — always the adapter's own `why`, falling
+    /// back to the plain-English `summary` the endpoint already
+    /// composes. Dismiss is local-only (UserDefaults flag); the
+    /// coach_intents row + provenance chip on the plan are untouched.
+    private func recentlyAppliedLine(_ a: CoachIntent) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.Accent.mintReady)
+                .padding(.top, 1)
+            Text(a.why ?? (a.summary.isEmpty ? "Plan adapted." : a.summary))
+                .font(.body(12.5, weight: .medium))
+                .foregroundStyle(Theme.txt.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button(action: { dismissAdaptationLine(a) }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.45))
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    private func dismissAdaptationLine(_ a: CoachIntent) {
+        dismissedAdaptationId = a.id
+        UserDefaults.standard.set(a.id, forKey: "v1.today.dismissedAdaptationId")
     }
 
     // MARK: - Hero
@@ -2871,6 +3027,8 @@ struct TodayView: View {
         async let an = (try? await API.fetchActiveNiggle())
         async let asc = (try? await API.fetchActiveSick())
         async let pp2 = (try? await API.fetchPendingProposals())
+        // Propose-first per-workout adapter proposals (plan_workout_proposals).
+        async let wp = (try? await API.fetchWorkoutProposals())
         // Strength days for the current week · drives the strip underline + the
         // Today nudge (the fetch also warms the training-state cache).
         async let tstr = (try? await API.fetchTrainingState())
@@ -2913,6 +3071,7 @@ struct TodayView: View {
         let activeN   = await an
         let activeSickRow = await asc
         let proposals = (await pp2) ?? []
+        let workoutProps = (await wp) ?? []
         let trainingS = await tstr
         // Weather baseline runs second-pass — it needs the workout type
         // and weekly mileage from the plan/workout. Fire-and-forget; the
@@ -3067,6 +3226,7 @@ struct TodayView: View {
             self.activeNiggle = activeN
             self.activeSick = activeSickRow
             self.pendingProposals = proposals
+            self.workoutProposals = workoutProps
             let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
             if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }
 
