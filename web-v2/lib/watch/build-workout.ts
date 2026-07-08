@@ -26,6 +26,7 @@ import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
+import { distanceMiFromLabel as sharedDistanceMiFromLabel } from '@/lib/race/distance';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -279,14 +280,15 @@ function labelFor(t: string): string {
 // instead of 5400 (H:MM). Now uses parseRaceTime from vdot.ts (imported
 // at module top) which has the heuristic fix.
 
+// 2026-07-07 · ultra-honesty audit · delegate to the shared parser (was a
+// local fork with no ultra branches — already returned null on unmatched,
+// no 13.1 fallthrough bug). Race-type watch payloads only exist for a
+// GENERATED plan's race day, which the generator now refuses to build for
+// an ultra target — but resolving a real ultra distanceMi here still
+// matters for any other race-metadata read on this path (fueling, pacing
+// display) that isn't gated the same way.
 function distanceMiFromLabel(label: string | null | undefined): number | null {
-  if (!label) return null;
-  const l = String(label).toLowerCase();
-  if (l.includes('marathon') && !l.includes('half')) return 26.2;
-  if (l.includes('half') || l.includes('21k'))  return 13.1;
-  if (l.includes('10k')) return 6.2;
-  if (l.includes('5k')) return 3.1;
-  return null;
+  return sharedDistanceMiFromLabel(label);
 }
 
 // ── Main entrypoint ─────────────────────────────────────────────────────

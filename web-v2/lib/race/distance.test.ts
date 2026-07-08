@@ -60,3 +60,48 @@ describe('distanceMiFromLabel — canonical labels', () => {
     expect(distanceMiFromLabel('100k')).toBe(62.14);
   });
 });
+
+// ─── 2026-07-07 · ultra-honesty audit P1-41/P2-70 ───────────────────────────
+// The phone's TargetsView Add Race sheet offers exactly ["5K","10K","Half
+// Marathon","Marathon","50K","50M","100K","100M","Other"]; every one of
+// those labels — including the two "M"-suffixed ones with no unit-carrying
+// numeric fallback — must resolve to its real mileage, never to null/13.1.
+describe('distanceMiFromLabel — ultra distances (phone Add Race sheet)', () => {
+  it('resolves all 4 phone ultra labels exactly', () => {
+    expect(distanceMiFromLabel('50K')).toBe(31.07);
+    expect(distanceMiFromLabel('50M')).toBe(50);
+    expect(distanceMiFromLabel('100K')).toBe(62.14);
+    expect(distanceMiFromLabel('100M')).toBe(100);
+  });
+
+  it('is case-insensitive on the ultra labels', () => {
+    expect(distanceMiFromLabel('50k')).toBe(31.07);
+    expect(distanceMiFromLabel('50m')).toBe(50);
+    expect(distanceMiFromLabel('100k')).toBe(62.14);
+    expect(distanceMiFromLabel('100m')).toBe(100);
+  });
+
+  it('substring-matches decorated ultra race names', () => {
+    // "Javelina 100M" was the audit's canonical never-matched example.
+    expect(distanceMiFromLabel('Javelina 100M')).toBe(100);
+    expect(distanceMiFromLabel('Western States 100M')).toBe(100);
+    expect(distanceMiFromLabel('Leadville 100')).toBeNull(); // bare "100" has no unit — honest null, not a guess
+    expect(distanceMiFromLabel('JFK 50 Mile')).toBe(50);
+    expect(distanceMiFromLabel('Lake Sonoma 50M')).toBe(50);
+    expect(distanceMiFromLabel('Bandera 100K')).toBe(62.14);
+  });
+
+  it('never falls through to 13.1 or any non-ultra value for an ultra label', () => {
+    for (const label of ['50K', '50M', '100K', '100M', 'Javelina 100M', 'Bandera 100K']) {
+      const mi = distanceMiFromLabel(label);
+      expect(mi).not.toBeNull();
+      expect(mi).toBeGreaterThan(26.3); // strictly past marathon — the whole point
+      expect(mi).not.toBe(13.1);
+    }
+  });
+
+  it('50-mile and 50k are distinct — "50M" reads as miles per the phone convention, not 50 marathons', () => {
+    expect(distanceMiFromLabel('50M')).not.toBe(distanceMiFromLabel('50K'));
+    expect(distanceMiFromLabel('100M')).not.toBe(distanceMiFromLabel('100K'));
+  });
+});

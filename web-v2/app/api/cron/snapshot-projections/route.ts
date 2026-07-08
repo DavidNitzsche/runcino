@@ -27,18 +27,20 @@ import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { reanchorMaintenancePlan } from '@/lib/plan/reanchor-maintenance';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 export const maxDuration = 60;
 
 const CANONICAL_DISTANCES = [13.1, 26.2]; // HM + M; race-anchored distance added per user
 
+// 2026-07-07 · ultra-honesty audit · delegate to the shared parser so an
+// ultra-anchored plan's race resolves its real distance for the snapshot
+// set (was a local fork with no ultra branches — already returned null on
+// unmatched, no 13.1 fallthrough bug). predictRaceTime below independently
+// refuses to project past the marathon regardless of what distance resolves
+// here, so an ultra anchor still snapshots an honest null projection.
 function distFromLabel(label: string | null | undefined): number | null {
-  const l = String(label ?? '').toLowerCase();
-  if (l.includes('marathon') && !l.includes('half')) return 26.2;
-  if (l.includes('half') || l.includes('21k')) return 13.1;
-  if (l.includes('10k')) return 6.2;
-  if (l.includes('5k')) return 3.1;
-  return null;
+  return distanceMiFromLabel(label);
 }
 
 async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchor: Awaited<ReturnType<typeof reanchorMaintenancePlan>> }> {

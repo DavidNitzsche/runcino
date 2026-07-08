@@ -26,6 +26,7 @@ import {
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { excludeDistanceReviewSql } from '@/lib/runs/distance-guard';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 // ── Input shapes — match exactly what bestRecentVdot() accepts ──────────────
 
@@ -63,13 +64,16 @@ export interface VdotInputs {
 // Cite: docs/OVERNIGHT-REPORT.md §B2 C1-1b.
 const STRAVA_WORKOUT_TYPE: Record<string, string> = { '1': 'race', '3': 'tempo' };
 
+// 2026-07-07 · ultra-honesty audit · delegate to the shared parser (was a
+// local 4-branch fork that already returned null on unmatched — no 13.1
+// fallthrough bug here — but silently didn't recognize 50K/50M/100K/100M
+// labels at all, so an ultra race candidate's distance never resolved for
+// bestRecentVdot's raceCandidates. vdotFromRace's own DANIELS_MAX_VALID_
+// DISTANCE_MI gate still refuses to derive a VDOT from a resolved ultra
+// distance — this just lets the candidate resolve its real distance
+// instead of silently dropping out at the label-parse step.
 function distFromLabel(label: string | null | undefined): number | null {
-  const l = String(label ?? '').toLowerCase();
-  if (l.includes('marathon') && !l.includes('half')) return 26.2;
-  if (l.includes('half') || l.includes('21k')) return 13.1;
-  if (l.includes('10k')) return 6.2;
-  if (l.includes('5k')) return 3.1;
-  return null;
+  return distanceMiFromLabel(label);
 }
 
 /**

@@ -28,7 +28,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot } from '@/lib/training/vdot';
+import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -37,6 +37,7 @@ import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-input
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
 import { isBaseBuildingPlan } from './plan-templates';
+import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 import { validateComposedPlan } from './validate';
 
@@ -294,20 +295,25 @@ export function parseGoalSeconds(goal: string | null | undefined): number | null
 }
 
 // Race distance in miles. Prefers numeric meta.distanceMi (most reliable),
-// falls back to label parsing.
-function distanceMiOf(meta: any): number {
+// falls back to label parsing via the shared distanceMiFromLabel parser
+// (handles 5K/10K/half/marathon AND the ultra labels — 50K/50M/100K/100M —
+// the phone Add Race sheet offers).
+//
+// 2026-07-07 · ultra-honesty audit P1-41 · this used to fall through to
+// 13.1 for ANY unrecognized/unparseable label — the exact bug that gave a
+// 50K/50M/100K/100M race a silent half-marathon plan (peak long ~12mi,
+// half-marathon pace anchors, 13.1mi race-day workout) with no error.
+// Returns null on "no distance resolvable" instead; callers MUST treat
+// null as "unknown, don't assume a distance" — see loadGeneratorInputs'
+// unsupported-ultra gate and the horizonRaces null-filter below.
+// Exported for direct unit testing (see generate-ultra.test.ts) — the
+// worktree can't spin up the DB pool to exercise loadGeneratorInputs end to
+// end, so the label→distance resolution is tested at this boundary instead.
+export function distanceMiOf(meta: any): number | null {
   const numeric = Number(meta?.distanceMi);
   if (isFinite(numeric) && numeric > 0) return numeric;
-
-  const label: string = String(meta?.distanceLabel ?? meta?.distance_label ?? meta?.name ?? '').toLowerCase();
-  if (!label) return 13.1;
-  if (label.includes('marathon') && !label.includes('half')) return 26.2;
-  if (label.includes('half') || label.includes('21k')) return 13.1;
-  if (label.includes('10k')) return 6.2;
-  if (label.includes('5k')) return 3.1;
-  const m = label.match(/([\d.]+)\s*mi/);
-  if (m) return parseFloat(m[1]);
-  return 13.1;
+  const label = meta?.distanceLabel ?? meta?.distance_label ?? meta?.name ?? null;
+  return distanceMiFromLabel(label);
 }
 
 // Recent 4-week avg weekly volume → starting point for the ramp.
@@ -3241,9 +3247,13 @@ async function loadLastRaceFinished(
   // stores a distanceLabel, not a numeric mile count), so reading it directly
   // returned NaN → recovery mode never armed in production. distanceMiOf does
   // the same label fallback loadGeneratorInputs already trusts for the race
-  // path (distanceMi → distanceLabel → name → 13.1), so a just-finished race
-  // resolves to a real distance and pickPlanMode can enter the recovery window.
+  // path (distanceMi → distanceLabel → name). 2026-07-07 · ultra-honesty audit:
+  // distanceMiOf no longer falls through to 13.1 for an unparseable label — an
+  // unresolvable last-finished-race distance is treated the same as "no last
+  // race" (null) so pickPlanMode never arms recovery mode off a fabricated
+  // half-marathon distance.
   const dMi = distanceMiOf(m);
+  if (dMi == null) return { lastRaceFinished: null, lastRaceDistanceMi: null };
   return {
     lastRaceFinished: {
       slug: r.slug,
@@ -3251,7 +3261,7 @@ async function loadLastRaceFinished(
       date: String(m.date),
       distanceMi: dMi,
     },
-    lastRaceDistanceMi: dMi || null,
+    lastRaceDistanceMi: dMi,
   };
 }
 
@@ -3283,6 +3293,18 @@ async function loadGeneratorInputs(
   let raceDistanceMi: number;
   let goalSec: number | null;
   if (goalTarget) {
+    // 2026-07-07 · ultra-honesty audit P1-41 · /api/profile/goal accepts
+    // '50K'/'100K' (ALLOWED_DISTANCES) and used to route every distance
+    // through the same periodized builder, including ultras — the same
+    // fake-support bug as the race path, just entered via the no-race goal
+    // flow instead of Add Race. Same gate, same reason string, so the
+    // caller's toFriendlyPlanError path is unchanged either way.
+    if (goalTarget.distanceMi > DANIELS_MAX_VALID_DISTANCE_MI) {
+      return {
+        ok: false,
+        reason: "Ultra plans aren't built yet. The race is on your calendar; training targets stay anchored to your current fitness.",
+      };
+    }
     raceDateISO = goalTarget.raceDateISO;
     raceDistanceMi = goalTarget.distanceMi;
     goalSec = goalTarget.goalSec;
@@ -3296,7 +3318,31 @@ async function loadGeneratorInputs(
     const meta = raceRow.meta ?? {};
     if (!meta.date) return { ok: false, reason: 'race missing date' };
     raceDateISO = meta.date;
-    raceDistanceMi = distanceMiOf(meta);
+    const dMi = distanceMiOf(meta);
+    // 2026-07-07 · ultra-honesty audit P1-41 · distanceMiOf no longer falls
+    // through to 13.1 for an unrecognized label — an unresolvable distance
+    // means "we don't know", never "assume half marathon". Fail honestly
+    // instead of composing a plan for the wrong event.
+    if (dMi == null) return { ok: false, reason: 'race distance unrecognized; cannot build a plan for an unknown distance' };
+    // GOAL: HONEST UNSUPPORTED (David-approved 2026-07-07) · the Daniels-
+    // periodized generator (composePlan/composeMaintenancePlan/
+    // composeRecoveryPlan) is built and validated for 5K-through-marathon
+    // training doctrine only — Research/00a's periodization tables, taper
+    // %s, and long-run caps are all sourced from that range; nothing in
+    // Research/ covers 50K/50M/100K/100M periodization. Rather than fake
+    // support by quietly capping an ultra at the marathon long-run/pace
+    // model (the exact P1-41 bug), the race saves fine (POST /api/race
+    // never blocks on this) and generation returns a clear unsupported
+    // reason. Callers (race POST, /api/plan/generate) surface it as a
+    // friendly message; the runner is left on the no-plan / maintenance
+    // machinery (see goal-mode / just-run fallback), never on a wrong plan.
+    if (dMi > DANIELS_MAX_VALID_DISTANCE_MI) {
+      return {
+        ok: false,
+        reason: "Ultra plans aren't built yet. The race is on your calendar; training targets stay anchored to your current fitness.",
+      };
+    }
+    raceDistanceMi = dMi;
     goalSec = parseGoalSeconds(meta.goalDisplay);
   }
 
@@ -3520,7 +3566,12 @@ async function loadGeneratorInputs(
   // the current race" in TS via distanceMiOf. (David's CIM has a numeric distanceMi → identical result.)
   const horizonRaces: ComposePlanInput['horizonRaces'] = horizonRacesRows
     .map((r) => ({ r, m: r.meta || {}, dMi: distanceMiOf(r.meta || {}) }))
-    .filter((x) => x.dMi > raceDistanceMi)
+    // 2026-07-07 · ultra-honesty audit · distanceMiOf now returns null for an
+    // unresolvable label instead of assuming 13.1 — drop those rows from the
+    // stepping-stone horizon rather than let a null slip into the `> ` compare
+    // (which would exclude it anyway, but silently and confusingly via NaN-like
+    // behavior; explicit is safer against future refactors).
+    .filter((x): x is { r: typeof x.r; m: any; dMi: number } => x.dMi != null && x.dMi > raceDistanceMi)
     .map(({ r, m, dMi }) => {
       const goalSec = parseRaceTime(m.goalDisplay ?? m.goalTime);
       return {

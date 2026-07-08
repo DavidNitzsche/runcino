@@ -101,11 +101,18 @@ export async function POST(req: NextRequest) {
   );
 
   // Setting a goal GENERATES the plan — the goal IS the anchor (onboarding no
-  // longer seeds). EVERY distance (5K → 100K) routes through the canonical
-  // periodized builder via a goal target (no race row), so each gets a real
-  // build: BASE → QUALITY → RACE-SPECIFIC → TAPER with distance-appropriate
-  // long-run progression + race-pace work (incl. ultra). Synthetic target date
-  // = today + plan_weeks. generatePlan reads volume/frequency/prefs itself.
+  // longer seeds). Every 5K-through-marathon distance routes through the
+  // canonical periodized builder via a goal target (no race row): a real
+  // build, BASE → QUALITY → RACE-SPECIFIC → TAPER with distance-appropriate
+  // long-run progression + race-pace work. Synthetic target date = today +
+  // plan_weeks. generatePlan reads volume/frequency/prefs itself.
+  // 2026-07-07 · ultra-honesty audit P1-41 · 50K/100K are still
+  // ALLOWED_DISTANCES (the goal SAVES fine and tt_goal_* persists) but
+  // generatePlan's ultra gate now returns ok:false with an honest "ultra
+  // plans aren't built yet" reason instead of quietly building a
+  // half-marathon-shaped plan for a 50K/100K goal — see generate.ts
+  // loadGeneratorInputs' DANIELS_MAX_VALID_DISTANCE_MI gate. The runner is
+  // left goal-set-but-planless, surfaced via plan_error below.
   // Best-effort: a generation failure doesn't fail the save.
   let plan: Awaited<ReturnType<typeof generatePlan>> | null = null;
   let planError: string | null = null;

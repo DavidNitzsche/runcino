@@ -11,6 +11,7 @@ import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadNextARace } from './race-lookup';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
@@ -281,8 +282,20 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     ).catch(() => ({ rows: [] }))).rows;
     for (const row of raceWithHr) {
       const m = row.meta;
+      // 2026-07-07 · ultra-honesty audit · was `?? 13.1` — any race missing a
+      // numeric distanceMi (the common case; POST /api/race writes a label,
+      // not a number) got FORCED into estimateLTHR's half-marathon band, its
+      // highest-confidence branch, regardless of actual distance. A 50K/100K
+      // (or any other unlabeled race) avg HR was read as "half-marathon avg
+      // HR ≈ LTHR" — wrong for an ultra's much lower relative effort, and
+      // wrong for anything that isn't actually a half. Resolve the real
+      // distance from the label first; skip this row (never guess) when it
+      // can't be resolved at all — estimateLTHR's own band-match already
+      // handles "resolved but not close to a known race distance" honestly.
+      const distanceMi = m.distanceMi != null ? Number(m.distanceMi) : distanceMiFromLabel(m.distanceLabel);
+      if (distanceMi == null) continue;
       const est = estimateLTHR({
-        raceDistanceMi: Number(m.distanceMi ?? 13.1),
+        raceDistanceMi: distanceMi,
         avgHrBpm: Number(m.avgHrBpm),
       });
       if (est) {

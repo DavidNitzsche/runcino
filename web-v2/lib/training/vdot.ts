@@ -100,6 +100,26 @@ function mileSecFromVdot(vdot: number): number {
   return T[T.length - 1][1];
 }
 
+/**
+ * 2026-07-07 · ultra-honesty audit P1-41/P2-70/P2-71 · the Daniels %VO2max
+ * curve underlying rawVdot/predictRaceTime is validated for events
+ * "3.5–230 minutes (≈1500m to marathon)"; the same doctrine names ultras
+ * explicitly as a place it "falls apart" and directs ultra projection to
+ * switch to time-on-feet models beyond 100K (Research/02-race-time-
+ * prediction.md §"Practical guidance" + line 50, line 446). The equation
+ * has no natural discontinuity at the marathon, so a 50K/50M/100K/100M
+ * finish time silently produces an in-range-looking VDOT (e.g. a 50K in
+ * 5h computes VDOT 35.6 — comfortably inside [30,85]) that vdotFromRace's
+ * existing range clamp does NOT catch, and predictRaceTime will happily
+ * invert to fabricate an ultra "prediction" the formula was never built
+ * for. Gate both directions at the marathon distance so ultra-goal
+ * callers get an honest null instead of an extrapolated number — every
+ * existing caller already null-checks (goal-projection, fitness-
+ * trajectory, goal-ready) so this degrades the whole ultra chain for
+ * free instead of requiring a guard at each call site.
+ */
+export const DANIELS_MAX_VALID_DISTANCE_MI = 26.3; // clears 26.2188/26.219/26.22 marathon constants
+
 /** Daniels' VO2 cost of running at speed s (m/min). */
 function vo2Cost(metersPerMin: number): number {
   return -4.6 + 0.182258 * metersPerMin + 0.000104 * metersPerMin * metersPerMin;
@@ -126,9 +146,12 @@ function rawVdot(finishSeconds: number, distanceMi: number): number | null {
 }
 
 /** Given (finish_seconds, distance_mi), return the VDOT that predicts
- *  exactly that finish time. Returns null if outside [30, 85]. */
+ *  exactly that finish time. Returns null if outside [30, 85] OR if
+ *  distanceMi is past the marathon — the Daniels curve is not validated
+ *  for ultras (Research/02 §50; see DANIELS_MAX_VALID_DISTANCE_MI). */
 export function vdotFromRace(finishSeconds: number, distanceMi: number): number | null {
   if (!finishSeconds || finishSeconds < 60) return null;
+  if (distanceMi > DANIELS_MAX_VALID_DISTANCE_MI) return null;
   // AUDIT #7 · the raw %VO2max equation over-reads the mile ~4–5 VDOT; use the
   // published table for mile-range distances. Already table-clamped to [30,85].
   if (distanceMi > 0 && isMileRange(distanceMi)) return mileVdotFromSec(finishSeconds);
@@ -148,10 +171,19 @@ export function vdotFromRace(finishSeconds: number, distanceMi: number): number 
  * target. Bounds span 2:30/mi (elite) to 25:00/mi (walk) — any realistic
  * VDOT∈[30,85] resolves inside that window. Returns null on bad input.
  *
+ * 2026-07-07 · ultra-honesty audit · also returns null past the marathon
+ * (DANIELS_MAX_VALID_DISTANCE_MI) — extrapolating this curve to 50K/50M/
+ * 100K/100M would fabricate a race-time "prediction" the formula was never
+ * validated for (Research/02 §50, §446: "switch to time-on-feet models
+ * beyond 100K"). Callers must treat null as "no honest projection" and
+ * degrade the surface (effort-only guidance, no number), not substitute a
+ * shorter-distance number.
+ *
  * Cite: Daniels Running Formula §VDOT table (same formula as `vdotFromRace`).
  */
 export function predictRaceTime(vdot: number, distanceMi: number): number | null {
   if (!vdot || vdot <= 0 || !distanceMi || distanceMi <= 0) return null;
+  if (distanceMi > DANIELS_MAX_VALID_DISTANCE_MI) return null;
   // AUDIT #7 · invert via the published mile table for mile-range distances so
   // the mile projection matches the table (50 → 5:24, not the raw eqn's 5:50).
   if (isMileRange(distanceMi)) return mileSecFromVdot(vdot);
