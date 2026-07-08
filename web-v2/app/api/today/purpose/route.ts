@@ -24,6 +24,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { derivePurpose, type Phase, type WorkoutType } from '@/lib/coach/run-purpose';
 import { composeCue } from '@/lib/coach/session-cue';
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,12 +85,14 @@ async function loadAnchorRace(userId: string, todayIso: string): Promise<AnchorR
       name: string;
       date: string;
       dist: number | string | null;
+      distanceLabel: string | null;
       priority: string;
     }>(
       `SELECT slug,
               COALESCE(meta->>'name', slug) AS name,
               meta->>'date' AS date,
               (meta->>'distanceMi')::numeric AS dist,
+              meta->>'distanceLabel' AS "distanceLabel",
               meta->>'priority' AS priority
          FROM races
         WHERE user_uuid::text = $1
@@ -101,11 +104,19 @@ async function loadAnchorRace(userId: string, todayIso: string): Promise<AnchorR
       [userId, todayIso],
     )).rows[0];
     if (!row) return null;
+    // 2026-07-07 · today-composition · the P1-18 race-day-takeover fix
+    // needs raceDistanceMi to be reliable so the gate can require the
+    // completed run to plausibly BE the race. meta.distanceMi is only
+    // guaranteed for races created after the P1-17 fix landed
+    // (2026-07-06); older rows can still carry only distanceLabel. Same
+    // fallback ladder the rest of the app already uses (races-state.ts,
+    // execution-plan route) — never leave a resolvable distance null.
+    const distanceMi = row.dist != null ? Number(row.dist) : distanceMiFromLabel(row.distanceLabel ?? null);
     return {
       slug: row.slug,
       name: row.name,
       date: row.date,
-      distanceMi: row.dist != null ? Number(row.dist) : null,
+      distanceMi,
       priority: row.priority as 'A' | 'B' | 'C',
     };
   } catch {

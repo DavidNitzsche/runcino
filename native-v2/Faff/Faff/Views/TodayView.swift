@@ -100,6 +100,15 @@ struct TodayView: View {
     /// earliest date. Powers the TO RACE chip so it lights up even if
     /// purpose is down. Cleared once purpose resumes returning a value.
     @State private var raceFallback: RaceListItem?
+    /// 2026-07-07 · today-composition · P2-9 · most-recent PAST A-race,
+    /// resolved from /api/races (days_to_race < 0). Drives the post-race
+    /// composition branch (recoveryBrief rendering + "N days since
+    /// {race}" framing) so Today acknowledges the race happened instead
+    /// of rendering a bare generic REST. nil until there's a completed
+    /// A-race on record, or once a NEW future A-race is booked (a fresh
+    /// race replaces the post-race framing with normal pre-race
+    /// composition — see isPostRaceWindow).
+    @State private var pastARace: RaceListItem?
     /// Most-recent plan_adapt_* intent · drives AdaptationCard. Hidden
     /// when nil or older than 24h.
     @State private var adaptationIntent: CoachIntent?
@@ -119,6 +128,12 @@ struct TodayView: View {
     @State private var pendingProposals: [PendingProposal] = []
     /// Per-day shoe picker · POSTs the override to /api/today/shoe.
     @State private var showShoePicker: Bool = false
+    /// 2026-07-07 · today-composition · P2-10 · presents preRunSheetContent
+    /// (TodayPreRunBodyV3 — shoe cell, fueling tile, full conditions grid,
+    /// session breakdown) as a detail sheet from the pre-run hero. The
+    /// component was fully built + already wired to real onSkip/onShoeTap
+    /// callbacks, but nothing ever presented it.
+    @State private var showPreRunDetail: Bool = false
     /// Currently-selected shoe for the displayed run · drives the SHOE
     /// cell in the pre-run body. Hydrates from /api/today/shoe in a
     /// future round; today this is purely local state that updates on
@@ -191,10 +206,21 @@ struct TodayView: View {
     /// Mirrors the web gate (daysAway===0 && the selected day is the race
     /// date && not yet logged): the selected day is today, today's plan
     /// workout resolves to the race effort, the profile's A-race is actually
-    /// today, and the run isn't logged yet (once done, Today shows the
-    /// recap). nil on every other day, so the normal body renders unchanged.
+    /// today, and the race itself isn't logged yet (once done, Today shows
+    /// the recap). nil on every other day, so the normal body renders
+    /// unchanged.
+    ///
+    /// 2026-07-07 · P1-18 · was gated on `!isDone` — completedRunId != nil
+    /// for ANY canonical run logged that day, no distance/type match. The
+    /// app's own execution-plan prescribes a 1-mile warmup jog 45 minutes
+    /// before the gun (lib/race/execution-plan.ts); recording that jog (or
+    /// a HK/Strava auto-import of it) satisfied `isDone` and flipped Today
+    /// out of race mode — before the race — into the post-run pivot, which
+    /// then pins "until midnight rolls." Gate on `isRaceActuallyDone`
+    /// instead: the day's completed mileage must plausibly BE the race, not
+    /// merely exist.
     private var raceDayRouteSlug: String? {
-        guard selectedIsToday, !isDone, selectedEffort == .race else { return nil }
+        guard selectedIsToday, !isRaceActuallyDone, selectedEffort == .race else { return nil }
         guard let nr = profile?.nextARace, !nr.slug.isEmpty else { return nil }
         guard nr.days_to_race == 0 || nr.date == todayISO else { return nil }
         return nr.slug
@@ -230,6 +256,42 @@ struct TodayView: View {
                     FailedLoadBanner(message: msg, retry: { Task { await loadAll() } })
                         .padding(.horizontal, Theme.Space.pageH)
                         .padding(.top, 10)
+                }
+
+                // 2026-07-07 · today-composition · P2-8 · phase-conditional
+                // composition. C1 spec: "race week... Promote: Race countdown
+                // becomes hero" / "taper... Promote: Race countdown". Was
+                // fully dead — weekContextLabel composed "BASE · 11 WEEKS TO
+                // RACE" and daysToRaceValue/raceShortDisplay all resolved,
+                // but nothing on the page ever rendered them; the countdown
+                // existed only as a small chip inside the readiness panel.
+                // Suppressed on race morning (raceDayRouteSlug already owns
+                // that state), post-run, post-race, and no-goal — this is
+                // pre-run-only context. Outside 14 days: no banner at all
+                // (matches brief's "one banner max" — most training days
+                // shouldn't carry race chrome). Inside 14 days: promote a
+                // compact countdown row. Inside 7: race-week variant (bigger
+                // number, race-red accent) per the C1 table's explicit
+                // 7-day race-week promotion.
+                if !isPostRunMode && !isPostRaceWindow && !isNoGoalState {
+                    if let days = daysToRaceValue, days > 0, days <= 14 {
+                        raceProximityBanner(daysOut: days)
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, 10)
+                    } else if let ctx = weekContextLabel {
+                        // Outside 14 days (or no race at all — goal-mode
+                        // runners still get a phase read) · render the
+                        // phase context line only, no countdown chrome —
+                        // "BASE · 11 WEEKS TO RACE" / "BUILD PHASE". Quiet,
+                        // single row, matches the C1 "Day N of M in
+                        // current phase" element.
+                        Text(ctx)
+                            .font(.body(11, weight: .extraBold))
+                            .tracking(1.2)
+                            .foregroundStyle(Theme.txt.opacity(0.5))
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, 10)
+                    }
                 }
 
                 // 2026-06-02 round 38 · AdaptationCard hidden from
@@ -357,16 +419,30 @@ struct TodayView: View {
                 } else if isPostRunMode {
                     // Show the run directly on the main canvas — same flat
                     // layout as past-day recaps. DragSheet is suppressed
-                    // in this mode (see gate below). The recovery panel
-                    // (TodayRecoveryPanel) was here previously but the
-                    // readiness score is orphaned now that the reactive
-                    // coach layer is unmounted.
+                    // in this mode (see gate below).
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 0) {
                             postRunBody
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 100)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(edges: .bottom)
+                    .padding(.top, 6)
+                    .scrollClipDisabled(true)
+                } else if isPostRaceWindow {
+                    // 2026-07-07 · P2-9 · the days AFTER the goal race, no
+                    // run logged today, no next-cycle plan yet. Same flat
+                    // on-mesh layout as post-run/past-day — DragSheet
+                    // suppressed below (readiness ring doesn't belong here
+                    // either; TodayRecoveryPanel IS the recovery surface
+                    // for this window). TodayRecoveryPanel was fully built
+                    // (5-section renderer, dark-native) but had never been
+                    // mounted anywhere.
+                    ScrollView(.vertical, showsIndicators: false) {
+                        postRaceBody
+                            .padding(.bottom, 100)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(edges: .bottom)
@@ -380,10 +456,19 @@ struct TodayView: View {
                     // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(isSkippedToday ? "SKIPPED" : selectedEffort.title.uppercased())
+                            // 2026-07-07 · P1-4 · was selectedEffort.title, which for
+                            // race_week_tuneup rendered "TEMPO" (the mesh/mesh-effort
+                            // family, correct) but not the canonical hero word. Reuse
+                            // peekTitleWord — same purpose.typeTitle-preferred /
+                            // derived-fallback precedence already used by the collapsed
+                            // peek bar, so this specific day reads "TUNE-UP" like the
+                            // rest of the app instead of a generic effort label.
+                            Text(peekTitleWord)
                                 .font(.heroDisplay(88))
                                 .tracking(-2)
-                                .foregroundStyle(isSkippedToday
+                                // 2026-07-07 · P2-14 · isSelectedDaySkipped so a
+                                // skipped FUTURE day also greys out, not just today.
+                                .foregroundStyle(isSelectedDaySkipped
                                     ? AnyShapeStyle(Color(hex: 0x7E8794))
                                     : AnyShapeStyle(selectedEffort.heroGradient))
                                 .minimumScaleFactor(0.55)
@@ -406,8 +491,9 @@ struct TodayView: View {
                 }
 
                 // Spacer pushes the hero + DragSheet up in pre-run mode.
-                // Suppressed on past days, post-run, and the no-goal empty state.
-                if !isPastDayView && !isPostRunMode && !isNoGoalState {
+                // Suppressed on past days, post-run, post-race, and the
+                // no-goal empty state.
+                if !isPastDayView && !isPostRunMode && !isPostRaceWindow && !isNoGoalState {
                     Spacer(minLength: 0)
                 }
             }
@@ -421,10 +507,12 @@ struct TodayView: View {
             // content re-emerges softly behind the lower strip and below.
             .faffHeaderDissolve(clearTo: 56, opaqueAt: 80)
 
-            // DragSheet suppressed on past days and today-post-run.
-            // On past days the flat recap is the whole page.
-            // On today-post-run the run is shown directly on the canvas.
-            if !isPastDayView && !isPostRunMode && !isNoGoalState {
+            // DragSheet suppressed on past days, today-post-run, and the
+            // post-race window. On past days the flat recap is the whole
+            // page. On today-post-run the run is shown directly on the
+            // canvas. On post-race, TodayRecoveryPanel is the recovery
+            // surface — a second readiness sheet on top would duplicate it.
+            if !isPastDayView && !isPostRunMode && !isPostRaceWindow && !isNoGoalState {
                 DragSheet(
                     // 2026-06-02 round 25 · 150 → 180.
                     // 2026-06-02 round 46 · 180 → 200.
@@ -635,6 +723,19 @@ struct TodayView: View {
             .presentationBackground(.clear)
             .presentationDragIndicator(.hidden)
         }
+        .sheet(isPresented: $showPreRunDetail) {
+            // 2026-07-07 · P2-10 · full pre-run detail (shoe / fuel /
+            // conditions / session breakdown). Own cream chrome (see
+            // TodayPreRunBodyV3 header comment); .large detent matches
+            // the other full-content sheets on this surface (readiness
+            // brief, symptom report).
+            ScrollView(showsIndicators: false) {
+                preRunSheetContent
+            }
+            .background(Color(hex: 0xFAF7F1))
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showInbox) {
             NotificationInboxSheet()
                 .presentationDetents([.medium, .large])
@@ -730,7 +831,12 @@ struct TodayView: View {
 
     private var heroBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if isSkippedToday {
+            // 2026-07-07 · P2-14 · isSelectedDaySkipped (not isSkippedToday)
+            // so browsing to a skipped FUTURE day shows the same
+            // acknowledgment instead of rendering the run "as if still
+            // planned." skippedHeroDetail's own copy + Undo action adapt to
+            // which day is selected.
+            if isSelectedDaySkipped {
                 skippedHeroDetail
             } else {
                 runHeroDetail
@@ -751,16 +857,22 @@ struct TodayView: View {
         }
     }
 
-    /// Minimal hero shown when today's run is skipped: acknowledgement + an
-    /// undo. No stats / steps / pills — those describe a run that isn't
-    /// happening. (David 2026-06-12)
+    /// Minimal hero shown when the selected day's run is skipped:
+    /// acknowledgement + an undo. No stats / steps / pills — those describe
+    /// a run that isn't happening. (David 2026-06-12)
+    ///
+    /// 2026-07-07 · P2-14 · generalized from today-only. Copy switches
+    /// between "today's" and the weekday name; Undo routes through
+    /// unskipSelectedDayAction, which now branches to the right endpoint
+    /// (today's optimistic-update path vs. deleteSkip(date:) for any
+    /// other day) instead of being hardcoded to today.
     @ViewBuilder private var skippedHeroDetail: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("You skipped today's \(skippedRunNoun). Your plan keeps moving.")
+            Text("You skipped \(skippedDayPossessive)\(skippedRunNoun). Your plan keeps moving.")
                 .font(.body(15))
                 .foregroundStyle(Theme.txt.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
-            Button { unskipTodayAction() } label: {
+            Button { unskipSelectedDayAction() } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "arrow.uturn.backward")
                         .font(.system(size: 13, weight: .bold))
@@ -772,6 +884,12 @@ struct TodayView: View {
             .buttonStyle(.plain)
         }
         .padding(.top, 14)
+    }
+
+    /// "today's " / "Sunday's " — leading possessive for the skipped-hero
+    /// acknowledgment line. Mirrors rescheduleSourceLabel's day-naming.
+    private var skippedDayPossessive: String {
+        selectedIsToday ? "today's " : "\(weekdayName(selectedDayID.isEmpty ? todayISO : selectedDayID))'s "
     }
 
     @ViewBuilder private var runHeroDetail: some View {
@@ -815,6 +933,18 @@ struct TodayView: View {
                     .padding(.top, 22)
             }
 
+            // 2026-07-07 · today-composition · P2-11 · when the date is
+            // legitimately double-booked, render the second run too — was
+            // silently invisible on every surface even though the backend
+            // still counts it in weekly totals. Compact (type + distance)
+            // since secondaryRun carries no phase breakdown; matches the
+            // synthetic single-row treatment easy/long already fall back
+            // to above.
+            if let secondary = todaySelectedDay?.secondaryRun {
+                secondaryRunCard(secondary)
+                    .padding(.top, 14)
+            }
+
             // Coach cue · one sentence from /api/today/purpose
             if let cue = heroCueLine {
                 Text(cue)
@@ -823,6 +953,22 @@ struct TodayView: View {
                     .foregroundStyle(Theme.txt.opacity(0.68))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 22)
+            }
+
+            // 2026-07-07 · P2-12 · quiet acknowledgment when yesterday's run
+            // didn't happen — data, not a nudge. No CTA: a missed day is
+            // already past, "skip/move" only makes sense for a day still
+            // ahead (rescheduleAffordance's own is_past guard agrees).
+            if let missed = missedYesterdayLine {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(Theme.txt.opacity(0.3))
+                        .frame(width: 4, height: 4)
+                    Text(missed)
+                        .font(.body(12.5, weight: .medium))
+                        .foregroundStyle(Theme.txt.opacity(0.5))
+                }
+                .padding(.top, 14)
             }
 
             // Chip row: HR cap + best window. Hidden on rest days — there's no
@@ -896,6 +1042,27 @@ struct TodayView: View {
                 .padding(.top, 16)
             }
 
+            // 2026-07-07 · P2-10 · "Full plan · shoe · fuel" tap affordance ·
+            // opens the pre-run detail sheet (TodayPreRunBodyV3). Same rest-
+            // day gate as the hero chip row above — there's no shoe/fuel/
+            // conditions detail to show on a day with no run. (This whole
+            // block only renders inside runHeroDetail, which is itself
+            // gated on !isSelectedDaySkipped by heroBlock above — no
+            // separate skip check needed here.)
+            if selectedEffort != .rest {
+                Button { showPreRunDetail = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "list.bullet.rectangle")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Full plan · shoe · fuel")
+                            .font(.body(12.5, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.txt.opacity(0.62))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 16)
+            }
+
             // Skip / Reschedule affordance under the pills (David's pick 1b,
             // extended 2026-06-26). On today: "Not running today? Skip". On a
             // future run day: "Need to move this run? Reschedule" — so a Sunday
@@ -949,6 +1116,96 @@ struct TodayView: View {
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Color.white.opacity(0.08), in: Capsule())
         .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+    }
+
+    /// 2026-07-07 · today-composition · P2-8 · race-proximity banner,
+    /// shown above the hero inside 14 days of the anchor race. Two
+    /// visual weights per the C1 table: a quiet countdown row from
+    /// 14→8 days, a race-week variant (bigger number, race-red accent,
+    /// phase-appropriate coach line) inside 7. Coach voice — states
+    /// where the runner is, no hype.
+    @ViewBuilder
+    private func raceProximityBanner(daysOut: Int) -> some View {
+        let isRaceWeek = daysOut <= 7
+        let name = raceShortDisplay
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isRaceWeek ? "RACE WEEK" : "TO RACE")
+                    .font(.body(9.5, weight: .extraBold)).tracking(1.4)
+                    .foregroundStyle(isRaceWeek ? Theme.race : Theme.txt.opacity(0.55))
+                Text(name.isEmpty ? raceProximityLine(days: daysOut) : "\(name) · \(raceProximityLine(days: daysOut))")
+                    .font(.body(12.5, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.82))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            Spacer(minLength: 8)
+            Text("\(daysOut)")
+                .font(.display(isRaceWeek ? 34 : 26, weight: .bold))
+                .foregroundStyle(isRaceWeek ? Theme.race : Theme.txt)
+            Text("D")
+                .font(.body(11, weight: .extraBold))
+                .foregroundStyle((isRaceWeek ? Theme.race : Theme.txt).opacity(0.6))
+                .padding(.leading, -6)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .background(
+            isRaceWeek ? Theme.race.opacity(0.14) : Color.white.opacity(0.06),
+            in: RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous)
+                .stroke(isRaceWeek ? Theme.race.opacity(0.35) : Theme.Glass.line, lineWidth: 1)
+        )
+    }
+
+    /// Coach-voice line under the race name, scaled to proximity.
+    private func raceProximityLine(days: Int) -> String {
+        switch days {
+        case 0:      return "Race day."
+        case 1:      return "Tomorrow. Shakeout only."
+        case 2...3:  return "Final sharpening. Trust the taper."
+        case 4...7:  return "Race week. Volume drop is intentional."
+        default:     return "Taper's started. Legs come back fresh."
+        }
+    }
+
+    /// 2026-07-07 · today-composition · P2-11 · compact row for the second
+    /// run on a double-booked day. Reuses the effort-dot + sub_label/type
+    /// vocabulary already established (rescheduleTargets.runLabelShort),
+    /// not a full duplicate hero — secondaryRun carries no phase breakdown.
+    private func secondaryRunCard(_ secondary: SecondaryRun) -> some View {
+        let secEffort = FaffEffort.fromType(secondary.type)
+        let title: String = {
+            if let label = secondary.sub_label, !label.isEmpty { return label }
+            return runLabelShort(type: secondary.type, mi: secondary.distance_mi)
+        }()
+        return HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(secEffort.dot)
+                .frame(width: 4)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("ALSO TODAY")
+                    .font(.body(9, weight: .extraBold)).tracking(1.2)
+                    .foregroundStyle(Color.white.opacity(0.4))
+                Text(title)
+                    .font(.body(14, weight: .extraBold))
+                    .tracking(-0.2)
+                    .foregroundStyle(.white)
+            }
+            Spacer(minLength: 0)
+            if secondary.distance_mi > 0 {
+                Text("\(formatMi(secondary.distance_mi)) mi")
+                    .font(.body(13, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.65))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.06),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(Color.white.opacity(0.10), lineWidth: 1))
     }
 
     private var heroCueLine: String? {
@@ -1224,6 +1481,81 @@ struct TodayView: View {
         .padding(.bottom, 120)
     }
 
+    /// 2026-07-07 · today-composition · P2-9 · post-race body for the
+    /// isPostRaceWindow branch. Days-since-race framing (C1 spec: "Recovery
+    /// score... days-since-race becomes hero") + the fetched RecoveryBrief
+    /// (TodayRecoveryPanel — a complete 5-section renderer that already
+    /// existed, fully built, dark-native, but was never mounted anywhere)
+    /// + a plan-your-next-race CTA. Coach voice: state what happened,
+    /// state the guidance, no hype.
+    @ViewBuilder
+    private var postRaceBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(postRaceEyebrow)
+                    .font(.body(11, weight: .extraBold))
+                    .tracking(1.4)
+                    .foregroundStyle(Color.white.opacity(0.66))
+                Text(daysSinceRaceHeadline)
+                    .font(.display(48, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text("Recovery first. The next block starts when your body says so, not the calendar.")
+                    .font(.body(13.5, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.78))
+                    .padding(.top, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, Theme.Space.pageH)
+            .padding(.top, 10)
+
+            if recoveryBrief != nil {
+                TodayRecoveryPanel(brief: recoveryBrief)
+                    .padding(.horizontal, Theme.Space.pageH)
+                    .padding(.top, 26)
+            }
+
+            Button {
+                selectedTab = .targets
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "flag.fill")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Plan your next race")
+                        .font(.body(15, weight: .extraBold))
+                }
+                .foregroundStyle(Theme.bg)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, Theme.Space.pageH)
+            .padding(.top, 26)
+            .padding(.bottom, 40)
+        }
+    }
+
+    /// "3 days since {race}" / "1 day since {race}" / falls back to a
+    /// bare day-count when the race name isn't resolved yet.
+    private var daysSinceRaceHeadline: String {
+        guard let days = pastARace?.days_to_race, days < 0 else { return "Race done" }
+        let n = -days
+        return n == 1 ? "1 day since race" : "\(n) days since race"
+    }
+
+    /// Eyebrow above the days-since headline · race name when resolved,
+    /// generic fallback otherwise. Avoids force-unwrapping the optional
+    /// chain — name is checked and bound in one step.
+    private var postRaceEyebrow: String {
+        if let name = pastARace?.name, !name.isEmpty {
+            return "\(name.uppercased()) · DONE"
+        }
+        return "RACE DONE"
+    }
+
     /// 2026-06-02 round 61 · extracted so the past-day flat layout (no
     /// drag-sheet) and the today + done drag-sheet body both render the
     /// same recap content from one source. Identical params either way.
@@ -1416,17 +1748,33 @@ struct TodayView: View {
     }
 
     private var selectedEffort: FaffEffort {
-        // Skip applies to TODAY only — never relabel another selected day as
-        // rest just because today was skipped.
-        if skipped && selectedIsToday { return .rest }
+        // Skip relabels whichever day is selected as .rest — the local
+        // `skipped` optimistic flag still only ever applies to TODAY (it's
+        // a same-session cache ahead of the plan/week round-trip); any
+        // OTHER day's skip state comes from the server-truth PlanDay.skipped
+        // flag, which isSelectedDaySkipped already reads.
+        if isSelectedDaySkipped { return .rest }
         return selectedDayEffort ?? .easy
     }
 
-    /// Today's run was actively skipped (day_actions). A skipped today reads
-    /// as "SKIPPED" with the run detail dropped — distance/pace/time for a run
-    /// you chose not to do is incoherent (David 2026-06-12). Scoped to today so
-    /// it never relabels another selected day.
+    /// Today's run was actively skipped (day_actions), scoped to TODAY only.
+    /// 2026-07-07 · P2-14 · superseded as the hero-display gate by
+    /// isSelectedDaySkipped (which generalizes to any selected day); kept
+    /// here as the narrower today-only building block isSelectedDaySkipped
+    /// itself composes from.
     private var isSkippedToday: Bool { skipped && selectedIsToday }
+
+    /// 2026-07-07 · today-composition · P2-14 · generalizes isSkippedToday to
+    /// ANY selected day, not just today. Was: a runner who skipped Sunday's
+    /// long run, then browsed back to Sunday from a Wednesday view, saw the
+    /// run rendered as if still planned — no visual acknowledgment the skip
+    /// happened. `todaySelectedDay?.skipped` is server truth for whichever
+    /// day is selected (PlanDay.skipped, from day_actions via plan/week);
+    /// `skipped` (the local optimistic flag) only ever covers today, ORed
+    /// in for the instant-feedback case right after tapping Skip.
+    private var isSelectedDaySkipped: Bool {
+        (todaySelectedDay?.skipped ?? false) || (skipped && selectedIsToday)
+    }
 
     /// The run you skipped, as a noun for the "You skipped today's …" line.
     /// Reads the REAL planned effort, not selectedEffort (which is .rest here).
@@ -1508,7 +1856,9 @@ struct TodayView: View {
     /// non-today days made Wed (easy) read as "INTERVALS" because
     /// Tuesday's intervals purpose bled through.
     private var peekTitleWord: String {
-        if isSkippedToday { return "SKIPPED" }
+        // 2026-07-07 · P2-14 · isSelectedDaySkipped (not isSkippedToday) so a
+        // skipped FUTURE day also reads "SKIPPED" here, not just today.
+        if isSelectedDaySkipped { return "SKIPPED" }
         if selectedIsToday, let t = purpose?.typeTitle?.uppercased(), !t.isEmpty {
             return t
         }
@@ -1604,6 +1954,41 @@ struct TodayView: View {
     private var todaySelectedDay: PlanDay? {
         let allDays = (prevWeekPlan?.days ?? []) + (plan?.days ?? []) + futureWeekPlans.flatMap { $0.days }
         return allDays.first { $0.date_iso == selectedDayID }
+    }
+
+    /// 2026-07-07 · today-composition · P2-12 · yesterday's calendar-day
+    /// ISO, iPhone-local. prevWeekPlan (fetched in loadAll) always covers
+    /// it — even on the first day of the current training week, yesterday
+    /// falls in the prior week's window.
+    private var yesterdayISO: String {
+        let d = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: d)
+    }
+
+    private var yesterdayPlanDay: PlanDay? {
+        let allDays = (prevWeekPlan?.days ?? []) + (plan?.days ?? [])
+        return allDays.first { $0.date_iso == yesterdayISO }
+    }
+
+    /// 2026-07-07 · today-composition · P2-12 · quiet coach line
+    /// acknowledging a missed run day, not a nudge or a guilt trip — data,
+    /// per CLAUDE.md coach voice doctrine (short, direct, no hype). nil
+    /// when: yesterday had no run scheduled (rest day), it WAS completed
+    /// (completedRunId present), it was actively skipped (skipped flag —
+    /// an intentional skip already has its own acknowledgment, no need to
+    /// re-surface it as a miss), or today isn't the selected day (this is
+    /// a Today-only line, not a historical-day annotation — isPastDayView
+    /// already handles past days on their own terms).
+    private var missedYesterdayLine: String? {
+        guard selectedIsToday, !isPostRunMode, !isPostRaceWindow else { return nil }
+        guard let day = yesterdayPlanDay else { return nil }
+        guard day.type != "rest", day.distance_mi > 0 else { return nil }
+        guard day.completedRunId == nil else { return nil }
+        guard day.skipped != true else { return nil }
+        let mi = formatMi(day.distance_mi)
+        let noun = runNoun(day.type)
+        return "Yesterday's \(mi)mi \(noun) didn't happen."
     }
 
     /// Avatar initials · delegates to ProfileIdentity.avatarInitials.
@@ -1800,6 +2185,23 @@ struct TodayView: View {
         }.first
     }
 
+    /// 2026-07-07 · today-composition · P2-9 · most-recent past GOAL
+    /// (priority A) race, or nil. `/api/races` sorts `past` most-recent-
+    /// first server-side (races-state.ts), but we don't rely on
+    /// ordering across a flattened+client-filtered array — re-sort by
+    /// days_to_race descending (closest to 0 first; all values are
+    /// negative for past races per the backend contract) so the pick is
+    /// correct regardless of the array's incoming order.
+    private func pickPastARace(_ races: [RaceListItem]) -> RaceListItem? {
+        let candidates = races.filter { r in
+            guard let d = r.days_to_race, d < 0 else { return false }
+            return (r.priority ?? "").uppercased() == "A"
+        }
+        return candidates.sorted { a, b in
+            (a.days_to_race ?? Int.min) > (b.days_to_race ?? Int.min)
+        }.first
+    }
+
     /// Tap handler for the readiness panel · presents the full readiness
     /// brief sheet (2026-06-01). The sheet hydrates from
     /// /api/readiness/brief and renders the full envelope (score trend +
@@ -1822,6 +2224,32 @@ struct TodayView: View {
     /// fetch RunDetail + RunRecap for the post-run sheet body.
     private var completedRunId: String? {
         todaySelectedDay?.completedRunId
+    }
+
+    /// 2026-07-07 · P1-18 · race-specific completion check for the
+    /// RaceDayView takeover gate ONLY (raceDayRouteSlug). `isDone` is
+    /// "any canonical run logged today" — correct for the general
+    /// post-run pivot, wrong for race day, where the prescribed warmup
+    /// jog (1 mile, 45 min before the gun · lib/race/execution-plan.ts)
+    /// or a stray shakeout satisfies `completedRunId != nil` hours before
+    /// the runner has actually raced.
+    ///
+    /// `done_mi` (PlanDay) is the day's TOTAL canonical mileage — sums the
+    /// warmup jog and the race together once both are logged, so a
+    /// distance floor correctly flips to "done" once the race itself
+    /// lands. Uses purpose.raceDistanceMi (>=70% of race distance,
+    /// mirroring the ±30% guard watch/complete already uses for
+    /// workoutType stamping) when known; falls back to a flat 2.0mi floor
+    /// — comfortably above the 1mi prescribed warmup (GPS slop included)
+    /// and below every supported race distance (5K = 3.1mi is the
+    /// shortest) — when the race's distance isn't resolved yet. Never
+    /// trusts `completedRunId != nil` alone.
+    private var isRaceActuallyDone: Bool {
+        guard let mi = todaySelectedDay?.done_mi, mi > 0 else { return false }
+        if let raceMi = purpose?.raceDistanceMi, raceMi > 0 {
+            return mi >= raceMi * 0.7
+        }
+        return mi >= 2.0
     }
 
     /// 2026-06-02 round 58 · Post-run pivot mode.
@@ -1892,6 +2320,30 @@ struct TodayView: View {
         let hasRace = !(p.nextARace?.slug ?? "").isEmpty
         let hasGoal = p.fitnessGoal != nil
         return !hasRace && !hasGoal
+    }
+
+    /// 2026-07-07 · today-composition · P2-9 · true on the days AFTER the
+    /// goal (A) race — NOT race day itself (that's `isPostRunMode`, driven
+    /// by today's own completedRunId and already showing the race recap
+    /// via TodayPostRunBody). This gate covers the gap the audit found:
+    /// "the next morning" through the recovery window, when today has NO
+    /// run logged and the surface was falling through to a bare generic
+    /// "Rest day · nothing to recap" with the fetched RecoveryBrief never
+    /// rendered.
+    ///
+    /// Window: C1 spec's explicit "Post-race (next 1–14 days)" bucket,
+    /// counted from `pastARace.days_to_race` (negative · days since).
+    /// Clears itself the moment a NEW future A-race is booked (profile.
+    /// nextARace populated) — a fresh goal race means normal pre-race
+    /// composition should resume, not post-race framing for a race
+    /// that's no longer the story. Also clears once a real next-cycle
+    /// plan exists (hasPlan) so this never fights the ordinary pre-run
+    /// body once training resumes.
+    private var isPostRaceWindow: Bool {
+        guard selectedIsToday, !isPostRunMode, !hasPlan else { return false }
+        guard (profile?.nextARace?.slug ?? "").isEmpty else { return false }
+        guard let days = pastARace?.days_to_race, days < 0 else { return false }
+        return -days <= 14
     }
 
     /// "Just run" casual home · shown when there's no race AND no goal, so
@@ -2220,6 +2672,29 @@ struct TodayView: View {
         }
     }
 
+    /// 2026-07-07 · today-composition · P2-14 · undo the skip on whichever
+    /// day is selected — today routes through the existing optimistic-
+    /// update path (unskipTodayAction, flips the local `skipped` flag
+    /// immediately), any OTHER day uses deleteSkip(date:) then a plain
+    /// reload (there's no local optimistic flag for non-today days —
+    /// PlanDay.skipped IS the server truth already, so loadAll refreshing
+    /// it is the whole fix).
+    private func unskipSelectedDayAction() {
+        if selectedIsToday {
+            unskipTodayAction()
+            return
+        }
+        let iso = selectedDayID.isEmpty ? todayISO : selectedDayID
+        Task {
+            do {
+                try await API.deleteSkip(date: iso)
+                await loadAll()
+            } catch {
+                print("[today v2] unskip(day) failed: \(error)")
+            }
+        }
+    }
+
     // restoreAdaptationAction retired 2026-06-01 round 2 along with
     // the in-sheet banner. When the AdaptationCard above the hero
     // grows a Restore affordance, re-introduce a posted decline-with-
@@ -2323,7 +2798,8 @@ struct TodayView: View {
                 isSkipped: (d.skipped ?? false) || (d.is_today && skipped),
                 strengthSuggested: strengthDays.contains(d.date_iso),
                 strengthDone: strengthDoneDays.contains(d.date_iso),
-                strengthPaused: strengthPausedDays.contains(d.date_iso)
+                strengthPaused: strengthPausedDays.contains(d.date_iso),
+                hasSecondaryRun: d.secondaryRun != nil
             )
         }
     }
@@ -2573,6 +3049,18 @@ struct TodayView: View {
                 // stale fallback so the computed property prefers the
                 // server-composed value cleanly.
                 self.raceFallback = nil
+            }
+            // 2026-07-07 · today-composition · P2-9 · resolve the most-
+            // recent past A-race unconditionally (not gated behind
+            // needsFallback — post-race framing must work even when the
+            // runner already has a NEXT race booked and purpose is
+            // returning a healthy weeksToRace for it). Best-effort; a
+            // failed fetch just leaves pastARace at its last-known value.
+            Task {
+                if let resp = try? await API.fetchRaces() {
+                    let past = self.pickPastARace(resp.races)
+                    await MainActor.run { self.pastARace = past }
+                }
             }
             self.skipped = skip
             self.adaptationIntent = adaptList.first

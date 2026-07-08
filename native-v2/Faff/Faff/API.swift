@@ -958,6 +958,24 @@ enum API {
         }
     }
 
+    /// 2026-07-07 · today-composition · P2-14 · DELETE /api/today/skip with
+    /// an explicit date → undo a FUTURE day's skip. The backend route
+    /// already accepted an optional `date` body field (`body.date ?? await
+    /// runnerToday(userId)`); deleteSkipToday only ever sent an empty
+    /// body. Used when un-skipping a day other than today from the
+    /// week-strip preview — postSkip(date:) already exists for the
+    /// symmetric skip-a-future-day path.
+    static func deleteSkip(date: String) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/today/skip"))
+        req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["date": date])
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+    }
+
     // MARK: - Reschedule a run (2026-06-26)
     //
     // POST /api/today/reschedule · moves the primary running workout from one
@@ -1361,6 +1379,11 @@ struct PlanDay: Decodable, Identifiable {
     /// authored spec instead of the fabricated /api/watch/today
     /// phases. Until then: nil · no display change.
     let plannedSpec: PlannedSpec?
+    /// 2026-07-07 · today-composition · P2-11 · the SECOND running-type
+    /// row on a double-booked date (e.g. an adapter-collision easy + long
+    /// on the same day) — the collapse behind `type`/`distance_mi` only
+    /// keeps one. nil on every ordinary (single-run) day.
+    let secondaryRun: SecondaryRun?
 
     // Lenient decode · doctrine 2026-05-31. Server has emitted partial
     // PlanDay rows (null type / distance_mi) during plan-regen windows;
@@ -1369,7 +1392,7 @@ struct PlanDay: Decodable, Identifiable {
     // so we default them safely here.
     enum CodingKeys: String, CodingKey {
         case date_iso, dow, type, distance_mi, sub_label, is_today, is_past
-        case completedRunId, done_mi, skipped, plannedSpec
+        case completedRunId, done_mi, skipped, plannedSpec, secondaryRun
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1384,6 +1407,25 @@ struct PlanDay: Decodable, Identifiable {
         self.done_mi = try c.decodeIfPresent(Double.self, forKey: .done_mi)
         self.skipped = try c.decodeIfPresent(Bool.self, forKey: .skipped)
         self.plannedSpec = try? c.decode(PlannedSpec.self, forKey: .plannedSpec)
+        self.secondaryRun = try? c.decode(SecondaryRun.self, forKey: .secondaryRun)
+    }
+}
+
+/// 2026-07-07 · today-composition · P2-11 · minimal shape for the hidden
+/// second run on a double-booked plan day. Mirrors the backend's additive
+/// `secondaryRun` field on /api/plan/week's PlanDay (web-v2/app/api/plan/
+/// week/route.ts).
+struct SecondaryRun: Decodable {
+    let type: String
+    let sub_label: String?
+    let distance_mi: Double
+
+    enum CodingKeys: String, CodingKey { case type, sub_label, distance_mi }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? ""
+        self.sub_label = try c.decodeIfPresent(String.self, forKey: .sub_label)
+        self.distance_mi = try c.decodeIfPresent(Double.self, forKey: .distance_mi) ?? 0
     }
 }
 
