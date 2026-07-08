@@ -57,6 +57,16 @@ extension KeyedDecodingContainer {
 
 enum APIAuthError: Error { case unauthorized }
 
+/// Carries the server's human-readable failure detail (the `{ error, detail }`
+/// body web-v2 routes return on a non-2xx). LocalizedError so a plain
+/// `error.localizedDescription` surfaces the message; callers that want the
+/// status can catch `as APIServerError` and read it.
+struct APIServerError: LocalizedError {
+    let status: Int
+    let message: String
+    var errorDescription: String? { message }
+}
+
 enum API {
 
     /// Auth-aware GET helper. Every read-side endpoint should call this so
@@ -250,6 +260,65 @@ enum API {
         req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "email": email])
         let (data, _) = try await URLSession.shared.data(for: req)
         return try JSONDecoder().decode(RequestAccessResponse.self, from: data)
+    }
+
+    // MARK: - First-login set-password (invite flow · audit P1-2)
+
+    struct SetPasswordResponse: Decodable {
+        let ok: Bool
+        /// "/today" = onboarding already complete server-side, skip the gate.
+        /// "/onboarding" = walk the wizard.
+        let redirect: String?
+        let error: String?
+    }
+
+    /// POST /api/auth/set-password · first-login step for invited runners.
+    /// The auth response redirected "/set-password" because they signed in
+    /// on the temp password David's approval emailed; this stores their own
+    /// and stamps email_verified_at server-side. Requires the live session
+    /// Bearer (persist the sign-in token BEFORE calling this).
+    static func setPassword(_ password: String) async throws -> SetPasswordResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/auth/set-password"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["password": password])
+        let (data, _): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        return try JSONDecoder().decode(SetPasswordResponse.self, from: data)
+    }
+
+    // MARK: - Cold-start onboarding truth (audit P1-3)
+
+    /// Outcome of asking the server whether this account actually finished
+    /// onboarding. A Keychain token survives kill-mid-wizard and even a full
+    /// reinstall, so token presence proves identity, not onboarding.
+    enum OnboardedCheck {
+        /// users.onboarding_complete = true · safe to enter the main app.
+        case complete
+        /// Signed in fine but the wizard never finished · resume onboarding.
+        case incomplete
+        /// Token is dead (401) · back to the sign-in gate.
+        case unauthorized
+        /// Offline / server error / old server without the flag · can't verify.
+        case unreachable
+    }
+
+    /// GET /api/profile/state, reading only the onboarding_complete flag the
+    /// route exposes for this gate. Never throws — the caller is the launch
+    /// gate and needs a decision, not an error.
+    static func verifyOnboardedOnServer() async -> OnboardedCheck {
+        struct Probe: Decodable { let onboarding_complete: Bool? }
+        let url = baseURL.appendingPathComponent("api/profile/state")
+        do {
+            let (data, http): (Data, HTTPURLResponse) = try await authedGET(url)
+            guard (200..<300).contains(http.statusCode) else { return .unreachable }
+            guard let flag = (try? JSONDecoder().decode(Probe.self, from: data))?.onboarding_complete
+            else { return .unreachable }
+            return flag ? .complete : .incomplete
+        } catch is APIAuthError {
+            return .unauthorized
+        } catch {
+            return .unreachable
+        }
     }
 
     // MARK: - P39 auth — Sign in with Apple (RETIRED 2026-06-10)
@@ -723,15 +792,24 @@ enum API {
     }
 
     /// POST /api/onboarding/complete · persists the onboarding answers
-    /// and (for race-mode) seeds an initial plan. Returns true on a 2xx.
-    static func completeOnboarding(payload: [String: Any]) async throws -> Bool {
+    /// and (for race-mode) seeds an initial plan. Throws APIServerError
+    /// carrying the server's `{ error, detail }` on any non-2xx — the old
+    /// silent `return false` let the confirm screen report success while
+    /// the server had rolled the whole onboarding txn back (audit P1-1).
+    static func completeOnboarding(payload: [String: Any]) async throws {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/onboarding/complete"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
-        guard (200..<300).contains(http.statusCode) else { return false }
-        return true
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            struct ErrBody: Decodable { let error: String?; let detail: String? }
+            let body = try? JSONDecoder().decode(ErrBody.self, from: data)
+            throw APIServerError(
+                status: http.statusCode,
+                message: body?.error ?? "server error \(http.statusCode)"
+            )
+        }
     }
 
     // MARK: - Strava push

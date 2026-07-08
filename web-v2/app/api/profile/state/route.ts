@@ -24,10 +24,14 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   try {
-    const [state, goalRow] = await Promise.all([
+    const [state, goalRow, userRow] = await Promise.all([
       loadProfileState(userId),
       pool.query<{ tt_goal_distance: string | null; tt_goal_time: string | null; tt_goal_time_seconds: number | null }>(
         `SELECT tt_goal_distance, tt_goal_time, tt_goal_time_seconds FROM profile WHERE user_uuid = $1`,
+        [userId]
+      ),
+      pool.query<{ onboarding_complete: boolean | null }>(
+        `SELECT onboarding_complete FROM users WHERE id = $1 LIMIT 1`,
         [userId]
       ),
     ]);
@@ -51,6 +55,11 @@ export async function GET(req: NextRequest) {
       },
       connections: state.connections,
       fitnessGoal,
+      // Cold-start gate truth (phone audit P1-3, 2026-07-06): the iPhone
+      // verifies users.onboarding_complete here before trusting a stored
+      // Keychain token — a token survives kill-mid-wizard and reinstall,
+      // so token presence proves identity, not onboarding.
+      onboarding_complete: userRow.rows[0]?.onboarding_complete === true,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? String(e) }, { status: 500 });

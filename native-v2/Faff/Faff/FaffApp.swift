@@ -207,8 +207,10 @@ extension Notification.Name {
 ///     exist yet and showing a role picker that routes both choices to runner
 ///     onboarding adds a confusing dead step to cold start.
 ///
-/// `TokenStore.isSignedIn` exists as a real session-token signal but isn't
-/// enforced as a gate today (beta uses DEFAULT_USER_ID fallback server-side).
+/// A stored session token WITHOUT cached surfaces is identity, not onboarding
+/// (audit P1-3): the token lands in the Keychain before the wizard runs and
+/// survives kill / reinstall. That case asks the server for
+/// users.onboarding_complete and routes to onboarding when it's false.
 struct RootContainer: View {
     @State private var step: GateStep = .checking
     /// Zero-pop launch · the FAFF splash overlay stays over .main until every
@@ -362,9 +364,37 @@ struct RootContainer: View {
         let hasCachedSurfaces = AppCache.read(.todayWorkout, as: TodayWorkoutWrapper.self) != nil
             || AppCache.read(.planWeek, as: PlanWeek.self) != nil
             || AppCache.read(.logState, as: LogState.self) != nil
-        if hasCachedSurfaces || TokenStore.shared.isSignedIn {
+        if hasCachedSurfaces {
             defaults.set(true, forKey: "faff.onboarded")
             enterMain(); return
+        }
+        // A stored token with NO cached surfaces is not proof of onboarding
+        // (audit P1-3): the Keychain token is persisted BEFORE the wizard
+        // runs and survives kill-mid-onboarding and even a full reinstall.
+        // The old `|| TokenStore.shared.isSignedIn` here stamped the device
+        // onboarded and dropped a half-onboarded runner into a main app with
+        // no timezone / frequency / experience level and no way back to the
+        // wizard. Ask the server for users.onboarding_complete instead. The
+        // .checking brandmark stays up during the round-trip, so the
+        // zero-pop launch is unchanged.
+        if TokenStore.shared.isSignedIn {
+            switch await API.verifyOnboardedOnServer() {
+            case .complete:
+                defaults.set(true, forKey: "faff.onboarded")
+                enterMain()
+            case .incomplete, .unreachable:
+                // Wizard unfinished — or we can't verify. Either way the
+                // safe landing is onboarding, never a cold main app. The
+                // wizard needs the network to submit anyway, and its save
+                // now surfaces errors instead of silently succeeding, so
+                // an offline runner isn't stranded — they retry when back.
+                advance(.onboarding)
+            case .unauthorized:
+                // Dead token · authedSend already posted .faffSessionExpired
+                // (which clears the token). Land on the sign-in gate.
+                advance(.signIn)
+            }
+            return
         }
         advance(.signIn)
     }

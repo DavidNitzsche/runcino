@@ -1169,7 +1169,10 @@ struct OnboardingView: View {
         onboardingError = nil
         Task {
             do {
-                _ = try await API.completeOnboarding(payload: onboardingPayload)
+                // Throws on ANY non-2xx (audit P1-1) — a server-side rollback
+                // must keep the runner on this screen with the error visible,
+                // never mark the device onboarded on a failed save.
+                try await API.completeOnboarding(payload: onboardingPayload)
                 // Optional advanced fields that ride the profile PATCH
                 // (not part of the onboarding/complete contract).
                 var patch: [String: Any] = [:]
@@ -1181,6 +1184,11 @@ struct OnboardingView: View {
                 await MainActor.run {
                     submittingOutcome = nil
                     onComplete(outcome)
+                }
+            } catch let err as APIServerError {
+                await MainActor.run {
+                    submittingOutcome = nil
+                    onboardingError = "Couldn't save · \(err.message) · try again"
                 }
             } catch {
                 await MainActor.run {
