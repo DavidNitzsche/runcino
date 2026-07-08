@@ -28,7 +28,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, type BelowTableAnchor, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
+import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -1886,8 +1886,21 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // is null off-table). Byte-safe for an at/near-goal runner (achievableFloorT faster ⇒ max keeps goalT).
   const goalTraw = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? currentT ?? input.tPaceSec;
   const maxSeasonalVdotGain = Math.min(6, 2 + totalWeeks * 0.22);
+  // achievableFloorT is derived from estimatedCurrentVdot, which floors at
+  // VDOT 30 (conservativeVdotFromMileage) when the runner has no measured
+  // VDOT — completely blind to a below-table anchor's real (slower) pace.
+  // For a below-table runner this "achievable floor" guard can legitimize a
+  // VDOT-30-territory goalT that is faster than the runner has ever run.
   const achievableFloorT = tPaceFromVdot(estimatedCurrentVdot + maxSeasonalVdotGain);
-  const goalT = (achievableFloorT != null && goalTraw != null) ? Math.max(goalTraw, achievableFloorT) : goalTraw;
+  const goalTFloored = (achievableFloorT != null && goalTraw != null) ? Math.max(goalTraw, achievableFloorT) : goalTraw;
+  // 2026-07-08 · P0 re-audit follow-up (3rd instance of the P1-56 unclamped-
+  // pace bug class) · clamp goalT itself to the anchor pace. tPaceForWeek
+  // blends currentT -> goalT; clamping BOTH endpoints to >= the anchor pace
+  // means every interpolated value in between is also honest, closing the
+  // mid-block ramp leak without touching the blend math itself.
+  const goalT = input.belowTableAnchor
+    ? clampToSanePace(goalTFloored, input.belowTableAnchor.anchor.paceSPerMi)
+    : goalTFloored;
 
   // Goal-realism guard: flag when the entered goal implies a VDOT >15% above
   // the conservative current estimate. Written to authoredState for the plan

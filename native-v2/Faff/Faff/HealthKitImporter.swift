@@ -25,6 +25,24 @@ import Foundation
 import HealthKit
 import CoreLocation
 
+/// 2026-07-08 · re-audit P0 · the runner's stored timezone for local-date
+/// bucketing (isoDay etc below), mirroring the backend's
+/// runnerTimezoneOrPacific fallback pattern exactly: read the cached
+/// profile's `timezone` field, fall back to America/Los_Angeles only when
+/// unset (never crash on a malformed IANA identifier). Seeded on every app
+/// launch via API.fetchProfile() in prefetchAllOnLaunch — same
+/// write-through-cache convention as Units.swift's UnitsPreference.
+enum RunnerTimezone {
+    static var current: TimeZone {
+        guard let s = AppCache.read(.profileFields, as: ProfileFields.self),
+              let tz = s.timezone, let resolved = TimeZone(identifier: tz)
+        else {
+            return TimeZone(identifier: "America/Los_Angeles") ?? .current
+        }
+        return resolved
+    }
+}
+
 @MainActor
 final class HealthKitImporter: ObservableObject {
     static let shared = HealthKitImporter()
@@ -442,9 +460,10 @@ final class HealthKitImporter: ObservableObject {
         let maxHr = w.statistics(for: HKQuantityType(.heartRate))?
             .maximumQuantity()?.doubleValue(for: bpm)
 
-        // Local-date helpers — UTC start converted to America/Los_Angeles for
-        // the `date` + `start_local` fields the server expects.
-        let pt = TimeZone(identifier: "America/Los_Angeles") ?? .current
+        // Local-date helpers — UTC start converted to the runner's stored
+        // timezone (RunnerTimezone.current) for the `date` + `start_local`
+        // fields the server expects.
+        let pt = RunnerTimezone.current
         let isoLocal: String = {
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
@@ -1394,10 +1413,10 @@ final class HealthKitImporter: ObservableObject {
         // workers who sleep from 8 AM to 2 PM stay correctly attributed
         // to the same morning under this rule.
         var ptCal = Calendar(identifier: .gregorian)
-        ptCal.timeZone = TimeZone(identifier: "America/Los_Angeles") ?? .current
+        ptCal.timeZone = RunnerTimezone.current
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "America/Los_Angeles")
+        f.timeZone = RunnerTimezone.current
 
         var byDateKey: [String: SleepNight] = [:]
         for s in samples {
@@ -1461,7 +1480,7 @@ final class HealthKitImporter: ObservableObject {
     private nonisolated func isoDay(_ d: Date) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "America/Los_Angeles")
+        f.timeZone = RunnerTimezone.current
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: d)
     }
@@ -1747,7 +1766,7 @@ final class HealthKitImporter: ObservableObject {
         guard let sessionType = Self.strengthActivityRaws[w.workoutActivityType.rawValue] else {
             return nil
         }
-        let pt = TimeZone(identifier: "America/Los_Angeles") ?? .current
+        let pt = RunnerTimezone.current
         let dateStr: String = {
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")

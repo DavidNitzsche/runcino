@@ -209,6 +209,34 @@ describe('P1-56 · composePlan generates a plan for the slow runner (never crash
     expect(res).toBeDefined();
     expect(res.weeks.length).toBeGreaterThan(0);
   });
+
+  it('THIRD BUG SURFACE (2026-07-08 re-audit) — an explicit ambitious goal must not blend weekT past the anchor pace', () => {
+    // The 2026-07-07 fix closed the below-table CURRENT-fitness leak
+    // (resolveCurrentTPace tier-2) and the race_week_tuneup I-pace leak, but
+    // left a THIRD path unclamped: generate.ts's goalT derivation. For an
+    // explicit GOAL, achievableFloorT = tPaceFromVdot(estimatedCurrentVdot +
+    // seasonalGain) — and estimatedCurrentVdot floors at VDOT 30
+    // (conservativeVdotFromMileage) whenever bestRecentVdot is null, same as
+    // every prior instance of this bug class, just one layer further out.
+    // goalT = Math.max(goalTraw, achievableFloorT) then legitimizes a
+    // VDOT-30-territory pace as "achievable," and tPaceForWeek blends
+    // currentT (honest) -> goalT (dishonest) over the build — by mid-block
+    // the prescribed pace is faster than the anchor.
+    const input = buildInput({
+      level: 'beginner', weeklyMi: 12, freq: 3, raceMi: FIVE_K_MI,
+      belowTableAnchor, weeks: 12,
+      goalPaceSec: 9 * 60, // ambitious 9:00/mi goal, ~4.5min/mi faster than the 13:30/mi anchor
+    });
+    const res = composePlan(input);
+    expect(res.weeks.length).toBeGreaterThan(0);
+    const resolved = resolveCurrentTPace(null, belowTableAnchor, 12, conservativeVdotFromMileage);
+    const anchorPaceSPerMi = Math.round(belowTableAnchor.anchor.paceSPerMi);
+    const paces = allPrescribedPaces(res, resolved.tPaceSec, resolved.tPaceSec, anchorPaceSPerMi, belowTableAnchor, true);
+    expect(paces.length).toBeGreaterThan(0);
+    for (const p of paces) {
+      expect(p).toBeGreaterThanOrEqual(SLOW_PACE_S_PER_MI);
+    }
+  });
 });
 
 describe('P1-56 falsifiable requirement #3 · no prescribed pace is faster than the runner\'s own 5K pace', () => {

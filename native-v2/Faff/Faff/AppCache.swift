@@ -58,6 +58,12 @@ enum AppCache {
         /// Units.swift can read the units preference synchronously at
         /// render time, matching every other AppCache-backed surface.
         case userSettings        = "v1.settings"
+        /// /api/profile response (ProfileFields) — timezone + physiology
+        /// edits. Added 2026-07-08 (re-audit P0) so HealthKitImporter can
+        /// read the runner's stored timezone for local-date bucketing
+        /// instead of hardcoding America/Los_Angeles, mirroring
+        /// runnerTimezoneOrPacific's server-side fallback pattern.
+        case profileFields       = "v1.profile.fields"
     }
 
     /// `UserDefaults.standard` rather than the App Group container —

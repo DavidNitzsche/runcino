@@ -454,6 +454,10 @@ enum API {
         let url = baseURL.appendingPathComponent("api/profile")
         let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
         guard (200..<300).contains(http.statusCode) else { return nil }
+        // 2026-07-08 · re-audit P0 · write-through so HealthKitImporter's
+        // RunnerTimezone.current can read the stored timezone synchronously
+        // (same pattern fetchSettings uses for Units.swift).
+        AppCache.writeRaw(.profileFields, data: data)
         return try? JSONDecoder().decode(ProfileFields.self, from: data)
     }
 
@@ -1321,10 +1325,13 @@ enum API {
         // 2026-07-07 · units preference (Units.swift) — same write-through-
         // cache pattern as every other prefetch call here.
         async let su = (try? await fetchSettings())
+        // 2026-07-08 · re-audit P0 · runner timezone (RunnerTimezone.current
+        // in HealthKitImporter.swift) — same write-through-cache pattern.
+        async let pf = (try? await fetchProfile())
         // Discard results — side effect is the cache writes above.
         _ = await (b1, b2, b3, b4, b5)
         _ = await (w, pw, r)
-        _ = await (ts, hs, ps, rl, lg, su)
+        _ = await (ts, hs, ps, rl, lg, su, pf)
     }
 
     /// The handful of surfaces TodayView paints from on first render. The
