@@ -171,6 +171,37 @@ if [ -n "$hits" ]; then
   fail=1
 fi
 
+# ── 3 · WATCH-FACE HEX ALLOWLIST (P2-61, 2026-07-07) ────────────────────────
+# The RETIRED-HEX tripwire above only catches hexes that were ONCE canonical
+# and got deleted — it can't see a hex that was never locked in the first
+# place. That gap let ~10 off-palette wash/ink literals (0x0C2A14, 0x3A2B08,
+# 0x06243F, 0x0A0D12, 0x11151C, 0xCFD2D8, 0x06210C, 0xAAB0BF, 0x2C2F35 —
+# undocumented takeover-face backgrounds and on-color inks) ship silently in
+# FaceKit.swift / Faces.swift / SummaryView.swift / WatchFixtures.swift /
+# WorkoutRootView.swift. They're gone now, replaced by alpha-step tokens on
+# Faff.* (liveWash/goalWash/distWash/grayWash/pauseWash/inkDim/onLive — brief
+# v2 §1: "depth comes from alpha steps of these hues, not new hexes"). This
+# guard is a positive allowlist so the NEXT ad-hoc hex fails CI instead of
+# quietly shipping: every `Color(hex: 0x......)` literal anywhere under the
+# watch app target must be one of the ten locked hexes or a sanctioned
+# neutral (near-white ink / mid-gray mute / dim / progress-track gray).
+WATCH_ALLOWED_HEX='3EBD41|F3AD38|D03F3F|27B4E0|FC4D64|F0DF47|F6F7F8|8A90A0|646464|2C2F35'
+watch_hex_hits=$(grep -rinoE 'Color\(hex: *0x[0-9A-Fa-f]{6}\)' \
+  "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
+  --include='*.swift' 2>/dev/null \
+  | grep -viE "($WATCH_ALLOWED_HEX)" \
+  | grep -v '/\._' || true)
+
+if [ -n "$watch_hex_hits" ]; then
+  echo "WATCH HEX-LINT FAIL · off-palette literal outside the allowlist:"
+  echo "$watch_hex_hits"
+  echo "  Fix: use a Faff.* token (WatchTheme.swift / FaceKit.swift) — an"
+  echo "  alpha step of a locked hue over black, not a new hex. If this is"
+  echo "  a deliberate new semantic, propose the brief v2 change first,"
+  echo "  then add its hex to WATCH_ALLOWED_HEX here."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "palette-sync OK · ten-color lock verified across web / iPhone / watch"
 fi

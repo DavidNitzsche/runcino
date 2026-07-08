@@ -565,7 +565,7 @@ private struct RecoveredRunView: View {
                                                 .font(.custom("HelveticaNeue-Bold", size: h * 0.072))
                                                 .tracking(1.5)
                                         }
-                                        .foregroundStyle(Color(hex: 0x06210C))
+                                        .foregroundStyle(Faff.onLive)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, h * 0.020)
                                         .background(Capsule().fill(Faff.live))

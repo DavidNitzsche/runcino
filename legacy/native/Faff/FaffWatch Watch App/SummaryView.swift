@@ -196,7 +196,8 @@ private struct RaceFinishCard: View {
         GeometryReader { geo in
             let h = geo.size.height
             ZStack {
-                LinearGradient(colors: [Color(hex: 0x0C2A14), .black],
+                Color.black.ignoresSafeArea()
+                LinearGradient(colors: [Faff.liveWash, .clear],
                                startPoint: .top, endPoint: .bottom)
                     .ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 0) {
@@ -211,7 +212,7 @@ private struct RaceFinishCard: View {
                     Button(action: onDone) {
                         Text("Done")
                             .font(.custom("HelveticaNeue-Bold", size: h * 0.12))
-                            .foregroundStyle(Color(hex: 0x06210C))
+                            .foregroundStyle(Faff.onLive)
                             .frame(maxWidth: .infinity).padding(.vertical, h * 0.022)
                             .background(Capsule().fill(Faff.live))
                     }
@@ -240,7 +241,7 @@ struct RepLadderView: View {
         GeometryReader { geo in
             let h = geo.size.height
             ZStack(alignment: .bottom) {
-                Color(hex: 0x0C2A14).ignoresSafeArea()
+                Color.black.overlay(Faff.liveWash).ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 0) {
                     FaceLabel(text: "REPS", color: Faff.live, size: h * 0.06)
                         .topTagInset(h)
@@ -260,7 +261,7 @@ struct RepLadderView: View {
                 Button(action: onDone) {
                     Text("Done")
                         .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
-                        .foregroundStyle(Color(hex: 0x06210C))
+                        .foregroundStyle(Faff.onLive)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, h * 0.016)
                         .background(Capsule().fill(Faff.live))

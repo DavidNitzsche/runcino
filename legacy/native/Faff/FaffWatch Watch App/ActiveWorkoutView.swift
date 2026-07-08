@@ -39,7 +39,13 @@ struct ActiveWorkoutView: View {
                 ResponsiveFace {
                     LivePauseFace(
                         distance: String(format: "%.2f", tracker.distanceMi),
-                        elapsed: PaceFormat.clock(engine.totalElapsedSec),
+                        // P2-60: past the 1-hour mark this must switch to the
+                        // same h:mm branch as LiveSteady/LiveInRunStats — a
+                        // paused marathoner at 2:10:12 was reading raw
+                        // minutes-past-an-hour ("130:12"), not elapsed time.
+                        elapsed: engine.totalElapsedSec >= 3600
+                            ? PaceFormat.hms(engine.totalElapsedSec)
+                            : PaceFormat.clock(engine.totalElapsedSec),
                         onResume: { engine.resume(); page = .face }
                     )
                 }
