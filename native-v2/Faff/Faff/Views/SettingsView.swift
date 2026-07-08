@@ -798,7 +798,7 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         SettingField(key: "weekly_frequency", label: "Days per week", endpoint: .profile, kind: .number, hint: "3 to 7.", planShaping: true),
         SettingField(key: "long_run_day", label: "Long run", endpoint: .settings, kind: .day, planShaping: true),
         SettingField(key: "rest_day", label: "Rest day", endpoint: .settings, kind: .day, planShaping: true),
-        SettingField(key: "quality_days", label: "Quality days", endpoint: .settings, kind: .multiday, planShaping: true, hint: "Leave all off to let the coach pick."),
+        SettingField(key: "quality_days", label: "Quality days", endpoint: .settings, kind: .multiday, hint: "Leave all off to let the coach pick.", planShaping: true),
         // 2026-07-07 · units audit — deliberately NOT converted. Unlike
         // every other "mi" literal in this pass, this is a TYPED-IN plan-
         // shaping INPUT (planShaping: true — an edit here triggers a
@@ -818,8 +818,8 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         // invisible and un-clearable from Settings, so a runner's long-run
         // day edit appeared to silently fail. Exposing it as a real,
         // clearable field closes that gap.
-        SettingField(key: "available_days", label: "Days you can run", endpoint: .settings, kind: .multiday, planShaping: true,
-                     hint: "From goal setup. When set, this overrides Long run / Rest day / Quality days above. Clear it to let those pickers control placement."),
+        SettingField(key: "available_days", label: "Days you can run", endpoint: .settings, kind: .multiday,
+                     hint: "From goal setup. When set, this overrides Long run / Rest day / Quality days above. Clear it to let those pickers control placement.", planShaping: true),
     ]),
     SettingGroup(title: "PHYSIOLOGY", fields: [
         SettingField(key: "lthr", label: "LTHR", endpoint: .profile, kind: .number, unit: "bpm", hint: "Sets your training zones.", autoSource: "From Apple Health"),

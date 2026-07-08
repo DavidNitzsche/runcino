@@ -1185,7 +1185,7 @@ private struct RepsPostPanel: View {
                 // 2026-07-07 · units audit — displayed delta seconds convert
                 // to the preference unit's per-unit scale (same as the two
                 // deltas above).
-                func dispSec(_ raw: Int) -> Int {
+                let dispSec: (Int) -> Int = { raw in
                     Int(Units.convertPaceSecPerUnit(secPerMile: Double(raw), to: Units.preference.distance).rounded())
                 }
                 let deltaStr: String = inRange
