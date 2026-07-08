@@ -444,8 +444,9 @@ struct TargetsView: View {
             return nil
         }()
         guard let secs, let mi, mi > 0 else { return nil }
+        // 2026-07-07 · units audit — display only.
         let perMi = Int(Double(secs) / mi)
-        return String(format: "%d:%02d/mi", perMi / 60, perMi % 60)
+        return Units.formatPace(secPerMile: perMi)
     }
 
     // 2026-06-09 · race-killer F2 — RaceClock (API.swift). The local 2-part
@@ -761,7 +762,11 @@ struct TargetsView: View {
                                 .font(.body(9, weight: .extraBold)).tracking(1.4)
                                 .foregroundStyle(Theme.txt.opacity(0.5))
                             Spacer()
-                            Text("\(road1(done)) / \(road1(planned)) mi")
+                            // 2026-07-07 · units audit — frac (progress bar
+                            // fill) uses raw done/planned above, unaffected
+                            // by the unit conversion here (a ratio is scale-
+                            // invariant); only the displayed values convert.
+                            Text("\(road1Converted(done)) / \(road1Converted(planned)) \(Units.distanceLabel())")
                                 .font(.body(11, weight: .bold))
                                 .foregroundStyle(Theme.txt.opacity(0.8))
                         }
@@ -821,6 +826,12 @@ struct TargetsView: View {
             : String(format: "%.1f", m)
     }
 
+    /// 2026-07-07 · units audit — converts before formatting (road1
+    /// unchanged, still bare-number-only). No-ops to road1(m) when mi.
+    private func road1Converted(_ m: Double) -> String {
+        road1(Units.convertDistance(miles: m, to: Units.preference.distance))
+    }
+
     /// "Tempo · Tue · 7 mi" line for the next quality session.
     private func roadNextQuality(_ nq: TrainingNextQuality) -> String {
         let dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -829,7 +840,7 @@ struct TargetsView: View {
         // not the jargon breakdown ("2 mi WU · 4 mi @ T · 2 mi CD"). The full
         // structure lives in the plan; this is a one-line glance (David 2026-06-17).
         let typeWord = FaffEffort.fromType(nq.type).title
-        let miStr = nq.mi > 0 ? "\(road1(nq.mi)) mi" : ""
+        let miStr = nq.mi > 0 ? "\(road1Converted(nq.mi)) \(Units.distanceLabel())" : ""
         return [typeWord, day, miStr].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 

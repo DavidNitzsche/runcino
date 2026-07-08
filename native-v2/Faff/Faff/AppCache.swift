@@ -53,6 +53,11 @@ enum AppCache {
         case raceList            = "v1.race.list"
         case logState            = "v1.log.state"
         case tipsList            = "v1.tips.list"
+        /// /api/settings response (UserSettings) — units_distance / units_temp
+        /// / units_pace + plan-shaping day prefs. Added 2026-07-07 so
+        /// Units.swift can read the units preference synchronously at
+        /// render time, matching every other AppCache-backed surface.
+        case userSettings        = "v1.settings"
     }
 
     /// `UserDefaults.standard` rather than the App Group container —

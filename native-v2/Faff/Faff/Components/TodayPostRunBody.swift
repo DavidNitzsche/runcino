@@ -404,10 +404,12 @@ struct TodayPostRunBody: View {
     /// Work-phase pace string ("{M:SS}/mi") for quality sessions,
     /// or nil when unavailable (easy/long/rest) or when pace_work
     /// isn't populated (non-Faff-watch sources).
+    /// 2026-07-07 · units audit — prefers pace_work_s_per_mi (numeric).
     private var workPaceDisplay: String? {
-        guard isQualityRun,
-              let wp = detail?.pace_work, !wp.isEmpty else { return nil }
-        return "\(wp)/mi"
+        guard isQualityRun else { return nil }
+        if let s = detail?.pace_work_s_per_mi { return Units.formatPace(secPerMile: s) }
+        guard let wp = detail?.pace_work, !wp.isEmpty else { return nil }
+        return "\(wp)/\(Units.distanceLabel())"
     }
 
     private var statsTrio: some View {
@@ -452,14 +454,22 @@ struct TodayPostRunBody: View {
 
     private var distanceText: String {
         guard let d = detail?.distance_mi, d > 0 else { return "—" }
-        return d.truncatingRemainder(dividingBy: 1) == 0
-            ? "\(Int(d)) mi"
-            : String(format: "%.1f mi", d)
+        let converted = Units.convertDistance(miles: d, to: Units.preference.distance)
+        return converted.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(converted)) \(Units.distanceLabel())"
+            : "\(String(format: "%.1f", converted)) \(Units.distanceLabel())"
     }
+    /// 2026-07-07 · units audit — preserves the ORIGINAL string-first
+    /// priority (byte-safe for mi: identical source, identical order) and
+    /// only reaches for the numeric field when converting to km (where a
+    /// clean re-derivation beats re-parsing + converting the mi string).
     private var paceText: String {
-        if let p = detail?.pace, !p.isEmpty { return "\(p)/mi" }
+        if Units.preference.distance == .km, let sec = detail?.pace_s_per_mi, sec > 0 {
+            return Units.formatPace(secPerMile: sec)
+        }
+        if let p = detail?.pace, !p.isEmpty { return "\(p)/\(Units.distanceLabel())" }
         if let sec = detail?.pace_s_per_mi, sec > 0 {
-            return String(format: "%d:%02d/mi", sec / 60, sec % 60)
+            return Units.formatPace(secPerMile: sec)
         }
         return "—"
     }
@@ -602,7 +612,7 @@ struct TodayPostRunBody: View {
                                 .font(.body(11, weight: .extraBold)).tracking(1.2)
                                 .foregroundStyle(primaryText.opacity(0.7))
                             if let dist = phase.actual_distance_mi {
-                                Text(String(format: "%.1f mi", dist))
+                                Text("\(Units.formatDistance(miles: dist)) \(Units.distanceLabel())")
                                     .font(.body(11, weight: .semibold))
                                     .foregroundStyle(subtleText)
                             }
@@ -1135,7 +1145,14 @@ private struct SplitRow: View {
                 }
             }
             .frame(height: 8)
-            Text(split.pace ?? "—")
+            // 2026-07-07 · units audit — the caller already parsed
+            // split.pace into paceSec (stored property above); use that
+            // directly instead of re-parsing the string (paceStringToSec
+            // is private to TodayPostRunBody, not visible from this
+            // sibling struct). Display only — the split BOUNDARY
+            // (split.mile above) stays miles (server segments per-mile,
+            // see RunDetailView.splitBars comment for the same reasoning).
+            Text(paceSec > 0 ? Units.formatPaceBare(secPerMile: paceSec) : (split.pace ?? "—"))
                 .font(.body(12, weight: .bold))
                 .foregroundStyle(mutedText)
                 .frame(width: 50, alignment: .trailing)
@@ -1317,10 +1334,19 @@ struct RoutePolylineCard: View {
         .clipShape(Capsule())
     }
 
+    /// 2026-07-07 · units audit — display only. Deliberately does NOT
+    /// convert the mileMarkerPoints() geometry below (the route map's
+    /// per-mile dots) — that's a real Haversine walk of the GPS polyline
+    /// at integer-MILE boundaries; converting it to km boundaries is a
+    /// genuine geometry change (re-deriving marker placement), not a
+    /// display-string conversion, and out of scope for this pass. The
+    /// map still shows mile markers even in km mode; only this overlay
+    /// label converts. Flagged as an open risk in the final report.
     private var overlayText: String {
-        let mi = distanceMi.truncatingRemainder(dividingBy: 1) == 0
-            ? "\(Int(distanceMi)) MI"
-            : String(format: "%.1f MI", distanceMi)
+        let converted = Units.convertDistance(miles: distanceMi, to: Units.preference.distance)
+        let mi = converted.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(converted)) \(Units.distanceLabel().uppercased())"
+            : "\(String(format: "%.1f", converted)) \(Units.distanceLabel().uppercased())"
         if elevGainFt > 0 { return "\(mi) · ↗ \(elevGainFt) FT" }
         return mi
     }

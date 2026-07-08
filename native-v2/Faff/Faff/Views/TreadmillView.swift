@@ -349,7 +349,16 @@ struct TreadmillView: View {
             }
             HStack(alignment: .top, spacing: 0) {
                 topStat("TIME", formatClock(totalSec))
-                topStat("DISTANCE", String(format: "%.2f mi", dist))
+                // 2026-07-07 · units audit — `dist` (the internal accumulator
+                // driving the recorded run's totalDistanceMi) stays miles;
+                // only this display string converts. Units.formatDistance
+                // no-ops back to the exact "%.1f" mi reading when the
+                // preference is mi (default, byte-safe for every existing
+                // runner). Was "%.2f mi" fixed 2-decimal — Units.formatDistance
+                // defaults to 1 decimal like every other distance display in
+                // the app; kept 2 decimals here via the explicit param since
+                // treadmill distance benefits from the finer live read.
+                topStat("DISTANCE", "\(Units.formatDistance(miles: dist, decimals: 2)) \(Units.distanceLabel())")
                 topStat("PHASE", "\(min(idx + 1, segments.count))/\(segments.count)")
             }
         }
@@ -426,13 +435,22 @@ struct TreadmillView: View {
         VStack(spacing: 11) {
             consoleTile(
                 label: "SPEED",
-                value: String(format: "%.1f", speedMph),
-                unit: "mph",
+                // 2026-07-07 · units audit — DISPLAY ONLY. The internal
+                // `speedMph` state (and the ±0.1 stepper below) stays mph —
+                // that's what accumulates `dist` each tick and what the
+                // POST payload's actualSpeedMph carries. Only the number
+                // shown and the unit label convert. Units.formatSpeed
+                // no-ops back to the exact "%.1f" mph reading when the
+                // preference is mi (default, byte-safe for every existing
+                // runner).
+                value: Units.formatSpeed(mph: speedMph),
+                unit: Units.speedLabel(),
                 valueFontSize: 74,
                 // When HK streams a live HR sample, append it to the
                 // sub line · "8:34 /mi · 162 bpm". Nil when no watch
-                // is paired, sub stays pace-only.
-                sub: hrSubLine(pace: "\(paceStr(speedMph)) /mi"),
+                // is paired, sub stays pace-only. paceStr still computes
+                // off speedMph (mph) — pace display converts separately.
+                sub: hrSubLine(pace: paceDisplayStr(speedMph)),
                 onMinus: { speedMph = max(0.5, round((speedMph - 0.1) * 10) / 10) },
                 onPlus:  { speedMph = min(12, round((speedMph + 0.1) * 10) / 10) }
             )
@@ -529,9 +547,11 @@ struct TreadmillView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 1) {
                     HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        Text(next.map { String(format: "%.1f", $0.mph) } ?? "—")
+                        // 2026-07-07 · units audit — display only; $0.mph
+                        // (TreadSeg's stored target) stays mph internally.
+                        Text(next.map { Units.formatSpeed(mph: $0.mph) } ?? "—")
                             .font(.display(32, weight: .bold)).tracking(-1)
-                        Text(next != nil ? "mph" : "")
+                        Text(next != nil ? Units.speedLabel() : "")
                             .font(.body(13, weight: .bold))
                     }
                     Text(next.map { "\(String(format: "%.1f", $0.inc))% · \(formatClock($0.dur))" } ?? "complete")
@@ -660,6 +680,19 @@ struct TreadmillView: View {
         var s = Int(round((pmin - Double(m)) * 60))
         if s == 60 { m += 1; s = 0 }
         return "\(m):\(s < 10 ? "0" : "")\(s)"
+    }
+
+    /// 2026-07-07 · units audit — "8:34/mi" or "5:19/km" display string for
+    /// the speed tile's sub-line. `paceStr` above is UNCHANGED (still used
+    /// nowhere else, kept intact rather than deleted in case another call
+    /// site is added later) — this wraps the same 60/mph→min-per-mile math
+    /// through Units.formatPace so the unit suffix and conversion are both
+    /// handled by the shared formatter. No-ops to paceStr's exact output +
+    /// "/mi" when the preference is mi.
+    private func paceDisplayStr(_ mph: Double) -> String {
+        guard mph > 0 else { return "—:—/\(Units.distanceLabel())" }
+        let secPerMile = (60.0 / mph) * 60.0
+        return Units.formatPace(secPerMile: secPerMile)
     }
 
     /// Speed-tile sub line · pace plus live HR if a watch is streaming.

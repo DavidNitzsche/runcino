@@ -157,7 +157,17 @@ struct WorkSegmentRow: View {
                 Text("WORK")
                     .font(.body(10, weight: .extraBold)).tracking(1.6)
                     .foregroundStyle(Theme.amberBright)
-                if let p = pace { metric(p, "/mi") }
+                // 2026-07-07 · units audit — no call sites anywhere in the
+                // app today (grep confirmed); `pace` is a bare "M:SS" with
+                // no numeric companion at this layer, so re-parse.
+                if let p = pace {
+                    let parts = p.split(separator: ":").compactMap { Int($0) }
+                    if parts.count == 2 {
+                        metric(Units.formatPaceBare(secPerMile: parts[0] * 60 + parts[1]), "/\(Units.distanceLabel())")
+                    } else {
+                        metric(p, "/\(Units.distanceLabel())")
+                    }
+                }
                 if let h = hr { metric("\(h)", "bpm") }
                 if let c = cadence { metric("\(c)", "spm") }
                 if let s = workSeconds { metric(fmtDuration(s), "work") }
@@ -215,6 +225,12 @@ struct ConditionsLine: View {
     }
     let variant: Variant
 
+    // 2026-07-07 · units audit — this component has zero call sites
+    // anywhere in the app today (grep confirmed), but converting it now
+    // means it's correct if/when it's wired up rather than shipping a
+    // fresh "mi"/"°F" hardcode. All inputs (tempF, feelsF, windMph) stay
+    // named -F/Mph (the wire contract, presumably) — only the rendered
+    // text converts.
     var body: some View {
         switch variant {
         case .mild(let t, let feels, let wind):
@@ -222,17 +238,17 @@ struct ConditionsLine: View {
                 Image(systemName: "sun.max")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.mute)
-                Text("\(t)°F").font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.txt)
-                if let f = feels { sep(); Text("feels \(f)").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute) }
-                if let w = wind { sep(); Text("wind \(w) mph").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute) }
+                Text(Units.formatTemperature(fahrenheit: Double(t))).font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.txt)
+                if let f = feels { sep(); Text("feels \(Units.formatTemperature(fahrenheit: Double(f)))").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute) }
+                if let w = wind { sep(); Text("wind \(Units.formatSpeed(mph: Double(w), decimals: 0)) \(Units.speedLabel())").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute) }
             }
         case .hot(let t, let feels, let hum):
             chip {
                 Image(systemName: "sun.max.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.race)
-                Text("\(t)°F").font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.race)
-                if let f = feels { Text(" · feels \(f)").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.race) }
+                Text(Units.formatTemperature(fahrenheit: Double(t))).font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.race)
+                if let f = feels { Text(" · feels \(Units.formatTemperature(fahrenheit: Double(f)))").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.race) }
                 if let h = hum { sep(); Text("\(h)% RH").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute) }
             }
         case .span(let s, let p):
@@ -240,11 +256,11 @@ struct ConditionsLine: View {
                 Image(systemName: "sun.max")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.mute)
-                Text("\(s)°F").font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.txt)
+                Text(Units.formatTemperature(fahrenheit: Double(s))).font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.txt)
                 Text("→").font(.body(11.5)).foregroundStyle(Theme.mute)
-                Text("\(p)°F").font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.race)
+                Text(Units.formatTemperature(fahrenheit: Double(p))).font(.body(13, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.race)
                 sep()
-                Text("peak \(p)°F").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute)
+                Text("peak \(Units.formatTemperature(fahrenheit: Double(p)))").font(.body(11.5, weight: .medium)).foregroundStyle(Theme.mute)
             }
         case .loading:
             chip {

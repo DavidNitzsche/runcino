@@ -46,17 +46,40 @@ struct IdleView: View {
         return "TODAY"
     }
 
+    /// 2026-07-07 · units audit — mi→km factor, kept local per the "v0
+    /// duplication is fine" doctrine already governing this file (no
+    /// shared module boundary with the iPhone target's Util/Units.swift).
+    private static let milesPerKm = 0.621371
+    private var isKm: Bool { workout.unitsDistance == "km" }
+
     /// Distance: race miles take 1 decimal ("26.2"), workout miles same ("5.8").
+    /// Converts to km when workout.unitsDistance == "km"; nil/anything else
+    /// keeps the mi reading unchanged (byte-safe for every existing payload).
     private var distanceText: String {
-        workout.distanceMi.map { String(format: "%.1f", $0) } ?? "—"
+        guard let mi = workout.distanceMi else { return "—" }
+        let v = isKm ? mi * (1.0 / Self.milesPerKm) : mi
+        return String(format: "%.1f", v)
     }
 
     /// Pace: the first work phase's target — the pace you're chasing today.
     /// For a race that's the opening course phase; for a workout it's the rep
     /// target. For a no-target run (recovery / shakeout), we surface "—:—".
+    /// Bare "M:SS" — LobbyFace's NumRow renders it unlabeled (no "/mi" is
+    /// appended today either; the row POSITION conveys "this is pace", not
+    /// printed text), so converting the number without adding a suffix
+    /// keeps this behaviorally identical to the original mi-only version.
     private var paceText: String {
         let workPace = workout.phases.first(where: { $0.type == .work })?.targetPaceSPerMi
-        return workPace.map { PaceFormat.mmss($0) } ?? "—:—"
+        guard let p = workPace else { return "—:—" }
+        return bareMmss(p)
+    }
+
+    /// Shared mm:ss conversion for a single seconds-per-mile value — no
+    /// unit suffix (see paceText doc). isKm no-ops back to PaceFormat.mmss.
+    private func bareMmss(_ secPerMile: Int) -> String {
+        guard isKm else { return PaceFormat.mmss(secPerMile) }
+        let perKm = Int((Double(max(0, secPerMile)) * Self.milesPerKm).rounded())
+        return "\(perKm / 60):\(String(format: "%02d", perKm % 60))"
     }
 
     /// Time formatting:
@@ -89,7 +112,11 @@ struct IdleView: View {
         else { return nil }
         let lo = target - tol
         let hi = target + tol
-        return "\(PaceFormat.mmss(lo))-\(PaceFormat.mmss(hi))"
+        // Each endpoint converts independently (mi→km is a linear scale,
+        // so (target±tol)×k == target×k ± tol×k — converting lo/hi
+        // separately gives the same band as converting target/tol then
+        // re-deriving the edges).
+        return "\(bareMmss(lo))-\(bareMmss(hi))"
     }
 
 }

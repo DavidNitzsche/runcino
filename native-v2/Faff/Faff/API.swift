@@ -427,7 +427,14 @@ enum API {
         let url = baseURL.appendingPathComponent("api/settings")
         let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
         guard (200..<300).contains(http.statusCode) else { return nil }
-        return try? JSONDecoder().decode(UserSettings.self, from: data)
+        guard let decoded = try? JSONDecoder().decode(UserSettings.self, from: data) else { return nil }
+        // 2026-07-07 · write-through so Units.swift (and any other synchronous
+        // AppCache reader) has the units preference the instant this lands,
+        // matching fetchProfileState's cache pattern below. Was decode-only
+        // before — nothing ever cached /api/settings, so a cold app launch
+        // had no units preference to read until this exact call resolved.
+        AppCache.writeRaw(.userSettings, data: data)
+        return decoded
     }
 
     @discardableResult
@@ -1311,10 +1318,13 @@ enum API {
         async let ps = (try? await fetchProfileState())
         async let rl = (try? await fetchRaces())
         async let lg = (try? await fetchLog(limit: 80))
+        // 2026-07-07 · units preference (Units.swift) — same write-through-
+        // cache pattern as every other prefetch call here.
+        async let su = (try? await fetchSettings())
         // Discard results — side effect is the cache writes above.
         _ = await (b1, b2, b3, b4, b5)
         _ = await (w, pw, r)
-        _ = await (ts, hs, ps, rl, lg)
+        _ = await (ts, hs, ps, rl, lg, su)
     }
 
     /// The handful of surfaces TodayView paints from on first render. The
@@ -1327,7 +1337,11 @@ enum API {
         async let r  = (try? await fetchReadiness())
         async let ps = (try? await fetchProfileState())
         async let bt = (try? await briefing(surface: "today"))
-        _ = await (w, pw, r, ps, bt)
+        // Today renders distance/pace/temp before prefetchAllOnLaunch's
+        // background settings fetch would otherwise land — include it in
+        // the critical path so the units preference is ready for first paint.
+        async let su = (try? await fetchSettings())
+        _ = await (w, pw, r, ps, bt, su)
     }
 }
 

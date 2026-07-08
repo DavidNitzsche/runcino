@@ -84,8 +84,8 @@ struct TrainingCalendarView: View {
                         // Progress when the week has activity (run-so-far over
                         // planned); plain planned total for untouched weeks.
                         Text(doneMi > 0.05
-                             ? "\(formatMi(doneMi)) / \(formatMi(totalMi)) mi"
-                             : "\(formatMi(totalMi)) mi planned")
+                             ? "\(formatMi(doneMi)) / \(formatMi(totalMi)) \(Units.distanceLabel())"
+                             : "\(formatMi(totalMi)) \(Units.distanceLabel()) planned")
                             .font(.body(12, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.55))
                     }
@@ -163,7 +163,7 @@ struct TrainingCalendarView: View {
                     .font(.body(13, weight: .extraBold))
                     .foregroundStyle(Theme.txt)
                 if day.distance_mi > 0 {
-                    Text("\(formatMi(day.distance_mi)) mi")
+                    Text("\(formatMi(day.distance_mi)) \(Units.distanceLabel())")
                         .font(.body(12, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.55))
                 }
@@ -292,7 +292,9 @@ struct TrainingCalendarView: View {
         Int(iso.split(separator: "-").last.map(String.init) ?? "0") ?? 0
     }
 
+    /// 2026-07-07 · units audit — converts before formatting.
     private func formatMi(_ d: Double) -> String {
-        d.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(d))" : String(format: "%.1f", d)
+        let converted = Units.convertDistance(miles: d, to: Units.preference.distance)
+        return converted.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(converted))" : String(format: "%.1f", converted)
     }
 }

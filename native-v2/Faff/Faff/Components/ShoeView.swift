@@ -52,7 +52,7 @@ struct ShoeCompact: View {
                         .font(.body(14, weight: .extraBold))
                         .foregroundStyle(Theme.txt)
                         .lineLimit(1)
-                    Text("\(Int(shoe.miles)) mi")
+                    Text("\(Int(Units.convertDistance(miles: shoe.miles, to: Units.preference.distance))) \(Units.distanceLabel())")
                         .font(.display(18, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.85))
                 }
@@ -95,11 +95,12 @@ struct ShoeDetail: View {
                     }
                     Spacer()
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(Int(shoe.miles))")
+                        // 2026-07-07 · units audit — display only.
+                        Text("\(Int(Units.convertDistance(miles: shoe.miles, to: Units.preference.distance)))")
                             .font(.display(26, weight: .semibold))
                             .tracking(-1)
                             .foregroundStyle(Theme.txt)
-                        Text("MI")
+                        Text(Units.distanceLabel().uppercased())
                             .font(.label(9))
                             .foregroundStyle(Theme.txt.opacity(0.62))
                     }
@@ -115,11 +116,14 @@ struct ShoeDetail: View {
                 }
                 .frame(height: 7)
                 HStack {
-                    Text("\(Int(shoe.lifePct * 100))% of \(Int(shoe.lifeMi)) mi life")
+                    // 2026-07-07 · units audit follow-up — display only;
+                    // lifePct/warn upstream still use raw shoe.miles /
+                    // shoe.lifeMi, only the rendered strings convert.
+                    Text("\(Int(shoe.lifePct * 100))% of \(Int(Units.convertDistance(miles: shoe.lifeMi, to: Units.preference.distance))) \(Units.distanceLabel()) life")
                         .font(.body(9.5, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
                     Spacer()
-                    Text("\(Int(shoe.lifeMi - shoe.miles)) mi left")
+                    Text("\(Int(Units.convertDistance(miles: shoe.lifeMi - shoe.miles, to: Units.preference.distance))) \(Units.distanceLabel()) left")
                         .font(.body(9.5, weight: .semibold))
                         .foregroundStyle(shoe.warn ? Theme.warnText : Theme.txt.opacity(0.6))
                 }
@@ -148,7 +152,7 @@ struct ShoePickerRow: View {
                         .foregroundStyle(Theme.txt)
                     HStack(spacing: 8) {
                         SpecLabel(text: shoe.primaryRole, size: 9, tracking: 1, color: shoe.roleColor)
-                        Text("\(Int(shoe.miles)) mi")
+                        Text("\(Int(Units.convertDistance(miles: shoe.miles, to: Units.preference.distance))) \(Units.distanceLabel())")
                             .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.6))
                     }

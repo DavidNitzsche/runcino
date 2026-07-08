@@ -455,11 +455,13 @@ extension WatchWorkout {
 // MARK: - Pace formatting helpers
 
 enum PaceFormat {
-    /// "6:31" from 391 s/mi.
+    /// "6:31" from 391 s/mi. 2026-07-07 · units audit — redirected to the
+    /// shared bare formatter (Util/Units.swift). Both call sites
+    /// (PlannedView.swift) append their own "/mi" literal — fixed at each
+    /// site rather than baking a suffix in here, matching this function's
+    /// original bare-number contract.
     static func mmss(_ secondsPerMile: Int) -> String {
-        let m = secondsPerMile / 60
-        let s = secondsPerMile % 60
-        return "\(m):\(String(format: "%02d", s))"
+        Units.formatPaceBare(secPerMile: secondsPerMile)
     }
 
     /// "2:15" from 135 seconds (durations / elapsed clocks).

@@ -124,6 +124,10 @@ struct RaceResultHero: View {
             .foregroundStyle(color)
     }
 
+    /// 2026-07-07 · units audit — no call sites anywhere in the app today
+    /// (grep confirmed), converted for correctness if/when it's wired up.
+    /// `pace` arrives as a pre-formatted "M:SS" string with no numeric
+    /// companion at this layer, so re-parse rather than leaving it raw.
     private func meta(name: String, pace: String?, hr: Int?) -> some View {
         HStack(spacing: 6) {
             Text(name)
@@ -131,7 +135,11 @@ struct RaceResultHero: View {
                 .foregroundStyle(Theme.txt)
             if let p = pace {
                 sep()
-                Text("\(p) /mi").font(.body(12, weight: .medium)).foregroundStyle(Theme.mute)
+                let parts = p.split(separator: ":").compactMap { Int($0) }
+                let display = parts.count == 2
+                    ? Units.formatPace(secPerMile: parts[0] * 60 + parts[1])
+                    : "\(p) /\(Units.distanceLabel())"
+                Text(display).font(.body(12, weight: .medium)).foregroundStyle(Theme.mute)
             }
             if let h = hr {
                 sep()

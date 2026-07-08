@@ -1074,7 +1074,11 @@ struct TodayView: View {
 
             // Weather chip — right-aligned, only shown when heat is meaningful
             if let t = weather?.tempF, t > 10, t < 130 {
-                HStack { Spacer(minLength: 0); HeatBandChip(band: HeatBand.from(tempF: t), tempLabel: "\(Int(t.rounded()))°F") }
+                // 2026-07-07 · units audit — HeatBand.from(tempF:) classification
+                // stays Fahrenheit (t, unconverted) since its thresholds are
+                // presumably F-calibrated; only the displayed tempLabel string
+                // converts via Units.formatTemperature.
+                HStack { Spacer(minLength: 0); HeatBandChip(band: HeatBand.from(tempF: t), tempLabel: Units.formatTemperature(fahrenheit: t)) }
             } else if let tag = weatherTagLabel {
                 HStack {
                     Spacer(minLength: 0)
@@ -1395,7 +1399,7 @@ struct TodayView: View {
             }
             Spacer(minLength: 0)
             if secondary.distance_mi > 0 {
-                Text("\(formatMi(secondary.distance_mi)) mi")
+                Text(formatMiWithUnit(secondary.distance_mi))
                     .font(.body(13, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.65))
             }
@@ -1545,18 +1549,23 @@ struct TodayView: View {
         }
     }
 
+    // 2026-07-07 · units audit — display only. p.distanceMi / p.targetPaceSPerMi
+    // are the server's wire values (always miles / seconds-per-mile); only
+    // the rendered string converts via Units. No-ops to the exact original
+    // "N mi" / "N.N mi" / "M:SS/mi" strings when the preference is mi.
     private func segDistLabel(_ p: WatchPhase) -> String {
         let distPart: String
         if let d = p.distanceMi, d > 0 {
-            distPart = d.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(d)) mi" : String(format: "%.1f mi", d)
+            let converted = Units.convertDistance(miles: d, to: Units.preference.distance)
+            distPart = converted.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(converted)) \(Units.distanceLabel())"
+                : "\(String(format: "%.1f", converted)) \(Units.distanceLabel())"
         } else {
             let m = max(1, p.durationSec / 60)
             distPart = "\(m) min"
         }
         if let pace = p.targetPaceSPerMi, pace > 0 {
-            let paceStr = String(format: "%d:%02d/mi", pace / 60, pace % 60)
-            return "\(distPart) · \(paceStr)"
+            return "\(distPart) · \(Units.formatPace(secPerMile: pace))"
         }
         return distPart
     }
@@ -1609,7 +1618,12 @@ struct TodayView: View {
                     .background(.white, in: Capsule())
             } else {
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(paceStr.replacingOccurrences(of: "/mi", with: ""))
+                    // 2026-07-07 · units audit — was hardcoded "/mi" strip;
+                    // paceStr now suffixes "/mi" OR "/km" via Units.formatPace,
+                    // so strip whichever is actually present.
+                    Text(paceStr
+                        .replacingOccurrences(of: "/mi", with: "")
+                        .replacingOccurrences(of: "/km", with: ""))
                         .font(.display(18, weight: .bold)).tracking(-0.3)
                         .foregroundStyle(.white)
                     Text(selectedEffort.effortLabel.uppercased())
@@ -2040,8 +2054,8 @@ struct TodayView: View {
     private var distanceStr: String {
         // Prefer the selected day's planned distance (server-of-truth for
         // future days). Fall back to the watch-workout distanceMi.
-        if let dist = todaySelectedDay?.distance_mi, dist > 0 { return "\(formatMi(dist)) mi" }
-        if let mi = displayWorkout?.distanceMi { return "\(formatMi(mi)) mi" }
+        if let dist = todaySelectedDay?.distance_mi, dist > 0 { return formatMiWithUnit(dist) }
+        if let mi = displayWorkout?.distanceMi { return formatMiWithUnit(mi) }
         return "—"
     }
 
@@ -2097,10 +2111,13 @@ struct TodayView: View {
         return "—"
     }
 
+    /// 2026-07-07 · units audit — redirected to the shared formatter.
+    /// Every call site here passes a server wire value (targetPaceSPerMi,
+    /// always seconds-per-mile) so the conversion is safe at this single
+    /// choke point. No-ops to the exact original "%d:%02d/mi" string when
+    /// the preference is mi.
     private func formatPace(secondsPerMi: Int) -> String {
-        let m = secondsPerMi / 60
-        let s = secondsPerMi % 60
-        return String(format: "%d:%02d/mi", m, s)
+        Units.formatPace(secPerMile: secondsPerMi)
     }
 
     /// True when the selected day IS today · empty selectedDayID also
@@ -2135,8 +2152,11 @@ struct TodayView: View {
         guard let wx = weather, let d = wx.deltaF, let t = wx.tempF else { return nil }
         guard t > 10, t < 130 else { return nil }   // unfetched default · not a reading
         if abs(d) < 6 { return nil }
-        let degrees = Int(t.rounded())
-        return d > 0 ? "HOTTER \(degrees)°F" : "COOLER \(degrees)°F"
+        // 2026-07-07 · units audit — `t` is an ABSOLUTE reading (not the
+        // delta `d`, which only gates + signs this string), so
+        // formatTemperature (not the delta converter) is correct here.
+        let tempLabel = Units.formatTemperature(fahrenheit: t)
+        return d > 0 ? "HOTTER \(tempLabel)" : "COOLER \(tempLabel)"
     }
 
     /// Background color for the weather tag — race-orange for hotter (it's
@@ -2186,9 +2206,12 @@ struct TodayView: View {
         guard day.type != "rest", day.distance_mi > 0 else { return nil }
         guard day.completedRunId == nil else { return nil }
         guard day.skipped != true else { return nil }
-        let mi = formatMi(day.distance_mi)
+        // 2026-07-07 · units audit — was "\(mi)mi" (no space before unit,
+        // preserved here); converts to preference unit + label.
+        let converted = Units.convertDistance(miles: day.distance_mi, to: Units.preference.distance)
+        let mi = formatMi(converted)
         let noun = runNoun(day.type)
-        return "Yesterday's \(mi)mi \(noun) didn't happen."
+        return "Yesterday's \(mi)\(Units.distanceLabel()) \(noun) didn't happen."
     }
 
     /// Avatar initials · delegates to ProfileIdentity.avatarInitials.
@@ -2849,7 +2872,7 @@ struct TodayView: View {
             default: return type.prefix(1).uppercased() + type.dropFirst()
             }
         }()
-        return "\(word) \(formatMi(mi)) mi"
+        return "\(word) \(formatMiWithUnit(mi))"
     }
 
     private func skipTodayAction() {
@@ -2934,7 +2957,7 @@ struct TodayView: View {
         // outside that is almost certainly a default or sensor glitch.
         let weather: String = {
             if let t = self.weather?.tempF, t > 10, t < 130 {
-                return "\(Int(t.rounded()))°F"
+                return Units.formatTemperature(fahrenheit: t)
             }
             return "—"
         }()
@@ -3019,6 +3042,17 @@ struct TodayView: View {
     }
     private func formatMi(_ d: Double) -> String {
         d.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(d))" : String(format: "%.1f", d)
+    }
+
+    /// 2026-07-07 · units audit — "6 mi" / "10 km" from a miles value.
+    /// Wraps formatMi (unchanged, still just formats a bare number) with
+    /// the mi→pref conversion + the correct unit suffix, so every
+    /// `"\(formatMi(d)) mi"` call site converts through one place instead
+    /// of duplicating the conversion five times. No-ops to formatMi(d) + " mi"
+    /// when the preference is mi.
+    private func formatMiWithUnit(_ d: Double) -> String {
+        let converted = Units.convertDistance(miles: d, to: Units.preference.distance)
+        return "\(formatMi(converted)) \(Units.distanceLabel())"
     }
 
     // MARK: - Loaders
