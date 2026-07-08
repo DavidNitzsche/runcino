@@ -67,40 +67,50 @@ struct NotificationPrefsList: View {
     /// Optional binding for `phone_hr_alerts` (lives on /api/profile too).
     var phoneHrAlerts: Binding<Bool>? = nil
     var loading: Bool = false
-    var onPrefChange: (NotificationPrefs) -> Void = { _ in }
+    /// Fires with the CANONICAL wire key + new value on each toggle so the
+    /// caller PATCHes only the changed field (audit P1-15 · the old
+    /// full-struct PATCH 400'd on the first unknown key and every toggle
+    /// silently never saved).
+    var onPrefChange: (String, Bool) -> Void = { _, _ in }
 
     var body: some View {
         if loading || prefs == nil {
             loadingState
         } else {
             VStack(spacing: 0) {
-                row("Readiness alerts",
-                    sub: "When your body says ease off",
-                    bind: bindPref(\.readiness_enabled))
+                // Rows mirror web Settings.tsx ROW_DEFS · same canonical
+                // categories, same order, same copy.
+                row("All notifications",
+                    sub: "Master switch · turns everything off when off",
+                    bind: bindPref(\.master_enabled, "master_enabled"))
+                divider()
+                row("Race day",
+                    sub: "Race-morning wake + start window",
+                    bind: bindPref(\.race_day_enabled, "race_day_enabled"))
+                divider()
+                row("Race eve",
+                    sub: "Evening-before brief at T-21h",
+                    bind: bindPref(\.race_eve_enabled, "race_eve_enabled"))
                 divider()
                 row("Workout reminders",
-                    sub: "Morning ping with today's session",
-                    bind: bindPref(\.workout_reminder_enabled))
+                    sub: "Pre-run brief on planned days",
+                    bind: bindPref(\.skip_recovery_enabled, "skip_recovery_enabled"))
                 divider()
-                row("Weekly recap",
-                    sub: "Sunday wrap of the week's training",
-                    bind: bindPref(\.recap_enabled))
+                row("Weekly check-in",
+                    sub: "Sunday recap + week-ahead context",
+                    bind: bindPref(\.weekly_checkin_enabled, "weekly_checkin_enabled"))
                 divider()
-                row("Race countdown",
-                    sub: "T-30 / T-14 / T-7 / T-3 cadence",
-                    bind: bindPref(\.race_countdown_enabled))
+                row("Niggle / sick check",
+                    sub: "Daily check-in when something is active",
+                    bind: bindPref(\.niggle_sick_enabled, "niggle_sick_enabled"))
                 divider()
                 row("Streak milestones",
-                    sub: "Celebrate 7 / 14 / 30 / 100 days",
-                    bind: bindPref(\.streak_enabled))
-                divider()
-                row("Plan adaptations",
-                    sub: "When Faff changes today",
-                    bind: bindPref(\.adaptation_enabled))
+                    sub: "7 · 14 · 30 · 100 day streaks",
+                    bind: bindPref(\.streak_enabled, "streak_enabled"))
                 divider()
                 row("Strava reconnect",
-                    sub: "Nudge if the sync breaks",
-                    bind: bindPref(\.reconnect_enabled))
+                    sub: "Nudge when the token goes stale",
+                    bind: bindPref(\.strava_reconnect_enabled, "strava_reconnect_enabled"))
                 if let push = stravaAutoPush {
                     divider()
                     row("Auto-push runs to Strava",
@@ -125,14 +135,14 @@ struct NotificationPrefsList: View {
     private func divider() -> some View {
         Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
     }
-    private func bindPref(_ kp: WritableKeyPath<NotificationPrefs, Bool>) -> Binding<Bool> {
+    private func bindPref(_ kp: WritableKeyPath<NotificationPrefs, Bool>, _ wireKey: String) -> Binding<Bool> {
         Binding(
             get: { prefs?[keyPath: kp] ?? false },
             set: { v in
                 guard var p = prefs else { return }
                 p[keyPath: kp] = v
                 prefs = p
-                onPrefChange(p)
+                onPrefChange(wireKey, v)
             }
         )
     }
@@ -155,51 +165,66 @@ struct NotificationPrefsList: View {
 }
 
 // MARK: - NotificationPrefs (model)
+//
+// 2026-07-06 · audit P1-15 · migrated to the server's CANONICAL key set
+// (web-v2/lib/notifications/prefs.ts NotificationPrefs). The old 7-key
+// phone dialect (readiness/workout_reminder/recap/race_countdown/
+// adaptation/reconnect) shared only streak_enabled with the server, so
+// GET never decoded real prefs and PATCH 400'd on the first unknown key.
+// GET /api/profile/notifications emits these keys at the TOP LEVEL of the
+// body; PATCH sends one changed key at a time (see NotificationPrefsList
+// onPrefChange). Per-key tolerant decode · a missing key falls back to the
+// server default (true), matching DEFAULT_PREFS.
 
 struct NotificationPrefs: Codable, Equatable {
-    var readiness_enabled: Bool
-    var workout_reminder_enabled: Bool
-    var recap_enabled: Bool
-    var race_countdown_enabled: Bool
+    var master_enabled: Bool
+    var race_day_enabled: Bool
+    var race_eve_enabled: Bool
+    var skip_recovery_enabled: Bool
+    var weekly_checkin_enabled: Bool
+    var niggle_sick_enabled: Bool
     var streak_enabled: Bool
-    var adaptation_enabled: Bool
-    var reconnect_enabled: Bool
+    var strava_reconnect_enabled: Bool
 
     static let defaults = NotificationPrefs(
-        readiness_enabled: true,
-        workout_reminder_enabled: true,
-        recap_enabled: true,
-        race_countdown_enabled: true,
+        master_enabled: true,
+        race_day_enabled: true,
+        race_eve_enabled: true,
+        skip_recovery_enabled: true,
+        weekly_checkin_enabled: true,
+        niggle_sick_enabled: true,
         streak_enabled: true,
-        adaptation_enabled: true,
-        reconnect_enabled: true
+        strava_reconnect_enabled: true
     )
 
     enum CodingKeys: String, CodingKey {
-        case readiness_enabled, workout_reminder_enabled, recap_enabled
-        case race_countdown_enabled, streak_enabled, adaptation_enabled
-        case reconnect_enabled
+        case master_enabled, race_day_enabled, race_eve_enabled
+        case skip_recovery_enabled, weekly_checkin_enabled, niggle_sick_enabled
+        case streak_enabled, strava_reconnect_enabled
     }
-    init(readiness_enabled: Bool, workout_reminder_enabled: Bool, recap_enabled: Bool,
-         race_countdown_enabled: Bool, streak_enabled: Bool, adaptation_enabled: Bool,
-         reconnect_enabled: Bool) {
-        self.readiness_enabled = readiness_enabled
-        self.workout_reminder_enabled = workout_reminder_enabled
-        self.recap_enabled = recap_enabled
-        self.race_countdown_enabled = race_countdown_enabled
+    init(master_enabled: Bool, race_day_enabled: Bool, race_eve_enabled: Bool,
+         skip_recovery_enabled: Bool, weekly_checkin_enabled: Bool,
+         niggle_sick_enabled: Bool, streak_enabled: Bool,
+         strava_reconnect_enabled: Bool) {
+        self.master_enabled = master_enabled
+        self.race_day_enabled = race_day_enabled
+        self.race_eve_enabled = race_eve_enabled
+        self.skip_recovery_enabled = skip_recovery_enabled
+        self.weekly_checkin_enabled = weekly_checkin_enabled
+        self.niggle_sick_enabled = niggle_sick_enabled
         self.streak_enabled = streak_enabled
-        self.adaptation_enabled = adaptation_enabled
-        self.reconnect_enabled = reconnect_enabled
+        self.strava_reconnect_enabled = strava_reconnect_enabled
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.readiness_enabled = (try? c.decode(Bool.self, forKey: .readiness_enabled)) ?? true
-        self.workout_reminder_enabled = (try? c.decode(Bool.self, forKey: .workout_reminder_enabled)) ?? true
-        self.recap_enabled = (try? c.decode(Bool.self, forKey: .recap_enabled)) ?? true
-        self.race_countdown_enabled = (try? c.decode(Bool.self, forKey: .race_countdown_enabled)) ?? true
+        self.master_enabled = (try? c.decode(Bool.self, forKey: .master_enabled)) ?? true
+        self.race_day_enabled = (try? c.decode(Bool.self, forKey: .race_day_enabled)) ?? true
+        self.race_eve_enabled = (try? c.decode(Bool.self, forKey: .race_eve_enabled)) ?? true
+        self.skip_recovery_enabled = (try? c.decode(Bool.self, forKey: .skip_recovery_enabled)) ?? true
+        self.weekly_checkin_enabled = (try? c.decode(Bool.self, forKey: .weekly_checkin_enabled)) ?? true
+        self.niggle_sick_enabled = (try? c.decode(Bool.self, forKey: .niggle_sick_enabled)) ?? true
         self.streak_enabled = (try? c.decode(Bool.self, forKey: .streak_enabled)) ?? true
-        self.adaptation_enabled = (try? c.decode(Bool.self, forKey: .adaptation_enabled)) ?? true
-        self.reconnect_enabled = (try? c.decode(Bool.self, forKey: .reconnect_enabled)) ?? true
+        self.strava_reconnect_enabled = (try? c.decode(Bool.self, forKey: .strava_reconnect_enabled)) ?? true
     }
 }
 

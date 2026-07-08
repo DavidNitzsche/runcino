@@ -3336,7 +3336,13 @@ async function loadGeneratorInputs(
   let restDow     = dayKeyToDow((prefs?.rest_day ?? 'sat') as DayKey);
   // qualityDows comes from runner prefs · composePlan slices it per-
   // week via densityForWeek() to honor Rule 5 (density ramp).
-  let qualityDows = (prefs?.quality_days ?? ['tue', 'thu']).map((d) => dayKeyToDow(d as DayKey));
+  // P2-36 (2026-07-06): `?? ['tue','thu']` only catches null/undefined —
+  // a runner who deselected every chip in Settings saves quality_days:[]
+  // (a real empty array, not absent), so it silently fell through with
+  // zero quality days and no quality stimulus ever generated again. An
+  // empty selection means "let the coach pick," same as never having set
+  // it, so treat length-0 the same as unset.
+  let qualityDows = (prefs?.quality_days?.length ? prefs.quality_days : ['tue', 'thu']).map((d) => dayKeyToDow(d as DayKey));
 
   // 2026-06-20 · available-days placement (goal/race setup asks which days the
   // runner can run). When set (>=2 days), long/quality/easy land ONLY on those

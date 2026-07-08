@@ -321,6 +321,18 @@ enum API {
         }
     }
 
+    /// POST /api/auth/logout · revoke the server-side session row (P2-38).
+    /// Was never called from Swift — sign-out only cleared the local
+    /// token, leaving the session row live server-side until its 60-day
+    /// expiry. Best-effort: always returns, never throws — a dead network
+    /// during sign-out shouldn't block the local cleanup that follows it,
+    /// and the session still expires on its own.
+    static func logout() async {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/auth/logout"))
+        req.httpMethod = "POST"
+        _ = try? await API.authedSend(req)
+    }
+
     // MARK: - P39 auth — Sign in with Apple (RETIRED 2026-06-10)
     //
     // Apple Sign In is removed from the UI (email/password only) and new-
@@ -485,6 +497,40 @@ enum API {
         guard (200..<300).contains(http.statusCode) else {
             throw APIError.badStatus(http.statusCode)
         }
+    }
+
+    /// P2-37 · retire / edit / delete a shoe. PATCH /api/shoe accepts any
+    /// of {mileage, mileage_cap, run_types, retired, preferred, brand,
+    /// model, color, color2, notes} keyed by id — pass only the fields
+    /// that changed. Used by ShoesView's swipe/context actions.
+    @discardableResult
+    static func patchShoe(id: Int, fields: [String: Any]) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/shoe"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body = fields
+        body["id"] = id
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+        return true
+    }
+
+    /// P2-37 · permanently delete a shoe (DELETE /api/shoe {id}).
+    @discardableResult
+    static func deleteShoe(id: Int) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/shoe"))
+        req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["id": id]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+        return true
     }
 
     // MARK: - Coach purpose + recap (2026-05-31)
@@ -1512,6 +1558,13 @@ struct UserSettings: Decodable {
     let long_run_day: String?
     let rest_day: String?
     let quality_days: [String]?
+    /// P2-35 · days the runner can actually run (goal/race setup asks).
+    /// When >=2 days are set, the plan engine places long/quality/easy
+    /// ONLY on these days — silently overriding long_run_day/rest_day/
+    /// quality_days edits made here in Settings. Now surfaced so the
+    /// Settings UI can warn about the conflict instead of the runner
+    /// concluding the day picker is broken.
+    let available_days: [String]?
     let briefing_time: String?
     let push_enabled: Bool?
 }
@@ -1884,21 +1937,26 @@ struct ProfileConnections: Decodable {
 
 struct ProfileConnectionState: Decodable {
     let connected: Bool
+    /// P2-3 · only ever populated on the `strava` slice — a dead/401'd
+    /// token reads connected:false + needsReauth:true so callers can
+    /// tell "never connected" from "reconnect required" (different CTA).
+    let needsReauth: Bool
     let lastSync: String?
     let note: String
 
     /// Empty fallback · used when parent ProfileConnections decode skips a
     /// per-source row · the connection-row UI reads `connected` (false)
     /// + empty `note` and renders the "not connected" CTA cleanly.
-    static let empty = ProfileConnectionState(connected: false, lastSync: nil, note: "")
-    init(connected: Bool, lastSync: String?, note: String) {
-        self.connected = connected; self.lastSync = lastSync; self.note = note
+    static let empty = ProfileConnectionState(connected: false, needsReauth: false, lastSync: nil, note: "")
+    init(connected: Bool, needsReauth: Bool = false, lastSync: String?, note: String) {
+        self.connected = connected; self.needsReauth = needsReauth; self.lastSync = lastSync; self.note = note
     }
 
-    enum CodingKeys: String, CodingKey { case connected, lastSync, note }
+    enum CodingKeys: String, CodingKey { case connected, needsReauth, lastSync, note }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.connected = try c.decodeIfPresent(Bool.self, forKey: .connected) ?? false
+        self.needsReauth = try c.decodeIfPresent(Bool.self, forKey: .needsReauth) ?? false
         self.lastSync = try c.decodeIfPresent(String.self, forKey: .lastSync)
         self.note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
     }

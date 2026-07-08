@@ -104,10 +104,20 @@ struct ProfileView: View {
                                 Task { _ = try? await API.updateProfile(["phone_hr_alerts": v]) }
                             }
                         ),
-                        onPrefChange: { p in
-                            Task { _ = try? await API.patchNotificationPrefs(p) }
+                        onPrefChange: { key, value in
+                            Task { await saveNotifPref(key: key, value: value) }
                         })
                         .padding(.horizontal, 22).padding(.top, 13)
+
+                    // Don't pretend a failed prefs PATCH saved (audit P1-15) ·
+                    // the toggle reverts to server truth and this line says why.
+                    if let err = notifSaveError {
+                        Text(err)
+                            .font(.body(12, weight: .medium))
+                            .foregroundStyle(Theme.over)
+                            .padding(.horizontal, 22).padding(.top, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
                     // SETTINGS · deep-links into the consolidated, fully-wired
                     // SettingsView (YOU / TRAINING / PHYSIOLOGY / TIMEZONE /
@@ -149,6 +159,9 @@ struct ProfileView: View {
     @State private var showNameEdit: Bool = false
     @State private var nameDraft: String = ""
     @State private var showCoachActivity: Bool = false
+    /// Non-nil when the last notification-pref PATCH failed · rendered
+    /// under the NOTIFICATIONS panel, cleared on the next success.
+    @State private var notifSaveError: String? = nil
     private var signOutButton: some View {
         Button {
             showSignOutConfirm = true
@@ -175,17 +188,27 @@ struct ProfileView: View {
     }
 
     private func performSignOut() {
-        // Clear local session + the gate's "onboarded" flag so the next
-        // launch lands on SignIn. Mirrors SettingsView.performSignOut().
-        TokenStore.shared.clear()
-        let d = UserDefaults.standard
-        d.removeObject(forKey: "faff.onboarded")
-        d.removeObject(forKey: "faff.health.connected.v2")
-        StravaConnection.clear()
-        AppCache.clearAll()
-        NotificationCenter.default.post(name: .faffGateReset, object: nil)
+        // One shared cleanup for both sign-out surfaces (audit P2-38 · this
+        // path used to skip the lastNightHours stash and neither path
+        // cleared the cycle flag, leaking user A's health state to user B).
+        Task { await SessionHygiene.signOut() }
     }
     // devButton helper retired with the dev pills.
+
+    /// PATCH one changed notification pref. On failure, restore server
+    /// truth (the optimistic toggle lied) and say so.
+    private func saveNotifPref(key: String, value: Bool) async {
+        let ok = await API.patchNotificationPref(key: key, value: value)
+        if ok {
+            await MainActor.run { notifSaveError = nil }
+        } else {
+            let server = try? await API.fetchNotificationPrefs()
+            await MainActor.run {
+                notifPrefs = server ?? notifPrefs
+                notifSaveError = "Couldn't save that setting. Check your connection and try again."
+            }
+        }
+    }
 
     private func reload() async {
         async let p  = (try? await API.fetchProfileState())

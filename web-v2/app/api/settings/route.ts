@@ -12,12 +12,15 @@ export const maxDuration = 120;
 
 const ALLOWED = new Set([
   'units_distance', 'units_temp', 'units_pace',
-  'long_run_day', 'rest_day', 'quality_days',
+  'long_run_day', 'rest_day', 'quality_days', 'available_days',
   'briefing_time', 'push_enabled',
 ]);
 
 // Changing which day is long / rest / quality reshapes the plan layout.
-const PLAN_SHAPING = new Set(['long_run_day', 'rest_day', 'quality_days']);
+// available_days is included: it silently overrode long/rest/quality
+// placement (P2-35) with no way to clear it from Settings, so exposing
+// it as an editable/clearable field is itself a shaping change.
+const PLAN_SHAPING = new Set(['long_run_day', 'rest_day', 'quality_days', 'available_days']);
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);

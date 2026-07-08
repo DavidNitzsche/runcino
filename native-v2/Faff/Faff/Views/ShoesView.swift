@@ -10,6 +10,11 @@ struct ShoesView: View {
     @State private var shoes: [Shoe] = []
     @State private var loaded = false
     @State private var showAddShoe = false
+    /// P2-37 · shoe being edited (Edit action) or nil.
+    @State private var editingShoe: Shoe? = nil
+    /// P2-37 · pending delete confirmation — destructive, so confirm first.
+    @State private var deleteCandidate: Shoe? = nil
+    @State private var actionError: String? = nil
 
     private let mesh = FaffMesh(
         c1: 0x7A3A18, c2: 0x1F5A64, c3: 0x5E2F12,
@@ -50,6 +55,15 @@ struct ShoesView: View {
                             .padding(.top, 12)
                     }
 
+                    if let err = actionError {
+                        Text(err)
+                            .font(.body(12, weight: .semibold))
+                            .foregroundStyle(Theme.over)
+                            .padding(.horizontal, 22)
+                            .padding(.top, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
                     Spacer(minLength: 40)
                 }
             }
@@ -65,11 +79,80 @@ struct ShoesView: View {
                 Task { await reloadShoes() }
             }
         }
+        // P2-37 · reuses AddShoeSheet's field layout in edit mode.
+        .sheet(item: $editingShoe) { shoe in
+            AddShoeSheet(editing: shoe) {
+                Task { await reloadShoes() }
+            }
+        }
+        .confirmationDialog(
+            "Delete \(deleteCandidate?.displayName ?? "this shoe")?",
+            isPresented: Binding(get: { deleteCandidate != nil }, set: { if !$0 { deleteCandidate = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let s = deleteCandidate { Task { await performDelete(s) } }
+            }
+            Button("Cancel", role: .cancel) { deleteCandidate = nil }
+        } message: {
+            Text("This removes the shoe and its mileage history. Runs already logged with it keep their record.")
+        }
     }
 
     private func reloadShoes() async {
         if let resp = try? await API.fetchShoes() {
             shoes = resp.shoes ?? []
+        }
+    }
+
+    /// P2-37 · toggle retired. Optimistic: flips locally, reverts + shows
+    /// the error inline on failure (same discipline as SettingsView.save).
+    private func toggleRetired(_ shoe: Shoe) {
+        let newVal = !(shoe.retired ?? false)
+        setLocalRetired(id: shoe.id, retired: newVal)
+        Task {
+            do {
+                try await API.patchShoe(id: shoe.id, fields: ["retired": newVal])
+            } catch {
+                setLocalRetired(id: shoe.id, retired: !newVal)
+                await MainActor.run { actionError = "Couldn't update that shoe. Check your connection." }
+            }
+        }
+    }
+
+    private func setLocalRetired(id: Int, retired: Bool) {
+        guard let idx = shoes.firstIndex(where: { $0.id == id }) else { return }
+        let s = shoes[idx]
+        shoes[idx] = Shoe(id: s.id, brand: s.brand, model: s.model, color: s.color,
+                           mileage: s.mileage, mileage_cap: s.mileage_cap, run_types: s.run_types,
+                           baseline_mi: s.baseline_mi, retired: retired, preferred: s.preferred, notes: s.notes)
+    }
+
+    /// P2-37 · mark as the preferred/race shoe. Server doesn't enforce
+    /// exclusivity, so clear any other preferred pair locally + server-side
+    /// first (only one "preferred" pill should show at a time).
+    private func setPreferred(_ shoe: Shoe) {
+        let others = shoes.filter { $0.preferred == true && $0.id != shoe.id }
+        Task {
+            for o in others {
+                try? await API.patchShoe(id: o.id, fields: ["preferred": false])
+            }
+            do {
+                try await API.patchShoe(id: shoe.id, fields: ["preferred": true])
+                await reloadShoes()
+            } catch {
+                await MainActor.run { actionError = "Couldn't set the race shoe. Check your connection." }
+            }
+        }
+    }
+
+    private func performDelete(_ shoe: Shoe) async {
+        deleteCandidate = nil
+        do {
+            try await API.deleteShoe(id: shoe.id)
+            await MainActor.run { shoes.removeAll { $0.id == shoe.id } }
+        } catch {
+            await MainActor.run { actionError = "Couldn't delete that shoe. Check your connection." }
         }
     }
 
@@ -127,12 +210,40 @@ struct ShoesView: View {
         VStack(spacing: 11) {
             ForEach(active) { shoe in
                 ShoeDetail(shoe: toFaffShoe(shoe))
+                    .contentShape(Rectangle())
+                    .contextMenu { shoeActions(shoe) }
             }
             if active.isEmpty {
                 ShoeDetail(shoe: FaffShoe(id: "ph", brand: "", name: "Add your first shoe",
                                          roles: ["EASY"], miles: 0, lifeMi: 450))
                     .opacity(0.4)
             }
+        }
+    }
+
+    /// P2-37 · long-press actions — Retire, Edit, Mark race shoe, Delete.
+    /// No swipe actions here (rows live in a VStack/ScrollView, not a
+    /// List, so .swipeActions doesn't apply) — context menu is the
+    /// standard SwiftUI escape hatch for non-List row actions.
+    @ViewBuilder
+    private func shoeActions(_ shoe: Shoe) -> some View {
+        Button { editingShoe = shoe } label: {
+            Label("Edit", systemImage: "pencil")
+        }
+        if shoe.preferred != true {
+            Button { setPreferred(shoe) } label: {
+                Label("Mark race shoe", systemImage: "star")
+            }
+        }
+        Button { toggleRetired(shoe) } label: {
+            if shoe.retired ?? false {
+                Label("Unretire", systemImage: "arrow.uturn.backward")
+            } else {
+                Label("Retire", systemImage: "archivebox")
+            }
+        }
+        Button(role: .destructive) { deleteCandidate = shoe } label: {
+            Label("Delete", systemImage: "trash")
         }
     }
 
@@ -161,6 +272,8 @@ struct ShoesView: View {
         VStack(spacing: 11) {
             ForEach(retired) { shoe in
                 ShoeDetail(shoe: toFaffShoe(shoe, retired: true))
+                    .contentShape(Rectangle())
+                    .contextMenu { shoeActions(shoe) }
             }
         }
     }
@@ -192,17 +305,36 @@ struct ShoesView: View {
 
 struct AddShoeSheet: View {
     @Environment(\.dismiss) private var dismiss
+    /// P2-37 · non-nil = editing an existing shoe (PATCH instead of POST,
+    /// fields pre-seeded, sheet title + button copy flip to "Save").
+    var editing: Shoe? = nil
     var onSaved: () -> Void
 
-    @State private var brand = ""
-    @State private var model = ""
-    @State private var selectedRoles: Set<String> = ["EASY"]
-    @State private var mileageCap: String = "400"
-    @State private var baselineMi: String = "0"
+    @State private var brand: String
+    @State private var model: String
+    @State private var selectedRoles: Set<String>
+    @State private var mileageCap: String
+    @State private var baselineMi: String
     @State private var saving = false
     @State private var errorMsg: String? = nil
 
     private let allRoles = ["EASY", "LONG", "TEMPO", "INTERVALS", "RACE", "RECOVERY"]
+
+    init(editing: Shoe? = nil, onSaved: @escaping () -> Void) {
+        self.editing = editing
+        self.onSaved = onSaved
+        _brand = State(initialValue: editing?.brand ?? "")
+        _model = State(initialValue: editing?.model ?? "")
+        let seededRoles = Set((editing?.run_types ?? ["easy"]).map { $0.uppercased() })
+        _selectedRoles = State(initialValue: seededRoles.isEmpty ? ["EASY"] : seededRoles)
+        _mileageCap = State(initialValue: editing.flatMap { $0.mileage_cap.map { String(Int($0)) } } ?? "400")
+        _baselineMi = State(initialValue: editing.flatMap { $0.baseline_mi.map { String(Int($0)) } } ?? "0")
+    }
+
+    /// P3-14 · UI implies model is optional but POST /api/shoe 400s
+    /// without it. Require it client-side so the disabled state and the
+    /// error copy tell the truth instead of blaming the network.
+    private var modelMissing: Bool { model.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
         ZStack {
@@ -213,7 +345,7 @@ struct AddShoeSheet: View {
 
                     // Header
                     HStack {
-                        SpecLabel(text: "ADD A SHOE", size: 13, tracking: 2.5, color: Theme.txt)
+                        SpecLabel(text: editing == nil ? "ADD A SHOE" : "EDIT SHOE", size: 13, tracking: 2.5, color: Theme.txt)
                         Spacer()
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
@@ -229,8 +361,10 @@ struct AddShoeSheet: View {
                         styledTextField("e.g. Nike", text: $brand)
                     }
 
-                    // Model
-                    fieldGroup(label: "MODEL") {
+                    // Model · required server-side (P3-14) — labeled so the
+                    // requirement is visible instead of a network-flavored
+                    // error after the fact.
+                    fieldGroup(label: "MODEL · REQUIRED") {
                         styledTextField("e.g. Vaporfly 3", text: $model)
                     }
 
@@ -256,23 +390,24 @@ struct AddShoeSheet: View {
                             .keyboardType(.decimalPad)
                     }
 
-                    // Save button
+                    // Save button · disabled when brand OR model is empty
+                    // (P3-14 — model is server-required, not optional).
                     Button {
                         Task { await save() }
                     } label: {
-                        Text(saving ? "SAVING…" : "ADD SHOE")
+                        Text(saving ? "SAVING…" : (editing == nil ? "ADD SHOE" : "SAVE CHANGES"))
                             .font(.body(14, weight: .extraBold))
                             .tracking(0.5)
-                            .foregroundStyle(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty
+                            .foregroundStyle(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty || modelMissing
                                              ? Theme.txt.opacity(0.4) : Theme.txt)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.white.opacity(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty ? 0.05 : 0.12))
+                                    .fill(Color.white.opacity(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty || modelMissing ? 0.05 : 0.12))
                             )
                     }
-                    .disabled(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(saving || brand.trimmingCharacters(in: .whitespaces).isEmpty || modelMissing)
                     .buttonStyle(.plain)
 
                     if let err = errorMsg {
@@ -340,19 +475,35 @@ struct AddShoeSheet: View {
     }
 
     private func save() async {
+        guard !modelMissing else {
+            errorMsg = "Model is required."
+            return
+        }
         saving = true
         errorMsg = nil
         let runTypes = allRoles.filter { selectedRoles.contains($0) }.map { $0.lowercased() }
         let cap = Double(mileageCap) ?? 400
         let baseline = Double(baselineMi) ?? 0
         do {
-            try await API.createShoe(
-                brand: brand.trimmingCharacters(in: .whitespaces),
-                model: model.trimmingCharacters(in: .whitespaces),
-                runTypes: runTypes,
-                mileageCap: cap,
-                baselineMi: baseline
-            )
+            if let editing {
+                // P2-37 · edit path — PATCH the changed fields onto the
+                // existing shoe id instead of creating a new row.
+                try await API.patchShoe(id: editing.id, fields: [
+                    "brand": brand.trimmingCharacters(in: .whitespaces),
+                    "model": model.trimmingCharacters(in: .whitespaces),
+                    "run_types": runTypes,
+                    "mileage_cap": cap,
+                    "baseline_mi": baseline,
+                ])
+            } else {
+                try await API.createShoe(
+                    brand: brand.trimmingCharacters(in: .whitespaces),
+                    model: model.trimmingCharacters(in: .whitespaces),
+                    runTypes: runTypes,
+                    mileageCap: cap,
+                    baselineMi: baseline
+                )
+            }
             onSaved()
             dismiss()
         } catch {

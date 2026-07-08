@@ -11,6 +11,7 @@ import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadNextARace } from './race-lookup';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
+import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
@@ -51,7 +52,11 @@ export interface ProfileState {
    *  no A-race so the briefing voice can say "TRAINING FOR · 10K · 41:35". */
   fitnessGoal: { distance: string; time: string; seconds: number | null } | null;
   connections: {
-    strava:       { connected: boolean; lastSync: string | null; note: string };
+    /** P2-3: `connected` is now token-derived (real Strava linkage), not
+     *  "ran recently". `needsReauth` distinguishes a dead/401'd token
+     *  from a never-connected runner — both read connected:false, but
+     *  the copy/CTA should differ. */
+    strava:       { connected: boolean; needsReauth?: boolean; lastSync: string | null; note: string };
     appleHealth:  { connected: boolean; lastSync: string | null; note: string };
     appleWatch:   { connected: boolean; lastSync: string | null; note: string };
   };
@@ -108,6 +113,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     healthRow,
     watchRow,
     preferencesResolved,
+    stravaConnStatus,
   ] = await Promise.all([
     pool.query(
       `SELECT full_name, sex, age, city, height_cm, hrmax, rhr,
@@ -151,11 +157,16 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     // Promise.all batch we still hit the lookup, but subsequent state-
     // loaders firing on /today + /profile share the cached value.
     loadActivePlan(userId).then((p) => p ? { race_id: p.race_id } : undefined),
+    // P2-3 (2026-07-06): scoped to source='strava' — this feeds the
+    // Strava "last sync" note, not the connected boolean (that's now
+    // token-derived below). Any-run MAX() here is how a watch-only
+    // runner who never touched Strava saw "Strava · Synced".
     pool.query(
       `SELECT MAX(COALESCE(data->>'date', LEFT(data->>'startLocal',10))::text) AS last
          FROM runs
         WHERE user_uuid = $1
-          AND NOT (data ? 'mergedIntoId')`,
+          AND NOT (data ? 'mergedIntoId')
+          AND data->>'source' = 'strava'`,
       [userId]
     ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),
     pool.query(
@@ -170,6 +181,11 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       [userId]
     ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),
     loadSettings(userId).catch(() => DEFAULT_PREFS),
+    // P2-3: real Strava linkage (connector_tokens / legacy profile.*
+    // token presence), not "any run exists recently". Separate query
+    // so a dead-token 401 case (needs_reauth) can be told apart from
+    // a genuine never-connected runner.
+    loadStravaConnectionStatus(userId).catch(() => ({ state: 'disconnected' as const, last_push_at: null })),
   ]);
 
   const p = pRow;
@@ -231,7 +247,13 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   // Date (see helper · the old inline `new Date(`${v}T12:00:00Z`)` threw on a
   // full-timestamp value and crashed the whole profile load).
   const stravaLast: Date | null = parseLastSync(stravaRow?.last);
-  const stravaConnected = stravaLast != null && (Date.now() - stravaLast.getTime()) < 1000 * 60 * 60 * 24 * 14;
+  // P2-3: connected = real token on file (connector_tokens / legacy
+  // profile.strava_refresh_token), not "ran recently". A dead/401'd
+  // token reads 'needs_reauth', which we still surface as NOT connected
+  // (the UI's binary "Synced"/"Connect" can't distinguish the third
+  // state today — this at least stops the auto-push toggle from lying).
+  const stravaConnected = stravaConnStatus.state === 'connected';
+  const stravaNeedsReauth = stravaConnStatus.state === 'needs_reauth';
   const healthLast: Date | null = parseLastSync(healthRow?.last);
   const healthConnected = healthLast != null && (Date.now() - healthLast.getTime()) < 1000 * 60 * 60 * 24 * 7;
   const watchLast: Date | null = parseLastSync(watchRow?.last);
@@ -347,7 +369,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     nextARace,
     fitnessGoal,
     connections: {
-      strava:      { connected: stravaConnected, lastSync: stravaLast?.toISOString() ?? null, note: stravaConnected ? `Last sync ${relativeAgo(stravaLast!)}` : 'Connect for auto-sync' },
+      strava:      { connected: stravaConnected, needsReauth: stravaNeedsReauth, lastSync: stravaLast?.toISOString() ?? null, note: stravaConnected ? (stravaLast ? `Last sync ${relativeAgo(stravaLast)}` : 'Connected · no runs synced yet') : (stravaNeedsReauth ? 'Reconnect needed — token expired' : 'Connect for auto-sync') },
       appleHealth: { connected: healthConnected, lastSync: healthLast?.toISOString() ?? null, note: healthConnected ? `Last reading ${relativeAgo(healthLast!)}` : 'Sleep / HRV / RHR / weight / VO2' },
       appleWatch:  { connected: watchConnected, lastSync: watchLast?.toISOString() ?? null, note: watchConnected ? `Last workout ${relativeAgo(watchLast!)}` : 'Open Faff on iPhone to pair' },
     },
