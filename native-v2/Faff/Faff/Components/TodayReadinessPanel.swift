@@ -161,10 +161,8 @@ struct TodayReadinessPanel: View {
     private var thisWeekDisplay: String? {
         guard let m = thisWeekMiles, m > 0 else { return nil }
         // One decimal everywhere (27.5 must not read 28), matching the rest of
-        // the app's mileage display.
-        let v = m.truncatingRemainder(dividingBy: 1) == 0
-            ? String(format: "%.0f", m) : String(format: "%.1f", m)
-        return "\(v) mi"
+        // the app's mileage display. 2026-07-07 · units audit — display only.
+        return "\(Units.formatDistance(miles: m)) \(Units.distanceLabel())"
     }
 
     private var bestWindowDisplay: String? {

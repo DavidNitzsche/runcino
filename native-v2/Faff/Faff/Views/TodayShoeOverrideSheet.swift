@@ -87,7 +87,9 @@ struct TodayShoeOverrideSheet: View {
                         .font(.body(14, weight: .extraBold))
                         .foregroundStyle(Theme.txt)
                     if let mi = s.mileage {
-                        Text("\(Int(mi)) mi" + (s.preferred == true ? " · race" : ""))
+                        // 2026-07-07 · units audit — display only.
+                        let converted = Int(Units.convertDistance(miles: mi, to: Units.preference.distance))
+                        Text("\(converted) \(Units.distanceLabel())" + (s.preferred == true ? " · race" : ""))
                             .font(.body(11.5, weight: .medium))
                             .foregroundStyle(Theme.mute)
                     }

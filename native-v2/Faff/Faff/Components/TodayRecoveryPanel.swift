@@ -366,16 +366,17 @@ private extension TodayRecoveryPanel {
         }
     }
 
+    /// 2026-07-07 · units audit — display only.
     var weekMiTile: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("WEEK MI")
+            Text("WEEK \(Units.distanceLabel().uppercased())")
                 .font(.body(9, weight: .extraBold)).tracking(1.2)
                 .foregroundStyle(Color.white)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text("\(Int((brief?.weekProgress.bankedMi ?? 0).rounded()))")
+                Text("\(Int(Units.convertDistance(miles: brief?.weekProgress.bankedMi ?? 0, to: Units.preference.distance).rounded()))")
                     .font(.display(17, weight: .bold))
                     .foregroundStyle(Color.white)
-                Text("/ \(Int((brief?.weekProgress.targetMi ?? 0).rounded()))")
+                Text("/ \(Int(Units.convertDistance(miles: brief?.weekProgress.targetMi ?? 0, to: Units.preference.distance).rounded()))")
                     .font(.body(11, weight: .semibold))
                     .foregroundStyle(Color.white)
             }
@@ -405,10 +406,12 @@ private extension TodayRecoveryPanel {
                 .foregroundStyle(Color.white)
             if let lr = brief?.weekProgress.longRun {
                 let dayName = dayAbbrev(iso: lr.dateISO)
-                let miStr = lr.mi.truncatingRemainder(dividingBy: 1) == 0
-                    ? String(format: "%.0f", lr.mi)
-                    : String(format: "%.1f", lr.mi)
-                Text("\(dayName) · \(miStr)mi")
+                // 2026-07-07 · units audit — display only.
+                let converted = Units.convertDistance(miles: lr.mi, to: Units.preference.distance)
+                let miStr = converted.truncatingRemainder(dividingBy: 1) == 0
+                    ? String(format: "%.0f", converted)
+                    : String(format: "%.1f", converted)
+                Text("\(dayName) · \(miStr)\(Units.distanceLabel())")
                     .font(.display(17, weight: .bold))
                     .foregroundStyle(Color.white)
                     .lineLimit(1).minimumScaleFactor(0.7)

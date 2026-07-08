@@ -116,7 +116,8 @@ struct WatchMirrorView: View {
                 .shadow(color: .black.opacity(0.32), radius: 26, y: 3)
             HStack(spacing: 22) {
                 if let mi = w.distanceMi {
-                    statBlock(value: String(format: "%.1f", mi), key: "MI")
+                    // 2026-07-07 · units audit — display only.
+                    statBlock(value: Units.formatDistance(miles: mi), key: Units.distanceLabel().uppercased())
                 }
                 statBlock(value: "~\(w.totalEstimatedMinutes)", key: "MIN EST")
                 if let label = w.paceLabel {
@@ -162,15 +163,18 @@ struct WatchMirrorView: View {
         }
     }
 
+    /// 2026-07-07 · units audit — display only.
     private func phaseSubtitle(_ p: WatchPhase) -> String {
         var parts: [String] = []
         if p.durationSec > 0 {
             let m = p.durationSec / 60
             parts.append("\(m) min")
         }
-        if let mi = p.distanceMi { parts.append(String(format: "%.2f mi", mi)) }
+        if let mi = p.distanceMi {
+            parts.append("\(Units.formatDistance(miles: mi, decimals: 2)) \(Units.distanceLabel())")
+        }
         if let pace = p.targetPaceSPerMi {
-            parts.append("@ \(pace / 60):\(String(format: "%02d", pace % 60))/mi")
+            parts.append("@ \(Units.formatPace(secPerMile: pace))")
         }
         return parts.joined(separator: " · ")
     }

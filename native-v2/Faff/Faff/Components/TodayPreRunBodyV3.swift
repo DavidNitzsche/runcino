@@ -189,9 +189,9 @@ struct TodayPreRunBodyV3: View {
 
     private var statsTrio: some View {
         HStack(spacing: 0) {
-            statColumn(key: "DISTANCE", value: distanceText, unit: "mi")
+            statColumn(key: "DISTANCE", value: distanceText, unit: Units.distanceLabel())
             divider
-            statColumn(key: "TARGET PACE", value: targetPaceText, unit: "/mi")
+            statColumn(key: "TARGET PACE", value: targetPaceText, unit: "/\(Units.distanceLabel())")
             divider
             statColumn(key: "EST TIME", value: estTimeText, unit: "min")
         }
@@ -221,7 +221,8 @@ struct TodayPreRunBodyV3: View {
 
     private var distanceText: String {
         guard let mi = workout?.distanceMi, mi > 0 else { return "—" }
-        return String(format: mi.truncatingRemainder(dividingBy: 1) == 0 ? "%.0f" : "%.1f", mi)
+        let converted = Units.convertDistance(miles: mi, to: Units.preference.distance)
+        return String(format: converted.truncatingRemainder(dividingBy: 1) == 0 ? "%.0f" : "%.1f", converted)
     }
 
     private var targetPaceText: String {
@@ -477,9 +478,10 @@ struct TodayPreRunBodyV3: View {
 
     private func segmentDistanceLabel(_ p: WatchPhase) -> String {
         if let d = p.distanceMi, d > 0 {
-            return d.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(d)) mi"
-                : String(format: "%.1f mi", d)
+            let converted = Units.convertDistance(miles: d, to: Units.preference.distance)
+            return converted.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(converted)) \(Units.distanceLabel())"
+                : "\(String(format: "%.1f", converted)) \(Units.distanceLabel())"
         }
         // Fall back to duration-only labels.
         let m = max(1, p.durationSec / 60)
@@ -496,7 +498,7 @@ struct TodayPreRunBodyV3: View {
             }
         }()
         if let pace = p.targetPaceSPerMi {
-            return "\(base) @ \(formatPace(pace))/mi"
+            return "\(base) @ \(formatPace(pace))/\(Units.distanceLabel())"
         }
         return base
     }
@@ -726,10 +728,9 @@ struct TodayPreRunBodyV3: View {
             .frame(height: 1)
     }
 
+    /// 2026-07-07 · units audit — redirected to the shared bare formatter.
     private func formatPace(_ secPerMi: Int) -> String {
-        let m = secPerMi / 60
-        let s = secPerMi % 60
-        return String(format: "%d:%02d", m, s)
+        Units.formatPaceBare(secPerMile: secPerMi)
     }
 }
 

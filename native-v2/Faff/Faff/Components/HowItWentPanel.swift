@@ -625,10 +625,11 @@ private struct ThePLongPanel: View {
         }
     }
 
+    /// 2026-07-07 · units audit — display only.
     private var distanceLabel: String? {
         guard let mi = detail?.distance_mi, mi > 0 else { return nil }
-        let n = Int(mi.rounded())
-        return "\(n) MI"
+        let n = Int(Units.convertDistance(miles: mi, to: Units.preference.distance).rounded())
+        return "\(n) \(Units.distanceLabel().uppercased())"
     }
 
     @ViewBuilder
@@ -707,10 +708,12 @@ private struct ThePLongPanel: View {
                 guard let t = thirds, let fp = avgPace(t.first), let lp = avgPace(t.last) else { return false }
                 return lp < fp
             }()
+            // 2026-07-07 · units audit — prefer the numeric field.
+            let displayPace = detail?.pace_s_per_mi.map { Units.formatPaceBare(secPerMile: $0) } ?? pace
             HowItWentSignature(
                 label: "AVG PACE",
-                value: pace,
-                valueUnit: "/mi",
+                value: displayPace,
+                valueUnit: "/\(Units.distanceLabel())",
                 delta: neg ? "neg split" : nil,
                 deltaTone: .good,
                 onMesh: onMesh
@@ -763,12 +766,14 @@ private struct TempoPostPanel: View {
         }
     }
 
+    /// 2026-07-07 · units audit — display only.
     private var blockMeta: String? {
         guard let w = workPhase, let mi = w.actual_distance_mi, mi > 0 else { return nil }
-        let m = mi.truncatingRemainder(dividingBy: 1) == 0
-            ? String(format: "%.0f", mi)
-            : String(format: "%.1f", mi)
-        return "\(m) MI BLOCK"
+        let converted = Units.convertDistance(miles: mi, to: Units.preference.distance)
+        let m = converted.truncatingRemainder(dividingBy: 1) == 0
+            ? String(format: "%.0f", converted)
+            : String(format: "%.1f", converted)
+        return "\(m) \(Units.distanceLabel().uppercased()) BLOCK"
     }
 
     @ViewBuilder
@@ -786,13 +791,13 @@ private struct TempoPostPanel: View {
                         Text(formatPace(actualSec))
                             .font(.display(20, weight: .bold))
                             .foregroundStyle(primaryText)
-                        Text("/mi")
+                        Text("/\(Units.distanceLabel())")
                             .font(.body(10, weight: .semibold))
                             .foregroundStyle(mutedText)
                     }
                 }
                 HStack {
-                    Text("TARGET \(formatPace(targetSec))/mi")
+                    Text("TARGET \(formatPace(targetSec))/\(Units.distanceLabel())")
                         .font(.body(10.5, weight: .bold))
                         .foregroundStyle(mutedText)
                     Spacer()
@@ -883,17 +888,26 @@ private struct TempoPostPanel: View {
     private var signature: some View {
         if let w = workPhase, let actualSec = parsePaceSec(w.actual_pace) {
             let target = parsePaceSec(w.target_pace) ?? actualSec
+            // Tone/on-target check stays in raw seconds-per-mile (the ≤3s
+            // tolerance is a mile-calibrated threshold, unconverted — same
+            // reasoning as bucket()/HeatBand elsewhere: internal thresholds
+            // don't convert, only the displayed delta magnitude does).
             let delta = actualSec - target
             let tone: HIWTone = abs(delta) <= 3 ? .good : (delta > 0 ? .warn : .good)
+            // 2026-07-07 · units audit — displayed delta magnitude converts
+            // to the preference unit's per-unit seconds (so "+4" reads as
+            // +4 s/km when the preference is km, not a mile-scaled number
+            // mislabeled).
+            let deltaDisp = Int(Units.convertPaceSecPerUnit(secPerMile: Double(delta), to: Units.preference.distance).rounded())
             let deltaStr: String? = {
-                if delta == 0 { return "on target" }
-                let sign = delta > 0 ? "+\(delta)" : "\(delta)"
+                if deltaDisp == 0 { return "on target" }
+                let sign = deltaDisp > 0 ? "+\(deltaDisp)" : "\(deltaDisp)"
                 return "\(sign) vs goal"
             }()
             HowItWentSignature(
                 label: "TEMPO",
                 value: formatPace(actualSec),
-                valueUnit: "/mi",
+                valueUnit: "/\(Units.distanceLabel())",
                 delta: deltaStr,
                 deltaTone: tone,
                 onMesh: onMesh
@@ -908,9 +922,10 @@ private struct TempoPostPanel: View {
     }
     private func distLabel(_ mi: Double?) -> String? {
         guard let m = mi, m > 0 else { return nil }
-        return m.truncatingRemainder(dividingBy: 1) == 0
-            ? String(format: "%.0f mi", m)
-            : String(format: "%.1f mi", m)
+        let converted = Units.convertDistance(miles: m, to: Units.preference.distance)
+        return converted.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(String(format: "%.0f", converted)) \(Units.distanceLabel())"
+            : "\(String(format: "%.1f", converted)) \(Units.distanceLabel())"
     }
 }
 
@@ -967,9 +982,13 @@ private struct RepsPostPanel: View {
         // so the runner sees the prescribed pace and the heat's effect on it,
         // not just a bare range.
         if let adj = adjustedGoalSec, adj > t + 2 {
-            return "TARGET \(formatPace(t)) · +\(adj - t)s heat → \(formatPace(adj))"
+            // 2026-07-07 · units audit — the "+Ns heat" delta converts to
+            // the preference unit's per-unit seconds (same reasoning as
+            // the tempo delta above).
+            let heatDeltaDisp = Int(Units.convertPaceSecPerUnit(secPerMile: Double(adj - t), to: Units.preference.distance).rounded())
+            return "TARGET \(formatPace(t)) · +\(heatDeltaDisp)s heat → \(formatPace(adj))"
         }
-        return "TARGET \(formatPace(t))/mi"
+        return "TARGET \(formatPace(t))/\(Units.distanceLabel())"
     }
 
     private var axisLegend: some View {
@@ -1014,17 +1033,27 @@ private struct RepsPostPanel: View {
                 .font(.body(10.5, weight: .extraBold)).tracking(0.6)
                 .foregroundStyle(primaryText)
             if let mi = phase.actual_distance_mi, mi > 0 {
-                Text("· \(formatMi(mi)) mi")
+                Text("· \(formatMi(mi)) \(Units.distanceLabel())")
                     .font(.body(10.5, weight: .semibold))
                     .foregroundStyle(mutedText)
             }
             Spacer(minLength: 0)
             if let pace = phase.actual_pace {
+                // 2026-07-07 · units audit — prefer the numeric field when
+                // present; fall back to the server string (unconverted —
+                // no numeric companion field on PhaseBreakdown.actual_pace,
+                // only actual_distance_mi has one).
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(pace)
-                        .font(.body(13, weight: .bold))
-                        .foregroundStyle(primaryText)
-                    Text("/mi")
+                    if let displaySec = parsePaceSec(pace) {
+                        Text(formatPace(displaySec))
+                            .font(.body(13, weight: .bold))
+                            .foregroundStyle(primaryText)
+                    } else {
+                        Text(pace)
+                            .font(.body(13, weight: .bold))
+                            .foregroundStyle(primaryText)
+                    }
+                    Text("/\(Units.distanceLabel())")
                         .font(.body(9, weight: .semibold))
                         .foregroundStyle(mutedText)
                 }
@@ -1153,13 +1182,19 @@ private struct RepsPostPanel: View {
                 let adjOff = max(0, (adjustedGoalSec ?? t) - t)
                 let inRange = avgWork >= t - 2 && avgWork <= t + adjOff + 3
                 let tone: HIWTone = inRange ? .good : (avgWork > t + adjOff ? .warn : .good)
+                // 2026-07-07 · units audit — displayed delta seconds convert
+                // to the preference unit's per-unit scale (same as the two
+                // deltas above).
+                func dispSec(_ raw: Int) -> Int {
+                    Int(Units.convertPaceSecPerUnit(secPerMile: Double(raw), to: Units.preference.distance).rounded())
+                }
                 let deltaStr: String = inRange
                     ? "in range"
-                    : (avgWork > t + adjOff ? "+\(avgWork - t - adjOff)s over" : "\(avgWork - t)s vs target")
+                    : (avgWork > t + adjOff ? "+\(dispSec(avgWork - t - adjOff))s over" : "\(dispSec(avgWork - t))s vs target")
                 HowItWentSignature(
                     label: "AVG WORK",
                     value: formatPace(avgWork),
-                    valueUnit: "/mi",
+                    valueUnit: "/\(Units.distanceLabel())",
                     delta: deltaStr,
                     deltaTone: tone,
                     onMesh: onMesh
@@ -1178,14 +1213,16 @@ private func parsePaceSec(_ s: String?) -> Int? {
     return parts[0] * 60 + parts[1]
 }
 
+/// 2026-07-07 · units audit — redirected to the shared bare formatter
+/// (no unit suffix, matches this function's original contract; every call
+/// site here appends its own "/mi" literal — see individual fixes below).
 private func formatPace(_ secondsPerMile: Int) -> String {
-    let m = secondsPerMile / 60
-    let s = secondsPerMile % 60
-    return "\(m):\(String(format: "%02d", s))"
+    Units.formatPaceBare(secPerMile: secondsPerMile)
 }
 
 private func formatMi(_ m: Double) -> String {
-    return m.truncatingRemainder(dividingBy: 1) == 0
-        ? String(format: "%.0f", m)
-        : String(format: "%.1f", m)
+    let converted = Units.convertDistance(miles: m, to: Units.preference.distance)
+    return converted.truncatingRemainder(dividingBy: 1) == 0
+        ? String(format: "%.0f", converted)
+        : String(format: "%.1f", converted)
 }

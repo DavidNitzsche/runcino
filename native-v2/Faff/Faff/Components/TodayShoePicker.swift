@@ -134,13 +134,16 @@ struct TodayShoePicker: View {
         .buttonStyle(.plain)
     }
 
+    /// 2026-07-07 · units audit — display only.
     private func roleAndMileage(_ shoe: Shoe) -> String {
         var parts: [String] = []
         if let mi = shoe.mileage, mi > 0 {
-            parts.append("\(Int(mi.rounded())) mi")
+            let converted = Units.convertDistance(miles: mi, to: Units.preference.distance)
+            parts.append("\(Int(converted.rounded())) \(Units.distanceLabel())")
         }
         if let cap = shoe.mileage_cap, cap > 0 {
-            parts.append("of \(Int(cap.rounded())) cap")
+            let convertedCap = Units.convertDistance(miles: cap, to: Units.preference.distance)
+            parts.append("of \(Int(convertedCap.rounded())) cap")
         }
         if shoe.preferred == true { parts.append("preferred") }
         if parts.isEmpty { return "—" }

@@ -30,7 +30,7 @@ struct SummaryView: View {
             // indexDisplayMode .never avoids dot overlap with the Done button.
             TabView {
                 ResponsiveFace { workoutSummary }.tag(0)
-                ResponsiveFace { RepLadderView(phases: c.phases, onDone: onDone) }.tag(1)
+                ResponsiveFace { RepLadderView(phases: c.phases, isKm: isKm, onDone: onDone) }.tag(1)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
         } else {
@@ -199,12 +199,25 @@ struct SummaryView: View {
         }
         return head.isEmpty ? "WORKOUT" : head
     }
+    /// 2026-07-07 · units audit — same pattern as IdleView.swift: internal
+    /// completion data (totalDistanceMi, totalDurationSec) stays in miles /
+    /// seconds always; only this display formatting step converts, and only
+    /// when workout.unitsDistance == "km". Local milesPerKm (not shared —
+    /// same "v0 duplication is fine" doctrine as IdleView / PaceFormat).
+    private static let milesPerKm = 0.621371
+    private var isKm: Bool { workout.unitsDistance == "km" }
+
     private var avgPaceText: String {
         guard let c = completion, let mi = c.totalDistanceMi, mi > 0.05 else { return "—:—" }
-        return PaceFormat.mmss(Int(Double(c.totalDurationSec) / mi))
+        let secPerMi = Int(Double(c.totalDurationSec) / mi)
+        guard isKm else { return PaceFormat.mmss(secPerMi) }
+        let secPerKm = Int((Double(max(0, secPerMi)) * Self.milesPerKm).rounded())
+        return "\(secPerKm / 60):\(String(format: "%02d", secPerKm % 60))"
     }
     private var milesText: String {
-        completion?.totalDistanceMi.map { String(format: "%.1f", $0) } ?? "—"
+        guard let mi = completion?.totalDistanceMi else { return "—" }
+        let v = isKm ? mi * (1.0 / Self.milesPerKm) : mi
+        return String(format: "%.1f", v)
     }
     private var elapsedText: String {
         let s = completion?.totalDurationSec ?? 0
@@ -299,6 +312,11 @@ private struct RaceFinishCard: View {
 /// each row shows rep number · avg pace · avg HR · verdict glyph.
 struct RepLadderView: View {
     let phases: [WatchCompletionPhase]
+    /// 2026-07-07 · units audit — true when the runner's distance
+    /// preference is km. Defaults false so any call site that predates
+    /// this parameter (none currently exist besides SummaryView) keeps
+    /// rendering mi, byte-identical to before.
+    var isKm: Bool = false
     var onDone: () -> Void = {}
 
     private var workPhases: [WatchCompletionPhase] {
@@ -316,7 +334,7 @@ struct RepLadderView: View {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 0) {
                             ForEach(Array(workPhases.enumerated()), id: \.offset) { i, phase in
-                                RepLadderRow(number: i + 1, phase: phase, h: h)
+                                RepLadderRow(number: i + 1, phase: phase, h: h, isKm: isKm)
                             }
                         }
                         .padding(.horizontal, h * 0.048)
@@ -346,9 +364,14 @@ private struct RepLadderRow: View {
     let number: Int
     let phase: WatchCompletionPhase
     let h: CGFloat
+    /// 2026-07-07 · units audit — see RepLadderView.isKm doc.
+    var isKm: Bool = false
 
     private var paceText: String {
-        phase.actualPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
+        guard let p = phase.actualPaceSPerMi else { return "—:—" }
+        guard isKm else { return PaceFormat.mmss(p) }
+        let perKm = Int((Double(max(0, p)) * 0.621371).rounded())
+        return "\(perKm / 60):\(String(format: "%02d", perKm % 60))"
     }
     private var hrText: String {
         phase.avgHr.map { "♥\($0)" } ?? "—"

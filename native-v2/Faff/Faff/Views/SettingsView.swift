@@ -574,6 +574,12 @@ struct SettingsView: View {
         // conflict-copy check both read real server state, not "unset".
         v["available_days"] = .list(s?.available_days ?? [])
         putStr("briefing_time", s?.briefing_time)
+        // 2026-07-07 · units audit — seed with the byte-safe defaults (mi/F)
+        // when the server payload is missing the field entirely (older
+        // rows pre-dating this feature), so the picker always shows a real
+        // value rather than "Not set" for every existing runner.
+        putStr("units_distance", s?.units_distance ?? "mi")
+        putStr("units_temp", s?.units_temp ?? "F")
         vals = v
     }
 
@@ -597,6 +603,21 @@ struct SettingsView: View {
                 let replanned = try (f.endpoint == .profile
                     ? await API.updateProfile(body)
                     : await API.patchSettings(body))
+                // 2026-07-07 · units audit — update the local AppCache-backed
+                // preference the instant the PATCH succeeds, so every mounted
+                // view (Units.preference reads AppCache synchronously) picks
+                // up the change on its next render without waiting for the
+                // next full /api/settings fetch. Post the same foreground-
+                // refresh notification already used for plan-shaping saves —
+                // it's a broad "re-render from fresh state" signal, harmless
+                // to fire for a non-plan-shaping change too.
+                if f.key == "units_distance", let s = json as? String {
+                    Units.applyLocalPatch(unitsDistance: s)
+                    await MainActor.run { NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil) }
+                } else if f.key == "units_temp", let s = json as? String {
+                    Units.applyLocalPatch(unitsTemp: s)
+                    await MainActor.run { NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil) }
+                }
                 if replanned {
                     await MainActor.run {
                         showToast("Plan updated")
@@ -750,6 +771,16 @@ private let SETTINGS_CROSS: [SettingOpt] = [
     .init(value: "strength", label: "Strength"), .init(value: "elliptical", label: "Elliptical"),
     .init(value: "rowing", label: "Rowing"), .init(value: "yoga", label: "Yoga"),
 ]
+// 2026-07-07 · units audit — wire values match the backend exactly
+// (web-v2/lib/coach/settings.ts DEFAULT_SETTINGS: units_distance 'mi'/'km',
+// units_temp 'F'/'C' UPPERCASE). Util/Units.swift's DistanceUnit/
+// TemperatureUnit raw values mirror the same strings.
+private let SETTINGS_UNITS_DISTANCE: [SettingOpt] = [
+    .init(value: "mi", label: "Miles"), .init(value: "km", label: "Kilometers"),
+]
+private let SETTINGS_UNITS_TEMP: [SettingOpt] = [
+    .init(value: "F", label: "Fahrenheit"), .init(value: "C", label: "Celsius"),
+]
 // P2-40 · the old 15-zone SETTINGS_ZONES/zoneOpt chip-grid source was
 // replaced by TimezoneSearchPicker, which reads TimeZone.
 // knownTimeZoneIdentifiers directly (~400 IANA names vs. 15).
@@ -768,6 +799,17 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         SettingField(key: "long_run_day", label: "Long run", endpoint: .settings, kind: .day, planShaping: true),
         SettingField(key: "rest_day", label: "Rest day", endpoint: .settings, kind: .day, planShaping: true),
         SettingField(key: "quality_days", label: "Quality days", endpoint: .settings, kind: .multiday, planShaping: true, hint: "Leave all off to let the coach pick."),
+        // 2026-07-07 · units audit — deliberately NOT converted. Unlike
+        // every other "mi" literal in this pass, this is a TYPED-IN plan-
+        // shaping INPUT (planShaping: true — an edit here triggers a
+        // server-side plan rebuild), not a display formatter. Converting
+        // it needs bidirectional round-trip (km entered → mi stored on
+        // save, mi stored → km shown on read) plus verifying the backend
+        // plan-generation math that consumes weekly_mileage_target is
+        // unaffected — out of scope for a display-layer pass. Flipping
+        // just the "mi"→"km" label without converting the number would be
+        // actively misleading (a km-preference runner would see "50 km"
+        // next to a number that's still actually 50 miles stored).
         SettingField(key: "weekly_mileage_target", label: "Weekly target", endpoint: .profile, kind: .number, unit: "mi", planShaping: true),
         SettingField(key: "cross_training_modes", label: "Cross-training", endpoint: .profile, kind: .multi, options: SETTINGS_CROSS),
         // P2-35 · goal/race setup's availability constraint. When >=2 days
@@ -799,6 +841,19 @@ let SETTINGS_GROUPS: [SettingGroup] = [
     SettingGroup(title: "RACE FUELING", fields: [
         SettingField(key: "fuel_brand", label: "Gel brand", endpoint: .profile, kind: .text, placeholder: "e.g. Maurten"),
         SettingField(key: "fuel_gel_carbs_g", label: "Carbs per gel", endpoint: .profile, kind: .number, unit: "g"),
+    ]),
+    // 2026-07-07 · units audit — the preference existed on the backend
+    // (units_distance/units_temp, /api/settings) since before this build
+    // but had no picker anywhere in the app; distance/pace/speed/temp
+    // renderers across the app now read Units.preference (Util/Units.swift),
+    // which is seeded from this same UserSettings the settings screen
+    // already fetches. units_pace is NOT a separate field — it's a
+    // derived echo of units_distance on the backend, so one picker here
+    // covers both (Units.swift comment on UnitsPreference has the citation).
+    SettingGroup(title: "UNITS", fields: [
+        SettingField(key: "units_distance", label: "Distance", endpoint: .settings, kind: .select, options: SETTINGS_UNITS_DISTANCE,
+                     hint: "Applies to distance, pace, and speed across the app."),
+        SettingField(key: "units_temp", label: "Temperature", endpoint: .settings, kind: .select, options: SETTINGS_UNITS_TEMP),
     ]),
 ]
 

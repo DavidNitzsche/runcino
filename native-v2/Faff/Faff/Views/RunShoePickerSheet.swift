@@ -59,7 +59,9 @@ struct RunShoePickerSheet: View {
                         .font(.body(14, weight: .extraBold))
                         .foregroundStyle(Theme.txt)
                     if let mi = shoe.mileage {
-                        Text("\(Int(mi.rounded())) mi" + (shoe.preferred == true ? " · preferred" : ""))
+                        // 2026-07-07 · units audit — display only.
+                        let converted = Int(Units.convertDistance(miles: mi, to: Units.preference.distance).rounded())
+                        Text("\(converted) \(Units.distanceLabel())" + (shoe.preferred == true ? " · preferred" : ""))
                             .font(.body(11.5, weight: .medium))
                             .foregroundStyle(Theme.mute)
                     }

@@ -181,7 +181,7 @@ struct ShoesView: View {
     private var statsRow: some View {
         HStack(alignment: .top, spacing: 0) {
             stat(label: "ACTIVE PAIRS", value: "\(active.count)")
-            stat(label: "FLEET MILES", value: formatMileage(totalActiveMi))
+            stat(label: Units.distanceLabel() == "km" ? "FLEET KM" : "FLEET MILES", value: formatMileage(totalActiveMi))
             stat(label: "RETIRE SOON",
                  value: "\(retireSoon)",
                  tint: retireSoon > 0 ? Color(hex: 0xF3AD38) : Theme.txt)
@@ -293,8 +293,9 @@ struct ShoesView: View {
         )
     }
 
+    /// 2026-07-07 · units audit — converts before formatting.
     private func formatMileage(_ mi: Double) -> String {
-        let v = Int(mi.rounded())
+        let v = Int(Units.convertDistance(miles: mi, to: Units.preference.distance).rounded())
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         return formatter.string(from: NSNumber(value: v)) ?? "\(v)"

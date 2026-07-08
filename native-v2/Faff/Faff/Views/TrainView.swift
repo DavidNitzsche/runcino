@@ -31,6 +31,14 @@ private func trainMi(_ m: Double) -> String {
         : String(format: "%.1f", m)
 }
 
+/// 2026-07-07 · units audit — converts a miles value to the preference
+/// unit BEFORE formatting through trainMi (unchanged, still just formats a
+/// bare number), so every call site converts through one place. No-ops to
+/// trainMi(m) when the preference is mi.
+private func trainMiConverted(_ m: Double) -> String {
+    trainMi(Units.convertDistance(miles: m, to: Units.preference.distance))
+}
+
 struct TrainView: View {
     let onProfile: () -> Void
     /// Root tab binding · the plan-ended / no-plan CTA jumps to Goal.
@@ -355,7 +363,10 @@ struct TrainView: View {
                     Spacer()
                     // Progress, not just the plan · miles run so far this week
                     // (sum of actuals) over the planned total.
-                    Text("\(trainMi((curWeek.days.reduce(0.0) { $0 + $1.doneMi } * 10).rounded() / 10)) / \(trainMi(curWeek.plannedMi)) mi")
+                    // 2026-07-07 · units audit — pre-existing rounding
+                    // (×10 rounded /10) happens in miles BEFORE the display
+                    // conversion, so precision behavior is unchanged.
+                    Text("\(trainMiConverted((curWeek.days.reduce(0.0) { $0 + $1.doneMi } * 10).rounded() / 10)) / \(trainMiConverted(curWeek.plannedMi)) \(Units.distanceLabel())")
                         .font(.body(11, weight: .bold))
                         .tracking(0.3)
                         .foregroundStyle(Theme.txt.opacity(0.78))
@@ -724,7 +735,7 @@ struct TrainView: View {
                         .frame(width: 7, height: 7)
                 }
             }
-            Text(isRest ? "—" : trainMi(day.mi))
+            Text(isRest ? "—" : trainMiConverted(day.mi))
                 .font(.body(11, weight: .extraBold))
                 .foregroundStyle(Theme.txt)
         }
@@ -1125,13 +1136,13 @@ struct TrainView: View {
             .sorted { (priority[$0.type.lowercased()] ?? 99) < (priority[$1.type.lowercased()] ?? 99) }
         if let pick = workouts.first {
             let typeWord = FaffEffort.fromType(pick.type).title
-            if pick.type.lowercased() == "race" { return "Race · \(trainMi(pick.mi))mi" }
-            if pick.mi > 0 { return "\(typeWord) · \(trainMi(pick.mi))mi" }
+            if pick.type.lowercased() == "race" { return "Race · \(trainMiConverted(pick.mi))\(Units.distanceLabel())" }
+            if pick.mi > 0 { return "\(typeWord) · \(trainMiConverted(pick.mi))\(Units.distanceLabel())" }
             return typeWord
         }
         // Pure easy week → describe the long run instead.
         if let long = week.days.max(by: { $0.mi < $1.mi }), long.mi > 0 {
-            return "Long · \(trainMi(long.mi))mi"
+            return "Long · \(trainMiConverted(long.mi))\(Units.distanceLabel())"
         }
         return "Easy + base"
     }
@@ -1344,7 +1355,7 @@ struct TrainView: View {
                 return goal.isEmpty ? "Race" : goal
             }
             if day.type.lowercased() == "rest" { return "Sleep + mobility" }
-            return "\(trainMi(day.mi)) mi"
+            return "\(trainMiConverted(day.mi)) \(Units.distanceLabel())"
         }()
         return CalSelected(day: day, dateHeader: dateHeader, title: title, meta: meta, isRace: isRace)
     }
@@ -1483,7 +1494,7 @@ private struct TrainWeekRow: View {
 
     private func metaLabel() -> String {
         if day.type.lowercased() == "rest" { return "—" }
-        return "\(trainMi(day.mi)) mi"
+        return "\(trainMiConverted(day.mi)) \(Units.distanceLabel())"
     }
 }
 
@@ -1530,7 +1541,7 @@ private struct TrainWeekRowSummary: View {
                 } else {
                     // #47 · trainMi → 1 decimal only when fractional (no noisy
                     // .0 on whole-mile weeks), matching the WK header + app convention.
-                    Text(trainMi(week.plannedMi))
+                    Text(trainMiConverted(week.plannedMi))
                         .font(.body(12.5, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.78))
                 }
@@ -1627,12 +1638,13 @@ private struct ExecStripRow: View {
                 .frame(height: 5)
 
                 // Actual / planned mi
+                // 2026-07-07 · units audit — display only.
                 (
-                    Text(String(format: "%.1f", row.actualMi))
+                    Text(Units.formatDistance(miles: row.actualMi))
                         .font(.body(12, weight: .bold))
                         .foregroundStyle(Theme.txt)
                     +
-                    Text("/\(trainMi(row.plannedMi))mi")
+                    Text("/\(trainMiConverted(row.plannedMi))\(Units.distanceLabel())")
                         .font(.body(10, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.44))
                 )

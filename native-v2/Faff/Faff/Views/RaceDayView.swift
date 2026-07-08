@@ -569,7 +569,7 @@ struct RaceDayView: View {
                         .foregroundStyle(Theme.txt)
                         .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
                     if goalPace != "—" {
-                        Text("GOAL TIME  ·  \(goalPace) /mi")
+                        Text("GOAL TIME  ·  \(goalPace) /\(Units.distanceLabel())")
                             .font(.body(13, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.78))
                     } else {
@@ -602,9 +602,20 @@ struct RaceDayView: View {
     /// Compact meta string under the past-race finish · pace, HR, elev
     /// pulled from the matched Strava run. Each field hides individually
     /// when null so the line collapses gracefully for sparser races.
+    /// 2026-07-07 · units audit — RaceMatchedRun.pace has no numeric
+    /// companion field (unlike RunDetail/RunSplit elsewhere in this pass),
+    /// so re-parse the "M:SS" string.
     private func matchedRunMetaLine(_ mr: RaceMatchedRun) -> String {
         var parts: [String] = []
-        if let p = mr.pace { parts.append("\(p)/mi") }
+        if let p = mr.pace {
+            let clean = p.prefix { $0.isNumber || $0 == ":" }
+            let pieces = clean.split(separator: ":").compactMap { Int($0) }
+            if pieces.count == 2 {
+                parts.append(Units.formatPace(secPerMile: pieces[0] * 60 + pieces[1]))
+            } else {
+                parts.append("\(p)/\(Units.distanceLabel())")
+            }
+        }
         if let bpm = mr.avg_hr { parts.append("\(bpm) bpm") }
         if let ft = mr.elev_gain_ft { parts.append("\(ft) ft") }
         return parts.isEmpty ? "View the run" : "View the run · " + parts.joined(separator: " · ")
@@ -705,7 +716,7 @@ struct RaceDayView: View {
                     .foregroundStyle(Theme.txt)
                     .lineLimit(1).minimumScaleFactor(0.7)
                 if goalPace != "—" {
-                    Text("\(goalPace)/mi")
+                    Text("\(goalPace)/\(Units.distanceLabel())")
                         .font(.body(10.5, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
                 }
@@ -757,7 +768,7 @@ struct RaceDayView: View {
     }
 
     private var planRightLabel: String? {
-        goalPace == "—" ? nil : "AVG \(goalPace)/mi"
+        goalPace == "—" ? nil : "AVG \(goalPace)/\(Units.distanceLabel())"
     }
 
     // MARK: - Course-aware pacing (backend RacePacing.phases · race P2)
@@ -805,7 +816,11 @@ struct RaceDayView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
-                    Text("\(paceNumber(from: ph.display))/mi")
+                    // 2026-07-07 · units audit — display only; the segment
+                    // BOUNDARY (milesRange above, server course geometry)
+                    // stays miles. Prefers the numeric pace_s_per_mi over
+                    // re-parsing the "6:58/mi" display string.
+                    Text(Units.formatPace(secPerMile: ph.pace_s_per_mi))
                         .font(.display(18, weight: .bold)).tracking(-0.3)
                         .foregroundStyle(Theme.txt)
                 }
@@ -845,7 +860,7 @@ struct RaceDayView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
-                    Text("\(ph.pace)/mi")
+                    Text("\(ph.pace)/\(Units.distanceLabel())")
                         .font(.display(18, weight: .bold)).tracking(-0.3)
                         .foregroundStyle(Theme.txt)
                 }
@@ -861,7 +876,7 @@ struct RaceDayView: View {
                         .font(.body(9.5, weight: .extraBold)).tracking(1.2)
                         .foregroundStyle(Theme.txt.opacity(0.5))
                     Spacer()
-                    Text("\(b) · \(bp)/mi")
+                    Text("\(b) · \(bp)/\(Units.distanceLabel())")
                         .font(.body(12, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.7))
                 }
@@ -1112,6 +1127,9 @@ struct RaceDayView: View {
     /// "—" when either is unknown. The "6:51" hardcode was the old
     /// sub-3-marathon placeholder · misleading when shown over another
     /// distance or no race.
+    /// 2026-07-07 · units audit — returns bare "M:SS" (no suffix, every
+    /// call site appends its own "/mi" literal — see individual fixes at
+    /// each Text() usage below).
     private var goalPace: String {
         // 2026-06-09 · race-killer F2 — RaceClock (API.swift) carries the
         // h:mm-vs-m:ss heuristic. The local 2-part branch read the stored
@@ -1119,14 +1137,14 @@ struct RaceDayView: View {
         guard let totalSec = RaceClock.seconds(from: detail?.race.goal),
               let dist = detail?.race.distance_mi, dist > 0 else { return "—" }
         let perMile = Int(round(Double(totalSec) / dist))
-        return String(format: "%d:%02d", perMile / 60, perMile % 60)
+        return Units.formatPaceBare(secPerMile: perMile)
     }
     private var courseStat: String {
         // Distance only · total gain moved to the ELEVATION header where it
         // belongs (and reads as total climb, not the net start→finish that
-        // confused — David 2026-06-17).
+        // confused — David 2026-06-17). 2026-07-07 · units audit — display only.
         guard let d = detail?.race.distance_mi, d > 0 else { return "" }
-        return String(format: "%.1f MI", d)
+        return "\(Units.formatDistance(miles: d)) \(Units.distanceLabel().uppercased())"
     }
 
     /// Elevation header · total climb AND total descent, e.g. "↑ 722 · ↓ 852 FT".
@@ -1202,9 +1220,9 @@ struct RaceDayView: View {
             : String(format: "%d:%02d", m, s)
     }
 
+    /// 2026-07-07 · units audit — redirected to the shared bare formatter.
     private func fmtPaceSec(_ secPerMile: Double) -> String {
-        let total = Int(secPerMile.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
+        Units.formatPaceBare(secPerMile: secPerMile)
     }
 
     /// B-goal = A-goal + 7 minutes. Mirrors web raceDetail.ts:283.
@@ -1295,7 +1313,7 @@ struct RaceDayView: View {
                 SpecLabel(text: "A GOAL", size: 10, tracking: 1.5,
                           color: Theme.txt.opacity(0.55))
                 Spacer(minLength: 12)
-                Text("\(aTime)  ·  \(aPace)/mi")
+                Text("\(aTime)  ·  \(aPace)/\(Units.distanceLabel())")
                     .font(.body(14, weight: .bold))
                     .foregroundStyle(Theme.txt)
             }
@@ -1305,7 +1323,7 @@ struct RaceDayView: View {
                 SpecLabel(text: "B GOAL", size: 10, tracking: 1.5,
                           color: Theme.txt.opacity(0.55))
                 Spacer(minLength: 12)
-                Text("\(bTime)  ·  \(bPace)/mi")
+                Text("\(bTime)  ·  \(bPace)/\(Units.distanceLabel())")
                     .font(.body(14, weight: .bold))
                     .foregroundStyle(Theme.txt.opacity(0.65))
             }
@@ -1434,8 +1452,9 @@ struct RaceDayView: View {
 
     /// Format seconds-per-mile → "m:ss". Shared by the B-goal + heat cards
     /// which carry raw s/mi from the composer.
+    /// 2026-07-07 · units audit — redirected to the shared bare formatter.
     private func fmtPacePerMi(_ secPerMi: Int) -> String {
-        String(format: "%d:%02d", secPerMi / 60, secPerMi % 60)
+        Units.formatPaceBare(secPerMile: secPerMi)
     }
 
     /// Right-rail label for WARM-UP · "DONE 15 MIN OUT" so the runner knows
@@ -1496,7 +1515,7 @@ struct RaceDayView: View {
             clauses.append("HR is over \(hr)")
         }
         if let pace = t.paceSlowerThanSPerMi, pace > 0 {
-            clauses.append("pace is slower than \(fmtPacePerMi(pace))/mi")
+            clauses.append("pace is slower than \(fmtPacePerMi(pace))/\(Units.distanceLabel())")
         }
         if clauses.isEmpty { return "If the effort is already at the edge here, ease off." }
         return "If " + clauses.joined(separator: " or ") + ":"

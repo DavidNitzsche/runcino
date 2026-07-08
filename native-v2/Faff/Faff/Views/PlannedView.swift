@@ -134,9 +134,9 @@ struct PlannedView: View {
                 .padding(.top, 9)
 
             HStack(alignment: .top, spacing: 24) {
-                heroStat(value: distanceValue, key: "MILES")
+                heroStat(value: distanceValue, key: Units.distanceLabel() == "km" ? "KILOMETERS" : "MILES")
                 heroStat(value: estTimeValue, key: "EST TIME")
-                heroStat(value: paceValue, key: "TARGET /MI")
+                heroStat(value: paceValue, key: "TARGET /\(Units.distanceLabel().uppercased())")
             }
             .padding(.top, 18)
 
@@ -411,8 +411,9 @@ struct PlannedView: View {
         return f.string(from: Date())
     }
 
+    /// 2026-07-07 · units audit — display only.
     private var distanceValue: String {
-        if let d = workout?.distanceMi { return String(format: "%.1f", d) }
+        if let d = workout?.distanceMi { return Units.formatDistance(miles: d) }
         return "—"
     }
 
@@ -484,7 +485,8 @@ struct PlannedView: View {
     }
 
     private func subLabelFor(_ p: WatchPhase) -> String {
-        if let d = p.distanceMi { return "\(String(format: "%.1f", d)) mi" }
+        // 2026-07-07 · units audit — display only.
+        if let d = p.distanceMi { return "\(Units.formatDistance(miles: d)) \(Units.distanceLabel())" }
         return "\(p.durationSec / 60) min"
     }
 
@@ -506,7 +508,7 @@ struct PlannedView: View {
         return phases.enumerated().map { (i, p) in
             let title = "\(p.label) · \(subLabelFor(p))"
             let detail: String = {
-                if let tp = p.targetPaceSPerMi { return "@ \(PaceFormat.mmss(tp))/mi · target pace" }
+                if let tp = p.targetPaceSPerMi { return "@ \(PaceFormat.mmss(tp))/\(Units.distanceLabel()) · target pace" }
                 return "fully easy · let HR settle"
             }()
             return SessionRow(id: i, title: title, subtitle: detail, color: colorFor(p.type))

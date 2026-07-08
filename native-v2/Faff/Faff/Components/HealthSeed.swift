@@ -102,25 +102,38 @@ enum HealthSeed {
             out.append(noDataMetric(id: "resp", label: "RESP RATE", unit: " /min"))
         }
 
-        // WRIST TEMP · stored °C from HealthKit, displayed °F (US, app-wide).
+        // WRIST TEMP · stored °C from HealthKit, displayed in the runner's
+        // preference unit (was hardcoded °F, US-only). 2026-07-07 units
+        // audit: `delta` (the raw °C server value, used ONLY for the 0.4°C
+        // warn threshold + direction's base-comparison magnitude) is left
+        // completely untouched — status/threshold logic stays exactly as
+        // before. Only the DISPLAYED value/history/chart/caption/coach
+        // strings route through the preference. curF/baseF/cF renamed to
+        // curDisp/baseDisp/cDisp (still Fahrenheit internally when the
+        // preference is F, so the "no-op for F" byte-safety guarantee holds
+        // for degree math the same way it does for distance/pace).
         if let cur = healthState?.wristTemp?.current {
             let base = healthState?.wristTemp?.baseline
             let delta = healthState?.wristTemp?.delta   // °C deviation · keep the 0.4°C warn threshold
             let cF: (Double) -> Double = { $0 * 9 / 5 + 32 }
             let curF = cF(cur)
             let baseF = base.map(cF)
-            let s = (healthState?.wristTempSeries ?? []).map { cF($0.tempC) }
+            let unitSuffix = Units.temperatureUnitSuffix()
+            let cDisp: (Double) -> Double = { Units.convertTemperature(fahrenheit: $0, to: Units.preference.temperature) }
+            let curDisp = cDisp(curF)
+            let baseDisp = baseF.map(cDisp)
+            let s = (healthState?.wristTempSeries ?? []).map { cDisp(cF($0.tempC)) }
             out.append(metric(
-                id: "wtemp", label: "WRIST TEMP", value: String(format: "%.1f", curF), unit: " °F",
+                id: "wtemp", label: "WRIST TEMP", value: String(format: "%.1f", curDisp), unit: " °\(unitSuffix)",
                 history: Array(s.suffix(14)), chart28: realChart(s),
                 target: nil,
                 status: abs(delta ?? 0) >= 0.4 ? .warn : .good,
                 direction: trendDir(cur: curF, base: baseF),
-                caption: baseF.map { "baseline \(String(format: "%.1f", $0))" } ?? "30-day",
-                coach: coachForDelta(noun: "Skin temp", cur: curF, base: baseF,
-                                     unit: "°F", higherIsBetter: false, decimals: 1)))
+                caption: baseDisp.map { "baseline \(String(format: "%.1f", $0))" } ?? "30-day",
+                coach: coachForDelta(noun: "Skin temp", cur: curDisp, base: baseDisp,
+                                     unit: "°\(unitSuffix)", higherIsBetter: false, decimals: 1)))
         } else {
-            out.append(noDataMetric(id: "wtemp", label: "WRIST TEMP", unit: " °F"))
+            out.append(noDataMetric(id: "wtemp", label: "WRIST TEMP", unit: " °\(Units.temperatureUnitSuffix())"))
         }
 
         // WEIGHT

@@ -180,7 +180,7 @@ struct ActivityView: View {
                                        startPoint: .topLeading, endPoint: .bottomTrailing)
                     )
                     .shadow(color: Color(hex: 0xFF783C).opacity(0.4), radius: 26, y: 6)
-                Text("MILES")
+                Text(Units.distanceLabel() == "km" ? "KILOMETERS" : "MILES")
                     .font(.display(18, weight: .bold))
                     .tracking(4)
                     .foregroundStyle(Theme.txt.opacity(0.9))
@@ -317,12 +317,14 @@ struct ActivityView: View {
         }
     }
 
+    /// 2026-07-07 · units audit — display only.
     private var displayMiles: String {
         // Range picker was cosmetic — number was always all-time even when
         // the runner picked MONTH or YEAR. Sum the filtered run set so the
         // hero number matches the label below it.
-        let miles = Int(rangeRuns.reduce(0.0) { $0 + $1.distance_mi })
-        return miles.formatted(.number.grouping(.automatic))
+        let totalMi = rangeRuns.reduce(0.0) { $0 + $1.distance_mi }
+        let converted = Int(Units.convertDistance(miles: totalMi, to: Units.preference.distance))
+        return converted.formatted(.number.grouping(.automatic))
     }
 
     private var rangeLabel: String {
@@ -406,30 +408,35 @@ struct ActivityView: View {
         let mostElev = runs.max(by: { ($0.elev_gain_ft ?? 0) < ($1.elev_gain_ft ?? 0) })
 
         var prs: [PR] = []
-        if let (r, _) = fastestPace, let p = r.pace {
-            prs.append(PR(key: "FASTEST PACE", value: p, caption: shortDate(r.date),
+        // 2026-07-07 · units audit — r.pace / t.pace are server-formatted
+        // "M:SS" seconds-per-mile strings (paceSeconds above already parses
+        // them back for the fastest-pace comparison). Re-derive seconds via
+        // the same parser and reformat through Units so PR cards convert
+        // too, rather than displaying the raw server string verbatim.
+        if let (r, secs) = fastestPace {
+            prs.append(PR(key: "FASTEST PACE", value: Units.formatPaceBare(secPerMile: secs), caption: shortDate(r.date),
                           color: Color(hex: 0xFC4D64), unit: nil))
         }
         if let lr = longestRun {
-            prs.append(PR(key: "LONGEST RUN", value: String(format: "%.1f", lr.distance_mi),
-                          caption: shortDate(lr.date), color: Color(hex: 0xD6263C), unit: "mi"))
+            prs.append(PR(key: "LONGEST RUN", value: Units.formatDistance(miles: lr.distance_mi),
+                          caption: shortDate(lr.date), color: Color(hex: 0xD6263C), unit: Units.distanceLabel()))
         }
         if let bw = biggestWeek {
-            prs.append(PR(key: "BIGGEST WEEK", value: String(format: "%.1f", bw.totalMi),
-                          caption: bw.label, color: Color(hex: 0xF3AD38), unit: "mi"))
+            prs.append(PR(key: "BIGGEST WEEK", value: Units.formatDistance(miles: bw.totalMi),
+                          caption: bw.label, color: Color(hex: 0xF3AD38), unit: Units.distanceLabel()))
         }
         if let mh = mostElev, let elev = mh.elev_gain_ft, elev > 0 {
             prs.append(PR(key: "MOST CLIMB", value: "\(elev)",
                           caption: shortDate(mh.date), color: Color(hex: 0x8A6A48), unit: "ft"))
         }
-        if let t = temposLast, let p = t.pace {
-            prs.append(PR(key: "LAST THRESHOLD", value: p,
-                          caption: shortDate(t.date), color: Color(hex: 0xD03F3F), unit: "/mi"))
+        if let t = temposLast, let p = t.pace, let secs = paceSeconds(p) {
+            prs.append(PR(key: "LAST THRESHOLD", value: Units.formatPaceBare(secPerMile: secs),
+                          caption: shortDate(t.date), color: Color(hex: 0xD03F3F), unit: "/\(Units.distanceLabel())"))
         }
         let rangeTotalMi = runs.reduce(0.0) { $0 + $1.distance_mi }
         if rangeTotalMi > 0 {
-            prs.append(PR(key: "RANGE TOTAL", value: String(format: "%.0f", rangeTotalMi),
-                          caption: rangeLabel.capitalized, color: Color(hex: 0xD03F3F), unit: "mi"))
+            prs.append(PR(key: "RANGE TOTAL", value: Units.formatDistance(miles: rangeTotalMi, decimals: 0),
+                          caption: rangeLabel.capitalized, color: Color(hex: 0xD03F3F), unit: Units.distanceLabel()))
         }
         return prs
     }
@@ -502,8 +509,11 @@ struct ActivityView: View {
                 var intensity = 0
                 var label = "Rest day"
                 if let r = runsByDate[iso] {
+                    // 2026-07-07 · units audit — bucket() thresholds stay
+                    // calibrated in miles (r.distance_mi, unconverted); only
+                    // the tooltip label string converts.
                     intensity = bucket(r.distance_mi)
-                    label = "\(monthFmt.string(from: day)) · \(formatMi(r.distance_mi)) mi · \((r.workoutType ?? r.type ?? "Run").capitalized)"
+                    label = "\(monthFmt.string(from: day)) · \(Units.formatDistance(miles: r.distance_mi)) \(Units.distanceLabel()) · \((r.workoutType ?? r.type ?? "Run").capitalized)"
                 }
                 col.append(HeatmapDay(date: day, intensity: intensity, label: label))
             }
@@ -574,7 +584,7 @@ struct ActivityView: View {
         HStack {
             SpecLabel(text: week.label, size: 11, tracking: 2, color: Theme.txt.opacity(0.6))
             Spacer()
-            Text(String(format: "%.1f mi", week.totalMi))
+            Text("\(Units.formatDistance(miles: week.totalMi)) \(Units.distanceLabel())")
                 .font(.body(12, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.85))
         }
@@ -601,7 +611,10 @@ struct ActivityView: View {
                         .tracking(0.5)
                         .foregroundStyle(hasType ? effort.dot : Theme.txt.opacity(0.4))
                     HStack(spacing: 5) {
-                        Text("\(run.pace ?? "—") /mi")
+                        // 2026-07-07 · units audit — run.pace is a
+                        // server-formatted "M:SS" s-per-mi string; re-parse
+                        // via paceSeconds + reformat through Units.
+                        Text(run.pace.flatMap { paceSeconds($0) }.map { Units.formatPace(secPerMile: $0) } ?? "— /\(Units.distanceLabel())")
                             .font(.body(11, weight: .semibold))
                             .foregroundStyle(Theme.txt.opacity(0.66))
                         Text("·")
@@ -622,11 +635,13 @@ struct ActivityView: View {
                 }
                 Spacer()
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(formatMi(run.distance_mi))
+                    // 2026-07-07 · units audit — display only; run.distance_mi
+                    // (the server wire value) is unconverted, only shown here.
+                    Text(formatMi(Units.convertDistance(miles: run.distance_mi, to: Units.preference.distance)))
                         .font(.display(30, weight: .bold))
                         .tracking(-1.5)
                         .foregroundStyle(Theme.txt)
-                    Text("mi")
+                    Text(Units.distanceLabel())
                         .font(.body(13, weight: .extraBold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
                 }

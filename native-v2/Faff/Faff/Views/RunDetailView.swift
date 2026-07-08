@@ -256,7 +256,8 @@ struct RunDetailView: View {
                                         .font(.body(14, weight: .bold))
                                         .foregroundStyle(Theme.txt)
                                     if let r = run?.planned_distance_mi {
-                                        Text("planned \(String(format: "%.1f", r)) mi · ran \(String(format: "%.1f", run?.distance_mi ?? 0)) mi")
+                                        // 2026-07-07 · units audit — display only.
+                                        Text("planned \(Units.formatDistance(miles: r)) \(Units.distanceLabel()) · ran \(Units.formatDistance(miles: run?.distance_mi ?? 0)) \(Units.distanceLabel())")
                                             .font(.body(11, weight: .bold))
                                             .foregroundStyle(Theme.txt.opacity(0.6))
                                     }
@@ -451,7 +452,7 @@ struct RunDetailView: View {
                 .padding(.top, 9)
 
             HStack(alignment: .top, spacing: 24) {
-                heroStat(value: distanceValue, key: "MILES")
+                heroStat(value: distanceValue, key: Units.distanceLabel() == "km" ? "KILOMETERS" : "MILES")
                 heroStat(value: timeValue, key: "TIME")
                 heroStat(value: heroPaceValue, key: heroPaceKey)
             }
@@ -583,7 +584,7 @@ struct RunDetailView: View {
                 .buttonStyle(.plain)
                 detailRow("Avg / Max HR", "\(hrAvg) / \(hrMax) bpm", chev: false)
                 detailRow("Avg cadence", "\(cadAvg) spm", chev: false)
-                detailRow("Weather", weatherTemp != "—" ? "\(weatherTemp)°F" : "—", chev: false, good: weatherTemp != "—")
+                detailRow("Weather", weatherTemp != "—" ? "\(weatherTemp)°\(Units.temperatureUnitSuffix())" : "—", chev: false, good: weatherTemp != "—")
             }
         }
     }
@@ -649,8 +650,12 @@ struct RunDetailView: View {
     /// is populated · nil for easy / long / rest or non-Faff-watch
     /// sources. Mirrors TodayPostRunBody.workPaceDisplay (unit lives in
     /// the hero key here, so no "/mi" suffix).
+    /// 2026-07-07 · units audit — prefers pace_work_s_per_mi (numeric,
+    /// converts cleanly) over the pre-formatted pace_work string.
     private var workPaceDisplay: String? {
-        guard isQualityRun, let wp = run?.pace_work, !wp.isEmpty else { return nil }
+        guard isQualityRun else { return nil }
+        if let s = run?.pace_work_s_per_mi { return Units.formatPaceBare(secPerMile: s) }
+        guard let wp = run?.pace_work, !wp.isEmpty else { return nil }
         return wp
     }
 
@@ -658,7 +663,11 @@ struct RunDetailView: View {
     /// misreads a tempo / 5×1mi at the top of the page), else the
     /// blended average.
     private var heroPaceValue: String { workPaceDisplay ?? paceValue }
-    private var heroPaceKey: String { workPaceDisplay != nil ? "WORK /MI" : "AVG /MI" }
+    /// 2026-07-07 · units audit — was hardcoded "WORK /MI" / "AVG /MI".
+    private var heroPaceKey: String {
+        let unit = Units.distanceLabel().uppercased()
+        return workPaceDisplay != nil ? "WORK /\(unit)" : "AVG /\(unit)"
+    }
 
     /// True when the per-type panel has enough data to render
     /// meaningfully. Easy / long lean on splits (footprint, thirds,
@@ -722,15 +731,30 @@ struct RunDetailView: View {
     /// gate (showing "loading…" until `run` resolves) is the proper UX
     /// for this case · for now the cells just read "—".
     private var distanceValue: String {
-        if let d = run?.distance_mi { return String(format: "%.1f", d) }
+        // 2026-07-07 · units audit — display only.
+        if let d = run?.distance_mi { return Units.formatDistance(miles: d) }
         return "—"
     }
     private var timeValue: String { run?.time_moving ?? "—" }
-    private var paceValue: String { run?.pace ?? "—" }
+    /// 2026-07-07 · units audit — prefers the numeric pace_s_per_mi
+    /// (server wire value) when present, converting through Units;
+    /// falls back to the server's pre-formatted `pace` string verbatim
+    /// only when the numeric field is absent (older payload shape).
+    private var paceValue: String {
+        if let s = run?.pace_s_per_mi { return Units.formatPaceBare(secPerMile: s) }
+        return run?.pace ?? "—"
+    }
     private var hrAvg: String { run?.hr_avg.map(String.init) ?? "—" }
     private var hrMax: String { run?.hr_max.map(String.init) ?? "—" }
     private var cadAvg: String { run?.cadence_avg.map(String.init) ?? "—" }
-    private var weatherTemp: String { run?.temp_f.map { String(Int($0)) } ?? "—" }
+    /// 2026-07-07 · units audit — was `String(Int($0))` (bare Fahrenheit
+    /// number, caller appended "°F"). Now returns the bare converted-unit
+    /// degree number (no ° or letter suffix — see weatherTempUnitSuffix
+    /// below), so the call site's "\(weatherTemp)°F" hardcode is replaced
+    /// with the correct unit letter too.
+    private var weatherTemp: String {
+        run?.temp_f.map { String(Int(Units.convertTemperature(fahrenheit: $0, to: Units.preference.temperature).rounded())) } ?? "—"
+    }
     /// The shoe ASSIGNED to this run (run.shoe_id), overridden locally after
     /// a picker choice. The old read was `shoes.first` — but `shoes` is the
     /// full non-retired inventory sorted preferred-first, so every run
@@ -769,8 +793,13 @@ struct RunDetailView: View {
             return splits.map { s in
                 let hr = s.hr ?? 0
                 let zi = hrZoneIndex(hr)
+                // 2026-07-07 · units audit — s.mile (the split BOUNDARY —
+                // server segments splits per-mile) is unchanged; re-
+                // segmenting split boundaries per-km would need a backend
+                // change, out of scope here. Only the pace string display
+                // converts, via paceTimeSeconds (already in this file).
                 let parts: [String] = [
-                    s.pace.map { "\($0)/mi" } ?? "",
+                    s.pace.flatMap { paceTimeSeconds($0) }.map { Units.formatPace(secPerMile: $0) } ?? "",
                     elevDeltaLabel(s.elev_change_ft),
                 ].filter { !$0.isEmpty }
                 return MileBar(
@@ -949,7 +978,10 @@ struct RunDetailView: View {
     private var traceAvgLabel: String {
         guard let r = run else { return "" }
         switch currentMetric {
-        case .pace: return "AVG \(r.pace ?? "—") /mi"
+        case .pace:
+            // 2026-07-07 · units audit — prefer the numeric field.
+            if let s = r.pace_s_per_mi { return "AVG \(Units.formatPace(secPerMile: s))" }
+            return "AVG \(r.pace ?? "—") /\(Units.distanceLabel())"
         case .hr:   return r.hr_avg.map { "AVG \($0) bpm" } ?? ""
         case .elev: return r.elev_gain_ft.map { "+\($0) ft GAIN" } ?? ""
         case .cad:  return r.cadence_avg.map { "AVG \($0) spm" } ?? ""
@@ -1009,7 +1041,10 @@ struct RunDetailView: View {
         return splits.map { s in
             let v: String
             switch m {
-            case .pace: v = s.pace.map { "\($0) /mi" } ?? "—"
+            // 2026-07-07 · units audit — pace value converts; the split
+            // BOUNDARY ("mi N" below) stays miles (see splitBars comment —
+            // server segments per-mile, re-segmenting per-km is out of scope).
+            case .pace: v = s.pace.flatMap { paceTimeSeconds($0) }.map { Units.formatPace(secPerMile: $0) } ?? "—"
             case .hr:   v = s.hr.map { "\($0) bpm" } ?? "—"
             case .elev: v = s.elev_change_ft.map { "\($0) ft" } ?? "—"
             case .cad:  v = s.cadence.map { "\($0) spm" } ?? "—"
@@ -1111,11 +1146,14 @@ struct RunDetailView: View {
             }
             Spacer(minLength: 12)
             VStack(alignment: .trailing, spacing: 2) {
-                Text(ph.actual_pace ?? "—")
+                // 2026-07-07 · units audit — actual_pace has no numeric
+                // companion on PhaseBreakdown (unlike target_pace_sec);
+                // re-parse via the same paceTimeSeconds helper used above.
+                Text(ph.actual_pace.flatMap { paceTimeSeconds($0) }.map { Units.formatPaceBare(secPerMile: $0) } ?? ph.actual_pace ?? "—")
                     .font(.body(15, weight: .bold))
                     .tracking(-0.3)
                     .foregroundStyle(Theme.txt)
-                Text("/MI")
+                Text("/\(Units.distanceLabel().uppercased())")
                     .font(.label(8)).tracking(1)
                     .foregroundStyle(Theme.txt.opacity(0.55))
             }
@@ -1135,10 +1173,16 @@ struct RunDetailView: View {
         }
     }
 
+    /// 2026-07-07 · units audit — display only. Prefers target_pace_sec
+    /// (numeric) over the pre-formatted target_pace string.
     private func phaseSubLabel(_ ph: PhaseBreakdown) -> String {
         var parts: [String] = []
-        if let tp = ph.target_pace { parts.append("target \(tp)/mi") }
-        if let mi = ph.actual_distance_mi { parts.append("\(String(format: "%.1f", mi)) mi") }
+        if let tpSec = ph.target_pace_sec {
+            parts.append("target \(Units.formatPace(secPerMile: tpSec))")
+        } else if let tp = ph.target_pace {
+            parts.append("target \(tp)/\(Units.distanceLabel())")
+        }
+        if let mi = ph.actual_distance_mi { parts.append("\(Units.formatDistance(miles: mi)) \(Units.distanceLabel())") }
         if let bpm = ph.avg_hr { parts.append("\(bpm) bpm") }
         return parts.joined(separator: " · ")
     }

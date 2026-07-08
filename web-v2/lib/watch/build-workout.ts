@@ -27,6 +27,7 @@ import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling'
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { distanceMiFromLabel as sharedDistanceMiFromLabel } from '@/lib/race/distance';
+import { loadSettings } from '@/lib/coach/settings';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -95,6 +96,16 @@ export interface WatchWorkout {
    *  CONTINUE / TAKE THE BAIL; outcomes ride the completion payload's
    *  optional `rule_outcomes`. */
   rules?: Array<Record<string, unknown>> | null;
+  /** 2026-07-07 · units audit — the runner's distance display preference
+   *  (profile.user_settings.units_distance, 'mi'/'km'). Optional +
+   *  additive: absent/unrecognized reads as 'mi' on the watch (its
+   *  existing behavior, unchanged for every runner who hasn't opted into
+   *  km). All numeric phase fields on the wire (distanceMi,
+   *  targetPaceSPerMi, etc.) stay in miles / seconds-per-mile regardless
+   *  of this flag — it's a DISPLAY hint only, so the watch's GPS tracking
+   *  and pace-drift math are untouched; only the last-mile string
+   *  formatting step converts. */
+  unitsDistance?: 'mi' | 'km';
 }
 
 export type WatchTodayResponse =
@@ -349,6 +360,12 @@ export async function buildWatchToday(
   const lthr = prof?.lthr ?? null;
   const maxHr = prof?.hrmax ? Number(prof.hrmax) : null;
 
+  // 2026-07-07 · units audit — loadSettings already defaults to 'mi'/'F'
+  // internally on any read failure (settings.ts DEFAULT_SETTINGS), so this
+  // never throws; the .catch is belt-and-suspenders consistent with every
+  // other best-effort query in this function.
+  const unitsDistance = (await loadSettings(userId).catch(() => null))?.units_distance ?? 'mi';
+
   const raceRow = (await pool.query(
     `SELECT meta FROM races
       WHERE user_uuid = $1
@@ -583,6 +600,7 @@ export async function buildWatchToday(
     displayHint: wo.type === 'long'  ? (longHasFinish ? 'pace' : 'hr')
              : wo.type === 'tempo' ? 'tempo'
              : null,
+    unitsDistance,
   };
 
   // 2026-06-09 Phase 2 (3.2) · thread contingency rules from the spec.

@@ -205,12 +205,21 @@ struct WatchWorkout: Codable {
     // The phase-driven default rules (single-work-phase + target → EasyFace
     // etc.) still apply when this is nil, so older payloads keep working.
     let displayHint: String?
+    // 2026-07-07 · units audit — runner's distance display preference
+    // ("mi"/"km"), sourced from profile.user_settings.units_distance.
+    // DISPLAY ONLY: every numeric field on this payload (distanceMi,
+    // phase.targetPaceSPerMi, etc.) stays in miles / seconds-per-mile
+    // regardless of this value — the engine's GPS accumulation and
+    // pace-drift comparisons are untouched. Only the formatting helpers
+    // that render a Text(...) string read it. nil/unrecognized → "mi",
+    // matching every payload before this field existed.
+    let unitsDistance: String?
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
         case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
-        case displayHint
+        case displayHint, unitsDistance
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
@@ -219,7 +228,7 @@ struct WatchWorkout: Codable {
          distanceMi: Double? = nil, paceLabel: String? = nil,
          isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
          fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil,
-         displayHint: String? = nil) {
+         displayHint: String? = nil, unitsDistance: String? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -238,6 +247,7 @@ struct WatchWorkout: Codable {
         self.fueling = fueling
         self.hrCeilingBpm = hrCeilingBpm
         self.displayHint = displayHint
+        self.unitsDistance = unitsDistance
     }
 
     init(from decoder: Decoder) throws {
@@ -262,6 +272,7 @@ struct WatchWorkout: Codable {
         self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
         self.hrCeilingBpm = c.lenientIntIfPresent(forKey: .hrCeilingBpm)
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
+        self.unitsDistance = try c.decodeIfPresent(String.self, forKey: .unitsDistance)
         // Re-stamp each phase with its cursor index. CRITICAL: pass through
         // repUnit + distanceMi too — earlier this constructor only carried
         // the first 7 fields forward, which silently dropped repUnit (→ .time)
@@ -832,5 +843,37 @@ enum PaceFormat {
         let h = seconds / 3600
         let m = (seconds % 3600) / 60
         return "\(h):\(String(format: "%02d", m))"
+    }
+
+    // MARK: - Units-aware pace (2026-07-07 · units audit)
+    //
+    // `mmss(_:)` above is UNCHANGED — every existing call site keeps
+    // formatting raw seconds-per-mile exactly as before (byte-safe for
+    // every runner, since none has opted into km on the watch face yet;
+    // the payload's `unitsDistance` only arrives once the phone re-pushes
+    // after this build ships). This is an ADDITIVE overload for callers
+    // that have a WatchWorkout.unitsDistance in scope and want the pace
+    // string in the runner's preferred unit. Internal engine state
+    // (tracker.paceSPerMi, phase.targetPaceSPerMi, pace-drift thresholds)
+    // is NEVER converted — those stay seconds-per-mile everywhere in
+    // WorkoutEngine/PaceDrift; only this final formatting step converts.
+
+    /// mi→km factor. Kept local (not shared with the iPhone target — the
+    /// watch app has no shared-module boundary with Faff/Util/Units.swift
+    /// per docs/native/03-watchos-target-setup.md's "v0 duplication is
+    /// fine" doctrine already governing this whole file).
+    private static let milesPerKm = 0.621371
+
+    /// "6:31/mi" or "4:03/km" from seconds-per-mile, unit-aware. `unitsPref`
+    /// is the raw wire string from WatchWorkout.unitsDistance ("mi"/"km"/nil);
+    /// anything other than exactly "km" renders as mi — same default as
+    /// every payload before this field existed.
+    static func mmssWithUnit(_ secondsPerMile: Int, unitsPref: String?) -> String {
+        if unitsPref == "km" {
+            let perKm = Double(max(0, secondsPerMile)) * milesPerKm
+            let v = max(0, Int(perKm.rounded()))
+            return "\(v / 60):\(String(format: "%02d", v % 60))/km"
+        }
+        return "\(mmss(secondsPerMile))/mi"
     }
 }
