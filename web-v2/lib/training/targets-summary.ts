@@ -46,13 +46,19 @@ export interface TargetsSummaryArgs {
   lastMove: { prevVdot: number; newVdot: number; deltaVdot: number } | null;
   /** Days the current VDOT has held (heldDays). */
   heldDays: number;
+  /** 2026-07-07 · ultra-honesty audit P2-70 · true when the target distance
+   *  is past the Daniels validity range (see DANIELS_MAX_VALID_DISTANCE_MI
+   *  in lib/training/vdot.ts). goalSec/projectedSec are null for exactly
+   *  this reason, not because no goal was set — the summary must say so
+   *  instead of nudging the runner to "set a goal" they already set. */
+  unsupportedDistance?: boolean;
 }
 
 const fmt = (sec: number): string => formatRaceTime(sec) ?? `${Math.round(sec)}s`;
 
 export function composeTargetsSummaryLine(args: TargetsSummaryArgs): string {
   const { status, goalSec, projectedSec, goalSource, raceName, daysAway,
-          vdot, lastMove, heldDays } = args;
+          vdot, lastMove, heldDays, unsupportedDistance } = args;
 
   // ── Target time exists · speak in real times, keyed by status ─────────
   if (goalSec != null && goalSec > 0 && projectedSec != null && projectedSec > 0) {
@@ -70,6 +76,19 @@ export function composeTargetsSummaryLine(args: TargetsSummaryArgs): string {
     }
     // 'cold' with both numbers shouldn't occur (cold means one is missing) ·
     // fall through to the trend copy rather than assert on-track.
+  }
+
+  // ── Ultra target (P2-70) · never say "set a goal" when one exists but the
+  // distance is past what the fitness model can honestly project. Distinct
+  // from the two branches below, which both assume the absence of a goal. ──
+  if (unsupportedDistance) {
+    const when = daysAway != null && daysAway >= 0
+      ? daysAway === 0 ? ' today'
+        : daysAway === 1 ? ' tomorrow'
+        : ` in ${daysAway} days`
+      : '';
+    const named = raceName ? `Racing ${raceName}${when}. ` : '';
+    return `${named}Ultra projections aren't supported yet · training targets stay anchored to your current fitness.`;
   }
 
   // ── Race saved without a time goal (P2-28) · name the race, nudge ─────

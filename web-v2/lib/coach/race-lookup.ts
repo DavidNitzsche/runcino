@@ -11,6 +11,7 @@
  * in-flight cache shape.
  */
 import { pool } from '@/lib/db/pool';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 export interface NextARace {
   slug: string;
@@ -140,20 +141,18 @@ function daysBetween(fromIso: string, toIso: string): number {
 
 /** Parse race distance from meta.distanceLabel or meta.distanceMi · the
  *  races row may carry either depending on the writer (race CRUD uses
- *  distanceLabel; plan generator sets distanceMi numerically). */
+ *  distanceLabel; plan generator sets distanceMi numerically).
+ *
+ * 2026-07-07 · ultra-honesty audit P1-41 · this local fork required BOTH
+ * "ultra" AND "50k" in the label to resolve a 50K ('50k'-only labels fell
+ * through to null) and never matched the phone's "50M"/"100M" labels at
+ * all (only 'M'-suffixed "50mi"/"100mi"/"50 mile"/"100 mile"). Delegate to
+ * the shared distanceMiFromLabel (lib/race/distance.ts) — the one parser
+ * every write/read path is converging on — instead of maintaining a
+ * fourth divergent copy. Still returns null on unresolved (unchanged
+ * contract: "no distance", never a guessed one). */
 function parseDistanceMi(meta: any): number | null {
   const direct = Number(meta?.distanceMi);
   if (Number.isFinite(direct) && direct > 0) return direct;
-  const label = meta?.distanceLabel;
-  if (!label) return null;
-  const s = String(label).toLowerCase().trim();
-  if (s.includes('marathon') && !s.includes('half')) return 26.219;
-  if (s.includes('half')) return 13.109;
-  if (s.includes('10k')) return 6.214;
-  if (s.includes('5k')) return 3.107;
-  if (s.includes('ultra') && s.includes('50k')) return 31.07;
-  if (s.includes('50mi') || s.includes('50 mile')) return 50;
-  if (s.includes('100k')) return 62.14;
-  if (s.includes('100mi') || s.includes('100 mile')) return 100;
-  return null;
+  return distanceMiFromLabel(meta?.distanceLabel);
 }

@@ -33,6 +33,19 @@ export function distanceMiFromLabel(label: string | null | undefined): number | 
   // the bare-marathon branch excludes it.
   if (s.includes('marathon') && !s.includes('half')) return 26.2;
   if (s.includes('half') || s.includes('21k') || s.includes('21.1')) return 13.1;
+  // Ultra distances · 2026-07-06 phone+watch audit P1-41 / P2-70. The phone
+  // Add Race sheet offers "50K" / "50M" / "100K" / "100M"; none resolved here
+  // ("50m"/"100m" lack a mi/km unit for the numeric fallback, and decorated
+  // names like "Javelina 100M" never full-match it), so every ultra fell
+  // through to callers' 13.1 defaults — a silent half-marathon plan for a
+  // 100-miler. Named substring branches, checked BEFORE 15k/10k/5k so the
+  // longer literals win. "M" in a distance label reads as miles (the phone's
+  // convention); values follow the parser's canonical rounding (50K = 50 km
+  // → 31.07 mi, matching the numeric fallback's km conversion).
+  if (s.includes('100k')) return 62.14;
+  if (s.includes('100m') || s.includes('100 mile')) return 100;
+  if (s.includes('50k')) return 31.07;
+  if (s.includes('50m') || s.includes('50 mile')) return 50;
   if (s.includes('15k')) return 9.3;
   if (s.includes('10k')) return 6.2;
   if (s.includes('5k')) return 3.1;

@@ -23,7 +23,7 @@
 import { describe, it, expect } from 'vitest';
 import { PERSONAS } from './synthetic-runners';
 import { simulate, COLD_START_CALIBRATION, type SimulatorInput } from './simulator';
-import { predictRaceTime } from '@/lib/training/vdot';
+import { predictRaceTime, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
 
 /**
  * Build a simulator input from a persona · synthesizes a realistic
@@ -92,6 +92,22 @@ describe('Plan engine · synthetic personas', () => {
 
       it('final projection lies within plausible band for goal distance', () => {
         const { medianSec, p25Sec, p75Sec } = result.finalProjection;
+
+        // 2026-07-07 · ultra-honesty audit P1-41/P2-70/P2-71 · the Daniels
+        // %VO2max curve is not validated past the marathon
+        // (DANIELS_MAX_VALID_DISTANCE_MI, see lib/training/vdot.ts), so
+        // predictRaceTime/finalProjection now honestly return null for any
+        // persona racing an ultra distance (e.g. 'advanced-plus-ultra' at
+        // 31.0mi / 50K) instead of silently extrapolating a fabricated
+        // finish time. Assert the honest-null behavior for personas past
+        // the ceiling instead of requiring a populated projection.
+        if (p.race.distanceMi > DANIELS_MAX_VALID_DISTANCE_MI) {
+          expect(medianSec).toBeNull();
+          expect(p25Sec).toBeNull();
+          expect(p75Sec).toBeNull();
+          return;
+        }
+
         expect(medianSec).not.toBeNull();
         expect(p25Sec).not.toBeNull();
         expect(p75Sec).not.toBeNull();

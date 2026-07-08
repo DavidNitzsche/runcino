@@ -27,6 +27,7 @@ import { vdotFromRace, predictRaceTime, parseRaceTime } from '@/lib/training/vdo
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 function fmtFinish(secs: number): string {
   const h = Math.floor(secs / 3600);
@@ -36,13 +37,15 @@ function fmtFinish(secs: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// 2026-07-07 · ultra-honesty audit · was a local fork that recognized only
+// marathon/half/10k/5k (no ultra labels at all — silently null, not a 13.1
+// fallthrough, so no phantom plan risk here, but a 50K/100K chip-time result
+// couldn't even resolve its OWN real distance for the actual_result write).
+// Delegate to the shared parser so a real ultra finish still resolves a real
+// distanceMi; vdotFromRace/predictRaceTime below independently refuse to
+// project past the marathon regardless of what distanceMi resolves to.
 function distFromLabel(label: string | null | undefined): number | null {
-  const l = String(label ?? '').toLowerCase();
-  if (l.includes('marathon') && !l.includes('half')) return 26.2;
-  if (l.includes('half') || l.includes('21k')) return 13.1;
-  if (l.includes('10k')) return 6.2;
-  if (l.includes('5k')) return 3.1;
-  return null;
+  return distanceMiFromLabel(label);
 }
 
 interface NextPlanResult {

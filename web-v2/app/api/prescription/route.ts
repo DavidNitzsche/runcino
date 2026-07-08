@@ -16,6 +16,7 @@ import {
 } from '@/lib/training/fueling';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 const VALID: WorkoutType[] = ['easy','long','tempo','threshold','intervals','race','shakeout','rest','unplanned'];
 
@@ -26,15 +27,9 @@ function parseGoalSeconds(s: string | null | undefined): number | null {
   return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
 }
 
-function distanceMiFromLabel(label: string | null): number | null {
-  if (!label) return null;
-  const l = label.toLowerCase();
-  if (l.includes('marathon') && !l.includes('half')) return 26.2;
-  if (l.includes('half') || l.includes('21k')) return 13.1;
-  if (l.includes('10k')) return 6.2;
-  if (l.includes('5k')) return 3.1;
-  return null;
-}
+// 2026-07-07 · ultra-honesty audit · local fork replaced with the shared
+// parser (@/lib/race/distance) — was already null-safe on unmatched (no
+// 13.1 fallthrough here), just didn't recognize ultra labels.
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);

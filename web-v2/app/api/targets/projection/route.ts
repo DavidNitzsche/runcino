@@ -44,7 +44,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
-import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode } from '@/lib/training/vdot';
+import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
@@ -205,6 +205,18 @@ export async function GET(req: NextRequest) {
     // distance; fall back to the query-param distance (iPhone might ask
     // before a race or goal is set).
     const distanceMi = race?.distance_mi ?? goalModeDistanceMi ?? distanceQ;
+    // 2026-07-07 · ultra-honesty audit P2-70 · the Daniels equivalence this
+    // whole route runs on (predictRaceTime/vdotFromRace) stops being valid
+    // past the marathon (Research/02 §6.2/§14 rule 6); DANIELS_MAX_VALID_DISTANCE_MI
+    // now nulls those functions out beyond it, so `projectionSec` and every
+    // downstream gap/lever chunk below already degrade to honest zeros/nulls
+    // for a 50K/50M/100K/100M target — no per-branch change needed there.
+    // This flag is additive: it tells the client WHY the numbers are absent
+    // (an ultra target, not a cold-start/no-data state) so the panel can
+    // render "ultra projections aren't supported yet" instead of the
+    // ambiguous cold-start copy. distanceQ's 13.1 default never trips this
+    // (13.1 < 26.3) so the pre-goal/pre-race iPhone cold path is unaffected.
+    const unsupportedDistance = distanceMi != null && distanceMi > DANIELS_MAX_VALID_DISTANCE_MI;
     const goalSec = race ? (race.goal ? parseRaceTime(race.goal) : null) : goalModeSec;
     const goalSafeSec = race?.goal_safe ? parseRaceTime(race.goal_safe) : null;
     const daysAway = goalDateISO
@@ -459,6 +471,7 @@ export async function GET(req: NextRequest) {
       vdot,
       lastMove,
       heldDays: held,
+      unsupportedDistance,
     });
 
     // All four standard Daniels distances via the canonical predictRaceTime
@@ -491,6 +504,13 @@ export async function GET(req: NextRequest) {
       // iPhone fell back to its own 13.1 default). Race rows unchanged.
       distanceMi: race?.distance_mi ?? goalModeDistanceMi ?? null,
       location: race?.location ?? null,
+      // 2026-07-07 · ultra-honesty audit P2-70 · true when distanceMi is past
+      // the Daniels validity range — vdot/projectionSec/trajectory/levers are
+      // all honestly null/zeroed for this reason (see DANIELS_MAX_VALID_
+      // DISTANCE_MI gate in lib/training/vdot.ts), not a cold-start/no-data
+      // state. Client surfaces read this to render "not supported yet" copy
+      // instead of the ambiguous cold-start prompt.
+      unsupportedDistance,
       // 2026-07-06 · P1-12 · goal provenance for goal-mode parity. Additive.
       //   goalSource  · 'race' | 'fitness_goal' | null
       //   goalLabel   · the tt_goal distance label ('5K', 'Half Marathon', …)
