@@ -4731,14 +4731,22 @@ function GoalReadyBody({ ready }: { ready: NonNullable<FaffSeed['goalReady']> })
       ? { month: 'short' } : { month: 'short', year: 'numeric' });
   };
   const goalTime = formatRaceTime(ready.goalTimeSec) ?? '—';
-  const pct = ready.currentVdot != null
+  // 2026-07-07 · requiredVdot is null for a below-table goal (no fabricated
+  // number) — the module always resolves that case to 'in-range' (any
+  // measured fitness already clears an off-the-bottom-of-the-table goal),
+  // so a full bar + honest no-ratio copy is the correct rendering, not a
+  // divide-by-null.
+  const pct = (ready.currentVdot != null && ready.requiredVdot != null)
     ? Math.max(0, Math.min(100, Math.round((ready.currentVdot / ready.requiredVdot) * 100)))
-    : 0;
+    : (ready.state === 'in-range' ? 100 : 0);
+  const inRangeSub = ready.requiredVdot != null
+    ? `Fitness is there · VDOT ${ready.currentVdot} vs ${ready.requiredVdot} needed`
+    : 'Fitness is there';
 
   const byState: Record<typeof ready.state, { big: string; color: string; lab: string; sub: string; foot: string; footColor: string }> = {
     'in-range': {
       big: goalTime, color: '#3EBD41', lab: 'IN RANGE NOW',
-      sub: `Fitness is there · VDOT ${ready.currentVdot} vs ${ready.requiredVdot} needed`,
+      sub: inRangeSub,
       foot: 'Trend says race it — book one', footColor: '#3EBD41',
     },
     'projectable': {

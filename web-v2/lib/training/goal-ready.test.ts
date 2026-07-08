@@ -37,7 +37,7 @@ describe('computeGoalReady', () => {
     expect(exact?.goalTimeSec).toBe(1560);
     expect(bucket?.goalTimeSec).not.toBe(1560);
     // A tighter goal (26:00 < midpoint) ⇒ higher required VDOT.
-    expect(exact!.requiredVdot).toBeGreaterThan(bucket!.requiredVdot);
+    expect(exact!.requiredVdot!).toBeGreaterThan(bucket!.requiredVdot!);
     expect(exact?.goalLabel).toContain('26:00');
   });
 
@@ -71,7 +71,7 @@ describe('computeGoalReady', () => {
     // from the CLAMPED rates, not the observed slope.
     const r = computeGoalReady('5k', 'Under 20:00', weeklyPoints(8, 44, 47), TODAY);
     expect(r?.state).toBe('projectable');
-    const gap = r!.requiredVdot - r!.currentVdot!;
+    const gap = r!.requiredVdot! - r!.currentVdot!;
     const earliestDays = Math.round(
       (new Date(r!.readyEarliestISO! + 'T12:00:00Z').getTime() - new Date(TODAY + 'T12:00:00Z').getTime()) / 86400000,
     );

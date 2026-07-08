@@ -466,7 +466,11 @@ export async function GET(req: NextRequest) {
     // statusFor is the cold fallback only when there's no trajectory (no
     // vdot/goal/date).
     const rawStatus = (race != null && daysAway != null && daysAway <= 7 && daysAway >= 0) ? 'race_week'
-      : traj ? (traj.reachable ? 'on_track' : traj.gapVdot <= 1.5 ? 'watch' : 'off')
+      // 2026-07-07 · gapVdot is null for a below-table GOAL (no fabricated
+      // VDOT gap number) — reachable is still a real boolean in that case,
+      // so 'watch' (not 'off') is the honest fallback when we can't grade
+      // the miss by magnitude.
+      : traj ? (traj.reachable ? 'on_track' : (traj.gapVdot == null || traj.gapVdot <= 1.5) ? 'watch' : 'off')
       : statusFor(projectionSec, goalSec, race != null ? daysAway : null);
     const confidenceLabel = (vdot != null && goalSec != null)
       ? computeConfidenceLabel({

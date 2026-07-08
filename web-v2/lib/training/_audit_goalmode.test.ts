@@ -44,7 +44,9 @@ const MI_M = 26.2188;
 /** Mirror of the route's status derivation (traj branch · no race_week —
  *  goal-mode has no race) + its toGoalStatus mapping. */
 function rawStatusOf(traj: NonNullable<ReturnType<typeof projectFitnessTrajectory>>): 'on_track' | 'watch' | 'off' {
-  return traj.reachable ? 'on_track' : traj.gapVdot <= 1.5 ? 'watch' : 'off';
+  // 2026-07-07 · mirrors the route's null-safe gapVdot fallback (below-table
+  // goal · 'watch', never a crash on a fabricated comparison).
+  return traj.reachable ? 'on_track' : (traj.gapVdot == null || traj.gapVdot <= 1.5) ? 'watch' : 'off';
 }
 function toGoalStatus(s: string): GoalStatus {
   return s === 'off' ? 'off-track' : s === 'watch' ? 'watching' : 'on-track';
