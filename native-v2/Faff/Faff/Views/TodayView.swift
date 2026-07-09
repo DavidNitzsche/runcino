@@ -464,11 +464,11 @@ struct TodayView: View {
                             }
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .ignoresSafeArea(edges: .bottom)
-                            .scrollClipDisabled(true)
-                            // 2026-07-08 · restores the horizontal containment
-                            // the (b) comment above says was once a double
-                            // `.clipped()` but is gone — horizontal-only so the
-                            // hero still rides up. See Theme.containHorizontally.
+                            // 2026-07-09 · the past-day recap body does NOT ride
+                            // up (no offset hero), so it must clip normally —
+                            // scrollClipDisabled was the sole enabler of the
+                            // sideways pan/bleed. Removed. containHorizontally
+                            // stays as a belt-and-suspenders width clamp.
                             .containHorizontally()
                         }
                         .frame(width: proxy.size.width, height: proxy.size.height)
@@ -489,7 +489,9 @@ struct TodayView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(edges: .bottom)
                     .padding(.top, 6)
-                    .scrollClipDisabled(true)
+                    // 2026-07-09 · post-run body does not ride up → clip
+                    // normally so it can't pan sideways. scrollClipDisabled
+                    // removed (it was the sideways-pan enabler).
                     .containHorizontally()
                 } else if isPostRaceWindow {
                     // 2026-07-07 · P2-9 · the days AFTER the goal race, no
@@ -507,7 +509,8 @@ struct TodayView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(edges: .bottom)
                     .padding(.top, 6)
-                    .scrollClipDisabled(true)
+                    // 2026-07-09 · post-race body does not ride up → clip
+                    // normally so it can't pan sideways.
                     .containHorizontally()
                 } else if isNoGoalState {
                     // No race and no goal — hero empty state for new users

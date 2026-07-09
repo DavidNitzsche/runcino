@@ -65,7 +65,8 @@ struct RunRecapView: View {
                     .padding(.bottom, 120)
                 }
             }
-            .scrollClipDisabled(true)
+            // 2026-07-09 · the recap body does not ride up → clip normally so
+            // it can't pan sideways (scrollClipDisabled was the pan enabler).
             .containHorizontally()
         }
         .faffHeaderPill {
