@@ -34,6 +34,7 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { sanitizeSplits } from '@/lib/runs/split-sanity';
+import { splitTimesReliable, splitsSumSeconds } from '@/lib/runs/split-coverage';
 import { requireUserId } from '@/lib/auth/session';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
@@ -444,17 +445,20 @@ export async function POST(req: NextRequest) {
   // mile has no pace-sample crossing: splits sum < duration by ~1 mile
   // worth of seconds. Flag and drop so consumers don't see truncated data.
   if (Array.isArray(data.splits) && data.splits.length > 0 && totalSec > 0) {
-    const splitsSumS = (data.splits as Array<Record<string, unknown>>).reduce((acc, s) => {
-      const distMi = typeof s.distanceMi === 'number' ? s.distanceMi : 1;
-      return acc + (typeof s.paceSecPerMi === 'number' ? s.paceSecPerMi * distMi : 0);
-    }, 0);
-    if (Math.abs(Math.round(splitsSumS) - totalSec) > 5) {
+    // 2026-07-09 · reliability check via splitTimesReliable (see
+    // lib/runs/split-coverage.ts). The old `|sum − duration| > 5s` test
+    // dropped valid splits on every run that ended mid-mile — the split
+    // times legitimately fall ~1 cool-down-mile short of the full duration.
+    // Now we only drop when the times OVER-claim the run or fall short by
+    // more than a whole mile (a genuinely missing mile).
+    const splitsSumS = splitsSumSeconds(data.splits as Array<Record<string, unknown>>);
+    if (!splitTimesReliable(splitsSumS, totalSec, totalMi)) {
       data.splits = [];
       data.splits_unreliable = true;
     } else {
-      // Whole-run split-sum passed → apply the per-mile physiological guard
-      // so a single GPS-spike mile (impossible pace for its HR) is flagged
-      // rather than shown as a real fast split. See lib/runs/split-sanity.ts.
+      // Reliable whole-run → apply the per-mile physiological guard so a
+      // single GPS-spike mile (impossible pace for its HR/cadence) is
+      // flagged rather than shown as a real fast split. See split-sanity.ts.
       data.splits = sanitizeSplits(data.splits as Array<Record<string, unknown>>);
     }
   }
