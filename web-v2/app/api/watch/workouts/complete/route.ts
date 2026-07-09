@@ -33,6 +33,7 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
+import { sanitizeSplits } from '@/lib/runs/split-sanity';
 import { requireUserId } from '@/lib/auth/session';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
@@ -450,6 +451,11 @@ export async function POST(req: NextRequest) {
     if (Math.abs(Math.round(splitsSumS) - totalSec) > 5) {
       data.splits = [];
       data.splits_unreliable = true;
+    } else {
+      // Whole-run split-sum passed → apply the per-mile physiological guard
+      // so a single GPS-spike mile (impossible pace for its HR) is flagged
+      // rather than shown as a real fast split. See lib/runs/split-sanity.ts.
+      data.splits = sanitizeSplits(data.splits as Array<Record<string, unknown>>);
     }
   }
 

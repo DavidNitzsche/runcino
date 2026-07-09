@@ -43,6 +43,7 @@ import { toUtcIso, toLocalWallIso } from '@/lib/runs/normalize-time';
 import { runnerTimezoneOrPacific, captureTimezoneFromDevice } from '@/lib/runtime/runner-tz';
 import { requireUserId } from '@/lib/auth/session';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
+import { sanitizeSplits } from '@/lib/runs/split-sanity';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
 import { bucketHrSamplesByZone, hasHrSamples } from '@/lib/coach/hr-zone-bucket';
@@ -309,7 +310,13 @@ export async function POST(req: NextRequest) {
         );
       }
       return {
-        splits: splitsCheck.reliable ? rawSplits : [],
+        // Per-mile physiological guard (2026-07-09) runs AFTER the whole-run
+        // duration check, on the reliable set, so nulling one impossible
+        // mile's pace can't shrink the split-sum and trip the whole-run
+        // gate into dropping every split. Flags the GPS-spike artifact —
+        // a mile whose pace is impossible for its cadence/HR. See
+        // lib/runs/split-sanity.ts.
+        splits: sanitizeSplits(splitsCheck.reliable ? rawSplits : []),
         splits_unreliable: rawSplits.length > 0 ? !splitsCheck.reliable : false,
         splits_validation: splitsCheck.reliable ? null : {
           splitsSumS: splitsCheck.splitsSumS,
