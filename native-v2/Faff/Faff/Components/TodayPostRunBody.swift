@@ -267,12 +267,9 @@ struct TodayPostRunBody: View {
                 .foregroundStyle(heroStyle ?? AnyShapeStyle(accent))
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
-            if let sub = subtitleText {
-                Text(sub)
-                    .font(.body(14, weight: .semibold))
-                    .foregroundStyle(mutedText)
-                    .lineLimit(2)
-            }
+            // 2026-07-09 · recap sentence under the hero cut (David) — it
+            // restated the stats immediately below it ("Tempo done · 3.5 mi
+            // @ 7:21 · avg HR 155"). The hero is just the effort word now.
         }
         .padding(.horizontal, 22).padding(.top, 0).padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -547,7 +544,7 @@ struct TodayPostRunBody: View {
     private var mileSplits: some View {
         if let splits = detail?.splits, !splits.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("MILE SPLITS")
+                Text((detail?.phase_breakdown?.isEmpty == false) ? "SEGMENTS" : "MILE SPLITS")
                     .font(.body(11, weight: .extraBold)).tracking(1.5)
                     .foregroundStyle(subtleText)
                 let paces = splits.compactMap { paceSecForSplit($0) }
@@ -597,50 +594,76 @@ struct TodayPostRunBody: View {
         }
     }
 
-    /// Splits grouped by phase (warm-up / work / cool-down).
+    /// Per-phase breakdown (warm-up / work / cool-down) by ACTUAL distance
+    /// and pace. 2026-07-09 · replaces the old mile-splits-grouped-under-
+    /// phases view, which chopped a structured run into whole miles that
+    /// never line up with the phase boundaries — a 3.5mi tempo read as "4
+    /// miles", a 1.5mi warm-up as "1 mile", and the straddle mile (half
+    /// warm-up, half tempo) got judged as tempo. Each phase now reads by
+    /// its real distance + pace, which is what the workout actually was.
+    /// (`splits`/`fastest`/`denom` retained in the signature for the
+    /// caller's continuous-run mile-split fallback; unused here.)
     @ViewBuilder
     private func phasedSplitList(splits: [RunSplit], phases: [PhaseBreakdown],
                                   fastest: Int, denom: Int) -> some View {
-        let assigned = assignSplitsToPhases(splits: splits, phases: phases)
-        VStack(alignment: .leading, spacing: 16) {
-            ForEach(Array(phases.enumerated()), id: \.offset) { idx, phase in
-                let group = assigned.filter { $0.phaseIdx == idx }.map { $0.split }
-                if !group.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            Text(phaseSplitLabel(phase))
-                                .font(.body(11, weight: .extraBold)).tracking(1.2)
-                                .foregroundStyle(primaryText.opacity(0.7))
-                            if let dist = phase.actual_distance_mi {
-                                Text("\(Units.formatDistance(miles: dist)) \(Units.distanceLabel())")
-                                    .font(.body(11, weight: .semibold))
-                                    .foregroundStyle(subtleText)
-                            }
-                            Spacer()
-                            if let hr = phase.avg_hr {
-                                Text("\(hr) bpm")
-                                    .font(.body(11, weight: .semibold))
-                                    .foregroundStyle(subtleText)
-                            }
-                        }
-                        VStack(spacing: 8) {
-                            ForEach(group) { split in
-                                SplitRow(
-                                    split: split,
-                                    paceSec: paceSecForSplit(split),
-                                    tint: tintForPhase(phase),
-                                    fastestSec: fastest,
-                                    denom: denom,
-                                    targetPaceSec: phase.target_pace_sec,
-                                    tolerancePaceSec: effectiveTolerance(phase.tolerance_pace_sec),
-                                    onMesh: onMesh
-                                )
-                            }
-                        }
+        let shown = phases.filter { ($0.actual_distance_mi ?? 0) > 0.02 }
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { i, phase in
+                // Divider BETWEEN rows only — the last row's divider would
+                // double up against the section's own bottom divider.
+                phaseRow(phase, dist: phase.actual_distance_mi ?? 0,
+                         showDivider: i < shown.count - 1)
+            }
+        }
+    }
+
+    /// One row per training phase: NAME + distance on the left, avg pace +
+    /// avg HR on the right. For the work phase, appends the target pace so
+    /// "how did the tempo go" reads at a glance — factual, no advice.
+    @ViewBuilder
+    private func phaseRow(_ phase: PhaseBreakdown, dist: Double, showDivider: Bool) -> some View {
+        let paceStr: String? = {
+            if let p = phase.actual_pace, !p.isEmpty { return "\(p)/\(Units.distanceLabel())" }
+            if let d = phase.actual_duration_sec, dist > 0 {
+                return Units.formatPace(secPerMile: Int((Double(d) / dist).rounded()))
+            }
+            return nil
+        }()
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(phaseSplitLabel(phase))
+                    .font(.body(12, weight: .extraBold)).tracking(1.0)
+                    .foregroundStyle(primaryText)
+                HStack(spacing: 6) {
+                    Text("\(Units.formatDistance(miles: dist)) \(Units.distanceLabel())")
+                        .font(.body(11, weight: .semibold))
+                        .foregroundStyle(subtleText)
+                    if phase.type.lowercased() == "work", let t = phase.target_pace_sec, t > 0 {
+                        Text("· target \(Units.formatPace(secPerMile: Int(t)))")
+                            .font(.body(11, weight: .semibold))
+                            .foregroundStyle(subtleText.opacity(0.85))
                     }
                 }
             }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(paceStr ?? "—")
+                    .font(.body(16, weight: .bold))
+                    .foregroundStyle(primaryText)
+                if let hr = phase.avg_hr {
+                    Text("\(hr) bpm")
+                        .font(.body(11, weight: .semibold))
+                        .foregroundStyle(subtleText)
+                }
+            }
         }
+        .padding(.vertical, 10)
+        .overlay(
+            Rectangle()
+                .fill(showDivider ? dividerColor.opacity(0.6) : Color.clear)
+                .frame(height: 1),
+            alignment: .bottom
+        )
     }
 
     /// Easy pace is a range, not a target — widen the splits band for easy /
@@ -816,78 +839,24 @@ struct TodayPostRunBody: View {
 
     @ViewBuilder
     private var howItWent: some View {
-        if let recap, !recap.verdict.isEmpty || !recap.facts.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("HOW IT WENT")
-                        .font(.body(11, weight: .extraBold)).tracking(1.5)
-                        .foregroundStyle(subtleText)
-                    Spacer()
-                    Text(recap.verdict.replacingOccurrences(of: ".", with: "").uppercased())
-                        .font(.body(9, weight: .extraBold)).tracking(1.2)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(verdictTint, in: Capsule())
-                }
-                // 2026-06-02 round 51 · facts + coach_tip share one
-                // VStack so every bullet uses the same 7pt spacing.
-                // Earlier round-50 fix split them with .padding(.top, 7)
-                // on the tip · parent VStack's 12pt + the 7pt → double-
-                // gap above the last bullet. Single list = consistent
-                // rhythm.
-                let bullets: [String] = recap.facts +
-                    ((recap.coach_tip ?? "").isEmpty ? [] : [recap.coach_tip!])
-                if !bullets.isEmpty {
-                    VStack(alignment: .leading, spacing: 7) {
-                        ForEach(Array(bullets.enumerated()), id: \.offset) { _, line in
-                            HStack(alignment: .top, spacing: 8) {
-                                Circle()
-                                    .fill(accent)
-                                    .frame(width: 4, height: 4)
-                                    .padding(.top, 6)
-                                Text(line)
-                                    .font(.body(13))
-                                    .foregroundStyle(mutedText)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 0)
-                            }
-                        }
-                    }
-                }
-                // 2026-06-09 · conditions note (heat adjustment context).
-                // recap.conditions_note carries the web's "Heat slowdown:
-                // 14.5% · adjusted verdict" copy when the engine applied a
-                // heat penalty. Previously only surfaced in RunDetailView;
-                // added here so the Today post-run view shows it inline.
-                if let cn = recap.conditions_note, !cn.isEmpty {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "thermometer.medium")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(subtleText)
-                            .padding(.top, 2)
-                        Text(cn)
-                            .font(.body(12))
-                            .foregroundStyle(mutedText)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .lineLimit(3)
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(chipBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                // Per-run-type analysis panel (design_handoff_iphone_postrun).
-                // Swaps body by effort:
-                //   easy/recovery → AEROBIC STAMP
-                //   long          → THE LONG
-                //   tempo         → THE TEMPO
-                //   intervals     → THE REPS
-                HowItWentPanel(
-                    effort: hiwEffort,
-                    detail: detail,
-                    accent: accent,
-                    onMesh: onMesh,
-                    adjustedTargetSPerMi: recap.intervalsAdjustedTargetSPerMi
-                )
-            }
+        // 2026-07-09 · the manufactured coaching is CUT (David): the verdict
+        // blurbs, the "try to start earlier when it's warm" advice, the
+        // fabricated heat-% and "39s of spread" numbers — all the reactive-
+        // coach voice he retired, wrapped around shaky splits. The factual
+        // breakdown now lives in SEGMENTS / MILE SPLITS + the stat trios.
+        //
+        // The ONE survivor is the interval rep-by-rep panel: interval runs
+        // hide mile splits (a warm-up mile / half a rep / a jog is noise),
+        // so the per-rep table IS their breakdown. Everything else shows
+        // nothing here.
+        if hiwEffort == .intervals {
+            HowItWentPanel(
+                effort: hiwEffort,
+                detail: detail,
+                accent: accent,
+                onMesh: onMesh,
+                adjustedTargetSPerMi: recap?.intervalsAdjustedTargetSPerMi
+            )
             .padding(.horizontal, 24).padding(.vertical, 18)
             .background(sectionBg)
         }

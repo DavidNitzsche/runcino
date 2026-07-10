@@ -284,37 +284,17 @@ struct TodayView: View {
                         .padding(.top, 10)
                 }
 
-                // 2026-07-07 · today-composition · P2-8 · phase-conditional
-                // composition. C1 spec: "race week... Promote: Race countdown
-                // becomes hero" / "taper... Promote: Race countdown". Was
-                // fully dead — weekContextLabel composed "BASE · 11 WEEKS TO
-                // RACE" and daysToRaceValue/raceShortDisplay all resolved,
-                // but nothing on the page ever rendered them; the countdown
-                // existed only as a small chip inside the readiness panel.
-                // Suppressed on race morning (raceDayRouteSlug already owns
-                // that state), post-run, post-race, and no-goal — this is
-                // pre-run-only context. Outside 14 days: no banner at all
-                // (matches brief's "one banner max" — most training days
-                // shouldn't carry race chrome). Inside 14 days: promote a
-                // compact countdown row. Inside 7: race-week variant (bigger
-                // number, race-red accent) per the C1 table's explicit
-                // 7-day race-week promotion.
+                // Pre-run race context. The far-out phase line ("6 WEEKS TO
+                // RACE" / "BASE · 11 WEEKS TO RACE") was REMOVED 2026-07-09
+                // (David: "I dont think we need 6 weeks to race") — it added a
+                // fixed line the hero collided with and carried little value
+                // most of the season. The near-race countdown is kept: inside
+                // 14 days it's a deliberate C1 promotion (taper / race week),
+                // not ambient chrome. Suppressed on post-run / post-race /
+                // no-goal, which own their own header state.
                 if !isPostRunMode && !isPostRaceWindow && !isNoGoalState {
                     if let days = daysToRaceValue, days > 0, days <= 14 {
                         raceProximityBanner(daysOut: days)
-                            .padding(.horizontal, Theme.Space.pageH)
-                            .padding(.top, 10)
-                    } else if let ctx = weekContextLabel {
-                        // Outside 14 days (or no race at all — goal-mode
-                        // runners still get a phase read) · render the
-                        // phase context line only, no countdown chrome —
-                        // "BASE · 11 WEEKS TO RACE" / "BUILD PHASE". Quiet,
-                        // single row, matches the C1 "Day N of M in
-                        // current phase" element.
-                        Text(ctx)
-                            .font(.body(11, weight: .extraBold))
-                            .tracking(1.2)
-                            .foregroundStyle(Theme.txt.opacity(0.5))
                             .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, 10)
                     }
@@ -479,20 +459,31 @@ struct TodayView: View {
                     // Show the run directly on the main canvas — same flat
                     // layout as past-day recaps. DragSheet is suppressed
                     // in this mode (see gate below).
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            postRunBody
+                    //
+                    // 2026-07-09 · HORIZONTAL PAN (definitive) · this branch
+                    // was a bare ScrollView with `maxWidth: .infinity` and
+                    // no clip — the sole difference from the isDone branch,
+                    // which pins width via GeometryReader + .clipped(). A
+                    // vertical ScrollView can still be dragged sideways
+                    // unless its content AND the ScrollView are pinned to the
+                    // exact viewport width and clipped (see the isDone branch
+                    // comment · rounds 62-67). Applying the same hardening
+                    // here: proxy.size.width on the inner VStack + on the
+                    // ScrollView + .clipped(). No child measured wider than
+                    // the screen (402pt) — the pin is what kills the drag.
+                    GeometryReader { proxy in
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                postRunBody
+                            }
+                            .frame(width: proxy.size.width, alignment: .leading)
+                            .padding(.bottom, 100)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.bottom, 100)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                        .ignoresSafeArea(edges: .bottom)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea(edges: .bottom)
                     .padding(.top, 6)
-                    // 2026-07-09 · post-run body does not ride up → clip
-                    // normally so it can't pan sideways. scrollClipDisabled
-                    // removed (it was the sideways-pan enabler).
-                    .containHorizontally()
                 } else if isPostRaceWindow {
                     // 2026-07-07 · P2-9 · the days AFTER the goal race, no
                     // run logged today, no next-cycle plan yet. Same flat
@@ -502,16 +493,18 @@ struct TodayView: View {
                     // for this window). TodayRecoveryPanel was fully built
                     // (5-section renderer, dark-native) but had never been
                     // mounted anywhere.
-                    ScrollView(.vertical, showsIndicators: false) {
-                        postRaceBody
-                            .padding(.bottom, 100)
+                    // 2026-07-09 · same horizontal-pan hardening as isPostRunMode.
+                    GeometryReader { proxy in
+                        ScrollView(.vertical, showsIndicators: false) {
+                            postRaceBody
+                                .frame(width: proxy.size.width, alignment: .leading)
+                                .padding(.bottom, 100)
+                        }
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                        .ignoresSafeArea(edges: .bottom)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea(edges: .bottom)
                     .padding(.top, 6)
-                    // 2026-07-09 · post-race body does not ride up → clip
-                    // normally so it can't pan sideways.
-                    .containHorizontally()
                 } else if isNoGoalState {
                     // No race and no goal — hero empty state for new users
                     // who completed onboarding without setting a target.
@@ -549,7 +542,15 @@ struct TodayView: View {
                                 .padding(.bottom, 220)
                         }
                     }
-                    .scrollClipDisabled(true)
+                    // 2026-07-09 · scrollClipDisabled(true) REMOVED. It let the
+                    // 88pt hero ride UP out of its frame — a small stylistic
+                    // bleed behind the frosted strip, but it also drew the hero
+                    // straight across the fixed "WEEKS TO RACE" line above on a
+                    // tall long-run column (David), and it was the horizontal-
+                    // pan enabler (same reason RunRecapView dropped it). Clipping
+                    // to the frame keeps the hero below the race-context line and
+                    // hardens the sideways-pan. containHorizontally stays as the
+                    // belt-and-braces horizontal clamp.
                     .containHorizontally()
                     .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
                     .offset(y: -22 * (1 - sheetProgress))
@@ -1168,7 +1169,13 @@ struct TodayView: View {
             // (David 2026-06-12).
             let hasCap = (displayWorkout?.hrCeilingBpm ?? 0) > 0
             let hasWindow = !(forecast?.best_window?.isEmpty ?? true)
-            if (hasCap || hasWindow) && selectedEffort != .rest {
+            // Fuel is surfaced ONLY when the session actually requires it
+            // (long / marathon-pace work) — a short easy run needs nothing,
+            // so no fuel chip renders (David 2026-07-09). Shoe is chosen after
+            // the run, and the old "Full plan" link went to a dead page — both
+            // removed. Fuel lives here with the other prescription chips.
+            let hasFuel = (displayWorkout?.fueling?.needed ?? false)
+            if (hasCap || hasWindow || hasFuel) && selectedEffort != .rest {
                 HStack(spacing: 10) {
                     if let cap = displayWorkout?.hrCeilingBpm, cap > 0 {
                         heroChip(icon: "heart.fill",
@@ -1179,6 +1186,13 @@ struct TodayView: View {
                         heroChip(icon: "clock.fill",
                                  iconColor: Theme.dist,
                                  text: win.uppercased())
+                    }
+                    if let f = displayWorkout?.fueling, f.needed {
+                        heroChip(icon: "bolt.fill",
+                                 iconColor: Theme.Accent.amberBright,
+                                 text: f.gels > 0
+                                    ? "FUEL \(f.gels) GEL\(f.gels == 1 ? "" : "S")"
+                                    : "FUEL")
                     }
                 }
                 .padding(.top, 18)
@@ -1257,26 +1271,10 @@ struct TodayView: View {
                 .padding(.top, 16)
             }
 
-            // 2026-07-07 · P2-10 · "Full plan · shoe · fuel" tap affordance ·
-            // opens the pre-run detail sheet (TodayPreRunBodyV3). Same rest-
-            // day gate as the hero chip row above — there's no shoe/fuel/
-            // conditions detail to show on a day with no run. (This whole
-            // block only renders inside runHeroDetail, which is itself
-            // gated on !isSelectedDaySkipped by heroBlock above — no
-            // separate skip check needed here.)
-            if selectedEffort != .rest {
-                Button { showPreRunDetail = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "list.bullet.rectangle")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Full plan · shoe · fuel")
-                            .font(.body(12.5, weight: .semibold))
-                    }
-                    .foregroundStyle(Theme.txt.opacity(0.62))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 16)
-            }
+            // 2026-07-09 · the "Full plan · shoe · fuel" tap affordance was
+            // removed (David): Full plan went to a dead page, shoe is chosen
+            // after the run, and fuel now surfaces as a prescription chip
+            // above only when the session requires it. Nothing to open here.
 
             // Skip / Reschedule affordance under the pills (David's pick 1b,
             // extended 2026-06-26). On today: "Not running today? Skip". On a
