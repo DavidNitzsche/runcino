@@ -445,6 +445,30 @@
       <code>components/faff-app/toolkit/CoachVerdict.tsx</code></td>
   <td class="client-web">WEB</td>
 </tr>
+<tr>
+  <td><strong>Pace calibration session</strong></td>
+  <td>After onboarding (or when pace confidence drops) the backend opens a calibration session — a short prescribed effort whose result tightens the runner's pace band + VDOT confidence. <code>GET /api/coach/calibration/status</code> returns pending / in_progress / completed / skipped (+ band, confidence); DELETE skips it for 7 days; start / complete run the session.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · design tweak needed — Today needs a calibration banner keyed to the status enum with a skip affordance, mirroring the web surface. The watch prompt gating already reads the same status endpoint, so the phone banner is the missing half.</td>
+  <td><code>app/api/coach/calibration/status/route.ts</code> · <code>lib/coach/calibration.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Plan-rebuild diff (SEE THE NEW PLAN)</strong></td>
+  <td>When the auto-adapter rebuilds the plan (race date / goal-time / A-race add or remove) <code>GET /api/plan/diff?from&amp;to</code> returns a date-aligned, change-classified comparison of old vs new (daysChanged · milesDelta · qualityDaysChanged, per-day changeKind). Web renders a side-by-side; iOS never shows what changed after a rebuild.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · design tweak needed — after a rebuild, Today should offer a "see what changed" sheet driven by byDate + summary. Without it the plan silently reshapes under the runner.</td>
+  <td><code>app/api/plan/diff/route.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Heat scheduling suggestion (start earlier / swap days)</strong></td>
+  <td>A cron flags heat-risk quality days and proposes either starting by ~6 AM or swapping the quality day with an easy day. <code>POST /api/env-schedule/act</code> applies <code>earlier</code> / <code>swap</code> / <code>dismiss</code>, re-verifying the hard-easy guard at act time. iOS has no chip to surface or act on these intents.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · can add inline · a dismissible Today chip ("Heat Thursday — start by 6 AM, or swap to Friday") posting {{intentId, action}}. Same shape as the adaptation-intent cards already rendered on Today.</td>
+  <td><code>app/api/env-schedule/act/route.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -650,6 +674,22 @@
   <td><code>app/api/watch/today/route.ts</code> ·
       <code>lib/watch/build-workout.ts</code></td>
   <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Restore the original workout after an auto-downgrade</strong></td>
+  <td>When the adapter downgrades a workout (quality → easy on a bad-readiness day) <code>POST /api/plan/restore</code> promotes the original prescription back with one tap, re-derives its spec + pace, and logs a <code>plan_adapt_overridden</code> intent. iOS shows the adapted workout but offers no way to say "I'll do the original anyway."</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · can add inline · a "Restore original" action in the planned-workout drawer, shown when <code>original_*</code> columns are present, posting {{workoutId}}.</td>
+  <td><code>app/api/plan/restore/route.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Accept the coach's standing recommendation</strong></td>
+  <td>After a runner overrides a downgrade the engine holds its view as forward counsel. <code>POST /api/plan/workout/[id]/accept-standing</code> lets the runner later accept that advice (type / distance / reschedule). Pairs with restore; iOS surfaces neither side of the exchange.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · design tweak needed — needs the restore surface first, then a follow-up "coach still suggests easing back — accept?" affordance in the drawer.</td>
+  <td><code>app/api/plan/workout/[id]/accept-standing/route.ts</code></td>
+  <td class="client-ios">IOS</td>
 </tr>
 </table>
 
@@ -1233,6 +1273,14 @@
       <code>db/migrations/128_run_provenance.sql</code></td>
   <td class="client-web">WEB</td>
 </tr>
+<tr>
+  <td><strong>Source-of-truth personal records endpoint</strong></td>
+  <td><code>GET /api/records</code> returns PRs the SoT-compliant way — curated race results (<code>races.actual_result</code>) first, training-run bests only as <code>provisional:true</code> with the "Training effort · race to lock in" caption. The shipped iPhone Activity "Personal records" card computes records client-side from <code>/api/log</code> training runs, so a GPS-glitched jog can headline as FASTEST PACE while a curated HM PR stays invisible (P1-7 audit).</td>
+  <td class="cov-partial">PARTIAL · WRONG SOURCE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · can add inline · point the ActivityView records grid at <code>/api/records</code> and render provisional entries with their caption instead of computing bests locally. This is the fix the endpoint was built for; it also closes a race-data source-of-truth violation.</td>
+  <td><code>app/api/records/route.ts</code> · <code>lib/race/personal-records.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -1245,7 +1293,7 @@
 <table>
 <tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
 <tr>
-  <td><strong>Manual health entry</strong></td>
+  <td><strong>Manual health entry</strong><span class="src">also found by IOS 2026-07-13 · safe to leave for iOS — HealthKit auto-ingests these; only gap is the HealthKit-permission-denied fallback.</span></td>
   <td>Web-only users (no Apple Health, no Garmin) can manually enter sleep,
       HRV, weight, RHR via POST /api/health/manual with research-grounded
       validation ranges. Backend stamps user_id (text) + writes to
@@ -1315,6 +1363,14 @@
   <td><strong>SHIPPED · toolkit ZoneMethodToggle.</strong> RunDetailView TIME IN ZONE section ships ZoneMethodToggle (%MHR / LTHR) above the ZoneBar when run.hr_zones_from_lthr is set. Switches the band math; lab math + body math don't collide.</td>
   <td><code>lib/training/zones.ts</code> ·
       <code>ProfileZoneTable.method</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Daily subjective readiness capture</strong></td>
+  <td><code>POST /api/readiness/subjective</code> { rating 0..10 } records the morning "how do you feel" check; when it disagrees with the objective composite by ≥ 15 pts it flags <code>willTriggerOverride</code> so the read overrides the numbers (Saw 2016). iOS displays an existing <code>subjectiveOverride</code> in the readiness brief but has no input to submit one.</td>
+  <td class="cov-partial">PARTIAL · SHOWN NOT CAPTURED</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · can add inline · a 0-10 morning prompt on Today or the readiness sheet posting {{rating}}, with the "your read overrides the numbers" toast on willTriggerOverride.</td>
+  <td><code>app/api/readiness/subjective/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
 </table>
@@ -1481,6 +1537,14 @@
   <td><code>profile.connections_skipped</code> · migration 115 ·
       <code>app/api/strava/status/route.ts</code></td>
   <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>In-app account deletion</strong></td>
+  <td><code>POST /api/account/delete</code> does a real (not deactivation) wipe of every user-keyed table, gated on a fresh password re-auth (a stolen session alone can't wipe an account). iOS SettingsView currently has no delete-account path.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · design tweak needed — Settings needs a "Delete account" flow with password confirmation. App Store Guideline 5.1.1(v) requires deletion for any app that offers account creation — this is a review requirement, not polish.</td>
+  <td><code>app/api/account/delete/route.ts</code></td>
+  <td class="client-ios">IOS</td>
 </tr>
 </table>
 
@@ -1901,7 +1965,7 @@
   <td class="client-web">WEB</td>
 </tr>
 <tr>
-  <td><strong>runner_injuries table has no CRUD endpoint</strong></td>
+  <td><strong>runner_injuries table has no CRUD endpoint</strong><span class="src">also found by IOS 2026-07-13 · endpoint now EXISTS (/api/injuries) — see the IOS "Injury CRUD" row above; still unsurfaced on iPhone.</span></td>
   <td>The adaptation engine reads <code>runner_injuries</code> for
       Q-08 injury_active triggers and buildInjuryPlan consumes a row by
       id to scaffold a return-to-run plan. But there's no
@@ -1969,6 +2033,30 @@
       <code>lib/plan/generate.ts</code> ·
       <code>components/faff-app/seed.ts:pickStrengthDays</code></td>
   <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Coached-mode calendar import (Final Surge / TrainingPeaks)</strong></td>
+  <td>The runner pastes their coach platform's ICS Sync URL; <code>/api/coach-calendar</code> caches the parsed events and renders them read-only on Today (GET status / POST url / DELETE disconnect). Faff derives no spec and never writes back. Entirely absent from iOS — a coached athlete on iPhone can't connect their plan.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · design tweak needed — a Profile / Connections "Coached mode" row to paste + validate the URL, plus a read-only coached-workout card on Today.</td>
+  <td><code>app/api/coach-calendar/route.ts</code> · <code>lib/coach-calendar/store.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Injury CRUD — the escalation above a niggle</strong></td>
+  <td><code>GET/POST /api/injuries</code> + <code>/api/injuries/[id]</code> manage true injuries (site · severity minor/moderate/major · return protocol). An open row (<code>resolved_date NULL</code>) flips the runner into INJURY-mode and generates a walk-run scaffold on accept. iOS SymptomReportSheet posts only niggle / sick; the injury escalation path has no iOS surface. (The WEB row below, "runner_injuries table has no CRUD endpoint," pre-dates these routes — the endpoint now exists.)</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · design tweak needed — extend SymptomReportSheet with an "Injury" tier (1-10 pain → minor/moderate/major) posting <code>/api/injuries</code>, plus an INJURY-mode Today state and the walk-run return scaffold.</td>
+  <td><code>app/api/injuries/route.ts</code> · <code>app/api/injuries/[id]/route.ts</code> · <code>lib/plan/injury-builder.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Niggle history + recurrence</strong></td>
+  <td><code>GET /api/niggle/history</code> returns the full niggle log two ways — per-body-part summaries with <code>recent_flare_count</code> recurrence flags, and every episode with recovery trend + ACWR-at-log. iOS lets the runner log and clear a niggle but never shows the history or a recurring-site warning.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · can add inline · a "niggle history" list (Health tab or off the niggle chip) surfacing recurrence — a body part flaring repeatedly under high ACWR is the signal worth showing.</td>
+  <td><code>app/api/niggle/history/route.ts</code></td>
+  <td class="client-ios">IOS</td>
 </tr>
 </table>
 
