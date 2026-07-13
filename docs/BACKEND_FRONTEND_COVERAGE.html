@@ -469,6 +469,46 @@
   <td><code>app/api/env-schedule/act/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>Post-run recovery brief ("what to do tonight")</strong></td>
+  <td>After a run, the backend composes a post-run recovery brief that scores
+      tonight's recovery need from HRV (45%), RHR (25%), TSB (20%) and sleep
+      adequacy (10%), then narrates what to do this evening in coach voice
+      (sleep target, fuel, how hard tomorrow can be). Returns null when there
+      is nothing honest to brief on. Distinct from the pre-run readiness
+      brief, which the web surface already renders. Cites Pfitzinger, Daniels,
+      Hudson, Research/00b.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · can add inline · a post-run
+      RECOVERY card on Today's post-run pivot fetching
+      <code>GET /api/coach/recovery-brief</code>, gated on payload presence,
+      mirroring the readiness-brief card already rendered pre-run. The iPhone
+      agent's forward-compat decode already consumes this payload; web drops
+      it.</td>
+  <td><code>app/api/coach/recovery-brief/route.ts</code> ·
+      <code>lib/coach/recovery-brief.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>One-line session cue on Today</strong></td>
+  <td><code>/api/today/purpose</code> returns a single-sentence, coach-voice
+      SESSION CUE for today's run (<code>composeCue</code>) alongside the
+      "why this run" purpose facts. It reads today's workout type, recent
+      hard-session recency, heat penalty and pillar-down streak to say one
+      tactical thing, or null when it cannot compose honestly. The web
+      TodayView consumes this endpoint for the purpose facts but ignores the
+      <code>cue</code> field; iPhone renders it as the pre-run SESSION CUE
+      row.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · can add inline · render the
+      <code>cue</code> string already present in the
+      <code>/api/today/purpose</code> response as a one-line SESSION CUE row on
+      Today's session panel. No new endpoint or query needed, the field is
+      already on the wire.</td>
+  <td><code>app/api/today/purpose/route.ts</code> ·
+      <code>lib/coach/session-cue.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -1205,6 +1245,29 @@
       <code>course_library.finish_label</code>,
       <code>course_library.notes</code> · migration 102 ·
       <code>components/faff-app/raceDetail.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Full race execution plan (splits · warm-up · heat tree · B-goal aborts)</strong></td>
+  <td><code>lib/race/execution-plan.ts</code> composes the complete
+      race-morning brief from goal, physiology, conditions and CI: per-mile
+      split targets with a first-mile allowance and a controlled
+      even/negative split, objective B-goal mid-race abort triggers, a
+      start-hour heat decision tree, and a warm-up timeline anchored to the
+      gun. Served at <code>GET /api/race/[slug]/execution-plan</code>. The web
+      race page renders only the fueling slice of this
+      (<code>computeRaceFueling</code>); the split table, warm-up timeline,
+      heat tree and abort triggers never reach the runner. Cites Research/06
+      and Research/08.</td>
+  <td class="cov-partial">PARTIAL · FUELING ONLY</td>
+  <td><strong style="color:#FC4D64;">GAP</strong> · can add inline · add a RACE
+      EXECUTION section to RaceView that fetches
+      <code>/api/race/[slug]/execution-plan</code> and lays out the split-target
+      table, warm-up timeline, heat decision line and B-goal abort chips, next
+      to the fueling section already there. No web surface fetches the
+      execution-plan endpoint today.</td>
+  <td><code>lib/race/execution-plan.ts</code> ·
+      <code>app/api/race/[slug]/execution-plan/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
