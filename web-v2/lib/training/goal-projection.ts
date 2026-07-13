@@ -274,12 +274,12 @@ export async function computeGoalProjection(args: {
   // Failure produces the neutral no-absence shape, so a query timeout can
   // never fabricate a break.
   const executionAbsence = await loadExecutionAbsence(userUuid)
-    .catch(() => ({ daysSinceLastRun: null, recentMissedKeyCount: 0 }));
+    .catch(() => ({ daysSinceLastRun: null, recentMissedKeyDates: [] as string[] }));
   const executionQuality = executionQualityFromTestPoints(
     recentTestPoints,
     driftSignals.some((s) => s.kind === 'missed_key_workouts'),
     executionAbsence.daysSinceLastRun,
-    executionAbsence.recentMissedKeyCount,
+    executionAbsence.recentMissedKeyDates,
   );
   const plannedTargetVdot = vdot != null
     ? await loadPlannedTargetVdot(userUuid, raceDistanceMi).catch(() => null)
@@ -353,13 +353,14 @@ export function executionQualityFromTestPoints(
   points: GoalProjection['recentTestPoints'],
   missedKeyWorkouts: boolean,
   // 2026-07-13 · S1 · absence inputs (optional, defaulted so the pre-fix
-  // 2-arg call and the pinned 3-arg contract both stay valid):
+  // 2-arg call stays byte-identical):
   //   · daysSinceLastRun · drives the inactivity decay.
-  //   · recentMissedKeyCount · folds in as zero-execution data points.
+  //   · recentMissedKeyDates · dates of recent unrun key sessions, merged by
+  //     DATE with the completed verdicts (not jammed to the front).
   // When both are at their defaults the result is byte-identical to the
   // pre-fix verdict-only average (no folded skips, no decay).
   daysSinceLastRun: number | null = null,
-  recentMissedKeyCount: number = 0,
+  recentMissedKeyDates: string[] = [],
 ): number {
   // ── S1 tunables · execution honesty only (NO physiological fitness decay).
   // A break lowers q because the plan is not being RUN, not because fitness is
@@ -369,32 +370,32 @@ export function executionQualityFromTestPoints(
   const STALE_FLOOR = 0.5;      // [TUNABLE] decay multiplier floor at STALE_FULL_DAYS
   const MISSED_KEY_SCORE = 0.0; // [TUNABLE] a fully-skipped key session = zero-execution point
 
-  const missedKeyCount = Math.max(0, Math.round(recentMissedKeyCount ?? 0));
-
-  const scored = points.filter((p) => p.verdict != null);
   // fast = over-eager but hitting the work; slow = a real miss vs target.
   const score = (v: 'on' | 'fast' | 'slow' | null): number =>
     v === 'on' ? 1.0 : v === 'fast' ? 0.9 : 0.45;
 
-  // Recency-weighted data points, most-recent-first. Each recent missed key
-  // session folds in AHEAD of the completed verdicts (a skip inside the last
-  // 14 days is more recent than the last completed quality run) as a
-  // zero-execution point, so absence pulls q down instead of being invisible.
-  // Completed points arrive most-recent-first (loadRecentTestPoints ORDER BY
-  // date DESC).
-  const dataPoints: number[] = [
-    ...Array(missedKeyCount).fill(MISSED_KEY_SCORE),
-    ...scored.map((p) => score(p.verdict)),
-  ];
+  // 2026-07-13 · fix · merge completed verdicts and missed key sessions into
+  // ONE date-ordered sequence (most-recent first) BEFORE recency-weighting, so
+  // a skip that is OLDER than your latest completed sessions weighs LESS than
+  // them — not more. The prior version folded every missed session at the top
+  // (weights 1.0, 0.5, …) regardless of date, so a runner who missed a stretch
+  // and then CAME BACK still read as if the misses were the newest signal
+  // (e.g. real case: missed 07-05/07-07, completed 07-09/07-12, yet execution
+  // read 34% because the two zeros took the top two weights ahead of the
+  // comeback runs). Merging by date puts the completed comeback runs first.
+  const merged: Array<{ dateISO: string; val: number }> = [
+    ...points.filter((p) => p.verdict != null).map((p) => ({ dateISO: p.dateISO, val: score(p.verdict) })),
+    ...(recentMissedKeyDates ?? []).map((d) => ({ dateISO: d, val: MISSED_KEY_SCORE })),
+  ].sort((a, b) => (a.dateISO < b.dateISO ? 1 : a.dateISO > b.dateISO ? -1 : 0));
 
   let q: number;
-  if (dataPoints.length === 0) {
+  if (merged.length === 0) {
     q = missedKeyWorkouts ? 0.5 : 0.7;
   } else {
     let wsum = 0, w = 0;
-    dataPoints.forEach((val, i) => {
+    merged.forEach((pt, i) => {
       const weight = 1 / (i + 1);
-      wsum += val * weight;
+      wsum += pt.val * weight;
       w += weight;
     });
     q = w > 0 ? wsum / w : 0.7;
@@ -424,16 +425,18 @@ export function executionQualityFromTestPoints(
  *  both dedup-aware (NOT data ? 'mergedIntoId' AND absorbed_into_canonical_at
  *  IS NULL) and runner-local:
  *    · daysSinceLastRun · calendar days since the most recent honest run.
- *    · recentMissedKeyCount · key sessions (long/tempo/threshold/intervals)
- *      whose date_iso is in the PAST within the last 14 runner-local days with
- *      NO matching completed run (date match via
- *      COALESCE(data->>'date', LEFT(data->>'startLocal',10))).
+ *    · recentMissedKeyDates · dates of key sessions (long/tempo/threshold/
+ *      intervals) in the PAST within the last 14 runner-local days with NO
+ *      matching completed run (date match via
+ *      COALESCE(data->>'date', LEFT(data->>'startLocal',10))). Dates (not a
+ *      bare count) so executionQualityFromTestPoints can merge them by date
+ *      with the completed verdicts instead of front-loading them.
  *  Honesty only · this counts unrun plan work, it does not model fitness loss. */
 async function loadExecutionAbsence(userUuid: string): Promise<{
   daysSinceLastRun: number | null;
-  recentMissedKeyCount: number;
+  recentMissedKeyDates: string[];
 }> {
-  const NONE = { daysSinceLastRun: null as number | null, recentMissedKeyCount: 0 };
+  const NONE = { daysSinceLastRun: null as number | null, recentMissedKeyDates: [] as string[] };
   const today = await runnerToday(userUuid);
   const MISSED_WINDOW_DAYS = 14; // [TUNABLE] look-back for recent missed key sessions
   const since = isoDaysBefore(today, MISSED_WINDOW_DAYS);
@@ -457,8 +460,8 @@ async function loadExecutionAbsence(userUuid: string): Promise<{
     }
   }
 
-  const missedRow = (await pool.query<{ missed: number | string }>(
-    `SELECT COUNT(*) AS missed
+  const missedRows = (await pool.query<{ date_iso: string }>(
+    `SELECT pw.date_iso
        FROM plan_workouts pw
        JOIN training_plans tp ON tp.id = pw.plan_id
       WHERE tp.user_uuid = $1::uuid
@@ -473,14 +476,14 @@ async function loadExecutionAbsence(userUuid: string): Promise<{
              AND r.absorbed_into_canonical_at IS NULL
              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = pw.date_iso
              AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
-        )`,
+        )
+      ORDER BY pw.date_iso DESC`,
     [userUuid, since, today],
-  ).catch(() => ({ rows: [] }))).rows[0];
+  ).catch(() => ({ rows: [] }))).rows;
 
-  const recentMissedKeyCount = missedRow ? Number(missedRow.missed) : 0;
   return {
     daysSinceLastRun,
-    recentMissedKeyCount: Number.isFinite(recentMissedKeyCount) ? recentMissedKeyCount : NONE.recentMissedKeyCount,
+    recentMissedKeyDates: missedRows.map((r) => r.date_iso).filter(Boolean),
   };
 }
 

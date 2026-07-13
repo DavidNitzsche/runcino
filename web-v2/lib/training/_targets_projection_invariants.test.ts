@@ -212,6 +212,30 @@ describe('executionQualityFromTestPoints · a break lowers execution quality', (
     expect(broken).toBeLessThan(sameButRecent);
   });
 
+  it('missed sessions weigh by DATE, not front-loaded — returning to training recovers execution', () => {
+    // Regression for the 34% bug: a runner who missed a stretch then CAME BACK
+    // (real case: missed 07-05/07-07, completed 07-09/07-12, ran today) must
+    // NOT read as barely-training. The misses are OLDER than the comeback runs,
+    // so they must weigh LESS, not be jammed to the top of the recency window.
+    const comeback = executionQualityFromTestPoints(
+      [tp('on', '2026-07-12'), tp('on', '2026-07-09'), tp('on', '2026-06-27')],
+      /* missedKeyWorkouts */ false,
+      /* daysSinceLastRun */ 0,
+      /* recentMissedKeyDates (older than the comeback) */ ['2026-07-07', '2026-07-05'],
+    );
+    // Same two misses, but NEWER than the completed sessions (the runner just
+    // stopped): this SHOULD read off-track.
+    const stopped = executionQualityFromTestPoints(
+      [tp('on', '2026-07-05'), tp('on', '2026-07-01'), tp('on', '2026-06-27')],
+      /* missedKeyWorkouts */ false,
+      /* daysSinceLastRun */ 0,
+      /* recentMissedKeyDates (newer than the completed work) */ ['2026-07-12', '2026-07-09'],
+    );
+    expect(comeback).toBeGreaterThan(stopped);       // date ordering must matter
+    expect(comeback).toBeGreaterThanOrEqual(0.6);    // two OLD misses + a solid comeback is not a collapse
+    expect(stopped).toBeLessThan(EXEC_OK_FLOOR);      // stopping recently does read off-track
+  });
+
   it('extended inactivity alone (no missed-flag, no verdicts) decays q by the day-gap', () => {
     // Absence helper, isolated: same empty verdict set and same missedKeyWorkouts
     // = false, differing ONLY in daysSinceLastRun. A long layoff must read
