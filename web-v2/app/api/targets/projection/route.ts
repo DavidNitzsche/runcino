@@ -463,13 +463,38 @@ export async function GET(req: NextRequest) {
     const totalPlanWeeks = planSpanQ.rows[0]?.total_weeks != null
       ? Number(planSpanQ.rows[0].total_weeks) : null;
 
+    // S4 · Accrual honesty. TODAY credits work DONE, not weeks ELAPSED. The
+    // pure-calendar completedFraction credited progress for a runner who took
+    // the last three weeks off — the accrued time crept faster every week the
+    // build ran, whether or not the runner ran. Weight the calendar fraction
+    // by execution so a break stops crediting gain, and hard-clamp the result
+    // so TODAY can never read faster than the anchor (predictRaceTime at the
+    // current, demonstrated VDOT). Doctrine: this credits executed work, it
+    // does NOT measure or decay physiological fitness.
+    // When executionQuality is unavailable we fall back to calendar-only
+    // weighting (prior behaviour); the hard clamp below still holds the floor.
+    const ACCRUAL_EXEC_WEIGHT_WHEN_UNKNOWN = 1; // [TUNABLE] no exec signal → calendar-only, clamp still applies
     let trajectoryAccruedSec: number | null = null;
     if (traj && totalPlanWeeks && totalPlanWeeks > 0 && daysAway != null && vdot != null) {
       const weeksToRace = daysAway / 7;
       const completedWeeks = Math.max(0, totalPlanWeeks - weeksToRace);
-      const completedFraction = Math.min(1, completedWeeks / totalPlanWeeks);
-      const accruedVdot = vdot + traj.projectedGainVdot * completedFraction;
+      const calendarFraction = Math.min(1, completedWeeks / totalPlanWeeks);
+      // Execution-weighted fraction · completed-vs-scheduled work stands in
+      // via executionQuality (0..1). A recent break drops executionQuality,
+      // which drops the credited fraction below the calendar fraction.
+      const execWeight = traj.executionQuality != null
+        ? traj.executionQuality
+        : ACCRUAL_EXEC_WEIGHT_WHEN_UNKNOWN;
+      const executedFraction = calendarFraction * execWeight;
+      const creditedFraction = Math.min(calendarFraction, executedFraction);
+      const accruedVdot = vdot + traj.projectedGainVdot * creditedFraction;
       trajectoryAccruedSec = predictRaceTime(accruedVdot, distanceMi) ?? null;
+      // Hard clamp · never faster than the anchor. During a break (or any
+      // absence of executed gain) TODAY must not speed up.
+      const anchorSec = predictRaceTime(vdot, distanceMi);
+      if (trajectoryAccruedSec != null && anchorSec != null) {
+        trajectoryAccruedSec = Math.max(trajectoryAccruedSec, anchorSec);
+      }
     }
 
     // Status from the trajectory — the SAME logic web's TargetsView uses — so
@@ -484,19 +509,30 @@ export async function GET(req: NextRequest) {
       // the miss by magnitude.
       : traj ? (traj.reachable ? 'on_track' : (traj.gapVdot == null || traj.gapVdot <= 1.5) ? 'watch' : 'off')
       : statusFor(projectionSec, goalSec, race != null ? daysAway : null);
+    // S8 · Execution-honest reconciliation. A degraded executionQuality (a
+    // scheduled-but-unrun recent key session, or a break's inactivity decay)
+    // cannot sit under an "on track" headline. Demote on_track → watch BEFORE
+    // confidence reconciliation so both the confidence label and the summary
+    // line read the honest status. execOk is >= 0.80, so a sub-0.80 quality is
+    // by definition not on track.
+    const EXEC_ON_TRACK_MIN = 0.80; // [TUNABLE] executionQuality floor for an on_track headline
+    const execReconciledStatus =
+      traj?.executionQuality != null && traj.executionQuality < EXEC_ON_TRACK_MIN && rawStatus === 'on_track'
+        ? 'watch'
+        : rawStatus;
     const confidenceLabel = (vdot != null && goalSec != null)
       ? computeConfidenceLabel({
           goalSec,
           raceDistanceMi: distanceMi,
           vdot,
           daysToRace: daysAway,
-          status: toGoalStatus(rawStatus),
+          status: toGoalStatus(execReconciledStatus),
         })
       : null;
     // 2026-07-06 · P1-14 · LOW confidence and ON PACE cannot coexist on one
     // payload. The runway cap in fitness-trajectory closes the main path; this
     // gate closes the short-runway edge (see reconcileStatusWithConfidence).
-    const status = reconcileStatusWithConfidence(rawStatus, confidenceLabel?.tier);
+    const status = reconcileStatusWithConfidence(execReconciledStatus, confidenceLabel?.tier);
     const goalStatus = toGoalStatus(status);
     // 2026-06-16 · band re-anchored to the race-day projection (the
     // goal-seeking trajectory) so it reads "where you'll likely finish" with
@@ -645,6 +681,11 @@ export async function GET(req: NextRequest) {
       currentVdot: traj?.currentVdot ?? vdot,
       buildWeeks: traj?.buildWeeks ?? null,
       gapVdot: traj?.gapVdot ?? null,
+      // S6 · runway-limited flag. true IFF the trajectory clamped the PLANNED
+      // future gain by the runway term (time remaining), not by the runner's
+      // execution or the plan ceiling. The client uses this to relabel a
+      // time-limited goal honestly rather than implying the runner stalled.
+      runwayLimited: traj?.runwayLimited ?? false,
     });
   } catch (err: any) {
     console.error('[api/targets/projection] failed:', err);

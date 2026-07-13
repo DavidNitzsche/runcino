@@ -95,20 +95,25 @@ private let kPhaseDisplayWeight: [TrainPhase: Double] = [
 // MARK: - Status icon (check / alert in a circle)
 
 private struct ProjTick: View {
-    let ok: Bool
+    /// ok  · accent check (verdict met)
+    /// alert · grey "!" (verdict missed)
+    /// neutral · grey dash (no verdict to assert — dataless or runway-limited)
+    enum Mode { case ok, alert, neutral }
+    let mode: Mode
     let accent: Color
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(ok ? accent.opacity(0.18) : Color(hex: 0x646464, alpha: 0.16))
+                .fill(mode == .ok ? accent.opacity(0.18) : Color(hex: 0x646464, alpha: 0.16))
                 .frame(width: 16, height: 16)
-            if ok {
+            switch mode {
+            case .ok:
                 // Check stroked in the accent.
                 CheckShape()
                     .stroke(accent, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
                     .frame(width: 16, height: 16)
-            } else {
+            case .alert:
                 // "!" · vertical stroke + dot, in neutral grey.
                 VStack(spacing: 1.6) {
                     Capsule()
@@ -118,6 +123,12 @@ private struct ProjTick: View {
                         .fill(Color(hex: 0xC9CED8))
                         .frame(width: 2, height: 2)
                 }
+            case .neutral:
+                // Horizontal dash · a calm "nothing to assert" mark, never the
+                // "!" alert. Used for dataless reads and runway-limited fitness.
+                Capsule()
+                    .fill(Color(hex: 0x737985))
+                    .frame(width: 6, height: 1.8)
             }
         }
         .frame(width: 16, height: 16)
@@ -302,7 +313,9 @@ struct TargetsProjectionPanel: View {
         case "off":                   return .off
         default:
             // cold / unknown · fall back to the execution+fitness levers.
-            if !execOk { return .off }
+            // Only a REAL failed-execution read forces off; absent execution
+            // data stays neutral (never fabricates a red off state).
+            if execHasData && !execOk { return .off }
             return fitOk ? .on : .watch
         }
     }
@@ -337,34 +350,51 @@ struct TargetsProjectionPanel: View {
         return r <= 4
     }
 
-    /// Eyebrow for the TODAY column — "BUILD WK 3/6" when training state is
-    /// present; falls back to "TODAY" for cold state.
-    private var todayEyebrow: String {
-        guard let weeks = trainingState?.weeks, !weeks.isEmpty else {
-            return "TODAY"
-        }
+    /// Single source for "which week of the current phase are we in".
+    /// Feeds todayEyebrow, phaseMeta, and youProgress so they never disagree.
+    ///
+    /// Resolves the current week by the ARRAY POSITION of the isCurrent week,
+    /// consistent with firstOffset (also an array offset). The prior code mixed
+    /// `currentWeekIdx` (a plan week_idx) with array offsets, which drifts when
+    /// the weeks array is trimmed. Returns nil when no plan weeks are loaded or
+    /// the current phase has no weeks — callers render their cold fallback.
+    private var weekInPhase: (week: Int, count: Int)? {
+        guard let weeks = trainingState?.weeks, !weeks.isEmpty else { return nil }
         let phaseWeeks = weeks.enumerated().filter {
             TrainPhase(phaseKey: $0.element.phase) == youPhase
         }
-        guard !phaseWeeks.isEmpty else { return "TODAY" }
+        guard !phaseWeeks.isEmpty else { return nil }
         let firstOffset = phaseWeeks.first!.offset
         let count = phaseWeeks.count
-        let curOffset = trainingState?.currentWeekIdx
-            ?? weeks.firstIndex(where: { $0.isCurrent })
-            ?? firstOffset
-        let weekInPhase = max(1, curOffset - firstOffset + 1)
-        return "BUILD WK \(min(weekInPhase, count))/\(count)"
+        // ARRAY position of the current week (not week_idx). Fall back to the
+        // phase's first week when nothing is flagged current.
+        let curOffset = weeks.firstIndex(where: { $0.isCurrent }) ?? firstOffset
+        let week = min(max(1, curOffset - firstOffset + 1), count)
+        return (week, count)
+    }
+
+    /// Eyebrow for the TODAY column — "PEAK WK 1/3" (actual phase label) when
+    /// training state is present; falls back to "TODAY" for cold state.
+    private var todayEyebrow: String {
+        guard let wip = weekInPhase else { return "TODAY" }
+        return "\(youPhase.label.uppercased()) WK \(wip.week)/\(wip.count)"
     }
 
     // MARK: Execution & Fitness reads
 
     /// REAL · executionQuality (0…1) → percentage. ok ≥ 0.80 (matches the
     /// handoff: on 100% ok, watch 96% ok, off 72% not-ok).
+    private var execHasData: Bool { summary.executionQuality != nil }
     private var execPctText: String {
         guard let e = summary.executionQuality else { return "—" }
         return "\(Int((e * 100).rounded()))%"
     }
-    private var execOk: Bool { (summary.executionQuality ?? 1.0) >= 0.80 }
+    /// ok only when there's real data ≥ 0.80. A nil quality is NOT "ok" — it
+    /// renders neutral, never a green 100%.
+    private var execOk: Bool {
+        guard let e = summary.executionQuality else { return false }
+        return e >= 0.80
+    }
 
     /// got = the plan's MODELED projected gain (projectedGainVdot), NOT a fresh
     /// measured read — David's VDOT is frozen, so a measured read would falsely
@@ -376,30 +406,60 @@ struct TargetsProjectionPanel: View {
         guard let g = summary.goalVdot, let c = summary.currentVdot else { return 0 }
         return max(0, g - c)
     }
+    /// The FITNESS read needs all three VDOT inputs. When any is nil the ratio
+    /// is meaningless, so the read renders neutral "—" instead of a green
+    /// "Responding".
+    private var fitHasData: Bool {
+        summary.goalVdot != nil && summary.currentVdot != nil && summary.projectedGainVdot != nil
+    }
     private var buildRatio: Double {
         needVdot > 0 ? gotVdot / needVdot : 1.0
     }
+    /// Runway-limited · the planned gain was clamped by TIME remaining (build
+    /// weeks), not by the runner. When execution is on track this reads
+    /// "On runway", never "Stalled" — Stalled/Lagging/Responding are reserved
+    /// for execution/plan-limited cases.
+    private var fitRunway: Bool {
+        fitHasData && summary.runwayLimited == true && execOk
+    }
     /// FITNESS verdict from got/need ratio (handoff thresholds):
     /// ≥0.95 → Responding (ok) · 0.6–0.95 → Lagging · <0.6 → Stalled.
+    /// Dataless → "—"; runway-limited-but-executing → "On runway".
     private var fitVerdict: String {
+        guard fitHasData else { return "—" }
+        if fitRunway { return "On runway" }
         if buildRatio >= 0.95 { return "Responding" }
         if buildRatio >= 0.60 { return "Lagging" }
         return "Stalled"
     }
-    private var fitOk: Bool { buildRatio >= 0.95 }
+    private var fitOk: Bool { fitHasData && buildRatio >= 0.95 }
 
-    // MARK: Summary line (per-state · coach voice · filled with real times)
+    // MARK: Summary line
+    //
+    // The server authors the read (summary.summaryLine) with the full context
+    // it has. The client sentence below is an OFFLINE fallback only, used when
+    // the payload carries no summaryLine. It is dash-free, asserts no cause the
+    // payload doesn't support (no "missed key runs" claim), and never asserts
+    // toward a "—" placeholder when the times are absent.
 
-    private var summaryLine: String {
+    private var offlineSummaryFallback: String {
         let goal = projFormatTime(goalSec)
         let proj = projFormatTime(projSec)
+        let hasGoal = (goalSec ?? 0) > 0
+        let hasProj = (projSec ?? 0) > 0
         switch state {
         case .on:
-            return "On track for \(goal). You're doing the work and your fitness is responding on schedule."
+            return hasGoal
+                ? "On track for \(goal). You are doing the work and your fitness is responding on schedule."
+                : "On track. You are doing the work and your fitness is responding on schedule."
         case .watch:
-            return "Tracking to \(proj). Execution's there, but your fitness is responding slower than the plan needs."
+            return hasProj
+                ? "Tracking to \(proj). Execution is there and fitness is coming a little slower than the plan needs."
+                : "Execution is there and fitness is coming a little slower than the plan needs."
         case .off:
-            return "Slipped to \(proj). Missed key runs are stalling the fitness gains the plan was built on."
+            return hasProj
+                ? "Tracking to \(proj). Stay with the plan and the fitness the build is set up to deliver will come."
+                : "Stay with the plan and the fitness the build is set up to deliver will come."
         }
     }
 
@@ -456,39 +516,20 @@ struct TargetsProjectionPanel: View {
     }
 
     /// Fraction through the current phase, by week position within the phase.
+    /// No plan weeks loaded → marker sits at phase START (0.0), not a
+    /// fabricated mid-phase 0.42.
     private var youProgress: Double {
-        guard let weeks = trainingState?.weeks, !weeks.isEmpty else { return 0.42 }
-        let phaseWeeks = weeks.enumerated().filter {
-            TrainPhase(phaseKey: $0.element.phase) == youPhase
-        }
-        guard !phaseWeeks.isEmpty else { return 0.42 }
-        let firstOffset = phaseWeeks.first!.offset
-        let count = phaseWeeks.count
-        let curOffset = trainingState?.currentWeekIdx
-            ?? weeks.firstIndex(where: { $0.isCurrent })
-            ?? firstOffset
-        // Position the marker mid-way through the current week within the phase.
-        let into = Double(curOffset - firstOffset) + 0.5
-        return min(max(into / Double(count), 0), 1)
+        guard let wip = weekInPhase else { return 0.0 }
+        // Mid-way through the current week within the phase.
+        let into = Double(wip.week) - 0.5
+        return min(max(into / Double(wip.count), 0), 1)
     }
 
     /// "Build · Week X of Y" meta.
     private var phaseMeta: String {
         let name = youPhase.label.capitalizedPhase
-        guard let weeks = trainingState?.weeks, !weeks.isEmpty else {
-            return name
-        }
-        let phaseWeeks = weeks.enumerated().filter {
-            TrainPhase(phaseKey: $0.element.phase) == youPhase
-        }
-        guard !phaseWeeks.isEmpty else { return name }
-        let firstOffset = phaseWeeks.first!.offset
-        let count = phaseWeeks.count
-        let curOffset = trainingState?.currentWeekIdx
-            ?? weeks.firstIndex(where: { $0.isCurrent })
-            ?? firstOffset
-        let weekInPhase = max(1, curOffset - firstOffset + 1)
-        return "\(name) · Week \(min(weekInPhase, count)) of \(count)"
+        guard let wip = weekInPhase else { return name }
+        return "\(name) · Week \(wip.week) of \(wip.count)"
     }
 
     /// Phase blurb · short factual description per phase (matches TrainView's
@@ -514,9 +555,25 @@ struct TargetsProjectionPanel: View {
 
     // MARK: Body
 
+    /// True when the card has no execution, no fitness inputs, AND no
+    /// projection times — every read would be a neutral placeholder, so route
+    /// to the cold state rather than render a hollow green-looking card.
+    private var isDataless: Bool {
+        !execHasData && !fitHasData && fitnessSec == nil && projSec == nil
+    }
+
+    @ViewBuilder
     var body: some View {
+        if isDataless {
+            TargetsProjectionColdState()
+        } else {
+            cardBody
+        }
+    }
+
+    private var cardBody: some View {
         let st = state
-        VStack(alignment: .leading, spacing: 0) {
+        return VStack(alignment: .leading, spacing: 0) {
             todayToRaceRow(st)
             summarySection
             buildSection(st)
@@ -579,7 +636,8 @@ struct TargetsProjectionPanel: View {
     // Summary line · centered coach sentence.
 
     private var summarySection: some View {
-        Text(summaryLine)
+        // Server-authored sentence when present; client OFFLINE fallback else.
+        Text(summary.summaryLine ?? offlineSummaryFallback)
             .font(.body(13, weight: .medium))
             .foregroundStyle(Color(hex: 0xC9CED8))
             .lineSpacing(3)
@@ -627,31 +685,46 @@ struct TargetsProjectionPanel: View {
     // 3+4 · Execution & Fitness reads
 
     private func readsSection(_ st: ProjState) -> some View {
-        HStack(spacing: 10) {
+        // Neutral grey for values that carry no positive verdict (dataless,
+        // missed, or runway-limited) — never the accent green.
+        let neutral = Color(hex: 0xD4D8DF)
+
+        // EXECUTION · neutral when no quality data.
+        let execMode: ProjTick.Mode = !execHasData ? .neutral : (execOk ? .ok : .alert)
+        let execColor = (execHasData && execOk) ? st.accent : neutral
+
+        // FITNESS · neutral when dataless OR runway-limited; accent only on a
+        // real "Responding" (fitOk implies data present).
+        let fitMode: ProjTick.Mode = (!fitHasData || fitRunway) ? .neutral : (fitOk ? .ok : .alert)
+        let fitColor = (fitOk && !fitRunway) ? st.accent : neutral
+
+        return HStack(spacing: 10) {
             readCard(title: "EXECUTION",
-                     ok: execOk,
+                     mode: execMode,
                      value: execPctText,
+                     valueColor: execColor,
                      accent: st.accent)
             readCard(title: "FITNESS",
-                     ok: fitOk,
+                     mode: fitMode,
                      value: fitVerdict,
+                     valueColor: fitColor,
                      accent: st.accent)
         }
         .padding(.top, 18)
     }
 
-    private func readCard(title: String, ok: Bool, value: String, accent: Color) -> some View {
+    private func readCard(title: String, mode: ProjTick.Mode, value: String, valueColor: Color, accent: Color) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
                 .font(.body(9.5, weight: .extraBold))
                 .tracking(1.2)
                 .foregroundStyle(Color(hex: 0x737985))
             HStack(spacing: 8) {
-                ProjTick(ok: ok, accent: accent)
+                ProjTick(mode: mode, accent: accent)
                 Text(value)
                     .font(.body(15, weight: .bold))
                     .tracking(0.1)
-                    .foregroundStyle(ok ? accent : Color(hex: 0xD4D8DF))
+                    .foregroundStyle(valueColor)
                     .lineLimit(1)
             }
             .padding(.top, 11)

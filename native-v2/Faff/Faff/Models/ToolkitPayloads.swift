@@ -531,6 +531,15 @@ struct ProjectionSummary: Decodable {
     let buildWeeks: Double?             // build weeks left (weeksToRace − taper)
     let gapVdot: Double?                // goalVdot − projectedVdot (>0 = short)
 
+    // 2026-07-13 · server-authored coach sentence + runway framing.
+    // summaryLine: the one-sentence read the card renders verbatim (falls
+    // back to a client OFFLINE sentence only when absent).
+    // runwayLimited: true IFF the planned gain was clamped by time remaining
+    // (build weeks) rather than by execution or the plan ceiling — so the
+    // FITNESS read must read "On runway", never "Stalled".
+    let summaryLine: String?
+    let runwayLimited: Bool?
+
     enum CodingKeys: String, CodingKey {
         case ok, status, vdot, projectionSec, goalSec, goalSafeSec,
              raceSlug, raceName, raceDate, daysAway, distanceMi, location,
@@ -543,7 +552,8 @@ struct ProjectionSummary: Decodable {
              aheadOfGoal, planUnderBuilt, overPerformanceBonusVdot, trajectoryProjectedSec,
              trajectoryAccruedSec,
              executionQuality, planBuiltForGoal, plannedTargetVdot, projectedGainVdot,
-             goalVdot, currentVdot, buildWeeks, gapVdot
+             goalVdot, currentVdot, buildWeeks, gapVdot,
+             summaryLine, runwayLimited
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -596,5 +606,7 @@ struct ProjectionSummary: Decodable {
         self.currentVdot       = try c.decodeIfPresent(Double.self, forKey: .currentVdot)
         self.buildWeeks        = try c.decodeIfPresent(Double.self, forKey: .buildWeeks)
         self.gapVdot           = try c.decodeIfPresent(Double.self, forKey: .gapVdot)
+        self.summaryLine       = try c.decodeIfPresent(String.self, forKey: .summaryLine)
+        self.runwayLimited     = try c.decodeIfPresent(Bool.self,   forKey: .runwayLimited)
     }
 }

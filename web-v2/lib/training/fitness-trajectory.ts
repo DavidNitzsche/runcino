@@ -120,6 +120,13 @@ export interface FitnessTrajectory {
    *  offer a faster goal + rebuild (the plan is the limiter, not the runner).
    *  null when no plan signal supplied. */
   planUnderBuilt: boolean | null;
+  /** 2026-07-13 · S5 · true IFF the PLANNED (future) gain was clamped by the
+   *  runway (buildWeeks x BASE_BUILD_RATE x executionQuality) rather than by
+   *  the block/plan ceiling or by execution/goal-gap — i.e. the goal is limited
+   *  by the TIME remaining, not by the runner. Lets the surface say "runway
+   *  limited" instead of "stalled" when the calendar, not the athlete, is the
+   *  binding constraint. */
+  runwayLimited: boolean;
 }
 
 function clamp(x: number, lo: number, hi: number): number {
@@ -232,21 +239,48 @@ export function projectFitnessTrajectory(args: {
   // bonus is DEMONSTRATED current fitness (HR-controlled sessions already
   // run) and keeps riding on top under the original block/plan ceiling, so a
   // tapering over-performer still reads ahead.
-  const runwayCapGain = buildWeeks * BASE_BUILD_RATE;
-  const plannedGainVdot = clamp((goalVdot - currentVdot) * executionQuality, 0, Math.min(gainCap, runwayCapGain));
+  // 2026-07-13 · S5 · scale the runway cap by executionQuality. Before this,
+  // exec scaled ONLY the goal-gap term ((goalVdot - currentVdot) x exec), which
+  // is irrelevant whenever the runway is the binding cap — so a missed block on
+  // a short runway produced ZERO projection penalty. One block cannot deliver
+  // more than the research build rate over the weeks that REMAIN, and a runner
+  // who is not executing does not even earn that full rate.
+  //   [TUNABLE · the one model tweak · keep BASE_BUILD_RATE (0.35) as-is;
+  //    executionQuality is applied as the multiplier so an incomplete block
+  //    honestly discounts the runway ceiling, not just the goal-gap term.]
+  const runwayCapGain = buildWeeks * BASE_BUILD_RATE * executionQuality;
+  // Which cap binds the PLANNED (future) gain: the block/plan ceiling, or the
+  // runway. Named so runwayLimited below reads off the exact same quantity.
+  const plannedGainCap = Math.min(gainCap, runwayCapGain);
+  const plannedGainVdot = clamp((goalVdot - currentVdot) * executionQuality, 0, plannedGainCap);
+  // 2026-07-13 · S5 · runwayLimited · true IFF the planned gain was clamped by
+  // the runway (time remaining) rather than by the block/plan ceiling or by
+  // execution/goal-gap: the runway is the smaller cap AND the exec-scaled goal
+  // gap actually reaches it. The goal is limited by the calendar, not the
+  // runner — the surface uses this to say "runway limited" not "stalled".
+  const runwayLimited = plannedGainCap === runwayCapGain
+    && (goalVdot - currentVdot) * executionQuality >= runwayCapGain;
+  // projectedGainVdot feeds route COMPUTATIONS (buildRatio, accrual), not just
+  // display — keep it UNROUNDED so a sub-0.05 arithmetic swing can never flip a
+  // downstream verdict. Only the display echoes below are rounded.
   const projectedGainVdot = clamp(plannedGainVdot + overPerfBonus, 0, gainCap);
-  const projectedVdot = Math.round((currentVdot + projectedGainVdot) * 10) / 10;
+  const projectedVdotRaw = currentVdot + projectedGainVdot;
+  const projectedVdot = Math.round(projectedVdotRaw * 10) / 10; // display only
 
   const currentSec = predictRaceTime(currentVdot, raceDistanceMi);
   const projectedSec = predictRaceTime(projectedVdot, raceDistanceMi);
 
-  const gapVdot = Math.round((goalVdot - projectedVdot) * 10) / 10;
+  // reachable / aheadOfGoal read the UNROUNDED gap so the ±0.05 display
+  // rounding of projectedVdot can never flip the verdict. gapVdot is the
+  // rounded display echo of the same quantity.
+  const gapVdotRaw = goalVdot - projectedVdotRaw;
+  const gapVdot = Math.round(gapVdotRaw * 10) / 10;
   const gapSec = projectedSec != null ? projectedSec - goalSec : null;
   // 0.2 VDOT ≈ 10-12s at HM · within noise, call it reachable.
-  const reachable = gapVdot <= 0.2;
+  const reachable = gapVdotRaw <= 0.2;
   // 2026-06-12 · the upgrade gear's headline: projected to BEAT the goal beyond
   // noise. Mirrors how the drift detectors let the projection read SHORT.
-  const aheadOfGoal = gapVdot < -0.2;
+  const aheadOfGoal = gapVdotRaw < -0.2;
   // Is the plan's prescribed ceiling enough to reach the goal? (Same 0.3 grace.)
   const planBuiltForGoal = plannedTargetVdot != null
     ? plannedTargetVdot >= goalVdot - 0.3
@@ -278,7 +312,9 @@ export function projectFitnessTrajectory(args: {
     // the gain-sizing clamp above — a caller must never render a synthesized
     // VDOT number for a goal that doesn't map onto the Daniels table.
     goalVdot: goalBelowTable ? null : goalVdot,
-    projectedGainVdot: Math.round(projectedGainVdot * 10) / 10,
+    // 2026-07-13 · S5 · UNROUNDED · the route derives buildRatio and accrual
+    // from this; rounding it here (was 0.1) let a sub-0.05 swing flip those.
+    projectedGainVdot,
     gapVdot: goalBelowTable ? null : gapVdot,
     goalBelowTable,
     currentSec,
@@ -301,5 +337,6 @@ export function projectFitnessTrajectory(args: {
     overPerformanceBonusVdot: Math.round(overPerfBonus * 10) / 10,
     aheadOfGoal,
     planUnderBuilt,
+    runwayLimited,
   };
 }

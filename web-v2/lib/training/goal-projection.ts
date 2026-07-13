@@ -269,9 +269,17 @@ export async function computeGoalProjection(args: {
   // race date is unknown — the display falls back to the static projection.
   // 2026-06-16 · computed BEFORE the confidence band so the band can center on
   // the race-day projection, not the frozen current-fitness number.
+  // 2026-07-13 · S1 · absence awareness for execution quality. Execution is
+  // the lever (CLAUDE.md) — a break has to MOVE the number, not be invisible.
+  // Failure produces the neutral no-absence shape, so a query timeout can
+  // never fabricate a break.
+  const executionAbsence = await loadExecutionAbsence(userUuid)
+    .catch(() => ({ daysSinceLastRun: null, recentMissedKeyCount: 0 }));
   const executionQuality = executionQualityFromTestPoints(
     recentTestPoints,
     driftSignals.some((s) => s.kind === 'missed_key_workouts'),
+    executionAbsence.daysSinceLastRun,
+    executionAbsence.recentMissedKeyCount,
   );
   const plannedTargetVdot = vdot != null
     ? await loadPlannedTargetVdot(userUuid, raceDistanceMi).catch(() => null)
@@ -341,25 +349,139 @@ export async function computeGoalProjection(args: {
  *  or under-hitting sessions projects a discounted slope. Recency-weighted —
  *  the most recent session counts most. Default 0.7 when there's no verdict
  *  signal yet (assume roughly-following the plan, not nailing it). */
-function executionQualityFromTestPoints(
+export function executionQualityFromTestPoints(
   points: GoalProjection['recentTestPoints'],
   missedKeyWorkouts: boolean,
+  // 2026-07-13 · S1 · absence inputs (optional, defaulted so the pre-fix
+  // 2-arg call and the pinned 3-arg contract both stay valid):
+  //   · daysSinceLastRun · drives the inactivity decay.
+  //   · recentMissedKeyCount · folds in as zero-execution data points.
+  // When both are at their defaults the result is byte-identical to the
+  // pre-fix verdict-only average (no folded skips, no decay).
+  daysSinceLastRun: number | null = null,
+  recentMissedKeyCount: number = 0,
 ): number {
+  // ── S1 tunables · execution honesty only (NO physiological fitness decay).
+  // A break lowers q because the plan is not being RUN, not because fitness is
+  // being measured as lost.
+  const STALE_ONSET_DAYS = 7;   // [TUNABLE] days off before inactivity decay begins
+  const STALE_FULL_DAYS = 14;   // [TUNABLE] days off at which decay reaches the floor
+  const STALE_FLOOR = 0.5;      // [TUNABLE] decay multiplier floor at STALE_FULL_DAYS
+  const MISSED_KEY_SCORE = 0.0; // [TUNABLE] a fully-skipped key session = zero-execution point
+
+  const missedKeyCount = Math.max(0, Math.round(recentMissedKeyCount ?? 0));
+
   const scored = points.filter((p) => p.verdict != null);
-  if (scored.length === 0) return missedKeyWorkouts ? 0.5 : 0.7;
   // fast = over-eager but hitting the work; slow = a real miss vs target.
   const score = (v: 'on' | 'fast' | 'slow' | null): number =>
     v === 'on' ? 1.0 : v === 'fast' ? 0.9 : 0.45;
-  // points arrive most-recent-first (loadRecentTestPoints ORDER BY date DESC).
-  let wsum = 0, w = 0;
-  scored.forEach((p, i) => {
-    const weight = 1 / (i + 1);
-    wsum += score(p.verdict) * weight;
-    w += weight;
-  });
-  let q = w > 0 ? wsum / w : 0.7;
+
+  // Recency-weighted data points, most-recent-first. Each recent missed key
+  // session folds in AHEAD of the completed verdicts (a skip inside the last
+  // 14 days is more recent than the last completed quality run) as a
+  // zero-execution point, so absence pulls q down instead of being invisible.
+  // Completed points arrive most-recent-first (loadRecentTestPoints ORDER BY
+  // date DESC).
+  const dataPoints: number[] = [
+    ...Array(missedKeyCount).fill(MISSED_KEY_SCORE),
+    ...scored.map((p) => score(p.verdict)),
+  ];
+
+  let q: number;
+  if (dataPoints.length === 0) {
+    q = missedKeyWorkouts ? 0.5 : 0.7;
+  } else {
+    let wsum = 0, w = 0;
+    dataPoints.forEach((val, i) => {
+      const weight = 1 / (i + 1);
+      wsum += val * weight;
+      w += weight;
+    });
+    q = w > 0 ? wsum / w : 0.7;
+  }
   if (missedKeyWorkouts) q *= 0.8;
+
+  // Inactivity decay · once the gap reaches STALE_ONSET_DAYS the decay already
+  // bites (the onset day is the first decremented step, not a free day), and
+  // it ramps linearly to STALE_FLOOR at STALE_FULL_DAYS, clamped to the floor
+  // beyond that. Extended time away from running keeps pulling q down after the
+  // missed-session fold has been absorbed by newer completed work. Modeling the
+  // gap, not fitness: the plan is not being run.
+  if (daysSinceLastRun != null && daysSinceLastRun >= STALE_ONSET_DAYS) {
+    const span = Math.max(1, STALE_FULL_DAYS - STALE_ONSET_DAYS + 1);
+    const step = Math.min(span, daysSinceLastRun - STALE_ONSET_DAYS + 1);
+    const t = step / span;
+    const decay = 1 - (1 - STALE_FLOOR) * t;
+    q *= decay;
+  }
+
   return Math.round(Math.max(0, Math.min(1, q)) * 100) / 100;
+}
+
+/** 2026-07-13 · S1 · absence inputs for executionQuality. Execution is the
+ *  lever (CLAUDE.md) — a rest week that logs no new completed sessions used to
+ *  leave q frozen at its prior value, so a real break was invisible. Two reads,
+ *  both dedup-aware (NOT data ? 'mergedIntoId' AND absorbed_into_canonical_at
+ *  IS NULL) and runner-local:
+ *    · daysSinceLastRun · calendar days since the most recent honest run.
+ *    · recentMissedKeyCount · key sessions (long/tempo/threshold/intervals)
+ *      whose date_iso is in the PAST within the last 14 runner-local days with
+ *      NO matching completed run (date match via
+ *      COALESCE(data->>'date', LEFT(data->>'startLocal',10))).
+ *  Honesty only · this counts unrun plan work, it does not model fitness loss. */
+async function loadExecutionAbsence(userUuid: string): Promise<{
+  daysSinceLastRun: number | null;
+  recentMissedKeyCount: number;
+}> {
+  const NONE = { daysSinceLastRun: null as number | null, recentMissedKeyCount: 0 };
+  const today = await runnerToday(userUuid);
+  const MISSED_WINDOW_DAYS = 14; // [TUNABLE] look-back for recent missed key sessions
+  const since = isoDaysBefore(today, MISSED_WINDOW_DAYS);
+
+  const lastRow = (await pool.query<{ last_date: string | null }>(
+    `SELECT MAX(COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))) AS last_date
+       FROM runs r
+      WHERE r.user_uuid = $1::uuid
+        AND NOT (r.data ? 'mergedIntoId')
+        AND r.absorbed_into_canonical_at IS NULL
+        AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0`,
+    [userUuid],
+  ).catch(() => ({ rows: [] }))).rows[0];
+
+  let daysSinceLastRun: number | null = null;
+  if (lastRow?.last_date) {
+    const lastMs = Date.parse(lastRow.last_date + 'T12:00:00Z');
+    const todayMs = Date.parse(today + 'T12:00:00Z');
+    if (!isNaN(lastMs) && !isNaN(todayMs)) {
+      daysSinceLastRun = Math.max(0, Math.round((todayMs - lastMs) / 86_400_000));
+    }
+  }
+
+  const missedRow = (await pool.query<{ missed: number | string }>(
+    `SELECT COUNT(*) AS missed
+       FROM plan_workouts pw
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE tp.user_uuid = $1::uuid
+        AND tp.archived_iso IS NULL
+        AND pw.type IN ('long','tempo','threshold','intervals')
+        AND pw.date_iso >= $2
+        AND pw.date_iso < $3
+        AND NOT EXISTS (
+          SELECT 1 FROM runs r
+           WHERE r.user_uuid = $1::uuid
+             AND NOT (r.data ? 'mergedIntoId')
+             AND r.absorbed_into_canonical_at IS NULL
+             AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = pw.date_iso
+             AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
+        )`,
+    [userUuid, since, today],
+  ).catch(() => ({ rows: [] }))).rows[0];
+
+  const recentMissedKeyCount = missedRow ? Number(missedRow.missed) : 0;
+  return {
+    daysSinceLastRun,
+    recentMissedKeyCount: Number.isFinite(recentMissedKeyCount) ? recentMissedKeyCount : NONE.recentMissedKeyCount,
+  };
 }
 
 /** 2026-06-12 · the UPGRADE gear · the symmetric opposite of the drift detectors.
@@ -514,22 +636,33 @@ async function loadNextTestPoints(
     sub_label: string | null;
     distance_mi: number | string | null;
   }>(
-    `SELECT pw.date_iso, pw.type, pw.sub_label, pw.distance_mi
-       FROM plan_workouts pw
-       JOIN training_plans tp ON tp.id = pw.plan_id
-      WHERE tp.user_uuid = $1::uuid
-        AND tp.archived_iso IS NULL
-        AND pw.type IN ('tempo','threshold','intervals','long','race','race_week_tuneup')
-        AND pw.date_iso >= $2
-        AND NOT EXISTS (
-          SELECT 1 FROM runs r
-           WHERE r.user_uuid = $1::uuid
-             AND r.data->>'date' = pw.date_iso
-             AND NOT (r.data ? 'mergedIntoId')
-             AND r.absorbed_into_canonical_at IS NULL
-             AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
-        )
-      ORDER BY pw.date_iso ASC
+    // 2026-07-13 · S3 · DISTINCT ON (pw.id) collapses to one row per plan day
+    // before LIMIT so a duplicated plan row can't push a real test point out of
+    // the window. Run/plan-day match uses COALESCE(date, startLocal[:10]) —
+    // startLocal-only ingest rows (no top-level 'date') were previously invisible
+    // to the completed-run guard, so a run landed day could still surface as a
+    // "next" test point.
+    `SELECT dedup.date_iso, dedup.type, dedup.sub_label, dedup.distance_mi
+       FROM (
+         SELECT DISTINCT ON (pw.id)
+                pw.date_iso, pw.type, pw.sub_label, pw.distance_mi
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+          WHERE tp.user_uuid = $1::uuid
+            AND tp.archived_iso IS NULL
+            AND pw.type IN ('tempo','threshold','intervals','long','race','race_week_tuneup')
+            AND pw.date_iso >= $2
+            AND NOT EXISTS (
+              SELECT 1 FROM runs r
+               WHERE r.user_uuid = $1::uuid
+                 AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = pw.date_iso
+                 AND NOT (r.data ? 'mergedIntoId')
+                 AND r.absorbed_into_canonical_at IS NULL
+                 AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
+            )
+          ORDER BY pw.id
+       ) dedup
+      ORDER BY dedup.date_iso ASC
       LIMIT 3`,
     [userUuid, today],
   ).catch(() => ({ rows: [] }))).rows;
@@ -906,48 +1039,65 @@ async function loadRecentTestPoints(
     splits: unknown;
     splits_unreliable: boolean | null;
   }>(
-    `SELECT pw.date_iso, pw.type, pw.sub_label,
-            pw.distance_mi, pw.pace_target_s_per_mi AS pace_target_s,
-            pw.workout_spec,
-            r.data->>'distanceMi' AS distance_actual,
-            r.data->>'durationSec' AS duration_s,
-            r.data->'weather' AS weather,
-            -- P1-10 fix · per-mile splits + reliability flag so non-watch
-            -- runs can still get a work-phase read (see judgeTestPointExecution).
-            r.data->'splits' AS splits,
-            (r.data->>'splits_unreliable')::boolean AS splits_unreliable,
-            -- Work-phase actual pace from the watch_completion blob.
-            -- jsonb_path_query_first returns the first matching value ·
-            -- we then cast to numeric. NULL when no watch payload exists
-            -- for the date (Strava-only / HK-only / manual runs).
-            (
-              SELECT AVG((phase->>'actualPaceSPerMi')::numeric)
-                FROM coach_intents ci,
-                     jsonb_array_elements(
-                       CASE jsonb_typeof(ci.value::jsonb)
-                         WHEN 'object' THEN ci.value::jsonb->'phases'
-                         ELSE '[]'::jsonb
-                       END
-                     ) AS phase
-               WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
-                 AND ci.reason = 'watch_completion'
-                 AND (ci.ts AT TIME ZONE $3::text)::date = pw.date_iso::date
-                 AND phase->>'type' = 'work'
-                 AND (phase->>'actualPaceSPerMi')::numeric > 0
-            ) AS work_pace_s
-       FROM plan_workouts pw
-       JOIN training_plans tp ON tp.id = pw.plan_id
-       JOIN runs r
-         ON r.user_uuid = $1::uuid
-        AND r.data->>'date' = pw.date_iso
-        AND NOT (r.data ? 'mergedIntoId')
-        AND r.absorbed_into_canonical_at IS NULL
-        AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
-      WHERE tp.user_uuid = $1::uuid
-        AND tp.archived_iso IS NULL
-        AND pw.type IN ('tempo','threshold','intervals','long','race','race_week_tuneup')
-        AND pw.date_iso <= $2
-      ORDER BY pw.date_iso DESC
+    // 2026-07-13 · S3 · DISTINCT ON (pw.id) collapses a double-ingest (two
+    // canonical runs on one plan day) to a single row BEFORE the LIMIT, so it
+    // can't double-count into the recency-weighted execution average. Canonical
+    // pick prefers the richer row (has splits, then longer distance, then newer
+    // id). Run/plan-day match uses COALESCE(date, startLocal[:10]) so
+    // startLocal-only ingest rows still join.
+    `SELECT dedup.date_iso, dedup.type, dedup.sub_label,
+            dedup.distance_mi, dedup.pace_target_s, dedup.workout_spec,
+            dedup.distance_actual, dedup.duration_s, dedup.weather,
+            dedup.splits, dedup.splits_unreliable, dedup.work_pace_s
+       FROM (
+         SELECT DISTINCT ON (pw.id)
+                pw.id AS pw_id, pw.date_iso, pw.type, pw.sub_label,
+                pw.distance_mi, pw.pace_target_s_per_mi AS pace_target_s,
+                pw.workout_spec,
+                r.data->>'distanceMi' AS distance_actual,
+                r.data->>'durationSec' AS duration_s,
+                r.data->'weather' AS weather,
+                -- P1-10 fix · per-mile splits + reliability flag so non-watch
+                -- runs can still get a work-phase read (see judgeTestPointExecution).
+                r.data->'splits' AS splits,
+                (r.data->>'splits_unreliable')::boolean AS splits_unreliable,
+                -- Work-phase actual pace from the watch_completion blob.
+                -- jsonb_path_query_first returns the first matching value ·
+                -- we then cast to numeric. NULL when no watch payload exists
+                -- for the date (Strava-only / HK-only / manual runs).
+                (
+                  SELECT AVG((phase->>'actualPaceSPerMi')::numeric)
+                    FROM coach_intents ci,
+                         jsonb_array_elements(
+                           CASE jsonb_typeof(ci.value::jsonb)
+                             WHEN 'object' THEN ci.value::jsonb->'phases'
+                             ELSE '[]'::jsonb
+                           END
+                         ) AS phase
+                   WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
+                     AND ci.reason = 'watch_completion'
+                     AND (ci.ts AT TIME ZONE $3::text)::date = pw.date_iso::date
+                     AND phase->>'type' = 'work'
+                     AND (phase->>'actualPaceSPerMi')::numeric > 0
+                ) AS work_pace_s
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+           JOIN runs r
+             ON r.user_uuid = $1::uuid
+            AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = pw.date_iso
+            AND NOT (r.data ? 'mergedIntoId')
+            AND r.absorbed_into_canonical_at IS NULL
+            AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
+          WHERE tp.user_uuid = $1::uuid
+            AND tp.archived_iso IS NULL
+            AND pw.type IN ('tempo','threshold','intervals','long','race','race_week_tuneup')
+            AND pw.date_iso <= $2
+          ORDER BY pw.id,
+                   (r.data ? 'splits') DESC,
+                   COALESCE((r.data->>'distanceMi')::numeric, 0) DESC,
+                   r.id DESC
+       ) dedup
+      ORDER BY dedup.date_iso DESC
       LIMIT 3`,
     [userUuid, today, ciTz],
   ).catch(() => ({ rows: [] }))).rows;
@@ -1400,49 +1550,94 @@ async function detectPlanAdapterDrift(userUuid: string): Promise<DriftSignal | n
   };
 }
 
-/** WEAK · 30%+ of scheduled key workouts (quality + long) missed in
- *  the last 4 weeks. */
+/** WEAK / MEDIUM · missed key workouts (quality + long) in the last 4 weeks.
+ *
+ *  2026-07-13 · S2 · window bounds are now RUNNER-LOCAL (runnerToday), not
+ *  server-UTC CURRENT_DATE — a runner west of UTC could otherwise have a plan
+ *  day graded a day early. The completed-EXISTS subquery gained the
+ *  absorbed_into_canonical_at IS NULL dedup guard and the ::uuid cast on
+ *  user_uuid to match the sibling queries.
+ *
+ *  Weight ladder:
+ *   · MEDIUM · a FULL missed week — a trailing stretch of >= FULL_WEEK_DAYS
+ *     consecutive days that contains >= 1 scheduled key session with none
+ *     completed. One bad week can now reach 'watching' on its own.
+ *   · WEAK   · scattered sub-week misses — >= MISSED_PCT_TRIGGER of the 4-week
+ *     window's key sessions missed (the pre-existing 0.30 trigger, kept as an
+ *     additional, stronger-coverage path). */
 async function detectMissedKeyWorkoutDrift(userUuid: string): Promise<DriftSignal | null> {
-  const r = (await pool.query<{ scheduled: number | string; completed: number | string }>(
-    `WITH key_window AS (
-       SELECT pw.id, pw.date_iso, pw.type, pw.distance_mi
-         FROM plan_workouts pw
-         JOIN training_plans tp ON tp.id = pw.plan_id
-        WHERE tp.user_uuid = $1::uuid
-          AND tp.archived_iso IS NULL
-          AND pw.type IN ('long','tempo','threshold','intervals','race')
-          AND pw.date_iso >= (CURRENT_DATE - INTERVAL '28 days')::text
-          AND pw.date_iso < CURRENT_DATE::text
-     )
-     SELECT
-       (SELECT COUNT(*) FROM key_window) AS scheduled,
-       (SELECT COUNT(*) FROM key_window kw
-         WHERE EXISTS (
-           SELECT 1 FROM runs r
-            WHERE r.user_uuid = $1
-              AND NOT (r.data ? 'mergedIntoId')
-              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = kw.date_iso
-              AND (r.data->>'distanceMi')::numeric >= kw.distance_mi * 0.8
-         )
-       ) AS completed`,
-    [userUuid],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (!r) return null;
-  const scheduled = Number(r.scheduled);
-  const completed = Number(r.completed);
-  if (scheduled < 3) return null;
-  const missedPct = (scheduled - completed) / scheduled;
-  if (missedPct < 0.3) return null;
+  const FULL_WEEK_DAYS = 7;         // [TUNABLE] trailing consecutive-day span that counts as a full missed week
+  const MISSED_PCT_TRIGGER = 0.30;  // [TUNABLE] share of window key sessions missed for the scattered (weak) trigger
+  const today = await runnerToday(userUuid);
+  const windowStart = isoDaysBefore(today, 28);
+
+  const rows = (await pool.query<{ date_iso: string; completed: boolean }>(
+    `SELECT kw.date_iso,
+            EXISTS (
+              SELECT 1 FROM runs r
+               WHERE r.user_uuid = $1::uuid
+                 AND NOT (r.data ? 'mergedIntoId')
+                 AND r.absorbed_into_canonical_at IS NULL
+                 AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = kw.date_iso
+                 AND (r.data->>'distanceMi')::numeric >= kw.distance_mi * 0.8
+            ) AS completed
+       FROM (
+         SELECT pw.id, pw.date_iso, pw.distance_mi
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+          WHERE tp.user_uuid = $1::uuid
+            AND tp.archived_iso IS NULL
+            AND pw.type IN ('long','tempo','threshold','intervals','race')
+            AND pw.date_iso >= $2
+            AND pw.date_iso < $3
+       ) kw
+      ORDER BY kw.date_iso ASC`,
+    [userUuid, windowStart, today],
+  ).catch(() => ({ rows: [] }))).rows;
+
+  const scheduled = rows.length;
+  if (scheduled === 0) return null;
+  const completed = rows.filter((row) => row.completed).length;
+  const missedCount = scheduled - completed;
+  const missedPct = scheduled > 0 ? missedCount / scheduled : 0;
+
+  // Full missed week · the trailing stretch of uncompleted key sessions (those
+  // after the most recent completed key session, or all of them when none were
+  // completed). If the earliest such session is >= FULL_WEEK_DAYS ago, the last
+  // week-plus contains >= 1 scheduled key session with none completed.
+  const dayDiff = (from: string, to: string): number =>
+    Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 86_400_000);
+  const lastCompleted = rows.filter((row) => row.completed).map((row) => row.date_iso).sort().at(-1) ?? null;
+  const trailingMissed = rows
+    .filter((row) => !row.completed && (lastCompleted == null || row.date_iso > lastCompleted))
+    .map((row) => row.date_iso)
+    .sort();
+  let fullMissedWeek = false;
+  let missedStreakDays = 0;
+  if (trailingMissed.length >= 1) {
+    missedStreakDays = dayDiff(trailingMissed[0], today);
+    fullMissedWeek = missedStreakDays >= FULL_WEEK_DAYS;
+  }
+
+  const scatteredTrigger = scheduled >= 3 && missedPct >= MISSED_PCT_TRIGGER;
+  if (!fullMissedWeek && !scatteredTrigger) return null;
+
+  const weight: DriftWeight = fullMissedWeek ? 'medium' : 'weak';
+  const detail = fullMissedWeek
+    ? `Full week missed · no key session completed in ${missedStreakDays} days · ${missedCount} of ${scheduled} key workouts skipped in the last 4 weeks.`
+    : `${missedCount} of ${scheduled} key workouts missed in the last 4 weeks · ${Math.round(missedPct * 100)}%.`;
 
   return {
     kind: 'missed_key_workouts',
-    weight: 'weak',
-    detail: `${scheduled - completed} of ${scheduled} key workouts missed in the last 4 weeks · ${Math.round(missedPct * 100)}%.`,
+    weight,
+    detail,
     evidence: {
       scheduledCount: scheduled,
       completedCount: completed,
-      missedCount: scheduled - completed,
+      missedCount,
       missedPct: Number(missedPct.toFixed(2)),
+      missedStreakDays,
+      fullMissedWeek: fullMissedWeek ? 1 : 0,
     },
   };
 }
