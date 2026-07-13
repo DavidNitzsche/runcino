@@ -316,7 +316,7 @@ struct TargetsProjectionPanel: View {
             // Only a REAL failed-execution read forces off; absent execution
             // data stays neutral (never fabricates a red off state).
             if execHasData && !execOk { return .off }
-            return fitOk ? .on : .watch
+            return execOk ? .on : .watch
         }
     }
 
@@ -389,50 +389,15 @@ struct TargetsProjectionPanel: View {
         guard let e = summary.executionQuality else { return "—" }
         return "\(Int((e * 100).rounded()))%"
     }
-    /// ok only when there's real data ≥ 0.80. A nil quality is NOT "ok" — it
-    /// renders neutral, never a green 100%.
+    /// ok only when there's real data ≥ 0.70. A nil quality is NOT "ok" — it
+    /// renders neutral, never a green 100%. (David 2026-07-13: the FITNESS tile
+    /// was removed — it implied a physiological read the app doesn't make — and
+    /// the pass mark dropped 0.80 → 0.70 so a mostly-executed block with one
+    /// missed week reads on track, not off.)
     private var execOk: Bool {
         guard let e = summary.executionQuality else { return false }
-        return e >= 0.80
+        return e >= 0.70
     }
-
-    /// got = the plan's MODELED projected gain (projectedGainVdot), NOT a fresh
-    /// measured read — David's VDOT is frozen, so a measured read would falsely
-    /// show "Lagging". This keeps the card consistent with the "plan trusts
-    /// itself" model + the ON PACE hero.
-    private var gotVdot: Double { summary.projectedGainVdot ?? 0 }
-    /// need = goalVdot − currentVdot (the gain the plan must deliver).
-    private var needVdot: Double {
-        guard let g = summary.goalVdot, let c = summary.currentVdot else { return 0 }
-        return max(0, g - c)
-    }
-    /// The FITNESS read needs all three VDOT inputs. When any is nil the ratio
-    /// is meaningless, so the read renders neutral "—" instead of a green
-    /// "Responding".
-    private var fitHasData: Bool {
-        summary.goalVdot != nil && summary.currentVdot != nil && summary.projectedGainVdot != nil
-    }
-    private var buildRatio: Double {
-        needVdot > 0 ? gotVdot / needVdot : 1.0
-    }
-    /// Runway-limited · the planned gain was clamped by TIME remaining (build
-    /// weeks), not by the runner. When execution is on track this reads
-    /// "On runway", never "Stalled" — Stalled/Lagging/Responding are reserved
-    /// for execution/plan-limited cases.
-    private var fitRunway: Bool {
-        fitHasData && summary.runwayLimited == true && execOk
-    }
-    /// FITNESS verdict from got/need ratio (handoff thresholds):
-    /// ≥0.95 → Responding (ok) · 0.6–0.95 → Lagging · <0.6 → Stalled.
-    /// Dataless → "—"; runway-limited-but-executing → "On runway".
-    private var fitVerdict: String {
-        guard fitHasData else { return "—" }
-        if fitRunway { return "On runway" }
-        if buildRatio >= 0.95 { return "Responding" }
-        if buildRatio >= 0.60 { return "Lagging" }
-        return "Stalled"
-    }
-    private var fitOk: Bool { fitHasData && buildRatio >= 0.95 }
 
     // MARK: Summary line
     //
@@ -555,11 +520,11 @@ struct TargetsProjectionPanel: View {
 
     // MARK: Body
 
-    /// True when the card has no execution, no fitness inputs, AND no
-    /// projection times — every read would be a neutral placeholder, so route
-    /// to the cold state rather than render a hollow green-looking card.
+    /// True when the card has no execution data AND no projection times — every
+    /// read would be a neutral placeholder, so route to the cold state rather
+    /// than render a hollow green-looking card.
     private var isDataless: Bool {
-        !execHasData && !fitHasData && fitnessSec == nil && projSec == nil
+        !execHasData && fitnessSec == nil && projSec == nil
     }
 
     @ViewBuilder
@@ -682,35 +647,26 @@ struct TargetsProjectionPanel: View {
         }
     }
 
-    // 3+4 · Execution & Fitness reads
+    // 3 · Execution read
+    //
+    // The FITNESS tile was removed (David 2026-07-13): it reported a
+    // buildRatio verdict labelled "Stalled/Lagging/Responding", which implied a
+    // physiological read the engine deliberately does not make (fitness is
+    // ASSUMED, not measured). EXECUTION is the honest, measured lever — it
+    // stands alone.
 
     private func readsSection(_ st: ProjState) -> some View {
-        // Neutral grey for values that carry no positive verdict (dataless,
-        // missed, or runway-limited) — never the accent green.
+        // Neutral grey when there's no positive verdict — never the accent green.
         let neutral = Color(hex: 0xD4D8DF)
-
-        // EXECUTION · neutral when no quality data.
         let execMode: ProjTick.Mode = !execHasData ? .neutral : (execOk ? .ok : .alert)
         let execColor = (execHasData && execOk) ? st.accent : neutral
 
-        // FITNESS · neutral when dataless OR runway-limited; accent only on a
-        // real "Responding" (fitOk implies data present).
-        let fitMode: ProjTick.Mode = (!fitHasData || fitRunway) ? .neutral : (fitOk ? .ok : .alert)
-        let fitColor = (fitOk && !fitRunway) ? st.accent : neutral
-
-        return HStack(spacing: 10) {
-            readCard(title: "EXECUTION",
-                     mode: execMode,
-                     value: execPctText,
-                     valueColor: execColor,
-                     accent: st.accent)
-            readCard(title: "FITNESS",
-                     mode: fitMode,
-                     value: fitVerdict,
-                     valueColor: fitColor,
-                     accent: st.accent)
-        }
-        .padding(.top, 18)
+        return readCard(title: "EXECUTION",
+                        mode: execMode,
+                        value: execPctText,
+                        valueColor: execColor,
+                        accent: st.accent)
+            .padding(.top, 18)
     }
 
     private func readCard(title: String, mode: ProjTick.Mode, value: String, valueColor: Color, accent: Color) -> some View {

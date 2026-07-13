@@ -515,7 +515,7 @@ export async function GET(req: NextRequest) {
     // confidence reconciliation so both the confidence label and the summary
     // line read the honest status. execOk is >= 0.80, so a sub-0.80 quality is
     // by definition not on track.
-    const EXEC_ON_TRACK_MIN = 0.80; // [TUNABLE] executionQuality floor for an on_track headline
+    const EXEC_ON_TRACK_MIN = 0.70; // [TUNABLE] executionQuality floor for an on_track headline (David 2026-07-13: 0.80 read a missed-2-but-back block as off; 0.70 = mostly-executed still counts)
     const execReconciledStatus =
       traj?.executionQuality != null && traj.executionQuality < EXEC_ON_TRACK_MIN && rawStatus === 'on_track'
         ? 'watch'
