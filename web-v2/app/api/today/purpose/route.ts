@@ -48,6 +48,12 @@ const TYPE_NORMALIZE: Record<string, WorkoutType> = {
   shakeout: 'shakeout',
   race: 'race',
   rest: 'rest',
+  // 2026-08-11 · race_week_tuneup fell through to 'unplanned' here,
+  // showing "UNPLANNED" + "By feel · no specific plan today" on a
+  // real taper-week race-pace rehearsal. Alias to 'threshold' to match
+  // the same convention already used in watch/workouts/complete and
+  // ingest/workout (race_week_tuneup is T-pace work).
+  race_week_tuneup: 'threshold',
 };
 
 /** 2026-06-02 · phase mapping for the iPhone TodayPurpose decoder.
@@ -288,7 +294,11 @@ export async function GET(req: NextRequest) {
       // 2026-06-02 · one-word hero title for the Today card.
       // Single source across web + iPhone + watch. See
       // lib/coach/workout-title.ts for the locked vocabulary.
-      typeTitle: workoutTypeTitle(type),
+      // 2026-08-11 · pass the RAW plan type, not the normalized `type`
+      // above — workout-title.ts special-cases race_week_tuneup →
+      // "TUNE-UP"; normalizing first (to 'threshold' for purpose/cue
+      // logic) was clobbering that before workoutTypeTitle ever saw it.
+      typeTitle: workoutTypeTitle(planRow.type),
       phase: phaseUpper,
       phaseLower,
       plannedMi,
