@@ -940,8 +940,16 @@ async function loadPhaseBreakdown(
       WHERE COALESCE(user_uuid, user_id) = $1
         AND reason = 'watch_completion'
         AND (
-          CASE WHEN field LIKE '%-____-__-__'
-               THEN RIGHT(field, 10) = $2
+          -- 2026-08-11 · field carries an optional #HHmm session-start
+          -- suffix since the P1-34 cross-day fix (watch/workouts/complete
+          -- mints it on every completion now — see effectiveWorkoutId
+          -- there). The old '%-____-__-__' suffix check didn't tolerate
+          -- it, so every modern completion fell to the ts::date fallback
+          -- below, which is UTC-shifted and matches the WRONG calendar
+          -- day for any run after ~5pm Pacific (crosses UTC midnight) —
+          -- e.g. an 8/10 evening run's phases bled into 8/11's card.
+          CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
+               THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
                ELSE ts::date = $2::date
           END
         )

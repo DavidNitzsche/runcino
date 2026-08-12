@@ -207,7 +207,12 @@ async function computeTodayExecution(
     `SELECT value FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1
         AND reason = 'watch_completion'
-        AND (CASE WHEN field LIKE '%-____-__-__' THEN RIGHT(field, 10) = $2 ELSE ts::date = $2::date END)
+        -- 2026-08-11 · see lib/coach/run-state.ts loadPhaseBreakdown for
+        -- the full note · tolerate field's #HHmm suffix (P1-34) so this
+        -- doesn't fall to the UTC-shifted ts::date fallback.
+        AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
+                  THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
+                  ELSE ts::date = $2::date END)
       ORDER BY ts DESC LIMIT 1`,
     [userId, today],
   ).catch(() => ({ rows: [] }))).rows[0];
