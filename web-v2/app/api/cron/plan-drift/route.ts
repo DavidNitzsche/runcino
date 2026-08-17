@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
                 (rc.meta->>'date')::text AS race_date,
                 (rc.meta->>'distanceMi')::text AS race_dist_mi
            FROM training_plans tp
-           JOIN races rc ON rc.slug = tp.race_id
+           JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
           WHERE tp.user_uuid = $1
             AND tp.archived_iso IS NULL
             AND tp.mode = 'maintenance'
@@ -186,7 +186,7 @@ export async function POST(req: NextRequest) {
         `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
                 (rc.meta->>'date')::text AS race_date
            FROM training_plans tp
-           JOIN races rc ON rc.slug = tp.race_id
+           JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
           WHERE tp.user_uuid = $1
             AND tp.archived_iso IS NULL
           ORDER BY tp.authored_iso DESC LIMIT 1`,
@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
                 (SELECT MAX(pw.date_iso) FROM plan_workouts pw
                   WHERE pw.plan_id = tp.id) AS last_workout_iso
            FROM training_plans tp
-           LEFT JOIN races rc ON rc.slug = tp.race_id
+           LEFT JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
           WHERE tp.user_uuid = $1
             AND tp.archived_iso IS NULL
             AND (tp.mode = 'recovery' OR tp.authored_state->>'mode' = 'recovery')
@@ -444,7 +444,7 @@ export async function POST(req: NextRequest) {
         const plan = (await pool.query<{ race_id: string | null; race_date: string | null }>(
           `SELECT tp.race_id, (rc.meta->>'date')::text AS race_date
              FROM training_plans tp
-             LEFT JOIN races rc ON rc.slug = tp.race_id
+             LEFT JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
             WHERE tp.id = $1`,
           [report.planId],
         ).catch(() => ({ rows: [] }))).rows[0];

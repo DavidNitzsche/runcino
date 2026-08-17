@@ -27,8 +27,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify the race belongs to the user before mutating.
+  // 2026-08-17 · races composite-PK prep · was `SELECT id, name` — races has
+  // neither column (it is keyed by slug and carries the display name inside
+  // meta), so this threw for every caller. Select the identifying pair the
+  // UPDATE below actually needs.
   const race = (await pool.query(
-    `SELECT id, name FROM races WHERE slug = $1 AND user_uuid = $2 LIMIT 1`,
+    `SELECT slug, user_uuid FROM races WHERE slug = $1 AND user_uuid = $2 LIMIT 1`,
     [body.raceSlug, userId]
   )).rows[0];
   if (!race) {
@@ -65,8 +69,8 @@ export async function POST(req: NextRequest) {
       `UPDATE races
           SET course_geometry = $1,
               course_source   = 'strava_match'
-        WHERE id = $2`,
-      [geometry, race.id]
+        WHERE slug = $2 AND user_uuid = $3`,
+      [geometry, race.slug, userId]
     );
   } catch (e: any) {
     return NextResponse.json({ error: `persist failed: ${e?.message}` }, { status: 500 });

@@ -563,15 +563,24 @@ export async function POST(req: NextRequest) {
       // intact); a foreign-owned slug filters to rowCount 0 → suffix retry.
       // Plain DO NOTHING was rejected: it would duplicate the race on
       // every same-user re-onboarding.
+      // 2026-08-17 · races composite-PK prep · mirrors POST /api/race:
+      // conflict target (slug, user_uuid); ownership WHERE kept as
+      // belt-and-braces (redundant under a composite target, still
+      // load-bearing pre-migration); 23505 mapped to rowCount 0 so the
+      // suffix retry fires the same way before and after the PK swap,
+      // while races_pkey (slug) still coexists with races_slug_user_uniq.
       const claimSlug = (s: string) => pool.query(
         `INSERT INTO races (slug, user_uuid, meta, plan, gpx_text)
          VALUES ($1, $2, $3, $4::jsonb, '')
-         ON CONFLICT (slug) DO UPDATE
+         ON CONFLICT (slug, user_uuid) DO UPDATE
            SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta),
                plan = CASE WHEN races.plan = '{}'::jsonb THEN EXCLUDED.plan ELSE races.plan END
          WHERE races.user_uuid = EXCLUDED.user_uuid`,
         [s, userId, meta, JSON.stringify(planSeed)]
-      );
+      ).catch((e: unknown) => {
+        if ((e as { code?: string } | null)?.code === '23505') return { rowCount: 0, rows: [] };
+        throw e;
+      });
       if ((await claimSlug(slug)).rowCount === 0) {
         slug = `${slug}-${userId.slice(0, 8)}`;
         if ((await claimSlug(slug)).rowCount === 0) {

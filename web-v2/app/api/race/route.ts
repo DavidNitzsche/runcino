@@ -77,14 +77,33 @@ export async function POST(req: NextRequest) {
     // no defaults — this INSERT failed for any NEW race row (existing
     // rows predate v2 and already carry both). Empty seeds; PATCH and
     // the execution-plan builders own the real content.
+    // 2026-08-17 · races composite-PK prep · conflict target is now
+    // (slug, user_uuid), matching the races_slug_user_uniq index and the
+    // incoming PRIMARY KEY (slug, user_uuid). The ownership WHERE is KEPT:
+    // under a composite target a conflict can only ever be this user's own
+    // row, so it is structurally redundant — but it costs nothing, it keeps
+    // the invariant readable at the call site, and it is the guard that
+    // still does real work in the pre-migration window below.
+    //
+    // TRANSITION WINDOW · this code deploys BEFORE the PK swap, so
+    // races_pkey (slug) still exists alongside races_slug_user_uniq. A
+    // foreign-owned slug therefore does NOT filter to rowCount 0 — the row
+    // is absent for (slug, THIS user), so Postgres attempts a real INSERT
+    // and trips the single-column pkey with a 23505. Map that to rowCount 0
+    // so the suffix retry behaves identically either side of the migration.
+    // Once the PK is composite, 23505 can no longer fire here and this
+    // branch becomes unreachable-but-harmless.
     const claimSlug = (s: string) => pool.query(
       `INSERT INTO races (slug, user_uuid, meta, plan, gpx_text)
        VALUES ($1, $2, $3, '{}'::jsonb, '')
-       ON CONFLICT (slug) DO UPDATE
+       ON CONFLICT (slug, user_uuid) DO UPDATE
          SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta)
        WHERE races.user_uuid = EXCLUDED.user_uuid`,
       [s, userId, meta]
-    );
+    ).catch((e: unknown) => {
+      if ((e as { code?: string } | null)?.code === '23505') return { rowCount: 0, rows: [] };
+      throw e;
+    });
     if ((await claimSlug(slug)).rowCount === 0) {
       // Natural slug is owned by a different user — take the suffixed one.
       slug = `${slug}-${userId.slice(0, 8)}`;

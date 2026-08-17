@@ -229,7 +229,14 @@ async function loadPostRaceState(userId: string, todayIso: string): Promise<{
     const activePlan = (await pool.query<{ race_date: string | null }>(
       `SELECT (rc.meta->>'date')::text AS race_date
          FROM training_plans tp
-         LEFT JOIN races rc ON rc.slug = tp.race_id
+         -- 2026-08-17 · races composite-PK prep · the join must match the
+         -- OWNER too. races.slug stops being globally unique once the PK
+         -- becomes (slug, user_uuid), so slug-only would fan this out across
+         -- every user holding that slug. Mirrors the WHERE's COALESCE so
+         -- legacy plan rows (user_uuid NULL, text user_id set) still resolve.
+         LEFT JOIN races rc
+                ON rc.slug = tp.race_id
+               AND rc.user_uuid::text = COALESCE(tp.user_uuid::text, tp.user_id)
         WHERE COALESCE(tp.user_uuid::text, tp.user_id) = $1
           AND tp.archived_iso IS NULL
         ORDER BY tp.authored_iso DESC

@@ -19,16 +19,37 @@
 -- user_uuid can return/affect another user's race.
 -- ════════════════════════════════════════════════════════════════════
 --
--- [ ] 1. ON CONFLICT targets. Both upsert sites currently write
---        ON CONFLICT (slug); after this migration that conflict target has
---        no unique index and the INSERTs will ERROR. Coordinated code
---        change to ON CONFLICT (slug, user_uuid) must deploy with this:
+-- [x] 1. ON CONFLICT targets. DONE in code — both sites now write
+--        ON CONFLICT (slug, user_uuid), which already resolves against the
+--        additive races_slug_user_uniq index, so the code is correct both
+--        before and after this file runs:
 --          - app/api/race/route.ts (POST claimSlug)
 --          - app/api/onboarding/complete/route.ts (race-path claimSlug)
---        (Their WHERE races.user_uuid = EXCLUDED.user_uuid guard becomes
---        redundant-but-harmless; the suffix-retry loop can be retired.)
+--        The WHERE races.user_uuid = EXCLUDED.user_uuid guard was KEPT
+--        (redundant under a composite target, zero cost, documents the
+--        invariant). The suffix-retry loop was also KEPT and must NOT be
+--        retired before this migration runs: while races_pkey (slug) still
+--        exists, a foreign-owned slug does not filter to rowCount 0 — the
+--        INSERT trips the single-column pkey with a 23505. Both sites now
+--        map 23505 to rowCount 0 so the retry fires identically either side
+--        of the swap. Covered by lib/race/races-user-scoping.test.ts F4/F5.
 --
--- [ ] 2. Slug-scoped readers. Verify every `FROM/UPDATE/DELETE races`
+-- [x] 2. Slug-scoped readers. DONE and now CI-gated. Every races SQL
+--        statement in app/ + lib/ carries user_uuid, and every `JOIN races`
+--        carries the owner predicate in its OWN ON clause rather than
+--        relying on a sibling WHERE. Enforced by
+--        lib/race/races-user-scoping.test.ts F2/F3, which scans source and
+--        fails on any new unscoped access. Fixed this round:
+--          - app/api/cron/plan-drift/route.ts ×4 slug-only joins (the one
+--            at the drift-suppression lookup had NO user filter at all —
+--            its outer WHERE is tp.id = $1)
+--          - app/api/today/purpose/route.ts slug-only join
+--          - lib/coach/voice-band.ts plan_race CTE (was correct via WHERE;
+--            owner now carried through the join)
+--          - app/api/gpx/import/route.ts `UPDATE races WHERE id = $2`
+--            (races has no id column — the read also selected id, name)
+--        Original audit note retained below.
+--        Verify every `FROM/UPDATE/DELETE races`
 --        with a slug predicate ALSO carries user_uuid = $user (or joins
 --        through a user-scoped table). Files touching races at audit time
 --        (grep 'FROM races|INTO races|UPDATE races|DELETE FROM races'):
@@ -56,8 +77,17 @@
 --        Every join races.slug = training_plans.race_id must also match
 --        races.user_uuid = training_plans.user_uuid.
 --
--- [ ] 3. URL routes. /races/[slug] pages and /api/race/[slug]/* resolve
---        the row from (slug + session user), never slug alone.
+-- [x] 3. URL routes. VERIFIED, no change needed. /races/[slug] resolves
+--        through components/faff-app/raceDetail.ts:buildRaceDetail, which
+--        takes userId from the session cookie, queries
+--        `WHERE slug = $1 AND user_uuid = $2`, and additionally requires the
+--        slug to appear in loadRacesState(userId) — no session, or a slug
+--        the caller does not own, returns null → 404. Every
+--        /api/race/[slug]/* handler (route, autofill, execution-plan) is
+--        requireUserId + slug AND user_uuid. /api/races (list) delegates to
+--        loadRacesState(userId). The loadNextARace cache in
+--        lib/coach/race-lookup.ts is keyed `${userId}|${today}|${planRaceId}`,
+--        so a shared slug cannot collide across tenants.
 --
 -- [ ] 4. Foreign keys. Confirm no FK references races(slug):
 --          SELECT conname, conrelid::regclass FROM pg_constraint
