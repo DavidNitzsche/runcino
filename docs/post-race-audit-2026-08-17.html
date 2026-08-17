@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The First Race</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0C10; --card:#11141A; --line:rgba(255,255,255,.08);
+    --ink:#E8EAED; --dim:rgba(255,255,255,.58); --faint:rgba(255,255,255,.34);
+    --race:#D03F3F; --amber:#F3AD38; --green:#3EBD41; --warn:#FC4D64;
+    --blue:#27B4E0; --gold:#F0DF47;
+    --disp:'Oswald','Avenir Next Condensed','Arial Narrow',sans-serif;
+    --body:'Inter','Helvetica Neue',Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{background:#0A0C10}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.62;
+       -webkit-font-smoothing:antialiased;padding:0 20px 90px}
+  .wrap{max-width:860px;margin:0 auto}
+  a{color:var(--blue);text-decoration:none}
+  code{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.86em;background:rgba(255,255,255,.06);
+       padding:1px 5px;border-radius:4px;color:var(--dim)}
+
+  /* masthead */
+  .mast{padding:64px 0 36px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:var(--body);font-size:11px;font-weight:600;letter-spacing:2.2px;text-transform:uppercase;color:var(--amber)}
+  h1{font-family:var(--disp);font-weight:600;font-size:56px;line-height:1.02;text-transform:uppercase;
+     letter-spacing:.5px;margin:14px 0 10px;text-wrap:balance}
+  .sub{color:var(--dim);font-size:15px;max-width:62ch}
+
+  /* sections */
+  section{padding:44px 0 8px;border-bottom:1px solid var(--line)}
+  section:last-of-type{border-bottom:none}
+  h2{font-family:var(--disp);font-weight:500;font-size:26px;text-transform:uppercase;letter-spacing:.8px;margin:10px 0 16px}
+  h3{font-family:var(--disp);font-weight:500;font-size:17px;text-transform:uppercase;letter-spacing:.7px;
+     color:var(--dim);margin:26px 0 8px}
+  p{margin:0 0 14px;max-width:70ch;color:var(--ink)}
+  p.dim{color:var(--dim)}
+  ul,ol{margin:0 0 16px 20px;max-width:68ch}
+  li{margin-bottom:9px}
+  li::marker{color:var(--faint)}
+  strong{font-weight:600}
+  .k{color:var(--amber);font-weight:600}
+  .bad{color:var(--warn);font-weight:600}
+  .good{color:var(--green);font-weight:600}
+
+  /* hero stats */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:30px 0 6px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px 15px}
+  .stat .lbl{font-size:11px;font-weight:600;letter-spacing:1.8px;text-transform:uppercase;color:var(--faint)}
+  .stat .val{font-family:var(--disp);font-weight:600;font-size:40px;line-height:1.1;margin-top:6px;
+             font-variant-numeric:tabular-nums}
+  .stat .note{font-size:12.5px;color:var(--dim);margin-top:4px}
+  .stat.goal .val{color:var(--faint);text-decoration:line-through;text-decoration-thickness:2px;text-decoration-color:var(--warn)}
+  .stat.proj .val{color:var(--blue)}
+  .stat.ran .val{color:var(--ink)}
+
+  /* loop diagram */
+  .loop{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:22px 0 20px}
+  .loop .node{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;flex:1;min-width:150px}
+  .loop .node .t{font-family:var(--disp);font-size:15px;letter-spacing:.8px;text-transform:uppercase}
+  .loop .node .d{font-size:12.5px;color:var(--dim);margin-top:3px}
+  .loop .node.ok{border-color:rgba(62,189,65,.45)} .loop .node.ok .t{color:var(--green)}
+  .loop .node.miss{border-color:rgba(252,77,100,.55);border-style:dashed} .loop .node.miss .t{color:var(--warn)}
+
+  /* cards, tables, charts */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:18px 0}
+  .card h3{margin-top:0}
+  .tablewrap{overflow-x:auto;margin:16px 0}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+  th{font-size:11px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--faint);
+     text-align:left;padding:8px 12px 8px 0;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:8px 12px 8px 0;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top;color:var(--dim)}
+  td:first-child,th:first-child{padding-left:0}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.ink{color:var(--ink)}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+        border-radius:999px;padding:2px 9px;white-space:nowrap}
+  .pill.p0{background:rgba(252,77,100,.16);color:var(--warn)}
+  .pill.p1{background:rgba(243,173,56,.14);color:var(--amber)}
+  .pill.p2{background:rgba(39,180,224,.13);color:var(--blue)}
+  .pill.okp{background:rgba(62,189,65,.14);color:var(--green)}
+  figure{margin:20px 0}
+  figcaption{font-size:12.5px;color:var(--faint);margin-top:8px;max-width:70ch}
+  .chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 14px 8px;overflow-x:auto}
+  .legend{display:flex;gap:18px;font-size:12px;color:var(--dim);padding:0 6px 8px}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .sw{width:14px;height:3px;border-radius:2px;display:inline-block}
+  .tip{position:fixed;pointer-events:none;background:#1B1F27;border:1px solid var(--line);border-radius:8px;
+       padding:7px 10px;font-size:12px;color:var(--ink);opacity:0;transition:opacity .12s;z-index:10;
+       font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  /* timeline */
+  .tl{border-left:2px solid var(--line);margin:20px 0 20px 6px;padding-left:22px}
+  .tl .ev{position:relative;margin-bottom:18px}
+  .tl .ev::before{content:'';position:absolute;left:-28px;top:5px;width:10px;height:10px;border-radius:50%;
+                  background:var(--faint)}
+  .tl .ev.done::before{background:var(--green)}
+  .tl .ev.warn::before{background:var(--warn)}
+  .tl .ev.next::before{background:var(--amber)}
+  .tl .when{font-size:11px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;color:var(--faint)}
+  .tl .what{font-size:14px;color:var(--ink);max-width:64ch}
+  .tl .what .d{color:var(--dim)}
+
+  /* decision list */
+  .dec{background:var(--card);border:1px solid rgba(243,173,56,.4);border-radius:14px;padding:20px 22px;margin:18px 0}
+  .dec ol{margin-left:18px}
+  .dec li{margin-bottom:12px;color:var(--dim)}
+  .dec li b{color:var(--ink);font-weight:600}
+
+  @media(max-width:640px){
+    h1{font-size:38px}
+    .stats{grid-template-columns:1fr}
+  }
+  @media(prefers-reduced-motion:reduce){ .tip{transition:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">Faff · Post-race audit · 2026-08-17</div>
+  <h1>The First Race</h1>
+  <p class="sub">Americas Finest City Half, San Diego, 2026-08-16. The first race completed on the app, start to finish. What the block did, what the engine did, why the plan stopped at the finish line, and what changes before the road to CIM begins.</p>
+</header>
+
+<section id="numbers">
+  <h2>The race in three numbers</h2>
+  <div class="stats">
+    <div class="stat goal"><div class="lbl">Goal · what the watch paced</div><div class="val">1:30:00</div><div class="note">Set in May. VDOT 50.9. Never reconciled.</div></div>
+    <div class="stat proj"><div class="lbl">Projection · race morning</div><div class="val">1:41:55</div><div class="note">VDOT 44.1, anchored to LA Marathon (Mar 8).</div></div>
+    <div class="stat ran"><div class="lbl">Ran · watch, chip pending</div><div class="val">1:41:53</div><div class="note">13.2 mi · avg HR 168 · max 178.</div></div>
+  </div>
+  <p class="dim">The projection missed by two seconds. The pacing plan missed by twelve minutes. Both numbers lived in the same app on the same morning.</p>
+</section>
+
+<section id="verdict">
+  <h2>Verdict · one open loop</h2>
+  <p>The question was whether this app is a good use of technology, stats, and planning to coach a runner. The honest answer: the <strong>measurement half is genuinely strong</strong> and the <strong>coaching loop is open</strong>. Every system that observes the runner works, and mostly works well. The system that should carry those observations back into the prescription does not exist. Five independent audits landed on the same shape:</p>
+  <div class="loop">
+    <div class="node ok"><div class="t">Measure</div><div class="d">VDOT, projections, readiness, adherence. Honest, doctrine-cited, correct.</div></div>
+    <div class="node ok"><div class="t">Prescribe</div><div class="d">Plan generation, periodization, taper. Well built, from research.</div></div>
+    <div class="node ok"><div class="t">Adapt structure</div><div class="d">Move, shrink, downgrade workouts. Battle-tested, seal-guarded.</div></div>
+    <div class="node miss"><div class="t">Reconcile</div><div class="d">Feed measured fitness back into paces, goals, and race targets. Missing everywhere.</div></div>
+  </div>
+  <p>The plan was authored in June for a 1:30 half (VDOT ~51.5) with <code>bestRecentVdot: null</code>, no measured-fitness input at all. Every tempo all summer came back at 7:00 to 7:30 per mile, the signature of a VDOT 44 to 45 runner. Eleven weeks of that signal produced zero pace re-derivation, because no pathway exists from executed evidence back into targets. The goal-gap engine computed the twelve-minute gap correctly, classified it <code>unclosable</code>, and did nothing, because only a <em>widening</em> gap triggers action. The projection engine knew. The prescription never asked.</p>
+</section>
+
+<section id="race">
+  <h2>Race day · pacing the aspiration</h2>
+  <p>The watch carried per-phase targets built from the 1:30 goal: 7:08 up the Point Loma climb, 6:39 down The Drop, 6:51 through Mission Bay. Mile 1 came in at 7:09, one second off target. That is flawless execution of the wrong plan. HR crossed threshold (LTHR 162) by mile 2 and never came back.</p>
+  <figure>
+    <div class="chart">
+      <div class="legend">
+        <span><span class="sw" style="background:var(--warn)"></span>Actual mile pace</span>
+        <span><span class="sw" style="background:rgba(255,255,255,.38)"></span>Watch target (goal-derived)</span>
+        <span><span class="sw" style="background:var(--blue)"></span>Even split at true fitness (7:43)</span>
+      </div>
+      <div id="splitsChart"></div>
+    </div>
+    <figcaption>Mile splits vs the goal-derived phase targets. Faster is up. The first four miles bank the plan's paces, the debt comes due from mile 5, mile 12 is 9:22. Evenly paced at measured fitness this was likely a 1:39 to 1:40; the pacing plan itself cost roughly two minutes.</figcaption>
+  </figure>
+  <p>Only two surfaces showed the honest 1:42 that morning: the Targets page and its trend chart. The watch payload, the race pacing card, the execution plan, and the fueling clock all read the goal. Targets even suppresses its own "off" status inside race week, the one week it matters at the start line.</p>
+</section>
+
+<section id="block">
+  <h2>The block · what eleven weeks actually held</h2>
+  <div class="stats">
+    <div class="stat"><div class="lbl">Mileage adherence</div><div class="val">68%</div><div class="note">359 of 528 planned miles.</div></div>
+    <div class="stat"><div class="lbl">Long runs</div><div class="val">7/10</div><div class="note">Every miss adjacent to an absence.</div></div>
+    <div class="stat"><div class="lbl">Interval sessions at target</div><div class="val" style="color:var(--warn)">0</div><div class="note">Targets were 6:29 to 6:52. Fitness was not.</div></div>
+  </div>
+  <figure>
+    <div class="chart">
+      <div class="legend">
+        <span><span class="sw" style="background:rgba(255,255,255,.22);height:10px;border-radius:3px"></span>Planned</span>
+        <span><span class="sw" style="background:var(--blue);height:10px;border-radius:3px"></span>Run</span>
+      </div>
+      <div id="weeksChart"></div>
+    </div>
+    <figcaption>Weekly mileage, planned vs run. Two absences (8 days late June, 6 days late July) zeroed weeks 5 and 9. The plan resumed as authored both times: after the zero week it prescribed 59.5 then 64.5, the two biggest weeks of the block, to a 39-mile-a-week runner one week off a full stop.</figcaption>
+  </figure>
+  <h3>What the block says</h3>
+  <ul>
+    <li><strong>You corrected the paces; the plan never did.</strong> Every tempo landed at true threshold regardless of the target ramp. The prescription sheet was for a runner about 7 VDOT points fitter.</li>
+    <li><strong>Easy-day economics.</strong> Key-session attendance was far higher than overall adherence; what got dropped, week after week, was the 6 to 10 mile easy day. The plan never noticed which kind of mile was being sacrificed.</li>
+    <li><strong>Adaptation was volume plumbing, not coaching.</strong> Five adaptation events in eleven weeks: two rows deleted mid-absence, one past day retitled, and three <em>increases</em> to long-run goal-pace segments, adapting toward the fantasy, not away from it.</li>
+    <li><strong>The taper inverted itself.</strong> Hardest sustained run of the entire block (12.4 mi at 7:21, 97% of LTHR) seven days out, brisk runs at five and six days out, then four days of nothing before the gun. Nothing flagged it.</li>
+  </ul>
+</section>
+
+<section id="prediction">
+  <h2>The prediction · right answer, wrong reason</h2>
+  <p>The two-second miss is not the win it looks like. The projection sat at <span class="k">47.9 · 1:34:54</span> for 53 straight days, anchored to the February Disney Half. On August 1 that race aged out of a hard 180-day SQL window and the anchor fell overnight to the March LA Marathon: <span class="k">44.1 · 1:41:55</span>. Had the race been July 30, the standing prediction was seven minutes off.</p>
+  <ul>
+    <li><strong>The anchor-fade is dead code.</strong> A staleness fade was built for exactly this cliff and unit-tested to show 47.8 on race morning. It never runs: the SQL loader cuts candidates at 180 days before the fade (which needs 300) ever sees them. The bug it was written to prevent shipped on the predicted date. Ironically, the dead code produced the accurate number.</li>
+    <li><strong>Training runs cannot move the headline VDOT, by construction.</strong> Run candidates are soft-capped at race + 1.0, then the sort penalizes runs by exactly 1.0. The permitted lead cancels to zero: while any race anchor exists, five months of training evidence has no possible effect on the number.</li>
+    <li><strong>What is genuinely good:</strong> the Daniels cross-distance engine carried a five-month-old marathon into a half projection within seconds, the source-of-truth ladder held, and the course-aware split math is sound. The failures are windowing and wiring, not physiology.</li>
+  </ul>
+</section>
+
+<section id="rollover">
+  <h2>The rollover · four links, four failures</h2>
+  <p>The complete post-race machine exists: log a result, VDOT recalcs, the plan archives, the next plan generates against the next A race (correctly CIM). It is gated on a manual chip-time entry that lives at the bottom of the past-race detail page. No prompt, no notification, no detection, even though the watch run synced <em>tagged as a race</em> and the app already computes a provisional finish from it for display.</p>
+  <div class="tl">
+    <div class="ev done"><div class="when">Aug 12 to 16</div><div class="what">Pre-race machinery fires perfectly. <span class="d">Race-eve notifications, sleep banking, race-morning takeover.</span></div></div>
+    <div class="ev warn"><div class="when">Aug 16 · race day</div><div class="what">Race run syncs, tagged <code>race</code>. Nothing consumes the tag. <span class="d">A skip-recovery notification fires instead: the skip engine treated race day as a missed run.</span></div></div>
+    <div class="ev warn"><div class="when">Aug 17 · today</div><div class="what">TODAY shows "UNPLANNED · by feel." <span class="d">The native post-race card exists but is double-gated off for anyone with a next race booked. Web has no post-race state at all. The designed void.</span></div></div>
+    <div class="ev next"><div class="when">Aug 18 · tomorrow ~09:30 UTC</div><div class="what">The graduate cron fires (it waits race + 2 days) and builds a two-week recovery plan targeting CIM. <span class="d">Doctrine-correct: rest-dominated week, gentle long reintroduced. First time it will ever fire in prod. Without a logged result, the new plan starts from stale VDOT.</span></div></div>
+    <div class="ev warn"><div class="when">~Aug 31 · second void</div><div class="what">The recovery plan ends and nothing transitions recovery to race-prep. <span class="d">The code comment promising that transition describes a path that does not exist. Without a fix, TODAY goes dark again with CIM 14 weeks out.</span></div></div>
+  </div>
+  <p>One more gap on the road to December: the generated CIM plan will schedule ordinary training straight over <strong>Santa Monica 10K (Sep 13, B)</strong>, <strong>Dodgers 10K (Sep 26, C)</strong>, and <strong>Run Malibu Half (Nov 8, B)</strong>. The generator only considers races <em>longer</em> than the target distance; tune-up embedding, mini-tapers, and post-race-B easy days do not exist yet.</p>
+</section>
+
+<section id="december">
+  <h2>The road to CIM · same pattern, bigger cost</h2>
+  <p>CIM (Dec 6) is on file with a <span class="bad">3:00:00</span> goal. The current marathon projection is <span class="k">3:31:38</span>. That is the AFC setup again, at a distance where a goal-anchored first half does not cost two minutes, it costs a death march from mile 18. Before the block starts, the goal and the projection have to be reconciled: either the engine proposes an evidence-based goal band and 3:00 becomes the long-range ambition, or the December block trains and paces a fiction for sixteen weeks.</p>
+  <p class="dim">For scale: 3:31 to 3:00 is roughly 7 VDOT points. Doctrine-honest improvement inside one 16-week block is on the order of 1 to 2 points. A 3:20 to 3:25 band is the kind of range the fixed engine should be proposing from the data; the exact number should come from the engine once the reconciliation loop lands, not from this report.</p>
+</section>
+
+<section id="multiuser">
+  <h2>Opening the doors · multi-user readiness</h2>
+  <p>The engine is already multi-tenant: cold-start plan generation from self-reported history works, all thirteen crons iterate users correctly, scoping is clean, and the old cross-user leak class is verifiably gone. What fails is the lifecycle around a real human. The proof is already in the database: the only two real strangers ever approved <strong>never signed in once</strong>.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>#</th><th>Blocker</th><th>Why it kills onboarding</th><th>Size</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td class="ink">Acquisition funnel dies at the door</td><td>Invite email sends from a Resend sandbox address and points at a web login for an iPhone-first product. Both real invitees: zero sessions.</td><td class="num">M</td></tr>
+      <tr><td class="num">2</td><td class="ink">No automatic post-race rollover</td><td>15 test-account plans for June to Sep races still sit active. Any runner who races and never types a result freezes on a spent plan, forever.</td><td class="num">M</td></tr>
+      <tr><td class="num">3</td><td class="ink">Zero notification delivery</td><td>APNs credentials never configured on prod; no email channel. A perfect plan that reaches nobody.</td><td class="num">S+M</td></tr>
+      <tr><td class="num">4</td><td class="ink">Global race-slug primary key</td><td>Collision guard is non-atomic; the failure mode merges race meta into another user's row. Composite PK is the structural fix.</td><td class="num">M</td></tr>
+      <tr><td class="num">5</td><td class="ink">plan_workouts.user_uuid null on all new inserts</td><td>112k rows ride a join through training_plans. One future direct filter, silent empty plans.</td><td class="num">S</td></tr>
+      <tr><td class="num">6</td><td class="ink">profile PK defaults to 'me'</td><td>Legacy single-user default still loaded; every writer must remember to override or collide with David's rows.</td><td class="num">S · DDL</td></tr>
+      <tr><td class="num">7</td><td class="ink">Web-only users live on LA time</td><td>Timezone only populates via iOS sync; day boundaries wrong for everyone else.</td><td class="num">S</td></tr>
+      <tr><td class="num">8</td><td class="ink">Zombie test accounts pollute prod</td><td>~40 QA personas; 15 with active plans consuming every cron cycle and muddying telemetry.</td><td class="num">S · destructive</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="next">
+  <h2>Next steps · three waves</h2>
+
+  <div class="card">
+    <h3><span class="pill p0">Wave 1</span> &nbsp;Before the CIM block · this week</h3>
+    <ul>
+      <li><strong>Log the AFC result</strong> so tomorrow's rollover starts from truth, not a stale anchor. Needs your official chip time.</li>
+      <li><strong>Build the recovery-to-race-prep transition.</strong> Without it the recovery plan dead-ends ~Aug 31 and TODAY goes dark again.</li>
+      <li><strong>Post-race result flow:</strong> detector (race-tagged run + past race + no result), one-tap confirm card on TODAY pre-filled from the watch (labeled provisional per the source-of-truth rule), a <code>race_result</code> notification category, fix the native post-race gate, add a web post-race state, and make a spent plan render as RACE DONE / RECOVERY instead of UNPLANNED.</li>
+      <li><strong>Fix the dead anchor-fade</strong> (fetch 300 days, let the fade own staleness) and add the integration test through the real loader.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><span class="pill p1">Wave 2</span> &nbsp;Close the coaching loop · the CIM block runs on this</h3>
+    <ul>
+      <li><strong>Measured VDOT becomes the pace anchor of record.</strong> Goal caps ambition; it stops writing paces. Gate the goal-pace blend on measured progress, not the calendar.</li>
+      <li><strong>Downward re-anchoring:</strong> races and sustained slow quality evidence lower the anchor the same way PRs raise it.</li>
+      <li><strong>Goal renegotiation surface:</strong> when the gap is unclosable, propose the evidence-based goal band the code already computes. The accept path already exists.</li>
+      <li><strong>Race-week reconciliation:</strong> if projection exceeds goal by ~5%, the watch paces off the projection (or a renegotiated goal). The stretch goal stays visible as the stretch.</li>
+      <li><strong>Embed B/C races</strong> in the generated block as tune-ups with mini-tapers and post-race easy days.</li>
+      <li><strong>Post-absence re-ramp</strong> (never resume as authored after a zero week), notice <em>which kind</em> of mile gets dropped, schedule a field test when no race has confirmed fitness in six weeks, and heat-adjust pace evidence before scoring it.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3><span class="pill p2">Wave 3</span> &nbsp;Open the doors · multi-user</h3>
+    <ul>
+      <li>Fix the invite funnel (real sending domain, iPhone-first onboarding path, first-login instrumentation).</li>
+      <li>APNs credentials on prod (needs your .p8), plus an email fallback channel.</li>
+      <li>Structural hygiene: plan_workouts.user_uuid on insert + backfill, composite race PK, drop the 'me' default, capture web timezone, wire runner calibration, clean up test accounts.</li>
+    </ul>
+  </div>
+
+  <div class="dec">
+    <h3 style="color:var(--amber)">Decisions that are yours</h3>
+    <ol>
+      <li><b>Official AFC chip time</b> · the watch says 1:41:53; the chip may differ. Give the number and the result gets logged, which archives the AFC plan and generates the CIM block from current truth.</li>
+      <li><b>CIM goal stance</b> · keep 3:00 as the pacing target (the AFC pattern at marathon cost), or let the engine propose an evidence-based band once Wave 2 lands and hold 3:00 as the long-range ambition. Recommendation: the second.</li>
+      <li><b>Wave order and scope</b> · Wave 1 is argued as non-negotiable before Aug 31. Waves 2 and 3 can run in either order or interleaved.</li>
+      <li><b>DDL and destructive items</b> · composite race PK, dropping the 'me' default, deleting zombie test accounts. Each needs a per-statement go, per doctrine.</li>
+    </ol>
+  </div>
+</section>
+
+<div class="tip" id="tip"></div>
+
+<script>
+(function(){
+  var NS='http://www.w3.org/2000/svg';
+  function el(n,a){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);return e;}
+  function pace(s){var m=Math.floor(s/60),ss=Math.round(s%60);return m+':'+(ss<10?'0':'')+ss;}
+  var tip=document.getElementById('tip');
+  function showTip(evt,html){tip.innerHTML=html;tip.style.opacity=1;
+    tip.style.left=Math.min(evt.clientX+14,window.innerWidth-170)+'px';tip.style.top=(evt.clientY-38)+'px';}
+  function hideTip(){tip.style.opacity=0;}
+
+  /* ── splits chart ─────────────────────────────────────────── */
+  var actual=[429,444,416,405,453,452,474,504,467,496,470,562,496];
+  var phases=[{from:0,to:2,t:421},{from:2,to:4.5,t:386},{from:4.5,to:9.9,t:417},{from:9.9,to:10.9,t:420},{from:10.9,to:13.1,t:420}];
+  var even=463;
+  var W=780,H=250,L=52,R=14,T=16,B=30,pw=W-L-R,ph=H-T-B;
+  var yMin=370,yMax=580;               /* pace s/mi; faster (lower s) drawn higher */
+  function y(v){return T+ (v-yMin)/(yMax-yMin)*ph;}
+  function x(mi){return L+ (mi/13.1)*pw;}
+  var svg=el('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',height:'auto',role:'img',
+    'aria-label':'Race mile splits versus goal-derived targets'});
+  /* grid + y labels at 6:30,7:00,7:30,8:00,8:30,9:00,9:30 */
+  [390,420,450,480,510,540,570].forEach(function(v){
+    svg.appendChild(el('line',{x1:L,x2:W-R,y1:y(v),y2:y(v),stroke:'rgba(255,255,255,.06)','stroke-width':1}));
+    var t=el('text',{x:L-8,y:y(v)+4,'text-anchor':'end',fill:'rgba(255,255,255,.34)','font-size':11,
+      'font-family':'Inter,sans-serif'});t.textContent=pace(v);svg.appendChild(t);
+  });
+  /* x labels */
+  [1,3,5,7,9,11,13].forEach(function(mi){
+    var t=el('text',{x:x(mi-0.5),y:H-10,'text-anchor':'middle',fill:'rgba(255,255,255,.34)','font-size':11,
+      'font-family':'Inter,sans-serif'});t.textContent='mi '+mi;svg.appendChild(t);
+  });
+  /* even-split reference */
+  svg.appendChild(el('line',{x1:L,x2:W-R,y1:y(even),y2:y(even),stroke:'#27B4E0','stroke-width':1.5,'stroke-dasharray':'2 5',opacity:.8}));
+  /* target step line */
+  phases.forEach(function(p){
+    svg.appendChild(el('line',{x1:x(p.from),x2:x(p.to),y1:y(p.t),y2:y(p.t),stroke:'rgba(255,255,255,.38)','stroke-width':2}));
+  });
+  /* actual line + points */
+  var d='';
+  actual.forEach(function(v,i){d+=(i?'L':'M')+x(i+0.5)+' '+y(v)+' ';});
+  svg.appendChild(el('path',{d:d,fill:'none',stroke:'#FC4D64','stroke-width':2,'stroke-linejoin':'round'}));
+  actual.forEach(function(v,i){
+    var c=el('circle',{cx:x(i+0.5),cy:y(v),r:4,fill:'#FC4D64',stroke:'#11141A','stroke-width':2});
+    var hit=el('circle',{cx:x(i+0.5),cy:y(v),r:12,fill:'transparent'});
+    hit.addEventListener('mousemove',function(e){
+      var ph2=phases.find(function(p){return i+0.5>=p.from&&i+0.5<=p.to;});
+      showTip(e,'<b>Mile '+(i+1)+'</b> · ran '+pace(v)+'<br>target '+pace(ph2?ph2.t:420)+' · even '+pace(even));});
+    hit.addEventListener('mouseleave',hideTip);
+    svg.appendChild(c);svg.appendChild(hit);
+  });
+  /* direct label on the blow-up */
+  var lbl=el('text',{x:x(11.5),y:y(562)+18,'text-anchor':'middle',fill:'#FC4D64','font-size':11.5,
+    'font-weight':600,'font-family':'Inter,sans-serif'});lbl.textContent='9:22';svg.appendChild(lbl);
+  document.getElementById('splitsChart').appendChild(svg);
+
+  /* ── weekly mileage chart ─────────────────────────────────── */
+  var planned=[44.6,45.5,45.5,49.5,40.0,45.5,59.5,64.5,55.5,46.0,31.6];
+  var ran=[44.9,40.1,47.3,28.0,0,43.1,39.8,47.5,4.2,39.8,23.2];
+  var W2=780,H2=230,L2=40,R2=14,T2=14,B2=30,pw2=W2-L2-R2,ph2=H2-T2-B2,maxV=70;
+  function y2(v){return T2+ph2-(v/maxV)*ph2;}
+  var svg2=el('svg',{viewBox:'0 0 '+W2+' '+H2,width:'100%',height:'auto',role:'img',
+    'aria-label':'Weekly planned versus actual mileage'});
+  [0,20,40,60].forEach(function(v){
+    svg2.appendChild(el('line',{x1:L2,x2:W2-R2,y1:y2(v),y2:y2(v),stroke:'rgba(255,255,255,.06)','stroke-width':1}));
+    var t=el('text',{x:L2-8,y:y2(v)+4,'text-anchor':'end',fill:'rgba(255,255,255,.34)','font-size':11,
+      'font-family':'Inter,sans-serif'});t.textContent=v;svg2.appendChild(t);
+  });
+  var slot=pw2/11;
+  planned.forEach(function(pv,i){
+    var gx=L2+i*slot, bw=(slot-14)/2;
+    var b1=el('rect',{x:gx+5,y:y2(pv),width:bw,height:ph2+T2-y2(pv),fill:'rgba(255,255,255,.22)',rx:3});
+    var rv=ran[i];
+    var b2=el('rect',{x:gx+7+bw,y:y2(rv),width:bw,height:Math.max(ph2+T2-y2(rv),rv>0?2:0),fill:'#27B4E0',rx:3});
+    [ [b1,'planned '+pv.toFixed(1)+' mi'],[b2,'ran '+rv.toFixed(1)+' mi'] ].forEach(function(pair){
+      pair[0].addEventListener('mousemove',function(e){showTip(e,'<b>Week '+(i+1)+'</b> · '+pair[1]+
+        '<br>planned '+planned[i].toFixed(1)+' · ran '+ran[i].toFixed(1));});
+      pair[0].addEventListener('mouseleave',hideTip);
+    });
+    svg2.appendChild(b1);svg2.appendChild(b2);
+    var t=el('text',{x:gx+slot/2,y:H2-10,'text-anchor':'middle',fill:'rgba(255,255,255,.34)','font-size':11,
+      'font-family':'Inter,sans-serif'});t.textContent='w'+(i+1);svg2.appendChild(t);
+    if(rv===0||rv<5){
+      var z=el('text',{x:gx+slot/2,y:y2(Math.max(rv,0))-6,'text-anchor':'middle',fill:'#FC4D64','font-size':10.5,
+        'font-weight':600,'font-family':'Inter,sans-serif'});z.textContent=rv===0?'0':rv.toFixed(0);svg2.appendChild(z);
+    }
+  });
+  document.getElementById('weeksChart').appendChild(svg2);
+})();
+</script>
+
+</div>
+</body>
+</html>
