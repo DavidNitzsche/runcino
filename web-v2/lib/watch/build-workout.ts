@@ -23,6 +23,7 @@ import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-sp
 import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
+import { raceOpeningSegments } from '@/lib/race/distance-doctrine';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
@@ -705,10 +706,38 @@ export async function buildWatchToday(
         workout.phases = coursePhases;
       } else {
         const race = specWorkPhases[0];
-        race.targetPaceSPerMi = Math.round(raceGoalSec / raceDistMi);
-        race.tolerancePaceSPerMi = Math.min(race.tolerancePaceSPerMi ?? 12, 12);
-        if (race.distanceMi) {
-          race.durationSec = Math.round(race.distanceMi * (race.targetPaceSPerMi ?? 0));
+        // 2026-08-17 doctrine-conformance audit · THE SETTLE PHASE.
+        // spec-builder.ts:461 justified its ±5 s/mi race band by saying
+        // "the first-mile allowance is structural (watch settle phase +
+        // execution plan)" — the watch settle phase did not exist. The
+        // wrist prescribed flat goal pace from the gun while the phone's
+        // split card said settle: two surfaces, one runner, contradicting
+        // each other on race morning. Both now read the same opening
+        // model (lib/race/distance-doctrine.ts · Research/08 §3.1), so
+        // the watch opens +2 s/mi on a 5K and +15 on a marathon, holds
+        // the early block, then repays it — summing to the goal exactly.
+        const segments = raceOpeningSegments({ goalSec: raceGoalSec, distanceMi: raceDistMi });
+        const raceIdx = workout.phases.indexOf(race);
+        if (segments.length > 1 && raceIdx >= 0) {
+          // Splice, don't replace the array — any warm-up/cool-down the
+          // spec carries around the race survives.
+          workout.phases.splice(raceIdx, 1, ...segments.map((s, i) => ({
+            type: 'work' as const,
+            label: s.label,
+            distanceMi: s.distanceMi,
+            durationSec: s.durationSec,
+            targetPaceSPerMi: s.paceSPerMi,
+            tolerancePaceSPerMi: Math.min(race.tolerancePaceSPerMi ?? 12, 12),
+            haptic: i === 0 ? ('start' as const) : ('transition-work' as const),
+            repUnit: 'distance' as const,
+            hrTargetBpm: race.hrTargetBpm ?? null,
+          })));
+        } else {
+          race.targetPaceSPerMi = Math.round(raceGoalSec / raceDistMi);
+          race.tolerancePaceSPerMi = Math.min(race.tolerancePaceSPerMi ?? 12, 12);
+          if (race.distanceMi) {
+            race.durationSec = Math.round(race.distanceMi * (race.targetPaceSPerMi ?? 0));
+          }
         }
       }
       workout.totalEstimatedMinutes = Math.round(
@@ -793,6 +822,9 @@ export async function buildWatchToday(
         const fuel = computeFueling({
           durationEstMin: Math.round(raceGoalSec / 60),
           distanceMi: raceDistMi,
+          // Race-day rate is the DISTANCE's Research/18 §11 row, not the
+          // marathon row for every race (doctrine audit 2026-08-17).
+          raceDistanceMi: raceDistMi,
           workoutType: 'race',
           tempF: null,
           daysToARace: 0,
@@ -843,6 +875,11 @@ export async function buildWatchToday(
       const fuel = computeFueling({
         durationEstMin: totalEstimatedMinutes,
         distanceMi,
+        // The gut-training ramp aims at the GOAL RACE's §11 rate, so a
+        // 10K goal no longer rehearses a marathon's 75 g/hr (and, since
+        // the ramp only climbs, a short goal race never strips a long
+        // run's own duration-driven fuel).
+        raceDistanceMi: goal_distance_mi ?? null,
         workoutType: fuelingType,
         tempF: null, // forecast wiring is the weather-cron fix's job (M-15)
         daysToARace,

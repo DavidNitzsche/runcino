@@ -8,8 +8,15 @@
  * Doctrine: Research/18-fueling-products.md
  *   §1  carb intake by duration (60-90 g/hr for 2-3+ hours)
  *   §3  product profiles (Maurten 100 = 25g; GU = 22g; Beta Fuel = 44g)
- *   §11 workout-specific fueling
+ *   §11 during-race fueling BY DISTANCE (5K 0 · 10K 0-30 · HM 30-60 ·
+ *       M 60-90) — read through lib/race/distance-doctrine.ts
  *   §13 gut training (Costa et al.) — long-run ramp toward race target
+ *
+ * 2026-08-17 doctrine-conformance audit · `DEFAULT_RACE_TARGET_G_PER_HR =
+ * 75` was the MARATHON row applied to every race. A half-marathoner was
+ * prescribed roughly double the §11 half band (30-60) and 15 g/hr past
+ * §1's GI-distress threshold. The rate is now keyed to the race distance,
+ * and the Costa ramp only ever climbs (see rampedTargetGPerHr).
  *
  * Why ported now: the schema has fuel_brand / fuel_gel_carbs_g /
  * fuel_target_g_per_hr columns but no consumer in v2. The prescription
@@ -17,8 +24,9 @@
  * should say "long run · 4 Maurten 100s, take at 30/60/90/120 min."
  */
 
+import { raceCarbsPerHourTarget } from '@/lib/race/distance-doctrine';
+
 export const DEFAULT_GEL_CARBS_G = 22;
-export const DEFAULT_RACE_TARGET_G_PER_HR = 75;
 
 export type WorkoutFuelingType = 'easy' | 'long' | 'quality' | 'race' | 'rest';
 
@@ -29,6 +37,10 @@ export interface FuelingInput {
   tempF?: number | null;          // heat reduces gut tolerance (§1)
   daysToARace?: number | null;
   raceFuelTargetGPerHr?: number | null;
+  /** Distance of the goal RACE (mi) — not this run's distance. Sets the
+   *  race-day target the gut-training ramp aims at (Research/18 §11 by
+   *  distance). Null/absent → no ramp, the run's own duration governs. */
+  raceDistanceMi?: number | null;
   gelCarbsG?: number | null;
   gelLabel?: string | null;       // "Maurten 100" → "2 Maurten 100s"
 }
@@ -71,18 +83,24 @@ function heatGutPenalty(tempF: number | null | undefined): number {
 }
 
 /** Race-aware ramp (Costa et al., §13). Long runs in the last 8 weeks
- *  before a race ramp toward race-day target so the gut is rehearsed. */
+ *  before a race ramp toward race-day target so the gut is rehearsed.
+ *
+ *  The ramp only ever climbs. A 5K or 10K goal race has a race-day target
+ *  of 0 g/hr (§11 :369-370); rehearsing THAT on a three-hour long run
+ *  would strip the fuel the run's own duration requires (§1 :17-19).
+ *  Rehearsal is an addition to the duration floor, never a subtraction. */
 function rampedTargetGPerHr(
   base: number,
   workoutType: WorkoutFuelingType,
   daysToARace: number | null | undefined,
-  raceTarget: number,
+  raceTarget: number | null,
 ): number {
+  if (raceTarget == null) return base;
   if (workoutType !== 'long' || daysToARace == null) return base;
   if (daysToARace > 56) return base;            // outside the ramp window
   // Linear ramp from base → raceTarget over the last 8 weeks (56 days).
   const t = Math.max(0, Math.min(1, (56 - daysToARace) / 56));
-  return Math.round(base + (raceTarget - base) * t);
+  return Math.max(base, Math.round(base + (raceTarget - base) * t));
 }
 
 export function computeFueling(input: FuelingInput): FuelingPlan {
@@ -92,8 +110,22 @@ export function computeFueling(input: FuelingInput): FuelingPlan {
   } = input;
 
   const baseRate = baseCarbsPerHr(durationEstMin, workoutType);
-  const raceTarget = raceFuelTargetGPerHr ?? DEFAULT_RACE_TARGET_G_PER_HR;
-  const targetRate = rampedTargetGPerHr(baseRate, workoutType, daysToARace, raceTarget);
+
+  // Race-day target · Research/18 §11 (:367-376) BY DISTANCE, not the
+  // marathon row for everyone. The runner's own entered rate wins, except
+  // where doctrine prescribes zero (5K/10K, :369-370) — a gel inside a
+  // 20-minute race is a defect, not a preference.
+  const raceDistMi = input.raceDistanceMi ?? (workoutType === 'race' ? (distanceMi ?? null) : null);
+  const doctrineRaceTarget = raceDistMi != null
+    ? raceCarbsPerHourTarget(raceDistMi, workoutType === 'race' ? durationEstMin * 60 : null).targetGPerHr
+    : null;
+  const raceTarget = raceFuelTargetGPerHr ?? doctrineRaceTarget;
+
+  const targetRate = workoutType === 'race'
+    ? (doctrineRaceTarget != null && doctrineRaceTarget <= 0
+        ? 0
+        : Math.max(baseRate, raceTarget ?? baseRate))
+    : rampedTargetGPerHr(baseRate, workoutType, daysToARace, raceTarget);
 
   // Heat penalty applies to high-intensity + long. Easy is unaffected
   // (less gut stress). Penalize by reducing target intake to maintain
@@ -150,7 +182,9 @@ export function computeFueling(input: FuelingInput): FuelingPlan {
     carbsTotalG: carbsTotal,
     shortLine,
     why,
-    citation: 'Research/18-fueling-products.md §1 + §13 (Costa et al.)',
+    citation: workoutType === 'race' && raceDistMi != null
+      ? raceCarbsPerHourTarget(raceDistMi, durationEstMin * 60).citation
+      : 'Research/18-fueling-products.md §1 + §11 + §13 (Costa et al.)',
     gPerHr: effectiveRate,
     isRehearsal: workoutType === 'long' && daysToARace != null && daysToARace <= 56,
     heatAdjusted: heatPen > 0,

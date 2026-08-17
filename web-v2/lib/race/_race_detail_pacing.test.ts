@@ -19,6 +19,7 @@ import {
   registeredFromMeta,
   B_SAFE_FRACTION,
 } from './race-detail-pacing';
+import { raceCarbsPerHourTarget } from './distance-doctrine';
 import { parseRaceTime } from '@/lib/training/vdot';
 
 const MARATHON = 26.2;
@@ -45,8 +46,15 @@ describe('composeRaceDetailPacing · effective-target adoption', () => {
     expect(pf.pacing.length).toBe(4);
     expect(parseRaceTime(pf.pacing[3].cum)).toBeGreaterThan(11514); // > 95% of projection
     expect(parseRaceTime(pf.pacing[3].cum)).toBeLessThan(12300);
-    // Gels sized to the longer honest duration (3:22 ≈ 3.37h × 1.7 ≈ 6).
-    expect(pf.gels.length).toBe(Math.max(1, Math.round((roundTargetSec(12120) / 3600) * 1.7)));
+    // Gels sized off the longer honest duration AND the marathon's own
+    // Research/18 §11 (:372) rate of 60-90 g/hr — not the old `hours × 1.7`
+    // house formula (2026-08-17 doctrine audit). Default serving is 22 g.
+    const hours = roundTargetSec(12120) / 3600;
+    const rate = raceCarbsPerHourTarget(MARATHON, roundTargetSec(12120)).targetGPerHr;
+    expect(rate).toBeGreaterThanOrEqual(60);
+    expect(pf.gels.length).toBe(Math.ceil((hours * rate) / 22));
+    // Two caffeinated stops, at ~mi 13 and ~mi 20 (:372).
+    expect(pf.gels.filter((g) => g.caf)).toHaveLength(2);
   });
 
   it('goal sane (within 5% of projection) → goal writes the paces, no stretch', () => {

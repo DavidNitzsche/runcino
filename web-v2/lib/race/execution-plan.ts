@@ -7,8 +7,9 @@
  * that composition · one pure function that turns (goal, physiology,
  * conditions, CI) into the complete race-morning brief:
  *
- *   · per-mile split targets (first-mile allowance + controlled
- *     even/negative split, Research/08 §3.4)
+ *   · per-mile split targets (the distance's own opening allowance +
+ *     controlled even/negative split, Research/08 §3.1 + §3.2-3.5, via
+ *     the shared tables in lib/race/distance-doctrine.ts)
  *   · B-goal trigger conditions (objective mid-race abort criteria)
  *   · heat decision tree (Research/06 table at the start-hour temp,
  *     via the unified heat model)
@@ -29,6 +30,18 @@
 
 import { maughanSlowdownPct, durationHeatScale, abilityTierFromVdot } from '@/lib/training/heat-model';
 import { parseStartHour } from '@/lib/training/race-conditions';
+import {
+  raceOpeningPlan,
+  raceCheckpointMi,
+  raceAbortHrBpm,
+  RACE_PACE_ABORT_FRACTION,
+  raceWarmup,
+  warmupStridesBlockMin,
+  raceCarbLoad,
+  raceCarbsPerHourTarget,
+  raceDistanceCategory,
+  RACE_PRERACE_MEAL_G_PER_KG,
+} from './distance-doctrine';
 
 export interface RaceSplitTarget {
   /** Mile number, 1-based. The final entry covers the partial mile. */
@@ -122,8 +135,9 @@ export interface RaceExecutionPlan {
   /** B-goal · null when the race has none. */
   bGoalSec: number | null;
   bGoalPaceSPerMi: number | null;
-  /** First-mile allowance over goal pace, s/mi (Research/08 §3.1: a
-   *  half's first mile runs +10-15s; we prescribe the midpoint). */
+  /** First-mile allowance over goal pace, s/mi · the distance's own row of
+   *  Research/08 §3.1 (:58-64), via lib/race/distance-doctrine.ts. 5K +2,
+   *  10K +7, HM +12, M +15. Was the half's +12 for every distance. */
   firstMileAllowanceSPerMi: number;
   splits: RaceSplitTarget[];
   bGoalTriggers: BGoalTrigger[];
@@ -141,12 +155,14 @@ export interface RaceExecutionPlan {
   ciNote: string | null;
 }
 
-/** Research/18 §1 default during-race carb rate when nothing is entered.
- *  60 g/hr is the single-source glucose floor above which most runners
- *  hit GI distress; a trained gut on a 1:0.8 glucose:fructose blend goes
- *  to ~90. We default to 60 (safe, broadly tolerated) and the coach copy
- *  notes the higher ceiling. Cite: Research/18-fueling-products.md §1. */
-export const DEFAULT_RACE_CARBS_PER_HOUR_G = 60;
+/** 60 g/hr · Research/18 §1 (:27): the threshold above which single-source
+ *  glucose causes GI distress in most runners. Kept as a named constant
+ *  because it is the ceiling the coach copy warns against, NOT a default —
+ *  the default rate is the distance's own §11 row
+ *  (raceCarbsPerHourTarget, lib/race/distance-doctrine.ts). Shipping this
+ *  number as the universal default is what put a marathon-class rate on a
+ *  half and a gel inside a 20-minute 5K. */
+export const SINGLE_SOURCE_GI_THRESHOLD_G_PER_HR = 60;
 /** Default serving size (g carbs) when no product entered · matches the
  *  mid-pack gel (GU/SiS GO ≈ 22 g). Cite: Research/18 §3. */
 export const DEFAULT_SERVING_CARBS_G = 22;
@@ -185,9 +201,11 @@ function clockFromGun(startTimeLocal: string | null | undefined, minutesBefore: 
  * Compute the structured fuel recommendation for a race.
  *
  * The math, all from Research/18-fueling-products.md:
- *   1. Target rate (g/hr): the runner's entered rate, else the rate
- *      implied by (servingCarbs ÷ cadence × 60), else the §1 default 60.
- *      Distances under ~50 min need no fuel (§11 · 5K/10K: 0 g/hr).
+ *   1. Target rate (g/hr): the §11 row for the RACE DISTANCE, floor-raised
+ *      by the §1 duration table (raceCarbsPerHourTarget). A runner's own
+ *      entered rate or cadence overrides it — except where doctrine says
+ *      zero (5K/10K, §11 :369-370), which no entry can override: a gel
+ *      inside a 20-minute race is the defect, not a preference.
  *   2. Total carbs = targetRate × raceDurationHours (goalSec).
  *   3. Servings = ceil(totalCarbs ÷ servingCarbs) — round UP so the
  *      runner never under-carries the target.
@@ -218,10 +236,13 @@ export function computeRaceFueling(args: {
     : DEFAULT_SERVING_CARBS_G;
   const productName = fuel.product?.trim() ? fuel.product.trim() : 'gel';
 
-  // ── Target rate (g/hr) ────────────────────────────────────────────
-  // Under ~50 min (5K/10K) no fuel is needed · Research/18 §11.
+  // ── Target rate (g/hr) · the DISTANCE's row, not the marathon's ───
+  // Research/18 §11 (:367-376): 5K 0 · 10K 0-30 · HM 30-60 · M 60-90,
+  // floor-raised by the §1 duration table when a race runs long for its
+  // distance. Doctrine-zero wins over any entered product.
+  const doctrineRate = raceCarbsPerHourTarget(args.distanceMi, goalSec);
   let targetRate: number;
-  if (durationMin < 50) {
+  if (doctrineRate.isZero) {
     targetRate = 0;
   } else if (fuel.carbsPerHourTargetG && fuel.carbsPerHourTargetG > 0) {
     targetRate = fuel.carbsPerHourTargetG;
@@ -229,7 +250,7 @@ export function computeRaceFueling(args: {
     // Cadence + serving size implies a rate.
     targetRate = Math.round((servingCarbs * 60) / fuel.cadenceMin);
   } else {
-    targetRate = DEFAULT_RACE_CARBS_PER_HOUR_G;
+    targetRate = doctrineRate.targetGPerHr;
   }
 
   if (targetRate <= 0) {
@@ -243,7 +264,7 @@ export function computeRaceFueling(args: {
       scheduleMin: [],
       isDefault: args.isDefault ?? false,
       shortLine: 'No on-course fuel needed · pre-race breakfast covers a race this short.',
-      citation: 'Research/18-fueling-products.md §11 (5K/10K: 0 g/hr)',
+      citation: doctrineRate.citation,
     };
   }
 
@@ -293,7 +314,7 @@ export function computeRaceFueling(args: {
     scheduleMin,
     isDefault: args.isDefault ?? false,
     shortLine,
-    citation: 'Research/18-fueling-products.md §1 + §11 (60 g/hr floor; trained gut to 90 on glucose:fructose 1:0.8)',
+    citation: doctrineRate.citation,
   };
 }
 
@@ -326,44 +347,43 @@ export function composeRaceExecutionPlan(args: {
   const bGoalSec = args.bGoalSec ?? null;
   const bGoalPace = bGoalSec != null ? bGoalSec / distanceMi : null;
 
-  // ── Splits · Research/08 §3.4 HM template ─────────────────────────
-  // Mile 1: +12 s/mi (midpoint of the +10-15 doctrine band).
-  // Miles 2-3: +6 (midpoint of +5-10).
+  // ── Splits · the distance's own row of Research/08 §3.1 ───────────
+  // ONE opening model, shared with the watch (build-workout's settle
+  // phase), the course pacing arc (lib/race/pacing.ts) and the web
+  // pacing blocks (race-detail-pacing.ts). 5K opens +2, 10K +7, HM +12,
+  // M +15 through mile 1, then the early block (HM miles 2-3 at +6, M
+  // miles 2-10 at +5 · the "10-10-10" template).
+  //
   // The early give-back is repaid across the remaining miles so the
-  // cumulative still lands ON the goal · the repayment spread keeps
-  // per-mile correction under ~3 s/mi (invisible effort change, real
-  // arithmetic honesty).
-  const FIRST_MILE_ALLOWANCE = 12;
-  const EARLY_ALLOWANCE = 6;
+  // cumulative still lands ON the goal, and the resulting negative split
+  // stays inside §4.3's 1-2% band at every distance.
+  const opening = raceOpeningPlan({ goalSec, distanceMi });
   const wholeMiles = Math.floor(distanceMi);
   const finalPartial = Number((distanceMi - wholeMiles).toFixed(3));
   const nSplits = wholeMiles + (finalPartial > 0.005 ? 1 : 0);
-
-  // Give-back seconds banked in miles 1-3.
-  const earlyMiles = Math.min(3, wholeMiles);
-  const giveBack = FIRST_MILE_ALLOWANCE + (earlyMiles >= 2 ? EARLY_ALLOWANCE : 0) + (earlyMiles >= 3 ? EARLY_ALLOWANCE : 0);
-  const repayMiles = Math.max(1, distanceMi - earlyMiles);
-  const repayPerMi = giveBack / repayMiles;
+  // The closing push is the final 20% (§3.5 :117 · "miles 21-26" of a
+  // marathon), not a flat 3.2 miles that swallows a whole 5K.
+  const pushFromMi = distanceMi * 0.8;
 
   const splits: RaceSplitTarget[] = [];
   let cumulative = 0;
   for (let i = 1; i <= nSplits; i++) {
     const isFinal = i === nSplits && finalPartial > 0.005;
     const dist = isFinal ? finalPartial : 1.0;
-    const milesToGo = distanceMi - (i - 1);
+    const startMi = i - 1;
     let pace: number;
     let label: RaceSplitTarget['label'];
-    if (i === 1) {
-      pace = goalPace + FIRST_MILE_ALLOWANCE;
+    if (startMi < 1) {
+      pace = opening.settlePaceSPerMi;
       label = 'settle';
-    } else if (i <= 3) {
-      pace = goalPace + EARLY_ALLOWANCE;
+    } else if (startMi < opening.openingMi) {
+      pace = opening.earlyPaceSPerMi;
       label = 'find rhythm';
-    } else if (milesToGo <= 3.2) {
-      pace = goalPace - repayPerMi;
+    } else if (startMi >= pushFromMi) {
+      pace = opening.repaidPaceSPerMi;
       label = 'push';
     } else {
-      pace = goalPace - repayPerMi;
+      pace = opening.repaidPaceSPerMi;
       label = 'goal pace';
     }
     cumulative += pace * dist;
@@ -379,17 +399,18 @@ export function composeRaceExecutionPlan(args: {
   if (splits.length > 0) splits[splits.length - 1].cumulativeSec = goalSec;
 
   // ── B-goal triggers · objective, checked once at the checkpoint ───
-  // HR: sustained avg above LTHR by the 5-mile mark means the A-goal
-  // effort is already threshold-plus with 8+ miles to run · Research/08
-  // §6.1 caps an HM at 96-100% LTHR · LTHR + 3 is "clearly above the
-  // band," not noise. Pace: ≥ ~23 s/mi (≈5%) adrift of goal by mile 5
+  // HR: sustained avg above the distance's own §6.1 ceiling means the
+  // A-goal effort is already unsustainable with most of the race to run.
+  // The ceiling is per-distance (5K 105-110% LTHR, HM 96-100%, M 88-95%);
+  // LTHR+3 for everyone let a marathoner sit at threshold by mile 5 with
+  // the trigger reading fine. Pace: 5% adrift of goal at the checkpoint
   // is the §18.2 unrecoverable zone — chasing it back is the blow-up.
-  const triggerHr = args.lthr != null
-    ? args.lthr + 3
-    : args.maxHr != null ? Math.round(args.maxHr * 0.91) : null;
-  const triggerPace = Math.round(goalPace + 23);
+  // The checkpoint itself is proportional (38% of the race), so a 5K's
+  // check happens inside the 5K instead of at a mile it never reaches.
+  const triggerHr = raceAbortHrBpm({ distanceMi, lthr: args.lthr, maxHr: args.maxHr });
+  const triggerPace = Math.round(goalPace * (1 + RACE_PACE_ABORT_FRACTION));
   const bGoalTriggers: BGoalTrigger[] = [{
-    atMile: 5,
+    atMile: raceCheckpointMi(distanceMi),
     hrAboveBpm: triggerHr,
     paceSlowerThanSPerMi: triggerPace,
     action: bGoalPace != null
@@ -412,14 +433,41 @@ export function composeRaceExecutionPlan(args: {
     };
   }).filter((r) => r.addSPerMi > 0);
 
-  // ── Warm-up · Research/08 §12.1 (HM: 0.5-1.5mi easy + drills +
-  //    3-4 strides @ race pace, 10-15 min total, done ~15 min out) ──
+  // ── Warm-up · Research/08 §12.1 (:588-593) + Research/10 (:110-146) ──
+  // "The shorter the race, the longer the warmup." The app used to ship
+  // the half's protocol — 45 min out, 1 mile, drills, 3-4 strides — to
+  // every distance, including the marathon, where §12.1 wants 5-10 min
+  // and Research/10 (:133) says "No strides. Conserve glycogen."
+  // Timeline is built BACKWARDS from the corral so the whole block lands
+  // inside the distance's own total-time band.
+  const wu = raceWarmup(distanceMi);
+  const stridesBlockMin = warmupStridesBlockMin(wu);
+  const corralAt = wu.corralMinBeforeGun;
+  const stridesAt = corralAt + stridesBlockMin;
+  const drillsAt = stridesAt + wu.drillsMin;
+  const easyAt = drillsAt + wu.easyMin;
+  const easyStep = wu.mode === 'jog'
+    ? `Easy jog ${wu.easyMiBand ? `${wu.easyMiBand[0]}-${wu.easyMiBand[1]} miles` : `${wu.easyMin} min`} (${wu.easyMin} min). Conversational, nothing more.`
+    : `Walk ${wu.easyMin} min, or jog 3-5 min if you want the legs turning over. The first miles of the race are the rest of the warm-up.`;
+  const drillsStep = wu.mode === 'jog'
+    ? 'Drills: leg swings, A-skips, 2×30s high knees.'
+    : 'Brief dynamic only: leg swings, ankle circles, hip openers.';
   const warmup: WarmupStep[] = [
-    { minutesBeforeGun: 45, clock: clockFromGun(args.startTimeLocal, 45), step: 'Easy jog 1 mile. Conversational, nothing more.' },
-    { minutesBeforeGun: 30, clock: clockFromGun(args.startTimeLocal, 30), step: 'Drills: leg swings, A-skips, 2×30s high knees.' },
-    { minutesBeforeGun: 25, clock: clockFromGun(args.startTimeLocal, 25), step: `3-4 × 20s strides at race pace (${fmtPace(goalPace)}/mi feel). Full recovery between.` },
-    { minutesBeforeGun: 15, clock: clockFromGun(args.startTimeLocal, 15), step: 'In the corral. Sips of water only from here.' },
+    { minutesBeforeGun: easyAt, clock: clockFromGun(args.startTimeLocal, easyAt), step: easyStep },
+    { minutesBeforeGun: drillsAt, clock: clockFromGun(args.startTimeLocal, drillsAt), step: drillsStep },
   ];
+  if (wu.strides > 0) {
+    warmup.push({
+      minutesBeforeGun: stridesAt,
+      clock: clockFromGun(args.startTimeLocal, stridesAt),
+      step: `${wu.strides} × 20s strides at ${wu.stridesPace}. Full recovery between.`,
+    });
+  }
+  warmup.push({
+    minutesBeforeGun: corralAt,
+    clock: clockFromGun(args.startTimeLocal, corralAt),
+    step: 'In the corral. Sips of water only from here.',
+  });
 
   // ── Fueling · Research/08 §10.1 (race-morning) + structured plan ──
   // Structured amount/schedule (the phone + watch consume this). Carb
@@ -435,25 +483,55 @@ export function composeRaceExecutionPlan(args: {
   });
   const onCourseLine = fuelingPlan.targetCarbsPerHourG > 0
     ? `On course: ${fuelingPlan.shortLine}`
-    : (distanceMi >= 12
-        ? 'On course: one gel ~10 min before the gun, one at ~mile 7-8 with water.'
-        : 'On course: one gel ~10 min before the gun if the race runs past 50 minutes.');
+    : 'On course: nothing. Water at the aid stations if it is warm.';
+
+  // Carb load · Research/08 §10.1 (:452-457) BY DISTANCE. The app shipped
+  // the HALF row (7-8 g/kg, 24-36h) to marathoners, who need 8-12 across
+  // 36-48h — under-loaded by about a third — and to 5K runners, who need
+  // no load at all (:450 · supercompensation matters over 90 min).
+  const load = raceCarbLoad(distanceMi);
+  const meal = RACE_PRERACE_MEAL_G_PER_KG[raceDistanceCategory(distanceMi)];
+  const mealTxt = meal[0] === meal[1] ? `${meal[0]} g/kg` : `${meal[0]}-${meal[1]} g/kg`;
+  const loadLine = load.needsLoad && load.hoursBand
+    ? `Carb load ${load.gPerKgBand[0]}-${load.gPerKgBand[1]} g/kg/day across the ${load.hoursBand[0]}-${load.hoursBand[1]}h before. Plain food you know.`
+    : `No carb load needed. Normal training carbs, ${load.gPerKgBand[0]}-${load.gPerKgBand[1]} g/kg/day.`;
+
+  // Caffeine · Research/18 §11 (:369-372). 5K/10K are pre-race only; the
+  // half takes one caffeinated gel mid-race; the marathon takes two.
+  const cat = raceDistanceCategory(distanceMi);
+  const caffeineLine =
+    cat === '5k' || cat === '10k'
+      ? 'Caffeine: pre-race only. Normal coffee 45-60 min before the gun. Nothing on course.'
+      : cat === 'hm'
+        ? `Caffeine: coffee 45-60 min before the gun, one caffeinated gel around mile ${Math.round(distanceMi / 2)}.`
+        : cat === 'm'
+          ? 'Caffeine: 200 mg before the gun, 100 mg at mile 13, 100 mg at mile 20.'
+          : 'Caffeine: 200 mg before the gun, then 50-100 mg an hour once you are moving.';
+
   const fueling: string[] = [
-    'Carb load 7-8 g/kg across the 24-36h before. Plain food you know.',
-    'Race morning: normal breakfast 2.5-3h out. Nothing new.',
+    loadLine,
+    `Race morning: breakfast ${mealTxt} carbs, 2.5-3h out. Nothing new.`,
     onCourseLine,
-    'Caffeine: normal coffee at breakfast. Optional caffeinated gel at mile 8.',
+    caffeineLine,
   ];
   if (fuelingPlan.isDefault && fuelingPlan.targetCarbsPerHourG > 0) {
     fueling.push('Enter your race fuel to lock the exact product and schedule.');
   }
 
   // ── Strategy line + CI context ────────────────────────────────────
+  // Reads off the same opening model as the splits, so the prose and the
+  // numbers can never drift apart.
+  const pushMiles = Math.max(1, Math.round(distanceMi * 0.2));
+  const openLine = opening.firstMileAllowanceSPerMi <= 3
+    ? `Open at ${fmtPace(opening.settlePaceSPerMi)} · goal pace, not a second faster. `
+    : `Open at ${fmtPace(opening.settlePaceSPerMi)} for the first mile. `;
+  const earlyLine = opening.openingMi > 1
+    ? `Hold ${fmtPace(opening.earlyPaceSPerMi)} through ${Math.round(opening.openingMi)}. `
+    : '';
   const strategyLine =
-    `Open at ${fmtPace(goalPace + FIRST_MILE_ALLOWANCE)} for the first mile. ` +
-    `Find ${fmtPace(goalPace + EARLY_ALLOWANCE)} through 3. ` +
-    `Then it's ${fmtPace(goalPace - repayPerMi)}s the rest of the way · the early patience comes back to you. ` +
-    `Push the last 5K on feel.`;
+    openLine + earlyLine +
+    `Then it's ${fmtPace(opening.repaidPaceSPerMi)}s the rest of the way · the early patience comes back to you. ` +
+    `Push the final ${pushMiles === 1 ? 'mile' : `${pushMiles} miles`} on feel.`;
   const ciNote = args.ci
     ? `Current fitness says ${fmtClock(args.ci.loSec)}–${fmtClock(args.ci.hiSec)}. The plan above is the path to the goal edge of that band.`
     : null;
@@ -464,7 +542,7 @@ export function composeRaceExecutionPlan(args: {
     distanceMi,
     bGoalSec,
     bGoalPaceSPerMi: bGoalPace != null ? Math.round(bGoalPace) : null,
-    firstMileAllowanceSPerMi: FIRST_MILE_ALLOWANCE,
+    firstMileAllowanceSPerMi: opening.firstMileAllowanceSPerMi,
     splits,
     bGoalTriggers,
     heatRules,

@@ -166,6 +166,10 @@ export async function GET(req: NextRequest) {
   const fueling = computeFueling({
     durationEstMin,
     distanceMi: prescription.total_mi,
+    // The gut-training ramp aims at the goal race's Research/18 §11 rate
+    // (doctrine audit 2026-08-17); without it every runner rehearsed the
+    // marathon row.
+    raceDistanceMi: goal_distance_mi ?? null,
     workoutType: fuelingType,
     tempF,
     daysToARace,

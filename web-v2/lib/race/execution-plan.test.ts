@@ -10,9 +10,12 @@ import { describe, it, expect } from 'vitest';
 import {
   composeRaceExecutionPlan,
   computeRaceFueling,
-  DEFAULT_RACE_CARBS_PER_HOUR_G,
   DEFAULT_SERVING_CARBS_G,
 } from './execution-plan';
+import { raceCarbsPerHourTarget } from './distance-doctrine';
+
+/** The half's own on-course rate · Research/18 §11 (:371) 30-60 g/hr. */
+const HM_RATE = raceCarbsPerHourTarget(13.1, 5400).targetGPerHr;
 
 const AFC = {
   goalSec: 5400,
@@ -36,7 +39,7 @@ describe('composeRaceExecutionPlan · splits', () => {
     expect(plan.goalPaceSPerMi).toBe(412);
   });
 
-  it('first mile carries the +12 settle allowance (Research/08 §3.1: +10-15s)', () => {
+  it('first mile carries the +12 settle allowance (Research/08 §3.1 :62 · a HALF is +10-15s)', () => {
     expect(plan.splits[0].label).toBe('settle');
     expect(plan.splits[0].paceSPerMi).toBe(424); // 412 + 12 → 7:04
   });
@@ -74,13 +77,17 @@ describe('composeRaceExecutionPlan · splits', () => {
 describe('composeRaceExecutionPlan · B-goal triggers', () => {
   const plan = composeRaceExecutionPlan(AFC)!;
 
-  it('checkpoint at mile 5 with LTHR+3 HR trigger (165 for LTHR 162)', () => {
+  it('checkpoint at mile 5 (38% of the race) with the HALF\'s own HR ceiling', () => {
+    // Research/08 §6.1 (:275) caps a half at 96-100% LTHR → 162 for LTHR
+    // 162, +3 to clear sensor noise. A marathon's ceiling is 88-95%, which
+    // is why this number is no longer a flat LTHR+3 for every distance —
+    // see _race_doctrine.test.ts.
     expect(plan.bGoalTriggers[0].atMile).toBe(5);
     expect(plan.bGoalTriggers[0].hrAboveBpm).toBe(165);
   });
 
-  it('pace trigger at goal+23 (435 = 7:15 · ≈5% adrift = §18.2 unrecoverable)', () => {
-    expect(plan.bGoalTriggers[0].paceSlowerThanSPerMi).toBe(435);
+  it('pace trigger is 5% adrift of goal pace (433 = 7:13 · §18.2 unrecoverable)', () => {
+    expect(plan.bGoalTriggers[0].paceSlowerThanSPerMi).toBe(433);
   });
 
   it('action names the B goal time and pace', () => {
@@ -88,9 +95,11 @@ describe('composeRaceExecutionPlan · B-goal triggers', () => {
     expect(plan.bGoalTriggers[0].action).toContain('7:24');
   });
 
-  it('falls back to maxHr-derived trigger when LTHR absent', () => {
+  it('falls back to the %HRmax column of the same table when LTHR absent', () => {
+    // Research/08 §6.1 (:275) · half = 88-92% HRmax. The old 0.91 constant
+    // was the half's midpoint applied to every distance.
     const noLthr = composeRaceExecutionPlan({ ...AFC, lthr: null })!;
-    expect(noLthr.bGoalTriggers[0].hrAboveBpm).toBe(Math.round(181 * 0.91));
+    expect(noLthr.bGoalTriggers[0].hrAboveBpm).toBe(Math.round(181 * 0.92));
   });
 });
 
@@ -114,10 +123,19 @@ describe('composeRaceExecutionPlan · heat rules (unified doctrine model)', () =
 describe('composeRaceExecutionPlan · warm-up + fueling + notes', () => {
   const plan = composeRaceExecutionPlan(AFC)!;
 
-  it('warm-up timeline anchors to the 7:00 AM gun (jog at 6:15 AM)', () => {
-    const jog = plan.warmup.find((w) => w.minutesBeforeGun === 45)!;
-    expect(jog.clock).toBe('6:15 AM');
-    expect(plan.warmup.find((w) => w.minutesBeforeGun === 15)!.clock).toBe('6:45 AM');
+  it('warm-up timeline anchors to the 7:00 AM gun and fits the HALF\'s band', () => {
+    // Research/08 §12.1 (:592): a half warms up for 10-15 min, finishing in
+    // the corral ~15 min out — 7 min jog + 3 drills + 3 strides = 13 min,
+    // so the jog starts 28 min before the gun. The module used to start a
+    // 30-minute block 45 min out, for every distance.
+    const first = plan.warmup[0];
+    expect(first.minutesBeforeGun).toBe(28);
+    expect(first.clock).toBe('6:32 AM');
+    const corral = plan.warmup[plan.warmup.length - 1];
+    expect(corral.minutesBeforeGun).toBe(15);
+    expect(corral.clock).toBe('6:45 AM');
+    // A half runs 3-4 strides at HMP (:592).
+    expect(plan.warmup.filter((w) => w.step.includes('strides'))).toHaveLength(1);
   });
 
   it('warm-up clocks are null when gun time unknown', () => {
@@ -125,12 +143,17 @@ describe('composeRaceExecutionPlan · warm-up + fueling + notes', () => {
     expect(noGun.warmup.every((w) => w.clock === null)).toBe(true);
   });
 
-  it('fueling carries the §10.1 carb-load line and an on-course plan', () => {
+  it('fueling carries the HALF\'s §10.1 carb-load row and an on-course plan', () => {
+    // Research/08 §10.1 (:455) — Half marathon: 7-8 g/kg/day for 24-36 h.
+    // This assertion used to run unconditionally on every distance, which
+    // regression-locked the half's row onto marathoners (who need 8-12 over
+    // 36-48h). The per-distance coverage lives in _race_doctrine.test.ts.
     expect(plan.fueling.some((f) => f.includes('7-8 g/kg'))).toBe(true);
-    // With no fuel entered the on-course line is the structured default
-    // (60 g/hr · gel ladder) rather than the old fixed "mile 7-8" string.
+    expect(plan.fueling.some((f) => f.includes('24-36h'))).toBe(true);
     expect(plan.fueling.some((f) => f.startsWith('On course:'))).toBe(true);
-    expect(plan.fuelingPlan.targetCarbsPerHourG).toBe(DEFAULT_RACE_CARBS_PER_HOUR_G);
+    // Research/18 §11 (:371) — a half runs 30-60 g/hr, not the marathon's 75.
+    expect(plan.fuelingPlan.targetCarbsPerHourG).toBe(HM_RATE);
+    expect(HM_RATE).toBeLessThanOrEqual(60);
   });
 
   it('CI note quotes the band', () => {
@@ -192,16 +215,16 @@ describe('computeRaceFueling · entered product', () => {
 });
 
 describe('computeRaceFueling · defaults + edge cases', () => {
-  it('no fuel entered → documented default 60 g/hr, isDefault flag set', () => {
+  it('no fuel entered → the HALF\'s documented rate, isDefault flag set', () => {
     const fp = computeRaceFueling({
       goalSec: 5400, distanceMi: 13.1, goalPaceSPerMi: 412, isDefault: true,
     });
-    expect(fp.targetCarbsPerHourG).toBe(DEFAULT_RACE_CARBS_PER_HOUR_G);
+    expect(fp.targetCarbsPerHourG).toBe(HM_RATE); // 45 · §11 (:371) 30-60
     expect(fp.carbsPerServingG).toBe(DEFAULT_SERVING_CARBS_G);
     expect(fp.productName).toBe('gel');
     expect(fp.isDefault).toBe(true);
-    // 1.5h × 60 = 90g ÷ 22 = 4.09 → ceil 5 servings.
-    expect(fp.recommendedServings).toBe(5);
+    // 1.5h × 45 = 67.5g ÷ 22 = 3.07 → ceil 4 servings.
+    expect(fp.recommendedServings).toBe(4);
   });
 
   it('short race (10K ≈ 40 min) needs no on-course fuel · §11', () => {
@@ -260,7 +283,7 @@ describe('composeRaceExecutionPlan · structured fuelingPlan', () => {
   it('no fuel entered → default plan + a prompt to enter fuel', () => {
     const plan = composeRaceExecutionPlan({ ...AFC, fuelIsDefault: true })!;
     expect(plan.fuelingPlan.isDefault).toBe(true);
-    expect(plan.fuelingPlan.targetCarbsPerHourG).toBe(DEFAULT_RACE_CARBS_PER_HOUR_G);
+    expect(plan.fuelingPlan.targetCarbsPerHourG).toBe(HM_RATE);
     expect(plan.fueling.some((f) => f.toLowerCase().includes('enter your race fuel'))).toBe(true);
   });
 });

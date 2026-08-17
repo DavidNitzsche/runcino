@@ -29,10 +29,15 @@
  * tables — this terrain plan and a separate per-mile negative-split arc
  * from execution-plan.ts — that averaged the same goal but distributed it
  * differently ("what do I actually follow"). They are now merged here: on
- * top of the terrain pace we lay a gentle negative-split EFFORT arc
- * (start ~+2% slower = bank nothing early, finish ~-2% faster = empty the
- * tank), linear and symmetric about mid-race, then renormalize so the
- * plan still sums to the goal exactly. Net on AFC: the early climb runs
+ * top of the terrain pace we lay the race's OPENING ALLOWANCE (settle
+ * early, repay it over the remainder), then renormalize so the plan still
+ * sums to the goal exactly.
+ *
+ * 2026-08-17 · that arc used to be a flat ±2%, cited to the half's first
+ * mile and applied to every distance. It now reads the distance's own row
+ * of Research/08 §3.1 through lib/race/distance-doctrine.ts — the same
+ * model the split card, the web pacing blocks and the watch's settle phase
+ * use. Net on AFC: the early climb runs
  * slow (terrain + settle), The Drop banks, and the late Balboa climb
  * holds ~goal pace (terrain-slow offset by the closing push). Each phase
  * also carries a position-based STRATEGY CUE so the intent reads, not
@@ -41,6 +46,8 @@
  * This is split *arithmetic* on an already-chosen goal, not a training
  * prescription — the doctrine inputs are the cited grade-cost numbers.
  */
+
+import { raceOpeningPlan, openingAdjustmentOverSpan } from './distance-doctrine';
 
 export interface CoursePhaseInput {
   label?: string;
@@ -88,12 +95,6 @@ export interface RacePacing {
 const GRADE_COST_PER_PCT = 0.033;
 /** Max per-mile credit a descent may take, in seconds (AFC course doctrine). */
 const MAX_DESCENT_CREDIT_S_PER_MI = 15;
-/** Negative-split EFFORT-arc amplitude (fraction of pace) · start ≈ +2%
- *  slower, finish ≈ −2% faster, linear and symmetric about mid-race. The
- *  arc is renormalized to the goal afterward, so this shapes distribution,
- *  not the average. Cite: Research/08 §3.4 (controlled even/negative
- *  split — a half opens ~+10-15s/mi and closes faster). */
-const NEG_SPLIT_ARC_K = 0.02;
 
 /** Position-based strategy cue for a phase, keyed on its mid-race fraction
  *  p ∈ [0,1]. Mirrors the negative-split arc's intent so the merged plan
@@ -197,17 +198,23 @@ export function buildRacePacing(input: {
     // Terrain-only pace per phase (even effort, sums to goal).
     const terrainPaced = raw.map(({ p, mult }) => ({ p, pace: flatPace * mult * scale }));
 
-    // ── Negative-split effort arc, layered on the terrain pace ────────
-    // m = 1 + K·(1 − 2p) at the phase midpoint p ∈ [0,1]: start ≈ +K
-    // (slower), finish ≈ −K (faster), linear and symmetric about mid-race.
-    // Then renormalize so Σ(mi·pace) is still exactly the goal — the arc is
-    // ~symmetric so the rescale is ≈1, but we renormalize regardless so the
-    // average stays the goal pace.
+    // ── Opening allowance, layered on the terrain pace ────────────────
+    // 2026-08-17 doctrine-conformance audit · this used to be its own
+    // symmetric ±2% arc, cited to the HALF's first mile and applied to
+    // every distance — one of five different opening models the app ran
+    // for a single race. It now samples THE model
+    // (lib/race/distance-doctrine.ts): the distance's own §3.1 allowance
+    // over the opening miles, minus the repayment after it, averaged
+    // across each phase's span. A 5K phase opens ~+2 s/mi, a marathon's
+    // ~+15. Renormalized afterward so Σ(mi·pace) is still exactly the goal.
+    const opening = raceOpeningPlan({ goalSec, distanceMi });
     const arced = terrainPaced.map(({ p, pace }) => {
+      const start = Math.max(0, p.start_mi!);
+      const end = Math.min(distanceMi, p.end_mi!);
+      const adj = openingAdjustmentOverSpan(opening, start, end);
       const mid = ((p.start_mi! + p.end_mi!) / 2) / distanceMi;
       const pos = Math.min(1, Math.max(0, mid));
-      const m = 1 + NEG_SPLIT_ARC_K * (1 - 2 * pos);
-      return { p, pace: pace * m, pos };
+      return { p, pace: pace * (1 + adj / flatPace), pos };
     });
     const arcedTotal = arced.reduce(
       (s, { p, pace }) => s + ((p.end_mi! - p.start_mi!) * pace),
