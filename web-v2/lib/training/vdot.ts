@@ -699,9 +699,13 @@ export function vdotFromRun(input: {
  * Race candidates: skip C-races; skip without finish time; cap at lookback.
  * Run candidates: gated by vdotFromRun's quality filter (see above).
  *
- * Tie-break: race VDOT counts at face value; run VDOT is penalized by 1
- * point for sort purposes (a single real race always wins ties against
- * a training-derived estimate). This is the "race wins ties" doctrine.
+ * Ordering doctrine (resolved 2026-08-17, see the sort below for history):
+ *   1. Fresh-race precedence — a race ≤ FRESH_RACE_PRECEDENCE_DAYS old
+ *      demotes every fade-tail candidate below the in-window field.
+ *   2. Races at (effective) face value; cap-bounded training runs at their
+ *      capped face value (the AUDIT #8 soft cap — not a sort penalty — is
+ *      what bounds training influence to the doctrinal +1 lead).
+ *   3. Race wins EXACT ties against a run (stable sort, races first).
  *
  * 2026-06-09 · race-killer F1 — STALE-ANCHOR FADE. The hard window used
  * to cliff: the day an anchor crossed `lookbackDays` it vanished and the
@@ -720,9 +724,44 @@ export function vdotFromRun(input: {
  * age ≤ lookbackDays → effective ≡ raw. Recency-over-age precedent:
  * Research/02-race-time-prediction.md §"estimate the exponent from two
  * RECENT races". Cite: docs/ADVERSARIAL-AUDIT-REPORT.md §F1.
+ *
+ * 2026-08-17 · F1 REGRESSION (the fade that never fired). The fade above
+ * shipped, and its unit tests passed — feeding candidates in-memory. But
+ * loadVdotInputs (lib/training/vdot-inputs.ts) kept a hard `windowDays`
+ * (180d) SQL cutoff, so no candidate in the fade window (age 180..300)
+ * ever REACHED this function in production. The cliff this block exists
+ * to prevent happened anyway, on schedule: Disney HM exited the SQL
+ * window overnight on Aug 1 → 47.9 → 44.1, 15 days before the A-race.
+ * Fix: FADE_TAIL_DAYS is exported and the loader fetches races over
+ * `windowDays + FADE_TAIL_DAYS` — bestRecentVdot owns staleness; the
+ * loader's job is only to deliver every candidate the fade can still see.
  */
-const FADE_PER_14D = 0.1;
-const FADE_TAIL_DAYS = 120;
+export const FADE_PER_14D = 0.1;
+export const FADE_TAIL_DAYS = 120;
+
+/**
+ * 2026-08-17 · FRESH-RACE PRECEDENCE over faded anchors.
+ *
+ * The fade fixed the cliff, but max-wins across the whole candidate set
+ * created the next honesty bug: a 6-month-old faded anchor (Disney,
+ * effective 47.8 at age ~197d) would outrank a FRESH A-race result run
+ * two days ago (AFC Half, VDOT 44.1) purely on magnitude. Doctrine says
+ * the opposite. Research/01-pace-zones-vdot.md §"Freshness window":
+ * 0–4 weeks is "Fresh signal. Use without adjustment"; 12+ weeks is
+ * "Expired. Don't anchor pace prescription on this VDOT. Use field test
+ * or recent race instead." A race inside the fresh window IS the "recent
+ * race" the expired anchor must yield to.
+ *
+ * Rule: when any race candidate is ≤ FRESH_RACE_PRECEDENCE_DAYS old
+ * (4 weeks — the doc's "0–4 weeks" fresh band), every candidate already
+ * PAST the full-value window (age > lookbackDays, i.e. in the fade tail)
+ * is demoted below all in-window candidates, regardless of magnitude.
+ * Within the window, selection is unchanged — "pick the highest derived
+ * VDOT, not the most recent" (same section, §"Implementation notes").
+ * With no fresh race, faded anchors still glide out gradually — the fade
+ * exists precisely for the no-fresh-evidence case.
+ */
+export const FRESH_RACE_PRECEDENCE_DAYS = 28;
 
 /**
  * AUDIT #8 (2026-06-16) · TRAINING-ESTIMATE SOFT CAP.
@@ -844,12 +883,31 @@ export function bestRecentVdot(
     });
   }
 
+  // FRESH-RACE PRECEDENCE (see FRESH_RACE_PRECEDENCE_DAYS above): a race
+  // inside the 4-week fresh band demotes every fade-tail candidate (age >
+  // lookbackDays) below the in-window field, regardless of magnitude.
+  // Run candidates live in a 60-day loader window so in practice only races
+  // can be demoted; the predicate is uniform anyway.
+  const freshRaceExists = raceCandidates.some(
+    (c) => c.age_days <= FRESH_RACE_PRECEDENCE_DAYS);
+  const demoted = (c: { age_days: number }): boolean =>
+    freshRaceExists && c.age_days > lookbackDays;
+
   // AUDIT #8 · soft-cap ceiling for training-derived candidates. The best RAW
   // race VDOT in scope is the last hard proof of fitness; a training estimate
   // may exceed it by at most the doctrinal +1 LEAD. Null when no race anchor
   // exists → training reads are uncapped (see TRAINING_ESTIMATE_SOFT_CAP_VDOT).
+  //
+  // 2026-08-17 · precedence-demoted races are excluded from the ceiling: once
+  // a fresh race supersedes an expired anchor for the headline, that same
+  // expired anchor cannot keep licensing training reads above the fresh
+  // proof (+1 off a 197-day-old 47.9 while the runner just raced 44.1 would
+  // grant a ~48.9 ceiling off evidence the doctrine calls expired). The cap
+  // anchors to the same evidence the headline trusts. With no fresh race,
+  // scope is unchanged: the best raw race in the full fade-visible window.
   const bestRaceRaw = raceCandidates.reduce<number | null>(
-    (max, c) => (max == null || c.vdot_raw > max ? c.vdot_raw : max), null);
+    (max, c) => (demoted(c) ? max
+      : (max == null || c.vdot_raw > max ? c.vdot_raw : max)), null);
   const trainingCeiling = bestRaceRaw != null
     ? bestRaceRaw + TRAINING_ESTIMATE_SOFT_CAP_VDOT : null;
 
@@ -927,11 +985,38 @@ export function bestRecentVdot(
     }
   }
 
-  // Sort key: races at (effective) face value, runs -1 so a real race
-  // wins ties against a training-derived estimate.
-  const sortKey = (c: VdotCandidate) => (c.source === 'race' ? c.vdot : c.vdot - 1);
+  // Sort: two tiers, then value.
+  //
+  // Tier · fresh-race precedence (FRESH_RACE_PRECEDENCE_DAYS). Fade-tail
+  // candidates rank below every in-window candidate when a fresh race exists;
+  // otherwise tiers are uniform and this term is inert.
+  //
+  // Value · races at (effective) face value. Runs:
+  //
+  // 2026-08-17 · RESOLVED DOCTRINE (run-evidence cancellation fix). The old
+  // key penalized every run by exactly 1.0 ("race wins ties"). But when a
+  // race anchor exists, runs are ALREADY bounded to bestRaceRaw + 1.0 by the
+  // AUDIT #8 soft cap — so the permitted +1 LEAD and the −1 penalty cancelled
+  // to zero and training evidence could NEVER move the headline off a race
+  // anchor, by construction (David's Aug 9 tempo: read 45.3 → capped 45.1 →
+  // sortKey 44.1 → tie → the March race won). The anti-noise job the penalty
+  // was doing ("a single hot GPS run must not spike VDOT") is the CAP's job,
+  // and the cap does it: training may lead the last hard proof by at most the
+  // doctrinal +1 soft-estimate quantum (Research/01 §"Testing cadence": tempo
+  // notably easier → "+1 VDOT estimated"). So cap-bounded runs sort at their
+  // capped face value — a capped run genuinely leads by up to +1, monotone in
+  // evidence strength. Race still wins EXACT ties: sort() is stable (ES2019)
+  // and races precede runs in the concatenation below. The −1 penalty is kept
+  // only for the no-race-anchor scope (trainingCeiling == null), where no cap
+  // bounds the read — there it preserves the historical run-vs-run ordering
+  // and the race-wins-ties intent should an uncapped run ever meet a race.
+  const runsCapBounded = trainingCeiling != null;
+  const sortKey = (c: VdotCandidate) =>
+    c.source === 'race' ? c.vdot : (runsCapBounded ? c.vdot : c.vdot - 1);
   const considered = [...raceCandidates, ...runCandidates]
-    .sort((a, b) => sortKey(b) - sortKey(a));
+    .sort((a, b) =>
+      ((demoted(b) ? 0 : 1) - (demoted(a) ? 0 : 1)) ||
+      (sortKey(b) - sortKey(a)));
 
   // P1-56 · belowTableAnchor is populated ONLY when there is no real (in-table)
   // candidate at all — a runner with a valid race VDOT never falls back to a

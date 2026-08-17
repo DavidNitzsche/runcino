@@ -22,6 +22,7 @@
 import { pool } from '@/lib/db/pool';
 import {
   parseRaceTime, zoneFromType, vdotRunFloorMi, goalDistanceMiFromCode,
+  FADE_TAIL_DAYS,
 } from '@/lib/training/vdot';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
@@ -81,7 +82,13 @@ function distFromLabel(label: string | null | undefined): number | null {
  *
  * @param userId     - the runner's UUID
  * @param today      - ISO date (caller must pass their runnerToday() result)
- * @param windowDays - race lookback in days (default 180). Run candidates
+ * @param windowDays - full-value race lookback in days (default 180; must
+ *                     match the lookbackDays the caller passes to
+ *                     bestRecentVdot). Race rows are FETCHED over
+ *                     windowDays + FADE_TAIL_DAYS — bestRecentVdot owns
+ *                     staleness (full value through windowDays, then the F1
+ *                     fade); this loader's job is only to deliver every
+ *                     candidate the fade can still see. Run candidates
  *                     always use a fixed 60-day window because training-derived
  *                     VDOT estimates go stale faster than race anchors.
  *
@@ -97,7 +104,20 @@ export async function loadVdotInputs(
   // ── Race candidates ──────────────────────────────────────────────────────
 
   // Compute cutoff in TS to keep the SQL parameters simple.
-  const raceCutoff = new Date(Date.parse(today + 'T12:00:00Z') - windowDays * 86400000)
+  //
+  // 2026-08-17 · F1 regression fix: cutoff = windowDays + FADE_TAIL_DAYS, not
+  // windowDays. The stale-anchor fade (bestRecentVdot, race-killer F1) keeps
+  // an aging anchor at full value through windowDays and then fades it 0.1
+  // VDOT / 14 days for FADE_TAIL_DAYS more — so it needs candidates up to
+  // windowDays + FADE_TAIL_DAYS old. This loader's hard windowDays cutoff
+  // starved it: fade-window candidates never left the DB, the fade never
+  // fired in prod, and the exact cliff F1 was built to prevent happened on
+  // schedule (Disney HM exited the SQL window overnight on Aug 1 → 47.9 →
+  // 44.1, 15 days before the A-race). The fade's unit tests passed the whole
+  // time because they fed candidates in-memory. Staleness judgment lives in
+  // bestRecentVdot — including fresh-race precedence over faded anchors
+  // (FRESH_RACE_PRECEDENCE_DAYS) — never in this fetch window.
+  const raceCutoff = new Date(Date.parse(today + 'T12:00:00Z') - (windowDays + FADE_TAIL_DAYS) * 86400000)
     .toISOString().slice(0, 10);
 
   // Pull A/B races within the lookback window.
