@@ -314,37 +314,6 @@ struct StravaPushesResponse: Decodable {
     }
 }
 
-// MARK: - LLM spend rollup
-
-struct UsageDayRow: Decodable, Identifiable {
-    let date: String
-    let briefings: Int
-    let tokens: Int
-    let cost_usd: Double
-
-    var id: String { date }
-    enum CodingKeys: String, CodingKey { case date, briefings, tokens, cost_usd }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
-        self.briefings = try c.decodeIfPresent(Int.self, forKey: .briefings) ?? 0
-        self.tokens = try c.decodeIfPresent(Int.self, forKey: .tokens) ?? 0
-        self.cost_usd = try c.decodeIfPresent(Double.self, forKey: .cost_usd) ?? 0
-    }
-}
-
-struct UsageResponse: Decodable {
-    let days: [UsageDayRow]
-    let totalCostUsd: Double
-
-    enum CodingKeys: String, CodingKey { case days, totalCostUsd }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.days = (try? c.decode([UsageDayRow].self, forKey: .days)) ?? []
-        self.totalCostUsd = try c.decodeIfPresent(Double.self, forKey: .totalCostUsd) ?? 0
-    }
-}
-
 // MARK: - Targets projection ("Closing the gap" panel)
 //
 // Backend: GET /api/targets/projection?distance_mi=...&race_slug=...

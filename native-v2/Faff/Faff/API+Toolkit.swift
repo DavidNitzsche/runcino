@@ -408,21 +408,6 @@ extension API {
         return env?.pushes ?? []
     }
 
-    // MARK: - LLM usage rollup
-
-    static func fetchUsage(days: Int = 14) async throws -> UsageResponse? {
-        var comps = URLComponents(
-            url: baseURL.appendingPathComponent("api/usage"),
-            resolvingAgainstBaseURL: false
-        )!
-        comps.queryItems = [URLQueryItem(name: "days", value: "\(days)")]
-        var req = URLRequest(url: comps.url!)
-        req.httpMethod = "GET"
-        let (data, http) = try await API.authedSend(req)
-        guard (200..<300).contains(http.statusCode) else { return nil }
-        return try? JSONDecoder().decode(UsageResponse.self, from: data)
-    }
-
     // MARK: - Per-day shoe override
 
     @discardableResult

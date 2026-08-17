@@ -33,7 +33,6 @@ import { computeReadiness, computeDynamicSleepTarget, lutealAdjustedHrvBaseline,
 import { loadReadinessHistory, type PillarPoint, type ReadinessHistory } from './readiness-history';
 import type { CoachState } from '@/lib/topics/types';
 import { buildSynthesis } from './synthesis';
-import { buildForecasts, type Forecast } from './forecasts';
 import { computeTrainingForm } from './training-form';
 import { buildHealthActions, buildThresholdLine, type HealthAction } from './health-actions';
 
@@ -202,18 +201,6 @@ export interface ReadinessBrief {
     band: 'detraining' | 'race-ready' | 'productive' | 'loaded' | 'overreach';
     label: string;
   } | null;
-  /** 2026-06-01 · Power moves #9 · forecasts · slope detection per
-   *  pillar. Projects when each metric crosses into a new band based
-   *  on the current trajectory. Empty when no detectable trend. */
-  forecasts: Array<{
-    pillar: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hrv_cv' | 'wrist_temp';
-    daysUntilBandChange: number | null;
-    projectedBand: string;
-    message: string;
-    confidence: 'high' | 'medium' | 'low';
-    /** 2026-06-03 · 'good' when trajectory leads to better state. */
-    direction?: 'good' | 'bad';
-  }>;
   /** "Watching" callouts for tomorrow · the brief points the runner at
    *  what to verify if it persists. Kept on the envelope for backwards
    *  compat (iPhone clients still consume it) · the Health page web
@@ -345,7 +332,6 @@ export async function loadReadinessBrief(
       hrvCv: null,
       synthesis: null,
       trainingForm: null,
-      forecasts: [],
       watchTomorrow: [],
       actions: [],
       actionsThreshold: '',
@@ -478,10 +464,6 @@ export async function loadReadinessBrief(
       }
     : null;
 
-  // 2026-06-01 · Power moves #10 · forecasts. Slope detection per
-  // pillar with band-crossing projections.
-  const forecasts: Forecast[] = buildForecasts(history);
-
   // 2026-06-01 · Power moves #1 · synthesis card. Engine-authored
   // cross-metric story. Needs wrist temp + RR + sleep stages + TSB ·
   // pull those from health-state via a side-load (kept light · just
@@ -563,7 +545,6 @@ export async function loadReadinessBrief(
     hrvCv,
     synthesis,
     trainingForm,
-    forecasts,
     watchTomorrow,
     actions,
     actionsThreshold,

@@ -298,7 +298,7 @@ export async function POST(req: NextRequest) {
 
     if (!dry && totalUpdated > 0) {
       // plan_swap is the canonical RegenEvent for any plan-row mutation
-      // (rationale in lib/coach/regen-policy.ts § plan_swap).
+      // (see the RegenEvent union in lib/coach/cache.ts § plan_swap).
       await bustBriefingCacheForEvent(userId, 'plan_swap');
     }
 

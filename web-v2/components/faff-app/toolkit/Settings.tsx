@@ -8,7 +8,6 @@
  *                           on each toggle change). Closes line 1806.
  *   ConnectionRow         · per-source row with sync status dot.
  *                           Closes line 1821.
- *   SettingValueRow       · generic label + value/switch/button.
  *                           Closes line 2034 (phone_hr_alerts toggle).
  */
 import { useEffect, useState } from 'react';
@@ -196,47 +195,6 @@ export function ConnectionRow({
         </button>
       ) : null}
     </div>
-  );
-}
-
-/* ============================================================
-   SettingValueRow · generic label + value or switch.
-   ============================================================ */
-export function SettingValueRow({
-  label,
-  sub,
-  value,
-  valueMute,
-  onClick,
-  trailing,
-}: {
-  label: string;
-  sub?: string;
-  value?: string | number;
-  valueMute?: boolean;
-  onClick?: () => void;
-  trailing?: React.ReactNode;
-}) {
-  const Wrapper = onClick ? 'button' : 'div';
-  const interactive = !!onClick;
-  return (
-    <Wrapper
-      className="fa-row"
-      onClick={onClick}
-      type={onClick ? 'button' : undefined}
-      style={interactive ? { width: '100%', textAlign: 'left', cursor: 'pointer' } : undefined}
-    >
-      <div>
-        <div className="lbl">{label}</div>
-        {sub ? <div className="sub">{sub}</div> : null}
-      </div>
-      <div className="right">
-        {value !== undefined ? (
-          <span className={`val${valueMute ? ' mute' : ''}`}>{value}</span>
-        ) : null}
-        {trailing}
-      </div>
-    </Wrapper>
   );
 }
 

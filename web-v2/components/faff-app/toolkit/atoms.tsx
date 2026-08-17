@@ -52,73 +52,15 @@ export function EffortDot({
 }
 
 /* ============================================================
-   A · LoadBandChip — ACWR sweet-spot band (closes Today line 405).
-   Doctrine bands per glance-state / fact-reciter.loadBand:
-     detraining (<0.8)  → watch (amber)
-     building (.8-1.0)  → info (blue)
-     sweet_spot (1-1.3) → good (green)
-     elevated (>1.3)    → watch (amber)
-     spike (>1.5)       → off (red)
-   ============================================================ */
-export type LoadBand = 'detraining' | 'building' | 'sweet_spot' | 'elevated' | 'spike';
-export function LoadBandChip({ band }: { band: LoadBand }) {
-  const variant = {
-    detraining: 'fa-chip--watch',
-    building: 'fa-chip--info',
-    sweet_spot: 'fa-chip--good',
-    elevated: 'fa-chip--watch',
-    spike: 'fa-chip--off',
-  }[band];
-  const label = {
-    detraining: 'DETRAINING',
-    building: 'BUILDING',
-    sweet_spot: 'SWEET SPOT',
-    elevated: 'ELEVATED',
-    spike: 'SPIKE',
-  }[band];
-  return (
-    <span className={`fa-chip ${variant}`}>
-      <span className="dot" />
-      LOAD · {label}
-    </span>
-  );
-}
-
-/* ============================================================
-   A · RaceStatusDot — race-header status (line 1160).
-   on_track → green · watch → amber · off → red.
-   ============================================================ */
-export type RaceStatus = 'on_track' | 'watch' | 'off';
-export function RaceStatusDot({ status, reason }: { status: RaceStatus; reason?: string }) {
-  const variant = {
-    on_track: 'fa-chip--good',
-    watch: 'fa-chip--watch',
-    off: 'fa-chip--off',
-  }[status];
-  const label = {
-    on_track: 'ON TRACK',
-    watch: 'WATCH',
-    off: 'OFF TRACK',
-  }[status];
-  return (
-    <span className={`fa-chip ${variant}`} title={reason}>
-      <span className="dot" />
-      {label}
-    </span>
-  );
-}
-
-/* ============================================================
    A · DayStatePill — done_ease_off + missed inline pills.
    Closes Today lines 425 (PARTIAL done_ease_off) + 441 (NONE missed).
    ============================================================ */
-export type DayStateKind = 'missed' | 'done_ease_off';
 export function DayStatePill({
   kind,
   label,
   actions,
 }: {
-  kind: DayStateKind;
+  kind: 'missed' | 'done_ease_off';
   label: string;
   actions?: Array<{ label: string; onClick: () => void }>;
 }) {
@@ -202,76 +144,6 @@ export function StatTile({
 }
 
 /* ============================================================
-   B · ConditionsLine — one weather string for Today, Run Detail,
-   Race Detail. Closes line 232 (Today heat tag).
-   ============================================================ */
-export function ConditionsLine({
-  tempF,
-  feelsF,
-  windMph,
-  dewF,
-  hotFlag,
-  className = '',
-}: {
-  tempF: number | null;
-  feelsF?: number | null;
-  windMph?: number | null;
-  dewF?: number | null;
-  hotFlag?: boolean;
-  className?: string;
-}) {
-  if (tempF === null || tempF === undefined) return null;
-  const tClass = hotFlag ? 'hot' : '';
-  return (
-    <span className={`fa-conditions ${className}`.trim()}>
-      <CloudIcon />
-      <span className={tClass}>{Math.round(tempF)}°F</span>
-      {feelsF !== undefined && feelsF !== null ? (
-        <>
-          <span className="sep">·</span>
-          <span>feels {Math.round(feelsF)}°</span>
-        </>
-      ) : null}
-      {windMph !== undefined && windMph !== null ? (
-        <>
-          <span className="sep">·</span>
-          <span>wind {Math.round(windMph)} mph</span>
-        </>
-      ) : null}
-      {dewF !== undefined && dewF !== null ? (
-        <>
-          <span className="sep">·</span>
-          <span>dew {Math.round(dewF)}°</span>
-        </>
-      ) : null}
-    </span>
-  );
-}
-
-/* ============================================================
-   B · HRTargetPill — HR target + ceiling pill (line 604, 634).
-   ============================================================ */
-export function HRTargetPill({
-  low,
-  high,
-  zone,
-  cap,
-}: {
-  low: number;
-  high: number;
-  zone?: string;
-  cap?: boolean;
-}) {
-  return (
-    <span className={`fa-target${cap ? ' fa-target--cap' : ''}`}>
-      <span className="lbl">{cap ? 'HR CAP' : 'HR'}</span>
-      {low}–{high} bpm
-      {zone ? <span style={{ color: 'var(--fa-mute)', marginLeft: 4 }}>({zone})</span> : null}
-    </span>
-  );
-}
-
-/* ============================================================
    J · CitationChip — deep-links into /learn/[slug].
    Atom shared by RunPurposeCard, RunRecapCard, WorkoutWhyCard.
    ============================================================ */
@@ -308,92 +180,6 @@ export function HeatBandChip({ band, tempF }: { band: HeatBand; tempF?: number }
       {tempF !== undefined ? <>{Math.round(tempF)}°F · </> : null}
       {label}
     </span>
-  );
-}
-
-/* ============================================================
-   I · RunSourceBadge — watch / health / strava / manual indicator.
-   ============================================================ */
-export type RunSource = 'watch' | 'health' | 'strava' | 'manual';
-export function RunSourceBadge({ source }: { source: RunSource }) {
-  const Icon = {
-    watch: WatchIcon,
-    health: HeartIcon,
-    strava: StravaIcon,
-    manual: PencilIcon,
-  }[source];
-  const title = {
-    watch: 'Apple Watch live',
-    health: 'HealthKit',
-    strava: 'Strava import',
-    manual: 'Manual entry',
-  }[source];
-  return (
-    <span className={`fa-source fa-source--${source}`} title={title} aria-label={title}>
-      <Icon />
-    </span>
-  );
-}
-
-/* ============================================================
-   I · ProjectionSparkline — VDOT / projection trend over weeks.
-   Closes line 1106 (projection_snapshots).
-   Renders an SVG sparkline + the latest value + direction.
-   ============================================================ */
-export function ProjectionSparkline({
-  values,
-  unitLabel,
-  formatValue = (v: number) => String(v),
-}: {
-  values: Array<{ date: string; value: number }>;
-  unitLabel: string;
-  formatValue?: (v: number) => string;
-}) {
-  if (!values || values.length < 2) {
-    return (
-      <div className="fa-empty" role="status">
-        <ChartIcon />
-        <div className="t">Trend builds after a few weeks of data.</div>
-      </div>
-    );
-  }
-  const W = 120;
-  const H = 36;
-  const xs = values.map((_, i) => (i / (values.length - 1)) * (W - 4) + 2);
-  const ys = values.map((v) => v.value);
-  const min = Math.min(...ys);
-  const max = Math.max(...ys);
-  const span = max - min || 1;
-  const points = values
-    .map((v, i) => {
-      const y = H - 4 - ((v.value - min) / span) * (H - 8);
-      return `${xs[i]},${y}`;
-    })
-    .join(' ');
-  const last = values[values.length - 1].value;
-  const first = values[0].value;
-  const delta = last - first;
-  const isUp = delta > 0;
-  const isFlat = delta === 0;
-  return (
-    <div className="fa-spark">
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        <polyline
-          points={points}
-          fill="none"
-          stroke={isUp ? 'var(--mint-readiness)' : isFlat ? 'var(--fa-mute)' : 'var(--over)'}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <div className="read">
-        <div className="v">{formatValue(last)}</div>
-        <div className={`d ${isUp ? 'up' : isFlat ? '' : 'down'}`}>
-          {isUp ? '▲' : isFlat ? '·' : '▼'} {unitLabel}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -499,13 +285,6 @@ function Caret() {
     </svg>
   );
 }
-function CloudIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 12a3 3 0 010-6 4 4 0 017.5-1A3.5 3.5 0 0114 12H4z" />
-    </svg>
-  );
-}
 function BookIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -517,36 +296,6 @@ function FlameIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8 14c2.8 0 5-2 5-4.5 0-2-1.5-3-2-4-1 1-2 2-3 2-2 0-2.5-2-2.5-2S3 7 3 9.5 5.2 14 8 14z" />
-    </svg>
-  );
-}
-function WatchIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-      <rect x="4" y="3" width="8" height="10" rx="2" />
-      <circle cx="8" cy="8" r="0.8" fill="currentColor" />
-    </svg>
-  );
-}
-function HeartIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor">
-      <path d="M8 13s-5-3-5-7a2.5 2.5 0 015-1 2.5 2.5 0 015 1c0 4-5 7-5 7z" />
-    </svg>
-  );
-}
-function StravaIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-      <path d="M8 2l3 6h-2l-1 2-1-2H5l3-6z" />
-      <path d="M9 10h2l-1 2-1-2z" />
-    </svg>
-  );
-}
-function PencilIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M11 3l2 2-7 7-2.5.5.5-2.5 7-7z" />
     </svg>
   );
 }
@@ -563,13 +312,6 @@ function AlertIcon() {
       <path d="M8 2L2 13h12L8 2z" />
       <line x1="8" y1="7" x2="8" y2="10" />
       <circle cx="8" cy="11.5" r=".5" fill="currentColor" />
-    </svg>
-  );
-}
-function ChartIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="2,11 6,7 9,9 14,4" />
     </svg>
   );
 }

@@ -21,7 +21,35 @@
  * NOTHING writes to the `briefings` table any more.
  */
 import { bustRaceCache } from './race-lookup';
-import type { RegenEvent, Surface } from './regen-policy';
+
+// ── Call-site vocabulary ──────────────────────────────────────────────
+// 2026-08-17 · these two unions used to live in regen-policy.ts, whose
+// runtime half (REGEN_MAP + the cadence table) died with the LLM rip and
+// had no callers left. The unions themselves still earn their keep: the
+// ~30 mutation endpoints that call bustSurfacesForEvent pass literals,
+// and the union is what stops a typo from compiling.
+
+/** Coach surfaces a mutation can invalidate. */
+export type Surface =
+  | 'today'
+  | 'training'
+  | 'races'
+  | 'race-detail'
+  | 'health'
+  | 'profile';
+
+/** Mutation hooks that bust the cache. Each corresponds to a real route
+ *  handler or cron in the app. */
+export type RegenEvent =
+  | 'run_ingest'        // /api/watch/workouts/complete, /api/gpx/import, etc.
+  | 'check_in'          // /api/checkin
+  | 'plan_swap'         // /api/plan/workout, /api/plan/generate
+  | 'profile_edit'      // /api/profile
+  | 'race_crud'         // /api/race
+  | 'shoe_crud'         // /api/shoe
+  | 'hk_signal_sample'  // /api/ingest/health (sleep_hours / resting_hr / hrv / hr_recovery)
+  | 'day_rollover'      // daily 00:05 PT cron
+  | 'keep_warm_tick';   // 15min DB-only warm (no LLM)
 
 // ── Constants kept for import-site compatibility ──────────────────────
 

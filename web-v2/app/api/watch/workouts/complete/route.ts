@@ -603,7 +603,7 @@ export async function POST(req: NextRequest) {
 
   // Event-driven cache: a workout just finished. Bust only the surfaces
   // a run actually changes (today + training); /races + /profile + /health
-  // don't need fresh voice for a single run. See lib/coach/regen-policy.ts.
+  // don't need fresh voice for a single run. See lib/coach/cache.ts.
   await bustBriefingCacheForEvent(userId, 'run_ingest');
 
   // Auto-push to Strava when the runner opted in. Fire-and-forget · the

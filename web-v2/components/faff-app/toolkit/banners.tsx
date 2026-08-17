@@ -5,7 +5,6 @@
  *
  * ReconnectBanner    · stale Strava + connections-skipped (line 1602)
  * ProfileGapCard     · "tell Faff your weight to tune fueling"
- * DailyCheckChip     · "how's your hamstring today?"
  *
  * ReconnectBanner is the data-bound one (talks to /api/strava/status);
  * the other two are presentational and let the caller wire their POST.
@@ -159,55 +158,6 @@ export function ProfileGapCard({
         )}
       </span>
       {Inner}
-    </div>
-  );
-}
-
-/* ============================================================
-   DailyCheckChip · daily niggle / recovery prompt.
-   The caller passes `question` and a list of options; we surface
-   the selected one back through `onSelect`. Empty handler means
-   the chip is read-only (e.g. preview state).
-   ============================================================ */
-export function DailyCheckChip({
-  question,
-  highlight,
-  options,
-  selected,
-  onSelect,
-}: {
-  question: string;
-  highlight?: string;
-  options: string[];
-  selected?: string;
-  onSelect?: (value: string) => void;
-}) {
-  return (
-    <div className="fa-checkin">
-      <div className="q">
-        {highlight ? (
-          <>
-            {question.split(highlight)[0]}
-            <b>{highlight}</b>
-            {question.split(highlight)[1] ?? ''}
-          </>
-        ) : (
-          question
-        )}
-      </div>
-      <div className="opts">
-        {options.map((o) => (
-          <button
-            key={o}
-            type="button"
-            className={selected === o ? 'sel' : ''}
-            onClick={() => onSelect?.(o)}
-            disabled={!onSelect}
-          >
-            {o}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

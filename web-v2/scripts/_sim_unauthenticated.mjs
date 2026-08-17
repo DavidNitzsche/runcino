@@ -51,7 +51,6 @@ const PUBLIC_ROUTES = [
   '/api/tips',                     // GET — global form-tip library
   '/api/overview',                 // GET — legacy 410 GONE
   '/api/learn/[slug]',             // GET — global learn article
-  '/api/usage',                    // GET — cost rollup (admin/debug)
   '/api/auth/apple',               // POST — Sign in with Apple (mints session)
   '/api/auth/email',               // POST — email + password (mints session)
   '/api/strava/webhook',           // GET/POST — Strava-signed callback
@@ -62,7 +61,6 @@ const CRON_ROUTES = [
   '/api/cron/enrich-weather',
   '/api/cron/keep-warm',
   '/api/cron/notifications',
-  '/api/cron/refresh-briefings',
   '/api/cron/run-adaptations',
   '/api/cron/snapshot-projections',
 ];

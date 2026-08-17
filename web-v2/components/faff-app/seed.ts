@@ -27,6 +27,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { dayKeyFromLocalParts, pgDayKey, addDaysToDayKey } from '@/lib/runtime/day-key';
 import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
 import { loadSettings } from '@/lib/coach/settings';
+import { cadenceTargetFor } from '@/lib/coach/cadence-target';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { resolveBlockState } from '@/lib/faff/block-state';
 import { redirect } from 'next/navigation';
@@ -428,33 +429,21 @@ function paceFromSpec(spec: import('@/lib/faff/types').WorkoutSpec | null | unde
 /* ─────────────────────────  Adapters  ───────────────────────── */
 
 /**
- * Thin wrapper · resolves a cadence target for a workout EffortKey
- * using the backend's canonical prescription (lib/coach/cadence-target.ts).
- * Lazy import to avoid pulling the backend module into seed when not needed.
+ * Thin wrapper · resolves a cadence target for a workout EffortKey using
+ * the canonical prescription in lib/coach/cadence-target.ts.
+ *
+ * 2026-08-17 · this used to inline its own copy of CANONICAL_RANGE "so
+ * the seed doesn't need a dynamic import per row". The copy had drifted:
+ * it dropped the `race` row, so a race day fell through to `easy` and
+ * prescribed 165-175 spm instead of the canonical 178-188 race rhythm.
+ * cadence-target.ts is a pure module with zero imports, so there was
+ * never anything to lazy-load away from. Import it and delete the fork.
  */
 function cadenceTargetForEffort(
   type: EffortKey,
   baseline: number | null,
 ): PlannedDay['cadenceTarget'] {
-  // Inline the canonical ranges so the seed doesn't need a dynamic
-  // import per row. Mirrors lib/coach/cadence-target.ts CANONICAL_RANGE.
-  const CANONICAL: Record<string, { lo: number; hi: number; cue: string }> = {
-    easy:        { lo: 165, hi: 175, cue: 'relaxed turnover' },
-    recovery:    { lo: 162, hi: 172, cue: 'easy turnover' },
-    long:        { lo: 168, hi: 178, cue: 'sustainable rhythm' },
-    tempo:       { lo: 172, hi: 182, cue: 'drive turnover' },
-    intervals:   { lo: 180, hi: 190, cue: 'crisp + quick' },
-    rest:        { lo: 0,   hi: 0,   cue: 'rest day' },
-  };
-  const c = CANONICAL[type] ?? CANONICAL.easy;
-  if (c.lo === 0 && c.hi === 0) return { low: 0, high: 0, copy: c.cue };
-  let lo = c.lo, hi = c.hi;
-  if (baseline != null && baseline > 130 && baseline < 220) {
-    const shift = Math.round(baseline - 170);
-    lo = Math.max(150, Math.min(200, lo + shift));
-    hi = Math.max(155, Math.min(205, hi + shift));
-  }
-  return { low: lo, high: hi, copy: `${lo}-${hi} spm · ${c.cue}` };
+  return cadenceTargetFor(type, baseline);
 }
 
 function adaptWeek(glance: Glance | null, skipSet?: Set<string>, cadenceBaseline?: number | null): { week: PlannedDay[]; todayIdx: number; results: Record<number, CompletedRun | undefined> } {

@@ -11,35 +11,28 @@ import { HealthView } from './views/HealthView';
 import { TargetsView } from './views/TargetsView';
 import { ActivityView } from './views/ActivityView';
 import { ProfileView } from './views/ProfileView';
-import { SpectatorView } from './views/SpectatorView';
 import { RaceView, type RaceDetailSeed } from './views/RaceView';
 import { Drawer } from './overlays/Drawer';
 import { WorkoutDetail } from './overlays/WorkoutDetail';
 import { WeeklyCheckIn } from './overlays/WeeklyCheckIn';
 import { Paywall } from './overlays/Paywall';
-import { Reach } from './overlays/Reach';
 import { Pro } from './overlays/Pro';
-import { TweaksPanel } from './TweaksPanel';
 import { RunDetailModal } from './overlays/RunDetailModal';
 
 const ROUTE_TO_VIEW: Record<string, ViewKey> = {
   '/':           'today',
   '/today':      'today',
-  '/train':      'train',
   '/training':   'train',
   '/plan':       'train',
   '/health':     'health',
-  '/targets':    'targets',
   '/races':      'targets',
-  '/activity':   'activity',
   '/log':        'activity',
   '/profile':    'profile',
   '/me':         'profile',
-  '/spectator':  'spectator',
 };
 const VIEW_TO_ROUTE: Record<ViewKey,string> = {
   today: '/today', train: '/training', health: '/health', targets: '/races',
-  race: '/races', activity: '/log', profile: '/me', spectator: '/spectator',
+  race: '/races', activity: '/log', profile: '/me',
 };
 
 export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { seed: FaffSeed; initial?: ViewKey; raceSeed?: RaceDetailSeed; autoOpenRunId?: string }) {
@@ -49,7 +42,7 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
   const [meshOverride, setMeshOverride] = useState<Mesh | null>(null);
   const [curDay, setCurDay] = useState<number>(seed.todayIdx);
   const [sbCollapsed, setSbCollapsed] = useState(false);
-  const [openOverlay, setOpenOverlay] = useState<null | 'drawer' | 'paywall' | 'reach' | 'pro' | 'weekci' | { type: 'wk'; i: number } | { type: 'run'; id: string }>(null);
+  const [openOverlay, setOpenOverlay] = useState<null | 'drawer' | 'paywall' | 'pro' | 'weekci' | { type: 'wk'; i: number } | { type: 'run'; id: string }>(null);
   const mainRef = useRef<HTMLDivElement>(null);
 
   // Reflect URL to view (for back/forward navigation).
@@ -247,7 +240,6 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
           <TargetsView
             seed={seed}
             onOpenRace={(slug) => router.push(`/races/${slug}`)}
-            onOpenReach={() => setOpenOverlay('reach')}
           />
         )}
         {view === 'race'     && <RaceView seed={seed} race={raceSeed} onBack={() => navigate('targets')} />}
@@ -264,7 +256,6 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
             onOpenPaywall={() => setOpenOverlay('paywall')}
           />
         )}
-        {view === 'spectator'&& <SpectatorView seed={seed} onExit={() => navigate('today')} />}
         </>}
       </main>
 
@@ -273,34 +264,6 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         onClose={() => setOpenOverlay(null)}
         brief={seed.readinessBrief}
         fallbackReadiness={seed.readiness}
-        goalSlug={seed.goalRace?.slug ?? null}
-        // 2026-06-03 · today's run state · drives the time/run-aware
-        // check-in prompt ("How are you feeling after the run?" vs
-        // "How are you feeling heading into today?" vs after-hours
-        // framing). seed.results is keyed by week index.
-        todayRunDone={Boolean(seed.results[seed.todayIdx])}
-        todayWorkoutType={seed.week[seed.todayIdx]?.type ?? null}
-        // 2026-06-03 · actual run distance + duration · drives the
-        // PostRunReflection. CompletedRun carries `time` (M:SS / H:MM:SS)
-        // and `apace` (M:SS/mi). Distance derives from time ÷ pace.
-        {...(() => {
-          const r = seed.results[seed.todayIdx];
-          if (!r) return { todayActualMi: null, todayActualMin: null };
-          // Parse "50:34" or "1:23:45" → seconds.
-          const parseT = (s: string): number | null => {
-            const parts = s.split(':').map(Number);
-            if (parts.some(n => !Number.isFinite(n))) return null;
-            if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
-            if (parts.length === 2) return parts[0]*60 + parts[1];
-            return null;
-          };
-          const tSec = parseT(r.time);
-          const paceSec = parseT(r.apace);
-          const min = tSec != null ? tSec / 60 : null;
-          const mi = tSec != null && paceSec != null && paceSec > 0
-            ? +(tSec / paceSec).toFixed(2) : null;
-          return { todayActualMi: mi, todayActualMin: min };
-        })()}
         onViewFullHealth={() => { setOpenOverlay(null); navigate('health'); }}
       />
       {typeof openOverlay === 'object' && openOverlay?.type === 'wk' && (
@@ -313,14 +276,12 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
       )}
       <WeeklyCheckIn open={openOverlay === 'weekci'} onClose={() => setOpenOverlay(null)} seed={seed} />
       <Paywall open={openOverlay === 'paywall'} onClose={() => setOpenOverlay(null)} />
-      <Reach open={openOverlay === 'reach'} onClose={() => setOpenOverlay(null)} onAdd={() => setOpenOverlay(null)} />
       <Pro open={openOverlay === 'pro'} onClose={() => setOpenOverlay(null)} />
       <RunDetailModal
         open={typeof openOverlay === 'object' && openOverlay?.type === 'run'}
         runId={typeof openOverlay === 'object' && openOverlay?.type === 'run' ? openOverlay.id : null}
         onClose={() => setOpenOverlay(null)}
       />
-      <TweaksPanel />
     </div>
   );
 }
@@ -387,7 +348,6 @@ function GuestPanel({ view }: { view: ViewKey }) {
                  body: 'Activity heatmap, recent runs and aggregates follow your runner-id.' },
     profile:   { title: 'Sign in to see your profile',
                  body: 'Shoe garage, connections, units and preferences are per-runner.' },
-    spectator: { title: 'Sign in to spectate', body: 'Spectator mode is per-runner.' },
     race:      { title: 'Sign in to see this race',
                  body: 'Race detail is keyed to your account.' },
   };

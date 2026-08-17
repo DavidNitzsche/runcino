@@ -8,7 +8,7 @@
 export type EffortKey = 'recovery' | 'easy' | 'long' | 'tempo' | 'intervals' | 'rest' | 'race';
 export type Mesh = [string, string, string, string, string, string]; // c1, c2, c3, c4, c5, base
 export type ViewKey =
-  | 'today' | 'train' | 'health' | 'targets' | 'race' | 'activity' | 'profile' | 'spectator';
+  | 'today' | 'train' | 'health' | 'targets' | 'race' | 'activity' | 'profile';
 
 export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl: string }> = {
   // Effort meshes · canonical "Effort Mesh Background" handoff spec
@@ -55,7 +55,6 @@ export const MESH: Record<Exclude<ViewKey,'today'>, Mesh> = {
   // page in race energy.  Stops are dark grey blobs over near-black base.
   targets:   ['#363B45','#2B2F38','#21242B','#191C22','#121419','#0C0D11'],
   profile:   ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
-  spectator: ['#8EF0B0','#34C194','#1F8A8A','#128A64','#137259','#06382E'],
   race:      ['#FFD27A','#D03F3F','#FC4D64','#D6263C','#9E1733','#3A0E12'],
 };
 

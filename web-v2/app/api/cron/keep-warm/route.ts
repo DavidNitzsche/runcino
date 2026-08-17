@@ -97,8 +97,8 @@ export async function POST(req: NextRequest) {
     ]);
     // 2026-05-28 LLM rip: brief pre-regen step removed entirely.
     // fact-reciter rebuilds from state on every read; nothing to warm
-    // beyond the state-loaders above.
-    loaders['briefs_kicked_off'] = 0;
+    // beyond the state-loaders above. The `briefs_kicked_off: 0` field
+    // this used to report was a vestige of that step; removed 2026-08-17.
     const ok = Object.values(loaders).filter((v) => v !== 0).every((v) => typeof v === 'number');
     perUser.push({ user_id: userId, ms: Date.now() - us, ok, loaders });
   }

@@ -492,10 +492,14 @@ struct ProfileView: View {
         return parts.joined(separator: " · ")
     }
 
+    /// 2026-08-17 · DAY STREAK and THIS YEAR shipped as literal "—" — no
+    /// backend field was ever wired to either, so they were guaranteed
+    /// em-dashes on every render for every runner. An empty tile is worse
+    /// than no tile: it reads as "we tried and have no data for you". They
+    /// are gone rather than faked. NEXT RACE stays — it reads a real field
+    /// and falls back to "—" only when the runner genuinely has no A race.
     private var statRow: some View {
         StatRow(stats: [
-            Stat(value: "—", key: "DAY STREAK"),
-            Stat(value: "—", key: "THIS YEAR"),
             Stat(value: profile?.nextARace.map { "\($0.days_to_race)d" } ?? "—", key: "NEXT RACE")
         ], valueFont: 20, keyColor: Theme.txt.opacity(0.55))
     }

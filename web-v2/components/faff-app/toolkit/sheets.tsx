@@ -15,8 +15,6 @@
  *                       (escalation to /api/injuries) is blocked per
  *                       README §"Blocked components" — do NOT wire the
  *                       injury escalation today.
- *   ReturnGateCard    · post-sick "ready to run?" return gate. Closes
- *                       line 264 (sick recovery).
  *
  * All sheets share the .fa-sheet shell. Caller is in charge of mounting
  * + presenting (drawer, modal, inline expander).
@@ -509,36 +507,6 @@ export function SymptomReportSheet({ onSaved, onClose }: { onSaved?: () => void;
       </button>
       {onClose ? <button type="button" className="fa-skip" onClick={onClose}>Cancel</button> : null}
     </SheetShell>
-  );
-}
-
-/* ============================================================
-   ReturnGateCard · sick recovery "ready to run?" prompt.
-   ============================================================ */
-export function ReturnGateCard({
-  title = 'Ready to run?',
-  body = 'Faff paused your plan while you were sick. When you feel back to baseline, tell the coach so we can resume.',
-  ctaLabel = 'I FEEL BETTER',
-  onConfirm,
-}: {
-  title?: string;
-  body?: string;
-  ctaLabel?: string;
-  onConfirm?: () => void;
-}) {
-  return (
-    <div className="fa-gate">
-      <div className="t">{title}</div>
-      <div className="s">{body}</div>
-      <button
-        type="button"
-        className="fa-submit"
-        style={{ marginTop: 14, background: 'var(--rest, var(--dist))' }}
-        onClick={onConfirm}
-      >
-        {ctaLabel}
-      </button>
-    </div>
   );
 }
 

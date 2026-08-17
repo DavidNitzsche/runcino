@@ -49,7 +49,6 @@ enum FaffTab: String, CaseIterable, Identifiable {
 /// case here + a single line in `routeDestination` below.
 enum FaffRoute: Hashable {
     case runDetail(id: String)
-    case planned(date: String?)
     case watchMirror
     /// Phone-only GPS run recorder (wave3b/phone-gps-recording). Outdoor
     /// routes here instead of .watchMirror when WatchSync reports no
@@ -62,7 +61,6 @@ enum FaffRoute: Hashable {
     case settings
     case shoes
     case pro
-    case paywall
     case activity
     /// Learn modal — 45 doctrine articles seeded server-side after the
     /// 2026-05-30 backend audit. Pushed from health-tab tile taps and
@@ -374,7 +372,6 @@ struct RootTabView: View {
     private func routeDestination(_ route: FaffRoute) -> some View {
         switch route {
         case .runDetail(let id):   RunRecapView(runId: id).navigationBarHidden(true)
-        case .planned(let d):      PlannedView(date: d).navigationBarHidden(true)
         case .watchMirror:         WatchMirrorView().navigationBarHidden(true)
         case .phoneRun:            PhoneRunView().navigationBarHidden(true)
         case .treadmill:           TreadmillView().navigationBarHidden(true)
@@ -382,7 +379,6 @@ struct RootTabView: View {
         case .settings:            SettingsView().navigationBarHidden(true)
         case .shoes:               ShoesView().navigationBarHidden(true)
         case .pro:                 ProView().navigationBarHidden(true)
-        case .paywall:             PaywallView().navigationBarHidden(true)
         case .activity:            ActivityView(onProfile: { pushProfile = true }).navigationBarHidden(true)
         case .learn(let slug):     LearnArticleSheet(slug: slug).navigationBarHidden(true)
         }

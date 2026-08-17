@@ -235,10 +235,11 @@ hits=$(grep -rinE "(#|0x)($RETIRED)|rgba?\( *($RETIRED_RGBA) *[,)]" \
   --include='*.css' --include='*.ts' --include='*.tsx' --include='*.swift' \
   2>/dev/null | grep -viE "$HIST_FILTER" | grep -vE "$BRAND_SWEEP_EXEMPT" \
   | grep -v '/\._' \
-  | grep -v '/app/dev/' | grep -v 'components/today/WeekStrip.tsx' || true)
-# Exclusions: /app/dev/ = design mockup routes (not product surface);
-# components/today/WeekStrip.tsx = dead file, zero importers (queued for
-# deletion in the CIM sweep).
+  | grep -v '/app/dev/' || true)
+# Exclusions: /app/dev/ = design mockup routes (not product surface).
+# The components/today/WeekStrip.tsx carve-out that used to live here is
+# gone — that file was the dead-code exemption it describes, and the CIM
+# sweep deleted it (2026-08-17). No live surface needs an exemption.
 
 if [ -n "$hits" ]; then
   echo "RETIRED HEX FOUND IN LIVE CODE:"
@@ -289,8 +290,14 @@ fi
 need "$WEB_CONST" "ZC = \['#27B4E0','#3EBD41'" 'ladder ZC Z2 = #3EBD41 (brief v2 ADDENDUM 3)'
 need "$ROOT/web-v2/components/faff-app/session-shape.ts" \
   "2: '#3EBD41'" 'ladder session-shape ZONE_COLOR z2 = #3EBD41'
-need "$ROOT/web-v2/components/runs/RunDetailModal.tsx" \
-  "z2: '#3EBD41'" 'ladder run-detail ZONE_COLOR z2 = #3EBD41'
+# 2026-08-17 · the third rung assertion used to point at
+# web-v2/components/runs/RunDetailModal.tsx and its local ZONE_COLOR map.
+# That file was a closed-island orphan (its only importers were themselves
+# orphans; Shell mounts components/faff-app/overlays/RunDetailModal) and
+# the CIM sweep deleted it. The live modal has no ZONE_COLOR of its own —
+# it reads ZC straight from constants.ts, so the WEB_CONST assertion above
+# already covers the surface this line was guarding. Not replaced: there
+# is nothing left to drift.
 need "$IOS_THEME" 'z2 = Color\(hex: 0x3EBD41\)' \
   'iPhone ladder z2 = #3EBD41 · byte-synced with web ZC[1]'
 

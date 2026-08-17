@@ -310,7 +310,7 @@ export default async function PlanDiffPage({
               No prior plan to compare against. The auto-adapter rebuilt your
               plan without a previous baseline (likely a first-time generation
               or a goal change before the original archived). View the active
-              plan on <Link href="/train" style={{ color: '#3EBD41' /* --green */ }}>/train</Link>.
+              plan on <Link href="/training" style={{ color: '#3EBD41' /* --green */ }}>/training</Link>.
             </div>
           </>
         ) : null}

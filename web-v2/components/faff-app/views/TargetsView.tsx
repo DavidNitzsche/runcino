@@ -47,7 +47,7 @@ import { StatusChip } from '../StatusChip';
 
 export function TargetsView({
   seed, onOpenRace,
-}: { seed: FaffSeed; onOpenRace: (slug: string) => void; onOpenReach?: () => void }) {
+}: { seed: FaffSeed; onOpenRace: (slug: string) => void }) {
   const router = useRouter();
   const goal = seed.goalRace;
   const [goalOpen, setGoalOpen] = useState(false);
