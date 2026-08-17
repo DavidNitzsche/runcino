@@ -121,7 +121,8 @@ export type AdaptationTriggerKind =
   | 'sick_episode_active' // Q-03 · active illness · propose, never auto
   | 'injury_active'       // Q-08 · active runner_injuries row · propose
   | 'goal_changed'        // runner edited goal time → mark paces stale
-  | 'training_gap';       // 2026-07-06 · unplanned layoff · Research/22 §14
+  | 'training_gap'        // 2026-07-06 · unplanned layoff · Research/22 §14
+  | 'field_test_due';     // 2026-08-17 · no race/test in 42d · Research/01:684-686
 
 export interface AdaptationTrigger {
   kind: AdaptationTriggerKind;
@@ -131,7 +132,10 @@ export interface AdaptationTrigger {
 }
 
 export interface AdaptationAction {
-  kind: 'reschedule' | 'downgrade' | 'shave' | 'recompute_paces' | 'mark_dirty' | 'mark_upgrade' | 'note';
+  /** 2026-08-17 · 'field_test' converts one quality day into a 30-minute
+   *  threshold field test (type 'tempo', sub_label 'FIELD TEST'), spec
+   *  modeled on the tempo shape. Propose-first via partitionActionsForCron. */
+  kind: 'reschedule' | 'downgrade' | 'shave' | 'recompute_paces' | 'mark_dirty' | 'mark_upgrade' | 'note' | 'field_test';
   workoutIds?: string[];      // plan_workouts.id targeted
   newType?: string;
   newDate?: string;
@@ -503,6 +507,110 @@ export function buildGapActions(opts: {
   return actions;
 }
 
+// ── Post-absence re-ramp (2026-08-17 · RERAMP-1) ───────────────────────
+//
+// buildGapActions' shave_70_85 band handles the FIRST 14 days back
+// (70%/85% of the authored plan). What it never did: rewrite the
+// REMAINING weeks' volume. The authored plan's ramp continues as if the
+// absence never happened — the audited case: an 8-day absence zeroed
+// week 5 and weeks 7-8 still stood at 59.5/64.5 mpw against a runner
+// whose pre-absence rolling 4-week average was 39 mpw.
+//
+// Doctrine · Research/22-plan-templates.md §14:
+//   · :635 — 8-14 days off → "70% of pre-layoff volume for 1 wk, 85%
+//     for wk 2, full for wk 3" — where "full" means the runner's OWN
+//     pre-layoff level, not an authored ramp that banked the missed week.
+//   · :648-651 — the moderate-layoff table resumes at ~70-80% of prior
+//     volume with the "10% rule strictly enforced" on the climb back.
+//
+// So: resume anchor = 70% of the pre-absence rolling 4-week average;
+// week k of the comeback may hold at most anchor × 1.10^(k-1); any
+// future week authored ABOVE its ceiling is shaved down to it. The
+// proportional shave keeps every day's share of the week (so the long
+// stays capped at its authored ~30% share of the reduced week, and
+// easy<long ordering is preserved). Quality returns per the existing
+// band rules (week-1 downgrade only) — the re-ramp touches volume, not
+// workout types.
+//
+// Scope: weeks STARTING after the 14-day window buildGapActions already
+// owns (its 0.30/0.15 shaves are locked by _adapt_invariants) — the
+// re-ramp owns week 3 of the comeback onward. Applied through the same
+// seal-guarded 'shave' machinery (applyAdaptations filters sealed rows
+// and snaps to 0.5mi), race-protected rows excluded per the per-finding
+// context-filter rule.
+
+/** §14 resume anchor · 70% of the pre-absence rolling 4-week average. */
+export const RERAMP_RESUME_FRACTION = 0.70;
+/** §14 "10% rule strictly enforced" on the climb back. */
+export const RERAMP_WEEKLY_GROWTH = 1.10;
+
+export interface ReRampWeek {
+  /** Plan-week start date (plan_weeks.week_start_iso). */
+  weekStartISO: string;
+  rows: GapPlanRow[];
+}
+
+/**
+ * Weekly ceiling for comeback week k (1-based · k=1 is the week
+ * containing the first day back). Pure math, exported for tests.
+ */
+export function reRampWeeklyCeilingMi(preAbsenceWeeklyMi: number, comebackWeekIdx: number): number {
+  if (!(preAbsenceWeeklyMi > 0) || comebackWeekIdx < 1) return 0;
+  return preAbsenceWeeklyMi * RERAMP_RESUME_FRACTION
+    * Math.pow(RERAMP_WEEKLY_GROWTH, comebackWeekIdx - 1);
+}
+
+/**
+ * Shave actions rescaling future authored weeks to the comeback ceiling.
+ * Pure — the DB shell loads fully-future plan weeks (start > today+13)
+ * and the pre-absence rolling 4-week average, and feeds them here.
+ */
+export function buildReRampActions(opts: {
+  todayISO: string;
+  daysOff: number;
+  lastRunISO: string;
+  preAbsenceWeeklyMi: number;
+  /** Plan weeks whose start date is AFTER today+13 (weeks 1-2 of the
+   *  comeback belong to buildGapActions' 70%/85% shaves). */
+  weeks: ReRampWeek[];
+  raceDates: string[];
+}): AdaptationAction[] {
+  const { todayISO, daysOff, preAbsenceWeeklyMi, weeks, raceDates } = opts;
+  if (classifyGapBand(daysOff) !== 'shave_70_85') return [];   // ≥8d band owns the re-ramp; >14d is propose-only
+  if (!(preAbsenceWeeklyMi >= 5)) return [];                    // no meaningful base signal
+  const actions: AdaptationAction[] = [];
+  const protectedRow = (r: GapPlanRow): boolean =>
+    (RACE_PROTECTED_TYPES as readonly string[]).includes(r.type)
+    || r.inRaceWeek
+    || dateNearRace(r.dateISO, raceDates);
+
+  for (const wk of weeks) {
+    if (!wk?.weekStartISO || wk.weekStartISO <= plusDaysISO(todayISO, 13)) continue;
+    const k = Math.floor(daysBetweenISO(todayISO, wk.weekStartISO) / 7) + 1;
+    const ceiling = reRampWeeklyCeilingMi(preAbsenceWeeklyMi, k);
+    if (!(ceiling > 0)) continue;
+    const runRows = wk.rows.filter((r) => r.type !== 'rest' && r.type !== 'strength' && (r.distanceMi ?? 0) > 0);
+    const plannedMi = runRows.reduce((s, r) => s + (r.distanceMi ?? 0), 0);
+    // Ramp caught up to the authored plan → nothing to shave (5% grace so a
+    // rounding-level overage doesn't churn the whole week by half a mile).
+    if (plannedMi <= ceiling * 1.05) continue;
+    const shavable = runRows.filter((r) => !protectedRow(r) && (r.distanceMi ?? 0) >= 1).map((r) => r.id);
+    if (shavable.length === 0) continue;
+    // Proportional fraction toward the ceiling, capped at 50% — deeper than
+    // half is rebuild territory, not a shave (and the >14d band already
+    // routes there as propose-only).
+    const fraction = Math.min(0.5, Math.round((1 - ceiling / plannedMi) * 100) / 100);
+    if (fraction < 0.05) continue;
+    actions.push({
+      kind: 'shave',
+      workoutIds: shavable,
+      shaveFraction: fraction,
+      why: `Comeback re-ramp after ${daysOff} days off: week of ${wk.weekStartISO} rescaled from ${Math.round(plannedMi)}mi toward ${Math.round(ceiling)}mi (resume at 70% of the pre-absence 4-week average ${Math.round(preAbsenceWeeklyMi)}mi, then ≤10%/week). Research/22 §14.`,
+    });
+  }
+  return actions;
+}
+
 /**
  * Volume-overshoot firing predicate (2026-07-06 · P1-55). Baseline is
  * what the ACTIVE PLAN scheduled for the trailing window when that is
@@ -520,6 +628,17 @@ export function overshootFires(
 }
 
 /**
+ * Trigger kinds whose actions are PROPOSE-FIRST (runner gates the change
+ * from the Today banner) rather than apply-now:
+ *   · readiness_pullback — engine opinion about tomorrow (2026-06-04).
+ *   · field_test_due — the engine wants to spend a quality day on a
+ *     fitness test; the runner can decline (2026-08-17 · Research/01:708
+ *     "plan the test as a workout ... and surface why").
+ */
+export const PROPOSE_FIRST_TRIGGERS: ReadonlySet<AdaptationTriggerKind> =
+  new Set<AdaptationTriggerKind>(['readiness_pullback', 'field_test_due']);
+
+/**
  * Cron split (2026-07-06 · P1-37). Partition on each action's OWN
  * sourceTrigger tag — never on index alignment with the triggers
  * array. Untagged actions default to apply-now (same safer-than-
@@ -532,7 +651,7 @@ export function partitionActionsForCron(actions: AdaptationAction[]): {
   const applyNow: AdaptationAction[] = [];
   const proposeFirst: AdaptationAction[] = [];
   for (const a of actions) {
-    (a.sourceTrigger === 'readiness_pullback' ? proposeFirst : applyNow).push(a);
+    (a.sourceTrigger != null && PROPOSE_FIRST_TRIGGERS.has(a.sourceTrigger) ? proposeFirst : applyNow).push(a);
   }
   return { applyNow, proposeFirst };
 }
@@ -602,6 +721,20 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   const goalChanged = await detectGoalChanged(userId);
   if (goalChanged) triggers.push(goalChanged);
 
+  // 10. FIELD_TEST_DUE (2026-08-17) · no race result and no field test in
+  //     42 days → propose converting one upcoming quality day to a
+  //     30-minute threshold field test. Research/01:679-686 ("reassess
+  //     fitness every 4-6 weeks ... ≥6 weeks since last race or test →
+  //     schedule a 5K time trial or 30-min TT"). Per-finding context
+  //     filters (CLAUDE.md): suppressed during comeback re-entry and
+  //     while illness/injury/serious-niggle responses are active — a
+  //     compromised runner's test result would be noise, and the body
+  //     needs the recovery, not a time trial.
+  if (!inGapReentry && !sick && !injury && !(niggle && niggle.severity === 'override')) {
+    const fieldTest = await detectFieldTestDue(userId);
+    if (fieldTest) triggers.push(fieldTest);
+  }
+
   const actions: AdaptationAction[] = [];
   for (const t of triggers) {
     // 2026-07-06 · P1-37 · tag every action with its source trigger so
@@ -658,6 +791,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         : a.kind === 'shave'     ? 'plan_adapt_shave'
         : a.kind === 'mark_dirty' ? 'plan_adapt_mark_dirty'
         : a.kind === 'mark_upgrade' ? 'plan_adapt_upgrade'
+        : a.kind === 'field_test' ? 'plan_adapt_field_test'
         : a.kind === 'note'      ? (a.noteReason ?? 'plan_adapt_note')
         : 'plan_adapt_other';
 
@@ -830,6 +964,91 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           await rebuildWorkoutDerivations(client, userId, b.workoutId);
           await writeIntent(client, userId, 'plan_adapt_upgrade', b.workoutId, {
             kind: 'mark_upgrade', newDistanceMi: b.newDistanceMi, why: a.why,
+          });
+          touched++;
+        }
+      } else if (a.kind === 'field_test' && a.workoutIds) {
+        // 2026-08-17 · convert a quality day to the 30-minute threshold
+        // field test (Research/01:700-703 · protocol 2: "30-minute time
+        // trial — surfaces threshold pace directly; last 20 min average
+        // pace ≈ LT pace"). Spec modeled on the tempo shape (kind
+        // 'tempo': warmup_mi / tempo_distance_mi / tempo_pace_s_per_mi /
+        // cooldown_mi) so every downstream expander renders it like an
+        // ordinary tempo with a FIELD TEST label.
+        //
+        // COMPLETION FOLLOW-UP (not built here): the watch's tempo
+        // completion analysis already computes the work segment's average
+        // pace. A follow-up reader should take the test's last-20-min avg
+        // pace as T (Research/01:701-702), back-derive VDOT via
+        // vdotFromTpace, and feed it into the vdot evidence chain
+        // (loadVdotInputs / bestRecentVdot) so the test result refreshes
+        // the pace anchors without manual entry.
+        for (const wid of a.workoutIds) {
+          if (!unsealedSet.has(wid)) continue;
+          const row = (await client.query<{
+            distance_mi: string | null;
+            pace_target_s_per_mi: string | null;
+            race_id: string | null;
+          }>(
+            `SELECT pw.distance_mi::text, pw.pace_target_s_per_mi::text, tp.race_id
+               FROM plan_workouts pw
+               JOIN training_plans tp ON tp.id = pw.plan_id
+              WHERE pw.id = $1 AND tp.user_uuid = $2::uuid AND tp.archived_iso IS NULL
+              LIMIT 1`,
+            [wid, userId],
+          )).rows[0];
+          if (!row) continue;
+          // Pace anchor · the row's own quality pace target when sane,
+          // else the goal-derived T (same fallback rebuildWorkoutDerivations
+          // uses). May be null → degraded path: type/label/notes only, the
+          // read pipeline's prescription fallback fills the rest.
+          const rowPace = row.pace_target_s_per_mi != null ? Number(row.pace_target_s_per_mi) : null;
+          const tPace = (rowPace != null && rowPace >= 240 && rowPace <= 960)
+            ? rowPace
+            : await deriveTPaceSecForRebuild(client, userId, row.race_id);
+          const notes = 'Field test. 1 mi easy warm-up, then 30 minutes at a hard, even effort — the fastest pace you could hold for about an hour. 1 mi easy cool-down. The last 20 minutes tell us your current threshold; paces recalibrate from it.';
+          if (tPace != null) {
+            const coreMi = Math.round((1800 / tPace) * 10) / 10;
+            const totalMi = Math.round((coreMi + 2) * 2) / 2;
+            const spec = {
+              kind: 'tempo',
+              warmup_mi: 1,
+              tempo_distance_mi: coreMi,
+              tempo_pace_s_per_mi: tPace,
+              cooldown_mi: 1,
+              hr_target_bpm: null,
+              field_test: true,
+              duration_target_s: 1800,
+            };
+            await client.query(
+              `UPDATE plan_workouts
+                  SET type = 'tempo',
+                      original_sub_label = COALESCE(original_sub_label, sub_label),
+                      sub_label = 'FIELD TEST',
+                      is_quality = true,
+                      is_long = false,
+                      distance_mi = $2,
+                      pace_target_s_per_mi = $3,
+                      workout_spec = $4::jsonb,
+                      notes = $5
+                WHERE id = $1`,
+              [wid, totalMi, tPace, JSON.stringify(spec), notes],
+            );
+          } else {
+            await client.query(
+              `UPDATE plan_workouts
+                  SET type = 'tempo',
+                      original_sub_label = COALESCE(original_sub_label, sub_label),
+                      sub_label = 'FIELD TEST',
+                      is_quality = true,
+                      is_long = false,
+                      notes = $2
+                WHERE id = $1`,
+              [wid, notes],
+            );
+          }
+          await writeIntent(client, userId, reason, wid, {
+            kind: a.kind, why: a.why,
           });
           touched++;
         }
@@ -1655,6 +1874,152 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
   };
 }
 
+/**
+ * FIELD_TEST_DUE (2026-08-17) · fitness-signal staleness detector.
+ *
+ * Doctrine · Research/01-pace-zones-vdot.md:
+ *   · :679-681 — "Daniels recommends reassessing fitness every 4-6 weeks
+ *     during a build ... when [natural test opportunities] don't,
+ *     prescribe a deliberate test."
+ *   · :684-686 — trigger table: "≥6 weeks since last race or test →
+ *     Schedule a 5K time trial or 30-min TT."
+ *   · :700-703 — protocol 2: "30-minute time trial — surfaces threshold
+ *     pace directly (last 20 min average pace ≈ LT pace)."
+ *   · :708-710 — "plan the test as a *workout* in the runner's week
+ *     (replacing a quality session, not added on top)."
+ *
+ * Fires when ALL of:
+ *   · no race RESULT within the last 42 days
+ *   · no field test (sub_label 'FIELD TEST') completed/scheduled within
+ *     42 days back or 7 days forward, and no field-test proposal (any
+ *     status) written within 42 days — a declined test is respected for
+ *     the whole window, never re-nagged
+ *   · a convertible quality slot exists in the next 7 days
+ *   · no A race within the next 21 days (test load doesn't belong in a
+ *     taper), and no race at all within the next 14 days (the race IS
+ *     the natural test · :680-681)
+ *   · the active plan is ≥14 days old (a fresh plan's paces were just
+ *     calibrated from onboarding/measured inputs)
+ *
+ * Propose-first (PROPOSE_FIRST_TRIGGERS): the runner can decline.
+ */
+
+/** Pure gate evaluation for the field-test detector · exported so the
+ *  gating windows are locked by tests independent of the SQL shell.
+ *  Truthy blocker fields are the raw MAX()/MIN() reads from the shell. */
+export function fieldTestGate(g: {
+  /** most recent race result date within [today-42, today] · null = none */
+  recentResultISO: string | null;
+  /** most recent FIELD TEST row date within [today-42, today+7] */
+  recentTestISO: string | null;
+  /** any field_test proposal (any status) written within 42d */
+  recentProposalAt: string | null;
+  /** any plan_adapt_field_test intent within 42d */
+  recentIntentAt: string | null;
+  /** earliest race of any priority within [today, today+14] */
+  upcomingRaceISO: string | null;
+  /** earliest A race within [today, today+21] */
+  upcomingARaceISO: string | null;
+  /** active plan age in days · null = no active plan */
+  planAgeDays: number | null;
+}): { ok: boolean; blockedBy: string | null } {
+  if (g.recentResultISO) return { ok: false, blockedBy: 'recent_race_result' };
+  if (g.recentTestISO) return { ok: false, blockedBy: 'recent_field_test' };
+  if (g.recentProposalAt) return { ok: false, blockedBy: 'recent_proposal' };
+  if (g.recentIntentAt) return { ok: false, blockedBy: 'recent_intent' };
+  if (g.upcomingRaceISO) return { ok: false, blockedBy: 'race_within_14d' };
+  if (g.upcomingARaceISO) return { ok: false, blockedBy: 'a_race_within_21d' };
+  if (g.planAgeDays == null || !Number.isFinite(g.planAgeDays) || g.planAgeDays < 14) {
+    return { ok: false, blockedBy: 'plan_too_fresh' };
+  }
+  return { ok: true, blockedBy: null };
+}
+
+async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | null> {
+  const today = await runnerToday(userId);
+  try {
+    const gate = (await pool.query<{
+      recent_result: string | null;
+      recent_test: string | null;
+      recent_proposal: string | null;
+      recent_intent: string | null;
+      upcoming_race_14: string | null;
+      upcoming_a_21: string | null;
+      plan_age_days: string | null;
+    }>(
+      `SELECT
+         (SELECT MAX(meta->>'date') FROM races
+           WHERE user_uuid = $1::uuid
+             AND actual_result->>'finishS' IS NOT NULL
+             AND (meta->>'date')::date >= $2::date - 42
+             AND (meta->>'date')::date <= $2::date)          AS recent_result,
+         (SELECT MAX(pw.date_iso::text) FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+          WHERE tp.user_uuid = $1 AND pw.sub_label = 'FIELD TEST'
+            AND pw.date_iso::date BETWEEN $2::date - 42 AND $2::date + 7) AS recent_test,
+         (SELECT MAX(created_at::text) FROM plan_workout_proposals
+           WHERE user_uuid = $1::uuid AND action_kind = 'field_test'
+             AND created_at >= NOW() - INTERVAL '42 days')   AS recent_proposal,
+         (SELECT MAX(ts::text) FROM coach_intents
+           WHERE COALESCE(user_uuid, user_id) = $1::uuid
+             AND reason = 'plan_adapt_field_test'
+             AND ts >= NOW() - INTERVAL '42 days')           AS recent_intent,
+         (SELECT MIN(meta->>'date') FROM races
+           WHERE user_uuid = $1::uuid
+             AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 14) AS upcoming_race_14,
+         (SELECT MIN(meta->>'date') FROM races
+           WHERE user_uuid = $1::uuid AND meta->>'priority' = 'A'
+             AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 21) AS upcoming_a_21,
+         (SELECT ($2::date - MAX(authored_iso::date))::text FROM training_plans
+           WHERE user_uuid = $1 AND archived_iso IS NULL)    AS plan_age_days`,
+      [userId, today],
+    )).rows[0];
+    if (!gate) return null;
+    const gateResult = fieldTestGate({
+      recentResultISO: gate.recent_result,
+      recentTestISO: gate.recent_test,
+      recentProposalAt: gate.recent_proposal,
+      recentIntentAt: gate.recent_intent,
+      upcomingRaceISO: gate.upcoming_race_14,
+      upcomingARaceISO: gate.upcoming_a_21,
+      planAgeDays: gate.plan_age_days != null ? Number(gate.plan_age_days) : null,
+    });
+    if (!gateResult.ok) return null;
+
+    // Convertible quality slot in the next 7 days · earliest wins. Race-week
+    // rows excluded (per-finding context filter — race machinery owns them).
+    const slot = (await pool.query<{ id: string; date: string; type: string; distance_mi: string | null }>(
+      `SELECT pw.id, pw.date_iso::date::text AS date, pw.type, pw.distance_mi::text AS distance_mi
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+         LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+          AND pw.type IN ('threshold','tempo','intervals','vo2max')
+          AND pw.date_iso::date BETWEEN $2::date + 1 AND $2::date + 7
+          AND COALESCE(wk.is_race_week, false) = false
+        ORDER BY pw.date_iso::date ASC LIMIT 1`,
+      [userId, today],
+    )).rows[0];
+    if (!slot) return null;
+
+    return {
+      kind: 'field_test_due',
+      severity: 'info',
+      reason: `No race or field test in the last 6 weeks. Pace anchors are going stale — convert ${slot.date}'s quality session to a 30-minute threshold field test to lock in current fitness.`,
+      evidence: {
+        workout_id: slot.id,
+        planned_date: slot.date,
+        planned_type: slot.type,
+        planned_distance_mi: slot.distance_mi != null ? Number(slot.distance_mi) : null,
+        citation: 'Research/01-pace-zones-vdot.md:684-686 + :700-703',
+      },
+    };
+  } catch (e) {
+    console.warn('[adapt] detectFieldTestDue failed:', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger | null> {
   const today = await runnerToday(userId);
 
@@ -1967,10 +2332,13 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
             AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 30`,
         [userId, today]
       ).catch(() => ({ rows: [] as Array<{ date: string | null }> }))).rows;
-      return buildGapActions({
+      const daysOff = Number(t.evidence.days_off ?? 0);
+      const lastRunISO = String(t.evidence.last_run_iso ?? '');
+      const raceDates = raceRows.map((r) => r.date).filter((d): d is string => !!d);
+      const gapActions = buildGapActions({
         todayISO: today,
-        daysOff: Number(t.evidence.days_off ?? 0),
-        lastRunISO: String(t.evidence.last_run_iso ?? ''),
+        daysOff,
+        lastRunISO,
         upcoming: rows.map((r) => ({
           id: r.id,
           dateISO: r.date,
@@ -1978,8 +2346,66 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
           distanceMi: r.distance_mi != null ? Number(r.distance_mi) : null,
           inRaceWeek: r.in_race_week === true,
         })),
-        raceDates: raceRows.map((r) => r.date).filter((d): d is string => !!d),
+        raceDates,
       });
+
+      // 2026-08-17 · RERAMP-1 · after an 8-14 day absence, rescale the
+      // REMAINING authored weeks (start > today+13) to the comeback
+      // ceiling: 70% of the pre-absence rolling 4-week average, then
+      // ≤10%/week (Research/22 §14 :635 + :648-651). buildGapActions
+      // owns the first 14 days; this owns the rest of the runway. Rides
+      // the same trigger → same (gap, band) idempotency marker, and
+      // applies through the same seal-guarded shave machinery.
+      if (classifyGapBand(daysOff) === 'shave_70_85' && lastRunISO) {
+        try {
+          const preByDay = await mileageByDay(userId, isoDaysBefore(lastRunISO, 27), lastRunISO);
+          let preMi = 0;
+          for (const [, v] of preByDay) preMi += v.mi;
+          const preAbsenceWeeklyMi = preMi / 4;
+          const futureRows = (await pool.query<{
+            id: string; date: string; type: string; distance_mi: string | null;
+            in_race_week: boolean; week_start_iso: string | null;
+          }>(
+            `SELECT pw.id, pw.date_iso::date::text AS date, pw.type,
+                    pw.distance_mi::text AS distance_mi,
+                    COALESCE(wk.is_race_week, false) AS in_race_week,
+                    wk.week_start_iso::text AS week_start_iso
+               FROM plan_workouts pw
+               JOIN training_plans tp ON tp.id = pw.plan_id
+               LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
+              WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+                AND wk.week_start_iso::date > $2::date + 13
+                AND wk.week_start_iso::date <= $2::date + 62`,
+            [userId, today]
+          )).rows;
+          const byWeek = new Map<string, ReRampWeek>();
+          for (const r of futureRows) {
+            if (!r.week_start_iso) continue;
+            const ws = r.week_start_iso.slice(0, 10);
+            const bucket = byWeek.get(ws) ?? { weekStartISO: ws, rows: [] };
+            bucket.rows.push({
+              id: r.id,
+              dateISO: r.date,
+              type: r.type,
+              distanceMi: r.distance_mi != null ? Number(r.distance_mi) : null,
+              inRaceWeek: r.in_race_week === true,
+            });
+            byWeek.set(ws, bucket);
+          }
+          gapActions.push(...buildReRampActions({
+            todayISO: today,
+            daysOff,
+            lastRunISO,
+            preAbsenceWeeklyMi,
+            weeks: [...byWeek.values()].sort((a, b) => a.weekStartISO.localeCompare(b.weekStartISO)),
+            raceDates,
+          }));
+        } catch (e) {
+          // Non-fatal: the first-14-day comeback response still applies.
+          console.warn('[adapt] re-ramp skipped:', e instanceof Error ? e.message : String(e));
+        }
+      }
+      return gapActions;
     }
     case 'readiness_pullback': {
       // 2026-06-01 · just-in-time window. Only act on TODAY's workout.
@@ -2104,6 +2530,19 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         kind: 'downgrade',
         workoutIds: rows.map((r: any) => r.id),
         newType: severity >= 7 ? 'rest' : 'easy',
+        why: t.reason,
+      }];
+    }
+    case 'field_test_due': {
+      // 2026-08-17 · one action targeting the detected quality slot. The
+      // conversion itself happens in applyAdaptations' 'field_test'
+      // handler — after the runner accepts the proposal (propose-first
+      // via PROPOSE_FIRST_TRIGGERS).
+      const wid = t.evidence.workout_id as string | undefined;
+      if (!wid) return [];
+      return [{
+        kind: 'field_test',
+        workoutIds: [wid],
         why: t.reason,
       }];
     }

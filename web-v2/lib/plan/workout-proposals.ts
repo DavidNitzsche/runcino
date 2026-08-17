@@ -27,7 +27,7 @@ export interface PendingProposal {
   userUuid: string;
   planWorkoutId: string;
   workoutDateISO: string;
-  actionKind: 'downgrade' | 'shave' | 'reschedule';
+  actionKind: 'downgrade' | 'shave' | 'reschedule' | 'field_test';
   actionPayload: {
     newType?: string;
     newDate?: string;
@@ -59,14 +59,19 @@ export async function writeWorkoutProposals(
     if (workoutIds.length === 0) continue;
 
     // Map action.kind to the proposal_kind union. Only downgrade /
-    // shave / reschedule are propose-worthy · mark_dirty and
-    // recompute_paces are internal bookkeeping and don't need runner
-    // approval.
-    if (action.kind !== 'downgrade' && action.kind !== 'shave' && action.kind !== 'reschedule') {
+    // shave / reschedule / field_test are propose-worthy · mark_dirty
+    // and recompute_paces are internal bookkeeping and don't need
+    // runner approval.
+    if (action.kind !== 'downgrade' && action.kind !== 'shave' && action.kind !== 'reschedule' && action.kind !== 'field_test') {
       continue;
     }
 
-    const triggerForAction = triggers.find((t) => t.kind === 'readiness_pullback') ?? triggers[0];
+    // 2026-08-17 · prefer the trigger that PRODUCED this action (the
+    // sourceTrigger tag) so a field-test proposal carries the field-test
+    // reason, not a readiness one. Legacy fallback order preserved.
+    const triggerForAction = triggers.find((t) => t.kind === action.sourceTrigger)
+      ?? triggers.find((t) => t.kind === 'readiness_pullback')
+      ?? triggers[0];
     const reason = triggerForAction?.reason ?? action.why ?? 'Engine proposed an adaptation.';
     const evidence = (triggerForAction?.evidence ?? {}) as Record<string, unknown>;
 
@@ -166,7 +171,7 @@ export async function loadPendingProposals(
     userUuid: r.user_uuid,
     planWorkoutId: r.plan_workout_id,
     workoutDateISO: r.workout_date_iso,
-    actionKind: r.action_kind as 'downgrade' | 'shave' | 'reschedule',
+    actionKind: r.action_kind as PendingProposal['actionKind'],
     actionPayload: r.action_payload ?? {},
     reason: r.reason,
     evidence: r.evidence ?? {},
@@ -212,7 +217,7 @@ export async function acceptProposal(
     userUuid,
     planWorkoutId: r.plan_workout_id,
     workoutDateISO: r.workout_date_iso,
-    actionKind: r.action_kind as 'downgrade' | 'shave' | 'reschedule',
+    actionKind: r.action_kind as PendingProposal['actionKind'],
     actionPayload: r.action_payload ?? {},
     reason: r.reason,
     evidence: r.evidence ?? {},

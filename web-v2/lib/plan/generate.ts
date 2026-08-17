@@ -857,6 +857,12 @@ export interface DayPlan {
   isLong: boolean;
   subLabel: string | null;
   notes: string;
+  /** 2026-08-17 · MIDRACE-1 · embedded mid-block tune-up race day only:
+   *  the TUNE-UP race's own goal pace (s/mi), so persistPlan's spec
+   *  builder targets the tune-up's pace, not the plan target race's
+   *  goal pace. Absent (undefined) on every other day — including the
+   *  plan's own race-week race day, which keeps args.goalPaceSec. */
+  raceGoalPaceSec?: number | null;
 }
 
 /**
@@ -1620,6 +1626,310 @@ function frontLoadFirstRun(days: DayPlan[], anchorDow: number): void {
   donor.notes = 'Off. Sleep, hydrate, mobilize.';
 }
 
+// ── Mid-block tune-up race embedding (2026-08-17 · MIDRACE-1) ──────────
+//
+// Before this, the generator scheduled ordinary training straight over a
+// runner's own dated B/C races inside the plan window (horizonRaces only
+// looked at LONGER races AFTER the target, and race_week_tuneup only
+// exists for the plan's own race week). David's CIM block carried Santa
+// Monica 10K (B), Dodgers 10K (C), and Run Malibu Half (B) with a tempo
+// or a 16-mile long authored on top of each.
+//
+// Doctrine:
+//   · Research/22-plan-templates.md §11 "5K-10K series" — race week is
+//     "1 short quality + race; rest of week is E".
+//   · Research/22 §Half-Advanced + §Marathon-Advanced list "tune-up race"
+//     as a KEY WORKOUT of the build; §15 BQ table: "tune-up half at
+//     HMP-T, 4-6 wk out".
+//   · Research/01-pace-zones-vdot.md:679-682 — tune-up races are the
+//     build's natural fitness tests.
+//   · Post-race recovery scale: POST_RACE_RECOVERY_WEEKS (goal-tiers.ts,
+//     Research/00b) — 5K needs ~1 easy day, 10K 1-2, half 3-4 before
+//     quality resumes (the in-plan mini version of the full-recovery
+//     weeks table).
+//
+// Shape:
+//   B race → the calendar day becomes a `race` day at the race's own
+//     distance; the 2 preceding days ease (day-1 shakeout, day-2 no
+//     quality) and 1-4 post-race days run easy before quality resumes.
+//     The week is flagged isCutback so the validator's WoW check treats
+//     the return to normal volume as a planned deload return (RC2-4).
+//   C race → the week keeps its structure; the race day replaces the
+//     week's nearest quality slot (the race IS that week's quality),
+//     with 1 easy day before and 1 after — no deeper mini-taper.
+//
+// Long-run rule: the training long is never displaced — the only case
+// where a long disappears is when the race lands ON the long-run day
+// (B half on the weekend: the race replaces the long). One deliberate
+// exception, per race-mile recovery doctrine: a HALF-or-longer B race
+// converts a long run that falls inside its post-race recovery window
+// to easy (running a full long inside 3-4 recovery days after 13.1
+// raced miles is the exact stimulus the recovery table forbids); a
+// 10K-or-shorter tune-up leaves a next-day long in place (the classic
+// Pfitzinger Saturday-tune-up → Sunday-long pattern).
+//
+// Runs INSIDE composePlan (before finalizeComposedPlan), so the WoW
+// smoothers + VOL-1 reconcile see the embedded week. Gated on
+// midBlockRaces being non-empty → plans without mid-block races are
+// byte-identical.
+
+export type MidBlockRace = NonNullable<ComposePlanInput['midBlockRaces']>[number];
+
+export interface EmbeddedRaceSummary {
+  slug: string;
+  name: string;
+  date: string;
+  distanceMi: number;
+  priority: 'B' | 'C';
+  weekIdx: number;
+}
+
+export function embedMidBlockRaces(
+  weeks: ComposedWeek[],
+  vols: number[],
+  opts: {
+    startMondayISO: string;
+    raceDateISO: string;
+    midBlockRaces: MidBlockRace[];
+    trainingDaysPerWeek: number | null;
+  },
+): EmbeddedRaceSummary[] {
+  const totalDays = weeks.length * 7;
+  const startDow = new Date(opts.startMondayISO + 'T12:00:00Z').getUTCDay();
+  // Absolute-offset day accessor. Returns null outside the plan window and
+  // inside the plan's own race week (that week's structure is owned by the
+  // race-week composer — mini-taper/recovery must never leak into it).
+  const dayAt = (o: number): DayPlan | null => {
+    if (o < 0 || o >= totalDays) return null;
+    const wi = Math.floor(o / 7);
+    if (!weeks[wi] || weeks[wi].isRaceWeek) return null;
+    const dow = ((startDow + o) % 7) as DOW;
+    return weeks[wi].days.find((d) => d.dow === dow) ?? null;
+  };
+  const touchedWeeks = new Set<number>();
+  const embedded: EmbeddedRaceSummary[] = [];
+  const races = [...opts.midBlockRaces].sort((a, b) => a.date.localeCompare(b.date));
+
+  for (const race of races) {
+    if (!race?.date || !(race.distanceMi > 0)) continue;
+    if (race.date >= opts.raceDateISO) continue;         // at/after the target race → not mid-block
+    const o = daysBetween(opts.startMondayISO, race.date);
+    if (o < 0 || o >= totalDays) continue;
+    const wi = Math.floor(o / 7);
+    const slot = dayAt(o);
+    if (!slot || slot.type === 'race') continue;         // race week / already embedded
+    const wasLong = slot.isLong;
+    const wasQuality = slot.isQuality;
+    const wasRest = slot.type === 'rest' && slot.distanceMi === 0;
+
+    // The race day itself — race-effort framing at the race's own distance.
+    slot.type = 'race';
+    slot.distanceMi = race.distanceMi;
+    slot.isQuality = true;                               // the race is the day's (and often the week's) quality
+    slot.isLong = wasLong;                               // race ON the long-run day replaces the long
+    slot.subLabel = 'RACE';
+    slot.raceGoalPaceSec = race.goalPaceSec ?? null;
+    slot.notes = race.priority === 'B'
+      ? `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
+      : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
+    touchedWeeks.add(wi);
+
+    if (race.priority === 'B') {
+      // Mini-taper · no quality within 2 days before (Research/08 §9 race-week
+      // idiom scaled down: day-1 shakeout, day-2 eased). The long run is never
+      // displaced pre-race.
+      const dayBefore = dayAt(o - 1);
+      if (dayBefore && dayBefore.type !== 'race' && !dayBefore.isLong && dayBefore.distanceMi > 0) {
+        dayBefore.type = 'shakeout';
+        dayBefore.distanceMi = 2;
+        dayBefore.isQuality = false;
+        dayBefore.isLong = false;
+        dayBefore.subLabel = 'SHAKEOUT';
+        dayBefore.notes = `2 mi + 4×20s strides. Loosen the legs for ${race.name}.`;
+        delete dayBefore.raceGoalPaceSec;
+        touchedWeeks.add(Math.floor((o - 1) / 7));
+      }
+      const twoBefore = dayAt(o - 2);
+      if (twoBefore && twoBefore.type !== 'race' && twoBefore.isQuality && !twoBefore.isLong) {
+        twoBefore.type = 'easy';
+        twoBefore.distanceMi = Math.min(twoBefore.distanceMi, 6);
+        twoBefore.isQuality = false;
+        twoBefore.subLabel = 'EASY';
+        twoBefore.notes = `Easy. Two days out from ${race.name} · no quality inside the mini-taper.`;
+        delete twoBefore.raceGoalPaceSec;
+        touchedWeeks.add(Math.floor((o - 2) / 7));
+      }
+      // Post-race easy days per race-mile scale (see doctrine block above):
+      // half+ → 4, 10K/5-11mi → 2, shorter → 1.
+      const recoveryDays = race.distanceMi >= 12 ? 4 : race.distanceMi >= 5 ? 2 : 1;
+      let firstDisplacedQuality: Pick<DayPlan, 'type' | 'distanceMi' | 'subLabel'> | null = null;
+      for (let j = 1; j <= recoveryDays; j++) {
+        const d = dayAt(o + j);
+        if (!d || d.type === 'race') continue;
+        const wiJ = Math.floor((o + j) / 7);
+        if (d.isQuality && !d.isLong) {
+          if (!firstDisplacedQuality) {
+            firstDisplacedQuality = { type: d.type, distanceMi: d.distanceMi, subLabel: d.subLabel };
+          }
+          d.type = 'easy';
+          d.distanceMi = Math.min(d.distanceMi, 5);
+          d.isQuality = false;
+          d.subLabel = 'EASY';
+          d.notes = `Post-race recovery · day ${j} after ${race.name}. Easy only; quality resumes after the recovery window.`;
+          delete d.raceGoalPaceSec;
+          touchedWeeks.add(wiJ);
+        } else if (d.isLong && race.distanceMi >= 12) {
+          // Deliberate long-rule exception (documented above): a half+ B race
+          // converts a long inside its recovery window to easy.
+          d.type = 'easy';
+          d.distanceMi = Math.min(d.distanceMi, 6);
+          d.isQuality = false;
+          d.isLong = false;
+          d.subLabel = 'EASY';
+          d.notes = `Post-race recovery · day ${j} after ${race.name}. The long run stands down this week; easy miles only.`;
+          delete d.raceGoalPaceSec;
+          touchedWeeks.add(wiJ);
+        }
+      }
+      // Quality RESUMES after the recovery window. When the window swallowed
+      // every quality session of the week it ends in (a Sunday half's 4 easy
+      // days cover Mon-Thu → both Tue/Thu quality slots), restore the FIRST
+      // displaced session onto the first easy day after the window — the
+      // validator (§5) rightly requires ≥1 quality per quality-phase week,
+      // and doctrinally quality returns once recovery is served (threshold
+      // first: an intervals session is downgraded to threshold, the gentler
+      // gap-1 stimulus — mirrors scheduleQuality's GAP-mode downgrade).
+      if (firstDisplacedQuality) {
+        const endWi = Math.floor((o + recoveryDays) / 7);
+        const wkEnd = weeks[endWi];
+        if (endWi !== wi && wkEnd && !wkEnd.isRaceWeek && !wkEnd.days.some((d) => d.isQuality)) {
+          for (let oo = o + recoveryDays + 1; oo < (endWi + 1) * 7; oo++) {
+            const d = dayAt(oo);
+            if (d && d.type === 'easy' && d.distanceMi > 0 && !d.isLong) {
+              const wasIntervals = firstDisplacedQuality.type === 'intervals';
+              d.type = wasIntervals ? 'threshold' : firstDisplacedQuality.type;
+              d.distanceMi = firstDisplacedQuality.distanceMi;
+              d.isQuality = true;
+              d.subLabel = wasIntervals ? null : firstDisplacedQuality.subLabel;
+              d.notes = `Quality resumes after ${race.name} recovery.`;
+              touchedWeeks.add(endWi);
+              break;
+            }
+          }
+        }
+      }
+      // Planned-deload flag: the validator's §6 WoW check exempts the week
+      // AFTER a cutback — returning from the tune-up week's reduced volume
+      // is an expected jump, not a ramp error (RC2-4).
+      weeks[wi].isCutback = true;
+    } else {
+      // C race · the race replaces the week's nearest quality slot.
+      if (!wasQuality) {
+        const oInWeek = o - wi * 7;
+        let nearest: DayPlan | null = null;
+        let nearestDist = Infinity;
+        for (const d of weeks[wi].days) {
+          if (!d.isQuality || d.isLong || d.type === 'race') continue;
+          const dInWeek = ((d.dow - startDow) % 7 + 7) % 7;
+          const dist = Math.abs(dInWeek - oInWeek);
+          if (dist < nearestDist) { nearestDist = dist; nearest = d; }
+        }
+        if (nearest) {
+          // When the race consumed the week's rest slot, the displaced
+          // quality day becomes the rest day (the rest moves, it doesn't
+          // vanish — a 7-running-day week is not "keeping the structure").
+          if (wasRest) {
+            nearest.type = 'rest';
+            nearest.distanceMi = 0;
+            nearest.isQuality = false;
+            nearest.isLong = false;
+            nearest.subLabel = 'REST';
+            nearest.notes = `Off. ${race.name} takes this week's quality slot; rest moves here.`;
+          } else {
+            nearest.type = 'easy';
+            nearest.isQuality = false;
+            nearest.subLabel = 'EASY';
+            nearest.notes = `Easy. ${race.name} is this week's quality session.`;
+          }
+          delete nearest.raceGoalPaceSec;
+        }
+      }
+      // 1 easy day either side — no deeper mini-taper for a C race.
+      for (const off of [-1, 1]) {
+        const d = dayAt(o + off);
+        if (d && d.type !== 'race' && d.isQuality && !d.isLong) {
+          d.type = 'easy';
+          d.isQuality = false;
+          d.subLabel = 'EASY';
+          d.notes = off < 0
+            ? `Easy the day before ${race.name}.`
+            : `Easy the day after ${race.name}.`;
+          delete d.raceGoalPaceSec;
+          touchedWeeks.add(Math.floor((o + off) / 7));
+        }
+      }
+    }
+
+    // A B race that consumed the rest slot: restore one rest day by
+    // resting the week's shortest easy run (a 7-running-day week is not a
+    // mini-taper). The C path already moved the rest onto the displaced
+    // quality day above.
+    if (wasRest && race.priority === 'B') {
+      const easies = weeks[wi].days
+        .filter((d) => d.type === 'easy' && d.distanceMi > 0)
+        .sort((a, b) => a.distanceMi - b.distanceMi);
+      if (easies.length > 0) {
+        const victim = easies[0];
+        victim.type = 'rest';
+        victim.distanceMi = 0;
+        victim.isQuality = false;
+        victim.isLong = false;
+        victim.subLabel = 'REST';
+        victim.notes = `Off. ${race.name} takes the usual rest slot; rest moves here.`;
+      }
+    }
+
+    // Frequency cap: a race that landed on a former rest day adds a running
+    // day. Trim the shortest easy day back to rest so the runner's stated
+    // days/week holds. NULL frequency (David / legacy) → untouched.
+    if (opts.trainingDaysPerWeek != null) {
+      let running = weeks[wi].days.filter((d) => d.distanceMi > 0).length;
+      while (running > opts.trainingDaysPerWeek) {
+        const easies = weeks[wi].days
+          .filter((d) => d.type === 'easy' && d.distanceMi > 0)
+          .sort((a, b) => a.distanceMi - b.distanceMi);
+        if (easies.length === 0) break;
+        const victim = easies[0];
+        victim.type = 'rest';
+        victim.distanceMi = 0;
+        victim.isQuality = false;
+        victim.isLong = false;
+        victim.subLabel = 'REST';
+        victim.notes = 'Off. Race week for a tune-up — rest is the work now.';
+        running--;
+      }
+    }
+
+    embedded.push({
+      slug: race.slug, name: race.name, date: race.date,
+      distanceMi: race.distanceMi, priority: race.priority, weekIdx: wi,
+    });
+  }
+
+  // Weekly mileage accounting includes tune-up race miles (they are real
+  // training-load miles inside the block — unlike the plan's own race day,
+  // which is the event the block builds to). Keep vols[] in sync so the
+  // validator's VOLS-SNAP coherence check (§0) holds.
+  for (const wi of touchedWeeks) {
+    const w = weeks[wi];
+    if (!w) continue;
+    w.weeklyMi = Math.round(w.days.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
+    if (Array.isArray(vols) && wi < vols.length) vols[wi] = w.weeklyMi;
+  }
+
+  return embedded;
+}
+
 // ── Pure compose layer (2026-06-02) ─────────────────────────────────────
 // Extracted from generatePlan() so the plan-engine bench can test the
 // actual plan output against persona doctrine targets without a database.
@@ -1686,6 +1996,25 @@ export interface ComposePlanInput {
     distanceMi: number;
     goalPaceSec: number | null;
     priority: 'A' | 'B';
+  }>;
+  /** 2026-08-17 · MIDRACE-1 · B/C-priority races dated INSIDE the plan
+   *  window (start ≤ date < plan race day). The generator embeds each as
+   *  a tune-up: B → race day + 2-day mini-taper + post-race easy days
+   *  before quality resumes; C → the race converts the week's nearest
+   *  quality slot (the race IS that week's quality), 1 easy day either
+   *  side. Undefined/empty → composePlan output is byte-identical.
+   *  Cite: Research/22-plan-templates.md §11 (multi-race planning ·
+   *  "1 short quality + race; rest of week is E"), §Half-Advanced /
+   *  §Marathon-Advanced key workouts ("tune-up race" / "tune-up half"),
+   *  Research/01-pace-zones-vdot.md:679-682 (tune-up races are the
+   *  build's natural fitness tests). */
+  midBlockRaces?: Array<{
+    slug: string;
+    name: string;
+    date: string;
+    distanceMi: number;
+    goalPaceSec: number | null;
+    priority: 'B' | 'C';
   }>;
   isMidBlock: boolean;
   longRunDow: DOW;
@@ -2041,6 +2370,18 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     frontLoadFirstRun(weeks[0].days, new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay());
   }
 
+  // 2026-08-17 · MIDRACE-1 · embed the runner's own B/C races that fall
+  // inside the plan window as tune-up race days (see embedMidBlockRaces
+  // doctrine block). Gated: no midBlockRaces → byte-identical output.
+  const embeddedRaces = (input.midBlockRaces && input.midBlockRaces.length > 0)
+    ? embedMidBlockRaces(weeks, vols, {
+        startMondayISO: input.startMondayISO,
+        raceDateISO: input.raceDateISO,
+        midBlockRaces: input.midBlockRaces,
+        trainingDaysPerWeek: input.trainingDaysPerWeek,
+      })
+    : [];
+
   return {
     weeks,
     blocks,
@@ -2064,6 +2405,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // raises the long-run cap above the current tier's. Drives the
       // chip on the plan UI ("LONG-RUN CAP · 22mi · setting up CIM").
       horizon_raise: horizonRaise,
+      // 2026-08-17 · MIDRACE-1 · which B/C races were embedded as tune-up
+      // race days, by plan week. Empty array when none. Drives the plan
+      // UI chip + the brief's tune-up framing.
+      embedded_races: embeddedRaces,
       // 2026-06-03 · Rule 10 · transparency envelope so the runner can
       // audit which signals drove their plan. Surfaces in /plan brief
       // as "plan built from your last 28 days." Cite: §Rule 10.
@@ -2806,7 +3151,11 @@ async function persistPlan(client: PoolClient, args: {
         const built = buildWorkoutSpec(
           d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null,
           // 2026-06-09 · goal pace · only the race branch reads it.
-          args.goalPaceSec ?? null,
+          // MIDRACE-1 (2026-08-17) · an embedded mid-block tune-up race day
+          // carries ITS OWN goal pace (raceGoalPaceSec, may be null → the
+          // race branch derives race pace from T at the TUNE-UP's distance);
+          // the plan's race-week race day keeps args.goalPaceSec.
+          d.raceGoalPaceSec !== undefined ? d.raceGoalPaceSec : (args.goalPaceSec ?? null),
           iPaceSec,
           args.easyAnchorTSec ?? null,  // PACE-E-1 · easy/long/recovery anchor (current fitness)
         );
@@ -3019,8 +3368,14 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   // so the reported number can never exceed the plan AND the taper-drop check sees the
   // race week's true (small) taper volume, not its phantom budget — otherwise a
   // reconciled peak can fall below the un-reconciled race-week budget and false-fail.
+  // MIDRACE-1 (2026-08-17) · the race-mile exclusion applies to the plan's
+  // OWN race week only (the event the block builds to). An embedded mid-block
+  // tune-up race IS training-load mileage for its week — excluding it would
+  // re-open the phantom-volume gap in the other direction (a 13.1-mile raced
+  // Sunday reported as a 20mi week missing 13 miles). Plans without embedded
+  // races have no race-typed day outside the race week → byte-identical.
   for (const w of composed.weeks) {
-    w.weeklyMi = Math.round(w.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
+    w.weeklyMi = Math.round(w.days.reduce((s, d) => s + ((d.type !== 'race' || !w.isRaceWeek) ? d.distanceMi : 0), 0) * 10) / 10;
   }
 
   // 2026-06-23 · COH-4 · PROGRESSIVE taper enforcement, AFTER VOL-1 so it sees each week's REALIZED
@@ -3684,6 +4039,39 @@ async function loadGeneratorInputs(
         priority: (m.priority === 'A' ? 'A' : 'B') as 'A' | 'B',
       };
     });
+  // 2026-08-17 · MIDRACE-1 · the runner's OWN dated B/C races INSIDE the
+  // plan window (today < date < target race day). composePlan embeds each
+  // as a tune-up race day (B: mini-taper + race + recovery days; C: the
+  // race converts the week's nearest quality slot). Distance-capped at the
+  // target race's distance — a race LONGER than the target isn't a tune-up
+  // (the Rule 11 horizon logic owns those). Excludes the target race row
+  // itself. Same distanceMiOf label fallback as HORIZON-1 (the raw
+  // meta.distanceMi jsonb field is NULL for label-only race rows).
+  // Cite: Research/22-plan-templates.md §11 + §Marathon-Advanced
+  // ("tune-up half"); Research/01:679-682 (tune-up races as fitness tests).
+  const midBlockRaceRows = (await pool.query<{ slug: string; meta: any }>(
+    `SELECT slug, meta FROM races
+      WHERE user_uuid = $1
+        AND (meta->>'date')::date > $2::date
+        AND (meta->>'date')::date < $3::date
+        AND meta->>'priority' IN ('B','C')
+        AND ($4::text IS NULL OR slug <> $4::text)`,
+    [userId, todayISO, raceDateISO, raceSlug ?? null],
+  ).catch(() => ({ rows: [] as Array<{ slug: string; meta: any }> }))).rows;
+  const midBlockRaces: ComposePlanInput['midBlockRaces'] = midBlockRaceRows
+    .map((r) => ({ r, m: r.meta || {}, dMi: distanceMiOf(r.meta || {}) }))
+    .filter((x): x is { r: typeof x.r; m: any; dMi: number } => x.dMi != null && x.dMi > 0 && x.dMi <= raceDistanceMi)
+    .map(({ r, m, dMi }) => {
+      const goalSecMid = parseRaceTime(m.goalDisplay ?? m.goalTime);
+      return {
+        slug: r.slug,
+        name: String(m.name || r.slug),
+        date: String(m.date),
+        distanceMi: dMi,
+        goalPaceSec: goalSecMid && dMi > 0 ? Math.round(goalSecMid / dMi) : null,
+        priority: (m.priority === 'B' ? 'B' : 'C') as 'B' | 'C',
+      };
+    });
   // 2026-06-02 · ensure totalWeeks is an integer here too · matches
   // the same fix in composePlan. Was producing fractional totalWeeks
   // that broke phase advancement.
@@ -3765,6 +4153,7 @@ async function loadGeneratorInputs(
       belowTableAnchor: bestRecentVdot == null ? belowTableAnchor : null,
       tsbAtStart,
       horizonRaces: horizonRaces.length > 0 ? horizonRaces : undefined,
+      midBlockRaces: midBlockRaces.length > 0 ? midBlockRaces : undefined,
       isMidBlock,
       longRunDow,
       restDow,

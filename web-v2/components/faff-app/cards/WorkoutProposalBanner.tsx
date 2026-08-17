@@ -47,6 +47,11 @@ function actionPhrase(p: Proposal): string {
       ? `move to ${new Date(p.actionPayload.newDate + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })}`
       : 'reschedule';
   }
+  if (p.actionKind === 'field_test') {
+    // 2026-08-17 · field-test proposal · convert quality to a 30-min
+    // threshold test (Research/01:700-703).
+    return 'run as a 30-min field test';
+  }
   return 'adjust';
 }
 

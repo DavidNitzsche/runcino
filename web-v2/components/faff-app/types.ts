@@ -66,7 +66,7 @@ export type FaffSeed = {
     userUuid: string;
     planWorkoutId: string;
     workoutDateISO: string;
-    actionKind: 'downgrade' | 'shave' | 'reschedule';
+    actionKind: 'downgrade' | 'shave' | 'reschedule' | 'field_test';
     actionPayload: {
       newType?: string;
       newDate?: string;

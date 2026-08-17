@@ -40,6 +40,12 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bestRecentVdot } from '@/lib/training/vdot';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+// HEAT-DRIFT-1 (2026-08-17) · shared heat doctrine (Research/06 §1 table +
+// §12 dewpoint surcharge) + Magnus-Tetens dewpoint estimate + the
+// workout_weather_cache reader for runs without enriched weather fields.
+import { effortSlowdownPct } from '@/lib/training/heat-model';
+import { estimateDewpointF } from '@/lib/coach/weather-adjust';
+import { lookupTempF } from '@/lib/weather/lookup';
 
 export type DriftKind =
   | 'volume_drift'
@@ -534,40 +540,167 @@ async function checkLongDrift(
  * are calibrated to current VDOT. >5% means the runner has either
  * leveled up (running faster than prescribed) or is fatigued (slower
  * than prescribed).
+ *
+ * HEAT-DRIFT-1 (2026-08-17) · per-run heat context filter. Before this,
+ * August tempo paces read as a fitness shortfall with zero weather
+ * awareness — a 78°F tempo landing 5% slow is the DOCTRINE-EXPECTED
+ * cost of the heat, not drift (the audited failure). Each run's actual
+ * pace is now normalized to the 50°F reference before scoring:
+ *
+ *   adjusted = actual / (1 + slowdownPct/100)
+ *
+ * where slowdownPct comes from the shared heat model
+ * (lib/training/heat-model.ts · effortSlowdownPct — the verbatim
+ * Research/06 §1 Maughan/Ely/Vihma table + §12 dewpoint surcharge ×
+ * duration scale), halved for interval-type workouts per Research/06 §2
+ * ("For repeats with ≥1:1 work:rest, apply half the continuous-run
+ * adjustment"). Weather comes from the run's own enriched fields
+ * (tempF_peak/tempF) with a workout_weather_cache fallback keyed on the
+ * run's start coords + date; when no weather data exists the run scores
+ * UNADJUSTED, silently — never invent a correction.
+ *
+ * Applied PER-RUN, not per-window, per the per-finding context-filter
+ * rule (CLAUDE.md locked 2026-05-19 round 4): one hot day inside a mild
+ * 3-week window must not discount the window, and a mild day inside a
+ * hot spell must not be over-corrected.
  */
+export interface QualityDriftSample {
+  /** prescribed pace_target_s_per_mi */
+  plannedSPerMi: number;
+  /** run's raw average pace (s/mi) */
+  actualSPerMi: number;
+  /** plan_workouts.type — intervals/vo2max get the §2 half adjustment */
+  workoutType: string;
+  tempF: number | null;
+  dewpointF: number | null;
+  humidityPct: number | null;
+  durationS: number | null;
+}
+
+/** Pure per-run heat normalization · exported for tests. Returns the
+ *  heat-adjusted actual pace (s/mi) and the applied slowdown %. */
+export function heatAdjustQualitySample(s: QualityDriftSample): { adjustedSPerMi: number; slowdownPct: number } {
+  if (s.tempF == null || !Number.isFinite(s.tempF)) {
+    return { adjustedSPerMi: s.actualSPerMi, slowdownPct: 0 };  // no weather → no adjustment, silently
+  }
+  const td = s.dewpointF != null && Number.isFinite(s.dewpointF)
+    ? s.dewpointF
+    : (s.humidityPct != null && Number.isFinite(s.humidityPct)
+        ? estimateDewpointF(s.tempF, s.humidityPct)
+        : null);
+  let pct = effortSlowdownPct({
+    tempF: s.tempF,
+    dewpointF: td,
+    durationS: s.durationS,
+    tier: 'mid_pack',
+  });
+  // Research/06 §2 interval-vs-continuous rule: repeats with recovery
+  // between cool partially · half the continuous adjustment.
+  if (s.workoutType === 'intervals' || s.workoutType === 'vo2max') pct = pct * 0.5;
+  if (!(pct > 0)) return { adjustedSPerMi: s.actualSPerMi, slowdownPct: 0 };
+  return {
+    adjustedSPerMi: s.actualSPerMi / (1 + pct / 100),
+    slowdownPct: Math.round(pct * 10) / 10,
+  };
+}
+
+/** percentile_cont(0.5) equivalent · linear-interpolated median. */
+function medianOf(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = (s.length - 1) / 2;
+  const lo = Math.floor(mid), hi = Math.ceil(mid);
+  return (s[lo] + s[hi]) / 2;
+}
+
 async function checkQualityDrift(
   userUuid: string,
   plan: ActivePlan,
 ): Promise<DriftSignal | null> {
   const PACE_DRIFT_PCT = 5;
-  const r = (await pool.query<{ actual_med: string | null; planned_med: string | null }>(
-    `WITH recent_quality AS (
-       SELECT pw.pace_target_s_per_mi AS planned,
-              CASE
-                WHEN (r.data->>'avgPaceMinPerMi') ~ '^[0-9]+:[0-9]+$'
-                THEN EXTRACT(EPOCH FROM (r.data->>'avgPaceMinPerMi')::interval)
-                ELSE NULL
-              END AS actual
-         FROM plan_workouts pw
-         JOIN training_plans tp ON tp.id = pw.plan_id
-         LEFT JOIN runs r ON r.user_uuid = $1::uuid
-              AND (r.data->>'date')::date = pw.date_iso
-         WHERE tp.id = $2
-           AND pw.is_quality = true
-           AND pw.date_iso >= $3::date - INTERVAL '21 days'
-           AND pw.date_iso <  $3::date
-           AND pw.pace_target_s_per_mi IS NOT NULL
-     )
-     SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY actual)::text  AS actual_med,
-            percentile_cont(0.5) WITHIN GROUP (ORDER BY planned)::text AS planned_med
-       FROM recent_quality
-      WHERE actual IS NOT NULL`,
+  const rows = (await pool.query<{
+    planned: string | null;
+    pw_type: string;
+    actual: string | null;
+    run_date: string | null;
+    temp_f: string | null;
+    temp_f_peak: string | null;
+    dewpoint_f: string | null;
+    humidity_pct: string | null;
+    duration_s: string | null;
+    start_lat: string | null;
+    start_lon: string | null;
+  }>(
+    `SELECT pw.pace_target_s_per_mi::text AS planned,
+            pw.type AS pw_type,
+            CASE
+              WHEN (r.data->>'avgPaceMinPerMi') ~ '^[0-9]+:[0-9]+$'
+              THEN EXTRACT(EPOCH FROM (r.data->>'avgPaceMinPerMi')::interval)::text
+              ELSE NULL
+            END AS actual,
+            r.data->>'date' AS run_date,
+            r.data->>'tempF' AS temp_f,
+            r.data->>'tempF_peak' AS temp_f_peak,
+            r.data->>'dewpointF' AS dewpoint_f,
+            r.data->>'humidityPct' AS humidity_pct,
+            COALESCE(r.data->>'durationSec', r.data->>'movingTimeS', r.data->>'elapsedTimeS') AS duration_s,
+            COALESCE(r.data->'startLatLng'->>0, r.data->>'startLat', r.data->>'start_latitude') AS start_lat,
+            COALESCE(r.data->'startLatLng'->>1, r.data->>'startLng', r.data->>'start_longitude') AS start_lon
+       FROM plan_workouts pw
+       JOIN training_plans tp ON tp.id = pw.plan_id
+       LEFT JOIN runs r ON r.user_uuid = $1::uuid
+            AND (r.data->>'date')::date = pw.date_iso
+       WHERE tp.id = $2
+         AND pw.is_quality = true
+         AND pw.date_iso >= $3::date - INTERVAL '21 days'
+         AND pw.date_iso <  $3::date
+         AND pw.pace_target_s_per_mi IS NOT NULL`,
     [userUuid, plan.id, await runnerToday(userUuid)],
-  ).catch(() => ({ rows: [{ actual_med: null, planned_med: null }] }))).rows[0];
+  ).catch(() => ({ rows: [] }))).rows;
 
-  const actualMed = Number(r?.actual_med);
-  const plannedMed = Number(r?.planned_med);
-  if (!Number.isFinite(actualMed) || !Number.isFinite(plannedMed) || plannedMed <= 0) return null;
+  const adjustedActuals: number[] = [];
+  const planneds: number[] = [];
+  let adjustedRuns = 0;
+  let maxSlowdownPct = 0;
+  for (const row of rows) {
+    const actual = row.actual != null ? Number(row.actual) : NaN;
+    const planned = row.planned != null ? Number(row.planned) : NaN;
+    if (!Number.isFinite(actual) || !Number.isFinite(planned) || planned <= 0) continue;
+    // Per-run weather resolution: enriched run fields first, then the
+    // workout_weather_cache keyed by the run's start coords + date.
+    let tempF: number | null = null;
+    for (const raw of [row.temp_f_peak, row.temp_f]) {
+      const v = raw != null ? Number(raw) : NaN;
+      if (Number.isFinite(v)) { tempF = v; break; }
+    }
+    if (tempF == null) {
+      const lat = row.start_lat != null ? Number(row.start_lat) : NaN;
+      const lon = row.start_lon != null ? Number(row.start_lon) : NaN;
+      if (Number.isFinite(lat) && Number.isFinite(lon) && row.run_date) {
+        tempF = await lookupTempF(lat, lon, row.run_date).catch(() => null);
+      }
+    }
+    const num = (raw: string | null): number | null => {
+      const v = raw != null ? Number(raw) : NaN;
+      return Number.isFinite(v) ? v : null;
+    };
+    const { adjustedSPerMi, slowdownPct } = heatAdjustQualitySample({
+      plannedSPerMi: planned,
+      actualSPerMi: actual,
+      workoutType: row.pw_type,
+      tempF,
+      dewpointF: num(row.dewpoint_f),
+      humidityPct: num(row.humidity_pct),
+      durationS: num(row.duration_s),
+    });
+    if (slowdownPct > 0) { adjustedRuns++; maxSlowdownPct = Math.max(maxSlowdownPct, slowdownPct); }
+    adjustedActuals.push(adjustedSPerMi);
+    planneds.push(planned);
+  }
+
+  const actualMed = medianOf(adjustedActuals);
+  const plannedMed = medianOf(planneds);
+  if (actualMed == null || plannedMed == null || plannedMed <= 0) return null;
 
   const pctDrift = ((actualMed - plannedMed) / plannedMed) * 100;
   const absPct = Math.abs(pctDrift);
@@ -576,12 +709,15 @@ async function checkQualityDrift(
   const severity = Math.min(1, (absPct - PACE_DRIFT_PCT) / PACE_DRIFT_PCT);
   // Note · negative pace_drift means runner is FASTER than prescribed
   const fasterThanPlan = pctDrift < 0;
+  const heatNote = adjustedRuns > 0
+    ? ` (heat-normalized · ${adjustedRuns} run${adjustedRuns === 1 ? '' : 's'} adjusted for conditions)`
+    : '';
   const message = fasterThanPlan
     ? `Your quality workouts are landing ${Math.abs(Math.round(pctDrift))}% ` +
-      `FASTER than prescribed · pace targets are too soft · refit VDOT and ` +
+      `FASTER than prescribed${heatNote} · pace targets are too soft · refit VDOT and ` +
       `tighten the threshold/interval paces.`
     : `Your quality workouts are landing ${Math.round(pctDrift)}% SLOWER ` +
-      `than prescribed · pace targets may be too aggressive · check ` +
+      `than prescribed${heatNote} · pace targets may be too aggressive · check ` +
       `accumulated fatigue or refit to a lower VDOT.`;
 
   return {
@@ -594,7 +730,9 @@ async function checkQualityDrift(
       pct_drift: Number(pctDrift.toFixed(1)),
       direction: fasterThanPlan ? 'FASTER' : 'SLOWER',
       threshold_pct: PACE_DRIFT_PCT,
-      citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2 + Daniels Running Formula §VDOT pace tables',
+      heat_adjusted_runs: adjustedRuns,
+      max_heat_slowdown_pct: maxSlowdownPct,
+      citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2 + Daniels Running Formula §VDOT pace tables + Research/06-weather-adjustments.md §1-§2 (heat normalization)',
     },
   };
 }

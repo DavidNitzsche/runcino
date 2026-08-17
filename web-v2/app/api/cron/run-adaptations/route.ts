@@ -15,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { detectAdaptations, applyAdaptations, partitionActionsForCron } from '@/lib/plan/adapt';
+import { detectAdaptations, applyAdaptations, partitionActionsForCron, PROPOSE_FIRST_TRIGGERS } from '@/lib/plan/adapt';
 import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
@@ -65,13 +65,16 @@ export async function POST(req: NextRequest) {
       //
       // Propose-first (engine opinion · runner gates):
       //   · readiness_pullback · "we'd like to ease tomorrow because..."
+      //   · field_test_due · "spend Thursday's quality on a 30-min test"
+      //     (2026-08-17 · PROPOSE_FIRST_TRIGGERS is the single authority)
       const triggerKinds = new Set(triggers.map((t) => t.kind));
-      const isPullbackOnly = triggerKinds.size === 1 && triggerKinds.has('readiness_pullback');
+      const isProposeOnly = triggerKinds.size > 0
+        && [...triggerKinds].every((k) => PROPOSE_FIRST_TRIGGERS.has(k));
 
       let applied = 0;
       let proposed = 0;
-      if (isPullbackOnly) {
-        // Pure readiness-pullback · write proposals, don't apply.
+      if (isProposeOnly) {
+        // Every trigger is propose-first · write proposals, don't apply.
         const { writeWorkoutProposals } = await import('@/lib/plan/workout-proposals');
         proposed = await writeWorkoutProposals(uid, actions, triggers);
       } else {
@@ -90,11 +93,11 @@ export async function POST(req: NextRequest) {
         const { applyNow, proposeFirst } = partitionActionsForCron(actions);
         applied = await applyAdaptations(uid, applyNow);
 
-        // The pullback portion (if any) still gets proposed.
+        // The propose-first portion (if any) still gets proposed.
         if (proposeFirst.length > 0) {
-          const pullbackTriggers = triggers.filter((t) => t.kind === 'readiness_pullback');
+          const proposeTriggers = triggers.filter((t) => PROPOSE_FIRST_TRIGGERS.has(t.kind));
           const { writeWorkoutProposals } = await import('@/lib/plan/workout-proposals');
-          proposed = await writeWorkoutProposals(uid, proposeFirst, pullbackTriggers);
+          proposed = await writeWorkoutProposals(uid, proposeFirst, proposeTriggers);
         }
       }
 
