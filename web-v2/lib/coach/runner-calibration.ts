@@ -3,8 +3,10 @@
  * (Phase 2.2).
  *
  * The plan engine reads this instead of coarse experience_level buckets.
- * Updated weekly by lib/coach/cron/calibration-refresh.ts (Sunday night
- * after the long run).
+ * Updated daily per user by the snapshot-projections cron
+ * (app/api/cron/snapshot-projections/route.ts), after the projection
+ * write. (The "weekly Sunday cron" this header once named was never
+ * built — refreshRunnerCalibration had zero callers until 2026-08-17.)
  *
  * Cold-start runners (less than 14d history) get experience_level-derived
  * defaults. Once a runner has 14d of training data AND 2+ completed

@@ -46,12 +46,19 @@ export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody |
   if (authRateLimited(req)) {
     return NextResponse.json({ ok: false, error: 'too many attempts — try again in a few minutes' }, { status: 429 });
   }
-  let body: { email?: unknown; password?: unknown };
+  let body: { email?: unknown; password?: unknown; timezone?: unknown };
   try { body = await req.json(); }
   catch { return NextResponse.json({ ok: false, error: 'invalid JSON' }, { status: 400 }); }
 
   const email = typeof body.email === 'string' ? body.email.trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
+  // Optional browser-detected IANA timezone (2026-08-17 · multi-user
+  // hygiene): web-only runners never sync from iOS, so profile.timezone
+  // stayed NULL and every "today" fell to the UTC/Pacific fallbacks in
+  // lib/runtime/runner-tz.ts. Validated against Intl; bad values drop.
+  const clientTz = typeof body.timezone === 'string' && body.timezone.length > 0
+      && body.timezone.length <= 64 && isValidIanaTz(body.timezone)
+    ? body.timezone : null;
   if (!email || !password) {
     return NextResponse.json({ ok: false, error: 'email and password required' }, { status: 400 });
   }
@@ -102,6 +109,23 @@ export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody |
 
   await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [userRow.user_uuid]).catch(() => {});
 
+  // Persist the browser timezone ONLY where none exists yet. An
+  // iOS-synced (or Settings-set) value always wins — this fills the
+  // web-only gap, it never overwrites. Best-effort: a miss here just
+  // leaves the runner on the existing fallback until next login.
+  if (clientTz) {
+    await pool.query(
+      `UPDATE profile SET timezone = $1
+        WHERE user_uuid = $2::uuid AND (timezone IS NULL OR timezone = '')`,
+      [clientTz, userRow.user_uuid],
+    ).catch(() => {});
+    await pool.query(
+      `UPDATE users SET timezone = $1, updated_at = NOW()
+        WHERE id = $2 AND (timezone IS NULL OR timezone = '')`,
+      [clientTz, userRow.user_uuid],
+    ).catch(() => {});
+  }
+
   // Invite-only flow (2026-06-10): a non-admin with NULL email_verified_at
   // is signing in on the TEMP password David's approval generated — route
   // them to choose their own before anything else. (Admins with NULL
@@ -125,4 +149,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody |
     maxAge: COOKIE_MAX_AGE,
   });
   return res;
+}
+
+/** True when Intl accepts the string as a timeZone (catches junk before
+ *  it lands in profile.timezone, where runner-tz would throw on it). */
+function isValidIanaTz(tz: string): boolean {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; }
+  catch { return false; }
 }

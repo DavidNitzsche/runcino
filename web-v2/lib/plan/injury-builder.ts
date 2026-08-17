@@ -270,9 +270,9 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
       await pool.query(
         `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
                                     is_quality, is_long, notes, sub_label,
-                                    original_date_iso, original_type, original_distance_mi)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, FALSE, $8, $9, $4, $6, $7)`,
-        [wkoId, planId, weekId, dateISO, d.dow, d.type, d.distance_mi, d.notes, d.subLabel],
+                                    original_date_iso, original_type, original_distance_mi, user_uuid)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, FALSE, $8, $9, $4, $6, $7, $10)`,
+        [wkoId, planId, weekId, dateISO, d.dow, d.type, d.distance_mi, d.notes, d.subLabel, userId],
       );
     }
   }

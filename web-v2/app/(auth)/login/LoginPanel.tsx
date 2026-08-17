@@ -40,10 +40,18 @@ export function LoginPanel({ next, openSignup }: {
     if (!email || !password) { setError('Enter your email and password.'); return; }
     setBusy(true); setError(null);
     try {
+      // Browser-detected IANA timezone rides along so web-only runners get
+      // a real profile.timezone (server persists it only when unset — an
+      // iOS-synced value is never clobbered). Best-effort: detection failure
+      // just omits the field.
+      const timezone = (() => {
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; }
+        catch { return undefined; }
+      })();
       const r = await fetch('/api/auth/email', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, timezone }),
       });
       const j = await r.json().catch(() => ({} as { error?: string; redirect?: string }));
       if (!r.ok) { setError(j.error ?? `sign-in failed (HTTP ${r.status})`); return; }

@@ -200,9 +200,9 @@ export async function POST(req: NextRequest) {
         }
       } else if (fromWeek) {
         await client.query(
-          `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi, notes, original_date_iso)
-           VALUES ($1, $2, $3, $4, $5, 'rest', 0, '', $4)`,
-          [`wko_${randomBytes(8).toString('hex')}`, plan.id, fromWeek, fromDate, dowOf(fromDate)],
+          `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi, notes, original_date_iso, user_uuid)
+           VALUES ($1, $2, $3, $4, $5, 'rest', 0, '', $4, $6)`,
+          [`wko_${randomBytes(8).toString('hex')}`, plan.id, fromWeek, fromDate, dowOf(fromDate), userId],
         );
       }
     } else {

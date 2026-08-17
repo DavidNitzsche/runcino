@@ -272,11 +272,43 @@ export async function createSession(
   const token = newToken();
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 86400000).toISOString();
+
+  // First-login funnel instrumentation (2026-08-17): both real invitees
+  // never signed in and nothing measured that. Detect "this user had zero
+  // sessions" BEFORE minting the first one; log it to ops_alerts after.
+  // Fully best-effort — a probe failure must never block session creation
+  // (worst case: the first-login event is missed, not the login).
+  let firstLogin = false;
+  try {
+    firstLogin = (await pool.query(
+      `SELECT 1 FROM sessions WHERE COALESCE(user_uuid::text, user_id) = $1 LIMIT 1`,
+      [userUuid],
+    )).rows.length === 0;
+  } catch { firstLogin = false; }
+
   await pool.query(
     `INSERT INTO sessions (user_id, user_uuid, session_token, expires_at, kind, user_agent, ip_address, created_at)
      VALUES ($1, $1, $2, $3, $4, $5, $6, NOW())`,
     [userUuid, tokenHash, expiresAt, opts?.kind ?? 'app', opts?.userAgent ?? null, opts?.ipHash ?? null],
   );
+
+  if (firstLogin) {
+    void (async () => {
+      const email = (await pool.query<{ email: string }>(
+        `SELECT email::text AS email FROM users WHERE id = $1::uuid LIMIT 1`,
+        [userUuid],
+      ).catch(() => ({ rows: [] as Array<{ email: string }> }))).rows[0]?.email ?? null;
+      const { raiseAlert } = await import('@/lib/ops/alerts');
+      await raiseAlert({
+        kind: 'unknown',
+        severity: 'info',
+        message: `First login: ${email ?? userUuid}`,
+        metadata: { user_uuid: userUuid, email, session_kind: opts?.kind ?? 'app' },
+        source: 'first-login',
+      });
+    })().catch(() => {});
+  }
+
   return { token, expiresAt };
 }
 

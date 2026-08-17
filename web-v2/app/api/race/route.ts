@@ -36,21 +36,18 @@ export async function POST(req: NextRequest) {
   if (!body?.name || !body?.date) {
     return NextResponse.json({ error: 'name + date required' }, { status: 400 });
   }
-  // 2026-06-05 · backend audit P0-8 fix · same shape as the onboarding
-  // race write · slug is the PRIMARY KEY of races and two users picking
-  // identical names would have collided. Conflict-detect against the
-  // existing owner before write; disambiguate with a userId suffix if
-  // a DIFFERENT user already holds the natural slug. Same-user re-add
-  // (idempotent) keeps the original slug. Cite docs/2026-06-05-backend
-  // -audit.html § P0-8.
+  // 2026-06-05 · backend audit P0-8 · slug is the PRIMARY KEY of races and
+  // two users picking identical names would have collided.
+  // 2026-08-17 · made ATOMIC: the old shape was a SELECT precheck (whose
+  // errors were swallowed by .catch → rows:[]) followed by an unconditional
+  // ON CONFLICT DO UPDATE — a precheck failure or a lost race between check
+  // and write merged this runner's meta into ANOTHER user's row. Now the
+  // upsert itself carries the ownership guard (DO UPDATE ... WHERE
+  // races.user_uuid = EXCLUDED.user_uuid): same-user re-add stays idempotent
+  // (Rule 6 meta merge), a foreign-owned slug leaves rowCount 0 and we retry
+  // once with the userId-suffixed slug. Plain DO NOTHING was rejected — it
+  // would turn every same-user re-add into a duplicate suffixed row.
   let slug = slugify(`${body.name}-${body.date}`);
-  const existing = await pool.query(
-    `SELECT user_uuid::text AS u FROM races WHERE slug = $1`,
-    [slug],
-  ).catch(() => ({ rows: [] as Array<{ u: string }> }));
-  if (existing.rows[0] && existing.rows[0].u !== userId) {
-    slug = `${slug}-${userId.slice(0, 8)}`;
-  }
   // Default priority='A' (locked 2026-05-30 SIM-03): when a runner adds a
   // race to their calendar, they almost always care about it — treating
   // it as a goal race is the right default. Use 'B' for tune-ups and 'C'
@@ -80,13 +77,23 @@ export async function POST(req: NextRequest) {
     // no defaults — this INSERT failed for any NEW race row (existing
     // rows predate v2 and already carry both). Empty seeds; PATCH and
     // the execution-plan builders own the real content.
-    await pool.query(
+    const claimSlug = (s: string) => pool.query(
       `INSERT INTO races (slug, user_uuid, meta, plan, gpx_text)
        VALUES ($1, $2, $3, '{}'::jsonb, '')
        ON CONFLICT (slug) DO UPDATE
-         SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta)`,
-      [slug, userId, meta]
+         SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta)
+       WHERE races.user_uuid = EXCLUDED.user_uuid`,
+      [s, userId, meta]
     );
+    if ((await claimSlug(slug)).rowCount === 0) {
+      // Natural slug is owned by a different user — take the suffixed one.
+      slug = `${slug}-${userId.slice(0, 8)}`;
+      if ((await claimSlug(slug)).rowCount === 0) {
+        // Suffixed slug ALSO foreign-owned (would need an 8-hex uuid-prefix
+        // collision) — refuse rather than merge into someone else's row.
+        return NextResponse.json({ error: 'race slug unavailable' }, { status: 409 });
+      }
+    }
     await bustBriefingCacheForEvent(userId, 'race_crud');
 
     // Q-05 · auto-generate plan on first A-race when there's no active

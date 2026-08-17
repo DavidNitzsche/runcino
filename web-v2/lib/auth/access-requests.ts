@@ -144,17 +144,32 @@ export async function approveAccessRequest(targetUserId: string, adminId: string
 
   let emailed = false;
   if (emailConfigured()) {
+    // Coach voice · honest app story (2026-08-17 invite-funnel fix).
+    // The product is the iPhone app, delivered by TestFlight invite; the
+    // web command center is the second surface. The old copy pointed
+    // only at web /login, so invitees saw a bare login page and stalled.
     const mail = await sendEmail({
       to: row.email,
       subject: 'Your Faff access is ready',
       text: [
         `You're in.`,
         ``,
-        `Sign in at ${BASE_URL}/login`,
+        `Faff lives in two places. Your sign-in works on both.`,
+        ``,
+        `1. The iPhone app. That's the daily coach: today's run, the watch, the plan.`,
+        `   A TestFlight invite is coming to this address separately. Install`,
+        `   TestFlight from the App Store, accept the invite, then sign in with`,
+        `   the details below.`,
+        ``,
+        `2. The web command center at ${BASE_URL}/login. Full plan, races,`,
+        `   trends. Same details.`,
+        ``,
         `Email: ${row.email}`,
         `Temporary password: ${temp}`,
         ``,
-        `You'll set your own password on first sign-in.`,
+        `You'll choose your own password the first time you sign in, on either surface.`,
+        ``,
+        `Stuck at any step, reply to this email.`,
       ].join('\n'),
     });
     emailed = mail.ok;

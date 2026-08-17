@@ -316,7 +316,10 @@ export async function POST(req: NextRequest) {
     // back into the deck on every fresh login.
     await client.query(
       `UPDATE users SET
-          timezone = $1,
+          -- 2026-08-17 · fill-only: an iOS-synced timezone is never
+          -- clobbered by the web deck's detected value. Changing tz later
+          -- is a Settings action, not a re-onboarding side effect.
+          timezone = COALESCE(NULLIF(timezone, ''), $1),
           name = COALESCE(NULLIF(name, ''), $2),
           age = COALESCE(age, $3),
           sex = COALESCE(sex, $4),
@@ -380,7 +383,8 @@ export async function POST(req: NextRequest) {
           -- profile somehow has none. (Was: full_name = $4, which clobbered the
           -- runner's name → the coach would address them as "Goal Race".)
           full_name               = COALESCE(NULLIF(full_name, ''), $4),
-          timezone                = $5,
+          -- 2026-08-17 · fill-only, same rule as users.timezone above.
+          timezone                = COALESCE(NULLIF(timezone, ''), $5),
           onboarding_completed_at = NOW(),
           onboarded_at            = COALESCE(onboarded_at, NOW()),
           connections_skipped     = $6,
@@ -516,19 +520,15 @@ export async function POST(req: NextRequest) {
       // 2026-06-05 · backend audit P0-8 fix · slug was global ("my-5k-
       // 2026-08-15") · two users picking the same default race
       // overwrote each other's row + bled meta into the wrong plan.
-      // Conflict-detect: claim the natural slug if free or already owned
-      // by THIS user (idempotent re-onboarding); otherwise disambiguate
-      // with a userId suffix. First runner to claim a name keeps clean
-      // URLs; subsequent runners get "my-5k-2026-08-15-abcdef12".
-      // Cite docs/2026-06-05-backend-audit.html § P0-8.
+      // 2026-08-17 · made ATOMIC (mirrors POST /api/race): the SELECT
+      // precheck swallowed its own errors (.catch → rows:[]) and raced the
+      // write — either path let the unconditional DO UPDATE merge this
+      // runner's meta into ANOTHER user's row. The upsert below now carries
+      // the ownership guard itself; rowCount 0 means the slug is foreign-
+      // owned and we retry once with the userId suffix. First runner to
+      // claim a name keeps clean URLs; subsequent runners get
+      // "my-5k-2026-08-15-abcdef12".
       let slug = slugify(`${raceName}-${date}`);
-      const existing = await pool.query(
-        `SELECT user_uuid::text AS u FROM races WHERE slug = $1`,
-        [slug],
-      ).catch(() => ({ rows: [] as Array<{ u: string }> }));
-      if (existing.rows[0] && existing.rows[0].u !== userId) {
-        slug = `${slug}-${userId.slice(0, 8)}`;
-      }
       const meta = {
         name: raceName,
         date,                                   // YYYY-MM-DD (required on race path)
@@ -558,14 +558,28 @@ export async function POST(req: NextRequest) {
         return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
       })();
       const planSeed = goalSec ? { goal: { finish_time_s: goalSec } } : {};
-      await pool.query(
+      // Ownership-guarded upsert · DO UPDATE only touches a row THIS user
+      // owns (same-user re-onboarding stays idempotent, Rule 6 merge
+      // intact); a foreign-owned slug filters to rowCount 0 → suffix retry.
+      // Plain DO NOTHING was rejected: it would duplicate the race on
+      // every same-user re-onboarding.
+      const claimSlug = (s: string) => pool.query(
         `INSERT INTO races (slug, user_uuid, meta, plan, gpx_text)
          VALUES ($1, $2, $3, $4::jsonb, '')
          ON CONFLICT (slug) DO UPDATE
            SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta),
-               plan = CASE WHEN races.plan = '{}'::jsonb THEN EXCLUDED.plan ELSE races.plan END`,
-        [slug, userId, meta, JSON.stringify(planSeed)]
+               plan = CASE WHEN races.plan = '{}'::jsonb THEN EXCLUDED.plan ELSE races.plan END
+         WHERE races.user_uuid = EXCLUDED.user_uuid`,
+        [s, userId, meta, JSON.stringify(planSeed)]
       );
+      if ((await claimSlug(slug)).rowCount === 0) {
+        slug = `${slug}-${userId.slice(0, 8)}`;
+        if ((await claimSlug(slug)).rowCount === 0) {
+          // Suffixed slug also foreign-owned (8-hex uuid-prefix collision) —
+          // refuse rather than merge into someone else's row.
+          throw new Error(`race slug unavailable: ${slug}`);
+        }
+      }
       // Canonical race-prep generator. Best-effort: returns ok:false with
       // a reason for edge runways (<2wks / >1yr / <3wks) — the race row
       // still stands, and lifecycle authors the plan once it's in range.

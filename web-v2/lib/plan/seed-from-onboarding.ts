@@ -527,12 +527,13 @@ async function persistMaintenancePlan(args: {
         `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
                                     pace_target_s_per_mi, workout_spec,
                                     is_quality, is_long, notes, sub_label,
-                                    original_date_iso, original_type, original_distance_mi)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4, $6, $7)`,
+                                    original_date_iso, original_type, original_distance_mi, user_uuid)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4, $6, $7, $14)`,
         [
           wkoId, planId, weekId, dateISO, jsDow, effectiveType, distances[jsDow],
           paceTargetSPerMi, spec ? JSON.stringify(spec) : null,
           pick.isQuality, pick.isLong, notesFor(effectiveType, isCutback), subLabel,
+          args.userId,
         ],
       );
     }

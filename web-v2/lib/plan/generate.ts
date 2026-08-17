@@ -3307,19 +3307,21 @@ async function persistPlan(client: PoolClient, args: {
   const WORKOUT_CHUNK = 50;
   for (let i = 0; i < workoutRows.length; i += WORKOUT_CHUNK) {
     const chunk = workoutRows.slice(i, i + WORKOUT_CHUNK);
-    const params: unknown[] = [];
+    // $1 is the shared user_uuid for every row in the chunk; per-row params
+    // start at $2, so each row's base offset is params.length at push time.
+    const params: unknown[] = [args.userId];
     const tuples = chunk.map((row) => {
       const b = params.length;
       params.push(...row);
       return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, ` +
         `$${b + 8}, $${b + 9}::jsonb, $${b + 10}, $${b + 11}, $${b + 12}, $${b + 13}, ` +
-        `$${b + 4}, $${b + 6}, $${b + 7}, $${b + 13})`;
+        `$${b + 4}, $${b + 6}, $${b + 7}, $${b + 13}, $1)`;
     });
     await client.query(
       `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
                                   pace_target_s_per_mi, workout_spec,
                                   is_quality, is_long, notes, sub_label,
-                                  original_date_iso, original_type, original_distance_mi, original_sub_label)
+                                  original_date_iso, original_type, original_distance_mi, original_sub_label, user_uuid)
        VALUES ${tuples.join(', ')}`,
       params
     );

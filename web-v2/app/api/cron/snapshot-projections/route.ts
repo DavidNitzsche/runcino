@@ -28,6 +28,7 @@ import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { reanchorMaintenancePlan } from '@/lib/plan/reanchor-maintenance';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { refreshRunnerCalibration } from '@/lib/coach/runner-calibration';
 
 export const maxDuration = 60;
 
@@ -144,14 +145,25 @@ export async function POST(req: NextRequest) {
   // hardcoded-user append. (Pre-signup this force-included David's UUID
   // as legacy-row paranoia; every active plan now carries user_uuid.)
 
-  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { from: number | null; to: number; workouts: number }; error?: string }> = [];
+  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { from: number | null; to: number; workouts: number }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; error?: string }> = [];
   for (const u of userIds) {
     try {
       const today = await runnerToday(u);
       const r = await snapshotForUser(u, today);
+
+      // 2026-08-17 · multi-user hygiene: runner_calibration had ZERO
+      // writers (the weekly cron its header once named was never built —
+      // one hand-made row existed). Refresh per user here, AFTER the
+      // snapshot write. .catch-guarded end to end: a calibration failure
+      // must never break or mask the projection snapshot.
+      const calibration = await refreshRunnerCalibration(u)
+        .then((c) => ({ data_quality: c.dataQuality as string, workouts: c.sourceWorkoutCount, quality: c.sourceQualityCount }))
+        .catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+
       results.push({
         user_uuid: u, vdot: r.vdot, snapshots: r.snapshots,
         ...(r.reanchor ? { reanchored: { from: r.reanchor.fromVdot, to: r.reanchor.toVdot, workouts: r.reanchor.workoutsUpdated } } : {}),
+        calibration,
       });
     } catch (e: unknown) {
       results.push({
