@@ -150,11 +150,23 @@ struct LogRun: Decodable, Identifiable {
     // sources. Activity feed + run detail use it to gate "no-GPS"
     // affordances and pick the right glyph independently of `source`.
     let indoor: Bool?
+    // 2026-08-17 · the Activity truth audit's three enrichment signals
+    // (web-v2/lib/runs/log-enrich.ts, applied in lib/coach/log-state.ts).
+    // All three were already on the /api/log wire and silently dropped by
+    // this decoder, which is why the AFC Half rendered as a generic effort
+    // word instead of its real name.
+    /// True when the run matched a race on the runner's calendar.
+    let isRace: Bool?
+    /// The matched race's slug · lets the row link to the race page.
+    let raceSlug: String?
+    /// RACE | NAILED IT | SOLID | LONGEST · nil when nothing was earned.
+    let badge: String?
 
     enum CodingKeys: String, CodingKey {
         case id, date, dow, start_local, name, source, type, distance_mi
         case pace, time_moving, avg_hr, max_hr, cadence, elev_gain_ft
         case workoutType, phaseLabel, shoeName, shoeSlug, indoor
+        case isRace, raceSlug, badge
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -177,8 +189,33 @@ struct LogRun: Decodable, Identifiable {
         self.shoeName = try? c.decode(String.self, forKey: .shoeName)
         self.shoeSlug = try? c.decode(String.self, forKey: .shoeSlug)
         self.indoor = try? c.decode(Bool.self, forKey: .indoor)
+        self.isRace = try? c.decode(Bool.self, forKey: .isRace)
+        self.raceSlug = try? c.decode(String.self, forKey: .raceSlug)
+        self.badge = try? c.decode(String.self, forKey: .badge)
     }
 
+    /// Generic device-default names carry zero information. Mirrors
+    /// `isGenericRunName` in web-v2/lib/runs/log-enrich.ts so the phone
+    /// agrees with the server about which names are worth showing.
+    ///
+    /// The server already coalesced the merged Strava twin's real name
+    /// into `name`; this check only decides whether the row has a name
+    /// worth putting in front of the effort word, never re-derives one.
+    var hasMeaningfulName: Bool {
+        let s = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s.isEmpty { return false }
+        let generic: Set<String> = [
+            "run", "workout", "treadmill", "treadmill run",
+            "outdoor run", "indoor run",
+        ]
+        if generic.contains(s) { return false }
+        for prefix in ["morning ", "lunch ", "afternoon ", "evening ", "night "] {
+            if s.hasPrefix(prefix), generic.contains(String(s.dropFirst(prefix.count))) {
+                return false
+            }
+        }
+        return true
+    }
 }
 
 // MARK: - /api/runs/[id]

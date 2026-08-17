@@ -83,12 +83,23 @@ struct TrainView: View {
                         planEndState(noPlanMode: true)
                             .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, 6)
+                        // The log outlives any one plan · a runner between
+                        // blocks still has a relationship arc to read. It
+                        // self-hides when there is nothing logged.
+                        CoachLogCard()
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, Theme.Space.section)
                     } else if planEnded {
                         // Every plan week is behind us · wrap-up + CTA. The
                         // full-plan card stays below as the block's record.
                         planEndState(noPlanMode: false)
                             .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, 6)
+                        // "Between blocks" is exactly the state the deck
+                        // mocks the log in · it carries the block's close.
+                        CoachLogCard()
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, Theme.Space.section)
                         fullPlanCard
                             .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, Theme.Space.section)
@@ -103,6 +114,12 @@ struct TrainView: View {
                             .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, Theme.Space.section)
                         adjustmentsBlock
+                            .padding(.horizontal, Theme.Space.pageH)
+                            .padding(.top, Theme.Space.section)
+                        // COACH'S LOG · deck Decision 8, placement 2. Sits
+                        // above the full-plan card: the log is the story of
+                        // the block, the plan card is its record.
+                        CoachLogCard()
                             .padding(.horizontal, Theme.Space.pageH)
                             .padding(.top, Theme.Space.section)
                         fullPlanCard

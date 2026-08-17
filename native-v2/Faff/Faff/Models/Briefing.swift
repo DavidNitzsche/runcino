@@ -17,9 +17,14 @@ struct Briefing: Codable {
     let voice: [String]
     let topics: [Topic]
     let workout_breakdown: [PosterBreakdownRow]?
+    /// 2026-08-17 · the composed morning brief (today surface only ·
+    /// web-v2/lib/coach/morning-brief.ts). Additive on the wire: absent
+    /// on every other surface and on any server that predates it, so the
+    /// decode is optional and the Today mount renders nothing when nil.
+    let morning_brief: MorningBrief?
 
     enum CodingKeys: String, CodingKey {
-        case surface, mode, lead, voice, topics, workout_breakdown
+        case surface, mode, lead, voice, topics, workout_breakdown, morning_brief
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -29,6 +34,7 @@ struct Briefing: Codable {
         self.voice = (try? c.decode([String].self, forKey: .voice)) ?? []
         self.topics = (try? c.decode([Topic].self, forKey: .topics)) ?? []
         self.workout_breakdown = (try? c.decode([PosterBreakdownRow].self, forKey: .workout_breakdown))
+        self.morning_brief = try? c.decodeIfPresent(MorningBrief.self, forKey: .morning_brief)
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -38,6 +44,40 @@ struct Briefing: Codable {
         try c.encode(voice, forKey: .voice)
         try c.encode(topics, forKey: .topics)
         try c.encodeIfPresent(workout_breakdown, forKey: .workout_breakdown)
+        try c.encodeIfPresent(morning_brief, forKey: .morning_brief)
+    }
+}
+
+/// The composed morning brief · mirrors `MorningBrief` in
+/// web-v2/lib/coach/morning-brief.ts. The server does the composition;
+/// the phone renders `paragraph` verbatim and never re-assembles the
+/// sentences (a client-side join would drift from the web's wording).
+///
+/// `sentences` rides along for future per-sentence treatment and is
+/// decoded leniently so a shape change there can never cost us the
+/// paragraph.
+struct MorningBrief: Codable, Equatable {
+    let paragraph: String
+    let composedFor: String?
+
+    enum CodingKeys: String, CodingKey { case paragraph, composedFor }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.paragraph = (try? c.decode(String.self, forKey: .paragraph)) ?? ""
+        self.composedFor = try? c.decode(String.self, forKey: .composedFor)
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(paragraph, forKey: .paragraph)
+        try c.encodeIfPresent(composedFor, forKey: .composedFor)
+    }
+
+    /// Nil-safe render gate · an empty or whitespace-only paragraph is
+    /// treated exactly like an absent field (nothing renders, no layout
+    /// shift). Server composition can legitimately produce "" if every
+    /// sentence dropped out.
+    var isRenderable: Bool {
+        !paragraph.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

@@ -37,6 +37,11 @@ struct TodayView: View {
     @State private var sheetProgress: Double = 1     // 1 = collapsed
     @State private var skipped: Bool = false
     @State private var showSkipConfirm: Bool = false
+    /// The whole training-state · the post-race RECOVERY WINDOW reads the
+    /// plan's phase spans and prescribed days off it. Seeded from cache so
+    /// the strip renders instantly on a cold open, refreshed in loadAll.
+    @State private var trainingState: TrainingState? =
+        AppCache.read(.trainingState, as: TrainingState.self)
     /// date_iso strings the strength recommender picked for the current week ·
     /// drives the strip underline + the Today nudge. Seeded from the cached
     /// training-state (instant), refreshed in loadAll.
@@ -133,9 +138,16 @@ struct TodayView: View {
     @State private var confirmingResult: Bool = false
     /// Last confirm attempt failed · shows the retry line on the card.
     @State private var postRaceConfirmError: Bool = false
-    /// Most-recent plan_adapt_* intent · drives AdaptationCard. Hidden
-    /// when nil or older than 24h.
-    @State private var adaptationIntent: CoachIntent?
+    /// Recent plan_adapt_* intents · the APPLIED notices in the unified
+    /// coach-decision queue.
+    ///
+    /// 2026-08-17 · was `adaptationIntent: CoachIntent?` (a single slot
+    /// fed by `adaptList.first`). That is the same defect the web
+    /// recomposition's Wave 1 fixed on the other surface: when the engine
+    /// applied two adaptations in a day, the runner was told about one and
+    /// nothing said the other existed. The queue now carries them all and
+    /// CoachDecisionCard's pager makes every one reachable.
+    @State private var adaptationIntents: [CoachIntent] = []
     /// Active niggle row · drives DailyCheckChip + niggle-aware copy.
     @State private var activeNiggle: NiggleRow?
     /// Active sick episode · drives ReturnGateCard. Nil when no active episode.
@@ -151,21 +163,21 @@ struct TodayView: View {
     /// above the hero. Each card opens NudgeSheet for accept/decline.
     @State private var pendingProposals: [PendingProposal] = []
     /// Pending per-workout adapter proposals (plan_workout_proposals,
-    /// propose-first flow) · GET /api/plan/workout-proposals. Tapping the
-    /// banner opens the repurposed NudgeSheet for LET IT HAPPEN / KEEP
-    /// ORIGINAL. Distinct table from `pendingProposals` (coach_proposals,
-    /// injury/illness/swap) — both surface on Today, different triggers.
+    /// propose-first flow) · GET /api/plan/workout-proposals. Distinct
+    /// table from `pendingProposals` (coach_proposals, injury/illness/
+    /// swap) — both feed the one coach-decision queue, different triggers.
     @State private var workoutProposals: [WorkoutProposal] = []
-    /// The workout proposal currently open in NudgeSheet. Set on banner
-    /// tap; nil dismisses the sheet back to closed.
-    @State private var openProposal: WorkoutProposal?
-    /// Local dismiss for the "recently applied" adapter coach line ·
-    /// keyed by CoachIntent.id (ts|reason), persisted so a dismissed
-    /// line doesn't reappear on the next loadAll within the same 24h
-    /// window. Cheap UserDefaults flag — this is a display convenience,
-    /// not an ack; the coach_intents audit trail is untouched.
-    @State private var dismissedAdaptationId: String? =
-        UserDefaults.standard.string(forKey: "v1.today.dismissedAdaptationId")
+    /// Local dismissals for APPLIED notices, keyed by the decision key,
+    /// persisted so a dismissed notice doesn't reappear on the next
+    /// loadAll within the same 24h recency window. Cheap UserDefaults
+    /// set — this is a display convenience, not an ack; the coach_intents
+    /// audit trail is untouched.
+    ///
+    /// 2026-08-17 · widened from a single `dismissedAdaptationId` string
+    /// to a set, because the queue can now hold more than one notice. The
+    /// legacy single key is read once on init so a notice the runner
+    /// already dismissed does not come back with this change.
+    @State private var dismissedDecisionKeys: Set<String> = TodayView.loadDismissedDecisionKeys()
     /// Per-day shoe picker · POSTs the override to /api/today/shoe.
     @State private var showShoePicker: Bool = false
     /// 2026-07-07 · today-composition · P2-10 · presents preRunSheetContent
@@ -314,50 +326,32 @@ struct TodayView: View {
                     }
                 }
 
-                // 2026-06-02 round 38 · AdaptationCard hidden from
-                // Today's hero. The "FAFF · Plan adapted · overridden"
-                // copy was vague and not actionable · runner couldn't
-                // tell what changed, from what to what, or why. The
-                // adaptationIntent state still fetches and is passed
-                // down to the pre-run sheet body for context. Superseded
-                // 2026-07-07 by the RECENTLY APPLIED line below, which
-                // renders the adapter's own `why` string instead of a
-                // fabricated summary — see proposals-inbox merge note.
-
-                // WORKOUT PROPOSAL banner · stack of pending per-workout
-                // adapter proposals (plan_workout_proposals, propose-first
-                // flow — David 2026-06-04 "I dont want to wake up to
-                // change runs"). Tap opens the repurposed NudgeSheet for
-                // the one-line why + LET IT HAPPEN / KEEP ORIGINAL.
-                ForEach(workoutProposals) { p in
-                    workoutProposalBanner(p)
-                        .padding(.horizontal, Theme.Space.pageH)
-                        .padding(.top, 10)
-                }
-
-                // RECENTLY APPLIED · the most recent plan_adapt_* intent
-                // that already landed (auto-applied triggers, or an
-                // accepted workout proposal), shown as a dismissible
-                // coach line with its one-line why. Replaces the old
-                // hidden AdaptationCard (2026-06-02 round 38) — this is
-                // a passive audit line, not an actionable card, so vague
-                // copy risk is gone: it always renders the adapter's
-                // own `why` string, never a fabricated summary.
-                if let a = adaptationIntent,
-                   isWithinLast24h(a.when_iso),
-                   a.id != dismissedAdaptationId {
-                    recentlyAppliedLine(a)
-                        .padding(.horizontal, Theme.Space.pageH)
-                        .padding(.top, 10)
-                }
-
-                // COACH PROPOSALS strip · stack of pending swap/injury/
-                // illness proposals from /api/coach/proposals. Tap accept
-                // or decline routes through /api/coach/proposal (singular).
-                ForEach(pendingProposals) { p in
-                    proposalCard(p)
-                        .padding(.horizontal, Theme.Space.pageH)
-                        .padding(.top, 10)
+                // THE ONE INTERRUPTION · every coach proposal, workout
+                // proposal and applied-adaptation notice folds into a
+                // single ordered queue and exactly ONE card renders, with
+                // an "N WAITING" pager when more than one is live.
+                //
+                // 2026-08-17 · replaces three separate treatments
+                // (workoutProposalBanner / recentlyAppliedLine /
+                // proposalCard) per the web recomposition deck, Decision 2.
+                // Two real defects go with them:
+                //
+                //   · the two ForEach stacks could put three cards above
+                //     the 88pt hero, violating brief v2 §6's one-banner
+                //     cap and pushing the hero off the first screen. The
+                //     cap is now structural, not a hope.
+                //   · `adaptationIntent` was ONE optional off
+                //     `adaptList.first`, so a second same-day adaptation
+                //     was silently dropped with nothing saying so. Every
+                //     item is now reachable through the pager.
+                if !coachDecisionQueue.isEmpty {
+                    CoachDecisionCard(
+                        queue: coachDecisionQueue,
+                        onAct: { d, a in await performCoachDecision(d, a) },
+                        onDismiss: { d in dismissCoachDecision(d) }
+                    )
+                    .padding(.horizontal, Theme.Space.pageH)
+                    .padding(.top, 10)
                 }
 
                 // DailyCheckChip · once a niggle is active, ask daily.
@@ -527,6 +521,20 @@ struct TodayView: View {
                     // Run is always front and center. Readiness lives in the drag sheet.
                     ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 0) {
+                            // MORNING BRIEF · deck Decision 8, placement 1.
+                            // The composed paragraph speaks first, above the
+                            // hero, then gets out of the way. Absent field →
+                            // MorningBriefBlock collapses to nothing, so a
+                            // morning with no brief has zero layout shift.
+                            // Gated on the selected day being today: the
+                            // brief is about today and would lie on a day the
+                            // runner scrolled to.
+                            if selectedIsToday {
+                                MorningBriefBlock(brief: briefing?.morning_brief)
+                                    .padding(.horizontal, Theme.Space.pageH)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 14)
+                            }
                             // 2026-07-07 · P1-4 · was selectedEffort.title, which for
                             // race_week_tuneup rendered "TEMPO" (the mesh/mesh-effort
                             // family, correct) but not the canonical hero word. Reuse
@@ -771,17 +779,12 @@ struct TodayView: View {
                 readiness: readiness
             )
         }
-        // Workout-proposal review · driven by openProposal (nil = closed).
-        // NudgeSheet renders THE CHANGE + the one-line why when `proposal`
-        // is set; LET IT HAPPEN posts accept, KEEP ORIGINAL posts dismiss.
-        .sheet(item: $openProposal) { p in
-            NudgeSheet(
-                onAccept: { acceptWorkoutProposal(p) },
-                onKeep: { dismissWorkoutProposal(p) },
-                readiness: readiness,
-                proposal: p
-            )
-        }
+        // 2026-08-17 · the workout-proposal NudgeSheet route is retired.
+        // Under the one-interruption grammar a proposal is answered on the
+        // card itself (ACCEPT · … / KEEP IT AS PLANNED), so a second
+        // vocabulary behind a tap-through would be exactly the split the
+        // deck's Decision 2 set out to remove. NudgeSheet keeps its
+        // `proposal:` initializer for the readiness nudge path above.
         .sheet(isPresented: $showSymptomSheet) {
             SymptomReportSheet(onSubmitted: { Task { await loadAll() } })
                 .presentationDetents([.medium, .large])
@@ -855,179 +858,83 @@ struct TodayView: View {
         .sheet(item: $glossaryEntry) { e in GlossarySheet(entry: e) }
     }
 
-    // MARK: - Coach proposal card
+    // MARK: - Coach decisions (the ONE interruption)
 
-    /// Minimal accept/decline card for one pending proposal. Tap accept
-    /// to POST /api/coach/proposal action="accept"; decline POSTs
-    /// action="decline". Both bust the briefing cache; reload after.
-    private func proposalCard(_ p: PendingProposal) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text("PROPOSAL")
-                .font(.body(9, weight: .extraBold))
-                .tracking(1.5)
-                .foregroundStyle(Theme.bg)
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(Theme.Accent.amberBright, in: Capsule())
-            VStack(alignment: .leading, spacing: 6) {
-                Text(p.suggested.isEmpty ? proposalTitle(p.proposal_type) : p.suggested)
-                    .font(.body(13.5, weight: .extraBold))
-                    .foregroundStyle(Theme.txt)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !p.reason.isEmpty {
-                    Text(p.reason)
-                        .font(.body(11.5, weight: .medium))
-                        .foregroundStyle(Theme.txt.opacity(0.82))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                HStack(spacing: 8) {
-                    Button("ACCEPT") { decideProposal(p, action: "accept") }
-                        .font(.body(11, weight: .extraBold))
-                        .tracking(0.8)
-                        .foregroundStyle(Theme.bg)
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Theme.Accent.mintReady, in: Capsule())
-                    Button("DECLINE") { decideProposal(p, action: "decline") }
-                        .font(.body(11, weight: .extraBold))
-                        .tracking(0.8)
-                        .foregroundStyle(Theme.txt)
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Theme.Glass.fill, in: Capsule())
-                        .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
-                }
-            }
+    /// UserDefaults key holding the dismissed-notice keys.
+    private static let dismissedDecisionsKey = "v1.today.dismissedDecisionKeys"
+    /// The pre-2026-08-17 single-slot key. Read once so a notice the
+    /// runner already swept away does not reappear after the widening.
+    private static let legacyDismissedAdaptationKey = "v1.today.dismissedAdaptationId"
+
+    private static func loadDismissedDecisionKeys() -> Set<String> {
+        var keys = Set(UserDefaults.standard.stringArray(forKey: dismissedDecisionsKey) ?? [])
+        if let legacy = UserDefaults.standard.string(forKey: legacyDismissedAdaptationKey),
+           !legacy.isEmpty {
+            keys.insert("adapt-\(legacy)")
         }
-        .padding(14)
-        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous).stroke(Theme.Accent.amberBright.opacity(0.35), lineWidth: 1))
+        return keys
     }
-    private func proposalTitle(_ t: String) -> String {
-        switch t {
-        case "injury_adjust":  return "Proposed: ease the plan around your niggle"
-        case "illness_adjust": return "Proposed: pause the plan while you recover"
-        case "swap":           return "Proposed: swap today's workout"
-        default:               return "Coach has a proposal"
-        }
+
+    /// The ordered interruption queue · every source folded into one list
+    /// by the pure selector, minus anything the runner already dismissed.
+    ///
+    /// Plan-drift proposals (web's `plan_proposals`) are deliberately
+    /// absent: the phone has no read surface for them. `/api/plan/proposal`
+    /// is POST-only and the web reads the rows off its own seed, so there
+    /// is nothing for native to call. Adding them needs a server-side GET
+    /// (see the report) — the selector's priority ladder already leaves
+    /// the slot so wiring it later reshuffles nothing.
+    private var coachDecisionQueue: [CoachDecision] {
+        CoachDecisions.select(
+            coachProposals: pendingProposals,
+            workoutProposals: workoutProposals,
+            adaptations: adaptationIntents,
+            todayISO: plan?.today_iso.isEmpty == false ? plan!.today_iso : todayISO
+        ).filter { !dismissedDecisionKeys.contains($0.key) }
     }
-    private func decideProposal(_ p: PendingProposal, action: String) {
-        Task {
-            var req = URLRequest(url: API.baseURL.appendingPathComponent("api/coach/proposal"))
-            req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let body: [String: Any] = [
-                "action": action,
-                "proposal": ["id": p.id, "type": p.proposal_type]
-            ]
-            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-            _ = try? await API.authedSend(req)
-            await loadAll()
+
+    /// Dispatch one decision's action to the endpoint that owns it.
+    /// Returns true on success so the card only clears what really landed.
+    private func performCoachDecision(_ d: CoachDecision, _ a: CoachDecisionAction) async -> Bool {
+        switch d.source {
+        case .coachProposal(let p):
+            let ok = await postCoachProposal(p, action: a.role == .accept ? "accept" : "decline")
+            if ok { await loadAll() }
+            return ok
+        case .workoutProposal(let p):
+            let ok = (try? await API.respondWorkoutProposal(id: p.id, accept: a.role == .accept)) ?? false
+            if ok { await loadAll() }
+            return ok
+        case .adaptation:
+            // Notices carry no actions · nothing to post.
+            return true
         }
     }
 
-    // MARK: - Workout proposal banner (propose-first adapter flow)
-
-    /// Compact banner for one pending plan_workout_proposals row · tap
-    /// opens NudgeSheet for the full one-line why + LET IT HAPPEN /
-    /// KEEP ORIGINAL. Distinct visual language from proposalCard (amber
-    /// "PROPOSAL" tag) so the two proposal families read as related but
-    /// not identical — this one always routes through the sheet rather
-    /// than deciding inline, matching "one-line rationale + easy
-    /// override" from the benchmark gap.
-    private func workoutProposalBanner(_ p: WorkoutProposal) -> some View {
-        Button(action: { openProposal = p }) {
-            HStack(alignment: .top, spacing: 12) {
-                Text("ADJUST")
-                    .font(.body(9, weight: .extraBold))
-                    .tracking(1.5)
-                    .foregroundStyle(Theme.bg)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Theme.Accent.amberBright, in: Capsule())
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(workoutProposalHeadline(p))
-                        .font(.body(13.5, weight: .extraBold))
-                        .foregroundStyle(Theme.txt)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let why = p.why ?? (p.reason.isEmpty ? nil : p.reason) {
-                        Text(why)
-                            .font(.body(11.5, weight: .medium))
-                            .foregroundStyle(Theme.txt.opacity(0.82))
-                            .lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.4))
-                    .padding(.top, 2)
-            }
-            .padding(14)
-            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous).stroke(Theme.Accent.amberBright.opacity(0.35), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+    /// POST /api/coach/proposal · accept applies the change, decline
+    /// records the call. Both bust the briefing cache server-side.
+    private func postCoachProposal(_ p: PendingProposal, action: String) async -> Bool {
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/coach/proposal"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "action": action,
+            "proposal": ["id": p.id, "type": p.proposal_type]
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        guard let (_, http) = try? await API.authedSend(req) else { return false }
+        return (200..<300).contains(http.statusCode)
     }
 
-    private func workoutProposalHeadline(_ p: WorkoutProposal) -> String {
-        switch p.actionKind {
-        case "downgrade":  return "Coach proposes running \(p.newType ?? "easy") instead."
-        case "reschedule": return "Coach proposes moving this session."
-        case "shave":      return "Coach proposes trimming today's distance."
-        default:           return "Coach has a proposal for today."
-        }
-    }
-
-    /// Runner picked LET IT HAPPEN in NudgeSheet · accept the proposal,
-    /// then reload so the plan + banner reflect the applied change.
-    private func acceptWorkoutProposal(_ p: WorkoutProposal) {
-        Task {
-            _ = try? await API.respondWorkoutProposal(id: p.id, accept: true)
-            await MainActor.run { openProposal = nil }
-            await loadAll()
-        }
-    }
-
-    /// Runner picked KEEP ORIGINAL · dismiss the proposal, plan stays put.
-    private func dismissWorkoutProposal(_ p: WorkoutProposal) {
-        Task {
-            _ = try? await API.respondWorkoutProposal(id: p.id, accept: false)
-            await MainActor.run { openProposal = nil }
-            await loadAll()
-        }
-    }
-
-    // MARK: - Recently applied (adapter audit line)
-
-    /// One-line, dismissible record of the most recent auto-applied
-    /// plan_adapt_* intent — always the adapter's own `why`, falling
-    /// back to the plain-English `summary` the endpoint already
-    /// composes. Dismiss is local-only (UserDefaults flag); the
-    /// coach_intents row + provenance chip on the plan are untouched.
-    private func recentlyAppliedLine(_ a: CoachIntent) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.Accent.mintReady)
-                .padding(.top, 1)
-            Text(a.why ?? (a.summary.isEmpty ? "Plan adapted." : a.summary))
-                .font(.body(12.5, weight: .medium))
-                .foregroundStyle(Theme.txt.opacity(0.88))
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            Button(action: { dismissAdaptationLine(a) }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.45))
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
-    }
-
-    private func dismissAdaptationLine(_ a: CoachIntent) {
-        dismissedAdaptationId = a.id
-        UserDefaults.standard.set(a.id, forKey: "v1.today.dismissedAdaptationId")
+    /// Local-only dismissal of an APPLIED notice. The coach_intents row
+    /// and the plan's provenance chip are untouched — this is a display
+    /// convenience, not an ack.
+    private func dismissCoachDecision(_ d: CoachDecision) {
+        dismissedDecisionKeys.insert(d.key)
+        // Keep the stored set bounded; the newest 50 is far more than the
+        // 24h recency window can ever surface.
+        let trimmed = Array(dismissedDecisionKeys).sorted().suffix(50)
+        UserDefaults.standard.set(Array(trimmed), forKey: TodayView.dismissedDecisionsKey)
     }
 
     // MARK: - Hero
@@ -1728,6 +1635,15 @@ struct TodayView: View {
     @ViewBuilder
     private var postRaceBody: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // MORNING BRIEF · deck Decision 8, placement 1. The deck mocks
+            // this placement on the post-race day itself ("Day one after
+            // AFC..."), so the brief speaks here exactly as it does on an
+            // ordinary morning. Collapses to nothing when absent.
+            MorningBriefBlock(brief: briefing?.morning_brief)
+                .padding(.horizontal, Theme.Space.pageH)
+                .padding(.top, 10)
+                .padding(.bottom, 16)
+
             VStack(alignment: .leading, spacing: 6) {
                 Text(postRaceEyebrow)
                     .font(.body(11, weight: .extraBold))
@@ -1739,7 +1655,7 @@ struct TodayView: View {
                     .foregroundStyle(.white)
                     .minimumScaleFactor(0.7)
                     .lineLimit(1)
-                Text("Recovery first. The next block starts when your body says so, not the calendar.")
+                Text(postRaceRecoveryLine)
                     .font(.body(13.5, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.78))
                     .padding(.top, 2)
@@ -1756,6 +1672,19 @@ struct TodayView: View {
                 postRaceResultCard
                     .padding(.horizontal, Theme.Space.pageH)
                     .padding(.top, 22)
+            }
+
+            // RECOVERY WINDOW strip · deck Decision 1. Reads the ACTIVE
+            // PLAN's recovery block: its real date range, its real
+            // prescribed days, its real mileage. David's live window is 17
+            // miles this week and 23 next on a 7 mile long run — mostly
+            // easy RUNS — and this strip renders that as running, because
+            // it renders what the plan says. Absent when the block that
+            // covers today is not a recovery block; nothing is invented.
+            if let w = recoveryWindow {
+                RecoveryWindowStrip(window: w)
+                    .padding(.horizontal, Theme.Space.pageH)
+                    .padding(.top, 26)
             }
 
             if recoveryBrief != nil {
@@ -1831,6 +1760,44 @@ struct TodayView: View {
                 }
             )
         }
+    }
+
+    /// The recovery block covering today, read off the active plan.
+    /// Nil when there is no plan or the covering block is not a recovery
+    /// block — the caller then degrades to the race hero alone.
+    private var recoveryWindow: RecoveryWindow? {
+        guard let ts = trainingState else { return nil }
+        let nowIdx = ts.currentWeekIdx
+            ?? ts.weeks.firstIndex(where: { $0.isCurrent })
+            ?? 0
+        let today = ts.today.isEmpty ? todayISO : ts.today
+        return RecoveryWindows.select(
+            phases: ts.phases,
+            weeks: ts.weeks,
+            nowIdx: nowIdx,
+            todayISO: today
+        )
+    }
+
+    /// The line under the days-since headline.
+    ///
+    /// 2026-08-17 · was a fixed "Recovery first. The next block starts
+    /// when your body says so, not the calendar." That sentence is true
+    /// but it is also the sentence a rest-dominated window would use, and
+    /// recovery windows are context-aware as of 52174bcd — a half inside a
+    /// marathon build prescribes easy RUNNING, not rest. The line now
+    /// reads the plan and says what it actually prescribes; the generic
+    /// sentence survives only for the genuine no-plan case.
+    private var postRaceRecoveryLine: String {
+        guard let w = recoveryWindow else {
+            return "Recovery first. The next block starts when your body says so, not the calendar."
+        }
+        if w.runningDays == 0 {
+            return "Rest is the prescription this week. The next block starts when your body says so, not the calendar."
+        }
+        let miles = RecoveryWindows.fmtMi(w.weekPlannedMi)
+        let dayWord = w.runningDays == 1 ? "day" : "days"
+        return "Recovery is easy running, not rest. \(miles) miles across \(w.runningDays) \(dayWord) this week, all of it easy."
     }
 
     /// Seed for the retro sheet's finish field · the provisional watch
@@ -2124,7 +2091,7 @@ struct TodayView: View {
             shoeName: selectedShoe?.displayName,            // hydrated by picker
             briefing: briefing,
             purpose: purpose,
-            adaptation: adaptationIntent,
+            adaptation: adaptationIntents.first,
             onSkip: skipTodayAction,
             onShoeTap: {
                 // Lazy-refresh on tap · if the initial /api/shoe fetch
@@ -3506,6 +3473,10 @@ struct TodayView: View {
             self.prevWeekPlan = prevW
             self.futureWeekPlans = futureW
             if let ts = trainingS {
+                // Held whole (not just the strength slices) so the
+                // post-race RECOVERY WINDOW can read the plan's own phase
+                // spans and prescribed days.
+                self.trainingState = ts
                 self.strengthDays = Set(ts.weeks.flatMap { $0.recommendedStrengthDays ?? [] })
                 // P2-50 · full picks (session content) for the tappable chip.
                 let picks = ts.weeks.flatMap { $0.strengthPicks ?? [] }
@@ -3653,7 +3624,10 @@ struct TodayView: View {
                 }
             }
             self.skipped = skip
-            self.adaptationIntent = adaptList.first
+            // Keep the whole recent list · the queue's own 24h recency
+            // filter decides what surfaces. Taking .first here is what
+            // dropped the second same-day adaptation on the floor.
+            self.adaptationIntents = adaptList
             self.activeNiggle = activeN
             self.activeSick = activeSickRow
             self.pendingProposals = proposals
@@ -3721,13 +3695,10 @@ struct TodayView: View {
         }
     }
 
-    private func isWithinLast24h(_ iso: String) -> Bool {
-        let fmt = ISO8601DateFormatter()
-        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let cleaned = iso.replacingOccurrences(of: " ", with: "T")
-        guard let d = fmt.date(from: cleaned) ?? fmt.date(from: cleaned + "Z") else { return false }
-        return Date().timeIntervalSince(d) <= 24 * 3600
-    }
+    // 2026-08-17 · isWithinLast24h moved to CoachDecisions.isWithinRecency
+    // (with its space-separated / missing-zone normalisation intact) when
+    // the adaptation line folded into the one coach-decision queue. It had
+    // no other caller.
 
     /// Daily niggle check · POSTs the runner's "better/same/worse/gone"
     /// reply to /api/niggle/recovery. "Gone" also clears the niggle so

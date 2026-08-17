@@ -384,6 +384,33 @@ extension API {
         return (200..<300).contains(http.statusCode)
     }
 
+    // MARK: - Coach's log
+
+    /// GET /api/coach/log · the coach's log, newest first (week closes,
+    /// phase boundaries, all-time firsts, fitness shifts).
+    ///
+    /// `before` is the cursor a previous page returned as `nextBefore`;
+    /// pass nil for the first page. Never throws on a bad page — an empty
+    /// page renders as "nothing logged yet", which is the honest state for
+    /// a runner whose first week has not closed.
+    static func fetchCoachLog(limit: Int = 20, before: String? = nil) async throws -> CoachLogPage {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/coach/log"),
+            resolvingAgainstBaseURL: false
+        )!
+        var qs = [URLQueryItem(name: "limit", value: "\(max(1, min(100, limit)))")]
+        if let before, !before.isEmpty { qs.append(URLQueryItem(name: "before", value: before)) }
+        comps.queryItems = qs
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            return CoachLogPage(ok: false, entries: [], nextBefore: nil)
+        }
+        return (try? JSONDecoder().decode(CoachLogPage.self, from: data))
+            ?? CoachLogPage(ok: false, entries: [], nextBefore: nil)
+    }
+
     // MARK: - Notification inbox
 
     static func fetchNotificationInbox(days: Int = 14, limit: Int = 50) async throws -> [NotifInboxItem] {

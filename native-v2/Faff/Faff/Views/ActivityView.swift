@@ -606,10 +606,42 @@ struct ActivityView: View {
                 }
                 .frame(width: 38)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(hasType ? effort.title.uppercased() : "RUN")
-                        .font(.body(16, weight: .extraBold))
-                        .tracking(0.5)
-                        .foregroundStyle(hasType ? effort.dot : Theme.txt.opacity(0.4))
+                    // 2026-08-17 · Activity truth audit. This row used to
+                    // print the effort word and throw `run.name` away, so
+                    // the Aug 16 AFC Half read "RACE" and every named
+                    // session read as its generic type. /api/log has
+                    // carried the enriched name since log-enrich.ts landed
+                    // (the canonical row is usually the watch's generic
+                    // 'Run'; the server coalesces the merged Strava twin's
+                    // real name and overrides it with the race's curated
+                    // name on a match). Show the name when there is one and
+                    // keep the effort word as the eyebrow beside it, so the
+                    // row says both what it was called and what it was.
+                    if run.hasMeaningfulName {
+                        Text(run.name)
+                            .font(.body(16, weight: .extraBold))
+                            .tracking(0.2)
+                            .foregroundStyle(Theme.txt)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        HStack(spacing: 6) {
+                            Text(hasType ? effort.title.uppercased() : "RUN")
+                                .font(.body(10, weight: .extraBold))
+                                .tracking(1.2)
+                                .foregroundStyle(hasType ? effort.dot : Theme.txt.opacity(0.4))
+                            if let b = run.badge, !b.isEmpty, b != "RACE" {
+                                Text(b)
+                                    .font(.body(10, weight: .extraBold))
+                                    .tracking(1.2)
+                                    .foregroundStyle(Theme.Status.solidText)
+                            }
+                        }
+                    } else {
+                        Text(hasType ? effort.title.uppercased() : "RUN")
+                            .font(.body(16, weight: .extraBold))
+                            .tracking(0.5)
+                            .foregroundStyle(hasType ? effort.dot : Theme.txt.opacity(0.4))
+                    }
                     HStack(spacing: 5) {
                         // 2026-07-07 · units audit — run.pace is a
                         // server-formatted "M:SS" s-per-mi string; re-parse
