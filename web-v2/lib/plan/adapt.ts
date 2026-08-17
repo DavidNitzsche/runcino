@@ -66,6 +66,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay } from '@/lib/runs/volume';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
+import { stripResearchCitations } from './strip-citations';
 
 /**
  * 2026-06-03 · Rule 15 · seal guard for adapter writes.
@@ -797,6 +798,11 @@ async function hasRecentGapIntent(userId: string, days: number): Promise<boolean
  */
 export async function applyAdaptations(userId: string, actions: AdaptationAction[]): Promise<number> {
   if (actions.length === 0) return 0;
+  // 2026-08-17 · citation scrub at the WRITE site. `why` is the one
+  // string the runner reads (coach_intents.value.why → adaptation-info
+  // → "How it changed" surfaces); Research/ refs stay in code comments
+  // and the plan_proposals citation field, never in the runner's copy.
+  actions = actions.map((a) => ({ ...a, why: stripResearchCitations(a.why) }));
   let touched = 0;
   // 2026-07-06 · reschedules that actually landed in THIS call — the
   // anti-stacking downgrade (onlyIfRescheduledId) is skipped when its
@@ -1606,7 +1612,30 @@ async function detectReadinessPullback(userId: string): Promise<AdaptationTrigge
     );
     const hasTieredStreak = tierStreaks.length > 0;
 
-    if (!sustainedPullBack && !hasTieredStreak && !forcedByHardRule) return null;
+    // 2026-08-17 · SUBJECTIVE pillar (coach-experience pass). A WRECKED-
+    // equivalent POST-RUN read (RPE ≥ 8 / rating 'wrecked' / body chip
+    // 'cooked') on a day that was PLANNED EASY joins the objective
+    // evidence — extending the Saw et al. subjective-override doctrine
+    // readiness-brief.ts already applies to the morning prescription
+    // (composePrescription, "subjective wins on the day") into the
+    // adapter read. An easy day should not wreck the runner; when it
+    // does, the runner's own report is evidence the objective pillars
+    // may not show until tomorrow. Same propose-first banner as every
+    // pullback action (PROPOSE_FIRST_TRIGGERS) — the runner gates it.
+    // Quality/long days are excluded on purpose: those are ALLOWED to
+    // read hard. See lib/coach/acknowledge.ts subjectivePullbackSignal.
+    let subjectiveFired = false;
+    let subjectiveReason: string | null = null;
+    let subjectiveDetail: Record<string, unknown> | null = null;
+    try {
+      const { loadYesterdaySignals, subjectivePullbackSignal } = await import('@/lib/coach/acknowledge');
+      const sub = subjectivePullbackSignal(await loadYesterdaySignals(userId));
+      subjectiveFired = sub.fired;
+      subjectiveReason = sub.reason;
+      subjectiveDetail = sub.detail as Record<string, unknown> | null;
+    } catch { /* best-effort · objective pillars still decide */ }
+
+    if (!sustainedPullBack && !hasTieredStreak && !forcedByHardRule && !subjectiveFired) return null;
 
     // Reason · what TRULY tripped, in plain English.
     const reasonParts: string[] = [];
@@ -1619,10 +1648,21 @@ async function detectReadinessPullback(userId: string): Promise<AdaptationTrigge
     } else if (sustainedPullBack) {
       reasonParts.push(`pull-back band sustained ${recentScores.length} days · score ${brief.score}/100`);
     }
+    if (subjectiveFired && subjectiveReason) {
+      reasonParts.push(subjectiveReason);
+    }
 
     // Severity ladder: hard-rule sustained pull-back OR 2+ tier-streaks → override.
     // Single tier-streak OR shorter sustained pull-back → warn (softer adjust).
-    const severity: 'warn' | 'override' = (forcedByHardRule || tierStreaks.length >= 2 || (sustainedPullBack && tierStreaks.length >= 1))
+    // Subjective + any objective signal agreeing → override (the two
+    // disagree-free case is exactly when Saw et al. say act); subjective
+    // alone → warn (propose-first · runner gates it anyway).
+    const severity: 'warn' | 'override' = (
+      forcedByHardRule
+      || tierStreaks.length >= 2
+      || (sustainedPullBack && tierStreaks.length >= 1)
+      || (subjectiveFired && (hasTieredStreak || sustainedPullBack))
+    )
       ? 'override'
       : 'warn';
 
@@ -1637,6 +1677,7 @@ async function detectReadinessPullback(userId: string): Promise<AdaptationTrigge
         streaks: tierStreaks.map((s) => ({ pillar: s.pillar, direction: s.direction, days: s.days })),
         sustainedPullBackDays: sustainedPullBack ? recentScores.length : 0,
         forcedByHardRule,
+        subjective: subjectiveFired ? (subjectiveDetail ?? {}) : null,
         headline: brief.headline,
       },
     };
@@ -2720,9 +2761,12 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       // detector doesn't re-fire daily for the whole 14d race window.
       // Cite: Research/01 §Recalibrate-Paces ("update VDOT from race →
       // re-derive zones").
+      // 2026-08-17 · coach-experience pass · the why is runner-facing
+      // (adaptation-info + the coach's log surface it): say what
+      // happened to THEM, not what the engine did to itself.
       const why = t.kind === 'pr_bank'
-        ? `New race fitness · VDOT +${Number(t.evidence.delta).toFixed(1)} pts. Paces recomputed.`
-        : 'Goal or VDOT changed. Plan paces recomputed against the new anchor.';
+        ? `New race fitness · VDOT ${Number(t.evidence.new_vdot ?? 0).toFixed(1)} · your paces just moved.`
+        : 'Your goal changed · plan paces re-anchored to it.';
       return [{
         kind: 'recompute_paces',
         newVdot: t.kind === 'pr_bank' && t.evidence.new_vdot != null

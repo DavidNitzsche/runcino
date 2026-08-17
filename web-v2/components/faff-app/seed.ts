@@ -24,6 +24,7 @@ import type { PlannedDay, CompletedRun, EffortKey } from './constants';
 import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { redirect } from 'next/navigation';
@@ -354,7 +355,9 @@ async function loadPlanAdapts(uid: string, planId: string | null): Promise<{ ok:
         newType: parsed.newType,
         newDate: parsed.newDate,
         shaveFraction: parsed.shaveFraction,
-        why: String(parsed.why ?? ''),
+        // 2026-08-17 · read-side citation scrub for rows written before
+        // the write-site scrub (lib/plan/strip-citations.ts) landed.
+        why: stripCitationsSafe(String(parsed.why ?? '')),
         ts: row.ts instanceof Date ? row.ts.toISOString() : String(row.ts),
       };
     });
@@ -2109,6 +2112,8 @@ function emptySeed(): FaffSeed {
     week, todayIdx, results,
     readiness,
     readinessBrief: null,
+    morningBrief: null,
+    coachLog: [],
     planProposals: [],
     strengthRecommendation: null,
     strengthWeekStatus: null,
@@ -2661,6 +2666,27 @@ export async function buildSeed(): Promise<FaffSeed> {
     } catch { return []; }
   })();
 
+  // 2026-08-17 · coach-experience pass · the composed morning brief
+  // (yesterday acknowledged + today's purpose + season context) and
+  // the coach's log strip. Both best-effort — null/empty degrades to
+  // the pre-existing render.
+  const morningBrief = await (async () => {
+    try {
+      const { loadMorningBrief } = await import('@/lib/coach/morning-brief');
+      return await loadMorningBrief(userId, glance);
+    } catch { return null; }
+  })();
+  const coachLog = await (async () => {
+    try {
+      const { loadCoachLog } = await import('@/lib/coach/coach-log');
+      const page = await loadCoachLog(userId, { limit: 8 });
+      return page.entries.map((e) => ({
+        id: e.id, kind: e.kind, dateISO: e.dateISO,
+        title: e.title, body: e.body, ts: e.ts,
+      }));
+    } catch { return []; }
+  })();
+
   const fullName = profile?.identity.full_name ?? glance?.greetingName ?? null;
   const user = {
     name: fullName ? fullName.split(' ')[0] : 'You',
@@ -2707,6 +2733,8 @@ export async function buildSeed(): Promise<FaffSeed> {
     week, todayIdx, results,
     readiness: honestReadiness,
     readinessBrief,
+    morningBrief,
+    coachLog,
     planProposals,
     pendingWorkoutProposals,
     strengthRecommendation: glance?.strengthRecommendation ?? null,

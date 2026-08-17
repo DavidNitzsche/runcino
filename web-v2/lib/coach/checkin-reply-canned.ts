@@ -41,7 +41,15 @@ export function pickCannedReply(
     if (e === 'controlled' && b === 'cooked') return "Held the lid on but body's spent. Worth watching.";
     if (e === 'pushed' && b === 'fresh')  return "Easy that wasn't easy. Body says fresh · fitness keeps showing up.";
     if (e === 'pushed' && b === 'worked') return 'Pushed to hold easy pace. Fatigue is real today.';
-    if (e === 'pushed' && b === 'cooked') return "Pushed and paid. Tomorrow's prescription will reflect this.";
+    // 2026-08-17 · honest promise. The old line said "Tomorrow's
+    // prescription will reflect this" while nothing read check_ins —
+    // ask-then-ignore is exactly how the runner stopped answering.
+    // The adapter now DOES consume this combo (pushed easy + cooked →
+    // subjectivePullbackSignal in lib/coach/acknowledge.ts joins
+    // detectReadinessPullback's evidence next morning, propose-first),
+    // so the reply can honestly say it weighs into tomorrow's call —
+    // "weighs into" not "will change", because the runner gates it.
+    if (e === 'pushed' && b === 'cooked') return "Pushed and paid. That goes into tomorrow morning's call.";
   }
 
   // Quality (threshold / tempo / intervals).

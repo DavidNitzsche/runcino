@@ -118,6 +118,28 @@ export type FaffSeed = {
     }>;
     summary: string;
   } | null;
+  /** 2026-08-17 · composed morning brief · 2-3 deterministic sentences
+   *  (yesterday acknowledged · today's purpose + readiness band · season
+   *  context only when it changed). Server-composed in
+   *  lib/coach/morning-brief.ts; TodayView renders the paragraph above
+   *  the week strip. Null when composition failed or the visitor is
+   *  signed out — surface renders without it. */
+  morningBrief: {
+    paragraph: string;
+    sentences: { recap: string | null; today: string; season: string | null };
+    composedFor: string;
+  } | null;
+  /** 2026-08-17 · the coach's log (newest first, capped for the
+   *  TrainView LOG strip; full history pages via GET /api/coach/log).
+   *  Week closes, phase boundaries, all-time firsts, fitness shifts. */
+  coachLog: Array<{
+    id: string;
+    kind: 'week_close' | 'phase_boundary' | 'first_ever' | 'fitness_shift';
+    dateISO: string;
+    title: string;
+    body: string;
+    ts: string;
+  }>;
   goalRace: GoalRace | null;
   volumeBars: VolumeBar[];         // 8-week strip
   thisWeekMiles: number;

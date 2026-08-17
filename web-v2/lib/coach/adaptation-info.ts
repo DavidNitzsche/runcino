@@ -24,6 +24,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { stripResearchCitations } from '@/lib/plan/strip-citations';
 
 export type AdaptationKind = 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other';
 
@@ -120,8 +121,13 @@ function composeInfo(r: RawRow): AdaptationInfo {
   // Reason · prefer the parsed why string from the intent value; fall back
   // to the reason field. Always plain English from the source · NOT
   // synthesized.
+  //
+  // 2026-08-17 · citation-scrubbed on the way out. New whys are scrubbed
+  // at the write site (applyAdaptations / writeWorkoutProposals); this
+  // read-side pass covers rows written BEFORE that landed, which still
+  // carry "Research/22 §14" fragments the runner should never see.
   const reasonRaw = r.intent_value?.why ?? r.intent_reason ?? null;
-  const reason = reasonRaw;
+  const reason = reasonRaw ? stripResearchCitations(reasonRaw) : null;
 
   // Kind · prefer the parsed kind from value, fall back to inferring from
   // the reason suffix.

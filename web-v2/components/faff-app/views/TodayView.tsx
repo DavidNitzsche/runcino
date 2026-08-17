@@ -315,6 +315,20 @@ export function TodayView({
           surfaces in one place when the runner taps the readiness ring.
           See designs/from Design agent/readiness-drawer/. */}
 
+      {/* 2026-08-17 · THE COMPOSED MORNING BRIEF · one coach paragraph
+          (yesterday acknowledged · today's purpose + readiness band ·
+          season context only when it changed). NOT the 2026-06-01
+          drawer data above — this is prose, server-composed in
+          lib/coach/morning-brief.ts. Renders only on today's card,
+          pre-run (the post-run pivot owns the page once the run is
+          done), and disappears cleanly when composition returned null. */}
+      {d.today && !d.done && seed.morningBrief?.paragraph ? (
+        <div className="mbrief">
+          <div className="mb-eyebrow">THIS MORNING</div>
+          <div className="mb-body">{seed.morningBrief.paragraph}</div>
+        </div>
+      ) : null}
+
       {/* 2026-06-04 · label + week strip wrapped in a .band so the
           label-to-week distance is the tight --label-gap, while the
           band-to-next-band distance stays --section-gap from .main's

@@ -1093,6 +1093,39 @@ export function TrainView({
               diagnostic.md for the underlying writer/reader
               mismatch that was hiding rows). */}
         </div>
+
+        {/* 2026-08-17 · COACH'S LOG · the relationship arc (week closes,
+            phase boundaries, all-time firsts, fitness shifts). NOT the
+            removed mutation-history dropdown: these are the coach's own
+            authored lines (lib/coach/coach-log.ts), newest first, and
+            the card hides entirely when the log is empty. Full history
+            pages via GET /api/coach/log. */}
+        {(seed.coachLog?.length ?? 0) > 0 && (
+          <div className="card">
+            <div className="ch"><span className="ct">COACH&apos;S LOG</span></div>
+            <div className="clog">
+              {seed.coachLog.map((e) => {
+                const accent =
+                  e.kind === 'first_ever' ? '#F3AD38' :
+                  e.kind === 'fitness_shift' ? '#14C08C' :
+                  e.kind === 'phase_boundary' ? '#27B4E0' :
+                  'rgba(255,255,255,.28)';
+                const dt = new Intl.DateTimeFormat('en-US', {
+                  month: 'short', day: 'numeric', timeZone: 'UTC',
+                }).format(new Date(e.dateISO + 'T12:00:00Z'));
+                return (
+                  <div key={e.id} className="clog-row" style={{ borderLeftColor: accent }}>
+                    <div className="clog-head">
+                      <span className="clog-eyebrow" style={{ color: accent }}>{e.title}</span>
+                      <span className="clog-date">{dt}</span>
+                    </div>
+                    <div className="clog-body">{e.body}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Full-plan modal */}

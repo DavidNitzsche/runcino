@@ -151,6 +151,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    contribute no element, so :first-child = highest-priority live banner. */
 .prehero-stack{display:contents;}
 .prehero-stack>*:not(:first-child){display:none;}
+/* 2026-08-17 · composed morning brief · one quiet coach paragraph above
+   the week strip (lib/coach/morning-brief.ts). Inter body per the brief;
+   left rule keeps it reading as the coach speaking, not a banner. */
+.mbrief{border-left:3px solid rgba(255,255,255,.22);padding:2px 0 2px 14px;max-width:720px;}
+.mbrief .mb-eyebrow{font-size:11px;font-weight:800;letter-spacing:1.5px;color:rgba(255,255,255,.45);margin-bottom:5px;}
+.mbrief .mb-body{font-size:16px;font-weight:500;line-height:1.55;color:rgba(255,255,255,.85);}
 .top{display:flex;align-items:flex-start;justify-content:space-between;}
 .top .date{font-family:'Oswald',sans-serif;font-size:16px;font-weight:500;letter-spacing:1px;opacity:1;text-transform:uppercase;}
 .top .wk{font-size:12px;font-weight:600;opacity:1;margin-top:5px;}
@@ -912,6 +918,15 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    outer dashboard gutter only). */
 .train2 .lower{display:grid;grid-template-rows:auto auto;gap:var(--section-gap);}
 .train2 .card{background:rgba(8,10,14,.54);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:20px;display:flex;flex-direction:column;min-height:0;}
+/* 2026-08-17 · COACH'S LOG strip (lib/coach/coach-log.ts · TrainView).
+   Row accent color carries the entry kind: amber = all-time first,
+   green = fitness shift, blue = phase boundary, white = week close. */
+.train2 .clog{display:flex;flex-direction:column;gap:13px;min-height:0;}
+.train2 .clog-row{border-left:2px solid rgba(255,255,255,.28);padding-left:12px;}
+.train2 .clog-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+.train2 .clog-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.6px;}
+.train2 .clog-date{font-size:10px;font-weight:600;letter-spacing:.8px;color:rgba(255,255,255,.38);}
+.train2 .clog-body{font-size:13px;line-height:1.5;color:rgba(255,255,255,.84);margin-top:3px;}
 .train2 .card .ch{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px;}
 .train2 .card .ch .ct{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.6);}
 .train2 .card .ch .cx{font-size:11px;font-weight:600;color:rgba(255,255,255,.5);}

@@ -108,6 +108,15 @@ export async function POST(req: NextRequest) {
       // don't push up the same day we pulled down.
       const bump = await tryAdaptiveBump(uid, applied > 0).catch(() => null);
       if (bump) await bustBriefingCacheForEvent(uid, 'plan_swap');
+
+      // 2026-08-17 · coach's log daily check (lib/coach/coach-log.ts).
+      // Week-close / phase-boundary entries fire only on the boundary
+      // morning; the longest-run-ever check is one indexed query.
+      // Idempotent + best-effort — never blocks the adaptation pass.
+      try {
+        const { updateCoachLog } = await import('@/lib/coach/coach-log');
+        await updateCoachLog(uid);
+      } catch { /* logged inside · non-fatal */ }
       if (applied > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
       // Stamp last_adapted_at even when 0 actions applied — this is the only
       // cron-fire proof we have. Without it we can't distinguish "cron never

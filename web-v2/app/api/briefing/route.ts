@@ -70,8 +70,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const todayISO = await runnerToday(userId);
-    const { block, workoutBreakdown } = await buildBlock(userId, surface, raceSlug);
-    return NextResponse.json(legacyEnvelopeOf(block, surfaceParam, userId, workoutBreakdown, todayISO));
+    const { block, workoutBreakdown, morningBrief } = await buildBlock(userId, surface, raceSlug);
+    return NextResponse.json(legacyEnvelopeOf(block, surfaceParam, userId, workoutBreakdown, todayISO, morningBrief));
   } catch (err: any) {
     return NextResponse.json({
       error: err?.message ?? String(err),
@@ -84,7 +84,11 @@ async function buildBlock(
   userId: string,
   surface: 'today' | 'plan' | 'races' | 'race_detail' | 'health' | 'me',
   raceSlug: string | undefined,
-): Promise<{ block: CoachFactBlock; workoutBreakdown?: PosterBreakdownRow[] | null }> {
+): Promise<{
+  block: CoachFactBlock;
+  workoutBreakdown?: PosterBreakdownRow[] | null;
+  morningBrief?: import('@/lib/coach/morning-brief').MorningBrief | null;
+}> {
   switch (surface) {
     case 'today': {
       const glance = await loadGlanceState(userId);
@@ -93,7 +97,15 @@ async function buildBlock(
       // is computed by the SAME buildPoster() the web /today renders, so the
       // iOS poster mirrors web exactly instead of re-deriving it client-side.
       const poster = buildPoster(glance, resolveDayState(glance));
-      return { block, workoutBreakdown: poster.workout_breakdown };
+      // 2026-08-17 · additive · composed morning brief (yesterday
+      // acknowledged + today's purpose + season context) so native can
+      // adopt the same paragraph without a wire break. Best-effort.
+      let morningBrief: import('@/lib/coach/morning-brief').MorningBrief | null = null;
+      try {
+        const { loadMorningBrief } = await import('@/lib/coach/morning-brief');
+        morningBrief = await loadMorningBrief(userId, glance);
+      } catch { /* additive field · null on failure */ }
+      return { block, workoutBreakdown: poster.workout_breakdown, morningBrief };
     }
     case 'plan': {
       const training = await loadTrainingState(userId);
@@ -146,6 +158,7 @@ function legacyEnvelopeOf(
   userId: string,
   workoutBreakdown: PosterBreakdownRow[] | null | undefined,
   todayISO: string,
+  morningBrief?: import('@/lib/coach/morning-brief').MorningBrief | null,
 ): {
   surface: string;
   mode: string;
@@ -153,6 +166,9 @@ function legacyEnvelopeOf(
   voice: string[];
   topics: unknown[];
   workout_breakdown: PosterBreakdownRow[] | null;
+  /** 2026-08-17 · additive · composed morning brief (today surface only).
+   *  Wire-safe: legacy clients ignore unknown fields. */
+  morning_brief: import('@/lib/coach/morning-brief').MorningBrief | null;
   block: CoachFactBlock;
   _state: { user_id: string; today: string };
 } {
@@ -168,6 +184,7 @@ function legacyEnvelopeOf(
     voice,
     topics: [],
     workout_breakdown: workoutBreakdown ?? null,
+    morning_brief: morningBrief ?? null,
     block,
     _state: { user_id: userId, today: todayISO },
   };

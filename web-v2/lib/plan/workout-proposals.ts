@@ -21,6 +21,7 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { AdaptationAction, AdaptationTrigger } from './adapt';
+import { stripResearchCitations } from './strip-citations';
 
 export interface PendingProposal {
   id: number;
@@ -72,7 +73,11 @@ export async function writeWorkoutProposals(
     const triggerForAction = triggers.find((t) => t.kind === action.sourceTrigger)
       ?? triggers.find((t) => t.kind === 'readiness_pullback')
       ?? triggers[0];
-    const reason = triggerForAction?.reason ?? action.why ?? 'Engine proposed an adaptation.';
+    // 2026-08-17 · citation scrub at the write site — the proposal
+    // reason + why render verbatim on the Today banner.
+    const reason = stripResearchCitations(
+      triggerForAction?.reason ?? action.why ?? 'Engine proposed an adaptation.',
+    );
     const evidence = (triggerForAction?.evidence ?? {}) as Record<string, unknown>;
 
     for (const workoutId of workoutIds) {
@@ -104,7 +109,7 @@ export async function writeWorkoutProposals(
           newType: action.newType ?? null,
           newDate: action.newDate ?? null,
           shaveFraction: action.shaveFraction ?? null,
-          why: action.why,
+          why: stripResearchCitations(action.why),
         };
 
         await pool.query(
