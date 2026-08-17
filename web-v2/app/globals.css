@@ -137,7 +137,18 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    - Section-labeled bands wrap their label + content in a .band div
      (see below).  Two-tier rhythm: tight --label-gap inside the
      band, loose --section-gap between bands. */
-.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:var(--grid-gap);display:grid;grid-auto-flow:row;grid-auto-rows:auto;gap:var(--section-gap);align-content:start;-ms-overflow-style:none;scrollbar-width:none;animation:fadeUp var(--t-tap) ease-out;}
+/* 2026-08-17 · `grid-template-columns:minmax(0,1fr)` · .main had no
+   explicit column, so its implicit column was `auto` — sized to the
+   WIDEST min-content in the page.  The week strip is inline-styled
+   `repeat(7, minmax(72px,1fr))`, a hard 558px floor, so at 390 that one
+   row set the column to 558 and every sibling stretched with it: the
+   header, the coach brief and the whole hero all rendered 558px wide
+   inside a 390px viewport (201 elements past the right edge, and
+   document.scrollWidth stayed 390, so none of it could be scrolled to).
+   Capping the column at the container fixes all of them at once, and the
+   week strip is untouched — it already carries its own `overflow-x:auto`,
+   which is what its author intended and what now actually works. */
+.main{position:relative;z-index:2;flex:1;overflow-y:auto;color:var(--txt);text-shadow:none;padding:var(--grid-gap);display:grid;grid-auto-flow:row;grid-template-columns:minmax(0,1fr);grid-auto-rows:auto;gap:var(--section-gap);align-content:start;-ms-overflow-style:none;scrollbar-width:none;animation:fadeUp var(--t-tap) ease-out;}
 .main::-webkit-scrollbar{display:none;}
 /* 2026-06-04 · `.band` · a section-labeled band wraps its label
    (.fll / .weeklab / .eyebrow-sec / etc.) + its content as ONE grid
@@ -302,8 +313,16 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    completed days).  Rest hero has no middle (no map/session) so its
    .wcard spans cols 2-3; planned/completed put .mapcol or .session in
    col 2 and .wcard in col 3.  Anal-left-aligned: every row starts at
-   the same left edge under .main padding, with consistent gaps. */
-.hero,.hero-v2{display:grid;grid-template-columns:1fr 1.6fr 1.1fr;gap:var(--grid-gap);align-items:stretch;min-height:480px;}
+   the same left edge under .main padding, with consistent gaps.
+
+   2026-08-17 · THE GRID WAS INVERTED.  `1fr 1.6fr 1.1fr` measured
+   300 / 480 / 330 at 1440: the PRESCRIPTION (what to run today, col 1)
+   was the narrowest track on the page and clipped its own labels
+   ("TARGET PACE" 85px into 79px, "~37 min" 94px into 79px), while the
+   middle card — which restated the same three numbers — was 60% wider.
+   Primary content gets the widest column: 1.6fr 1fr 1.1fr → 480 / 300 /
+   330. Nothing clips. */
+.hero,.hero-v2{display:grid;grid-template-columns:1.6fr 1fr 1.1fr;gap:var(--grid-gap);align-items:stretch;min-height:480px;}
 .hero{min-height:300px;}
 .hero > .hmain,.hero-v2 > .hmain{grid-column:1;}
 .hero > .wcard,.hero-v2 > .wcard{grid-column:3;}
@@ -484,7 +503,13 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    label-to-value spacing comes from --label-gap, never from per-
    element margin-tops. */
 /* 2026-06-04 · gap aligned to 4px-base scale (was 14, now 16 = 4×base). */
-.hero-v2 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--section-gap);min-width:0;}
+/* 2026-08-17 · was repeat(3,1fr) — hard-coded to the three stats the
+   planned hero happened to carry.  EST TIME has since moved out of the
+   hero (it already lives in the card to its right), and a fixed 3-track
+   grid would have left the third track as dead space.  grid-auto-flow
+   gives one equal column per stat actually rendered, whatever the
+   variant ships. */
+.hero-v2 .stats{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--section-gap);min-width:0;}
 .hero-v2 .stats > div{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0;}
 /* 2026-06-04 · text colors read from per-surface tokens · on dark
    defaults these resolve to white alphas, on the colored hero card
@@ -711,7 +736,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 
 /* Chart wrapper · absorbs extra card height so the coach panel
    stays pinned to the bottom without dead space in between. */
-.hero-v2 .sb-chartwrap{flex:1 1 auto;display:flex;align-items:center;min-height:0;margin:6px 0;}
+/* 2026-08-17 · top-aligned, not centred.  With the duplicated stat header
+   removed this is the card's only content, and a vertically-centred list
+   floating in the middle of a tall card reads as an accident.  A session
+   breakdown is a list; lists start at the top. */
+.hero-v2 .sb-chartwrap{flex:1 1 auto;display:flex;align-items:flex-start;min-height:0;margin:6px 0;}
 .hero-v2 .sb-chart{width:100%;display:block;}
 .hero-v2 .sb-empty{padding:32px 8px;font-size:13px;color:rgba(255,255,255,.55);text-align:center;width:100%;}
 
@@ -1138,11 +1167,20 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 
 /* key workouts */
 .train2 .miles{display:flex;flex-direction:column;}
-.train2 .mile{display:flex;align-items:flex-start;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);}
+/* 2026-08-17 · max-width:100% · `.miles` is a column flex whose cross size
+   resolves late, so each `.mile` row was laid out at its own max-content
+   width and the column simply overflowed around it.  Measured at 390: a
+   row 480px wide inside a 308px card, pushing Train's horizontal scroll to
+   521px.  Capping the row at its container is what makes `min-width:0` on
+   the text cell below actually bite. */
+.train2 .mile{display:flex;align-items:flex-start;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);min-width:0;max-width:100%;}
 .train2 .mile:last-child{border-bottom:none;}
 .train2 .mile .mwk{font-family:Inter,sans-serif;font-size:12px;font-weight:600;opacity:.6;width:38px;flex:0 0 auto;padding-top:1px;}
 .train2 .mile .mdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;margin-top:4px;}
-.train2 .mile .mtx{flex:1;}
+/* 2026-08-17 · min-width:0 · without it this flex child cannot shrink past
+   its longest unbreakable line, so the "notable miles" rows forced the
+   whole Train column to 480px inside a 350px viewport. */
+.train2 .mile .mtx{flex:1;min-width:0;}
 .train2 .mile .mtt{font-size:13.5px;font-weight:600;line-height:1.25;}
 .train2 .mile .mstruct{font-size:11px;font-weight:500;opacity:.78;margin-top:1px;letter-spacing:.2px;}
 .train2 .mile .mss{font-size:11.5px;font-weight:500;opacity:.62;margin-top:2px;}
@@ -1762,6 +1800,9 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 .hdrv-bar .ax{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:rgba(255,255,255,.3);}
 .hdrv-bar i{position:absolute;top:0;bottom:0;border-radius:6px;}
 .hdrv-p{font-family:'Oswald',sans-serif;font-size:21px;font-weight:600;text-align:right;}
+/* "no change" replaces a bare 0 · words, so Inter at label scale rather
+   than a 21px Oswald numeral pretending to be a measurement. */
+.hdrv-p-flat{font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:.3px;opacity:.62;white-space:nowrap;}
 
 /* Right column · 7-day readiness bars */
 .hh-week{display:flex;flex-direction:column;}
@@ -1769,6 +1810,17 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 .hh-wk-head .l{font-size:11px;font-weight:800;letter-spacing:2px;color:rgba(159,179,173,.85);}
 .hh-wk-head .r{font-size:11px;font-weight:700;color:rgba(159,179,173,.85);}
 .hh-wk-head .r b{color:#fff;}
+/* 2026-08-17 · ZERO-BASIS FLEX IN A SHRINK-TO-FIT PARENT · same class of
+   bug as the /log heatmap columns.  `.hh-score` is a column flex with
+   `align-items:center`, so its children are sized to their own content
+   rather than stretched.  `.hh-wkbars` has no content of its own — its
+   seven `.hh-wb` children are `flex:1` (basis 0%, empty), so the row's
+   max-content width was the six 7px gaps and nothing else.  Measured:
+   container 42px wide, all seven bars 0.00px, sitting at x434 against a
+   168px day-label row at x371.  The trend rendered as nothing at all.
+   `align-self:stretch` gives the row a definite width to divide, which
+   is what `flex:1` needed all along, and lines it up with the labels. */
+.hh-wk-head,.hh-wkbars,.hh-wkdays{align-self:stretch;}
 .hh-wkbars{display:flex;align-items:flex-end;gap:7px;flex:1;min-height:110px;}
 .hh-wb{flex:1;border-radius:4px 4px 0 0;min-height:8px;position:relative;}
 .hh-wkdays{display:flex;gap:6px;margin-top:7px;}
@@ -2103,6 +2155,9 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 .rp-ss .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;letter-spacing:-1px;margin-top:7px;line-height:.9;}
 .rp-ss .v small{font-size:13px;opacity:.65;font-weight:400;}
 .rp-ss .v.down{color:#86efa0;}
+/* "Not set" is an absence, not a measurement · Inter at body scale so it
+   never reads as a number the app failed to render. */
+.rp-ss .v.rp-ss-unset{font-family:Inter,sans-serif;font-size:15px;font-weight:600;letter-spacing:0;opacity:.5;}
 
 .rp-sec{font-size:11px;font-weight:700;letter-spacing:2px;opacity:.6;margin:34px 0 14px;display:flex;align-items:center;gap:10px;}
 .rp-sec .rp-secr{margin-left:auto;font-size:11px;font-weight:600;opacity:.7;letter-spacing:.3px;}
@@ -2412,6 +2467,23 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
    Content that genuinely can't fit after compression should use the
    .inner-scroll helper (Tier 4) — never let the card itself grow. */
 .tile,.wcard{padding:var(--card-padding);border-radius:var(--card-radius);height:100%;display:flex;flex-direction:column;align-items:stretch;gap:var(--card-section-gap);overflow:hidden;}
+/* 2026-08-17 · TIER 3 HAD NO ESCAPE VALVE FOR ACTIONS.  `height:100%` makes
+   a grid item resolve against the row instead of contributing its content
+   height to it, so .wcard was pinned to whatever the siblings sized the row
+   to and `overflow:hidden` quietly ate the remainder.  Measured at 1024:
+   card bottom 676, "Skip this run" bottom 703, "Move to another day" bottom
+   781 — both PRIMARY ACTIONS invisible, with no scrollbar and no hint that
+   anything was missing.
+   Dropping to `height:auto` restores that contribution — the grid's own
+   `align-items:stretch` still equalises the card against its siblings when
+   the row is the taller of the two, so nothing about the intended look
+   changes; the row simply grows when the card genuinely needs more.
+   (`min-height` must stay `auto` here: a percentage min-height is the same
+   cyclic reference and re-zeroes the contribution. Measured with
+   min-height:100% → row 480px; with min-height:auto → row 527px.)
+   Clipping a decorative overflow is a layout choice. Clipping a button is
+   a bug. */
+.hero > .wcard,.hero-v2 > .wcard{height:auto;min-height:auto;}
 /* TIER 4 · Opt-in inner-scroll for a sub-region inside a card when
    content is genuinely too long to compress. The card shape is fixed;
    only the scrollable sub-region moves. Apply to a wrapper div around
@@ -2937,6 +3009,49 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
   .tiles{grid-template-columns:repeat(2,1fr);}
 }
 
+/* 2026-08-17 · THE STACK RULE ABOVE NEVER FIRED.  `.hero > .hmain{grid-column:1}`
+   and `.hero > .wcard{grid-column:3}` are unconditional, so setting
+   grid-template-columns:1fr only redefined track 1 — the wcard's
+   `grid-column:3` still forced tracks 2 and 3 into existence as IMPLICIT
+   auto columns.  Measured at 390: used tracks were `40px 243px 235px`
+   = 518px of track inside a 390px viewport, with the 1fr column starved
+   to 40px.  document.scrollWidth stayed 390, so the overflow was not
+   even reachable by scrolling.
+   Breakpoint is 1100, not 960: at 1024 the three tracks measured
+   300 / 187 / 206 and "TARGET PACE" and "~37 min" clipped exactly as they
+   did at 1440 before the ratio fix.  Three columns need roughly 1100px of
+   main width to hold the prescription without cutting a word.
+
+   The stacked layout is FLEX, not a one-column grid.  A one-column grid
+   still sizes rows off each card's intrinsic contribution, and these cards
+   report almost nothing: every one of them carries `height:100%` (universal
+   card rule) or `flex:1`, both of which are cyclic against an auto row, so
+   the tracks collapsed — measured at 1024 as `133px 139px 135px` holding
+   content of 392 / 137 / 485.  A flex column with `flex:0 0 auto` children
+   takes each card at its own content height and asks no questions. */
+@media (max-width:1100px){
+  .hero,.hero-v2{display:flex;flex-direction:column;min-height:auto;}
+  /* min-height:auto, NOT 0 · `min-height:0` here would zero each card's
+     min-content contribution, which is what `.main` sizes the hero's grid
+     row from.  With it the row measured 448px while the hero's own content
+     ran to 1099px, and the week strip below drew straight over the top of
+     the overflow. */
+  .hero > .hmain,.hero > .wcard,
+  .hero-v2 > .hmain,.hero-v2 > .sessblue,
+  .hero-v2 > .mapcol,.hero-v2 > .wcard{
+    grid-column:auto;flex:0 0 auto;height:auto;min-height:auto;
+  }
+  .hero-v2 .routemap,.hero-v2 .mapcol{min-height:240px;}
+  /* Train · `1fr` is `minmax(auto,1fr)`, so these tracks could never
+     shrink past their content's min-content width.  Measured at 390:
+     .phgrid and .arow both rendered 1036px wide inside a 350px column. */
+  .train2 .phgrid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .train2 .arow{grid-template-columns:minmax(0,1fr);}
+}
+@media (max-width:680px){
+  .train2 .phgrid{grid-template-columns:minmax(0,1fr);}
+}
+
 /* Phone · sidebar becomes a top strip; main views stack */
 @media (max-width:680px){
   .win{flex-direction:column;}
@@ -3446,3 +3561,36 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 
 /* Metadata footer inside expanded episode */
 .nhis-ep-meta{font-size:11.5px;color:rgba(255,255,255,.35);margin-top:4px;}
+
+/* ================================================================
+   ROUTE STATUS SURFACES · 404 / error / loading
+   2026-08-17 · There were none of these. Next's defaults are white
+   pages with no navigation, served inside an app that is entirely
+   dark — the worst-looking screen in the product was the one a
+   runner hit when something went wrong. These render outside the
+   app shell, so they paint their own ground and carry their own way
+   back to /today.
+   ================================================================ */
+.statusscreen{min-height:100vh;background:var(--bg,#0A0C10);color:var(--txt,#F6F7F8);display:flex;align-items:center;justify-content:center;padding:32px 24px;
+  background-image:radial-gradient(120% 90% at 50% 0%, rgba(39,180,224,.08), transparent 62%);}
+.statusscreen-in{max-width:460px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px;}
+.statusscreen-brand{font-family:Anton,'Oswald',sans-serif;font-size:19px;letter-spacing:.5px;color:rgba(255,255,255,.28);margin-bottom:10px;}
+.statusscreen-eyebrow{font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--eyebrow,#F3AD38);}
+.statusscreen-title{font-family:'Oswald',sans-serif;font-size:44px;font-weight:600;line-height:1;text-transform:uppercase;}
+.statusscreen-body{font-size:14.5px;font-weight:500;line-height:1.55;color:rgba(255,255,255,.62);max-width:400px;}
+.statusscreen-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;margin-top:10px;}
+.statusscreen-btn{display:inline-flex;align-items:center;justify-content:center;font-family:inherit;font-size:13.5px;font-weight:700;letter-spacing:.3px;color:var(--txt,#F6F7F8);background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:12px 20px;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s;}
+.statusscreen-btn:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.26);}
+.statusscreen-digest{flex:0 0 100%;font-size:11px;color:rgba(255,255,255,.26);margin-top:6px;}
+/* Loading pulse · three dots, no spinner theatre. */
+.statusscreen-pulse{display:flex;gap:7px;}
+.statusscreen-pulse i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.42);animation:statusPulse 1.1s ease-in-out infinite;}
+.statusscreen-pulse i:nth-child(2){animation-delay:.16s;}
+.statusscreen-pulse i:nth-child(3){animation-delay:.32s;}
+@keyframes statusPulse{0%,100%{opacity:.25;transform:translateY(0);}50%{opacity:1;transform:translateY(-3px);}}
+@media (prefers-reduced-motion: reduce){
+  .statusscreen-pulse i{animation:none;opacity:.6;}
+}
+@media (max-width:480px){
+  .statusscreen-title{font-size:34px;}
+}

@@ -7,6 +7,8 @@ import { ROLECOL } from '../constants';
 import {
   CoachActivityTimeline,
   ConnectionRow as ToolkitConnectionRow,
+  FaError,
+  FaSkeleton,
   NotificationPrefsList,
   ProvenanceLine,
   StatTile,
@@ -470,15 +472,27 @@ interface ProfilePhysiology {
 
 function PhysiologyBlock() {
   const [p, setP] = useState<ProfilePhysiology | null>(null);
-  const [loading, setLoading] = useState(true);
+  // 2026-08-17 · THE TRUST BUG.  This used to be `loading` + `p`, with the
+  // fetch doing `r.ok ? r.json() : null` and `.catch(() => {})`.  A 500, a
+  // dropped connection and a signed-out session all collapsed into the
+  // same falsy `p` — so a FAILED LOAD rendered "Sign in to see your
+  // physiology" on a page already showing the runner's own name, and the
+  // rows below it asserted "Not set" for values that are set.  The app
+  // could not tell "no data" from "couldn't load" and confidently claimed
+  // the first.  Three distinct states now, and a failure says so.
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'signed-out'>('loading');
+  const [reloadKey, setReloadKey] = useState(0);
   const { openTerm, drawerEl } = useGlossaryDrawer();
 
   useEffect(() => {
     let alive = true;
+    setStatus('loading');
     fetch('/api/profile/state')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (!alive || !j) return;
+      .then(async (r) => {
+        if (!alive) return;
+        if (r.status === 401 || r.status === 403) { setStatus('signed-out'); return; }
+        if (!r.ok) { setStatus('error'); return; }
+        const j = await r.json();
         const ph = j?.physiology ?? {};
         setP({
           max_hr:        typeof ph.max_hr        === 'number' ? ph.max_hr        : null,
@@ -489,14 +503,24 @@ function PhysiologyBlock() {
           lthr_set_at:   typeof ph.lthr_set_at   === 'string' ? ph.lthr_set_at   : null,
           vdot:          typeof ph.vdot          === 'number' ? ph.vdot          : null,
         });
+        setStatus('ready');
       })
-      .catch(() => { /* fail soft */ })
-      .finally(() => { if (alive) setLoading(false); });
+      .catch(() => { if (alive) setStatus('error'); });
     return () => { alive = false; };
-  }, []);
+  }, [reloadKey]);
 
-  if (loading) {
-    return <div className="fa-rows" style={{ padding: 14, color: 'var(--fa-mute)' }}>Loading…</div>;
+  if (status === 'loading') {
+    return <div className="fa-rows" style={{ padding: 14 }}><FaSkeleton lines={3} /></div>;
+  }
+  if (status === 'error' || (status === 'ready' && !p)) {
+    return (
+      <div className="fa-rows" style={{ padding: 14 }}>
+        <FaError
+          text="Could not load your physiology. These numbers are stored, not lost."
+          onRetry={() => setReloadKey((k) => k + 1)}
+        />
+      </div>
+    );
   }
   if (!p) {
     return <div className="fa-rows" style={{ padding: 14, color: 'var(--fa-mute)' }}>Sign in to see your physiology.</div>;

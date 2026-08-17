@@ -250,7 +250,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
                 {`${ack.nextPlan.raceName || ack.nextPlan.raceSlug || 'Next'} plan generation failed.`}
                 {ack.nextPlan.reason ? ` ${ack.nextPlan.reason}` : ''}
                 {ack.nextPlan.raceSlug && (
-                  <>{' '}<a href={`/races/${ack.nextPlan.raceSlug}`} style={{ color: 'var(--over)', textDecoration: 'underline' }}>Open race to retry.</a></>
+                  <>{' '}<a href={`/goal/${ack.nextPlan.raceSlug}`} style={{ color: 'var(--over)', textDecoration: 'underline' }}>Open race to retry.</a></>
                 )}
               </div>
             )}

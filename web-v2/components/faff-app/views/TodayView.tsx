@@ -1204,30 +1204,19 @@ function paceToSec(p: string): number {
  * separates it).
  */
 function SessionBlueprint({
-  distLabel, estLabel, data, coachLine,
+  data, coachLine,
 }: {
-  distLabel: string;
-  estLabel: string;
   data: BlueprintData | null;
   coachLine: string | null | undefined;
 }) {
   return (
     <div className="sessblue">
-      <div className="sb-head">
-        <div className="sb-stat">
-          <div className="n">{distLabel}</div>
-          <div className="k">DISTANCE</div>
-        </div>
-        <div className="sb-stat">
-          <div className="n">{estLabel}</div>
-          <div className="k">EST TIME</div>
-        </div>
-        <div className="sb-stat">
-          <div className="n">{data?.effortLabel ?? '·'}</div>
-          <div className="k">EFFORT</div>
-        </div>
-      </div>
-
+      {/* 2026-08-17 · the .sb-head stat row (DISTANCE / EST TIME / EFFORT)
+          is gone.  It restated the hero's own numbers at 28px while the
+          hero's copies clipped: one Today screen printed "4.0 mi" at
+          x290/x615/x977, "~37 min" twice, "9:13" twice, "Z2" three times
+          and the word "easy" five times.  The hero owns the prescription;
+          this card owns the session breakdown.  Nothing is said twice. */}
       <div className="sb-chartwrap">
         {data && data.segs.length > 0 ? (
           <SessionBlueprintList data={data} />
@@ -1723,8 +1712,8 @@ function PlannedHeroV2({
   const totalMi = parseFloat(d.dist || '0') || 0;
   const eff  = EFF[d.type];
   const kit  = KIT[d.type];
-  const forecast = useDayForecast(d.iso);
-  const weatherLabel = formatForecast(forecast) ?? '—';
+  const { forecast, failed: forecastFailed } = useDayForecastState(d.iso);
+  const weatherLabel = formatForecast(forecast) ?? forecastFallback(forecastFailed);
   const effortLbl = planEffortLabel(d.type);
   const hr = hrTargetLabel(d);
   const cadenceTgt = planCadenceTarget(d.type, cadenceBaseline, d.cadenceTarget);
@@ -1951,6 +1940,13 @@ function PlannedHeroV2({
         ) : null}
 
         <div className="leftstack">
+          {/* 2026-08-17 · these three stats used to clip: at 1440 the hero
+              column was 300px, so each stat got 79px and "TARGET PACE"
+              (85px) and "~37 min" (94px) were both cut off.  The middle
+              card restated all three at 28px to compensate.  The fix is
+              the column width, not the content — the hero column is now
+              480px and the restatement is gone, so the prescription reads
+              once, in full, in the place that owns it. */}
           <div className="stats">
             <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
             <div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div><div className="k">TARGET PACE</div></div>
@@ -1988,15 +1984,13 @@ function PlannedHeroV2({
             </div>
             <div>
               <div className="kcl">BEST WINDOW</div>
-              <div className="kcv">{bestWindow(forecast)}</div>
+              <div className="kcv">{bestWindow(forecast, forecastFailed)}</div>
             </div>
           </div>
         </div>
       </div>
 
       <SessionBlueprint
-        distLabel={`${d.dist} mi`}
-        estLabel={d.est.replace(/^~/, '~')}
         data={deriveBlueprintData(d.workoutSpec ?? null, totalMi, d.type, d.pace)}
         coachLine={deriveCoachLine(d, kit.coach)}
       />
@@ -2071,9 +2065,14 @@ function PlannedHeroV2({
  *  parity · single source of truth) when present, falls back to the
  *  legacy client derivation for older forecasts cached without the
  *  field. */
-function bestWindow(f: { temp_min_f: number | null; temp_max_f: number | null; best_window?: string } | null): string {
+function bestWindow(
+  f: { temp_min_f: number | null; temp_max_f: number | null; best_window?: string } | null,
+  failed = false,
+): string {
   // No forecast → no window. Never invent one (2026-06-10 honesty pass).
-  if (!f) return '—';
+  // 2026-08-17 · but a failed fetch is not "no window", it is "we don't
+  // know" — an em-dash asserts the first.
+  if (!f) return forecastFallback(failed);
   if (f.best_window) return f.best_window;
   // Legacy fallback · matches the server's composeBestWindow for older
   // cached forecasts. Drop once 30-min cache cycles past 2026-06-01.
@@ -4299,17 +4298,44 @@ type DayForecast = {
  *  with a real temp range + conditions. Past days surface actual Strava
  *  weather via the run-detail fetch. */
 function useDayForecast(dateIso: string | null | undefined): DayForecast | null {
+  return useDayForecastState(dateIso).forecast;
+}
+
+/** 2026-08-17 · the swallowed-catch version of this hook is why FORECAST and
+ *  BEST WINDOW rendered em-dashes.  A 500 or a dropped request left `data`
+ *  null, exactly as "there is genuinely no forecast for this date" does, and
+ *  the hero then stated the absence as fact.  `failed` separates the two so
+ *  a failure can say it failed. */
+function useDayForecastState(dateIso: string | null | undefined): {
+  forecast: DayForecast | null;
+  failed: boolean;
+} {
   const [data, setData] = useState<DayForecast | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
-    if (!dateIso) { setData(null); return; }
+    if (!dateIso) { setData(null); setFailed(false); return; }
     let cancelled = false;
+    setFailed(false);
     fetch(`/api/forecast/${dateIso}`)
-      .then(r => r.ok ? r.json() : null)
-      .then((j: DayForecast | null) => { if (!cancelled && j) setData(j); })
-      .catch(() => { /* swallow — card hides if no forecast */ });
+      .then(async r => {
+        if (cancelled) return;
+        // 404 is a real answer: no forecast exists for that date.
+        if (r.status === 404) { setData(null); return; }
+        if (!r.ok) { setFailed(true); return; }
+        const j: DayForecast | null = await r.json();
+        if (!cancelled && j) setData(j);
+      })
+      .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
   }, [dateIso]);
-  return data;
+  return { forecast: data, failed };
+}
+
+/** The one place that decides how an absent forecast reads.  "Unavailable"
+ *  when the request failed, an em-dash only when there is honestly nothing
+ *  to show for that date. */
+function forecastFallback(failed: boolean): string {
+  return failed ? 'Unavailable' : '—';
 }
 
 /** "62-78° · Cloudy" / "78°" / null when no temp data. Prefers the
@@ -5369,7 +5395,7 @@ function RecentRaceBeat({
           ) : null}
           <button
             type="button"
-            onClick={() => router.push(`/races/${race.slug}`)}
+            onClick={() => router.push(`/goal/${race.slug}`)}
             className="rrb-btn rrb-btn-quiet"
           >The race story ›</button>
         </span>
@@ -5422,7 +5448,7 @@ function RecentRaceBeat({
         ) : null}
         <button
           type="button"
-          onClick={() => router.push(`/races/${race.slug}`)}
+          onClick={() => router.push(`/goal/${race.slug}`)}
           className="rrb-btn"
         >The race story ›</button>
       </div>

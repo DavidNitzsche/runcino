@@ -55,24 +55,60 @@ function notablesFromElevation(geom: CourseGeom | null, distMi: number): RaceDet
     const round = (v: number) => Number.isInteger(v) ? v.toString() : v.toFixed(0);
     return `${a < 1 ? '1' : round(a)}–${round(b)}`;
   };
-  const phase = (delta: number, gain: number) => {
-    if (delta < -50) return 'Steady descent. Let gravity do the work, hold form.';
-    if (delta > 50) return 'Climbing block. Stay relaxed, do not surge.';
-    if (gain > 200) return 'Rolling hills. The bumps live here.';
-    return 'Flat and fast. Where the race is won.';
+  // 2026-08-17 · this section used to print the SAME SENTENCE under all
+  // three mile ranges. Two reasons, both fixed here:
+  //  1. `delta` came out of the GPX in METRES but was compared against
+  //     ±50 as if it were feet, while `gain` in the same expression was
+  //     converted (×3.28). A 40 m (130 ft) drop therefore read as "flat".
+  //     Everything below is in feet, converted once, at the source.
+  //  2. Even when the thirds genuinely are alike, three identical rows is
+  //     worse than one honest one — it looks like the app has nothing to
+  //     say and is padding. Identical thirds now collapse into a single
+  //     row spanning the distance.
+  // Each row also carries its own measured net change, so two thirds that
+  // share a headline still differ in the detail a runner can act on.
+  const M_TO_FT = 3.28084;
+  const phase = (deltaFt: number, gainFt: number): { head: string; body: string } => {
+    if (deltaFt < -160) return { head: 'Steady descent', body: 'Let gravity do the work, hold form.' };
+    if (deltaFt > 160) return { head: 'Climbing block', body: 'Stay relaxed, do not surge.' };
+    if (gainFt > 200) return { head: 'Rolling', body: 'The bumps live here.' };
+    return { head: 'Flat and fast', body: 'Where the race is won.' };
   };
-  return splitMiles.map(([a, b]) => {
+  const netLabel = (deltaFt: number) => {
+    const r = Math.round(deltaFt);
+    if (Math.abs(r) < 20) return 'net flat';
+    return `${r > 0 ? '+' : '−'}${Math.abs(r)} ft net`;
+  };
+
+  const thirds = splitMiles.map(([a, b]) => {
     const iA = Math.floor((a / distMi) * eles.length);
     const iB = Math.min(eles.length - 1, Math.floor((b / distMi) * eles.length));
     const sub = eles.slice(iA, iB + 1);
-    const delta = (sub.at(-1) ?? 0) - (sub[0] ?? 0);
-    let gain = 0;
+    const deltaFt = ((sub.at(-1) ?? 0) - (sub[0] ?? 0)) * M_TO_FT;
+    let gainM = 0;
     for (let i = 1; i < sub.length; i++) {
       const d = sub[i] - sub[i - 1];
-      if (d > 0) gain += d;
+      if (d > 0) gainM += d;
     }
-    return { mi: labelMile(a, b), tx: `<b>${phase(delta, gain * 3.28).split('. ')[0]}.</b> ${phase(delta, gain * 3.28).split('. ').slice(1).join('. ')}` };
+    const gainFt = gainM * M_TO_FT;
+    return { a, b, deltaFt, gainFt, ...phase(deltaFt, gainFt) };
   });
+
+  // All three thirds read the same → one row for the whole course.
+  const allAlike = thirds.every(t => t.head === thirds[0].head);
+  if (allAlike) {
+    const totalDelta = thirds.reduce((s, t) => s + t.deltaFt, 0);
+    const totalGain = thirds.reduce((s, t) => s + t.gainFt, 0);
+    return [{
+      mi: labelMile(0, distMi),
+      tx: `<b>${thirds[0].head} throughout.</b> ${thirds[0].body} ${netLabel(totalDelta)} over the full distance, ${Math.round(totalGain)} ft of total climbing.`,
+    }];
+  }
+
+  return thirds.map(t => ({
+    mi: labelMile(t.a, t.b),
+    tx: `<b>${t.head}.</b> ${t.body} ${netLabel(t.deltaFt)}.`,
+  }));
 }
 
 function insightFor(name: string, distMi: number, netElevFt: number): string {

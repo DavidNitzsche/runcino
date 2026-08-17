@@ -123,7 +123,14 @@ export function TargetsView({
     <div className="targets2">
       <div className="top">
         <div>
-          <div className="date">Targets</div>
+          {/* 2026-08-17 · was "Targets" while the sidebar said "Goal" and the
+              URL said /races. Settled on GOAL: it is what the nav has always
+              called it, it is singular (there is one primary goal), and
+              "target" is already spoken for elsewhere in the app — TARGET
+              PACE, EFFORT TARGET, the heart-rate target on Today all mean
+              "the number to hit on this run", not "the race you are aiming
+              at". Reusing it as a page name made the word mean two things. */}
+          <div className="date">Goal</div>
           <div className="wk">
             {goal.name}
             {goal.daysAway >= 0 ? ` · ${goal.daysAway} day${goal.daysAway === 1 ? '' : 's'}` : ''}

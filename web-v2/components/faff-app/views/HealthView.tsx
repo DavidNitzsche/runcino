@@ -278,7 +278,13 @@ function DriverRowEl({ d }: { d: DriverRow }) {
           />
         ) : null}
       </span>
-      <span className="hdrv-p" style={{ color: col }}>{sign}{ptsAbs}</span>
+      {/* 2026-08-17 · a bare "0" in the points column read as a measurement
+          that came back zero.  It means the driver moved the score by
+          nothing at all — so say that, in the same register as "+4" and
+          "−8" beside it. */}
+      <span className="hdrv-p" style={{ color: col }}>
+        {d.pts === 0 ? <span className="hdrv-p-flat">no change</span> : `${sign}${ptsAbs}`}
+      </span>
     </div>
   );
 }

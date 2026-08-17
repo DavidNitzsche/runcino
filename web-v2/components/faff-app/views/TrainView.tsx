@@ -691,7 +691,7 @@ export function TrainView({
                     : (bc.raceDate ? `raced ${formatDate(bc.raceDate)}` : 'raced')}
                   {' '}
                   <Link
-                    href={`/races/${bc.raceSlug}`}
+                    href={`/goal/${bc.raceSlug}`}
                     style={{ color: '#F3AD38', textDecoration: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
                   >
                     The race story ›
@@ -911,13 +911,21 @@ export function TrainView({
         ) : null}
       </div>
 
-      {/* Execution strip — last 4 past weeks + current week */}
-      {execWeeks.length > 0 && (
+      {/* Execution strip — last 4 past weeks + current week.
+          2026-08-17 · gated on PAST weeks, not on execWeeks.length. With
+          only the current week in the array the block still rendered, and
+          its subtitle read "last 0 weeks" — a header describing an empty
+          history, shipped as product copy. An execution history of nothing
+          is not a history; the block stands down until there is one. */}
+      {execWeeks.some((r) => !r.isCurrent) && (
         <div className="wkexec">
           <div className="wkexec-hd">
             <span className="wkexec-title">EXECUTION</span>
             <span className="wkexec-sub">
-              last {execWeeks.filter((r) => !r.isCurrent).length} weeks
+              {(() => {
+                const n = execWeeks.filter((r) => !r.isCurrent).length;
+                return `last ${n} week${n === 1 ? '' : 's'}`;
+              })()}
             </span>
           </div>
           {execWeeks.map((r) => {
@@ -999,7 +1007,13 @@ export function TrainView({
                 {/* 2026-06-03 · weeksLabel removed · was "Wk N–M" which
                     reset to wk 1 every rebuild. The phase title + position
                     on the bar ramp carries the same info honestly. */}
-                <div className="pdesc">{p.desc}</div>
+                {/* 2026-08-17 · the CURRENT phase's description is already
+                    the FOCUS line at the top of this page — the two printed
+                    the identical paragraph about 480px apart. The header
+                    instance wins (it is above the fold and answers "what is
+                    this block for"); the NOW card keeps its title, its NOW
+                    tag and its volume, and drops the repeat. */}
+                {now ? null : <div className="pdesc">{p.desc}</div>}
                 <div className="pvol">{p.vol} <small>TARGET VOL</small></div>
               </div>
             );
@@ -1015,12 +1029,38 @@ export function TrainView({
                   unambiguous on its own; the rebuild-resets-week-1
                   problem made the WK count meaningless. */}
               <span className="ct">THIS WEEK</span>
-              <span className="cx">{miles[nowIdx]} MI PLANNED</span>
+              {/* 2026-08-17 · "17 MI PLANNED" dropped. One quantity was
+                  printed four times under four different labels on this
+                  page: the bar label on the ramp chart, "17 mi TARGET VOL"
+                  on the phase card, "17 MI PLANNED" here, and "0.0/17 mi"
+                  in the execution strip. The progress form is the one that
+                  earns its place — it carries the plan AND how much of it
+                  is done. This one carried half of that. */}
             </div>
             <div className="twk">
               {seed.week.map((d, wi) => {
                 const col = SEASON_TYPE_COLOR[d.type as keyof typeof SEASON_TYPE_COLOR] ?? '#8A90A0';
-                const meta = d.dist === ' · ' ? 'rest' : `${d.dist} mi · ${d.pace}`;
+                // 2026-08-17 · a rest row read "TUE  REST  ·  rest" — the
+                // type chip already says REST, so the meta column repeated
+                // it in lower case. A rest day has no distance and no pace;
+                // the honest meta is nothing at all.
+                const meta = d.dist === ' · ' ? '' : `${d.dist} mi · ${d.pace}`;
+                // 2026-08-17 · the secondary label truncated to "EASY (MEDIU…"
+                // because it re-stated the chip word before saying anything
+                // new. Strip the leading repeat so the 120px slot holds the
+                // part that actually adds information ("MEDIUM").
+                const chip = workoutTypeTitle(d.type);
+                const subLabel = (() => {
+                  const raw = (d.name ?? '').trim();
+                  if (!raw) return '';
+                  if (raw.toLowerCase() === chip.toLowerCase()) return '';
+                  const stripped = raw
+                    .replace(new RegExp(`^${chip}\\b`, 'i'), '')
+                    .replace(/^[\s·:–—-]+/, '')
+                    .replace(/^\((.*)\)$/, '$1')
+                    .trim();
+                  return stripped || '';
+                })();
                 return (
                   <div
                     key={wi}
@@ -1038,14 +1078,14 @@ export function TrainView({
                         plan-builder authored a structured prescription
                         ("LONG · 4mi @ M"). Show it as a small secondary
                         line only when it adds info beyond the type chip. */}
-                    <span className="tnm">{workoutTypeTitle(d.type)}</span>
-                    {d.name && d.name.toLowerCase() !== workoutTypeTitle(d.type).toLowerCase() ? (
+                    <span className="tnm">{chip}</span>
+                    {subLabel ? (
                       <span style={{
                         fontSize: 9, fontWeight: 700, letterSpacing: '0.6px',
                         color: 'rgba(255,255,255,.55)', whiteSpace: 'nowrap',
                         overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120,
                         marginLeft: 6,
-                      }}>{d.name}</span>
+                      }}>{subLabel}</span>
                     ) : null}
                     <span className="tmeta">{meta}</span>
                     {d.skipped ? null : d.done ? (
@@ -1255,7 +1295,7 @@ export function TrainView({
                 <div className="pjlab">NO RACE GOAL SET</div>
                 {/* AFC fix 9 · a real affordance instead of quoting a URL
                     path at the runner. Routes to the Goal page. */}
-                <Link href="/races" className="pjnote" style={{ display: 'inline-block', color: '#F3AD38', textDecoration: 'none', cursor: 'pointer' }}>
+                <Link href="/goal" className="pjnote" style={{ display: 'inline-block', color: '#F3AD38', textDecoration: 'none', cursor: 'pointer' }}>
                   Pick a goal race to see the projection ›
                 </Link>
               </>

@@ -254,7 +254,7 @@ function RecentRunsLog({ recent, onOpenRun }: { recent: RecentRun[]; onOpenRun?:
                 <span className="ln">{r.name}</span>
                 <span className="lm">{r.meta}</span>
                 {r.badge === 'RACE' && r.raceSlug ? (
-                  <a className="lb race" href={`/races/${r.raceSlug}`} onClick={(e) => e.stopPropagation()}>RACE</a>
+                  <a className="lb race" href={`/goal/${r.raceSlug}`} onClick={(e) => e.stopPropagation()}>RACE</a>
                 ) : r.badge ? (
                   <span className={`lb ${r.badge === 'NAILED IT' || r.badge === 'SOLID' ? 'ok' : r.badge === 'RACE' ? 'race' : 'pr'}`}>{r.badge}</span>
                 ) : null}

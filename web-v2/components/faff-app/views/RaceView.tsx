@@ -371,7 +371,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
     <>
       <div className="rp-back" onClick={onBack} role="button" tabIndex={0}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-        TARGETS
+        GOAL
       </div>
 
       <div className="rp-hero">
@@ -573,7 +573,16 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         <div className="rp-ss"><div className="k">DISTANCE</div><div className="v">{r.distanceMi}<small> mi</small></div></div>
         <div className="rp-ss"><div className="k">NET ELEVATION</div><div className="v down">{r.netElevFt > 0 ? `+${r.netElevFt}` : r.netElevFt}<small> ft</small></div></div>
         <div className="rp-ss"><div className="k">TOTAL GAIN</div><div className="v">+{r.gainFt.toLocaleString()}<small> ft</small></div></div>
-        <div className="rp-ss"><div className="k">{r.effectiveSource === 'projection' ? 'TARGET PACE' : 'GOAL PACE'}</div><div className="v">{goalPace}<small>/mi</small></div></div>
+        {/* 2026-08-17 · the seed defaults goalPace to '·', so a race with no
+            goal set rendered the tile as a bare "·/mi" — a unit with nothing
+            in front of it, which reads as a value that failed to load rather
+            than one that was never entered. Say "Not set" instead. */}
+        <div className="rp-ss">
+          <div className="k">{r.effectiveSource === 'projection' ? 'TARGET PACE' : 'GOAL PACE'}</div>
+          {goalPace && goalPace !== '·'
+            ? <div className="v">{goalPace}<small>/mi</small></div>
+            : <div className="v rp-ss-unset">Not set</div>}
+        </div>
       </div>
 
       {/* 2026-08-17 · post-race story. THE RACE STORY (splits vs the

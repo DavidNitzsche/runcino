@@ -25,14 +25,18 @@ const ROUTE_TO_VIEW: Record<string, ViewKey> = {
   '/training':   'train',
   '/plan':       'train',
   '/health':     'health',
+  // 2026-08-17 · /races → /goal. `/races` stays mapped so a client-side
+  // navigation that predates the rename still resolves to the right view;
+  // next.config.ts permanently redirects the URL itself.
+  '/goal':       'targets',
   '/races':      'targets',
   '/log':        'activity',
   '/profile':    'profile',
   '/me':         'profile',
 };
 const VIEW_TO_ROUTE: Record<ViewKey,string> = {
-  today: '/today', train: '/training', health: '/health', targets: '/races',
-  race: '/races', activity: '/log', profile: '/me',
+  today: '/today', train: '/training', health: '/health', targets: '/goal',
+  race: '/goal', activity: '/log', profile: '/me',
 };
 
 export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { seed: FaffSeed; initial?: ViewKey; raceSeed?: RaceDetailSeed; autoOpenRunId?: string }) {
@@ -47,7 +51,8 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
 
   // Reflect URL to view (for back/forward navigation).
   useEffect(() => {
-    const v = (pathname && ROUTE_TO_VIEW[pathname]) || (pathname?.startsWith('/races/') ? 'race' : null);
+    const v = (pathname && ROUTE_TO_VIEW[pathname])
+      || (pathname?.startsWith('/goal/') || pathname?.startsWith('/races/') ? 'race' : null);
     if (v && v !== view) setView(v);
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -214,8 +219,8 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
             onOpenDrawer={() => setOpenOverlay('drawer')}
             onOpenRace={() => {
               const slug = seed.goalRace?.slug;
-              if (slug) router.push(`/races/${slug}`);
-              else router.push('/races');
+              if (slug) router.push(`/goal/${slug}`);
+              else router.push('/goal');
             }}
             onOpenRun={(id) => setOpenOverlay({ type: 'run', id })}
           />
@@ -239,7 +244,7 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         {view === 'targets'  && (
           <TargetsView
             seed={seed}
-            onOpenRace={(slug) => router.push(`/races/${slug}`)}
+            onOpenRace={(slug) => router.push(`/goal/${slug}`)}
           />
         )}
         {view === 'race'     && <RaceView seed={seed} race={raceSeed} onBack={() => navigate('targets')} />}

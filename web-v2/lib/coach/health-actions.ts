@@ -215,18 +215,51 @@ export function buildThresholdLine(args: {
   }
   const pbNeeded = rules.pullbackConsecutiveDays;
 
-  // [N/M] format · runner sees "where I am" / "where the bar is" at a
-  // glance. Skip rules already past threshold (the chip above fired).
-  const parts: string[] = [];
-  if (hrvHas < rhvNeeded) parts.push(`HRV low streak [${hrvHas}/${rhvNeeded}]`);
-  if (rhrHas < rhrNeeded) parts.push(`RHR high streak [${rhrHas}/${rhrNeeded}]`);
-  if (pbConsec < pbNeeded) parts.push(`sustained pull-back [${pbConsec}/${pbNeeded}]`);
+  // 2026-08-17 · this used to ship the engineering form of itself:
+  //   "Adapter triggers at: HRV low streak [0/5] · RHR high streak [0/5] ·
+  //    sustained pull-back [0/3]. Hard rules always on: illness, flare,
+  //    wrist temp +0.4°C, weekly load ratio > 2.0, form score ≤ −30."
+  // Counter syntax, internal rule names and raw thresholds, printed as
+  // user copy on the Health page. It reads as a debug dump because it is
+  // one. Same information, said the way a coach would say it: name the
+  // signal, say how far along it is, and only when it is actually moving.
+  //
+  // A zero-length streak is not news. Reporting [0/5] three times is how
+  // the line ended up saying nothing at length.
+  const moving: string[] = [];
+  if (hrvHas > 0 && hrvHas < rhvNeeded) {
+    moving.push(`HRV has been under your baseline ${dayCount(hrvHas)} running`);
+  }
+  if (rhrHas > 0 && rhrHas < rhrNeeded) {
+    moving.push(`resting heart rate has been up ${dayCount(rhrHas)} running`);
+  }
+  if (pbConsec > 0 && pbConsec < pbNeeded) {
+    moving.push(`readiness has sat low ${dayCount(pbConsec)} running`);
+  }
 
-  if (parts.length === 0) return '';
+  // Nothing is building and nothing has fired · say so plainly, once.
+  if (moving.length === 0) {
+    if (hrvHas >= rhvNeeded || rhrHas >= rhrNeeded || pbConsec >= pbNeeded) return '';
+    return 'Nothing is trending toward a plan change right now. Illness, a niggle flare or a sharp jump in load would override that on their own.';
+  }
 
-  const softLine = `Adapter triggers at: ${parts.join(' · ')}.`;
-  const hardLine = 'Hard rules always on: illness, flare, wrist temp +0.4°C, weekly load ratio > 2.0, form score ≤ −30.';
-  return `${softLine} ${hardLine}`;
+  const needed = Math.max(rhvNeeded, rhrNeeded, pbNeeded);
+  return `${sentenceCase(joinList(moving))}. It takes about ${needed} in a row before the plan eases itself back.`;
+}
+
+/** "3 days" / "1 day" — the streak lengths above read as prose, not [N/M]. */
+function dayCount(n: number): string {
+  return n === 1 ? '1 day' : `${n} days`;
+}
+
+/** "a", "a and b", "a, b and c" — no Oxford comma, no em dashes. */
+function joinList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+function sentenceCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function buildHealthActions(args: BuildArgs): HealthAction[] {

@@ -498,7 +498,7 @@ export function GapPanel({ goal, series, anchor, status: statusRead }: GapPanelP
               </svg>
             </span>
             <div className="t">Log a recent race or give Faff <b>about two weeks</b> of quality runs and the gap breakdown will appear here.</div>
-            <a className="cta" href="/races">
+            <a className="cta" href="/goal">
               Log a race result
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
             </a>
