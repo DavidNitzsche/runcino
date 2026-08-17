@@ -1059,16 +1059,45 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               <div className="hins">
                 <div className="hins-k">ENVIRONMENT · HEAT</div>
                 <div className="hins-h">
-                  {/* 2026-06-05 · multi-tenant audit Pattern 5 fix · null
-                      rhrTrend (no RHR data to call) → 'In progress' instead
-                      of defaulting to 'Stable' which silently claims falling
-                      RHR. Cite: docs/2026-06-05-multi-tenant-audit.html. */}
-                  {seed.health.heatAcclim.rhrTrend === 'plateauing' ? 'Acclimating'
-                    : seed.health.heatAcclim.rhrTrend === 'rising' ? 'Adapting'
-                    : seed.health.heatAcclim.rhrTrend === 'falling' ? 'Stable'
-                    : 'In progress'}
+                  {/* HEAT-1 (2026-08-17) · this headline used to read the
+                      RESTING-HR trend, and mapped RISING resting HR to
+                      "Adapting". Research/06:158-163 says the acclimation
+                      signature is HR at a given WORKLOAD falling, -5 to -15
+                      bpm across days 1-14; rising resting HR is the heat-
+                      strain signature. The card could tell a runner they
+                      were heat-adapted before a hot race on the strength of
+                      a resting HR going the wrong way. It now reads the
+                      measured workload-HR delta, and falls back to the day
+                      count when there isn't one.
+                      2026-06-05 · multi-tenant audit Pattern 5 · never claim
+                      a state we have no evidence for. */}
+                  {seed.health.heatAcclim.adaptationEvidence === 'measured_adapting' ? 'Adapting'
+                    : seed.health.heatAcclim.adaptationEvidence === 'measured_not_yet' ? 'Not yet'
+                    : `Day ${seed.health.heatAcclim.daysInWindow} of 14`}
                 </div>
+                {/* Research/06 §11 · the gate. When conditions clear a
+                    doctrine threshold the card leads with what changes,
+                    not with a hydration note. Propose-first: this states
+                    the change, the runner makes it. */}
+                {seed.health.heatAcclim.gate?.fires ? (
+                  <div className="hins-m" style={{ color: seed.health.heatAcclim.gate.action === 'cancel' ? '#F06A6A' : '#F3AD38' }}>
+                    {seed.health.heatAcclim.gate.action === 'cancel' ? 'BAIL'
+                      : seed.health.heatAcclim.gate.action === 'easy_time_on_feet' ? 'EASY TIME ON FEET'
+                      : seed.health.heatAcclim.gate.action === 'reduce_intensity' ? 'CUT INTENSITY'
+                      : 'TRIM HARD VOLUME'}
+                    {' · '}
+                    {seed.health.heatAcclim.gate.headline}
+                  </div>
+                ) : null}
                 <div className="hins-m">{seed.health.heatAcclim.message}</div>
+                {seed.health.heatAcclim.workloadHrDeltaBpm != null ? (
+                  <div className="hins-what">
+                    HR at your usual easy pace, second half of the window vs the first:{' '}
+                    {seed.health.heatAcclim.workloadHrDeltaBpm > 0 ? '+' : ''}
+                    {seed.health.heatAcclim.workloadHrDeltaBpm} bpm. Research/06 expects
+                    {' '}-5 to -15 across a full acclimation block.
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {seed.user.biologicalSex === 'female' && seed.health.cyclePerformance && seed.health.cyclePerformance.insights.length > 0 ? (

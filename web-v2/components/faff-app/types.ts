@@ -808,13 +808,34 @@ export type HealthSnapshot = {
     } | null;
   } | null;
   // Power moves Wave 2 · heat acclimatization.
+  // HEAT-1 (2026-08-17) · additive. `rhrTrend` is RESTING HR and is NOT
+  // the acclimation signature — Research/06:158-163 is HR at a given
+  // WORKLOAD falling. The card used to read rising resting HR as
+  // "Adapting", which is the fatigue signature. Read
+  // `adaptationEvidence` / `workloadHrDeltaBpm` instead, and `gate` for
+  // the Research/06 §11 safety verdict.
   heatAcclim?: {
     daysInWindow: number;
     avgTempF: number;
+    avgWbgtF?: number | null;
     rhrTrend: 'rising' | 'plateauing' | 'falling' | null;
+    workloadHrDeltaBpm?: number | null;
+    adaptationEvidence?: 'measured_adapting' | 'measured_not_yet' | 'day_count_only';
+    adaptationPct?: number;
     expectedHRPenaltyBpm: number;
+    pacingAdjustPct?: readonly [number, number];
     daysToFullAcclim: number;
     message: string;
+    gate?: {
+      flag: 'white' | 'green' | 'yellow' | 'red' | 'black' | 'unknown';
+      wbgtF: number | null;
+      dewpointF: number | null;
+      action: 'normal' | 'reduce_hard_volume' | 'reduce_intensity' | 'easy_time_on_feet' | 'cancel';
+      fires: boolean;
+      proposeFirst: boolean;
+      headline: string;
+      citation: string;
+    } | null;
   } | null;
   // Power moves #15 · post-session recovery tracker.
   // 2026-06-01 · brief response · percentRecovered + pctRecovered are

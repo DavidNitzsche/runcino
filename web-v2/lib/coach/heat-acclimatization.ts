@@ -1,22 +1,36 @@
 /**
- * lib/coach/heat-acclimatization.ts · Research/06 § heat adjustment.
+ * lib/coach/heat-acclimatization.ts · Research/06 §4 Heat Acclimation.
  *
- * Detects active heat exposure (7d rolling avg high temp > 75°F),
- * tracks the body's adaptation curve, and projects expected HR
- * penalty drop over time.
+ * HEAT-1 (2026-08-17) · four doctrine faults fixed here, plus the
+ * missing safety gate (lib/coach/heat-gate.ts).
  *
- * Doctrine sources:
- *   · Research/06 § heat adjustment (8 bpm/10°F penalty on Z2)
- *   · Sawka et al. (full acclimatization in 10-14 days)
- *   · Friel · 50% acclimatized by day 5, 90%+ by day 10
+ * 1 · The dose threshold read the wrong column. Research/06:172 is
+ *     "Heat dose: Tair >=85°F or WBGT >=75°F". The code carried
+ *     HEAT_THRESHOLD_F = 75 and applied it to AIR temperature, so the
+ *     WBGT number was sitting in the Tair slot and an ordinary 75°F
+ *     morning counted as acclimation stimulus. Now: isHeatDoseDay()
+ *     takes Tair >=85 OR an approximated WBGT >=75, using the humidity
+ *     and cloud cover already stored on every enriched run.
  *
- * Algorithm:
- *   1. Pull last 14 days of recent run weather temps + RHR
- *   2. Detect heat window · 7d rolling avg > 75°F = exposure
- *   3. Count days in window · 1 to 14
- *   4. Compute current expected HR penalty using Sawka decay:
- *      penalty(day_N) = max_penalty × exp(-N/7)
- *   5. Compare actual RHR climb pattern to expected
+ * 2 · The adaptation signature was inverted. Research/06:158-163 says
+ *     acclimation shows up as HR AT A GIVEN WORKLOAD falling, -5 bpm by
+ *     day 3 through -15 bpm by day 14. The engine watched RESTING HR,
+ *     and the HealthView card read RISING resting HR as "Adapting" —
+ *     which is the fatigue signature, not the adaptation one. Resting
+ *     HR is now reported as what it is (a load signal that can
+ *     contradict the day count), and `workloadHrDeltaBpm` carries the
+ *     real measurement: mean HR across easy runs held at a comparable
+ *     pace, first half of the window vs second.
+ *
+ * 3 · The decay curve and its attribution were invented. The header
+ *     credited Friel with "50% by day 5, 90%+ by day 10" and the code
+ *     used `max_penalty * exp(-N/7)`. Research/06:156 attributes the
+ *     timeline to Périard 2021, and :161-163 give ~50% of gains at days
+ *     4-7 and ~70-80% at days 8-10. ACCLIMATION_TIMELINE is now that
+ *     table, read directly, with no exponential in between.
+ *
+ * 4 · MAX_PENALTY_BPM_AT_PEAK was 8 bpm citing Research/06, which gives
+ *     -5 to -15 (:158-163). It is 15 now, the full-acclimation figure.
  *
  * Returns null when not in a heat exposure window.
  */
@@ -24,25 +38,117 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
+import {
+  isHeatDoseDay,
+  wbgtApproxF,
+  evaluateHeatGate,
+  type HeatGateVerdict,
+} from './heat-gate';
+
+/**
+ * Research/06:158-163 · Périard 2021 / Tipton-related ACSM consensus.
+ * Bands are the research's own, kept as bands rather than collapsed to
+ * a point so the conformance test can assert against the table.
+ */
+export const ACCLIMATION_TIMELINE: ReadonlyArray<{
+  throughDay: number;
+  /** "HR @ workload" column · bpm reduction from the unacclimated state. */
+  hrReductionBpm: readonly [number, number];
+  /** "Performance" column · share of full acclimation gains realized. */
+  gainsPct: readonly [number, number];
+  /** :179-185 · pacing during acclimation, % slower than normal. */
+  pacingAdjustPct: readonly [number, number];
+  label: string;
+}> = [
+  { throughDay: 3,  hrReductionBpm: [5, 5],   gainsPct: [0, 0],     pacingAdjustPct: [10, 15], label: 'first days' },
+  { throughDay: 7,  hrReductionBpm: [10, 10], gainsPct: [50, 50],   pacingAdjustPct: [5, 10],  label: 'half adapted' },
+  { throughDay: 10, hrReductionBpm: [10, 15], gainsPct: [70, 80],   pacingAdjustPct: [3, 5],   label: 'mostly adapted' },
+  { throughDay: 14, hrReductionBpm: [15, 15], gainsPct: [100, 100], pacingAdjustPct: [0, 0],   label: 'adapted' },
+] as const;
+
+/** :169 · "Duration: 10-14 days minimum, 14-21 days preferred." */
+export const FULL_ACCLIM_DAYS = 14;
+
+/**
+ * :163 · the HR-at-workload reduction a fully acclimated runner has
+ * banked, which is the same number an unacclimated runner is paying.
+ * Was 8, citing a research file that says -5 to -15.
+ */
+export const MAX_PENALTY_BPM_AT_PEAK = 15;
+
+/** Minimum heat-window runs before we will call anything. */
+const MIN_HEAT_RUNS = 4;
+
+/**
+ * Pace band, in seconds per mile, within which two easy runs count as
+ * "the same workload" for the :158-163 comparison. Engine-internal, not
+ * from Research/06: it exists so the HR delta is not just a proxy for
+ * one hard run in the window.
+ */
+const SAME_WORKLOAD_PACE_TOLERANCE_S = 45;
 
 export interface HeatAcclimatization {
   daysInWindow: number;
   avgTempF: number;
+  /** Mean approximated WBGT across the heat-window runs. Null when no
+   *  humidity was stored. */
+  avgWbgtF: number | null;
   /** 2026-06-05 · multi-tenant audit Pattern 5 fix · was non-nullable
    *  with a 'plateauing' default when rhrSeries < 5 readings. That
    *  silently said "body is plateauing" with no evidence. Now nullable ·
    *  null means "we don't have enough RHR signal to call a trend."
-   *  Consumers (the message builder) handle null by skipping the
-   *  RHR-conditional prose. */
+   *
+   *  HEAT-1 (2026-08-17): this is RESTING HR and it is NOT the
+   *  acclimation signature (Research/06:158-163 is HR at a given
+   *  workload). Rising resting HR is a load / heat-strain signal. No
+   *  consumer may read it as adaptation. */
   rhrTrend: 'rising' | 'plateauing' | 'falling' | null;
+  /**
+   * HEAT-1 · the real adaptation signature (Research/06:158-163).
+   * Change in mean HR across easy runs held at a comparable pace,
+   * second half of the window minus first half. NEGATIVE means
+   * adapting. Null when fewer than four comparable runs.
+   */
+  workloadHrDeltaBpm: number | null;
+  /** Whether the measured workload-HR agrees with the day count. */
+  adaptationEvidence: 'measured_adapting' | 'measured_not_yet' | 'day_count_only';
+  /** Share of full acclimation gains the timeline predicts · :161-163. */
+  adaptationPct: number;
   expectedHRPenaltyBpm: number;
+  /** :179-185 · how much slower than normal to run today, percent. */
+  pacingAdjustPct: readonly [number, number];
   daysToFullAcclim: number;
   message: string;
+  /**
+   * HEAT-1 · the Research/06 §11 safety gate for the most recent
+   * conditions we have. `fires` true means the session should change;
+   * `proposeFirst` is always true when it fires, so nothing mutates
+   * without the runner.
+   */
+  gate: HeatGateVerdict;
 }
 
-const HEAT_THRESHOLD_F = 75;
-const FULL_ACCLIM_DAYS = 14;
-const MAX_PENALTY_BPM_AT_PEAK = 8;  // 8 bpm above baseline at peak heat per Research/06
+/** The timeline row covering day N. */
+export function acclimationStage(dayN: number): (typeof ACCLIMATION_TIMELINE)[number] {
+  for (const row of ACCLIMATION_TIMELINE) {
+    if (dayN <= row.throughDay) return row;
+  }
+  return ACCLIMATION_TIMELINE[ACCLIMATION_TIMELINE.length - 1];
+}
+
+const mid = (b: readonly [number, number]): number => (b[0] + b[1]) / 2;
+
+/**
+ * Expected residual HR cost, bpm · Research/06:158-163 read forward.
+ * An unacclimated runner carries the full MAX_PENALTY_BPM_AT_PEAK; the
+ * timeline's HR-at-workload column is how much of it they have paid
+ * back by day N. No exponential, no Sawka decay constant — the previous
+ * `max * exp(-N/7)` was not in the research.
+ */
+export function expectedHeatPenaltyBpm(dayN: number): number {
+  const stage = acclimationStage(dayN);
+  return Math.max(0, Math.round((MAX_PENALTY_BPM_AT_PEAK - mid(stage.hrReductionBpm)) * 10) / 10);
+}
 
 export async function computeHeatAcclimatization(userUuid: string): Promise<HeatAcclimatization | null> {
   // 2026-06-03 · runner TZ anchors the 14d window.
@@ -51,13 +157,24 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
   // Phase B · one canonical dedup. An unflagged watch+HK dupe of one run would
   // otherwise weight its weather temp 2× in the avg + heat-day count.
   const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, 14), today);
-  const tempRows = await pool.query<{ d: string; temp_f: number | string | null }>(
+  // HEAT-1 · humidity and cloud cover come along now: the dose test is
+  // "Tair >=85°F or WBGT >=75°F" (:172) and WBGT needs both.
+  const tempRows = await pool.query<{
+    d: string; temp_f: number | string | null;
+    humidity_pct: number | string | null; cloud_pct: number | string | null;
+  }>(
     `SELECT (data->>'date')::date::text AS d,
             COALESCE(
+              (data->'weather'->>'temp_f_peak')::numeric,
               (data->'weather'->>'temp_f')::numeric,
               (data->'weather'->'tempRange'->>'peak')::numeric,
               (data->'weather'->'tempRange'->>'mean')::numeric
-            ) AS temp_f
+            ) AS temp_f,
+            COALESCE(
+              (data->'weather'->>'humidity_pct_peak')::numeric,
+              (data->'weather'->>'humidity_pct')::numeric
+            ) AS humidity_pct,
+            (data->'weather'->>'cloud_cover_pct')::numeric AS cloud_pct
        FROM runs
       WHERE user_uuid = $1::uuid
         AND id = ANY($3::bigint[])
@@ -67,17 +184,32 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
     [userUuid, today, canonicalIds],
   ).then((r) => r.rows).catch(() => []);
 
-  const temps = tempRows.map((r) => Number(r.temp_f)).filter((v) => Number.isFinite(v) && v > 0);
-  if (temps.length < 4) return null;
+  const readings = tempRows
+    .map((r) => ({
+      d: r.d,
+      tempF: Number(r.temp_f),
+      humidityPct: r.humidity_pct != null ? Number(r.humidity_pct) : null,
+      cloudPct: r.cloud_pct != null ? Number(r.cloud_pct) : null,
+    }))
+    .filter((r) => Number.isFinite(r.tempF) && r.tempF > 0);
+  if (readings.length < MIN_HEAT_RUNS) return null;
 
-  const avgTempF = temps.reduce((s, x) => s + x, 0) / temps.length;
-  if (avgTempF < HEAT_THRESHOLD_F) return null;  // not in a heat window
+  // HEAT-1 · a day is acclimation stimulus at Tair >=85°F OR WBGT >=75°F
+  // (:172). The old gate was avgTemp >= 75°F on AIR temperature, which
+  // is the WBGT number in the wrong column.
+  const doseDays = readings.filter((r) => isHeatDoseDay(r.tempF, r.humidityPct, r.cloudPct));
+  if (doseDays.length === 0) return null;
 
-  // Days in window · count runs above threshold.
-  const heatDays = temps.filter((t) => t >= HEAT_THRESHOLD_F).length;
-  const daysInWindow = Math.min(FULL_ACCLIM_DAYS, heatDays);
+  const avgTempF = readings.reduce((s, r) => s + r.tempF, 0) / readings.length;
+  const wbgts = readings
+    .map((r) => wbgtApproxF(r.tempF, r.humidityPct, r.cloudPct))
+    .filter((v): v is number => v != null);
+  const avgWbgtF = wbgts.length > 0 ? wbgts.reduce((s, x) => s + x, 0) / wbgts.length : null;
 
-  // RHR trend across the window.
+  const daysInWindow = Math.min(FULL_ACCLIM_DAYS, doseDays.length);
+
+  // Resting HR trend across the window. Kept because it is a real load
+  // signal, but explicitly NOT the acclimation signature.
   const rhrRows = await pool.query<{ d: string; v: number | string }>(
     `SELECT recorded_at::date::text AS d, AVG(value::numeric)::numeric AS v
        FROM health_samples
@@ -106,35 +238,109 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
     else rhrTrend = 'plateauing';
   }
 
-  // Expected HR penalty using Sawka exponential decay.
-  // Day 0: 100% penalty · Day 7: 36% · Day 14: 13%
-  const expectedHRPenaltyBpm = +(MAX_PENALTY_BPM_AT_PEAK * Math.exp(-daysInWindow / 7)).toFixed(1);
+  // HEAT-1 · the actual Research/06:158-163 measurement: HR at a given
+  // workload. Easy runs only, held inside a tight pace band so the
+  // comparison really is "at a given workload".
+  const workloadHrDeltaBpm = await measureWorkloadHrDelta(userUuid, canonicalIds);
+
+  const stage = acclimationStage(daysInWindow);
+  const expectedHRPenaltyBpm = expectedHeatPenaltyBpm(daysInWindow);
+  const adaptationPct = mid(stage.gainsPct);
   const daysToFullAcclim = Math.max(0, FULL_ACCLIM_DAYS - daysInWindow);
 
+  const adaptationEvidence: HeatAcclimatization['adaptationEvidence'] =
+    workloadHrDeltaBpm == null ? 'day_count_only'
+      : workloadHrDeltaBpm <= -3 ? 'measured_adapting'
+        : 'measured_not_yet';
+
+  // Copy. Coach voice · no hype, and never a claim the data does not
+  // carry. Day count drives the headline (the timeline is a day
+  // timeline); measured workload HR either corroborates it or says so.
+  const dayLine = `Heat day ${daysInWindow} of ${FULL_ACCLIM_DAYS}`;
   let message: string;
-  if (daysInWindow <= 3) {
-    message = `Heat exposure day ${daysInWindow} of ~10 · expect ~${expectedHRPenaltyBpm} bpm HR penalty on easy efforts. Hydrate harder, cap one workout intensity this week.`;
-  } else if (daysInWindow <= 7) {
-    // 2026-06-05 · multi-tenant audit Pattern 5 · only the 'falling'
-    // branch makes a positive RHR claim · keep that gated on real
-    // signal. 'rising' / 'plateauing' / null all flow to the
-    // mid-adaptation copy which is Sawka-curve-based (days, not RHR)
-    // · honest with or without RHR data.
-    if (rhrTrend === 'falling') {
-      message = `Heat acclimatization day ${daysInWindow} · RHR is settling · the body is adapting on schedule. Expected HR penalty down to ~${expectedHRPenaltyBpm} bpm.`;
-    } else {
-      message = `Heat acclimatization day ${daysInWindow} · body is mid-adaptation. Expected HR penalty ~${expectedHRPenaltyBpm} bpm · should drop to ~3 bpm by day 10.`;
-    }
+  if (adaptationEvidence === 'measured_adapting') {
+    message = `${dayLine} · ${stage.label}. Your HR at the same easy pace is down ${Math.abs(workloadHrDeltaBpm!)} bpm across the window, which is the adaptation showing up. Expect about ${expectedHRPenaltyBpm} bpm of heat cost left.`;
+  } else if (adaptationEvidence === 'measured_not_yet') {
+    message = `${dayLine} · ${stage.label} on the timeline, but your HR at the same easy pace has not come down yet. Hold the effort, let the pace be what it is.`;
   } else {
-    message = `Heat acclimatization day ${daysInWindow} · mostly adapted · expected HR penalty ~${expectedHRPenaltyBpm} bpm. ~${daysToFullAcclim} days to full adaptation.`;
+    message = `${dayLine} · ${stage.label}. Expect about ${expectedHRPenaltyBpm} bpm of heat cost on easy efforts, and run ${stage.pacingAdjustPct[0]}-${stage.pacingAdjustPct[1]}% slower than normal while it settles.`;
   }
+  if (rhrTrend === 'rising') {
+    // Resting HR climbing during a heat block is strain, not progress.
+    message += ' Resting HR is climbing. That is heat strain, not adaptation. Sleep and fluids before you add any load.';
+  }
+
+  // Gate the most recent conditions we have against Research/06 §11.
+  const latest = readings[readings.length - 1];
+  const gate = evaluateHeatGate({
+    tairF: latest.tempF,
+    humidityPct: latest.humidityPct,
+    cloudCoverPct: latest.cloudPct,
+  });
+  if (gate.fires) message = `${gate.headline} ${message}`;
 
   return {
     daysInWindow,
     avgTempF: +avgTempF.toFixed(1),
+    avgWbgtF: avgWbgtF != null ? +avgWbgtF.toFixed(1) : null,
     rhrTrend,
+    workloadHrDeltaBpm,
+    adaptationEvidence,
+    adaptationPct,
     expectedHRPenaltyBpm,
+    pacingAdjustPct: stage.pacingAdjustPct,
     daysToFullAcclim,
     message,
+    gate,
   };
+}
+
+/**
+ * Research/06:158-163 · "HR @ workload" falling is the acclimation
+ * signature. Take the window's easy runs, keep only those within
+ * SAME_WORKLOAD_PACE_TOLERANCE_S of the window's median easy pace, and
+ * compare mean HR in the second half against the first.
+ *
+ * Null when fewer than four comparable runs — the same posture as the
+ * RHR trend: no reading rather than a claim with no evidence behind it.
+ */
+async function measureWorkloadHrDelta(
+  userUuid: string,
+  canonicalIds: number[] | string[],
+): Promise<number | null> {
+  const rows = await pool.query<{ d: string; hr: string | null; pace: string | null }>(
+    `SELECT (data->>'date')::date::text AS d,
+            (data->>'avgHr')::numeric AS hr,
+            COALESCE(
+              (data->>'avgPaceSPerMi')::numeric,
+              CASE WHEN data->>'avgPaceMinPerMi' ~ '^\\d+:\\d+$'
+                THEN split_part(data->>'avgPaceMinPerMi', ':', 1)::numeric * 60
+                   + split_part(data->>'avgPaceMinPerMi', ':', 2)::numeric
+                ELSE NULL END
+            )::numeric AS pace
+       FROM runs
+      WHERE user_uuid = $1::uuid
+        AND id = ANY($2::bigint[])
+        AND COALESCE(data->>'type', 'easy') IN ('easy', 'recovery', 'long')
+        AND (data->>'avgHr') IS NOT NULL
+        AND (data->>'distanceMi')::numeric >= 2
+      ORDER BY (data->>'date')::date ASC`,
+    [userUuid, canonicalIds],
+  ).then((r) => r.rows).catch(() => []);
+
+  const pts = rows
+    .map((r) => ({ hr: Number(r.hr), pace: r.pace != null ? Number(r.pace) : NaN }))
+    .filter((p) => Number.isFinite(p.hr) && p.hr > 60 && Number.isFinite(p.pace) && p.pace > 0);
+  if (pts.length < 4) return null;
+
+  const paces = pts.map((p) => p.pace).sort((a, b) => a - b);
+  const medianPace = paces[Math.floor(paces.length / 2)];
+  const comparable = pts.filter((p) => Math.abs(p.pace - medianPace) <= SAME_WORKLOAD_PACE_TOLERANCE_S);
+  if (comparable.length < 4) return null;
+
+  const half = Math.floor(comparable.length / 2);
+  const first = comparable.slice(0, half);
+  const second = comparable.slice(comparable.length - half);
+  const mean = (xs: typeof comparable) => xs.reduce((s, x) => s + x.hr, 0) / xs.length;
+  return Math.round((mean(second) - mean(first)) * 10) / 10;
 }

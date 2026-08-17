@@ -578,18 +578,13 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     runs28 += info.canonicalIds.length;
     if (day > acuteCutoff) acuteSum += info.mi;
   }
-  // 2026-06-01 · fold strength_sessions into ACWR. Same conversion +
-  // rationale as state-loader · see lib/coach/strength-load.ts.
-  try {
-    const { strengthLoadByDay } = await import('@/lib/coach/strength-load');
-    const strengthByDay = await strengthLoadByDay(userId, acwrFrom, today);
-    for (const [day, miEquiv] of strengthByDay) {
-      chronicSum += miEquiv;
-      if (day > acuteCutoff) acuteSum += miEquiv;
-    }
-  } catch (e) {
-    console.warn('[glance-state] strength-load fold failed:', e instanceof Error ? e.message : String(e));
-  }
+  // STRENGTH-2 (2026-08-17) · the strength fold is removed. It converted
+  // strength minutes to running miles at a fabricated 0.07 mi/min, which
+  // Research/09:350 prohibits outright ("Quantify session load via sRPE;
+  // do not equate to run minutes"), and that number was moving the ratio
+  // the readiness pull-back and the strength cap both read. ACWR is
+  // running-only until both sides can move to sRPE together — the exact
+  // follow-up is written out in lib/coach/strength-load.ts.
   const loadAcute7 = acuteSum > 0 ? +(acuteSum / 7).toFixed(2) : 0;
   const loadChronic28 = chronicSum > 0 ? +(chronicSum / 28).toFixed(2) : 0;
   const loadAcwr = (loadChronic28 >= 0.1 && runs28 >= 3)

@@ -13,13 +13,14 @@
  * Daniels: pair hard with hard, keep easy days truly easy.
  *
  * Correct doctrine (Research/07-strength-programming.md):
- *   1. Heavy strength on hard-run days (PM, ≥4-6h after AM quality)
- *      · "Hard day hard, easy day easy" preserves recovery
+ *   1. Heavy strength on THRESHOLD/TEMPO days (PM, ≥4h after the AM
+ *      session · :553). VO2 and interval days are MAINTENANCE ONLY
+ *      (:554) — see STRENGTH-1 below.
  *   2. Maintenance/light only on recovery days
  *   3. NEVER day-BEFORE a quality or long run (legs not fresh)
  *   4. NEVER on long-run day or day after long (CNS depletion)
  *   5. Keep ≥1 pure rest day per week
- *   6. Race week → 0 · last heavy 7-10 days before race
+ *   6. Race week → 0 · last heavy 7-10 days before race (:113, :166)
  *   7. Per-phase frequency curve:
  *        build (QUALITY phase): 2/wk · heavy
  *        peak  (RACE-SPECIFIC):  1-2/wk · maintenance (cut sets)
@@ -35,6 +36,18 @@
  *   · Beattie et al. (Sports Med 2017) · max + explosive lifting
  *   · Pfitzinger Advanced Marathoning Appx A · hard-day pairing
  *   · Hudson Run Faster Ch.8 · phase-specific strength morphing
+ *
+ * STRENGTH-1 (2026-08-17) · three doctrine faults fixed:
+ *   · pickCandidates prescribed HEAVY on any `isQuality` day. :554 is
+ *     "VO2 / interval | Maintenance only | 24 h" — the one pairing the
+ *     research rules out was the one the picker preferred. Threshold and
+ *     tempo keep the heavy PM pick; intervals get maintenance.
+ *   · The intensity doc claimed "3-5 reps @ 85%+ 1RM" (:190) while the
+ *     emitted session was 6-8 / 8-10 / 12-15. The doc now names the row
+ *     the session sits on, and the hip thrust's 8-10 — a rep range in no
+ *     Research/07 table — is :130's 5-8.
+ *   · Heavy was demoted from 14 days out while the copy asserted the
+ *     research's 7-10 day rule. See LAST_HEAVY_DAYS_BEFORE_RACE.
  *
  * Doctrine NOT enforced here (intentional follow-ups):
  *   · Per-phase set/rep prescriptions (Research/07 §4) · runner picks
@@ -55,11 +68,25 @@ export interface StrengthCoachIntent {
 }
 
 /** 2026-06-03 · Rule 14 · per-pick intensity tag.
- *   heavy       · max-strength lifts (3-5 reps @ 85%+ 1RM) · build phase
- *                 same-day-as-quality only · "hard with hard"
- *   maintenance · same exercises, reduced sets · peak phase + recovery days
- *   mobility    · bodyweight + foam roll only · taper week, post-race recovery
- *  Cite: Research/07 §4 (set/rep prescriptions) + Hudson Run Faster Ch.8. */
+ *   heavy       · the heaviest session this 20-minute format supports ·
+ *                 heavy slow resistance, 6-8 reps at up to ~85% 1RM
+ *                 (Research/07:196 "Tendon HSR"; hip thrust 5-8 at
+ *                 75-85%, :130). Placed on threshold days PM, or on an
+ *                 easy day · "hard with hard".
+ *   maintenance · same exercises, reduced sets · peak phase, recovery
+ *                 days, and every VO2/interval day (Research/07:554).
+ *   mobility    · bodyweight + foam roll only · race week, post-race.
+ *
+ *  STRENGTH-1 (2026-08-17) · this doc used to read "max-strength lifts
+ *  (3-5 reps @ 85%+ 1RM)", which is Research/07:190's max-strength row,
+ *  while sessionFor() emitted 6-8 / 8-10 / 12-15. The emitted session is
+ *  the honest one: :674 states plainly that a no-barbell setup "cannot
+ *  replicate a heavy barbell squat", so a 20-minute goblet-squat session
+ *  is not a 3-5 @ 85-90% max-strength block and should not claim to be.
+ *  The doc now names the row the session actually sits on.
+ *
+ *  Cite: Research/07:189-197 (set/rep table), :129-130 (exercise rows),
+ *        :674 (equipment ceiling) + Hudson Run Faster Ch.8. */
 export type StrengthIntensity = 'heavy' | 'maintenance' | 'mobility';
 
 /** 2026-06-03 · Rule 14 · timing relative to the day's run.
@@ -125,6 +152,16 @@ const HABIT_WINDOW_DAYS = 28;
 const ACWR_HIGH_SPIKE_THRESHOLD = 1.5;
 const RACE_WEEK_WINDOW_DAYS = 7;
 const TAPER_WINDOW_DAYS = 14;
+/**
+ * STRENGTH-1 (2026-08-17) · Research/07:113 and :166 · "Last heavy
+ * session 7-10 d before race." The recommender demoted every heavy pick
+ * from 14 days out (TAPER_WINDOW_DAYS) while the copy at buildReason
+ * told the runner the rule was 7-10 days. The taper is 2-3 weeks (:99)
+ * and its own row still permits 70-85% loads (:82), so the first taper
+ * week keeps its heavy session; 10 is the conservative end of the
+ * research's own 7-10 band.
+ */
+const LAST_HEAVY_DAYS_BEFORE_RACE = 10;
 const DORMANT_THRESHOLD_DAYS = 21;
 
 // ─── Session content (Phase 2 · 3.7) ───────────────────────────────────
@@ -133,14 +170,22 @@ const DORMANT_THRESHOLD_DAYS = 21;
 // fixed templates keyed on the intensity the picker already derives ·
 // deliberately boring: the dose that gets DONE beats the program that
 // gets skipped. Bodyweight/band variants so travel weeks don't zero it.
+//
+// STRENGTH-1 (2026-08-17) · every rep range below now sits on a row of
+// the Research/07:189-197 table or the :129-130 exercise table. The hip
+// thrust was 8-10, which is in neither; :130 gives "Hip thrust | 3-4 ×
+// 5-8 | 75-85%".
 function sessionFor(intensity: StrengthIntensity): StrengthPick['session'] {
   if (intensity === 'heavy') {
     return {
       title: 'Session A · hips + posterior',
       durationMin: 20,
       exercises: [
+        // :196 · Tendon HSR · 6-8 reps at up to ~85% 1RM, 3-4 sets.
         { name: 'Goblet squat (or rear-foot split squat)', sets: 3, reps: '6-8 heavy' },
-        { name: 'Hip thrust (or single-leg bridge)', sets: 3, reps: '8-10' },
+        // :130 · Hip thrust · 3-4 × 5-8 at 75-85%.
+        { name: 'Hip thrust (or single-leg bridge)', sets: 3, reps: '5-8' },
+        // :197 · endurance/conditioning · 12-20 at 40-60%.
         { name: 'Calf raise, straight knee', sets: 2, reps: '12-15' },
       ],
     };
@@ -359,7 +404,7 @@ export async function recommendStrengthDays(
 
 // ─── Phase context · Rule 14 ────────────────────────────────────────────
 
-interface PhaseContext {
+export interface PhaseContext {
   /** Plan mode from training_plans.mode · 'race-prep' / 'maintenance' / 'recovery'. */
   mode: 'race-prep' | 'maintenance' | 'recovery' | 'unknown';
   /** Phase label from plan_phases · 'BASE' / 'QUALITY' / 'RACE-SPECIFIC' /
@@ -412,9 +457,13 @@ function phaseFrequencyCap(phaseCtx: PhaseContext, raceCtx: RaceContext): number
 }
 
 /** Heavy lifts get demoted to maintenance in peak/taper/maintenance/recovery. */
-function shouldDemoteHeavy(phaseCtx: PhaseContext, raceCtx: RaceContext): boolean {
+export function shouldDemoteHeavy(phaseCtx: PhaseContext, raceCtx: RaceContext): boolean {
   if (raceCtx.kind === 'race_week') return true;
-  if (raceCtx.kind === 'taper_week') return true;
+  // STRENGTH-1 · :113, :166 · the heavy cut-off is 7-10 days out, not the
+  // whole 14-day taper window. Day 11-14 keeps its heavy session.
+  if (raceCtx.kind === 'taper_week') {
+    return raceCtx.daysToRace != null && raceCtx.daysToRace <= LAST_HEAVY_DAYS_BEFORE_RACE;
+  }
   if (phaseCtx.mode === 'recovery') return true; // becomes mobility downstream
   if (phaseCtx.mode === 'maintenance') return false; // can still go heavy
   const phase = phaseCtx.phaseLabel.toUpperCase();
@@ -482,7 +531,7 @@ function buildDormantIntent(): StrengthCoachIntent {
 
 // ─── Plan + preferences + race + load context ───────────────────────────
 
-interface WeekDay {
+export interface WeekDay {
   date: string;
   dow: number;            // 0 Mon ... 6 Sun
   type: string;
@@ -546,7 +595,7 @@ async function loadPreferences(userUuid: string): Promise<Prefs> {
   };
 }
 
-interface RaceContext {
+export interface RaceContext {
   kind: 'race_week' | 'taper_week' | 'normal';
   daysToRace: number | null;
 }
@@ -703,13 +752,37 @@ interface Candidate {
 }
 
 /**
+ * Research/07:553-554 · the recovery table splits the two kinds of
+ * quality day and the recommender did not:
+ *
+ *   | Threshold workout | Heavy lifting     | 24 h, or same day with ≥4 h gap |
+ *   | VO2 / interval    | Maintenance only  | 24 h                            |
+ *
+ * STRENGTH-1 (2026-08-17) · `isQuality` was one flag, so an interval
+ * session got a heavy lift prescribed on top of it, which is the exact
+ * pairing :554 rules out. Threshold and tempo days keep the heavy PM
+ * pick; VO2, intervals, fartlek and hill repeats get maintenance only,
+ * and score below a threshold day so the picker prefers the threshold
+ * slot when the week offers both. :539 is the row that permits the
+ * same-day maintenance session at all ("Hard workout day | Light
+ * maintenance only on the same day, or none"); the 24 h in :554 is why
+ * we never put HEAVY there and why the interval day is not the
+ * preferred slot.
+ */
+export const HEAVY_PAIRABLE_QUALITY_TYPES: ReadonlySet<string> =
+  new Set(['threshold', 'tempo']);
+export const MAINTENANCE_ONLY_QUALITY_TYPES: ReadonlySet<string> =
+  new Set(['intervals', 'vo2max', 'fartlek', 'hills']);
+
+/**
  * 2026-06-03 REWRITE · pair hard with hard per Research/07 doctrine.
  *
  * Scoring (higher = better placement):
- *   · quality run day  · score 10 · heavy strength PM (≥4-6h after run)
- *   · easy run day     · score 5  · maintenance, only if not adjacent to hard
- *   · recovery run day · score 3  · maintenance/light only
- *   · rest day         · score 1  · last resort
+ *   · threshold/tempo day · score 10 · heavy strength PM (≥4h · :553)
+ *   · easy run day        · score 5  · maintenance, only if not adjacent to hard
+ *   · VO2/interval day    · score 4  · MAINTENANCE ONLY (:554)
+ *   · recovery run day    · score 3  · maintenance/light only
+ *   · rest day            · score 1  · last resort
  *
  * Hard exclusions (score = -100, filtered):
  *   · long-run day (CNS depletion · doctrine §3)
@@ -719,7 +792,7 @@ interface Candidate {
  *
  * Cite: Research/07 §3 (day placement) + Pfitz Advanced Marathoning Appx A
  */
-function pickCandidates(weekDays: WeekDay[]): Candidate[] {
+export function pickCandidates(weekDays: WeekDay[]): Candidate[] {
   if (weekDays.length === 0) return [];
 
   const hardDayIndexes = new Set<number>();
@@ -744,10 +817,26 @@ function pickCandidates(weekDays: WeekDay[]): Candidate[] {
     let timing: StrengthTiming = 'anytime';
     let pairedWithRun = false;
 
-    if (day.isQuality) {
-      // PREFERRED · pair heavy strength PM with AM quality run
+    if (day.isQuality && MAINTENANCE_ONLY_QUALITY_TYPES.has(day.type)) {
+      // Research/07:554 · "VO2 / interval | Maintenance only | 24 h".
+      // Never heavy here, and ranked below a threshold day so the
+      // picker takes the threshold slot when the week has one.
+      score = 4;
+      intensity = 'maintenance';
+      timing = 'pm';
+      pairedWithRun = true;
+    } else if (day.isQuality && HEAVY_PAIRABLE_QUALITY_TYPES.has(day.type)) {
+      // PREFERRED · Research/07:553 · threshold + heavy lifting, same
+      // day with a ≥4 h gap. Pair heavy strength PM with the AM session.
       score = 10;
       intensity = 'heavy';
+      timing = 'pm';
+      pairedWithRun = true;
+    } else if (day.isQuality) {
+      // Quality flagged with a type we don't have a Research/07:553-554
+      // row for. Conservative degrade: treat it as the interval row.
+      score = 4;
+      intensity = 'maintenance';
       timing = 'pm';
       pairedWithRun = true;
     } else if (day.type === 'easy') {
@@ -852,17 +941,30 @@ function buildReason(
   // 2026-06-03 · Rule 14 · doctrine-driven copy. The picks reflect
   // "hard with hard" pairing · quality-day picks are PM heavy, easy-day
   // picks are anytime maintenance.
-  const pairedCount = picked.filter((iso) => weekDays.find((d) => d.date === iso)?.isQuality).length;
+  // STRENGTH-1 · only a threshold/tempo day earns the "heavy PM after
+  // quality" line. An interval day is a maintenance pick (:554), so
+  // describing it as heavy pairing was copy the prescription no longer
+  // matched.
+  const pairedCount = picked.filter((iso) => {
+    const d = weekDays.find((w) => w.date === iso);
+    return d != null && d.isQuality && HEAVY_PAIRABLE_QUALITY_TYPES.has(d.type);
+  }).length;
+  const intervalCount = picked.filter((iso) => {
+    const d = weekDays.find((w) => w.date === iso);
+    return d != null && d.isQuality && !HEAVY_PAIRABLE_QUALITY_TYPES.has(d.type);
+  }).length;
   const easyCount = picked.filter((iso) => {
     const d = weekDays.find((w) => w.date === iso);
     return d && !d.isQuality && (d.type === 'easy' || d.type === 'recovery');
   }).length;
 
   const reasons: string[] = [];
-  if (pairedCount > 0 && easyCount > 0) {
-    reasons.push(`${pairedCount} heavy PM after quality + ${easyCount} maintenance`);
+  if (pairedCount > 0 && easyCount + intervalCount > 0) {
+    reasons.push(`${pairedCount} heavy PM after threshold + ${easyCount + intervalCount} maintenance`);
   } else if (pairedCount > 0) {
-    reasons.push(`${pairedCount === 1 ? 'PM after quality' : 'both PM after quality runs'} · pair hard with hard`);
+    reasons.push(`${pairedCount === 1 ? 'PM after threshold' : 'both PM after threshold runs'} · pair hard with hard`);
+  } else if (intervalCount > 0) {
+    reasons.push(`maintenance only · interval days take no heavy lifting`);
   } else {
     reasons.push(picked.length === 1 ? 'maintenance' : 'both maintenance');
   }
@@ -877,7 +979,12 @@ function buildReason(
   } else if (phaseCtx.mode === 'maintenance') {
     suffix = ' · off-season · heavier loads OK';
   } else if (raceCtx.kind === 'taper_week') {
-    suffix = ' · maintenance only · last heavy 7-10 days before race';
+    // STRENGTH-1 · say which side of the 7-10 day line we are actually
+    // on (Research/07:113, :166), instead of asserting the rule while
+    // demoting from 14 days out.
+    suffix = shouldDemoteHeavy(phaseCtx, raceCtx)
+      ? ` · maintenance only · inside the last heavy session, ${LAST_HEAVY_DAYS_BEFORE_RACE} days out`
+      : ' · last heavy session · 7-10 days before race';
   } else if (phaseCtx.phaseLabel.toUpperCase() === 'RACE-SPECIFIC') {
     suffix = ' · peak phase · maintenance, cut sets';
   } else if (loadCtx.acwr != null && loadCtx.acwr > ACWR_HIGH_SPIKE_THRESHOLD) {

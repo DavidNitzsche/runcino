@@ -389,21 +389,13 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     runs28 += info.canonicalIds.length;
     if (day > acuteCutoff) acuteSum += info.mi;
   }
-  // 2026-06-01 · fold strength_sessions into ACWR · per Research/15
-  // §ACWR, the ratio is a TRAINING LOAD measure, not running-mileage.
-  // Without this, the recommender + adapter both under-count real
-  // stress on weeks with heavy strength work. See lib/coach/strength-load.ts
-  // for the mi-equivalent conversion (0.07 mi/min).
-  try {
-    const { strengthLoadByDay } = await import('@/lib/coach/strength-load');
-    const strengthByDay = await strengthLoadByDay(userId, acwrFrom, today);
-    for (const [day, miEquiv] of strengthByDay) {
-      chronicSum += miEquiv;
-      if (day > acuteCutoff) acuteSum += miEquiv;
-    }
-  } catch (e) {
-    console.warn('[state-loader] strength-load fold failed:', e instanceof Error ? e.message : String(e));
-  }
+  // STRENGTH-2 (2026-08-17) · the strength fold is removed. Research/15
+  // §ACWR is right that the ratio is a TRAINING LOAD measure rather than
+  // a mileage one, but the fix this file shipped was a fabricated
+  // minute-to-mile constant (0.07), and Research/09:350 says in one line:
+  // "Quantify session load via sRPE; do not equate to run minutes."
+  // ACWR is running-only until the running side can move to sRPE with
+  // it. The follow-up, in order, is in lib/coach/strength-load.ts.
   const loadAcute7    = acuteSum > 0 ? +(acuteSum / 7).toFixed(2) : 0;
   const loadChronic28 = chronicSum > 0 ? +(chronicSum / 28).toFixed(2) : 0;
   // Only compute the ratio when we have at least a few runs in the chronic
