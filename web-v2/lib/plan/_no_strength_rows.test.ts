@@ -35,14 +35,11 @@ const ROOT = join(__dirname, '..', '..');
  * an admission with a name on it, and it is checked for staleness below —
  * fix the file and this gate makes you delete the entry.
  */
-const PENDING_ROUTE: readonly string[] = [
-  // lib/plan/generate.ts · two live sites:
-  //   · the strength companion rows (two `type: 'strength'` plan_workouts
-  //     rows per non-taper week, on the first two easy days)
-  //   · the `crossModes` rest-day relabel (STRENGTH / BIKE 45-60 MIN /
-  //     SWIM 30-40 MIN), fed from profile.cross_training_modes
-  'lib/plan/generate.ts',
-];
+/** Empty since 2026-08-17: generate.ts's strength companion rows and the
+ *  crossModes rest-day relabel were removed, so the scan below now covers
+ *  every plan-row writer with no exemptions. Adding an entry here is an
+ *  admission with a name on it. */
+const PENDING_ROUTE: readonly string[] = [];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

@@ -2695,20 +2695,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         }
       }
     }
-    // P34 · cross-training opt-in · rotate enabled modes across the
-    // rest day. Same logic that used to live in generatePlan's loop.
-    if (input.crossModes.length > 0) {
-      const restDay = days.find((d) => d.type === 'rest' && d.distanceMi === 0);
-      if (restDay) {
-        const mode = input.crossModes[wi % input.crossModes.length];
-        const subLabel = mode === 'strength' ? 'STRENGTH'
-          : mode === 'bike' ? 'BIKE 45-60 MIN'
-          : mode === 'swim' ? 'SWIM 30-40 MIN'
-          : 'CROSS-TRAIN';
-        restDay.subLabel = subLabel;
-        restDay.notes = `Cross-training: ${mode}. Easy effort. Not a run replacement · keeps the engine humming on a non-impact day.`;
-      }
-    }
+    // 2026-08-17 · cross-training rest-day relabel removed (owner ruling).
     weeks.push({ startISO: weekStart, phase: phaseLabel, weeklyMi: vols[wi], days, isRaceWeek, tPaceSec: weekT, isCutback: wi > 0 && (wi + 1) % cutbackEveryN === 0 });
     phaseWkRemaining--;
   }
@@ -3620,39 +3607,9 @@ async function persistPlan(client: PoolClient, args: {
       );
     }
 
-    // Strength companion rows (finding 5.5) · Research/07 doctrine.
-    // Two sessions on easy days per week, alternating Session A (even
-    // weeks, heavy/hip) and Session B (odd weeks, single-leg/core).
-    // Skipped on race week and the final 2 taper weeks where fatigue
-    // management takes priority over strength stimulus.
-    if (!w.isRaceWeek && wi < args.weeks.length - 2) {
-      const isHeavy = wi % 2 === 0;
-      const strengthSession = isHeavy
-        ? { kind: 'strength', title: 'Session A · hips + posterior', durationMin: 20,
-            exercises: [
-              { name: 'Goblet squat (or rear-foot split squat)', sets: 3, reps: '6-8 heavy' },
-              { name: 'Hip thrust (or single-leg bridge)', sets: 3, reps: '8-10' },
-              { name: 'Calf raise, straight knee', sets: 2, reps: '12-15' },
-            ] }
-        : { kind: 'strength', title: 'Session B · single-leg + core', durationMin: 20,
-            exercises: [
-              { name: 'Walking lunge (or step-up)', sets: 3, reps: '8/leg' },
-              { name: 'Side plank + leg lift', sets: 3, reps: '30s/side' },
-              { name: 'Soleus raise, bent knee', sets: 2, reps: '12-15' },
-            ] };
-      const strLabel = isHeavy ? 'SESSION A' : 'SESSION B';
-      for (const d of w.days.filter(d2 => d2.type === 'easy').slice(0, 2)) {
-        const sId = id('wko');
-        const dateISO = dateForDow(d.dow);
-        workoutRows.push(
-          [sId, planId, weekId, dateISO, d.dow, 'strength', 0,
-           null, JSON.stringify(strengthSession),
-           // notes '' not null · plan_workouts.notes is NOT NULL (persona-
-           // suite catch — every cold-start race plan died here at persist).
-           false, false, '', strLabel]
-        );
-      }
-    }
+    // 2026-08-17 · strength companion rows removed (owner ruling: strength is
+    // handled outside the app). Data and HealthKit ingest untouched;
+    // _no_strength_rows.test.ts fails the build if a writer reappears.
   }
 
   if (weekRows.length > 0) {
@@ -4494,13 +4451,9 @@ async function loadGeneratorInputs(
     qualityDows = qualityDows.slice(0, qCount);
   }
 
-  // 3. Cross-training opt-in (P34)
-  const ctRow = (await pool.query(
-    `SELECT cross_training_modes FROM profile WHERE user_uuid = $1 LIMIT 1`,
-    [userId]
-  ).catch(() => ({ rows: [] }))).rows[0];
-  const crossModes: string[] = Array.isArray(ctRow?.cross_training_modes)
-    ? ctRow.cross_training_modes : [];
+  // 3. Cross-training removed 2026-08-17 (owner ruling). Held as an empty list
+  //    at the composer boundary so downstream signatures stay unchanged.
+  const crossModes: string[] = [];
 
   // 4. Plan-shape inputs
   // 2026-06-10 · onboarding anchors week 0 at the runner's chosen start
