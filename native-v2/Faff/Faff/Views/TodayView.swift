@@ -110,15 +110,29 @@ struct TodayView: View {
     /// earliest date. Powers the TO RACE chip so it lights up even if
     /// purpose is down. Cleared once purpose resumes returning a value.
     @State private var raceFallback: RaceListItem?
-    /// 2026-07-07 · today-composition · P2-9 · most-recent PAST A-race,
+    /// 2026-07-07 · today-composition · P2-9 · most-recent PAST A/B race,
     /// resolved from /api/races (days_to_race < 0). Drives the post-race
-    /// composition branch (recoveryBrief rendering + "N days since
-    /// {race}" framing) so Today acknowledges the race happened instead
-    /// of rendering a bare generic REST. nil until there's a completed
-    /// A-race on record, or once a NEW future A-race is booked (a fresh
-    /// race replaces the post-race framing with normal pre-race
-    /// composition — see isPostRaceWindow).
+    /// composition branch (result confirm card + recoveryBrief rendering
+    /// + "N days since {race}" framing) so Today acknowledges the race
+    /// happened instead of rendering a bare generic REST. 2026-08-17: a
+    /// booked next race no longer clears the framing — the window closes
+    /// when the result is confirmed AND the next-cycle plan has a future
+    /// run, or after 14 days (see isPostRaceWindow).
     @State private var pastARace: RaceListItem?
+    /// 2026-08-17 · post-race result confirm. Detail for `pastARace`
+    /// (GET /api/race/[slug]) — carries finishTime + provenance
+    /// (finishProvisional / finishSource / matchedRun) so the Today
+    /// surface can tell "no result" from "provisional from the watch"
+    /// from "confirmed chip time" without a new endpoint. Hydrated in
+    /// loadAll only while the race is inside the post-race window.
+    @State private var pastRaceDetail: RaceDetailResponse?
+    /// Presents RaceRetroSheet from the post-race result card (enter /
+    /// correct the chip time).
+    @State private var showPostRaceResultSheet: Bool = false
+    /// In-flight flag for the one-tap CONFIRM → POST /api/race/result.
+    @State private var confirmingResult: Bool = false
+    /// Last confirm attempt failed · shows the retry line on the card.
+    @State private var postRaceConfirmError: Bool = false
     /// Most-recent plan_adapt_* intent · drives AdaptationCard. Hidden
     /// when nil or older than 24h.
     @State private var adaptationIntent: CoachIntent?
@@ -1734,30 +1748,257 @@ struct TodayView: View {
             .padding(.horizontal, Theme.Space.pageH)
             .padding(.top, 10)
 
+            // 2026-08-17 · result confirm card. The top job of the surface
+            // inside the first week: get the chip time locked in. Hidden
+            // once the result is confirmed (the eyebrow then carries it)
+            // and after day 7 (recovery framing stands alone).
+            if let since = daysSinceRace, since <= 7 {
+                postRaceResultCard
+                    .padding(.horizontal, Theme.Space.pageH)
+                    .padding(.top, 22)
+            }
+
             if recoveryBrief != nil {
                 TodayRecoveryPanel(brief: recoveryBrief)
                     .padding(.horizontal, Theme.Space.pageH)
                     .padding(.top, 26)
             }
 
-            Button {
-                selectedTab = .targets
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "flag.fill")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Plan your next race")
-                        .font(.body(15, weight: .extraBold))
+            // Next-race line. When the next goal race is already booked,
+            // name it and the runway ("CIM · 16 WEEKS") — tap goes to
+            // Targets. Otherwise the plan-your-next-race CTA stands.
+            if let nr = profile?.nextARace, !nr.slug.isEmpty, nr.days_to_race > 0 {
+                Button {
+                    selectedTab = .targets
+                } label: {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("NEXT RACE")
+                                .font(.body(9, weight: .extraBold)).tracking(1.4)
+                                .foregroundStyle(Color.white.opacity(0.55))
+                            Text("\(nr.name.uppercased()) · \(raceCountdownLabel(nr.days_to_race))")
+                                .font(.display(18, weight: .semibold)).tracking(0.2)
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color.white.opacity(0.5))
+                    }
+                    .padding(14)
+                    .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
                 }
-                .foregroundStyle(Theme.bg)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .buttonStyle(.plain)
+                .padding(.horizontal, Theme.Space.pageH)
+                .padding(.top, 26)
+                .padding(.bottom, 40)
+            } else {
+                Button {
+                    selectedTab = .targets
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "flag.fill")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("Plan your next race")
+                            .font(.body(15, weight: .extraBold))
+                    }
+                    .foregroundStyle(Theme.bg)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, Theme.Space.pageH)
+                .padding(.top, 26)
+                .padding(.bottom, 40)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, Theme.Space.pageH)
-            .padding(.top, 26)
-            .padding(.bottom, 40)
+        }
+        .sheet(isPresented: $showPostRaceResultSheet) {
+            // Chip-time entry / correction · same sheet RaceDayView uses,
+            // seeded with the provisional time when there is one.
+            RaceRetroSheet(
+                slug: pastARace?.slug ?? "",
+                raceName: pastARace?.name ?? "Race",
+                seedFinish: postRaceProvisionalSeed,
+                onSaved: {
+                    Task {
+                        await reloadPostRaceDetail()
+                        await loadAll()
+                    }
+                }
+            )
+        }
+    }
+
+    /// Seed for the retro sheet's finish field · the provisional watch
+    /// time when one exists, else nothing.
+    private var postRaceProvisionalSeed: String? {
+        if case .provisional(let t) = postRaceResult { return t }
+        return nil
+    }
+
+    /// Days since the finished goal race · nil outside the post-race state.
+    private var daysSinceRace: Int? {
+        guard let d = pastARace?.days_to_race, d < 0 else { return nil }
+        return -d
+    }
+
+    /// "16 WEEKS" / "10 DAYS" / "1 DAY" countdown for the next-race line.
+    private func raceCountdownLabel(_ days: Int) -> String {
+        if days >= 14 {
+            let w = Int((Double(days) / 7.0).rounded())
+            return "\(w) WEEKS"
+        }
+        return days == 1 ? "1 DAY" : "\(days) DAYS"
+    }
+
+    /// 2026-08-17 · the result confirm card. Three states:
+    ///   · provisional — the synced run's time, labeled PROVISIONAL, with
+    ///     one-tap CONFIRM (posts the watch time + matched avg HR) and a
+    ///     secondary "Enter chip time" that opens RaceRetroSheet.
+    ///   · missing — invite to log the result (opens RaceRetroSheet).
+    ///   · confirmed / unknown — nothing; the eyebrow carries a confirmed
+    ///     time, and unknown means the detail fetch hasn't landed yet.
+    @ViewBuilder
+    private var postRaceResultCard: some View {
+        switch postRaceResult {
+        case .provisional(let time):
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("RESULT")
+                        .font(.body(9, weight: .extraBold)).tracking(1.5)
+                        .foregroundStyle(Color.white.opacity(0.55))
+                    Text("PROVISIONAL")
+                        .font(.body(9, weight: .extraBold)).tracking(1.5)
+                        .foregroundStyle(Theme.bg)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Color(hex: 0xF3AD38), in: Capsule())
+                    Spacer()
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(time)
+                        .font(.display(34, weight: .bold)).tracking(-0.5)
+                        .foregroundStyle(.white)
+                    Text("from your watch")
+                        .font(.body(11, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.6))
+                }
+                Text("Confirm it, or enter your chip time. The coach recalibrates fitness off the result.")
+                    .font(.body(11.5, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+                if postRaceConfirmError {
+                    Text("Could not save. Check your connection and try again.")
+                        .font(.body(11.5, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0xFC4D64))
+                }
+                Button {
+                    confirmProvisionalResult()
+                } label: {
+                    HStack(spacing: 8) {
+                        if confirmingResult {
+                            ProgressView().tint(Theme.bg)
+                        } else {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 13, weight: .bold))
+                        }
+                        Text(confirmingResult ? "Saving" : "Confirm \(time)")
+                            .font(.body(14, weight: .extraBold))
+                    }
+                    .foregroundStyle(Theme.bg)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(confirmingResult)
+                Button {
+                    showPostRaceResultSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Enter chip time")
+                            .font(.body(12.5, weight: .extraBold))
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.race)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+        case .missing:
+            VStack(alignment: .leading, spacing: 10) {
+                Text("RESULT")
+                    .font(.body(9, weight: .extraBold)).tracking(1.5)
+                    .foregroundStyle(Color.white.opacity(0.55))
+                Text("Log your result")
+                    .font(.body(14, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Add your chip time so the coach can recalibrate fitness off the race.")
+                    .font(.body(11.5, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+                Divider().background(Color.white.opacity(0.08))
+                Button {
+                    showPostRaceResultSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "flag.checkered")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Log result")
+                            .font(.body(13, weight: .extraBold))
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.race)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+        case .confirmed, .unknown:
+            EmptyView()
+        }
+    }
+
+    /// One-tap confirm · POSTs the provisional watch time (plus the matched
+    /// run's avg HR when known, which also recalibrates LTHR server-side)
+    /// as the authoritative chip time, then rehydrates the detail + plan
+    /// (the result write auto-generates the next race's plan server-side).
+    private func confirmProvisionalResult() {
+        guard case .provisional(let time) = postRaceResult,
+              let slug = pastARace?.slug, !slug.isEmpty else { return }
+        confirmingResult = true
+        postRaceConfirmError = false
+        let hr = pastRaceDetail?.race.matchedRun?.avg_hr
+        Task {
+            let ok = await API.postRaceResult(slug: slug, finishDisplay: time, avgHrBpm: hr)
+            await reloadPostRaceDetail()
+            await MainActor.run {
+                confirmingResult = false
+                postRaceConfirmError = !ok
+            }
+            if ok { await loadAll() }
+        }
+    }
+
+    /// Refetch the finished race's detail so the card reflects the write.
+    private func reloadPostRaceDetail() async {
+        guard let slug = pastARace?.slug, !slug.isEmpty else { return }
+        if let rd = try? await API.fetchRaceDetail(slug: slug) {
+            await MainActor.run { self.pastRaceDetail = rd }
         }
     }
 
@@ -1772,10 +2013,20 @@ struct TodayView: View {
     /// Eyebrow above the days-since headline · race name when resolved,
     /// generic fallback otherwise. Avoids force-unwrapping the optional
     /// chain — name is checked and bound in one step.
+    ///
+    /// 2026-08-17 · carries the CONFIRMED result ("AFC HALF · 1:41:53").
+    /// A provisional time never shows here — Rule 3 (Strava/watch-matched
+    /// data must not display as authoritative race performance); it lives
+    /// on the result card, labeled PROVISIONAL, until confirmed.
     private var postRaceEyebrow: String {
-        if let name = pastARace?.name, !name.isEmpty {
-            return "\(name.uppercased()) · DONE"
+        let name: String? = {
+            if let n = pastARace?.name, !n.isEmpty { return n.uppercased() }
+            return nil
+        }()
+        if case .confirmed(let time) = postRaceResult, let n = name {
+            return "\(n) · \(time)"
         }
+        if let n = name { return "\(n) · DONE" }
         return "RACE DONE"
     }
 
@@ -2418,19 +2669,28 @@ struct TodayView: View {
     }
 
     /// 2026-07-07 · today-composition · P2-9 · most-recent past GOAL
-    /// (priority A) race, or nil. `/api/races` sorts `past` most-recent-
-    /// first server-side (races-state.ts), but we don't rely on
-    /// ordering across a flattened+client-filtered array — re-sort by
+    /// race, or nil. `/api/races` sorts `past` most-recent-first
+    /// server-side (races-state.ts), but we don't rely on ordering
+    /// across a flattened+client-filtered array — re-sort by
     /// days_to_race descending (closest to 0 first; all values are
     /// negative for past races per the backend contract) so the pick is
     /// correct regardless of the array's incoming order.
+    ///
+    /// 2026-08-17 · widened from A-only to A/B. A finished B race (a
+    /// tune-up half two weeks out is priority B) deserves the same
+    /// result-confirm flow; C races stay training-context only. Most
+    /// recent wins regardless of priority; same-day ties break A first.
     private func pickPastARace(_ races: [RaceListItem]) -> RaceListItem? {
         let candidates = races.filter { r in
             guard let d = r.days_to_race, d < 0 else { return false }
-            return (r.priority ?? "").uppercased() == "A"
+            let pri = (r.priority ?? "").uppercased()
+            return pri == "A" || pri == "B"
         }
         return candidates.sorted { a, b in
-            (a.days_to_race ?? Int.min) > (b.days_to_race ?? Int.min)
+            let ad = a.days_to_race ?? Int.min
+            let bd = b.days_to_race ?? Int.min
+            if ad != bd { return ad > bd }
+            return (a.priority ?? "").uppercased() < (b.priority ?? "").uppercased()
         }.first
     }
 
@@ -2565,17 +2825,76 @@ struct TodayView: View {
     ///
     /// Window: C1 spec's explicit "Post-race (next 1–14 days)" bucket,
     /// counted from `pastARace.days_to_race` (negative · days since).
-    /// Clears itself the moment a NEW future A-race is booked (profile.
-    /// nextARace populated) — a fresh goal race means normal pre-race
-    /// composition should resume, not post-race framing for a race
-    /// that's no longer the story. Also clears once a real next-cycle
-    /// plan exists (hasPlan) so this never fights the ordinary pre-run
-    /// body once training resumes.
+    ///
+    /// 2026-08-17 · REBUILT. The original gate was double-gated off in
+    /// exactly the real post-race state: it required `!hasPlan` (race
+    /// week's own stale rows keep hasPlan true the morning after) AND
+    /// `nextARace` empty (false the moment the next goal race is
+    /// booked), so the day after the A race Today fell through to a
+    /// generic "UNPLANNED · by feel". New rule, independent of both:
+    ///
+    ///   inside 7 days since the race:
+    ///     · result missing or provisional → post-race ALWAYS wins.
+    ///       The result-confirm card is the top job of the surface,
+    ///       regardless of a booked next race or leftover plan rows.
+    ///     · result confirmed (or detail not yet loaded) → post-race
+    ///       only when the plan is spent (no planned run after today),
+    ///       i.e. whenever the void would otherwise show.
+    ///   days 8–14: post-race framing only while the plan is spent.
+    ///   after 14 days: never.
+    ///
+    /// A real next-cycle plan (first future planned run — the result
+    /// POST auto-generates it) resumes normal composition on its own;
+    /// stale race-week rows are all ≤ today so they can't hold the
+    /// gate closed OR open.
     private var isPostRaceWindow: Bool {
-        guard selectedIsToday, !isPostRunMode, !hasPlan else { return false }
-        guard (profile?.nextARace?.slug ?? "").isEmpty else { return false }
+        guard selectedIsToday, !isPostRunMode else { return false }
         guard let days = pastARace?.days_to_race, days < 0 else { return false }
-        return -days <= 14
+        let since = -days
+        guard since <= 14 else { return false }
+        if since <= 7 {
+            switch postRaceResult {
+            case .provisional, .missing: return true
+            case .confirmed, .unknown: break
+            }
+        }
+        return !hasFuturePlannedRun
+    }
+
+    /// Result state of the finished goal race, from the hydrated race
+    /// detail. `.unknown` while the detail fetch hasn't landed (or came
+    /// back for a different slug) — callers treat unknown conservatively.
+    private enum PostRaceResultState {
+        case unknown
+        case missing
+        case provisional(String)
+        case confirmed(String)
+    }
+
+    private var postRaceResult: PostRaceResultState {
+        guard let rd = pastRaceDetail?.race, !rd.slug.isEmpty,
+              rd.slug == pastARace?.slug else { return .unknown }
+        guard let ft = rd.finishTime, !ft.isEmpty else { return .missing }
+        // Provisional = auto-filled from a matched run (races-state Rule 3),
+        // flagged either way the server expresses it. A curated chip time
+        // (actual_result / meta) is the only confirmed state.
+        let provisional = (rd.finishProvisional == true) || (rd.finishSource == "run_match")
+        return provisional ? .provisional(ft) : .confirmed(ft)
+    }
+
+    /// Any planned (non-rest, nonzero) run strictly AFTER today across the
+    /// loaded weeks. Race week's leftover rows are all ≤ today, so a spent
+    /// plan reads false here even though `hasPlan` is still true — this is
+    /// the "plan pointing at the race is spent" signal the post-race gate
+    /// needs, where `hasPlan` (any day, any week, past included) is not.
+    private var hasFuturePlannedRun: Bool {
+        // Prefer the backend's Pacific-anchored today over device-local so
+        // an hour-boundary drift can't misclassify tomorrow as today.
+        let today = (plan?.today_iso.isEmpty == false ? plan!.today_iso : todayISO)
+        let allDays = (plan?.days ?? []) + futureWeekPlans.flatMap { $0.days }
+        return allDays.contains {
+            $0.date_iso > today && $0.type != "rest" && $0.distance_mi > 0
+        }
     }
 
     /// "Just run" casual home · shown when there's no race AND no goal, so
@@ -3319,6 +3638,18 @@ struct TodayView: View {
                 if let resp = try? await API.fetchRaces() {
                     let past = self.pickPastARace(resp.races)
                     await MainActor.run { self.pastARace = past }
+                    // 2026-08-17 · post-race result confirm. While the
+                    // finished race is inside the post-race window, pull
+                    // its detail so the surface knows whether the result
+                    // is missing / provisional (watch-matched) / confirmed
+                    // chip time. Best-effort; nil just means the card
+                    // renders its "log result" state.
+                    if let slug = past?.slug, !slug.isEmpty,
+                       let d = past?.days_to_race, d < 0, -d <= 14 {
+                        if let rd = try? await API.fetchRaceDetail(slug: slug) {
+                            await MainActor.run { self.pastRaceDetail = rd }
+                        }
+                    }
                 }
             }
             self.skipped = skip

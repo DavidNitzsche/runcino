@@ -565,6 +565,19 @@ export function TodayView({
           green when a session is logged on that day (see .strdone). No
           separate counter line. */}
 
+      {/* 2026-08-17 · post-race branch. The week after a finished A/B
+          race, web Today had no acknowledgment at all — the race-morning
+          takeover only covers the day itself, pre-run. This card derives
+          the state client-side (/api/races → /api/race/[slug]) so it
+          works whether or not /api/today/purpose grows a post-race type:
+          race + result (PROVISIONAL until confirmed · Rule 3), one-tap
+          confirm → POST /api/race/result, recovery framing. Renders
+          nothing outside the 7-day window. Mounted below the week strip,
+          above the hero — a state-driven beat of the day's composition,
+          not a pre-hero banner (keeps the brief v2 §6 one-banner cap
+          honest). */}
+      {isRaceDay ? null : <PostRaceTodayCard />}
+
       {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
           Detail (Easy)), planned-and-not-rest days use PlannedHeroV2
           (Run Detail Planned (Easy)). Rest days keep the simple Recovery
@@ -4996,6 +5009,195 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+/* ─────────────── PostRaceTodayCard · the week after the race ───────────────
+ * 2026-08-17 · Mirrors the native post-race Today branch, minimally. Fully
+ * self-deriving from existing endpoints (no seed change, no new contract):
+ *   1. GET /api/races → most recent past A/B race within 7 days.
+ *   2. GET /api/race/[slug] → finishTime + provenance (finishProvisional /
+ *      finishSource / matchedRun) from races-state.
+ * States: provisional (watch-matched time · labeled PROVISIONAL per the
+ * race-data Rule 3 lock · one-tap CONFIRM), missing (enter a time), and
+ * confirmed (time reads back · recovery framing only). CONFIRM posts the
+ * time (+ matched avg HR, which recalibrates LTHR) to POST /api/race/result
+ * — the same authoritative chip-time write the races page uses. */
+function PostRaceTodayCard() {
+  const router = useRouter();
+  const [pr, setPr] = useState<{
+    slug: string; name: string; date: string; daysSince: number;
+    finishTime: string | null; provisional: boolean; avgHr: number | null;
+  } | null>(null);
+  const [finish, setFinish] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch('/api/races');
+        if (!r.ok) return;
+        const j = await r.json();
+        const past = ((j?.races ?? []) as Array<{
+          slug: string; name?: string | null; date?: string | null;
+          priority?: string | null; days_to_race?: number | null;
+        }>)
+          .filter((x) =>
+            typeof x.days_to_race === 'number' && x.days_to_race < 0 && x.days_to_race >= -7 &&
+            (String(x.priority ?? '').toUpperCase() === 'A' || String(x.priority ?? '').toUpperCase() === 'B'))
+          .sort((a, b) => (b.days_to_race ?? -99) - (a.days_to_race ?? -99));
+        const race = past[0];
+        if (!race || !alive) return;
+        const dr = await fetch(`/api/race/${race.slug}`);
+        if (!dr.ok) return;
+        const rr = (await dr.json())?.race ?? {};
+        if (!alive) return;
+        setPr({
+          slug: race.slug,
+          name: rr.name ?? race.name ?? race.slug,
+          date: rr.date ?? race.date ?? '',
+          daysSince: -(race.days_to_race as number),
+          finishTime: rr.finishTime ?? null,
+          provisional: rr.finishProvisional === true || rr.finishSource === 'run_match',
+          avgHr: rr.matchedRun?.avg_hr ?? null,
+        });
+        setFinish(rr.finishTime ?? '');
+      } catch { /* silent · the card simply doesn't render */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  if (!pr) return null;
+  const confirmed = !!pr.finishTime && !pr.provisional;
+
+  const submit = async (time: string) => {
+    const t = time.trim();
+    if (!t || parseRaceTime(t) == null) {
+      setErr('That time doesn’t look right. Use 1:41:53 or 45:12.');
+      return;
+    }
+    setBusy(true); setErr(null);
+    const body: Record<string, unknown> = { slug: pr.slug, finishDisplay: t };
+    if (pr.avgHr) body.avgHrBpm = pr.avgHr;
+    const r = await fetch('/api/race/result', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    setBusy(false);
+    if (r?.ok) {
+      setPr({ ...pr, finishTime: t, provisional: false });
+      setEditing(false);
+      router.refresh();
+    } else {
+      setErr('Could not save. Try again.');
+    }
+  };
+
+  const oswald = "var(--font-display, 'Oswald', sans-serif)";
+  const sinceLabel = pr.daysSince === 1 ? '1 DAY AGO' : `${pr.daysSince} DAYS AGO`;
+
+  return (
+    <div style={{
+      background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 16,
+      padding: '18px 18px 16px',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
+        fontSize: 10, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase',
+      }}>
+        <span style={{ color: '#D03F3F' }}>{pr.name}</span>
+        <span style={{ opacity: 0.55 }}>{pr.date ? `${formatDate(pr.date)} · ` : ''}{sinceLabel}</span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
+        {pr.finishTime ? (
+          <div style={{ fontFamily: oswald, fontSize: 40, fontWeight: 600, lineHeight: 0.95 }}>
+            {pr.finishTime}
+          </div>
+        ) : (
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Log your result</div>
+        )}
+        {confirmed ? (
+          <span style={{
+            fontSize: 9.5, fontWeight: 800, letterSpacing: 1.3, color: '#3EBD41',
+            border: '1px solid rgba(62,189,65,.4)', borderRadius: 999, padding: '3px 8px',
+          }}>LOCKED IN</span>
+        ) : pr.finishTime ? (
+          <span style={{
+            fontSize: 9.5, fontWeight: 800, letterSpacing: 1.3, color: '#0A0C10',
+            background: '#F3AD38', borderRadius: 999, padding: '3px 8px',
+          }}>PROVISIONAL</span>
+        ) : null}
+        {!confirmed && pr.finishTime ? (
+          <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.6 }}>from your watch</span>
+        ) : null}
+      </div>
+
+      {!confirmed ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+          {pr.finishTime && !editing ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => { void submit(pr.finishTime!); }}
+                style={{
+                  background: '#fff', color: '#0A0C10', border: 'none', borderRadius: 10,
+                  padding: '10px 16px', fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4,
+                  cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
+                }}
+              >{busy ? 'SAVING' : `CONFIRM ${pr.finishTime}`}</button>
+              <button
+                type="button"
+                onClick={() => { setEditing(true); setFinish(pr.finishTime ?? ''); }}
+                style={{
+                  background: 'none', border: 'none', color: '#D03F3F', fontSize: 12,
+                  fontWeight: 800, letterSpacing: 0.4, cursor: 'pointer', padding: '10px 4px',
+                }}
+              >ENTER CHIP TIME</button>
+            </>
+          ) : (
+            <>
+              <input
+                value={finish}
+                onChange={(ev) => setFinish(ev.target.value)}
+                placeholder="1:41:53"
+                inputMode="numeric"
+                style={{
+                  background: 'rgba(255,255,255,.06)', border: '1px solid var(--line)',
+                  borderRadius: 10, color: '#fff', fontFamily: oswald, fontSize: 18,
+                  fontWeight: 600, padding: '8px 12px', width: 130,
+                }}
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => { void submit(finish); }}
+                style={{
+                  background: '#fff', color: '#0A0C10', border: 'none', borderRadius: 10,
+                  padding: '10px 16px', fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4,
+                  cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
+                }}
+              >{busy ? 'SAVING' : 'SAVE RESULT'}</button>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {err ? (
+        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: '#FC4D64' }}>{err}</div>
+      ) : null}
+
+      <div style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, opacity: 0.62, lineHeight: 1.45 }}>
+        {confirmed
+          ? 'Recovery first. The next block starts when your body says so, not the calendar.'
+          : 'Confirm the time so the coach can recalibrate fitness off the race. Recovery first this week.'}
+      </div>
     </div>
   );
 }

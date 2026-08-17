@@ -148,6 +148,18 @@ struct RaceDetail: Decodable {
     let is_past: Bool?
     let days: Int?
     let finishTime: String?
+    /// 2026-08-17 · post-race Today surface. Mirrors races-state.ts #29 /
+    /// P1-19 provenance fields (already emitted by GET /api/race/[slug] via
+    /// the RaceRow spread — additive decode, nil on older servers):
+    ///   finishProvisional — true when finishTime was auto-filled from a
+    ///     date+distance-matched run's raw time, NOT a curated chip time.
+    ///     Rule 3: a provisional finish must never render as authoritative.
+    ///   finishSource — 'actual_result' | 'meta' (curated) | 'run_match'
+    ///     (always provisional).
+    ///   finishProvisionalLabel — render-ready caption for provisional fills.
+    let finishProvisional: Bool?
+    let finishSource: String?
+    let finishProvisionalLabel: String?
     let pb: Bool?
     let matchedRun: RaceMatchedRun?
     // Race-morning logistics — nil until the runner enters them.
@@ -185,6 +197,8 @@ struct RaceDetail: Decodable {
          priority: String?, goal: String?, distance_label: String?, distance_mi: Double?,
          location: String?, is_past: Bool?, days: Int?,
          finishTime: String?, pb: Bool?, matchedRun: RaceMatchedRun?,
+         finishProvisional: Bool? = nil, finishSource: String? = nil,
+         finishProvisionalLabel: String? = nil,
          gun_time: String? = nil, wave: String? = nil,
          bib: String? = nil, website: String? = nil,
          packet_pickup: String? = nil, shuttle: String? = nil,
@@ -199,6 +213,8 @@ struct RaceDetail: Decodable {
         self.distance_label = distance_label; self.distance_mi = distance_mi
         self.location = location; self.is_past = is_past; self.days = days
         self.finishTime = finishTime; self.pb = pb; self.matchedRun = matchedRun
+        self.finishProvisional = finishProvisional; self.finishSource = finishSource
+        self.finishProvisionalLabel = finishProvisionalLabel
         self.gun_time = gun_time; self.wave = wave
         self.bib = bib; self.website = website
         self.packet_pickup = packet_pickup; self.shuttle = shuttle
@@ -213,6 +229,7 @@ struct RaceDetail: Decodable {
     enum CodingKeys: String, CodingKey {
         case slug, name, date, priority, goal, distance_label, distance_mi
         case location, is_past, days, finishTime, pb, matchedRun
+        case finishProvisional, finishSource, finishProvisionalLabel
         case gun_time, wave, bib, website, packet_pickup, shuttle, parking, notes
         case aid_stations, summary
         case notable_miles, weather_norms, time_limit, gear_check, pacers, spectators
@@ -231,6 +248,9 @@ struct RaceDetail: Decodable {
         self.is_past = try c.decodeIfPresent(Bool.self, forKey: .is_past)
         self.days = c.decodeFlexInt(forKey: .days)
         self.finishTime = try c.decodeIfPresent(String.self, forKey: .finishTime)
+        self.finishProvisional = try? c.decodeIfPresent(Bool.self, forKey: .finishProvisional)
+        self.finishSource = try? c.decodeIfPresent(String.self, forKey: .finishSource)
+        self.finishProvisionalLabel = try? c.decodeIfPresent(String.self, forKey: .finishProvisionalLabel)
         self.pb = try c.decodeIfPresent(Bool.self, forKey: .pb)
         self.matchedRun = try c.decodeIfPresent(RaceMatchedRun.self, forKey: .matchedRun)
         self.gun_time = try c.decodeIfPresent(String.self, forKey: .gun_time)
