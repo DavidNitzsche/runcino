@@ -745,14 +745,18 @@ async function weekSummary(
       daysRun++;
     }
 
-    // Planned side unchanged in substance — plan_workouts genuinely has
-    // date_iso (text) + distance_mi (numeric) + user_uuid (verified
-    // against prod schema 2026-07-06). Bounds now use the same inclusive
-    // window as the actuals.
+    // 2026-08-17 · coach-experience audit: this summed plan_workouts by
+    // bare user_uuid with NO active-plan filter, so every archived plan
+    // generation stacked ("WEEK DONE · 23.2 / 1262.2 MI" in prod). Scope
+    // through the ACTIVE plan — which also drops the direct
+    // pw.user_uuid filter (null on all new inserts; readers must join
+    // via training_plans, per the multi-user audit).
     const planned = await pool.query(
-      `SELECT COALESCE(SUM(distance_mi), 0)::float AS planned_mi
-         FROM plan_workouts
-        WHERE user_uuid = $1 AND date_iso >= $2 AND date_iso <= $3`,
+      `SELECT COALESCE(SUM(pw.distance_mi), 0)::float AS planned_mi
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+          AND pw.date_iso >= $2 AND pw.date_iso <= $3`,
       [userId, week_start_iso, week_end_iso],
     ).catch(() => ({ rows: [{ planned_mi: 0 }] }));
 
