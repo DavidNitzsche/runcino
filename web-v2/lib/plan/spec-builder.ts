@@ -32,9 +32,67 @@
  *     hardcodes, no carve-outs.
  */
 
-import { parsePrescription, parseTempoShape } from './prescription-parser';
+import { parsePrescription, parseTempoShape, parseStrides, parseTimeReps } from './prescription-parser';
 
 export type WorkoutSpec = Record<string, unknown> | null;
+
+// ── Strides ──────────────────────────────────────────────────────────────
+
+/**
+ * DOCTRINE-STRIDES-1 (2026-08-17) · `Research/04-workout-vocabulary.md` §7.2.
+ *
+ *   | Distance | 50–100 m or 15–30 s each |
+ *   | Reps     | 4–8 |
+ *   | Recovery | Full walk-back or 60–90 s jog — no fatigue between strides |
+ *   | Pace     | Accelerate to mile-to-5K race pace; ~85–95% max effort, relaxed |
+ *
+ * Defaults sit mid-band so a prescription that names only the rep count
+ * ("6×ST") still lands inside doctrine. Bound by `STRIDES.doctrine-bands` in
+ * lib/doctrine/registry.ts, which reads all four rows out of the table.
+ */
+export const STRIDE_DURATION_S = 20;
+export const STRIDE_RECOVERY_S = 60;
+export const STRIDE_DEFAULT_REPS = 6;
+/**
+ * Easy days per week that carry strides. §7.2 gives "| Frequency | 2–4×/week |";
+ * `Research/00a` §"Practical base-building rules" gives "| Strides preserved |
+ * 4–8×100 m strides 1–2×/wk |". Two is the only value inside both bands.
+ */
+export const STRIDE_DAYS_PER_WEEK = 2;
+
+/** Convert a metre-expressed stride ("6×80m") into the seconds the watch counts
+ *  down. §7.2 gives both units for the same thing — 100 m and 20 s are the same
+ *  stride — so either form of the prescription lands in the same spec. */
+function strideSecondsFor(distanceM: number, stridePaceSPerMi: number): number {
+  const miles = distanceM / 1609.34;
+  return Math.max(8, Math.round(miles * stridePaceSPerMi));
+}
+
+/**
+ * Derive the optional strides fields for a spec from its prescription.
+ *
+ * Returns `{}` when the prescription carries no strides, so callers spread it
+ * unconditionally and specs without strides are byte-identical to before. This
+ * mirrors how the long-run finish segment was added (`finish_mi` et al are
+ * optional fields on the existing `long` kind, not a new kind) — old clients
+ * ignore fields they do not know, and the phase list the watch actually
+ * receives stays wire-compatible either way.
+ */
+function strideFields(
+  prescription: string | null | undefined,
+  stridePaceSPerMi: number,
+): Record<string, unknown> {
+  const parsed = parseStrides(prescription);
+  if (!parsed) return {};
+  const durationS = parsed.durationS
+    ?? (parsed.distanceM != null ? strideSecondsFor(parsed.distanceM, stridePaceSPerMi) : STRIDE_DURATION_S);
+  return {
+    strides_reps: parsed.reps,
+    strides_duration_s: Math.round(durationS),
+    strides_pace_s_per_mi: stridePaceSPerMi,
+    strides_recovery_s: STRIDE_RECOVERY_S,
+  };
+}
 
 export interface SpecBuildResult {
   /** workout_spec column value · null for types where it's intentionally absent. */
@@ -127,7 +185,7 @@ function fuelMi(dist: number | null): number[] {
  *   "LONG · 4mi @ M"  → { mi: 4, tag: 'M' }   (also accepts "@ MP")
  *   "LONG"            → null
  */
-function extractFinishSegment(
+export function extractFinishSegment(
   prescription?: string | null,
 ): { mi: number; tag: 'HM' | 'M' } | null {
   if (!prescription) return null;
@@ -138,6 +196,64 @@ function extractFinishSegment(
   // 'HM' → half-marathon pace; 'M'/'MP' → marathon pace.
   const tag: 'HM' | 'M' = m[2].toUpperCase().startsWith('H') ? 'HM' : 'M';
   return { mi, tag };
+}
+
+// ── Time-based rep sets ──────────────────────────────────────────────────
+
+/**
+ * DOCTRINE-VOCAB-1 (2026-08-17) · a rep set measured in seconds, not metres.
+ *
+ * `Research/04-workout-vocabulary.md` §8.1 sizes every hill repeat by duration
+ * and §9.1 does the same for fartlek, for the same reason: the distance a rep
+ * covers depends on the gradient and on how hard the runner is going, so the
+ * only stable instruction is how long to run. `rep_duration_s` is an OPTIONAL
+ * field alongside the existing `rep_distance_mi` — the same wire-compatible
+ * move `finish_mi` made on the long-run kind — so a spec that has always been
+ * distance-based is untouched and a consumer that has never seen a duration rep
+ * still finds a well-formed `threshold`/`intervals` spec.
+ *
+ * Hills go out BY EFFORT. §8.1's pace column reads "Strong, controlled (~95%
+ * effort)" and "5K–10K effort", never a pace, and it could not be otherwise: a
+ * flat-ground pace target is unreachable on a 6% grade, so prescribing one
+ * would put the runner in breach of their own workout for climbing the hill
+ * correctly. `by_effort` tells the expander to emit no pace target at all
+ * rather than a number nobody can hit.
+ */
+function timeRepSpec(
+  kind: 'threshold' | 'intervals',
+  reps: { reps: number; durationS: number; restS: number | null },
+  budgetMi: number,
+  repPaceSec: number,
+  lthr: number | null,
+  prescription: string | null | undefined,
+  withRules: Record<string, unknown>,
+): SpecBuildResult {
+  const byEffort = /hill/i.test(String(prescription ?? ''));
+  // WU/CD use the same floors as the distance-based branches. The reps' own
+  // mileage is whatever the runner covers in the prescribed time, so it is not
+  // reserved here — totalDistanceMiFromSpec keeps the day's headline distance.
+  const wu = Math.max(0.5, Math.min(1.5, budgetMi * 0.3));
+  const cd = Math.max(0.5, Math.min(1.0, budgetMi * 0.25));
+  return {
+    spec: {
+      kind,
+      warmup_mi: Number(wu.toFixed(1)),
+      rep_count: reps.reps,
+      rep_duration_s: Math.round(reps.durationS),
+      rep_pace_s_per_mi: byEffort ? null : repPaceSec,
+      rep_rest_s: reps.restS ?? 90,
+      cooldown_mi: Number(cd.toFixed(1)),
+      lthr_bpm: hrLthrBpm(lthr),
+      by_effort: byEffort ? true : undefined,
+      // The authored prescription is the only place the workout's IDENTITY
+      // lives ("hills", "Mona"). subLabelFromSpec would otherwise re-derive a
+      // generic rep label and the family name would vanish between compose and
+      // persist — the sub_label/spec drift this codebase has fixed twice.
+      label: prescription ?? undefined,
+      ...withRules,
+    },
+    paceTargetSPerMi: byEffort ? null : repPaceSec,
+  };
 }
 
 /**
@@ -186,6 +302,10 @@ export function buildWorkoutSpec(
   // (e.g. "continuous tempo") · branches fall back to historical
   // defaults.
   const parsed = parsePrescription(prescription);
+  // DOCTRINE-VOCAB-1 · time-based rep sets (hills, fartlek). Only consulted
+  // when the prescription carries no distance-based reps, so every existing
+  // prescription builds byte-identically.
+  const timeReps = parsed ? null : parseTimeReps(prescription);
   // 2026-06-09 Phase 2 (3.2) · contingency rules per type. The watch
   // OFFERS the bail on breach (CONTINUE / TAKE THE BAIL · never
   // enforces); pass rules are post-run confirmation criteria (the same
@@ -258,6 +378,12 @@ export function buildWorkoutSpec(
   const interval = tPaceSec - 18;
   const recovery = easyAnchorT + 100;   // very easy · PACE-E-1 · current-fitness anchor
   const mp = tPaceSec + 18;             // marathon pace
+  // DOCTRINE-STRIDES-1 · Research/04 §7.2 "Accelerate to mile-to-5K race pace".
+  // True I-pace when the caller threaded one; else Daniels' I = T−33 (the same
+  // relation the intervals branch documents below). 5K pace is the SLOW end of
+  // doctrine's band, so this never over-prescribes.
+  const stridePace = iPaceSec ?? (tPaceSec - 33);
+  const strides = strideFields(prescription, stridePace);
 
   switch (type) {
     case 'easy':
@@ -268,6 +394,7 @@ export function buildWorkoutSpec(
           pace_target_s_per_mi_hi: easyHi,
           hr_cap_bpm: hrCapEasy(lthr, maxHr),
           fuel_mi: [],
+          ...strides,
         },
         // Easy days don't have a single "headline" pace · the chip
         // shows a lo-hi range from the spec, not pace_target_s_per_mi.
@@ -372,6 +499,7 @@ export function buildWorkoutSpec(
       };
     }
     case 'threshold': {
+      if (timeReps) return timeRepSpec('threshold', timeReps, distance_mi ?? 7, tPaceSec, lthr, prescription, withRules);
       // 2026-06-02 · prefer parsed prescription · falls back to
       // historical defaults when the rx string is absent / unparseable.
       const repCount = parsed?.reps ?? 4;
@@ -411,6 +539,7 @@ export function buildWorkoutSpec(
     }
     case 'intervals':
     case 'vo2max': {
+      if (timeReps) return timeRepSpec('intervals', timeReps, distance_mi ?? 7, iPaceSec ?? interval, lthr, prescription, withRules);
       // 2026-06-02 · prefer parsed prescription · falls back to
       // historical defaults when the rx string is absent / unparseable.
       const repCount = parsed?.reps ?? 5;
@@ -496,6 +625,12 @@ export function buildWorkoutSpec(
           pace_target_s_per_mi_hi: easyHi + 30,
           hr_cap_bpm: hrCapEasy(lthr, maxHr),
           fuel_mi: [],
+          // Research/08's race-week templates and Research/04 §17.3's pre-race
+          // warmup table both put strides on the day before a race. The
+          // generator has always WRITTEN "2 mi + 4×20s strides" into the
+          // shakeout's notes; now the spec carries them, so the watch can run
+          // what the row has been promising since the day it was authored.
+          ...strides,
         },
         paceTargetSPerMi: null,
       };
@@ -564,6 +699,30 @@ export function buildWorkoutSpec(
         paceTargetSPerMi: repPace,
       };
     }
+    case 'strides': {
+      // DOCTRINE-STRIDES-1 · a standalone strides session (workout_library
+      // `strides-standalone`, "2 mi E + 6×80m strides"). Research/04 §7.2
+      // §Placement: "End of an easy run, mid-warmup before a workout, or
+      // standalone day" — this is the third of those. The easy jog carries the
+      // distance; the strides ride on top, exactly as on an easy day.
+      const parsed = parseStrides(prescription);
+      return {
+        spec: {
+          kind: 'strides',
+          pace_target_s_per_mi_lo: easyLo,
+          pace_target_s_per_mi_hi: easyHi,
+          hr_cap_bpm: hrCapEasy(lthr, maxHr),
+          strides_reps: parsed?.reps ?? STRIDE_DEFAULT_REPS,
+          strides_duration_s: parsed?.durationS
+            ?? (parsed?.distanceM != null ? strideSecondsFor(parsed.distanceM, stridePace) : STRIDE_DURATION_S),
+          strides_pace_s_per_mi: stridePace,
+          strides_recovery_s: STRIDE_RECOVERY_S,
+        },
+        // Like easy: the run itself has a band, not a headline pace. The
+        // strides' own target lives in strides_pace_s_per_mi.
+        paceTargetSPerMi: null,
+      };
+    }
     case 'rest':
     case 'cross':
     case 'strength':
@@ -613,6 +772,14 @@ export function totalDistanceMiFromSpec(
     }
     case 'threshold':
     case 'intervals': {
+      // DOCTRINE-VOCAB-1 · a time-based rep set has no rep distance to sum.
+      // What the runner covers in the prescribed seconds IS the day's mileage,
+      // so the headline distance stands. Without this the old sum would have
+      // returned warm-up + floats + cool-down and shrunk a 7-mile hill session
+      // to about 3.
+      if ((Number(s.rep_duration_s ?? 0) || 0) > 0 && !(Number(s.rep_distance_mi ?? 0) > 0)) {
+        return fallbackDistanceMi;
+      }
       const reps = Number(s.rep_count ?? 0) || 0;
       // 2026-06-02 · schema has two historical key variants:
       //   · rep_distance_mi (newer, miles · what spec-builder emits today)
@@ -629,7 +796,11 @@ export function totalDistanceMiFromSpec(
     case 'long':
     case 'easy':
     case 'recovery':
+    case 'strides':
       // Single-segment workouts · distance_mi as-passed IS the total.
+      // Strides included: Research/04:349 "Not a workout" — 4-8 × 20 s with
+      // full walk-back recovery is neuromuscular work inside the easy run's
+      // own mileage, not mileage added on top of it.
       return fallbackDistanceMi;
     default:
       return fallbackDistanceMi;
@@ -665,6 +836,12 @@ export function capSpecToDistance(spec: WorkoutSpec, maxMi: number): WorkoutSpec
     s.cooldown_mi = cd;
     s.tempo_distance_mi = Number(Math.max(0.5, maxMi - wu - cd).toFixed(1));
   } else if (kind === 'threshold' || kind === 'intervals') {
+    // DOCTRINE-VOCAB-1 · nothing to scale on a time-based rep set: its work is
+    // denominated in seconds, and totalDistanceMiFromSpec already reports the
+    // day's headline distance, so `realized` can never exceed maxMi and this
+    // branch is unreachable for it. Guarded explicitly so a future change to
+    // the sum can't start dividing by a rep distance of zero.
+    if ((Number(s.rep_duration_s ?? 0) || 0) > 0 && !(Number(s.rep_distance_mi ?? 0) > 0)) return spec;
     let repMi = (Number(s.rep_distance_mi ?? 0) || 0) > 0
       ? Number(s.rep_distance_mi)
       : (Number(s.rep_distance_m ?? 0) || 0) / 1609.34 || 1;

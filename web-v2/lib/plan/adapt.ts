@@ -1230,8 +1230,9 @@ async function rebuildWorkoutDerivations(
       type: string;
       distance_mi: string | null;
       race_id: string | null;
+      sub_label: string | null;
     }>(
-      `SELECT pw.type, pw.distance_mi::text, tp.race_id
+      `SELECT pw.type, pw.distance_mi::text, pw.sub_label, tp.race_id
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE pw.id = $1
@@ -1263,12 +1264,21 @@ async function rebuildWorkoutDerivations(
     //    HR-cap accuracy. The next briefing/render will re-load HR
     //    anchors through the standard pipeline.
     const { buildWorkoutSpec } = await import('./spec-builder');
+    //    DOCTRINE-VOCAB-1 (2026-08-17) · pass the row's CURRENT sub_label as the
+    //    prescription. It was passing null, so a rebuild re-derived the spec from
+    //    (type, distance) alone and spec-builder fell back to its generic
+    //    defaults — 4×1mi at T for anything typed `threshold`. A shave therefore
+    //    silently turned "6×90s hills @ 5K-10K effort" or "5×2K · descend MP → T"
+    //    into a plain cruise-interval set, and then overwrote the sub_label to
+    //    match, so nothing downstream could tell the workout had been replaced.
+    //    Re-reading the prescription keeps the workout's identity and re-sizes it
+    //    to the shaved distance, which is what this function was written to do.
     const { spec, paceTargetSPerMi } = buildWorkoutSpec(
       type,
       distanceMi,
       tPaceSec,
       null,
-      null,
+      row.sub_label,
       null,
     );
     if (!spec) return;

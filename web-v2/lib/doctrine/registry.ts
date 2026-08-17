@@ -68,6 +68,14 @@ import {
   RERAMP_WEEKLY_GROWTH,
   classifyGapBand,
 } from '@/lib/plan/adapt';
+import { EASY_SHARE_FLOOR } from '@/lib/plan/intensity-distribution';
+import { qualityFamilyFor } from '@/lib/plan/generate';
+import {
+  STRIDE_DURATION_S,
+  STRIDE_RECOVERY_S,
+  STRIDE_DEFAULT_REPS,
+  STRIDE_DAYS_PER_WEEK,
+} from '@/lib/plan/spec-builder';
 import { friel7Zones, lthrZones, pctMaxZones } from '@/lib/training/zones';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
 import { vdotFromRace } from '@/lib/training/vdot';
@@ -1429,6 +1437,141 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (RERAMP_RESUME_FRACTION <= 0 || RERAMP_RESUME_FRACTION > 1) {
         throw new Error(`RERAMP_RESUME_FRACTION is ${RERAMP_RESUME_FRACTION} · it is a fraction of pre-absence volume`);
+      }
+    },
+  },
+
+  // ══ INTENSITY DISTRIBUTION · the 80/20 rule ═══════════════════════════════
+  {
+    id: 'INTENSITY.easy-share-floor',
+    binds: ['lib/plan/intensity-distribution.ts#EASY_SHARE_FLOOR', 'lib/plan/generate.ts#applyIntensityFloor'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: 'converge on ≥75% of training volume in Z1',
+    claim:
+      'At least 75% of training volume is easy running. The engine had no notion of ' +
+      'intensity distribution at all until 2026-08-17 — it sized volume, sized the long run ' +
+      'and placed quality days without ever asking what fraction of the miles it had just ' +
+      'authored were easy. The floor is read out of the sentence itself rather than written ' +
+      'here, so a change to the doctrine number moves the engine and not the other way round.',
+    check({ cite }) {
+      const [, docFloorPct] = parseBand(cite.section[0]);
+      const docFloor = docFloorPct / 100;
+      if (Math.abs(EASY_SHARE_FLOOR - docFloor) > 0.001) {
+        throw new Error(
+          `EASY_SHARE_FLOOR is ${EASY_SHARE_FLOOR}, doctrine converges at ${docFloor}`,
+        );
+      }
+      // The base-building table states the same floor with a ceiling. Both must
+      // agree, or one of them has been edited and nobody looked at the other.
+      const rules = resolveCitation(cite.doc, '### Practical base-building rules');
+      const [baseLo] = parseBand(rules.table().cell('Most base running is easy', 'Application'));
+      if (Math.abs(baseLo / 100 - docFloor) > 0.001) {
+        throw new Error(
+          `Research/00a states two different easy-volume floors: ${docFloor} in the TID ` +
+          `section and ${baseLo / 100} in the base-building rules. Reconcile the doc first.`,
+        );
+      }
+    },
+  },
+
+  // ══ WORKOUT VOCABULARY ════════════════════════════════════════════════════
+  {
+    id: 'STRIDES.doctrine-bands',
+    binds: [
+      'lib/plan/spec-builder.ts#STRIDE_DURATION_S',
+      'lib/plan/spec-builder.ts#STRIDE_RECOVERY_S',
+      'lib/plan/spec-builder.ts#STRIDE_DEFAULT_REPS',
+      'lib/plan/spec-builder.ts#STRIDE_DAYS_PER_WEEK',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 7.2 Strides',
+    claim:
+      'A stride is 15-30 seconds at mile-to-5K pace, 4-8 of them, with 60-90 seconds of ' +
+      'recovery, done 2-4 times a week, in every phase of every plan. The engine could not ' +
+      'express one at all before 2026-08-17: expand-spec had no strides shape, so a plan row ' +
+      'that read "2 mi + 4×20s strides" reached the watch as a flat two-mile jog. Each of ' +
+      'the four constants is checked against its own row of the §7.2 table.',
+    check({ cite }) {
+      const t = cite.table();
+      within(STRIDE_DURATION_S, parseBand(t.cell('Distance', 'Prescription').split('or')[1]), 'STRIDE_DURATION_S');
+      within(STRIDE_DEFAULT_REPS, parseBand(t.cell('Reps', 'Prescription')), 'STRIDE_DEFAULT_REPS');
+      within(STRIDE_RECOVERY_S, parseBand(t.cell('Recovery', 'Prescription')), 'STRIDE_RECOVERY_S');
+      within(STRIDE_DAYS_PER_WEEK, parseBand(t.cell('Frequency', 'Prescription')), 'STRIDE_DAYS_PER_WEEK');
+      // §7.2's own placement rule: strides never stop. A future edit that gates
+      // them to one phase should fail here rather than pass quietly.
+      if (!/all phases/i.test(t.cell('When in cycle', 'Prescription'))) {
+        throw new Error('Research/04 §7.2 no longer places strides in all phases · re-read the claim');
+      }
+      // Research/00a's base-building rules state a narrower weekly frequency.
+      // The engine must satisfy BOTH bands, not just the looser one.
+      const baseRules = resolveCitation(
+        'Research/00a-distance-running-training.md',
+        '### Practical base-building rules',
+      );
+      within(
+        STRIDE_DAYS_PER_WEEK,
+        parseBand(baseRules.table().cell('Strides preserved', 'Application').split('strides')[1]),
+        'STRIDE_DAYS_PER_WEEK (Research/00a base-building band)',
+      );
+    },
+  },
+  {
+    id: 'VOCAB.phase-placement',
+    binds: ['lib/plan/generate.ts#qualityFamilyFor'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 15. Training-cycle placement summary',
+    claim:
+      'Each phase of a block has its own workout vocabulary, and §15 names it phase by ' +
+      'phase. The engine asked the workout_library for two families out of twenty-one, so ' +
+      'an eighteen-week marathon build contained three workout shapes — reps, tempo, long. ' +
+      'Every family qualityFamilyFor now places must be named in the row for the phase it ' +
+      'places it in.',
+    check({ cite }) {
+      const t = cite.table();
+      // How the engine's phase labels map onto the doc's rows. QUALITY spans two
+      // doctrine rows: the optional hill block and specific support.
+      const ROWS: Record<string, string[]> = {
+        QUALITY: ['Hill / strength (3–4 wks, optional)', 'Specific support (4–6 wks)'],
+        'RACE-SPECIFIC': ['Race-specific (4–8 wks)'],
+      };
+      // The word to look for in the row's prose, per family.
+      const KEYWORD: Record<string, RegExp> = {
+        hills: /hill/i,
+        fartlek: /fartlek/i,
+        cutdown: /alternation|cutdown|mile repeats/i,
+        combo: /alternation|race-pace/i,
+        marathon_specific: /canova|MP long runs/i,
+        race_specific: /race-pace workouts/i,
+      };
+      const cats: DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'];
+      const slots = ['intervals', 'threshold', 'tempo'] as const;
+      for (const [phase, labels] of Object.entries(ROWS)) {
+        const prose = labels.map((l) => t.cell(l, 'Primary workouts')).join(' ');
+        for (const cat of cats) {
+          for (const slot of slots) {
+            // Both parities of the week index, and both ends of a phase.
+            for (const [weekIdx, weeksToPhaseEnd] of [[0, 5], [1, 5], [4, 1], [5, 0]] as const) {
+              const family = qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, slot);
+              if (!family) continue;
+              const kw = KEYWORD[family];
+              if (!kw) {
+                throw new Error(`qualityFamilyFor places "${family}" with no doctrine keyword to check it against`);
+              }
+              if (!kw.test(prose)) {
+                throw new Error(
+                  `qualityFamilyFor puts "${family}" in the ${phase} phase (${cat}), but §15's ` +
+                  `row for that phase reads "${prose}" — doctrine does not place it there.`,
+                );
+              }
+            }
+          }
+        }
+      }
+      // BASE's row is easy running plus strides and hill sprints, and that is
+      // what the engine puts there. If a future edit gives BASE a structured
+      // quality slot this claim should be revisited, not silently widened.
+      if (qualityFamilyFor('m', 'BASE', 0, 5, 'intervals') !== null) {
+        throw new Error('the engine now places a quality family in BASE · §15 base row is easy volume + strides');
       }
     },
   },

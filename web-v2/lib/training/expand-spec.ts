@@ -40,6 +40,13 @@ export interface ExpandedPhase {
    *  (set by expandLong when the spec carries finish_mi). Consumers route it
    *  to a FINISH face instead of the rep face. Absent/false everywhere else. */
   isFinishSegment?: boolean;
+  /** DOCTRINE-STRIDES-1 · 2026-08-17 · True on each of the 4-8 short
+   *  accelerations appended to an easy run, shakeout or standalone strides
+   *  day (set by appendStrides when the spec carries strides_reps).
+   *  Absent/false everywhere else, so it follows the same optional-field
+   *  contract as isFinishSegment: a client that has never heard of strides
+   *  sees ordinary short work phases and runs them correctly. */
+  isStrideSegment?: boolean;
 }
 
 export interface ExpandSpecInput {
@@ -108,12 +115,73 @@ export function expandSpecToPhases(input: ExpandSpecInput): ExpandedPhase[] | nu
       return expandLong(s, totalMi, easyPaceSec, defaultTolerance, input.workPhaseLabel);
     case 'easy':
     case 'shakeout':
-      return expandEasy(s, totalMi, easyPaceSec, defaultTolerance, input.workPhaseLabel);
+    case 'strides':
+      // DOCTRINE-STRIDES-1 · the run is an easy run either way; strides are
+      // appended when the spec carries them (Research/04 §7.2 §Placement,
+      // "End of an easy run").
+      return appendStrides(
+        expandEasy(s, totalMi, easyPaceSec, defaultTolerance, input.workPhaseLabel),
+        s,
+        recoveryPace,
+      );
     case 'recovery':
       return expandRecovery(s, totalMi, recoveryPace, defaultTolerance);
     default:
       return null;
   }
+}
+
+/**
+ * DOCTRINE-STRIDES-1 (2026-08-17) · append the stride reps a spec carries.
+ *
+ * `Research/04-workout-vocabulary.md` §7.2 · 4-8 × 15-30 s at mile-to-5K race
+ * pace, "Full walk-back or 60–90 s jog — no fatigue between strides", placed at
+ * the "End of an easy run". So they go after the easy block, each followed by
+ * its own recovery — including the last one, because the walk-back is what
+ * makes the next stride possible and the runner is going to take it whether or
+ * not the watch counts it.
+ *
+ * Time-based, not distance-based: a 20-second stride covers ~90 m, which GPS
+ * cannot resolve, so `distanceMi` stays null and `build-workout.ts` marks the
+ * phase `repUnit: 'time'` — the same treatment the jog recoveries between
+ * intervals already get. No wire change was needed for the watch to run these.
+ *
+ * A spec with no `strides_reps` returns the phases untouched.
+ */
+function appendStrides(
+  phases: ExpandedPhase[],
+  s: Record<string, unknown>,
+  recoveryPace: number | null,
+): ExpandedPhase[] {
+  const reps = Number(s.strides_reps ?? 0) || 0;
+  if (reps <= 0) return phases;
+  const durationSec = Number(s.strides_duration_s ?? 0) || 20;
+  const stridePace = Number(s.strides_pace_s_per_mi) || null;
+  const recoverySec = Number(s.strides_recovery_s ?? 0) || 60;
+
+  for (let i = 0; i < reps; i++) {
+    phases.push({
+      type: 'work',
+      label: `Stride ${i + 1} of ${reps}`,
+      distanceMi: null,
+      durationSec,
+      targetPaceSPerMi: stridePace,
+      // Doctrine calls a stride "relaxed", "~85-95% max effort" and explicitly
+      // "Not a workout" (§7.2). A tight pace gate would turn a form drill into
+      // something to chase, so the band is deliberately wide.
+      tolerancePaceSPerMi: stridePace != null ? 45 : null,
+      isStrideSegment: true,
+    });
+    phases.push({
+      type: 'recovery',
+      label: 'Walk back',
+      distanceMi: null,
+      durationSec: recoverySec,
+      targetPaceSPerMi: recoveryPace,
+      tolerancePaceSPerMi: recoveryPace != null ? 60 : null,
+    });
+  }
+  return phases;
 }
 
 // ── per-kind expanders ─────────────────────────────────────────────────
@@ -179,7 +247,15 @@ function expandReps(
   const effRepMi = repMi > 0 ? repMi : (repM / 1609.34);
   // Null easy anchor → by-feel rep target (legacy specs without a rep pace
   // AND no fitness signal) — never a fabricated number (P1-47).
-  const repPace = Number(s.rep_pace_s_per_mi) || (easyPaceSec != null ? easyPaceSec - 80 : null);
+  // DOCTRINE-VOCAB-1 · hills and fartlek carry rep_duration_s instead of a rep
+  // distance (Research/04 §8.1, §9.1). `by_effort` marks the sets doctrine
+  // prescribes by effort rather than pace — §8.1's pace column is "5K–10K
+  // effort", never a number, because a flat-ground pace is unreachable uphill.
+  const repDurationS = Number(s.rep_duration_s ?? 0) || 0;
+  const byEffort = s.by_effort === true;
+  const repPace = byEffort
+    ? null
+    : (Number(s.rep_pace_s_per_mi) || (easyPaceSec != null ? easyPaceSec - 80 : null));
   const restS = Number(s.rep_rest_s ?? 60) || 60;
   const easyEst = easyPaceSec ?? DURATION_EST_S_PER_MI;
   const phases: ExpandedPhase[] = [];
@@ -194,14 +270,26 @@ function expandReps(
   });
 
   for (let i = 0; i < reps; i++) {
-    phases.push({
-      type: 'work',
-      label: `Interval · ${formatRepLabel(effRepMi)}`,
-      distanceMi: Number(effRepMi.toFixed(2)),
-      durationSec: Math.round(effRepMi * (repPace ?? DURATION_EST_S_PER_MI)),
-      targetPaceSPerMi: repPace,
-      tolerancePaceSPerMi: repPace != null ? tolerance : null,
-    });
+    phases.push(repDurationS > 0
+      // Time-based rep · distanceMi stays null so build-workout marks it
+      // repUnit:'time' and the watch counts the rep down by the clock, the
+      // same way it already handles the jog recoveries below.
+      ? {
+          type: 'work',
+          label: `${byEffort ? 'Hill' : 'Rep'} ${i + 1} of ${reps} · ${formatSec(repDurationS)}`,
+          distanceMi: null,
+          durationSec: repDurationS,
+          targetPaceSPerMi: repPace,
+          tolerancePaceSPerMi: repPace != null ? tolerance : null,
+        }
+      : {
+          type: 'work',
+          label: `Interval · ${formatRepLabel(effRepMi)}`,
+          distanceMi: Number(effRepMi.toFixed(2)),
+          durationSec: Math.round(effRepMi * (repPace ?? DURATION_EST_S_PER_MI)),
+          targetPaceSPerMi: repPace,
+          tolerancePaceSPerMi: repPace != null ? tolerance : null,
+        });
     // Recovery between reps (not after last)
     if (i < reps - 1) {
       phases.push({
@@ -373,6 +461,13 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
     }
     case 'threshold':
     case 'intervals': {
+      // DOCTRINE-VOCAB-1 · a time-based rep set carries the authored
+      // prescription in `label`, because that string is where the workout's
+      // IDENTITY lives — "6×90s hills", "Mona". Re-deriving a generic rep
+      // label here would drop the family name between compose and persist,
+      // which is the sub_label/spec drift this function exists to prevent.
+      const authored = typeof s.label === 'string' ? s.label.trim() : '';
+      if (authored) return authored;
       const reps = Number(s.rep_count ?? 0) || 0;
       const repMi = Number(s.rep_distance_mi ?? 0) || 0;
       const repM = Number(s.rep_distance_m ?? 0) || 0;
@@ -395,6 +490,16 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
       }
       return null;  // plain long / race · keep generator-time label
     }
+    // DOCTRINE-STRIDES-1 · a STANDALONE strides day is fully described by its
+    // spec, so its label can be derived. Strides riding on an easy day or a
+    // shakeout are NOT derived here — those specs are kind:'easy', which
+    // would mis-derive the run itself as "EASY" and lose the generator's
+    // label (see the note below). `strideSuffix` is exported for callers that
+    // want to decorate an existing label with them.
+    case 'strides': {
+      const suffix = strideSuffix(spec);
+      return suffix ? `EASY${suffix}` : null;
+    }
     // 2026-06-03 · easy / recovery / race / shakeout · return null so the
     // caller's existing sub_label sticks. The spec's `kind` doesn't carry
     // the decorations these labels need:
@@ -405,6 +510,24 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * DOCTRINE-STRIDES-1 · " + 6×20s strides" for a spec that carries them, or ''.
+ *
+ * Kept separate from `subLabelFromSpec` because strides decorate a label rather
+ * than define one: an easy day's spec is kind:'easy' whether or not it ends in
+ * strides, so the run's own label comes from the generator and this is appended
+ * to it. Renderers on every surface can call this to show what the watch will
+ * actually execute.
+ */
+export function strideSuffix(spec: WorkoutSpec): string {
+  if (!spec || typeof spec !== 'object') return '';
+  const s = spec as Record<string, unknown>;
+  const reps = Number(s.strides_reps ?? 0) || 0;
+  if (reps <= 0) return '';
+  const durationSec = Number(s.strides_duration_s ?? 0) || 20;
+  return ` + ${reps}×${durationSec}s strides`;
 }
 
 function formatMi(n: number): string {

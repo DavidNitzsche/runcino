@@ -26,7 +26,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
-import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DEFAULT_REPS, STRIDE_DURATION_S } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
@@ -43,6 +43,7 @@ import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal
 // (authoring + adaptation-time recompute run the same math).
 import { blendedTPaceForWeek, measuredProgressFraction } from './recompute-paces';
 import { validateComposedPlan } from './validate';
+import { EASY_SHARE_FLOOR, weekIntensity, splitDay } from './intensity-distribution';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -934,6 +935,161 @@ export interface ResolvedPrescriptions {
   tempo: string;   // formula-based; library row is optional
   citationInterval: string;
   citationThreshold: string;
+  /**
+   * DOCTRINE-VOCAB-1 (2026-08-17) · prescriptions for the workout_library
+   * families beyond `vo2max` and `threshold`.
+   *
+   * The library carries 21 seeded families, all of them transcribed from
+   * `Research/04-workout-vocabulary.md` and correct, and `resolvePrescriptions`
+   * only ever asked for two of them. The consequence was not subtle: a whole
+   * marathon build contained exactly three workout shapes — reps, tempo, long —
+   * repeated for eighteen weeks, with `hills`, `fartlek`, `cutdown`,
+   * `race_specific` and `marathon_specific` sitting in the table unread.
+   *
+   * The `tempo` slot's entry is a PHRASE that replaces `tempo` (the caller
+   * prefixes the sized distance); every other slot's entry is the whole
+   * prescription. That mirrors how `tempo` itself has always been assembled.
+   */
+  families: Partial<Record<WorkoutFamily, string>>;
+}
+
+/**
+ * DOCTRINE-VOCAB-1 (2026-08-17) · which family supplies a quality slot.
+ *
+ * `Research/04` §15 "Training-cycle placement summary" is a five-row table that
+ * maps this engine's four phases almost exactly:
+ *
+ *   | Base (8–12+ wks)          | E, GA, medium-long, long, strides, hill
+ *                                 sprints, occasional fartlek/light hills |
+ *   | Hill / strength (3–4 wks) | Hill circuit, long hill repeats, hill sprints |
+ *   | Specific support (4–6 wks)| T, cruise intervals, mile repeats at slower I,
+ *                                 alternations |
+ *   | Race-specific (4–8 wks)   | Race-pace workouts, MP long runs, Canova
+ *                                 structures, 4×2 mi for HM |
+ *   | Sharpening / taper        | Reduced-volume versions of recent workouts;
+ *                                 strides; short race-pace work |
+ *
+ * BASE has no quality slot in this engine and doctrine does not ask for one —
+ * its row is easy running plus strides and hill sprints, which is what
+ * DOCTRINE-STRIDES-1 now puts there. QUALITY spans both the optional hill block
+ * and specific support, so it opens with hills and fartlek and closes with
+ * reps; RACE-SPECIFIC becomes race-pace work; TAPER's sharpener is already the
+ * race-week tune-up.
+ *
+ * Each family is placed on the slot whose EXISTING type already matches its
+ * shape, so this changes what a workout IS without changing which day it lands
+ * on. Placement, gap spacing and every structural invariant are untouched.
+ *
+ * Per-workout "When in cycle" rows behind each choice:
+ *   hills   · §8.3 "Late base, early specific"
+ *   fartlek · §9.2 "Base through specific"
+ *   cutdown · §12.2 "Specific phase, 5K/10K/HM"
+ *   combo   · §10.3 wave tempo "Specific phase HM/marathon"
+ *   m-spec  · §11.2 "Specific phase; first block 8–10 weeks out, last 4–5 weeks out"
+ *   r-spec  · §14.1-14.3, the 5K / 10K / half race-pace session tables
+ */
+export function qualityFamilyFor(
+  cat: DistCategory,
+  phase: string,
+  weekIdx: number,
+  weeksToPhaseEnd: number,
+  slotType: DayPlan['type'],
+): WorkoutFamily | null {
+  if (phase === 'RACE-SPECIFIC') {
+    // §15 race-specific row. Ultra is deliberately excluded: it trains
+    // threshold-dominant off race-paced EFFORT, not rep sessions
+    // (Research/00a:311-312, and the existing ULTRA-QUAL-1 ruling).
+    if (cat === 'ultra') return null;
+    if (cat === 'm') {
+      if (slotType === 'threshold') return 'marathon_specific';  // §11.2 Canova 2K reps
+      if (slotType === 'tempo')     return 'combo';              // §10.3 wave tempo
+      return null;
+    }
+    // 5K / 10K on the rep slot, half on the threshold slot — §14.1-14.3 put
+    // each distance's race-pace session at the pace that slot already targets,
+    // so the spec's own pace derivation lands on race pace without a special case.
+    if ((cat === '5k' || cat === '10k') && slotType === 'intervals') return 'race_specific';
+    if (cat === 'hm' && slotType === 'threshold') return 'race_specific';
+    return null;
+  }
+
+  if (phase === 'QUALITY') {
+    // The last three QUALITY weeks are the block's sharpening end — the same
+    // window longFinishSegment already treats as the run-up to race-specific.
+    // Before it, §8.3 and §9.2 place hills and fartlek; at it, reps take over.
+    const early = weeksToPhaseEnd > 2;
+    if (early && slotType === 'intervals') {
+      // Alternate so neither becomes the only thing the runner ever does.
+      // §8.1 medium hill repeats are 5K-10K effort and §9.1 fartlek spans
+      // 5K-to-mile effort, so the two are interchangeable at this slot.
+      //
+      // Halved before the parity test because the rep slot itself only
+      // appears on alternate weeks for some distances — the marathon's
+      // QUALITY mix carries `intervals` on odd weeks only. Testing weekIdx
+      // directly would then be constant on every week this line runs, and
+      // the marathon would have seen fartlek and never a hill.
+      return Math.floor(weekIdx / 2) % 2 === 0 ? 'hills' : 'fartlek';
+    }
+    // §12.2 cutdowns are named for 5K/10K/HM only. The marathon's threshold
+    // slot keeps its cruise intervals.
+    if (!early && slotType === 'threshold' && (cat === '5k' || cat === '10k' || cat === 'hm')) {
+      return 'cutdown';
+    }
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * DOCTRINE-VOCAB-1 · the doctrine prescription for each family, per distance.
+ *
+ * These mirror the seeded `workout_library` rows byte-for-byte in structure, so
+ * the DB path and this fallback describe the same workout. Rest values are
+ * written as single numbers rather than the doc's bands ("60s" not "60–90s")
+ * because the prescription is also the machine-readable recipe that
+ * `parsePrescription` turns into a spec — the band lives in the research file
+ * and the midpoint lives here.
+ */
+/**
+ * DOCTRINE-VOCAB-1 · the coaching line for each family, from its §"Purpose"
+ * row. Coach voice: what it is for, and the one thing to get right.
+ */
+const FAMILY_NOTES: Partial<Record<WorkoutFamily, string>> = {
+  // §8.2 Purpose "Power, tendon stiffness, form"; §8.1 pace column is effort.
+  hills:   'Run the climb by effort, not pace. Jog down, full recovery, repeat.',
+  // §9.1 "Unstructured to highly structured pace variation within a continuous run."
+  fartlek: 'Continuous run. Surge, float, surge. The float is a jog, not a stop.',
+  // §12.2 Purpose "final reps at I/R pace force composure under fatigue"
+  cutdown: 'Start controlled. Each rep a little faster. The last one is the point.',
+  // §10.3 wave tempo · §10 "alternate paces without true recovery"
+  combo:   'One continuous block, rolling either side of threshold. No stopping.',
+  // §11.2 Canova 2K repeats · marathon-specific
+  marathon_specific: 'Marathon-specific. Open at race pace, finish at threshold.',
+  // §14 "Workouts whose paces and structures directly mirror race demands."
+  race_specific: 'Race pace, race rhythm. This is the dress rehearsal for the effort.',
+};
+
+function inlineFamilyPrescriptions(cat: DistCategory): Partial<Record<WorkoutFamily, string>> {
+  return {
+    // §8.1 "Medium hill repeats | 60–90 s | 4–6% | 5K–10K effort | 6–10 | 2–3 min jog down"
+    hills:   '6×90s hills @ 5K-10K effort · 2:30 jog down',
+    // §9.1 time-based fartlek · §9.5 "Pre-set work/float repeats"
+    fartlek: '6×3 min @ 10K effort · 2 min easy jog',
+    // §12.2 "Mile cutdowns | 3–6 × 1 mi | each rep 5–15 s/mi faster | 60–90 s jog"
+    cutdown: '4×1 mi · MP → HM → T → 5K · 75s jog',
+    // §10.3 wave tempo · a PHRASE, sized by the caller like `tempo`
+    combo:   'continuous wave tempo · ±10 s/mi around T',
+    // §11.2 Canova 2K repeats
+    marathon_specific: '5×2K · descend MP → T · 2 min jog',
+    // §14.1 "12 × 400 at 5K | Classic 5K simulator | 5K race pace | 60–90 s jog"
+    // §14.2 "2K reps | 4–5 × 2K | 10K race pace | 2–3 min jog"
+    // §14.3 "4 × 2 mi | Predictor session | HM race pace | 60–120 s jog"
+    race_specific:
+        cat === '5k'  ? '12×400m @ 5K race pace · 75s jog'
+      : cat === '10k' ? '4×2km @ 10K race pace · 2:30 jog'
+      :                 '4×2mi @ HM race pace · 90s jog',
+  };
 }
 
 /** Inline last-resort prescriptions — match the historical doctrine in this
@@ -957,6 +1113,7 @@ export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
     tempo:        'continuous tempo',
     citationInterval:  'Research/04-workout-vocabulary.md §6',
     citationThreshold: 'Research/04-workout-vocabulary.md §5',
+    families: inlineFamilyPrescriptions(cat),
   };
 }
 
@@ -975,12 +1132,36 @@ export async function resolvePrescriptions(
 
   const phaseFit = phase === 'race_specific' ? 'race_specific' : 'quality';
 
-  const [intervalsT, thresholdT] = await Promise.all([
+  // DOCTRINE-VOCAB-1 (2026-08-17) · ask the library for every family
+  // Research/04 §15 places in this phase, not just the two it used to.
+  // `qualityFamilyFor` decides which of them a given week's slot actually
+  // uses; resolving them all here keeps the read to a single round of
+  // queries against an in-process-cached table.
+  const VOCAB: WorkoutFamily[] = ['hills', 'fartlek', 'cutdown', 'combo', 'marathon_specific', 'race_specific'];
+  const [intervalsT, thresholdT, ...vocabT] = await Promise.all([
     pickWorkout({ family: 'vo2max' as WorkoutFamily, distance: cat, phase: phaseFit, level: lvl }),
     pickWorkout({ family: 'threshold' as WorkoutFamily, distance: cat, phase: phaseFit, level: lvl }),
+    ...VOCAB.map((family) => pickWorkout({ family, distance: cat, phase: phaseFit, level: lvl })),
   ]);
 
+  // Library row wins; the inline doctrine string is the floor. A family with
+  // neither (e.g. `combo` for a 5K, which doctrine does not place there) is
+  // simply absent, and qualityFamilyFor never asks for it.
+  const families = { ...inlineFamilyPrescriptions(cat) };
+  VOCAB.forEach((family, i) => {
+    const row = vocabT[i];
+    // `combo` is a phrase the caller prefixes with a sized distance, so a
+    // library row that leads with its own fixed mileage ("6 mi continuous
+    // wave tempo") would double the number. Strip the leading distance.
+    if (row?.prescriptionText) {
+      families[family] = family === 'combo'
+        ? row.prescriptionText.replace(/^\s*\d+(?:\.\d+)?\s*mi\s+/i, '')
+        : row.prescriptionText;
+    }
+  });
+
   return {
+    families,
     intervals:        intervalsT?.prescriptionText  ?? fallback.intervals,
     // HM-RSPEC-1 (2026-06-23): HM race-specific threshold should be 5×1mi (Research/00a §309
     // "5–6×1mi at half-marathon pace"), not the quality-phase 3×1mi. The DB row wins when present;
@@ -1106,7 +1287,11 @@ function layoutWeek({
         // Day before race: 2mi shakeout w/ strides. 2 days before: rest.
         const daysBeforeRace = (raceDow - dow + 7) % 7;
         if (daysBeforeRace === 1) {
-          days.push({ dow, type: 'shakeout', distanceMi: 2, isQuality: false, isLong: false, subLabel: 'SHAKEOUT', notes: '2 mi + 4×20s strides. Loosen the legs.' });
+          // DOCTRINE-STRIDES-1 · the strides move from the notes into the
+          // sub_label. They have been in this row's copy since it was written
+          // and in no spec, so the day before every race the watch ran a flat
+          // 2-mile jog under a label promising four 20-second strides.
+          days.push({ dow, type: 'shakeout', distanceMi: 2, isQuality: false, isLong: false, subLabel: 'SHAKEOUT · 4×20s strides', notes: '2 mi easy. Loosen the legs.' });
         } else if (daysBeforeRace === 2) {
           days.push({ dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off feet. Hydrate.' });
         } else if (daysBeforeRace === 5) {
@@ -1478,18 +1663,40 @@ function layoutWeek({
           return a.includes('intervals') ? a : b.includes('intervals') ? b : qualityTypes; })()
       : qualityTypes;
     const scheduledQ = scheduleQuality(effectiveQDows, qualityTypes, longRunDow, restDow, availableDows, placementProfile);
+    // DOCTRINE-VOCAB-1 · a week never runs the same family twice. Both of a
+    // week's slots can land on the same type (the scheduler is free to), and a
+    // family keyed only on type would then fill both with one workout —
+    // trading three shapes for two, which is not what §15 is asking for. The
+    // second slot falls back to its generic prescription.
+    const usedFamilies = new Set<WorkoutFamily>();
     scheduledQ.dows.forEach((dow, i) => {
       if (slots[dow] != null) return; // conflict · skip
       const qt = scheduledQ.types[i % scheduledQ.types.length];
+      // DOCTRINE-VOCAB-1 (2026-08-17) · does Research/04 §15 place a specific
+      // family on this slot, in this phase, for this distance? If so its
+      // prescription supersedes the generic vo2max/threshold/tempo string.
+      // The slot's TYPE is unchanged either way — each family is only ever
+      // offered to a slot whose type already matches its shape — so scheduling,
+      // spacing and every structural invariant are exactly as before.
+      // Base-building beginners are excluded: Research/22 §Beginner keeps them
+      // on easy running plus one light surge session, not the full vocabulary.
+      const candidateFamily = baseBuilding ? null : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
+      const vocabFamily = (candidateFamily && !usedFamilies.has(candidateFamily)) ? candidateFamily : null;
+      const vocabRx = vocabFamily ? rx.families[vocabFamily] : undefined;
+      if (vocabFamily && vocabRx) usedFamilies.add(vocabFamily);
       const sub =
-        qt === 'intervals'        ? rx.intervals
+        vocabRx && qt !== 'tempo' ? vocabRx
+      : qt === 'intervals'        ? rx.intervals
       : qt === 'threshold'        ? rx.threshold
       : qt === 'tempo'            ? (baseBuilding
                                       // Beginner sharpen day = a light fartlek: an easy run with a
                                       // few short surges at T effort, sized to the runner (no 3mi
                                       // tempo floor). Research/22 §Beginner ("2.5mi E w/ 4×1 min @ T").
                                       ? `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ 5×1 min surges @ T effort`
-                                      : `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`)
+                                      // DOCTRINE-VOCAB-1 · the family entry for a tempo slot is a
+                                      // PHRASE ("continuous wave tempo · ±10 s/mi around T"); the
+                                      // sizing in front of it is the caller's, exactly as for rx.tempo.
+                                      : `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${vocabRx ?? rx.tempo}`)
       : qt === 'race_week_tuneup' ? (
           raceDistanceMi >= 31 ? '5×400m @ T pace · 90s jog'   // ULTRA-TUNE-1: threshold, not I-pace (see race-week note)
         : raceDistanceMi >= 20 ? '5×400m @ 5K pace · 2min jog' // TAPER-SHARP-1 · marathon: 5K-pace prime
@@ -1520,8 +1727,12 @@ function layoutWeek({
       slots[dow] = {
         dow: dow as DOW, type: effectiveType, distanceMi: slotMi, isQuality: true, isLong: false,
         subLabel: sub,
-        notes:
-          effectiveType === 'intervals'        ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
+        // DOCTRINE-VOCAB-1 · a family's coaching note comes from what that
+        // family is FOR, not from the slot's spec kind. "Hold pace, even
+        // splits" is exactly wrong on a hill session, which Research/04 §8.1
+        // prescribes by effort precisely because pace cannot hold on a climb.
+        notes: (vocabFamily && FAMILY_NOTES[vocabFamily]) ? FAMILY_NOTES[vocabFamily]!
+        : effectiveType === 'intervals'        ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
         : effectiveType === 'threshold'        ? 'WU 1.5mi, threshold reps, CD 1mi. Comfortably hard.'
         : effectiveType === 'tempo'            ? 'WU, continuous tempo block, CD. Just below threshold.'
         : effectiveType === 'race_week_tuneup' ? 'Two sharp half-mile reps just above T-pace. Keep it brief. Legs stay fresh.'
@@ -1667,6 +1878,32 @@ function layoutWeek({
     slots[dow] = easyDowSet.has(dow)
       ? { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }
       : { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Sleep, mobility, fuel.' };
+  }
+
+  // DOCTRINE-STRIDES-1 (2026-08-17) · put strides on the week's easy days.
+  //
+  // Research/04 §7.2: "| When in cycle | All phases — never stop doing strides |",
+  // "| Placement | End of an easy run, mid-warmup before a workout, or standalone
+  // day |", "| Frequency | 2–4×/week |". Research/00a §"Practical base-building
+  // rules": "| Strides preserved | 4–8×100 m strides 1–2×/wk maintain
+  // neuromuscular function |". §15's phase table lists strides in the base row
+  // AND the sharpening/taper row — they are the one thing doctrine never takes
+  // away, and the engine had them nowhere.
+  //
+  // The strides go in the SUB_LABEL, not the notes, because sub_label is what
+  // persistPlan hands to buildWorkoutSpec as the prescription. Writing them into
+  // notes — which is what the race-week shakeout did — produces a row that
+  // promises strides over a spec that has none, and a watch that runs a flat jog.
+  // Distance is untouched: Research/04:349 "Not a workout".
+  {
+    let strideDays = 0;
+    for (let d = 0; d < 7 && strideDays < STRIDE_DAYS_PER_WEEK; d++) {
+      const s = slots[d];
+      if (!s || s.type !== 'easy' || s.distanceMi <= 0) continue;
+      s.subLabel = `EASY · ${STRIDE_DEFAULT_REPS}×${STRIDE_DURATION_S}s strides`;
+      s.notes = `${s.notes} Finish with ${STRIDE_DEFAULT_REPS} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.`;
+      strideDays++;
+    }
   }
 
   // 2026-06-21 · INV13 guard · never author a labeled running day with a non-
@@ -1830,8 +2067,10 @@ export function embedMidBlockRaces(
         dayBefore.distanceMi = 2;
         dayBefore.isQuality = false;
         dayBefore.isLong = false;
-        dayBefore.subLabel = 'SHAKEOUT';
-        dayBefore.notes = `2 mi + 4×20s strides. Loosen the legs for ${race.name}.`;
+        // DOCTRINE-STRIDES-1 · same move as the race-week shakeout: strides
+        // belong in the sub_label, which is the prescription spec-builder reads.
+        dayBefore.subLabel = 'SHAKEOUT · 4×20s strides';
+        dayBefore.notes = `2 mi easy. Loosen the legs for ${race.name}.`;
         delete dayBefore.raceGoalPaceSec;
         touchedWeeks.add(Math.floor((o - 1) / 7));
       }
@@ -3628,6 +3867,94 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
       priorTaper = tw.weeklyMi;
     }
   }
+
+  // DOCTRINE-TID-1 (2026-08-17) · the 80/20 constraint, which the engine has
+  // never had in any form. Runs LAST, because every pass above moves mileage.
+  applyIntensityFloor(composed);
+}
+
+/**
+ * DOCTRINE-TID-1 (2026-08-17) · hold every TRAINING week at or above the
+ * doctrinal easy-volume floor.
+ *
+ * `Research/00a-distance-running-training.md` §"TID — the disagreement and when
+ * each TID matters": "All elite distance runners — regardless of system —
+ * converge on ≥75% of training volume in Z1." §"Practical base-building rules"
+ * repeats it with a ceiling: "Most base running is easy | 75–90% in Z1".
+ * Nothing in the generator measured this, let alone enforced it.
+ *
+ * What it was costing: the marathon RACE-SPECIFIC block ran at 58-71% easy.
+ * `longFinishSegment` puts a 50%-of-the-long marathon-pace finish on EVERY
+ * race-specific week, and `qualityTypesFor` puts two structured sessions
+ * alongside it in the same seven days. `Research/04` §16 "Combinations to
+ * avoid" names that pairing directly — "MP long run + hard tempo within 5 days
+ * | Same energy system, same impact pattern, no recovery between" — and §4.4
+ * gives the marathon-pace long run a cadence of "6-10 weeks out", not "every
+ * week". The long-run finish is therefore the SURPLUS hard mileage in an
+ * over-dense week, and it is what this pass gives back first.
+ *
+ * The correction converts hard miles to easy miles INSIDE THE SAME DAY: the
+ * long run keeps its distance and loses finish miles to its own easy build.
+ * Nothing about the week's shape moves — day count, day distances, placement,
+ * weekly total and the long run's length are all byte-identical afterwards.
+ * That is deliberate: it is the only lever that cannot disturb the structural
+ * invariants the sweep gates already hold, so a plan that was well-formed
+ * before this pass is still well-formed after it.
+ *
+ * TAPER and race weeks are exempt, and the exemption is doctrine rather than
+ * convenience. `Research/08` §9.1's taper is defined as volume-cut with
+ * intensity PRESERVED, so the hard share rises by design as the taper deepens;
+ * and a race week's biggest number is the race, which is not training volume at
+ * all. Applying a training-volume floor to either would be reading the claim
+ * against weeks it was never about.
+ */
+function applyIntensityFloor(composed: ComposePlanResult): void {
+  for (const w of composed.weeks) {
+    if (w.isRaceWeek || w.phase === 'TAPER') continue;
+    if (weekIntensity(w).easyShare >= EASY_SHARE_FLOOR) continue;
+
+    const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
+    if (!long) continue;
+    const finishMi = splitDay(long).qualityMi;
+    if (finishMi <= 0) continue;
+
+    // Hard miles the week may carry: (1 - floor) of its running volume.
+    const totals = w.days.reduce(
+      (acc, d) => { const s = splitDay(d); acc.easy += s.easyMi; acc.hard += s.qualityMi; return acc; },
+      { easy: 0, hard: 0 },
+    );
+    const running = totals.easy + totals.hard;
+    if (running <= 0) continue;
+    const hardBudget = running * (1 - EASY_SHARE_FLOOR);
+    const surplus = totals.hard - hardBudget;
+    if (surplus <= 0.05) continue;
+
+    // Give back only what the finish can give. When the two quality days alone
+    // already exceed the budget the finish goes to zero and the week stays
+    // over — this pass never touches a quality session's prescription, so the
+    // sub_label a runner reads always matches the spec their watch executes.
+    const newFinish = Math.max(0, Math.floor((finishMi - surplus) * 2) / 2);
+    setLongFinish(long, newFinish);
+  }
+}
+
+/**
+ * Rewrite a long-run day's finish segment to `finishMi` miles (0 removes it).
+ * sub_label is the ONLY carrier of the finish between compose and persist —
+ * `buildWorkoutSpec`'s `extractFinishSegment` reads it back out — so the label
+ * and the notes are rewritten together and there is no third place to drift.
+ */
+function setLongFinish(day: DayPlan, finishMi: number): void {
+  const tagMatch = String(day.subLabel ?? '').match(/mi\s*@\s*(HM|MP|M)\b/i);
+  const tag = tagMatch ? tagMatch[1].toUpperCase() : 'MP';
+  if (finishMi <= 0) {
+    day.subLabel = 'LONG';
+    day.notes = 'Conversational throughout. Build the engine.';
+    return;
+  }
+  const easyMi = Math.max(0, Math.round((day.distanceMi - finishMi) * 10) / 10);
+  day.subLabel = `LONG · ${finishMi}mi @ ${tag}`;
+  day.notes = `Steady ${easyMi}mi, then ${finishMi}mi at ${tag === 'HM' ? 'half-marathon pace' : 'marathon pace'}.`;
 }
 
 export async function generatePlan(input: GenerateInput): Promise<GenerateResult> {

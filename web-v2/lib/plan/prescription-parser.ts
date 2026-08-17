@@ -124,6 +124,111 @@ export function parsePrescription(s: string | null | undefined): ParsedPrescript
   return { reps, repDistanceMi, restS };
 }
 
+/**
+ * DOCTRINE-VOCAB-1 (2026-08-17) · reps measured in TIME rather than distance.
+ *
+ * Two whole `workout_library` families are written this way and no other shape
+ * will do. `Research/04-workout-vocabulary.md` §8.1 sizes every hill repeat by
+ * duration ("Short hill repeats | 10–30 s", "Medium hill repeats | 60–90 s",
+ * "Long hill repeats | 3–5 min") because the distance covered depends on the
+ * gradient; §9.1 does the same for fartlek ("Mona fartlek | 2×90 s, 4×60 s,
+ * 4×30 s, 4×15 s"). Until this parser existed, "6×90s hills · 2:30 jog down"
+ * fell through `parsePrescription` (which requires a distance unit), and
+ * spec-builder silently substituted its default 5×1000m rep set — the runner
+ * would have read "hills" over a spec their watch ran as flat kilometre reps.
+ *
+ * Recognised: "6×90s hills", "6×3 min @ 10K effort", "10×30s hills".
+ * Returns null for distance-based reps, so `parsePrescription` keeps priority
+ * and every existing prescription parses exactly as it did before.
+ */
+export interface ParsedTimeReps {
+  /** rep_count. */
+  reps: number;
+  /** rep_duration_s · seconds of work per rep. */
+  durationS: number;
+  /** rep_rest_s · recovery between reps, null when the string omits it. */
+  restS: number | null;
+}
+
+export function parseTimeReps(s: string | null | undefined): ParsedTimeReps | null {
+  if (!s || typeof s !== 'string') return null;
+  // Strides are their own shape with their own placement rules — never a
+  // rep set. parseStrides owns them.
+  if (parseStrides(s)) return null;
+
+  // "6×90s" / "10×30 s"
+  let m = s.match(/(\d+)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*s(?:ec)?\b/);
+  let durationS = m ? parseFloat(m[2]) : null;
+  if (!m) {
+    // "6×3 min" / "4×3min"
+    m = s.match(/(\d+)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*min\b/i);
+    durationS = m ? parseFloat(m[2]) * 60 : null;
+  }
+  if (!m || durationS == null) return null;
+
+  const reps = parseInt(m[1], 10);
+  if (!Number.isFinite(reps) || reps <= 0 || !Number.isFinite(durationS) || durationS <= 0) return null;
+
+  // The rest specifier sits AFTER the rep pattern ("6×90s hills · 2:30 jog
+  // down"), so parse it from the tail — otherwise "90s" is read as its own rest.
+  const restS = parseRest(s.slice(m.index! + m[0].length));
+  return { reps, durationS, restS };
+}
+
+/**
+ * DOCTRINE-STRIDES-1 (2026-08-17) · strides tacked onto a run.
+ *
+ * `Research/04-workout-vocabulary.md` §7.2 puts strides in every phase
+ * ("| When in cycle | All phases — never stop doing strides |") and every
+ * race-week template in `Research/08` carries them, but until now the string
+ * was the whole implementation: `generate.ts` wrote "2 mi + 4×20s strides"
+ * into a plan row's NOTES, no spec field existed to carry it, and the watch
+ * ran a flat two-mile jog under a label promising strides.
+ *
+ * Recognised shapes:
+ *   "4×20s strides"          → { reps: 4, durationS: 20 }
+ *   "6×80m strides"          → { reps: 6, distanceM: 80 }
+ *   "45 min easy + 6×80m strides"
+ *   "2 mi E + 6×ST"          → { reps: 6 }        (library shorthand)
+ *   "2 mi E + 4×ST"
+ *
+ * Returns null when the string carries no strides. Deliberately narrow: it
+ * requires the word "strides" or the "ST" shorthand, so a rep prescription
+ * ("6×800m @ I pace") can never be misread as strides.
+ */
+export interface ParsedStrides {
+  /** How many strides. */
+  reps: number;
+  /** Seconds per stride, when the string expressed them in time. */
+  durationS: number | null;
+  /** Metres per stride, when the string expressed them in distance. */
+  distanceM: number | null;
+}
+
+export function parseStrides(s: string | null | undefined): ParsedStrides | null {
+  if (!s || typeof s !== 'string') return null;
+  // "N×Ms strides" / "N×Mm strides" — the unit is required, the word is required.
+  const timed = s.match(/(\d+)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*s(?:ec)?\b[^·•]{0,20}?strides?/i);
+  if (timed) {
+    const reps = parseInt(timed[1], 10);
+    const durationS = parseFloat(timed[2]);
+    if (reps > 0 && durationS > 0) return { reps, durationS, distanceM: null };
+  }
+  const metric = s.match(/(\d+)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*m\b[^·•]{0,20}?strides?/i);
+  if (metric) {
+    const reps = parseInt(metric[1], 10);
+    const distanceM = parseFloat(metric[2]);
+    if (reps > 0 && distanceM > 0) return { reps, durationS: null, distanceM };
+  }
+  // Library shorthand "6×ST" — no unit, so doctrine's own default sizes it.
+  const shorthand = s.match(/(\d+)\s*[×xX]\s*ST\b/);
+  if (shorthand) {
+    const reps = parseInt(shorthand[1], 10);
+    if (reps > 0) return { reps, durationS: null, distanceM: null };
+  }
+  return null;
+}
+
 function parseRest(s: string): number | null {
   // "90s jog" or "90 s jog"
   const sMatch = s.match(/(\d+)\s*s(?:ec)?\b/i);

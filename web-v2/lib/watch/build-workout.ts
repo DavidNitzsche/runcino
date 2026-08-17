@@ -61,6 +61,12 @@ export interface WatchPhase {
    *  wire — old watch builds omit/ignore it (field defaults to false there);
    *  new builds route it to the FINISH face instead of the rep face. */
   isFinishSegment?: boolean;
+  /** DOCTRINE-STRIDES-1 · 2026-08-17 · True on each stride of an easy run's
+   *  stride set. Optional on the wire, same contract as isFinishSegment —
+   *  builds that predate strides see plain short time-based work phases and
+   *  execute them correctly; builds that know the flag can route them to a
+   *  dedicated stride face. */
+  isStrideSegment?: boolean;
   /** 2026-06-09 Phase 2 (3.2) · one-line contingency label for this phase
    *  ("HR over 167 and climbing · finish easy, the stimulus is banked").
    *  Optional on the wire — old builds ignore it; new builds render it in
@@ -511,6 +517,7 @@ export async function buildWatchToday(
         // Emit ONLY when true so non-finish phases omit it on the wire
         // (JSON.stringify drops undefined) — keeps the optional-field contract.
         isFinishSegment: p.isFinishSegment ? true : undefined,
+        isStrideSegment: p.isStrideSegment ? true : undefined,
       });
     }
   } else {
