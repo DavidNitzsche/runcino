@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
     signals_found: number;
     proposals_written: number;
     signals_skipped: number;        // pending row already exists
+    auto_results: number;           // provisional race results logged this tick
     error?: string;
   };
   const results: UserResult[] = [];
@@ -54,8 +55,32 @@ export async function POST(req: NextRequest) {
       signals_found: 0,
       proposals_written: 0,
       signals_skipped: 0,
+      auto_results: 0,
     };
     try {
+      // 2026-08-17 · race-lifecycle · auto-provisional race results FIRST.
+      // Before any graduate/transition decision, log a provisional
+      // watch-time result for any recent race the runner finished but
+      // never manually resulted (David's direction after AFC Half: the
+      // watch time IS the result until a chip time overrides it). The
+      // detector runs the full post-result chain for A/B races — VDOT
+      // recalc snapshots, plan archived race_completed, next-block plan
+      // generated — so the graduate block below sees a fresh VDOT and,
+      // in the common case, has nothing left to do (the chain already
+      // built the next plan). Idempotent: the detector's UPDATE is
+      // guarded on "still no finishS".
+      try {
+        const { detectAndLogProvisionalResults } = await import('@/lib/race/auto-result');
+        const auto = await detectAndLogProvisionalResults(u);
+        r.auto_results = auto.length;
+        if (auto.length > 0) {
+          console.log('[plan-drift] auto-provisional results logged:',
+            auto.map((a) => `${a.slug}=${a.finishDisplay}`).join(', '));
+        }
+      } catch (e) {
+        console.error('[plan-drift] auto-result detector failed:', e);
+      }
+
       // 2026-06-03 · Rule 12 · maintenance → race-prep transition.
       // When an active MAINTENANCE plan's target race comes within
       // its build window (BUILD_WINDOW_WEEKS[distance]), fire a
@@ -126,9 +151,18 @@ export async function POST(req: NextRequest) {
       // so it's a continuous progression, not a cold-start.
       // Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 11 follow-on.
       // 2026-06-03 · runner TZ for the race-date boundary.
+      // 2026-08-17 · race-lifecycle · boundary moved from race+2
+      // (`< today - 1 day`) to the FIRST cron after race day
+      // (graduateDue: race date < today). The +2 lag left the runner
+      // in a dead plan for two mornings after a goal race. The boundary
+      // itself lives in lib/plan/race-lifecycle.ts (unit-tested);
+      // idempotence is unchanged — the 24h (old race, new race) dedupe
+      // below plus the fact that a successful graduate re-points the
+      // active plan's race_id at a future race.
       const { runnerToday } = await import('@/lib/runtime/runner-tz');
+      const { graduateDue, recoveryCompleteDue } = await import('@/lib/plan/race-lifecycle');
       const userToday = await runnerToday(u);
-      const finishedRow = (await pool.query<{
+      const activePlanRow = (await pool.query<{
         plan_id: string; race_id: string; race_date: string;
       }>(
         `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
@@ -137,10 +171,12 @@ export async function POST(req: NextRequest) {
            JOIN races rc ON rc.slug = tp.race_id
           WHERE tp.user_uuid = $1
             AND tp.archived_iso IS NULL
-            AND (rc.meta->>'date')::date < $2::date - interval '1 day'
           ORDER BY tp.authored_iso DESC LIMIT 1`,
-        [u, userToday],
+        [u],
       ).catch(() => ({ rows: [] }))).rows[0];
+      const finishedRow = activePlanRow && graduateDue(activePlanRow.race_date, userToday)
+        ? activePlanRow
+        : undefined;
 
       if (finishedRow) {
         // Pick the next A-race AFTER today
@@ -190,6 +226,82 @@ export async function POST(req: NextRequest) {
         }
         // No next A-race · leave plan as-is. Runner gets a "schedule your next race"
         // empty-state on the next /today render. NOT a drift signal · move on.
+      }
+
+      // 2026-08-17 · race-lifecycle · recovery → next-block transition.
+      // composeRecoveryPlan's header always claimed "the graduate cron
+      // re-enters when the recovery window closes" — that path never
+      // existed (graduate only watches PAST race dates; a recovery
+      // plan's race_id points at the NEXT race). This block is the
+      // missing re-entry: when the active plan is recovery-mode, its
+      // last prescribed day has passed, and its target race is still
+      // ahead, rebuild toward that race. pickPlanMode inside
+      // generatePlan decides what comes next (race-prep / maintenance /
+      // a shorter recovery remainder if the doctrine window hasn't
+      // fully elapsed — RECOVERY-2 offsets it, so no restart-at-week-1).
+      // Loop guard is structural: the rebuild archives this plan and
+      // authors one whose last workout is >= today, so the predicate
+      // reads false on the next tick; a 24h proposal dedupe backstops it.
+      // Queried FRESH (not reusing activePlanRow) because the graduate
+      // block above may have just replaced the active plan.
+      const recoveryRow = (await pool.query<{
+        plan_id: string; race_id: string | null; race_date: string | null;
+        last_workout_iso: string | null;
+      }>(
+        `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
+                (rc.meta->>'date')::text AS race_date,
+                (SELECT MAX(pw.date_iso) FROM plan_workouts pw
+                  WHERE pw.plan_id = tp.id) AS last_workout_iso
+           FROM training_plans tp
+           LEFT JOIN races rc ON rc.slug = tp.race_id
+          WHERE tp.user_uuid = $1
+            AND tp.archived_iso IS NULL
+            AND (tp.mode = 'recovery' OR tp.authored_state->>'mode' = 'recovery')
+          ORDER BY tp.authored_iso DESC LIMIT 1`,
+        [u],
+      ).catch(() => ({ rows: [] }))).rows[0];
+
+      if (
+        recoveryRow?.race_id &&
+        recoveryCompleteDue(recoveryRow.last_workout_iso, recoveryRow.race_date, userToday)
+      ) {
+        const alreadyTransitioned = (await pool.query(
+          `SELECT 1 FROM plan_proposals
+            WHERE user_uuid = $1
+              AND proposal_kind = 'recovery_complete'
+              AND created_at >= NOW() - interval '24 hours'`,
+          [u],
+        ).catch(() => ({ rowCount: 0 }))).rowCount;
+        if (!alreadyTransitioned) {
+          try {
+            const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
+            const result = await fireAutoRebuild({
+              userUuid: u,
+              raceSlug: recoveryRow.race_id,
+              kind: 'recovery_complete',
+              reasons: {
+                transition: 'recovery_to_next_block',
+                race_slug: recoveryRow.race_id,
+                recovery_last_workout: recoveryRow.last_workout_iso,
+                message: `Recovery block finished · rebuilding toward ${recoveryRow.race_id}.`,
+              },
+              source: 'recovery_complete_cron',
+            });
+            if (result.ok) {
+              r.proposals_written++;
+              // generatePlan archives via clearActivePlansFor with the
+              // generic 'regenerated'; restamp the recovery plan's
+              // archive_reason so the lifecycle reads honestly.
+              await pool.query(
+                `UPDATE training_plans SET archive_reason = 'recovery_complete'
+                  WHERE id = $1 AND archived_iso IS NOT NULL`,
+                [recoveryRow.plan_id],
+              ).catch(() => null);
+            }
+          } catch (e) {
+            console.error('[plan-drift] recovery-complete transition failed:', e);
+          }
+        }
       }
 
       // 2026-06-01 · Phase 1.1 · goal-gap engine. Continuous projection-
@@ -327,6 +439,9 @@ export async function GET() {
     auth: 'Authorization: Bearer <CRON_SECRET>',
     recommended_schedule: '0 9 * * *  (daily at 02:00 PT = 09:00 UTC · runs AFTER snapshot-projections + readiness-snapshot)',
     triggers: [
+      'auto_result · provisional watch-time result logged for recent unresulted races (full post-result chain for A/B)',
+      'race_graduate · active plan race date passed (fires first cron AFTER race day)',
+      'recovery_complete · recovery plan out of prescribed days, target race still ahead → rebuild',
       'volume_drift · current 28d avg deviates >40% from authored 4wk avg',
       'vdot_drift · current VDOT deviates >2 from plan anchor (inferred from T-pace)',
       'staleness · plan authored >8 weeks ago',

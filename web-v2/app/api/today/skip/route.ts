@@ -89,21 +89,56 @@ export async function POST(req: NextRequest) {
   // Notifications v1 §C — enqueue skip-recovery for tomorrow 07:15.
   // Soft-fail: if notifications tables aren't migrated yet the call
   // catches inside enqueueNotification, the skip itself still succeeds.
+  //
+  // 2026-08-17 · race-lifecycle · race-day suppression. The nudge fires
+  // the MORNING AFTER the skip; when that morning is a race day (a
+  // race-type plan row or a races meta date), "YESTERDAY · SKIPPED.
+  // Today is easy 5.0mi. still feeling it?" landing at 07:15 on race
+  // morning is exactly wrong — the skipped shakeout the day before a
+  // race is deliberate taper conservation, not a recovery question.
+  // (This fired on AFC Half morning, 2026-08-16.)
   try {
     const tomorrow = new Date(date + 'T00:00:00Z');
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const tomorrowIso = tomorrow.toISOString().slice(0, 10);
-    const planned = await lookupPlannedWorkout(userId, tomorrowIso);
-    const tpl = renderSkipRecovery({
-      user_id: userId,
-      date_iso: tomorrowIso,
-      planned_today_verb: planned.verb,
-      planned_today_distance: planned.distance,
-    });
-    await enqueueNotification(userId, tpl, nextMorning0715(new Date()));
+    if (!(await dayHoldsRace(userId, tomorrowIso))) {
+      const planned = await lookupPlannedWorkout(userId, tomorrowIso);
+      const tpl = renderSkipRecovery({
+        user_id: userId,
+        date_iso: tomorrowIso,
+        planned_today_verb: planned.verb,
+        planned_today_distance: planned.distance,
+      });
+      await enqueueNotification(userId, tpl, nextMorning0715(new Date()));
+    }
   } catch { /* notif enqueue is non-blocking */ }
 
   return NextResponse.json({ skipped: true, date });
+}
+
+/** True when `dateIso` is a race day for this runner — either the
+ *  active plan holds a race-type row that day, or a races-table entry
+ *  carries that meta date. Fails open to false (a DB hiccup must not
+ *  block the skip itself; worst case the nudge fires as before). */
+async function dayHoldsRace(userId: string, dateIso: string): Promise<boolean> {
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1
+          AND tp.archived_iso IS NULL
+          AND pw.date_iso = $2
+          AND pw.type = 'race'
+       UNION ALL
+       SELECT 1 FROM races
+        WHERE user_uuid = $1 AND meta->>'date' = $2
+       LIMIT 1`,
+      [userId, dateIso],
+    );
+    return r.rows.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /** Read tomorrow's planned workout to slot into the recovery notification.

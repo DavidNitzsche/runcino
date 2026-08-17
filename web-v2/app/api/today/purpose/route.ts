@@ -185,6 +185,65 @@ async function loadCueContext(userId: string, date: string): Promise<{
   return { recentHardSession, heatPenaltyBpm, pillarDownStreak };
 }
 
+/**
+ * 2026-08-17 · race-lifecycle · post-race TODAY state.
+ *
+ * Non-null when the runner's most recent A/B race finished within the
+ * last 10 days AND no active plan covers a future race (no active plan
+ * at all, or the active plan's goal race date has passed). That is the
+ * gap window between racing and the cron authoring the recovery plan —
+ * previously it rendered as "UNPLANNED".
+ *
+ * Both context filters applied per-finding (CLAUDE.md): the race
+ * recency window AND the plan-coverage check — a recent race alone is
+ * not post-race if a live plan is already pointing at the next one.
+ * Every failure path returns null so the caller falls through to the
+ * plain unplanned payload (this endpoint must never 500).
+ */
+async function loadPostRaceState(userId: string, todayIso: string): Promise<{
+  slug: string; name: string; date: string; daysSince: number;
+} | null> {
+  try {
+    const lastRace = (await pool.query<{ slug: string; name: string; date: string }>(
+      `SELECT slug, COALESCE(meta->>'name', slug) AS name, meta->>'date' AS date
+         FROM races
+        WHERE user_uuid::text = $1
+          AND meta->>'priority' IN ('A', 'B')
+          AND meta->>'date' IS NOT NULL
+          AND (meta->>'date')::date < $2::date
+          AND (meta->>'date')::date >= $2::date - interval '10 days'
+        ORDER BY (meta->>'date')::date DESC
+        LIMIT 1`,
+      [userId, todayIso],
+    )).rows[0];
+    if (!lastRace) return null;
+
+    // Active plan check. A plan with race_date >= today (or a goal-mode /
+    // maintenance plan with no race row → race_date null) still "covers"
+    // the runner — not a post-race takeover.
+    const activePlan = (await pool.query<{ race_date: string | null }>(
+      `SELECT (rc.meta->>'date')::text AS race_date
+         FROM training_plans tp
+         LEFT JOIN races rc ON rc.slug = tp.race_id
+        WHERE COALESCE(tp.user_uuid::text, tp.user_id) = $1
+          AND tp.archived_iso IS NULL
+        ORDER BY tp.authored_iso DESC
+        LIMIT 1`,
+      [userId],
+    )).rows[0];
+    const planCoversFuture = activePlan != null
+      && (activePlan.race_date == null || activePlan.race_date >= todayIso);
+    if (planCoversFuture) return null;
+
+    const daysSince = Math.round(
+      (Date.parse(todayIso + 'T12:00:00Z') - Date.parse(lastRace.date + 'T12:00:00Z')) / 86400000,
+    );
+    return { slug: lastRace.slug, name: lastRace.name, date: lastRace.date, daysSince };
+  } catch {
+    return null;
+  }
+}
+
 /** 2026-06-02 · compute weeks between two dates · `Math.ceil(days/7)` ·
  *  null when date is missing or invalid. */
 function weeksBetween(todayIso: string, raceIso: string | null): number | null {
@@ -248,6 +307,47 @@ export async function GET(req: NextRequest) {
     // No plan row · still return the race chip so iPhone's TO RACE
     // surfaces (the plan side stays "unplanned").
     if (!planRow) {
+      // 2026-08-17 · race-lifecycle · the day after a goal race must not
+      // read "UNPLANNED · By feel · no specific plan today". When the
+      // runner's most recent A/B race is within the last 10 days AND the
+      // active plan (if any) points at a race that has already passed,
+      // this is the post-race window — the plan-drift cron will log the
+      // provisional result and author the recovery plan on its next
+      // tick; until then, TODAY says so in coach voice. Additive wire
+      // type 'post_race': native decodes purpose.type as a plain String
+      // and renders typeTitle verbatim (CoachPayloads.swift RunPurpose),
+      // web renders verdict/facts/typeTitle strings — no enum decode
+      // anywhere, so unknown-type handling is safe.
+      const postRace = await loadPostRaceState(userId, date);
+      if (postRace) {
+        const daysSince = postRace.daysSince;
+        const when = daysSince <= 0 ? 'today'
+          : daysSince === 1 ? 'yesterday'
+          : `${daysSince} days ago`;
+        return NextResponse.json({
+          ok: true,
+          date,
+          type: 'post_race',
+          typeTitle: workoutTypeTitle('post_race'), // 'RACE DONE'
+          phase: 'RECOVERY',
+          phaseLower: 'off-season',
+          plannedMi: 0,
+          raceDistanceMi,
+          weeksToRace,
+          race: anchor,
+          postRace: {
+            slug: postRace.slug,
+            name: postRace.name,
+            date: postRace.date,
+            daysSince,
+          },
+          verdict: `${postRace.name} is done.`,
+          facts: [
+            `You raced ${when}. Recovery is the work now.`,
+            'Easy running only until the legs come back. The next block builds from here.',
+          ],
+        });
+      }
       return NextResponse.json({
         ok: true,
         date,

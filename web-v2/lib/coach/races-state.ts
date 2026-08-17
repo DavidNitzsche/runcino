@@ -10,6 +10,14 @@ import { distanceMiFromLabel } from '@/lib/race/distance';
  *  Wording is the CLAUDE.md race-data Rule 3 canonical example. */
 export const PROVISIONAL_FINISH_LABEL = 'Training effort · race to lock in';
 
+/** 2026-08-17 · race-lifecycle · caption for an AUTO-LOGGED result
+ *  (actual_result.source = 'watch_provisional' · written by
+ *  lib/race/auto-result.ts from the matched watch run). Distinct from
+ *  PROVISIONAL_FINISH_LABEL: the run was tagged and matched as the race
+ *  itself, so "training effort" would be wrong — but it is still not a
+ *  chip time, and no surface may present it as an authoritative PR. */
+export const WATCH_PROVISIONAL_FINISH_LABEL = 'Watch time · chip time to lock in';
+
 export interface RaceRow {
   slug: string;
   name: string;
@@ -123,6 +131,14 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
     // stale meta too). finishSource records which rung supplied the value.
     let finishTime: string | null = null;
     let finishSource: RaceRow['finishSource'] = null;
+    // 2026-08-17 · race-lifecycle · actual_result can now carry an
+    // AUTO-LOGGED watch result (source:'watch_provisional',
+    // provisional:true — lib/race/auto-result.ts). It still wins the
+    // ladder (it IS the result until a chip time overrides, David's
+    // direction), but it must render flagged, never as an
+    // authoritative chip time (race-data Rule 3).
+    let finishProvisional = false;
+    let finishProvisionalLabel: string | null = null;
     if (ar?.finishS && Number(ar.finishS) > 0) {
       const secs = Math.round(Number(ar.finishS));
       const h = Math.floor(secs / 3600);
@@ -132,6 +148,10 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
         ? `${h}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
         : `${mm}:${String(ss).padStart(2,'0')}`;
       finishSource = 'actual_result';
+      if (ar.provisional === true || ar.source === 'watch_provisional') {
+        finishProvisional = true;
+        finishProvisionalLabel = WATCH_PROVISIONAL_FINISH_LABEL;
+      }
     } else if (m.finishTime) {
       finishTime = m.finishTime;
       finishSource = 'meta';
@@ -153,10 +173,12 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       days,
       finishTime,
       // #29 · finishTime here is curated (actual_result.finishS or
-      // meta.finishTime). The Strava-match path below flips this to true.
-      finishProvisional: false,
+      // meta.finishTime) — UNLESS actual_result is watch_provisional
+      // (flagged above). The Strava-match path below flips this to true
+      // for the run_match fallback.
+      finishProvisional,
       finishSource,
-      finishProvisionalLabel: null,
+      finishProvisionalLabel,
       pb: m.pb ?? null,
       gun_time: m.startTime ?? m.gun_time ?? m.start_time ?? null,
       wave: m.wave ?? null,

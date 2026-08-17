@@ -54,6 +54,13 @@ const TITLE_BY_TYPE: Record<string, string> = {
   cross: 'CROSS-TRAIN',
   strength: 'STRENGTH',
   unplanned: 'UNPLANNED',
+  // 2026-08-17 · race-lifecycle · /api/today/purpose emits type
+  // 'post_race' in the window right after a goal race when no plan row
+  // exists yet (result not logged / next block not generated). Not a
+  // plan_workouts type — a today-state. Native decodes purpose.type as
+  // a plain String and renders typeTitle verbatim, so the new wire
+  // value is additive-safe.
+  post_race: 'RACE DONE',
 };
 
 /**

@@ -34,7 +34,14 @@ export type AutoRebuildKind =
    *  skips the race_mismatch check in this mode because the active
    *  plan's race_id IS expected to differ (old race). generatePlan
    *  archives the old plan via persistPlan's clearActivePlansFor. */
-  | 'race_graduate';
+  | 'race_graduate'
+  /** 2026-08-17 · race-lifecycle · a recovery-mode plan ran out of
+   *  prescribed days with its target race still ahead; rebuild toward
+   *  the SAME race_id (pickPlanMode returns race-prep / maintenance /
+   *  a recovery remainder). race_id matches, so the race_mismatch
+   *  check passes normally. Fired by the plan-drift cron's
+   *  recovery-complete block. */
+  | 'recovery_complete';
 
 export interface AutoRebuildInput {
   userUuid: string;

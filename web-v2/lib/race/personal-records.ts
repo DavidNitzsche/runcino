@@ -28,7 +28,7 @@
 import { pool } from '@/lib/db/pool';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { PROVISIONAL_FINISH_LABEL } from '@/lib/coach/races-state';
+import { PROVISIONAL_FINISH_LABEL, WATCH_PROVISIONAL_FINISH_LABEL } from '@/lib/coach/races-state';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
 
 // ── Buckets ──────────────────────────────────────────────────────────────────
@@ -167,9 +167,17 @@ export function composePersonalRecords(
       const ar = (race.actual_result ?? {}) as Record<string, any>;
       let timeS: number | null = null;
       let source: 'race_result' | 'race_meta' | null = null;
+      // 2026-08-17 · race-lifecycle · actual_result can now be an
+      // AUTO-LOGGED watch result (source:'watch_provisional',
+      // provisional:true — lib/race/auto-result.ts). It still claims
+      // the bucket (it IS the result until a chip time overrides), but
+      // Rule 3 forbids headlining it as an authoritative PR — carry the
+      // provisional flag + watch caption through.
+      let fromWatch = false;
       if (ar.finishS != null && Number(ar.finishS) > 0) {
         timeS = Math.round(Number(ar.finishS));
         source = 'race_result';
+        fromWatch = ar.provisional === true || ar.source === 'watch_provisional';
       } else {
         const parsed = parseRaceTime(typeof m.finishTime === 'string' ? m.finishTime : null);
         if (parsed != null && parsed > 0) { timeS = parsed; source = 'race_meta'; }
@@ -188,8 +196,8 @@ export function composePersonalRecords(
           slug: race.slug,
           distanceMi: raceMi ?? bucket.mi,
           source,
-          provisional: false,
-          provisionalLabel: null,
+          provisional: fromWatch,
+          provisionalLabel: fromWatch ? WATCH_PROVISIONAL_FINISH_LABEL : null,
         };
       }
     }

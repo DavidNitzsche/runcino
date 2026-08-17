@@ -8,54 +8,37 @@
 // writes can't wipe the chip time, and the chip time can't wipe fields
 // that future writers add to actual_result.
 //
-// Steps after writing:
-//   1. Immediately fires projection snapshots for the race distance + 26.2M.
-//   2. Logs a vdot_auto_recalc coach_intent (briefing layer signal).
-//   3. Archives the active plan if this race is its goal race.
-//   4. Auto-generates a plan for the next A/B race (if any).
-//      generatePlan reads races.actual_result directly — not projection_snapshots —
-//      so the finishS written in step 1 is visible here with no race condition.
-//      No .catch on the nextRaceRow query: DB errors surface in nextPlan.reason
-//      rather than silently returning null (runner must know why generation skipped).
+// 2026-08-17 · race-lifecycle fixes:
+//   · The post-result steps (projection snapshots → vdot coach_intent →
+//     archive plan race_completed → next-plan generation) moved to
+//     lib/race/result-chain.ts:runPostResultChain, shared with the
+//     auto-provisional detector (lib/race/auto-result.ts). Behavior of
+//     this route is unchanged — plus the snapshot-args bug fixed in the
+//     chain (see result-chain.ts header) means snapshots actually land.
+//   · The actual_result patch now stamps source:'manual' /
+//     provisional:false so a manual chip time OVERRIDES a provisional
+//     watch-time result the detector logged earlier (the jsonb || merge
+//     replaces finishS/finishDisplay and clears the provisional flag,
+//     preserving the matched runId as provenance).
 //
 // Returns vdotBefore / vdotAfter / projectionSec / nextPlan for client toast.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
-import { vdotFromRace, predictRaceTime, parseRaceTime } from '@/lib/training/vdot';
-import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
-import { runnerToday } from '@/lib/runtime/runner-tz';
-import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { parseRaceTime } from '@/lib/training/vdot';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-
-function fmtFinish(secs: number): string {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.round(secs % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+import { manualResultPatch, runPostResultChain } from '@/lib/race/result-chain';
 
 // 2026-07-07 · ultra-honesty audit · was a local fork that recognized only
 // marathon/half/10k/5k (no ultra labels at all — silently null, not a 13.1
 // fallthrough, so no phantom plan risk here, but a 50K/100K chip-time result
 // couldn't even resolve its OWN real distance for the actual_result write).
 // Delegate to the shared parser so a real ultra finish still resolves a real
-// distanceMi; vdotFromRace/predictRaceTime below independently refuse to
-// project past the marathon regardless of what distanceMi resolves to.
+// distanceMi; vdotFromRace/predictRaceTime (in the chain) independently
+// refuse to project past the marathon regardless of what distanceMi resolves to.
 function distFromLabel(label: string | null | undefined): number | null {
   return distanceMiFromLabel(label);
-}
-
-interface NextPlanResult {
-  ok: boolean;
-  raceSlug: string;
-  raceName: string;
-  plan_id?: string;
-  weeks_generated?: number;
-  compressed?: boolean;
-  reason?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -87,149 +70,46 @@ export async function POST(req: NextRequest) {
       ? Number(meta.distanceMi)
       : distFromLabel(meta.distanceLabel as string);
 
-    const finishDisplay = fmtFinish(resolvedS);
-
     // ── 1. Write actual_result + meta.finishTime ────────────────────────────
     // Rule 6: jsonb || merge preserves fields the caller doesn't touch.
     // COALESCE so a null actual_result starts from {} rather than erroring.
+    // manualResultPatch stamps source:'manual' / provisional:false so this
+    // entry overrides any auto-logged watch_provisional result.
+    const patch = manualResultPatch(resolvedS, avgHrBpm);
+    const finishDisplay = String(patch.finishDisplay);
     await pool.query(
       `UPDATE races SET
-         actual_result = (
-           COALESCE(actual_result, '{}'::jsonb)
-           || jsonb_build_object('finishS', $2::numeric, 'finishDisplay', $3::text)
-           || CASE WHEN $4::numeric IS NOT NULL
-                   THEN jsonb_build_object('avgHrBpm', $4::numeric)
-                   ELSE '{}'::jsonb END
-         ),
+         actual_result = (COALESCE(actual_result, '{}'::jsonb) || $2::jsonb),
          meta = meta
            || jsonb_build_object('finishTime', $3::text)
            || CASE WHEN $4::numeric IS NOT NULL
                    THEN jsonb_build_object('avgHrBpm', $4::numeric)
                    ELSE '{}'::jsonb END
        WHERE slug = $1 AND user_uuid = $5`,
-      [body.slug, resolvedS, finishDisplay, avgHrBpm, userId],
+      [body.slug, JSON.stringify(patch), finishDisplay, avgHrBpm, userId],
     );
 
-    // ── 2. Immediate projection snapshots ──────────────────────────────────
-    const today = await runnerToday(userId);
-    const vdot = distanceMi ? vdotFromRace(resolvedS, distanceMi) : null;
-
-    const priorSnap = (await pool.query<{ vdot: string | null }>(
-      `SELECT vdot FROM projection_snapshots
-        WHERE user_uuid = $1 AND distance_mi = $2
-        ORDER BY snapshot_date DESC LIMIT 1`,
-      [userId, distanceMi ?? 13.1],
-    ).catch(() => ({ rows: [] }))).rows[0];
-    const vdotBefore = priorSnap?.vdot ? Number(priorSnap.vdot) : null;
-
-    const projSec = vdot != null && distanceMi ? predictRaceTime(vdot, distanceMi) : null;
-    const mProjSec = vdot != null ? predictRaceTime(vdot, 26.2) : null;
-
-    if (vdot != null && distanceMi) {
-      await recordProjectionSnapshot(userId, today, distanceMi, vdot, projSec, body.slug, 'race-result').catch(() => null);
-    }
-    if (vdot != null) {
-      await recordProjectionSnapshot(userId, today, 26.2, vdot, mProjSec, body.slug, 'race-result').catch(() => null);
-    }
-
-    if (vdot != null) {
-      await pool.query(
-        `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
-         VALUES ($1, $1, 'vdot_auto_recalc', 'vdot', $2)`,
-        [userId, String(vdot)],
-      ).catch(() => null);
-    }
-
-    // ── 3. Archive active plan if this was its goal race ───────────────────
-    // Two-attempt fallback: archive_reason column may not exist yet if the
-    // migration hasn't run. archived_iso is the load-bearing field.
-    let planArchived = false;
-    try {
-      const r = await pool.query(
-        `UPDATE training_plans
-           SET archived_iso = NOW(), archive_reason = 'race_completed'
-         WHERE user_uuid = $1
-           AND race_id = $2
-           AND archived_iso IS NULL`,
-        [userId, body.slug],
-      );
-      planArchived = (r.rowCount ?? 0) > 0;
-    } catch {
-      try {
-        const r = await pool.query(
-          `UPDATE training_plans SET archived_iso = NOW()
-           WHERE user_uuid = $1 AND race_id = $2 AND archived_iso IS NULL`,
-          [userId, body.slug],
-        );
-        planArchived = (r.rowCount ?? 0) > 0;
-      } catch { /* best-effort */ }
-    }
-
-    // ── 4. Auto-generate plan for the next A/B race ────────────────────────
-    // Inner try/catch: step 4 failures surface in nextPlan.reason, not as 500.
-    // null = no future A/B race found (generation not attempted).
-    // { ok: false } = generation was attempted but failed (DB error or plan error).
-    let nextPlan: NextPlanResult | null = null;
-    try {
-      // No .catch here — DB errors throw to the inner catch below so the runner
-      // sees the failure reason rather than a silent null.
-      const nextRaceRow = (await pool.query<{ slug: string; name: string }>(
-        `SELECT slug, meta->>'name' AS name FROM races
-          WHERE user_uuid = $1
-            AND (meta->>'date')::date > $2::date
-            AND meta->>'priority' IN ('A', 'B')
-          ORDER BY
-            CASE WHEN meta->>'priority' = 'A' THEN 0 ELSE 1 END,
-            (meta->>'date')::date
-          LIMIT 1`,
-        [userId, (meta.date as string) ?? '9999-99-99'],
-      )).rows[0];
-
-      if (nextRaceRow) {
-        const { generatePlan } = await import('@/lib/plan/generate');
-        const gen = await generatePlan({ userId, raceSlug: nextRaceRow.slug });
-
-        let compressed = false;
-        if (gen.ok && gen.plan_id) {
-          const stRow = (await pool.query<{ authored_state: Record<string, unknown> | null }>(
-            `SELECT authored_state FROM training_plans WHERE id = $1`,
-            [gen.plan_id],
-          ).catch(() => ({ rows: [] }))).rows[0];
-          compressed = Boolean(stRow?.authored_state?.compressed_timeline);
-        }
-
-        if (!gen.ok) {
-          console.error('[race/result] next-plan generation failed:', nextRaceRow.slug, gen.reason);
-        }
-        nextPlan = {
-          ok: gen.ok,
-          raceSlug: nextRaceRow.slug,
-          raceName: nextRaceRow.name ?? nextRaceRow.slug,
-          plan_id: gen.plan_id,
-          weeks_generated: gen.weeks_generated,
-          compressed,
-          reason: gen.reason,
-        };
-      }
-      // nextRaceRow undefined → no future A/B race → nextPlan stays null
-    } catch (genErr: unknown) {
-      const msg = genErr instanceof Error ? genErr.message : String(genErr);
-      console.error('[race/result] next-plan step failed:', msg);
-      nextPlan = { ok: false, raceSlug: '', raceName: '', reason: msg };
-    }
-
-    await bustBriefingCacheForEvent(userId, 'race_crud');
+    // ── 2-5. Shared post-result chain ──────────────────────────────────────
+    // Projection snapshots + vdot coach_intent + archive plan
+    // (race_completed) + next-plan generation + briefing cache bust.
+    const chain = await runPostResultChain({
+      userId,
+      raceSlug: body.slug,
+      raceDateISO: (meta.date as string) ?? null,
+      distanceMi,
+      finishS: resolvedS,
+    });
 
     return NextResponse.json({
       ok: true,
       slug: body.slug,
       finishDisplay,
-      vdotBefore,
-      vdotAfter: vdot,
-      projectionSec: projSec,
-      marathonProjectionSec: mProjSec,
-      planArchived,
-      nextPlan,
+      vdotBefore: chain.vdotBefore,
+      vdotAfter: chain.vdotAfter,
+      projectionSec: chain.projectionSec,
+      marathonProjectionSec: chain.marathonProjectionSec,
+      planArchived: chain.planArchived,
+      nextPlan: chain.nextPlan,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
