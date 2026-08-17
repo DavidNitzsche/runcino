@@ -225,8 +225,21 @@ export function buildWorkoutSpec(
     return rules.length > 0 ? rules : null;
   })();
   const withRules = contingencyRules ? { rules: contingencyRules } : {};
-  // Research/01 §VDOT-50 table: E = T+104 to T+156. T+80 floor lands within 7s of
-  // Daniels' E minimum, moving easy runs out of GA/steady-state territory.
+  // PACE-E-2 (2026-08-17) · Research/01:142 §Pace conversion: E = MP + 60..90 s/mi.
+  // The engine's M is T+18, so that rule is E = T+78..T+108, and T+80/T+120
+  // reproduces it (floor +2, ceiling +12 · conservative-slow at the top).
+  //
+  // The SAME document contradicts itself: its §Numerical equivalencies VDOT-50
+  // row gives E = T+104..T+156, 20-40 s/mi slower, which falsifies line 138's
+  // claim of "within +/-2 sec/mi" accuracy. Settling it needs Daniels 3rd ed.
+  // Table 2, which is not in the repo. The prior comment here cited that table
+  // row while quoting a "within 7s" figure computed off the MP+60 rule instead
+  // (see doctrine registry PACE.easy-band-off-threshold).
+  //
+  // Executed-data check 2026-08-17: both candidate bands sit inside Daniels'
+  // 65-78 %HRmax easy window, so neither is a safety violation. The runner's
+  // own easy days average 81 %HRmax, faster than either band. HR is the
+  // governor here, not pace.
   // PACE-E-1 · easy/long/recovery anchor to CURRENT fitness (easyAnchorTSec), not the goal-blended
   // tPaceSec — otherwise a sub-fitness goal ramps "easy" faster every week (cold-start: easy can pass
   // current MP, a physiological impossibility). Defaults to tPaceSec when unthreaded (byte-identical).

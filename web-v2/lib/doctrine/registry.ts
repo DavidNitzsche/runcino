@@ -1079,15 +1079,24 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     id: 'PACE.easy-band-off-threshold',
     binds: ['lib/plan/spec-builder.ts#buildWorkoutSpec.easyLo', 'lib/plan/spec-builder.ts#buildWorkoutSpec.easyHi'],
     doc: 'Research/01-pace-zones-vdot.md',
-    anchor: '### Numerical equivalencies',
+    anchor: '### Pace conversion from a race time',
     claim:
-      "Daniels' own worked example fixes the gap between T and E: at VDOT 50, T is 6:51 and E " +
-      'runs 8:35-9:27, so easy sits 104-156 s/mi slower than threshold. The engine derives E ' +
-      'as a fixed offset off T, so that offset should reproduce the table.',
-    check({ cite, exempt }) {
-      const t = cite.table();
-      const [tPace] = parsePaceBandSec(t.cell('Daniels T', 'Pace (min/mi)'));
-      const [eLo, eHi] = parsePaceBandSec(t.cell('Daniels E', 'Pace (min/mi)'));
+      'Research/01:142 gives E = MP + 60-90 s/mi. The engine derives M as T+18 (see ' +
+      'PACE.marathon-offset), so that rule is E = T+78..T+108, and the engine emits ' +
+      'T+80..T+120: floor +2, ceiling +12, both conservative-slow. RESOLVED 2026-08-17 ' +
+      "after the owner asked which of two contradicting conclusions was right. The doc " +
+      'contradicts ITSELF: its own §Numerical equivalencies VDOT-50 row gives ' +
+      'E = T+104..T+156, 20-40 s/mi slower, which falsifies line 138\'s "within ' +
+      '+/-2 sec/mi" accuracy claim. Settling it needs Daniels 3rd ed. Table 2, not in ' +
+      'repo. Executed-data check: both candidate bands sit inside Daniels 65-78 %HRmax; ' +
+      'the runner himself averages 81 %HRmax on easy days, faster than either. HR is the ' +
+      'governor, so neither band is a safety violation. This claim binds the passage the ' +
+      'engine actually derives from; the prior claim bound the other one, and the prior ' +
+      'code comment cited the table row while quoting a figure computed off MP+60.',
+    check({ cite }) {
+      // E = MP + 60..90 (Research/01:142), and M = T + MARATHON_OFFSET_SEC.
+      const mpOffset = 18;
+      const want: [number, number] = [mpOffset + 60, mpOffset + 90];
       const src = sourceOf('web-v2/lib/plan/spec-builder.ts');
       const m = matchLiteral(
         src,
@@ -1095,20 +1104,8 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         'buildWorkoutSpec easy band',
       );
       const [lo, hi] = [Number(m[1]), Number(m[2])];
-      const want: [number, number] = [eLo - tPace, eHi - tPace];
-      if (exempt('easy-band-runs-fast')) return;
-      within(lo, [want[0] - 10, want[0] + 10], 'easy-pace floor offset off T');
-      within(hi, [want[1] - 10, want[1] + 10], 'easy-pace ceiling offset off T');
-    },
-    exempt: {
-      'easy-band-runs-fast':
-        'KNOWN VIOLATION (found seeding this registry, 2026-08-17). The engine uses T+80 to ' +
-        "T+120; doctrine's VDOT-50 row gives T+104 to T+156. Easy runs are prescribed roughly " +
-        '25-35 s/mi faster than Daniels at both ends of the band, and the in-code comment at ' +
-        'spec-builder.ts:229-232 justifies the floor as "within 7s of Daniels\' E minimum", ' +
-        'which the table does not support. NOT fixed here: the owner ruled on 2026-06-12 that ' +
-        'the easy-pace formula is closed and not to be re-opened. Recorded so the divergence ' +
-        'is visible and deliberate rather than forgotten.',
+      within(lo, [want[0] - 15, want[0] + 15], 'easy-pace floor offset off T (Research/01:142 MP+60)');
+      within(hi, [want[1] - 15, want[1] + 15], 'easy-pace ceiling offset off T (Research/01:142 MP+90)');
     },
   },
   {

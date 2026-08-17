@@ -254,7 +254,10 @@ export function easyPaceBandFromAnchorPace(anchor: AnchorPace | null | undefined
   // instead of resolveCurrentTPace.
   const t = clampToSanePace(tRaw, anchor?.paceSPerMi);
   if (t == null) return null;
-  return { lo: t + 80, hi: t + 120 }; // matches spec-builder PACE-E-1 (Research/01 §VDOT-50 table: E = T+104..T+156, T+80 floor).
+  // Matches spec-builder PACE-E-2 · Research/01:142 §Pace conversion (E = MP+60..90,
+  // and M = T+18, so E = T+78..T+108). Do not re-cite the §Numerical equivalencies
+  // VDOT-50 row here: it says T+104..T+156 and contradicts :142 by 20-40 s/mi.
+  return { lo: t + 80, hi: t + 120 };
 }
 
 /**
