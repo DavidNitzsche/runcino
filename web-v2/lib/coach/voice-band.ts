@@ -450,7 +450,7 @@ async function goalOffProjectedForWindow(
   const today = await runnerToday(userUuid);
   const result = (await pool.query<{ off_count: string; total_count: string }>(
     `WITH plan_race AS (
-       SELECT race_id FROM training_plans
+       SELECT race_id, user_uuid FROM training_plans
         WHERE user_uuid = $1::uuid AND archived_iso IS NULL
         LIMIT 1
      ),
@@ -458,7 +458,11 @@ async function goalOffProjectedForWindow(
        SELECT (r.plan->'goal'->>'finish_time_s')::numeric AS goal_sec,
               (r.meta->>'distanceMi')::numeric AS dist_mi
          FROM races r
-         JOIN plan_race pr ON pr.race_id = r.slug
+         -- 2026-08-17 · races composite-PK prep · owner is carried through
+         -- the CTE so the join predicate itself is user-scoped. The WHERE
+         -- below already pinned r to $1, but the safety now lives on the
+         -- join rather than depending on a sibling predicate staying put.
+         JOIN plan_race pr ON pr.race_id = r.slug AND pr.user_uuid = r.user_uuid
         WHERE r.user_uuid = $1::uuid
         LIMIT 1
      ),
