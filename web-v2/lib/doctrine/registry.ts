@@ -78,6 +78,15 @@ import {
 } from '@/lib/plan/spec-builder';
 import { friel7Zones, lthrZones, pctMaxZones } from '@/lib/training/zones';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
+import {
+  EASY_HRMAX_CEILING_PCT,
+  HEAT_CONFOUND_TEMP_C,
+  DRIFT_CONFOUND_MINUTES,
+  TERRAIN_CONFOUND_GAP_PCT,
+  TERRAIN_CONFOUND_FT_PER_MI,
+  OVER_CEILING_MAJORITY,
+  raceWindowFor,
+} from '@/lib/coach/easy-discipline';
 import { vdotFromRace } from '@/lib/training/vdot';
 import type { DoctrineClaim } from './types';
 import { matchLiteral, parseBand, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
@@ -1573,6 +1582,243 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (qualityFamilyFor('m', 'BASE', 0, 5, 'intervals') !== null) {
         throw new Error('the engine now places a quality family in BASE · §15 base row is easy volume + strides');
       }
+    },
+  },
+
+  // ══ EASY-DAY DISCIPLINE ═══════════════════════════════════════════════════
+  // The observational twin of the 80/20 intensity-distribution constraint being
+  // built in the plan engine. That work governs how much easy volume is
+  // PRESCRIBED; these claims govern how the app decides the easy volume was
+  // actually run easy. Same passages, opposite direction.
+  {
+    id: 'EASY.hr-ceiling-observational',
+    binds: ['lib/coach/easy-discipline.ts#EASY_HRMAX_CEILING_PCT'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '## Daniels training paces (E, M, T, I, R)',
+    claim:
+      'An easy run tops out at 78% of max HR. The observational side must use the same ' +
+      'ceiling the prescription side is built on, read from the E row of the Daniels pace ' +
+      'table, or the app judges by one number and prescribes by another.',
+    check({ cite }) {
+      const band = parsePctBand(cite.table().cell('E', '%HRmax'));
+      if (Math.abs(EASY_HRMAX_CEILING_PCT - band[1]) > 0.005) {
+        throw new Error(
+          `EASY_HRMAX_CEILING_PCT is ${EASY_HRMAX_CEILING_PCT} · Daniels E tops out at ${band[1]} of HRmax`,
+        );
+      }
+    },
+  },
+  {
+    id: 'EASY.cap-not-looser-than-daniels',
+    binds: ['lib/plan/spec-builder.ts#hrCapEasy'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: "## 8. Daniels' HR Zones",
+    claim:
+      'The easy HR cap the app PRESCRIBES must not permit more than the doctrine ceiling ' +
+      'allows. hrCapEasy composes two anchors from two different systems - the Friel Z2 top ' +
+      '(0.89 x LTHR) and the Daniels E top (0.78 x HRmax) - and a ceiling built from two ' +
+      'candidates should take the binding one, not the loosest one.',
+    check({ cite, exempt }) {
+      const src = sourceOf('web-v2/lib/plan/spec-builder.ts');
+      // The maxHR branch itself is unguarded by HR.easy-run-ceiling, which only
+      // watches the LTHR branch. Check it against the doc's own E row.
+      const pct = parsePctBand(cite.table().cell('E (Easy)', '%HRmax'))[1];
+      const lit = Number(
+        matchLiteral(
+          src,
+          /const maxHrCap = maxHr \? Math\.round\(maxHr \* (\d*\.?\d+)\)/,
+          'hrCapEasy maxHr branch',
+        )[1],
+      );
+      if (Math.abs(lit - pct) > 0.005) {
+        throw new Error(`hrCapEasy's HRmax branch caps easy at ${lit} · Daniels E tops out at ${pct}`);
+      }
+      // The composition. MAX of two ceilings always returns the more permissive.
+      // Consult the exemption ONLY when the violation is actually present, so
+      // fixing the engine makes the gate report the exemption as stale and
+      // force its deletion. An exemption marked used unconditionally is an
+      // exemption that can outlive the bug it excuses.
+      const composesWithMax = /return Math\.max\(lthrCap, maxHrCap\);/.test(src);
+      if (composesWithMax && !exempt('max-of-two-ceilings')) {
+        throw new Error(
+          'hrCapEasy returns MAX(lthrCap, maxHrCap) · a ceiling assembled from two candidate ' +
+            'ceilings must take the lower, or the looser system always wins',
+        );
+      }
+    },
+    exempt: {
+      'max-of-two-ceilings':
+        'KNOWN VIOLATION (found building the easy-discipline detector, 2026-08-17). hrCapEasy ' +
+        'returns MAX(round(0.89 x LTHR), round(0.78 x HRmax)). Because the app itself derives ' +
+        'LTHR as 0.90 x HRmax (lib/training/lthr.ts#lthrFromMaxHr, watched by HR.lthr-from-maxhr), ' +
+        'the LTHR branch evaluates to 0.89 x 0.90 = 0.801 x HRmax, which is ALWAYS above the ' +
+        '0.78 branch. The HRmax branch is therefore unreachable for any runner who has an LTHR, ' +
+        'and the effective easy cap is structurally 80% of max where doctrine says 78%. For the ' +
+        'owner: LTHR 162, HRmax 179, cap 144 bpm = 80.4 %HRmax; the doctrine ceiling is 140. ' +
+        'NOT fixed here for two reasons. (1) spec-builder.ts is owned by a concurrent plan-engine ' +
+        'agent this session. (2) The blast radius is wide: hr_cap_bpm is written into every ' +
+        'generated workout_spec, echoed by the watch build (lib/watch/build-workout.ts, which ' +
+        'uses a THIRD rule - LTHR-first with HRmax as fallback, not MAX), rendered on Today, the ' +
+        'glance adapter and native, and changing it silently re-paces existing plans. ' +
+        'RECOMMENDATION: change MAX to Math.min and re-generate, which moves the owner from 144 ' +
+        'to 140. Until then lib/coach/easy-discipline.ts deliberately judges against ' +
+        'max(doctrine, prescribed) so it can never accuse the runner of obeying the app.',
+    },
+  },
+  {
+    id: 'EASY.heat-confounds-the-read',
+    binds: ['lib/coach/easy-discipline.ts#HEAT_CONFOUND_TEMP_C'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '### Limitations and Confounders',
+    claim:
+      'Heat raises heart rate at a fixed effort, so a hot easy day cannot be counted as ' +
+      'evidence that the runner ran it too hard. The temperature at which the app stops ' +
+      'trusting an easy-day HR reading is the one doctrine names as the onset of the effect.',
+    check({ cite }) {
+      const row = cite.table().rows.find((r) => /^heat/i.test(r.Confounder ?? ''));
+      if (!row) throw new Error('the confounders table no longer carries a Heat row');
+      // The threshold lives in the row LABEL ("Heat (≥25°C)"), which parseBand
+      // strips as parenthetical, so read it directly.
+      const m = (row.Confounder ?? '').match(/(\d+(?:\.\d+)?)\s*°?\s*C/);
+      if (!m) throw new Error(`the Heat row no longer names a temperature: "${row.Confounder}"`);
+      const docC = Number(m[1]);
+      if (HEAT_CONFOUND_TEMP_C !== docC) {
+        throw new Error(
+          `HEAT_CONFOUND_TEMP_C is ${HEAT_CONFOUND_TEMP_C} · doctrine puts the heat effect at ${docC} C`,
+        );
+      }
+      if (!/rises/i.test(row['Effect at fixed effort'] ?? '')) {
+        throw new Error('the Heat row no longer says HR RISES at fixed effort · re-read the filter');
+      }
+    },
+  },
+  {
+    id: 'EASY.drift-confounds-the-read',
+    binds: ['lib/coach/easy-discipline.ts#DRIFT_CONFOUND_MINUTES'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| Cardiac drift (>30 min steady) | Rises |',
+    claim:
+      'Cardiac drift inflates average HR on long steady efforts, so past the duration at ' +
+      'which doctrine quantifies the effect an easy run contributes to the pace read only. ' +
+      'The engine cut-off is that duration, not a round number.',
+    check({ cite }) {
+      const m = cite.text().match(/over\s+(\d+)\s*min/i);
+      if (!m) throw new Error('the cardiac-drift row no longer quantifies the effect over a duration');
+      const docMin = Number(m[1]);
+      if (DRIFT_CONFOUND_MINUTES !== docMin) {
+        throw new Error(
+          `DRIFT_CONFOUND_MINUTES is ${DRIFT_CONFOUND_MINUTES} · doctrine quantifies drift over ${docMin} min`,
+        );
+      }
+    },
+  },
+  {
+    id: 'EASY.terrain-confounds-the-read',
+    binds: ['lib/coach/easy-discipline.ts#TERRAIN_CONFOUND_GAP_PCT'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Hills (Grade-Adjusted Pace)',
+    claim:
+      'A hilly easy run is a different observation, not a harder one. The grade at which the ' +
+      'app stops trusting an easy-day read is the first row of the doctrine multiplier table ' +
+      'whose pace cost reaches ten percent, and the net-climb proxy used until grade-adjusted ' +
+      'pace lands is that same grade converted for rolling terrain.',
+    check({ cite }) {
+      const t = cite.table();
+      const mult = parseBand(t.cell('+2%', 'Pace multiplier'))[0];
+      const cost = mult - 1;
+      if (Math.abs(TERRAIN_CONFOUND_GAP_PCT - cost) > 0.005) {
+        throw new Error(
+          `TERRAIN_CONFOUND_GAP_PCT is ${TERRAIN_CONFOUND_GAP_PCT} · the +2% grade row costs ${cost.toFixed(2)} of pace`,
+        );
+      }
+      // Rolling terrain returning to its start climbs about half the distance,
+      // so an average uphill grade of g implies net gain per mile of g/2 x 5280.
+      const impliedFtPerMi = (0.02 / 2) * 5280;
+      within(
+        TERRAIN_CONFOUND_FT_PER_MI,
+        [impliedFtPerMi - 10, impliedFtPerMi + 10],
+        'TERRAIN_CONFOUND_FT_PER_MI vs the +2% grade converted for rolling terrain',
+      );
+    },
+  },
+  {
+    id: 'EASY.post-race-context-window',
+    binds: ['lib/coach/easy-discipline.ts#raceWindowFor'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Distance | Total recovery days (no quality) | Days of zero/very-light running |',
+    claim:
+      'Easy days inside a post-race recovery window are context, not evidence. The window is ' +
+      'the "total recovery days (no quality)" column - explicitly NOT its neighbour "days of ' +
+      'zero/very-light running", which is the confusion that caused the 52174bcd incident.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Total recovery days (no quality)';
+      for (const [label, mi] of [
+        ['5K', 3.1],
+        ['10K', 6.2],
+        ['Half marathon', 13.1],
+        ['Marathon', 26.2],
+      ] as [string, number][]) {
+        const docHi = parseBand(t.cell(label, col))[1];
+        const engine = raceWindowFor(mi, true);
+        if (engine !== docHi) {
+          throw new Error(
+            `raceWindowFor(${mi}, after) is ${engine} · doctrine gives ${label} ${docHi} recovery days`,
+          );
+        }
+      }
+    },
+  },
+  {
+    id: 'EASY.pre-race-context-window',
+    binds: ['lib/coach/easy-discipline.ts#raceWindowFor'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.1 Taper duration by distance',
+    claim:
+      'Easy days inside a taper are deliberately conserved, not lazily run, so they are ' +
+      'context rather than evidence. The pre-race window is the taper length doctrine gives ' +
+      'for that race distance.',
+    check({ cite }) {
+      const t = cite.table();
+      for (const [label, mi] of [
+        ['5K', 3.1],
+        ['10K', 6.2],
+        ['Half marathon', 13.1],
+        ['Marathon', 26.2],
+      ] as [string, number][]) {
+        const docHi = parseBand(t.cell(label, 'Taper length'))[1];
+        const engine = raceWindowFor(mi, false);
+        if (engine !== docHi) {
+          throw new Error(
+            `raceWindowFor(${mi}, before) is ${engine} · doctrine tapers ${label} for ${docHi} days`,
+          );
+        }
+      }
+    },
+  },
+  {
+    id: 'EASY.share-of-volume-twin',
+    binds: ['lib/coach/easy-discipline.ts#OVER_CEILING_MAJORITY'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Practical base-building rules',
+    claim:
+      'This detector is the observational twin of the intensity-distribution constraint in ' +
+      'the plan engine: doctrine says most base running is easy, and prescribing that share ' +
+      'is worthless if the easy runs are not run easy. The bar for calling it a pattern is a ' +
+      'clear majority, and never stricter than the easy share doctrine itself asks for - ' +
+      'requiring more bad days than doctrine requires good ones would be incoherent.',
+    check({ cite }) {
+      const share = parsePctBand(cite.table().cell('Most base running is easy', 'Application'))[0];
+      if (share < 0.7) {
+        throw new Error(
+          `the base-building rule now puts only ${share} of volume in Z1 · re-read this claim`,
+        );
+      }
+      within(
+        OVER_CEILING_MAJORITY,
+        [2 / 3 - 0.001, share],
+        'OVER_CEILING_MAJORITY between a clear majority and the doctrine easy share',
+      );
     },
   },
 ];

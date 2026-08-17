@@ -177,6 +177,12 @@ export function composeMorningBrief(i: MorningBriefInput): MorningBrief {
 function milestoneWorthy(kind: string, meta: Record<string, unknown>): boolean {
   if (kind === 'phase_boundary' || kind === 'first_ever' || kind === 'fitness_shift') return true;
   if (kind === 'week_close') return meta?.isBiggestOfBlock === true || meta?.isBiggestEver === true;
+  // easy_discipline · both ends of the episode are worth a morning line. The
+  // coach-log write seam already guarantees at most two of these per episode
+  // (open and close), and the 36h freshness cutoff below means the brief
+  // speaks it once and then stops. That is the whole no-nag contract:
+  // suppression lives at the WRITE site, so nothing here has to remember it.
+  if (kind === 'easy_discipline') return true;
   return false;
 }
 

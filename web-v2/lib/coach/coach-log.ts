@@ -18,6 +18,12 @@
  *     intents (pr_bank / fitness_regression / goal_changed), so every
  *     silent re-pace becomes a spoken line: "New race fitness · VDOT
  *     45.1 · your paces just moved."
+ *   · easy_discipline — the runner's easy days have been running over
+ *     the easy ceiling as a SUSTAINED PATTERN (lib/coach/easy-discipline.ts
+ *     owns the detection and the per-run context filtering). Written
+ *     exactly twice per episode: once when the pattern establishes and
+ *     once when it resolves. Never in between — this is an observation,
+ *     not a per-run grade (feedback_no_reactive_coach).
  *
  * STORAGE · coach_intents (no new table, no DDL). Entries are rows with
  * reason 'coach_log_<kind>', field = idempotency key, value = the
@@ -48,10 +54,21 @@ import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { stripResearchCitations } from '@/lib/plan/strip-citations';
+import {
+  loadEasyDiscipline,
+  composeEasyDisciplineEntry,
+  composeEasyDisciplineResolved,
+  type EasyDisciplineFinding,
+} from '@/lib/coach/easy-discipline';
 
 /* ────────────────────────── Types ────────────────────────── */
 
-export type CoachLogKind = 'week_close' | 'phase_boundary' | 'first_ever' | 'fitness_shift';
+export type CoachLogKind =
+  | 'week_close'
+  | 'phase_boundary'
+  | 'first_ever'
+  | 'fitness_shift'
+  | 'easy_discipline';
 
 export interface CoachLogEntry {
   id: string;
@@ -71,6 +88,7 @@ const REASON_OF_KIND: Record<Exclude<CoachLogKind, 'fitness_shift'>, string> = {
   week_close: 'coach_log_week_close',
   phase_boundary: 'coach_log_phase',
   first_ever: 'coach_log_first',
+  easy_discipline: 'coach_log_easy_discipline',
 };
 
 /* ──────────────────── Pure entry composers ──────────────────── */
@@ -455,10 +473,96 @@ export async function updateCoachLog(userId: string): Promise<{ written: number 
         meta: { kind: 'longest_run', valueMi: round1(yMi), previousBestMi: round1(priorMax) },
       })) written++;
     }
+
+    // ── 4 · Easy-day discipline (daily, at most twice per episode) ──
+    written += await updateEasyDisciplineLog(userId, today);
   } catch (e) {
     console.warn('[coach-log] updateCoachLog failed:', e instanceof Error ? e.message : String(e));
   }
   return { written };
+}
+
+/* ─────────────── Easy-discipline episode state machine ─────────────── */
+
+/**
+ * Write the easy-discipline line at most twice per episode: once when the
+ * pattern establishes, once when it resolves.
+ *
+ * The log is append-only and has no "close" concept, so the current episode
+ * state is derived by reading the newest `coach_log_easy_discipline` row. That
+ * gives a two-state machine with no schema change:
+ *
+ *   nothing / resolved  + detector says established → write OPEN
+ *   open                + detector says resolved    → write CLOSE
+ *   anything else                                   → write nothing
+ *
+ * The OPEN row's `field` carries the episode id (the day it opened) and the
+ * CLOSE row reuses it, so the (reason, field) dedup keeps re-runs idempotent
+ * and a later relapse opens a genuinely new episode rather than being
+ * swallowed. "Never nag" is enforced here, structurally, rather than by
+ * remembering to check a flag at every call site.
+ */
+async function updateEasyDisciplineLog(userId: string, todayISO: string): Promise<number> {
+  const reason = REASON_OF_KIND.easy_discipline;
+  const last = await pool
+    .query<{ field: string; value: string }>(
+      `SELECT field, value FROM coach_intents
+        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = $2
+        ORDER BY ts DESC LIMIT 1`,
+      [userId, reason],
+    )
+    .catch(() => ({ rows: [] as Array<{ field: string; value: string }> }));
+
+  const openEpisode = (() => {
+    const row = last.rows[0];
+    if (!row || !row.field.startsWith('easy:open:')) return null;
+    return row.field.slice('easy:open:'.length);
+  })();
+
+  const finding = await loadEasyDiscipline(userId, todayISO);
+  if (!finding) return 0;
+
+  if (openEpisode == null) {
+    if (finding.state !== 'established') return 0;
+    const { title, body } = composeEasyDisciplineEntry(finding);
+    return (await writeEntry(userId, 'easy_discipline', `easy:open:${todayISO}`, {
+      title,
+      body,
+      dateISO: todayISO,
+      meta: easyMeta(finding, 'established'),
+    }))
+      ? 1
+      : 0;
+  }
+
+  // An episode is open. Only a genuine resolve closes it — running out of
+  // qualifying data ('stale' / 'insufficient_evidence') is silence, not good
+  // news, and must never be reported as if the runner fixed something.
+  if (finding.quietReason !== 'resolved') return 0;
+  const { title, body } = composeEasyDisciplineResolved(finding);
+  return (await writeEntry(userId, 'easy_discipline', `easy:resolved:${openEpisode}`, {
+    title,
+    body,
+    dateISO: todayISO,
+    meta: easyMeta(finding, 'resolved'),
+  }))
+    ? 1
+    : 0;
+}
+
+function easyMeta(f: EasyDisciplineFinding, state: string): Record<string, unknown> {
+  return {
+    state,
+    basis: f.basis,
+    read: f.read,
+    qualifying: f.qualifying,
+    over: f.over,
+    distinctWeeks: f.distinctWeeks,
+    meanPctHrMax: f.meanPctHrMax,
+    ceilingBpm: f.ceilingBpm,
+    targetBpm: f.targetBpm,
+    caveats: f.caveats,
+  };
 }
 
 /* ──────────────────── Paged reader ──────────────────── */
@@ -533,7 +637,7 @@ export async function loadCoachLog(
     const kind = (typeof v.kind === 'string' ? v.kind : r.reason.replace(/^coach_log_/, '')) as CoachLogKind;
     entries.push({
       id: r.id,
-      kind: (['week_close', 'phase_boundary', 'first_ever'] as string[]).includes(kind)
+      kind: (['week_close', 'phase_boundary', 'first_ever', 'easy_discipline'] as string[]).includes(kind)
         ? kind : 'week_close',
       dateISO: typeof v.dateISO === 'string' ? v.dateISO : ts.slice(0, 10),
       title: typeof v.title === 'string' ? v.title : 'LOG',
